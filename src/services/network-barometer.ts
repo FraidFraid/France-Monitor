@@ -57,11 +57,12 @@ function normalizeElec(data: EcowattResponse): number {
 }
 
 function normalizeTelecom(outages: TelecomOutage[]): number {
-  const totalSites = outages.length;
-  if (totalSites === 0) return 100;
+  if (outages.length === 0) return 100;
+  // ARCEP dataset contains only outage/degraded sites, NOT the full network.
+  // Using a ratio (hsSites / totalSites) is meaningless since totalSites ≠ total network.
+  // Normalize on absolute HS count: 0 HS → 100, 500+ HS → 0.
   const hsSites = outages.filter(o => o.voiceStatus === 'HS' || o.dataStatus === 'HS').length;
-  // * 200 : amplifie les pannes rares (même 5% de sites HS = score 0)
-  return Math.max(0, Math.round(100 - (hsSites / totalSites) * 200));
+  return Math.max(0, Math.round(100 - (hsSites / 5)));
 }
 
 function normalizeSpace(data: SpaceWeatherData): number {

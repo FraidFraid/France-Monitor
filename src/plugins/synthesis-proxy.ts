@@ -10,7 +10,9 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // Simple in-process memory cache for dev (mirrors Redis TTL behaviour)
 let _devCache: { value: string; expiresAt: number } | null = null;
 
-function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrNationalScore?: number): string {
+type ISNRDeptContext = { name: string; score: number; social: number; security: number };
+
+function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrNationalScore?: number, isnrDepts?: ISNRDeptContext[]): string {
   const details = scores.details as Record<string, number | null> ?? {};
   const score = scores.score as number ?? 0;
   const status = scores.status as string ?? 'unknown';
@@ -19,8 +21,12 @@ function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrN
     : '(aucune actualité significative détectée)';
 
   const isnrLine = isnrNationalScore != null
-    ? `Score ISNR (stabilité sociale & sécuritaire nationale) : ${isnrNationalScore}/100`
-    : `Score ISNR (stabilité sociale & sécuritaire nationale) : indisponible`;
+    ? `Score ISNR national (stabilité sociale & sécuritaire) : ${isnrNationalScore}/100`
+    : `Score ISNR national (stabilité sociale & sécuritaire) : indisponible`;
+
+  const deptsBlock = isnrDepts && isnrDepts.length > 0
+    ? `\nDépartements les plus instables (score bas = instable) :\n${isnrDepts.map((d, i) => `${i + 1}. ${d.name} : ${d.score}/100 (social: ${d.social}, sécurité: ${d.security})`).join('\n')}`
+    : '';
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -32,14 +38,14 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Cyber (CERT-FR) : ${details['cyber'] ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
-${isnrLine}
+${isnrLine}${deptsBlock}
 
-Actualités récentes à impact (filtrées medium/high) :
+Actualités récentes à impact (format [catégorie/niveau] titre (source)) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR et les actualités (ex: chute BGP + ISNR bas + news câble sous-marin).
-2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel.
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables et les actualités.
+2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel. Mentionne les zones géographiques si pertinent.
 3. Fournis un score d'impact sur la stabilité de 0 à 100.
 
 IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
@@ -80,10 +86,11 @@ export function synthesisProxyPlugin(): Plugin {
           }
 
           try {
-            const { scores, headlines, isnrNationalScore } = JSON.parse(body) as {
+            const { scores, headlines, isnrNationalScore, isnrDepts } = JSON.parse(body) as {
               scores: Record<string, unknown>;
               headlines: string[];
               isnrNationalScore?: number;
+              isnrDepts?: ISNRDeptContext[];
             };
 
             const groqRes = await fetch(GROQ_URL, {
@@ -94,7 +101,7 @@ export function synthesisProxyPlugin(): Plugin {
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
-                messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore) }],
+                messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts) }],
                 temperature: 0.3,
                 max_tokens: 300,
               }),

@@ -1351,7 +1351,13 @@ export class App {
               .slice(0, 10 - medium.length),
           ];
 
-      const synthesis = await fetchISNRSynthesis(result, headlines, this.currentISNRData?.nationalScore).catch(() => null);
+      const isnrDepts = this.currentISNRData?.scores
+        .slice()
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 5)
+        .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
+
+      const synthesis = await fetchISNRSynthesis(result, headlines, this.currentISNRData?.nationalScore, isnrDepts).catch(() => null);
       this.networkBarometerWidget?.updateBriefing(synthesis);
     };
     void refreshNetworkBarometer();
