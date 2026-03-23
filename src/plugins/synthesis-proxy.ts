@@ -10,13 +10,17 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // Simple in-process memory cache for dev (mirrors Redis TTL behaviour)
 let _devCache: { value: string; expiresAt: number } | null = null;
 
-function buildPrompt(scores: Record<string, unknown>, headlines: string[]): string {
+function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrNationalScore?: number): string {
   const details = scores.details as Record<string, number | null> ?? {};
   const score = scores.score as number ?? 0;
   const status = scores.status as string ?? 'unknown';
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : '(aucune actualité significative détectée)';
+
+  const isnrLine = isnrNationalScore != null
+    ? `Score ISNR (stabilité sociale & sécuritaire nationale) : ${isnrNationalScore}/100`
+    : `Score ISNR (stabilité sociale & sécuritaire nationale) : indisponible`;
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -28,13 +32,17 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Cyber (CERT-FR) : ${details['cyber'] ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
+${isnrLine}
+
 Actualités récentes à impact (filtrées medium/high) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques et les actualités.
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR et les actualités (ex: chute BGP + ISNR bas + news câble sous-marin).
 2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel.
 3. Fournis un score d'impact sur la stabilité de 0 à 100.
+
+IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
 
 Réponds UNIQUEMENT en JSON valide, sans texte avant ou après : {"briefing": "...", "stabilityImpact": 42}`;
 }
@@ -72,9 +80,10 @@ export function synthesisProxyPlugin(): Plugin {
           }
 
           try {
-            const { scores, headlines } = JSON.parse(body) as {
+            const { scores, headlines, isnrNationalScore } = JSON.parse(body) as {
               scores: Record<string, unknown>;
               headlines: string[];
+              isnrNationalScore?: number;
             };
 
             const groqRes = await fetch(GROQ_URL, {
@@ -85,7 +94,7 @@ export function synthesisProxyPlugin(): Plugin {
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
-                messages: [{ role: 'user', content: buildPrompt(scores, headlines) }],
+                messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore) }],
                 temperature: 0.3,
                 max_tokens: 300,
               }),
