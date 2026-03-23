@@ -32,14 +32,13 @@ export async function redisGet(key) {
 export async function redisSet(key, value, ttlSec) {
   if (!BASE_URL || !AUTH_TOKEN) return;
   try {
-    await fetch(`${BASE_URL}/set/${encodeURIComponent(key)}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-        'Content-Type': 'application/json',
+    await fetch(
+      `${BASE_URL}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${ttlSec}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
       },
-      body: JSON.stringify([value, 'EX', ttlSec]),
-    });
+    );
   } catch {
     // fire-and-forget: cache failure never propagates
   }
