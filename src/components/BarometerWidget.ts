@@ -6,6 +6,7 @@
  */
 
 import type { NetworkBarometerResult } from '../services/network-barometer.ts';
+import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -19,6 +20,9 @@ export class BarometerWidget {
   private dotEl: HTMLElement | null = null;
   private statusLabelEl: HTMLElement | null = null;
   private tooltipEl: HTMLElement | null = null;
+  private briefingContainerEl: HTMLElement | null = null;
+  private briefingTextEl: HTMLElement | null = null;
+  private briefingTimeEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -47,6 +51,7 @@ export class BarometerWidget {
     this.el.appendChild(this._buildArc());
     this.el.appendChild(this._buildLabels());
     this.el.appendChild(this._buildTooltip());
+    this.el.appendChild(this._buildBriefing());
 
     this.el.addEventListener('mouseenter', this._onMouseEnter);
     this.el.addEventListener('mouseleave', this._onMouseLeave);
@@ -159,6 +164,54 @@ export class BarometerWidget {
     return this.tooltipEl;
   }
 
+  private _buildBriefing(): HTMLElement {
+    this.briefingContainerEl = document.createElement('div');
+    this.briefingContainerEl.style.cssText = `
+      margin-top: 6px;
+      padding: 8px 10px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    `;
+
+    const label = document.createElement('div');
+    label.style.cssText = `
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+    `;
+    label.textContent = 'AI BRIEFING';
+
+    this.briefingTextEl = document.createElement('div');
+    this.briefingTextEl.style.cssText = `
+      font-size: 10px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      font-family: monospace;
+      min-height: 28px;
+    `;
+    this.briefingTextEl.textContent = '—';
+
+    this.briefingTimeEl = document.createElement('div');
+    this.briefingTimeEl.style.cssText = `
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      opacity: 0.6;
+    `;
+    this.briefingTimeEl.textContent = '';
+
+    this.briefingContainerEl.appendChild(label);
+    this.briefingContainerEl.appendChild(this.briefingTextEl);
+    this.briefingContainerEl.appendChild(this.briefingTimeEl);
+    return this.briefingContainerEl;
+  }
+
   // ── Event handlers (stored as fields for removeEventListener) ────────────────
 
   private _onMouseEnter = (): void => {
@@ -202,6 +255,26 @@ export class BarometerWidget {
     if (this.tooltipEl) {
       this.tooltipEl.innerHTML = this._renderTooltip(details);
     }
+  }
+
+  updateBriefing(result: ISNRSynthesisResult | null): void {
+    if (!this.briefingTextEl || !this.briefingTimeEl) return;
+
+    if (!result || !result.briefing) {
+      this.briefingTextEl.textContent = 'IA indisponible';
+      this.briefingTextEl.style.color = 'var(--text-muted)';
+      this.briefingTextEl.style.fontStyle = 'italic';
+      this.briefingTimeEl.textContent = '';
+      return;
+    }
+
+    this.briefingTextEl.textContent = result.briefing;
+    this.briefingTextEl.style.color = 'var(--text-secondary)';
+    this.briefingTextEl.style.fontStyle = 'normal';
+
+    const mins = Math.round((Date.now() - result.computedAt.getTime()) / 60_000);
+    const cacheLabel = result.fromCache ? ' · cache' : '';
+    this.briefingTimeEl.textContent = `Llama · il y a ${mins} min${cacheLabel}`;
   }
 
   private _renderTooltip(details: Record<string, number | null>): string {
@@ -249,5 +322,8 @@ export class BarometerWidget {
     this.dotEl = null;
     this.statusLabelEl = null;
     this.tooltipEl = null;
+    this.briefingContainerEl = null;
+    this.briefingTextEl = null;
+    this.briefingTimeEl = null;
   }
 }
