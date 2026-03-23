@@ -11,11 +11,15 @@ const CACHE_TTL = 900; // 15 minutes
 const GROQ_URL  = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-function buildPrompt(scores, headlines) {
+function buildPrompt(scores, headlines, isnrNationalScore) {
   const { details, score, status } = scores;
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : '(aucune actualité significative détectée)';
+
+  const isnrLine = isnrNationalScore != null
+    ? `Score ISNR (stabilité sociale & sécuritaire nationale) : ${isnrNationalScore}/100`
+    : `Score ISNR (stabilité sociale & sécuritaire nationale) : indisponible`;
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -27,13 +31,17 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Cyber (CERT-FR) : ${details.cyber ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
+${isnrLine}
+
 Actualités récentes à impact (filtrées medium/high) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques et les actualités (ex: chute BGP + news câble sous-marin).
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR et les actualités (ex: chute BGP + ISNR bas + news câble sous-marin).
 2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel.
-3. Fournis un score d'impact sur la stabilité de 0 à 100 (0 = aucun impact, 100 = crise majeure).
+3. Fournis un score d'impact sur la stabilité de 0 à 100.
+
+IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
 
 Réponds UNIQUEMENT en JSON valide, sans texte avant ou après : {"briefing": "...", "stabilityImpact": 42}`;
 }
@@ -48,9 +56,9 @@ export default async function handler(request) {
     });
   }
 
-  let scores, headlines;
+  let scores, headlines, isnrNationalScore;
   try {
-    ({ scores, headlines } = await request.json());
+    ({ scores, headlines, isnrNationalScore } = await request.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
@@ -88,7 +96,7 @@ export default async function handler(request) {
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
-        messages: [{ role: 'user', content: buildPrompt(scores, headlines) }],
+        messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore) }],
         temperature: 0.3,
         max_tokens: 300,
       }),
