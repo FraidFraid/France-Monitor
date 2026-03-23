@@ -26,7 +26,7 @@ export async function fetchISNRSynthesis(
 
   // Extract headlines: title + source name
   const headlines = newsItems.map(item =>
-    `[${item.source}] ${item.title}`,
+    item.source ? `[${item.source}] ${item.title}` : item.title,
   );
 
   try {
