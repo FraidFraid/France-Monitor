@@ -1390,6 +1390,15 @@ body {
   animation: barometerPulse 2s ease-in-out infinite;
 }
 
+@keyframes stability-shimmer {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.stability-shimmer {
+  animation: stability-shimmer 1.5s ease-in-out infinite;
+}
+
 /* Second ring delayed for continuous effect */
 .pulse-marker__ring--delayed {
   position: absolute;

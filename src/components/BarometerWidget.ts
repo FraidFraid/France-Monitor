@@ -23,6 +23,8 @@ export class BarometerWidget {
   private briefingContainerEl: HTMLElement | null = null;
   private briefingTextEl: HTMLElement | null = null;
   private briefingTimeEl: HTMLElement | null = null;
+  private stabilityBarContainerEl: HTMLElement | null = null;
+  private stabilityBarFillEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -211,7 +213,68 @@ export class BarometerWidget {
     this.briefingContainerEl.appendChild(label);
     this.briefingContainerEl.appendChild(this.briefingTextEl);
     this.briefingContainerEl.appendChild(this.briefingTimeEl);
+    this.briefingContainerEl.appendChild(this._buildStabilityBar());
     return this.briefingContainerEl;
+  }
+
+  private _buildStabilityBar(): HTMLElement {
+    this.stabilityBarContainerEl = document.createElement('div');
+    this.stabilityBarContainerEl.style.cssText = `
+      display: none;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+    `;
+
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    `;
+
+    const stabilityLabel = document.createElement('span');
+    stabilityLabel.style.cssText = `
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    `;
+    stabilityLabel.textContent = 'STABILITÉ SYSTÉMIQUE';
+
+    const stabilityValue = document.createElement('span');
+    stabilityValue.style.cssText = `
+      font-size: 8px;
+      font-family: monospace;
+      color: var(--text-muted);
+    `;
+    stabilityValue.className = 'stability-value';
+
+    headerRow.appendChild(stabilityLabel);
+    headerRow.appendChild(stabilityValue);
+
+    const track = document.createElement('div');
+    track.style.cssText = `
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    `;
+
+    this.stabilityBarFillEl = document.createElement('div');
+    this.stabilityBarFillEl.style.cssText = `
+      height: 100%;
+      width: 0%;
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    `;
+
+    track.appendChild(this.stabilityBarFillEl);
+    this.stabilityBarContainerEl.appendChild(headerRow);
+    this.stabilityBarContainerEl.appendChild(track);
+    return this.stabilityBarContainerEl;
   }
 
   // ── Event handlers (stored as fields for removeEventListener) ────────────────
@@ -260,13 +323,14 @@ export class BarometerWidget {
   }
 
   updateBriefing(result: ISNRSynthesisResult | null): void {
-    if (!this.briefingTextEl || !this.briefingTimeEl) return;
+    if (!this.briefingTextEl || !this.briefingTimeEl || !this.stabilityBarContainerEl || !this.stabilityBarFillEl) return;
 
     if (!result || !result.briefing) {
       this.briefingTextEl.textContent = 'IA indisponible';
       this.briefingTextEl.style.color = 'var(--text-muted)';
       this.briefingTextEl.style.fontStyle = 'italic';
       this.briefingTimeEl.textContent = '';
+      this.stabilityBarContainerEl.style.display = 'none';
       return;
     }
 
@@ -277,6 +341,34 @@ export class BarometerWidget {
     const mins = Math.round((Date.now() - result.computedAt.getTime()) / 60_000);
     const cacheLabel = result.fromCache ? ' · cache' : '';
     this.briefingTimeEl.textContent = `Llama · il y a ${mins} min${cacheLabel}`;
+
+    // Stability bar
+    if (result.stabilityImpact == null) {
+      this.stabilityBarContainerEl.style.display = 'none';
+      return;
+    }
+
+    this.stabilityBarContainerEl.style.display = 'block';
+
+    const impact = result.stabilityImpact;
+    const color = impact >= 70 ? '#ff2d55'
+                : impact >= 40 ? '#ffcc00'
+                :                '#34c759';
+
+    this.stabilityBarFillEl.style.width = `${impact}%`;
+    this.stabilityBarFillEl.style.background = color;
+
+    if (impact > 60) {
+      this.stabilityBarFillEl.classList.add('stability-shimmer');
+    } else {
+      this.stabilityBarFillEl.classList.remove('stability-shimmer');
+    }
+
+    const valueEl = this.stabilityBarContainerEl.querySelector('.stability-value') as HTMLElement | null;
+    if (valueEl) {
+      valueEl.textContent = `${impact}/100`;
+      valueEl.style.color = color;
+    }
   }
 
   private _renderTooltip(details: Record<string, number | null>): string {
@@ -327,5 +419,7 @@ export class BarometerWidget {
     this.briefingContainerEl = null;
     this.briefingTextEl = null;
     this.briefingTimeEl = null;
+    this.stabilityBarContainerEl = null;
+    this.stabilityBarFillEl = null;
   }
 }
