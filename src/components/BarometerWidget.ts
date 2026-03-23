@@ -37,8 +37,7 @@ export class BarometerWidget {
       box-sizing: border-box;
       margin-bottom: 8px;
       display: flex;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
       padding: 10px 14px 10px 10px;
       background: var(--bg-surface);
       border: 1px solid rgba(255,255,255,0.1);
@@ -48,8 +47,11 @@ export class BarometerWidget {
       font-family: system-ui, sans-serif;
     `;
 
-    this.el.appendChild(this._buildArc());
-    this.el.appendChild(this._buildLabels());
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:12px;';
+    topRow.appendChild(this._buildArc());
+    topRow.appendChild(this._buildLabels());
+    this.el.appendChild(topRow);
     this.el.appendChild(this._buildTooltip());
     this.el.appendChild(this._buildBriefing());
 
