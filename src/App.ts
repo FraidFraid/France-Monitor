@@ -80,6 +80,7 @@ import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
+import { fetchISNRSynthesis } from './services/isnr-synthesis.ts';
 
 
 const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
@@ -1332,6 +1333,26 @@ export class App {
     const refreshNetworkBarometer = async (): Promise<void> => {
       const result = await fetchNetworkBarometer();
       this.networkBarometerWidget?.update(result);
+
+      // Headline filtering: medium/high first (dense signal), fallback to low
+      // to confirm stability when no high-impact events are present
+      const medium = this.newsItems
+        .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
+        .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+        .slice(0, 10);
+
+      const headlines = medium.length >= 3
+        ? medium
+        : [
+            ...medium,
+            ...this.newsItems
+              .filter(n => n.threat?.level === 'low')
+              .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+              .slice(0, 10 - medium.length),
+          ];
+
+      const synthesis = await fetchISNRSynthesis(result, headlines).catch(() => null);
+      this.networkBarometerWidget?.updateBriefing(synthesis);
     };
     void refreshNetworkBarometer();
     this._intervalNetworkBarometer = setInterval(
