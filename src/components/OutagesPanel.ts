@@ -308,7 +308,7 @@ export class OutagesPanel extends Panel {
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
           <div style="font-size:32px;margin-bottom:12px;opacity:0.4;">✅</div>
           <div>Aucune panne électrique détectée.</div>
-          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Source Enedis DataFair · Ecowatt RTE</div>
+          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Indicateurs Historiques DataFair · Ecowatt RTE</div>
         </div>`;
       return;
     }
@@ -350,7 +350,7 @@ export class OutagesPanel extends Panel {
     // ── Sources ──
     const footer = document.createElement('div');
     footer.style.cssText = `margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);`;
-    footer.textContent = '⚡ Enedis DataFair · Ecowatt RTE · Signalements citoyens';
+    footer.textContent = '⚡ Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens';
     frag.appendChild(footer);
 
     this.contentEl!.innerHTML = '';
