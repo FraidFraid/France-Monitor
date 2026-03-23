@@ -1,0 +1,11 @@
+# Scrapling RSS Proxy - Dependencies
+scrapling>=0.4
+flask>=3.0
+gunicorn>=21.0
+python-dotenv>=1.0
+
+# Scrapling dependencies (auto-installées mais listées pour Docker)
+curl_cffi>=0.14
+playwright>=1.40
+browserforge>=1.2
+camoufox>=0.4

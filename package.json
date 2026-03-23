@@ -1,0 +1,46 @@
+{
+  "name": "francemonitor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "vite",
+    "dev:vite": "vite",
+    "dev:full": "concurrently -k -n vite,scrapling -c blue,magenta \"vite\" \"npm run scrapling:dev\"",
+    "scrapling:dev": "bash services/scrapling-proxy/start.sh",
+    "scrapling:install": "cd services/scrapling-proxy && python3 -m venv venv && venv/bin/pip install -r requirements.txt",
+    "scrapling:docker": "docker run -p 8080:8080 scrapling-proxy",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "lint": "eslint src/ --ext .ts",
+    "format": "prettier --write 'src/**/*.ts'"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/geojson": "^7946.0.16",
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.27.3",
+    "eslint": "^8.57.1",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-pwa": "^1.2.0"
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.2.11",
+    "@deck.gl/layers": "^9.2.11",
+    "@deck.gl/mapbox": "^9.2.11",
+    "@turf/turf": "^7.3.4",
+    "@upstash/redis": "^1.36.2",
+    "@xenova/transformers": "^2.17.2",
+    "d3": "^7.9.0",
+    "hls.js": "^1.6.15",
+    "idb": "^8.0.3",
+    "maplibre-gl": "^5.19.0",
+    "onnxruntime-web": "^1.24.2",
+    "supercluster": "^8.0.1",
+    "ws": "^8.19.0"
+  }
+}

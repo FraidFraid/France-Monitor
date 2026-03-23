@@ -1,0 +1,170 @@
+import { Panel } from './Panel.ts';
+import type { FloodSegment } from '../types/index.ts';
+
+const FLOOD_COLORS: Record<string, string> = {
+    red: 'var(--threat-critical)',
+    orange: 'var(--threat-high)',
+    yellow: 'var(--threat-medium)',
+    green: 'var(--threat-low)',
+};
+
+export class FloodsPanel extends Panel {
+    private contentEl: HTMLElement | null = null;
+    private closeBtn: HTMLElement | null = null;
+
+    // Optional: add map interaction similar to WeatherPanel hover later
+    // private onHoverSegment?: (id: string | null) => void;
+
+    constructor(container: HTMLElement) {
+        super(container, { title: 'Vigicrues', icon: '🌊', collapsible: false });
+    }
+
+    mount(): void {
+        this.modalEl = document.createElement('div');
+        this.modalEl.style.cssText = `
+      position: absolute;
+      top: var(--right-panel-top);
+      right: 20px;
+      width: 320px;
+      max-height: calc(100vh - var(--right-panel-top) - 20px);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      backdrop-filter: blur(10px);
+    `;
+
+        this.closeBtn = document.createElement('button');
+        this.closeBtn.innerHTML = '✕';
+        this.closeBtn.style.cssText = `
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      width: 28px;
+      height: 28px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    `;
+        this.closeBtn.onmouseover = () => {
+            this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
+            this.closeBtn!.style.color = 'var(--text-primary)';
+        };
+        this.closeBtn.onmouseout = () => {
+            this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
+            this.closeBtn!.style.color = 'var(--text-muted)';
+        };
+        this.closeBtn.onclick = () => this.hide();
+
+        this.modalEl.appendChild(this.closeBtn);
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    `;
+        header.innerHTML = `
+      <div style="font-size: 24px;">🌊</div>
+      <div>
+        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Vigicrues</div>
+        <div style="color: var(--text-muted); font-size: 11px;">Surveillance des cours d'eau</div>
+      </div>
+    `;
+        this.modalEl.appendChild(header);
+
+        this.contentEl = document.createElement('div');
+        this.contentEl.style.cssText = `
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
+    `;
+        this.modalEl.appendChild(this.contentEl);
+        this.container.appendChild(this.modalEl);
+        this.render();
+    }
+
+    private modalEl!: HTMLElement;
+
+    protected render(): void { }
+
+    // onClose removed
+
+    show(segments: FloodSegment[]): void {
+        if (!this.contentEl) return;
+        this.modalEl.style.display = 'flex';
+
+        // Filter out green if too many, or just sort
+        const activeSegments = segments.filter(s => s.level !== 'green');
+
+        if (activeSegments.length === 0) {
+            this.contentEl.innerHTML = `
+        <div style="text-align:center; color: var(--text-muted); padding: 20px 0;">
+          <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.5;">✅</div>
+          <div>Aucun tronçon en crue significative.</div>
+        </div>
+      `;
+            return;
+        }
+
+        const sorted = [...activeSegments].sort((a, b) => {
+            const levels = { red: 3, orange: 2, yellow: 1, green: 0 };
+            return (levels[b.level as keyof typeof levels] || 0) - (levels[a.level as keyof typeof levels] || 0);
+        });
+
+        const byLevel: Record<string, FloodSegment[]> = { red: [], orange: [], yellow: [] };
+        for (const s of sorted) {
+            if (byLevel[s.level]) byLevel[s.level].push(s);
+        }
+
+        let html = '';
+
+        for (const [level, items] of Object.entries(byLevel)) {
+            if (items.length === 0) continue;
+
+            const color = FLOOD_COLORS[level];
+            const name = level === 'red' ? 'Rouge' : level === 'orange' ? 'Orange' : 'Jaune';
+
+            html += `
+        <div style="margin-bottom: 20px;">
+          <div style="display:flex; align-items:center; gap: 8px; margin-bottom: 10px;">
+            <div style="width: 12px; height: 12px; border-radius: 6px; background: ${color};"></div>
+            <div style="color: ${color}; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+              Vigilance ${name}
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+      `;
+
+            for (const item of items) {
+                html += `
+          <div class="flood-segment-item" data-id="${item.id}" style="background: rgba(0,0,0,0.2); border-left: 3px solid ${color}; padding: 10px 12px; border-radius: 0 4px 4px 0;">
+            <div style="color: var(--text-primary); font-size: 13px; font-weight: 500;">
+              ${item.name}
+            </div>
+          </div>
+        `;
+            }
+
+            html += `</div></div>`;
+        }
+
+        this.contentEl.innerHTML = html;
+    }
+
+    hide(): void {
+        if (this.modalEl) this.modalEl.style.display = 'none';
+    }
+}

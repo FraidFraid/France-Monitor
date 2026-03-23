@@ -1,0 +1,21 @@
+{
+  "rewrites": [
+    { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
+    { "source": "/api/energy/(.*)", "destination": "/api/energy/$1" },
+    { "source": "/api/weather/(.*)", "destination": "/api/weather/$1" },
+    { "source": "/api/floods/(.*)", "destination": "/api/floods/$1" },
+    { "source": "/api/transport/(.*)", "destination": "/api/transport/$1" },
+    { "source": "/api/geocode", "destination": "/api/geocode" },
+    { "source": "/api/francemonitor/(.*)", "destination": "/api/francemonitor/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=120" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
+}

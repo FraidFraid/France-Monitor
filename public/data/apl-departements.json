@@ -1,0 +1,521 @@
+{
+  "departements": [
+    {
+      "code_insee": "01",
+      "category": "desert",
+      "apl_index": 0.45413613502180006
+    },
+    {
+      "code_insee": "02",
+      "category": "desert",
+      "apl_index": 0.2984243643034481
+    },
+    {
+      "code_insee": "03",
+      "category": "desert",
+      "apl_index": 0.6278625245255056
+    },
+    {
+      "code_insee": "04",
+      "category": "surdote",
+      "apl_index": 3.4018043922310595
+    },
+    {
+      "code_insee": "05",
+      "category": "bon",
+      "apl_index": 2.0247757137720885
+    },
+    {
+      "code_insee": "06",
+      "category": "desert",
+      "apl_index": 0.37837088123943596
+    },
+    {
+      "code_insee": "07",
+      "category": "bon",
+      "apl_index": 2.1176968182754345
+    },
+    {
+      "code_insee": "08",
+      "category": "bon",
+      "apl_index": 1.807580910741609
+    },
+    {
+      "code_insee": "09",
+      "category": "desert",
+      "apl_index": 0.300467444799271
+    },
+    {
+      "code_insee": "10",
+      "category": "bon",
+      "apl_index": 2.711873436542014
+    },
+    {
+      "code_insee": "11",
+      "category": "fragile",
+      "apl_index": 0.8592350637219455
+    },
+    {
+      "code_insee": "12",
+      "category": "bon",
+      "apl_index": 1.6145729946985274
+    },
+    {
+      "code_insee": "13",
+      "category": "desert",
+      "apl_index": 0.2361127710086235
+    },
+    {
+      "code_insee": "14",
+      "category": "fragile",
+      "apl_index": 0.8718859544433104
+    },
+    {
+      "code_insee": "15",
+      "category": "surdote",
+      "apl_index": 3.901034238705219
+    },
+    {
+      "code_insee": "16",
+      "category": "fragile",
+      "apl_index": 1.5299380711264638
+    },
+    {
+      "code_insee": "17",
+      "category": "desert",
+      "apl_index": 0.19774941523552902
+    },
+    {
+      "code_insee": "18",
+      "category": "surdote",
+      "apl_index": 3.716533423568473
+    },
+    {
+      "code_insee": "19",
+      "category": "surdote",
+      "apl_index": 3.891247318053519
+    },
+    {
+      "code_insee": "20",
+      "category": "surdote",
+      "apl_index": 3.1708216038471972
+    },
+    {
+      "code_insee": "21",
+      "category": "fragile",
+      "apl_index": 1.5216352092606629
+    },
+    {
+      "code_insee": "22",
+      "category": "surdote",
+      "apl_index": 2.862284236843919
+    },
+    {
+      "code_insee": "23",
+      "category": "fragile",
+      "apl_index": 1.4728844315833531
+    },
+    {
+      "code_insee": "24",
+      "category": "surdote",
+      "apl_index": 3.4965840403777944
+    },
+    {
+      "code_insee": "25",
+      "category": "bon",
+      "apl_index": 2.406965306962255
+    },
+    {
+      "code_insee": "26",
+      "category": "desert",
+      "apl_index": 0.10500443630707235
+    },
+    {
+      "code_insee": "27",
+      "category": "fragile",
+      "apl_index": 1.0588302005802839
+    },
+    {
+      "code_insee": "28",
+      "category": "bon",
+      "apl_index": 1.8620139105525464
+    },
+    {
+      "code_insee": "29",
+      "category": "desert",
+      "apl_index": 0.10721454434962618
+    },
+    {
+      "code_insee": "30",
+      "category": "surdote",
+      "apl_index": 3.74766283888436
+    },
+    {
+      "code_insee": "31",
+      "category": "bon",
+      "apl_index": 1.7372963543350273
+    },
+    {
+      "code_insee": "32",
+      "category": "surdote",
+      "apl_index": 3.865442975578922
+    },
+    {
+      "code_insee": "33",
+      "category": "surdote",
+      "apl_index": 3.889033497610149
+    },
+    {
+      "code_insee": "34",
+      "category": "bon",
+      "apl_index": 2.1415016772870348
+    },
+    {
+      "code_insee": "35",
+      "category": "bon",
+      "apl_index": 2.6175116718424847
+    },
+    {
+      "code_insee": "36",
+      "category": "surdote",
+      "apl_index": 2.8108990740638817
+    },
+    {
+      "code_insee": "37",
+      "category": "bon",
+      "apl_index": 1.83614272231251
+    },
+    {
+      "code_insee": "38",
+      "category": "surdote",
+      "apl_index": 3.4716625665988343
+    },
+    {
+      "code_insee": "39",
+      "category": "bon",
+      "apl_index": 2.5991277954648533
+    },
+    {
+      "code_insee": "40",
+      "category": "bon",
+      "apl_index": 1.8454880983036372
+    },
+    {
+      "code_insee": "41",
+      "category": "surdote",
+      "apl_index": 3.6919556782599514
+    },
+    {
+      "code_insee": "42",
+      "category": "surdote",
+      "apl_index": 2.9587188494520325
+    },
+    {
+      "code_insee": "43",
+      "category": "surdote",
+      "apl_index": 3.044250763542087
+    },
+    {
+      "code_insee": "44",
+      "category": "bon",
+      "apl_index": 2.652695101302731
+    },
+    {
+      "code_insee": "45",
+      "category": "bon",
+      "apl_index": 2.0885967886671595
+    },
+    {
+      "code_insee": "46",
+      "category": "desert",
+      "apl_index": 0.3137703993895138
+    },
+    {
+      "code_insee": "47",
+      "category": "surdote",
+      "apl_index": 2.951186264626505
+    },
+    {
+      "code_insee": "48",
+      "category": "desert",
+      "apl_index": 0.6615150023934424
+    },
+    {
+      "code_insee": "49",
+      "category": "fragile",
+      "apl_index": 1.0733913518799243
+    },
+    {
+      "code_insee": "50",
+      "category": "bon",
+      "apl_index": 2.7811292989208733
+    },
+    {
+      "code_insee": "51",
+      "category": "desert",
+      "apl_index": 0.0791587538324574
+    },
+    {
+      "code_insee": "52",
+      "category": "surdote",
+      "apl_index": 3.168275591304076
+    },
+    {
+      "code_insee": "53",
+      "category": "bon",
+      "apl_index": 2.0517903799556723
+    },
+    {
+      "code_insee": "54",
+      "category": "desert",
+      "apl_index": 0.632913770299703
+    },
+    {
+      "code_insee": "55",
+      "category": "surdote",
+      "apl_index": 3.0670878581758925
+    },
+    {
+      "code_insee": "56",
+      "category": "surdote",
+      "apl_index": 3.4837108594359214
+    },
+    {
+      "code_insee": "57",
+      "category": "surdote",
+      "apl_index": 3.2123936846174526
+    },
+    {
+      "code_insee": "58",
+      "category": "bon",
+      "apl_index": 2.5030015470975164
+    },
+    {
+      "code_insee": "59",
+      "category": "bon",
+      "apl_index": 1.8839517034678606
+    },
+    {
+      "code_insee": "60",
+      "category": "desert",
+      "apl_index": 0.06162779651909611
+    },
+    {
+      "code_insee": "61",
+      "category": "surdote",
+      "apl_index": 3.3260906631879106
+    },
+    {
+      "code_insee": "62",
+      "category": "fragile",
+      "apl_index": 1.2278988840594272
+    },
+    {
+      "code_insee": "63",
+      "category": "bon",
+      "apl_index": 2.5670891962959996
+    },
+    {
+      "code_insee": "64",
+      "category": "fragile",
+      "apl_index": 1.5069673260188412
+    },
+    {
+      "code_insee": "65",
+      "category": "surdote",
+      "apl_index": 3.404871146364884
+    },
+    {
+      "code_insee": "66",
+      "category": "bon",
+      "apl_index": 2.372075369938752
+    },
+    {
+      "code_insee": "67",
+      "category": "bon",
+      "apl_index": 2.5701908660656567
+    },
+    {
+      "code_insee": "68",
+      "category": "surdote",
+      "apl_index": 3.6521014460743872
+    },
+    {
+      "code_insee": "69",
+      "category": "surdote",
+      "apl_index": 3.9677809182485317
+    },
+    {
+      "code_insee": "70",
+      "category": "bon",
+      "apl_index": 2.433690815331085
+    },
+    {
+      "code_insee": "71",
+      "category": "bon",
+      "apl_index": 2.4053125376892903
+    },
+    {
+      "code_insee": "72",
+      "category": "bon",
+      "apl_index": 2.679079847928692
+    },
+    {
+      "code_insee": "73",
+      "category": "surdote",
+      "apl_index": 3.7167910921368295
+    },
+    {
+      "code_insee": "74",
+      "category": "surdote",
+      "apl_index": 3.787886479443526
+    },
+    {
+      "code_insee": "75",
+      "category": "fragile",
+      "apl_index": 0.898325515543362
+    },
+    {
+      "code_insee": "76",
+      "category": "bon",
+      "apl_index": 2.284337209773186
+    },
+    {
+      "code_insee": "77",
+      "category": "fragile",
+      "apl_index": 1.2177123550942692
+    },
+    {
+      "code_insee": "78",
+      "category": "bon",
+      "apl_index": 1.9548986605444658
+    },
+    {
+      "code_insee": "79",
+      "category": "surdote",
+      "apl_index": 3.1091418081179256
+    },
+    {
+      "code_insee": "80",
+      "category": "bon",
+      "apl_index": 2.5000415367672235
+    },
+    {
+      "code_insee": "81",
+      "category": "fragile",
+      "apl_index": 1.4580122151865842
+    },
+    {
+      "code_insee": "82",
+      "category": "bon",
+      "apl_index": 2.0430176249942065
+    },
+    {
+      "code_insee": "83",
+      "category": "surdote",
+      "apl_index": 3.2378149342907037
+    },
+    {
+      "code_insee": "84",
+      "category": "desert",
+      "apl_index": 0.4240175911376336
+    },
+    {
+      "code_insee": "85",
+      "category": "fragile",
+      "apl_index": 0.8255271330582237
+    },
+    {
+      "code_insee": "86",
+      "category": "desert",
+      "apl_index": 0.5973372641939401
+    },
+    {
+      "code_insee": "87",
+      "category": "fragile",
+      "apl_index": 1.1459781447780442
+    },
+    {
+      "code_insee": "88",
+      "category": "surdote",
+      "apl_index": 3.7281501329800335
+    },
+    {
+      "code_insee": "89",
+      "category": "bon",
+      "apl_index": 2.347285363736092
+    },
+    {
+      "code_insee": "90",
+      "category": "surdote",
+      "apl_index": 2.9439176410302994
+    },
+    {
+      "code_insee": "91",
+      "category": "surdote",
+      "apl_index": 3.728423485173192
+    },
+    {
+      "code_insee": "92",
+      "category": "surdote",
+      "apl_index": 3.314909232431327
+    },
+    {
+      "code_insee": "93",
+      "category": "bon",
+      "apl_index": 1.9864436492279478
+    },
+    {
+      "code_insee": "94",
+      "category": "fragile",
+      "apl_index": 0.9457872351708603
+    },
+    {
+      "code_insee": "95",
+      "category": "desert",
+      "apl_index": 0.6075188615910943
+    },
+    {
+      "code_insee": "2A",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "2B",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "971",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "972",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "973",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "974",
+      "category": "desert",
+      "apl_index": 1
+    },
+    {
+      "code_insee": "976",
+      "category": "desert",
+      "apl_index": 1
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-03-05T06:01:11.059Z",
+    "source": "data.gouv.fr (DREES 2023)",
+    "year": "2023",
+    "rows": 102,
+    "departments_found": 102
+  }
+}

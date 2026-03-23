@@ -1,0 +1,391 @@
+/**
+ * MapContainer.ts — Wrapper qui choisit DeckGLMap (desktop) ou Map (mobile).
+ * Expose toutes les méthodes de calques unifié.
+ */
+
+import { DeckGLMap } from './DeckGLMap.ts';
+import { Map as SVGMap } from './Map.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
+import type { TrafficSegment } from '../config/mock-data.ts';
+import type { MetropoleConsumption } from '../services/metropoles.ts';
+
+/** Detect if the device is mobile (no WebGL or small screen) */
+function isMobileDevice(): boolean {
+  if (window.innerWidth < 768) return true;
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return true;
+  } catch {
+    return true;
+  }
+  if ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) {
+    // @ts-expect-error -- deviceMemory is not in all browsers
+    const memory = navigator.deviceMemory;
+    if (typeof memory === 'number' && memory < 4) return true;
+  }
+  return false;
+}
+
+export class MapContainer {
+  private container: HTMLElement;
+  private deckMap: DeckGLMap | null = null;
+  private svgMap: SVGMap | null = null;
+  private isMobile: boolean;
+  private onItemClick: ((item: NewsItem) => void) | null = null;
+  private onItemHover: ((item: NewsItem | null, x: number, y: number) => void) | null = null;
+  private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
+  private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
+  private onViewChange: ((vs: MapViewState) => void) | null = null;
+  private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
+  private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
+  private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
+  private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
+
+  constructor(container: HTMLElement) {
+    this.container = container;
+    this.isMobile = isMobileDevice();
+  }
+
+  async init(): Promise<void> {
+    if (this.isMobile) {
+      this.svgMap = new SVGMap(this.container);
+      if (this.onItemClick) this.svgMap.setOnItemClick(this.onItemClick);
+      if (this.onItemHover) this.svgMap.setOnItemHover(this.onItemHover);
+      await this.svgMap.init();
+      console.log('[MapContainer] Mobile map (D3/SVG) initialized');
+      return;
+    }
+
+    this.deckMap = new DeckGLMap(this.container);
+    if (this.onItemClick) this.deckMap.setOnItemClick(this.onItemClick);
+    if (this.onItemHover) this.deckMap.setOnItemHover(this.onItemHover);
+    if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);
+    if (this.onClusterHover) this.deckMap.setOnClusterHover(this.onClusterHover);
+    if (this.onClusterClick) this.deckMap.setOnClusterClick(this.onClusterClick);
+    if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
+    if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
+    if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
+    if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
+    await this.deckMap.init();
+    console.log('[MapContainer] Desktop map (MapLibre) initialized');
+  }
+
+  // ─── News ───
+  updateNews(items: NewsItem[]): void {
+    this.deckMap?.updateNews(items);
+    this.svgMap?.updateNews(items);
+  }
+
+  // ─── Energy (Ecowatt) ───
+  async updateEnergy(ecowatt: EcowattResponse): Promise<void> {
+    await this.deckMap?.updateEnergy(ecowatt);
+  }
+
+  updateEnergyTooltipData(
+    regions: import('../types/index.ts').RegionEnergyStats[],
+    flows:   import('../types/index.ts').InterconnectionFlowStats[],
+    history?: import('../services/energy-regions.ts').BorderHistory,
+  ): void {
+    this.deckMap?.updateEnergyTooltipData(regions, flows, history);
+  }
+
+  // ─── Gas (EcoGaz + Vital Organs) ───
+  async updateGas(state: GasNetworkState): Promise<void> {
+    await this.deckMap?.updateGas(state);
+  }
+
+  // ─── Oil (Vigilance Pétrole - Raffineries, Stocks) ───
+  async updateOil(flows: Array<{ id: string; name: string; country?: string; flowKbd: number; coordinates: [number, number]; franceCoordinates?: [number, number]; hubName?: string; originSharePct?: number; originVolumeMt?: number; originReferenceYear?: number; originSourceLabel?: string; originPartialBreakdown?: boolean; originBreakdown?: Array<{ label: string; volumeMt: number; sharePct: number }> }>): Promise<void> {
+    await this.deckMap?.updateOil(flows);
+  }
+
+  async updateOilInfrastructure(data: import('../types').OilDashboard): Promise<void> {
+    await this.deckMap?.updateOilInfrastructure(data);
+  }
+
+  async loadOilPipelines(): Promise<void> {
+    await this.deckMap?.loadOilPipelines();
+  }
+
+  // ─── Weather ───
+  async updateWeather(alerts: MeteoAlert[]): Promise<void> {
+    await this.deckMap?.updateWeather(alerts);
+  }
+
+  // ─── Floods ───
+  updateFloods(segments: FloodSegment[]): void {
+    this.deckMap?.updateFloods(segments);
+  }
+
+  // ─── Fires ───
+  updateFires(fires: ActiveFire[]): void {
+    this.deckMap?.updateFires(fires);
+  }
+
+  highlightFire(lat: number, lon: number): void {
+    this.deckMap?.highlightFire(lat, lon);
+  }
+
+  clearFireHighlight(): void {
+    this.deckMap?.clearFireHighlight();
+  }
+
+  setModisOverlayVisible(enabled: boolean): void {
+    this.deckMap?.setModisOverlayVisible(enabled);
+  }
+
+  setOnRawMapClick(handler: (lat: number, lon: number) => void): void {
+    this.onRawMapClick = handler;
+    this.deckMap?.setOnRawMapClick(handler);
+  }
+
+  // ─── Infrastructure ───
+  updateInfrastructure(points: InfrastructurePoint[]): void {
+    this.deckMap?.updateInfrastructure(points);
+  }
+
+  // ─── Traffic ───
+  updateTraffic(_segments: TrafficSegment[]): void {
+    // DeckGL map uses TomTom tiles, basemap mask handles France clipping
+    this.deckMap?.updateTraffic();
+  }
+
+  updateTrafficIncidents(incidents: any[]): void {
+    this.deckMap?.updateTrafficIncidents(incidents);
+  }
+
+  // ─── Métropoles ───
+  updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
+    this.deckMap?.updateMetropoles(data, nationalLoadMW);
+  }
+
+  // ─── Military ───
+  updateMilitaryZones(zones: RestrictedZone[]): void {
+    this.deckMap?.updateMilitaryZones(zones);
+  }
+
+  updateMilitaryBases(bases: MilitaryBase[]): void {
+    this.deckMap?.updateMilitaryBases(bases);
+  }
+
+  updateMilitaryFlights(flights: MilitaryFlight[]): void {
+    this.deckMap?.updateMilitaryFlights(flights);
+  }
+
+  updateAirTraffic(flights: AirTrafficFlight[]): void {
+    this.deckMap?.updateAirTraffic(flights);
+  }
+
+  updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
+    this.deckMap?.updateMilitaryShips(ships);
+  }
+
+  /**
+   * Met à jour le trafic AIS mondial (civils/étrangers).
+   * Filtré par bounding box visible pour optimiser le rendu.
+   *
+   * @param ships - Tous les navires AIS (via getAllLiveTraffic)
+   * @param navyMmsiSet - Set des MMSI Marine Nationale (exclus car affichés séparément)
+   */
+  updateGlobalTraffic(
+    ships: Array<{
+      id: string;
+      name: string;
+      type: string;
+      role: string;
+      mmsi?: string;
+      lat: number;
+      lon: number;
+      speed?: number;
+      heading?: number;
+      cog?: number;
+      navStatus?: number;
+      callSign?: string;
+      imoNumber?: number;
+      draught?: number;
+      dimensions?: {
+        a?: number;
+        b?: number;
+        c?: number;
+        d?: number;
+        length?: number;
+        width?: number;
+      };
+      eta?: {
+        month?: number;
+        day?: number;
+        hour?: number;
+        minute?: number;
+      };
+      port?: string;
+      lastSeen?: number;
+      isLive?: boolean;
+      shipType?: number;
+      destination?: string;
+    }>,
+    navyMmsiSet: Set<string>
+  ): void {
+    this.deckMap?.updateGlobalTraffic(ships, navyMmsiSet);
+  }
+
+  // ─── Outages (Telecom & Power) ───
+  async updateOutages(telecoms: TelecomOutage[], powers: PowerOutage[]): Promise<void> {
+    await this.deckMap?.updateOutages(telecoms, powers);
+  }
+
+  // ─── Internet / BGP outages (IODA) ───
+  updateNetworkOutages(state: NetworkOutageState): void {
+    this.deckMap?.updateNetworkOutages(state);
+  }
+
+  updateCitizenOutageZones(zones: GeoJSON.FeatureCollection): void {
+    this.deckMap?.updateCitizenOutageZones(zones);
+  }
+
+  updateTerminator(geojson: GeoJSON.FeatureCollection): void {
+    this.deckMap?.updateTerminator(geojson);
+  }
+
+  updateDayNightOptions(opts: {
+    showNight?: boolean;
+    showTwilight?: boolean;
+    showSunIcon?: boolean;
+    timestamp?: number;
+  }): void {
+    this.deckMap?.updateDayNightOptions(opts);
+  }
+
+  highlightPowerDept(deptCode: string | null): void {
+    this.deckMap?.highlightPowerDept(deptCode);
+  }
+
+  highlightCitizenZone(clusterId: number | null): void {
+    this.deckMap?.highlightCitizenZone(clusterId);
+  }
+
+  highlightIsp(data: { asn: string; coordinates: [number, number] } | null): void {
+    this.deckMap?.highlightIsp(data);
+  }
+
+  highlightIoda(data: { id: string; coordinates: [number, number] } | null): void {
+    this.deckMap?.highlightIoda(data);
+  }
+
+  highlightDc(data: { id: string; coordinates: [number, number] } | null): void {
+    this.deckMap?.highlightDc(data);
+  }
+
+  highlightIxp(data: { id: string; coordinates: [number, number] } | null): void {
+    this.deckMap?.highlightIxp(data);
+  }
+
+  // ─── Cloud infra & IXP ───
+  updateInfraNetwork(state: InfraNetworkState): void {
+    this.deckMap?.updateInfraNetwork(state);
+  }
+
+  // ─── Health (Santé — ISS) ───
+  updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): void {
+    this.deckMap?.updateHealth(regions, healthFeatures, departments);
+  }
+
+  // ─── Hospitals (FINESS) ───
+  updateHospitals(hospitals: GeoJSON.FeatureCollection<GeoJSON.Point>): void {
+    this.deckMap?.updateHospitals(hospitals);
+  }
+
+  // ─── Layer visibility ───
+  setLayerVisibility(layers: MapLayers): void {
+    this.deckMap?.setLayerVisibility(layers);
+  }
+
+  setLegendHover(categoryId: string | null): void {
+    this.deckMap?.setLegendHover(categoryId);
+  }
+
+  // ─── Events ───
+  setOnItemClick(handler: (item: NewsItem) => void): void {
+    this.onItemClick = handler;
+    this.deckMap?.setOnItemClick(handler);
+    this.svgMap?.setOnItemClick(handler);
+  }
+
+  setOnItemHover(handler: (item: NewsItem | null, x: number, y: number) => void): void {
+    this.onItemHover = handler;
+    this.deckMap?.setOnItemHover(handler);
+    this.svgMap?.setOnItemHover(handler);
+  }
+
+  setOnViewChange(handler: (vs: MapViewState) => void): void {
+    this.onViewChange = handler;
+    this.deckMap?.setOnViewChange(handler);
+  }
+
+  setOnClusterHover(handler: (items: NewsItem[], x: number, y: number, totalCount: number) => void): void {
+    this.onClusterHover = handler;
+    this.deckMap?.setOnClusterHover(handler);
+  }
+
+  setOnClusterClick(handler: (items: NewsItem[], center: [number, number]) => void): void {
+    this.onClusterClick = handler;
+    this.deckMap?.setOnClusterClick(handler);
+  }
+
+  setOnMilitaryFlightClick(handler: (flight: MilitaryFlight, x: number, y: number) => void): void {
+    this.onMilitaryFlightClick = handler;
+    this.deckMap?.setOnMilitaryFlightClick(handler);
+  }
+
+  setOnMilitaryBaseClick(handler: (base: MilitaryBase, x: number, y: number) => void): void {
+    this.onMilitaryBaseClick = handler;
+    this.deckMap?.setOnMilitaryBaseClick(handler);
+  }
+
+  setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
+    this.onMilitaryShipClick = handler;
+    this.deckMap?.setOnMilitaryShipClick(handler);
+  }
+
+  selectItem(item: NewsItem | null): void {
+    this.deckMap?.selectItem(item);
+    this.svgMap?.selectItem(item);
+  }
+
+  getHealthFeatures(): HealthFeatures | null {
+    if (this.deckMap) return this.deckMap.getHealthFeatures();
+    return null;
+  }
+
+  flyTo(longitude: number, latitude: number, zoom?: number): void {
+    this.deckMap?.flyTo(longitude, latitude, zoom);
+    this.svgMap?.flyTo(longitude, latitude, zoom);
+  }
+
+  highlightWeatherDepartment(departmentCode: string | null): void {
+    this.deckMap?.highlightWeatherDepartment(departmentCode);
+  }
+
+  // ─── ISNR (Stability Index) ───
+  async updateISNR(scores: ISNRScore[]): Promise<void> {
+    await this.deckMap?.updateISNR(scores);
+  }
+
+  highlightISNRDepartment(departmentCode: string | null): void {
+    this.deckMap?.highlightISNRDepartment(departmentCode);
+  }
+
+  highlightTrainRoute(
+    departure: [number, number] | null,
+    arrival: [number, number] | null
+  ): void {
+    this.deckMap?.highlightTrainRoute(departure, arrival);
+  }
+
+  destroy(): void {
+    this.deckMap?.destroy();
+    this.deckMap = null;
+    this.svgMap?.destroy();
+    this.svgMap = null;
+  }
+}

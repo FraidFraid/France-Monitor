@@ -1,0 +1,82 @@
+{
+  "social": {
+    "x": 0,
+    "y": 0,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "security": {
+    "x": 120,
+    "y": 0,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "energy": {
+    "x": 240,
+    "y": 0,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "weather": {
+    "x": 360,
+    "y": 0,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "transport": {
+    "x": 480,
+    "y": 0,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "infrastructure": {
+    "x": 0,
+    "y": 120,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "health": {
+    "x": 120,
+    "y": 120,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "political": {
+    "x": 240,
+    "y": 120,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "general": {
+    "x": 360,
+    "y": 120,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  },
+  "critical": {
+    "x": 480,
+    "y": 120,
+    "width": 120,
+    "height": 120,
+    "pixelRatio": 1,
+    "sdf": true
+  }
+}

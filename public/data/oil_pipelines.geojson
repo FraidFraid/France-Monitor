@@ -1,0 +1,180 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-pse",
+        "name": "Pipeline Sud-Europeen (PSE)",
+        "operator": "SPSE",
+        "kind": "crude",
+        "description": "Corridor schematique: Fos/Lavera -> vallee du Rhone -> Alsace"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [4.89, 43.42],
+          [4.98, 43.40],
+          [5.10, 43.62],
+          [5.28, 43.95],
+          [5.33, 44.32],
+          [5.06, 44.78],
+          [4.92, 45.22],
+          [4.86, 45.67],
+          [5.10, 46.02],
+          [5.42, 46.48],
+          [5.82, 46.98],
+          [6.22, 47.38],
+          [6.75, 47.86],
+          [7.20, 48.20],
+          [7.77, 48.58]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-dmm",
+        "name": "Donges-Melun-Metz (DMM)",
+        "operator": "SFDM",
+        "kind": "products",
+        "description": "Corridor schematique: Donges -> Bassin parisien -> Metz"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-2.08, 47.30],
+          [-1.62, 47.25],
+          [-0.82, 47.66],
+          [0.03, 48.05],
+          [0.88, 48.40],
+          [1.74, 48.66],
+          [2.45, 48.76],
+          [2.98, 48.59],
+          [3.58, 48.76],
+          [4.28, 48.90],
+          [4.95, 49.02],
+          [5.56, 49.09],
+          [6.13, 49.08]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-plif",
+        "name": "Pipeline d'Ile-de-France (PLIF)",
+        "operator": "TRAPIL",
+        "kind": "products",
+        "description": "Corridor schematique: Le Havre -> Rouen -> Grandpuits"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [0.12, 49.48],
+          [0.36, 49.49],
+          [0.56, 49.49],
+          [1.10, 49.44],
+          [1.58, 49.27],
+          [2.06, 49.01],
+          [2.52, 48.78],
+          [2.98, 48.59]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-lhp",
+        "name": "Le Havre-Paris (LHP)",
+        "operator": "TRAPIL",
+        "kind": "products",
+        "description": "Corridor schematique: Basse-Seine -> depot de Gennevilliers"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [0.12, 49.48],
+          [0.34, 49.49],
+          [0.56, 49.49],
+          [1.10, 49.44],
+          [1.56, 49.33],
+          [1.92, 49.18],
+          [2.28, 48.93]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-odcf",
+        "name": "Oleoduc de Defense Commune (ODCF/CEPS)",
+        "operator": "OTAN / DGA",
+        "kind": "products",
+        "description": "Corridor schematique: Le Havre -> region parisienne -> Est"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [0.12, 49.48],
+          [0.52, 49.46],
+          [1.10, 49.44],
+          [2.28, 48.93],
+          [2.96, 49.02],
+          [3.68, 49.14],
+          [4.42, 49.18],
+          [5.22, 49.18],
+          [6.13, 49.08],
+          [6.94, 48.88],
+          [7.77, 48.58]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-antifer-cim",
+        "name": "Antifer-CIM-Raffineries",
+        "operator": "Port du Havre",
+        "kind": "crude",
+        "description": "Corridor schematique: Antifer -> CIM Le Havre -> Port-Jerome -> Gonfreville"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-0.15, 49.67],
+          [-0.02, 49.58],
+          [0.12, 49.48],
+          [0.36, 49.49],
+          [0.56, 49.49],
+          [0.42, 49.49],
+          [0.22, 49.48]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "pipeline-fos-feyzin",
+        "name": "Fos-Feyzin",
+        "operator": "SPMR",
+        "kind": "crude",
+        "description": "Corridor schematique: Fos-sur-Mer -> vallee du Rhone -> Feyzin"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [4.89, 43.42],
+          [4.94, 43.43],
+          [5.02, 43.55],
+          [5.06, 43.78],
+          [4.92, 44.15],
+          [4.85, 44.60],
+          [4.82, 45.02],
+          [4.83, 45.35],
+          [4.86, 45.67]
+        ]
+      }
+    }
+  ]
+}

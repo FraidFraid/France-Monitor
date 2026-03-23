@@ -1,0 +1,159 @@
+/**
+ * network-barometer.ts — Baromètre composite santé infrastructure réseau France
+ *
+ * Agrège les caches existants (sans nouveaux appels réseau) :
+ *  - Ecowatt (électricité)   30%
+ *  - IODA/BGP (internet)     25%
+ *  - ARCEP (télécom)         15%
+ *  - Cloud/Web               15%  ← null (poids fantôme, redistribué)
+ *  - Météo spatiale          10%
+ *  - Tension cyber            5%
+ */
+
+import type { EcowattResponse, TelecomOutage } from '../types/index.ts';
+import type { SpaceWeatherData } from './space-weather.ts';
+import type { CyberState } from '../types/index.ts';
+import { fetchEcowatt } from './ecowatt.ts';
+import { fetchNetworkOutages } from './internet-outages.ts';
+import { fetchTelecomOutages } from './outages.ts';
+import { fetchSpaceWeather } from './space-weather.ts';
+import { fetchCyberDashboard } from './cyber.ts';
+
+// ── Types exportés ────────────────────────────────────────────────────────────
+
+export interface NetworkBarometerResult {
+  score: number;                              // 0-100, 100 = fully nominal
+  status: 'nominal' | 'degraded' | 'critical';
+  details: Record<string, number | null>;    // score normalisé par source (null = indisponible)
+  computedAt: Date;
+  reliable: boolean;                         // false si activeWeights < 30% du total
+}
+
+// ── Pondérations ──────────────────────────────────────────────────────────────
+
+const WEIGHTS = {
+  elec:    30,
+  bgp:     25,
+  telecom: 15,
+  cloud:   15,  // toujours null — poids fantôme redistribué automatiquement
+  space:   10,
+  cyber:    5,
+} as const;
+
+type WeightKey = keyof typeof WEIGHTS;
+
+// ── Cache interne ─────────────────────────────────────────────────────────────
+
+const CACHE_TTL_MS = 5 * 60_000;
+let _cache: { data: NetworkBarometerResult; ts: number } | null = null;
+
+// ── Normalisations par source (→ health score 0-100, 100 = nominal) ───────────
+
+function normalizeElec(data: EcowattResponse): number {
+  const signalValues = Object.values(data.signals);
+  if (signalValues.length === 0) return 100;
+  const mapped = signalValues.map(s => s === 'green' ? 100 : s === 'orange' ? 60 : 20);
+  return Math.round(mapped.reduce((a, b) => a + b, 0) / mapped.length);
+}
+
+function normalizeTelecom(outages: TelecomOutage[]): number {
+  const totalSites = outages.length;
+  if (totalSites === 0) return 100;
+  const hsSites = outages.filter(o => o.voiceStatus === 'HS' || o.dataStatus === 'HS').length;
+  // * 200 : amplifie les pannes rares (même 5% de sites HS = score 0)
+  return Math.max(0, Math.round(100 - (hsSites / totalSites) * 200));
+}
+
+function normalizeSpace(data: SpaceWeatherData): number {
+  // kp=0 → 100 (calme), kp=5 → 40 (tempête G1), kp≥9 → 0 (extrême)
+  return Math.max(0, 100 - Math.min(data.kpIndex * 12, 100));
+}
+
+function normalizeCyber(state: CyberState): number {
+  // globalScore : 0=calme, 100=crise → inverser pour obtenir un score de santé
+  return 100 - state.meta.globalScore;
+}
+
+// ── Score global ──────────────────────────────────────────────────────────────
+
+function calculateGlobalScore(scores: Partial<Record<WeightKey, number | null>>): number {
+  let totalScore = 0;
+  let activeWeights = 0;
+
+  for (const [key, weight] of Object.entries(WEIGHTS) as [WeightKey, number][]) {
+    const s = scores[key];
+    if (s !== null && s !== undefined) {
+      totalScore += s * weight;
+      activeWeights += weight;
+    }
+  }
+  // cloud est null → activeWeights = 85 (pas 100).
+  // La division renormalise automatiquement sur 100.
+  return activeWeights > 0 ? Math.round(totalScore / activeWeights) : 0;
+}
+
+function toStatus(score: number): NetworkBarometerResult['status'] {
+  if (score >= 85) return 'nominal';
+  if (score >= 60) return 'degraded';
+  return 'critical';
+}
+
+// ── Fonction principale ────────────────────────────────────────────────────────
+
+export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
+  if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
+
+  // Fetch toutes les sources en parallèle — échec partiel → null pour cette source
+  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes] = await Promise.allSettled([
+    fetchEcowatt(),
+    fetchNetworkOutages(),
+    fetchTelecomOutages(),
+    fetchSpaceWeather(),
+    fetchCyberDashboard(),
+  ]);
+
+  const scores: Partial<Record<WeightKey, number | null>> = {
+    elec:    ecowattRes.status  === 'fulfilled' ? normalizeElec(ecowattRes.value)       : null,
+    bgp:     bgpRes.status      === 'fulfilled' ? bgpRes.value.nationalScore            : null,
+    telecom: telecomRes.status  === 'fulfilled' ? normalizeTelecom(telecomRes.value)    : null,
+    cloud:   null,  // poids fantôme
+    space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
+    cyber:   cyberRes.status    === 'fulfilled' ? normalizeCyber(cyberRes.value)        : null,
+  };
+
+  const activeWeights = (Object.entries(WEIGHTS) as [WeightKey, number][])
+    .filter(([k]) => scores[k] !== null && scores[k] !== undefined)
+    .reduce((sum, [, w]) => sum + w, 0);
+
+  const score = calculateGlobalScore(scores);
+
+  // Fallback si tous les services sont tombés
+  if (activeWeights === 0) {
+    const fallback = _cache?.data ?? {
+      score: 75,
+      status: 'degraded' as const,
+      details: { elec: null, bgp: null, telecom: null, cloud: null, space: null, cyber: null },
+      computedAt: new Date(),
+      reliable: false,
+    };
+    return fallback;
+  }
+
+  const result: NetworkBarometerResult = {
+    score,
+    status: toStatus(score),
+    details: {
+      elec:    scores.elec    ?? null,
+      bgp:     scores.bgp     ?? null,
+      telecom: scores.telecom ?? null,
+      cloud:   null,
+      space:   scores.space   ?? null,
+      cyber:   scores.cyber   ?? null,
+    },
+    computedAt: new Date(),
+    reliable: activeWeights >= 30, // 30 = 30% of total nominal weights (100). Cloud is always null, so max activeWeights = 85.
+  };
+
+  _cache = { data: result, ts: Date.now() };
+  return result;
+}
