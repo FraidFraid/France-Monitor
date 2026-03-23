@@ -19,6 +19,7 @@ let _cache: { data: ISNRSynthesisResult; ts: number } | null = null;
 export async function fetchISNRSynthesis(
   barometer: NetworkBarometerResult,
   newsItems: NewsItem[],
+  isnrNationalScore?: number,
 ): Promise<ISNRSynthesisResult | null> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) {
     return _cache.data;
@@ -30,10 +31,15 @@ export async function fetchISNRSynthesis(
   );
 
   try {
+    const body: Record<string, unknown> = { scores: barometer, headlines };
+    if (isnrNationalScore !== undefined) {
+      body.isnrNationalScore = isnrNationalScore;
+    }
+
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scores: barometer, headlines }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {

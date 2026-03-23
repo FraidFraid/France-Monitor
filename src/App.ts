@@ -1351,7 +1351,7 @@ export class App {
               .slice(0, 10 - medium.length),
           ];
 
-      const synthesis = await fetchISNRSynthesis(result, headlines).catch(() => null);
+      const synthesis = await fetchISNRSynthesis(result, headlines, this.currentISNRData?.nationalScore).catch(() => null);
       this.networkBarometerWidget?.updateBriefing(synthesis);
     };
     void refreshNetworkBarometer();
