@@ -10,6 +10,7 @@ import { jsonProxyPlugin } from './src/plugins/json-proxy';
 import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
 import { ecowattProxyPlugin } from './src/plugins/ecowatt-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
+import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { arcepProxyPlugin } from './src/plugins/arcep-proxy';
 import { healthProxyPlugin } from './src/plugins/health-proxy';
 import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
@@ -21,6 +22,7 @@ import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
 import { firesProxyPlugin } from './src/plugins/fires-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
+import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,6 +55,7 @@ export default defineConfig(({ mode }) => {
       sncfProxyPlugin(),
       ecowattProxyPlugin(),
       financeProxyPlugin(),
+      commoditiesProxyPlugin(),
       arcepProxyPlugin(),
       healthProxyPlugin(),
       airTrafficProxyPlugin(),
@@ -64,6 +67,7 @@ export default defineConfig(({ mode }) => {
       firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
+      ministersProxyPlugin(),
       aisRelayPlugin(aisApiKey),
       VitePWA({
         registerType: 'autoUpdate',
@@ -84,8 +88,11 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          skipWaiting: true,
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/basemaps\.cartocdn\.com\/.*$/i,
