@@ -12,7 +12,11 @@ export type EventCategory =
   | 'transport'
   | 'infrastructure'
   | 'health'
-  | 'general';
+  | 'general'
+  | 'finance'
+  | 'floods'
+  | 'fires'
+  | 'cyber';
 
 export interface ThreatClassification {
   level: ThreatLevel;
@@ -62,6 +66,7 @@ export interface MapLayers {
   healthOscour: boolean;
   healthApl: boolean;
   hospitals: boolean;
+  environmentGroup: boolean;
   environmental: boolean;
   fires: boolean;
   infrastructure: boolean;
@@ -475,6 +480,14 @@ export interface MarketData {
   trend: 'up' | 'down' | 'flat';
   lastUpdated: Date;
   history?: number[];
+}
+
+// ═══ Finance (Matières premières) ═══
+
+export interface CommodityData extends Omit<MarketData, 'history'> {
+  history: number[];  // Required (Omit+redeclaration — TypeScript strict interdit d'affiner un champ optionnel via extends direct)
+  category: 'energy' | 'metals' | 'agro';
+  unit: string;       // '$/bbl', '$/oz', '$/MMBtu', '¢/bu', '$/lb'
 }
 
 // ═══ Pannes Télécoms & Électricité (ARCEP / Enedis) ═══
