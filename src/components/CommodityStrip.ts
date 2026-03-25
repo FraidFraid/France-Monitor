@@ -1,0 +1,158 @@
+import type { CommodityData } from '../types/index.ts';
+
+// ─── Utilitaires (identiques à MarketStrip) ───────────────────────────────────
+
+function escapeHtml(value: string): string {
+  const el = document.createElement('div');
+  el.textContent = value;
+  return el.innerHTML;
+}
+
+function formatPrice(value: number): string {
+  if (Math.abs(value) >= 1000) return value.toFixed(0);
+  if (Math.abs(value) >= 100)  return value.toFixed(2);
+  return value.toFixed(2);
+}
+
+function formatPct(value: number): string {
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(2)}%`;
+}
+
+function buildSparkline(history: number[], trend: CommodityData['trend']): string {
+  if (history.length < 2) return '';
+
+  const width = 112;
+  const height = 28;
+  const min = Math.min(...history);
+  const max = Math.max(...history);
+  const range = max - min || 1;
+  const points = history.map((value, index) => {
+    const x = (index / (history.length - 1)) * width;
+    const y = height - ((value - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const stroke =
+    trend === 'up'   ? 'var(--threat-low)' :
+    trend === 'down' ? 'var(--threat-high)' :
+    'var(--text-muted)';
+
+  return `
+    <svg class="market-strip__sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+    </svg>
+  `;
+}
+
+// ─── Composant ────────────────────────────────────────────────────────────────
+
+export class CommodityStrip {
+  private container: HTMLElement;
+  private listEls: Record<'energy' | 'metals' | 'agro', HTMLElement | null> = {
+    energy: null,
+    metals: null,
+    agro: null,
+  };
+  private stampEl: HTMLElement | null = null;
+
+  constructor(container: HTMLElement) {
+    this.container = container;
+  }
+
+  mount(): void {
+    const root = document.createElement('section');
+    root.className = 'under-map-card under-map-card--commodities';
+    root.innerHTML = `
+      <div class="under-map-card__header">
+        <div class="under-map-card__title">Matières premières</div>
+        <div class="under-map-card__meta" id="commodity-strip-stamp">Chargement...</div>
+      </div>
+      <div class="under-map-card__body">
+        <div class="commodity-strip__section commodity-strip__section--energy">
+          <div class="commodity-strip__section-label">ENERGIE</div>
+          <div class="commodity-strip__list" id="commodity-list-energy"></div>
+        </div>
+        <div class="commodity-strip__section commodity-strip__section--metals">
+          <div class="commodity-strip__section-label">METAUX</div>
+          <div class="commodity-strip__list" id="commodity-list-metals"></div>
+        </div>
+        <div class="commodity-strip__section commodity-strip__section--agro">
+          <div class="commodity-strip__section-label">AGRO</div>
+          <div class="commodity-strip__list" id="commodity-list-agro"></div>
+        </div>
+      </div>
+    `;
+
+    this.container.appendChild(root);
+    this.listEls.energy = root.querySelector('#commodity-list-energy');
+    this.listEls.metals = root.querySelector('#commodity-list-metals');
+    this.listEls.agro   = root.querySelector('#commodity-list-agro');
+    this.stampEl = root.querySelector('#commodity-strip-stamp');
+    this.renderLoading();
+  }
+
+  update(items: CommodityData[]): void {
+    if (!items.length) {
+      this.renderEmpty();
+      return;
+    }
+
+    // Vider les listes
+    for (const cat of ['energy', 'metals', 'agro'] as const) {
+      const el = this.listEls[cat];
+      if (el) el.innerHTML = '';
+    }
+
+    let latestTs = 0;
+
+    for (const item of items) {
+      const listEl = this.listEls[item.category];
+      if (!listEl) continue;
+
+      const trendClass =
+        item.trend === 'up'   ? 'is-up' :
+        item.trend === 'down' ? 'is-down' :
+        'is-flat';
+
+      const card = document.createElement('article');
+      card.className = `market-strip__item ${trendClass}`;
+      card.innerHTML = `
+        <div class="market-strip__topline">
+          <span class="market-strip__name">${escapeHtml(item.name)}</span>
+          <span class="market-strip__symbol">${escapeHtml(item.unit)}</span>
+        </div>
+        <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
+        <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
+        ${buildSparkline(item.history, item.trend)}
+      `;
+      listEl.appendChild(card);
+
+      const ts = item.lastUpdated instanceof Date
+        ? item.lastUpdated.getTime()
+        : new Date(item.lastUpdated).getTime();
+      latestTs = Math.max(latestTs, ts);
+    }
+
+    if (this.stampEl) {
+      this.stampEl.textContent = latestTs > 0
+        ? `MàJ ${new Date(latestTs).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+        : 'MàJ indisponible';
+    }
+  }
+
+  private renderLoading(): void {
+    for (const cat of ['energy', 'metals', 'agro'] as const) {
+      const el = this.listEls[cat];
+      if (el) el.innerHTML = `<div class="under-map-card__empty"><div class="under-map-card__empty-title">Chargement...</div></div>`;
+    }
+  }
+
+  private renderEmpty(): void {
+    if (this.stampEl) this.stampEl.textContent = 'Source indisponible';
+    for (const cat of ['energy', 'metals', 'agro'] as const) {
+      const el = this.listEls[cat];
+      if (el) el.innerHTML = `<div class="under-map-card__empty"><div class="under-map-card__empty-title">Indisponible</div></div>`;
+    }
+  }
+}

@@ -386,14 +386,25 @@ body {
   overflow: hidden;
 }
 
+/* Hidden on desktop — only shown inside @media (max-width: 768px) */
+.right-sidebar-mobile-toggle {
+  display: none;
+}
+
 .right-sidebar-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--panel-padding);
   display: flex;
   flex-direction: column;
   gap: 8px;
   position: relative;
+  scrollbar-width: none;
+}
+
+.right-sidebar-content::-webkit-scrollbar {
+  display: none;
 }
 
 /* ═══ Panels ═══ */
@@ -1251,6 +1262,24 @@ body {
 
   .right-sidebar.open {
     transform: translateX(0);
+  }
+
+  .right-sidebar-mobile-toggle {
+    display: flex;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 420;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
   }
 
   .toast-container {
@@ -3212,3 +3241,19 @@ body {
 @media (max-width: 767px) {
   .dn-panel { display: none !important; }
 }
+
+/* ── CommodityStrip — sections par catégorie ── */
+.commodity-strip__section {
+  margin-bottom: 8px;
+}
+.commodity-strip__section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 4px 0 4px 4px;
+  text-transform: uppercase;
+}
+.commodity-strip__section--energy .commodity-strip__section-label { color: #fb923c; }
+.commodity-strip__section--metals .commodity-strip__section-label { color: #fbbf24; }
+.commodity-strip__section--agro   .commodity-strip__section-label { color: #4ade80; }
