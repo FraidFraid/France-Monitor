@@ -19,6 +19,8 @@ import { ElusPanel } from './components/ElusPanel.ts';
 import { TrafficPanel } from './components/TrafficPanel.ts';
 import { FinancePanel } from './components/FinancePanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
+import { CommodityStrip } from './components/CommodityStrip.ts';
+import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import { CyberPanel } from './components/CyberPanel.ts';
 import { GasPanel } from './components/GasPanel.ts';
@@ -28,6 +30,7 @@ import { OutagesPanel } from './components/OutagesPanel.ts';
 import { DefensePanel } from './components/DefensePanel.ts';
 import { NationalHealthPanel } from './components/NationalHealthPanel.ts';
 import { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
+import { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
 import { fetchNetworkBarometer } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
@@ -78,7 +81,7 @@ import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
 import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage } from './types/index.ts';
+import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis } from './services/isnr-synthesis.ts';
 
@@ -95,6 +98,7 @@ const DEFAULT_LAYERS: MapLayers = {
   healthOscour: false,
   healthApl: false,
   hospitals: false,
+  environmentGroup: false,
   environmental: false,
   fires: false,
   infrastructure: false,
@@ -785,10 +789,13 @@ export class App {
   private floodsPanel: FloodsPanel | null = null;
   private firesPanel: FiresPanel | null = null;
   private elusPanel: ElusPanel | null = null;
+  private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   private trafficPanel: TrafficPanel | null = null;
   private financePanel: FinancePanel | null = null;
   private marketStrip: MarketStrip | null = null;
+  private commodityStrip: CommodityStrip | null = null;
+  private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
   private cyberPanel: CyberPanel | null = null;
   private currentCyberData: CyberState | null = null;
@@ -843,6 +850,7 @@ export class App {
     if (this._intervalMilitaryFlights !== null) { clearInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null; }
     if (this._intervalShips !== null) { clearInterval(this._intervalShips); this._intervalShips = null; }
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
+    if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
     if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
     if (this._intervalNetworkBarometer !== null) {
@@ -976,6 +984,7 @@ export class App {
       if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
       merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir;
       merged.energyGroup = merged.energy || merged.gas || merged.oil || merged.infrastructure || merged.metropoles;
+      merged.environmentGroup = merged.environmental || merged.fires || (merged.dayNight ?? false);
       merged.sovereignty = merged.military || merged.subseaCables || merged.cyber;
       merged.outages = merged.outagesElec || merged.outagesTelecom || merged.outagesInternet || merged.outagesCloud || merged.outages;
       this.activeLayers = merged;
@@ -1105,6 +1114,7 @@ export class App {
     this.startMilitaryPolling();
     // Start finance polling
     this.startFinancePolling();
+    this.startCommodityPolling();
     // Start civilian air traffic polling (free-tier friendly cadence)
     this.startAirTrafficPolling();
     console.log('[FranceMonitor] App initialized — Phase 4 (cache + clustering + URL state)');
@@ -1249,6 +1259,23 @@ export class App {
     mapArea.appendChild(barometerBtn);
 
     main.appendChild(mapArea);
+
+    // ── Right Sidebar ──
+    const rightSidebarEl = document.createElement('aside');
+    rightSidebarEl.id = 'right-sidebar';
+    main.appendChild(rightSidebarEl);
+
+    // Mobile toggle button — only visible on small screens via CSS
+    const mobileToggle = document.createElement('button');
+    mobileToggle.className = 'right-sidebar-mobile-toggle';
+    mobileToggle.setAttribute('aria-label', 'Ouvrir le panneau latéral');
+    mobileToggle.textContent = '☰';
+    mobileToggle.addEventListener('click', () => {
+      const isOpen = rightSidebarEl.classList.toggle('open');
+      mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
+    });
+    mapArea.appendChild(mobileToggle);
+
     this.container.appendChild(main);
 
     // ── Mount sidebar panels ──
@@ -1268,6 +1295,10 @@ export class App {
     underMapGrid.appendChild(marketStripContainer);
     this.marketStrip = new MarketStrip(marketStripContainer);
     this.marketStrip.mount();
+    const commodityStripContainer = document.createElement('div');
+    underMapGrid.appendChild(commodityStripContainer);
+    this.commodityStrip = new CommodityStrip(commodityStripContainer);
+    this.commodityStrip.mount();
 
     const newsFeedContainer = document.createElement('div');
     underMapGrid.appendChild(newsFeedContainer);
@@ -1277,6 +1308,9 @@ export class App {
       this.mapContainer?.selectItem(item);
       if (item.lon != null && item.lat != null) {
         this.mapContainer?.flyTo(item.lon, item.lat, 12);
+      }
+      if (item.threat?.category) {
+        this.elusPanel?.setGovernmentContext([item.threat.category as EventCategory]);
       }
     });
     this.newsPanel.mount();
@@ -1460,7 +1494,14 @@ export class App {
     });
     this.trafficPanel.mount();
 
-    // Élus Panel (Bloc Élus — maire, député, sénateur, président de région)
+    this.maritimePanel = new MaritimePanel(floatContainer);
+    this.maritimePanel.setOnHighlightShip((mmsi) => {
+      this.mapContainer?.setHighlightedShip(mmsi);
+    });
+    if (this.activeLayers.trafficMaritime) {
+      this.maritimePanel.show();
+    }
+
     this.elusPanel = new ElusPanel(floatContainer);
     this.elusPanel.mount();
 
@@ -1654,6 +1695,12 @@ export class App {
         this.activeLayers.infrastructure ||
         this.activeLayers.metropoles;
     }
+    if (key === 'environmental' || key === 'fires' || key === 'dayNight') {
+      this.activeLayers.environmentGroup =
+        this.activeLayers.environmental ||
+        this.activeLayers.fires ||
+        (this.activeLayers.dayNight ?? false);
+    }
     if (key === 'trafficRoad' || key === 'trafficMaritime' || key === 'trafficAir') {
       this.syncTrafficGroupState();
     }
@@ -1710,6 +1757,11 @@ export class App {
     if (key === 'trafficMaritime' && enabled && getAllLiveTraffic().length === 0) {
       this._showAisLoaderFn?.();
     }
+    // Show/hide MaritimePanel with layer
+    if (key === 'trafficMaritime') {
+      if (enabled) this.maritimePanel?.show();
+      else this.maritimePanel?.hide();
+    }
 
     // Show/hide ISNR panel when stability layer is toggled
     if (key === 'stability') {
@@ -1730,6 +1782,11 @@ export class App {
       if (!this.activeLayers.energyGroup) {
         this.energyPanel?.hide();
         this.layoutEnergyFloatingPanels();
+      }
+    } else if (key === 'environmentGroup') {
+      if (!this.activeLayers.environmentGroup) {
+        this.firesPanel?.hide();
+        this.dayNightPanel?.hide();
       }
     } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
       const isAnyHealthLayerActive =
@@ -1832,6 +1889,7 @@ export class App {
         this.dayNightPanel?.hide();
       }
     } else if (key === 'elus') {
+      void this.mapContainer?.setMairesPolitiqueVisible(enabled);
       if (enabled) {
         this.elusPanel?.showPlaceholder();
       } else {
@@ -1948,6 +2006,12 @@ export class App {
       if (this.mapPopup) {
         this.mapPopup.showMilitaryShip(ship, x, y);
       }
+    });
+
+    // Maritime ship click → open MaritimePanel modal
+    this.mapContainer.setOnMaritimeShipClick((ship) => {
+      this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
+      this.maritimePanel?.openShipModal(ship);
     });
 
     // Sync URL when map view changes
@@ -2284,6 +2348,22 @@ export class App {
     };
     fetchFinance();
     this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), 5 * 60_000); // 5 min
+  }
+
+  private startCommodityPolling(): void {
+    const fetchCommodities = async () => {
+      try {
+        const data = await fetchCommodityData();
+        this.commodityStrip?.update(data);
+      } catch (err) {
+        console.error('[Commodities] Polling failed', err);
+      }
+    };
+    fetchCommodities();
+    this._intervalCommodities = setInterval(
+      () => fetchCommodities().catch(err => console.error('[App] Commodities poll error', err)),
+      15 * 60_000,
+    );
   }
 
   private startAirTrafficPolling(): void {
