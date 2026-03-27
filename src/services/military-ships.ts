@@ -12,6 +12,20 @@
  */
 
 import { getMmsiCountry } from '../utils/mmsi-country.ts';
+import { isInFranceZone, getNearestPort } from '../config/french-ports.ts';
+import { getFlagRisk } from '../config/risk-flags.ts';
+import type { FlagRisk } from '../config/risk-flags.ts';
+import {
+    onAisMessage,
+    getAisConnectionStatus,
+    getAisLastMessageTs,
+    AIS_RELAY_URL as _AIS_RELAY_URL,
+    type AisConnectionStatus,
+} from './ais-connection.ts';
+
+export { AIS_RELAY_URL } from './ais-connection.ts';
+
+export type RiskLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';
 
 export interface MilitaryShip {
     id: string;
@@ -49,6 +63,10 @@ export interface MilitaryShip {
     destination?: string;  // Destination déclarée
     country?: string;      // Flag emoji + country name from MMSI MID (e.g. "🇫🇷 France")
     trail?: Array<[number, number]>; // Dernières positions [lon, lat] (max 80 points)
+    riskLevel?: RiskLevel;
+    riskReasons?: string[];
+    nearestPort?: { name: string; locode: string; distanceKm: number };
+    flagRisk?: FlagRisk;
 }
 
 // ─── Base statique de la Marine Nationale ───
@@ -98,7 +116,6 @@ const FRENCH_NAVY_SHIPS: Array<Omit<MilitaryShip, 'lat' | 'lon'> & { homeLat: nu
 
 // Clé API aisstream.io (optionnelle — en .env)
 const AISSTREAM_KEY = import.meta.env.VITE_AISSTREAM_KEY ?? '';
-export const AIS_RELAY_URL = 'ws://localhost:8090';
 
 // Cache des positions live AIS - stocke TOUS les navires reçus (pas seulement Marine Nationale)
 interface LivePosition {
@@ -143,15 +160,11 @@ interface StaticAisData {
 }
 const staticByMmsi = new Map<string, StaticAisData>();
 let lastStaticSample: { mmsi: string; staticReport: unknown } | null = null;
-let wsConnected = false;
 // Set de MMSI de la Marine Nationale pour marquage rapide
 // Exported for sovereign whitelist filtering in App.ts
 export const NAVY_MMSI_SET = new Set(
     FRENCH_NAVY_SHIPS.filter(s => s.mmsi).map(s => s.mmsi!)
 );
-
-// Debug counters
-let wsMessageCount = 0;
 
 // Callback for first data arrival (allows App.ts to trigger immediate refresh)
 let onFirstDataCallback: (() => void) | null = null;
@@ -202,212 +215,189 @@ const buildEta = (eta: unknown): StaticAisData['eta'] | undefined => {
     return { month, day, hour, minute };
 };
 
-function connectAisStream(): void {
-    if (wsConnected) return;
+const normalizeShipName = (value: unknown): string | undefined => {
+    if (value == null) return undefined;
+    const name = String(value).replace(/\s+/g, ' ').trim();
+    if (!name) return undefined;
+    const upper = name.toUpperCase();
+    if (upper === 'UNKNOWN' || upper === 'N/A' || upper === 'NOT AVAILABLE') return undefined;
+    return name;
+};
+
+// ─── Handler AIS messages (abonné via ais-connection.ts) ────────────────────
+
+let _wsMessageCount = 0;
+
+function _handleAisMessage(raw: string): void {
+    _wsMessageCount++;
+    if (_wsMessageCount === 1) {
+        console.log('[AIS] 📡 Premier message reçu du relais');
+    } else if (_wsMessageCount === 50) {
+        console.log(`[AIS] 📡 50 messages reçus — ${livePositions.size} navires en cache`);
+    }
 
     try {
-        // 🚨 MAGIE : On se connecte à notre propre relais Node.js !
-        const ws = new WebSocket(AIS_RELAY_URL);
+        const msg = JSON.parse(raw) as Record<string, unknown>;
 
-        ws.onopen = () => {
-            wsConnected = true;
-            wsMessageCount = 0;
-            console.log('[AIS] ✅ Connecté au relais local', AIS_RELAY_URL);
-        };
+        if (msg.MessageType === 'Error' || msg.error || msg.Error) {
+            console.error('[AIS] ❌ Erreur relais:', (msg as Record<string, unknown>).Error ?? msg.error ?? msg.message);
+            return;
+        }
 
-        ws.onmessage = (evt) => {
-            wsMessageCount++;
-            if (wsMessageCount === 1) {
-                console.log('[AIS] 📡 Premier message reçu du relais');
-            } else if (wsMessageCount === 50) {
-                console.log(`[AIS] 📡 50 messages reçus — ${livePositions.size} navires en cache`);
+        const posReport = (msg?.Message as Record<string, unknown> | undefined)?.PositionReport ?? (msg?.Message as Record<string, unknown> | undefined)?.StandardClassBPositionReport;
+        const metaData = msg?.MetaData;
+        const staticReport = (msg?.Message as Record<string, unknown> | undefined)?.ShipStaticData ?? (msg?.Message as Record<string, unknown> | undefined)?.StaticData;
+        const mmsiRaw =
+            (metaData as Record<string, unknown> | undefined)?.MMSI ??
+            (posReport as Record<string, unknown> | undefined)?.UserID ??
+            (posReport as Record<string, unknown> | undefined)?.MMSI ??
+            (staticReport as Record<string, unknown> | undefined)?.UserID ??
+            (staticReport as Record<string, unknown> | undefined)?.MMSI ??
+            (staticReport as Record<string, unknown> | undefined)?.Mmsi ??
+            (staticReport as Record<string, unknown> | undefined)?.MetaData ??
+            '';
+        const mmsi = String(mmsiRaw).trim();
+
+        if (!mmsi) return;
+
+        const isMilitary = NAVY_MMSI_SET.has(mmsi);
+        const existing = livePositions.get(mmsi);
+        const cachedStatic = staticByMmsi.get(mmsi);
+
+        const shipNameRaw = (metaData as Record<string, unknown> | undefined)?.ShipName ?? (staticReport as Record<string, unknown> | undefined)?.Name ?? cachedStatic?.name ?? existing?.name;
+        const shipName = normalizeShipName(shipNameRaw);
+        const shipTypeRaw =
+            (metaData as Record<string, unknown> | undefined)?.ShipType ??
+            (staticReport as Record<string, unknown> | undefined)?.ShipType ??
+            (staticReport as Record<string, unknown> | undefined)?.TypeOfShipAndCargoType ??
+            (staticReport as Record<string, unknown> | undefined)?.Type ??
+            cachedStatic?.shipType ??
+            existing?.shipType;
+        const shipTypeText = shipTypeRaw == null ? '' : String(shipTypeRaw).trim();
+        const shipTypeParsed = shipTypeText ? Number.parseInt(shipTypeText.match(/\d+/)?.[0] ?? '', 10) : NaN;
+        const shipType = Number.isFinite(shipTypeParsed) ? shipTypeParsed : undefined;
+        const rawDest = (metaData as Record<string, unknown> | undefined)?.Destination ?? (staticReport as Record<string, unknown> | undefined)?.Destination ?? cachedStatic?.destination ?? existing?.destination;
+        const destination = rawDest != null ? String(rawDest).replace(/@/g, '').trim() || undefined : undefined;
+        const callSign = (staticReport as Record<string, unknown> | undefined)?.CallSign ?? cachedStatic?.callSign;
+        const imoNumberRaw = (staticReport as Record<string, unknown> | undefined)?.ImoNumber ?? cachedStatic?.imoNumber;
+        const imoNumber = toInt(imoNumberRaw);
+        const draught = toNumber((staticReport as Record<string, unknown> | undefined)?.MaximumStaticDraught ?? cachedStatic?.draught);
+        const dimensions = (staticReport as Record<string, unknown> | undefined)?.Dimension ? buildDimensions((staticReport as Record<string, unknown>).Dimension) : cachedStatic?.dimensions;
+        const eta = (staticReport as Record<string, unknown> | undefined)?.Eta ? buildEta((staticReport as Record<string, unknown>).Eta) : cachedStatic?.eta;
+
+        if (staticReport) {
+            lastStaticSample = { mmsi, staticReport };
+            staticByMmsi.set(mmsi, {
+                name: shipName ?? cachedStatic?.name,
+                shipType,
+                destination,
+                callSign: callSign != null ? String(callSign).trim() : cachedStatic?.callSign,
+                imoNumber,
+                draught,
+                dimensions,
+                eta,
+            });
+        }
+
+        if (posReport) {
+            const lat = toNumber(
+                (posReport as Record<string, unknown>).Latitude ??
+                (posReport as { latitude?: unknown }).latitude ??
+                (metaData as Record<string, unknown> | undefined)?.latitude ??
+                (metaData as Record<string, unknown> | undefined)?.Latitude
+            );
+            const lon = toNumber(
+                (posReport as Record<string, unknown>).Longitude ??
+                (posReport as { longitude?: unknown }).longitude ??
+                (metaData as Record<string, unknown> | undefined)?.longitude ??
+                (metaData as Record<string, unknown> | undefined)?.Longitude
+            );
+            const navStatus = toInt(
+                (posReport as Record<string, unknown>).NavigationalStatus ??
+                (posReport as { navigationStatus?: unknown }).navigationStatus ??
+                (metaData as Record<string, unknown> | undefined)?.NavigationalStatus ??
+                existing?.navStatus
+            );
+            const cog = toNumber(
+                (posReport as Record<string, unknown>).Cog ??
+                (posReport as Record<string, unknown>).CourseOverGround ??
+                (metaData as Record<string, unknown> | undefined)?.Cog ??
+                (metaData as Record<string, unknown> | undefined)?.CourseOverGround ??
+                existing?.cog
+            );
+            const speed = toNumber(
+                (posReport as Record<string, unknown>).Sog ??
+                (posReport as Record<string, unknown>).SpeedOverGround ??
+                (metaData as Record<string, unknown> | undefined)?.Sog ??
+                (metaData as Record<string, unknown> | undefined)?.SpeedOverGround ??
+                existing?.speed
+            ) ?? 0;
+            const heading = toNumber(
+                (posReport as Record<string, unknown>).TrueHeading ??
+                (posReport as Record<string, unknown>).CourseOverGround ??
+                (metaData as Record<string, unknown> | undefined)?.TrueHeading ??
+                (metaData as Record<string, unknown> | undefined)?.CourseOverGround ??
+                existing?.heading
+            ) ?? 0;
+
+            if (lat == null || lon == null || lat > 90 || lat < -90 || lon > 180 || lon < -180) return;
+
+            const isFirstShip = livePositions.size === 0;
+
+            livePositions.set(mmsi, {
+                lat,
+                lon,
+                speed,
+                heading,
+                cog,
+                navStatus,
+                ts: Date.now(),
+                name: shipName,
+                shipType,
+                destination,
+                isMilitary,
+                country: (() => { const c = getMmsiCountry(mmsi); return c ? `${c.iso2}|${c.name}` : undefined; })(),
+            });
+
+            // Historique de route
+            const trail = shipTrails.get(mmsi) ?? [];
+            const lastPt = trail[trail.length - 1];
+            // N'ajoute un point que si le navire a bougé (évite points dupliqués)
+            if (!lastPt || Math.abs(lastPt[0] - lon!) > 0.0001 || Math.abs(lastPt[1] - lat!) > 0.0001) {
+                trail.push([lon!, lat!]);
+                if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+                shipTrails.set(mmsi, trail);
             }
 
-            try {
-                const msg = JSON.parse(evt.data);
-
-                if (msg.MessageType === 'Error' || msg.error || msg.Error) {
-                    console.error('[AIS] ❌ Erreur relais:', msg.Error ?? msg.error ?? msg.message);
-                    return;
+            // Trigger callback on first data arrival
+            if (isFirstShip && !firstDataReceived) {
+                firstDataReceived = true;
+                if (onFirstDataCallback) {
+                    // Small delay to let a few more ships arrive
+                    setTimeout(() => {
+                        onFirstDataCallback?.();
+                    }, 500);
                 }
-
-                const posReport = msg?.Message?.PositionReport ?? msg?.Message?.StandardClassBPositionReport;
-                const metaData = msg?.MetaData;
-                const staticReport = msg?.Message?.ShipStaticData ?? msg?.Message?.StaticData;
-                const mmsiRaw =
-                    metaData?.MMSI ??
-                    posReport?.UserID ??
-                    posReport?.MMSI ??
-                    staticReport?.UserID ??
-                    staticReport?.MMSI ??
-                    staticReport?.Mmsi ??
-                    staticReport?.MetaData?.MMSI ??
-                    '';
-                const mmsi = String(mmsiRaw).trim();
-
-                if (!mmsi) return;
-
-                const isMilitary = NAVY_MMSI_SET.has(mmsi);
-                const existing = livePositions.get(mmsi);
-                const cachedStatic = staticByMmsi.get(mmsi);
-
-                const shipNameRaw = metaData?.ShipName ?? staticReport?.Name ?? cachedStatic?.name ?? existing?.name;
-                const shipName = shipNameRaw != null ? String(shipNameRaw).trim() : undefined;
-                const shipTypeRaw =
-                    metaData?.ShipType ??
-                    staticReport?.ShipType ??
-                    staticReport?.TypeOfShipAndCargoType ??
-                    staticReport?.Type ??
-                    cachedStatic?.shipType ??
-                    existing?.shipType;
-                const shipTypeText = shipTypeRaw == null ? '' : String(shipTypeRaw).trim();
-                const shipTypeParsed = shipTypeText ? Number.parseInt(shipTypeText.match(/\d+/)?.[0] ?? '', 10) : NaN;
-                const shipType = Number.isFinite(shipTypeParsed) ? shipTypeParsed : undefined;
-                const rawDest = metaData?.Destination ?? staticReport?.Destination ?? cachedStatic?.destination ?? existing?.destination;
-                const destination = rawDest != null ? String(rawDest).replace(/@/g, '').trim() || undefined : undefined;
-                const callSign = staticReport?.CallSign ?? cachedStatic?.callSign;
-                const imoNumberRaw = staticReport?.ImoNumber ?? cachedStatic?.imoNumber;
-                const imoNumber = toInt(imoNumberRaw);
-                const draught = toNumber(staticReport?.MaximumStaticDraught ?? cachedStatic?.draught);
-                const dimensions = staticReport?.Dimension ? buildDimensions(staticReport.Dimension) : cachedStatic?.dimensions;
-                const eta = staticReport?.Eta ? buildEta(staticReport.Eta) : cachedStatic?.eta;
-
-                if (staticReport) {
-                    lastStaticSample = { mmsi, staticReport };
-                    staticByMmsi.set(mmsi, {
-                        name: shipName ?? cachedStatic?.name,
-                        shipType,
-                        destination,
-                        callSign: callSign != null ? String(callSign).trim() : cachedStatic?.callSign,
-                        imoNumber,
-                        draught,
-                        dimensions,
-                        eta,
-                    });
-                }
-
-                if (posReport) {
-                    const lat = toNumber(
-                        posReport.Latitude ??
-                        (posReport as { latitude?: unknown }).latitude ??
-                        metaData?.latitude ??
-                        metaData?.Latitude
-                    );
-                    const lon = toNumber(
-                        posReport.Longitude ??
-                        (posReport as { longitude?: unknown }).longitude ??
-                        metaData?.longitude ??
-                        metaData?.Longitude
-                    );
-                    const navStatus = toInt(
-                        posReport.NavigationalStatus ??
-                        (posReport as { navigationStatus?: unknown }).navigationStatus ??
-                        metaData?.NavigationalStatus ??
-                        existing?.navStatus
-                    );
-                    const cog = toNumber(
-                        posReport.Cog ??
-                        posReport.CourseOverGround ??
-                        metaData?.Cog ??
-                        metaData?.CourseOverGround ??
-                        existing?.cog
-                    );
-                    const speed = toNumber(
-                        posReport.Sog ??
-                        posReport.SpeedOverGround ??
-                        metaData?.Sog ??
-                        metaData?.SpeedOverGround ??
-                        existing?.speed
-                    ) ?? 0;
-                    const heading = toNumber(
-                        posReport.TrueHeading ??
-                        posReport.CourseOverGround ??
-                        metaData?.TrueHeading ??
-                        metaData?.CourseOverGround ??
-                        existing?.heading
-                    ) ?? 0;
-
-                    if (lat == null || lon == null || lat > 90 || lat < -90 || lon > 180 || lon < -180) return;
-
-                    const isFirstShip = livePositions.size === 0;
-
-                    livePositions.set(mmsi, {
-                        lat,
-                        lon,
-                        speed,
-                        heading,
-                        cog,
-                        navStatus,
-                        ts: Date.now(),
-                        name: shipName,
-                        shipType,
-                        destination,
-                        isMilitary,
-                        country: (() => { const c = getMmsiCountry(mmsi); return c ? `${c.iso2}|${c.name}` : undefined; })(),
-                    });
-
-                    // Historique de route
-                    const trail = shipTrails.get(mmsi) ?? [];
-                    const lastPt = trail[trail.length - 1];
-                    // N'ajoute un point que si le navire a bougé (évite points dupliqués)
-                    if (!lastPt || Math.abs(lastPt[0] - lon!) > 0.0001 || Math.abs(lastPt[1] - lat!) > 0.0001) {
-                        trail.push([lon!, lat!]);
-                        if (trail.length > MAX_TRAIL_POINTS) trail.shift();
-                        shipTrails.set(mmsi, trail);
-                    }
-
-                    // Trigger callback on first data arrival
-                    if (isFirstShip && !firstDataReceived) {
-                        firstDataReceived = true;
-                        if (onFirstDataCallback) {
-                            // Small delay to let a few more ships arrive
-                            setTimeout(() => {
-                                onFirstDataCallback?.();
-                            }, 500);
-                        }
-                    }
-                } else if (staticReport) {
-                    // Static data can arrive without position; merge into cache if possible
-                    if (!existing) return;
-                    livePositions.set(mmsi, {
-                        ...existing,
-                        name: shipName,
-                        shipType,
-                        destination,
-                        isMilitary,
-                    });
-                } else {
-                    return;
-                }
-
-            } catch (err) {
-                // Silencieux
             }
-        };
+        } else if (staticReport) {
+            // Static data can arrive without position; merge into cache if possible
+            if (!existing) return;
+            livePositions.set(mmsi, {
+                ...existing,
+                name: shipName,
+                shipType,
+                destination,
+                isMilitary,
+            });
+        } else {
+            return;
+        }
 
-        ws.onerror = (err) => {
-            console.error('[AIS WebSocket] ❌ Erreur avec le relais local :', err);
-            wsConnected = false;
-        };
-
-        ws.onclose = (_evt) => {
-            wsConnected = false;
-            setTimeout(() => connectAisStream(), 5000);
-        };
-
-    } catch (err) {
-        console.error('[AIS WebSocket] ❌ Échec critique de connexion au relais:', err);
-    }
+    } catch { /* silencieux */ }
 }
 
-// Démarrer la connexion AIS si clé disponible
+// Nettoyage périodique des entrées périmées (> 30 min) pour éviter la croissance mémoire
 if (typeof window !== 'undefined') {
-    // Délai pour laisser l'app s'initialiser
-    setTimeout(() => {
-        connectAisStream();
-    }, 2000);
-
-    // Nettoyage périodique des entrées périmées (> 30 min) pour éviter la croissance mémoire
     const AIS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
     setInterval(() => {
         const cutoff = Date.now() - AIS_CACHE_TTL;
@@ -421,34 +411,88 @@ if (typeof window !== 'undefined') {
     }, 5 * 60 * 1000); // toutes les 5 minutes
 }
 
+// ─── Abonnement AIS messages ──────────────────────────────────────────────
+// Le subscriber est enregistré au chargement du module.
+// connectAis() doit être appelé par App.ts pour ouvrir le WebSocket.
+let _unsubscribeAis: (() => void) | null = null;
+
+if (typeof window !== 'undefined') {
+    _unsubscribeAis = onAisMessage(_handleAisMessage);
+}
+
+/** Détache le subscriber AIS (appelé lors du teardown de l'app). */
+export function destroyMilitaryShips(): void {
+    _unsubscribeAis?.();
+    _unsubscribeAis = null;
+}
+
 /**
  * Retourne l'état de connexion du WebSocket AIS.
  * Utile pour le debugging dans la console.
  */
 export function getAisStatus(): { connected: boolean; shipCount: number; messageCount: number; hasApiKey: boolean } {
     return {
-        connected: wsConnected,
+        connected: getAisConnectionStatus() === 'connected',
         shipCount: livePositions.size,
-        messageCount: wsMessageCount,
+        messageCount: _wsMessageCount,
         hasApiKey: Boolean(AISSTREAM_KEY),
     };
 }
 
-/**
- * Force une reconnexion du WebSocket AIS.
- * Utile pour le debugging dans la console: `import { reconnectAis } from './services/military-ships'; reconnectAis()`
- */
-export function reconnectAis(): void {
-    wsConnected = false;
-    connectAisStream();
+export function getAisConnectionState(): {
+    connected: boolean;
+    shipCount: number;
+    franceShipCount: number;
+    reconnectAttempts: number;
+    lastMessageAt: number | null;
+    status: AisConnectionStatus;
+} {
+    const lastTs = getAisLastMessageTs();
+    return {
+        connected: getAisConnectionStatus() === 'connected',
+        shipCount: livePositions.size,
+        franceShipCount: Array.from(livePositions.values()).filter(p => isInFranceZone(p.lat, p.lon)).length,
+        reconnectAttempts: 0,
+        lastMessageAt: lastTs > 0 ? lastTs : null,
+        status: getAisConnectionStatus(),
+    };
+}
+
+function computeRiskLevel(
+    mmsi: string,
+    pos: { shipType?: number; speed: number; country?: string },
+    flagRisk: FlagRisk,
+    nearestPort: ReturnType<typeof getNearestPort>
+): { level: RiskLevel; reasons: string[] } {
+    const reasons: string[] = [];
+    let score = 0;
+
+    if (flagRisk === 'sanctioned') { score += 40; reasons.push('Pavillon sanctionné OFAC'); }
+    if (flagRisk === 'blacklist')  { score += 20; reasons.push('Pavillon liste noire Paris MOU'); }
+    if (flagRisk === 'greylist')   { score += 10; reasons.push('Pavillon liste grise Paris MOU'); }
+
+    const isCargo = pos.shipType != null && pos.shipType >= 70 && pos.shipType <= 89;
+    if (isCargo && pos.speed > 22) { score += 15; reasons.push(`Vitesse anormale: ${pos.speed.toFixed(1)} kn`); }
+
+    if (pos.shipType === 35 && !NAVY_MMSI_SET.has(mmsi)) {
+        const country = pos.country?.split('|')[1] ?? 'Inconnu';
+        if (country !== 'France') { score += 25; reasons.push(`Navire militaire étranger (${country})`); }
+    }
+
+    void nearestPort; // proximité câble déléguée au service cable-threats.ts
+
+    if (score >= 40) return { level: 'critical', reasons };
+    if (score >= 25) return { level: 'high', reasons };
+    if (score >= 15) return { level: 'medium', reasons };
+    if (score >= 5)  return { level: 'low', reasons };
+    return { level: 'none', reasons };
 }
 
 // Exposer pour debug dans la console du navigateur
 if (typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).aisDebug = {
         status: () => getAisStatus(),
-        reconnect: () => reconnectAis(),
-        // Return array of {mmsi, lat, lon, name, ...} objects
+        // reconnect removed — use connectAis() from ais-connection.ts
         ships: () => {
             const ships: Array<{ mmsi: string; lat: number; lon: number; name?: string; speed: number }> = [];
             for (const [mmsi, pos] of livePositions) {
@@ -512,29 +556,35 @@ export function getMilitaryShips(): MilitaryShip[] {
  * @param maxAgeMs - Age max des données en ms (défaut: 10 min). Les données plus anciennes sont exclues.
  * @returns Liste de tous les navires avec positions récentes
  */
-export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000): MilitaryShip[] {
+export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000, filterFrance = false): MilitaryShip[] {
     const now = Date.now();
     const ships: MilitaryShip[] = [];
 
     for (const [mmsi, pos] of livePositions) {
-        // Exclure les données périmées
         if ((now - pos.ts) > maxAgeMs) continue;
+        if (filterFrance && !isInFranceZone(pos.lat, pos.lon)) continue;
 
         const staticData = staticByMmsi.get(mmsi);
-        // Vérifier si c'est un navire Marine Nationale connu
         const navyShip = FRENCH_NAVY_SHIPS.find(s => s.mmsi === mmsi);
         const resolvedShipType = pos.shipType ?? staticData?.shipType;
-        const resolvedName = pos.name ?? staticData?.name;
+        const resolvedName = normalizeShipName(pos.name) ?? normalizeShipName(staticData?.name);
         const resolvedDestination = pos.destination ?? staticData?.destination;
-        const resolvedCallSign = staticData?.callSign;
+        const resolvedCallSign = staticData?.callSign != null ? String(staticData.callSign).trim() || undefined : undefined;
         const resolvedImoNumber = staticData?.imoNumber;
         const resolvedDraught = staticData?.draught;
         const resolvedDimensions = staticData?.dimensions;
         const resolvedEta = staticData?.eta;
 
+        const countryIso2 = pos.country?.split('|')[0];
+        const flagRisk = getFlagRisk(countryIso2);
+        const nearestPort = getNearestPort(pos.lat, pos.lon);
+        const { level: riskLevel, reasons: riskReasons } = computeRiskLevel(mmsi, { ...pos, shipType: resolvedShipType }, flagRisk, nearestPort);
+
+        const displayName = navyShip?.name ?? resolvedName ?? resolvedCallSign ?? `MMSI ${mmsi}`;
+
         ships.push({
             id: navyShip?.id ?? `ais-${mmsi}`,
-            name: navyShip?.name ?? resolvedName ?? `Unknown (${mmsi})`,
+            name: displayName,
             type: navyShip?.type ?? getShipTypeLabel(resolvedShipType),
             role: navyShip?.role ?? 'Civil/Inconnu',
             mmsi,
@@ -556,6 +606,10 @@ export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000): MilitarySh
             destination: resolvedDestination,
             country: pos.country,
             trail: shipTrails.get(mmsi) ? [...shipTrails.get(mmsi)!] : undefined,
+            riskLevel,
+            riskReasons,
+            nearestPort: nearestPort ? { name: nearestPort.port.name, locode: nearestPort.port.locode, distanceKm: nearestPort.distanceKm } : undefined,
+            flagRisk,
         });
     }
 
