@@ -24,6 +24,7 @@ let _lastMessageTs = 0;
 let _reconnectAttempt = 0;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let _staleCheckTimer: ReturnType<typeof setInterval> | null = null;
+let _initialTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let _ws: WebSocket | null = null;
 
 const _subscribers = new Set<(raw: string) => void>();
@@ -71,14 +72,15 @@ export function connectAis(): void {
         _ws = new WebSocket(AIS_RELAY_URL);
 
         // Si aucun message reçu dans les 10s après open, passer en STALE
-        const initialTimeout = setTimeout(() => {
+        _initialTimeoutTimer = setTimeout(() => {
+            _initialTimeoutTimer = null;
             if (_status === 'connecting' || (_status === 'connected' && _lastMessageTs === 0)) {
                 _setStatus('stale');
             }
         }, INITIAL_TIMEOUT_MS);
 
         _ws.onopen = () => {
-            clearTimeout(initialTimeout);
+            if (_initialTimeoutTimer) { clearTimeout(_initialTimeoutTimer); _initialTimeoutTimer = null; }
             _reconnectAttempt = 0;
             _setStatus('connected');
             _startStaleCheck();
@@ -95,10 +97,13 @@ export function connectAis(): void {
         };
 
         _ws.onerror = () => {
+            // Note: onclose always fires after onerror per WebSocket spec — reconnect is scheduled there
+            if (_initialTimeoutTimer) { clearTimeout(_initialTimeoutTimer); _initialTimeoutTimer = null; }
             _setStatus('disconnected');
         };
 
         _ws.onclose = () => {
+            if (_initialTimeoutTimer) { clearTimeout(_initialTimeoutTimer); _initialTimeoutTimer = null; }
             _ws = null;
             if (_status !== 'disconnected') _setStatus('disconnected');
             // Reconnexion exponentielle : 1s → 2s → 4s → ... → 30s
@@ -118,6 +123,7 @@ export function connectAis(): void {
 export function disconnectAis(): void {
     if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
     if (_staleCheckTimer) { clearInterval(_staleCheckTimer); _staleCheckTimer = null; }
+    if (_initialTimeoutTimer) { clearTimeout(_initialTimeoutTimer); _initialTimeoutTimer = null; }
     if (_ws) { _ws.onclose = null; _ws.close(); _ws = null; }
     _setStatus('disconnected');
     _reconnectAttempt = 0;
