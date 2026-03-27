@@ -50,6 +50,8 @@ interface AdsbFiAircraft {
     lon?: number;
     seen?: number;
     on_ground?: boolean;
+    // NAC-P : Navigation Accuracy Category – Position (0–11). Présent dans adsb.fi v2.
+    nac_p?: number;
 }
 
 interface AdsbFiResponse {
@@ -218,6 +220,7 @@ function parseFlight(ac: AdsbFiAircraft, hexdbData?: HexdbResult | null): Milita
         squawk: ac.squawk || undefined,
         squawkAlert,
         trail: [...trail],  // Copy trail array
+        nacP: ac.nac_p,
     };
 }
 
@@ -522,6 +525,8 @@ function parseProxyAircraft(ac: ProxyAircraft): MilitaryFlight | null {
         squawk: ac.squawk,
         squawkAlert,
         trail: [...trail],
+        // NAC-P non disponible via le proxy — détection en mode best-effort
+        nacP: undefined,
     };
 }
 
