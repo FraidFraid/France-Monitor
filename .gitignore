@@ -25,3 +25,8 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Python / local proxy environments
+.venv/
+venv/
+services/scrapling-proxy/venv/
