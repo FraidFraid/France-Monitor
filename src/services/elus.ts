@@ -322,6 +322,19 @@ async function fetchCommune(lat: number, lon: number): Promise<{ commune: Commun
   }
 }
 
+export async function fetchNearbyCommuneLabel(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url = `/api/elus/communes?lat=${lat}&lon=${lon}&fields=nom&format=json`;
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as GeoCommune[];
+    if (!data || data.length === 0) return null;
+    return data[0]?.nom ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchMaire(codeInsee: string): Promise<EluData | null> {
   // Cache instantané pour les grandes villes — évite tout appel réseau
   const cached = getMaireCacheByInsee(codeInsee);

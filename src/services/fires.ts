@@ -1,13 +1,20 @@
 import type { ActiveFire } from '../types/index.ts';
+import type { FireIncident } from '../types/index.ts';
+import { clusterFireDetections } from './fire-clustering.ts';
 
 /**
  * fires.ts — NASA FIRMS Active Fire Data
- * Fetches VIIRS 24h data via /api/fires (proxy serveur, évite CORS).
- * Filtre géographiquement pour la France + Corse.
+ *
+ * Fetche les détections VIIRS via /api/fires (JSON depuis api/fires.js).
+ * - Avec clé NASA_FIRMS_API_KEY : 3 sources VIIRS SNPP + NOAA-20 + NOAA-21
+ * - Sans clé : CSV public SUOMI VIIRS Europe, filtré France côté serveur
+ *
+ * Filtre géographiquement sur la France + Corse (sécurité côté client).
  * Expose des utilitaires de filtrage avancé (confiance, zone urbaine, persistance).
+ * Expose `fetchFiresData()` qui retourne détections + incidents DBSCAN.
  */
 
-// ─── Types & constantes de filtre ───────────────────────────────────────────
+// ─── Types & constantes de filtre ────────────────────────────────────────────
 
 export interface FiresFilterState {
     minConfidence: 'low' | 'nominal' | 'high';
@@ -104,68 +111,118 @@ export function applyFiresFilter(fires: ActiveFire[], filter: FiresFilterState):
     });
 }
 
-// ─── Fetch ───────────────────────────────────────────────────────────────────
+// ─── Réponse API ──────────────────────────────────────────────────────────────
 
-let cachedFires: { data: ActiveFire[]; timestamp: number } | null = null;
-const CACHE_TTL_MS = 60 * 60 * 1000;
+export interface FiresApiResponse {
+    /** Détections brutes VIIRS filtrées France */
+    detections: ActiveFire[];
+    /** Incidents DBSCAN calculés côté client */
+    incidents: FireIncident[];
+    /** Sources satellites utilisées (ex: ['SNPP', 'NOAA-20']) */
+    sources: string[];
+    /** Timestamp de la requête upstream (ms) */
+    fetchedAt: number;
+    /** true si une clé API NASA FIRMS a été utilisée */
+    apiKeyUsed: boolean;
+}
 
-export async function fetchActiveFires(): Promise<ActiveFire[]> {
-    if (cachedFires && Date.now() - cachedFires.timestamp < CACHE_TTL_MS) {
-        return cachedFires.data;
+// ─── Cache ────────────────────────────────────────────────────────────────────
+
+let _cache: { data: FiresApiResponse; timestamp: number } | null = null;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1h (FIRMS se met à jour toutes les ~3h)
+
+// ─── Fetch ────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetche les détections feux actifs et calcule les incidents DBSCAN.
+ *
+ * Rétro-compatible : retourne `detections` (= ancien retour de fetchActiveFires).
+ * Les incidents sont calculés côté client sur les données brutes.
+ */
+export async function fetchFiresData(): Promise<FiresApiResponse> {
+    if (_cache && Date.now() - _cache.timestamp < CACHE_TTL_MS) {
+        return _cache.data;
     }
 
     try {
-        const response = await fetch('/api/fires', { signal: AbortSignal.timeout(15000) });
+        const response = await fetch('/api/fires', { signal: AbortSignal.timeout(20_000) });
 
         if (!response.ok) {
             console.warn(`[FIRMS] HTTP ${response.status} - retour cache`);
-            return cachedFires?.data ?? [];
+            return _cache?.data ?? { detections: [], incidents: [], sources: [], fetchedAt: 0, apiKeyUsed: false };
         }
 
-        const csvData = await response.text();
-        const lines = csvData.trim().split('\n');
-        if (lines.length < 2) return [];
+        const json = await response.json() as {
+            detections?: unknown[];
+            sources?: string[];
+            fetchedAt?: number;
+            apiKeyUsed?: boolean;
+        };
 
-        const headers = lines[0].split(',');
-        const fires: ActiveFire[] = [];
+        // Validation + normalisation des détections
+        const rawDetections = Array.isArray(json.detections) ? json.detections : [];
+        const detections: ActiveFire[] = [];
 
-        for (let i = 1; i < lines.length; i++) {
-            const row = lines[i].split(',');
-            if (row.length !== headers.length) continue;
+        for (const row of rawDetections) {
+            if (typeof row !== 'object' || row === null) continue;
+            const r = row as Record<string, unknown>;
 
-            const fire: Record<string, unknown> = {};
-            for (let j = 0; j < headers.length; j++) {
-                const header = headers[j].trim();
-                let value: unknown = row[j].trim();
-                if (['latitude', 'longitude', 'bright_ti4', 'scan', 'track', 'bright_ti5', 'frp'].includes(header)) {
-                    value = parseFloat(value as string);
-                }
-                // Normalize VIIRS single-letter confidence ('l','n','h') to full words
-                if (header === 'confidence') {
-                    if (value === 'l') value = 'low';
-                    else if (value === 'n') value = 'nominal';
-                    else if (value === 'h') value = 'high';
-                }
-                fire[header] = value;
-            }
+            const lat = Number(r.latitude  ?? 0);
+            const lon = Number(r.longitude ?? 0);
 
-            const lat = fire.latitude as number;
-            const lon = fire.longitude as number;
-            fire.id = `${lat.toFixed(4)}_${lon.toFixed(4)}_${fire.acq_date}_${fire.acq_time}`;
+            // Sécurité : bbox France côté client (double check)
+            if (lon < -5.5 || lon > 10.0 || lat < 41.0 || lat > 51.5) continue;
+            if (!isFinite(lat) || !isFinite(lon)) continue;
 
-            // Bbox France (métropole + Corse) + marges
-            if (lon >= -5.5 && lon <= 10.0 && lat >= 41.0 && lat <= 51.5) {
-                fires.push(fire as unknown as ActiveFire);
-            }
+            const acqDate = String(r.acq_date ?? '');
+            const acqTime = String(r.acq_time ?? '0000');
+            const id = r.id ? String(r.id) : `${lat.toFixed(4)}_${lon.toFixed(4)}_${acqDate}_${acqTime}`;
+
+            detections.push({
+                id,
+                latitude:   lat,
+                longitude:  lon,
+                bright_ti4: Number(r.bright_ti4 ?? 0),
+                bright_ti5: Number(r.bright_ti5 ?? 0),
+                scan:       Number(r.scan       ?? 0),
+                track:      Number(r.track      ?? 0),
+                frp:        Number(r.frp        ?? 0),
+                acq_date:   acqDate,
+                acq_time:   acqTime,
+                satellite:  String(r.satellite  ?? ''),
+                confidence: String(r.confidence ?? 'nominal'),
+                version:    String(r.version    ?? ''),
+                daynight:   String(r.daynight   ?? 'D'),
+            });
         }
 
-        cachedFires = { data: fires, timestamp: Date.now() };
-        console.log(`[FIRMS] ${fires.length} détections brutes dans la bbox France`);
-        return fires;
+        // Clustering DBSCAN côté client (eps = 3 km, minPoints = 2)
+        const incidents = clusterFireDetections(detections, { epsKm: 3, minPoints: 2 });
+
+        const result: FiresApiResponse = {
+            detections,
+            incidents,
+            sources:    Array.isArray(json.sources) ? json.sources as string[] : ['SNPP'],
+            fetchedAt:  typeof json.fetchedAt === 'number' ? json.fetchedAt : Date.now(),
+            apiKeyUsed: Boolean(json.apiKeyUsed),
+        };
+
+        _cache = { data: result, timestamp: Date.now() };
+        console.log(`[FIRMS] ${detections.length} détections · ${incidents.length} incidents · sources: ${result.sources.join(', ')}`);
+        return result;
 
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.warn('[FIRMS] Erreur:', msg);
-        return cachedFires?.data ?? [];
+        return _cache?.data ?? { detections: [], incidents: [], sources: [], fetchedAt: 0, apiKeyUsed: false };
     }
+}
+
+/**
+ * Raccourci rétro-compatible : retourne seulement les ActiveFire[].
+ * Utilisé par App.ts (currentActiveFires) et FiresPanel.
+ */
+export async function fetchActiveFires(): Promise<ActiveFire[]> {
+    const { detections } = await fetchFiresData();
+    return detections;
 }

@@ -255,6 +255,47 @@ export interface ActiveFire {
   daynight: string;
 }
 
+/**
+ * Un incident feu = cluster DBSCAN de détections VIIRS proches spatio-temporellement.
+ * Centroïde pondéré par FRP, enveloppe bbox, stats agrégées.
+ */
+export interface FireIncident {
+  id: string;                       // hash déterministe du cluster
+  centroidLat: number;              // centroïde pondéré FRP
+  centroidLon: number;
+  bboxMinLat: number;               // enveloppe englobante
+  bboxMaxLat: number;
+  bboxMinLon: number;
+  bboxMaxLon: number;
+  detectionsCount: number;
+  frpMean: number;                  // MW
+  frpMax: number;
+  frpTotal: number;
+  confidenceMax: 'high' | 'nominal' | 'low';
+  startDatetime: string;            // ISO 8601 UTC
+  endDatetime: string;
+  durationMinutes: number;
+  satellites: string[];             // ex: ['SNPP', 'NOAA-20']
+  hasNightDetection: boolean;
+  nearUrban: boolean;               // dans un rayon de 15 km d'une zone urbaine/industrielle
+  clusterMethod: 'dbscan';
+  epsKm: number;
+  minPoints: number;
+  score: FireIncidentScore;
+  detectionIds: string[];           // IDs des ActiveFire membres
+}
+
+/**
+ * Score de sévérité et d'impact pour un incident feu.
+ * severityScore : intensité intrinsèque (FRP, persistance, confiance).
+ * impactScore   : risque contextuel (zones urbaines, infra critique, nuit).
+ */
+export interface FireIncidentScore {
+  severityScore: number;   // 0–100
+  impactScore: number;     // 0–100
+  labels: string[];        // ex: ['high_frp', 'persistent', 'near_urban', 'night', 'multi_satellite']
+}
+
 export interface WaterLevel {
   stationCode: string;
   stationName: string;

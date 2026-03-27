@@ -8877,6 +8877,24 @@ export class DeckGLMap {
     src?.setData({ type: 'FeatureCollection', features: [] });
   }
 
+  /**
+   * Met en surbrillance TOUS les points d'un cluster d'incident (DBSCAN).
+   * Utilisé quand on survole une carte incident dans FiresPanel.
+   * Si points est vide, efface le highlight (comme clearFireHighlight).
+   */
+  highlightFireCluster(points: { lat: number; lon: number }[]): void {
+    if (!this.map) return;
+    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
+    src?.setData({
+      type: 'FeatureCollection',
+      features: points.map(p => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+        properties: {},
+      })),
+    });
+  }
+
   setModisOverlayVisible(enabled: boolean): void {
     this._modisOverlayEnabled = enabled;
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
@@ -9640,6 +9658,7 @@ export class DeckGLMap {
     this.setVis(LYR_MODIS, vis((layers.fires ?? false) && this._modisOverlayEnabled));
     this.setVis(LYR_FIRES_GLOW, vis(layers.fires ?? false));
     this.setVis(LYR_FIRES_POINTS, vis(layers.fires ?? false));
+    this.setVis(LYR_FIRES_HIGHLIGHT, vis(layers.fires ?? false));
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_INFRA_VITAL_HALO, vis(layers.infrastructure));

@@ -64,7 +64,7 @@ import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } f
 import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions } from './services/transport.ts';
 import { fetchNuclearPlantsStatus } from './services/energy.ts';
-import { fetchActiveFires } from './services/fires.ts';
+import { fetchFiresData } from './services/fires.ts';
 import { fetchTrafficIncidents, filterOsintTrafficIncidents, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
@@ -1614,6 +1614,13 @@ export class App {
         this.mapContainer?.clearFireHighlight();
       }
     });
+    this.firesPanel.setOnHoverIncident((points) => {
+      if (points) {
+        this.mapContainer?.highlightFireCluster(points);
+      } else {
+        this.mapContainer?.clearFireHighlight();
+      }
+    });
     this.firesPanel.setOnModisToggle((enabled) => {
       this.mapContainer?.setModisOverlayVisible(enabled);
     });
@@ -2826,12 +2833,17 @@ export class App {
 
   private async loadFires(): Promise<void> {
     this.statusPanel?.updateSource('NASA FIRMS', { status: 'loading', lastUpdate: null });
-    const fires = await fetchActiveFires();
-    this.currentActiveFires = fires;
+    const data = await fetchFiresData();
+    this.currentActiveFires = data.detections;
+    // Transmet les métadonnées sources au panel (header + footer adaptatifs)
+    this.firesPanel?.setSourcesInfo(data.sources, data.apiKeyUsed);
     // setRawFires triggers applyFiresFilter + onFilteredFiresCb (updates map) + re-renders panel if open
-    this.firesPanel?.setRawFires(fires);
-    if (fires.length > 0) {
-      this.statusPanel?.updateSource('NASA FIRMS', { status: 'ok', lastUpdate: new Date() });
+    this.firesPanel?.setRawFires(data.detections);
+    if (data.detections.length > 0) {
+      const sourceDetail = data.apiKeyUsed
+        ? `${data.sources.join(' + ')} · ${data.detections.length} det. · ${data.incidents.length} incidents`
+        : `SNPP (public) · ${data.detections.length} détections`;
+      this.statusPanel?.updateSource('NASA FIRMS', { status: 'ok', lastUpdate: new Date(), detail: sourceDetail });
     } else {
       this.statusPanel?.updateSource('NASA FIRMS', { status: 'stale', lastUpdate: new Date() });
     }

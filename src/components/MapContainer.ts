@@ -138,6 +138,11 @@ export class MapContainer {
     this.deckMap?.clearFireHighlight();
   }
 
+  /** Highlight tous les points d'un cluster incident DBSCAN sur la carte. */
+  highlightFireCluster(points: { lat: number; lon: number }[]): void {
+    this.deckMap?.highlightFireCluster(points);
+  }
+
   setModisOverlayVisible(enabled: boolean): void {
     this.deckMap?.setModisOverlayVisible(enabled);
   }
