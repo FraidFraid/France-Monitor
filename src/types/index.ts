@@ -58,6 +58,7 @@ export interface NewsItem {
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 
 export interface MapLayers {
+  newsGroup: boolean;
   news: boolean;
   alerts: boolean;
   energyGroup: boolean;
@@ -396,6 +397,9 @@ export interface MilitaryFlight {
   // Allied aircraft info
   isAllied?: boolean;
   branch?: string;  // e.g. "USAF", "RAF", "Luftwaffe"
+  // Navigation accuracy — NAC-P (0–11), from ADS-B DO-260B §2.2.3.2.7.2
+  // 11 = <3m, 0 = unknown/no GPS fix. Only available from adsb.fi, not proxy.
+  nacP?: number;
 }
 
 export interface AirTrafficFlight {
@@ -480,11 +484,12 @@ export interface MarketData {
   trend: 'up' | 'down' | 'flat';
   lastUpdated: Date;
   history?: number[];
+  category?: 'indices' | 'defense' | 'services';
 }
 
 // ═══ Finance (Matières premières) ═══
 
-export interface CommodityData extends Omit<MarketData, 'history'> {
+export interface CommodityData extends Omit<MarketData, 'history' | 'category'> {
   history: number[];  // Required (Omit+redeclaration — TypeScript strict interdit d'affiner un champ optionnel via extends direct)
   category: 'energy' | 'metals' | 'agro';
   unit: string;       // '$/bbl', '$/oz', '$/MMBtu', '¢/bu', '$/lb'
@@ -702,6 +707,18 @@ export interface HealthFeatures {
     label: string;
     nationalIncidence: number;
     trend?: number;    // difference with previous week
+  }>;
+
+  epidemicAlerts: Array<{
+    id: string;
+    pathogen: string;
+    severity: 'critical' | 'high' | 'warning';
+    title: string;
+    summary: string;
+    locations: string[];
+    date: string;
+    sourceLabel: string;
+    sourceUrl?: string | null;
   }>;
 
   // ── ANSM Pharmacovigilance ──
@@ -968,13 +985,14 @@ export interface IxpStatus {
 }
 
 export interface CloudflareRadarAnomaly {
-  id: string;
-  type: string;
-  startDate: string;  // ISO
+  id: string;           // uuid from API
+  type: string;         // 'LOCATION' | 'AS' | 'ORIGIN'
+  startDate: string;    // ISO
   endDate?: string;
-  status: 'ONGOING' | 'FINISHED';
-  description: string;
-  asns: Array<{ asn: number; asName: string }>;
+  status: string;       // 'VERIFIED' | 'UNVERIFIED' per Cloudflare Radar API
+  locationDetails?: { code: string; name: string };
+  asnDetails?: { asn: string; name: string; locations?: { code: string; name: string } };
+  originDetails?: { name: string; origin: string };
 }
 
 export interface InfraNetworkState {
@@ -1264,4 +1282,37 @@ export interface OilDashboard {
     localConsumption: 'ok' | 'stale' | 'error';
     pipelines: 'ok' | 'stale' | 'error';
   };
+}
+
+// ═══ GPS Jamming / Guerre Électronique ═══
+
+/**
+ * Signal OSINT de suspicion de brouillage GPS, construit à partir d'anomalies ADS-B.
+ * Ce n'est pas une preuve de brouillage — c'est un signal heuristique plausible.
+ *
+ * Timestamp en secondes Unix (cohérent avec MilitaryFlight.lastContact).
+ * Position en [lng, lat] (convention GeoJSON du projet).
+ */
+export interface GpsJammingSignal {
+  id: string;                    // jamming-${ts}-${idx}
+  position: [number, number];    // [lng, lat] centroïde de la zone suspectée
+  timestamp: number;             // Unix seconds
+  severity: ThreatLevel;         // 'high' | 'medium' | 'low'
+  confidence: number;            // 0.0–1.0
+  reasons: string[];             // indicateurs déclencheurs lisibles
+  affectedIcao24s: string[];     // codes ICAO24 (hex) des aéronefs impliqués
+  clusterRadius?: number;        // km — rayon de la zone, si signal multi-aéronefs
+}
+
+// ═══ AIS Anomalies ═══
+
+export interface AisAnomaly {
+    id: string;                          // silence-${mmsi}-${ts} | rendez-${mmsiA}-${mmsiB}-${ts}
+    type: 'radio_silence' | 'rendezvous';
+    // severity : radio_silence militaire → 'high', radio_silence risque → 'medium', rendezvous → 'medium'
+    severity: ThreatLevel;
+    position: [number, number];          // [lng, lat] — lastSeenPos pour silence, centroïde pour rendezvous
+    timestamp: number;                   // Unix milliseconds (Date.now())
+    mmsis: string[];                     // 1 MMSI pour silence, 2 pour rendezvous
+    description: string;                 // Texte FR pour toast, ex: "Silence radio · Dixmude · 14 min"
 }
