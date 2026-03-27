@@ -4,7 +4,7 @@
  * critiques arrivent ou quand des surges militaires sont détectés.
  */
 
-import type { NewsItem } from '../types/index.ts';
+import type { NewsItem, GpsJammingSignal, AisAnomaly } from '../types/index.ts';
 import type { MilitarySurge } from '../config/military.ts';
 import type { DefenseAlert } from '../services/cable-threats.ts';
 
@@ -18,19 +18,26 @@ function escapeHtml(str: string): string {
 export type ToastClickHandler = (item: NewsItem) => void;
 export type MilitarySurgeClickHandler = (surge: MilitarySurge) => void;
 export type DefenseAlertClickHandler = (alert: DefenseAlert) => void;
+export type GpsJammingSignalClickHandler = (signal: GpsJammingSignal) => void;
+export type AisAnomalyClickHandler = (anomaly: AisAnomaly) => void;
 
 export class ToastNotification {
   private container: HTMLElement;
   private onItemClick: ToastClickHandler | null = null;
   private onSurgeClick: MilitarySurgeClickHandler | null = null;
   private onDefenseAlertClick: DefenseAlertClickHandler | null = null;
+  private onJammingSignalClick: GpsJammingSignalClickHandler | null = null;
+  private onAisAnomalyClick: AisAnomalyClickHandler | null = null;
+  private seenAnomalyIds: Set<string> = new Set();
   private activeToasts: Map<string, HTMLElement> = new Map();
   private seenSurges: Set<string> = new Set(); // Dedup surges by type+flightCount
   private seenDefenseAlerts: Set<string> = new Set(); // Dedup defense alerts by ship+cable
+  private seenJammingSignals: Set<string> = new Set(); // Dedup jamming signals by position+severity
   private maxToasts = 3; // Maximum simultaneous toasts
   private autoHideMs = 8000; // Auto-dismiss after 8 seconds
   private surgeCooldownMs = 60_000; // 1 minute cooldown for same surge type
   private defenseAlertCooldownMs = 5 * 60_000; // 5 min cooldown for same cable threat
+  private jammingCooldownMs = 3 * 60_000; // 3 min cooldown for same jamming zone
 
   constructor() {
     this.container = document.createElement('div');
@@ -51,6 +58,16 @@ export class ToastNotification {
   /** Register a click handler for defense alert toasts */
   setOnDefenseAlertClick(handler: DefenseAlertClickHandler): void {
     this.onDefenseAlertClick = handler;
+  }
+
+  /** Register a click handler for GPS jamming signal toasts */
+  setOnJammingSignalClick(handler: GpsJammingSignalClickHandler): void {
+    this.onJammingSignalClick = handler;
+  }
+
+  /** Register a click handler for AIS anomaly toasts */
+  setOnAisAnomalyClick(handler: AisAnomalyClickHandler): void {
+    this.onAisAnomalyClick = handler;
   }
 
   /**
@@ -368,6 +385,160 @@ export class ToastNotification {
   }
 
   /**
+   * Show toast notifications for GPS jamming signals.
+   * Only shows high and medium confidence signals. Deduplicates by zone.
+   */
+  showJammingSignals(signals: GpsJammingSignal[]): void {
+    const significant = signals.filter(s => s.severity === 'high' || s.severity === 'medium');
+    for (const signal of significant.slice(0, 2)) {
+      this.showJammingSignal(signal);
+    }
+  }
+
+  /**
+   * Show a single GPS jamming signal toast.
+   */
+  showJammingSignal(signal: GpsJammingSignal): void {
+    // Key based on grid cell (0.5° resolution) + severity to dedup nearby signals
+    const gridLon = Math.round(signal.position[0] * 2) / 2;
+    const gridLat = Math.round(signal.position[1] * 2) / 2;
+    const signalKey = `jamming-${gridLon}-${gridLat}-${signal.severity}`;
+
+    if (this.seenJammingSignals.has(signalKey)) return;
+    if (this.activeToasts.has(signalKey)) return;
+
+    if (this.activeToasts.size >= this.maxToasts) {
+      const firstKey = this.activeToasts.keys().next().value;
+      if (firstKey) this.dismissToast(firstKey, false);
+    }
+
+    const toast = this.createJammingToastElement(signal, signalKey);
+    this.container.appendChild(toast);
+    this.activeToasts.set(signalKey, toast);
+    this.seenJammingSignals.add(signalKey);
+
+    const dismissTime = signal.severity === 'high' ? 12000 : this.autoHideMs;
+    setTimeout(() => { this.dismissToast(signalKey, true); }, dismissTime);
+    setTimeout(() => { this.seenJammingSignals.delete(signalKey); }, this.jammingCooldownMs);
+  }
+
+  /**
+   * Show a toast notification for an AIS anomaly (radio silence or rendezvous suspect).
+   * Deduplicates by anomaly.id.
+   */
+  showAisAnomaly(anomaly: AisAnomaly): void {
+    if (this.seenAnomalyIds.has(anomaly.id)) return;
+    if (this.activeToasts.has(anomaly.id)) return;
+
+    if (this.activeToasts.size >= this.maxToasts) {
+      const firstKey = this.activeToasts.keys().next().value;
+      if (firstKey) this.dismissToast(firstKey, false);
+    }
+
+    const toast = this.createAisAnomalyToastElement(anomaly);
+    this.container.appendChild(toast);
+    this.activeToasts.set(anomaly.id, toast);
+    this.seenAnomalyIds.add(anomaly.id);
+
+    // 10s auto-dismiss
+    setTimeout(() => { this.dismissToast(anomaly.id, true); }, 10_000);
+  }
+
+  /** Create DOM element for an AIS anomaly toast. */
+  private createAisAnomalyToastElement(anomaly: AisAnomaly): HTMLElement {
+    const icon = anomaly.type === 'radio_silence' ? '🔇' : '⚓';
+    const borderColor = anomaly.type === 'radio_silence' ? '#EF4444' : '#F59E0B';
+    const levelClass = anomaly.severity === 'high' ? 'high' : 'medium';
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${levelClass} toast--ais-anomaly`;
+    toast.style.borderLeftColor = borderColor;
+    toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span class="toast-title">${escapeHtml(anomaly.description)}</span>
+        <button class="toast-action">Voir</button>
+        <button class="toast-close" title="Fermer">&times;</button>
+    `;
+
+    // Pause auto-dismiss on hover
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    toast.addEventListener('mouseenter', () => {
+      if (hoverTimer) clearTimeout(hoverTimer);
+      toast.style.opacity = '1'; // Prevent auto-dismiss dimming
+    });
+    toast.addEventListener('mouseleave', () => {
+      hoverTimer = setTimeout(() => { this.dismissToast(anomaly.id, true); }, 3000);
+    });
+
+    const navigate = () => {
+      this.dismissToast(anomaly.id, true);
+      this.onAisAnomalyClick?.(anomaly);
+    };
+
+    const actionBtn = toast.querySelector('.toast-action') as HTMLButtonElement;
+    actionBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate();
+    });
+
+    const closeBtn = toast.querySelector('.toast-close') as HTMLButtonElement;
+    closeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.dismissToast(anomaly.id, true);
+    });
+
+    toast.addEventListener('click', navigate);
+
+    return toast;
+  }
+
+  /**
+   * Create DOM element for a GPS jamming signal toast.
+   */
+  private createJammingToastElement(signal: GpsJammingSignal, signalKey: string): HTMLElement {
+    const levelClass = signal.severity === 'high' ? 'critical' :
+                       signal.severity === 'medium' ? 'high' : 'medium';
+
+    const confidencePct = Math.round(signal.confidence * 100);
+    const affected = signal.affectedIcao24s.length;
+    const firstReason = signal.reasons[0] ?? '';
+    const title = affected > 1
+      ? `Suspicion de brouillage GPS — ${affected} aéronefs (${confidencePct}%)`
+      : `Suspicion de brouillage GPS (${confidencePct}%) — ${firstReason}`;
+    const truncated = title.length > 80 ? title.slice(0, 77) + '...' : title;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${levelClass} toast--jamming`;
+    toast.innerHTML = `
+      <span class="toast-icon">📡</span>
+      <span class="toast-title">${escapeHtml(truncated)}</span>
+      <button class="toast-action">Voir</button>
+      <button class="toast-close" title="Fermer">&times;</button>
+    `;
+
+    const navigate = () => {
+      this.dismissToast(signalKey, true);
+      this.onJammingSignalClick?.(signal);
+    };
+
+    const actionBtn = toast.querySelector('.toast-action') as HTMLButtonElement;
+    actionBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate();
+    });
+
+    const closeBtn = toast.querySelector('.toast-close') as HTMLButtonElement;
+    closeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.dismissToast(signalKey, true);
+    });
+
+    toast.addEventListener('click', navigate);
+
+    return toast;
+  }
+
+  /**
    * Clear all active toasts.
    */
   clearAll(): void {
@@ -376,6 +547,8 @@ export class ToastNotification {
     }
     this.seenSurges.clear();
     this.seenDefenseAlerts.clear();
+    this.seenJammingSignals.clear();
+    this.seenAnomalyIds.clear();
   }
 
   /**

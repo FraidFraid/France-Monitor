@@ -46,7 +46,10 @@ import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
 import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
 
 import { fetchMilitaryFlights } from './services/military-flights.ts';
+import { detectGpsJammingSignals } from './services/gps-jamming.ts';
 import { AIS_RELAY_URL, getAisStatus, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
+import { connectAis } from './services/ais-connection.ts';
+import { detectAisAnomalies } from './services/ais-anomalies.ts';
 import { detectCableThreats, militaryShipToAIS, type DefenseAlert } from './services/cable-threats.ts';
 import { ALL_FEEDS } from './config/feeds.ts';
 import { VIEW_PRESETS } from './config/geo.ts';
@@ -81,17 +84,19 @@ import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
 import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory } from './types/index.ts';
+import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis } from './services/isnr-synthesis.ts';
+import { GOUVERNEMENT } from './config/government.ts';
 
 
 const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
 
-// Default layer visibility (all off by default)
+// Default layer visibility (alerts remain implicitly enabled)
 const DEFAULT_LAYERS: MapLayers = {
+  newsGroup: false,
   news: false,
-  alerts: false,
+  alerts: true,
   energyGroup: false,
   energy: false,
   health: false,
@@ -568,10 +573,26 @@ function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory
 
 const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
   {
+    id: 'newsGroup',
+    groupId: 'news',
+    role: 'groupMaster',
+    dependsOnGroup: false,
+    label: 'Actualites',
+  },
+  {
     id: 'news',
-    role: 'standalone',
+    groupId: 'news',
+    role: 'child',
+    dependsOnGroup: true,
     label: 'Actualites',
     legend: NEWS_LEGEND,
+  },
+  {
+    id: 'stability',
+    groupId: 'news',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Indice de stabilite',
   },
   {
     id: 'traffic',
@@ -841,6 +862,7 @@ export class App {
   private _intervalShips: ReturnType<typeof setInterval> | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: ReturnType<typeof setInterval> | null = null;
+  private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -852,6 +874,7 @@ export class App {
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
+    if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
     if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -980,6 +1003,7 @@ export class App {
     const urlState = readUrlState();
     if (urlState.layers) {
       const merged = { ...DEFAULT_LAYERS, ...urlState.layers };
+      merged.newsGroup = merged.news || merged.stability;
       // Back-compat: old shared links used `traffic` for road incidents.
       if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
       merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir;
@@ -1075,6 +1099,19 @@ export class App {
       }
     });
 
+    // Handle GPS jamming toast clicks - activate military layer and fly to zone
+    this.toastNotification.setOnJammingSignalClick((signal) => {
+      if (!this.activeLayers.military) {
+        this.onLayerToggle('military', true);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      }
+      // Cluster : zoom out proportionnel au rayon ; signal individuel : zoom serré
+      const zoom = signal.clusterRadius != null
+        ? (signal.clusterRadius > 50 ? 8 : 9)
+        : 11;
+      this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
+    });
+
     // Handle defense alert toast clicks - fly to threat location and show panel
     this.toastNotification.setOnDefenseAlertClick((alert) => {
       // Fly to the threat coordinates
@@ -1083,6 +1120,12 @@ export class App {
       if (this.defensePanel) {
         this.defensePanel.show(this.currentDefenseAlerts);
       }
+    });
+
+    // Handle AIS anomaly toast clicks - fly to ship location and open maritime alerts tab
+    this.toastNotification.setOnAisAnomalyClick((anomaly: AisAnomaly) => {
+      this.mapContainer?.flyTo(anomaly.position[0], anomaly.position[1], 10);
+      this.maritimePanel?.openAlertsTab();
     });
 
     // Apply URL view if present
@@ -1117,6 +1160,7 @@ export class App {
     this.startCommodityPolling();
     // Start civilian air traffic polling (free-tier friendly cadence)
     this.startAirTrafficPolling();
+    this.startHealthPolling();
     console.log('[FranceMonitor] App initialized — Phase 4 (cache + clustering + URL state)');
   }
 
@@ -1136,6 +1180,27 @@ export class App {
       </div>
     `;
     this.container.appendChild(header);
+
+    // Badge Premier Ministre dans le header (lecture statique GOUVERNEMENT)
+    const pm = GOUVERNEMENT.find(m => m.isPM);
+    if (pm) {
+      const pmBadge = document.createElement('span');
+      pmBadge.id = 'header-pm-badge';
+      pmBadge.title = pm.titre;
+      pmBadge.style.cssText = [
+        'font-size:11px',
+        'color:var(--text-secondary)',
+        'border:1px solid var(--border-color)',
+        'border-radius:4px',
+        'padding:2px 7px',
+        'white-space:nowrap',
+        'letter-spacing:0.2px',
+      ].join(';');
+      pmBadge.textContent = `PM · ${pm.prenom[0]}. ${pm.nom}`;
+      const clock = header.querySelector('#clock');
+      if (clock) clock.before(pmBadge);
+    }
+
     this.renderRegionPresets(document.getElementById('region-presets')!);
     const headerDataSources = document.getElementById('header-data-sources');
     if (headerDataSources) {
@@ -1291,15 +1356,23 @@ export class App {
     this.layerPanel.mount();
 
     const underMapGrid = document.getElementById('under-map-grid')!;
+
+    // Moitié gauche : Flux boursier + Matières premières côte à côte
+    const marketGroupWrapper = document.createElement('div');
+    marketGroupWrapper.className = 'under-map-market-group';
+    underMapGrid.appendChild(marketGroupWrapper);
+
     const marketStripContainer = document.createElement('div');
-    underMapGrid.appendChild(marketStripContainer);
+    marketGroupWrapper.appendChild(marketStripContainer);
     this.marketStrip = new MarketStrip(marketStripContainer);
     this.marketStrip.mount();
+
     const commodityStripContainer = document.createElement('div');
-    underMapGrid.appendChild(commodityStripContainer);
+    marketGroupWrapper.appendChild(commodityStripContainer);
     this.commodityStrip = new CommodityStrip(commodityStripContainer);
     this.commodityStrip.mount();
 
+    // Moitié droite : Flux actualités
     const newsFeedContainer = document.createElement('div');
     underMapGrid.appendChild(newsFeedContainer);
     this.newsPanel = new UnderMapNewsFeed(newsFeedContainer);
@@ -1711,6 +1784,9 @@ export class App {
         this.activeLayers.outagesInternet ||
         this.activeLayers.outagesCloud;
     }
+    if (key === 'news' || key === 'stability') {
+      this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability;
+    }
 
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
 
@@ -1763,14 +1839,6 @@ export class App {
       else this.maritimePanel?.hide();
     }
 
-    // Show/hide ISNR panel when stability layer is toggled
-    if (key === 'stability') {
-      if (this.activeLayers.stability && this.currentISNRData) {
-        this.isnrPanel?.show(this.currentISNRData);
-      } else {
-        this.isnrPanel?.hide();
-      }
-    }
     // Show/hide ISNR panel when stability layer is toggled
     if (key === 'stability') {
       if (this.activeLayers.stability && this.currentISNRData) {
@@ -2119,6 +2187,7 @@ export class App {
   }
 
   private startMilitaryPolling(): void {
+    connectAis();
     const fetchFlights = async () => {
       try {
         const flights = await fetchMilitaryFlights();
@@ -2145,6 +2214,12 @@ export class App {
               error: emergencies[0].description,
             });
           }
+        }
+
+        // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
+        const jammingSignals = detectGpsJammingSignals(flights);
+        if (jammingSignals.length > 0) {
+          this.toastNotification?.showJammingSignals(jammingSignals);
         }
       } catch (err) {
         console.error('[Military] Failed to fetch flights', err);
@@ -2253,6 +2328,12 @@ export class App {
 
         // ALWAYS push to map, even with 0 ships (initializes the layer)
         this.mapContainer?.updateGlobalTraffic([...allTraffic], navyMmsiSet);
+
+        // Détection anomalies AIS (radio silence, rendezvous suspects)
+        const aisAnomalies = detectAisAnomalies(getAllLiveTraffic());
+        for (const anomaly of aisAnomalies) {
+          this.toastNotification?.showAisAnomaly(anomaly);
+        }
 
         // Détection de menaces sur câbles (plus coûteuse) à cadence réduite.
         const now = Date.now();
@@ -3127,6 +3208,26 @@ export class App {
       status: ss.drugShortages,
       lastUpdate: new Date()
     });
+  }
+
+  private startHealthPolling(): void {
+    if (this._intervalHealth !== null) clearInterval(this._intervalHealth);
+
+    this._intervalHealth = setInterval(() => {
+      const isHealthContextActive =
+        this.activeLayers.health ||
+        this.activeLayers.healthApl ||
+        this.activeLayers.healthOscour ||
+        this.activeLayers.hospitals ||
+        this.nationalHealthPanel?.isVisible() === true ||
+        this.healthBarometerPanel?.isVisible() === true;
+
+      if (!isHealthContextActive) return;
+
+      this.loadHealth().catch((err) => {
+        console.error('[App] Health poll error', err);
+      });
+    }, 15 * 60_000);
   }
 
   private async loadHospitals(): Promise<void> {
