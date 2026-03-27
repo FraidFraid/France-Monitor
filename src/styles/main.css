@@ -679,9 +679,20 @@ body {
 
 .under-map-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.35fr);
+  grid-template-columns: 1fr 1fr;
   gap: var(--gap);
   align-items: start;
+}
+
+.under-map-market-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+.under-map-market-group > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .under-map-card {
@@ -876,12 +887,26 @@ body {
   max-width: 54ch;
 }
 
+.market-strip__section {
+  margin-bottom: 8px;
+}
+.market-strip__section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding: 4px 0 4px 4px;
+  text-transform: uppercase;
+}
+.market-strip__section--indices  .market-strip__section-label { color: #60a5fa; }
+.market-strip__section--defense  .market-strip__section-label { color: #f87171; }
+.market-strip__section--services .market-strip__section-label { color: #a78bfa; }
+
 .market-strip__list {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(150px, 1fr);
   gap: 10px;
-  height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 2px;
@@ -3246,6 +3271,13 @@ body {
 .commodity-strip__section {
   margin-bottom: 8px;
 }
+.commodity-strip__list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(130px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+}
 .commodity-strip__section-label {
   font-size: 9px;
   font-weight: 700;
@@ -3257,3 +3289,215 @@ body {
 .commodity-strip__section--energy .commodity-strip__section-label { color: #fb923c; }
 .commodity-strip__section--metals .commodity-strip__section-label { color: #fbbf24; }
 .commodity-strip__section--agro   .commodity-strip__section-label { color: #4ade80; }
+
+/* ════════════════════════════════════════
+   Satellite Panel (Copernicus / Sentinel)
+   ════════════════════════════════════════ */
+
+.satellite-panel {
+  position: fixed;
+  top: var(--right-panel-top, 80px);
+  right: 20px;
+  width: 320px;
+  background: var(--bg-panel, #1a1a2e);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  z-index: 900;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  font-family: var(--font-ui, sans-serif);
+  color: var(--text-primary, #e8e8ec);
+  font-size: 13px;
+}
+
+.satellite-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.satellite-panel__icon { font-size: 16px; }
+
+.satellite-panel__title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.satellite-panel__close {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #9898a8);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+}
+.satellite-panel__close:hover { background: rgba(255,255,255,0.08); }
+
+.satellite-panel__collections {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.satellite-panel__coll-btn {
+  flex: 1;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: var(--text-secondary, #9898a8);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+.satellite-panel__coll-btn.active,
+.satellite-panel__coll-btn:hover {
+  background: rgba(90,200,250,0.15);
+  border-color: rgba(90,200,250,0.3);
+  color: #5ac8fa;
+}
+
+.satellite-panel__body {
+  padding: 12px;
+  min-height: 80px;
+}
+
+.satellite-panel__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 0;
+  color: var(--text-secondary, #9898a8);
+}
+
+.satellite-panel__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: #5ac8fa;
+  border-radius: 50%;
+  animation: satellite-spin 0.8s linear infinite;
+}
+@keyframes satellite-spin { to { transform: rotate(360deg); } }
+
+.satellite-panel__empty {
+  color: var(--text-secondary, #9898a8);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.satellite-panel__thumb-wrap {
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.05);
+  margin-bottom: 8px;
+}
+
+.satellite-panel__thumb {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.satellite-panel__thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  height: 180px;
+  background: rgba(255,255,255,0.03);
+}
+
+.satellite-panel__meta {
+  font-size: 12px;
+  color: var(--text-secondary, #9898a8);
+  margin-bottom: 8px;
+}
+
+.satellite-panel__cloud { margin-left: 8px; }
+
+.satellite-panel__toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.satellite-panel__toggle-btn {
+  flex: 1;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: var(--text-secondary, #9898a8);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+.satellite-panel__toggle-btn.active {
+  background: rgba(90,200,250,0.2);
+  border-color: #5ac8fa;
+  color: #5ac8fa;
+  font-weight: 600;
+}
+
+.satellite-panel__footer {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.satellite-panel__eo-btn {
+  display: block;
+  text-align: center;
+  padding: 8px;
+  background: rgba(90,200,250,0.1);
+  border: 1px solid rgba(90,200,250,0.2);
+  border-radius: 4px;
+  color: #5ac8fa;
+  text-decoration: none;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.satellite-panel__eo-btn:hover { background: rgba(90,200,250,0.2); }
+
+/* CTA button inside Vigicrues flood popup */
+.satellite-cta-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 10px;
+  background: rgba(90,200,250,0.1);
+  border: 1px solid rgba(90,200,250,0.3);
+  border-radius: 4px;
+  color: #5ac8fa;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: sans-serif;
+  line-height: 1.4;
+}
+.satellite-cta-btn:hover { background: rgba(90,200,250,0.2); }
+
+/* Inline satellite button in news popup */
+.satellite-inline-btn {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 7px;
+  background: rgba(90,200,250,0.08);
+  border: 1px solid rgba(90,200,250,0.2);
+  border-radius: 4px;
+  color: #5ac8fa;
+  font-size: 11px;
+  cursor: pointer;
+  vertical-align: middle;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.satellite-inline-btn:hover { background: rgba(90,200,250,0.15); }
