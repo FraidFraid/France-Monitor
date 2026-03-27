@@ -10,10 +10,9 @@ import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
 import { SearchModal } from './components/SearchModal.ts';
 import { ToastNotification } from './components/ToastNotification.ts';
-import { WeatherPanel } from './components/WeatherPanel.ts';
+import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
-import { FloodsPanel } from './components/FloodsPanel.ts';
 import { FiresPanel } from './components/FiresPanel.ts';
 import { ElusPanel } from './components/ElusPanel.ts';
 import { TrafficPanel } from './components/TrafficPanel.ts';
@@ -38,7 +37,6 @@ import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
 import {
   MOCK_ECOWATT_REGIONS,
   MOCK_METEO_ALERTS,
-  MOCK_FLOOD_SEGMENTS,
 } from './config/mock-data.ts';
 import { ALL_INFRASTRUCTURE } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges } from './config/military.ts';
@@ -219,6 +217,33 @@ const ROAD_TRAFFIC_LEGEND: LegendCategory = {
   refresh: {
     label: 'Environ 5 min'
   }
+};
+
+const ENVIRONMENTAL_LEGEND: LegendCategory = {
+  id: 'environmental',
+  title: 'Météo / Crues',
+  columns: 2,
+  splitIndex: 4,
+  items: [
+    { id: 'env-weather-header', label: 'Météo-France', color: '#9898a8', isHeader: true },
+    { id: 'env-weather-red', label: 'Vigilance météo rouge', color: '#EF4444', shape: 'zone', borderColor: '#FCA5A5' },
+    { id: 'env-weather-orange', label: 'Vigilance météo orange', color: '#F59E0B', shape: 'zone', borderColor: '#FCD34D' },
+    { id: 'env-weather-yellow', label: 'Vigilance météo jaune', color: '#EAB308', shape: 'zone', borderColor: '#FDE68A' },
+    { id: 'env-flood-header', label: 'Vigicrues', color: '#9898a8', isHeader: true },
+    { id: 'env-flood-red', label: 'Tronçon en vigilance rouge', color: '#EF4444', icon: '━', iconSize: 18 },
+    { id: 'env-flood-orange', label: 'Tronçon en vigilance orange', color: '#F59E0B', icon: '━', iconSize: 18 },
+    { id: 'env-flood-yellow', label: 'Tronçon en vigilance jaune', color: '#EAB308', icon: '━', iconSize: 18 },
+  ],
+  source: {
+    label: 'Météo-France · Vigicrues',
+  },
+  refresh: {
+    label: 'Environ 15 min'
+  },
+  notes: [
+    'Météo-France = vigilance par département.',
+    'Vigicrues = vigilance par tronçon de cours d’eau.',
+  ],
 };
 
 const NEWS_LEGEND: LegendCategory = {
@@ -777,6 +802,21 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'Cloud / IXP',
     legend: OUTAGES_CLOUD_LEGEND,
   },
+  {
+    id: 'environmentGroup',
+    groupId: 'environment',
+    role: 'groupMaster',
+    dependsOnGroup: false,
+    label: 'Environnement',
+  },
+  {
+    id: 'environmental',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'MÉTÉO / CRUES',
+    legend: ENVIRONMENTAL_LEGEND,
+  },
   // ─── Feux de forêt ───
   {
     id: 'fires',
@@ -805,10 +845,9 @@ export class App {
   private mapLegend: MapLegend | null = null;
   private newsPanel: UnderMapNewsFeed | null = null;
   private statusPanel: StatusPanel | null = null;
-  private weatherPanel: WeatherPanel | null = null;
+  private environmentPanel: EnvironmentPanel | null = null;
   private energyPanel: EnergyPanel | null = null;
   private transportPanel: TransportPanel | null = null;
-  private floodsPanel: FloodsPanel | null = null;
   private firesPanel: FiresPanel | null = null;
   private elusPanel: ElusPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
@@ -915,6 +954,27 @@ export class App {
         gasEl.style.top = `${stackedTop}px`;
       } else {
         gasEl.style.top = defaultTop;
+      }
+    });
+  }
+
+  private layoutEnvironmentFloatingPanels(): void {
+    requestAnimationFrame(() => {
+      const rawTop = getComputedStyle(document.documentElement).getPropertyValue('--right-panel-top').trim();
+      const defaultTop = Number.parseFloat(rawTop) || 68;
+      const panels = [
+        document.body.querySelector<HTMLElement>('.environment-panel-modal'),
+        document.body.querySelector<HTMLElement>('.fires-panel-modal'),
+      ].filter((panel): panel is HTMLElement => this.isPanelVisible(panel));
+
+      let previousBottom = 0;
+
+      for (const [index, panel] of panels.entries()) {
+        panel.style.right = '20px';
+        panel.style.left = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.top = index === 0 ? `${defaultTop}px` : `${previousBottom + 16}px`;
+        previousBottom = panel.offsetTop + panel.offsetHeight;
       }
     });
   }
@@ -1400,16 +1460,17 @@ export class App {
     const floatContainer = document.createElement('div');
     this.container.appendChild(floatContainer);
 
-    this.weatherPanel = new WeatherPanel(floatContainer);
-    this.weatherPanel.setOnHoverDepartment((code) => {
+    this.environmentPanel = new EnvironmentPanel(floatContainer);
+    this.environmentPanel.setOnHoverDepartment((code) => {
       this.mapContainer?.highlightWeatherDepartment(code);
     });
-    this.weatherPanel.setOnSlotChange((_slotIndex, alerts) => {
-      // Update map when user selects a different time slot
-      this.currentMeteoAlerts = alerts;
-      this.mapContainer?.updateWeather(alerts);
+    this.environmentPanel.setOnHoverSegment((segmentId) => {
+      this.mapContainer?.highlightFloodSegment(segmentId);
     });
-    this.weatherPanel.mount();
+    this.environmentPanel.setOnClose(() => {
+      this.layoutEnvironmentFloatingPanels();
+    });
+    this.environmentPanel.mount();
 
     this.energyPanel = new EnergyPanel(floatContainer);
     this.energyPanel.setOnClose(() => {
@@ -1488,10 +1549,9 @@ export class App {
         const features = this.mapContainer.getHealthFeatures();
         if (features) {
           // Hide other floating panels
-          this.weatherPanel?.hide();
+          this.environmentPanel?.hide();
           this.energyPanel?.hide();
           this.transportPanel?.hide();
-          this.floodsPanel?.hide();
           this.firesPanel?.hide();
           this.elusPanel?.hide();
           this.trafficPanel?.hide();
@@ -1514,10 +1574,9 @@ export class App {
 
       const metrics = (window as any).__healthBarometerMetrics ?? this.lastBarometerMetrics;
       if (metrics) {
-        this.weatherPanel?.hide();
+        this.environmentPanel?.hide();
         this.energyPanel?.hide();
         this.transportPanel?.hide();
-        this.floodsPanel?.hide();
         this.firesPanel?.hide();
         this.elusPanel?.hide();
         this.trafficPanel?.hide();
@@ -1543,9 +1602,6 @@ export class App {
     });
     this.transportPanel.mount();
 
-    this.floodsPanel = new FloodsPanel(floatContainer);
-    this.floodsPanel.mount();
-
     this.firesPanel = new FiresPanel(floatContainer);
     this.firesPanel.mount();
     this.firesPanel.setOnFilteredFires((filtered) => {
@@ -1560,6 +1616,9 @@ export class App {
     });
     this.firesPanel.setOnModisToggle((enabled) => {
       this.mapContainer?.setModisOverlayVisible(enabled);
+    });
+    this.firesPanel.setOnClose(() => {
+      this.layoutEnvironmentFloatingPanels();
     });
 
     this.trafficPanel = new TrafficPanel(floatContainer);
@@ -1681,24 +1740,23 @@ export class App {
   }
 
   private handleSourcePanelClick(name: string): void {
-    this.weatherPanel?.hide();
+    this.environmentPanel?.hide();
     this.energyPanel?.hide();
     this.transportPanel?.hide();
-    this.floodsPanel?.hide();
     this.firesPanel?.hide();
     this.elusPanel?.hide();
     this.trafficPanel?.hide();
     this.isnrPanel?.hide();
     this.nationalHealthPanel?.hide();
 
-    if (name === 'Météo-France') {
-      this.weatherPanel?.show(this.currentMeteoAlerts, this.currentMeteoTimeline ?? undefined);
+    if (name === 'Météo-France' || name === 'Vigicrues') {
+      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+      this.layoutEnvironmentFloatingPanels();
     } else if (name === 'SNCF') {
       this.transportPanel?.show(this.currentSncfDisruptions);
-    } else if (name === 'Vigicrues') {
-      this.floodsPanel?.show(this.currentFloodSegments);
     } else if (name === 'NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
+      this.layoutEnvironmentFloatingPanels();
     } else if (name === 'Trafic') {
       this.trafficPanel?.show(this.currentTrafficIncidents);
     } else if (name === 'Cyber') {
@@ -1854,8 +1912,18 @@ export class App {
       }
     } else if (key === 'environmentGroup') {
       if (!this.activeLayers.environmentGroup) {
+        this.environmentPanel?.hide();
         this.firesPanel?.hide();
         this.dayNightPanel?.hide();
+        this.layoutEnvironmentFloatingPanels();
+      }
+    } else if (key === 'environmental') {
+      if (enabled) {
+        this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+        this.layoutEnvironmentFloatingPanels();
+      } else {
+        this.environmentPanel?.hide();
+        this.layoutEnvironmentFloatingPanels();
       }
     } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
       const isAnyHealthLayerActive =
@@ -1948,8 +2016,10 @@ export class App {
     } else if (key === 'fires') {
       if (this.activeLayers.fires) {
         this.firesPanel?.show(this.currentActiveFires);
+        this.layoutEnvironmentFloatingPanels();
       } else {
         this.firesPanel?.hide();
+        this.layoutEnvironmentFloatingPanels();
       }
     } else if (key === 'dayNight') {
       if (enabled) {
@@ -2118,6 +2188,7 @@ export class App {
     this.mapLegend.addCategory(OIL_LEGEND);
     this.mapLegend.addCategory(INFRASTRUCTURE_LEGEND);
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
+    this.mapLegend.addCategory(ENVIRONMENTAL_LEGEND);
     this.mapLegend.addCategory(MILITARY_LEGEND);
     this.mapLegend.addCategory(SUBSEA_CABLES_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
@@ -2679,43 +2750,77 @@ export class App {
   private async loadWeather(): Promise<void> {
     this.statusPanel?.updateSource('Météo-France', { status: 'loading', lastUpdate: null });
 
-    // Fetch timeline with all time slots
-    const timeline = await fetchVigilanceTimeline();
+    const [timeline, alerts] = await Promise.all([
+      fetchVigilanceTimeline().catch(() => null),
+      fetchVigilanceMeteo().catch(() => []),
+    ]);
+
     this.currentMeteoTimeline = timeline;
 
-    // Get alerts for current time slot
-    const currentAlerts = timeline.slots[timeline.currentSlotIndex]?.alerts ?? [];
-
-    if (currentAlerts.length > 0 || timeline.slots.some(s => s.alerts.length > 0)) {
-      this.currentMeteoAlerts = currentAlerts;
-      await this.mapContainer?.updateWeather(currentAlerts);
+    if (alerts.length > 0) {
+      this.currentMeteoAlerts = alerts;
+      await this.mapContainer?.updateWeather(alerts);
+      this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
+    } else if (timeline && timeline.slots.some((slot) => slot.alerts.length > 0)) {
+      const fallbackAlerts = timeline.slots[timeline.currentSlotIndex]?.alerts
+        ?? timeline.slots.find((slot) => slot.alerts.length > 0)?.alerts
+        ?? [];
+      this.currentMeteoAlerts = fallbackAlerts;
+      await this.mapContainer?.updateWeather(fallbackAlerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else {
-      // Fallback to simple fetch if timeline is empty
-      const alerts = await fetchVigilanceMeteo();
-      if (alerts.length > 0) {
-        this.currentMeteoAlerts = alerts;
-        await this.mapContainer?.updateWeather(alerts);
-        this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
-      } else {
-        this.currentMeteoAlerts = MOCK_METEO_ALERTS;
-        await this.mapContainer?.updateWeather(MOCK_METEO_ALERTS);
-        this.statusPanel?.updateSource('Météo-France', { status: 'stale', lastUpdate: new Date() });
-      }
+      this.currentMeteoAlerts = MOCK_METEO_ALERTS;
+      await this.mapContainer?.updateWeather(MOCK_METEO_ALERTS);
+      this.statusPanel?.updateSource('Météo-France', { status: 'stale', lastUpdate: new Date() });
+    }
+
+    if (this.environmentPanel?.isVisible()) {
+      this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+      this.layoutEnvironmentFloatingPanels();
     }
   }
 
   private async loadFloods(): Promise<void> {
     this.statusPanel?.updateSource('Vigicrues', { status: 'loading', lastUpdate: null });
-    const segments = await fetchVigicrues();
-    if (segments.length > 0) {
+    try {
+      const segments = await fetchVigicrues();
       this.currentFloodSegments = segments;
       this.mapContainer?.updateFloods(segments);
-      this.statusPanel?.updateSource('Vigicrues', { status: 'ok', lastUpdate: new Date() });
-    } else {
-      this.currentFloodSegments = MOCK_FLOOD_SEGMENTS;
-      this.mapContainer?.updateFloods(MOCK_FLOOD_SEGMENTS);
-      this.statusPanel?.updateSource('Vigicrues', { status: 'stale', lastUpdate: new Date() });
+      const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
+      const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
+
+      if (segments.length > 0) {
+        console.info(`[App/Vigicrues] Rendering ${segments.length} live segments (matched=${matchedCount}, corridor=${corridorCount})`);
+        this.statusPanel?.updateSource('Vigicrues', {
+          status: 'ok',
+          lastUpdate: new Date(),
+          detail: `${matchedCount + corridorCount}/${segments.length} tronçons cartographiés`,
+        });
+      } else {
+        console.info('[App/Vigicrues] No yellow/orange/red segments in current live feed');
+        this.statusPanel?.updateSource('Vigicrues', {
+          status: 'ok',
+          lastUpdate: new Date(),
+          detail: '0 tronçon jaune+',
+        });
+      }
+      if (this.environmentPanel?.isVisible()) {
+        this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+        this.layoutEnvironmentFloatingPanels();
+      }
+    } catch (error) {
+      this.currentFloodSegments = [];
+      this.mapContainer?.updateFloods([]);
+      console.warn('[App/Vigicrues] Source unavailable, no fallback geometry rendered', error);
+      this.statusPanel?.updateSource('Vigicrues', {
+        status: 'error',
+        lastUpdate: new Date(),
+        error: 'Source indisponible',
+      });
+      if (this.environmentPanel?.isVisible()) {
+        this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+        this.layoutEnvironmentFloatingPanels();
+      }
     }
   }
 
@@ -2730,6 +2835,7 @@ export class App {
     } else {
       this.statusPanel?.updateSource('NASA FIRMS', { status: 'stale', lastUpdate: new Date() });
     }
+    if (this.firesPanel?.isVisible()) this.layoutEnvironmentFloatingPanels();
   }
 
   private async loadInfrastructure(): Promise<void> {
@@ -3285,8 +3391,8 @@ export class App {
       },
       {
         name: 'floods', task: this.loadFloods().catch(() => {
-          this.currentFloodSegments = MOCK_FLOOD_SEGMENTS;
-          this.mapContainer?.updateFloods(MOCK_FLOOD_SEGMENTS);
+          this.currentFloodSegments = [];
+          this.mapContainer?.updateFloods([]);
           this.statusPanel?.updateSource('Vigicrues', { status: 'error', lastUpdate: new Date() });
         })
       },

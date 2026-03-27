@@ -53,6 +53,7 @@ export class WeatherPanel extends Panel {
 
     // Style the element as a floating modal
     this.modalEl = document.createElement('div');
+    this.modalEl.className = 'weather-panel-modal';
     this.modalEl.style.cssText = `
       position: absolute;
       top: var(--right-panel-top);
@@ -438,6 +439,10 @@ export class WeatherPanel extends Panel {
   hide(): void {
     if (this.modalEl) this.modalEl.style.display = 'none';
     this.onClose?.();
+  }
+
+  isVisible(): boolean {
+    return this.modalEl?.style.display === 'flex';
   }
 
   /**

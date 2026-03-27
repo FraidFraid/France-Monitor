@@ -8,19 +8,34 @@ const FLOOD_COLORS: Record<string, string> = {
     green: 'var(--threat-low)',
 };
 
+function describeTrace(item: FloodSegment): string {
+    if (item.dataSource === 'mock') return 'Mock manuel';
+    if (item.geometryFidelity === 'matched') return 'Tracé hydrographique recalé';
+    if (item.geometryFidelity === 'fallback') return 'Corridor hydrographique';
+    return 'Tracé brut Vigicrues';
+}
+
 export class FloodsPanel extends Panel {
     private contentEl: HTMLElement | null = null;
     private closeBtn: HTMLElement | null = null;
-
-    // Optional: add map interaction similar to WeatherPanel hover later
-    // private onHoverSegment?: (id: string | null) => void;
+    private onClose?: () => void;
+    private onHoverSegment?: (id: string | null) => void;
 
     constructor(container: HTMLElement) {
         super(container, { title: 'Vigicrues', icon: '🌊', collapsible: false });
     }
 
+    setOnHoverSegment(handler: (id: string | null) => void): void {
+        this.onHoverSegment = handler;
+    }
+
+    setOnClose(handler: () => void): void {
+        this.onClose = handler;
+    }
+
     mount(): void {
         this.modalEl = document.createElement('div');
+        this.modalEl.className = 'floods-panel-modal';
         this.modalEl.style.cssText = `
       position: absolute;
       top: var(--right-panel-top);
@@ -110,6 +125,7 @@ export class FloodsPanel extends Panel {
         const activeSegments = segments.filter(s => s.level !== 'green');
 
         if (activeSegments.length === 0) {
+            this.onHoverSegment?.(null);
             this.contentEl.innerHTML = `
         <div style="text-align:center; color: var(--text-muted); padding: 20px 0;">
           <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.5;">✅</div>
@@ -124,12 +140,27 @@ export class FloodsPanel extends Panel {
             return (levels[b.level as keyof typeof levels] || 0) - (levels[a.level as keyof typeof levels] || 0);
         });
 
+        const liveCount = activeSegments.filter((segment) => segment.dataSource === 'live').length;
+        const matchedCount = activeSegments.filter((segment) => segment.geometryFidelity === 'matched').length;
+        const corridorCount = activeSegments.filter((segment) => segment.geometryFidelity === 'fallback').length;
+        const renderableCount = matchedCount + corridorCount;
+
         const byLevel: Record<string, FloodSegment[]> = { red: [], orange: [], yellow: [] };
         for (const s of sorted) {
             if (byLevel[s.level]) byLevel[s.level].push(s);
         }
 
-        let html = '';
+        let html = `
+      <div style="margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.03);">
+        <div style="color: var(--text-primary); font-size: 12px; font-weight: 600; margin-bottom: 4px;">Qualité du tracé</div>
+        <div style="color: var(--text-muted); font-size: 11px;">
+          Source live: ${liveCount}
+        </div>
+        <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+          Affichés sur carte: ${renderableCount}/${activeSegments.length} · recalés: ${matchedCount} · corridors: ${corridorCount}
+        </div>
+      </div>
+    `;
 
         for (const [level, items] of Object.entries(byLevel)) {
             if (items.length === 0) continue;
@@ -154,6 +185,9 @@ export class FloodsPanel extends Panel {
             <div style="color: var(--text-primary); font-size: 13px; font-weight: 500;">
               ${item.name}
             </div>
+            <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+              ${describeTrace(item)} · source ${item.dataSource} · confiance ${Math.round(item.matchConfidence * 100)}%
+            </div>
           </div>
         `;
             }
@@ -162,9 +196,26 @@ export class FloodsPanel extends Panel {
         }
 
         this.contentEl.innerHTML = html;
+
+        for (const card of this.contentEl.querySelectorAll<HTMLElement>('.flood-segment-item')) {
+            card.onmouseenter = () => {
+                card.style.background = 'var(--bg-surface-hover)';
+                this.onHoverSegment?.(card.dataset.id ?? null);
+            };
+            card.onmouseleave = () => {
+                card.style.background = 'rgba(0,0,0,0.2)';
+                this.onHoverSegment?.(null);
+            };
+        }
     }
 
     hide(): void {
+        this.onHoverSegment?.(null);
         if (this.modalEl) this.modalEl.style.display = 'none';
+        this.onClose?.();
+    }
+
+    isVisible(): boolean {
+        return this.modalEl?.style.display === 'flex';
     }
 }

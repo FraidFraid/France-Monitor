@@ -96,6 +96,42 @@ export function startRelayServer(options = {}) {
   let upstream = null;
   let reconnectTimer = null;
   let reconnectDelayMs = 2000;
+  let usingExternalRelay = false;
+
+  const closeLocalRelay = () => {
+    try {
+      upstream?.close();
+    } catch {}
+    upstream = null;
+    try {
+      wsServer.close();
+    } catch {}
+    try {
+      server.close();
+    } catch {}
+  };
+
+  const handleListenError = (err) => {
+    if (err?.code === 'EADDRINUSE') {
+      usingExternalRelay = true;
+      console.warn(`[AIS Relay] ⚠️ Port ${relayPort} déjà utilisé — réutilisation du relay existant`);
+      closeLocalRelay();
+      relayInstance = {
+        port: relayPort,
+        external: true,
+        server: null,
+        wsServer: null,
+        close() {
+          relayInstance = null;
+        },
+      };
+      return;
+    }
+
+    console.error('[AIS Relay] ❌ Échec démarrage relay:', err);
+    closeLocalRelay();
+    throw err;
+  };
 
   const scheduleReconnect = () => {
     if (reconnectTimer || !aisApiKey) return;
@@ -166,7 +202,13 @@ export function startRelayServer(options = {}) {
     connectUpstream();
   });
 
-  server.listen(relayPort);
+  server.on('error', handleListenError);
+  wsServer.on('error', handleListenError);
+
+  server.listen(relayPort, () => {
+    if (usingExternalRelay) return;
+    console.log(`[AIS Relay] ✅ HTTP relay local à l’écoute sur ${relayPort}`);
+  });
 
   relayInstance = {
     port: relayPort,

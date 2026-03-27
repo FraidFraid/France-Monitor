@@ -10,6 +10,7 @@ export class FiresPanel {
     private onFilteredFiresCb: ((fires: ActiveFire[]) => void) | null = null;
     private onHoverFireCb: ((lat: number | null, lon: number | null) => void) | null = null;
     private onModisToggleCb: ((enabled: boolean) => void) | null = null;
+    private onCloseCb: (() => void) | null = null;
     private modisEnabled = false;
     private isDragging = false;
     private dragOffsetX = 0;
@@ -31,8 +32,13 @@ export class FiresPanel {
         this.onModisToggleCb = cb;
     }
 
+    setOnClose(cb: () => void): void {
+        this.onCloseCb = cb;
+    }
+
     mount(): void {
         this.modalEl = document.createElement('div');
+        this.modalEl.className = 'fires-panel-modal';
         this.modalEl.style.cssText = [
             'position:fixed',
             'top:68px',
@@ -138,6 +144,11 @@ export class FiresPanel {
 
     hide(): void {
         if (this.modalEl) this.modalEl.style.display = 'none';
+        this.onCloseCb?.();
+    }
+
+    isVisible(): boolean {
+        return this.modalEl?.style.display === 'flex';
     }
 
     update(fires: ActiveFire[]): void {

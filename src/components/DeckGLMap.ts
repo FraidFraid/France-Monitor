@@ -2138,8 +2138,16 @@ export class DeckGLMap {
       source: SRC_FLOODS,
       paint: {
         'line-color': ['get', 'color'],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 3, 8, 5, 12, 8],
-        'line-opacity': 0.85,
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['case', ['boolean', ['feature-state', 'hover'], false], 5, 3],
+          8, ['case', ['boolean', ['feature-state', 'hover'], false], 8, 5],
+          12, ['case', ['boolean', ['feature-state', 'hover'], false], 11, 8],
+        ],
+        'line-opacity': ['case',
+          ['boolean', ['feature-state', 'hover'], false], 1,
+          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.58,
+          0.92,
+        ],
       },
       layout: {
         'line-cap': 'round',
@@ -4596,8 +4604,13 @@ export class DeckGLMap {
     this.map.on('mouseenter', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
+    this.map.on('mousemove', LYR_FLOODS, (e) => {
+      const featureId = e.features?.[0]?.id;
+      this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
+    });
     this.map.on('mouseleave', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
+      this.highlightFloodSegment(null);
     });
     this.map.on('click', LYR_FLOODS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
@@ -4610,6 +4623,16 @@ export class DeckGLMap {
       else if (p.level === 'orange') { levelText = 'Orange'; levelColor = '#ff9500'; }
       else if (p.level === 'yellow') { levelText = 'Jaune'; levelColor = '#ffcc00'; }
       else if (p.level === 'green') { levelText = 'Vert'; levelColor = '#34c759'; }
+
+      let traceText = 'Tracé brut Vigicrues';
+      if (p.geometryFidelity === 'matched') traceText = 'Tracé recalé sur hydrographie';
+      else if (p.geometryFidelity === 'fallback') traceText = 'Corridor hydrographique';
+
+      const dataSourceText = p.dataSource === 'mock' ? 'mock' : 'live';
+      const confidence = typeof p.matchConfidence === 'number'
+        ? Math.round(p.matchConfidence * 100)
+        : Math.round(Number(p.matchConfidence ?? 0) * 100);
+      const displayVertices = Number(p.displayVertexCount ?? 0);
 
       // Compute bbox from actual geometry for EO Browser deep-link
       const geom = feat.geometry;
@@ -4633,6 +4656,12 @@ export class DeckGLMap {
               <span style="color:#9898a8">Niveau de vigilance :</span>
               <span style="font-size:11px; padding:2px 6px; border-radius:4px; font-weight:700; color:${p.level === 'yellow' || p.level === 'green' ? '#000' : '#fff'}; background:${levelColor}">${levelText}</span>
             </div>
+          </div>
+          <div style="font-size:12px; color:#c8c8d0; margin:8px 0 2px;">
+            ${traceText}
+          </div>
+          <div style="font-size:11px; color:#8f90a0; margin-bottom: 10px;">
+            Source ${dataSourceText} · confiance ${confidence}% · ${displayVertices} sommets
           </div>
           <a class="satellite-cta-btn"
              href="${eoBrowserUrl}"
@@ -4723,12 +4752,12 @@ export class DeckGLMap {
       this.weatherHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
 
       // Update feature state for border highlight
-      const numericId = deptCodeToId(code);
-      if (this._lastHoveredDeptId !== null && this._lastHoveredDeptId !== numericId) {
+      const featureId = code;
+      if (this._lastHoveredDeptId !== null && this._lastHoveredDeptId !== featureId) {
         this.map.setFeatureState({ source: SRC_WEATHER, id: this._lastHoveredDeptId }, { hover: false });
       }
-      this.map.setFeatureState({ source: SRC_WEATHER, id: numericId }, { hover: true });
-      this._lastHoveredDeptId = numericId;
+      this.map.setFeatureState({ source: SRC_WEATHER, id: featureId }, { hover: true });
+      this._lastHoveredDeptId = featureId;
     });
 
     // ─── Energy Region Interactions (tooltip on hover) ───
@@ -8008,18 +8037,16 @@ export class DeckGLMap {
     }
 
     if (departmentCode !== null) {
-      // Convert department code to numeric ID (must match updateWeather)
-      const numericId = deptCodeToId(departmentCode);
       this.map.setFeatureState(
-        { source: SRC_WEATHER, id: numericId },
+        { source: SRC_WEATHER, id: departmentCode },
         { hover: true }
       );
-      this._lastHoveredDeptId = numericId;
+      this._lastHoveredDeptId = departmentCode;
     } else {
       this._lastHoveredDeptId = null;
     }
   }
-  private _lastHoveredDeptId: number | null = null;
+  private _lastHoveredDeptId: string | null = null;
 
   // ─── Hospitals Layer (FINESS) ───
 
@@ -8760,21 +8787,55 @@ export class DeckGLMap {
 
   updateFloods(segments: FloodSegment[]): void {
     if (!this.map) return;
+    this.highlightFloodSegment(null);
+    const renderableSegments = segments.filter((segment) => (
+      segment.geometryFidelity === 'matched' || segment.geometryFidelity === 'fallback'
+    ));
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features: segments.map((s) => ({
+      features: renderableSegments.map((s) => ({
         type: 'Feature' as const,
-        geometry: s.geometry,
+        id: s.id,
+        geometry: s.displayGeometry,
         properties: {
           name: s.name,
           color: FLOOD_COLORS[s.level] ?? FLOOD_COLORS.green,
           level: s.level,
+          dataSource: s.dataSource,
+          geometryFidelity: s.geometryFidelity,
+          matchConfidence: s.matchConfidence,
+          rawVertexCount: s.rawVertexCount,
+          displayVertexCount: s.displayVertexCount,
         },
       })),
     };
     const src = this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource;
     src?.setData(fc);
+    console.info(`[DeckGLMap/Vigicrues] Rendered ${renderableSegments.length}/${segments.length} segments on map (hydro validated only)`);
   }
+
+  highlightFloodSegment(segmentId: string | null): void {
+    if (!this.map) return;
+
+    if (this._highlightedFloodSegmentId !== null) {
+      this.map.setFeatureState(
+        { source: SRC_FLOODS, id: this._highlightedFloodSegmentId },
+        { hover: false },
+      );
+    }
+
+    if (segmentId !== null) {
+      this.map.setFeatureState(
+        { source: SRC_FLOODS, id: segmentId },
+        { hover: true },
+      );
+      this._highlightedFloodSegmentId = segmentId;
+    } else {
+      this._highlightedFloodSegmentId = null;
+    }
+  }
+
+  private _highlightedFloodSegmentId: string | null = null;
 
   // ─── Fires Layer ───
 

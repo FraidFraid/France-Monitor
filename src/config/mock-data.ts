@@ -79,7 +79,7 @@ export const MOCK_NEWS_ITEMS: NewsItem[] = withIds([
 
 // ═══ Mock Ecowatt Signals (par code région) ═══
 
-import type { EcowattSignal, MeteoAlert, FloodSegment } from '../types/index.ts';
+import type { EcowattSignal, MeteoAlert } from '../types/index.ts';
 
 /** Signal Ecowatt par code région — pour colorer les régions sur la carte */
 export const MOCK_ECOWATT_REGIONS: Record<string, EcowattSignal> = {
@@ -115,41 +115,6 @@ export const MOCK_METEO_ALERTS: MeteoAlert[] = [
   { department: 'Savoie', departmentCode: '73', level: 'yellow', risks: ['avalanche'] },
   { department: 'Landes', departmentCode: '40', level: 'yellow', risks: ['heat'] },
   { department: 'Finistère', departmentCode: '29', level: 'yellow', risks: ['wave-surge'] },
-];
-
-// ═══ Mock Vigicrues Flood Segments ═══
-
-export const MOCK_FLOOD_SEGMENTS: FloodSegment[] = [
-  {
-    id: 'flood-seine-paris', name: 'Seine — Paris',
-    level: 'yellow',
-    geometry: { type: 'LineString', coordinates: [[2.25, 48.84], [2.32, 48.85], [2.38, 48.86], [2.42, 48.85]] },
-  },
-  {
-    id: 'flood-garonne-agen', name: 'Garonne — Agen→Marmande',
-    level: 'orange',
-    geometry: { type: 'LineString', coordinates: [[0.62, 44.20], [0.50, 44.30], [0.38, 44.40], [0.17, 44.50]] },
-  },
-  {
-    id: 'flood-loire-tours', name: 'Loire — Tours→Saumur',
-    level: 'yellow',
-    geometry: { type: 'LineString', coordinates: [[0.68, 47.39], [0.48, 47.37], [0.20, 47.35], [-0.08, 47.26]] },
-  },
-  {
-    id: 'flood-rhone-avignon', name: 'Rhône — Avignon→Arles',
-    level: 'orange',
-    geometry: { type: 'LineString', coordinates: [[4.81, 43.95], [4.75, 43.84], [4.68, 43.73], [4.63, 43.68]] },
-  },
-  {
-    id: 'flood-rhin-strsbg', name: 'Rhin — Strasbourg',
-    level: 'green',
-    geometry: { type: 'LineString', coordinates: [[7.75, 48.58], [7.78, 48.52], [7.80, 48.45]] },
-  },
-  {
-    id: 'flood-dordogne', name: 'Dordogne — Bergerac',
-    level: 'yellow',
-    geometry: { type: 'LineString', coordinates: [[0.48, 44.85], [0.38, 44.87], [0.20, 44.90], [0.05, 44.92]] },
-  },
 ];
 
 // ═══ Mock Traffic Segments ═══

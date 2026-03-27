@@ -5,6 +5,7 @@
  */
 
 import type { FloodSegment, FloodVigilanceLevel } from '../types/index.ts';
+import { enhanceFloodSegmentGeometry, prepareFloodSegment } from './flood-geometry.ts';
 
 const LEVEL_MAP: Record<number, FloodVigilanceLevel> = {
     1: 'green', 2: 'yellow', 3: 'orange', 4: 'red',
@@ -12,6 +13,19 @@ const LEVEL_MAP: Record<number, FloodVigilanceLevel> = {
 
 let cache: { data: FloodSegment[]; fetchedAt: number } | null = null;
 const CACHE_TTL = 15 * 60_000; // 15 min
+const MATCH_CONCURRENCY = 4;
+
+async function enrichSegments(segments: FloodSegment[]): Promise<FloodSegment[]> {
+    const enriched: FloodSegment[] = [];
+
+    for (let index = 0; index < segments.length; index += MATCH_CONCURRENCY) {
+        const chunk = segments.slice(index, index + MATCH_CONCURRENCY);
+        const chunkResults = await Promise.all(chunk.map((segment) => enhanceFloodSegmentGeometry(segment)));
+        enriched.push(...chunkResults);
+    }
+
+    return enriched;
+}
 
 /**
  * Fetch les tronçons Vigicrues en vigilance.
@@ -45,20 +59,33 @@ export async function fetchVigicrues(): Promise<FloodSegment[]> {
 
             // Simplify geometry
             if (feat.geometry && (feat.geometry.type === 'LineString' || feat.geometry.type === 'MultiLineString')) {
-                segments.push({
+                segments.push(prepareFloodSegment({
                     id,
                     name,
                     level: LEVEL_MAP[niveau] ?? 'yellow',
                     geometry: feat.geometry as FloodSegment['geometry'],
-                });
+                    dataSource: 'live',
+                }));
             }
         }
 
-        cache = { data: segments, fetchedAt: Date.now() };
-        console.log(`[Vigicrues] ${segments.length} tronçons en vigilance`);
-        return segments;
+        const enrichedSegments = await enrichSegments(segments);
+
+        cache = { data: enrichedSegments, fetchedAt: Date.now() };
+        const avgVertices = enrichedSegments.length > 0
+            ? (enrichedSegments.reduce((sum, segment) => sum + segment.displayVertexCount, 0) / enrichedSegments.length).toFixed(1)
+            : '0.0';
+        const matchedCount = enrichedSegments.filter((segment) => segment.geometryFidelity === 'matched').length;
+        const corridorCount = enrichedSegments.filter((segment) => segment.geometryFidelity === 'fallback').length;
+        console.log(`[Vigicrues] ${enrichedSegments.length} tronçons en vigilance (source=live, matched=${matchedCount}, corridor=${corridorCount}, avgVertices=${avgVertices})`);
+        return enrichedSegments;
     } catch (err) {
         console.warn('[Vigicrues] Fetch failed:', err);
-        return cache?.data ?? [];
+        if (cache) {
+            console.warn('[Vigicrues] Returning stale cached data');
+            return cache.data;
+        }
+
+        throw err;
     }
 }

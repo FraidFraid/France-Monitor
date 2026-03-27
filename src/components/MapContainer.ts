@@ -121,6 +121,10 @@ export class MapContainer {
     this.deckMap?.updateFloods(segments);
   }
 
+  highlightFloodSegment(segmentId: string | null): void {
+    this.deckMap?.highlightFloodSegment(segmentId);
+  }
+
   // ─── Fires ───
   updateFires(fires: ActiveFire[]): void {
     this.deckMap?.updateFires(fires);

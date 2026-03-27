@@ -214,12 +214,21 @@ export const RISK_LABELS: Record<string, string> = {
 // ═══ Floods (Vigicrues) ═══
 
 export type FloodVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
+export type FloodDataSource = 'live' | 'mock';
+export type FloodGeometryFidelity = 'raw' | 'matched' | 'fallback';
 
 export interface FloodSegment {
   id: string;
   name: string;
   level: FloodVigilanceLevel;
+  dataSource: FloodDataSource;
+  geometryFidelity: FloodGeometryFidelity;
+  matchConfidence: number;
+  rawVertexCount: number;
+  displayVertexCount: number;
   geometry: LineString | MultiLineString;
+  rawGeometry: LineString | MultiLineString;
+  displayGeometry: LineString | MultiLineString;
 }
 
 // ═══ Copernicus / Satellite ═══
