@@ -439,9 +439,6 @@ export class ToastNotification {
     this.container.appendChild(toast);
     this.activeToasts.set(anomaly.id, toast);
     this.seenAnomalyIds.add(anomaly.id);
-
-    // 10s auto-dismiss
-    setTimeout(() => { this.dismissToast(anomaly.id, true); }, 10_000);
   }
 
   /** Create DOM element for an AIS anomaly toast. */
@@ -460,14 +457,15 @@ export class ToastNotification {
         <button class="toast-close" title="Fermer">&times;</button>
     `;
 
-    // Pause auto-dismiss on hover
-    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    // 10s auto-dismiss, paused on hover
+    let dismissTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      this.dismissToast(anomaly.id, true);
+    }, 10_000);
     toast.addEventListener('mouseenter', () => {
-      if (hoverTimer) clearTimeout(hoverTimer);
-      toast.style.opacity = '1'; // Prevent auto-dismiss dimming
+      if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; }
     });
     toast.addEventListener('mouseleave', () => {
-      hoverTimer = setTimeout(() => { this.dismissToast(anomaly.id, true); }, 3000);
+      dismissTimer = setTimeout(() => { this.dismissToast(anomaly.id, true); }, 3000);
     });
 
     const navigate = () => {
