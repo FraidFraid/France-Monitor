@@ -19,7 +19,6 @@ import {
     onAisMessage,
     getAisConnectionStatus,
     getAisLastMessageTs,
-    AIS_RELAY_URL as _AIS_RELAY_URL,
     type AisConnectionStatus,
 } from './ais-connection.ts';
 
@@ -254,7 +253,7 @@ function _handleAisMessage(raw: string): void {
             (staticReport as Record<string, unknown> | undefined)?.UserID ??
             (staticReport as Record<string, unknown> | undefined)?.MMSI ??
             (staticReport as Record<string, unknown> | undefined)?.Mmsi ??
-            (staticReport as Record<string, unknown> | undefined)?.MetaData ??
+            ((staticReport as Record<string, unknown> | undefined)?.MetaData as Record<string, unknown> | undefined)?.MMSI ??
             '';
         const mmsi = String(mmsiRaw).trim();
 
