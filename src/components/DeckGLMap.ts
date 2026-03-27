@@ -8,7 +8,7 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
 import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
@@ -18,10 +18,14 @@ import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
+import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
 import { formatUpdateTime } from '../utils/format-date.ts';
 import { buildSparklineSVG } from '../utils/sparkline.ts';
+import type { LineString, MultiLineString } from 'geojson';
+import { computeFloodSegmentBbox } from '../services/copernicus.ts';
+import type { SatelliteViewRequest } from '../types/index.ts';
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
@@ -175,6 +179,8 @@ const SRC_MILITARY_FLIGHTS = 'military-flights-src';
 const SRC_MILITARY_FLIGHT_TRAILS = 'military-flight-trails-src';
 const SRC_AIR_TRAFFIC = 'air-traffic-src';
 const SRC_MILITARY_SHIPS = 'military-ships-src';
+const SRC_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight-src';
+const SRC_MILITARY_SHIPS_SELECTED = 'military-ships-selected-src';
 const SRC_GLOBAL_TRAFFIC = 'global-traffic-src';    // Trafic AIS mondial (civils/étrangers)
 const SRC_SUBMARINE_CABLES = 'submarine-cables-src';
 const SRC_SUBMARINE_CABLES_LANDINGS = 'submarine-cables-landings-src';
@@ -191,6 +197,8 @@ const LYR_MILITARY_FLIGHTS = 'military-flights';
 const LYR_MILITARY_FLIGHTS_LABEL = 'military-flights-label';
 const LYR_AIR_TRAFFIC_LABEL = 'air-traffic-label';
 const LYR_MILITARY_SHIPS = 'military-ships';
+const LYR_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight';
+const LYR_MILITARY_SHIPS_SELECTED = 'military-ships-selected';
 // const LYR_GLOBAL_TRAFFIC = 'global-traffic-pts'; // Now rendered via Deck.gl TextLayer
 const LYR_SUBMARINE_CABLES = 'submarine-cables-line';
 const LYR_SUBMARINE_CABLES_GLOW = 'submarine-cables-glow';
@@ -223,6 +231,9 @@ const LYR_IXP_CIRCLE = 'infra-ixp-circle';
 const LYR_HOSPITALS_CHU = 'hospitals-chu';
 const LYR_HOSPITALS_CH = 'hospitals-ch';
 const LYR_HOSPITALS_LABEL = 'hospitals-label';
+const SRC_MAIRES_POL = 'maires-pol-src';
+const LYR_MAIRES_POL = 'maires-pol';
+const LYR_MAIRES_POL_LABEL = 'maires-pol-label';
 
 
 // ─── Ecowatt signal → color ───
@@ -1188,6 +1199,11 @@ export class DeckGLMap {
   private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
   private onMilitaryShipClick: ((ship: ReturnType<typeof import('../services/military-ships.ts').getMilitaryShips>[0], x: number, y: number) => void) | null = null;
+  private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
+  private _highlightedMmsi: string | null = null;
+  private _selectedShipMmsi: string | null = null;
+  /** Callback triggered when user clicks "Voir satellite" on a flood segment. Set by App.ts via MapContainer. */
+  public onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
   // In-memory lookup tables for military data (populated by updateMilitary*)
   private militaryFlightsById: Map<string, MilitaryFlight> = new Map();
   private airTrafficFlightsById: Map<string, AirTrafficFlight> = new Map();
@@ -1204,6 +1220,7 @@ export class DeckGLMap {
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
+  private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1522,6 +1539,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_MILITARY_FLIGHT_TRAILS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_AIR_TRAFFIC, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_GLOBAL_TRAFFIC, { type: 'geojson', data: emptyFC() });
 
     let submarineCablesData = emptyFC() as GeoJSON.FeatureCollection<GeoJSON.LineString>;
@@ -3041,6 +3060,31 @@ export class DeckGLMap {
       paint: {},
     });
 
+    this.map.addLayer({
+      id: LYR_MILITARY_SHIPS_SELECTED,
+      type: 'circle',
+      source: SRC_MILITARY_SHIPS_SELECTED,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14, 12, 18],
+        'circle-color': 'rgba(90,200,250,0.18)',
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#5ac8fa',
+        'circle-opacity': 0.95,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_MILITARY_SHIPS_HIGHLIGHT,
+      type: 'circle',
+      source: SRC_MILITARY_SHIPS_HIGHLIGHT,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 15],
+        'circle-color': 'rgba(255,255,255,0.12)',
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.95,
+      },
+    });
+
     // ─── Military Ships label ───
     this.map.addLayer({
       id: `${LYR_MILITARY_SHIPS}-label`,
@@ -4484,6 +4528,17 @@ export class DeckGLMap {
       else if (p.level === 'yellow') { levelText = 'Jaune'; levelColor = '#ffcc00'; }
       else if (p.level === 'green') { levelText = 'Vert'; levelColor = '#34c759'; }
 
+      // Compute satellite bbox from actual geometry, fallback to click point
+      const geom = feat.geometry;
+      const hasLineGeom = geom !== null &&
+          (geom.type === 'LineString' || geom.type === 'MultiLineString');
+
+      const satelliteBbox: [number, number, number, number] = hasLineGeom
+          ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
+          : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
+
+      const showSatBtn = this.onSatelliteView !== null;
+
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
           <h4 style="margin:0 0 4px; font-weight:700; font-size: 15px; color: #ffffff;">
@@ -4492,20 +4547,37 @@ export class DeckGLMap {
           <div style="margin:0 0 10px; font-size: 13px; font-weight: 600; color: #64d2ff;">
             ${p.name || 'Tronçon inconnu'}
           </div>
-          
           <div style="font-size:13px; margin-bottom: 2px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <span style="color:#9898a8">Niveau de vigilance :</span>
               <span style="font-size:11px; padding:2px 6px; border-radius:4px; font-weight:700; color:${p.level === 'yellow' || p.level === 'green' ? '#000' : '#fff'}; background:${levelColor}">${levelText}</span>
             </div>
           </div>
+          ${showSatBtn ? `<button class="satellite-cta-btn" data-action="satellite">🛰️ Voir satellite</button>` : ''}
         </div>
       `;
 
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
+      const popupInst = new maplibregl.Popup({
+          closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
+      })
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(this.map);
+
+      if (showSatBtn) {
+          // Use getElement() for scoped selection — avoid document.querySelector
+          const btnEl = popupInst.getElement().querySelector('[data-action="satellite"]');
+          btnEl?.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              this.onSatelliteView?.({
+                  bbox: satelliteBbox,
+                  sourceType: 'flood',
+                  title: String(p.name || 'Tronçon Vigicrues'),
+                  geometry: hasLineGeom ? (geom as LineString | MultiLineString) : undefined,
+                  preferredCollection: 'sentinel-1-grd',
+              });
+          }, { once: true });
+      }
     });
 
     // ─── Weather Department Interactions (tooltip on hover) ───
@@ -4921,13 +4993,17 @@ export class DeckGLMap {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const shipId = feat.properties?.id as string | undefined;
-      if (!shipId || !this.onMilitaryShipClick) return;
+      if (!shipId) return;
       const ship = this.militaryShipsById.get(shipId);
       if (!ship) return;
       this.militaryTooltip?.remove();
       this.militaryTooltip = null;
       const pt = this.map.project(e.lngLat);
-      this.onMilitaryShipClick(ship, pt.x, pt.y);
+      if (this.onMilitaryShipClick) this.onMilitaryShipClick(ship, pt.x, pt.y);
+      if (this._onMaritimeShipClick) {
+        const full: MilitaryShip | undefined = getAllLiveTraffic().find(s => s.mmsi === ship.mmsi) ?? getMilitaryShips().find(s => s.mmsi === ship.mmsi);
+        if (full) this._onMaritimeShipClick(full, pt.x, pt.y);
+      }
     });
 
     // ─── Submarine Cables Interactions ───
@@ -5058,6 +5134,8 @@ export class DeckGLMap {
       return Number.isFinite(value) ? value : 0;
     };
     const getAisIconColor = (d: AisShipData): string => {
+      if (d.mmsi && d.mmsi === this._highlightedMmsi) return '#ffffff';
+      if (d.mmsi && d.mmsi === this._selectedShipMmsi) return '#5ac8fa';
       const t = getShipTypeNumber(d);
       if (t >= 80 && t <= 89) return '#60a5fa';      // Tanker — bleu clair
       if (t >= 70 && t <= 79) return '#4ade80';      // Cargo — vert
@@ -5069,12 +5147,17 @@ export class DeckGLMap {
       if (d.navStatus === 7) return '#facc15';        // Pêche par statut — jaune
       return '#94a3b8';                              // Inconnu — gris
     };
-    const getAisSize = (_d: AisShipData): number => 14;
-    const getAisAngle = (d: AisShipData): number => {
-      if (Number.isFinite(d.heading)) return d.heading;
-      if (Number.isFinite(d.cog)) return d.cog ?? 0;
-      return 0;
+    const getAisSize = (d: AisShipData): number => {
+      if (d.mmsi && d.mmsi === this._highlightedMmsi) return 22;
+      if (d.mmsi && d.mmsi === this._selectedShipMmsi) return 18;
+      return 14;
     };
+    const getAisAngle = (d: AisShipData): number => this.getAisDeckAngle(d);
+    const maritimeLabelData = this.globalTrafficData.filter((ship) => {
+      if (!ship.name || ship.name.trim().length === 0) return false;
+      if (ship.mmsi === this._highlightedMmsi || ship.mmsi === this._selectedShipMmsi) return true;
+      return this.viewState.zoom >= 8;
+    });
     return [
       new DayNightLayer({
         id: 'day-night',
@@ -5130,10 +5213,40 @@ export class DeckGLMap {
         parameters: { depthTest: false },
         updateTriggers: {
           getPosition: this.globalTrafficData,
-          getColor: this.globalTrafficData,
-          getSize: this.globalTrafficData,
+          getColor: [this.globalTrafficData, this._highlightedMmsi, this._selectedShipMmsi],
+          getSize: [this.globalTrafficData, this._highlightedMmsi, this._selectedShipMmsi],
           getAngle: this.globalTrafficData,
-          getIcon: this.globalTrafficData,
+          getIcon: [this.globalTrafficData, this._highlightedMmsi, this._selectedShipMmsi],
+        },
+      }),
+      new TextLayer<AisShipData>({
+        id: 'deck-ais-traffic-labels',
+        data: maritimeLabelData,
+        visible: this.globalTrafficVisible && this.viewState.zoom >= 8,
+        opacity: maritimeDeckOpacity,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: AisShipData) => [Number(d.lon), Number(d.lat)],
+        getText: (d: AisShipData) => d.name,
+        getColor: (d: AisShipData) => {
+          if (d.mmsi && d.mmsi === this._selectedShipMmsi) return [90, 200, 250, 255];
+          if (d.mmsi && d.mmsi === this._highlightedMmsi) return [255, 255, 255, 255];
+          return [214, 222, 235, 230];
+        },
+        getSize: (d: AisShipData) => (d.mmsi === this._selectedShipMmsi ? 13 : this.viewState.zoom >= 10 ? 11 : 10),
+        getPixelOffset: [0, 16],
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'top',
+        billboard: true,
+        fontFamily: 'IBM Plex Sans, sans-serif',
+        characterSet: 'auto',
+        background: false,
+        outlineWidth: 2,
+        outlineColor: [10, 12, 18, 220],
+        updateTriggers: {
+          getPosition: maritimeLabelData,
+          getText: maritimeLabelData,
+          getColor: [maritimeLabelData, this._highlightedMmsi, this._selectedShipMmsi],
+          getSize: [maritimeLabelData, this._highlightedMmsi, this._selectedShipMmsi, this.viewState.zoom],
         },
       }),
       new ScatterplotLayer<TrafficIncident>({
@@ -5240,6 +5353,36 @@ export class DeckGLMap {
 
   private headingToDeckAngle(heading?: number): number {
     return -this.normalizeFlightHeading(heading);
+  }
+
+  private getAisDeckAngle(ship: AisShipData): number {
+    const speed = Number(ship.speed ?? 0);
+    const trailHeading = speed > 0.5 ? this.getAisTrailHeading(ship.trail) : null;
+    const cog = this.normalizeAngle(ship.cog);
+    const heading = this.normalizeAngle(ship.heading);
+    const course = speed > 0.5
+      ? (trailHeading ?? cog ?? heading ?? 0)
+      : (heading ?? cog ?? trailHeading ?? 0);
+    return this.headingToDeckAngle(course);
+  }
+
+  private getAisTrailHeading(trail?: Array<[number, number]>): number | null {
+    if (!trail || trail.length < 2) return null;
+
+    for (let i = trail.length - 1; i >= 1; i -= 1) {
+      const prev = trail[i - 1];
+      const next = trail[i];
+      if (!prev || !next) continue;
+
+      const dx = next[0] - prev[0];
+      const dy = next[1] - prev[1];
+      if (Math.abs(dx) < 0.00001 && Math.abs(dy) < 0.00001) continue;
+
+      const heading = (Math.atan2(dx, dy) * 180) / Math.PI;
+      return this.normalizeAngle(heading < 0 ? heading + 360 : heading);
+    }
+
+    return null;
   }
 
   private projectAirTrafficPosition(flight: AirTrafficFlight): [number, number] {
@@ -6132,9 +6275,9 @@ export class DeckGLMap {
 
   private normalizeAngle(value?: number): number | null {
     if (!Number.isFinite(value)) return null;
-    let angle = (value as number) % 360;
-    if (angle < 0) angle += 360;
-    return Math.round(angle);
+    const raw = Number(value);
+    if (raw < 0 || raw > 360) return null;
+    return Math.round(raw === 360 ? 0 : raw);
   }
 
   private decodeRoute(destination?: string): string {
@@ -8570,6 +8713,73 @@ export class DeckGLMap {
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
   }
 
+  async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {
+    const map = this.map;
+    if (!map) return;
+
+    if (!enabled) {
+      this.setVis(LYR_MAIRES_POL, 'none');
+      this.setVis(LYR_MAIRES_POL_LABEL, 'none');
+      return;
+    }
+
+    // Chargement lazy du dataset
+    if (!this._mairesPolitiqueData) {
+      try {
+        const res = await fetch('/data/maires-politique.json');
+        this._mairesPolitiqueData = await res.json() as Array<{c:string;lat:number;lon:number;n:string;nom:string}>;
+      } catch { return; }
+    }
+
+    const features = this._mairesPolitiqueData.map(m => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [m.lon, m.lat] },
+      properties: { nuance: m.n, nom: m.nom, code: m.c },
+    }));
+
+    const src = map.getSource(SRC_MAIRES_POL) as import('maplibre-gl').GeoJSONSource | undefined;
+    if (src) {
+      src.setData({ type: 'FeatureCollection', features });
+    } else {
+      map.addSource(SRC_MAIRES_POL, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: LYR_MAIRES_POL,
+        type: 'circle',
+        source: SRC_MAIRES_POL,
+        minzoom: 8,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 12, 7],
+          'circle-color': [
+            'match', ['get', 'nuance'],
+            'LSOC', '#cf3245', 'LDVG', '#e05252', 'LVE', '#43a85a',
+            'LFI', '#c0392b', 'LCOM', '#8b0000', 'LREM', '#f0b800',
+            'LDVC', '#a0a040', 'LLR', '#2980b9', 'LDVD', '#4a90d9',
+            'LRN', '#1a1a6e', 'LFN', '#0d0d55', 'LREG', '#8e44ad',
+            '#7f8c8d',
+          ],
+          'circle-stroke-width': 1,
+          'circle-stroke-color': 'rgba(0,0,0,0.4)',
+          'circle-opacity': 0.85,
+        },
+      });
+      map.addLayer({
+        id: LYR_MAIRES_POL_LABEL,
+        type: 'symbol',
+        source: SRC_MAIRES_POL,
+        minzoom: 11,
+        layout: {
+          'text-field': ['get', 'nom'],
+          'text-size': 10,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+        },
+        paint: { 'text-color': '#fff', 'text-halo-color': 'rgba(0,0,0,0.7)', 'text-halo-width': 1 },
+      });
+    }
+    this.setVis(LYR_MAIRES_POL, 'visible');
+    this.setVis(LYR_MAIRES_POL_LABEL, 'visible');
+  }
+
   private _buildGibsDate(): string {
     const d = new Date();
     d.setDate(d.getDate() - 2); // J-2 : latence de traitement VIIRS ~24-48h
@@ -8936,6 +9146,89 @@ export class DeckGLMap {
     this.onMilitaryShipClick = handler;
   }
 
+  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
+    this._onMaritimeShipClick = cb;
+  }
+
+  setHighlightedShip(mmsi: string | null): void {
+    this._highlightedMmsi = mmsi;
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, mmsi);
+    this.syncHighlightedShipTooltip(mmsi);
+    this.refreshAisLayers();
+  }
+
+  setSelectedShip(mmsi: string | null): void {
+    this._selectedShipMmsi = mmsi;
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, mmsi);
+    this.refreshAisLayers();
+  }
+
+  private updateMilitaryShipMarkerSource(sourceId: string, mmsi: string | null): void {
+    if (!this.map) return;
+    const src = this.map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (!mmsi) {
+      src.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    const ship = Array.from(this.militaryShipsById.values()).find((s) => s.mmsi === mmsi)
+      ?? this.globalTrafficData.find((s) => s.mmsi === mmsi)
+      ?? getAllLiveTraffic().find((s) => s.mmsi === mmsi);
+    if (!ship) {
+      src.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [ship.lon, ship.lat] },
+        properties: { id: ship.id, mmsi: ship.mmsi ?? '' },
+      }],
+    });
+  }
+
+  private syncHighlightedShipTooltip(mmsi: string | null): void {
+    if (!this.map) return;
+    if (!mmsi) {
+      this.hideAisHoverTooltip();
+      return;
+    }
+    const globalShip = this.globalTrafficData.find((s) => s.mmsi === mmsi);
+    const rawShip = globalShip ? null : getAllLiveTraffic().find((s) => s.mmsi === mmsi);
+    const ship = globalShip ?? (rawShip ? {
+      id: rawShip.id,
+      name: rawShip.name,
+      type: rawShip.type,
+      shipType: rawShip.shipType ?? 0,
+      shipCategory: this.getShipCategory(rawShip.type),
+      lat: Number(rawShip.lat),
+      lon: Number(rawShip.lon),
+      speed: rawShip.speed ?? 0,
+      heading: rawShip.heading ?? 0,
+      cog: rawShip.cog,
+      navStatus: rawShip.navStatus,
+      callSign: rawShip.callSign,
+      imoNumber: rawShip.imoNumber,
+      draught: rawShip.draught,
+      dimensions: rawShip.dimensions,
+      eta: rawShip.eta,
+      mmsi: rawShip.mmsi ?? '',
+      destination: rawShip.destination,
+      lastSeen: rawShip.lastSeen,
+      country: rawShip.country,
+      trail: rawShip.trail,
+    } satisfies AisShipData : null);
+    if (!ship) {
+      this.hideAisHoverTooltip();
+      return;
+    }
+    this.showAisHoverTooltip(
+      new maplibregl.LngLat(Number(ship.lon), Number(ship.lat)),
+      this.getAisTooltipHtml(ship)
+    );
+  }
+
   updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
     if (!this.map) return;
     const src = this.map.getSource(SRC_MILITARY_SHIPS) as maplibregl.GeoJSONSource | undefined;
@@ -8961,6 +9254,8 @@ export class DeckGLMap {
         },
       })),
     });
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
   }
 
   /**
@@ -9232,6 +9527,8 @@ export class DeckGLMap {
     this.setVis(LYR_AIR_TRAFFIC_LABEL, vis(layers.trafficAir));
     this.setVis(LYR_MILITARY_SHIPS, vis(layers.military));
     this.setVis(`${LYR_MILITARY_SHIPS}-label`, vis(layers.military));
+    this.setVis(LYR_MILITARY_SHIPS_HIGHLIGHT, vis(layers.trafficMaritime || layers.military));
+    this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
     this.globalTrafficVisible = layers.trafficMaritime;
     this.roadTrafficVisible = layers.trafficRoad;
