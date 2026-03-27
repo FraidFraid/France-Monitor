@@ -15,6 +15,7 @@ const DEFAULT_FILTER: FilterState = {
     categories: [],
     threatLevels: [],
     layers: {
+        newsGroup: false,
         news: false,
         alerts: false,
         energyGroup: false,
@@ -23,6 +24,7 @@ const DEFAULT_FILTER: FilterState = {
         healthOscour: false,
         healthApl: false,
         hospitals: false,
+        environmentGroup: false,
         environmental: false,
         fires: false,
         infrastructure: false,

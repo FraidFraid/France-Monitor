@@ -1,7 +1,7 @@
 /**
  * urlState.ts — Encode/décode l'état de la vue dans l'URL.
  * Permet de partager un lien vers une vue précise de la carte.
- * Paramètres : ?lng=2.2&lat=46.6&z=6&layers=news,alerts,energy&time=24h&q=paris
+ * Paramètres : ?lng=2.2&lat=46.6&z=6&layers=news,energy&time=24h&q=paris
  */
 
 import type { MapLayers } from '../types/index.ts';
@@ -17,7 +17,7 @@ export interface UrlState {
 
 const LAYER_KEYS: (keyof MapLayers)[] = [
     'news',
-    'alerts',
+    'stability',
     'energy',
     'health',
     'environmental',
@@ -30,7 +30,6 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'metropoles',
     'military',
     'outages',
-    'stability',
 ];
 
 /**

@@ -13,8 +13,9 @@ interface LayerDef {
 }
 
 const LAYER_DEFS: LayerDef[] = [
-  { key: 'news', label: 'ACTUALITÉS', icon: '&#128240;' },
-  { key: 'alerts', label: 'ALERTES', icon: '&#128680;' },
+  { key: 'newsGroup', label: 'ACTUALITÉS', icon: '&#128240;' },
+  { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: '&#128240;', sublayerOf: 'newsGroup' },
+  { key: 'stability', label: 'INDICE STABILITÉ', icon: '&#128202;', sublayerOf: 'newsGroup' },
   { key: 'energyGroup', label: 'ÉNERGIE', icon: '&#9889;' },
   { key: 'energy', label: 'ÉLECTRICITÉ / ÉCOWATT', icon: '&#9889;', sublayerOf: 'energyGroup' },
   { key: 'gas', label: 'RÉSEAU GAZ', icon: '&#128293;', sublayerOf: 'energyGroup' },
@@ -29,8 +30,10 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'trafficRoad', label: 'TRAFIC ROUTIER', icon: '&#128663;', sublayerOf: 'traffic' },
   { key: 'trafficMaritime', label: 'TRAFIC MARITIME', icon: '&#128674;', sublayerOf: 'traffic' },
   { key: 'trafficAir', label: 'TRAFIC AÉRIEN', icon: '&#9992;', sublayerOf: 'traffic' },
-  { key: 'environmental', label: 'ENVIRONNEMENT', icon: '&#127793;' },
-  { key: 'fires', label: 'FEUX DE FORÊT (NASA FIRMS)', icon: '&#128293;' },
+  { key: 'environmentGroup', label: 'ENVIRONNEMENT', icon: '&#127793;' },
+  { key: 'environmental', label: 'MÉTÉO / CRUES', icon: '&#127793;', sublayerOf: 'environmentGroup' },
+  { key: 'fires', label: 'FEUX DE FORÊT (NASA FIRMS)', icon: '&#128293;', sublayerOf: 'environmentGroup' },
+  { key: 'dayNight', label: 'JOUR / NUIT', icon: '&#127761;', sublayerOf: 'environmentGroup' },
   { key: 'sovereignty', label: 'SOUVERAINETÉ', icon: '&#128737;' },
   { key: 'military', label: 'DÉFENSE', icon: '&#128737;', sublayerOf: 'sovereignty' },
   { key: 'subseaCables', label: 'CONNECTIVITÉ SOUS-MARINE', icon: '&#127754;', sublayerOf: 'sovereignty' },
@@ -40,8 +43,6 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesTelecom',  label: 'TÉLÉCOM 4G·5G', icon: '&#128225;', sublayerOf: 'outages' },
   { key: 'outagesInternet', label: 'INTERNET / BGP', icon: '&#127760;', sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: '&#9729;',   sublayerOf: 'outages' },
-  { key: 'stability', label: 'INDICE STABILITÉ', icon: '&#128202;' },
-  { key: 'dayNight', label: 'JOUR / NUIT', icon: '&#127761;' },
   { key: 'elus', label: 'ÉLUS & REPRÉSENTANTS', icon: '&#127963;' },
 ];
 
@@ -52,11 +53,13 @@ export class LayerPanel {
   private layers: MapLayers;
   private onChange: LayerToggleHandler | null = null;
   private collapsed = false;
+  private newsExpanded = true;
   private healthExpanded = false;
   private trafficExpanded = true;
   private energyExpanded = false;
   private sovereigntyExpanded = false;
   private outagesExpanded = false;
+  private environmentExpanded = false;
   private element: HTMLElement | null = null;
 
   constructor(container: HTMLElement, initialLayers: MapLayers) {
@@ -94,26 +97,43 @@ export class LayerPanel {
   private render(): void {
     if (!this.element) return;
 
-    const enabledCount = LAYER_DEFS.filter(d => d.key !== 'sovereignty' && this.layers[d.key]).length;
+    const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energyGroup', 'traffic', 'sovereignty', 'outages', 'environmentGroup']);
+    const enabledCount = LAYER_DEFS.filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
 
     let listHtml = '';
+    let inNewsGroup = false;
     let inHealthGroup = false;
     let inTrafficGroup = false;
     let inEnergyGroup = false;
     let inSovereigntyGroup = false;
     let inOutagesGroup = false;
+    let inEnvironmentGroup = false;
 
     for (const def of LAYER_DEFS) {
       // Close any open groups before starting a new master group
       const closeGroups = () => {
+        if (inNewsGroup) { listHtml += `</div></div>`; inNewsGroup = false; }
         if (inHealthGroup) { listHtml += `</div></div>`; inHealthGroup = false; }
         if (inTrafficGroup) { listHtml += `</div></div>`; inTrafficGroup = false; }
         if (inEnergyGroup) { listHtml += `</div></div>`; inEnergyGroup = false; }
         if (inSovereigntyGroup) { listHtml += `</div></div>`; inSovereigntyGroup = false; }
         if (inOutagesGroup) { listHtml += `</div></div>`; inOutagesGroup = false; }
+        if (inEnvironmentGroup) { listHtml += `</div></div>`; inEnvironmentGroup = false; }
       };
 
-      if (def.key === 'energyGroup') {
+      if (def.key === 'newsGroup') {
+        closeGroups();
+        listHtml += `
+          <div class="layer-panel-accordion ${this.newsExpanded ? 'expanded' : ''}">
+            <div class="layer-panel-accordion-header" id="news-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+              <span class="layer-panel-icon" style="margin-right: 8px;">&#128240;</span>
+              <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ACTUALITÉS</span>
+              <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.newsExpanded ? '&#9650;' : '&#9664;'}</span>
+            </div>
+            <div class="layer-panel-accordion-content" style="display: ${this.newsExpanded ? 'block' : 'none'}; border-left: 2px solid rgba(255,255,255,0.1); margin-left: 10px; padding-left: 4px; margin-bottom: 8px; margin-top: 4px;">
+        `;
+        inNewsGroup = true;
+      } else if (def.key === 'energyGroup') {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.energyExpanded ? 'expanded' : ''}">
@@ -162,6 +182,8 @@ export class LayerPanel {
             <div class="layer-panel-accordion-content" style="display: ${this.sovereigntyExpanded ? 'block' : 'none'}; border-left: 2px solid rgba(255,255,255,0.1); margin-left: 10px; padding-left: 4px; margin-bottom: 8px; margin-top: 4px;">
         `;
         inSovereigntyGroup = true;
+      } else if (inNewsGroup && def.sublayerOf === 'newsGroup') {
+        listHtml += this.renderItem(def);
       } else if (inEnergyGroup && def.sublayerOf === 'energyGroup') {
         listHtml += this.renderItem(def);
       } else if (inHealthGroup && def.sublayerOf === 'health') {
@@ -184,17 +206,33 @@ export class LayerPanel {
         inOutagesGroup = true;
       } else if (inOutagesGroup && def.sublayerOf === 'outages') {
         listHtml += this.renderItem(def);
+      } else if (def.key === 'environmentGroup') {
+        closeGroups();
+        listHtml += `
+          <div class="layer-panel-accordion ${this.environmentExpanded ? 'expanded' : ''}">
+            <div class="layer-panel-accordion-header" id="environment-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+              <span class="layer-panel-icon" style="margin-right: 8px;">&#127793;</span>
+              <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ENVIRONNEMENT</span>
+              <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.environmentExpanded ? '&#9650;' : '&#9664;'}</span>
+            </div>
+            <div class="layer-panel-accordion-content" style="display: ${this.environmentExpanded ? 'block' : 'none'}; border-left: 2px solid rgba(255,255,255,0.1); margin-left: 10px; padding-left: 4px; margin-bottom: 8px; margin-top: 4px;">
+        `;
+        inEnvironmentGroup = true;
+      } else if (inEnvironmentGroup && def.sublayerOf === 'environmentGroup') {
+        listHtml += this.renderItem(def);
       } else {
         closeGroups();
         listHtml += this.renderItem(def);
       }
     }
     // Close any remaining open groups
+    if (inNewsGroup) listHtml += `</div></div>`;
     if (inHealthGroup) listHtml += `</div></div>`;
     if (inTrafficGroup) listHtml += `</div></div>`;
     if (inEnergyGroup) listHtml += `</div></div>`;
     if (inSovereigntyGroup) listHtml += `</div></div>`;
     if (inOutagesGroup) listHtml += `</div></div>`;
+    if (inEnvironmentGroup) listHtml += `</div></div>`;
 
     this.element.innerHTML = `
       <div class="layer-panel-header">
@@ -217,6 +255,22 @@ export class LayerPanel {
       this.collapsed = !this.collapsed;
       this.render();
     });
+
+    // News Accordion toggle
+    const newsToggle = this.element.querySelector('#news-accordion-toggle') as HTMLElement | null;
+    if (newsToggle) {
+      newsToggle.addEventListener('mouseenter', () => {
+        newsToggle.style.background = 'rgba(255,255,255,0.1)';
+      });
+      newsToggle.addEventListener('mouseleave', () => {
+        newsToggle.style.background = 'rgba(255,255,255,0.05)';
+      });
+      newsToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.newsExpanded = !this.newsExpanded;
+        this.render();
+      });
+    }
 
     // Health Accordion toggle
     const healthToggle = this.element.querySelector('#health-accordion-toggle') as HTMLElement | null;
@@ -283,6 +337,22 @@ export class LayerPanel {
       sovereigntyToggle.addEventListener('click', (e) => {
         e.preventDefault();
         this.sovereigntyExpanded = !this.sovereigntyExpanded;
+        this.render();
+      });
+    }
+
+    // Environment Accordion toggle
+    const environmentToggle = this.element.querySelector('#environment-accordion-toggle') as HTMLElement | null;
+    if (environmentToggle) {
+      environmentToggle.addEventListener('mouseenter', () => {
+        environmentToggle.style.background = 'rgba(255,255,255,0.1)';
+      });
+      environmentToggle.addEventListener('mouseleave', () => {
+        environmentToggle.style.background = 'rgba(255,255,255,0.05)';
+      });
+      environmentToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.environmentExpanded = !this.environmentExpanded;
         this.render();
       });
     }
@@ -370,6 +440,7 @@ export class LayerPanel {
 
   private getLayerDescription(key: keyof MapLayers): string {
     const descriptions: Record<keyof MapLayers, string> = {
+      newsGroup: 'Groupe actualités : actus géolocalisées et indice de stabilité',
       news: 'Articles PQR géolocalisés',
       alerts: 'Alertes critiques en cours',
       energyGroup: 'Groupe énergie: électricité, gaz et métropoles électriques',
@@ -383,6 +454,7 @@ export class LayerPanel {
       trafficRoad: 'Incidents routiers temps réel (TomTom OSINT)',
       trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
       trafficAir: 'Trafic aérien civil (airplanes.live) — militaires dans DÉFENSE',
+      environmentGroup: 'Groupe environnement: météo/crues, feux de forêt et terminateur jour/nuit',
       environmental: 'Alertes météo et crues',
       fires: 'Feux de forêt actifs — données satellite NASA FIRMS (VIIRS, latence ~3h)',
       metropoles: 'Consommation électrique temps réel des grandes métropoles',
