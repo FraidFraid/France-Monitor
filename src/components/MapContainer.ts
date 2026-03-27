@@ -5,7 +5,8 @@
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
-import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
+import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 
@@ -40,7 +41,9 @@ export class MapContainer {
   private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
   private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
+  private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
+  private _onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -66,8 +69,13 @@ export class MapContainer {
     if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
     if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
     if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
+    if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     await this.deckMap.init();
+    // Propagate satellite view callback if set before init()
+    if (this._onSatelliteView) {
+      this.deckMap.onSatelliteView = this._onSatelliteView;
+    }
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
@@ -133,6 +141,10 @@ export class MapContainer {
 
   setModisOverlayVisible(enabled: boolean): void {
     this.deckMap?.setModisOverlayVisible(enabled);
+  }
+
+  async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {
+    await this.deckMap?.setMairesPolitiqueVisible(enabled);
   }
 
   setOnRawMapClick(handler: (lat: number, lon: number) => void): void {
@@ -345,6 +357,25 @@ export class MapContainer {
   setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
     this.onMilitaryShipClick = handler;
     this.deckMap?.setOnMilitaryShipClick(handler);
+  }
+
+  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
+    this._onMaritimeShipClickCb = cb;
+    this.deckMap?.setOnMaritimeShipClick(cb);
+  }
+
+  setOnSatelliteView(handler: (req: SatelliteViewRequest) => void): void {
+    this._onSatelliteView = handler;
+    // Delegate to deckMap if already initialized
+    if (this.deckMap) this.deckMap.onSatelliteView = handler;
+  }
+
+  setHighlightedShip(mmsi: string | null): void {
+    this.deckMap?.setHighlightedShip(mmsi);
+  }
+
+  setSelectedShip(mmsi: string | null): void {
+    this.deckMap?.setSelectedShip(mmsi);
   }
 
   selectItem(item: NewsItem | null): void {
