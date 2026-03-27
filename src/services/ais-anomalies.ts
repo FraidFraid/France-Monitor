@@ -13,7 +13,7 @@
 
 import { NAVY_MMSI_SET, type MilitaryShip } from './military-ships.ts';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
-import type { AisAnomaly, ThreatLevel } from '../types/index.ts';
+import type { AisAnomaly } from '../types/index.ts';
 
 // ─── Seuils ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,7 @@ const SILENCE_RISK_MS = 20 * 60 * 1000;  // 20 min pour navire civil à risque �
 const RENDEZVOUS_DIST_KM   = 2;               // Distance max rendezvous (km)
 const RENDEZVOUS_MIN_SPEED = 1;               // Vitesse min des deux navires (kts)
 const RENDEZVOUS_COOLDOWN_MS = 30 * 60 * 1000; // 30 min entre deux alertes pour la même paire
+const LAST_SEEN_MAX_AGE_MS = 60 * 60 * 1000;  // 1h — purge navires disparus du state
 
 // ─── State interne ──────────────────────────────────────────────────────────
 
@@ -78,10 +79,24 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
     const nowSec = Math.round(nowMs / 1000);
     const anomalies: AisAnomaly[] = [];
 
+    // ── Purge state mort (navires disparus depuis > 1h) ───────────────────────
+    for (const [mmsi, ts] of lastSeenTs) {
+        if (nowMs - ts > LAST_SEEN_MAX_AGE_MS) {
+            lastSeenTs.delete(mmsi);
+            lastSeenPos.delete(mmsi);
+            lastSeenRisk.delete(mmsi);
+            seenSilenceAlerts.delete(mmsi);
+        }
+    }
+    // Purge cooldowns rendezvous expirés
+    for (const [key, expiry] of rendezvousCooldowns) {
+        if (nowMs > expiry) rendezvousCooldowns.delete(key);
+    }
+
     // ── Mise à jour de l'état lastSeen ────────────────────────────────────────
     for (const ship of ships) {
         if (!ship.mmsi) continue;
-        lastSeenTs.set(ship.mmsi, nowMs);
+        lastSeenTs.set(ship.mmsi, ship.lastSeen ?? nowMs);
         lastSeenPos.set(ship.mmsi, [ship.lon, ship.lat]);
         if (ship.riskLevel) {
             lastSeenRisk.set(ship.mmsi, ship.riskLevel);
@@ -115,7 +130,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         anomalies.push({
             id: `silence-${mmsi}-${nowSec}-${idx}`,
             type: 'radio_silence',
-            severity: (isMilitary ? 'high' : 'medium') as ThreatLevel,
+            severity: isMilitary ? 'high' : 'medium',
             position: pos,
             timestamp: nowMs,
             mmsis: [mmsi],
@@ -153,7 +168,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
             anomalies.push({
                 id: `rendez-${key}-${nowSec}-${idx}`,
                 type: 'rendezvous',
-                severity: 'medium' as ThreatLevel,
+                severity: 'medium',
                 position: [centLon, centLat],
                 timestamp: nowMs,
                 mmsis: [watched.mmsi, other.mmsi],
