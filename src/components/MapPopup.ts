@@ -10,8 +10,9 @@
  * Les deux modes sont interactifs : le popup reste visible quand on le survole.
  */
 
-import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats } from '../types/index.ts';
+import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats, SatelliteViewRequest } from '../types/index.ts';
 import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
+import { computeNewsItemBbox } from '../services/copernicus.ts';
 import Hls from 'hls.js';
 
 /** Popup display mode */
@@ -57,6 +58,7 @@ export class MapPopup {
   private onItemClick: ((item: NewsItem) => void) | null = null;
   private onClusterItemClick: ((item: NewsItem) => void) | null = null;
   private onClusterExpand: ((items: NewsItem[]) => void) | null = null;
+  private onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.parentEl = parent;
@@ -87,7 +89,22 @@ export class MapPopup {
       const target = e.target as HTMLElement;
 
       if (this.mode === 'item') {
-        // Click anywhere on single item popup -> open article
+        // Satellite button takes priority over article open
+        if (target.closest('[data-action="satellite"]')) {
+          e.stopPropagation();
+          if (this.currentItem?.lat != null && this.currentItem?.lon != null && this.onSatelliteView) {
+            const bbox = computeNewsItemBbox(this.currentItem.lat, this.currentItem.lon);
+            this.onSatelliteView({
+              bbox,
+              sourceType: 'news',
+              title: this.currentItem.title,
+              point: [this.currentItem.lon, this.currentItem.lat],
+              preferredCollection: 'sentinel-2-l2a',
+            });
+          }
+          return; // Do NOT open article or hide popup
+        }
+        // Default: click anywhere else → open article
         if (this.currentItem && this.onItemClick) {
           this.onItemClick(this.currentItem);
           this.hideNow();
@@ -131,6 +148,11 @@ export class MapPopup {
   /** Set callback for when user clicks "Cliquez pour voir tout" */
   setOnClusterExpand(handler: (items: NewsItem[]) => void): void {
     this.onClusterExpand = handler;
+  }
+
+  /** Set callback for when user clicks "Voir satellite" on a geolocated news item */
+  setOnSatelliteView(handler: (req: SatelliteViewRequest) => void): void {
+    this.onSatelliteView = handler;
   }
 
   /** Ensure element is attached to the DOM */
@@ -195,7 +217,12 @@ export class MapPopup {
           </div>
           ${item.locationName ? `<div class="map-popup-location">📍 ${escapeHtml(item.locationName)}</div>` : ''}
         </div>
-        ${item.lat != null && item.lon != null ? `<div class="map-popup-action">Cliquez pour ouvrir · 🏛️ Élus &amp; représentants</div>` : `<div class="map-popup-action">Cliquez pour ouvrir</div>`}
+        <div class="map-popup-action">
+          ${item.lat != null && item.lon != null
+            ? `Cliquez pour ouvrir · 🏛️ Élus &amp; représentants${this.onSatelliteView ? ` <button class="satellite-inline-btn" data-action="satellite">🛰️ Satellite</button>` : ''}`
+            : 'Cliquez pour ouvrir'
+          }
+        </div>
       </div>
     `;
 
