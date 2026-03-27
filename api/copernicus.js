@@ -48,12 +48,16 @@ function mapStacFeatures(features, collection) {
     const thumbnailUrl = thumbnailLink
       ?? feat.assets?.thumbnail?.href
       ?? feat.assets?.overview?.href;
+    // S2 TCI Cloud Optimized GeoTIFF — public on S3, used for TiTiler AOI crop (MVP Option A)
+    const cogUrl = collection === 'sentinel-2-l2a'
+      ? (feat.assets?.visual?.href ?? feat.assets?.TCI?.href ?? undefined)
+      : undefined;
     return {
       id: feat.id ?? `${collection}-${Date.now()}`,
       datetime: props.datetime ?? props['datetime:created'] ?? new Date().toISOString(),
       cloudCover: props['eo:cloud_cover'] !== undefined ? Number(props['eo:cloud_cover']) : undefined,
-      // Only include thumbnailUrl if present (optional in CopernicusScene type)
       ...(thumbnailUrl ? { thumbnailUrl } : {}),
+      ...(cogUrl ? { cogUrl } : {}),
       bbox: feat.bbox ?? [0, 0, 0, 0],
       collection,
     };

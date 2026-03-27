@@ -224,39 +224,8 @@ export interface FloodSegment {
 
 // ═══ Copernicus / Satellite ═══
 
+/** Used by copernicus.ts buildEoBrowserUrl() and EO Browser CTA links in popups. */
 export type SatelliteCollection = 'sentinel-2-l2a' | 'sentinel-1-grd';
-export type SatelliteSourceType = 'news' | 'flood';
-
-export interface CopernicusScene {
-  id: string;
-  datetime: string;           // ISO 8601
-  cloudCover?: number;        // 0–100; undefined for SAR
-  thumbnailUrl?: string;      // Public S3 URL — may be absent on some S1 GRD items
-  bbox: [number, number, number, number];  // [minLng, minLat, maxLng, maxLat]
-  collection: SatelliteCollection;
-}
-
-export interface SatelliteViewRequest {
-  bbox: [number, number, number, number];
-  sourceType: SatelliteSourceType;
-  title?: string;
-  point?: [number, number];              // [lng, lat] if news source
-  geometry?: LineString | MultiLineString;  // if flood source (named types, not GeoJSON.*)
-  preferredCollection?: SatelliteCollection;
-}
-
-// Internal state type for SatellitePanel (private state field)
-export interface SatelliteViewState {
-  visible: boolean;
-  request: SatelliteViewRequest | null;
-  activeCollection: SatelliteCollection;
-  s2Scenes: CopernicusScene[];
-  s1Scenes: CopernicusScene[];
-  activeSceneIndex: number;
-  loading: boolean;
-  error: string | null;
-  eoBrowserUrl: string;
-}
 
 // ═══ Fires (NASA FIRMS) ═══
 

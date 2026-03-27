@@ -32,9 +32,6 @@ import { NationalHealthPanel } from './components/NationalHealthPanel.ts';
 import { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
 import { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
-import { SatellitePanel } from './components/SatellitePanel.ts';
-import { buildEoBrowserUrl } from './services/copernicus.ts';
-import type { SatelliteViewRequest } from './types/index.ts';
 import { fetchNetworkBarometer } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
@@ -844,7 +841,6 @@ export class App {
   private hasHealthData = false;
   private searchModal: SearchModal | null = null;
   private toastNotification: ToastNotification | null = null;
-  private satellitePanel: SatellitePanel | null = null;
   private layerPanel: LayerPanel | null = null;
   private newsItems: NewsItem[] = [];
   private currentISNRData: ISNRData | null = null;
@@ -887,8 +883,6 @@ export class App {
     }
     this.networkBarometerWidget?.destroy();
     this.networkBarometerWidget = null;
-    this.satellitePanel?.destroy();
-    this.satellitePanel = null;
   }
 
   private isPanelVisible(element: HTMLElement | null): boolean {
@@ -2101,27 +2095,6 @@ export class App {
 
     await this.mapContainer.init();
     this.mapPopup = new MapPopup(mapEl);
-
-    // ─── Satellite Panel ───
-    this.satellitePanel = new SatellitePanel(this.container);
-
-    const openSatelliteView = (req: SatelliteViewRequest): void => {
-      // Mobile guard: open EO Browser directly, no panel
-      if (window.innerWidth < 768) {
-        const eoBrowserUrl = buildEoBrowserUrl(
-          req.bbox,
-          req.preferredCollection ?? 'sentinel-2-l2a',
-          new Date(),  // explicit date — avoids missing toTime in S2 URL
-        );
-        window.open(eoBrowserUrl, '_blank', 'noopener');
-        return;
-      }
-      this.satellitePanel?.show(req);
-    };
-
-    // Wire callbacks: mapContainer relays to deckMap; mapPopup has its own setter
-    this.mapContainer?.setOnSatelliteView(openSatelliteView);
-    this.mapPopup?.setOnSatelliteView(openSatelliteView);
 
     // Initialize map legend
     this.mapLegend = new MapLegend(mapEl);

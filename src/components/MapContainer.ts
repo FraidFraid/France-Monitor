@@ -5,7 +5,7 @@
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
-import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
@@ -43,7 +43,6 @@ export class MapContainer {
   private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
   private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
-  private _onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -72,10 +71,6 @@ export class MapContainer {
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     await this.deckMap.init();
-    // Propagate satellite view callback if set before init()
-    if (this._onSatelliteView) {
-      this.deckMap.onSatelliteView = this._onSatelliteView;
-    }
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
@@ -364,10 +359,8 @@ export class MapContainer {
     this.deckMap?.setOnMaritimeShipClick(cb);
   }
 
-  setOnSatelliteView(handler: (req: SatelliteViewRequest) => void): void {
-    this._onSatelliteView = handler;
-    // Delegate to deckMap if already initialized
-    if (this.deckMap) this.deckMap.onSatelliteView = handler;
+  setBasemapSatellite(enabled: boolean): void {
+    this.deckMap?.setBasemapSatellite(enabled);
   }
 
   setHighlightedShip(mmsi: string | null): void {

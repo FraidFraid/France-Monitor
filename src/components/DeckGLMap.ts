@@ -24,12 +24,14 @@ import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-dir
 import { formatUpdateTime } from '../utils/format-date.ts';
 import { buildSparklineSVG } from '../utils/sparkline.ts';
 import type { LineString, MultiLineString } from 'geojson';
-import { computeFloodSegmentBbox } from '../services/copernicus.ts';
-import type { SatelliteViewRequest } from '../types/index.ts';
+import { computeFloodSegmentBbox, buildEoBrowserUrl } from '../services/copernicus.ts';
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
 const BASE_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+// Satellite basemap layer ID — injected into Carto style at init, toggled by setBasemapSatellite()
+const LYR_SATELLITE = 'wm-basemap-satellite';
 
 /**
  * Fetch and modify style to use French labels before applying to map.
@@ -58,6 +60,29 @@ async function getFrenchStyle(): Promise<maplibregl.StyleSpecification> {
       ['get', 'name']
     ] as maplibregl.ExpressionSpecification;
   }
+
+  // ─── Inject Esri World Imagery satellite source ───
+  // MVP: Esri tiles are free for display use, no API key needed.
+  // Upgrade path: swap the tile URL for a self-hosted raster tile service.
+  (style.sources as Record<string, maplibregl.SourceSpecification>)['esri-satellite'] = {
+    type: 'raster',
+    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+    tileSize: 256,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
+    maxzoom: 19,
+  };
+
+  // Insert satellite raster layer right after 'background' — below all Carto fills but above
+  // the map background.  setBasemapSatellite() hides the opaque Carto fill layers when active
+  // so the satellite imagery is fully visible with roads/labels rendered on top.
+  const bgIdx = (style.layers || []).findIndex((l) => l.id === 'background');
+  const insertAt = bgIdx >= 0 ? bgIdx + 1 : 0;
+  (style.layers as maplibregl.LayerSpecification[]).splice(insertAt, 0, {
+    id: LYR_SATELLITE,
+    type: 'raster',
+    source: 'esri-satellite',
+    layout: { visibility: 'none' },
+  } as maplibregl.RasterLayerSpecification);
 
   return style;
 }
@@ -1177,6 +1202,63 @@ function computeBearingDegrees(from: [number, number], to: [number, number]): nu
 // France center for interconnection arcs
 const FRANCE_CENTER: [number, number] = [2.5, 46.5];
 
+// ─── Satellite basemap toggle control ───
+class SatelliteBasemapControl {
+  private _container: HTMLElement | null = null;
+  private _mapBtn: HTMLButtonElement | null = null;
+  private _satBtn: HTMLButtonElement | null = null;
+  private _map: DeckGLMap;
+
+  constructor(map: DeckGLMap) { this._map = map; }
+
+  private _syncState(): void {
+    const sat = this._map.getSatelliteMode();
+    this._mapBtn?.classList.toggle('active', !sat);
+    this._satBtn?.classList.toggle('active', sat);
+    if (this._mapBtn) this._mapBtn.setAttribute('aria-pressed', String(!sat));
+    if (this._satBtn) this._satBtn.setAttribute('aria-pressed', String(sat));
+  }
+
+  onAdd(_maplibre: maplibregl.Map): HTMLElement {
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl satellite-basemap-ctrl';
+    this._container.setAttribute('role', 'group');
+    this._container.setAttribute('aria-label', 'Fond de carte');
+
+    this._mapBtn = document.createElement('button');
+    this._mapBtn.type = 'button';
+    this._mapBtn.className = 'satellite-basemap-btn satellite-basemap-btn--map';
+    this._mapBtn.title = 'Afficher la carte standard';
+    this._mapBtn.innerHTML = '<span class="satellite-basemap-btn__label">Carte</span>';
+    this._mapBtn.addEventListener('click', () => {
+      this._map.setBasemapSatellite(false);
+      this._syncState();
+    });
+
+    this._satBtn = document.createElement('button');
+    this._satBtn.type = 'button';
+    this._satBtn.className = 'satellite-basemap-btn satellite-basemap-btn--sat';
+    this._satBtn.title = 'Afficher le fond satellite';
+    this._satBtn.innerHTML = '<span class="satellite-basemap-btn__label">Satellite</span>';
+    this._satBtn.addEventListener('click', () => {
+      this._map.setBasemapSatellite(true);
+      this._syncState();
+    });
+
+    this._container.appendChild(this._mapBtn);
+    this._container.appendChild(this._satBtn);
+    this._syncState();
+    return this._container;
+  }
+
+  onRemove(): void {
+    this._container?.remove();
+    this._container = null;
+    this._mapBtn = null;
+    this._satBtn = null;
+  }
+}
+
 export class DeckGLMap {
   private container: HTMLElement;
   private map: maplibregl.Map | null = null;
@@ -1202,8 +1284,8 @@ export class DeckGLMap {
   private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private _highlightedMmsi: string | null = null;
   private _selectedShipMmsi: string | null = null;
-  /** Callback triggered when user clicks "Voir satellite" on a flood segment. Set by App.ts via MapContainer. */
-  public onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
+  private _satelliteMode = false;
+  private _basemapLayerVisibility: Map<string, 'visible' | 'none'> = new Map();
   // In-memory lookup tables for military data (populated by updateMilitary*)
   private militaryFlightsById: Map<string, MilitaryFlight> = new Map();
   private airTrafficFlightsById: Map<string, AirTrafficFlight> = new Map();
@@ -1357,6 +1439,7 @@ export class DeckGLMap {
       new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
       'bottom-right',
     );
+    this.map.addControl(new SatelliteBasemapControl(this), 'top-right');
 
     await new Promise<void>((r) => this.map!.on('load', r));
     await this.loadIconAtlas();
@@ -4528,16 +4611,14 @@ export class DeckGLMap {
       else if (p.level === 'yellow') { levelText = 'Jaune'; levelColor = '#ffcc00'; }
       else if (p.level === 'green') { levelText = 'Vert'; levelColor = '#34c759'; }
 
-      // Compute satellite bbox from actual geometry, fallback to click point
+      // Compute bbox from actual geometry for EO Browser deep-link
       const geom = feat.geometry;
       const hasLineGeom = geom !== null &&
           (geom.type === 'LineString' || geom.type === 'MultiLineString');
-
-      const satelliteBbox: [number, number, number, number] = hasLineGeom
+      const aoBbox: [number, number, number, number] = hasLineGeom
           ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
           : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
-
-      const showSatBtn = this.onSatelliteView !== null;
+      const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-1-grd');
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
@@ -4553,31 +4634,19 @@ export class DeckGLMap {
               <span style="font-size:11px; padding:2px 6px; border-radius:4px; font-weight:700; color:${p.level === 'yellow' || p.level === 'green' ? '#000' : '#fff'}; background:${levelColor}">${levelText}</span>
             </div>
           </div>
-          ${showSatBtn ? `<button class="satellite-cta-btn" data-action="satellite">🛰️ Voir satellite</button>` : ''}
+          <a class="satellite-cta-btn"
+             href="${eoBrowserUrl}"
+             target="_blank"
+             rel="noopener noreferrer">Ouvrir SAR ↗</a>
         </div>
       `;
 
-      const popupInst = new maplibregl.Popup({
+      new maplibregl.Popup({
           closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
       })
           .setLngLat(e.lngLat)
           .setHTML(html)
           .addTo(this.map);
-
-      if (showSatBtn) {
-          // Use getElement() for scoped selection — avoid document.querySelector
-          const btnEl = popupInst.getElement().querySelector('[data-action="satellite"]');
-          btnEl?.addEventListener('click', (ev) => {
-              ev.stopPropagation();
-              this.onSatelliteView?.({
-                  bbox: satelliteBbox,
-                  sourceType: 'flood',
-                  title: String(p.name || 'Tronçon Vigicrues'),
-                  geometry: hasLineGeom ? (geom as LineString | MultiLineString) : undefined,
-                  preferredCollection: 'sentinel-1-grd',
-              });
-          }, { once: true });
-      }
     });
 
     // ─── Weather Department Interactions (tooltip on hover) ───
@@ -6772,6 +6841,45 @@ export class DeckGLMap {
       this.map.triggerRepaint();
     }
   }
+
+  // ─── Satellite basemap ───
+
+  /**
+   * Toggle between Carto Dark Matter (default) and Esri World Imagery satellite basemap.
+   * When satellite is active, Carto fill/background layers are hidden so imagery is
+   * fully visible; road lines and symbol labels remain on top for context.
+   */
+  setBasemapSatellite(enabled: boolean): void {
+    if (!this.map) return;
+    if (this._satelliteMode === enabled) return;
+    this._satelliteMode = enabled;
+
+    this.map.setLayoutProperty(LYR_SATELLITE, 'visibility', enabled ? 'visible' : 'none');
+
+    const style = this.map.getStyle();
+    for (const layer of style.layers ?? []) {
+      if (layer.id === LYR_SATELLITE) continue;
+      if (layer.id.startsWith('wm-')) continue; // never touch our custom data layers
+      if (!(layer.type === 'fill' || layer.type === 'background' || layer.type === 'fill-extrusion')) continue;
+
+      if (enabled) {
+        const currentVisibility = this.map.getLayoutProperty(layer.id, 'visibility');
+        this._basemapLayerVisibility.set(
+          layer.id,
+          currentVisibility === 'none' ? 'none' : 'visible',
+        );
+        this.map.setLayoutProperty(layer.id, 'visibility', 'none');
+        continue;
+      }
+
+      const previousVisibility = this._basemapLayerVisibility.get(layer.id) ?? 'visible';
+      this.map.setLayoutProperty(layer.id, 'visibility', previousVisibility);
+    }
+
+    if (!enabled) this._basemapLayerVisibility.clear();
+  }
+
+  getSatelliteMode(): boolean { return this._satelliteMode; }
 
   // ─── Events ───
   setOnItemClick(h: (item: NewsItem) => void): void { this.onItemClick = h; }

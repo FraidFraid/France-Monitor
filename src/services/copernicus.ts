@@ -1,11 +1,10 @@
 /**
- * copernicus.ts — Copernicus / Sentinel satellite imagery service.
- * Fetches Sentinel-2 and Sentinel-1 SAR scene thumbnails via /api/copernicus
- * (proxy to AWS Earth Search STAC v1, no auth required).
- * Builds EO Browser deep-links as fallback.
+ * copernicus.ts — Copernicus / Sentinel URL builders and AOI bbox helpers.
+ * Builds EO Browser deep-links for flood segments and news items.
+ * STAC / scene fetching removed — satellite analysis is delegated to EO Browser.
  */
 
-import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
+import type { SatelliteCollection } from '../types/index.ts';
 import type { LineString, MultiLineString } from 'geojson';
 
 // ─── Constants ───
@@ -103,59 +102,3 @@ export function buildEoBrowserUrl(
   return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&datasetId=S2_L2A_CDAS&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&layerId=1_TRUE_COLOR&cloudCoverage=30&dateMode=SINGLE`;
 }
 
-// ─── STAC fetch ───
-
-interface CopernicusApiResponse {
-  scenes: CopernicusScene[];
-  eoBrowserUrl: string;
-  mode: 'thumbnail' | 'wms';
-  fallbackReason?: string;
-  wmsUrl?: string;  // present only if COPERNICUS_CLIENT_ID/SECRET are set (Approach C)
-}
-
-async function fetchFromApi(
-  collection: SatelliteCollection,
-  bbox: [number, number, number, number],
-  options: { cloudMax?: number; limit?: number; signal?: AbortSignal } = {},
-): Promise<CopernicusScene[]> {
-  const params = new URLSearchParams({
-    collection,
-    bbox: bbox.join(','),
-    limit: String(options.limit ?? 5),
-  });
-  if (collection === 'sentinel-2-l2a' && options.cloudMax != null) {
-    params.set('cloud_max', String(options.cloudMax));
-  }
-
-  try {
-    const resp = await fetch(`/api/copernicus?${params.toString()}`, {
-      signal: options.signal ?? AbortSignal.timeout(12000),
-    });
-    if (!resp.ok) {
-      console.warn(`[copernicus] HTTP ${resp.status}`);
-      return [];
-    }
-    const data = await resp.json() as CopernicusApiResponse;
-    return data.scenes ?? [];
-  } catch (err) {
-    console.warn('[copernicus] Fetch failed:', err);
-    return [];
-  }
-}
-
-/** Fetch Sentinel-2 L2A scenes for the given bbox. Returns [] on error. */
-export async function fetchSentinel2Scenes(
-  bbox: [number, number, number, number],
-  _eventDate?: Date,
-  signal?: AbortSignal,
-): Promise<CopernicusScene[]> {
-  return fetchFromApi('sentinel-2-l2a', bbox, { cloudMax: 30, limit: 6, signal });
-}
-
-/** Fetch Sentinel-1 GRD (SAR) scenes for the given bbox. Returns [] on error. */
-export async function fetchSentinel1Scenes(
-  bbox: [number, number, number, number],
-  signal?: AbortSignal,
-): Promise<CopernicusScene[]> {
-  return fetchFromApi('sentinel-1-grd', bbox, { limit: 3, signal });
-}

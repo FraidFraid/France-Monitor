@@ -10,9 +10,9 @@
  * Les deux modes sont interactifs : le popup reste visible quand on le survole.
  */
 
-import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats, SatelliteViewRequest } from '../types/index.ts';
+import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats } from '../types/index.ts';
 import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
-import { computeNewsItemBbox } from '../services/copernicus.ts';
+import { computeNewsItemBbox, buildEoBrowserUrl } from '../services/copernicus.ts';
 import Hls from 'hls.js';
 
 /** Popup display mode */
@@ -58,7 +58,6 @@ export class MapPopup {
   private onItemClick: ((item: NewsItem) => void) | null = null;
   private onClusterItemClick: ((item: NewsItem) => void) | null = null;
   private onClusterExpand: ((items: NewsItem[]) => void) | null = null;
-  private onSatelliteView: ((req: SatelliteViewRequest) => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.parentEl = parent;
@@ -89,20 +88,10 @@ export class MapPopup {
       const target = e.target as HTMLElement;
 
       if (this.mode === 'item') {
-        // Satellite button takes priority over article open
+        // EO Browser link — stop event from also triggering article open
         if (target.closest('[data-action="satellite"]')) {
           e.stopPropagation();
-          if (this.currentItem?.lat != null && this.currentItem?.lon != null && this.onSatelliteView) {
-            const bbox = computeNewsItemBbox(this.currentItem.lat, this.currentItem.lon);
-            this.onSatelliteView({
-              bbox,
-              sourceType: 'news',
-              title: this.currentItem.title,
-              point: [this.currentItem.lon, this.currentItem.lat],
-              preferredCollection: 'sentinel-2-l2a',
-            });
-          }
-          return; // Do NOT open article or hide popup
+          return; // <a> href navigates naturally; don't open article
         }
         // Default: click anywhere else → open article
         if (this.currentItem && this.onItemClick) {
@@ -148,11 +137,6 @@ export class MapPopup {
   /** Set callback for when user clicks "Cliquez pour voir tout" */
   setOnClusterExpand(handler: (items: NewsItem[]) => void): void {
     this.onClusterExpand = handler;
-  }
-
-  /** Set callback for when user clicks "Voir satellite" on a geolocated news item */
-  setOnSatelliteView(handler: (req: SatelliteViewRequest) => void): void {
-    this.onSatelliteView = handler;
   }
 
   /** Ensure element is attached to the DOM */
@@ -217,9 +201,9 @@ export class MapPopup {
           </div>
           ${item.locationName ? `<div class="map-popup-location">📍 ${escapeHtml(item.locationName)}</div>` : ''}
         </div>
-        <div class="map-popup-action">
+        <div class="map-popup-action${item.lat != null && item.lon != null ? ' map-popup-action--split' : ''}">
           ${item.lat != null && item.lon != null
-            ? `Cliquez pour ouvrir · 🏛️ Élus &amp; représentants${this.onSatelliteView ? ` <button class="satellite-inline-btn" data-action="satellite">🛰️ Satellite</button>` : ''}`
+            ? `<span class="map-popup-action-text">Ouvrir l'article</span><a class="satellite-inline-btn" data-action="satellite" href="${buildEoBrowserUrl(computeNewsItemBbox(item.lat, item.lon), 'sentinel-2-l2a', new Date())}" target="_blank" rel="noopener noreferrer">Sentinel ↗</a>`
             : 'Cliquez pour ouvrir'
           }
         </div>
