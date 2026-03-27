@@ -3,6 +3,9 @@ import type { MarketData } from '../types/index.ts';
 // Hardcode mapping of symbols to human names
 const SYMBOL_NAMES: Record<string, string> = {
     'CAC.INDX': 'CAC 40',
+    'DAX.INDX': 'DAX 40',
+    'STOXX50.INDX': 'Euro Stoxx 50',
+    'SPX.INDX': 'S&P 500',
     'TTE.PA': 'TotalEnergies',
     'AIR.PA': 'Airbus',
     'HO.PA': 'Thales',
@@ -33,15 +36,18 @@ function generateMockHistory(currentPrice: number, changePercent: number, points
 }
 
 const MOCK_MARKET_DATA: MarketData[] = [
-    { symbol: 'CAC.INDX', name: 'CAC 40', price: 7532.14, changePercent: -1.24, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(7532.14, -1.24) },
-    { symbol: 'TTE.PA', name: 'TotalEnergies', price: 62.45, changePercent: 0.85, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(62.45, 0.85) },
-    { symbol: 'AIR.PA', name: 'Airbus', price: 154.20, changePercent: -0.30, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(154.20, -0.30) },
-    { symbol: 'HO.PA', name: 'Thales', price: 142.60, changePercent: 1.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(142.60, 1.15) },
-    { symbol: 'SAF.PA', name: 'Safran', price: 204.30, changePercent: -0.10, trend: 'flat', lastUpdated: new Date(), history: generateMockHistory(204.30, -0.10) },
-    { symbol: 'DG.PA', name: 'Vinci', price: 112.80, changePercent: -2.10, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(112.80, -2.10) },
-    { symbol: 'SAN.PA', name: 'Sanofi', price: 89.50, changePercent: 0.40, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(89.50, 0.40) },
-    { symbol: 'ORA.PA', name: 'Orange', price: 10.85, changePercent: 0.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(10.85, 0.15) },
-    { symbol: 'GLE.PA', name: 'Soc. Générale', price: 24.10, changePercent: -1.80, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(24.10, -1.80) },
+    { symbol: 'CAC.INDX',    name: 'CAC 40',       price: 7532.14,  changePercent: -1.24, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(7532.14,  -1.24), category: 'indices' },
+    { symbol: 'DAX.INDX',    name: 'DAX 40',       price: 22418.50, changePercent:  0.63, trend: 'up',   lastUpdated: new Date(), history: generateMockHistory(22418.50,  0.63), category: 'indices' },
+    { symbol: 'STOXX50.INDX',name: 'Euro Stoxx 50',price: 5328.30,  changePercent: -0.45, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(5328.30,  -0.45), category: 'indices' },
+    { symbol: 'SPX.INDX',    name: 'S&P 500',      price: 5667.20,  changePercent: -0.28, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(5667.20,  -0.28), category: 'indices' },
+    { symbol: 'TTE.PA', name: 'TotalEnergies', price: 62.45, changePercent: 0.85, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(62.45, 0.85), category: 'defense' },
+    { symbol: 'AIR.PA', name: 'Airbus', price: 154.20, changePercent: -0.30, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(154.20, -0.30), category: 'defense' },
+    { symbol: 'HO.PA', name: 'Thales', price: 142.60, changePercent: 1.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(142.60, 1.15), category: 'defense' },
+    { symbol: 'SAF.PA', name: 'Safran', price: 204.30, changePercent: -0.10, trend: 'flat', lastUpdated: new Date(), history: generateMockHistory(204.30, -0.10), category: 'defense' },
+    { symbol: 'DG.PA', name: 'Vinci', price: 112.80, changePercent: -2.10, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(112.80, -2.10), category: 'services' },
+    { symbol: 'SAN.PA', name: 'Sanofi', price: 89.50, changePercent: 0.40, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(89.50, 0.40), category: 'services' },
+    { symbol: 'ORA.PA', name: 'Orange', price: 10.85, changePercent: 0.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(10.85, 0.15), category: 'services' },
+    { symbol: 'GLE.PA', name: 'Soc. Générale', price: 24.10, changePercent: -1.80, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(24.10, -1.80), category: 'services' },
 ];
 
 /**

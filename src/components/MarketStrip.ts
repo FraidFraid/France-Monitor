@@ -43,9 +43,19 @@ function buildSparkline(history: number[] | undefined, trend: MarketData['trend'
   `;
 }
 
+type MarketCategory = 'indices' | 'defense' | 'services';
+
+const MARKET_SECTIONS: { key: MarketCategory; label: string }[] = [
+  { key: 'indices',  label: 'Indices' },
+  { key: 'defense',  label: 'Défense & Énergie' },
+  { key: 'services', label: 'Services' },
+];
+
+const CATEGORY_FALLBACK: MarketCategory = 'services';
+
 export class MarketStrip {
   private container: HTMLElement;
-  private listEl: HTMLElement | null = null;
+  private bodyEl: HTMLElement | null = null;
   private stampEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement) {
@@ -62,54 +72,67 @@ export class MarketStrip {
         </div>
         <div class="under-map-card__meta" id="market-strip-stamp">Chargement...</div>
       </div>
-      <div class="under-map-card__body">
-        <div class="market-strip__list" id="market-strip-list"></div>
-      </div>
+      <div class="under-map-card__body" id="market-strip-body"></div>
     `;
 
     this.container.appendChild(root);
-    this.listEl = root.querySelector('#market-strip-list');
+    this.bodyEl = root.querySelector('#market-strip-body');
     this.stampEl = root.querySelector('#market-strip-stamp');
     this.renderLoading();
   }
 
   update(items: MarketData[]): void {
-    if (!this.listEl || !this.stampEl) return;
+    if (!this.bodyEl || !this.stampEl) return;
 
     if (!items.length) {
       this.renderEmpty();
       return;
     }
 
-    const sorted = [...items].sort((a, b) => {
-      const diff = Math.abs(b.changePercent) - Math.abs(a.changePercent);
-      if (Math.abs(diff) > 0.001) return diff;
-      return a.name.localeCompare(b.name, 'fr');
-    });
+    this.bodyEl.innerHTML = '';
 
-    this.listEl.innerHTML = '';
+    for (const section of MARKET_SECTIONS) {
+      const sectionItems = items.filter(
+        item => (item.category ?? CATEGORY_FALLBACK) === section.key,
+      );
+      if (!sectionItems.length) continue;
 
-    for (const item of sorted) {
-      const card = document.createElement('article');
-      const trendClass =
-        item.trend === 'up' ? 'is-up' :
-        item.trend === 'down' ? 'is-down' :
-        'is-flat';
+      const sectionEl = document.createElement('div');
+      sectionEl.className = `market-strip__section market-strip__section--${section.key}`;
 
-      card.className = `market-strip__item ${trendClass}`;
-      card.innerHTML = `
-        <div class="market-strip__topline">
-          <span class="market-strip__name">${escapeHtml(item.name)}</span>
-          <span class="market-strip__symbol">${escapeHtml(item.symbol)}</span>
-        </div>
-        <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
-        <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
-        ${buildSparkline(item.history, item.trend)}
-      `;
-      this.listEl.appendChild(card);
+      const label = document.createElement('div');
+      label.className = 'market-strip__section-label';
+      label.textContent = section.label;
+      sectionEl.appendChild(label);
+
+      const list = document.createElement('div');
+      list.className = 'market-strip__list';
+
+      for (const item of sectionItems) {
+        const trendClass =
+          item.trend === 'up' ? 'is-up' :
+          item.trend === 'down' ? 'is-down' :
+          'is-flat';
+
+        const card = document.createElement('article');
+        card.className = `market-strip__item ${trendClass}`;
+        card.innerHTML = `
+          <div class="market-strip__topline">
+            <span class="market-strip__name">${escapeHtml(item.name)}</span>
+            <span class="market-strip__symbol">${escapeHtml(item.symbol)}</span>
+          </div>
+          <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
+          <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
+          ${buildSparkline(item.history, item.trend)}
+        `;
+        list.appendChild(card);
+      }
+
+      sectionEl.appendChild(list);
+      this.bodyEl.appendChild(sectionEl);
     }
 
-    const latestTs = sorted.reduce((latest, item) => {
+    const latestTs = items.reduce((latest, item) => {
       const ts = item.lastUpdated instanceof Date ? item.lastUpdated.getTime() : new Date(item.lastUpdated).getTime();
       return Math.max(latest, ts);
     }, 0);
@@ -120,22 +143,20 @@ export class MarketStrip {
   }
 
   private renderLoading(): void {
-    if (!this.listEl) return;
-    this.listEl.innerHTML = `
+    if (!this.bodyEl) return;
+    this.bodyEl.innerHTML = `
       <div class="under-map-card__empty">
         <div class="under-map-card__empty-title">Chargement des marchés</div>
-        <div class="under-map-card__empty-text">Le premier bloc sous la carte est prêt et attend les cours.</div>
       </div>
     `;
   }
 
   private renderEmpty(): void {
-    if (!this.listEl || !this.stampEl) return;
+    if (!this.bodyEl || !this.stampEl) return;
     this.stampEl.textContent = 'Source indisponible';
-    this.listEl.innerHTML = `
+    this.bodyEl.innerHTML = `
       <div class="under-map-card__empty">
         <div class="under-map-card__empty-title">Flux boursier indisponible</div>
-        <div class="under-map-card__empty-text">L’espace sous la carte est en place. Les prochains modules pourront s’y ajouter sans refonte du shell.</div>
       </div>
     `;
   }
