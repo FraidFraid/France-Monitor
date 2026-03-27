@@ -468,7 +468,10 @@ export class ToastNotification {
       dismissTimer = setTimeout(() => { this.dismissToast(anomaly.id, true); }, 3000);
     });
 
+    const cancelTimer = () => { if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; } };
+
     const navigate = () => {
+      cancelTimer();
       this.dismissToast(anomaly.id, true);
       this.onAisAnomalyClick?.(anomaly);
     };
@@ -482,6 +485,7 @@ export class ToastNotification {
     const closeBtn = toast.querySelector('.toast-close') as HTMLButtonElement;
     closeBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
+      cancelTimer();
       this.dismissToast(anomaly.id, true);
     });
 
