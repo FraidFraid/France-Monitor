@@ -18,6 +18,7 @@ import type { AisAnomaly, ThreatLevel } from '../types/index.ts';
 // ─── Seuils ──────────────────────────────────────────────────────────────────
 
 const SILENCE_MILITARY_MS  = 10 * 60 * 1000;  // 10 min pour navire militaire
+const SILENCE_RISK_MS = 20 * 60 * 1000;  // 20 min pour navire civil à risque élevé
 const RENDEZVOUS_DIST_KM   = 2;               // Distance max rendezvous (km)
 const RENDEZVOUS_MIN_SPEED = 1;               // Vitesse min des deux navires (kts)
 const RENDEZVOUS_COOLDOWN_MS = 30 * 60 * 1000; // 30 min entre deux alertes pour la même paire
@@ -30,6 +31,8 @@ const lastSeenTs  = new Map<string, number>();
 const lastSeenPos = new Map<string, [number, number]>();
 /** MMSIs pour lesquels une alerte de silence a déjà été émise (évite le spam). */
 const seenSilenceAlerts = new Set<string>();
+/** Dernier riskLevel connu par MMSI (pour radio silence civils à risque). */
+const lastSeenRisk = new Map<string, 'none' | 'low' | 'medium' | 'high' | 'critical'>();
 /** Cooldowns actifs pour les paires de rendezvous : clé → timestamp d'expiry. */
 const rendezvousCooldowns = new Map<string, number>();
 
@@ -80,6 +83,9 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         if (!ship.mmsi) continue;
         lastSeenTs.set(ship.mmsi, nowMs);
         lastSeenPos.set(ship.mmsi, [ship.lon, ship.lat]);
+        if (ship.riskLevel) {
+            lastSeenRisk.set(ship.mmsi, ship.riskLevel);
+        }
         // Si le navire réapparaît après un silence : effacer son alerte
         // pour permettre une nouvelle alerte lors d'une prochaine disparition
         if (seenSilenceAlerts.has(ship.mmsi)) {
@@ -87,28 +93,29 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         }
     }
 
-    // ── 1. Radio silence (militaires uniquement en v2) ────────────────────────
-    // Note: la spec mentionne aussi les civils à risque élevé (riskLevel high/critical),
-    // mais riskLevel n'est pas persisté hors du flux live — si le navire a disparu,
-    // on n'a plus accès à son riskLevel. Radio silence pour civils reporté en v3.
+    // ── 1. Radio silence (militaires + civils à risque élevé) ────────────────
     for (const [mmsi, lastTs] of lastSeenTs) {
         const elapsed = nowMs - lastTs;
         const isMilitary = NAVY_MMSI_SET.has(mmsi);
 
-        if (!isMilitary) continue;
+        const cachedRisk = lastSeenRisk.get(mmsi);
+        const isHighRiskCivilian = !isMilitary && (cachedRisk === 'high' || cachedRisk === 'critical');
 
-        if (elapsed < SILENCE_MILITARY_MS) continue;
+        if (!isMilitary && !isHighRiskCivilian) continue;
+
+        const thresholdMs = isMilitary ? SILENCE_MILITARY_MS : SILENCE_RISK_MS;
+        if (elapsed < thresholdMs) continue;
         if (seenSilenceAlerts.has(mmsi)) continue;
 
         const pos = lastSeenPos.get(mmsi);
-        if (!pos) continue;  // Jamais vu en position — ne pas alerter
+        if (!pos) continue;
 
         seenSilenceAlerts.add(mmsi);
         const idx = anomalies.length;
         anomalies.push({
             id: `silence-${mmsi}-${nowSec}-${idx}`,
             type: 'radio_silence',
-            severity: 'high' as ThreatLevel,
+            severity: (isMilitary ? 'high' : 'medium') as ThreatLevel,
             position: pos,
             timestamp: nowMs,
             mmsis: [mmsi],
@@ -162,6 +169,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
 export function clearAisAnomalyState(): void {
     lastSeenTs.clear();
     lastSeenPos.clear();
+    lastSeenRisk.clear();
     seenSilenceAlerts.clear();
     rendezvousCooldowns.clear();
 }
