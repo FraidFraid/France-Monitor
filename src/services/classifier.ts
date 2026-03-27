@@ -193,6 +193,26 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
         medium: [],
         low: [],
     },
+    finance: {
+        high: ['krach', 'faillite banque', 'bank run', 'effondrement bourse', 'crise financière'],
+        medium: ['chute cac40', 'correction bourse', 'dette souveraine', 'spread', 'récession'],
+        low: ['cac40', 'bourse', 'marché', 'euro', 'taux directeur', 'inflation'],
+    },
+    floods: {
+        high: ['crue majeure', 'inondation catastrophique', 'submersion', 'vigicrues rouge', 'rupture digue'],
+        medium: ['vigicrues orange', 'débordement', 'inondation', 'montée des eaux', 'crue'],
+        low: ['vigicrues jaune', 'vigilance crues', 'niveau rivière', 'nappes phréatiques'],
+    },
+    fires: {
+        high: ['feu de forêt majeur', 'incendie catastrophique', 'méga feu', 'evacuation incendie'],
+        medium: ['feux de forêt', 'incendie forêt', 'départ de feu', 'incendie végétation'],
+        low: ['risque incendie', 'vigilance feux', 'brûlage', 'sécheresse forêt'],
+    },
+    cyber: {
+        high: ['cyberattaque majeure', 'ransomware hôpital', 'sabotage numérique', 'attaque état'],
+        medium: ['cyberattaque', 'piratage', 'ransomware', 'fuite données', 'ddos', 'cert-fr alerte'],
+        low: ['vulnérabilité', 'patch sécurité', 'phishing', 'arnaque', 'incident cyber'],
+    },
 };
 
 // ─── Critical keywords (override level to critical) ───
