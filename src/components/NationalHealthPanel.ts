@@ -1,11 +1,38 @@
 import { Panel } from './Panel.ts';
 import type { HealthFeatures } from '../types/index.ts';
 
+const ODISSE_WINTER_ALERTS_URL =
+  'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
+
+const REGION_CODE_TO_NAME: Record<string, string> = {
+  '01': 'Guadeloupe',
+  '02': 'Martinique',
+  '03': 'Guyane',
+  '04': 'La Réunion',
+  '06': 'Mayotte',
+  '11': 'Île-de-France',
+  '24': 'Centre-Val de Loire',
+  '27': 'Bourgogne-Franche-Comté',
+  '28': 'Normandie',
+  '32': 'Hauts-de-France',
+  '44': 'Grand Est',
+  '52': 'Pays de la Loire',
+  '53': 'Bretagne',
+  '75': 'Nouvelle-Aquitaine',
+  '76': 'Occitanie',
+  '84': 'Auvergne-Rhône-Alpes',
+  '93': "Provence-Alpes-Côte d'Azur",
+  '94': 'Corse',
+};
+
 export class NationalHealthPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
   private closeBtn: HTMLElement | null = null;
   private onClose?: () => void;
+  private currentData: HealthFeatures | null = null;
+  private resolvedEpidemicAlerts: HealthFeatures['epidemicAlerts'] = [];
+  private epidemicAlertsLoading = false;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'Indicateurs Santé', icon: '🇫🇷', collapsible: false });
@@ -144,7 +171,61 @@ export class NationalHealthPanel extends Panel {
 
   protected render(): void { }
 
+  private renderEpidemicAlerts(alerts: HealthFeatures['epidemicAlerts'], loading: boolean): string {
+    const body = loading
+      ? `<div style="background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; color:#9898a8; font-size:11px;">Chargement des alertes épidémiques officielles...</div>`
+      : alerts.length === 0
+        ? `<div style="background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; color:#9898a8; font-size:11px;">Aucune alerte épidémique active en métropole au dernier bulletin officiel consulté.</div>`
+        : this.renderEpidemicAlertCards(alerts);
+
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="color:#ff3b30; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; margin-bottom:8px; display:flex; align-items:center;">
+          Alertes épidémiques actives
+        </div>
+        ${body}
+      </div>`;
+  }
+
+  private renderEpidemicAlertCards(alerts: HealthFeatures['epidemicAlerts']): string {
+    const severityColors: Record<HealthFeatures['epidemicAlerts'][number]['severity'], { border: string; bg: string; badge: string; text: string }> = {
+      critical: { border: '#ff3b30', bg: 'rgba(255,59,48,0.10)', badge: '#ff3b30', text: 'CRITIQUE' },
+      high:     { border: '#ff9500', bg: 'rgba(255,149,0,0.10)',  badge: '#ff9500', text: 'ÉLEVÉ'    },
+      warning:  { border: '#ffd60a', bg: 'rgba(255,214,10,0.10)', badge: '#ffd60a', text: 'VIGILANCE' },
+    };
+
+    const cards = alerts.map(alert => {
+      const c = severityColors[alert.severity];
+      const locationBadges = alert.locations
+        .map(loc => `<span style="display:inline-block; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:3px; padding:1px 6px; font-size:10px; color:#d8d8df; margin-right:4px; margin-top:3px;">${loc}</span>`)
+        .join('');
+      const sourceHtml = alert.sourceUrl
+        ? `<a href="${alert.sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Source : ${alert.sourceLabel} ↗</a>`
+        : `Source : ${alert.sourceLabel}`;
+      return `
+        <div style="background:${c.bg}; border:1px solid ${c.border}55; border-left:3px solid ${c.border}; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+            <div style="display:flex; align-items:center; gap:7px;">
+              <span style="font-size:15px;">🦠</span>
+              <span style="color:#fff; font-weight:700; font-size:12px;">${alert.title}</span>
+            </div>
+            <span style="background:${c.badge}22; border:1px solid ${c.badge}66; color:${c.badge}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${c.text}</span>
+          </div>
+          <div style="color:#9898a8; font-size:10px; font-weight:600; margin-bottom:4px;">${alert.pathogen} · ${alert.date}</div>
+          <div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-bottom:6px;">${alert.summary}</div>
+          <div style="flex-wrap:wrap;">${locationBadges}</div>
+          <div style="margin-top:6px; font-size:10px; color:#5a5a72;">${sourceHtml}</div>
+        </div>`;
+    }).join('');
+    return cards;
+  }
+
   show(data: HealthFeatures): void {
+    this.currentData = data;
+    if ((data.epidemicAlerts ?? []).length > 0) {
+      this.resolvedEpidemicAlerts = data.epidemicAlerts;
+    }
+
     if (!this.contentEl) return;
     this.modalEl.style.display = 'flex';
 
@@ -155,6 +236,18 @@ export class NationalHealthPanel extends Panel {
       this.modalEl.style.top = 'calc(var(--header-height) + 20px)';
       this.modalEl.style.left = 'auto';
     }
+
+    this.renderContent();
+
+    if ((data.epidemicAlerts ?? []).length === 0 && !this.epidemicAlertsLoading) {
+      void this.loadEpidemicAlertsFallback();
+    }
+  }
+
+  private renderContent(): void {
+    if (!this.contentEl || !this.currentData) return;
+
+    const data = this.currentData;
 
     const sentIndicatorsHtml = (data.sentinellesIndicators ?? []).length > 0
       ? (data.sentinellesIndicators.map(ind => {
@@ -204,6 +297,7 @@ export class NationalHealthPanel extends Panel {
 
     let html = `
       <div style="padding: 16px; overflow-y: auto; flex: 1; font-size: 13px;">
+        ${this.renderEpidemicAlerts(this.resolvedEpidemicAlerts, this.epidemicAlertsLoading)}
         <div style="background: rgba(255,255,255,0.05); border-left: 3px solid #3498db; padding: 10px; border-radius: 4px; margin-bottom: 20px; font-size: 11px; color: #d8d8df;">
           <i>Ces indicateurs sont nationaux (France entière) et ne sont pas disponibles au niveau départemental.</i>
         </div>
@@ -252,6 +346,97 @@ export class NationalHealthPanel extends Panel {
     `;
 
     this.contentEl.innerHTML = html;
+  }
+
+  private async loadEpidemicAlertsFallback(): Promise<void> {
+    this.epidemicAlertsLoading = true;
+    this.renderContent();
+
+    try {
+      const resp = await fetch(ODISSE_WINTER_ALERTS_URL, {
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!resp.ok) {
+        this.resolvedEpidemicAlerts = [];
+        return;
+      }
+
+      const payload = await resp.json() as {
+        results?: Array<{ theme?: string; reg?: string; date?: string; date_lib?: string; valeur?: number }>;
+      };
+
+      const rows = Array.isArray(payload.results) ? payload.results : [];
+      const latestDate = rows
+        .map((row) => String(row?.date ?? '').trim())
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0];
+
+      if (!latestDate) {
+        this.resolvedEpidemicAlerts = [];
+        return;
+      }
+
+      const grouped = new Map<string, {
+        theme: string;
+        date: string;
+        dateLib: string;
+        maxLevel: number;
+        locations: string[];
+      }>();
+
+      for (const row of rows) {
+        const date = String(row?.date ?? '').trim();
+        const theme = String(row?.theme ?? '').trim();
+        const regionCode = String(row?.reg ?? '').trim();
+        const level = Number(row?.valeur);
+        const dateLib = String(row?.date_lib ?? '').trim();
+
+        if (date !== latestDate || !theme || !regionCode || !Number.isFinite(level) || level < 3) continue;
+
+        const key = `${theme}::${dateLib}`;
+        const existing = grouped.get(key) ?? {
+          theme,
+          date,
+          dateLib,
+          maxLevel: level,
+          locations: [],
+        };
+
+        existing.maxLevel = Math.max(existing.maxLevel, level);
+        existing.locations.push(`${REGION_CODE_TO_NAME[regionCode] ?? `Région ${regionCode}`} (niveau ${level})`);
+        grouped.set(key, existing);
+      }
+
+      this.resolvedEpidemicAlerts = [...grouped.values()]
+        .map((entry) => ({
+          id: `odisee-${this.slugify(`${entry.theme}-${entry.dateLib}`)}`,
+          pathogen: entry.theme,
+          severity: entry.maxLevel >= 4 ? 'high' as const : 'warning' as const,
+          title: `${entry.theme} · signal hivernal SPF`,
+          summary: `Niveaux d'alerte relevés dans le bulletin ${entry.dateLib}.`,
+          locations: entry.locations.slice(0, 4),
+          date: entry.date,
+          sourceLabel: 'Santé publique France / Odissé',
+          sourceUrl: 'https://odisse.santepubliquefrance.fr/explore/dataset/ma_region_epidemies_hivernales_alertes/api/?flg=fr-fr',
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+    } catch {
+      this.resolvedEpidemicAlerts = [];
+    } finally {
+      this.epidemicAlertsLoading = false;
+      this.renderContent();
+    }
+  }
+
+  private slugify(input: string): string {
+    return input
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   hide(): void {

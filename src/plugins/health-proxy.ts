@@ -384,6 +384,32 @@ export function healthProxyPlugin(): Plugin {
         }
       });
 
+      server.middlewares.use('/api/health/epidemic-alerts', async (_req, res) => {
+        try {
+          const mod = await import('../../api/health/epidemic-alerts.js');
+          const fakeReq = { method: 'GET' };
+          const fakeRes = {
+            statusCode: 200,
+            _headers: {} as Record<string, string>,
+            _body: '',
+            setHeader(k: string, v: string) { this._headers[k] = v; },
+            status(code: number) { this.statusCode = code; return this; },
+            json(data: unknown) { this._body = JSON.stringify(data); },
+            end() { },
+          };
+          await mod.default(fakeReq, fakeRes);
+          res.statusCode = fakeRes.statusCode;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          res.end(fakeRes._body);
+        } catch (err) {
+          console.error('[health-proxy/epidemic-alerts]', err);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ alerts: [], metadata: { generated_at: new Date().toISOString() } }));
+        }
+      });
+
       server.middlewares.use('/api/health/drug-shortages', async (_req, res) => {
         try {
           const data = await fetchAnsmShortages();

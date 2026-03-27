@@ -1,3 +1,8 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
 export function setCors(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -17,52 +22,106 @@ export function setCors(req, res) {
 }
 
 export async function fetchJson(url, { timeoutMs = 12000, headers = {} } = {}) {
-  const resp = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      ...headers,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const mergedHeaders = {
+    Accept: 'application/json',
+    ...headers,
+  };
 
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} for ${url}`);
+  try {
+    const resp = await fetch(url, {
+      headers: mergedHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} for ${url}`);
+    }
+
+    return await resp.json();
+  } catch (error) {
+    const text = await fetchViaCurl(url, { timeoutMs, headers: mergedHeaders }, error);
+    return JSON.parse(text);
   }
-
-  return await resp.json();
 }
 
 export async function fetchText(url, { timeoutMs = 12000, headers = {} } = {}) {
-  const resp = await fetch(url, {
-    headers: {
-      Accept: 'text/plain, text/csv, text/html;q=0.9, */*;q=0.8',
-      ...headers,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const mergedHeaders = {
+    Accept: 'text/plain, text/csv, text/html;q=0.9, */*;q=0.8',
+    ...headers,
+  };
 
-  if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status} for ${url}`);
+  try {
+    const resp = await fetch(url, {
+      headers: mergedHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} for ${url}`);
+    }
+
+    return await resp.text();
+  } catch (error) {
+    return await fetchViaCurl(url, { timeoutMs, headers: mergedHeaders }, error);
+  }
+}
+
+async function fetchViaCurl(url, { timeoutMs = 12000, headers = {} } = {}, originalError) {
+  const args = ['-k', '-L', '-sS', '--max-time', String(Math.max(1, Math.ceil(timeoutMs / 1000))), '-A', 'Mozilla/5.0'];
+
+  for (const [key, value] of Object.entries(headers)) {
+    args.push('-H', `${key}: ${value}`);
   }
 
-  return await resp.text();
+  args.push(url);
+
+  try {
+    const { stdout } = await execFileAsync('curl', args, {
+      timeout: timeoutMs + 1000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return stdout;
+  } catch (curlError) {
+    const originalMessage = originalError instanceof Error ? originalError.message : String(originalError ?? '');
+    const curlMessage = curlError instanceof Error ? curlError.message : String(curlError ?? '');
+    throw new Error(`Network fetch failed for ${url}. fetch=${originalMessage} curl=${curlMessage}`);
+  }
 }
 
 export function decodeHtmlEntities(input) {
   return String(input || '')
     .replace(/&#0*39;/g, "'")
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8216;/g, "'")
+    .replace(/&#8220;/g, '"')
+    .replace(/&#8221;/g, '"')
     .replace(/&#x27;/gi, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&ldquo;/g, '"')
+    .replace(/&rdquo;/g, '"')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&ndash;/g, '-')
+    .replace(/&mdash;/g, '-')
+    .replace(/&hellip;/g, '...')
     .replace(/&eacute;/g, 'é')
     .replace(/&egrave;/g, 'è')
     .replace(/&ecirc;/g, 'ê')
     .replace(/&agrave;/g, 'à')
+    .replace(/&acirc;/g, 'â')
+    .replace(/&icirc;/g, 'î')
+    .replace(/&iuml;/g, 'ï')
+    .replace(/&ocirc;/g, 'ô')
+    .replace(/&ugrave;/g, 'ù')
+    .replace(/&ucirc;/g, 'û')
+    .replace(/&ccedil;/g, 'ç')
     .replace(/&ocirc;/g, 'ô')
     .replace(/&uuml;/g, 'ü')
-    .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

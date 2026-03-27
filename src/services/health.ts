@@ -30,6 +30,10 @@ const SENTINELLES_URL = import.meta.env.PROD
   ? '/api/health/sentinelles'
   : 'http://localhost:3001/api/health/sentinelles';
 
+const EPIDEMIC_ALERTS_URL = import.meta.env.PROD
+  ? '/api/health/epidemic-alerts'
+  : 'http://localhost:3001/api/health/epidemic-alerts';
+
 const DRUG_SHORTAGES_URL = import.meta.env.PROD
   ? '/api/health/drug-shortages'
   : 'http://localhost:3001/api/health/drug-shortages';
@@ -45,6 +49,9 @@ const OSCOUR_SOS_URL = import.meta.env.PROD
 const APL_URL = import.meta.env.PROD
   ? '/api/health/apl'
   : 'http://localhost:3001/api/health/apl';
+
+const ODISSE_WINTER_ALERTS_URL =
+  'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
 
 // ═══ Region mappings ═══════════════════════════════════════════════════════
 
@@ -140,6 +147,30 @@ interface DrugShortagesResponse {
   }>;
   last_update?: string | null;
   metadata?: { source?: string };
+}
+
+interface EpidemicAlertsResponse {
+  alerts?: Array<{
+    id?: string;
+    pathogen?: string;
+    severity?: 'critical' | 'high' | 'warning';
+    title?: string;
+    summary?: string;
+    locations?: string[];
+    date?: string;
+    sourceLabel?: string;
+    sourceUrl?: string | null;
+  }>;
+}
+
+interface OdiseeWinterAlertsResponse {
+  results?: Array<{
+    theme?: string;
+    reg?: string;
+    date?: string;
+    date_lib?: string;
+    valeur?: number;
+  }>;
 }
 
 interface DepartmentalResponse {
@@ -282,9 +313,10 @@ export async function fetchHealthData(): Promise<HealthPayload> {
   };
 
   try {
-    const [epid, sent, drug, dept, oscourSos, apl] = await Promise.all([
+    const [epid, sent, epidemicAlertsResponse, drug, dept, oscourSos, apl] = await Promise.all([
       fetchJson<EpidemiologyResponseV2 | EpidemiologyResponseLegacy>(EPIDEMIOLOGY_URL).catch(() => ({ covid_regional: [], rows: [] }) as EpidemiologyResponseV2 & EpidemiologyResponseLegacy),
       fetchJson<SentinellesResponse>(SENTINELLES_URL).catch(() => ({ indicators: [] }) as SentinellesResponse),
+      fetchJson<EpidemicAlertsResponse>(EPIDEMIC_ALERTS_URL).catch(() => ({ alerts: [] }) as EpidemicAlertsResponse),
       fetchJson<DrugShortagesResponse>(DRUG_SHORTAGES_URL).catch(() => ({ shortages: [], last_update: null, metadata: {} }) as DrugShortagesResponse),
       fetchJson<DepartmentalResponse>(DEPARTMENTAL_URL).catch(() => ({ departments: [] }) as DepartmentalResponse),
       fetchJson<OscourSosResponse>(OSCOUR_SOS_URL).catch(() => ({ departements: [] }) as OscourSosResponse),
@@ -293,6 +325,26 @@ export async function fetchHealthData(): Promise<HealthPayload> {
 
     const sentinellesByRegion = buildSentinellesByRegion(sent?.indicators ?? []);
     const sentIndicators = buildSentinellesNationalIndicators(sent?.indicators ?? []);
+    let epidemicAlerts: HealthFeatures['epidemicAlerts'] = Array.isArray(epidemicAlertsResponse?.alerts)
+      ? epidemicAlertsResponse.alerts
+        .filter((alert) => String(alert?.title ?? '').trim().length > 0 && String(alert?.date ?? '').trim().length > 0)
+        .map((alert) => ({
+          id: String(alert?.id ?? `epidemic-${String(alert?.date ?? '')}-${String(alert?.title ?? '')}`),
+          pathogen: String(alert?.pathogen ?? 'Agent infectieux').trim(),
+          severity: (alert?.severity ?? 'warning') as 'critical' | 'high' | 'warning',
+          title: String(alert?.title ?? '').trim(),
+          summary: String(alert?.summary ?? '').trim(),
+          locations: Array.isArray(alert?.locations) ? alert.locations.map((loc) => String(loc).trim()).filter(Boolean) : [],
+          date: String(alert?.date ?? '').trim(),
+          sourceLabel: String(alert?.sourceLabel ?? 'Source officielle').trim(),
+          sourceUrl: alert?.sourceUrl ? String(alert.sourceUrl) : null,
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date))
+      : [];
+
+    if (epidemicAlerts.length === 0) {
+      epidemicAlerts = await fetchOdiseeAlertsDirect().catch(() => []);
+    }
     const shortages = Array.isArray(drug?.shortages) ? drug.shortages : [];
     const shortagesLastUpdate = drug?.last_update ? new Date(drug.last_update) : null;
     const shortagesUrl = String(drug?.metadata?.source || 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments');
@@ -350,7 +402,7 @@ export async function fetchHealthData(): Promise<HealthPayload> {
     const oscourSosStatus: 'ok' | 'stale' | 'error' = (oscourSos?.departements?.length ?? 0) > 0 ? 'ok' : 'error';
     const aplStatus: 'ok' | 'stale' | 'error' = (apl?.departements?.length ?? 0) > 0 ? 'ok' : 'error';
     const healthFeatures = buildHealthFeatures(
-      effectiveDepartments, regions, sentIndicators, shortages, shortagesLastUpdate, shortagesUrl, dreesStatus,
+      effectiveDepartments, regions, sentIndicators, epidemicAlerts, shortages, shortagesLastUpdate, shortagesUrl, dreesStatus,
       oscourSosStatus, aplStatus,
     );
 
@@ -832,6 +884,7 @@ function buildEmptyHealthFeatures(): HealthFeatures {
     },
     sentinellesIndicatorPoints: 0,
     sentinellesIndicators: [],
+    epidemicAlerts: [],
     drugShortagesCount: 0,
     drugShortagesByStatus: { rupture: 0, tension: 0, normalisation: 0, unknown: 0 },
     drugShortagesLastUpdate: null,
@@ -844,6 +897,7 @@ function buildHealthFeatures(
   departments: HealthDepartmentMetric[],
   regions: HealthRegionMetric[],
   sentIndicators: Array<{ code: string; label: string; nationalIncidence: number }>,
+  epidemicAlerts: HealthFeatures['epidemicAlerts'],
   shortages: Array<{ drug_name?: string; status?: 'tension' | 'rupture' | 'normalisation' | 'unknown' }>,
   shortagesLastUpdate: Date | null,
   shortagesUrl: string,
@@ -898,6 +952,7 @@ function buildHealthFeatures(
     },
     sentinellesIndicatorPoints: sentIndicators.length,
     sentinellesIndicators: sentIndicators,
+    epidemicAlerts,
     drugShortagesCount: shortagesCount,
     drugShortagesByStatus,
     drugShortagesLastUpdate: shortagesLastUpdate,
@@ -927,6 +982,93 @@ function extractEpidByRegion(
   }
 
   return map;
+}
+
+async function fetchOdiseeAlertsDirect(): Promise<HealthFeatures['epidemicAlerts']> {
+  if (typeof window === 'undefined') return [];
+
+  const resp = await fetch(ODISSE_WINTER_ALERTS_URL, {
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  if (!resp.ok) return [];
+
+  const payload = await resp.json() as OdiseeWinterAlertsResponse;
+  const rows = Array.isArray(payload.results) ? payload.results : [];
+  if (rows.length === 0) return [];
+
+  const latestDate = rows
+    .map((row) => String(row?.date ?? '').trim())
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0];
+
+  if (!latestDate) return [];
+
+  const grouped = new Map<string, {
+    theme: string;
+    date: string;
+    dateLib: string;
+    maxLevel: number;
+    regions: Array<{ code: string; name: string; level: number }>;
+  }>();
+
+  for (const row of rows) {
+    const date = String(row?.date ?? '').trim();
+    const theme = String(row?.theme ?? '').trim();
+    const regionCode = String(row?.reg ?? '').trim();
+    const level = Number(row?.valeur);
+    const dateLib = String(row?.date_lib ?? '').trim();
+
+    if (date !== latestDate || !theme || !regionCode || !Number.isFinite(level) || level < 3) continue;
+
+    const key = `${theme}::${dateLib}`;
+    const entry = grouped.get(key) ?? {
+      theme,
+      date,
+      dateLib,
+      maxLevel: level,
+      regions: [],
+    };
+
+    entry.maxLevel = Math.max(entry.maxLevel, level);
+    entry.regions.push({
+      code: regionCode,
+      name: REGION_CODE_TO_NAME[regionCode] ?? `Région ${regionCode}`,
+      level,
+    });
+    grouped.set(key, entry);
+  }
+
+  return [...grouped.values()]
+    .map((entry) => {
+      const locations = entry.regions
+        .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name))
+        .map((region) => `${region.name} (niveau ${region.level})`);
+
+      return {
+        id: `odisee-${slugify(`${entry.theme}-${entry.dateLib}`)}`,
+        pathogen: entry.theme,
+        severity: (entry.maxLevel >= 4 ? 'high' : 'warning') as 'critical' | 'high' | 'warning',
+        title: `${entry.theme} · signal hivernal SPF`,
+        summary: `Niveaux d'alerte relevés dans le bulletin ${entry.dateLib}.`,
+        locations: locations.slice(0, 4),
+        date: entry.date,
+        sourceLabel: 'Santé publique France / Odissé',
+        sourceUrl: 'https://odisse.santepubliquefrance.fr/explore/dataset/ma_region_epidemies_hivernales_alertes/api/?flg=fr-fr',
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function slugify(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 // ═══ Utility functions ═════════════════════════════════════════════════════
