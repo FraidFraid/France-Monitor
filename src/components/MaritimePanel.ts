@@ -680,6 +680,7 @@ export class MaritimePanel {
 
   destroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
+    if (this._searchDebounceTimer) { clearTimeout(this._searchDebounceTimer); this._searchDebounceTimer = null; }
     this.containerEl?.remove();
   }
 }
