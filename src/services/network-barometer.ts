@@ -5,7 +5,7 @@
  *  - Ecowatt (électricité)   30%
  *  - IODA/BGP (internet)     25%
  *  - ARCEP (télécom)         15%
- *  - Cloud/Web               15%  ← null (poids fantôme, redistribué)
+ *  - Cloud/Web               15%  ← statuts datacenters (infra-network.ts)
  *  - Météo spatiale          10%
  *  - Tension cyber            5%
  */
@@ -13,11 +13,13 @@
 import type { EcowattResponse, TelecomOutage } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
 import type { CyberState } from '../types/index.ts';
+import type { InfraNetworkState } from '../types/index.ts';
 import { fetchEcowatt } from './ecowatt.ts';
 import { fetchNetworkOutages } from './internet-outages.ts';
 import { fetchTelecomOutages } from './outages.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
 import { fetchCyberDashboard } from './cyber.ts';
+import { fetchInfraNetwork } from './infra-network.ts';
 
 // ── Types exportés ────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ const WEIGHTS = {
   elec:    30,
   bgp:     25,
   telecom: 15,
-  cloud:   15,  // toujours null — poids fantôme redistribué automatiquement
+  cloud:   15,
   space:   10,
   cyber:    5,
 } as const;
@@ -58,16 +60,26 @@ function normalizeElec(data: EcowattResponse): number {
 
 function normalizeTelecom(outages: TelecomOutage[]): number {
   if (outages.length === 0) return 100;
-  // ARCEP dataset contains only outage/degraded sites, NOT the full network.
-  // Using a ratio (hsSites / totalSites) is meaningless since totalSites ≠ total network.
-  // Normalize on absolute HS count: 0 HS → 100, 500+ HS → 0.
+  // ARCEP dataset contains only outage/degraded sites, NOT the full network (~50 000 antennes FR).
+  // Thresholds: 0 HS → 100, 500 HS (routine) → 90, 2500 HS → 50, 5000 HS (10% réseau) → 0.
+  // Divisor 50: 5000 / 50 = 100 points de pénalité maximum.
   const hsSites = outages.filter(o => o.voiceStatus === 'HS' || o.dataStatus === 'HS').length;
-  return Math.max(0, Math.round(100 - (hsSites / 5)));
+  return Math.max(0, Math.round(100 - (hsSites / 50)));
 }
 
 function normalizeSpace(data: SpaceWeatherData): number {
   // kp=0 → 100 (calme), kp=5 → 40 (tempête G1), kp≥9 → 0 (extrême)
   return Math.max(0, 100 - Math.min(data.kpIndex * 12, 100));
+}
+
+function normalizeCloud(state: InfraNetworkState): number {
+  if (state.datacenters.length === 0) return 100;
+  const scoreMap: Record<string, number> = {
+    operational: 100, unknown: 100, maintenance: 90,
+    degraded: 60, partial: 40, outage: 0,
+  };
+  const scores = state.datacenters.map(dc => scoreMap[dc.status] ?? 100);
+  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
 
 function normalizeCyber(state: CyberState): number {
@@ -105,19 +117,20 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
   // Fetch toutes les sources en parallèle — échec partiel → null pour cette source
-  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes] = await Promise.allSettled([
+  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes] = await Promise.allSettled([
     fetchEcowatt(),
     fetchNetworkOutages(),
     fetchTelecomOutages(),
     fetchSpaceWeather(),
     fetchCyberDashboard(),
+    fetchInfraNetwork(),
   ]);
 
   const scores: Partial<Record<WeightKey, number | null>> = {
     elec:    ecowattRes.status  === 'fulfilled' ? normalizeElec(ecowattRes.value)       : null,
     bgp:     bgpRes.status      === 'fulfilled' ? bgpRes.value.nationalScore            : null,
     telecom: telecomRes.status  === 'fulfilled' ? normalizeTelecom(telecomRes.value)    : null,
-    cloud:   null,  // poids fantôme
+    cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
     cyber:   cyberRes.status    === 'fulfilled' ? normalizeCyber(cyberRes.value)        : null,
   };
@@ -147,12 +160,12 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
       elec:    scores.elec    ?? null,
       bgp:     scores.bgp     ?? null,
       telecom: scores.telecom ?? null,
-      cloud:   null,
+      cloud:   scores.cloud   ?? null,
       space:   scores.space   ?? null,
       cyber:   scores.cyber   ?? null,
     },
     computedAt: new Date(),
-    reliable: activeWeights >= 30, // 30 = 30% of total nominal weights (100). Cloud is always null, so max activeWeights = 85.
+    reliable: activeWeights >= 30,
   };
 
   _cache = { data: result, ts: Date.now() };

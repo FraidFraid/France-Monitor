@@ -376,6 +376,7 @@ export class BarometerWidget {
       ['BGP / Internet',   details.bgp    ?? null],
       ['Électricité',      details.elec   ?? null],
       ['Telecom ARCEP',    details.telecom ?? null],
+      ['Cloud / Web',      details.cloud  ?? null],
       ['Météo Spatiale',   details.space  ?? null],
       ['Cyber (CERT-FR)',  details.cyber  ?? null],
     ];
@@ -398,10 +399,6 @@ export class BarometerWidget {
         État Infrastructure France
       </div>
       ${rowsHtml}
-      <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);opacity:0.4;display:flex;justify-content:space-between;gap:8px;">
-        <span>Cloud / Web</span>
-        <span style="font-style:italic;">N/A (intégration en cours)</span>
-      </div>
     `;
   }
 
