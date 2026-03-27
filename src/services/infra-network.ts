@@ -90,13 +90,18 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
     }));
 
     const cloudflareAnomalies = (Array.isArray(raw.cloudflareAnomalies) ? raw.cloudflareAnomalies : []).map((a: any): CloudflareRadarAnomaly => ({
-        id:          String(a.id ?? ''),
-        type:        String(a.type ?? ''),
-        startDate:   String(a.startDate ?? ''),
-        endDate:     a.endDate ? String(a.endDate) : undefined,
-        status:      (a.status === 'ONGOING' ? 'ONGOING' : 'FINISHED') as 'ONGOING' | 'FINISHED',
-        description: String(a.description ?? ''),
-        asns:        Array.isArray(a.asns) ? a.asns.map((as: any) => ({ asn: Number(as.asn), asName: String(as.asName ?? '') })) : [],
+        id:              String(a.id ?? ''),
+        type:            String(a.type ?? ''),
+        startDate:       String(a.startDate ?? ''),
+        endDate:         a.endDate ? String(a.endDate) : undefined,
+        status:          String(a.status ?? 'UNVERIFIED'),
+        locationDetails: a.locationDetails ? { code: String(a.locationDetails.code ?? ''), name: String(a.locationDetails.name ?? '') } : undefined,
+        asnDetails:      a.asnDetails ? {
+            asn:       String(a.asnDetails.asn ?? ''),
+            name:      String(a.asnDetails.name ?? ''),
+            locations: a.asnDetails.locations ? { code: String(a.asnDetails.locations.code ?? ''), name: String(a.asnDetails.locations.name ?? '') } : undefined,
+        } : undefined,
+        originDetails:   a.originDetails ? { name: String(a.originDetails.name ?? ''), origin: String(a.originDetails.origin ?? '') } : undefined,
     }));
 
     const ss = (raw.sourcesStatus as any) ?? {};

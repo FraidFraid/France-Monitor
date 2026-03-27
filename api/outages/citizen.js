@@ -481,95 +481,83 @@ function parseFrenchDate(str) {
 // ── Scraper: Coupure-elec.fr ────────────────────────────────────────────────
 
 /**
- * Coupure-elec.fr : stats vérifiées par ville/région.
- * Site HTML statique — parsing Cheerio.
+ * Coupure-elec.fr : signalements citoyens de pannes électriques.
  *
- * Structure supposée (à inspecter sur le site réel) :
- *   <table class="pannes-table">
- *     <tr>
- *       <td class="ville">Lyon</td>
- *       <td class="dept">69</td>
- *       <td class="pannes">15</td>
- *     </tr>
- *   </table>
+ * Le site est Next.js App Router (React Server Components). Seules les pages
+ * /departement/[slug] sont rendues côté serveur avec les données complètes.
+ * La page /coupures n'existe pas ; l'accueil utilise des composants CSR.
  *
- * Ou format liste :
- *   <ul class="pannes-list">
- *     <li data-ville="Lyon" data-dept="69" data-count="15">...</li>
- *   </ul>
+ * Structure HTML réelle (Tailwind, vérifiée sur le site réel) :
+ *   <div class="p-6">                        ← conteneur d'une panne
+ *     <span>Actif | Résolu | Obsolète…</span> ← badge de statut
+ *     <a href="/ville/SLUG">→ Nom Ville</a>  ← lien ville
+ *     <div>N signalements</div>               ← compteur
+ *   </div>
+ *
+ * Stratégie : 5 départements à forte densité urbaine, fetch séquentiel
+ * pour respecter le rate limit (1.2 s entre requêtes).
  */
+
+/** Départements à scraper — couvre ~35 % de la population métropolitaine. */
+const COUPURE_ELEC_DEPTS = [
+  { slug: 'nord',             name: 'Nord',             code: '59' },
+  { slug: 'bouches-du-rhone', name: 'Bouches-du-Rhône', code: '13' },
+  { slug: 'rhone',            name: 'Rhône',            code: '69' },
+  { slug: 'gironde',          name: 'Gironde',          code: '33' },
+  { slug: 'haute-garonne',    name: 'Haute-Garonne',    code: '31' },
+];
+
 async function scrapeCoupureElec() {
-  await rateLimitWait('coupure-elec');
-
-  const resp = await fetchWithTimeout('https://coupure-elec.fr/coupures', {
-    headers: { ...HEADERS, Accept: 'text/html' },
-  });
-
-  if (!resp.ok) {
-    throw new OutageScraperError(`Coupure-elec fetch failed: HTTP ${resp.status}`, 'coupure-elec');
-  }
-
-  const html = await resp.text();
-
   let cheerio;
   try {
     cheerio = await import('cheerio');
   } catch {
-    // Fallback: regex parsing si cheerio absent
-    return parseCoupureElecFallback(html);
+    console.warn('[coupure-elec] cheerio indisponible — source ignorée');
+    return [];
   }
 
-  const $ = cheerio.load(html);
-  const results = [];
+  const raw = [];
 
-  // Sélecteurs à ajuster selon l'inspection HTML réelle
-  const SELECTORS = {
-    // Tableau de pannes
-    tableRow: '.pannes-table tr, table.coupures tr, .stats-table tr',
-    cityCol: 'td:nth-child(1), .ville, td.city',
-    deptCol: 'td:nth-child(2), .dept, td.departement',
-    countCol: 'td:nth-child(3), .nb-pannes, td.count, .pannes',
-
-    // Format liste alternative
-    listItem: '.pannes-list li, [data-ville], .panne-row',
-  };
-
-  // Tenter le format tableau
-  $(SELECTORS.tableRow).each((_, row) => {
-    const $row = $(row);
-    const city = $row.find(SELECTORS.cityCol).first().text().trim();
-    const dept = $row.find(SELECTORS.deptCol).first().text().trim();
-    const countText = $row.find(SELECTORS.countCol).first().text().trim();
-    if (!city || city.toLowerCase() === 'ville') return; // skip header row
-    const count = parseInt(countText.replace(/\D/g, ''), 10);
-    if (!count || count < 1) return;
-
-    results.push({ city, dept, count });
-  });
-
-  // Tenter le format liste si le tableau ne donne rien
-  if (results.length === 0) {
-    $(SELECTORS.listItem).each((_, el) => {
-      const $el = $(el);
-      const city = $el.attr('data-ville') ?? $el.find('.ville').text().trim();
-      const dept = $el.attr('data-dept') ?? $el.find('.dept').text().trim();
-      const count = parseInt($el.attr('data-count') ?? $el.find('.count').text(), 10);
-      if (city && count >= 1) results.push({ city, dept, count });
-    });
+  // Fetch séquentiel pour respecter le rate limit inter-requêtes
+  for (const dept of COUPURE_ELEC_DEPTS) {
+    try {
+      await rateLimitWait('coupure-elec');
+      const resp = await fetchWithTimeout(
+        `https://www.coupure-elec.fr/departement/${dept.slug}`,
+        { headers: { ...HEADERS, Accept: 'text/html' } },
+      );
+      if (!resp.ok) {
+        console.warn(`[coupure-elec] HTTP ${resp.status} pour /departement/${dept.slug}`);
+        continue;
+      }
+      const html = await resp.text();
+      const { results, stats } = parseCoupureElecDept(cheerio, html, dept);
+      if (stats.total === 0) {
+        console.warn(`[coupure-elec] /departement/${dept.slug} — aucun lien /ville/ trouvé (structure HTML changée ?)`);
+      } else if (stats.active === 0) {
+        console.info(`[coupure-elec] /departement/${dept.slug} — ${stats.total} panne(s) trouvée(s), toutes filtrées. Statuts: [${stats.statuses.join(', ')}]`);
+      }
+      raw.push(...results);
+    } catch (err) {
+      console.warn(`[coupure-elec] erreur /departement/${dept.slug}:`, err?.message ?? err);
+    }
   }
 
-  // Geocode et retourner
+  if (raw.length === 0) {
+    console.info('[coupure-elec] aucune panne active sur les 5 départements — réseau stable ou tous statuts filtrés');
+    return [];
+  }
+
   const reports = [];
-  for (const r of results.slice(0, 100)) {
-    const coords = await geocodeCity(r.city, r.dept);
+  for (const r of raw.slice(0, 100)) {
+    const coords = await geocodeCity(r.city, r.deptName);
     if (!coords) continue;
-
     reports.push({
       id: `coupure-elec-${slugify(r.city)}-${Date.now()}`,
       source: 'coupure-elec',
       city: r.city,
-      department: r.dept,
-      departmentCode: extractDeptCode(r.dept),
+      department: r.deptName,
+      departmentCode: r.deptCode,
       reportCount: r.count,
       timestamp: new Date(),
       coordinates: coords,
@@ -579,22 +567,45 @@ async function scrapeCoupureElec() {
   return reports;
 }
 
-/** Fallback regex si cheerio indisponible */
-function parseCoupureElecFallback(html) {
-  const matches = [...html.matchAll(
-    /<(?:td|li)[^>]*class="(?:ville|city)"[^>]*>([\w\s-]+)<\/(?:td|li)>/gi
-  )];
-  return matches.map((m, i) => ({
-    id: `coupure-elec-fallback-${i}`,
-    source: 'coupure-elec',
-    city: m[1].trim(),
-    department: '',
-    departmentCode: '',
-    reportCount: 1,
-    timestamp: new Date(),
-    coordinates: null, // à géocoder
-    type: 'electricity',
-  })).filter((r) => r.city);
+/**
+ * Parse les pannes actives d'une page /departement/[slug].
+ * Sélecteur clé : a[href^="/ville/"] — chaque lien ville identifie une panne.
+ * On remonte au conteneur .p-6 pour lire le statut et le nombre de signalements.
+ *
+ * Retourne { results, stats } pour permettre le diagnostic en prod :
+ *   - stats.total    : entrées brutes trouvées (liens /ville/ avec container)
+ *   - stats.active   : entrées retenues après filtre statut
+ *   - stats.statuses : échantillon des libellés de statut rencontrés (dédup, max 5)
+ */
+function parseCoupureElecDept(cheerio, html, dept) {
+  const $ = cheerio.load(html);
+  const results = [];
+  let totalFound = 0;
+  const seenStatuses = new Set();
+
+  $('a[href^="/ville/"]').each((_, el) => {
+    const $link = $(el);
+    const city = $link.text().replace(/^[\s\u2192→]+/, '').trim();
+    if (!city) return;
+
+    const $container = $link.closest('[class*="p-6"]');
+    if (!$container.length) return;
+
+    totalFound++;
+    const statusText = $container.find('span').first().text().trim();
+    if (seenStatuses.size < 5) seenStatuses.add(statusText || '(vide)');
+
+    // Ignorer les pannes obsolètes (>6h) ou résolues
+    const statusLower = statusText.toLowerCase();
+    if (statusLower.includes('obsolète') || statusLower.includes('résolu')) return;
+
+    const countMatch = $container.text().match(/(\d+)\s+signalement/);
+    const count = countMatch ? parseInt(countMatch[1], 10) : 1;
+
+    results.push({ city, deptName: dept.name, deptCode: dept.code, count });
+  });
+
+  return { results, stats: { total: totalFound, active: results.length, statuses: [...seenStatuses] } };
 }
 
 // ── Clustering DBSCAN (Turf.js) ─────────────────────────────────────────────
@@ -894,13 +905,6 @@ function deduplicateReports(reports) {
   return [...map.values()];
 }
 
-/** Extrait le code département (ex: "Rhône (69)" → "69"). */
-function extractDeptCode(dept) {
-  if (!dept) return '';
-  const numMatch = dept.match(/\b(\d{1,3}[AB]?)\b/);
-  return numMatch ? numMatch[1].padStart(2, '0') : '';
-}
-
 /** Slugifie une chaîne pour les IDs. */
 function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30);
@@ -909,11 +913,3 @@ function slugify(str) {
 /** Délai async. */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Erreur typée pour les scrapers. */
-class OutageScraperError extends Error {
-  constructor(message, source) {
-    super(message);
-    this.name = 'OutageScraperError';
-    this.source = source;
-  }
-}

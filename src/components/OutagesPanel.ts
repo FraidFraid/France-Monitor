@@ -315,6 +315,12 @@ export class OutagesPanel extends Panel {
 
     const frag = document.createDocumentFragment();
 
+    // ── Note DataFair ──
+    const disclaimer = document.createElement('div');
+    disclaimer.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:10px;line-height:1.4;';
+    disclaimer.textContent = '⚠ Ces indicateurs sont des données annuelles historiques Enedis (DataFair) agrégées par département — ils ne reflètent pas les pannes en cours en temps réel.';
+    frag.appendChild(disclaimer);
+
     // ── Résumé badges ──
     const mkBadge = (count: number, label: string, color: string) => {
       const d = document.createElement('div');
@@ -1020,7 +1026,8 @@ export class OutagesPanel extends Panel {
     frag.appendChild(ixpGrid);
 
     // ── Cloudflare Radar anomalies ──
-    const ongoing = infra.cloudflareAnomalies.filter(a => a.status === 'ONGOING');
+    // Filter: anomalies without endDate are still active
+    const ongoing = infra.cloudflareAnomalies.filter(a => !a.endDate);
     if (ongoing.length > 0) {
       const radTitle = document.createElement('div');
       radTitle.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px;';
@@ -1035,11 +1042,13 @@ export class OutagesPanel extends Panel {
           background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);
           border-radius:8px;padding:9px 11px;
         `;
-        const asnStr = a.asns.length ? `AS : ${a.asns.map(as => as.asName || `AS${as.asn}`).join(', ')}` : '';
+        const locationStr = a.locationDetails?.name ?? '';
+        const asnStr = a.asnDetails ? `${a.asnDetails.name || `AS${a.asnDetails.asn}`}` : '';
+        const detailStr = locationStr || asnStr;
         card.innerHTML = `
           <div style="font-size:12px;font-weight:700;color:#EF4444;margin-bottom:3px;">⚠ Anomalie trafic en cours</div>
-          ${a.description ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;">${a.description}</div>` : ''}
-          ${asnStr ? `<div style="font-size:10px;color:var(--text-muted);">${asnStr}</div>` : ''}
+          ${detailStr ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;">${detailStr}</div>` : ''}
+          ${a.asnDetails?.asn ? `<div style="font-size:10px;color:var(--text-muted);">AS${a.asnDetails.asn}</div>` : ''}
         `;
         radList.appendChild(card);
       }
@@ -1061,6 +1070,7 @@ export class OutagesPanel extends Panel {
       <span style="font-size:10px;color:var(--text-muted);">${dot(ss.google)} GCP</span>
       <span style="font-size:10px;color:var(--text-muted);">${dot(ss.cloudflare)} CF</span>
       <span style="font-size:10px;color:var(--text-muted);">${dot(ss.peeringdb)} PeeringDB</span>
+      <span style="font-size:10px;color:var(--text-muted);">${dot(ss.radar)} Radar</span>
       <span style="font-size:10px;color:var(--text-muted);margin-left:auto;">
         ${infra.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
       </span>

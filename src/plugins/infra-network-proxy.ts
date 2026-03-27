@@ -131,20 +131,21 @@ async function fetchCloudflareRadar(token: string) {
     if (!token) return { data: [], ok: false, skipped: true };
     try {
         const resp = await fetchWithTimeout(
-            'https://api.cloudflare.com/client/v4/radar/traffic_anomalies/get?location=FR&limit=20',
+            'https://api.cloudflare.com/client/v4/radar/traffic_anomalies?location=FR&dateRange=7d&limit=20',
             8000,
             { Authorization: `Bearer ${token}` }
         );
         if (!resp.ok) return { data: [], ok: false, skipped: false };
         const json = await resp.json() as any;
         const anomalies = (json?.result?.trafficAnomalies ?? []).map((a: any, i: number) => ({
-            id:          `cf-radar-${i}`,
-            type:        a.type ?? 'traffic_anomaly',
-            startDate:   a.startDate ?? '',
-            endDate:     a.endDate ?? undefined,
-            status:      a.status ?? 'FINISHED',
-            description: a.description ?? '',
-            asns:        (a.asns ?? []).map((as: any) => ({ asn: as.asn, asName: as.asName ?? '' })),
+            id:              a.uuid ?? `cf-radar-${i}`,
+            type:            a.type ?? 'LOCATION',
+            startDate:       a.startDate ?? '',
+            endDate:         a.endDate ?? undefined,
+            status:          a.status ?? 'UNVERIFIED',
+            locationDetails: (a.locationDetails as { code: string; name: string } | undefined) ?? undefined,
+            asnDetails:      (a.asnDetails as { asn: string; name: string; locations?: { code: string; name: string } } | undefined) ?? undefined,
+            originDetails:   (a.originDetails as { name: string; origin: string } | undefined) ?? undefined,
         }));
         return { data: anomalies, ok: true, skipped: false };
     } catch {

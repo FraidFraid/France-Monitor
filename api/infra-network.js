@@ -161,18 +161,19 @@ async function fetchPeeringDbIxps() {
 async function fetchCloudflareRadar(token) {
     if (!token) return { data: [], ok: false, skipped: true };
     try {
-        const url = 'https://api.cloudflare.com/client/v4/radar/traffic_anomalies/get?location=FR&limit=20';
+        const url = 'https://api.cloudflare.com/client/v4/radar/traffic_anomalies?location=FR&dateRange=7d&limit=20';
         const resp = await fetchWithTimeout(url, 8000, { Authorization: `Bearer ${token}` });
         if (!resp.ok) return { data: [], ok: false };
         const json = await resp.json();
         const anomalies = (json?.result?.trafficAnomalies ?? []).map((a, i) => ({
-            id:          `cf-radar-${i}`,
-            type:        a.type ?? 'traffic_anomaly',
-            startDate:   a.startDate ?? '',
-            endDate:     a.endDate ?? undefined,
-            status:      a.status ?? 'FINISHED',
-            description: a.description ?? '',
-            asns:        (a.asns ?? []).map(as => ({ asn: as.asn, asName: as.asName ?? '' })),
+            id:              a.uuid ?? `cf-radar-${i}`,
+            type:            a.type ?? 'LOCATION',
+            startDate:       a.startDate ?? '',
+            endDate:         a.endDate ?? undefined,
+            status:          a.status ?? 'UNVERIFIED',
+            locationDetails: a.locationDetails ?? undefined,
+            asnDetails:      a.asnDetails ?? undefined,
+            originDetails:   a.originDetails ?? undefined,
         }));
         return { data: anomalies, ok: true };
     } catch {
