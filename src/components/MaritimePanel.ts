@@ -46,6 +46,8 @@ export class MaritimePanel {
   private _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _staleBannerEl: HTMLElement | null = null;
   private _headerEl: HTMLElement | null = null;
+  private _searchInputEl: HTMLInputElement | null = null;
+  private _searchClearBtnEl: HTMLButtonElement | null = null;
 
   constructor(_parentEl: HTMLElement) {}
 
@@ -67,6 +69,8 @@ export class MaritimePanel {
     this._searchQuery = '';
     this._activeFilter = 'all';
     if (this._searchDebounceTimer) { clearTimeout(this._searchDebounceTimer); this._searchDebounceTimer = null; }
+    if (this._searchInputEl) this._searchInputEl.value = '';
+    if (this._searchClearBtnEl) this._searchClearBtnEl.style.display = 'none';
     if (this.containerEl) this.containerEl.style.display = 'none';
     this.containerEl?.querySelector('.maritime-modal')?.remove();
     this.onHighlightShipCb?.(null);
@@ -195,6 +199,8 @@ export class MaritimePanel {
         this._renderCurrentTab();
       }, 150);
     });
+    this._searchInputEl = searchInput;
+    this._searchClearBtnEl = clearBtn;
     searchWrap.appendChild(searchInput);
     searchWrap.appendChild(clearBtn);
     searchRow.appendChild(searchWrap);
@@ -444,7 +450,7 @@ export class MaritimePanel {
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="color:var(--text-primary);font-weight:600;font-size:11px;${showFullName ? 'white-space:normal;overflow:visible;text-overflow:clip;max-width:none;line-height:1.25;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;'}">${ship.name}</span>
-          ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">figé</span>' : ''}
+          ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">données figées</span>' : ''}
           <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${riskColor};flex-shrink:0;" title="${ship.riskLevel ?? 'none'}"></span>
         </div>
         <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${ship.type} · ${flagEmoji} ${countryName || 'Inconnu'}</div>
