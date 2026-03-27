@@ -10,23 +10,34 @@ import type { Plugin } from 'vite';
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1';
 const ALLOWED = ['sentinel-2-l2a', 'sentinel-1-grd'];
 
+function formatBrowserDayBounds(date: Date): { fromTime: string; toTime: string } {
+  const day = date.toISOString().split('T')[0];
+  return {
+    fromTime: `${day}T00:00:00.000Z`,
+    toTime: `${day}T23:59:59.999Z`,
+  };
+}
+
 function buildEoBrowserUrl(bbox: [number, number, number, number], collection: string): string {
   const centerLng = ((bbox[0] + bbox[2]) / 2).toFixed(5);
   const centerLat = ((bbox[1] + bbox[3]) / 2).toFixed(5);
   const extent = Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]);
   const zoom = extent < 0.2 ? 13 : extent < 1 ? 11 : extent < 3 ? 9 : 7;
+  const { fromTime, toTime } = formatBrowserDayBounds(new Date());
   if (collection === 'sentinel-1-grd') {
-    return `https://browser.dataspace.copernicus.eu/?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&datasetId=S1GRD`;
+    return `https://browser.dataspace.copernicus.eu/?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}`;
   }
-  const toTime = new Date().toISOString().split('T')[0] + 'T23:59:59.000Z';
-  return `https://browser.dataspace.copernicus.eu/?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&datasetId=S2L2A&toTime=${encodeURIComponent(toTime)}&cloudCoverage=30`;
+  return `https://browser.dataspace.copernicus.eu/?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&datasetId=S2_L2A_CDAS&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&layerId=1_TRUE_COLOR&cloudCoverage=30&dateMode=SINGLE`;
 }
 
 function mapFeatures(features: unknown[], collection: string): unknown[] {
   return (features as Record<string, unknown>[]).map((feat) => {
     const props = (feat.properties as Record<string, unknown>) ?? {};
     const assets = feat.assets as Record<string, { href?: string }> | undefined;
-    const thumbnailUrl = assets?.thumbnail?.href ?? assets?.overview?.href;
+    const links = Array.isArray(feat.links) ? feat.links as Array<{ rel?: string; href?: string }> : [];
+    const thumbnailUrl = links.find((link) => link.rel === 'thumbnail')?.href
+      ?? assets?.thumbnail?.href
+      ?? assets?.overview?.href;
     return {
       id: feat.id ?? `${collection}-${Date.now()}`,
       datetime: (props.datetime as string) ?? new Date().toISOString(),
@@ -77,8 +88,13 @@ export function copernicusProxyPlugin(): Plugin {
         const pastDate = new Date(now);
         pastDate.setDate(pastDate.getDate() - 90);
         const datetime = `${pastDate.toISOString().split('T')[0]}T00:00:00Z/${now.toISOString().split('T')[0]}T23:59:59Z`;
-        const params = new URLSearchParams({ bbox: bboxStr, datetime, limit: String(limit), sortby: '-datetime' });
-        const stacUrl = `${STAC_BASE}/collections/${collection}/items?${params.toString()}`;
+        const params = new URLSearchParams({
+          collections: collection,
+          bbox: bboxStr,
+          datetime,
+          limit: String(limit),
+        });
+        const stacUrl = `${STAC_BASE}/search?${params.toString()}`;
 
         try {
           const upstream = await fetch(stacUrl, {
@@ -97,6 +113,12 @@ export function copernicusProxyPlugin(): Plugin {
               return cc == null || Number(cc) <= cloudMax;
             });
           }
+
+          (features as Record<string, unknown>[]).sort((a, b) => {
+            const aTime = Date.parse(String((a.properties as Record<string, unknown> | undefined)?.datetime ?? '')) || 0;
+            const bTime = Date.parse(String((b.properties as Record<string, unknown> | undefined)?.datetime ?? '')) || 0;
+            return bTime - aTime;
+          });
 
           const scenes = mapFeatures(features, collection);
           res.end(JSON.stringify({ scenes, eoBrowserUrl, mode: 'thumbnail' }));

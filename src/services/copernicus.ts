@@ -68,6 +68,14 @@ function computeZoom(bbox: [number, number, number, number]): number {
   return 7;
 }
 
+function formatBrowserDayBounds(date: Date): { fromTime: string; toTime: string } {
+  const day = date.toISOString().split('T')[0];
+  return {
+    fromTime: `${day}T00:00:00.000Z`,
+    toTime: `${day}T23:59:59.999Z`,
+  };
+}
+
 /**
  * Build a Copernicus EO Browser deep-link URL centered on the bbox.
  * When date is omitted, defaults to today (required for S2 toTime param).
@@ -81,16 +89,18 @@ export function buildEoBrowserUrl(
   const centerLat = ((bbox[1] + bbox[3]) / 2).toFixed(5);
   const zoom = computeZoom(bbox);
   const base = 'https://browser.dataspace.copernicus.eu/';
+  const d = date ?? new Date();
+  const { fromTime, toTime } = formatBrowserDayBounds(d);
 
   if (collection === 'sentinel-1-grd') {
-    // S1: no toTime needed — EO Browser defaults to latest available
-    return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&datasetId=S1GRD`;
+    // Copernicus Browser rejects the old S1GRD datasetId used in the MVP.
+    // Keep the fallback usable by opening Browser centered on the AOI without
+    // forcing an invalid dataset selection.
+    return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}`;
   }
 
-  // S2: always include toTime to land on a specific date window
-  const d = date ?? new Date();
-  const toTime = d.toISOString().split('T')[0] + 'T23:59:59.000Z';
-  return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&datasetId=S2L2A&toTime=${encodeURIComponent(toTime)}&cloudCoverage=30`;
+  // S2: use the current Copernicus Browser dataset id.
+  return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&datasetId=S2_L2A_CDAS&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&layerId=1_TRUE_COLOR&cloudCoverage=30&dateMode=SINGLE`;
 }
 
 // ─── STAC fetch ───
@@ -106,7 +116,7 @@ interface CopernicusApiResponse {
 async function fetchFromApi(
   collection: SatelliteCollection,
   bbox: [number, number, number, number],
-  options: { cloudMax?: number; limit?: number } = {},
+  options: { cloudMax?: number; limit?: number; signal?: AbortSignal } = {},
 ): Promise<CopernicusScene[]> {
   const params = new URLSearchParams({
     collection,
@@ -119,7 +129,7 @@ async function fetchFromApi(
 
   try {
     const resp = await fetch(`/api/copernicus?${params.toString()}`, {
-      signal: AbortSignal.timeout(12000),
+      signal: options.signal ?? AbortSignal.timeout(12000),
     });
     if (!resp.ok) {
       console.warn(`[copernicus] HTTP ${resp.status}`);
@@ -137,13 +147,15 @@ async function fetchFromApi(
 export async function fetchSentinel2Scenes(
   bbox: [number, number, number, number],
   _eventDate?: Date,
+  signal?: AbortSignal,
 ): Promise<CopernicusScene[]> {
-  return fetchFromApi('sentinel-2-l2a', bbox, { cloudMax: 30, limit: 6 });
+  return fetchFromApi('sentinel-2-l2a', bbox, { cloudMax: 30, limit: 6, signal });
 }
 
 /** Fetch Sentinel-1 GRD (SAR) scenes for the given bbox. Returns [] on error. */
 export async function fetchSentinel1Scenes(
   bbox: [number, number, number, number],
+  signal?: AbortSignal,
 ): Promise<CopernicusScene[]> {
-  return fetchFromApi('sentinel-1-grd', bbox, { limit: 3 });
+  return fetchFromApi('sentinel-1-grd', bbox, { limit: 3, signal });
 }

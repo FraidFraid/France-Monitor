@@ -34,6 +34,10 @@ function formatDate(isoDate: string): string {
   }
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export class SatellitePanel {
   private element: HTMLElement;
   private abortController: AbortController | null = null;
@@ -86,8 +90,8 @@ export class SatellitePanel {
   private async loadScenes(req: SatelliteViewRequest, signal: AbortSignal): Promise<void> {
     try {
       const [s2Result, s1Result] = await Promise.allSettled([
-        fetchSentinel2Scenes(req.bbox),
-        fetchSentinel1Scenes(req.bbox),
+        fetchSentinel2Scenes(req.bbox, undefined, signal),
+        fetchSentinel1Scenes(req.bbox, signal),
       ]);
 
       if (signal.aborted) return;
@@ -114,6 +118,30 @@ export class SatellitePanel {
     return this.state.activeCollection === 'sentinel-1-grd'
       ? this.state.s1Scenes
       : this.state.s2Scenes;
+  }
+
+  private buildThumbObjectPosition(
+    requestBbox: [number, number, number, number],
+    sceneBbox: [number, number, number, number],
+  ): string {
+    const reqCenterLng = (requestBbox[0] + requestBbox[2]) / 2;
+    const reqCenterLat = (requestBbox[1] + requestBbox[3]) / 2;
+    const sceneWidth = Math.max(sceneBbox[2] - sceneBbox[0], 0.000001);
+    const sceneHeight = Math.max(sceneBbox[3] - sceneBbox[1], 0.000001);
+    const xPct = clamp(((reqCenterLng - sceneBbox[0]) / sceneWidth) * 100, 0, 100);
+    const yPct = clamp(((sceneBbox[3] - reqCenterLat) / sceneHeight) * 100, 0, 100);
+    return `${xPct.toFixed(1)}% ${yPct.toFixed(1)}%`;
+  }
+
+  private replaceThumbWithPlaceholder(message = 'Aperçu indisponible'): void {
+    const wrap = this.element.querySelector('.satellite-panel__thumb-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div class="satellite-panel__thumb satellite-panel__thumb--placeholder">
+        <span class="satellite-panel__thumb-icon">🛰️</span>
+        <span class="satellite-panel__thumb-note">${escapeHtml(message)}</span>
+      </div>
+    `;
   }
 
   private render(): void {
@@ -149,20 +177,28 @@ export class SatellitePanel {
       const cloudHtml = activeScene.cloudCover != null
         ? `<span class="satellite-panel__cloud">☁️ ${activeScene.cloudCover.toFixed(0)}%</span>`
         : '';
+      const thumbPosition = req
+        ? this.buildThumbObjectPosition(req.bbox, activeScene.bbox)
+        : '50% 50%';
 
       bodyHtml = `
         <div class="satellite-panel__thumb-wrap">
           ${thumb
             ? `<img class="satellite-panel__thumb"
+                    data-role="satellite-thumb"
                     src="${escapeHtml(thumb)}"
                     alt="Sentinel thumbnail"
                     loading="lazy"
-                    onerror="this.parentElement.innerHTML='<div class=\\"satellite-panel__thumb satellite-panel__thumb--placeholder\\">🛰️</div>'"
+                    style="object-position:${thumbPosition};"
                />`
-            : `<div class="satellite-panel__thumb satellite-panel__thumb--placeholder">🛰️</div>`
+            : `<div class="satellite-panel__thumb satellite-panel__thumb--placeholder">
+                 <span class="satellite-panel__thumb-icon">🛰️</span>
+                 <span class="satellite-panel__thumb-note">Aperçu indisponible</span>
+               </div>`
           }
         </div>
-        <div class="satellite-panel__meta">🗓️ ${escapeHtml(dateStr)} ${cloudHtml}</div>`;
+        <div class="satellite-panel__meta">🗓️ ${escapeHtml(dateStr)} ${cloudHtml}</div>
+        <div class="satellite-panel__hint">Aperçu de scène centré sur la zone demandée</div>`;
 
       if (showAvantApres) {
         const apresActive = state.activeSceneIndex === 0;
@@ -206,6 +242,11 @@ export class SatellitePanel {
   }
 
   private attachListeners(): void {
+    const thumbEl = this.element.querySelector<HTMLImageElement>('[data-role="satellite-thumb"]');
+    thumbEl?.addEventListener('error', () => {
+      this.replaceThumbWithPlaceholder('Image indisponible');
+    }, { once: true });
+
     this.element.querySelector('[data-action="close"]')
       ?.addEventListener('click', () => this.hide());
 
