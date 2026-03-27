@@ -132,9 +132,17 @@ interface LivePosition {
     country?: string;     // "🇫🇷 France" format
 }
 const livePositions = new Map<string, LivePosition>();
+interface TrailPoint {
+    lon: number;
+    lat: number;
+    ts: number;
+}
+
 // Historique de positions par navire (max MAX_TRAIL_POINTS points)
 const MAX_TRAIL_POINTS = 80;
-const shipTrails = new Map<string, Array<[number, number]>>(); // MMSI → [[lon, lat], ...]
+const MAX_TRAIL_GAP_MS = 12 * 60 * 1000; // 12 min sans message → on casse le sillon
+const HARD_TRAIL_JUMP_KM = 120; // téléportation évidente → on casse le sillon
+const shipTrails = new Map<string, TrailPoint[]>(); // MMSI → [{ lon, lat, ts }, ...]
 interface StaticAisData {
     name?: string;
     shipType?: number;
@@ -223,6 +231,33 @@ const normalizeShipName = (value: unknown): string | undefined => {
     return name;
 };
 
+const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.asin(Math.sqrt(a));
+};
+
+function shouldBreakTrail(prev: LivePosition | undefined, nextLat: number, nextLon: number, nextSpeed: number, nowMs: number): boolean {
+    if (!prev) return false;
+
+    const elapsedMs = Math.max(0, nowMs - prev.ts);
+    if (elapsedMs > MAX_TRAIL_GAP_MS) return true;
+
+    const distKm = haversineKm(prev.lat, prev.lon, nextLat, nextLon);
+    if (distKm > HARD_TRAIL_JUMP_KM) return true;
+
+    const elapsedHours = elapsedMs / 3_600_000;
+    const referenceSpeedKn = Math.max(prev.speed ?? 0, nextSpeed ?? 0, 8);
+    const plausibleKm = (referenceSpeedKn * 1.852 * elapsedHours) + 3;
+    return elapsedMs > 0 && distKm > Math.max(8, plausibleKm * 3);
+}
+
 // ─── Handler AIS messages (abonné via ais-connection.ts) ────────────────────
 
 let _wsMessageCount = 0;
@@ -299,6 +334,7 @@ function _handleAisMessage(raw: string): void {
         }
 
         if (posReport) {
+            const nowMs = Date.now();
             const lat = toNumber(
                 (posReport as Record<string, unknown>).Latitude ??
                 (posReport as { latitude?: unknown }).latitude ??
@@ -350,7 +386,7 @@ function _handleAisMessage(raw: string): void {
                 heading,
                 cog,
                 navStatus,
-                ts: Date.now(),
+                ts: nowMs,
                 name: shipName,
                 shipType,
                 destination,
@@ -359,11 +395,14 @@ function _handleAisMessage(raw: string): void {
             });
 
             // Historique de route
-            const trail = shipTrails.get(mmsi) ?? [];
+            let trail = shipTrails.get(mmsi) ?? [];
             const lastPt = trail[trail.length - 1];
+            if (shouldBreakTrail(existing, lat, lon, speed, nowMs)) {
+                trail = [];
+            }
             // N'ajoute un point que si le navire a bougé (évite points dupliqués)
-            if (!lastPt || Math.abs(lastPt[0] - lon!) > 0.0001 || Math.abs(lastPt[1] - lat!) > 0.0001) {
-                trail.push([lon!, lat!]);
+            if (!lastPt || trail.length === 0 || Math.abs(lastPt.lon - lon) > 0.0001 || Math.abs(lastPt.lat - lat) > 0.0001) {
+                trail.push({ lon, lat, ts: nowMs });
                 if (trail.length > MAX_TRAIL_POINTS) trail.shift();
                 shipTrails.set(mmsi, trail);
             }
@@ -604,7 +643,7 @@ export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000, filterFranc
             shipType: resolvedShipType,
             destination: resolvedDestination,
             country: pos.country,
-            trail: shipTrails.get(mmsi) ? [...shipTrails.get(mmsi)!] : undefined,
+            trail: shipTrails.get(mmsi)?.map((p) => [p.lon, p.lat] as [number, number]),
             riskLevel,
             riskReasons,
             nearestPort: nearestPort ? { name: nearestPort.port.name, locode: nearestPort.port.locode, distanceKm: nearestPort.distanceKm } : undefined,

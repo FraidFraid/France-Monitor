@@ -319,6 +319,7 @@ export class MaritimePanel {
       getAllLiveTraffic(10 * 60 * 1000, true)
         .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))
     );
+    const homonymCounts = this._getHomonymCounts(ships);
 
     if (ships.length === 0) {
       this.bodyEl.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:24px;">Aucun navire civil détecté en zone France</div>';
@@ -352,33 +353,34 @@ export class MaritimePanel {
     const list = document.createElement('div');
     list.style.cssText = 'max-height:640px;overflow-y:auto;padding-right:4px;';
     const initialCount = Math.min(this.trafficVisibleCount, ships.length);
-    this._appendTrafficCards(list, ships, 0, initialCount, isStale);
+    this._appendTrafficCards(list, ships, 0, initialCount, isStale, homonymCounts);
     this.trafficVisibleCount = initialCount;
     list.addEventListener('scroll', () => {
       const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 80;
       if (!nearBottom || this.trafficVisibleCount >= ships.length) return;
       const nextCount = Math.min(this.trafficVisibleCount + this.trafficBatchSize, ships.length);
-      this._appendTrafficCards(list, ships, this.trafficVisibleCount, nextCount, isStale);
+      this._appendTrafficCards(list, ships, this.trafficVisibleCount, nextCount, isStale, homonymCounts);
       this.trafficVisibleCount = nextCount;
     });
     this.bodyEl.appendChild(list);
   }
 
-  private _appendTrafficCards(listEl: HTMLElement, ships: MilitaryShip[], startIndex: number, endIndex: number, isStale = false): void {
+  private _appendTrafficCards(listEl: HTMLElement, ships: MilitaryShip[], startIndex: number, endIndex: number, isStale = false, homonymCounts?: Map<string, number>): void {
     for (let i = startIndex; i < endIndex; i += 1) {
       const ship = ships[i];
       if (!ship) continue;
-      listEl.appendChild(this._shipCard(ship, this._isActionableAlert(ship) ? 'risque' : 'position', false, isStale));
+      listEl.appendChild(this._shipCard(ship, this._isActionableAlert(ship) ? 'risque' : 'position', false, isStale, homonymCounts));
     }
   }
 
   private _renderNavy(): void {
     const isStale = ['stale', 'disconnected'].includes(getAisConnectionState().status);
     const ships = this._applyFilters(getMilitaryShips());
+    const homonymCounts = this._getHomonymCounts(ships);
     this.bodyEl.innerHTML = '';
     const list = document.createElement('div');
     list.style.cssText = 'max-height:640px;overflow-y:auto;padding-right:4px;';
-    ships.forEach(ship => list.appendChild(this._shipCard(ship, this._isActionableAlert(ship) ? 'risque' : 'position', false, isStale)));
+    ships.forEach(ship => list.appendChild(this._shipCard(ship, this._isActionableAlert(ship) ? 'risque' : 'position', false, isStale, homonymCounts)));
     this.bodyEl.appendChild(list);
   }
 
@@ -386,6 +388,7 @@ export class MaritimePanel {
     const isStale = ['stale', 'disconnected'].includes(getAisConnectionState().status);
     const all = this._applyFilters(getAllLiveTraffic(10 * 60 * 1000, true));
     const alerts = all.filter(s => s.riskLevel && ['medium', 'high', 'critical'].includes(s.riskLevel));
+    const homonymCounts = this._getHomonymCounts(alerts);
 
     if (alerts.length === 0) {
       this.bodyEl.innerHTML = '<div style="color:#34c759;font-size:11px;text-align:center;padding:24px;">● Aucune alerte active</div>';
@@ -398,7 +401,7 @@ export class MaritimePanel {
       const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
       return (order[b.riskLevel ?? 'none'] ?? 0) - (order[a.riskLevel ?? 'none'] ?? 0);
     }).forEach(ship => {
-      const card = this._shipCard(ship, 'risque', true, isStale);
+      const card = this._shipCard(ship, 'risque', true, isStale, homonymCounts);
       if (ship.riskReasons?.length) {
         const reasons = document.createElement('div');
         reasons.style.cssText = 'padding:4px 8px;background:rgba(255,59,48,0.05);border-radius:0 0 4px 4px;margin-top:-4px;';
@@ -425,9 +428,27 @@ export class MaritimePanel {
     return ['medium', 'high', 'critical'].includes(ship.riskLevel ?? 'none');
   }
 
-  private _shipCard(ship: MilitaryShip, initialTab: 'position' | 'risque' = 'position', showFullName = false, isStale = false): HTMLElement {
+  private _normalizeShipNameKey(name?: string): string {
+    return (name ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  private _getHomonymCounts(ships: MilitaryShip[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const ship of ships) {
+      const key = this._normalizeShipNameKey(ship.name);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private _shipCard(ship: MilitaryShip, initialTab: 'position' | 'risque' = 'position', showFullName = false, isStale = false, homonymCounts?: Map<string, number>): HTMLElement {
     const card = document.createElement('div');
     const riskColor = RISK_COLORS[ship.riskLevel ?? 'none'];
+    const isNavy = !!ship.mmsi && NAVY_MMSI_SET.has(ship.mmsi);
+    const nameKey = this._normalizeShipNameKey(ship.name);
+    const hasHomonym = !!nameKey && (homonymCounts?.get(nameKey) ?? 0) > 1;
+    const mmsiSuffix = ship.mmsi ? ship.mmsi.slice(-4) : '';
     card.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;';
     card.addEventListener('mouseenter', () => {
       card.style.background = 'rgba(255,255,255,0.04)';
@@ -450,6 +471,8 @@ export class MaritimePanel {
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="color:var(--text-primary);font-weight:600;font-size:11px;${showFullName ? 'white-space:normal;overflow:visible;text-overflow:clip;max-width:none;line-height:1.25;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;'}">${ship.name}</span>
+          ${isNavy ? '<span style="font-size:9px;color:#67e8f9;border:1px solid #67e8f944;border-radius:3px;padding:1px 4px;flex-shrink:0;">Marine nat.</span>' : ''}
+          ${hasHomonym && !isNavy && mmsiSuffix ? `<span style="font-size:9px;color:var(--text-muted);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:1px 4px;flex-shrink:0;">MMSI …${mmsiSuffix}</span>` : ''}
           ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">données figées</span>' : ''}
           <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${riskColor};flex-shrink:0;" title="${ship.riskLevel ?? 'none'}"></span>
         </div>
@@ -457,6 +480,7 @@ export class MaritimePanel {
         <div style="color:var(--text-muted);font-size:10px;">
           ${ship.speed != null ? `${ship.speed.toFixed(1)} kn` : '—'}
           ${ship.nearestPort ? ` → ${ship.nearestPort.name} (${ship.nearestPort.distanceKm}km)` : ''}
+          ${hasHomonym && ship.mmsi ? ` · MMSI ${ship.mmsi}` : ''}
           ${elapsed != null ? ` · vu il y a ${elapsed}min` : ''}
         </div>
       </div>
