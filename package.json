@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "lint": "eslint src/ --ext .ts",
-    "format": "prettier --write 'src/**/*.ts'"
+    "format": "prettier --write 'src/**/*.ts'",
+    "build:maires": "node scripts/build-maires-politique.mjs"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

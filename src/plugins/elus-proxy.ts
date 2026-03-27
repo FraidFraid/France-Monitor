@@ -87,6 +87,14 @@ export function elusProxyPlugin(): Plugin {
                     return;
                 }
 
+                // GET /api/elus/votes?slug=&limit=
+                if (path === '/votes') {
+                    const slug = parsed.searchParams.get('slug') ?? '';
+                    const limit = parsed.searchParams.get('limit') ?? '5';
+                    await proxyGet(`https://www.nosdeputes.fr/${slug}/votes/json?limit=${limit}`, res);
+                    return;
+                }
+
                 next();
             });
         },

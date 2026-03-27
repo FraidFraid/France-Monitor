@@ -108,6 +108,8 @@ ALLOWED_DOMAINS = {
     'www.paris-normandie.fr',
     'www.leparisien.fr',
     'www.enedis.fr',  # Info-coupure
+    'www.elysee.fr',
+    'www.info.gouv.fr',
 }
 
 # Cache simple en mémoire (TTL 5 min)
@@ -141,6 +143,50 @@ def set_cache(url: str, content: str) -> None:
 def health():
     """Health check pour les load balancers."""
     return jsonify({'status': 'ok', 'service': 'scrapling-proxy'})
+
+@app.route('/scrape')
+def scrape_page():
+    """
+    Scrape une page HTML avec bypass Cloudflare via Scrapling.
+    """
+    url = request.args.get('url')
+
+    if not url:
+        return jsonify({'error': 'Missing ?url= parameter'}), 400
+
+    if not is_allowed(url):
+        return jsonify({'error': 'Domain not in whitelist', 'allowed': list(ALLOWED_DOMAINS)}), 403
+
+    # Check cache
+    cached = get_cached(url)
+    if cached:
+        return Response(cached, mimetype='text/html', headers={
+            'X-Cache': 'HIT',
+            'Cache-Control': 'public, max-age=300',
+            'Access-Control-Allow-Origin': '*',
+        })
+
+    try:
+        # Scrapling avec Camoufox (stealth browser)
+        fetcher = Fetcher(auto_match=True)
+        page = fetcher.get(url, timeout=15)
+
+        if not page.status == 200:
+            return jsonify({'error': f'Upstream returned {page.status}'}), page.status
+
+        content = page.text
+
+        # Cache le résultat
+        set_cache(url, content)
+
+        return Response(content, mimetype='text/html', headers={
+            'X-Cache': 'MISS',
+            'Cache-Control': 'public, max-age=300',
+            'Access-Control-Allow-Origin': '*',
+        })
+
+    except Exception as e:
+        return jsonify({'error': 'Scrape failed', 'message': str(e)}), 502
 
 @app.route('/rss')
 def fetch_rss():
