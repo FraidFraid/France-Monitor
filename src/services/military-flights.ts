@@ -9,7 +9,7 @@
  *   4. hexdb.io /api/v1/aircraft/{hex} → enrichissement modèle/registration/opérateur
  */
 
-import type { MilitaryFlight } from '../types/index.ts';
+import type { MilitaryFlight, MilitaryFlightsSnapshot, MilitaryFlightsMode } from '../types/index.ts';
 import {
     determineAircraftInfo,
     identifyFrenchAircraftType,
@@ -228,7 +228,7 @@ function parseFlight(ac: AdsbFiAircraft, hexdbData?: HexdbResult | null): Milita
 let adsbCorsErrorLogged = false;
 
 /** Fetch from adsb.fi or airplanes.live, filter to France zone */
-async function fetchFromAdsbFi(): Promise<MilitaryFlight[]> {
+async function fetchFromAdsbFi(): Promise<{ flights: MilitaryFlight[]; source: 'adsb.fi' | 'airplanes.live' } | null> {
     const sources = [ADSB_FI_MIL, AIRPLANES_MIL];
 
     for (const url of sources) {
@@ -250,8 +250,9 @@ async function fetchFromAdsbFi(): Promise<MilitaryFlight[]> {
 
             if (inFrance.length === 0) continue;
 
+            const source = url.includes('adsb.fi') ? 'adsb.fi' : 'airplanes.live';
             adsbCorsErrorLogged = false; // Reset on success
-            console.log(`[Military] ${inFrance.length} vols militaires (via ${url.includes('adsb.fi') ? 'adsb.fi' : 'airplanes.live'})`);
+            console.log(`[Military] ${inFrance.length} vols militaires (via ${source})`);
 
             // Enrichir par lot avec hexdb (en parallèle, max 5 requêtes simultanées)
             const flights: MilitaryFlight[] = [];
@@ -267,7 +268,7 @@ async function fetchFromAdsbFi(): Promise<MilitaryFlight[]> {
                 }
             }
 
-            return flights;
+            return { flights, source };
         } catch (err) {
             // Log CORS errors only once
             if (!adsbCorsErrorLogged) {
@@ -282,7 +283,7 @@ async function fetchFromAdsbFi(): Promise<MilitaryFlight[]> {
         }
     }
 
-    return [];
+    return null;
 }
 
 // Track OpenSky errors
@@ -453,7 +454,10 @@ interface ProxyResponse {
     fetchedAt: number;
     ttlMs: number;
     aircraft: ProxyAircraft[];
+    sourceCounts?: Record<string, number>;
     errors: Array<{ source: string; message: string }>;
+    mode?: Exclude<MilitaryFlightsMode, 'mock'>;
+    isStale?: boolean;
 }
 
 /**
@@ -530,7 +534,33 @@ function parseProxyAircraft(ac: ProxyAircraft): MilitaryFlight | null {
     };
 }
 
-export async function fetchMilitaryFlights(): Promise<MilitaryFlight[]> {
+function buildSnapshot(
+    flights: MilitaryFlight[],
+    source: string,
+    mode: MilitaryFlightsMode,
+    options: {
+        fetchedAt?: number;
+        ttlMs?: number;
+        sourceCounts?: Record<string, number>;
+        errors?: Array<{ source: string; message: string }>;
+    } = {}
+): MilitaryFlightsSnapshot {
+    return {
+        source,
+        fetchedAt: options.fetchedAt ?? Date.now(),
+        ttlMs: options.ttlMs ?? 30_000,
+        flights,
+        sourceCounts: options.sourceCounts ?? {},
+        errors: options.errors ?? [],
+        mode,
+        isMock: mode === 'mock',
+        isStale: mode === 'stale-cache',
+    };
+}
+
+export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
+    const upstreamErrors: Array<{ source: string; message: string }> = [];
+
     try {
         // Use proxy to bypass CORS
         const response = await fetch(MILITARY_PROXY_URL, {
@@ -542,6 +572,9 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlight[]> {
         }
 
         const data = await response.json() as ProxyResponse;
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+            upstreamErrors.push(...data.errors);
+        }
 
         if (data.errors?.length > 0 && !proxyErrorLogged) {
             const sources = data.errors.map(e => e.source).join(', ');
@@ -559,7 +592,13 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlight[]> {
 
             if (flights.length > 0) {
                 console.log(`[Military] ${flights.length} vols via proxy (${data.source})`);
-                return flights;
+                const mode = data.mode ?? (data.isStale ? 'stale-cache' : 'live');
+                return buildSnapshot(flights, data.source, mode, {
+                    fetchedAt: data.fetchedAt,
+                    ttlMs: data.ttlMs,
+                    sourceCounts: data.sourceCounts ?? {},
+                    errors: data.errors ?? [],
+                });
             }
         }
     } catch (err) {
@@ -567,20 +606,30 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlight[]> {
             console.warn('[Military] Proxy indisponible, fallback données démo');
             proxyErrorLogged = true;
         }
+        upstreamErrors.push({
+            source: 'proxy',
+            message: err instanceof Error ? err.message : 'Proxy fetch failed',
+        });
     }
 
     // Fallback: try legacy direct calls (may fail with CORS in browser)
-    const adsbFlights = await fetchFromAdsbFi();
-    if (adsbFlights.length > 0) {
+    const adsbResult = await fetchFromAdsbFi();
+    if (adsbResult && adsbResult.flights.length > 0) {
         mockFallbackLogged = false;
-        return adsbFlights;
+        return buildSnapshot(adsbResult.flights, adsbResult.source, 'live', {
+            sourceCounts: { [adsbResult.source]: adsbResult.flights.length },
+            errors: upstreamErrors,
+        });
     }
 
     const oskyFlights = await fetchFromOpenSky();
     if (oskyFlights.length > 0) {
         mockFallbackLogged = false;
         console.log(`[Military] ${oskyFlights.length} vols via OpenSky direct`);
-        return oskyFlights;
+        return buildSnapshot(oskyFlights, 'opensky', 'live', {
+            sourceCounts: { opensky: oskyFlights.length },
+            errors: upstreamErrors,
+        });
     }
 
     // Mock data as last resort
@@ -588,7 +637,10 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlight[]> {
         console.log('[Military] Utilisation des données de démonstration');
         mockFallbackLogged = true;
     }
-    return MOCK_FLIGHTS;
+    return buildSnapshot(MOCK_FLIGHTS, 'mock', 'mock', {
+        sourceCounts: { mock: MOCK_FLIGHTS.length },
+        errors: upstreamErrors,
+    });
 }
 
 /**

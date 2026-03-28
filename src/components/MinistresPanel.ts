@@ -31,24 +31,11 @@ export class MinistresPanel {
 
   mount(): void {
     this.containerEl = document.createElement('div');
-    this.containerEl.className = 'panel';
-    this.containerEl.innerHTML = `
-      <div class="panel-header" style="cursor:pointer;user-select:none;">
-        <span class="panel-title">GOUVERNEMENT</span>
-        <span class="panel-badge" id="ministers-badge" style="display:none;"></span>
-      </div>`;
     this.bodyEl = document.createElement('div');
-    this.bodyEl.className = 'panel-body';
+    this.containerEl.className = 'ministers-panel-root';
+    this.bodyEl.className = 'ministers-panel-body';
     this.containerEl.appendChild(this.bodyEl);
     this.parentEl.appendChild(this.containerEl);
-
-    // Toggle collapse
-    const header = this.containerEl.querySelector('.panel-header') as HTMLElement;
-    let collapsed = false;
-    header.addEventListener('click', () => {
-      collapsed = !collapsed;
-      this.bodyEl.style.display = collapsed ? 'none' : '';
-    });
 
     // Affichage immédiat sur base statique; le live est déclenché à l'ouverture réelle.
     this._render();

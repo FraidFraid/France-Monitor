@@ -11,7 +11,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -139,6 +139,8 @@ const SRC_FIRES_HIGHLIGHT = 'fires-highlight-src';
 const LYR_FIRES_HIGHLIGHT = 'fires-highlight';
 const SRC_MODIS = 'modis-overlay-src';
 const LYR_MODIS = 'modis-overlay';
+const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
+const LYR_SENTINEL_SCENE = 'sentinel-scene-overlay';
 const LYR_INFRA_VITAL_HALO = 'infra-vital-halo';
 const LYR_INFRA_NUCLEAR_RING = 'infra-nuclear-ring';
 const LYR_INFRA_CIRCLE = 'infra-circles';
@@ -1282,10 +1284,12 @@ export class DeckGLMap {
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
   private onMilitaryShipClick: ((ship: ReturnType<typeof import('../services/military-ships.ts').getMilitaryShips>[0], x: number, y: number) => void) | null = null;
   private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
+  private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
   private _highlightedMmsi: string | null = null;
   private _selectedShipMmsi: string | null = null;
   private _satelliteMode = false;
   private _basemapLayerVisibility: Map<string, 'visible' | 'none'> = new Map();
+  private _sentinelBlinkInterval: ReturnType<typeof setInterval> | null = null;
   // In-memory lookup tables for military data (populated by updateMilitary*)
   private militaryFlightsById: Map<string, MilitaryFlight> = new Map();
   private airTrafficFlightsById: Map<string, AirTrafficFlight> = new Map();
@@ -1548,6 +1552,17 @@ export class DeckGLMap {
       tileSize: 256,
       bounds: [-5.5, 41.0, 10.0, 51.5],
       attribution: 'NASA GIBS · VIIRS SNPP Corrected Reflectance'
+    });
+
+    this.map.addSource(SRC_SENTINEL_SCENE, {
+      type: 'image',
+      url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+      coordinates: [
+        [-5.5, 51.5],
+        [10.0, 51.5],
+        [10.0, 41.0],
+        [-5.5, 41.0],
+      ],
     });
 
 
@@ -2006,6 +2021,17 @@ export class DeckGLMap {
       layout: { visibility: 'none' }
     });
 
+    this.map.addLayer({
+      id: LYR_SENTINEL_SCENE,
+      type: 'raster',
+      source: SRC_SENTINEL_SCENE,
+      paint: {
+        'raster-opacity': 0.72,
+        'raster-resampling': 'linear',
+      },
+      layout: { visibility: 'none' }
+    });
+
     // ─── Fires (NASA FIRMS) ───
     this.map.addLayer({
       id: LYR_FIRES_GLOW,
@@ -2145,7 +2171,7 @@ export class DeckGLMap {
         ],
         'line-opacity': ['case',
           ['boolean', ['feature-state', 'hover'], false], 1,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.58,
+          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.88,
           0.92,
         ],
       },
@@ -4641,7 +4667,10 @@ export class DeckGLMap {
       const aoBbox: [number, number, number, number] = hasLineGeom
           ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
           : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
-      const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-1-grd');
+      const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-2-l2a');
+      const ctaHtml = this.onSatelliteView
+        ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / apres</button>`
+        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ↗</a>`;
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
@@ -4663,19 +4692,32 @@ export class DeckGLMap {
           <div style="font-size:11px; color:#8f90a0; margin-bottom: 10px;">
             Source ${dataSourceText} · confiance ${confidence}% · ${displayVertices} sommets
           </div>
-          <a class="satellite-cta-btn"
-             href="${eoBrowserUrl}"
-             target="_blank"
-             rel="noopener noreferrer">Ouvrir SAR ↗</a>
+          ${ctaHtml}
         </div>
       `;
 
-      new maplibregl.Popup({
+      const popup = new maplibregl.Popup({
           closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
       })
           .setLngLat(e.lngLat)
           .setHTML(html)
           .addTo(this.map);
+
+      if (this.onSatelliteView) {
+        const button = popup.getElement().querySelector<HTMLElement>('[data-action="satellite-panel"]');
+        button?.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.onSatelliteView?.({
+            bbox: aoBbox,
+            sourceType: 'flood',
+            title: String(p.name || 'Zone Vigicrues'),
+            geometry: hasLineGeom ? geom as LineString | MultiLineString : undefined,
+            preferredCollection: 'sentinel-2-l2a',
+          });
+          popup.remove();
+        });
+      }
     });
 
     // ─── Weather Department Interactions (tooltip on hover) ───
@@ -5605,16 +5647,13 @@ export class DeckGLMap {
     const airportScore = flight.airportScore != null
       ? `<br><span style="color:#fbbf24;font-size:10px">Score aéroport: ${flight.airportScore}/100${flight.airportSeverity ? ` · ${flight.airportSeverity}` : ''}</span>`
       : '';
-    const airportSignals = Array.isArray(flight.airportSignals) && flight.airportSignals.length > 0
-      ? `<br><span style="color:#f87171;font-size:10px">Signaux OSINT: ${flight.airportSignals.join(' · ')}</span>`
-      : '';
     const anomalies = Array.isArray(flight.anomalies) && flight.anomalies.length > 0
       ? `<br><span style="color:#fda4af;font-size:10px">Anomalies: ${flight.anomalies.map((anomaly) => anomaly.label).join(' · ')}</span>`
       : '';
 
     this.showMilitaryTooltip(
       lngLat,
-      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${airportContext}${airportScore}${airportSignals}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
+      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${airportContext}${airportScore}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
     );
   }
 
@@ -6932,6 +6971,10 @@ export class DeckGLMap {
     this.onClusterClick = h;
   }
 
+  setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
+    this.onSatelliteView = handler;
+  }
+
   /**
    * Fly-to cinématographique avec arc parabolique et easing fluide.
    * Crée une expérience visuelle engageante lorsque l'utilisateur clique sur un article.
@@ -6959,6 +7002,14 @@ export class DeckGLMap {
       essential: true,                    // Priorité animation (ignore prefers-reduced-motion)
       duration,
     });
+  }
+
+  fitBounds(bounds: [number, number, number, number], padding = 60): void {
+    if (!this.map) return;
+    this.map.fitBounds(
+      [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
+      { padding, duration: 1200, essential: true, pitch: 0 },
+    );
   }
 
   getViewState(): MapViewState { return { ...this.viewState }; }
@@ -8900,6 +8951,70 @@ export class DeckGLMap {
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
   }
 
+  setSentinelSceneOverlay(scene: { thumbnailUrl?: string; bbox: [number, number, number, number] } | null): void {
+    if (!this.map) return;
+    this.stopSentinelSceneBlink();
+
+    if (!scene?.thumbnailUrl) {
+      this.setVis(LYR_SENTINEL_SCENE, 'none');
+      return;
+    }
+
+    const source = this.map.getSource(SRC_SENTINEL_SCENE) as maplibregl.ImageSource | undefined;
+    const [minLng, minLat, maxLng, maxLat] = scene.bbox;
+    const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+      [minLng, maxLat],
+      [maxLng, maxLat],
+      [maxLng, minLat],
+      [minLng, minLat],
+    ];
+
+    source?.updateImage({
+      url: scene.thumbnailUrl,
+      coordinates,
+    });
+
+    this.setVis(LYR_SENTINEL_SCENE, 'visible');
+  }
+
+  startSentinelSceneBlink(
+    afterScene: { thumbnailUrl?: string; bbox: [number, number, number, number] },
+    beforeScene: { thumbnailUrl?: string; bbox: [number, number, number, number] },
+    intervalMs = 900,
+  ): void {
+    if (!this.map || !afterScene.thumbnailUrl || !beforeScene.thumbnailUrl) return;
+    this.stopSentinelSceneBlink();
+
+    const scenes = [afterScene, beforeScene];
+    let index = 0;
+    this.setSentinelSceneOverlay(scenes[index]);
+
+    this._sentinelBlinkInterval = setInterval(() => {
+      index = (index + 1) % scenes.length;
+      const scene = scenes[index];
+      const source = this.map?.getSource(SRC_SENTINEL_SCENE) as maplibregl.ImageSource | undefined;
+      if (!this.map || !source || !scene.thumbnailUrl) return;
+      const [minLng, minLat, maxLng, maxLat] = scene.bbox;
+      source.updateImage({
+        url: scene.thumbnailUrl,
+        coordinates: [
+          [minLng, maxLat],
+          [maxLng, maxLat],
+          [maxLng, minLat],
+          [minLng, minLat],
+        ],
+      });
+      this.setVis(LYR_SENTINEL_SCENE, 'visible');
+    }, intervalMs);
+  }
+
+  stopSentinelSceneBlink(): void {
+    if (this._sentinelBlinkInterval !== null) {
+      clearInterval(this._sentinelBlinkInterval);
+      this._sentinelBlinkInterval = null;
+    }
+  }
+
   async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {
     const map = this.map;
     if (!map) return;
@@ -9834,6 +9949,7 @@ export class DeckGLMap {
 
     // Cleanup flight interpolation interval
     if (this._flightInterpolTick) { clearInterval(this._flightInterpolTick); this._flightInterpolTick = null; }
+    this.stopSentinelSceneBlink();
 
     this.map?.remove();
     this.map = null;

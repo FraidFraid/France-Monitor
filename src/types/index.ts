@@ -1,4 +1,4 @@
-import type { LineString, MultiLineString } from 'geojson';
+import type { LineString, MultiLineString, Polygon } from 'geojson';
 
 // ═══ Threat & Classification ═══
 
@@ -236,6 +236,49 @@ export interface FloodSegment {
 /** Used by copernicus.ts buildEoBrowserUrl() and EO Browser CTA links in popups. */
 export type SatelliteCollection = 'sentinel-2-l2a' | 'sentinel-1-grd';
 
+export type SatelliteSourceType = 'news' | 'flood';
+
+export interface CopernicusScene {
+  id: string;
+  datetime: string;
+  cloudCover?: number;
+  thumbnailUrl?: string;
+  cogUrl?: string;
+  bbox: [number, number, number, number];
+  collection: SatelliteCollection;
+}
+
+export interface SatelliteViewRequest {
+  bbox: [number, number, number, number];
+  sourceType: SatelliteSourceType;
+  title?: string;
+  point?: [number, number];
+  geometry?: LineString | MultiLineString;
+  preferredCollection?: SatelliteCollection;
+  eventDate?: Date;
+}
+
+export type SentinelNdwiDateInput =
+  | string
+  | {
+    from: string;
+    to: string;
+  };
+
+export interface SentinelNdwiResponse {
+  sceneId: string;
+  acquisitionDate: string;
+  cloudCoverage: number | null;
+  imageUrl?: string;
+  tileUrl?: string;
+}
+
+export interface SentinelNdwiRequest {
+  aoi: Polygon;
+  date: SentinelNdwiDateInput;
+  maxCloudCoverage?: number;
+}
+
 // ═══ Fires (NASA FIRMS) ═══
 
 export interface ActiveFire {
@@ -455,6 +498,20 @@ export interface MilitaryFlight {
   // Navigation accuracy — NAC-P (0–11), from ADS-B DO-260B §2.2.3.2.7.2
   // 11 = <3m, 0 = unknown/no GPS fix. Only available from adsb.fi, not proxy.
   nacP?: number;
+}
+
+export type MilitaryFlightsMode = 'live' | 'stale-cache' | 'mock' | 'empty';
+
+export interface MilitaryFlightsSnapshot {
+  source: string;
+  fetchedAt: number;
+  ttlMs: number;
+  flights: MilitaryFlight[];
+  sourceCounts: Record<string, number>;
+  errors: Array<{ source: string; message: string }>;
+  mode: MilitaryFlightsMode;
+  isMock: boolean;
+  isStale: boolean;
 }
 
 export interface AirTrafficFlight {

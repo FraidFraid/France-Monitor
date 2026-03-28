@@ -22,6 +22,21 @@ const FRANCE_BOUNDS = {
 const CACHE_TTL_MS = 30 * 1000; // 30 seconds for military data (more frequent updates)
 let cachedSnapshot = null;
 
+function normalizeSourceLabel(source) {
+  if (source === 'adsb') return 'adsb.fi';
+  if (source === 'opensky') return 'opensky';
+  if (source === 'airplanes.live') return 'airplanes.live';
+  return source || 'unknown';
+}
+
+function countAircraftBySource(aircraft) {
+  return aircraft.reduce((acc, item) => {
+    const label = normalizeSourceLabel(item?.source);
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
 function buildHeaders() {
   return {
     Accept: 'application/json',
@@ -83,7 +98,7 @@ function normalizeAdsbAircraft(ac) {
     squawk: String(ac.squawk ?? '').trim() || undefined,
     dbFlags: ac.dbFlags,
     lastSeen: Date.now() - seenSeconds * 1000,
-    source: 'adsb',
+    source: 'adsb.fi',
   };
 }
 
@@ -206,7 +221,11 @@ function mergeAircraft(aircraft) {
 export async function fetchMilitaryFlightsSnapshot(fetchImpl = fetch) {
   const now = Date.now();
   if (cachedSnapshot && cachedSnapshot.aircraft.length > 0 && now - cachedSnapshot.fetchedAt < CACHE_TTL_MS) {
-    return cachedSnapshot;
+    return {
+      ...cachedSnapshot,
+      mode: 'live',
+      isStale: false,
+    };
   }
 
   const aircraft = [];
@@ -250,12 +269,19 @@ export async function fetchMilitaryFlightsSnapshot(fetchImpl = fetch) {
   }
 
   const mergedAircraft = mergeAircraft(aircraft);
+  const sourceCounts = countAircraftBySource(mergedAircraft);
+  const source = ['adsb.fi', 'airplanes.live', 'opensky']
+    .filter((name) => (sourceCounts[name] ?? 0) > 0)
+    .join('+') || 'none';
   const snapshot = {
-    source: 'adsb.fi+airplanes.live+opensky',
+    source,
     fetchedAt: now,
     ttlMs: CACHE_TTL_MS,
     aircraft: mergedAircraft,
+    sourceCounts,
     errors,
+    mode: mergedAircraft.length > 0 ? 'live' : 'empty',
+    isStale: false,
   };
 
   if (snapshot.aircraft.length > 0) {
@@ -268,6 +294,8 @@ export async function fetchMilitaryFlightsSnapshot(fetchImpl = fetch) {
     return {
       ...cachedSnapshot,
       errors: [...cachedSnapshot.errors, ...errors],
+      mode: 'stale-cache',
+      isStale: true,
     };
   }
 

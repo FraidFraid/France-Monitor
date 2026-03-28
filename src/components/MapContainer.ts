@@ -5,10 +5,11 @@
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
-import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
+import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -43,6 +44,7 @@ export class MapContainer {
   private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
   private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
+  private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -70,6 +72,7 @@ export class MapContainer {
     if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
+    if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     await this.deckMap.init();
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
@@ -368,8 +371,21 @@ export class MapContainer {
     this.deckMap?.setOnMaritimeShipClick(cb);
   }
 
+  setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
+    this.onSatelliteView = handler;
+    this.deckMap?.setOnSatelliteView(handler);
+  }
+
   setBasemapSatellite(enabled: boolean): void {
     this.deckMap?.setBasemapSatellite(enabled);
+  }
+
+  setSentinelSceneOverlay(scene: CopernicusScene | null, _collection?: SatelliteCollection): void {
+    this.deckMap?.setSentinelSceneOverlay(scene);
+  }
+
+  startSentinelSceneBlink(afterScene: CopernicusScene, beforeScene: CopernicusScene, _collection?: SatelliteCollection): void {
+    this.deckMap?.startSentinelSceneBlink(afterScene, beforeScene);
   }
 
   setHighlightedShip(mmsi: string | null): void {
@@ -393,6 +409,10 @@ export class MapContainer {
   flyTo(longitude: number, latitude: number, zoom?: number): void {
     this.deckMap?.flyTo(longitude, latitude, zoom);
     this.svgMap?.flyTo(longitude, latitude, zoom);
+  }
+
+  fitBounds(bounds: [number, number, number, number], padding?: number): void {
+    this.deckMap?.fitBounds(bounds, padding);
   }
 
   highlightWeatherDepartment(departmentCode: string | null): void {

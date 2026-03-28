@@ -60,13 +60,17 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
             const props = f.properties;
             const coords = f.geometry?.coordinates;
             let voice: 'OK' | 'HS' | 'Degraded' = 'OK';
-            let data: 'OK' | 'HS' | 'Degraded' = 'OK';
+            let dataStatus: 'OK' | 'HS' | 'Degraded' = 'OK';
 
-            if (props.voix === 'HS') voice = 'HS';
-            else if (props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS') voice = 'Degraded';
+            // voix/data aggregate = 'HS' when ANY sub-tech is HS (not all).
+            // Use per-tech fields for accurate total vs partial distinction.
+            const allVoiceHS = props.voix2g === 'HS' && props.voix3g === 'HS' && props.voix4g === 'HS';
+            const anyVoiceHS = props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS';
+            voice = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
 
-            if (props.data === 'HS') data = 'HS';
-            else if (props.data3g === 'HS' || props.data4g === 'HS' || props.data5g === 'HS') data = 'Degraded';
+            const allDataHS = props.data3g === 'HS' && props.data4g === 'HS' && props.data5g === 'HS';
+            const anyDataHS = props.data3g === 'HS' || props.data4g === 'HS' || props.data5g === 'HS';
+            dataStatus = allDataHS ? 'HS' : anyDataHS ? 'Degraded' : 'OK';
 
             let reason = props.detail || 'Incident';
             if (props.raison === 'INT') reason = 'Intempéries';
@@ -79,7 +83,7 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
                 department: props.departement?.trim() || 'Inconnu',
                 city: props.commune || 'Inconnue',
                 voiceStatus: voice,
-                dataStatus: data,
+                dataStatus: dataStatus,
                 reason: reason,
                 coordinates: coords ? [coords[0], coords[1]] : [0, 0]
             };

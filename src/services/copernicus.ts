@@ -1,10 +1,9 @@
 /**
- * copernicus.ts — Copernicus / Sentinel URL builders and AOI bbox helpers.
- * Builds EO Browser deep-links for flood segments and news items.
- * STAC / scene fetching removed — satellite analysis is delegated to EO Browser.
+ * copernicus.ts — Copernicus / Sentinel helpers + lightweight STAC client.
+ * Builds EO Browser deep-links and fetches scene metadata from /api/copernicus.
  */
 
-import type { SatelliteCollection } from '../types/index.ts';
+import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { LineString, MultiLineString } from 'geojson';
 
 // ─── Constants ───
@@ -102,3 +101,66 @@ export function buildEoBrowserUrl(
   return `${base}?zoom=${zoom}&lat=${centerLat}&lng=${centerLng}&themeId=DEFAULT-THEME&datasetId=S2_L2A_CDAS&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&layerId=1_TRUE_COLOR&cloudCoverage=30&dateMode=SINGLE`;
 }
 
+export interface CopernicusApiResponse {
+  scenes: CopernicusScene[];
+  eoBrowserUrl: string;
+  mode: 'thumbnail' | 'wms';
+  fallbackReason?: string;
+  upgradeAvailable?: boolean;
+  wmsUrl?: string;
+}
+
+interface FetchCopernicusOptions {
+  limit?: number;
+  cloudMax?: number;
+}
+
+export async function fetchCopernicusScenes(
+  collection: SatelliteCollection,
+  bbox: [number, number, number, number],
+  options: FetchCopernicusOptions = {},
+): Promise<CopernicusApiResponse> {
+  const params = new URLSearchParams({
+    collection,
+    bbox: bbox.map((value) => value.toFixed(5)).join(','),
+    limit: String(options.limit ?? 6),
+  });
+
+  if (collection === 'sentinel-2-l2a') {
+    params.set('cloud_max', String(options.cloudMax ?? 30));
+  }
+
+  const response = await fetch(`/api/copernicus?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Copernicus API HTTP ${response.status}`);
+  }
+
+  const payload = await response.json() as Partial<CopernicusApiResponse>;
+  return {
+    scenes: Array.isArray(payload.scenes) ? payload.scenes : [],
+    eoBrowserUrl: typeof payload.eoBrowserUrl === 'string'
+      ? payload.eoBrowserUrl
+      : buildEoBrowserUrl(bbox, collection),
+    mode: payload.mode === 'wms' ? 'wms' : 'thumbnail',
+    fallbackReason: typeof payload.fallbackReason === 'string' ? payload.fallbackReason : undefined,
+    upgradeAvailable: payload.upgradeAvailable === true,
+    wmsUrl: typeof payload.wmsUrl === 'string' ? payload.wmsUrl : undefined,
+  };
+}
+
+export async function fetchSentinel2Scenes(
+  bbox: [number, number, number, number],
+  cloudMax = 30,
+): Promise<CopernicusApiResponse> {
+  return fetchCopernicusScenes('sentinel-2-l2a', bbox, { cloudMax });
+}
+
+export async function fetchSentinel1Scenes(
+  bbox: [number, number, number, number],
+): Promise<CopernicusApiResponse> {
+  return fetchCopernicusScenes('sentinel-1-grd', bbox);
+}

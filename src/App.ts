@@ -29,8 +29,10 @@ import { OutagesPanel } from './components/OutagesPanel.ts';
 import { DefensePanel } from './components/DefensePanel.ts';
 import { NationalHealthPanel } from './components/NationalHealthPanel.ts';
 import { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
+import { SentinelModal } from './components/SentinelModal.ts';
 import { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
+import { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
@@ -873,9 +875,12 @@ export class App {
   private currentCitizenZones: import('./types/index.ts').OutageZoneCollection | null = null;
   private defensePanel: DefensePanel | null = null;
   private currentDefenseAlerts: DefenseAlert[] = [];
+  private currentJammingSignals: import('./types/index.ts').GpsJammingSignal[] = [];
   private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
   private nationalHealthPanel: NationalHealthPanel | null = null;
   private healthBarometerPanel: HealthBarometerPanel | null = null;
+  private sentinelModal: SentinelModal | null = null;
+  private rightSidebar: RightSidebar | null = null;
   private lastBarometerMetrics: HealthBarometerMetrics | null = null;
   private hasHealthData = false;
   private searchModal: SearchModal | null = null;
@@ -1166,6 +1171,9 @@ export class App {
         this.onLayerToggle('military', true);
         this.layerPanel?.updateLayers(this.activeLayers);
       }
+      if (this.defensePanel) {
+        this.defensePanel.show(this.currentDefenseAlerts, this.currentJammingSignals);
+      }
       // Cluster : zoom out proportionnel au rayon ; signal individuel : zoom serré
       const zoom = signal.clusterRadius != null
         ? (signal.clusterRadius > 50 ? 8 : 9)
@@ -1179,7 +1187,7 @@ export class App {
       this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
       // Open the defense panel with current alerts
       if (this.defensePanel) {
-        this.defensePanel.show(this.currentDefenseAlerts);
+        this.defensePanel.show(this.currentDefenseAlerts, this.currentJammingSignals);
       }
     });
 
@@ -1242,24 +1250,19 @@ export class App {
     `;
     this.container.appendChild(header);
 
-    // Badge Premier Ministre dans le header (lecture statique GOUVERNEMENT)
-    const pm = GOUVERNEMENT.find(m => m.isPM);
-    if (pm) {
-      const pmBadge = document.createElement('span');
-      pmBadge.id = 'header-pm-badge';
-      pmBadge.title = pm.titre;
-      pmBadge.style.cssText = [
-        'font-size:11px',
-        'color:var(--text-secondary)',
-        'border:1px solid var(--border-color)',
-        'border-radius:4px',
-        'padding:2px 7px',
-        'white-space:nowrap',
-        'letter-spacing:0.2px',
-      ].join(';');
-      pmBadge.textContent = `PM · ${pm.prenom[0]}. ${pm.nom}`;
-      const clock = header.querySelector('#clock');
-      if (clock) clock.before(pmBadge);
+    const clock = header.querySelector('#clock');
+    const president = GOUVERNEMENT.find(m => m.isPresident);
+    let presidentToggle: HTMLButtonElement | null = null;
+    if (president && clock) {
+      presidentToggle = document.createElement('button');
+      presidentToggle.type = 'button';
+      presidentToggle.id = 'header-president-toggle';
+      presidentToggle.className = 'header-person-toggle';
+      presidentToggle.title = `Ouvrir le panneau gouvernement (${president.titre})`;
+      presidentToggle.setAttribute('aria-label', `Ouvrir le panneau gouvernement pour ${president.prenom} ${president.nom}`);
+      presidentToggle.setAttribute('aria-expanded', 'false');
+      presidentToggle.textContent = `PR · ${president.prenom[0]}. ${president.nom}`;
+      clock.before(presidentToggle);
     }
 
     this.renderRegionPresets(document.getElementById('region-presets')!);
@@ -1396,13 +1399,31 @@ export class App {
     mobileToggle.className = 'right-sidebar-mobile-toggle';
     mobileToggle.setAttribute('aria-label', 'Ouvrir le panneau latéral');
     mobileToggle.textContent = '☰';
-    mobileToggle.addEventListener('click', () => {
-      const isOpen = rightSidebarEl.classList.toggle('open');
-      mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
-    });
     mapArea.appendChild(mobileToggle);
 
     this.container.appendChild(main);
+
+    this.rightSidebar = new RightSidebar(rightSidebarEl);
+    this.rightSidebar.mount();
+
+    const syncRightSidebarTriggers = (isOpen: boolean): void => {
+      mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
+      mobileToggle.textContent = isOpen ? '✕' : '☰';
+      if (presidentToggle) {
+        presidentToggle.setAttribute('aria-expanded', String(isOpen));
+        presidentToggle.title = isOpen ? `Fermer le panneau gouvernement (${president?.titre ?? 'Président de la République'})` : `Ouvrir le panneau gouvernement (${president?.titre ?? 'Président de la République'})`;
+      }
+    };
+
+    this.rightSidebar.setOnToggle(syncRightSidebarTriggers);
+    syncRightSidebarTriggers(this.rightSidebar.isOpen());
+
+    mobileToggle.addEventListener('click', () => {
+      this.rightSidebar?.toggle();
+    });
+    presidentToggle?.addEventListener('click', () => {
+      this.rightSidebar?.toggle();
+    });
 
     // ── Mount sidebar panels ──
     const sidebarEl = document.getElementById('sidebar-content')!;
@@ -1443,9 +1464,7 @@ export class App {
       if (item.lon != null && item.lat != null) {
         this.mapContainer?.flyTo(item.lon, item.lat, 12);
       }
-      if (item.threat?.category) {
-        this.elusPanel?.setGovernmentContext([item.threat.category as EventCategory]);
-      }
+      this.routeGovernmentContextForItem(item);
     });
     this.newsPanel.mount();
     const initialUrlState = readUrlState();
@@ -1459,6 +1478,7 @@ export class App {
     // Floating panels (mounted to App root container)
     const floatContainer = document.createElement('div');
     this.container.appendChild(floatContainer);
+    this.sentinelModal = new SentinelModal(floatContainer);
 
     this.environmentPanel = new EnvironmentPanel(floatContainer);
     this.environmentPanel.setOnHoverDepartment((code) => {
@@ -1694,8 +1714,22 @@ export class App {
       // Optional: could update StatusPanel state here
     });
     this.defensePanel.setOnAlertClick((alert) => {
+      if (!this.activeLayers.trafficMaritime) {
+        this.onLayerToggle('trafficMaritime', true);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      }
+      if (!this.activeLayers.subseaCables) {
+        this.onLayerToggle('subseaCables', true);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      }
       // Fly to the threat location when clicking on an alert item
       this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
+    });
+    this.defensePanel.setOnJammingClick((signal) => {
+      const zoom = signal.clusterRadius != null
+        ? (signal.clusterRadius > 50 ? 8 : 9)
+        : 11;
+      this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
     });
     this.defensePanel.mount();
 
@@ -1720,6 +1754,7 @@ export class App {
       if (item) {
         this.mapContainer?.selectItem(item);
         this.newsPanel?.selectItem(item.id);
+        this.routeGovernmentContextForItem(item);
       }
     });
 
@@ -1732,17 +1767,78 @@ export class App {
       'france', 'idf', 'paca', 'bretagne', 'grandest',
       'guadeloupe', 'martinique', 'guyane', 'reunion', 'mayotte'
     ];
-    container.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+
+    const listEl = document.createElement('div');
+    listEl.className = 'region-presets-list';
+
+    const selectEl = document.createElement('select');
+    selectEl.className = 'region-preset-select';
+    selectEl.setAttribute('aria-label', 'Choisir une région');
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Régions';
+    placeholder.selected = true;
+    selectEl.appendChild(placeholder);
+
     for (const key of presets) {
       const preset = VIEW_PRESETS[key];
       if (!preset) continue;
+
       const btn = document.createElement('button');
       btn.className = 'region-preset-btn';
       btn.textContent = preset.name;
       btn.addEventListener('click', () => {
         this.mapContainer?.flyTo(preset.center[0], preset.center[1], preset.zoom);
       });
-      container.appendChild(btn);
+      listEl.appendChild(btn);
+
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = preset.name;
+      selectEl.appendChild(option);
+    }
+
+    selectEl.addEventListener('change', () => {
+      const preset = VIEW_PRESETS[selectEl.value];
+      if (preset) {
+        this.mapContainer?.flyTo(preset.center[0], preset.center[1], preset.zoom);
+      }
+    });
+
+    container.appendChild(listEl);
+    container.appendChild(selectEl);
+
+    let requiredWidth = 0;
+    let compact = false;
+    const syncCompactMode = (): void => {
+      if (requiredWidth === 0) {
+        const previousCompact = container.dataset['compact'];
+        container.dataset['compact'] = 'false';
+        requiredWidth = listEl.scrollWidth;
+        if (previousCompact) {
+          container.dataset['compact'] = previousCompact;
+        } else {
+          delete container.dataset['compact'];
+        }
+      }
+
+      const availableWidth = container.clientWidth;
+      const nextCompact = compact
+        ? requiredWidth > availableWidth - 40
+        : requiredWidth > availableWidth - 8;
+
+      compact = nextCompact;
+      container.dataset['compact'] = compact ? 'true' : 'false';
+    };
+
+    requestAnimationFrame(syncCompactMode);
+    window.addEventListener('resize', syncCompactMode);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => syncCompactMode());
+      observer.observe(container);
+      observer.observe(listEl);
     }
   }
 
@@ -1963,7 +2059,7 @@ export class App {
           this.cyberPanel?.show(this.currentCyberData);
         }
         if (this.activeLayers.military) {
-          this.defensePanel?.show(this.currentDefenseAlerts);
+          this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
         }
       }
     } else if (key === 'cyber') {
@@ -1982,7 +2078,7 @@ export class App {
       }
     } else if (key === 'military') {
       if (this.activeLayers.military && this.activeLayers.sovereignty) {
-        this.defensePanel?.show(this.currentDefenseAlerts);
+        this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
       } else {
         this.defensePanel?.hide();
       }
@@ -2094,6 +2190,7 @@ export class App {
       if (item.lon != null && item.lat != null) {
         this.mapContainer?.flyTo(item.lon, item.lat, 12);
       }
+      this.routeGovernmentContextForItem(item);
     });
 
     // Cluster hover: show popup with list of articles
@@ -2131,6 +2228,12 @@ export class App {
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
     this.mapContainer.setOnRawMapClick((lat, lon) => {
       if (this.activeLayers.elus) this.elusPanel?.show(lat, lon);
+    });
+
+    this.mapContainer.setOnSatelliteView((request) => {
+      this.mapContainer?.setSentinelSceneOverlay(null);
+      this.mapContainer?.fitBounds(request.bbox, 80);
+      this.sentinelModal?.show(request);
     });
 
     // Handle military flight clicks → show detailed popup
@@ -2269,8 +2372,35 @@ export class App {
     connectAis();
     const fetchFlights = async () => {
       try {
-        const flights = await fetchMilitaryFlights();
+        this.statusPanel?.updateSource('Vols militaires', {
+          status: 'loading',
+          lastUpdate: null,
+          detail: 'adsb.fi -> airplanes.live -> OpenSky -> mock',
+          error: undefined,
+        });
+        const snapshot = await fetchMilitaryFlights();
+        const flights = snapshot.flights;
         this.mapContainer?.updateMilitaryFlights(flights);
+
+        const sourceBreakdown = Object.entries(snapshot.sourceCounts)
+          .filter(([, count]) => count > 0)
+          .map(([source, count]) => `${source} ${count}`)
+          .join(' + ');
+        const modeLabel =
+          snapshot.mode === 'mock'
+            ? 'MOCK ACTIF'
+            : snapshot.mode === 'stale-cache'
+              ? 'CACHE'
+              : snapshot.errors.length > 0
+                ? 'DEGRADE'
+                : 'LIVE';
+        const detail = `${modeLabel} · ${sourceBreakdown || snapshot.source}${snapshot.errors.length > 0 ? ` · fallback ${snapshot.errors.map((e) => e.source).join(', ')}` : ''}`;
+        this.statusPanel?.updateSource('Vols militaires', {
+          status: snapshot.mode === 'mock' || snapshot.mode === 'stale-cache' || snapshot.errors.length > 0 ? 'stale' : 'ok',
+          lastUpdate: new Date(snapshot.fetchedAt),
+          detail,
+          error: undefined,
+        });
 
         // Detect and display military surges (WorldMonitor pattern)
         const surges = detectMilitarySurges(
@@ -2287,9 +2417,10 @@ export class App {
           // If emergency surge, also update status panel
           const emergencies = surges.filter((s) => s.type === 'emergency');
           if (emergencies.length > 0) {
-            this.statusPanel?.updateSource('Military', {
+            this.statusPanel?.updateSource('Vols militaires', {
               status: 'error',
               lastUpdate: new Date(),
+              detail,
               error: emergencies[0].description,
             });
           }
@@ -2297,11 +2428,19 @@ export class App {
 
         // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
         const jammingSignals = detectGpsJammingSignals(flights);
+        this.currentJammingSignals = jammingSignals;
+        this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
         if (jammingSignals.length > 0) {
           this.toastNotification?.showJammingSignals(jammingSignals);
         }
       } catch (err) {
         console.error('[Military] Failed to fetch flights', err);
+        this.statusPanel?.updateSource('Vols militaires', {
+          status: 'error',
+          lastUpdate: new Date(),
+          detail: 'adsb.fi -> airplanes.live -> OpenSky -> mock',
+          error: err instanceof Error ? err.message : 'Échec vols militaires',
+        });
       }
     };
     fetchFlights();
@@ -2481,7 +2620,7 @@ export class App {
 
       // Update panel if visible
       if (this.defensePanel?.isVisible()) {
-        this.defensePanel.update(this.currentDefenseAlerts);
+        this.defensePanel.update(this.currentDefenseAlerts, this.currentJammingSignals);
       }
 
       // Show toast notifications for high/medium severity alerts
@@ -2925,7 +3064,6 @@ export class App {
         ? ` · ${rateLimitedAreas.length} source${rateLimitedAreas.length > 1 ? 's' : ''} limitée${rateLimitedAreas.length > 1 ? 's' : ''}`
         : '';
     const anomalyDetail = snapshot.anomalyCount ? ` · ${snapshot.anomalyCount} anomalie${snapshot.anomalyCount > 1 ? 's' : ''}` : '';
-    const signalDetail = snapshot.signalCount ? ` · ${snapshot.signalCount} signal${snapshot.signalCount > 1 ? 'aux' : ''} OSINT` : '';
     const topAirportDetail = Array.isArray(snapshot.topAirports) && snapshot.topAirports.length > 0
       ? ` · ${snapshot.topAirports
           .slice(0, 3)
@@ -2934,19 +3072,21 @@ export class App {
       : '';
 
     if (flights.length > 0) {
+      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'DEGRADE' : 'LIVE';
       this.statusPanel?.updateSource('Trafic aérien', {
-        status: 'ok',
+        status: snapshot.errors && snapshot.errors.length > 0 ? 'stale' : 'ok',
         lastUpdate: new Date(),
-        detail: `${sourceBreakdown} = ${flights.length} vols${anomalyDetail}${signalDetail}${topAirportDetail}${degradedDetail}`,
+        detail: `${statusLabel} · ${sourceBreakdown} = ${flights.length} vols${anomalyDetail}${topAirportDetail}${degradedDetail}`,
         error: undefined,
       });
     } else {
+      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'INDISPONIBLE' : 'VIDE';
       this.statusPanel?.updateSource('Trafic aérien', {
         status: snapshot.errors && snapshot.errors.length > 0 ? 'error' : 'stale',
         lastUpdate: new Date(),
         detail: snapshot.errors && snapshot.errors.length > 0
-          ? `${sourceBreakdown} · aucune position exploitable`
-          : `${sourceBreakdown} · aucun vol dans l’échantillon`,
+          ? `${statusLabel} · ${sourceBreakdown} · aucune position exploitable`
+          : `${statusLabel} · ${sourceBreakdown} · aucun vol dans l’échantillon`,
         error: snapshot.errors && snapshot.errors.length > 0 ? snapshot.errors[0].message : undefined,
       });
     }
@@ -3526,10 +3666,21 @@ export class App {
   }
 
   private onFilterChange(filter: FilterState): void {
+    this.routeGovernmentContext(filter.categories);
     writeUrlState({
       timeRange: filter.timeRange,
       searchQuery: filter.searchQuery || undefined,
     });
+  }
+
+  private routeGovernmentContext(categories: EventCategory[]): void {
+    this.rightSidebar?.setGovernmentContext(categories);
+    this.elusPanel?.setGovernmentContext(categories);
+  }
+
+  private routeGovernmentContextForItem(item: NewsItem | null | undefined): void {
+    const categories = item?.threat?.category ? [item.threat.category] : [];
+    this.routeGovernmentContext(categories);
   }
 
   // ─── UI helpers ─────────────────────────────────────────────────────────────

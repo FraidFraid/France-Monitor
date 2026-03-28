@@ -12,7 +12,6 @@
 
 import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats } from '../types/index.ts';
 import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
-import { computeNewsItemBbox, buildEoBrowserUrl } from '../services/copernicus.ts';
 import Hls from 'hls.js';
 
 /** Popup display mode */
@@ -91,7 +90,7 @@ export class MapPopup {
         // EO Browser link — stop event from also triggering article open
         if (target.closest('[data-action="satellite"]')) {
           e.stopPropagation();
-          return; // <a> href navigates naturally; don't open article
+          return;
         }
         // Default: click anywhere else → open article
         if (this.currentItem && this.onItemClick) {
@@ -201,11 +200,8 @@ export class MapPopup {
           </div>
           ${item.locationName ? `<div class="map-popup-location">📍 ${escapeHtml(item.locationName)}</div>` : ''}
         </div>
-        <div class="map-popup-action${item.lat != null && item.lon != null ? ' map-popup-action--split' : ''}">
-          ${item.lat != null && item.lon != null
-            ? `<span class="map-popup-action-text">Ouvrir l'article</span><a class="satellite-inline-btn" data-action="satellite" href="${buildEoBrowserUrl(computeNewsItemBbox(item.lat, item.lon), 'sentinel-2-l2a', new Date())}" target="_blank" rel="noopener noreferrer">Sentinel ↗</a>`
-            : 'Cliquez pour ouvrir'
-          }
+        <div class="map-popup-action">
+          Cliquez pour ouvrir
         </div>
       </div>
     `;

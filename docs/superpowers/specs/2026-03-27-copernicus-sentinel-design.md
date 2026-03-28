@@ -8,6 +8,10 @@ status: approved
 
 # Spec — Imagerie satellite Copernicus / Sentinel (MVP)
 
+> Mise à jour du 28 mars 2026 :
+> le flux `Sentinel-1 SAR` a été gelé côté viewer in-app tant qu'un backend raster dédié n'est pas branché.
+> Le chemin produit court terme est désormais : `Vigicrues -> Sentinel-2 avant / apres`, avec `Sentinel-1` documenté comme dépendance de Phase 2 et non comme preview catalogue.
+
 ## Contexte
 
 France Monitor dispose d'une couche Vigicrues (tronçons crues) et de news géolocalisées. L'objectif est d'ajouter un CTA « Voir satellite » sur ces deux sources d'événements, ouvrant un panneau léger qui affiche une preview d'imagerie Sentinel-2 (avant/après visible si 2 scènes pertinentes) ou Sentinel-1 SAR (crues, nuages, nuit). Le fallback systématique est un deep-link EO Browser / Copernicus Browser centré sur la bbox de l'événement.

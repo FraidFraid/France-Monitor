@@ -8,6 +8,7 @@
 
 import { Panel } from './Panel.ts';
 import type { DefenseAlert } from '../services/cable-threats.ts';
+import type { GpsJammingSignal } from '../types/index.ts';
 import { formatProximityDistance } from '../utils/cable-proximity.ts';
 
 // ═══ Constantes UI ═══
@@ -33,6 +34,7 @@ const SEVERITY_ICONS: Record<DefenseAlert['severity'], string> = {
 // ═══ DefensePanel Class ═══
 
 export type DefenseAlertClickHandler = (alert: DefenseAlert) => void;
+export type DefenseJammingClickHandler = (signal: GpsJammingSignal) => void;
 
 export class DefensePanel extends Panel {
   private modalEl!: HTMLElement;
@@ -40,6 +42,8 @@ export class DefensePanel extends Panel {
   private closeBtn: HTMLElement | null = null;
   private onClose?: () => void;
   private onAlertClick?: DefenseAlertClickHandler;
+  private onJammingClick?: DefenseJammingClickHandler;
+  private currentJammingSignals: GpsJammingSignal[] = [];
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
@@ -53,10 +57,10 @@ export class DefensePanel extends Panel {
     this.modalEl.className = 'defense-panel-modal';
     this.modalEl.style.cssText = `
       position: absolute;
-      bottom: 20px;
+      top: var(--right-panel-top);
       right: 20px;
       width: 360px;
-      max-height: 45vh;
+      max-height: calc(100vh - var(--right-panel-top) - 20px);
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
       border-radius: 12px;
@@ -141,40 +145,6 @@ export class DefensePanel extends Panel {
     `;
     this.modalEl.appendChild(header);
 
-    // Legend / Explanation section
-    const legend = document.createElement('div');
-    legend.className = 'defense-panel-legend';
-    legend.style.cssText = `
-      padding: 12px 14px;
-      background: rgba(0,0,0,0.25);
-      border-bottom: 1px solid var(--border-color);
-      font-size: 11px;
-    `;
-    legend.innerHTML = `
-      <div style="color: var(--text-muted); margin-bottom: 10px; line-height: 1.4;">
-        Navires à <strong style="color: var(--text-primary);">faible vitesse</strong> (&lt;2 nœuds)
-        près des <strong style="color: var(--text-primary);">câbles sous-marins</strong> (&lt;500m)
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: rgba(239,68,68,0.1); border-radius: 4px; border-left: 3px solid #EF4444;">
-          <span style="color: #EF4444; font-size: 10px;">●</span>
-          <span style="color: #EF4444; font-weight: 600; font-size: 11px; min-width: 55px;">Critique</span>
-          <span style="color: var(--text-muted); font-size: 10px;">&lt;100m, quasi-stationnaire</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: rgba(245,158,11,0.1); border-radius: 4px; border-left: 3px solid #F59E0B;">
-          <span style="color: #F59E0B; font-size: 10px;">●</span>
-          <span style="color: #F59E0B; font-weight: 600; font-size: 11px; min-width: 55px;">Élevée</span>
-          <span style="color: var(--text-muted); font-size: 10px;">&lt;300m, &lt;1 nœud</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: rgba(59,130,246,0.1); border-radius: 4px; border-left: 3px solid #3B82F6;">
-          <span style="color: #3B82F6; font-size: 10px;">●</span>
-          <span style="color: #3B82F6; font-weight: 600; font-size: 11px; min-width: 55px;">Attention</span>
-          <span style="color: var(--text-muted); font-size: 10px;">&lt;500m</span>
-        </div>
-      </div>
-    `;
-    this.modalEl.appendChild(legend);
-
     // Content container
     this.contentEl = document.createElement('div');
     this.contentEl.className = 'defense-panel-content';
@@ -182,9 +152,81 @@ export class DefensePanel extends Panel {
       padding: 12px;
       overflow-y: auto;
       flex: 1;
-      max-height: 340px;
     `;
     this.modalEl.appendChild(this.contentEl);
+
+    // Legend / Explanation section
+    const legend = document.createElement('div');
+    legend.className = 'defense-panel-legend';
+    legend.style.cssText = `
+      padding: 12px 14px 14px;
+      background: rgba(0,0,0,0.25);
+      border-top: 1px solid var(--border-color);
+      font-size: 11px;
+    `;
+    legend.innerHTML = `
+      <div style="color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;">
+        Méthodologie
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <span style="font-size:12px;">🧭</span>
+        <span style="color: var(--text-primary); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
+          Notes de lecture
+        </span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="
+          padding: 10px 12px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 8px;
+        ">
+          <div style="color: var(--text-secondary); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
+            Détection câbles
+          </div>
+          <div style="color: var(--text-muted); line-height: 1.45; margin-bottom: 8px;">
+            Navires à <strong style="color: var(--text-primary);">faible vitesse</strong> (&lt;2 nœuds)
+            près des <strong style="color: var(--text-primary);">câbles sous-marins</strong> (&lt;500m)
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(239,68,68,0.10);border-radius:6px;border-left:3px solid #EF4444;">
+              <span style="color:#EF4444;font-size:10px;">●</span>
+              <span style="color:#EF4444;font-weight:600;font-size:10px;min-width:52px;">Critique</span>
+              <span style="color:var(--text-muted);font-size:10px;">&lt;100m, quasi-stationnaire</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(245,158,11,0.10);border-radius:6px;border-left:3px solid #F59E0B;">
+              <span style="color:#F59E0B;font-size:10px;">●</span>
+              <span style="color:#F59E0B;font-weight:600;font-size:10px;min-width:52px;">Élevée</span>
+              <span style="color:var(--text-muted);font-size:10px;">&lt;300m, &lt;1 nœud</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(59,130,246,0.10);border-radius:6px;border-left:3px solid #3B82F6;">
+              <span style="color:#3B82F6;font-size:10px;">●</span>
+              <span style="color:#3B82F6;font-weight:600;font-size:10px;min-width:52px;">Attention</span>
+              <span style="color:var(--text-muted);font-size:10px;">&lt;500m</span>
+            </div>
+          </div>
+        </div>
+        <div style="
+          padding: 10px 12px;
+          background: rgba(59,130,246,0.08);
+          border: 1px solid rgba(59,130,246,0.22);
+          border-radius: 8px;
+        ">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:12px;">ℹ️</span>
+            <span style="color: var(--text-primary); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
+              Couverture AIS
+            </span>
+          </div>
+          <div style="color: var(--text-muted); font-size: 10px; line-height: 1.5;">
+            Les navires militaires ou d'État <strong style="color: var(--text-secondary);">n'apparaissent pas toujours</strong>
+            dans les flux AIS publics. Leur émission peut être absente, limitée ou non diffusée publiquement.
+            L'absence de trace AIS <strong style="color: var(--text-secondary);">n'exclut donc pas</strong> une présence réelle.
+          </div>
+        </div>
+      </div>
+    `;
+    this.modalEl.appendChild(legend);
 
     this.container.appendChild(this.modalEl);
     this.setupDrag();
@@ -246,12 +288,17 @@ export class DefensePanel extends Panel {
     this.onAlertClick = handler;
   }
 
-  show(alerts: DefenseAlert[]): void {
+  setOnJammingClick(handler: DefenseJammingClickHandler): void {
+    this.onJammingClick = handler;
+  }
+
+  show(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = []): void {
     if (!this.contentEl) return;
 
+    this.currentJammingSignals = jammingSignals;
     this.modalEl.style.display = 'flex';
     this.updateHeader(alerts);
-    this.renderContent(alerts);
+    this.renderContent(alerts, jammingSignals);
   }
 
   private updateHeader(alerts: DefenseAlert[]): void {
@@ -295,15 +342,23 @@ export class DefensePanel extends Panel {
     }
   }
 
-  private renderContent(alerts: DefenseAlert[]): void {
+  private renderContent(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = []): void {
     if (!this.contentEl) return;
 
     // Clear existing content
     this.contentEl.innerHTML = '';
 
+    const activeSectionEl = document.createElement('div');
+    activeSectionEl.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 2px 2px 10px;';
+    activeSectionEl.textContent = 'Surveillance active';
+    this.contentEl.appendChild(activeSectionEl);
+
+    this.contentEl.appendChild(this.createJammingSection(jammingSignals));
+
     if (alerts.length === 0) {
-      this.contentEl.innerHTML = `
-        <div style="text-align: center; padding: 32px 16px;">
+      const emptyEl = document.createElement('div');
+      emptyEl.innerHTML = `
+        <div style="text-align: center; padding: 24px 16px 32px;">
           <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.4;">✓</div>
           <div style="color: #10B981; font-weight: 600; margin-bottom: 8px;">
             Situation normale
@@ -313,8 +368,26 @@ export class DefensePanel extends Panel {
           </div>
         </div>
       `;
+      this.contentEl.appendChild(emptyEl);
       return;
     }
+
+    const cableSectionLabel = document.createElement('div');
+    cableSectionLabel.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 4px 2px 10px;';
+    cableSectionLabel.textContent = 'Proximité câbles';
+    this.contentEl.appendChild(cableSectionLabel);
+
+    const cableSectionEl = document.createElement('div');
+    cableSectionEl.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 430px;
+      overflow-y: auto;
+      padding-right: 2px;
+      margin-bottom: 2px;
+      scrollbar-width: thin;
+    `;
 
     // Group alerts by cable
     const alertsByCable = new Map<string, DefenseAlert[]>();
@@ -378,8 +451,123 @@ export class DefensePanel extends Panel {
       }
 
       groupEl.appendChild(itemsEl);
-      this.contentEl.appendChild(groupEl);
+      cableSectionEl.appendChild(groupEl);
     }
+
+    this.contentEl.appendChild(cableSectionEl);
+  }
+
+  private createJammingSection(signals: GpsJammingSignal[]): HTMLElement {
+    const sectionEl = document.createElement('div');
+    sectionEl.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-bottom:12px;';
+
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 2px;';
+    labelEl.textContent = 'Brouillage radar';
+    sectionEl.appendChild(labelEl);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 252px;
+      overflow-y: auto;
+      padding-right: 2px;
+      scrollbar-width: thin;
+    `;
+
+    const sortedSignals = [...signals].sort((a, b) => b.confidence - a.confidence);
+    const visibleSignals = sortedSignals.slice(0, Math.max(sortedSignals.length, 1));
+
+    if (sortedSignals.length === 0) {
+      listEl.appendChild(this.createSingleJammingCard(null, 0));
+    } else {
+      for (const signal of visibleSignals) {
+        listEl.appendChild(this.createSingleJammingCard(signal, sortedSignals.length));
+      }
+    }
+
+    sectionEl.appendChild(listEl);
+    return sectionEl;
+  }
+
+  private createSingleJammingCard(signal: GpsJammingSignal | null, totalSignals: number): HTMLElement {
+    const cardEl = document.createElement('div');
+    const severityColor = signal?.severity === 'high'
+      ? '#EF4444'
+      : signal?.severity === 'medium'
+        ? '#F59E0B'
+        : '#3B82F6';
+    const confidencePct = signal ? Math.round(signal.confidence * 100) : 0;
+    const radius = signal?.clusterRadius ? ` · rayon ${signal.clusterRadius} km` : '';
+    const affected = signal ? `${signal.affectedIcao24s.length} aéronef${signal.affectedIcao24s.length > 1 ? 's' : ''}` : '';
+    const primaryReason = signal?.reasons[0] ?? 'Aucun brouillage détecté';
+
+    cardEl.style.cssText = `
+      background: ${signal ? `${severityColor}14` : 'rgba(16,185,129,0.10)'};
+      border: 1px solid ${signal ? `${severityColor}55` : 'rgba(16,185,129,0.28)'};
+      border-radius: 10px;
+      padding: 12px 14px;
+      ${signal ? 'cursor: pointer;' : ''}
+    `;
+
+    cardEl.innerHTML = signal
+      ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:15px;">📡</span>
+            <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
+              Brouillage radar / GPS
+            </span>
+          </div>
+          <span style="background:${severityColor}22;color:${severityColor};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">
+            ${confidencePct}%
+          </span>
+        </div>
+        <div style="color:${severityColor};font-size:12px;font-weight:600;margin-bottom:6px;">
+          Suspicion active · ${affected}${radius}
+        </div>
+        <div style="color: var(--text-secondary); font-size: 11px; line-height: 1.5; margin-bottom: 8px;">
+          ${this.escapeHtml(primaryReason)}
+        </div>
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.5;">
+          Zone: ${signal.position[1].toFixed(2)} / ${signal.position[0].toFixed(2)}
+          ${totalSignals > 1 ? ` · ${totalSignals} signaux corrélés` : ''}
+        </div>
+      `
+      : `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span style="font-size:15px;">📡</span>
+          <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
+            Brouillage radar / GPS
+          </span>
+        </div>
+        <div style="color:#10B981;font-size:12px;font-weight:600;margin-bottom:4px;">
+          Aucun brouillage détecté
+        </div>
+        <div style="color: var(--text-muted); font-size: 11px; line-height: 1.5;">
+          Aucun cluster ni signal individuel plausible sur le cycle de surveillance courant.
+        </div>
+      `;
+
+    if (signal) {
+      cardEl.addEventListener('mouseenter', () => {
+        cardEl.style.transform = 'translateY(-1px)';
+        cardEl.style.boxShadow = `0 8px 24px ${severityColor}22`;
+      });
+      cardEl.addEventListener('mouseleave', () => {
+        cardEl.style.transform = 'translateY(0)';
+        cardEl.style.boxShadow = 'none';
+      });
+      cardEl.addEventListener('click', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        this.onJammingClick?.(signal);
+      });
+    }
+
+    return cardEl;
   }
 
   /** Create a clickable alert item element */
@@ -491,10 +679,11 @@ export class DefensePanel extends Panel {
     return this.modalEl?.style.display === 'flex';
   }
 
-  update(alerts: DefenseAlert[]): void {
+  update(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = this.currentJammingSignals): void {
     if (this.isVisible()) {
+      this.currentJammingSignals = jammingSignals;
       this.updateHeader(alerts);
-      this.renderContent(alerts);
+      this.renderContent(alerts, jammingSignals);
     }
   }
 
