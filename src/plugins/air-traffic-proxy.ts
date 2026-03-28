@@ -1,8 +1,6 @@
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
-// @ts-expect-error Shared JS module is reused by Vite dev proxy and Vercel function.
 import { fetchAirTrafficSnapshot } from '../../api/_shared/air-traffic.js';
-// @ts-expect-error Shared JS module is reused by Vite dev proxy and Vercel function.
 import { fetchAirTrafficSnapshotFromRelay } from '../../api/_shared/air-relay.js';
 
 export function airTrafficProxyPlugin(): Plugin {

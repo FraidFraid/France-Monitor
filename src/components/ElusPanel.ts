@@ -155,6 +155,21 @@ export class ElusPanel {
         return `${prenom} ${nom.toUpperCase()}`.trim();
     }
 
+    private _formatVerificationStatus(minister: Minister): string | null {
+        switch (minister.verificationStatus) {
+            case 'official-live':
+                return 'Source officielle live';
+            case 'official-directory':
+                return 'Source officielle annuaire';
+            case 'official-static':
+                return 'Source officielle statique';
+            case 'fallback-static':
+                return 'Fallback statique';
+            default:
+                return null;
+        }
+    }
+
     private _getMaxPanelHeight(): number {
         return Math.max(360, window.innerHeight - 88);
     }
@@ -777,6 +792,7 @@ export class ElusPanel {
                     profile.agendaUrl ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Agenda : </span><a href="${profile.agendaUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">Agenda officiel</a></div>` : '',
                     profile.servicePublicUrl ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Annuaire : </span><a href="${profile.servicePublicUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">Service-Public</a></div>` : '',
                     profile.sourceLabel || profile.sourceUrl ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Source : </span>${profile.sourceUrl ? `<a href="${profile.sourceUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">${profile.sourceLabel ?? 'Source officielle'}</a>` : `<span style="color:var(--text-primary);font-size:11px;">${profile.sourceLabel}</span>`}${profile.sourceUpdatedAt ? `<span style="color:var(--text-muted);font-size:10px;"> · MAJ ${new Date(profile.sourceUpdatedAt).toLocaleDateString('fr-FR')}</span>` : ''}</div>` : '',
+                    this._formatVerificationStatus(profile) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Vérification : </span><span style="color:var(--text-primary);font-size:11px;">${this._formatVerificationStatus(profile)}</span>${profile.identityConfidence ? `<span style="color:var(--text-muted);font-size:10px;"> · confiance ${profile.identityConfidence}</span>` : ''}</div>` : '',
                     profile.twitter ? `<div><span style="color:var(--text-muted);font-size:10px;">Twitter/X : </span><a href="https://twitter.com/${profile.twitter}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">@${profile.twitter}</a></div>` : '',
                 ].filter(Boolean);
                 contentEl.innerHTML = contactRows.length > 0

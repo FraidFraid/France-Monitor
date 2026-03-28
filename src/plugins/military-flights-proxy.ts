@@ -1,5 +1,4 @@
 import type { Plugin } from 'vite';
-// @ts-expect-error Shared JS module is reused by Vite dev proxy and Vercel function.
 import { fetchMilitaryFlightsSnapshot } from '../../api/_shared/military-flights.js';
 
 export function militaryFlightsProxyPlugin(): Plugin {

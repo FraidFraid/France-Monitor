@@ -54,15 +54,46 @@ export interface OpenDataDataset {
 
 const wikidataCache = new Map<string, { data: Partial<MinisterEnriched>; ts: number }>();
 const rssCache = new Map<string, { items: AgendaItem[]; ts: number }>();
+const profileCache = new Map<string, { data: MinisterEnriched; ts: number }>();
+const profilePromiseCache = new Map<string, Promise<MinisterEnriched>>();
 const TTL_WIKIDATA = 24 * 60 * 60 * 1000;
 const TTL_RSS = 30 * 60 * 1000;
 const TTL_DIRECTORY = 6 * 60 * 60 * 1000;
 
 let primeMinisterCache: { data: Partial<MinisterEnriched>; ts: number } | null = null;
 let governmentCache: { data: MinisterEnriched[]; ts: number } | null = null;
+let governmentPromise: Promise<MinisterEnriched[]> | null = null;
 const osintCache = new Map<string, { data: OpenDataDataset[]; ts: number }>();
 
 const TTL_GOVERNMENT = 6 * 60 * 60 * 1000;
+
+function toFallbackMinister(minister: Minister): MinisterEnriched {
+  const sourceChain: NonNullable<Minister['sourceChain']> = minister.sourceUrl
+    ? [{ label: minister.sourceLabel ?? 'Configuration gouvernement', url: minister.sourceUrl, kind: 'fallback', updatedAt: minister.sourceUpdatedAt }]
+    : [{ label: 'Configuration gouvernement', kind: 'fallback', updatedAt: minister.sourceUpdatedAt }];
+  return {
+    ...minister,
+    verificationStatus: 'fallback-static',
+    sourceKind: 'fallback',
+    identityConfidence: 'medium',
+    sourceChain,
+  };
+}
+
+function finalizeOfficialMinister(minister: MinisterEnriched): MinisterEnriched {
+  const chain: NonNullable<Minister['sourceChain']> = minister.sourceChain && minister.sourceChain.length > 0
+    ? minister.sourceChain
+    : minister.sourceUrl
+      ? [{ label: minister.sourceLabel ?? 'Source officielle', url: minister.sourceUrl, kind: 'official', updatedAt: minister.sourceUpdatedAt }]
+      : [];
+  return {
+    ...minister,
+    verificationStatus: minister.verificationStatus ?? 'official-live',
+    sourceKind: minister.sourceKind ?? 'official',
+    identityConfidence: minister.identityConfidence ?? 'high',
+    sourceChain: chain,
+  };
+}
 
 function normalizeText(value: string): string {
   return value
@@ -106,13 +137,27 @@ async function fetchOfficialProfileMeta(minister: Minister): Promise<Partial<Min
   try {
     const res = await fetch(`/api/ministers/profile-meta?prenom=${encodeURIComponent(minister.prenom)}&nom=${encodeURIComponent(minister.nom)}`);
     if (!res.ok) return {};
-    const data = await res.json() as { photoUrl?: string; profileUrl?: string; bioShort?: string; sourceLabel?: string; agendaUrl?: string };
+    const data = await res.json() as {
+      photoUrl?: string;
+      profileUrl?: string;
+      bioShort?: string;
+      sourceLabel?: string;
+      agendaUrl?: string;
+      verificationStatus?: Minister['verificationStatus'];
+      sourceKind?: Minister['sourceKind'];
+      identityConfidence?: Minister['identityConfidence'];
+      sourceChain?: Minister['sourceChain'];
+    };
     return {
       photoUrl: data.photoUrl,
       bioShort: data.bioShort,
       agendaUrl: data.agendaUrl ?? minister.agendaUrl,
       sourceLabel: data.sourceLabel ?? minister.sourceLabel,
       sourceUrl: data.profileUrl ?? minister.sourceUrl,
+      verificationStatus: data.verificationStatus ?? minister.verificationStatus,
+      sourceKind: data.sourceKind ?? minister.sourceKind,
+      identityConfidence: data.identityConfidence ?? minister.identityConfidence,
+      sourceChain: data.sourceChain ?? minister.sourceChain,
     };
   } catch {
     return {};
@@ -194,7 +239,7 @@ function buildOpenDataQuery(minister: Minister): string {
   return minister.titre;
 }
 
-async function fetchMinisterOpenData(minister: Minister): Promise<OpenDataDataset[]> {
+export async function fetchMinisterOpenData(minister: Minister): Promise<OpenDataDataset[]> {
   const query = buildOpenDataQuery(minister);
   const cached = osintCache.get(query);
   if (cached && Date.now() - cached.ts < TTL_DIRECTORY) return cached.data;
@@ -326,12 +371,16 @@ async function fetchGovernmentComposition(): Promise<MinisterEnriched[]> {
     return governmentCache.data;
   }
 
-  try {
+  if (governmentPromise) {
+    return governmentPromise;
+  }
+
+  governmentPromise = (async () => {
     const res = await fetch('/api/ministers/composition');
-    if (!res.ok) return GOUVERNEMENT.map((minister) => ({ ...minister }));
+    if (!res.ok) return GOUVERNEMENT.map((minister) => toFallbackMinister({ ...minister }));
     const live = await res.json() as Array<Partial<MinisterEnriched>>;
     const president = GOUVERNEMENT.find((minister) => minister.isPresident);
-    const seed = live.length > 0 ? live : GOUVERNEMENT.map((minister) => ({ ...minister }));
+    const seed = live.length > 0 ? live : GOUVERNEMENT.map((minister) => toFallbackMinister({ ...minister }));
     const merged = seed.map((minister) => {
       const normalizedId = typeof minister.id === 'string' ? minister.id : slugifyId(minister.titre ?? '');
       const fallback =
@@ -350,12 +399,12 @@ async function fetchGovernmentComposition(): Promise<MinisterEnriched[]> {
         portefeuilles: portfoliosFromTitle(minister.titre ?? ''),
       };
 
-      return mergeMinister(base, {
+      return finalizeOfficialMinister(mergeMinister(base, {
         ...minister,
         id: base.id,
         categories: base.categories,
         portefeuilles: base.portefeuilles,
-      });
+      }));
     });
 
     const withPhotos = await Promise.all(merged.map(async (minister) => {
@@ -363,12 +412,12 @@ async function fetchGovernmentComposition(): Promise<MinisterEnriched[]> {
         fetchOfficialProfileMeta(minister),
         enrichMinisterFromWikidata(minister),
       ]);
-      return {
+      return finalizeOfficialMinister({
         ...minister,
         ...officialMeta,
         ...wk,
         photoUrl: officialMeta.photoUrl ?? wk.photoUrl ?? minister.photoUrl,
-      };
+      });
     }));
 
     const deduped = withPhotos.filter((minister, index, array) =>
@@ -378,10 +427,14 @@ async function fetchGovernmentComposition(): Promise<MinisterEnriched[]> {
       ? [president, ...deduped]
       : deduped;
     governmentCache = { data: result, ts: Date.now() };
-    return result;
-  } catch {
-    return GOUVERNEMENT.map((minister) => ({ ...minister }));
-  }
+    return result.map(finalizeOfficialMinister);
+  })()
+    .catch(() => GOUVERNEMENT.map((minister) => toFallbackMinister({ ...minister })))
+    .finally(() => {
+      governmentPromise = null;
+    });
+
+  return governmentPromise;
 }
 
 export async function resolveMinister(minister: Minister): Promise<MinisterEnriched> {
@@ -390,12 +443,21 @@ export async function resolveMinister(minister: Minister): Promise<MinisterEnric
     fetchOfficialProfileMeta(base),
     enrichMinisterFromWikidata(base),
   ]);
-  return {
+  const resolved = {
     ...base,
     ...officialMeta,
     ...wikidata,
     photoUrl: officialMeta.photoUrl ?? wikidata.photoUrl ?? base.photoUrl,
   };
+  return base.verificationStatus === 'fallback-static'
+    ? {
+        ...resolved,
+        verificationStatus: officialMeta.verificationStatus ?? base.verificationStatus,
+        sourceKind: officialMeta.sourceKind ?? base.sourceKind,
+        identityConfidence: officialMeta.identityConfidence ?? base.identityConfidence,
+        sourceChain: officialMeta.sourceChain ?? base.sourceChain,
+      }
+    : finalizeOfficialMinister(resolved);
 }
 
 export async function getMinistersForCategoriesLive(categories: EventCategory[]): Promise<Minister[]> {
@@ -425,25 +487,30 @@ export async function getMinistersEnrichedForContext(categories: EventCategory[]
 }
 
 export async function getFullMinisterProfile(minister: Minister): Promise<MinisterEnriched> {
-  const resolved = await resolveMinister(minister);
-  const [wikidata, agenda, osint] = await Promise.allSettled([
-    enrichMinisterFromWikidata(resolved),
-    fetchMinisterAgenda(resolved),
-    fetchMinisterOpenData(resolved),
-  ]);
-  const agendaItems = agenda.status === 'fulfilled' ? agenda.value : [];
-  const fallbackAgenda = agendaItems.length === 0 && resolved.agendaUrl
-    ? [{
-        title: `Consulter l'agenda officiel de ${resolved.prenom} ${resolved.nom}`,
-        date: 'Agenda officiel',
-        sourceLabel: resolved.sourceLabel ?? 'Source officielle',
-        url: resolved.agendaUrl,
-      }]
-    : agendaItems;
-  return {
-    ...resolved,
-    ...(wikidata.status === 'fulfilled' ? wikidata.value : {}),
-    agendaItems: fallbackAgenda,
-    osintDatasets: osint.status === 'fulfilled' ? osint.value : [],
-  };
+  const cached = profileCache.get(minister.id);
+  if (cached && Date.now() - cached.ts < TTL_DIRECTORY) return cached.data;
+
+  const inFlight = profilePromiseCache.get(minister.id);
+  if (inFlight) return inFlight;
+
+  const promise = resolveMinister(minister)
+    .then((resolved) => {
+      profileCache.set(minister.id, { data: resolved, ts: Date.now() });
+      return resolved;
+    })
+    .finally(() => {
+      profilePromiseCache.delete(minister.id);
+    });
+
+  profilePromiseCache.set(minister.id, promise);
+  return promise;
+}
+
+export function prewarmMinisterProfile(minister: Minister): void {
+  void getFullMinisterProfile(minister).catch(() => {});
+}
+
+export async function prewarmGovernmentProfiles(ministers: Minister[], limit = 6): Promise<void> {
+  const slice = ministers.slice(0, limit);
+  await Promise.allSettled(slice.map((minister) => getFullMinisterProfile(minister)));
 }
