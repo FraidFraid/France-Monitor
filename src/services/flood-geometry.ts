@@ -6,6 +6,15 @@ import type {
   FloodVigilanceLevel,
 } from '../types/index.ts';
 import type { Feature, FeatureCollection, LineString, MultiLineString } from 'geojson';
+import {
+  buildOsmWayGraph,
+  dijkstraOsmPath,
+  projectToNearestGraphNode,
+  osmPathLengthKm,
+  reconstructOsmLineString,
+  type OsmWaterwayFeature,
+  type OsmWaterwayProperties,
+} from './osm-waterway-graph.ts';
 
 type FloodGeometry = LineString | MultiLineString;
 type Coordinate = [number, number];
@@ -25,6 +34,14 @@ export interface FloodGeometryResolution {
   displayGeometry: FloodGeometry;
   geometryFidelity: FloodGeometryFidelity;
   matchConfidence: number;
+}
+
+interface OSMCoverageDebug {
+  bbox: string;
+  wayCount: number;
+  nodeCount: number;
+  edgeCount: number;
+  totalEdgeLengthKm: number;
 }
 
 interface TopageProperties {
@@ -61,10 +78,22 @@ interface DirectedEdge {
 }
 
 const TOPAGE_PROXY_URL = '/api/environment/topage-hydro';
+const OSM_WATERWAY_PROXY_URL = '/api/environment/osm-waterways';
 const HYDRO_BBOX_PADDING_DEG = 0.12;
 const MAX_FEATURES_PER_QUERY = 600;
 const FETCH_TIMEOUT_MS = 20_000;
 const hydroCache = new Map<string, Promise<TopageFeature[]>>();
+const osmWaterwayCache = new Map<string, Promise<OsmWaterwayFeature[]>>();
+let lastOsmWaterwaysGeoJson: FeatureCollection<LineString, OsmWaterwayProperties> = { type: 'FeatureCollection', features: [] };
+let lastOsmCoverageDebug: OSMCoverageDebug | null = null;
+
+export function getLastOsmWaterwaysGeoJson(): FeatureCollection<LineString, OsmWaterwayProperties> {
+  return lastOsmWaterwaysGeoJson;
+}
+
+export function getLastOsmCoverageDebug(): OSMCoverageDebug | null {
+  return lastOsmCoverageDebug;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -165,30 +194,81 @@ function getFeatureId(feature: TopageFeature): string {
   return String(feature.properties?.CdOH ?? feature.id ?? crypto.randomUUID());
 }
 
+function splitBBoxIntoQuadrants(
+  bbox: [number, number, number, number],
+): Array<[number, number, number, number]> {
+  const [minLng, minLat, maxLng, maxLat] = bbox;
+  const midLng = (minLng + maxLng) / 2;
+  const midLat = (minLat + maxLat) / 2;
+  return [
+    [minLng, minLat, midLng, midLat],
+    [midLng, minLat, maxLng, midLat],
+    [minLng, midLat, midLng, maxLat],
+    [midLng, midLat, maxLng, maxLat],
+  ];
+}
+
+function dedupeTopageFeatures(features: TopageFeature[]): TopageFeature[] {
+  const deduped = new Map<string, TopageFeature>();
+  for (const feature of features) {
+    const key = `${getFeatureId(feature)}:${feature.geometry.coordinates.length}`;
+    if (!deduped.has(key)) deduped.set(key, feature);
+  }
+  return [...deduped.values()];
+}
+
+async function fetchTopageFeaturesForBBoxRaw(
+  bbox: [number, number, number, number],
+): Promise<{ usable: TopageFeature[]; total: number }> {
+  const params = new URLSearchParams({
+    bbox: `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]},EPSG:4326`,
+    count: String(MAX_FEATURES_PER_QUERY),
+  });
+
+  const response = await fetch(`${TOPAGE_PROXY_URL}?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const geojson = await response.json() as FeatureCollection<LineString, TopageProperties>;
+  const total = geojson.features.length;
+  const usable = geojson.features.filter((feature): feature is TopageFeature => isUsableTopageFeature(feature));
+  return { usable, total };
+}
+
 async function fetchTopageFeaturesForBBox(
   bbox: [number, number, number, number],
+  depth = 0,
 ): Promise<TopageFeature[]> {
-  const key = bboxKey(bbox);
+  const key = `${bboxKey(bbox)}:d${depth}`;
   const cached = hydroCache.get(key);
   if (cached) return cached;
 
   const pending = (async () => {
-    const params = new URLSearchParams({
-      bbox: `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]},EPSG:4326`,
-      count: String(MAX_FEATURES_PER_QUERY),
-    });
+    const { usable, total } = await fetchTopageFeaturesForBBoxRaw(bbox);
+    const bboxLabel = bboxKey(bbox);
+    const truncated = total >= MAX_FEATURES_PER_QUERY;
 
-    const response = await fetch(`${TOPAGE_PROXY_URL}?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (truncated && depth < 2) {
+      console.warn(`[FloodGeometry/WFS] Réponse tronquée à ${MAX_FEATURES_PER_QUERY} features — subdivision bbox ${bboxLabel}`);
+      const quadrants = splitBBoxIntoQuadrants(bbox);
+      console.info(`[FloodGeometry/WFS] subdivision en ${quadrants.length} sous-bboxes`);
+      const nested = await Promise.all(quadrants.map((subBbox) => fetchTopageFeaturesForBBox(subBbox, depth + 1)));
+      const merged = dedupeTopageFeatures(nested.flat());
+      console.info(`[FloodGeometry/WFS] bbox=${bboxLabel} → merged total:${merged.length}`);
+      return merged;
     }
 
-    const geojson = await response.json() as FeatureCollection<LineString, TopageProperties>;
-    return geojson.features.filter((feature): feature is TopageFeature => isUsableTopageFeature(feature));
+    if (truncated) {
+      console.warn(`[FloodGeometry/WFS] Réponse tronquée à ${MAX_FEATURES_PER_QUERY} features — certains candidats peuvent manquer`);
+    }
+
+    console.debug(`[FloodGeometry/WFS] bbox=${bboxLabel} → total:${total} usable:${usable.length} (rejetés:${total - usable.length})`);
+    return usable;
   })();
 
   hydroCache.set(key, pending);
@@ -197,6 +277,46 @@ async function fetchTopageFeaturesForBBox(
     return await pending;
   } catch (error) {
     hydroCache.delete(key);
+    throw error;
+  }
+}
+
+async function fetchOsmWaterwayFeaturesForBBox(
+  bbox: [number, number, number, number],
+): Promise<OsmWaterwayFeature[]> {
+  const key = `osm:${bboxKey(bbox)}`;
+  const cached = osmWaterwayCache.get(key);
+  if (cached) return cached;
+
+  const pending = (async () => {
+    const params = new URLSearchParams({
+      bbox: `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}`,
+    });
+
+    const response = await fetch(`${OSM_WATERWAY_PROXY_URL}?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const geojson = await response.json() as FeatureCollection<LineString, OsmWaterwayProperties>;
+    lastOsmWaterwaysGeoJson = geojson;
+    return geojson.features.filter((feature): feature is OsmWaterwayFeature => (
+      !!feature.geometry &&
+      feature.geometry.type === 'LineString' &&
+      (feature.geometry.coordinates?.length ?? 0) >= 2
+    ));
+  })();
+
+  osmWaterwayCache.set(key, pending);
+
+  try {
+    return await pending;
+  } catch (error) {
+    osmWaterwayCache.delete(key);
     throw error;
   }
 }
@@ -212,6 +332,244 @@ function minRawPointDistanceKm(rawCoords: Coordinate[], feature: TopageFeature):
   return minDistance;
 }
 
+function minRawPointDistanceKmToOsm(rawCoords: Coordinate[], feature: OsmWaterwayFeature): number {
+  let minDistance = Infinity;
+
+  for (const coord of rawCoords) {
+    const distKm = pointToLineDistance(point(coord), feature, { units: 'kilometers' });
+    if (distKm < minDistance) minDistance = distKm;
+  }
+
+  return minDistance;
+}
+
+function normalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function computeOsmNameScore(segmentLabel: string, feature: OsmWaterwayFeature): number {
+  const featureName = normalizeName(feature.properties?.name ?? '');
+  const label = normalizeName(segmentLabel);
+  if (!featureName || !label) return 0;
+  if (label.includes(featureName) || featureName.includes(label)) return 3;
+
+  const labelTokens = new Set(label.split(' ').filter((token) => token.length >= 3));
+  const featureTokens = featureName.split(' ').filter((token) => token.length >= 3);
+  let matches = 0;
+  for (const token of featureTokens) {
+    if (labelTokens.has(token)) matches += 1;
+  }
+  return matches;
+}
+
+function computeOsmFeatureLocation(rawLine: Feature<LineString>, feature: OsmWaterwayFeature): number {
+  const coords = feature.geometry.coordinates as Coordinate[];
+  const midpoint = coords[Math.floor(coords.length / 2)] ?? coords[0];
+  const snapped = nearestPointOnLine(rawLine, point(midpoint), { units: 'kilometers' });
+  return Number(snapped.properties?.location ?? 0);
+}
+
+function mergeOsmWaterwayFeatures(
+  rawGeometry: FloodGeometry,
+  scored: Array<{
+    feature: OsmWaterwayFeature;
+    distanceKm: number;
+    nameScore: number;
+    endpointGap: number;
+  }>,
+): Coordinate[] | null {
+  if (scored.length === 0) return null;
+
+  const rawCoords = flattenCoordinates(rawGeometry);
+  const rawLine = lineString(rawCoords);
+  const best = scored[0];
+  const bestName = normalizeName(best.feature.properties?.name ?? '');
+
+  const selected = scored
+    .filter((item) => {
+      const itemName = normalizeName(item.feature.properties?.name ?? '');
+      const sameName = bestName.length > 0 && itemName === bestName;
+      const closeEnough = item.distanceKm <= Math.max(1.6, best.distanceKm + 0.9);
+      const acceptableName = sameName || (best.nameScore === 0 ? item.distanceKm <= 0.7 : item.nameScore > 0);
+      return closeEnough && acceptableName;
+    })
+    .map((item) => ({
+      ...item,
+      location: computeOsmFeatureLocation(rawLine, item.feature),
+    }))
+    .sort((a, b) => a.location - b.location || a.distanceKm - b.distanceKm)
+    .slice(0, 24);
+
+  if (selected.length === 0) return null;
+
+  const merged: Coordinate[] = [];
+
+  for (const item of selected) {
+    const coords = item.feature.geometry.coordinates as Coordinate[];
+    if (coords.length < 2) continue;
+
+    let oriented = coords;
+    if (merged.length === 0) {
+      const rawStart = rawCoords[0];
+      const startGap = distance(point(rawStart), point(coords[0]), { units: 'kilometers' });
+      const endGap = distance(point(rawStart), point(coords[coords.length - 1]), { units: 'kilometers' });
+      oriented = endGap < startGap ? [...coords].reverse() : coords;
+      merged.push(...oriented);
+      continue;
+    }
+
+    const last = merged[merged.length - 1];
+    const forwardGap = distance(point(last), point(coords[0]), { units: 'kilometers' });
+    const reverseGap = distance(point(last), point(coords[coords.length - 1]), { units: 'kilometers' });
+    const bestGap = Math.min(forwardGap, reverseGap);
+    if (bestGap > 1.2) continue;
+
+    oriented = reverseGap < forwardGap ? [...coords].reverse() : coords;
+    const [nextLng, nextLat] = oriented[0];
+    const [lastLng, lastLat] = last;
+    if (nextLng === lastLng && nextLat === lastLat) {
+      merged.push(...oriented.slice(1));
+    } else {
+      merged.push(...oriented);
+    }
+  }
+
+  return merged.length >= 2 ? merged : null;
+}
+
+async function matchFloodGeometryToOsmWaterwayHeuristic(
+  rawGeometry: FloodGeometry,
+  segmentLabel: string,
+): Promise<FloodGeometryResolution | null> {
+  const rawCoords = flattenCoordinates(rawGeometry);
+  if (rawCoords.length < 2) return null;
+
+  const bbox = expandBBox(computeGeometryBBox(rawGeometry), 0.08);
+  const features = await fetchOsmWaterwayFeaturesForBBox(bbox);
+  if (features.length === 0) return null;
+
+  const scored = features
+    .map((feature) => {
+      const distanceKm = minRawPointDistanceKmToOsm(rawCoords, feature);
+      const nameScore = computeOsmNameScore(segmentLabel, feature);
+      const geom = feature.geometry.coordinates as Coordinate[];
+      const endpoints = getGeometryEndpoints(rawGeometry);
+      const startGap = endpoints ? distance(point(endpoints.start), point(geom[0]), { units: 'kilometers' }) : 0;
+      const endGap = endpoints ? distance(point(endpoints.end), point(geom[geom.length - 1]), { units: 'kilometers' }) : 0;
+      return { feature, distanceKm, nameScore, endpointGap: startGap + endGap };
+    })
+    .filter(({ distanceKm }) => Number.isFinite(distanceKm) && distanceKm <= 3);
+
+  if (scored.length === 0) return null;
+
+  scored.sort((a, b) => {
+    if (a.nameScore !== b.nameScore) return b.nameScore - a.nameScore;
+    if (Math.abs(a.distanceKm - b.distanceKm) > 0.15) return a.distanceKm - b.distanceKm;
+    return a.endpointGap - b.endpointGap;
+  });
+
+  const best = scored[0];
+  const mergedCoords = mergeOsmWaterwayFeatures(rawGeometry, scored);
+  const displayGeometry = mergedCoords
+    ? { type: 'LineString' as const, coordinates: mergedCoords }
+    : best.feature.geometry;
+  const confidence = clamp(0.82 + best.nameScore * 0.04 - Math.min(0.32, best.distanceKm * 0.12), 0.45, 0.96);
+
+  return {
+    displayGeometry,
+    geometryFidelity: 'fallback',
+    matchConfidence: confidence,
+  };
+}
+
+async function matchFloodGeometryToOsmWaterway(
+  rawGeometry: FloodGeometry,
+  segmentLabel: string,
+): Promise<FloodGeometryResolution | null> {
+  const rawCoords = flattenCoordinates(rawGeometry);
+  if (rawCoords.length < 2) return null;
+
+  const bbox = expandBBox(computeGeometryBBox(rawGeometry), 0.08);
+  const bboxStr = bboxKey(bbox);
+  const features = await fetchOsmWaterwayFeaturesForBBox(bbox);
+  const wayCount = features.length;
+  console.info(`[OSM graph] ${wayCount} ways recuperes, bbox ${bboxStr}`);
+  if (wayCount === 0) return null;
+
+  const graph = buildOsmWayGraph(features);
+  const nodeCount = graph.nodeCoords.size;
+  const edgeCount = Array.from(graph.adjacency.values()).reduce((sum, edges) => sum + edges.length, 0) / 2;
+  const totalEdgeLengthKm = Array.from(graph.adjacency.values())
+    .flat()
+    .filter((edge) => edge.fromNodeKey < edge.toNodeKey)
+    .reduce((sum, edge) => sum + edge.edge.weightKm, 0);
+  lastOsmCoverageDebug = {
+    bbox: bboxStr,
+    wayCount,
+    nodeCount,
+    edgeCount,
+    totalEdgeLengthKm: Number(totalEdgeLengthKm.toFixed(1)),
+  };
+  console.info(`[OSM graph] ${nodeCount} noeuds, ${edgeCount} aretes construites`);
+  console.info(`[OSM graph] longueur totale graphe: ${totalEdgeLengthKm.toFixed(1)} km`);
+
+  const endpoints = getGeometryEndpoints(rawGeometry);
+  if (!endpoints) return matchFloodGeometryToOsmWaterwayHeuristic(rawGeometry, segmentLabel);
+
+  const startNodeMatch = projectToNearestGraphNode(endpoints.start, features);
+  const endNodeMatch = projectToNearestGraphNode(endpoints.end, features);
+
+  if (!startNodeMatch || !endNodeMatch) {
+    console.info('[OSM graph] endpoints introuvables -> fallback heuristique');
+    return matchFloodGeometryToOsmWaterwayHeuristic(rawGeometry, segmentLabel);
+  }
+
+  console.info(
+    `[OSM graph] start=${startNodeMatch.node.key} end=${endNodeMatch.node.key} ` +
+    `(dist: ${startNodeMatch.distanceKm.toFixed(2)}km / ${endNodeMatch.distanceKm.toFixed(2)}km)`,
+  );
+
+  const path = dijkstraOsmPath(graph, startNodeMatch.node.key, endNodeMatch.node.key);
+  if (path == null) {
+    console.info('[OSM graph] Dijkstra sans chemin -> fallback heuristique');
+    return matchFloodGeometryToOsmWaterwayHeuristic(rawGeometry, segmentLabel);
+  }
+
+  const coords = reconstructOsmLineString(path);
+  if (coords.length < 2) {
+    console.info('[OSM graph] reconstruction vide -> fallback heuristique');
+    return matchFloodGeometryToOsmWaterwayHeuristic(rawGeometry, segmentLabel);
+  }
+
+  const pathLengthKm = osmPathLengthKm(path);
+  console.info(`[OSM graph] chemin trouve: ${path.length} aretes, ${pathLengthKm.toFixed(1)} km`);
+
+  const directGapKm = distance(point(endpoints.start), point(endpoints.end), { units: 'kilometers' });
+  const pathRatio = directGapKm > 0.1 ? pathLengthKm / directGapKm : 1;
+  const confidence = clamp(
+    0.82
+      - Math.min(0.24, startNodeMatch.distanceKm * 0.08)
+      - Math.min(0.24, endNodeMatch.distanceKm * 0.08)
+      - (pathRatio > 4 ? 0.18 : pathRatio > 2.5 ? 0.08 : 0),
+    0.45,
+    0.94,
+  );
+
+  return {
+    displayGeometry: {
+      type: 'LineString',
+      coordinates: coords,
+    },
+    geometryFidelity: 'fallback',
+    matchConfidence: confidence,
+  };
+}
+
 function selectCandidateFeatures(rawGeometry: FloodGeometry, features: TopageFeature[]): TopageFeature[] {
   const rawCoords = flattenCoordinates(rawGeometry);
 
@@ -224,8 +582,10 @@ function selectCandidateFeatures(rawGeometry: FloodGeometry, features: TopageFea
     .filter(({ distKm }) => Number.isFinite(distKm) && distKm <= 10);
 
   scored.sort((a, b) => {
+    const distGap = a.distKm - b.distKm;
+    if (Math.abs(distGap) > 0.35) return distGap;
     if (b.score !== a.score) return b.score - a.score;
-    return a.distKm - b.distKm;
+    return distGap;
   });
 
   return scored.slice(0, Math.min(150, scored.length)).map(({ feature }) => feature);
@@ -410,6 +770,14 @@ function computeCorridorLocation(rawLine: Feature<LineString>, feature: TopageFe
   return Number(snapped.properties?.location ?? 0);
 }
 
+function computeRawMidlineLocation(rawCoords: Coordinate[]): number {
+  if (rawCoords.length < 2) return 0;
+  const rawLine = lineString(rawCoords);
+  const midpoint = rawCoords[Math.floor(rawCoords.length / 2)] ?? rawCoords[0];
+  const snapped = nearestPointOnLine(rawLine, point(midpoint), { units: 'kilometers' });
+  return Number(snapped.properties?.location ?? 0);
+}
+
 function buildCorridorFallback(
   rawGeometry: FloodGeometry,
   candidates: TopageFeature[],
@@ -418,6 +786,7 @@ function buildCorridorFallback(
 
   const rawCoords = flattenCoordinates(rawGeometry);
   const rawLine = lineString(rawCoords);
+  const rawMidLocation = computeRawMidlineLocation(rawCoords);
   const anchor = candidates[0];
   const anchorIds = new Set(getCourseIdentifiers(anchor));
 
@@ -452,28 +821,61 @@ function buildCorridorFallback(
 
   scoped.sort((a, b) => a.location - b.location || a.distanceKm - b.distanceKm);
 
-  const selected = scoped
-    .slice(0, 24)
-    .map(({ feature }) => feature.geometry.coordinates as Coordinate[])
-    .filter((coords) => coords.length >= 2);
+  const scopedFeatures = scoped.slice(0, 24).map(({ feature }) => feature);
+  const endpoints = getGeometryEndpoints(rawGeometry);
+  let displayGeometry: FloodGeometry | null = null;
 
-  if (selected.length === 0) return null;
+  if (endpoints && scopedFeatures.length > 0) {
+    const startEdge = nearestDirectedEdge(endpoints.start, scopedFeatures);
+    const endEdge = nearestDirectedEdge(endpoints.end, scopedFeatures);
+
+    if (startEdge && endEdge) {
+      const adjacency = buildHydroGraph(scopedFeatures);
+      const path = startEdge.toNode === endEdge.fromNode
+        ? []
+        : dijkstraPath(adjacency, startEdge.toNode, endEdge.fromNode);
+
+      if (path != null || startEdge.edge.featureId === endEdge.edge.featureId) {
+        const mergedCoords = mergeDirectedEdges(startEdge, path, endEdge);
+        if (mergedCoords.length >= 2) {
+          displayGeometry = {
+            type: 'LineString',
+            coordinates: mergedCoords,
+          };
+        }
+      }
+    }
+  }
+
+  if (displayGeometry == null) {
+    const bestFeature = [...scoped].sort((a, b) => {
+      if (a.courseMatch !== b.courseMatch) return a.courseMatch ? -1 : 1;
+      const distGap = a.distanceKm - b.distanceKm;
+      if (Math.abs(distGap) > 0.15) return distGap;
+      const locationGap = Math.abs(a.location - rawMidLocation) - Math.abs(b.location - rawMidLocation);
+      if (Math.abs(locationGap) > 0.001) return locationGap;
+      return b.hydroScore - a.hydroScore;
+    })[0]?.feature ?? anchor;
+    const bestCoords = bestFeature.geometry.coordinates as Coordinate[];
+    if (bestCoords.length < 2) return null;
+    displayGeometry = {
+      type: 'LineString',
+      coordinates: bestCoords,
+    };
+  }
 
   const avgDistanceKm = scoped.slice(0, Math.min(24, scoped.length))
     .reduce((sum, item) => sum + item.distanceKm, 0) / Math.min(24, scoped.length);
-  const confidenceBase = scoped.some((item) => item.courseMatch) ? 0.74 : 0.58;
+  const confidenceBase = scoped.some((item) => item.courseMatch) ? 0.7 : 0.54;
   const confidence = clamp(confidenceBase - Math.min(0.18, avgDistanceKm * 0.08), 0.45, 0.82);
   console.info('[FloodGeometry] Corridor fallback', {
-    selected: selected.length,
+    selected: scopedFeatures.length,
     avgDistanceKm: Number(avgDistanceKm.toFixed(2)),
     confidence: Number(confidence.toFixed(2)),
   });
 
   return {
-    displayGeometry: {
-      type: selected.length === 1 ? 'LineString' : 'MultiLineString',
-      coordinates: selected.length === 1 ? selected[0] : selected,
-    } as FloodGeometry,
+    displayGeometry,
     geometryFidelity: 'fallback',
     matchConfidence: confidence,
   };
@@ -543,13 +945,11 @@ export function resolveFloodDisplayGeometry(
 export async function matchFloodGeometryToTopage(
   rawGeometry: FloodGeometry,
   dataSource: FloodDataSource,
+  segmentLabel = '?',
 ): Promise<FloodGeometryResolution> {
-  if (dataSource !== 'live') {
-    return resolveFloodDisplayGeometry(rawGeometry, dataSource);
-  }
-
   const endpoints = getGeometryEndpoints(rawGeometry);
   if (!endpoints) {
+    console.warn(`[FloodGeometry] "${segmentLabel}" — géométrie sans endpoints valides → raw`);
     return resolveFloodDisplayGeometry(rawGeometry, dataSource);
   }
 
@@ -559,15 +959,19 @@ export async function matchFloodGeometryToTopage(
     const candidates = selectCandidateFeatures(rawGeometry, features);
 
     if (candidates.length === 0) {
-      console.info('[FloodGeometry] No Topage candidates in bbox');
-      return resolveFloodDisplayGeometry(rawGeometry, dataSource);
+      console.warn(`[FloodGeometry] "${segmentLabel}" — 0 candidats Topage dans la bbox (${features.length} features WFS, aucun à ≤10 km)`);
+      const osmFallback = await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel);
+      console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${osmFallback ? 'osm-graph/heuristic' : 'raw'}`);
+      return osmFallback ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
     }
 
     const startEdge = nearestDirectedEdge(endpoints.start, candidates);
     const endEdge = nearestDirectedEdge(endpoints.end, candidates);
     if (!startEdge || !endEdge) {
-      console.info('[FloodGeometry] Missing start/end edge');
-      return resolveFloodDisplayGeometry(rawGeometry, dataSource);
+      console.warn(`[FloodGeometry] "${segmentLabel}" — arête start/end introuvable (${candidates.length} candidats)`);
+      const osmFallback = await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel);
+      console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${osmFallback ? 'osm-graph/heuristic' : 'raw'}`);
+      return osmFallback ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
     }
 
     const adjacency = buildHydroGraph(candidates);
@@ -576,30 +980,36 @@ export async function matchFloodGeometryToTopage(
       : dijkstraPath(adjacency, startEdge.toNode, endEdge.fromNode);
 
     if (path == null && startEdge.edge.featureId !== endEdge.edge.featureId) {
-      console.info('[FloodGeometry] Graph path not found, trying corridor fallback');
-      return buildCorridorFallback(rawGeometry, candidates)
+      console.info(`[FloodGeometry] "${segmentLabel}" — Dijkstra sans chemin → corridor fallback`);
+      const result = buildCorridorFallback(rawGeometry, candidates)
+        ?? await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel)
         ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
+      console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${result.geometryFidelity === 'matched' ? 'topage' : result.geometryFidelity === 'fallback' ? 'topage-corridor-or-osm' : 'raw'}`);
+      return result;
     }
 
     const matchedCoords = mergeDirectedEdges(startEdge, path, endEdge);
     if (matchedCoords.length < 2) {
-      console.info('[FloodGeometry] Empty merged path, trying corridor fallback');
-      return buildCorridorFallback(rawGeometry, candidates)
+      console.info(`[FloodGeometry] "${segmentLabel}" — merge vide → corridor fallback`);
+      const result = buildCorridorFallback(rawGeometry, candidates)
+        ?? await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel)
         ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
+      console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${result.geometryFidelity === 'matched' ? 'topage' : result.geometryFidelity === 'fallback' ? 'topage-corridor-or-osm' : 'raw'}`);
+      return result;
     }
 
     const confidence = computeMatchConfidence(rawGeometry, matchedCoords, startEdge, endEdge);
 
     if (confidence < 0.45) {
-      console.info('[FloodGeometry] Low confidence exact path, trying corridor fallback');
-      return buildCorridorFallback(rawGeometry, candidates)
+      console.info(`[FloodGeometry] "${segmentLabel}" — confiance trop faible (${confidence.toFixed(2)}) → corridor fallback`);
+      const result = buildCorridorFallback(rawGeometry, candidates)
+        ?? await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel)
         ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
+      console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${result.geometryFidelity === 'matched' ? 'topage' : result.geometryFidelity === 'fallback' ? 'topage-corridor-or-osm' : 'raw'}`);
+      return result;
     }
 
-    console.info('[FloodGeometry] Exact match', {
-      confidence: Number(confidence.toFixed(2)),
-      vertices: matchedCoords.length,
-    });
+    console.info(`[FloodGeometry] "${segmentLabel}" — matched ✓ (confiance:${confidence.toFixed(2)}, sommets:${matchedCoords.length})`);
 
     return {
       displayGeometry: {
@@ -610,8 +1020,10 @@ export async function matchFloodGeometryToTopage(
       matchConfidence: confidence,
     };
   } catch (error) {
-    console.warn('[FloodGeometry] Topage matching failed:', error);
-    return resolveFloodDisplayGeometry(rawGeometry, dataSource);
+    console.warn(`[FloodGeometry] "${segmentLabel}" — Topage KO:`, error);
+    const osmFallback = await matchFloodGeometryToOsmWaterway(rawGeometry, segmentLabel).catch(() => null);
+    console.info(`[FloodGeometry] "${segmentLabel}" — source finale: ${osmFallback ? 'osm-graph/heuristic' : 'raw'}`);
+    return osmFallback ?? resolveFloodDisplayGeometry(rawGeometry, dataSource);
   }
 }
 
@@ -644,7 +1056,7 @@ export function prepareFloodSegment(input: PrepareFloodSegmentInput): FloodSegme
 }
 
 export async function enhanceFloodSegmentGeometry(segment: FloodSegment): Promise<FloodSegment> {
-  const resolution = await matchFloodGeometryToTopage(segment.rawGeometry, segment.dataSource);
+  const resolution = await matchFloodGeometryToTopage(segment.rawGeometry, segment.dataSource, `${segment.name} (${segment.id})`);
 
   return {
     ...segment,

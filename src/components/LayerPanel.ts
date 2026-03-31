@@ -53,9 +53,9 @@ export class LayerPanel {
   private layers: MapLayers;
   private onChange: LayerToggleHandler | null = null;
   private collapsed = false;
-  private newsExpanded = true;
+  private newsExpanded = false;
   private healthExpanded = false;
-  private trafficExpanded = true;
+  private trafficExpanded = false;
   private energyExpanded = false;
   private sovereigntyExpanded = false;
   private outagesExpanded = false;

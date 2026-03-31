@@ -82,6 +82,7 @@ import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
 import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
+import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly } from './types/index.ts';
@@ -1486,6 +1487,12 @@ export class App {
     });
     this.environmentPanel.setOnHoverSegment((segmentId) => {
       this.mapContainer?.highlightFloodSegment(segmentId);
+    });
+    this.environmentPanel.setOnSelectSegment((segmentId) => {
+      const segment = this.currentFloodSegments.find((item) => item.id === segmentId);
+      if (!segment) return;
+      this.mapContainer?.highlightFloodSegment(segmentId);
+      this.mapContainer?.fitBounds(computeFloodSegmentBbox(segment.displayGeometry), 80);
     });
     this.environmentPanel.setOnClose(() => {
       this.layoutEnvironmentFloatingPanels();
@@ -2934,20 +2941,46 @@ export class App {
       this.mapContainer?.updateFloods(segments);
       const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
       const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
+      const mockOnly = segments.length > 0 && segments.every((segment) => segment.dataSource === 'mock');
+
+      if (mockOnly) {
+        this.activeLayers.environmental = true;
+        this.activeLayers.environmentGroup = true;
+        this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+        this.layerPanel?.updateLayers(this.activeLayers);
+        const bbox = segments.reduce<[number, number, number, number] | null>((acc, segment) => {
+          const next = computeFloodSegmentBbox(segment.displayGeometry);
+          if (!acc) return next;
+          return [
+            Math.min(acc[0], next[0]),
+            Math.min(acc[1], next[1]),
+            Math.max(acc[2], next[2]),
+            Math.max(acc[3], next[3]),
+          ];
+        }, null);
+        if (bbox) this.mapContainer?.fitBounds(bbox, 80);
+        this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+        this.layoutEnvironmentFloatingPanels();
+      }
 
       if (segments.length > 0) {
-        console.info(`[App/Vigicrues] Rendering ${segments.length} live segments (matched=${matchedCount}, corridor=${corridorCount})`);
+        console.info(
+          `[App/Vigicrues] Rendering ${segments.length} ${mockOnly ? 'mock' : 'live'} segments ` +
+          `(matched=${matchedCount}, corridor=${corridorCount})`,
+        );
         this.statusPanel?.updateSource('Vigicrues', {
           status: 'ok',
           lastUpdate: new Date(),
-          detail: `${matchedCount + corridorCount}/${segments.length} tronçons cartographiés`,
+          detail: mockOnly
+            ? `${segments.length} tronçons mock`
+            : `${matchedCount + corridorCount}/${segments.length} tronçons cartographiés`,
         });
       } else {
         console.info('[App/Vigicrues] No yellow/orange/red segments in current live feed');
         this.statusPanel?.updateSource('Vigicrues', {
           status: 'ok',
           lastUpdate: new Date(),
-          detail: '0 tronçon jaune+',
+          detail: 'Aucun tronçon jaune/orange/rouge',
         });
       }
       if (this.environmentPanel?.isVisible()) {
@@ -2957,11 +2990,12 @@ export class App {
     } catch (error) {
       this.currentFloodSegments = [];
       this.mapContainer?.updateFloods([]);
-      console.warn('[App/Vigicrues] Source unavailable, no fallback geometry rendered', error);
+      console.warn('[App/Vigicrues] Source unavailable', error);
       this.statusPanel?.updateSource('Vigicrues', {
-        status: 'error',
+        status: 'stale',
         lastUpdate: new Date(),
-        error: 'Source indisponible',
+        detail: 'Aucun tronçon disponible',
+        error: 'Source live indisponible',
       });
       if (this.environmentPanel?.isVisible()) {
         this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);

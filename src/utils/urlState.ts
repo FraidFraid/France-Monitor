@@ -70,21 +70,30 @@ export function readUrlState(): UrlState {
  * Write app state into the URL (replaceState, no reload).
  */
 export function writeUrlState(state: UrlState): void {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(window.location.search);
 
     if (state.lng != null) params.set('lng', state.lng.toFixed(4));
+    else params.delete('lng');
     if (state.lat != null) params.set('lat', state.lat.toFixed(4));
+    else params.delete('lat');
     if (state.zoom != null) params.set('z', state.zoom.toFixed(1));
+    else params.delete('z');
 
     if (state.layers) {
         const active = LAYER_KEYS.filter((k) => state.layers![k]);
         if (active.length > 0 && active.length < LAYER_KEYS.length) {
             params.set('layers', active.join(','));
+        } else {
+            params.delete('layers');
         }
+    } else {
+        params.delete('layers');
     }
 
     if (state.timeRange) params.set('time', state.timeRange);
+    else params.delete('time');
     if (state.searchQuery) params.set('q', state.searchQuery);
+    else params.delete('q');
 
     const qs = params.toString();
     const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;

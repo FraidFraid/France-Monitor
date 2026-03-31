@@ -97,6 +97,8 @@ const SRC_WEATHER = 'weather-depts-src';
 const SRC_HEALTH = 'health-regions-src';
 const SRC_HEALTH_MARKERS = 'health-markers-src';
 const SRC_FLOODS = 'flood-segments-src';
+const SRC_FLOODS_HIGHLIGHT = 'flood-segments-highlight-src';
+const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fond)
 const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
 const SRC_TRAFFIC = 'traffic-flow-src';
@@ -132,7 +134,10 @@ const LYR_HEALTH_OSCOUR_CIRCLES = 'health-oscour-circles';
 const SRC_ISNR = 'isnr-depts-src';
 const LYR_ISNR_FILL = 'isnr-fill';
 const LYR_ISNR_LINE = 'isnr-line';
+const LYR_TOPAGE_VIS = 'topage-visual-line';    // réseau hydro décoratif (fond)
+const LYR_FLOODS_RAW = 'flood-lines-raw';       // tronçons sans Topage, pointillés
 const LYR_FLOODS = 'flood-lines';
+const LYR_FLOODS_HIGHLIGHT = 'flood-lines-highlight';
 const LYR_FIRES_GLOW = 'fires-glow';
 const LYR_FIRES_POINTS = 'fires-pts';
 const SRC_FIRES_HIGHLIGHT = 'fires-highlight-src';
@@ -1301,6 +1306,7 @@ export class DeckGLMap {
   private hoveredSubseaCableId: string | number | null = null;
   private hoveredSubseaLandingId: string | number | null = null;
   private aisHoverTooltip: maplibregl.Popup | null = null;
+  private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
   private firesHoverPopup: maplibregl.Popup | null = null;
@@ -1313,6 +1319,7 @@ export class DeckGLMap {
   private hoveredTrafficIncidentId: string | null = null;
   private _lastHoveredHealthId: number | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
+  private floodSegmentsById: Map<string, FloodSegment> = new Map();
 
   public getHealthFeatures(): HealthFeatures | null {
     return this.latestHealthFeatures;
@@ -1536,8 +1543,12 @@ export class DeckGLMap {
       promoteId: 'code'
     });
 
+    // Topage visual (réseau hydro décoratif, fond)
+    this.map.addSource(SRC_TOPAGE_VIS, { type: 'geojson', data: emptyFC() });
+
     // Flood segments
     this.map.addSource(SRC_FLOODS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_FLOODS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
     // NASA FIRMS Fires
     this.map.addSource(SRC_FIRES, { type: 'geojson', data: emptyFC() });
@@ -2157,17 +2168,51 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Floods: segment lines ───
+    // ─── Topage visual : réseau hydro de fond (bleu clair discret) ───
+    this.map.addLayer({
+      id: LYR_TOPAGE_VIS,
+      type: 'line',
+      source: SRC_TOPAGE_VIS,
+      paint: {
+        'line-color': '#4fc3f7',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 1.2, 14, 2],
+        'line-opacity': 0.45,
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round', 'visibility': 'none' },
+    });
+
+    // ─── Floods: tronçons raw (Topage indisponible) — pointillés discrets ───
+    this.map.addLayer({
+      id: LYR_FLOODS_RAW,
+      type: 'line',
+      source: SRC_FLOODS,
+      filter: ['==', ['get', 'geometryFidelity'], 'raw'],
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 2,
+        'line-opacity': 0.45,
+        'line-dasharray': [2, 4],
+      },
+      layout: { 'line-cap': 'butt' },
+    });
+
+    // ─── Floods: segment lines (matched + fallback uniquement) ───
     this.map.addLayer({
       id: LYR_FLOODS,
       type: 'line',
       source: SRC_FLOODS,
+      filter: ['!=', ['get', 'geometryFidelity'], 'raw'],
       paint: {
-        'line-color': ['get', 'color'],
+        'line-color': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],
+          '#ffffff',
+          ['get', 'color'],
+        ],
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 5, 3],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 8, 5],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 11, 8],
+          4, ['case', ['boolean', ['feature-state', 'hover'], false], 8, 3],
+          8, ['case', ['boolean', ['feature-state', 'hover'], false], 12, 5],
+          12, ['case', ['boolean', ['feature-state', 'hover'], false], 16, 8],
         ],
         'line-opacity': ['case',
           ['boolean', ['feature-state', 'hover'], false], 1,
@@ -2178,6 +2223,21 @@ export class DeckGLMap {
       layout: {
         'line-cap': 'round',
         'line-join': 'round',
+      },
+    });
+    this.map.addLayer({
+      id: LYR_FLOODS_HIGHLIGHT,
+      type: 'line',
+      source: SRC_FLOODS_HIGHLIGHT,
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 16],
+        'line-opacity': 1,
+      },
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'visibility': 'none',
       },
     });
     // ─── L1: News glow (critical/high only) ───
@@ -4631,12 +4691,66 @@ export class DeckGLMap {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
     this.map.on('mousemove', LYR_FLOODS, (e) => {
-      const featureId = e.features?.[0]?.id;
+      if (!this.map || !e.features?.length) return;
+      const feature = e.features[0];
+      const featureId = feature.id;
       this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
+
+      const p = feature.properties || {};
+      const level = String(p.level ?? 'green');
+      const name = String(p.name ?? 'Tronçon inconnu');
+      const confidence = typeof p.matchConfidence === 'number'
+        ? Math.round(p.matchConfidence * 100)
+        : Math.round(Number(p.matchConfidence ?? 0) * 100);
+      const displayVertices = Number(p.displayVertexCount ?? 0);
+
+      const levelColors: Record<string, string> = {
+        red: '#ff3b30',
+        orange: '#ff9500',
+        yellow: '#ffcc00',
+        green: '#34c759',
+      };
+      const levelLabels: Record<string, string> = {
+        red: 'Rouge',
+        orange: 'Orange',
+        yellow: 'Jaune',
+        green: 'Vert',
+      };
+      const levelColor = levelColors[level] ?? '#888';
+      const levelLabel = levelLabels[level] ?? 'Inconnu';
+      const traceText = p.geometryFidelity === 'matched'
+        ? 'Tracé hydrographique recalé'
+        : p.geometryFidelity === 'fallback'
+          ? 'Corridor hydrographique'
+          : 'Tracé brut Vigicrues';
+      const sourceText = p.dataSource === 'mock' ? 'mock' : 'live';
+
+      const html = `
+        <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px;">
+            <strong style="font-size:14px; color:#fff;">${name}</strong>
+            <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700; color:${level === 'yellow' || level === 'green' ? '#000' : '#fff'}; background:${levelColor};">${levelLabel}</span>
+          </div>
+          <div style="font-size:12px; color:#c8c8d0; margin-bottom:4px;">${traceText}</div>
+          <div style="font-size:11px; color:#9898a8;">Source ${sourceText} · confiance ${confidence}% · ${displayVertices} sommets</div>
+        </div>
+      `;
+
+      if (!this.floodHoverPopup) {
+        this.floodHoverPopup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 16,
+          maxWidth: '320px',
+          className: 'dark-popup',
+        });
+      }
+      this.floodHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
     this.map.on('mouseleave', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
       this.highlightFloodSegment(null);
+      this.floodHoverPopup?.remove();
     });
     this.map.on('click', LYR_FLOODS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
@@ -4671,6 +4785,9 @@ export class DeckGLMap {
       const ctaHtml = this.onSatelliteView
         ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / apres</button>`
         : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ↗</a>`;
+
+      this.floodHoverPopup?.remove();
+      this.fitBounds(aoBbox, 80);
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
@@ -6979,6 +7096,13 @@ export class DeckGLMap {
    * Fly-to cinématographique avec arc parabolique et easing fluide.
    * Crée une expérience visuelle engageante lorsque l'utilisateur clique sur un article.
    */
+  /** Retourne [minLng, minLat, maxLng, maxLat] de la vue courante, ou null si la carte n'est pas prête. */
+  getBounds(): [number, number, number, number] | null {
+    if (!this.map) return null;
+    const b = this.map.getBounds();
+    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+  }
+
   flyTo(longitude: number, latitude: number, zoom = 10): void {
     if (!this.map) return;
 
@@ -8834,17 +8958,31 @@ export class DeckGLMap {
     return coords;
   }
 
+  // ─── Topage visual Layer ───
+
+  /**
+   * Met à jour le réseau hydro décoratif (fond bleu clair).
+   * Appelé depuis App.ts après un fetch /api/environment/topage-hydro?bbox=vue courante.
+   * Les features passent directement : pas de matching, juste l'affichage brut.
+   */
+  updateTopageVisual(geojson: GeoJSON.FeatureCollection): void {
+    if (!this.map) return;
+    const src = this.map.getSource(SRC_TOPAGE_VIS) as maplibregl.GeoJSONSource;
+    src?.setData(geojson);
+  }
+
   // ─── Floods Layer ───
 
   updateFloods(segments: FloodSegment[]): void {
     if (!this.map) return;
+    this.floodSegmentsById = new Map(segments.map((segment) => [segment.id, segment]));
     this.highlightFloodSegment(null);
-    const renderableSegments = segments.filter((segment) => (
-      segment.geometryFidelity === 'matched' || segment.geometryFidelity === 'fallback'
-    ));
+    // Tous les segments vont dans la source ; les layers filtrent par geometryFidelity :
+    // LYR_FLOODS      → matched + fallback (lignes pleines, couleur vigilance)
+    // LYR_FLOODS_RAW  → raw (pointillés, opacité réduite — Topage indisponible)
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features: renderableSegments.map((s) => ({
+      features: segments.map((s) => ({
         type: 'Feature' as const,
         id: s.id,
         geometry: s.displayGeometry,
@@ -8862,11 +9000,25 @@ export class DeckGLMap {
     };
     const src = this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource;
     src?.setData(fc);
-    console.info(`[DeckGLMap/Vigicrues] Rendered ${renderableSegments.length}/${segments.length} segments on map (hydro validated only)`);
+    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource;
+    highlightSrc?.setData(emptyFC());
+
+    const matchedCount = segments.filter((s) => s.geometryFidelity === 'matched').length;
+    const corridorCount = segments.filter((s) => s.geometryFidelity === 'fallback').length;
+    const rawCount = segments.filter((s) => s.geometryFidelity === 'raw').length;
+    const hydrated = segments.filter((s) => s.geometryFidelity !== 'raw');
+    const avgConf = hydrated.length > 0
+      ? (hydrated.reduce((sum, s) => sum + s.matchConfidence, 0) / hydrated.length).toFixed(2)
+      : 'n/a';
+    console.info(
+      `[DeckGLMap/Vigicrues] total:${segments.length} — ` +
+      `matched:${matchedCount} fallback:${corridorCount} raw(pointillés):${rawCount} | confiance moy:${avgConf}`,
+    );
   }
 
   highlightFloodSegment(segmentId: string | null): void {
     if (!this.map) return;
+    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
 
     if (this._highlightedFloodSegmentId !== null) {
       this.map.setFeatureState(
@@ -8880,8 +9032,22 @@ export class DeckGLMap {
         { source: SRC_FLOODS, id: segmentId },
         { hover: true },
       );
+      const segment = this.floodSegmentsById.get(segmentId);
+      if (segment && highlightSrc) {
+        highlightSrc.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: segment.displayGeometry,
+            properties: { id: segment.id },
+          }],
+        });
+        this.setVis(LYR_FLOODS_HIGHLIGHT, 'visible');
+      }
       this._highlightedFloodSegmentId = segmentId;
     } else {
+      highlightSrc?.setData(emptyFC());
+      this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
       this._highlightedFloodSegmentId = null;
     }
   }
@@ -9769,7 +9935,10 @@ export class DeckGLMap {
     this.setVis(LYR_HOSPITALS_CHU, vis(layers.hospitals ?? false));
     this.setVis(LYR_HOSPITALS_CH, vis(layers.hospitals ?? false));
     this.setVis(LYR_HOSPITALS_LABEL, vis(layers.hospitals ?? false));
+    this.setVis(LYR_TOPAGE_VIS, vis(layers.environmental));
+    this.setVis(LYR_FLOODS_RAW, vis(layers.environmental));
     this.setVis(LYR_FLOODS, vis(layers.environmental));
+    this.setVis(LYR_FLOODS_HIGHLIGHT, vis(layers.environmental && this._highlightedFloodSegmentId !== null));
     this.setVis(LYR_MODIS, vis((layers.fires ?? false) && this._modisOverlayEnabled));
     this.setVis(LYR_FIRES_GLOW, vis(layers.fires ?? false));
     this.setVis(LYR_FIRES_POINTS, vis(layers.fires ?? false));

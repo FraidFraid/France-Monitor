@@ -5,6 +5,7 @@
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
+import type { FeatureCollection } from 'geojson';
 import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
@@ -122,6 +123,19 @@ export class MapContainer {
   // ─── Floods ───
   updateFloods(segments: FloodSegment[]): void {
     this.deckMap?.updateFloods(segments);
+  }
+
+  updateTopageVisual(geojson: FeatureCollection): void {
+    this.deckMap?.updateTopageVisual(geojson);
+  }
+
+  /** [minLng, minLat, maxLng, maxLat] de la vue courante, ou null. */
+  getBounds(): [number, number, number, number] | null {
+    return this.deckMap?.getBounds() ?? null;
+  }
+
+  getViewState(): MapViewState | null {
+    return this.deckMap?.getViewState() ?? null;
   }
 
   highlightFloodSegment(segmentId: string | null): void {

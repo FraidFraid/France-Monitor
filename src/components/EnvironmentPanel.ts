@@ -30,6 +30,7 @@ const RISK_EMOJIS: Record<string, string> = {
 };
 
 function describeFloodTrace(item: FloodSegment): string {
+  if (item.dataSource === 'mock') return 'Mock visuel';
   if (item.geometryFidelity === 'matched') return 'Tracé hydrographique recalé';
   if (item.geometryFidelity === 'fallback') return 'Corridor hydrographique';
   return 'Tracé brut';
@@ -42,6 +43,7 @@ export class EnvironmentPanel extends Panel {
   private onClose?: () => void;
   private onHoverDepartment?: (code: string | null) => void;
   private onHoverSegment?: (id: string | null) => void;
+  private onSelectSegment?: (id: string) => void;
   private weatherAlerts: MeteoAlert[] = [];
   private floodSegments: FloodSegment[] = [];
   private isDragging = false;
@@ -62,6 +64,10 @@ export class EnvironmentPanel extends Panel {
 
   setOnHoverSegment(handler: (id: string | null) => void): void {
     this.onHoverSegment = handler;
+  }
+
+  setOnSelectSegment(handler: (id: string) => void): void {
+    this.onSelectSegment = handler;
   }
 
   mount(): void {
@@ -324,6 +330,7 @@ export class EnvironmentPanel extends Panel {
 
     const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
     const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
+    const mockCount = segments.filter((segment) => segment.dataSource === 'mock').length;
     const grouped: Record<string, FloodSegment[]> = { red: [], orange: [], yellow: [] };
 
     for (const segment of segments) {
@@ -370,7 +377,7 @@ export class EnvironmentPanel extends Panel {
           </div>
         </div>
         <div style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.03); color: var(--text-muted); font-size: 11px;">
-          Tracés affichables: ${matchedCount + corridorCount}/${segments.length} · recalés: ${matchedCount} · corridors: ${corridorCount}
+          Tracés affichables: ${matchedCount + corridorCount}/${segments.length} · recalés: ${matchedCount} · corridors: ${corridorCount}${mockCount > 0 ? ` · mock: ${mockCount}` : ''}
         </div>
         ${groupsHtml}
       </section>
@@ -400,11 +407,17 @@ export class EnvironmentPanel extends Panel {
     this.contentEl.querySelectorAll<HTMLElement>('.environment-flood-item').forEach((card) => {
       card.onmouseenter = () => {
         card.style.background = 'var(--bg-surface-hover)';
+        card.style.transform = 'translateX(2px)';
         this.onHoverSegment?.(card.dataset.id ?? null);
       };
       card.onmouseleave = () => {
         card.style.background = 'rgba(0,0,0,0.2)';
+        card.style.transform = 'translateX(0)';
         this.onHoverSegment?.(null);
+      };
+      card.onclick = () => {
+        const id = card.dataset.id;
+        if (id) this.onSelectSegment?.(id);
       };
     });
   }
