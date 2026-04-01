@@ -30,6 +30,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'trafficRoad', label: 'TRAFIC ROUTIER', icon: '&#128663;', sublayerOf: 'traffic' },
   { key: 'trafficMaritime', label: 'TRAFIC MARITIME', icon: '&#128674;', sublayerOf: 'traffic' },
   { key: 'trafficAir', label: 'TRAFIC AÉRIEN', icon: '&#9992;', sublayerOf: 'traffic' },
+  { key: 'trafficRail', label: 'RÉSEAU FERROVIAIRE', icon: '&#128641;', sublayerOf: 'traffic' },
   { key: 'environmentGroup', label: 'ENVIRONNEMENT', icon: '&#127793;' },
   { key: 'environmental', label: 'MÉTÉO / CRUES', icon: '&#127793;', sublayerOf: 'environmentGroup' },
   { key: 'fires', label: 'FEUX DE FORÊT (NASA FIRMS)', icon: '&#128293;', sublayerOf: 'environmentGroup' },
