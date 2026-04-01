@@ -10,8 +10,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
+import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -197,6 +198,8 @@ const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
 const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
 const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
 const LYR_TRAFFIC = 'traffic-flow';
+const LYR_TRAFFIC_CLUSTER = 'traffic-incidents-cluster';
+const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
 const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
 const LYR_TRAIN_ROUTE = 'train-route-line';
 const LYR_TRAIN_STATIONS = 'train-stations';
@@ -280,6 +283,7 @@ const SRC_RAIL_ARCS = 'rail-disruptions-arcs-src';
 const SRC_RAIL_STATIONS = 'rail-disruptions-stations-src';
 const LYR_RAIL_ARC_GLOW = 'rail-arc-glow';
 const LYR_RAIL_ARC = 'rail-arc';
+const LYR_RAIL_ARC_HIT = 'rail-arc-hit';
 const LYR_RAIL_STATION_GLOW = 'rail-station-glow';
 const LYR_RAIL_STATION = 'rail-stations-disrupted';
 const LYR_RAIL_STATION_LABEL = 'rail-station-label';
@@ -1342,7 +1346,6 @@ export class DeckGLMap {
   private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
-  private hoveredTrafficIncidentId: string | null = null;
   private _lastHoveredHealthId: number | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
@@ -1414,6 +1417,7 @@ export class DeckGLMap {
     timestamp: 0, // 0 = utilise Date.now() à chaque rendu
   };
   private roadTrafficIncidents: TrafficIncident[] = [];
+  private trafficClusterIndex: Supercluster<any, any> | null = null;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
 
@@ -1645,11 +1649,11 @@ export class DeckGLMap {
       this.map.addSource(SRC_TRAFFIC, { type: 'geojson', data: emptyFC() });
     }
 
-    // Traffic Incidents (TomTom temps réel)
+    // Traffic Incidents (TomTom temps réel) — source alimentée par un index supercluster JS
     this.map.addSource(SRC_TRAFFIC_INCIDENTS, { type: 'geojson', data: emptyFC() });
 
     // Rail disruptions network (arcs + stations, updated from SNCF data)
-    this.map.addSource(SRC_RAIL_ARCS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_RAIL_ARCS, { type: 'geojson', data: emptyFC(), promoteId: 'id' });
     this.map.addSource(SRC_RAIL_STATIONS, { type: 'geojson', data: emptyFC() });
 
     // Train route highlight
@@ -2144,6 +2148,7 @@ export class DeckGLMap {
         id: LYR_TRAFFIC,
         type: 'raster',
         source: SRC_TRAFFIC,
+        minzoom: 10,
         paint: {
           'raster-opacity': 0.8,
           'raster-resampling': 'nearest'
@@ -2155,17 +2160,59 @@ export class DeckGLMap {
         id: LYR_TRAFFIC,
         type: 'raster',
         source: SRC_TRAFFIC,
+        minzoom: 10,
         paint: { 'raster-opacity': 0 }
       });
     }
+
+    // ─── Traffic Incident Clusters (TomTom / Supercluster JS) ───
+    this.map.addLayer({
+      id: LYR_TRAFFIC_CLUSTER,
+      type: 'circle',
+      source: SRC_TRAFFIC_INCIDENTS,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': ['case',
+          ['>=', ['get', 'maxSeverity'], 2], 'rgba(255,59,48,0.92)',
+          ['>=', ['get', 'maxSeverity'], 1], 'rgba(255,149,0,0.92)',
+          'rgba(255,204,0,0.88)',
+        ],
+        'circle-radius': [
+          'step', ['get', 'point_count'],
+          20,
+          5, 28,
+          15, 36,
+          50, 46,
+        ],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(255,255,255,0.85)',
+        'circle-opacity': 0.95,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_TRAFFIC_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_TRAFFIC_INCIDENTS,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 12,
+        'text-font': ['Open Sans Bold'],
+      },
+      paint: {
+        'text-color': '#ffffff',
+      },
+    });
 
     // ─── Traffic Incidents (TomTom) ───
     this.map.addLayer({
       id: LYR_TRAFFIC_INCIDENTS,
       type: 'circle',
       source: SRC_TRAFFIC_INCIDENTS,
+      filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 5, 10, 10],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 6, 3, 8, 5, 10, 8, 12, 10],
         'circle-color': [
           'match',
           ['get', 'severity'],
@@ -2175,34 +2222,60 @@ export class DeckGLMap {
         ],
         'circle-stroke-width': 1.5,
         'circle-stroke-color': '#111',
-        'circle-opacity': 0.9,
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.45, 6, 0.6, 8, 0.75, 10, 0.88, 12, 0.92],
       }
     });
 
     // ─── Rail disruptions network (persistent layer, toggle via trafficRail) ───
-    // Glow halo: fat semi-transparent line behind each arc
+    // Glow halo: fat semi-transparent line — brightens on hover via feature-state
     this.map.addLayer({
       id: LYR_RAIL_ARC_GLOW,
       type: 'line',
       source: SRC_RAIL_ARCS,
       paint: {
         'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 14, 12, 20],
-        'line-opacity': 0.18,
-        'line-blur': 4,
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['case', ['boolean', ['feature-state', 'hover'], false], 14, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 5, 8]],
+          8, ['case', ['boolean', ['feature-state', 'hover'], false], 22, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 9, 14]],
+          12, ['case', ['boolean', ['feature-state', 'hover'], false], 32, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 13, 20]],
+        ],
+        'line-opacity': ['case',
+          ['boolean', ['feature-state', 'hover'], false], 0.35,
+          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.10,
+          0.18,
+        ],
+        'line-blur': ['case', ['boolean', ['feature-state', 'hover'], false], 6, 4],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     });
-    // Main arc
+    // Main arc — thicker + fully opaque on hover
     this.map.addLayer({
       id: LYR_RAIL_ARC,
       type: 'line',
       source: SRC_RAIL_ARCS,
       paint: {
         'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 8, 2.5, 12, 4],
-        'line-opacity': 0.85,
-        'line-dasharray': [4, 2],
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['case', ['boolean', ['feature-state', 'hover'], false], 4, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 1.3, 2.2]],
+          8, ['case', ['boolean', ['feature-state', 'hover'], false], 6, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 2.1, 3.6]],
+          12, ['case', ['boolean', ['feature-state', 'hover'], false], 9, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 3.2, 5.6]],
+        ],
+        'line-opacity': ['case',
+          ['boolean', ['feature-state', 'hover'], false], 1.0,
+          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.68,
+          0.92,
+        ],
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    });
+    // Invisible wide hit zone — makes rail arcs easier to hover
+    this.map.addLayer({
+      id: LYR_RAIL_ARC_HIT,
+      type: 'line',
+      source: SRC_RAIL_ARCS,
+      paint: {
+        'line-color': 'rgba(0,0,0,0)',
+        'line-width': 20,
       },
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     });
@@ -2263,14 +2336,14 @@ export class DeckGLMap {
       source: SRC_TRAIN_ROUTE,
       filter: ['==', ['geometry-type'], 'LineString'],
       paint: {
-        'line-color': '#af52de', // Purple for trains
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 3, 8, 5, 12, 7],
-        'line-opacity': 0.9,
-        'line-dasharray': [2, 1],
+        'line-color': RAIL_SEVERITY_COLOR,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 6, 12, 8],
+        'line-opacity': 0.96,
       },
       layout: {
         'line-cap': 'round',
         'line-join': 'round',
+        visibility: 'none',
       },
     });
     this.map.addLayer({
@@ -2279,11 +2352,14 @@ export class DeckGLMap {
       source: SRC_TRAIN_ROUTE,
       filter: ['==', ['geometry-type'], 'Point'],
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 6, 8, 10, 12, 14],
-        'circle-color': '#af52de',
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 16],
+        'circle-color': RAIL_SEVERITY_COLOR,
         'circle-stroke-width': 3,
         'circle-stroke-color': '#ffffff',
         'circle-opacity': 1,
+      },
+      layout: {
+        visibility: 'none',
       },
     });
 
@@ -5445,71 +5521,127 @@ export class DeckGLMap {
     this.map.on('mouseleave', LYR_TRAFFIC_INCIDENTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
     });
+    this.map.on('mouseenter', LYR_TRAFFIC_CLUSTER, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', LYR_TRAFFIC_CLUSTER, () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+    });
+    this.map.on('click', LYR_TRAFFIC_CLUSTER, (e) => {
+      if (!this.map || !e.features || e.features.length === 0) return;
+      const clusterId = e.features[0].properties?.cluster_id as number | undefined;
+      const geom = e.features[0].geometry as GeoJSON.Point;
+      if (clusterId == null || !geom?.coordinates) return;
+
+      const center = geom.coordinates as [number, number];
+      const index = this.trafficClusterIndex;
+      if (!index) return;
+
+      const zoom = index.getClusterExpansionZoom(clusterId);
+      this.map.flyTo({
+        center,
+        zoom: zoom + 0.5,
+        curve: 1.2,
+        speed: 1.5,
+        essential: true,
+      });
+    });
     this.map.on('click', LYR_TRAFFIC_INCIDENTS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const p = feat.properties || {};
       const coords = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
-
-      // Format delay in minutes
-      const delayMin = Math.round((p.delay || 0) / 60);
-      const delayText = delayMin > 0 ? `${delayMin} min` : '—';
-
-      // Format length in km
-      const lengthKm = ((p.length || 0) / 1000).toFixed(1);
-      const lengthText = p.length > 0 ? `${lengthKm} km` : '—';
-
-      // Severity color
-      const sevColors: Record<string, string> = {
-        critical: '#ff3b30',
-        high: '#ff3b30',
-        medium: '#ff9500',
-        low: '#ffcc00'
+      const roadNumbers = typeof p.roadNumbers === 'string'
+        ? (() => { try { return JSON.parse(p.roadNumbers) as string[]; } catch { return []; } })()
+        : Array.isArray(p.roadNumbers) ? p.roadNumbers as string[] : [];
+      const incident: TrafficIncident = {
+        id: String(p.id ?? ''),
+        lon: coords[0],
+        lat: coords[1],
+        type: String(p.type ?? 'Incident'),
+        severity: String(p.severity ?? 'low'),
+        delay: Number(p.delay ?? 0),
+        length: Number(p.length ?? 0),
+        description: String(p.description ?? ''),
+        startTime: p.startTime ? String(p.startTime) : undefined,
+        endTime: p.endTime ? String(p.endTime) : undefined,
+        from: p.from ? String(p.from) : undefined,
+        to: p.to ? String(p.to) : undefined,
+        roadNumbers,
+        timeValidity: p.timeValidity ? String(p.timeValidity) : undefined,
+        probabilityOfOccurrence: p.probabilityOfOccurrence ? String(p.probabilityOfOccurrence) : undefined,
+        numberOfReports: p.numberOfReports != null ? Number(p.numberOfReports) : null,
+        lastReportTime: p.lastReportTime ? String(p.lastReportTime) : null,
       };
-      const sevColor = sevColors[p.severity] || '#ffcc00';
-      const sevText = p.severity === 'critical' ? 'Critique' :
-        p.severity === 'high' ? 'Fort' :
-          p.severity === 'medium' ? 'Modéré' : 'Faible';
 
-      // Type emoji
-      const typeEmoji: Record<string, string> = {
-        'Accident': '🚨',
-        'Bouchon': '🚗',
-        'Travaux': '🚧',
-        'Voie fermée': '🚫',
-        'Route barrée': '⛔',
-        'Vent fort': '💨',
-        'Inondation': '🌊',
-      };
-      const emoji = typeEmoji[p.type] || '⚠️';
+      void this.showTrafficIncidentPopupResolved(coords, incident);
+    });
 
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:200px;">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-            <span style="font-size:20px;">${emoji}</span>
-            <div>
-              <h4 style="margin:0; font-weight:700; font-size:14px; color:#fff;">${p.type || 'Incident'}</h4>
-              <span style="font-size:10px; padding:2px 6px; border-radius:4px; font-weight:700; color:#fff; background:${sevColor}">${sevText}</span>
-            </div>
-          </div>
+    // ─── Rail Disruptions interactions ───
+    // Only LYR_RAIL_ARC_HIT and LYR_RAIL_STATION are interactive.
+    // Hover highlight is done via feature-state on SRC_RAIL_ARCS (no second geometry is drawn).
+    const railHoverLayers = [LYR_RAIL_ARC_HIT, LYR_RAIL_STATION];
+    let _hoveredRailArcId: string | number | null = null;
+    const setRailCursor = () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    };
+    const clearRailCursor = () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+      this.hideEnrichedHoverPopup();
+      // Clear feature-state hover
+      if (_hoveredRailArcId !== null && this.map) {
+        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
+        _hoveredRailArcId = null;
+      }
+    };
+    const showRailHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      if (!this.map || !e.features || e.features.length === 0) return;
+      const feat = e.features[0];
+      const props = (feat.properties ?? {}) as Record<string, unknown>;
+      const layerId = feat.layer?.id;
 
-          <div style="font-size:12px; margin-bottom:8px; display:grid; grid-template-columns:1fr 1fr; gap:4px;">
-            <div style="color:#9898a8;">Retard :</div>
-            <div style="font-weight:600; color:#ff9f0a;">${delayText}</div>
-            <div style="color:#9898a8;">Longueur :</div>
-            <div style="font-weight:600;">${lengthText}</div>
-          </div>
+      // Station dot → station summary tooltip; arc hit zone → train/disruption tooltip
+      const html = layerId === LYR_RAIL_STATION
+        ? this.buildRailStationHoverHtml(props)
+        : this.buildRailArcHoverHtml(props);
+      this.showEnrichedHoverPopup(e.lngLat, html);
 
-          ${p.description && p.description !== 'null' && p.description.trim() !== '' ?
-          `<p style="margin:0; font-size:11px; color:#a1a1aa; border-top:1px solid rgba(255,255,255,0.1); padding-top:8px;">${p.description}</p>` : ''}
-        </div>
-      `;
-
+      // Feature-state highlight on the arc itself (no second geometry)
+      if (layerId === LYR_RAIL_ARC_HIT && feat.id !== undefined) {
+        if (_hoveredRailArcId !== null && _hoveredRailArcId !== feat.id) {
+          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
+        }
+        _hoveredRailArcId = feat.id;
+        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: feat.id }, { hover: true });
+      } else if (layerId === LYR_RAIL_STATION) {
+        // Clear arc highlight when hovering a station
+        if (_hoveredRailArcId !== null) {
+          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
+          _hoveredRailArcId = null;
+        }
+      }
+    };
+    const showRailPopup = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      if (!this.map || !e.features || e.features.length === 0) return;
+      const feat = e.features[0];
+      const props = (feat.properties ?? {}) as Record<string, unknown>;
+      const layerId = feat.layer?.id;
+      const html = layerId === LYR_RAIL_STATION
+        ? this.buildRailStationHoverHtml(props)
+        : this.buildRailArcHoverHtml(props);
+      this.hideEnrichedHoverPopup();
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
-        .setLngLat(coords)
+        .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(this.map);
-    });
+    };
+
+    for (const layerId of railHoverLayers) {
+      this.map.on('mouseenter', layerId, setRailCursor);
+      this.map.on('mousemove', layerId, showRailHover);
+      this.map.on('mouseleave', layerId, clearRailCursor);
+      this.map.on('click', layerId, showRailPopup);
+    }
 
     // ─── Military Bases interactions ───
     this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, (e) => {
@@ -5658,6 +5790,7 @@ export class DeckGLMap {
         longitude: c.lng, latitude: c.lat,
         zoom: this.map.getZoom(), pitch: this.map.getPitch(), bearing: this.map.getBearing(),
       };
+      this.syncTrafficIncidentSource();
       this.onViewChange?.(this.viewState);
     });
 
@@ -5867,19 +6000,23 @@ export class DeckGLMap {
         getPosition: (d: TrafficIncident) => [d.lon, d.lat],
         getRadius: (d: TrafficIncident) => {
           if (d.severity === 'high' || d.type === 'Route barrée') return 22000;
-          if (d.severity === 'medium') return 15000;
-          return 10000;
+          if (d.severity === 'medium') return 18500;
+          return 11000;
         },
         getFillColor: (d: TrafficIncident) => {
           if (d.severity === 'high' || d.type === 'Route barrée') return [255, 80, 80, 225] as [number, number, number, number];
-          if (d.severity === 'medium') return [255, 170, 0, 205] as [number, number, number, number];
+          if (d.severity === 'medium') return [255, 149, 0, 235] as [number, number, number, number];
           return [255, 220, 80, 185] as [number, number, number, number];
         },
-        radiusMinPixels: 5,
-        radiusMaxPixels: 16,
+        radiusMinPixels: 6,
+        radiusMaxPixels: 20,
         stroked: true,
-        getLineColor: [255, 255, 255, 170],
-        lineWidthMinPixels: 1,
+        getLineColor: (d: TrafficIncident) => (
+          d.severity === 'medium'
+            ? [255, 245, 214, 230] as [number, number, number, number]
+            : [255, 255, 255, 170] as [number, number, number, number]
+        ),
+        lineWidthMinPixels: 1.5,
         pickable: true,
         onHover: (info) => {
           void this.handleRoadIncidentHover(info);
@@ -5891,6 +6028,7 @@ export class DeckGLMap {
           getPosition: this.roadTrafficIncidents,
           getFillColor: this.roadTrafficIncidents,
           getRadius: this.roadTrafficIncidents,
+          getLineColor: this.roadTrafficIncidents,
         },
       }),
       // OSINT: Civil air traffic only (military flights shown in DÉFENSE layer)
@@ -6148,7 +6286,7 @@ export class DeckGLMap {
     this.aisHoverTooltip = null;
   }
 
-  private async handleRoadIncidentHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): Promise<void> {
+  private handleRoadIncidentHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): void {
     if (!this.map) return;
     const incident = info.object as TrafficIncident | undefined;
     this.map.getCanvas().style.cursor = incident ? 'pointer' : '';
@@ -6159,32 +6297,22 @@ export class DeckGLMap {
     }
 
     if (!incident) {
-      this.hoveredTrafficIncidentId = null;
       this.hideTrafficIncidentPopup();
       return;
     }
 
-    this.hoveredTrafficIncidentId = incident.id;
     const coord = info.coordinate;
     const lngLat =
       coord && coord.length >= 2
         ? new maplibregl.LngLat(coord[0], coord[1])
         : this.map.unproject([info.x ?? 0, info.y ?? 0]);
 
+    // Instant static popup — no deferred flow enrichment on hover (never returns data, causes tooltip jump)
     const popup = this.getTrafficIncidentPopup();
     popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident)).addTo(this.map);
     const popupEl = popup.getElement();
     popupEl.style.pointerEvents = 'none';
     popupEl.style.zIndex = '2000';
-
-    this.trafficIncidentHoverTimer = setTimeout(async () => {
-      const flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
-      if (this.hoveredTrafficIncidentId !== incident.id) return;
-      popup.setHTML(this.buildTrafficIncidentPopupHtml(incident, flow));
-      const refreshedEl = popup.getElement();
-      refreshedEl.style.pointerEvents = 'none';
-      refreshedEl.style.zIndex = '2000';
-    }, 350);
   }
 
   private async handleRoadIncidentClick(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): Promise<void> {
@@ -6197,12 +6325,7 @@ export class DeckGLMap {
       coord && coord.length >= 2
         ? new maplibregl.LngLat(coord[0], coord[1])
         : this.map.unproject([info.x ?? 0, info.y ?? 0]);
-
-    const popup = this.getTrafficIncidentPopup();
-    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident)).addTo(this.map);
-
-    const flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
-    popup.setHTML(this.buildTrafficIncidentPopupHtml(incident, flow));
+    await this.showTrafficIncidentPopupResolved(lngLat, incident);
   }
 
   private getTrafficIncidentPopup(): maplibregl.Popup {
@@ -6245,6 +6368,155 @@ export class DeckGLMap {
 
   private hideEnrichedHoverPopup(): void {
     this.enrichedHoverPopup?.remove();
+  }
+
+  private buildRailArcHoverHtml(properties: Record<string, unknown>): string {
+    const severity = String(properties.severity ?? 'info');
+    const severityLabel =
+      severity === 'critical' ? 'Supprimé'
+        : severity === 'high' ? 'Retards importants'
+          : severity === 'medium' ? 'Service réduit'
+            : severity === 'low' ? 'Perturbation mineure'
+              : 'Info';
+    const severityColor =
+      severity === 'critical' ? '#ff453a'
+        : severity === 'high' ? '#ff9f0a'
+          : severity === 'medium' ? '#ffd60a'
+            : severity === 'low' ? '#8e8e93'
+              : '#636366';
+    const severityBg =
+      severity === 'critical' ? 'rgba(255,67,58,0.12)'
+        : severity === 'high' ? 'rgba(255,159,10,0.12)'
+          : severity === 'medium' ? 'rgba(255,214,10,0.10)'
+            : 'rgba(142,142,147,0.10)';
+
+    const type = String(properties.type ?? 'other');
+    const typeIcon =
+      type === 'cancellation' ? '🚫'
+        : type === 'delay' ? '⏱'
+          : type === 'works' ? '🚧'
+            : 'ℹ️';
+    const typeLabel =
+      type === 'cancellation' ? 'Suppression'
+        : type === 'delay' ? 'Retard'
+          : type === 'works' ? 'Travaux'
+            : 'Perturbation';
+
+    const line = String(properties.line ?? 'Train');
+    const trainNumber = String(properties.trainNumber ?? '').trim();
+    const departureName = String(properties.departureName ?? '').trim();
+    const arrivalName = String(properties.arrivalName ?? '').trim();
+    const departurePlannedTime = String(properties.departurePlannedTime ?? '').trim();
+    const departureUpdatedTime = String(properties.departureUpdatedTime ?? '').trim();
+    const arrivalPlannedTime = String(properties.arrivalPlannedTime ?? '').trim();
+    const arrivalUpdatedTime = String(properties.arrivalUpdatedTime ?? '').trim();
+    const desc = String(properties.description ?? '').trim();
+    const totalDelayMinutes = Number(properties.totalDelayMinutes ?? 0);
+    const affectedStopsCount = Number(properties.affectedStopsCount ?? 0);
+    let affectedStops: string[] = [];
+    try { affectedStops = JSON.parse(String(properties.affectedStopsJson ?? '[]')); } catch { affectedStops = []; }
+
+    // Full station list — use affectedStops if available, else fall back to dep/arr pair
+    const allStops: string[] = affectedStops.length > 0
+      ? affectedStops
+      : [...(departureName ? [departureName] : []), ...(arrivalName ? [arrivalName] : [])];
+
+    const stationRows = allStops.map((stop, i) => {
+      const isFirst = i === 0;
+      const isLast = i === allStops.length - 1;
+      const weight = (isFirst || isLast) ? '600' : '400';
+      const color = (isFirst || isLast) ? '#ffffff' : '#b0b0c0';
+      const depTime = isFirst && departureUpdatedTime ? departureUpdatedTime
+        : isFirst && departurePlannedTime ? departurePlannedTime : '';
+      const arrTime = isLast && arrivalUpdatedTime ? arrivalUpdatedTime
+        : isLast && arrivalPlannedTime ? arrivalPlannedTime : '';
+      const time = depTime || arrTime;
+      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? '#ff9f0a' : '#636366';
+      return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+        <span style="font-size:11px;color:${color};font-weight:${weight};">${this.escapeHtml(stop)}</span>
+        ${time ? `<span style="font-size:10px;color:${timeColor};flex-shrink:0;margin-left:8px;">${this.escapeHtml(time)}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    return `
+      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:260px;max-width:340px;">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${severityBg};border-bottom:2px solid ${severityColor};border-radius:8px 8px 0 0;margin:-1px -1px 0;">
+          <div style="font-size:16px;line-height:1;">${typeIcon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${trainNumber ? `${this.escapeHtml(trainNumber)} — ` : ''}${this.escapeHtml(line)}
+            </div>
+            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">${severityLabel} · ${typeLabel}</div>
+          </div>
+          ${totalDelayMinutes > 0 ? `<div style="background:rgba(255,159,10,0.2);border:1px solid rgba(255,159,10,0.4);border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:#ff9f0a;white-space:nowrap;">+${totalDelayMinutes} min</div>` : ''}
+        </div>
+        <!-- Station list -->
+        ${stationRows ? `
+          <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
+            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+              Gares concernées${affectedStopsCount > 0 ? ` (${affectedStopsCount})` : ''}
+            </div>
+            ${stationRows}
+          </div>
+        ` : ''}
+        <!-- Description -->
+        ${desc ? `<div style="padding:8px 12px;font-size:11px;color:#9898a8;line-height:1.5;">${this.escapeHtml(desc.length > 140 ? desc.slice(0, 140) + '…' : desc)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  private buildRailStationHoverHtml(properties: Record<string, unknown>): string {
+    const severity = String(properties.severity ?? 'info');
+    const severityColor =
+      severity === 'critical' ? '#ff453a'
+        : severity === 'high' ? '#ff9f0a'
+          : severity === 'medium' ? '#ffd60a'
+            : severity === 'low' ? '#8e8e93'
+              : '#636366';
+
+    const name = String(properties.name ?? 'Gare');
+    const count = Number(properties.count ?? 0);
+    let lines: string[] = [];
+    let trains: string[] = [];
+    try { lines = JSON.parse(String(properties.linesJson ?? '[]')); } catch { lines = []; }
+    try { trains = JSON.parse(String(properties.trainNumbersJson ?? '[]')); } catch { trains = []; }
+
+    const lineChips = lines.slice(0, 6).map((l: string) =>
+      `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);font-size:10px;color:#d8d8df;white-space:nowrap;">${this.escapeHtml(l)}</span>`
+    ).join('');
+
+    return `
+      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:220px;max-width:290px;">
+        <!-- Station header -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:rgba(255,255,255,0.03);border-radius:8px 8px 0 0;margin:-1px -1px 0;">
+          <div style="width:32px;height:32px;border-radius:8px;background:${severityColor}22;border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🚉</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
+            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
+          </div>
+        </div>
+        <!-- Stats row -->
+        <div style="display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,0.07);">
+          <div style="flex:1;padding:8px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.07);">
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1;">${count}</div>
+            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">perturbation${count > 1 ? 's' : ''}</div>
+          </div>
+          <div style="flex:1;padding:8px 12px;text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:#fff;line-height:1;">${lines.length}</div>
+            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">ligne${lines.length > 1 ? 's' : ''}</div>
+          </div>
+        </div>
+        <!-- Lines chips -->
+        ${lineChips ? `<div style="padding:8px 12px;display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid rgba(255,255,255,0.06);">${lineChips}</div>` : ''}
+        <!-- Trains -->
+        ${trains.length > 0 ? `
+          <div style="padding:6px 12px;font-size:10px;color:#636366;">
+            Trains: <span style="color:#9898a8;">${this.escapeHtml(trains.slice(0, 5).join(', '))}${trains.length > 5 ? '…' : ''}</span>
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 
   private buildInfrastructureHoverHtml(properties: Record<string, unknown>): string {
@@ -6642,10 +6914,26 @@ export class DeckGLMap {
     this.trafficIncidentPopup?.remove();
   }
 
+  private async showTrafficIncidentPopupResolved(
+    lngLat: maplibregl.LngLatLike,
+    incident: TrafficIncident,
+  ): Promise<void> {
+    if (!this.map) return;
+    let flow: TrafficFlowSegment | null = null;
+    try {
+      flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
+    } catch {
+      flow = null;
+    }
+
+    const popup = this.getTrafficIncidentPopup();
+    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident, flow)).addTo(this.map);
+  }
+
   private buildTrafficIncidentPopupHtml(incident: TrafficIncident, flow?: TrafficFlowSegment | null): string {
     const delayMin = Math.round((incident.delay || 0) / 60);
-    const delayText = delayMin > 0 ? `${delayMin} min` : '—';
-    const lengthText = incident.length > 0 ? `${(incident.length / 1000).toFixed(1)} km` : '—';
+    const delayText = delayMin > 0 ? `${delayMin} min` : null;
+    const lengthText = incident.length > 0 ? `${(incident.length / 1000).toFixed(1)} km` : null;
     const sevColors: Record<string, string> = {
       critical: '#ff3b30',
       high: '#ff3b30',
@@ -6667,23 +6955,31 @@ export class DeckGLMap {
       Inondation: '🌊',
     };
     const emoji = typeEmoji[incident.type] || '⚠️';
-    const routeText = incident.roadNumbers && incident.roadNumbers.length > 0 ? incident.roadNumbers.join(', ') : '—';
+    const routeText = incident.roadNumbers && incident.roadNumbers.length > 0 ? incident.roadNumbers.join(', ') : null;
     const validityText = incident.timeValidity === 'future' ? 'Planifié' : 'En cours';
     const formatDate = (value?: string | null) => {
-      if (!value) return '—';
+      if (!value) return null;
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return this.escapeHtml(value);
       return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     };
+    const statItems = [
+      delayText ? `<div><span style="color:#71717a;">Retard</span><br><strong>${delayText}</strong></div>` : '',
+      lengthText ? `<div><span style="color:#71717a;">Longueur</span><br><strong>${lengthText}</strong></div>` : '',
+      routeText ? `<div><span style="color:#71717a;">Route</span><br><strong>${this.escapeHtml(routeText)}</strong></div>` : '',
+      incident.numberOfReports != null ? `<div><span style="color:#71717a;">Signalements</span><br><strong>${incident.numberOfReports}</strong></div>` : '',
+    ].filter(Boolean).join('');
 
-    const flowHtml = flow
-      ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
-          <div><span style="color:#71717a;">Vitesse</span><br><strong>${flow.currentSpeed} km/h</strong></div>
-          <div><span style="color:#71717a;">Vitesse libre</span><br><strong>${flow.freeFlowSpeed} km/h</strong></div>
-          <div><span style="color:#71717a;">Temps courant</span><br><strong>${flow.currentTravelTime}s</strong></div>
-          <div><span style="color:#71717a;">Fermeture</span><br><strong>${flow.roadClosure ? 'Oui' : 'Non'}</strong></div>
-        </div>`
-      : `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:#71717a;">Chargement Flow Segment Data…</div>`;
+    const flowHtml = flow === undefined
+      ? ''
+      : flow
+        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
+            <div><span style="color:#71717a;">Vitesse</span><br><strong>${flow.currentSpeed} km/h</strong></div>
+            <div><span style="color:#71717a;">Vitesse libre</span><br><strong>${flow.freeFlowSpeed} km/h</strong></div>
+            <div><span style="color:#71717a;">Temps courant</span><br><strong>${flow.currentTravelTime}s</strong></div>
+            <div><span style="color:#71717a;">Fermeture</span><br><strong>${flow.roadClosure ? 'Oui' : 'Non'}</strong></div>
+          </div>`
+        : `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:#71717a;">Données flow non disponibles.</div>`;
 
     return `
       <div style="padding:14px; min-width:280px;">
@@ -6694,18 +6990,13 @@ export class DeckGLMap {
             <div style="font-size:11px; color:${sevColor}; font-weight:600;">${sevText} · ${validityText}</div>
           </div>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:10px;">
-          <div><span style="color:#71717a;">Retard</span><br><strong>${delayText}</strong></div>
-          <div><span style="color:#71717a;">Longueur</span><br><strong>${lengthText}</strong></div>
-          <div><span style="color:#71717a;">Route</span><br><strong>${this.escapeHtml(routeText)}</strong></div>
-          <div><span style="color:#71717a;">Signalements</span><br><strong>${incident.numberOfReports ?? '—'}</strong></div>
-        </div>
+        ${statItems ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:10px;">${statItems}</div>` : ''}
         ${incident.osintSignals && incident.osintSignals.length > 0 ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Signaux OSINT</span><br><strong>${this.escapeHtml(incident.osintSignals.join(' · '))}</strong></div>` : ''}
         ${(incident.from || incident.to) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Tronçon</span><br><strong>${this.escapeHtml(incident.from ?? '—')} → ${this.escapeHtml(incident.to ?? '—')}</strong></div>` : ''}
-        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime)} → ${formatDate(incident.endTime)}</strong></div>` : ''}
+        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime) ?? '—'} → ${formatDate(incident.endTime) ?? '—'}</strong></div>` : ''}
         ${(incident.lastReportTime || incident.probabilityOfOccurrence) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px;">
-          <div><span style="color:#71717a;">Dernier signalement</span><br><strong>${formatDate(incident.lastReportTime)}</strong></div>
-          <div><span style="color:#71717a;">Probabilité</span><br><strong>${this.escapeHtml(incident.probabilityOfOccurrence ?? '—')}</strong></div>
+          ${incident.lastReportTime ? `<div><span style="color:#71717a;">Dernier signalement</span><br><strong>${formatDate(incident.lastReportTime)}</strong></div>` : ''}
+          ${incident.probabilityOfOccurrence ? `<div><span style="color:#71717a;">Probabilité</span><br><strong>${this.escapeHtml(incident.probabilityOfOccurrence)}</strong></div>` : ''}
         </div>` : ''}
         ${incident.description && incident.description.trim() !== '' ? `<p style="margin:0; font-size:11px; color:#a1a1aa;">${this.escapeHtml(incident.description)}</p>` : ''}
         ${flowHtml}
@@ -7377,7 +7668,7 @@ export class DeckGLMap {
         LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       ];
     } else if (categoryId === 'trafficRoad') {
-      activeLayers = [LYR_TRAFFIC];
+      activeLayers = [LYR_TRAFFIC, LYR_TRAFFIC_CLUSTER, LYR_TRAFFIC_CLUSTER_COUNT, LYR_TRAFFIC_INCIDENTS];
     } else if (categoryId === 'trafficAir') {
       activeLayers = [LYR_AIR_TRAFFIC_LABEL];
     } else if (categoryId === 'trafficMaritime') {
@@ -8952,8 +9243,7 @@ export class DeckGLMap {
    * Pass null to clear the route.
    */
   highlightTrainRoute(
-    departure: [number, number] | null,
-    arrival: [number, number] | null
+    disruption: TransportDisruption | null,
   ): void {
     if (!this.map) return;
 
@@ -8961,6 +9251,18 @@ export class DeckGLMap {
     if (!src) return;
 
     // Clear route if no coordinates
+    if (!disruption) {
+      src.setData(emptyFC());
+      return;
+    }
+
+    const severity = disruption.severity;
+    const routeCoords = disruption.routeGeometry?.coordinates ?? null;
+    const fallbackDeparture = routeCoords?.[0] as [number, number] | undefined;
+    const fallbackArrival = routeCoords?.[routeCoords.length - 1] as [number, number] | undefined;
+    const departure = disruption.departure?.coordinates ?? disruption.coordinates ?? fallbackDeparture ?? null;
+    const arrival = disruption.arrival?.coordinates ?? fallbackArrival ?? null;
+
     if (!departure) {
       src.setData(emptyFC());
       return;
@@ -8972,7 +9274,24 @@ export class DeckGLMap {
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: departure },
-      properties: { role: 'departure' },
+      properties: {
+        role: 'departure',
+        severity: severity ?? 'medium',
+        name: disruption.departure?.name ?? 'Départ',
+        line: disruption.line,
+        trainNumber: disruption.trainNumber,
+        departureName: disruption.departure?.name,
+        arrivalName: disruption.arrival?.name,
+        departurePlannedTime: disruption.departure?.plannedTime,
+        departureUpdatedTime: disruption.departure?.updatedTime,
+        arrivalPlannedTime: disruption.arrival?.plannedTime,
+        arrivalUpdatedTime: disruption.arrival?.updatedTime,
+        totalDelayMinutes: disruption.totalDelayMinutes,
+        affectedStopsCount: disruption.affectedStops?.length ?? 0,
+        affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
+        description: disruption.description,
+        geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
+      },
     });
 
     if (arrival) {
@@ -8980,15 +9299,51 @@ export class DeckGLMap {
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: arrival },
-        properties: { role: 'arrival' },
+        properties: {
+          role: 'arrival',
+          severity: severity ?? 'medium',
+          name: disruption.arrival?.name ?? 'Arrivée',
+          line: disruption.line,
+          trainNumber: disruption.trainNumber,
+          departureName: disruption.departure?.name,
+          arrivalName: disruption.arrival?.name,
+          departurePlannedTime: disruption.departure?.plannedTime,
+          departureUpdatedTime: disruption.departure?.updatedTime,
+          arrivalPlannedTime: disruption.arrival?.plannedTime,
+          arrivalUpdatedTime: disruption.arrival?.updatedTime,
+          totalDelayMinutes: disruption.totalDelayMinutes,
+          affectedStopsCount: disruption.affectedStops?.length ?? 0,
+          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
+          description: disruption.description,
+          geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
+        },
       });
 
-      // Add curved line between stations (bezier approximation)
-      const lineCoords = this.generateCurvedLine(departure, arrival);
+      const useFocusGeometry = !!disruption.routeGeometry?.coordinates?.length;
+      const lineCoords = useFocusGeometry
+        ? disruption.routeGeometry!.coordinates
+        : this.generateCurvedLine(departure, arrival);
+      const focusFidelity =
+        useFocusGeometry ? (disruption.geometryFidelity ?? 'matched') : 'fallback';
       features.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: lineCoords },
-        properties: {},
+        properties: {
+          severity: severity ?? 'medium',
+          line: disruption.line,
+          trainNumber: disruption.trainNumber,
+          departureName: disruption.departure?.name,
+          arrivalName: disruption.arrival?.name,
+          departurePlannedTime: disruption.departure?.plannedTime,
+          departureUpdatedTime: disruption.departure?.updatedTime,
+          arrivalPlannedTime: disruption.arrival?.plannedTime,
+          arrivalUpdatedTime: disruption.arrival?.updatedTime,
+          totalDelayMinutes: disruption.totalDelayMinutes,
+          affectedStopsCount: disruption.affectedStops?.length ?? 0,
+          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
+          description: disruption.description,
+          geometryFidelity: focusFidelity,
+        },
       });
     }
 
@@ -9812,16 +10167,56 @@ export class DeckGLMap {
   updateTrafficIncidents(incidents: any[]): void {
     if (!this.map) return;
     this.roadTrafficIncidents = incidents;
-    const geojson: GeoJSON.FeatureCollection = {
+    const features = incidents.map((incident) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [incident.lon, incident.lat] as [number, number] },
+      properties: {
+        ...incident,
+        maxSeverity:
+          incident.severity === 'critical' || incident.severity === 'high' ? 2
+            : incident.severity === 'medium' ? 1
+              : 0,
+      },
+    }));
+
+    this.trafficClusterIndex = new Supercluster<any, any>({
+      radius: 140,
+      maxZoom: 14,
+      minZoom: 3,
+      map: (props) => ({ maxSeverity: props.maxSeverity ?? 0 }),
+      reduce: (accumulated, props) => {
+        accumulated.maxSeverity = Math.max(accumulated.maxSeverity ?? 0, props.maxSeverity ?? 0);
+      },
+    });
+    this.trafficClusterIndex.load(features as any[]);
+    this.syncTrafficIncidentSource();
+  }
+
+  private syncTrafficIncidentSource(): void {
+    if (!this.map) return;
+    const src = this.map.getSource(SRC_TRAFFIC_INCIDENTS) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+
+    if (!this.trafficClusterIndex || this.roadTrafficIncidents.length === 0) {
+      src.setData(emptyFC());
+      return;
+    }
+
+    // Use the current map view if available, otherwise use a full-France bbox fallback
+    let bbox: [number, number, number, number];
+    if (this.map) {
+      const bounds = this.map.getBounds();
+      bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+    } else {
+      bbox = [-5.5, 41.0, 10.0, 51.5]; // France métropolitaine
+    }
+    const zoom = this.map ? Math.round(this.map.getZoom()) : 6;
+    const clusters = this.trafficClusterIndex.getClusters(bbox, zoom);
+    src.setData({
       type: 'FeatureCollection',
-      features: incidents.map(i => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [i.lon, i.lat] },
-        properties: { ...i }
-      }))
-    };
-    const src = this.map.getSource(SRC_TRAFFIC_INCIDENTS) as maplibregl.GeoJSONSource;
-    src?.setData(geojson);
+      features: clusters as any[],
+    });
+
     this.refreshAisLayers();
   }
 
@@ -10445,13 +10840,21 @@ export class DeckGLMap {
     this.setVis(LYR_OIL_FLOW_MARKER, oilVis);
     this.setVis(LYR_OIL_FLOW_LABEL, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
-    this.setVis(LYR_TRAFFIC_INCIDENTS, 'none');
+    const roadVis = vis(layers.trafficRoad);
+    this.setVis(LYR_TRAFFIC_CLUSTER, roadVis);
+    this.setVis(LYR_TRAFFIC_CLUSTER_COUNT, roadVis);
+    this.setVis(LYR_TRAFFIC_INCIDENTS, roadVis);
+    // Sync cluster data whenever the layer becomes visible (may not have been triggered by moveend)
+    if (layers.trafficRoad) this.syncTrafficIncidentSource();
     const railVis = vis(layers.trafficRail ?? false);
     this.setVis(LYR_RAIL_ARC_GLOW,      railVis);
     this.setVis(LYR_RAIL_ARC,           railVis);
+    this.setVis(LYR_RAIL_ARC_HIT,       railVis);
     this.setVis(LYR_RAIL_STATION_GLOW,  railVis);
     this.setVis(LYR_RAIL_STATION,       railVis);
     this.setVis(LYR_RAIL_STATION_LABEL, railVis);
+    this.setVis(LYR_TRAIN_ROUTE,        railVis);
+    this.setVis(LYR_TRAIN_STATIONS,     railVis);
     this.setVis(LYR_METROPOLES_GLOW, vis(layers.metropoles));
     this.setVis(LYR_METROPOLES_CIRCLE, vis(layers.metropoles));
     this.setVis(LYR_METROPOLES_LABEL, vis(layers.metropoles));
@@ -10471,7 +10874,7 @@ export class DeckGLMap {
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
     this.globalTrafficVisible = layers.trafficMaritime;
-    this.roadTrafficVisible = layers.trafficRoad;
+    this.roadTrafficVisible = false;
     this.airTrafficVisible = layers.trafficAir;
     this.dayNightVisible = layers.dayNight ?? false;
     this.refreshAisLayers();

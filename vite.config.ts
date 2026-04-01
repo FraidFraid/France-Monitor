@@ -8,12 +8,14 @@ import { rssProxyPlugin } from './src/plugins/rss-proxy';
 import { rssJsonProxyPlugin } from './src/plugins/rss-json-proxy';
 import { jsonProxyPlugin } from './src/plugins/json-proxy';
 import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
+import { osmRailwaysProxyPlugin } from './src/plugins/osm-railways-proxy';
 import { ecowattProxyPlugin } from './src/plugins/ecowatt-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { arcepProxyPlugin } from './src/plugins/arcep-proxy';
 import { healthProxyPlugin } from './src/plugins/health-proxy';
 import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
+import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
 import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
@@ -55,12 +57,14 @@ export default defineConfig(({ mode }) => {
       rssJsonProxyPlugin(),
       jsonProxyPlugin(),
       sncfProxyPlugin(),
+      osmRailwaysProxyPlugin(),
       ecowattProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
       arcepProxyPlugin(),
       healthProxyPlugin(),
       airTrafficProxyPlugin(),
+      trafficRoadProxyPlugin(),
       militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
       internetOutagesProxyPlugin(),

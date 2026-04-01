@@ -52,11 +52,15 @@ const PARIS_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
 });
 
 // TomTom Traffic Incidents API n'autorise pas de BBOX > 10,000 km2.
-// On divise en 17 zones stratégiques (principales métropoles françaises).
+// Certaines grandes métropoles sont donc découpées en sous-zones.
 // Les priorités servent à dégrader progressivement si le budget journalier devient serré.
 const ZONES = [
-    { bbox: '1.446,48.120,3.559,49.241', name: 'Paris (IDF)', priority: 1 },
-    { bbox: '4.162,45.242,5.556,46.124', name: 'Lyon', priority: 1 },
+    { bbox: '1.446,48.120,2.500,48.680', name: 'Paris Ouest', priority: 1 },
+    { bbox: '2.500,48.120,3.559,48.680', name: 'Paris Est', priority: 1 },
+    { bbox: '1.446,48.680,2.500,49.241', name: 'IDF Nord-Ouest', priority: 1 },
+    { bbox: '2.500,48.680,3.559,49.241', name: 'IDF Nord-Est', priority: 1 },
+    { bbox: '4.162,45.242,4.859,46.124', name: 'Lyon Ouest', priority: 1 },
+    { bbox: '4.859,45.242,5.556,46.124', name: 'Lyon Est', priority: 1 },
     { bbox: '4.740,43.085,5.888,43.834', name: 'Marseille', priority: 1 },
     { bbox: '2.642,50.158,3.376,50.803', name: 'Lille', priority: 1 },
     { bbox: '-1.201,44.402,-0.252,45.148', name: 'Bordeaux', priority: 1 },
@@ -133,6 +137,9 @@ function writeBudgetState(state: TrafficBudgetState): void {
 }
 
 function getRemainingBudget(type: 'incident' | 'flow'): number {
+    if (import.meta.env.DEV) {
+        return Number.MAX_SAFE_INTEGER;
+    }
     const state = readBudgetState();
     const usedTotal = state.incidentRequests + state.flowRequests;
     const totalRemaining = Math.max(0, DAILY_NON_TILE_BUDGET - usedTotal);
@@ -143,6 +150,9 @@ function getRemainingBudget(type: 'incident' | 'flow'): number {
 }
 
 function consumeBudget(type: 'incident' | 'flow', amount: number): boolean {
+    if (import.meta.env.DEV) {
+        return true;
+    }
     if (amount <= 0) return true;
     if (getRemainingBudget(type) < amount) return false;
 
@@ -250,6 +260,15 @@ export function filterOsintTrafficIncidents(incidents: TrafficIncident[]): Traff
         .filter((incident) => {
             if (CRITICAL_OSINT_TYPES.has(incident.type)) return true;
             if (incident.severity === 'high' || incident.severity === 'critical') return true;
+            if (incident.severity === 'medium') {
+                if (incident.type === 'Bouchon') {
+                    return incident.delay >= 600 || incident.length >= 3000 || (incident.numberOfReports ?? 0) >= 4;
+                }
+                if (incident.type === 'Travaux') {
+                    return incident.timeValidity === 'future' || incident.length >= 1500 || incident.delay >= 300;
+                }
+                return (incident.osintScore ?? 0) >= 18;
+            }
             if (incident.type === 'Bouchon') {
                 return incident.delay >= 1200 || incident.length >= 7000 || (incident.numberOfReports ?? 0) >= 8;
             }
@@ -259,7 +278,7 @@ export function filterOsintTrafficIncidents(incidents: TrafficIncident[]): Traff
             return (incident.osintScore ?? 0) >= 35;
         })
         .sort((a, b) => (b.osintScore ?? 0) - (a.osintScore ?? 0) || b.delay - a.delay || b.length - a.length)
-        .slice(0, 60);
+        .slice(0, 90);
 }
 
 function transformTomTomIncident(inc: any): TrafficIncident {
@@ -289,9 +308,25 @@ function transformTomTomIncident(inc: any): TrafficIncident {
     const length = inc.properties?.length || 0;
     const magnitude = inc.properties?.magnitudeOfDelay || 0;
 
-    let severity = 'low';
-    if (magnitude === 3 || type === 'Route barrée' || type === 'Accident') severity = 'high';
-    else if (magnitude === 2) severity = 'medium';
+    let severity: TrafficIncident['severity'] = 'low';
+    if (
+        type === 'Route barrée' ||
+        type === 'Accident' ||
+        magnitude >= 3 ||
+        delay >= 1800 ||
+        length >= 10000
+    ) {
+        severity = 'high';
+    } else if (
+        magnitude === 2 ||
+        type === 'Voie fermée' ||
+        (type === 'Bouchon' && (delay >= 600 || length >= 2500)) ||
+        (type === 'Travaux' && (delay >= 300 || length >= 1500)) ||
+        (type === 'Vent fort' && (delay >= 300 || length >= 1500)) ||
+        (type === 'Inondation' && (delay >= 180 || length >= 1000))
+    ) {
+        severity = 'medium';
+    }
 
     const desc = inc.properties?.events?.map((e: any) => e.description).join(' - ') || type;
     const roadNumbers = Array.isArray(inc.properties?.roadNumbers)
@@ -353,7 +388,7 @@ export async function fetchTrafficIncidents(): Promise<TrafficIncident[]> {
         }
 
         const promises = zonesToQuery.map(zone => {
-            const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${tomtomKey}&bbox=${zone.bbox}&fields={incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,length,delay,roadNumbers,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime}}}&language=fr-FR&timeValidityFilter=present,future`;
+            const url = `/api/traffic/road?bbox=${encodeURIComponent(zone.bbox)}`;
             return fetch(url, { signal: AbortSignal.timeout(10_000) })
                 .then(r => r.ok ? r.json() : null)
                 .catch(() => null);
@@ -379,8 +414,7 @@ export async function fetchTrafficIncidents(): Promise<TrafficIncident[]> {
         }
 
         const finalData = Array.from(allIncidents.values())
-            .sort((a, b) => b.delay - a.delay || b.length - a.length)
-            .slice(0, 150);
+            .sort((a, b) => b.delay - a.delay || b.length - a.length);
 
         if (finalData.length === 0 && apiErrors.length > 0) {
             const firstError = apiErrors[0];

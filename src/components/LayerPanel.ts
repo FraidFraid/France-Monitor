@@ -452,7 +452,7 @@ export class LayerPanel {
       hospitals: 'Carte des établissements de soins (base FINESS)',
       infrastructure: 'Nœuds énergétiques vitaux: électricité, gaz et pétrole',
       traffic: 'Groupe TRAFICS (routier, maritime, aérien civils)',
-      trafficRoad: 'Incidents routiers temps réel (TomTom OSINT)',
+      trafficRoad: 'Incidents routiers temps réel (TomTom)',
       trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
       trafficAir: 'Trafic aérien civil (airplanes.live) — militaires dans DÉFENSE',
       trafficRail: 'Réseau ferroviaire SNCF — perturbations actives (arcs + gares)',

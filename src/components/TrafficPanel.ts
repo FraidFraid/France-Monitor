@@ -123,7 +123,7 @@ export class TrafficPanel extends Panel {
         this.contentEl.innerHTML = '';
 
         if (this.data.length === 0) {
-            this.contentEl.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">Aucun incident majeur détecté.</div>';
+            this.contentEl.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center;">Aucun incident détecté.</div>';
             return;
         }
 

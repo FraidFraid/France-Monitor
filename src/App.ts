@@ -67,7 +67,7 @@ import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { fetchNuclearPlantsStatus } from './services/energy.ts';
 import { fetchFiresData } from './services/fires.ts';
-import { fetchTrafficIncidents, filterOsintTrafficIncidents, type TrafficIncident } from './services/traffic.ts';
+import { fetchTrafficIncidents, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages } from './services/outages.ts';
@@ -207,9 +207,7 @@ const HOSPITALS_LEGEND: LegendCategory = {
 const ROAD_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficRoad',
   title: 'Trafic routier',
-  columns: 2,
   items: [
-    { id: 'road-flow', label: 'Flux routier', color: '#4fc3f7', shape: 'square' },
     { id: 'road-high', label: 'Incident fort', color: '#ff5050', shape: 'circle' },
     { id: 'road-medium', label: 'Incident modéré', color: '#ffaa00', shape: 'circle' },
     { id: 'road-low', label: 'Incident faible', color: '#ffdc50', shape: 'circle' },
@@ -323,28 +321,6 @@ const AIR_TRAFFIC_LEGEND: LegendCategory = {
   }
 };
 
-const RAIL_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficRail',
-  title: 'Réseau ferroviaire — Perturbations',
-  columns: 2,
-  items: [
-    { id: 'rail-critical', label: 'Supprimé (NO_SERVICE)',    color: '#ff3b30', shape: 'square' },
-    { id: 'rail-high',     label: 'Retards importants',       color: '#ff9500', shape: 'square' },
-    { id: 'rail-medium',   label: 'Service réduit',           color: '#ffcc00', shape: 'square' },
-    { id: 'rail-low',      label: 'Perturbation mineure',     color: '#8e8e93', shape: 'square' },
-    { id: 'rail-arc',      label: 'Arc départ → arrivée',     color: '#c0c0c0', shape: 'square' },
-    { id: 'rail-station',  label: 'Gare impactée',            color: '#ffffff', shape: 'circle' },
-  ],
-  source: {
-    label: 'SNCF API — info-trafic.sncf.com',
-    year: new Date().getFullYear(),
-  },
-  refresh: { label: 'Environ 5 min' },
-  notes: [
-    'Arcs affichés uniquement si départ ET arrivée connus.',
-    'Gare seule si coordonnées partielles.',
-  ],
-};
 
 const MILITARY_LEGEND: LegendCategory = {
   id: 'military',
@@ -690,7 +666,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Réseau ferroviaire (SNCF)',
-    legend: RAIL_TRAFFIC_LEGEND,
   },
   // ─── Energy Group ───
   {
@@ -1060,7 +1035,7 @@ export class App {
     this.mapLegend.setCategoryVisibility('trafficRoad', this.activeLayers.traffic && this.activeLayers.trafficRoad);
     this.mapLegend.setCategoryVisibility('trafficMaritime', this.activeLayers.traffic && this.activeLayers.trafficMaritime);
     this.mapLegend.setCategoryVisibility('trafficAir', this.activeLayers.traffic && this.activeLayers.trafficAir);
-    this.mapLegend.setCategoryVisibility('trafficRail', this.activeLayers.traffic && this.activeLayers.trafficRail);
+    // Rail legend lives in TransportPanel — no mapLegend entry to toggle
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
@@ -1677,17 +1652,22 @@ export class App {
     });
 
     this.transportPanel = new TransportPanel(floatContainer);
-    this.transportPanel.setOnHover((departure, arrival) => {
-      this.mapContainer?.highlightTrainRoute(departure, arrival);
-      // Fly to midpoint if route exists
-      if (departure) {
-        if (arrival) {
-          const midLon = (departure[0] + arrival[0]) / 2;
-          const midLat = (departure[1] + arrival[1]) / 2;
-          this.mapContainer?.flyTo(midLon, midLat, 7);
-        } else {
-          this.mapContainer?.flyTo(departure[0], departure[1], 10);
-        }
+    this.transportPanel.setOnHover((disruption) => {
+      this.mapContainer?.highlightTrainRoute(this.resolveRailFocusDisruption(disruption));
+    });
+    this.transportPanel.setOnSelect((disruption) => {
+      const focusDisruption = this.resolveRailFocusDisruption(disruption);
+      this.mapContainer?.highlightTrainRoute(focusDisruption);
+      const departure = disruption?.departure?.coordinates ?? disruption?.coordinates ?? null;
+      const arrival = disruption?.arrival?.coordinates ?? null;
+      if (!departure) return;
+
+      if (arrival) {
+        const midLon = (departure[0] + arrival[0]) / 2;
+        const midLat = (departure[1] + arrival[1]) / 2;
+        this.mapContainer?.flyTo(midLon, midLat, 7);
+      } else {
+        this.mapContainer?.flyTo(departure[0], departure[1], 10);
       }
     });
     this.transportPanel.mount();
@@ -2069,7 +2049,6 @@ export class App {
     if (key === 'trafficRail') {
       if (enabled) {
         this.transportPanel?.show(this.currentSncfDisruptions);
-        this.fitRailNetworkToView();
       }
       else this.transportPanel?.hide();
     }
@@ -2362,7 +2341,7 @@ export class App {
     this.mapLegend.addCategory(ROAD_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
-    this.mapLegend.addCategory(RAIL_TRAFFIC_LEGEND);
+    // Rail legend is embedded in TransportPanel — not in the bottom map legend
     this.mapLegend.addCategory(HEALTH_ISS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
     this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
@@ -3081,14 +3060,13 @@ export class App {
     this.statusPanel?.updateSource('Trafic', { status: 'loading', lastUpdate: null });
     try {
       const incidents = await fetchTrafficIncidents();
-      const osintIncidents = filterOsintTrafficIncidents(incidents);
-      if (osintIncidents.length > 0) {
-        this.currentTrafficIncidents = osintIncidents;
-        this.mapContainer?.updateTrafficIncidents(osintIncidents);
+      if (incidents.length > 0) {
+        this.currentTrafficIncidents = incidents;
+        this.mapContainer?.updateTrafficIncidents(incidents);
         this.statusPanel?.updateSource('Trafic', {
           status: 'ok',
           lastUpdate: new Date(),
-          detail: `${osintIncidents.length}/${incidents.length} signaux OSINT`,
+          detail: `TomTom · ${incidents.length} incidents affichés`,
           error: undefined,
         });
         return;
@@ -3096,9 +3074,9 @@ export class App {
 
       this.mapContainer?.updateTrafficIncidents([]);
       this.statusPanel?.updateSource('Trafic', {
-        status: incidents.length > 0 ? 'stale' : 'stale',
+        status: 'stale',
         lastUpdate: new Date(),
-        detail: incidents.length > 0 ? `TomTom · ${incidents.length} incidents, aucun retenu OSINT` : 'TomTom · aucun incident renvoyé',
+        detail: 'TomTom · aucun incident renvoyé',
         error: undefined,
       });
     } catch (error) {
@@ -3424,56 +3402,47 @@ export class App {
 
   private async loadSncf(): Promise<void> {
     this.statusPanel?.updateSource('SNCF', { status: 'loading', lastUpdate: null });
-    const disruptions = await fetchSncfDisruptions();
+    const disruptions = await fetchSncfDisruptions((enriched) => {
+      // Geocoding + OSM route matching completed in background — refresh map + panel
+      this.currentSncfDisruptions = enriched;
+      const enrichedRail = buildRailNetworkData(enriched);
+      this.currentRailNetworkData = enrichedRail;
+      this.mapContainer?.updateRailNetwork(enrichedRail);
+      if (this.activeLayers.trafficRail) {
+        this.transportPanel?.show(enriched);
+      }
+    });
     this.currentSncfDisruptions = disruptions;
     if (disruptions.length > 0) {
       this.statusPanel?.updateSource('SNCF', { status: 'ok', lastUpdate: new Date() });
-      console.log(`[SNCF] ${disruptions.length} perturbations chargées`);
     } else {
       this.statusPanel?.updateSource('SNCF', { status: 'stale', lastUpdate: new Date() });
     }
-    // Update rail map layer (empty FCs when no disruptions → clears layer cleanly)
+    // Update rail map layer immediately (partial data — geocoding still in progress)
     const railData = buildRailNetworkData(disruptions);
     this.currentRailNetworkData = railData;
     this.mapContainer?.updateRailNetwork(railData);
   }
 
-  private fitRailNetworkToView(): void {
-    const data = this.currentRailNetworkData;
-    if (!data) return;
+  private resolveRailFocusDisruption(disruption: TransportDisruption | null): TransportDisruption | null {
+    if (!disruption || !this.currentRailNetworkData) return disruption;
 
-    const coords: Array<[number, number]> = [];
+    const arcFeature = this.currentRailNetworkData.arcs.features.find(
+      (feature) => feature.properties.id === disruption.id
+    );
 
-    for (const feature of data.arcs.features) {
-      for (const coord of feature.geometry.coordinates) {
-        coords.push(coord as [number, number]);
-      }
+    if (!arcFeature || arcFeature.geometry.coordinates.length < 2) {
+      return disruption;
     }
 
-    for (const feature of data.stations.features) {
-      coords.push(feature.geometry.coordinates as [number, number]);
-    }
-
-    if (coords.length === 0) return;
-
-    let minLng = coords[0][0];
-    let minLat = coords[0][1];
-    let maxLng = coords[0][0];
-    let maxLat = coords[0][1];
-
-    for (const [lng, lat] of coords) {
-      if (lng < minLng) minLng = lng;
-      if (lat < minLat) minLat = lat;
-      if (lng > maxLng) maxLng = lng;
-      if (lat > maxLat) maxLat = lat;
-    }
-
-    if (coords.length === 1 || (Math.abs(maxLng - minLng) < 0.02 && Math.abs(maxLat - minLat) < 0.02)) {
-      this.mapContainer?.flyTo(coords[0][0], coords[0][1], 9);
-      return;
-    }
-
-    this.mapContainer?.fitBounds([minLng, minLat, maxLng, maxLat], 90);
+    return {
+      ...disruption,
+      routeGeometry: {
+        type: 'LineString',
+        coordinates: arcFeature.geometry.coordinates as [number, number][],
+      },
+      geometryFidelity: (arcFeature.properties.geometryFidelity as TransportDisruption['geometryFidelity'] | undefined) ?? disruption.geometryFidelity,
+    };
   }
 
   private async loadMetropoles(): Promise<void> {
