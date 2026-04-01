@@ -11,7 +11,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -250,15 +250,23 @@ const SRC_TERMINATOR = 'terminator-src';
 const LYR_TERMINATOR = 'terminator-fill';
 const SRC_NET_ISP = 'net-isp-src';
 const SRC_NET_IODA = 'net-ioda-src';
-const LYR_NET_ISP_GLOW = 'net-isp-glow';   // halo ambiant
-const LYR_NET_ISP_RING = 'net-isp-ring';   // anneau creux
-const LYR_NET_ISP = 'net-isp-pts';    // point central
+const LYR_NET_ISP_GLOW = 'net-isp-glow';           // halo ambiant
+const LYR_NET_ISP_RING = 'net-isp-ring';           // anneau creux
+const LYR_NET_ISP = 'net-isp-pts';                 // point central
+const LYR_NET_ISP_CLUSTER = 'net-isp-cluster';     // cercle de cluster
+const LYR_NET_ISP_CLUSTER_COUNT = 'net-isp-cluster-count'; // compteur de cluster
 const LYR_NET_IODA_GLOW = 'net-ioda-glow';
 const LYR_NET_IODA_CORE = 'net-ioda-core';
+const LYR_NET_IODA_CLUSTER = 'net-ioda-cluster';
+const LYR_NET_IODA_CLUSTER_COUNT = 'net-ioda-cluster-count';
 const SRC_DC = 'infra-dc-src';
 const SRC_IXP = 'infra-ixp-src';
 const LYR_DC_GLOW = 'infra-dc-glow';
 const LYR_DC_CORE = 'infra-dc-core';
+const LYR_DC_CLUSTER = 'infra-dc-cluster';
+const LYR_DC_CLUSTER_COUNT = 'infra-dc-cluster-count';
+const LYR_IXP_CLUSTER = 'infra-ixp-cluster';
+const LYR_IXP_CLUSTER_COUNT = 'infra-ixp-cluster-count';
 const LYR_IXP_CIRCLE = 'infra-ixp-circle';
 const LYR_HOSPITALS_CHU = 'hospitals-chu';
 const LYR_HOSPITALS_CH = 'hospitals-ch';
@@ -267,6 +275,24 @@ const SRC_MAIRES_POL = 'maires-pol-src';
 const LYR_MAIRES_POL = 'maires-pol';
 const LYR_MAIRES_POL_LABEL = 'maires-pol-label';
 
+// ─── Rail disruptions (SNCF) ───
+const SRC_RAIL_ARCS = 'rail-disruptions-arcs-src';
+const SRC_RAIL_STATIONS = 'rail-disruptions-stations-src';
+const LYR_RAIL_ARC_GLOW = 'rail-arc-glow';
+const LYR_RAIL_ARC = 'rail-arc';
+const LYR_RAIL_STATION_GLOW = 'rail-station-glow';
+const LYR_RAIL_STATION = 'rail-stations-disrupted';
+const LYR_RAIL_STATION_LABEL = 'rail-station-label';
+
+/** MapLibre match expression: ThreatLevel → hex color */
+const RAIL_SEVERITY_COLOR: maplibregl.ExpressionSpecification = [
+  'match', ['get', 'severity'],
+  'critical', '#ff3b30',
+  'high',     '#ff9500',
+  'medium',   '#ffcc00',
+  'low',      '#8e8e93',
+  /* info default */ '#636366',
+];
 
 // ─── Ecowatt signal → color ───
 const ECOWATT_COLORS: Record<EcowattSignal, string> = {
@@ -1622,6 +1648,10 @@ export class DeckGLMap {
     // Traffic Incidents (TomTom temps réel)
     this.map.addSource(SRC_TRAFFIC_INCIDENTS, { type: 'geojson', data: emptyFC() });
 
+    // Rail disruptions network (arcs + stations, updated from SNCF data)
+    this.map.addSource(SRC_RAIL_ARCS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_RAIL_STATIONS, { type: 'geojson', data: emptyFC() });
+
     // Train route highlight
     this.map.addSource(SRC_TRAIN_ROUTE, { type: 'geojson', data: emptyFC() });
 
@@ -1634,12 +1664,24 @@ export class DeckGLMap {
     this.map.addSource(SRC_POWER_TENSION, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_TERMINATOR, { type: 'geojson', data: emptyFC() });
-    // Internet/BGP outages (IODA + ISP BGP)
-    this.map.addSource(SRC_NET_ISP, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_NET_IODA, { type: 'geojson', data: emptyFC() });
-    // Infra cloud & IXP
-    this.map.addSource(SRC_DC, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_IXP, { type: 'geojson', data: emptyFC() });
+    // Internet/BGP outages (IODA + ISP BGP) — clustering activé pour éviter le chevauchement à faible zoom
+    this.map.addSource(SRC_NET_ISP, {
+      type: 'geojson', data: emptyFC(),
+      cluster: true, clusterRadius: 55, clusterMaxZoom: 8,
+    });
+    this.map.addSource(SRC_NET_IODA, {
+      type: 'geojson', data: emptyFC(),
+      cluster: true, clusterRadius: 60, clusterMaxZoom: 7,
+    });
+    // Infra cloud & IXP — clustering activé pour éviter le chevauchement à faible zoom
+    this.map.addSource(SRC_DC, {
+      type: 'geojson', data: emptyFC(),
+      cluster: true, clusterRadius: 50, clusterMaxZoom: 8,
+    });
+    this.map.addSource(SRC_IXP, {
+      type: 'geojson', data: emptyFC(),
+      cluster: true, clusterRadius: 50, clusterMaxZoom: 8,
+    });
 
     // Military
     this.map.addSource(SRC_MILITARY_ZONES, { type: 'geojson', data: emptyFC() });
@@ -2135,6 +2177,83 @@ export class DeckGLMap {
         'circle-stroke-color': '#111',
         'circle-opacity': 0.9,
       }
+    });
+
+    // ─── Rail disruptions network (persistent layer, toggle via trafficRail) ───
+    // Glow halo: fat semi-transparent line behind each arc
+    this.map.addLayer({
+      id: LYR_RAIL_ARC_GLOW,
+      type: 'line',
+      source: SRC_RAIL_ARCS,
+      paint: {
+        'line-color': RAIL_SEVERITY_COLOR,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 14, 12, 20],
+        'line-opacity': 0.18,
+        'line-blur': 4,
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    });
+    // Main arc
+    this.map.addLayer({
+      id: LYR_RAIL_ARC,
+      type: 'line',
+      source: SRC_RAIL_ARCS,
+      paint: {
+        'line-color': RAIL_SEVERITY_COLOR,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 8, 2.5, 12, 4],
+        'line-opacity': 0.85,
+        'line-dasharray': [4, 2],
+      },
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    });
+    // Station glow halo
+    this.map.addLayer({
+      id: LYR_RAIL_STATION_GLOW,
+      type: 'circle',
+      source: SRC_RAIL_STATIONS,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14, 12, 20],
+        'circle-color': RAIL_SEVERITY_COLOR,
+        'circle-opacity': 0.20,
+        'circle-blur': 1,
+        'circle-stroke-width': 0,
+      },
+      layout: { visibility: 'none' },
+    });
+    // Station circle
+    this.map.addLayer({
+      id: LYR_RAIL_STATION,
+      type: 'circle',
+      source: SRC_RAIL_STATIONS,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
+        'circle-color': RAIL_SEVERITY_COLOR,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#1a1a2e',
+        'circle-opacity': 0.95,
+      },
+      layout: { visibility: 'none' },
+    });
+    // Station label (appears from zoom 8)
+    this.map.addLayer({
+      id: LYR_RAIL_STATION_LABEL,
+      type: 'symbol',
+      source: SRC_RAIL_STATIONS,
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-offset': [0, -1.4],
+        'text-anchor': 'bottom',
+        'text-font': ['Noto Sans Regular'],
+        visibility: 'none',
+      },
+      paint: {
+        'text-color': '#f0f0f0',
+        'text-halo-color': '#1a1a2e',
+        'text-halo-width': 1.5,
+        'text-opacity': 0.9,
+      },
     });
 
     // ─── Train route highlight ───
@@ -3480,17 +3599,45 @@ export class DeckGLMap {
 
     // ─── Internet / BGP outages ───
     // Glow ring for IODA outage events — couleur teal (cyan) pour distinguer d'internet
+    // ── Clusters IODA ──
+    this.map.addLayer({
+      id: LYR_NET_IODA_CLUSTER,
+      type: 'circle',
+      source: SRC_NET_IODA,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#6366f1',
+        'circle-radius': ['step', ['get', 'point_count'], 13, 3, 17, 6, 21],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#0a0a0f',
+        'circle-opacity': 0.88,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_NET_IODA_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_NET_IODA,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 11,
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      },
+      paint: { 'text-color': '#ffffff' },
+    });
+    // ── Points individuels IODA ──
     this.map.addLayer({
       id: LYR_NET_IODA_GLOW,
       type: 'circle',
       source: SRC_NET_IODA,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 28, 8, 44, 12, 58],
         'circle-color': [
           'interpolate', ['linear'], ['get', 'score'],
-          0, 'rgba(16,185,129,0.09)',   // vert emerald normal
-          50, 'rgba(245,158,11,0.15)',   // ambre anomalie modérée
-          80, 'rgba(239,68,68,0.18)',    // rouge anomalie critique
+          0, 'rgba(16,185,129,0.09)',
+          50, 'rgba(245,158,11,0.15)',
+          80, 'rgba(239,68,68,0.18)',
         ],
         'circle-blur': 0.7,
         'circle-stroke-width': 0,
@@ -3501,18 +3648,45 @@ export class DeckGLMap {
       id: LYR_NET_IODA_CORE,
       type: 'circle',
       source: SRC_NET_IODA,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 6, 10, 10],
         'circle-color': [
           'interpolate', ['linear'], ['get', 'score'],
-          0, '#10B981',  // vert emerald normal
-          50, '#F59E0B',  // ambre
-          80, '#EF4444',  // rouge critique
+          0, '#10B981',
+          50, '#F59E0B',
+          80, '#EF4444',
         ],
         'circle-stroke-width': 1.5,
         'circle-stroke-color': '#0a0a0f',
         'circle-opacity': ['case', ['get', 'isOngoing'], 1.0, 0.55],
       },
+    });
+    // ── Clusters ISP ──
+    this.map.addLayer({
+      id: LYR_NET_ISP_CLUSTER,
+      type: 'circle',
+      source: SRC_NET_ISP,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#10B981',
+        'circle-radius': ['step', ['get', 'point_count'], 13, 3, 17, 6, 21],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#0a0a0f',
+        'circle-opacity': 0.88,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_NET_ISP_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_NET_ISP,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 11,
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      },
+      paint: { 'text-color': '#0a0a0f' },
     });
     // ISP BGP status — anneaux (distinct des cercles pleins télécom)
     // 1. Halo ambiant
@@ -3520,6 +3694,7 @@ export class DeckGLMap {
       id: LYR_NET_ISP_GLOW,
       type: 'circle',
       source: SRC_NET_ISP,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 18, 10, 30],
         'circle-color': [
@@ -3537,6 +3712,7 @@ export class DeckGLMap {
       id: LYR_NET_ISP_RING,
       type: 'circle',
       source: SRC_NET_ISP,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 8, 10, 14],
         'circle-color': 'rgba(0,0,0,0)',
@@ -3556,6 +3732,7 @@ export class DeckGLMap {
       id: LYR_NET_ISP,
       type: 'circle',
       source: SRC_NET_ISP,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 3, 10, 5],
         'circle-color': [
@@ -3570,24 +3747,52 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Datacenter status — palette violet/purple (cloud) ───
+    // ─── Datacenter status — palette bleu acier (infra cloud) ───
+    // ── Clusters DC ──
+    this.map.addLayer({
+      id: LYR_DC_CLUSTER,
+      type: 'circle',
+      source: SRC_DC,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': 'rgba(96,165,250,0.18)',
+        'circle-radius': ['step', ['get', 'point_count'], 18, 3, 24, 6, 30, 10, 36],
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#60A5FA',
+        'circle-opacity': 0.96,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_DC_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_DC,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 12,
+        'text-font': ['Noto Sans Bold'],
+      },
+      paint: { 'text-color': '#DBEAFE' },
+    });
     // Glow halo (cercle doux pour l'ambiance visuelle)
     this.map.addLayer({
       id: LYR_DC_GLOW,
       type: 'circle',
       source: SRC_DC,
+      filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 20, 10, 34],
-        'circle-color': 'rgba(167,139,250,0.10)',  // violet uniforme — pas de halo coloré par statut
-        'circle-blur': 0.65,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 14, 10, 22],
+        'circle-color': 'rgba(96,165,250,0.06)',
+        'circle-blur': 0.35,
         'circle-stroke-width': 0,
       },
     });
-    // Core datacenters — triangles violets SDF (▲), colorisés par statut
+    // Core datacenters — triangles bleu acier SDF (▲), colorisés par statut
     this.map.addLayer({
       id: LYR_DC_CORE,
       type: 'symbol',
       source: SRC_DC,
+      filter: ['!', ['has', 'point_count']],
       layout: {
         'icon-image': 'triangle-dc',
         'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.28, 10, 0.50],
@@ -3597,25 +3802,52 @@ export class DeckGLMap {
       paint: {
         'icon-color': [
           'match', ['get', 'status'],
-          'operational', '#A78BFA',  // violet-400
-          'degraded', '#F59E0B',  // ambre
-          'partial', '#F97316',  // orange
-          'outage', '#EF4444',  // rouge
-          'maintenance', '#8B5CF6',  // violet-500
-          'unknown', '#A78BFA',  // violet — pas d'incident connu
-          '#A78BFA',
+          'operational', '#60A5FA',
+          'degraded', '#3B82F6',
+          'partial', '#2563EB',
+          'outage', '#1D4ED8',
+          'maintenance', '#93C5FD',
+          'unknown', '#60A5FA',
+          '#60A5FA',
         ],
-        'icon-opacity': 0.95,
-        'icon-halo-color': '#0a0a0f',
-        'icon-halo-width': 1.5,
+        'icon-opacity': 0.98,
+        'icon-halo-color': '#111827',
+        'icon-halo-width': 0.8,
       },
     });
 
-    // ─── IXP — diamants violet clair SDF (◆), colorisés par statut ───
+    // ─── IXP — carrés bleu pâle/gris (infra exchange) ───
+    // ── Clusters IXP ──
+    this.map.addLayer({
+      id: LYR_IXP_CLUSTER,
+      type: 'circle',
+      source: SRC_IXP,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': 'rgba(148,163,184,0.18)',
+        'circle-radius': ['step', ['get', 'point_count'], 16, 3, 22, 6, 28, 10, 34],
+        'circle-stroke-width': 2.5,
+        'circle-stroke-color': '#93C5FD',
+        'circle-opacity': 0.94,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_IXP_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_IXP,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 11,
+        'text-font': ['Noto Sans Bold'],
+      },
+      paint: { 'text-color': '#E2E8F0' },
+    });
     this.map.addLayer({
       id: LYR_IXP_CIRCLE,
       type: 'symbol',
       source: SRC_IXP,
+      filter: ['!', ['has', 'point_count']],
       layout: {
         'icon-image': 'square-ixp',
         'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.18, 10, 0.34],
@@ -3625,13 +3857,13 @@ export class DeckGLMap {
       paint: {
         'icon-color': [
           'match', ['get', 'status'],
-          'outage', '#EF4444',
-          'degraded', '#F59E0B',
-          '#C4B5FD',  // violet-300 opérationnel
+          'outage', '#64748B',
+          'degraded', '#93C5FD',
+          '#BFDBFE',
         ],
-        'icon-opacity': 0.90,
-        'icon-halo-color': '#A78BFA',
-        'icon-halo-width': 1,
+        'icon-opacity': 0.96,
+        'icon-halo-color': '#0F172A',
+        'icon-halo-width': 0.6,
       },
     });
 
@@ -4401,14 +4633,42 @@ export class DeckGLMap {
       this.map!.on('mouseleave', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
     });
 
+    // Cluster click: zoom in to expand (Promise API — MapLibre v2+)
+    [
+      { cluster: LYR_DC_CLUSTER, src: SRC_DC },
+      { cluster: LYR_IXP_CLUSTER, src: SRC_IXP },
+    ].forEach(({ cluster, src }) => {
+      this.map!.on('mouseenter', cluster, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
+      this.map!.on('mouseleave', cluster, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+      this.map!.on('click', cluster, (e) => {
+        if (!this.map || !e.features?.length) return;
+        const clusterId = e.features[0].properties?.cluster_id as number;
+        const coords = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+        const source = this.map.getSource(src) as maplibregl.GeoJSONSource;
+        source.getClusterExpansionZoom(clusterId)
+          .then(zoom => {
+            const targetZoom = Math.max(zoom + 1, 9);
+            this.map?.flyTo({ center: coords, zoom: targetZoom, duration: 700, essential: true });
+          })
+          .catch(() => {
+            const fallbackZoom = Math.max((this.map?.getZoom() ?? 5) + 3, 9);
+            this.map?.flyTo({ center: coords, zoom: fallbackZoom, duration: 700, essential: true });
+          });
+      });
+    });
+
     this.map.on('click', LYR_DC_CORE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties ?? {};
-      const stCol = p.status === 'operational' ? '#A78BFA' : p.status === 'outage' ? '#EF4444' : p.status === 'maintenance' ? '#8B5CF6' : p.status === 'partial' ? '#F97316' : '#F59E0B';
+      const stCol = p.status === 'operational' ? '#38BDF8' : p.status === 'outage' ? '#1D4ED8' : p.status === 'maintenance' ? '#2563EB' : p.status === 'partial' ? '#0284C7' : '#0EA5E9';
       const stLbl = p.status === 'operational' ? 'Opérationnel' : p.status === 'degraded' ? 'Dégradé' : p.status === 'partial' ? 'Partiel' : p.status === 'outage' ? 'En panne' : p.status === 'maintenance' ? 'Maintenance' : 'Inconnu';
       const incidents: Array<{ title: string; severity: string }> = (() => { try { return JSON.parse(p.incidents ?? '[]'); } catch { return []; } })();
+      const offsetMeters = Number(p.offsetMeters ?? 0);
+      const realLng = Number(p.realLng ?? e.lngLat.lng);
+      const realLat = Number(p.realLat ?? e.lngLat.lat);
+      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
       const incHtml = incidents.length
-        ? incidents.map(i => `<div style="font-size:11px;color:#F59E0B;margin-top:4px;">⚠ ${i.title}</div>`).join('')
+        ? incidents.map(i => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">⚠ ${i.title}</div>`).join('')
         : `<div style="font-size:11px;color:var(--text-muted);">Aucun incident actif</div>`;
       const html = `
         <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;">
@@ -4420,6 +4680,14 @@ export class DeckGLMap {
           </div>
           <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Incidents</div>
           ${incHtml}
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
+            <span style="color:#9898a8">Coord. réelle</span>
+            <span>${realLat.toFixed(4)}, ${realLng.toFixed(4)}</span>
+            <span style="color:#9898a8">Décalage affichage</span>
+            <span>${offsetMeters > 0 ? `${Math.round(offsetMeters)} m` : 'Aucun'}</span>
+            <span style="color:#9898a8">Mis à jour</span>
+            <span>${updatedLabel}</span>
+          </div>
           <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Source : Statuspage officielle</div>
         </div>`;
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
@@ -4429,8 +4697,12 @@ export class DeckGLMap {
     this.map.on('click', LYR_IXP_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties ?? {};
-      const stCol = p.status === 'operational' ? '#C4B5FD' : p.status === 'outage' ? '#EF4444' : '#F59E0B';
+      const stCol = p.status === 'operational' ? '#2DD4BF' : p.status === 'outage' ? '#0F766E' : '#14B8A6';
       const stLbl = p.status === 'operational' ? 'Opérationnel' : p.status === 'outage' ? 'En panne' : 'Dégradé';
+      const realLng = Number(p.realLng ?? e.lngLat.lng);
+      const realLat = Number(p.realLat ?? e.lngLat.lat);
+      const offsetMeters = Number(p.offsetMeters ?? 0);
+      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
       const html = `
         <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;">
           <h4 style="margin:0 0 2px;font-weight:700;font-size:14px;color:#fff;">${p.name ?? 'IXP'}</h4>
@@ -4447,6 +4719,14 @@ export class DeckGLMap {
             <span style="color:#9898a8">Capacité :</span>
             <span style="font-weight:600">${p.speedGbps ?? '—'} Gbps</span>
           </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
+            <span style="color:#9898a8">Coord. réelle</span>
+            <span>${realLat.toFixed(4)}, ${realLng.toFixed(4)}</span>
+            <span style="color:#9898a8">Décalage affichage</span>
+            <span>${offsetMeters > 0 ? `${Math.round(offsetMeters)} m` : 'Aucun'}</span>
+            <span style="color:#9898a8">Mis à jour</span>
+            <span>${updatedLabel}</span>
+          </div>
           <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Source : PeeringDB</div>
         </div>`;
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px', className: 'dark-popup' })
@@ -4454,9 +4734,31 @@ export class DeckGLMap {
     });
 
     // ─── Internet / BGP outage interactions ───
-    [LYR_NET_ISP, LYR_NET_ISP_RING, LYR_NET_IODA_CORE].forEach(lyr => {
+    [LYR_NET_ISP, LYR_NET_ISP_RING, LYR_NET_IODA_CORE, LYR_NET_ISP_CLUSTER, LYR_NET_IODA_CLUSTER].forEach(lyr => {
       this.map!.on('mouseenter', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
       this.map!.on('mouseleave', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+    });
+
+    // Clic sur un cluster ISP → zoom in pour dé-agréger
+    this.map.on('click', LYR_NET_ISP_CLUSTER, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const clusterId = e.features[0].properties?.cluster_id as number;
+      const coords = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+      (this.map.getSource(SRC_NET_ISP) as maplibregl.GeoJSONSource)
+        .getClusterExpansionZoom(clusterId)
+        .then(zoom => { this.map?.flyTo({ center: coords, zoom: zoom + 0.5, duration: 600, essential: true }); })
+        .catch(() => { this.map?.flyTo({ center: coords, zoom: (this.map.getZoom() ?? 5) + 2, duration: 600, essential: true }); });
+    });
+
+    // Clic sur un cluster IODA → zoom in pour dé-agréger
+    this.map.on('click', LYR_NET_IODA_CLUSTER, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const clusterId = e.features[0].properties?.cluster_id as number;
+      const coords = (e.features[0].geometry as GeoJSON.Point).coordinates as [number, number];
+      (this.map.getSource(SRC_NET_IODA) as maplibregl.GeoJSONSource)
+        .getClusterExpansionZoom(clusterId)
+        .then(zoom => { this.map?.flyTo({ center: coords, zoom: zoom + 0.5, duration: 600, essential: true }); })
+        .catch(() => { this.map?.flyTo({ center: coords, zoom: (this.map.getZoom() ?? 5) + 2, duration: 600, essential: true }); });
     });
 
     this.map.on('click', LYR_NET_ISP, (e) => {
@@ -4464,25 +4766,73 @@ export class DeckGLMap {
       const p = e.features[0].properties ?? {};
       const visColor = p.status === 'outage' ? '#EF4444' : p.status === 'degraded' ? '#F59E0B' : '#10B981';
       const statusLabel = p.status === 'outage' ? 'Panne' : p.status === 'degraded' ? 'Dégradé' : 'Normal';
-      const html = `
-        <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;">
-          <h4 style="margin:0 0 4px;font-weight:700;font-size:14px;color:#fff;">${p.ispName ?? `AS${p.asn}`}</h4>
-          <div style="font-size:11px;color:#6366f1;margin-bottom:10px;">AS${p.asn} · BGP / Internet</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
-            <span style="color:#9898a8">Statut :</span>
-            <span style="font-weight:700;color:${visColor}">${statusLabel}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
-            <span style="color:#9898a8">Visibilité BGP :</span>
-            <span style="font-weight:600">${p.visibility ?? '—'} %</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;">
-            <span style="color:#9898a8">Préfixes actifs :</span>
-            <span style="font-weight:600">${Number(p.prefixCount ?? 0).toLocaleString('fr-FR')} / ${Number(p.prefixCountNormal ?? 0).toLocaleString('fr-FR')}</span>
-          </div>
-          <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Source : BGPView</div>
+      const ixList: string[] = (() => { try { return JSON.parse(p.ixList ?? '[]'); } catch { return []; } })();
+      const v4 = Number(p.prefixV4 ?? 0);
+      const v6 = Number(p.prefixV6 ?? 0);
+      const totalPfx = v4 + v6;
+      const ipv6Pct = totalPfx > 0 ? Math.round((v6 / totalPfx) * 100) : 0;
+
+      // Section helper
+      const row = (label: string, value: string, valueColor = '') =>
+        `<div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px;">
+          <span style="color:#9898a8">${label}</span>
+          <span style="font-weight:600;color:${valueColor || '#e8e8ec'}">${value}</span>
         </div>`;
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
+
+      const html = `
+        <div style="color:#e8e8ec;font-family:sans-serif;min-width:260px;max-width:300px;">
+          <div style="margin-bottom:10px;">
+            <div style="font-weight:700;font-size:15px;color:#fff;margin-bottom:2px;">${p.ispName ?? `AS${p.asn}`}</div>
+            <div style="font-size:10px;color:#6366f1;">AS${p.asn} · ${p.networkType ?? 'Réseau'}</div>
+          </div>
+
+          <div style="background:${visColor}18;border:1px solid ${visColor}40;border-radius:8px;padding:8px 10px;margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:11px;color:${visColor};font-weight:700;text-transform:uppercase;">Statut BGP : ${statusLabel}</span>
+              <span style="font-size:13px;font-weight:800;color:${visColor}">${p.visibility ?? '—'} %</span>
+            </div>
+            <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:5px;overflow:hidden;">
+              <div style="height:100%;width:${p.visibility ?? 100}%;background:${visColor};border-radius:2px;"></div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:6px;">Routage BGP</div>
+            ${row('Préfixes actifs', `${Number(p.prefixCount ?? 0).toLocaleString('fr-FR')} / ${Number(p.prefixCountNormal ?? 0).toLocaleString('fr-FR')}`)}
+            ${row('IPv4 annoncés', v4.toLocaleString('fr-FR'))}
+            ${row('IPv6 annoncés', `${v6.toLocaleString('fr-FR')} (${ipv6Pct} %)`, ipv6Pct >= 30 ? '#10B981' : '#9898a8')}
+            ${p.trafficEstimation ? row('Capacité estimée', p.trafficEstimation, '#a78bfa') : ''}
+            ${row('Politique peering', p.peeringPolicy ?? 'N/A')}
+          </div>
+
+          ${ixList.length > 0 ? `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:5px;">Points d'échange (IX)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              ${ixList.map(ix => `<span style="font-size:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:4px;padding:2px 6px;color:#a5b4fc;">${ix}</span>`).join('')}
+            </div>
+          </div>` : ''}
+
+          ${(p.arcepFiber || p.mobile) ? `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:6px;">Réseau FR (ARCEP)</div>
+            ${p.arcepFiber ? row('Fibre (locaux éligibles)', p.arcepFiber, '#10B981') : ''}
+            ${p.mobile && p.mobile !== 'N/A' ? row('Mobile', p.mobile) : ''}
+          </div>` : ''}
+
+          ${p.ipv6Label ? `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px;">IPv6</div>
+            <div style="font-size:11px;color:#6ee7b7;">${p.ipv6Label}</div>
+          </div>` : ''}
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">
+            ${p.lookingGlass ? `<a href="${p.lookingGlass}" target="_blank" rel="noopener" style="font-size:10px;color:#6366f1;text-decoration:none;">🔍 Looking Glass</a>` : ''}
+            ${p.noc ? `<a href="mailto:${p.noc}" style="font-size:10px;color:#6b7280;text-decoration:none;">📧 NOC</a>` : ''}
+            <span style="font-size:10px;color:#6b7280;margin-left:auto;">BGPView · ARCEP</span>
+          </div>
+        </div>`;
+      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
         .setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
 
@@ -5412,8 +5762,10 @@ export class DeckGLMap {
     const getAisAngle = (d: AisShipData): number => this.getAisDeckAngle(d);
     const maritimeLabelData = this.globalTrafficData.filter((ship) => {
       if (!ship.name || ship.name.trim().length === 0) return false;
-      if (ship.mmsi === this._highlightedMmsi || ship.mmsi === this._selectedShipMmsi) return true;
-      return this.viewState.zoom >= 8;
+      if (ship.mmsi && (ship.mmsi === this._highlightedMmsi || ship.mmsi === this._selectedShipMmsi)) return true;
+      // Pour éviter l'affichage trop brouillon: on n'affiche les noms de TOUS les navires
+      // que si le zoom est suffisant, sinon on ne garde que le navire survolé/sélectionné.
+      return this.viewState.zoom >= 10;
     });
     return [
       new DayNightLayer({
@@ -5479,7 +5831,7 @@ export class DeckGLMap {
       new TextLayer<AisShipData>({
         id: 'deck-ais-traffic-labels',
         data: maritimeLabelData,
-        visible: this.globalTrafficVisible && this.viewState.zoom >= 8,
+        visible: this.globalTrafficVisible,
         opacity: maritimeDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AisShipData) => [Number(d.lon), Number(d.lat)],
@@ -6890,7 +7242,8 @@ export class DeckGLMap {
 
       // Hide if clustered (zoom < 12 and point is in a cluster area)
       const zoom = this.map.getZoom();
-      marker.style.display = zoom >= 10 ? 'block' : 'none';
+      const isVisible = (this.currentLayers?.news ?? true) && zoom >= 10;
+      marker.style.display = isVisible ? 'block' : 'none';
     }
   }
 
@@ -6923,7 +7276,8 @@ export class DeckGLMap {
         marker.style.left = `${pos.x}px`;
         marker.style.top = `${pos.y}px`;
         // Hide when zoomed out (clustered area)
-        marker.style.display = zoom >= 10 ? 'block' : 'none';
+        const isVisible = (this.currentLayers?.news ?? true) && zoom >= 10;
+        marker.style.display = isVisible ? 'block' : 'none';
       }
     }
   }
@@ -6964,12 +7318,38 @@ export class DeckGLMap {
     if (!this.map) return;
     const previousCategory = this.legendHoverCategory;
     this.legendHoverCategory = categoryId;
+    const explicitOpacityLayers: Array<{ layerId: string; prop: string }> = [
+      { layerId: LYR_NET_IODA_CLUSTER, prop: 'circle-opacity' },
+      { layerId: LYR_NET_IODA_CLUSTER_COUNT, prop: 'text-opacity' },
+      { layerId: LYR_NET_IODA_GLOW, prop: 'circle-opacity' },
+      { layerId: LYR_NET_IODA_CORE, prop: 'circle-opacity' },
+      { layerId: LYR_NET_ISP_CLUSTER, prop: 'circle-opacity' },
+      { layerId: LYR_NET_ISP_CLUSTER_COUNT, prop: 'text-opacity' },
+      { layerId: LYR_NET_ISP_GLOW, prop: 'circle-opacity' },
+      { layerId: LYR_NET_ISP_RING, prop: 'circle-stroke-opacity' },
+      { layerId: LYR_NET_ISP, prop: 'circle-opacity' },
+      { layerId: LYR_DC_CLUSTER, prop: 'circle-opacity' },
+      { layerId: LYR_DC_CLUSTER_COUNT, prop: 'text-opacity' },
+      { layerId: LYR_DC_GLOW, prop: 'circle-opacity' },
+      { layerId: LYR_DC_CORE, prop: 'icon-opacity' },
+      { layerId: LYR_IXP_CLUSTER, prop: 'circle-opacity' },
+      { layerId: LYR_IXP_CLUSTER_COUNT, prop: 'text-opacity' },
+      { layerId: LYR_IXP_CIRCLE, prop: 'icon-opacity' },
+    ];
 
     const allLegendLayers = [
       LYR_HEALTH_FILL, LYR_HEALTH_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HEALTH_OSCOUR_CIRCLES,
       LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
+      LYR_POWER_FILL, LYR_POWER_LINE,
+      LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE,
+      LYR_CITIZEN_FILL, LYR_CITIZEN_LINE,
+      LYR_TELECOM_PTS,
+      LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
+      LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
+      LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
+      LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       LYR_TRAFFIC, LYR_AIR_TRAFFIC_LABEL,
     ];
 
@@ -6982,6 +7362,20 @@ export class DeckGLMap {
       activeLayers = [LYR_HEALTH_OSCOUR_CIRCLES];
     } else if (categoryId === 'hospitals') {
       activeLayers = [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL];
+    } else if (categoryId === 'outagesElec') {
+      activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
+    } else if (categoryId === 'outagesTelecom') {
+      activeLayers = [LYR_TELECOM_PTS];
+    } else if (categoryId === 'outagesInternet') {
+      activeLayers = [
+        LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
+        LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
+      ];
+    } else if (categoryId === 'outagesCloud') {
+      activeLayers = [
+        LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
+        LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
+      ];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC];
     } else if (categoryId === 'trafficAir') {
@@ -6998,8 +7392,12 @@ export class DeckGLMap {
         let prop = 'fill-opacity';
         if (layer.type === 'line') prop = 'line-opacity';
         if (layer.type === 'circle') prop = 'circle-opacity';
-        if (layer.type === 'symbol') prop = 'text-opacity';
+        if (layer.type === 'symbol') {
+          const symbolLayout = (layer as { layout?: Record<string, unknown> }).layout;
+          prop = symbolLayout?.['icon-image'] ? 'icon-opacity' : 'text-opacity';
+        }
         if (layer.type === 'raster') prop = 'raster-opacity';
+        if (layerId === LYR_NET_ISP_RING) prop = 'circle-stroke-opacity';
 
         const orig = this.map!.getPaintProperty(layerId, prop) ?? 1;
         this.originalOpacities.set(layerId, { prop, orig });
@@ -7020,6 +7418,32 @@ export class DeckGLMap {
         }
       }
     });
+
+    const outageFocusGroups: Record<string, string[]> = {
+      outagesInternet: [
+        LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
+        LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
+      ],
+      outagesCloud: [
+        LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
+        LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
+      ],
+    };
+
+    const focusedOutageLayers = categoryId ? outageFocusGroups[categoryId] : undefined;
+    if (focusedOutageLayers) {
+      explicitOpacityLayers.forEach(({ layerId, prop }) => {
+        const layer = this.map!.getLayer(layerId);
+        if (!layer) return;
+        const base = this.originalOpacities.get(layerId)?.orig ?? this.map!.getPaintProperty(layerId, prop) ?? 1;
+        const isTarget = focusedOutageLayers.includes(layerId);
+        if (Array.isArray(base)) {
+          this.map!.setPaintProperty(layerId, prop, ['*', base, isTarget ? 1 : 0.28]);
+        } else {
+          this.map!.setPaintProperty(layerId, prop, isTarget ? base : Number(base) * 0.28);
+        }
+      });
+    }
 
     if (previousCategory !== categoryId) {
       this.refreshAisLayers();
@@ -8504,6 +8928,23 @@ export class DeckGLMap {
   }
   private _lastHoveredISNRDeptId: number | null = null;
 
+  // ─── Rail Network (SNCF disruptions) ───
+
+  /**
+   * Update the persistent rail disruption layer.
+   * Call with the result of buildRailNetworkData(disruptions).
+   * Pass empty FeatureCollections to clear the layer.
+   */
+  updateRailNetwork(data: RailNetworkData): void {
+    if (!this.map) return;
+
+    const arcSrc = this.map.getSource(SRC_RAIL_ARCS) as maplibregl.GeoJSONSource | undefined;
+    const staSrc = this.map.getSource(SRC_RAIL_STATIONS) as maplibregl.GeoJSONSource | undefined;
+
+    arcSrc?.setData(data.arcs);
+    staSrc?.setData(data.stations);
+  }
+
   // ─── Train Route Highlight ───
 
   /**
@@ -8724,7 +9165,6 @@ export class DeckGLMap {
       this.map.setPaintProperty(LYR_NET_ISP, 'circle-color', [
         'case', ['==', ['get', 'asn'], data.asn], '#FFFFFF', statusColor,
       ]);
-      this.map.flyTo({ center: data.coordinates, zoom: Math.max(this.map.getZoom(), 7), duration: 800, essential: true });
     } else {
       this.map.setPaintProperty(LYR_NET_ISP_RING, 'circle-stroke-color', statusColor);
       this.map.setPaintProperty(LYR_NET_ISP_RING, 'circle-radius', ['interpolate', ['linear'], ['zoom'], 4, 8, 10, 14]);
@@ -8746,7 +9186,6 @@ export class DeckGLMap {
       this.map.setPaintProperty(LYR_NET_IODA_GLOW, 'circle-opacity', [
         'case', ['==', ['get', 'id'], data.id], 0.9, 0.5,
       ]);
-      this.map.flyTo({ center: data.coordinates, zoom: Math.max(this.map.getZoom(), 6), duration: 800, essential: true });
     } else {
       this.map.setPaintProperty(LYR_NET_IODA_CORE, 'circle-stroke-color', '#0a0a0f');
       this.map.setPaintProperty(LYR_NET_IODA_CORE, 'circle-stroke-width', 1.5);
@@ -8759,8 +9198,8 @@ export class DeckGLMap {
     if (!this.map) return;
     const defaultColor = [
       'match', ['get', 'status'],
-      'operational', '#A78BFA', 'degraded', '#F59E0B', 'partial', '#F97316',
-      'outage', '#EF4444', 'maintenance', '#8B5CF6', 'unknown', '#A78BFA', '#A78BFA',
+      'operational', '#38BDF8', 'degraded', '#0EA5E9', 'partial', '#0284C7',
+      'outage', '#1D4ED8', 'maintenance', '#2563EB', 'unknown', '#38BDF8', '#38BDF8',
     ] as maplibregl.ExpressionSpecification;
     if (data) {
       this.map.setPaintProperty(LYR_DC_CORE, 'icon-color', [
@@ -8769,7 +9208,6 @@ export class DeckGLMap {
       this.map.setPaintProperty(LYR_DC_CORE, 'icon-opacity', [
         'case', ['==', ['get', 'id'], data.id], 1, 0.6,
       ]);
-      this.map.flyTo({ center: data.coordinates, zoom: Math.max(this.map.getZoom(), 7), duration: 800, essential: true });
     } else {
       this.map.setPaintProperty(LYR_DC_CORE, 'icon-color', defaultColor);
       this.map.setPaintProperty(LYR_DC_CORE, 'icon-opacity', 0.95);
@@ -8781,7 +9219,7 @@ export class DeckGLMap {
     if (!this.map) return;
     const defaultColor = [
       'match', ['get', 'status'],
-      'outage', '#EF4444', 'degraded', '#F59E0B', '#C4B5FD',
+      'outage', '#0F766E', 'degraded', '#14B8A6', '#2DD4BF',
     ] as maplibregl.ExpressionSpecification;
     if (data) {
       this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-color', [
@@ -8790,7 +9228,6 @@ export class DeckGLMap {
       this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-opacity', [
         'case', ['==', ['get', 'id'], data.id], 1, 0.55,
       ]);
-      this.map.flyTo({ center: data.coordinates, zoom: Math.max(this.map.getZoom(), 7), duration: 800, essential: true });
     } else {
       this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-color', defaultColor);
       this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-opacity', 0.90);
@@ -8807,12 +9244,24 @@ export class DeckGLMap {
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: isp.coordinates },
       properties: {
-        asn: isp.asn,
-        ispName: isp.ispName,
-        prefixCount: isp.prefixCount,
+        asn:               isp.asn,
+        ispName:           isp.ispName,
+        prefixCount:       isp.prefixCount,
         prefixCountNormal: isp.prefixCountNormal,
-        visibility: isp.visibility,
-        status: isp.status,
+        prefixV4:          isp.prefixV4,
+        prefixV6:          isp.prefixV6,
+        visibility:        isp.visibility,
+        status:            isp.status,
+        trafficEstimation: isp.trafficEstimation ?? null,
+        lookingGlass:      isp.lookingGlass ?? null,
+        ixList:            JSON.stringify(isp.ixList ?? []),
+        peerCount:         isp.peerCount ?? 0,
+        networkType:       isp.networkType ?? '',
+        peeringPolicy:     isp.peeringPolicy ?? '',
+        arcepFiber:        isp.arcepFiber ?? null,
+        mobile:            isp.mobile ?? null,
+        noc:               isp.noc ?? null,
+        ipv6Label:         isp.ipv6Label ?? null,
       },
     }));
     (this.map.getSource(SRC_NET_ISP) as maplibregl.GeoJSONSource)?.setData(ispFC);
@@ -8852,6 +9301,10 @@ export class DeckGLMap {
         region: dc.region,
         status: dc.status,
         incidents: JSON.stringify(dc.incidents),
+        lastUpdated: dc.lastUpdated,
+        realLng: dc.coordinates[0],
+        realLat: dc.coordinates[1],
+        offsetMeters: 0,
       },
     }));
     (this.map.getSource(SRC_DC) as maplibregl.GeoJSONSource)?.setData(dcFC);
@@ -8868,6 +9321,10 @@ export class DeckGLMap {
         peersCount: ixp.peersCount,
         speedGbps: ixp.speedGbps,
         status: ixp.status,
+        lastUpdated: ixp.lastUpdated,
+        realLng: ixp.coordinates[0],
+        realLat: ixp.coordinates[1],
+        offsetMeters: 0,
       },
     }));
     (this.map.getSource(SRC_IXP) as maplibregl.GeoJSONSource)?.setData(ixpFC);
@@ -9900,7 +10357,12 @@ export class DeckGLMap {
 
   // ─── Layer Visibility Toggle ───
 
+  private currentLayers?: MapLayers;
+
   setLayerVisibility(layers: MapLayers): void {
+    this.currentLayers = layers;
+    // Update DOM overlay immediately to reflect news toggle
+    this.updatePulseMarkerPositions();
     if (!this.map) return;
 
     const vis = (visible: boolean) => visible ? 'visible' : 'none';
@@ -9984,6 +10446,12 @@ export class DeckGLMap {
     this.setVis(LYR_OIL_FLOW_LABEL, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
     this.setVis(LYR_TRAFFIC_INCIDENTS, 'none');
+    const railVis = vis(layers.trafficRail ?? false);
+    this.setVis(LYR_RAIL_ARC_GLOW,      railVis);
+    this.setVis(LYR_RAIL_ARC,           railVis);
+    this.setVis(LYR_RAIL_STATION_GLOW,  railVis);
+    this.setVis(LYR_RAIL_STATION,       railVis);
+    this.setVis(LYR_RAIL_STATION_LABEL, railVis);
     this.setVis(LYR_METROPOLES_GLOW, vis(layers.metropoles));
     this.setVis(LYR_METROPOLES_CIRCLE, vis(layers.metropoles));
     this.setVis(LYR_METROPOLES_LABEL, vis(layers.metropoles));
@@ -10020,11 +10488,21 @@ export class DeckGLMap {
     this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_LINE, vis(layers.outagesElec));
     this.setVis(LYR_TELECOM_PTS, vis(layers.outagesTelecom));
-    this.setVis(LYR_NET_IODA_GLOW, vis(layers.outagesInternet));
-    this.setVis(LYR_NET_IODA_CORE, vis(layers.outagesInternet));
-    this.setVis(LYR_NET_ISP_GLOW, vis(layers.outagesInternet));
-    this.setVis(LYR_NET_ISP_RING, vis(layers.outagesInternet));
-    this.setVis(LYR_NET_ISP, vis(layers.outagesInternet));
+    this.setVis(LYR_NET_IODA_CLUSTER,       vis(layers.outagesInternet));
+    this.setVis(LYR_NET_IODA_CLUSTER_COUNT, vis(layers.outagesInternet));
+    this.setVis(LYR_NET_IODA_GLOW,          vis(layers.outagesInternet));
+    this.setVis(LYR_NET_IODA_CORE,          vis(layers.outagesInternet));
+    this.setVis(LYR_NET_ISP_CLUSTER,        vis(layers.outagesInternet));
+    this.setVis(LYR_NET_ISP_CLUSTER_COUNT,  vis(layers.outagesInternet));
+    this.setVis(LYR_NET_ISP_GLOW,           vis(layers.outagesInternet));
+    this.setVis(LYR_NET_ISP_RING,           vis(layers.outagesInternet));
+    this.setVis(LYR_NET_ISP,                vis(layers.outagesInternet));
+    // Cloud/IXP clusters
+    this.setVis(LYR_DC_CLUSTER, vis(layers.outagesCloud));
+    this.setVis(LYR_DC_CLUSTER_COUNT, vis(layers.outagesCloud));
+    this.setVis(LYR_IXP_CLUSTER, vis(layers.outagesCloud));
+    this.setVis(LYR_IXP_CLUSTER_COUNT, vis(layers.outagesCloud));
+    // Cloud/IXP individual markers (hidden by cluster filter when zoomed out)
     this.setVis(LYR_DC_GLOW, vis(layers.outagesCloud));
     this.setVis(LYR_DC_CORE, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));

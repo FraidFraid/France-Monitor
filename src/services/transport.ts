@@ -4,7 +4,7 @@
  * Fallback sur les données mock si l'API n'est pas disponible.
  */
 
-import type { TransportDisruption, ThreatLevel, TrainStop } from '../types/index.ts';
+import type { TransportDisruption, ThreatLevel, TrainStop, RailNetworkData } from '../types/index.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import { MOCK_TRAFFIC_SEGMENTS } from '../config/mock-data.ts';
 
@@ -175,7 +175,7 @@ export async function fetchSncfDisruptions(): Promise<TransportDisruption[]> {
     }
 
     try {
-        const resp = await fetch('/api/sncf/disruptions', {
+        const resp = await fetch('/api/transport/disruptions', {
             signal: AbortSignal.timeout(15000),
         });
 
@@ -437,4 +437,80 @@ export function countDisruptionsBySeverity(
     }
 
     return counts;
+}
+
+/**
+ * Builds two GeoJSON FeatureCollections from disruption data for map rendering.
+ *
+ * Arcs: one LineString per disruption that has both departure AND arrival coordinates.
+ * Stations: deduplicated stop points across all disruptions — worst severity per station.
+ *
+ * Fallback strategy (documented for OSINT clarity):
+ * - Disruption with only departure coord → station point emitted, no arc
+ * - Disruption with no coords → skipped entirely (no geo context available)
+ */
+export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNetworkData {
+    // ─── Arcs ───
+    const arcFeatures: RailNetworkData['arcs']['features'] = [];
+
+    for (const d of disruptions) {
+        const dep = d.departure?.coordinates;
+        const arr = d.arrival?.coordinates;
+
+        // Arc requires both endpoints; skip otherwise (station-only fallback below)
+        if (!dep || !arr) continue;
+
+        arcFeatures.push({
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: [dep, arr],
+            },
+            properties: {
+                id: d.id,
+                severity: d.severity,
+                type: d.type,
+                line: d.line,
+                description: d.description,
+            },
+        });
+    }
+
+    // ─── Stations: deduplicate by name, keep worst severity ───
+    const SEVERITY_ORDER: Record<ThreatLevel, number> = {
+        critical: 0, high: 1, medium: 2, low: 3, info: 4,
+    };
+
+    const stationMap = new Map<string, { coords: [number, number]; severity: ThreatLevel; count: number }>();
+
+    const recordStop = (stop: TrainStop | undefined, severity: ThreatLevel): void => {
+        if (!stop?.coordinates || !stop.name) return;
+        const existing = stationMap.get(stop.name);
+        if (!existing) {
+            stationMap.set(stop.name, { coords: stop.coordinates, severity, count: 1 });
+        } else {
+            existing.count++;
+            if (SEVERITY_ORDER[severity] < SEVERITY_ORDER[existing.severity]) {
+                existing.severity = severity;
+            }
+        }
+    };
+
+    for (const d of disruptions) {
+        recordStop(d.departure, d.severity);
+        recordStop(d.arrival, d.severity);
+    }
+
+    const stationFeatures: RailNetworkData['stations']['features'] = Array.from(
+        stationMap.entries()
+    ).map(([name, { coords, severity, count }]) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords },
+        properties: { name, severity, count },
+    }));
+
+    return {
+        arcs: { type: 'FeatureCollection', features: arcFeatures },
+        stations: { type: 'FeatureCollection', features: stationFeatures },
+    };
 }

@@ -75,6 +75,7 @@ export interface MapLayers {
   trafficRoad: boolean;
   trafficMaritime: boolean;
   trafficAir: boolean;
+  trafficRail: boolean;
   metropoles: boolean;
   sovereignty: boolean;
   military: boolean;
@@ -368,6 +369,23 @@ export interface TransportDisruption {
   arrival?: TrainStop;
   affectedStops?: string[];
   coordinates?: [number, number]; // Center point for map highlight [lon, lat]
+}
+
+export interface RailNetworkData {
+  /** LineString features: disrupted arc between departure and arrival */
+  arcs: GeoJSON.FeatureCollection<GeoJSON.LineString, {
+    id: string;
+    severity: string;
+    type: string;
+    line: string;
+    description: string;
+  }>;
+  /** Point features: unique impacted stations, worst severity wins */
+  stations: GeoJSON.FeatureCollection<GeoJSON.Point, {
+    name: string;
+    severity: string;
+    count: number;
+  }>;
 }
 
 // ═══ Map & Geo ═══
@@ -1045,6 +1063,19 @@ export interface IspBgpStatus {
   status: 'normal' | 'degraded' | 'outage';
   coordinates: [number, number]; // [lon, lat] ISP HQ
   lastUpdated: Date;
+  // Enrichissement OSINT
+  trafficEstimation: string | null;  // ex: "100-200 Gbps"
+  lookingGlass: string | null;       // URL looking glass
+  ixList: string[];                  // noms des IX (France-IX, DE-CIX…)
+  peerCount: number;                 // nombre de pairs BGP (v4+v6)
+  prefixV4: number;                  // préfixes IPv4 annoncés
+  prefixV6: number;                  // préfixes IPv6 annoncés
+  networkType: string;               // "Opérateur national", "Cloud"…
+  peeringPolicy: string;             // "Open", "Selective", "Restrictive"
+  arcepFiber: string | null;         // couverture fibre ARCEP
+  mobile: string | null;             // "5G NR", "N/A"
+  noc: string | null;                // contact NOC
+  ipv6Label: string | null;          // description IPv6
 }
 
 export interface NetworkOutageState {

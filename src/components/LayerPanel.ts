@@ -454,6 +454,7 @@ export class LayerPanel {
       trafficRoad: 'Incidents routiers temps réel (TomTom OSINT)',
       trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
       trafficAir: 'Trafic aérien civil (airplanes.live) — militaires dans DÉFENSE',
+      trafficRail: 'Réseau ferroviaire SNCF — perturbations actives (arcs + gares)',
       environmentGroup: 'Groupe environnement: météo/crues, feux de forêt et terminateur jour/nuit',
       environmental: 'Alertes météo et crues',
       fires: 'Feux de forêt actifs — données satellite NASA FIRMS (VIIRS, latence ~3h)',

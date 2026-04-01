@@ -64,7 +64,7 @@ import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
-import { fetchSncfDisruptions } from './services/transport.ts';
+import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { fetchNuclearPlantsStatus } from './services/energy.ts';
 import { fetchFiresData } from './services/fires.ts';
 import { fetchTrafficIncidents, filterOsintTrafficIncidents, type TrafficIncident } from './services/traffic.ts';
@@ -112,6 +112,7 @@ const DEFAULT_LAYERS: MapLayers = {
   trafficRoad: false,
   trafficMaritime: false,
   trafficAir: false,
+  trafficRail: false,
   metropoles: false,
   sovereignty: false,
   military: false,
@@ -320,6 +321,29 @@ const AIR_TRAFFIC_LEGEND: LegendCategory = {
   refresh: {
     label: 'Quasi temps réel'
   }
+};
+
+const RAIL_TRAFFIC_LEGEND: LegendCategory = {
+  id: 'trafficRail',
+  title: 'Réseau ferroviaire — Perturbations',
+  columns: 2,
+  items: [
+    { id: 'rail-critical', label: 'Supprimé (NO_SERVICE)',    color: '#ff3b30', shape: 'square' },
+    { id: 'rail-high',     label: 'Retards importants',       color: '#ff9500', shape: 'square' },
+    { id: 'rail-medium',   label: 'Service réduit',           color: '#ffcc00', shape: 'square' },
+    { id: 'rail-low',      label: 'Perturbation mineure',     color: '#8e8e93', shape: 'square' },
+    { id: 'rail-arc',      label: 'Arc départ → arrivée',     color: '#c0c0c0', shape: 'square' },
+    { id: 'rail-station',  label: 'Gare impactée',            color: '#ffffff', shape: 'circle' },
+  ],
+  source: {
+    label: 'SNCF API — info-trafic.sncf.com',
+    year: new Date().getFullYear(),
+  },
+  refresh: { label: 'Environ 5 min' },
+  notes: [
+    'Arcs affichés uniquement si départ ET arrivée connus.',
+    'Gare seule si coordonnées partielles.',
+  ],
 };
 
 const MILITARY_LEGEND: LegendCategory = {
@@ -561,13 +585,19 @@ const OUTAGES_INTERNET_LEGEND: LegendCategory = {
   id: 'outagesInternet',
   title: 'Pannes Internet',
   type: 'categorical',
+  columns: 2,
+  splitIndex: 4,
   items: [
-    { id: 'ioda-critical', label: 'Anomalie BGP ≥ 80',   color: '#EF4444', shape: 'ring' },
-    { id: 'ioda-severe',   label: 'Anomalie BGP 50–79',  color: '#F59E0B', shape: 'ring' },
-    { id: 'ioda-low',      label: 'Anomalie BGP < 50',   color: '#10B981', shape: 'ring' },
-    { id: 'isp-outage',    label: 'Opérateur en panne',  color: '#EF4444', shape: 'ring' },
-    { id: 'isp-degraded',  label: 'Opérateur dégradé',   color: '#F59E0B', shape: 'ring' },
-    { id: 'isp-normal',    label: 'Opérateur normal',    color: '#10B981', shape: 'ring' },
+    // ── Anomalies IODA (colonne gauche) ──
+    { id: 'ioda-header',   label: 'Anomalies IODA',      color: '#9898a8', isHeader: true },
+    { id: 'ioda-critical', label: 'Critique (score ≥ 80)',color: '#EF4444', shape: 'ring' },
+    { id: 'ioda-severe',   label: 'Sévère (50–79)',       color: '#F59E0B', shape: 'ring' },
+    { id: 'ioda-low',      label: 'Modérée (< 50)',       color: '#10B981', shape: 'ring' },
+    // ── Opérateurs ISP / BGP (colonne droite) ──
+    { id: 'isp-header',   label: 'Opérateurs BGP',       color: '#9898a8', isHeader: true },
+    { id: 'isp-outage',   label: 'En panne',              color: '#EF4444', gradient: 'radial-gradient(circle, #EF4444 32%, transparent 32%, transparent 55%, #EF4444 55%, #EF4444 78%, transparent 78%)', shape: 'circle' },
+    { id: 'isp-degraded', label: 'Dégradé',               color: '#F59E0B', gradient: 'radial-gradient(circle, #F59E0B 32%, transparent 32%, transparent 55%, #F59E0B 55%, #F59E0B 78%, transparent 78%)', shape: 'circle' },
+    { id: 'isp-normal',   label: 'Normal',                color: '#10B981', gradient: 'radial-gradient(circle, #10B981 32%, transparent 32%, transparent 55%, #10B981 55%, #10B981 78%, transparent 78%)', shape: 'circle' },
   ],
   source: { label: 'IODA (CAIDA / Georgia Tech) · BGPView' },
   refresh: { label: '5 min' },
@@ -579,11 +609,11 @@ const OUTAGES_CLOUD_LEGEND: LegendCategory = {
   title: 'Pannes Cloud / IXP',
   type: 'categorical',
   items: [
-    { id: 'dc-ok',   label: 'Datacenter opérationnel', color: '#A78BFA', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
-    { id: 'dc-deg',  label: 'Datacenter dégradé',      color: '#F59E0B', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
-    { id: 'dc-out',  label: 'Datacenter en panne',     color: '#EF4444', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
-    { id: 'ixp-ok',  label: 'Point d\'échange (IXP)',  color: '#C4B5FD', shape: 'square',     borderColor: '#0a0a0f', borderWidth: 1 },
-    { id: 'ixp-out', label: 'IXP dégradé / hors service', color: '#EF4444', shape: 'square', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-ok',   label: 'Datacenter opérationnel', color: '#60A5FA', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-deg',  label: 'Datacenter dégradé',      color: '#3B82F6', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-out',  label: 'Datacenter en panne',     color: '#1D4ED8', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'ixp-ok',  label: 'Point d\'échange (IXP)',  color: '#BFDBFE', shape: 'square',     borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'ixp-out', label: 'IXP dégradé / hors service', color: '#64748B', shape: 'square', borderColor: '#0a0a0f', borderWidth: 1 },
   ],
   source: { label: 'OVH · Scaleway · AWS · GCP · Cloudflare Radar · PeeringDB' },
   refresh: { label: '5 min' },
@@ -653,6 +683,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     dependsOnGroup: true,
     label: 'Trafic aérien (preview)',
     legend: AIR_TRAFFIC_LEGEND,
+  },
+  {
+    id: 'trafficRail',
+    groupId: 'traffic',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Réseau ferroviaire (SNCF)',
+    legend: RAIL_TRAFFIC_LEGEND,
   },
   // ─── Energy Group ───
   {
@@ -989,7 +1027,30 @@ export class App {
     this.activeLayers.traffic =
       this.activeLayers.trafficRoad ||
       this.activeLayers.trafficMaritime ||
-      this.activeLayers.trafficAir;
+      this.activeLayers.trafficAir ||
+      this.activeLayers.trafficRail;
+  }
+
+  private refreshLegendVisibility(): void {
+    const groupsOn = new Set(
+      LAYER_CONFIGS
+        .filter(l => l.role === 'groupMaster' && this.activeLayers[l.id])
+        .map(l => l.groupId)
+    );
+
+    for (const config of LAYER_CONFIGS) {
+      if (config.legend) {
+        let isVisible = false;
+        if (this.activeLayers[config.id]) {
+          if (config.role === 'child' && config.dependsOnGroup) {
+            isVisible = groupsOn.has(config.groupId);
+          } else {
+            isVisible = true;
+          }
+        }
+        this.mapLegend?.setCategoryVisibility(config.legend.id, isVisible);
+      }
+    }
   }
 
   private refreshTrafficLegend(): void {
@@ -998,6 +1059,7 @@ export class App {
     this.mapLegend.setCategoryVisibility('trafficRoad', this.activeLayers.traffic && this.activeLayers.trafficRoad);
     this.mapLegend.setCategoryVisibility('trafficMaritime', this.activeLayers.traffic && this.activeLayers.trafficMaritime);
     this.mapLegend.setCategoryVisibility('trafficAir', this.activeLayers.traffic && this.activeLayers.trafficAir);
+    this.mapLegend.setCategoryVisibility('trafficRail', this.activeLayers.traffic && this.activeLayers.trafficRail);
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
@@ -1073,7 +1135,7 @@ export class App {
       merged.newsGroup = merged.news || merged.stability;
       // Back-compat: old shared links used `traffic` for road incidents.
       if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
-      merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir;
+      merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir || (merged.trafficRail ?? false);
       merged.energyGroup = merged.energy || merged.gas || merged.oil || merged.infrastructure || merged.metropoles;
       merged.environmentGroup = merged.environmental || merged.fires || (merged.dayNight ?? false);
       merged.sovereignty = merged.military || merged.subseaCables || merged.cyber;
@@ -1713,6 +1775,19 @@ export class App {
     this.outagesPanel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
     this.outagesPanel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
     this.outagesPanel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
+    this.outagesPanel.setOnTabChange((tab) => {
+      const categoryId =
+        tab === 'electric' ? 'outagesElec'
+        : tab === 'telecom' ? 'outagesTelecom'
+        : tab === 'internet' ? 'outagesInternet'
+        : tab === 'cloud' ? 'outagesCloud'
+        : null;
+      this.mapContainer?.setLegendHover(categoryId);
+    });
+    this.outagesPanel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
+    this.outagesPanel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
+    this.outagesPanel.setOnDcClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
+    this.outagesPanel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
     this.outagesPanel.mount();
 
     // Defense Panel (Cable threats) - positioned below CyberPanel
@@ -1943,7 +2018,7 @@ export class App {
         this.activeLayers.fires ||
         (this.activeLayers.dayNight ?? false);
     }
-    if (key === 'trafficRoad' || key === 'trafficMaritime' || key === 'trafficAir') {
+    if (key === 'trafficRoad' || key === 'trafficMaritime' || key === 'trafficAir' || key === 'trafficRail') {
       this.syncTrafficGroupState();
     }
     if (key === 'outagesElec' || key === 'outagesTelecom' || key === 'outagesInternet' || key === 'outagesCloud') {
@@ -1959,26 +2034,7 @@ export class App {
 
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
 
-    // Dynamic legend visibility using group logic
-    const groupsOn = new Set(
-      LAYER_CONFIGS
-        .filter(l => l.role === "groupMaster" && this.activeLayers[l.id])
-        .map(l => l.groupId)
-    );
-
-    for (const config of LAYER_CONFIGS) {
-      if (config.legend) {
-        let isVisible = false;
-        if (this.activeLayers[config.id]) {
-          if (config.role === 'child' && config.dependsOnGroup) {
-            isVisible = groupsOn.has(config.groupId);
-          } else {
-            isVisible = true; // standalone or dependsOnGroup=false
-          }
-        }
-        this.mapLegend?.setCategoryVisibility(config.legend.id, isVisible);
-      }
-    }
+    this.refreshLegendVisibility();
     this.refreshTrafficLegend();
 
     // Persist layer state to localStorage for next session
@@ -2296,6 +2352,7 @@ export class App {
     this.mapLegend.addCategory(ROAD_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
+    this.mapLegend.addCategory(RAIL_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(HEALTH_ISS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
     this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
@@ -2315,26 +2372,7 @@ export class App {
     this.mapLegend.addCategory(OUTAGES_CLOUD_LEGEND);
     this.refreshEnergyDataLegends();
 
-    // Initialize legend visibility using the same logic
-    const groupsOn = new Set(
-      LAYER_CONFIGS
-        .filter(l => l.role === "groupMaster" && this.activeLayers[l.id])
-        .map(l => l.groupId)
-    );
-
-    for (const config of LAYER_CONFIGS) {
-      if (config.legend) {
-        let isVisible = false;
-        if (this.activeLayers[config.id]) {
-          if (config.role === 'child' && config.dependsOnGroup) {
-            isVisible = groupsOn.has(config.groupId);
-          } else {
-            isVisible = true;
-          }
-        }
-        this.mapLegend.setCategoryVisibility(config.legend.id, isVisible);
-      }
-    }
+    this.refreshLegendVisibility();
     this.refreshTrafficLegend();
 
     // Handle click on single item popup -> open article link
@@ -2518,10 +2556,10 @@ export class App {
         const aisStatus = getAisStatus();
         const aisDetail = `${AIS_RELAY_URL} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
         this.statusPanel?.updateSource('AIS maritime', {
-          status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'stale',
+          status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'error',
           lastUpdate: aisStatus.connected ? new Date() : null,
-          detail: aisStatus.connected ? aisDetail : `${AIS_RELAY_URL} · relais déconnecté`,
-          error: undefined,
+          detail: aisStatus.connected ? aisDetail : AIS_RELAY_URL,
+          error: aisStatus.connected ? undefined : 'relais déconnecté',
         });
 
         // Navires Marine Nationale pour l'affichage sur la carte (icônes dédiées)
@@ -3384,6 +3422,9 @@ export class App {
     } else {
       this.statusPanel?.updateSource('SNCF', { status: 'stale', lastUpdate: new Date() });
     }
+    // Update rail map layer (empty FCs when no disruptions → clears layer cleanly)
+    const railData = buildRailNetworkData(disruptions);
+    this.mapContainer?.updateRailNetwork(railData);
   }
 
   private async loadMetropoles(): Promise<void> {

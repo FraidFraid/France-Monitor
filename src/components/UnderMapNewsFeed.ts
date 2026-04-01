@@ -49,6 +49,7 @@ const DEFAULT_LAYERS: MapLayers = {
   trafficRoad: false,
   trafficMaritime: true,
   trafficAir: false,
+  trafficRail: false,
   metropoles: false,
   sovereignty: false,
   military: false,

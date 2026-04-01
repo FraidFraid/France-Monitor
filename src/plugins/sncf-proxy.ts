@@ -16,7 +16,7 @@ export function sncfProxyPlugin(): Plugin {
             const env = loadEnv('development', process.cwd(), '');
             const sncfApiKey = env.SNCF_API_KEY;
             // Proxy pour les perturbations SNCF
-            server.middlewares.use('/api/sncf/disruptions', async (_req, res) => {
+            server.middlewares.use('/api/transport/disruptions', async (_req, res) => {
                 const apiKey = sncfApiKey;
 
                 if (!apiKey) {

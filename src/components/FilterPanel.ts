@@ -32,6 +32,7 @@ const DEFAULT_FILTER: FilterState = {
         trafficRoad: false,
         trafficMaritime: true,
         trafficAir: false,
+        trafficRail: false,
         metropoles: false,
         sovereignty: false,
         military: false,
