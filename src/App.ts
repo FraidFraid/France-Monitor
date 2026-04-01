@@ -85,7 +85,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly } from './types/index.ts';
+import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
@@ -937,6 +937,7 @@ export class App {
   private currentEcowattUsesFallback = false;
 
   private currentSncfDisruptions: TransportDisruption[] = [];
+  private currentRailNetworkData: RailNetworkData | null = null;
   private currentFloodSegments: FloodSegment[] = [];
   private currentTrafficIncidents: TrafficIncident[] = [];
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
@@ -1954,7 +1955,8 @@ export class App {
     effective.traffic =
       effective.trafficRoad ||
       effective.trafficMaritime ||
-      effective.trafficAir;
+      effective.trafficAir ||
+      effective.trafficRail;
     const groupsOn = new Set(
       LAYER_CONFIGS
         .filter(l => l.role === "groupMaster" && effective[l.id])
@@ -2065,7 +2067,10 @@ export class App {
     }
     // Show/hide TransportPanel with trafficRail layer
     if (key === 'trafficRail') {
-      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions);
+      if (enabled) {
+        this.transportPanel?.show(this.currentSncfDisruptions);
+        this.fitRailNetworkToView();
+      }
       else this.transportPanel?.hide();
     }
 
@@ -3429,7 +3434,46 @@ export class App {
     }
     // Update rail map layer (empty FCs when no disruptions → clears layer cleanly)
     const railData = buildRailNetworkData(disruptions);
+    this.currentRailNetworkData = railData;
     this.mapContainer?.updateRailNetwork(railData);
+  }
+
+  private fitRailNetworkToView(): void {
+    const data = this.currentRailNetworkData;
+    if (!data) return;
+
+    const coords: Array<[number, number]> = [];
+
+    for (const feature of data.arcs.features) {
+      for (const coord of feature.geometry.coordinates) {
+        coords.push(coord as [number, number]);
+      }
+    }
+
+    for (const feature of data.stations.features) {
+      coords.push(feature.geometry.coordinates as [number, number]);
+    }
+
+    if (coords.length === 0) return;
+
+    let minLng = coords[0][0];
+    let minLat = coords[0][1];
+    let maxLng = coords[0][0];
+    let maxLat = coords[0][1];
+
+    for (const [lng, lat] of coords) {
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+    }
+
+    if (coords.length === 1 || (Math.abs(maxLng - minLng) < 0.02 && Math.abs(maxLat - minLat) < 0.02)) {
+      this.mapContainer?.flyTo(coords[0][0], coords[0][1], 9);
+      return;
+    }
+
+    this.mapContainer?.fitBounds([minLng, minLat, maxLng, maxLat], 90);
   }
 
   private async loadMetropoles(): Promise<void> {
@@ -3658,6 +3702,11 @@ export class App {
       {
         name: 'sncf', task: this.loadSncf().catch(() => {
           this.currentSncfDisruptions = [];
+          this.currentRailNetworkData = null;
+          this.mapContainer?.updateRailNetwork({
+            arcs: { type: 'FeatureCollection', features: [] },
+            stations: { type: 'FeatureCollection', features: [] },
+          });
           this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
         })
       },
