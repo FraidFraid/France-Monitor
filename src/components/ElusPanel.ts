@@ -4,7 +4,6 @@
  * pour la coordonnée cliquée sur la carte.
  */
 
-import { fetchElusByCoords } from '../services/elus.ts';
 import type { ElusInfo, EluData, CommuneInfo } from '../services/elus.ts';
 import { getPartyColor, getPartyLabel } from '../config/party-colors.ts';
 import { GOUVERNEMENT, getMinistersForCategories, type Minister } from '../config/government.ts';
@@ -84,7 +83,7 @@ export class ElusPanel {
         headerTitle.textContent = 'Élus & Représentants';
         this.headerSubtitleEl = document.createElement('div');
         this.headerSubtitleEl.style.cssText = 'color:var(--text-muted);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-        this.headerSubtitleEl.textContent = 'Cliquez sur la carte';
+        this.headerSubtitleEl.textContent = 'En cours de configuration';
         headerText.appendChild(headerTitle);
         headerText.appendChild(this.headerSubtitleEl);
         this.headerEl.appendChild(headerIcon);
@@ -113,17 +112,12 @@ export class ElusPanel {
     }
 
     async show(lat: number, lon: number): Promise<void> {
+        void lat;
+        void lon;
         if (!this.containerEl) return;
         this.containerEl.style.display = '';
-        this._renderLoading();
-
-        try {
-            const data = await fetchElusByCoords(lat, lon);
-            this.lastData = data;
-            this._renderContent(data);
-        } catch {
-            this._renderError();
-        }
+        this.lastData = null;
+        this._showPlaceholderContent();
     }
 
     showPlaceholder(): void {
@@ -230,27 +224,16 @@ export class ElusPanel {
     }
 
     private _showPlaceholderContent(): void {
-        this.headerSubtitleEl.textContent = 'Cliquez sur la carte';
+        this.headerSubtitleEl.textContent = 'En cours de configuration';
         this.contentEl.innerHTML = '';
-        this.contentEl.appendChild(this._governmentSection(this._getDisplayedGovernmentMinisters()));
-        this._syncPanelHeight();
-    }
-
-    private _renderLoading(): void {
-        this.headerSubtitleEl.textContent = 'Chargement…';
         this.contentEl.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;padding:32px;">
-                <div style="text-align:center;">
-                    <div style="width:28px;height:28px;border:3px solid rgba(255,255,255,0.1);border-top-color:var(--text-muted);border-radius:50%;animation:elus-spin 0.8s linear infinite;margin:0 auto 10px;"></div>
-                    <div style="color:var(--text-muted);font-size:11px;">Recherche des élus…</div>
+            <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:3px solid #8e8e93;border-radius:6px;padding:14px;">
+                <div style="color:#e5e7eb;font-size:12px;font-weight:600;margin-bottom:6px;">Module en cours de configuration</div>
+                <div style="color:var(--text-muted);font-size:11px;line-height:1.6;">
+                    Les données élus et représentants ne sont pas livrées dans cette version publique pour le moment.
                 </div>
-            </div>`;
-        this._syncPanelHeight();
-    }
-
-    private _renderError(): void {
-        this.headerSubtitleEl.textContent = 'Erreur';
-        this.contentEl.innerHTML = `<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:20px 8px;">Impossible de récupérer les données.</div>`;
+            </div>
+        `;
         this._syncPanelHeight();
     }
 

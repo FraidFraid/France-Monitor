@@ -13,7 +13,14 @@
 
 export type AisConnectionStatus = 'connecting' | 'connected' | 'stale' | 'disconnected';
 
-export const AIS_RELAY_URL = 'ws://localhost:8090';
+/**
+ * URL du relais AIS WebSocket.
+ * - Dev  : VITE_AIS_RELAY_URL si défini, sinon ws://localhost:8090.
+ * - Prod : VITE_AIS_RELAY_URL si défini, sinon null → layer maritime désactivé silencieusement.
+ */
+export const AIS_RELAY_URL: string | null =
+  import.meta.env.VITE_AIS_RELAY_URL ||
+  (import.meta.env.DEV ? 'ws://localhost:8090' : null);
 
 const STALE_THRESHOLD_MS = 2 * 60 * 1000;   // 2 min sans message → STALE
 const INITIAL_TIMEOUT_MS = 10_000;            // 10s pour le 1er message après open
@@ -64,6 +71,10 @@ function _startStaleCheck(): void {
 
 /** Ouvre le WebSocket. Idempotent si déjà en cours de connexion ou connecté. */
 export function connectAis(): void {
+    if (!AIS_RELAY_URL) {
+        console.info('[AIS] Pas de relais configuré (VITE_AIS_RELAY_URL non défini) — layer maritime désactivé');
+        return;
+    }
     if (_ws && (_ws.readyState === WebSocket.CONNECTING || _ws.readyState === WebSocket.OPEN)) return;
 
     _setStatus('connecting');

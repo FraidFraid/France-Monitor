@@ -34,3 +34,6 @@ services/scrapling-proxy/venv/
 # BD Topage pré-téléchargée (~150 MB, générée par scripts/prepare-topage.mjs)
 public/data/topage/
 scripts/output/france-waterways-major.fgb
+
+# Caches runtime générés (oscour, etc.) — ne pas versionner
+.cache/

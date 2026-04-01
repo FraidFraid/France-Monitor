@@ -1,6 +1,9 @@
 {
   "rewrites": [
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
+    { "source": "/api/rss", "destination": "/api/rss" },
+    { "source": "/api/json-proxy", "destination": "/api/json-proxy" },
+    { "source": "/api/finance/(.*)", "destination": "/api/finance/$1" },
     { "source": "/api/energy/(.*)", "destination": "/api/energy/$1" },
     { "source": "/api/weather/(.*)", "destination": "/api/weather/$1" },
     { "source": "/api/floods/(.*)", "destination": "/api/floods/$1" },

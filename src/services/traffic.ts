@@ -38,9 +38,11 @@ export interface TrafficFlowSegment {
 let cache: { data: TrafficIncident[]; fetchedAt: number } | null = null;
 let flowCache = new Map<string, { data: TrafficFlowSegment; fetchedAt: number }>();
 let budgetStateMemory: TrafficBudgetState | null = null;
+let incidentFetchPromise: Promise<TrafficIncident[]> | null = null;
 const CACHE_TTL = 12 * 60_000; // 12 min => 120 refresh/jour max, laisse de la marge sous 2500
 const FLOW_CACHE_TTL = 15 * 60_000;
 const TRAFFIC_BUDGET_STORAGE_KEY = 'fm-tomtom-traffic-budget';
+const TRAFFIC_CACHE_STORAGE_KEY = 'fm-tomtom-traffic-cache';
 const DAILY_NON_TILE_BUDGET = 2450;   // marge de sécurité sous 2500
 const DAILY_INCIDENT_BUDGET = 2200;   // incidentDetails multi-zones
 const DAILY_FLOW_BUDGET = 250;        // hover/click enrichi
@@ -82,6 +84,11 @@ interface TrafficBudgetState {
     day: string;
     incidentRequests: number;
     flowRequests: number;
+}
+
+interface TrafficCacheState {
+    fetchedAt: number;
+    data: TrafficIncident[];
 }
 
 const CRITICAL_OSINT_TYPES = new Set([
@@ -134,6 +141,48 @@ function writeBudgetState(state: TrafficBudgetState): void {
     } catch {
         // Ignore storage errors; in-memory fallback still works for the session.
     }
+}
+
+function isCacheFresh(entry: { fetchedAt: number } | null): boolean {
+    return !!entry && Date.now() - entry.fetchedAt < CACHE_TTL;
+}
+
+function readPersistedIncidentCache(): TrafficCacheState | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(TRAFFIC_CACHE_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<TrafficCacheState>;
+        if (!Array.isArray(parsed.data) || !Number.isFinite(parsed.fetchedAt)) {
+            return null;
+        }
+        return {
+            fetchedAt: Number(parsed.fetchedAt),
+            data: parsed.data as TrafficIncident[],
+        };
+    } catch {
+        return null;
+    }
+}
+
+function persistIncidentCache(entry: TrafficCacheState): void {
+    cache = entry;
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(TRAFFIC_CACHE_STORAGE_KEY, JSON.stringify(entry));
+    } catch {
+        // Ignore quota/storage errors; in-memory cache still limits repeated calls.
+    }
+}
+
+function getFreshIncidentCache(): TrafficCacheState | null {
+    if (isCacheFresh(cache)) return cache;
+    const persisted = readPersistedIncidentCache();
+    if (isCacheFresh(persisted)) {
+        cache = persisted;
+        return persisted;
+    }
+    return null;
 }
 
 function getRemainingBudget(type: 'incident' | 'flow'): number {
@@ -361,17 +410,22 @@ function transformTomTomIncident(inc: any): TrafficIncident {
 }
 
 export async function fetchTrafficIncidents(): Promise<TrafficIncident[]> {
+    const cached = getFreshIncidentCache();
+    if (cached) {
+        return cached.data;
+    }
+
     const tomtomKey = import.meta.env.VITE_TOMTOM_API_KEY;
     if (!tomtomKey) {
         console.warn('[traffic.ts] Clé API TomTom absente.');
         return [];
     }
 
-    if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
-        return cache.data;
+    if (incidentFetchPromise) {
+        return incidentFetchPromise;
     }
 
-    try {
+    incidentFetchPromise = (async () => {
         const remainingIncidentBudget = getRemainingBudget('incident');
         if (remainingIncidentBudget <= 0) {
             console.warn('[traffic.ts] Budget journalier TomTom incidents épuisé.');
@@ -423,12 +477,30 @@ export async function fetchTrafficIncidents(): Promise<TrafficIncident[]> {
             throw new Error(`TomTom${code}: ${message}`);
         }
 
-        cache = { data: finalData, fetchedAt: Date.now() };
+        persistIncidentCache({ data: finalData, fetchedAt: Date.now() });
         return finalData;
-
-    } catch (err) {
+    })().catch((err) => {
         console.error('[traffic.ts] Failed to fetch incidents', err);
         return [];
+    }).finally(() => {
+        incidentFetchPromise = null;
+    });
+
+    return incidentFetchPromise;
+}
+
+export function hasFreshTrafficIncidentCache(): boolean {
+    return getFreshIncidentCache() !== null;
+}
+
+export function clearTrafficIncidentCache(): void {
+    cache = null;
+    incidentFetchPromise = null;
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.removeItem(TRAFFIC_CACHE_STORAGE_KEY);
+    } catch {
+        // Ignore storage errors.
     }
 }
 

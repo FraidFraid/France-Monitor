@@ -67,7 +67,7 @@ import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { fetchNuclearPlantsStatus } from './services/energy.ts';
 import { fetchFiresData } from './services/fires.ts';
-import { fetchTrafficIncidents, type TrafficIncident } from './services/traffic.ts';
+import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages } from './services/outages.ts';
@@ -915,6 +915,8 @@ export class App {
   private currentRailNetworkData: RailNetworkData | null = null;
   private currentFloodSegments: FloodSegment[] = [];
   private currentTrafficIncidents: TrafficIncident[] = [];
+  private trafficDataLoaded = false;
+  private trafficLoadPromise: Promise<void> | null = null;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
@@ -2040,6 +2042,15 @@ export class App {
     if (key === 'trafficMaritime' && enabled && getAllLiveTraffic().length === 0) {
       this._showAisLoaderFn?.();
     }
+    if (key === 'trafficRoad') {
+      if (enabled) {
+        void this.ensureTrafficLoaded().catch((error) => {
+          console.error('[App] Failed to load road traffic on demand', error);
+        });
+      } else if (!this.activeLayers.trafficRoad) {
+        this.mapContainer?.updateTrafficIncidents([]);
+      }
+    }
     // Show/hide MaritimePanel with layer
     if (key === 'trafficMaritime') {
       if (enabled) this.maritimePanel?.show();
@@ -2183,7 +2194,7 @@ export class App {
         this.dayNightPanel?.hide();
       }
     } else if (key === 'elus') {
-      void this.mapContainer?.setMairesPolitiqueVisible(enabled);
+      void this.mapContainer?.setMairesPolitiqueVisible(false);
       if (enabled) {
         this.elusPanel?.showPlaceholder();
       } else {
@@ -2279,7 +2290,9 @@ export class App {
 
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
     this.mapContainer.setOnRawMapClick((lat, lon) => {
-      if (this.activeLayers.elus) this.elusPanel?.show(lat, lon);
+      void lat;
+      void lon;
+      if (this.activeLayers.elus) this.elusPanel?.showPlaceholder();
     });
 
     this.mapContainer.setOnSatelliteView((request) => {
@@ -2543,11 +2556,12 @@ export class App {
     const updateShips = async () => {
       try {
         const aisStatus = getAisStatus();
-        const aisDetail = `${AIS_RELAY_URL} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
+        const aisRelayLabel = AIS_RELAY_URL ?? 'Non configuré';
+        const aisDetail = `${aisRelayLabel} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
         this.statusPanel?.updateSource('AIS maritime', {
           status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'error',
           lastUpdate: aisStatus.connected ? new Date() : null,
-          detail: aisStatus.connected ? aisDetail : AIS_RELAY_URL,
+          detail: aisStatus.connected ? aisDetail : aisRelayLabel,
           error: aisStatus.connected ? undefined : 'relais déconnecté',
         });
 
@@ -2598,7 +2612,7 @@ export class App {
         this.statusPanel?.updateSource('AIS maritime', {
           status: 'error',
           lastUpdate: new Date(),
-          detail: AIS_RELAY_URL,
+          detail: AIS_RELAY_URL ?? 'Non configuré',
           error: err instanceof Error ? err.message : 'Échec mise à jour AIS',
         });
       }
@@ -3057,39 +3071,70 @@ export class App {
   }
 
   private async loadTraffic(): Promise<void> {
-    this.statusPanel?.updateSource('Trafic', { status: 'loading', lastUpdate: null });
-    try {
-      const incidents = await fetchTrafficIncidents();
-      if (incidents.length > 0) {
-        this.currentTrafficIncidents = incidents;
-        this.mapContainer?.updateTrafficIncidents(incidents);
+    if (this.trafficLoadPromise) {
+      return this.trafficLoadPromise;
+    }
+
+    this.trafficLoadPromise = (async () => {
+      this.statusPanel?.updateSource('Trafic', { status: 'loading', lastUpdate: null });
+      try {
+        const incidents = await fetchTrafficIncidents();
+        this.trafficDataLoaded = true;
+
+        if (incidents.length > 0) {
+          this.currentTrafficIncidents = incidents;
+          this.mapContainer?.updateTrafficIncidents(incidents);
+          this.statusPanel?.updateSource('Trafic', {
+            status: 'ok',
+            lastUpdate: new Date(),
+            detail: `TomTom · ${incidents.length} incidents affichés`,
+            error: undefined,
+          });
+          return;
+        }
+
+        this.currentTrafficIncidents = [];
+        this.mapContainer?.updateTrafficIncidents([]);
         this.statusPanel?.updateSource('Trafic', {
-          status: 'ok',
+          status: 'stale',
           lastUpdate: new Date(),
-          detail: `TomTom · ${incidents.length} incidents affichés`,
+          detail: 'TomTom · aucun incident renvoyé',
           error: undefined,
         });
-        return;
+      } catch (error) {
+        this.trafficDataLoaded = true;
+        const message = error instanceof Error ? error.message : 'Erreur inconnue';
+        this.currentTrafficIncidents = [];
+        this.mapContainer?.updateTrafficIncidents([]);
+        this.statusPanel?.updateSource('Trafic', {
+          status: 'error',
+          lastUpdate: new Date(),
+          detail: 'TomTom · incidents routiers',
+          error: message,
+        });
       }
+    })().finally(() => {
+      this.trafficLoadPromise = null;
+    });
 
-      this.mapContainer?.updateTrafficIncidents([]);
-      this.statusPanel?.updateSource('Trafic', {
-        status: 'stale',
-        lastUpdate: new Date(),
-        detail: 'TomTom · aucun incident renvoyé',
-        error: undefined,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erreur inconnue';
-      this.currentTrafficIncidents = [];
-      this.mapContainer?.updateTrafficIncidents([]);
-      this.statusPanel?.updateSource('Trafic', {
-        status: 'error',
-        lastUpdate: new Date(),
-        detail: 'TomTom · incidents routiers',
-        error: message,
-      });
+    return this.trafficLoadPromise;
+  }
+
+  private ensureTrafficLoaded(): Promise<void> {
+    if (this.currentTrafficIncidents.length > 0) {
+      this.mapContainer?.updateTrafficIncidents(this.currentTrafficIncidents);
+      return Promise.resolve();
     }
+
+    if (!this.trafficDataLoaded && hasFreshTrafficIncidentCache()) {
+      return this.loadTraffic();
+    }
+
+    if (this.trafficDataLoaded) {
+      return Promise.resolve();
+    }
+
+    return this.loadTraffic();
   }
 
   private async loadAirTraffic(): Promise<void> {
@@ -3652,12 +3697,12 @@ export class App {
           this.mapContainer?.updateInfrastructure(ALL_INFRASTRUCTURE);
         })
       },
-      {
+      ...(this.activeLayers.trafficRoad ? [{
         name: 'traffic', task: this.loadTraffic().catch(() => {
           this.mapContainer?.updateTrafficIncidents([]);
           this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: new Date() });
         })
-      },
+      }] : []),
       {
         name: 'air-traffic', task: this.loadAirTraffic().catch(() => {
           this.mapContainer?.updateAirTraffic([]);

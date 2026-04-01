@@ -7,6 +7,18 @@
 
 ---
 
+## Mise à jour repo (2026-04-01) — Trafic routier : fiabilisation TomTom + coût maîtrisé
+
+- ✅ **Chargement TomTom à la demande** : `loadTraffic()` n'est plus exécuté systématiquement au boot. Le layer routier ne déclenche désormais le fetch que si `trafficRoad` est réellement activé.
+- ✅ **Cache incidents persistant navigateur** : les incidents TomTom sont conservés 12 min en `localStorage` en plus du cache mémoire. Un hard refresh ou un nouvel affichage de la couche dans cette fenêtre ne repayent plus automatiquement les 21 zones.
+- ✅ **Déduplication de requêtes** : garde-fou ajouté côté service pour éviter les doubles appels concurrents si plusieurs chemins UI demandent le trafic en même temps.
+- ✅ **Proxy routier dédié prod/dev** : le flux passe désormais par `/api/traffic/road` avec alignement dev/prod, au lieu d'un appel client direct fragile.
+- ✅ **BBOX TomTom corrigées** : découpage des grandes zones (Paris / IDF, Lyon) pour rester compatible avec la limite TomTom `< 10 000 km²` et éviter les retours `INVALID_REQUEST`.
+- ✅ **Rendu carte stabilisé** : clustering JS explicite, incidents isolés encore visibles à faible zoom, popup routier unifié, enrichissement `flow` au clic uniquement et ouverture du tooltip en une seule passe.
+- ✅ **UX complémentaire** : l'activation de `trafficRail` ne force plus de zoom automatique ; l'entrée `Élus & Représentants` est masquée dans la sidebar gauche (`display: none`) sans suppression du code sous-jacent.
+
+---
+
 ## Mise à jour repo (2026-04-01) — Fixes visuels & Fiabilisation Data
 
 - ✅ **Correction des Pulse Markers (Alerte News)** : Résolution d'un conflit entre WebGL et le DOM dans `DeckGLMap.ts`. Les marqueurs HTML d'alerte critique (`PulseOverlay`) ignoraient le toggle de la couche "Actualités" et s'affichaient dès le zoom 10. Ils sont désormais synchronisés avec l'état réel de la visibilité globale.
@@ -220,7 +232,7 @@
 | Layer | Source(s) | Statut | Notes |
 |-------|-----------|--------|-------|
 | **Transport SNCF** | API SNCF (`/api/transport/disruptions`) | ✅ Réel | Disruptions temps réel + layer carte `trafficRail` : arcs colorés par sévérité + gares impactées. Panneau latéral auto-ouvert à l'activation du layer. |
-| **Trafic routier** | TomTom | ✅ Réel | Incidents + flux |
+| **Trafic routier** | TomTom | ✅ Réel | Incidents + flux via proxy `/api/traffic/road`. Fetch déclenché à l'activation du layer, cache persistant 12 min, clustering carte et popup enrichi au clic uniquement. |
 | **Trafic aérien** | OpenSky | 🟡 Partiel | Preview — quotas limités sans compte pro |
 
 ## État des layers — Environnement & Santé

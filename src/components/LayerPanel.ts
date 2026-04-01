@@ -86,7 +86,7 @@ export class LayerPanel {
 
   private renderItem(def: LayerDef): string {
     return `
-      <label class="layer-panel-item ${this.layers[def.key] ? 'active' : ''}" data-layer="${def.key}">
+      <label class="layer-panel-item ${this.layers[def.key] ? 'active' : ''}" data-layer="${def.key}" style="${def.key === 'elus' ? 'display:none;' : ''}">
         <input type="checkbox" ${this.layers[def.key] ? 'checked' : ''} />
         <span class="layer-panel-icon">${def.icon}</span>
         <span class="layer-panel-label">${def.label}</span>
@@ -473,7 +473,7 @@ export class LayerPanel {
       gas: 'Stockages gaz, terminaux GNL et flux PIR',
       oil: 'Raffineries, stocks pétroliers et vigilance approvisionnement',
       dayNight: 'Terminateur jour/nuit (zone d\'ombre calculée en temps réel)',
-      elus: 'Élus & Représentants — maire, député, sénateur, président de région pour la zone cliquée',
+      elus: 'Élus & Représentants — en cours de configuration, non livré dans cette version',
     };
     return descriptions[key] || '';
   }
