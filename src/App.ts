@@ -1779,7 +1779,7 @@ export class App {
       // Optional: could update StatusPanel state here
     });
     this.defensePanel.setOnAlertClick((alert) => {
-      if (!this.activeLayers.trafficMaritime) {
+      if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
         this.onLayerToggle('trafficMaritime', true);
         this.layerPanel?.updateLayers(this.activeLayers);
       }

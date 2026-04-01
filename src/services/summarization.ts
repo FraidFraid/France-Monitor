@@ -38,8 +38,8 @@ const OLLAMA_MODEL = 'mistral:instruct';
 const GROQ_URL = import.meta.env.VITE_GROQ_URL ?? 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
 
-// Set VITE_USE_OLLAMA=false in .env to skip Ollama calls (useful when Ollama is not running)
-const USE_OLLAMA = import.meta.env.VITE_USE_OLLAMA !== 'false';
+// Set VITE_USE_OLLAMA=true in .env.local to enable Ollama calls (disabled by default in prod)
+const USE_OLLAMA = import.meta.env.VITE_USE_OLLAMA === 'true';
 
 export async function summarizeWithFallback(text: string): Promise<string | undefined> {
     if (!text || text.trim().length === 0) return undefined;

@@ -4,6 +4,7 @@
  */
 
 import type { MapLayers } from '../types/index.ts';
+import { AIS_RELAY_URL } from '../services/ais-connection.ts';
 
 interface LayerDef {
   key: keyof MapLayers;
@@ -85,8 +86,9 @@ export class LayerPanel {
   }
 
   private renderItem(def: LayerDef): string {
+    const hidden = def.key === 'elus' || (def.key === 'trafficMaritime' && !AIS_RELAY_URL);
     return `
-      <label class="layer-panel-item ${this.layers[def.key] ? 'active' : ''}" data-layer="${def.key}" style="${def.key === 'elus' ? 'display:none;' : ''}">
+      <label class="layer-panel-item ${this.layers[def.key] ? 'active' : ''}" data-layer="${def.key}" style="${hidden ? 'display:none;' : ''}">
         <input type="checkbox" ${this.layers[def.key] ? 'checked' : ''} />
         <span class="layer-panel-icon">${def.icon}</span>
         <span class="layer-panel-label">${def.label}</span>
