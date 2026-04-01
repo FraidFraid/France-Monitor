@@ -2063,6 +2063,11 @@ export class App {
       if (enabled) this.maritimePanel?.show();
       else this.maritimePanel?.hide();
     }
+    // Show/hide TransportPanel with trafficRail layer
+    if (key === 'trafficRail') {
+      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions);
+      else this.transportPanel?.hide();
+    }
 
     // Show/hide ISNR panel when stability layer is toggled
     if (key === 'stability') {
