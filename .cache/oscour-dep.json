@@ -1,5 +1,5 @@
 {
-  "cachedAt": 1774711651572,
+  "cachedAt": 1775032086353,
   "payload": [
     {
       "code_insee": "01",
@@ -552,8 +552,8 @@
     }
   ],
   "meta": {
-    "generated_at": "2026-03-28T15:27:31.572Z",
-    "source": "https://static.data.gouv.fr/resources/donnees-des-urgences-hospitalieres-et-de-sos-medecins-relatives-a-lepidemie-de-covid-19/20250101-170008/sursaud-covid-quot-dep-2025-01-01-18h00.csv",
+    "generated_at": "2026-04-01T08:28:06.352Z",
+    "source": "https://www.data.gouv.fr/fr/datasets/r/eceb9fb4-3ebc-4da3-828d-f5939712600a",
     "dataset_id": "5e74ecf52eb7514f2d3b8845",
     "rows": 520352,
     "departments_found": 39,

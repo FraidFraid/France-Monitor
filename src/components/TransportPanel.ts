@@ -35,7 +35,8 @@ export class TransportPanel extends Panel {
     private contentEl: HTMLElement | null = null;
     private closeBtn: HTMLElement | null = null;
     private onClose?: () => void;
-    private onHover?: (departure: [number, number] | null, arrival: [number, number] | null) => void;
+    private onHover?: (disruption: TransportDisruption | null) => void;
+    private onSelect?: (disruption: TransportDisruption | null) => void;
     private activeDisruptions: TransportDisruption[] = [];
 
     constructor(container: HTMLElement) {
@@ -129,8 +130,12 @@ export class TransportPanel extends Panel {
         this.onClose = h;
     }
 
-    setOnHover(h: (departure: [number, number] | null, arrival: [number, number] | null) => void): void {
+    setOnHover(h: (disruption: TransportDisruption | null) => void): void {
         this.onHover = h;
+    }
+
+    setOnSelect(h: (disruption: TransportDisruption | null) => void): void {
+        this.onSelect = h;
     }
 
     show(disruptions: TransportDisruption[]): void {
@@ -164,11 +169,35 @@ export class TransportPanel extends Panel {
             bySeverity[d.severity].push(d);
         }
 
+        // Compact severity legend strip
+        const legend = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+        <div style="width:100%;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Sévérité</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-critical);flex-shrink:0;"></span>Supprimé</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-high);flex-shrink:0;"></span>Retards</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-medium);flex-shrink:0;"></span>Réduit</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-low);flex-shrink:0;"></span>Mineur</div>
+      </div>
+    `;
+
         let html = `
-      <div style="margin-bottom: 16px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+      ${legend}
+      <div style="margin-bottom: 16px; padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
           <span>${this.activeDisruptions.length} perturbation${this.activeDisruptions.length > 1 ? 's' : ''}</span>
           <span>Mise à jour: ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
+      </div>
+    `;
+
+        const mappedStations = this.activeDisruptions.filter((d) => !!d.departure?.coordinates || !!d.arrival?.coordinates || !!d.coordinates).length;
+        const mappedRoutes = this.activeDisruptions.filter((d) => !!d.departure?.coordinates && !!d.arrival?.coordinates).length;
+
+        html += `
+      <div style="margin-bottom: 16px; padding: 10px 12px; background: rgba(74,158,255,0.08); border: 1px solid rgba(74,158,255,0.18); border-radius: 8px;">
+        <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px;">Couverture cartographique</div>
+        <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+          ${mappedRoutes} trajet${mappedRoutes > 1 ? 's' : ''} traçable${mappedRoutes > 1 ? 's' : ''} sur la carte · ${mappedStations} perturbation${mappedStations > 1 ? 's' : ''} géolocalisée${mappedStations > 1 ? 's' : ''}
         </div>
       </div>
     `;
@@ -199,6 +228,7 @@ export class TransportPanel extends Panel {
                 html += `
           <div style="margin-bottom: 10px; background: rgba(0,0,0,0.15); border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);"
                data-disruption-id="${d.id}"
+               data-severity="${d.severity}"
                ${d.departure?.coordinates ? `data-dep-lon="${d.departure.coordinates[0]}" data-dep-lat="${d.departure.coordinates[1]}"` : ''}
                ${d.arrival?.coordinates ? `data-arr-lon="${d.arrival.coordinates[0]}" data-arr-lat="${d.arrival.coordinates[1]}"` : ''}>
             <div style="padding: 10px 12px; border-left: 3px solid ${color};">
@@ -238,24 +268,22 @@ export class TransportPanel extends Panel {
 
         // Attach hover listeners for map highlighting
         this.contentEl.querySelectorAll('[data-disruption-id]').forEach((el) => {
+            const disruptionId = el.getAttribute('data-disruption-id');
             const depLon = el.getAttribute('data-dep-lon');
             const depLat = el.getAttribute('data-dep-lat');
-            const arrLon = el.getAttribute('data-arr-lon');
-            const arrLat = el.getAttribute('data-arr-lat');
+            const disruption = this.activeDisruptions.find((item) => item.id === disruptionId) ?? null;
 
-            if (depLon && depLat) {
-                const departure: [number, number] = [parseFloat(depLon), parseFloat(depLat)];
-                const arrival: [number, number] | null = (arrLon && arrLat)
-                    ? [parseFloat(arrLon), parseFloat(arrLat)]
-                    : null;
-
+            if (disruption && (depLon && depLat || disruption.coordinates)) {
                 el.addEventListener('mouseenter', () => {
                     (el as HTMLElement).style.outline = '1px solid var(--accent-blue)';
-                    this.onHover?.(departure, arrival);
+                    this.onHover?.(disruption);
                 });
                 el.addEventListener('mouseleave', () => {
                     (el as HTMLElement).style.outline = 'none';
-                    this.onHover?.(null, null);
+                    this.onHover?.(null);
+                });
+                el.addEventListener('click', () => {
+                    this.onSelect?.(disruption);
                 });
             }
         });

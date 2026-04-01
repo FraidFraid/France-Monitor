@@ -24,7 +24,8 @@ const SUBSCRIPTION = {
   FilterMessageTypes: ['PositionReport', 'ShipStaticData', 'StandardClassBPositionReport'],
 };
 
-let relayInstance = null;
+// Utilisation de global pour survivre aux rechargements HMR de Vite
+let relayInstance = global.__aisRelayInstance || null;
 
 function loadRelayEnv(mode = process.env.NODE_ENV || 'development') {
   const env = loadEnv(mode, process.cwd(), '');
@@ -59,8 +60,6 @@ export function startRelayServer(options = {}) {
     ...SUBSCRIPTION,
     APIKey: aisApiKey,
   };
-
-  console.log(`[AIS Relay] 🚀 Démarrage sur port ${relayPort} — clé AIS: ${aisApiKey ? '✅ présente' : '❌ manquante'}`);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -111,10 +110,14 @@ export function startRelayServer(options = {}) {
     } catch {}
   };
 
+  let errorHandled = false;
   const handleListenError = (err) => {
+    if (errorHandled) return;
+    errorHandled = true;
+    
     if (err?.code === 'EADDRINUSE') {
       usingExternalRelay = true;
-      console.warn(`[AIS Relay] ⚠️ Port ${relayPort} déjà utilisé — réutilisation du relay existant`);
+      console.log(`[AIS Relay] ♻️  Port ${relayPort} occupé : Réutilisation du relay en arrière-plan (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
       closeLocalRelay();
       relayInstance = {
         port: relayPort,
@@ -123,8 +126,10 @@ export function startRelayServer(options = {}) {
         wsServer: null,
         close() {
           relayInstance = null;
+          global.__aisRelayInstance = null;
         },
       };
+      global.__aisRelayInstance = relayInstance;
       return;
     }
 
@@ -157,10 +162,19 @@ export function startRelayServer(options = {}) {
 
     upstream = new WebSocket(AISSTREAM_URL);
 
+    let pingInterval = null;
+
     upstream.on('open', () => {
       reconnectDelayMs = 2000;
       console.log('[AIS Relay] ✅ Connecté à aisstream.io — souscription envoyée');
       upstream?.send(JSON.stringify(subscription));
+
+      // Keep connection alive
+      pingInterval = setInterval(() => {
+        if (upstream?.readyState === WebSocket.OPEN) {
+          upstream.ping();
+        }
+      }, 30000); // 30s ping
     });
 
     let msgCount = 0;
@@ -178,6 +192,7 @@ export function startRelayServer(options = {}) {
     });
 
     upstream.on('close', (code, reason) => {
+      if (pingInterval) clearInterval(pingInterval);
       console.warn(`[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — reconnexion dans ${reconnectDelayMs}ms`);
       upstream = null;
       scheduleReconnect();
@@ -207,7 +222,7 @@ export function startRelayServer(options = {}) {
 
   server.listen(relayPort, () => {
     if (usingExternalRelay) return;
-    console.log(`[AIS Relay] ✅ HTTP relay local à l’écoute sur ${relayPort}`);
+    console.log(`[AIS Relay] 🚀 Nouveau relay démarré et à l’écoute sur le port ${relayPort} (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
   });
 
   relayInstance = {
@@ -219,9 +234,11 @@ export function startRelayServer(options = {}) {
       wsServer.close();
       server.close();
       relayInstance = null;
+      global.__aisRelayInstance = null;
     },
   };
 
+  global.__aisRelayInstance = relayInstance;
   return relayInstance;
 }
 

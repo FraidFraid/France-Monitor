@@ -16,13 +16,13 @@ const DATACENTERS = [
     { id: 'ovh-gra', name: 'OVH Gravelines',         provider: 'OVH',        region: 'Gravelines',    coordinates: [2.128,  50.985] as [number, number] },
     { id: 'ovh-sbg', name: 'OVH Strasbourg',         provider: 'OVH',        region: 'Strasbourg',    coordinates: [7.750,  48.574] as [number, number] },
     { id: 'scw-par', name: 'Scaleway Paris',          provider: 'Scaleway',   region: 'Paris',         coordinates: [2.359,  48.863] as [number, number] },
-    { id: 'aws-cdg', name: 'AWS Paris (eu-west-3)',   provider: 'AWS',        region: 'eu-west-3',     coordinates: [2.349,  48.864] as [number, number] },
+    { id: 'aws-cdg', name: 'AWS Paris (eu-west-3)',   provider: 'AWS',        region: 'eu-west-3',     coordinates: [2.3465, 48.8655] as [number, number] },
     { id: 'gcp-par', name: 'GCP Paris (europe-west9)',provider: 'GCP',        region: 'europe-west9',  coordinates: [2.340,  48.870] as [number, number] },
     { id: 'cf-par',  name: 'Cloudflare Paris',        provider: 'Cloudflare', region: 'Paris',         coordinates: [2.360,  48.860] as [number, number] },
 ] as const;
 
 const IXPS_STATIC = [
-    { id: 'fix-par', name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.349,  48.864] as [number, number], speedGbps: 400 },
+    { id: 'fix-par', name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.3515, 48.8625] as [number, number], speedGbps: 400 },
     { id: 'fix-lyo', name: 'France-IX Lyon',     city: 'Lyon',      coordinates: [4.832,  45.758] as [number, number], speedGbps: 100 },
     { id: 'fix-mrs', name: 'France-IX Marseille',city: 'Marseille', coordinates: [5.370,  43.297] as [number, number], speedGbps: 100 },
     { id: 'eqx-par', name: 'Equinix Paris (PA8)',city: 'Paris',     coordinates: [2.355,  48.861] as [number, number], speedGbps: 200 },

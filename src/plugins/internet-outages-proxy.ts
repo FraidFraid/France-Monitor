@@ -29,6 +29,19 @@ const BASELINE_PREFIXES: Record<string, { v4: number; v6: number }> = {
     '12876': { v4: 450,  v6: 90  },
 };
 
+const ISP_ENRICHMENT: Record<string, {
+    networkType: string; peeringPolicy: string;
+    arcepFiber: string | null; mobile: string | null;
+    noc: string | null; ipv6Label: string | null;
+}> = {
+    '3215':  { networkType: 'Opérateur national',  peeringPolicy: 'Selective', arcepFiber: '84 %', mobile: '5G NR', noc: 'noc@orange.fr',   ipv6Label: 'DHCPv6-PD' },
+    '12322': { networkType: 'Opérateur national',  peeringPolicy: 'Open',      arcepFiber: '76 %', mobile: '5G NR', noc: 'peering@free.fr', ipv6Label: 'Natif SLAAC · leader IPv6 France' },
+    '15557': { networkType: 'Opérateur national',  peeringPolicy: 'Selective', arcepFiber: '79 %', mobile: '5G NR', noc: null,              ipv6Label: 'DHCPv6' },
+    '5410':  { networkType: 'Opérateur national',  peeringPolicy: 'Selective', arcepFiber: '72 %', mobile: '5G NR', noc: null,              ipv6Label: 'Partiel' },
+    '16276': { networkType: 'Hébergeur / Transit', peeringPolicy: 'Open',      arcepFiber: null,   mobile: 'N/A',   noc: 'noc@ovh.net',     ipv6Label: 'Dual-stack natif' },
+    '12876': { networkType: 'Cloud / Hébergeur',   peeringPolicy: 'Open',      arcepFiber: null,   mobile: 'N/A',   noc: null,              ipv6Label: 'Dual-stack natif' },
+};
+
 const FRANCE_CENTER: [number, number] = [2.2137, 46.2276];
 
 async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
@@ -51,7 +64,7 @@ async function fetchIodaEvents(
     untilTs: number
 ): Promise<{ data: any[]; ok: boolean }> {
     try {
-        const url = `${IODA_BASE}/outages/events/${entityType}/${entityCode}?from=${fromTs}&until=${untilTs}`;
+        const url = `${IODA_BASE}/outages/events?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 9000);
         if (!res.ok) return { data: [], ok: false };
         const json = await res.json();
@@ -63,10 +76,12 @@ async function fetchIodaEvents(
 
 async function fetchIodaAlerts(
     entityType: string,
-    entityCode: string
+    entityCode: string,
+    fromTs: number,
+    untilTs: number
 ): Promise<{ data: any[]; ok: boolean }> {
     try {
-        const url = `${IODA_BASE}/outages/alerts/${entityType}/${entityCode}`;
+        const url = `${IODA_BASE}/outages/alerts?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 7000);
         if (!res.ok) return { data: [], ok: false };
         const json = await res.json();
@@ -74,6 +89,30 @@ async function fetchIodaAlerts(
     } catch {
         return { data: [], ok: false };
     }
+}
+
+async function fetchBgpAsnInfo(asn: string): Promise<{ trafficEstimation: string | null; lookingGlass: string | null } | null> {
+    try {
+        const res = await fetchWithTimeout(`${BGPVIEW_BASE}/asn/${asn}`, 6000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (json?.status !== 'ok') return null;
+        const d = json.data ?? {};
+        return { trafficEstimation: d.traffic_estimation ?? null, lookingGlass: d.looking_glass ?? null };
+    } catch { return null; }
+}
+
+async function fetchBgpIxs(asn: string): Promise<string[] | null> {
+    try {
+        const res = await fetchWithTimeout(`${BGPVIEW_BASE}/asn/${asn}/ixs`, 6000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (json?.status !== 'ok') return null;
+        const v4ixs: any[] = Array.isArray(json?.data?.ipv4_ixs) ? json.data.ipv4_ixs : [];
+        const v6ixs: any[] = Array.isArray(json?.data?.ipv6_ixs) ? json.data.ipv6_ixs : [];
+        const allNames = [...new Set([...v4ixs, ...v6ixs].map((ix: any) => ix.name_full || ix.name).filter(Boolean))];
+        return (allNames as string[]).slice(0, 6);
+    } catch { return null; }
 }
 
 async function fetchBgpPrefixCount(asn: string): Promise<{ v4: number; v6: number } | null> {
@@ -128,7 +167,7 @@ export function internetOutagesProxyPlugin(): Plugin {
                     // IODA: France country-level
                     const [countryEventsResult, countryAlertsResult] = await Promise.all([
                         fetchIodaEvents('country', 'FR', from24h, now),
-                        fetchIodaAlerts('country', 'FR'),
+                        fetchIodaAlerts('country', 'FR', from24h, now),
                     ]);
 
                     // IODA: top 4 ASNs français (éviter rate-limit)
@@ -139,27 +178,51 @@ export function internetOutagesProxyPlugin(): Plugin {
                         )
                     );
 
-                    // BGPView: prefix counts
-                    const bgpResults = await Promise.allSettled(
-                        FRENCH_ISPS.map(isp =>
+                    // BGPView: prefix counts + ASN info + IX list (en parallèle)
+                    const [bgpResults, asnInfoResults, ixResults] = await Promise.all([
+                        Promise.allSettled(FRENCH_ISPS.map(isp =>
                             fetchBgpPrefixCount(isp.asn).then(counts => ({ asn: isp.asn, counts }))
-                        )
-                    );
+                        )),
+                        Promise.allSettled(FRENCH_ISPS.map(isp =>
+                            fetchBgpAsnInfo(isp.asn).then(info => ({ asn: isp.asn, info }))
+                        )),
+                        Promise.allSettled(FRENCH_ISPS.map(isp =>
+                            fetchBgpIxs(isp.asn).then(ixs => ({ asn: isp.asn, ixs }))
+                        )),
+                    ]);
+
                     const bgpByAsn: Record<string, { v4: number; v6: number }> = {};
                     for (const r of bgpResults) {
                         if (r.status === 'fulfilled' && r.value.counts !== null) {
                             bgpByAsn[r.value.asn] = r.value.counts;
                         }
                     }
+                    const asnInfoByAsn: Record<string, { trafficEstimation: string | null; lookingGlass: string | null }> = {};
+                    for (const r of asnInfoResults) {
+                        if (r.status === 'fulfilled' && r.value.info !== null) {
+                            asnInfoByAsn[r.value.asn] = r.value.info;
+                        }
+                    }
+                    const ixByAsn: Record<string, string[]> = {};
+                    for (const r of ixResults) {
+                        if (r.status === 'fulfilled' && r.value.ixs !== null) {
+                            ixByAsn[r.value.asn] = r.value.ixs;
+                        }
+                    }
 
-                    // ISP BGP status
+                    // ISP BGP status enrichi
                     const ispStatus = FRENCH_ISPS.map(isp => {
                         const baseline      = BASELINE_PREFIXES[isp.asn] ?? { v4: 100, v6: 10 };
+                        const enrichment    = ISP_ENRICHMENT[isp.asn] ?? { networkType: 'Réseau', peeringPolicy: 'N/A', arcepFiber: null, mobile: null, noc: null, ipv6Label: null };
                         const current       = bgpByAsn[isp.asn];
+                        const asnInfo       = asnInfoByAsn[isp.asn] ?? {};
+                        const ixList        = ixByAsn[isp.asn] ?? [];
                         const baselineTotal = baseline.v4 + baseline.v6;
-                        const currentTotal  = current ? current.v4 + current.v6 : null;
+                        const prefixV4      = current?.v4 ?? baseline.v4;
+                        const prefixV6      = current?.v6 ?? baseline.v6;
+                        const currentTotal  = prefixV4 + prefixV6;
 
-                        const visibility = currentTotal !== null
+                        const visibility = current
                             ? Math.min(100, Math.round((currentTotal / baselineTotal) * 100))
                             : 100;
 
@@ -169,12 +232,24 @@ export function internetOutagesProxyPlugin(): Plugin {
                         return {
                             asn:               isp.asn,
                             ispName:           isp.name,
-                            prefixCount:       currentTotal ?? baselineTotal,
+                            prefixCount:       currentTotal,
                             prefixCountNormal: baselineTotal,
+                            prefixV4,
+                            prefixV6,
                             visibility,
                             status,
                             coordinates:       isp.coordinates,
                             lastUpdated:       new Date().toISOString(),
+                            trafficEstimation: asnInfo.trafficEstimation ?? null,
+                            lookingGlass:      asnInfo.lookingGlass ?? null,
+                            ixList,
+                            peerCount:         0,
+                            networkType:       enrichment.networkType,
+                            peeringPolicy:     enrichment.peeringPolicy,
+                            arcepFiber:        enrichment.arcepFiber,
+                            mobile:            enrichment.mobile,
+                            noc:               enrichment.noc,
+                            ipv6Label:         enrichment.ipv6Label,
                         };
                     });
 

@@ -27,6 +27,7 @@ export class OutagesPanel extends Panel {
   private modalEl!: HTMLElement;
   private activeTab: ActiveTab = 'electric';
   private onCloseCallback?: () => void;
+  private onTabChangeCallback?: (tab: ActiveTab | null) => void;
 
   // latest data
   private lastPower: PowerOutage[] = [];
@@ -42,6 +43,12 @@ export class OutagesPanel extends Panel {
   private onIodaHoverCb?: (data: { id: string; coordinates: [number, number] } | null) => void;
   private onDcHoverCb?: (data: { id: string; coordinates: [number, number] } | null) => void;
   private onIxpHoverCb?: (data: { id: string; coordinates: [number, number] } | null) => void;
+
+  // click (fly-to) callbacks
+  private onIspClickCb?: (data: { asn: string; coordinates: [number, number] }) => void;
+  private onIodaClickCb?: (data: { id: string; coordinates: [number, number] }) => void;
+  private onDcClickCb?: (data: { id: string; coordinates: [number, number] }) => void;
+  private onIxpClickCb?: (data: { id: string; coordinates: [number, number] }) => void;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'Pannes Réseau', icon: '⚡', collapsible: false });
@@ -69,6 +76,26 @@ export class OutagesPanel extends Panel {
 
   setOnIxpHover(cb: (data: { id: string; coordinates: [number, number] } | null) => void): void {
     this.onIxpHoverCb = cb;
+  }
+
+  setOnIspClick(cb: (data: { asn: string; coordinates: [number, number] }) => void): void {
+    this.onIspClickCb = cb;
+  }
+
+  setOnIodaClick(cb: (data: { id: string; coordinates: [number, number] }) => void): void {
+    this.onIodaClickCb = cb;
+  }
+
+  setOnDcClick(cb: (data: { id: string; coordinates: [number, number] }) => void): void {
+    this.onDcClickCb = cb;
+  }
+
+  setOnIxpClick(cb: (data: { id: string; coordinates: [number, number] }) => void): void {
+    this.onIxpClickCb = cb;
+  }
+
+  setOnTabChange(cb: (tab: ActiveTab | null) => void): void {
+    this.onTabChangeCallback = cb;
   }
 
   mount(): void {
@@ -165,10 +192,10 @@ export class OutagesPanel extends Panel {
     const tabTelecom  = this.modalEl.querySelector<HTMLButtonElement>('#tab-telecom')!;
     const tabInternet = this.modalEl.querySelector<HTMLButtonElement>('#tab-internet')!;
     const tabCloud    = this.modalEl.querySelector<HTMLButtonElement>('#tab-cloud')!;
-    tabElectric.onclick = (e) => { e.stopPropagation(); this.activeTab = 'electric'; this._applyTabs(); this._renderContent(); };
-    tabTelecom.onclick  = (e) => { e.stopPropagation(); this.activeTab = 'telecom';  this._applyTabs(); this._renderContent(); };
-    tabInternet.onclick = (e) => { e.stopPropagation(); this.activeTab = 'internet'; this._applyTabs(); this._renderContent(); };
-    tabCloud.onclick    = (e) => { e.stopPropagation(); this.activeTab = 'cloud';    this._applyTabs(); this._renderContent(); };
+    tabElectric.onclick = (e) => { e.stopPropagation(); this.activeTab = 'electric'; this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
+    tabTelecom.onclick  = (e) => { e.stopPropagation(); this.activeTab = 'telecom';  this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
+    tabInternet.onclick = (e) => { e.stopPropagation(); this.activeTab = 'internet'; this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
+    tabCloud.onclick    = (e) => { e.stopPropagation(); this.activeTab = 'cloud';    this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
 
     // ─── Drag logic ───
     let isDragging = false;
@@ -225,6 +252,7 @@ export class OutagesPanel extends Panel {
     this._updateHeaderCount();
     this._applyTabs();
     this._renderContent();
+    this.onTabChangeCallback?.(this.activeTab);
   }
 
   setOnClose(cb: () => void): void {
@@ -233,6 +261,7 @@ export class OutagesPanel extends Panel {
 
   hide(): void {
     this.modalEl.style.display = 'none';
+    this.onTabChangeCallback?.(null);
     this.onCloseCallback?.();
     // Clear highlights on close
     this.onDeptHoverCb?.(null);
@@ -257,7 +286,7 @@ export class OutagesPanel extends Panel {
       electric: '#F59E0B',  // ambre — électricité
       telecom:  '#3B82F6',  // bleu — télécom
       internet: '#10B981',  // vert emerald — internet
-      cloud:    '#A78BFA',  // violet — cloud
+      cloud:    '#60A5FA',  // bleu acier — cloud / IXP
     };
     const accent = tabAccents[this.activeTab];
     const inactiveStyle = 'color:var(--text-muted);border-bottom:2px solid transparent;';
@@ -318,7 +347,7 @@ export class OutagesPanel extends Panel {
     // ── Note DataFair ──
     const disclaimer = document.createElement('div');
     disclaimer.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:10px;line-height:1.4;';
-    disclaimer.textContent = '⚠ Ces indicateurs sont des données annuelles historiques Enedis (DataFair) agrégées par département — ils ne reflètent pas les pannes en cours en temps réel.';
+    disclaimer.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données annuelles historiques Enedis (DataFair) — il ne reflète pas le temps réel. La tension réseau (Ecowatt) et les zones signalées sont bien du temps réel/prévisionnel.";
     frag.appendChild(disclaimer);
 
     // ── Résumé badges ──
@@ -783,10 +812,16 @@ export class OutagesPanel extends Panel {
     frag.appendChild(scoreEl);
 
     // ── ISP BGP Status ──
-    const ispTitle = document.createElement('div');
-    ispTitle.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px;';
-    ispTitle.textContent = 'État BGP des opérateurs';
-    frag.appendChild(ispTitle);
+    const ispHeader = document.createElement('div');
+    ispHeader.style.cssText = 'margin-bottom:8px;';
+    ispHeader.innerHTML = `
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:3px;">État BGP des opérateurs</div>
+      <div style="font-size:10px;color:var(--text-muted);opacity:0.7;line-height:1.4;">
+        BGP (Border Gateway Protocol) est le protocole de routage qui relie les réseaux entre eux sur Internet.
+        Une chute de préfixes signale qu'un opérateur devient partiellement ou totalement injoignable.
+      </div>
+    `;
+    frag.appendChild(ispHeader);
 
     const ispGrid = document.createElement('div');
     ispGrid.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:16px;';
@@ -808,6 +843,9 @@ export class OutagesPanel extends Panel {
       row.addEventListener('mouseleave', () => {
         row.style.background = 'rgba(255,255,255,0.04)';
         this.onIspHoverCb?.(null);
+      });
+      row.addEventListener('click', () => {
+        this.onIspClickCb?.({ asn: isp.asn, coordinates: isp.coordinates });
       });
       // Visibility bar
       const barW = Math.round(isp.visibility);
@@ -867,6 +905,9 @@ export class OutagesPanel extends Panel {
         card.addEventListener('mouseleave', () => {
           card.style.background = 'rgba(255,255,255,0.04)';
           this.onIodaHoverCb?.(null);
+        });
+        card.addEventListener('click', () => {
+          this.onIodaClickCb?.({ id: ev.id, coordinates: ev.coordinates });
         });
         const durationStr = ev.isOngoing
           ? `⏳ En cours (début : ${ev.startTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`
@@ -966,7 +1007,7 @@ export class OutagesPanel extends Panel {
           <div style="font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;">${lbl}</div>
         </div>
         <div style="font-size:10px;color:var(--text-muted);">${siteList}</div>
-        ${incidentCount > 0 ? `<div style="font-size:10px;color:#F59E0B;margin-top:3px;">⚠ ${incidentCount} incident${incidentCount > 1 ? 's' : ''} actif${incidentCount > 1 ? 's' : ''}</div>` : ''}
+        ${incidentCount > 0 ? `<div style="font-size:10px;color:#0EA5E9;margin-top:3px;">⚠ ${incidentCount} incident${incidentCount > 1 ? 's' : ''} actif${incidentCount > 1 ? 's' : ''}</div>` : ''}
       `;
       // Hover → highlight first DC of provider on map
       const firstDc = dcs[0];
@@ -979,6 +1020,9 @@ export class OutagesPanel extends Panel {
         row.addEventListener('mouseleave', () => {
           row.style.background = 'rgba(255,255,255,0.04)';
           this.onDcHoverCb?.(null);
+        });
+        row.addEventListener('click', () => {
+          this.onDcClickCb?.({ id: firstDc.id, coordinates: firstDc.coordinates });
         });
       }
       dcGrid.appendChild(row);
@@ -1020,6 +1064,9 @@ export class OutagesPanel extends Panel {
       row.addEventListener('mouseleave', () => {
         row.style.background = 'rgba(255,255,255,0.04)';
         this.onIxpHoverCb?.(null);
+      });
+      row.addEventListener('click', () => {
+        this.onIxpClickCb?.({ id: ixp.id, coordinates: ixp.coordinates });
       });
       ixpGrid.appendChild(row);
     }

@@ -353,6 +353,9 @@ export interface WaterLevel {
 export interface TrainStop {
   name: string;
   time?: string; // Format HH:MM
+  plannedTime?: string; // Scheduled HH:MM
+  updatedTime?: string; // Realtime HH:MM
+  delayMinutes?: number;
   coordinates?: [number, number]; // [lon, lat]
 }
 
@@ -368,7 +371,11 @@ export interface TransportDisruption {
   departure?: TrainStop;
   arrival?: TrainStop;
   affectedStops?: string[];
+  totalDelayMinutes?: number;
   coordinates?: [number, number]; // Center point for map highlight [lon, lat]
+  routeGeometry?: LineString;
+  rawRouteGeometry?: LineString;
+  geometryFidelity?: 'matched' | 'raw' | 'fallback' | 'synthetic';
 }
 
 export interface RailNetworkData {
@@ -378,13 +385,27 @@ export interface RailNetworkData {
     severity: string;
     type: string;
     line: string;
+    trainNumber?: string;
     description: string;
+    departureName?: string;
+    arrivalName?: string;
+    departurePlannedTime?: string;
+    departureUpdatedTime?: string;
+    arrivalPlannedTime?: string;
+    arrivalUpdatedTime?: string;
+    totalDelayMinutes?: number;
+    affectedStopsCount?: number;
+    affectedStopsJson?: string;
+    geometryFidelity?: string;
   }>;
   /** Point features: unique impacted stations, worst severity wins */
   stations: GeoJSON.FeatureCollection<GeoJSON.Point, {
     name: string;
     severity: string;
     count: number;
+    linesJson?: string;
+    trainNumbersJson?: string;
+    affectedStopsJson?: string;
   }>;
 }
 

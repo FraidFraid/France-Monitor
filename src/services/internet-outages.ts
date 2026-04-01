@@ -75,10 +75,22 @@ function parseIspStatus(raw: Record<string, unknown>): IspBgpStatus {
         ispName:           String(raw.ispName ?? ''),
         prefixCount:       Number(raw.prefixCount ?? 0),
         prefixCountNormal: Number(raw.prefixCountNormal ?? 0),
+        prefixV4:          Number(raw.prefixV4 ?? 0),
+        prefixV6:          Number(raw.prefixV6 ?? 0),
         visibility:        Number(raw.visibility ?? 100),
         status,
         coordinates:       coords,
         lastUpdated:       new Date(String(raw.lastUpdated ?? Date.now())),
+        trafficEstimation: raw.trafficEstimation != null ? String(raw.trafficEstimation) : null,
+        lookingGlass:      raw.lookingGlass != null ? String(raw.lookingGlass) : null,
+        ixList:            Array.isArray(raw.ixList) ? (raw.ixList as string[]) : [],
+        peerCount:         Number(raw.peerCount ?? 0),
+        networkType:       String(raw.networkType ?? 'Réseau'),
+        peeringPolicy:     String(raw.peeringPolicy ?? 'N/A'),
+        arcepFiber:        raw.arcepFiber != null ? String(raw.arcepFiber) : null,
+        mobile:            raw.mobile != null ? String(raw.mobile) : null,
+        noc:               raw.noc != null ? String(raw.noc) : null,
+        ipv6Label:         raw.ipv6Label != null ? String(raw.ipv6Label) : null,
     };
 }
 

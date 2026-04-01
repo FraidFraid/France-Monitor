@@ -1,6 +1,6 @@
 /**
  * sncf-proxy.ts — Plugin Vite qui proxy les requêtes SNCF API pour le dev local.
- * En prod, c'est le serverless function api/transport/sncf.js qui fait ça.
+ * En prod, c'est la serverless function api/transport/disruptions.js qui fait ça.
  */
 
 import type { Plugin } from 'vite';

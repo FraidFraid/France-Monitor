@@ -33,25 +33,24 @@ const CACHE_TTL = 15 * 60_000; // 15 minutes
 
 const ODRE_BASE = 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets';
 
-// EcoGaz real API endpoint (via proxy in prod)
-const ECOGAZ_API = import.meta.env.PROD
-  ? '/api/gas/ecogaz'
-  : '/api/gas/ecogaz';
-
 // ═══ EcoGaz Signal Fetch ═══
 
 interface EcoGazApiResponse {
-  date: string;
-  niveau: 'vert' | 'jaune' | 'orange' | 'rouge';
-  message?: string;
-  previsions?: Array<{ date: string; niveau: string }>;
+  results: Array<{
+    gas_day: string;
+    color: string;
+    couleur_du_signal_fr: string;
+  }>;
 }
 
 function mapEcoGazSignal(niveau: string): EcoGazSignal {
-  switch (niveau) {
-    case 'rouge': return 'red';
+  const n = (niveau || '').toLowerCase();
+  switch (n) {
+    case 'rouge': 
+    case 'red': return 'red';
     case 'orange': return 'orange';
-    case 'jaune': return 'yellow';
+    case 'jaune': 
+    case 'yellow': return 'yellow';
     default: return 'green';
   }
 }
@@ -60,21 +59,34 @@ async function fetchEcoGazSignal(): Promise<{ data: EcoGazStatus; status: 'ok' |
   const now = new Date();
 
   try {
-    const resp = await fetch(ECOGAZ_API, { signal: AbortSignal.timeout(10_000) });
+    const url = `${ODRE_BASE}/signal-ecogaz/records?limit=6&order_by=gas_day%20desc`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const json = await resp.json() as EcoGazApiResponse;
+    const records = json.results || [];
 
-    const forecast = (json.previsions || []).map(p => ({
-      date: p.date,
-      signal: mapEcoGazSignal(p.niveau),
-    }));
+    const todayStr = now.toISOString().split('T')[0];
+    const todayRecord = records.find(r => r.gas_day <= todayStr) || records[0];
+    
+    if (!todayRecord) {
+      throw new Error('No EcoGaz records found');
+    }
+
+    const forecast = records
+      .filter(r => r.gas_day > todayStr)
+      .map(p => ({
+        date: p.gas_day,
+        signal: mapEcoGazSignal(p.color),
+      }));
+
+    const currentSignal = mapEcoGazSignal(todayRecord.color);
 
     return {
       data: {
-        date: json.date,
-        signal: mapEcoGazSignal(json.niveau),
-        message: json.message || getEcoGazMessage(mapEcoGazSignal(json.niveau)),
+        date: todayRecord.gas_day,
+        signal: currentSignal,
+        message: getEcoGazMessage(currentSignal),
         forecast,
         lastUpdate: now,
       },
@@ -175,14 +187,33 @@ function deriveNationalTrend(
 
 interface OdrePirRecord {
   point_interconnexion?: string;
+  titre?: string;
+  point_d_echange?: string;
   flux_gwh_jour?: number;
+  quantite_gwh?: number;
+  volume_echange_gwh?: number;
   date?: string;
+}
+
+const FALLBACK_PIR_FLOWS_GWH_DAY: Record<string, number> = {
+  'pir-biriatou': -45,
+  'pir-larrau': -18,
+  'pir-obergailbach': 85,
+  'pir-taisnieres': 120,
+  'pir-oltingue': -25,
+};
+
+function buildFallbackInterconnections(): GasInterconnection[] {
+  return GAS_INTERCONNECTIONS.map(pir => ({
+    ...pir,
+    flowGWhDay: FALLBACK_PIR_FLOWS_GWH_DAY[pir.id] ?? 0,
+  }));
 }
 
 async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]; status: 'ok' | 'stale' | 'error' }> {
   try {
-    // ODRE dataset for PIR flows
-    const url = `${ODRE_BASE}/flux-physiques-gaz-grtgaz/records?limit=20&order_by=date%20desc`;
+    // ODRE dataset for PIR/PEG flows
+    const url = `${ODRE_BASE}/evolution-de-lactivite-aux-points-dechange-de-gaz-peg-sur-le-reseau-natran/records?limit=100&order_by=date%20desc`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -190,16 +221,22 @@ async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]
     const json = await resp.json();
     const records = (json.results || []) as OdrePirRecord[];
 
+    let matchedRecords = 0;
     const enriched = GAS_INTERCONNECTIONS.map(pir => {
-      const liveRecord = records.find(r =>
-        r.point_interconnexion?.toLowerCase().includes(pir.name.toLowerCase())
-      );
+      const liveRecord = records.find((r: any) => {
+        const loc = (r.point_interconnexion || r.point_d_echange || r.titre || '').toLowerCase();
+        return loc.includes(pir.name.toLowerCase());
+      });
 
-      // Use live data if found, otherwise fallback to mock flow for visualization
-      const liveFlow = liveRecord?.flux_gwh_jour;
-      const flowGWhDay = (liveFlow !== undefined && liveFlow !== null && liveFlow !== 0)
+      const liveFlow = liveRecord?.flux_gwh_jour ?? liveRecord?.quantite_gwh ?? liveRecord?.volume_echange_gwh;
+
+      if (liveFlow !== undefined && liveFlow !== null) {
+        matchedRecords += 1;
+      }
+
+      const flowGWhDay = (liveFlow !== undefined && liveFlow !== null)
         ? liveFlow
-        : getMockFlow(pir.country);
+        : (FALLBACK_PIR_FLOWS_GWH_DAY[pir.id] ?? 0);
 
       return {
         ...pir,
@@ -207,26 +244,15 @@ async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]
       };
     });
 
+    if (matchedRecords === 0) {
+      console.warn('[Gas/PIR] No live PIR records matched configured interconnections, using fallback flows');
+      return { interconnections: buildFallbackInterconnections(), status: 'stale' };
+    }
+
     return { interconnections: enriched, status: 'ok' };
   } catch (err) {
-    console.warn('[Gas/PIR] ODRE fetch failed, using static data:', err);
-    // Return with mock flow data for visualization
-    const mockFlows = GAS_INTERCONNECTIONS.map(pir => ({
-      ...pir,
-      flowGWhDay: getMockFlow(pir.country),
-    }));
-    return { interconnections: mockFlows, status: 'stale' };
-  }
-}
-
-function getMockFlow(country: string): number {
-  // Mock realistic flow values for demo
-  switch (country) {
-    case 'Espagne': return -45; // Export to Spain
-    case 'Belgique': return 120; // Import from Belgium
-    case 'Allemagne': return 85; // Import from Germany
-    case 'Suisse': return -25; // Export to Switzerland
-    default: return 0;
+    console.warn('[Gas/PIR] ODRE fetch failed, using fallback flows:', err);
+    return { interconnections: buildFallbackInterconnections(), status: 'stale' };
   }
 }
 
@@ -272,8 +298,8 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
     },
     sourceStatus: {
       ecogaz: ecogazResult.status,
-      grtgaz: 'ok',
-      terega: 'ok',
+      grtgaz: pirResult.status,
+      terega: pirResult.status,
       odre: storageResult.status === 'ok' && pirResult.status === 'ok' ? 'ok' : 'stale',
     },
     lastUpdate: new Date(),

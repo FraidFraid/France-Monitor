@@ -1,325 +1,248 @@
-# CLAUDE.md
+Voici une version réécrite, plus compacte et plus « harness‑friendly ». Tu peux la copier telle quelle dans CLAUDE.md et garder les détails fins dans MEMORY.md / docs/.
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+CLAUDE.md — France Monitor
+Ce fichier oriente Claude Code pour travailler sur ce dépôt.
 
----
+1. Projet
+France Monitor est un clone français ultra‑localisé de WorldMonitor : tableau de bord de conscience situationnelle temps réel pour la France (carte 3D + PQR + état des infrastructures critiques : énergie, météo, transports, crues, pannes, finance, vols militaires).
 
-## Identité du Projet
-**France Monitor** — Clone français et ultra-localisé de [WorldMonitor](https://github.com/koala73/worldmonitor). Tableau de bord de conscience situationnelle en temps réel pour la France : carte 3D interactive + flux d'actualités PQR + état des infrastructures critiques (énergie, météo, transports, crues). LLM local (Ollama) pour extraction d'entités et classification des événements.
+Objectifs clés :
 
-**Repo source** : L'architecture suit fidèlement les patterns de WorldMonitor — Vanilla TypeScript (pas de React), Vite comme build system + dev server, Vercel Serverless Functions pour le backend, Deck.gl + MapLibre pour la carte, Protobuf pour les contrats API.
+Vue unifiée des événements et signaux faibles, à l’échelle France / régions / métropoles.
 
-**État actuel** : Phase 2 avancée. Services opérationnels : RSS, classification keyword, géocodage, météo (Vigilance), crues (Vigicrues), énergie (Ecowatt), trafic routier, finance, transports SNCF, pannes (outages), vols militaires. La carte fonctionne avec Deck.gl (desktop) et D3/SVG (mobile fallback). Python scrapling-proxy pour contourner Cloudflare.
+Priorité à la lisibilité opérationnelle (OSINT / monitoring), pas aux effets graphiques.
 
----
+Traitement IA local d’abord (Ollama) ; aucun PII ne doit partir vers le cloud.
 
-## Stack Technique (calquée sur WorldMonitor)
+Source d’inspiration principale : WorldMonitor (mêmes patterns d’architecture, sans React).
 
-### Frontend — Vanilla TypeScript + Vite
-- **PAS de React/Vue/Angular** — DOM manipulation directe, comme WorldMonitor
-- **Build** : Vite 6+
-- **Carte** : MapLibre GL JS (moteur) + Deck.gl v9 (calques haute performance)
-- **Carte mobile** : D3.js + SVG (dégradation gracieuse, comme WorldMonitor `Map.ts` vs `DeckGLMap.ts`)
-- **Clustering** : Supercluster
-- **CSS** : Fichier CSS unique, mode sombre par défaut (thème via CSS variables)
-- **i18n** : i18next (FR par défaut, EN en fallback)
-- **State** : Objet JavaScript in-memory + localStorage pour la persistance
-- **PWA** : vite-plugin-pwa (offline map support)
+2. Stack & contraintes non négociables
+Frontend
+Langage : TypeScript strict, Vanilla DOM (aucun React/Vue/Angular).
 
-### Backend — Vercel Serverless Functions
-- **Pas d'Express** — Routes `/api/*` sont des Vercel serverless functions
-- **En dev** : Plugins Vite qui proxifient les API externes (RSS, données gouv)
-- **Cache** : Upstash Redis (cloud) pour la dédup cross-users + IndexedDB côté client
-- **RPC** : Protobuf (sebuf) pour les contrats typés entre client et serveur
+Build / Dev : Vite 6+.
 
-### IA / NLP
-- **LLM local** : Ollama (mistral:instruct ou llama3) — fallback chain comme WorldMonitor
-- **Fallback chain** : Ollama → Groq (cloud) → Browser T5 (Transformers.js)
-- **Classification** : Hybrid — keyword classifier instantané + override async LLM
-- **ML Browser** : @xenova/transformers + onnxruntime-web pour le fallback client-side
+Carte desktop : MapLibre GL + Deck.gl.
 
-### Desktop (optionnel, Phase avancée)
-- **Tauri v2** pour app native macOS/Windows/Linux
+Carte mobile fallback : D3 + SVG.
 
-### Vite Plugins (Dev Proxies)
-Les plugins dans `src/plugins/` émulent les API serverless en dev :
-- Chaque plugin intercepte les routes `/api/*` via `configureServer()`
-- Pattern : lire le body, appeler l'API externe avec auth, retourner le résultat
-- En prod : les routes `/api/*` sont gérées par Vercel Functions dans `api/`
+Clustering : Supercluster.
 
-### Scrapling Proxy (Cloudflare Bypass)
-Microservice Python (FastAPI + Scrapling) pour les flux RSS protégés par Cloudflare :
-- **Whitelist** : Seuls `lesechos.fr`, `lavoixdunord.fr`, `paris-normandie.fr` autorisés
-- **Cache** : 5 min en mémoire
-- **Déploiement** : Docker → Cloud Run ou Lambda container
+State : objet in‑memory + localStorage/IndexedDB (pas de Redux‑like).
 
----
+CSS : src/styles/main.css, dark mode par défaut via variables CSS.
 
-## Architecture du Projet (pattern WorldMonitor)
+Backend
+Pas d’Express : routes /api/* = Vercel Serverless Functions (dossier api/).
 
-```
+Dev : Vite plugins (src/plugins/*) qui proxifient les APIs externes.
+
+Cache serveur : Upstash Redis (dédoublonnage cross‑users).
+
+IA / NLP
+LLM principal : Ollama (ex : mistral:instruct, llama3), exécuté localement.
+
+Fallback chain (ordre fixe) : Ollama → Groq (cloud) → modèle browser (Transformers.js).
+
+Classification : hybride keyword + override LLM.
+
+Règles globales
+Toujours TypeScript strict, aucun any toléré.
+
+Vanilla TS uniquement (DOM natif, pas de JSX).
+
+Aucune donnée personnelle envoyée à des APIs tierces ou à des LLM cloud.
+
+3. Structure du dépôt (vue utile pour Claude)
+Ne retenir que les zones suivantes (le reste peut être découvert à la demande) :
+
+text
 france-monitor/
-├── api/                         # Vercel Serverless Functions (prod)
-│   ├── rss-proxy.js             # Proxy RSS (évite CORS)
-│   ├── energy/ecowatt.js        # Proxy Ecowatt RTE
-│   ├── finance/market.js        # Proxy données bourse
-│   └── intelligence/v1/         # Summarize endpoint
+├── api/                    # Vercel functions (prod) pour /api/*
+│   ├── rss-proxy.js        # Proxy RSS (contourne CORS)
+│   ├── energy/…            # Ecowatt, réseau électrique
+│   ├── finance/…           # Marchés, devises
+│   └── intelligence/v1/    # Résumés IA, classification
 │
-├── services/                    # Microservices externes
-│   └── scrapling-proxy/         # Python FastAPI - bypass Cloudflare
-│       ├── app.py               # Endpoint /rss?url=... + whitelist
-│       ├── Dockerfile           # Pour Cloud Run / Lambda
-│       └── start.sh             # npm run scrapling:dev
+├── services/
+│   └── scrapling-proxy/    # FastAPI + Scrapling, bypass Cloudflare pour RSS
 │
-├── src/                         # Frontend (Vanilla TS)
-│   ├── main.ts                  # Point d'entrée
-│   ├── App.ts                   # Orchestrateur principal (~2000+ lignes)
-│   │
-│   ├── components/              # Classes UI (DOM manipulation directe)
-│   │   ├── Panel.ts             # Base class abstraite
-│   │   ├── Map.ts               # D3/SVG (mobile fallback)
-│   │   ├── DeckGLMap.ts         # Deck.gl + MapLibre (desktop)
-│   │   ├── MapContainer.ts      # Choisit Map vs DeckGLMap
-│   │   ├── MapPopup.ts          # Tooltip événements
-│   │   ├── NewsPanel.ts         # Flux RSS PQR
-│   │   ├── EnergyPanel.ts       # Ecowatt / nucléaire
-│   │   ├── WeatherPanel.ts      # Vigilance météo
-│   │   ├── FloodsPanel.ts       # Vigicrues
-│   │   ├── TransportPanel.ts    # SNCF
-│   │   ├── TrafficPanel.ts      # Trafic routier Bison Futé
-│   │   ├── FinancePanel.ts      # CAC40, devises
-│   │   ├── ISNRPanel.ts         # Indice Stabilité (ISNR)
-│   │   ├── FilterPanel.ts       # Filtres temps/catégorie/gravité
-│   │   ├── StatusPanel.ts       # État connexion sources
-│   │   ├── SearchModal.ts       # Recherche globale
-│   │   └── ToastNotification.ts # Notifications temporaires
-│   │
-│   ├── services/                # Logique métier
-│   │   ├── rss.ts               # Fetch + parse RSS, circuit breaker
-│   │   ├── classifier.ts        # Classification keyword (PQR filter)
-│   │   ├── ai-classifier.ts     # Classification LLM async
-│   │   ├── summarization.ts     # Résumé IA (Ollama→Groq→T5)
-│   │   ├── ai-worker.ts         # Web Worker pour IA browser
-│   │   ├── summarization-worker.ts
-│   │   ├── geocoder.ts          # API Adresse gouv + cache
-│   │   ├── ecowatt.ts           # Signal Ecowatt RTE
-│   │   ├── energy.ts            # État réseau électrique
-│   │   ├── vigilance-meteo.ts   # Alertes Météo-France
-│   │   ├── vigicrues.ts         # Niveau crues
-│   │   ├── transport.ts         # SNCF temps réel
-│   │   ├── traffic.ts           # Bison Futé
-│   │   ├── finance.ts           # Boursorama/Yahoo Finance
-│   │   ├── fires.ts             # Feux de forêt NASA FIRMS
-│   │   ├── outages.ts           # Pannes Enedis/Free
-│   │   ├── military-flights.ts  # ADSB-Exchange militaire
-│   │   ├── metropoles.ts        # Stats métropoles
-│   │   └── stability-index.ts   # Calcul ISNR composite
-│   │
-│   ├── plugins/                 # Vite plugins (proxy dev)
-│   │   ├── rss-proxy.ts         # /api/rss → fetchRSS
-│   │   ├── sncf-proxy.ts        # /api/sncf
-│   │   ├── ecowatt-proxy.ts     # /api/ecowatt
-│   │   ├── finance-proxy.ts     # /api/finance
-│   │   └── arcep-proxy.ts       # /api/arcep
-│   │
-│   ├── config/
-│   │   ├── feeds.ts             # Définition flux RSS (100+ sources)
-│   │   ├── geo.ts               # Centroïdes départements/régions
-│   │   ├── infrastructure.ts    # Centrales, barrages, sous-stations
-│   │   ├── military.ts          # Bases militaires, callsigns
-│   │   ├── webcams.ts           # Webcams trafic
-│   │   └── mock-data.ts         # Données de test
-│   │
-│   ├── utils/
-│   │   ├── newsCache.ts         # LRU cache pour actualités
-│   │   ├── urlState.ts          # Sync état ↔ URL params
-│   │   └── spatial-correlation.ts # Clustering spatial événements
-│   │
-│   ├── types/index.ts           # Toutes les interfaces
-│   └── styles/main.css          # CSS unique, dark mode
+├── src/
+│   ├── main.ts             # Entrée Vite
+│   ├── App.ts              # Orchestrateur principal (~2000 lignes)
+│   ├── components/         # UI panels + cartes
+│   ├── services/           # Logique métier par source (rss, ecowatt, vigicrues…)
+│   ├── plugins/            # Vite dev proxies (mirroir des routes /api/*)
+│   ├── config/             # Feeds, géo, infrastructure, mock data
+│   ├── utils/              # Caches, URL state, helpers spatiaux
+│   ├── types/index.ts      # Types partagés
+│   └── styles/main.css     # Style global + dark mode
 │
-├── proto/                       # Contrats Protobuf (scaffolded)
-├── server/                      # Handlers sebuf (scaffolded)
-├── vite.config.ts               # Plugins proxy, PWA, aliases
+├── proto/                  # Contrats Protobuf (RPC client↔serveur)
+├── server/                 # Handlers sebuf (RPC)
+├── vite.config.ts
 └── package.json
-```
+Règle de navigation pour Claude :
 
----
+Pour UI → commencer par App.ts puis src/components/*.ts.
 
-## Workflow
+Pour accès données → src/services/*.ts puis api/*.js.
 
-### Principes
-- **Plan First** : Mode plan pour tâches 3+ étapes ou décisions d'architecture
-- **Subagents** : Déléguer recherche/exploration aux agents Explore, implémentation aux agents general-purpose
-- **Vérifier** : `npm run build && npm run typecheck` avant de considérer une tâche terminée
-- **WorldMonitor** : Référencer le repo source pour les patterns complexes (circuit breaker, fallback chain, etc.)
+Pour sources externes → src/config/*.ts et plugins Vite associés.
 
-### Patterns courants
-| Tâche | Approche |
-|-------|----------|
-| Nouvelle feature | Plan → Explore (architecture existante) → Implement → Build |
-| Bug fix | Explore (cause root) → Fix → Typecheck |
-| Nouveau service | Créer `src/services/X.ts` + `src/plugins/X-proxy.ts` + `api/X.js` |
-| Nouveau panel | Étendre `Panel.ts`, ajouter dans `App.ts`, connecter au service |
+4. Patterns d’architecture à respecter
+Carte & géo
+Coordonnées toujours au format [lng, lat].
 
-### Stratégie Subagents
+DeckGLMap.ts = carte WebGL desktop (Deck.gl + MapLibre).
 
-#### Agents disponibles
+Map.ts = fallback D3/SVG mobile.
 
-| Agent | Quand le spawner | Exemples |
-|-------|-----------------|---------|
-| **Explore** (read-only) | Recherche de fichiers, patterns, comprendre le code existant | "Trouve tous les services qui appellent l'API RTE", "Quels fichiers sont impactés ?" |
-| **Plan** (read-only) | Concevoir une stratégie avant de coder | "Planifie l'intégration Vigicrues", "Design le système de cache" |
-| **general-purpose** (full access) | Implémenter, refactorer, corriger des bugs | "Implémente le service RSS", "Fixe le bug de géocodage" |
+MapContainer.ts choisit dynamiquement quelle implémentation utiliser.
 
-#### Patterns de délégation
+Services data (src/services/*.ts)
+Pattern standard :
 
-**Pattern 1 — Recherche parallèle**
-```
-→ Agent Explore 1 : "Cherche comment WorldMonitor gère X"
-→ Agent Explore 2 : "Trouve les fichiers impactés par Y"
-→ Synthétiser avant de coder
-```
+Fonction(s) async de fetch d’API externe.
 
-**Pattern 2 — Plan → Implement** (séquentiel)
-```
-→ Agent Plan : "Conçois l'architecture pour le service X"
-→ Revue par l'utilisateur
-→ Agent general-purpose : "Implémente le plan approuvé"
-```
+Parsing + normalisation vers des types partagés (src/types/index.ts).
 
-**Pattern 3 — Multi-file** (parallèle, si indépendants)
-```
-→ Agent 1 : "Crée api/X.js"
-→ Agent 2 : "Crée src/services/X.ts"
-→ Agent 3 : "Crée src/plugins/X-proxy.ts"
-```
+Circuit breaker : cooldown après plusieurs erreurs consécutives.
 
-**Pattern 4 — Debug & Fix**
-```
-→ Agent Explore : "Trouve la cause root de l'erreur X"
-→ Agent general-purpose : "Implémente le fix identifié"
-```
+Cache : in‑memory +, si pertinent, persistance côté client (IndexedDB / localStorage).
 
-#### Règles
-- Donner le contexte complet à l'agent (fichier, pattern à suivre, résultat attendu)
-- Référencer WorldMonitor quand pertinent
-- Lancer les agents en parallèle quand les tâches sont indépendantes
-- Ne pas utiliser d'agent pour les tâches triviales (1-2 lignes, lecture d'un fichier précis)
+Chaque nouvelle source doit :
 
-### Principes supplémentaires
-- **Verification Before Done** : Ne jamais marquer terminé sans prouver que ça fonctionne (`npm run build && npm run typecheck`)
-- **Self-Improvement** : Après toute correction non triviale, mettre à jour `MEMORY.md` avec le pattern appris
+Exposer une fonction claire du style fetchXxx() ou getXxxState().
 
----
+Être consommée par un panel ou un composant explicitement identifié.
 
-## Core Principles
-- **Simplicity First** : Chaque changement aussi simple que possible
-- **No Laziness** : Trouver les causes racines, pas de fixes temporaires
-- **Minimal Impact** : Ne toucher que le nécessaire
-- **Privacy First** : Traitement IA local (Ollama). Aucune donnée perso envoyée en cloud
-- **Performance** : 60fps avec des milliers de points (Deck.gl)
-- **Vanilla TS** : Pas de framework React/Vue — DOM natif, comme WorldMonitor
+RSS & proxy
+Jamais de fetch direct vers des RSS depuis le frontend.
 
----
+Tous les flux passent par /api/rss-proxy (ou via scrapling-proxy si Cloudflare).
 
-## Contextes de Développement
+Le microservice services/scrapling-proxy ne doit whitelister que quelques domaines (PQR ciblée).
 
-### Frontend / App.ts & Components
-Vanilla TypeScript, DOM manipulation directe. `App.ts` est l'orchestrateur (~2000+ lignes). Les composants étendent `Panel.ts` et gèrent leur propre DOM. State in-memory + localStorage/IndexedDB. CSS variables pour le theming dark mode.
+Classification & IA
+classifier.ts : classification keyword rapide, filtre bruit PQR, logique déterministe.
 
-### Carte / DeckGLMap & Map
-- `DeckGLMap.ts` : Deck.gl + MapLibre (desktop, WebGL)
-- `Map.ts` : D3/SVG (mobile fallback)
-- `MapContainer.ts` : Auto-détection du renderer
-- Layers : ScatterplotLayer, IconLayer, GeoJsonLayer, PathLayer, HeatmapLayer
-- Clustering : Supercluster
-- **Coordonnées : toujours `[lng, lat]`** (pas `[lat, lng]`)
+ai-classifier.ts : override LLM asynchrone (Ollama → Groq → T5) pour les cas ambigus.
 
-### Classification / classifier.ts
-Classification hybride keyword + LLM :
-- **Keyword** (`classifier.ts`) : Instantané, détecte entités (institutions, lieux), filtre bruit PQR
-- **LLM** (`ai-classifier.ts`) : Async override via Ollama/Groq/T5
-- Catégories : `social`, `security`, `energy`, `weather`, `transport`, `finance`, `health`
-- Niveaux : `critical`, `high`, `medium`, `low`, `info`
-- **Mitigation PQR** : Exige institution pour valider `security/low` (cf. MEMORY.md)
+Catégories principales : social, security, energy, weather, transport, finance, health.
 
-### Services Data
-Pattern commun : fetch API → parse → cache → expose via fonction async.
-- Circuit breaker : cooldown après 2 échecs consécutifs
-- Cache : Map in-memory + IndexedDB
-- Déduplication : par URL ou ID unique
+Niveaux de sévérité : critical, high, medium, low, info.
 
----
+Principe : si le keyword classifier est suffisant, ne pas faire d’appel LLM.
 
-## Conventions de Code
+5. Workflow de développement (Claude)
+Règles générales
+Toujours planifier avant de coder (mode Plan ou agent dédié) pour les tâches > 3 étapes.
 
-### TypeScript
-- `strict: true`, pas de `any`
-- Vanilla TS : pas de JSX, pas de framework
-- Types centralisés dans `src/types/index.ts`
-- Classes pour les composants, fonctions pour les services
+Ne jamais marquer une tâche comme terminée sans :
 
-### Nommage (identique WorldMonitor)
-- Fichiers : `PascalCase` pour les composants (`DeckGLMap.ts`, `NewsPanel.ts`)
-- Fichiers : `kebab-case` pour les services (`threat-classifier.ts`, `persistent-cache.ts`)
-- Types/Interfaces : `PascalCase`
-- Fonctions/Variables : `camelCase`
-- Constants : `UPPER_SNAKE_CASE`
+npm run build
 
-### Git
-- Commits conventionnels : `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
-- Branches : `feat/nom-feature`, `fix/nom-bug`
+npm run typecheck
 
-### Path Alias
-- `@/*` → `./src/*` (configuré dans tsconfig.json et vite.config.ts)
+Utiliser WorldMonitor comme référence quand un pattern existe déjà (circuit breaker, fallback chain, panels complexes).
 
----
+Patterns de tâches
+Tâche	Pattern Claude suggéré
+Nouvelle feature	Plan → Explore (code existant) → Implémentation → Build
+Bug fix	Explore (root cause) → Fix ciblé → Typecheck + tests
+Nouveau service data	src/services/X.ts + src/plugins/X-proxy.ts + api/X.js
+Nouveau panel UI	Étendre Panel.ts, l’enregistrer dans App.ts, le relier au service correspondant
+Sub‑agents (Claude Code)
+Explore (read‑only) : trouver les fichiers et patterns pertinents, ne pas modifier le code.
 
-## Commandes
-```bash
-# Dev (lance Vite + scrapling-proxy en parallèle)
-npm run dev              # concurrently: vite (port 3001) + scrapling-proxy (port 8080)
-npm run dev:vite         # Vite seul, sans scrapling
+Plan (read‑only) : proposer une architecture et un plan d’implémentation détaillé.
 
-# Scrapling Proxy (bypass Cloudflare pour RSS protégés)
-npm run scrapling:install  # Setup Python venv + deps
-npm run scrapling:dev      # Lance le proxy Python sur :8080
-npm run scrapling:docker   # Build & run Docker container
+general‑purpose (full access) : implémenter / refactorer / corriger selon un plan validé.
 
-# Build & Check
+Guidelines :
+
+Donner à chaque sous‑agent le contexte minimal suffisant (fichiers, but, contraintes).
+
+Lancer des agents en parallèle uniquement pour des tâches indépendantes (ex : créer en parallèle api/X.js, src/services/X.ts, src/plugins/X-proxy.ts).
+
+Ne pas invoquer d’agent pour des modifications triviales (1‑2 lignes dans un fichier unique).
+
+6. Conventions de code
+TypeScript
+strict: true, pas de any ni de ! non justifié.
+
+Types partagés centralisés dans src/types/index.ts.
+
+Composants UI = classes (héritent souvent de Panel.ts).
+
+Services data / utilitaires = fonctions pures autant que possible.
+
+Nommage
+Composants UI : PascalCase (NewsPanel.ts, DeckGLMap.ts).
+
+Services : kebab-case (vigilance-meteo.ts, military-flights.ts).
+
+Types / interfaces : PascalCase.
+
+Variables / fonctions : camelCase.
+
+Constantes : UPPER_SNAKE_CASE.
+
+Alias de chemin : @/* → ./src/* (tsconfig + vite).
+
+Git
+Commits : feat:, fix:, refactor:, docs:, test:.
+
+Branches : feat/nouvelle-feature, fix/nom-bug.
+
+7. Commandes importantes
+bash
+# Dev
+npm run dev              # Vite (port 3001) + scrapling-proxy (port 8080)
+npm run dev:vite         # Vite seul
+
+# Scrapling (RSS Cloudflare)
+npm run scrapling:install  # Setup venv + deps Python
+npm run scrapling:dev      # Proxy sur :8080
+npm run scrapling:docker   # Build & run Docker
+
+# Qualité
 npm run build            # tsc && vite build
 npm run typecheck        # tsc --noEmit
-npm run preview          # Prévisualiser le build de production
-
-# Code Quality
 npm run lint             # ESLint sur src/
 npm run format           # Prettier sur src/**/*.ts
 
 # Déploiement
-vercel                   # Deploy sur Vercel (auto depuis git push)
-```
+vercel                   # Déploiement sur Vercel
+Avant de conclure une tâche significative, Claude doit au minimum lancer :
 
----
+bash
+npm run build
+npm run typecheck
+8. Variables d’environnement (rappel rapide)
+Voir .env.example pour la liste complète.
 
-## Variables d'Environnement
-Voir `.env.example`. Obligatoires pour la prod :
-- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — cache serverless
-- `RTE_CLIENT_ID` / `RTE_CLIENT_SECRET` — API Ecowatt
-- `METEO_FRANCE_API_KEY` — alertes météo
+Obligatoires prod :
 
-Optionnelles :
-- `SNCF_API_KEY` — données transport
-- `GROQ_API_KEY` — fallback IA cloud
+UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN
 
----
+RTE_CLIENT_ID / RTE_CLIENT_SECRET
 
-## Debugging Courant
-- **Carte blanche / pas de tuiles** : Vérifier l'URL tile server dans la config MapLibre (Carto Dark Matter)
-- **Points pas affichés** : Coordonnées en `[lng, lat]` (pas `[lat, lng]`)
-- **Ollama timeout** : Vérifier `ollama pull mistral`, augmenter timeout dans summarization.ts
-- **RSS CORS** : Tout passe par `/api/rss-proxy` — jamais de fetch direct côté client
-- **RSS Cloudflare 403** : Les flux protégés passent par scrapling-proxy (`npm run scrapling:dev`)
-- **Ecowatt 403** : Token OAuth2 RTE expiré — vérifier le flow d'auth dans `api/energy/`
-- **Vercel function timeout** : Max 10s en hobby, 60s en pro — optimiser ou cacher
-- **Bruit PQR excessif** : Vérifier que `classifier.ts` filtre bien les faits divers sans institution
+METEO_FRANCE_API_KEY
+
+Optionnelles :
+
+SNCF_API_KEY
+
+GROQ_API_KEY
+
+9. Debug & mémoire (où chercher)
+Ne pas surcharger ce fichier avec l’historique de bugs.
+
+Pour :
+
+Cas de debug récurrents (ex : carte blanche, RSS bloqués, bruit PQR) → voir MEMORY.md ou docs/troubleshooting.md.
+
+Leçons apprises / patterns anti‑bugs → mettre à jour MEMORY.md après chaque correction non triviale.
+

@@ -678,7 +678,7 @@ L'approche **MCP (Model Context Protocol)** a été évaluée pour les requêtes
 > ✅ **TRAFIC ÉTENDU (2026-02-28)** : TomTom 17 métropoles.
 > ✅ **GÉOCODAGE AMÉLIORÉ (2026-02-28)** : Dictionnaire CITIES étendu à 300+ villes.
 > ✅ **PHASE 14, 15, 16 INTÉGRÉS (2026-03)** : Infrastructures critiques Santé intégrées (Sentinelles/OSCOUR), Cyber/Câbles implémentés, Défense unifiée avec avions, bases et navires.
-
+> ✅ **FIXES VISUELS & FIABILISATION DATA (2026-04)** : Intégration stabilisée du réseau Gaz (ODRÉ Ecogaz / PEG NaTran), dé-clusterisation intelligente des labels AIS Maritimes, correction d'affichage des "Pulse Markers" (conflit WebGL/DOM), et clarification des sources (Historique vs Temps Réel) pour les pannes réseau.
 ---
 
 ### Idées futures :

@@ -104,10 +104,17 @@ export async function fetchMarketData(): Promise<MarketData[]> {
             });
         }
 
-        return results;
+        const bySymbol = new Map(results.map((item) => [item.symbol, item]));
+        return MOCK_MARKET_DATA.map((mock) => {
+            const realData = bySymbol.get(mock.symbol);
+            if (realData) {
+                return { ...realData, category: mock.category };
+            }
+            return mock;
+        });
 
     } catch (err) {
         console.error('[Finance] Fetch failed', err);
-        return [];
+        return MOCK_MARKET_DATA;
     }
 }

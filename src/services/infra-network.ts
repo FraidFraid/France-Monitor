@@ -27,13 +27,13 @@ let cooldownUntil = 0;
 
 export function dcStatusColor(status: DatacenterStatus['status']): string {
     switch (status) {
-        case 'operational':  return '#A78BFA';  // violet-400 — cohérent avec légende ▲
-        case 'degraded':     return '#F59E0B';
-        case 'partial':      return '#F97316';
-        case 'outage':       return '#EF4444';
-        case 'maintenance':  return '#8B5CF6';  // violet-500
-        case 'unknown':      return '#A78BFA';  // violet — pas d'incident connu = opérationnel
-        default:             return '#A78BFA';
+        case 'operational':  return '#60A5FA';
+        case 'degraded':     return '#3B82F6';
+        case 'partial':      return '#2563EB';
+        case 'outage':       return '#1D4ED8';
+        case 'maintenance':  return '#93C5FD';
+        case 'unknown':      return '#60A5FA';
+        default:             return '#60A5FA';
     }
 }
 
@@ -50,7 +50,9 @@ export function dcStatusLabel(status: DatacenterStatus['status']): string {
 }
 
 export function ixpStatusColor(status: IxpStatus['status']): string {
-    if (status === 'operational') return '#C4B5FD';  // violet-300 — cohérent avec légende ◆
+    if (status === 'operational') return '#BFDBFE';
+    if (status === 'degraded') return '#93C5FD';
+    if (status === 'outage') return '#64748B';
     return dcStatusColor(status as DatacenterStatus['status']);
 }
 

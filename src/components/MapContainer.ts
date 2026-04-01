@@ -6,7 +6,7 @@
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
@@ -442,11 +442,8 @@ export class MapContainer {
     this.deckMap?.highlightISNRDepartment(departmentCode);
   }
 
-  highlightTrainRoute(
-    departure: [number, number] | null,
-    arrival: [number, number] | null
-  ): void {
-    this.deckMap?.highlightTrainRoute(departure, arrival);
+  highlightTrainRoute(disruption: TransportDisruption | null): void {
+    this.deckMap?.highlightTrainRoute(disruption);
   }
 
   updateRailNetwork(data: RailNetworkData): void {

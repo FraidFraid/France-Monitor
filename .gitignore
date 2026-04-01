@@ -30,3 +30,6 @@ dist-ssr
 .venv/
 venv/
 services/scrapling-proxy/venv/
+
+# BD Topage pré-téléchargée (~150 MB, générée par scripts/prepare-topage.mjs)
+public/data/topage/

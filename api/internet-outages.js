@@ -32,6 +32,15 @@ const BASELINE_PREFIXES = {
     '12876': { v4: 450,  v6: 90  },
 };
 
+const ISP_ENRICHMENT = {
+    '3215':  { networkType: 'Opérateur national', peeringPolicy: 'Selective', arcepFiber: '84 %', mobile: '5G NR', noc: 'noc@orange.fr',    ipv6Label: 'DHCPv6-PD' },
+    '12322': { networkType: 'Opérateur national', peeringPolicy: 'Open',      arcepFiber: '76 %', mobile: '5G NR', noc: 'peering@free.fr',  ipv6Label: 'Natif SLAAC · leader IPv6 France' },
+    '15557': { networkType: 'Opérateur national', peeringPolicy: 'Selective', arcepFiber: '79 %', mobile: '5G NR', noc: null,               ipv6Label: 'DHCPv6' },
+    '5410':  { networkType: 'Opérateur national', peeringPolicy: 'Selective', arcepFiber: '72 %', mobile: '5G NR', noc: null,               ipv6Label: 'Partiel' },
+    '16276': { networkType: 'Hébergeur / Transit', peeringPolicy: 'Open',     arcepFiber: null,   mobile: 'N/A',  noc: 'noc@ovh.net',       ipv6Label: 'Dual-stack natif' },
+    '12876': { networkType: 'Cloud / Hébergeur',   peeringPolicy: 'Open',     arcepFiber: null,   mobile: 'N/A',  noc: null,                ipv6Label: 'Dual-stack natif' },
+};
+
 const FRANCE_CENTER = [2.2137, 46.2276];
 
 async function fetchWithTimeout(url, timeoutMs = 8000) {
@@ -49,7 +58,7 @@ async function fetchWithTimeout(url, timeoutMs = 8000) {
 
 async function fetchIodaEvents(entityType, entityCode, fromTs, untilTs) {
     try {
-        const url = `${IODA_BASE}/outages/events/${entityType}/${entityCode}?from=${fromTs}&until=${untilTs}`;
+        const url = `${IODA_BASE}/outages/events?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 9000);
         if (!res.ok) return { data: [], ok: false };
         const json = await res.json();
@@ -59,9 +68,9 @@ async function fetchIodaEvents(entityType, entityCode, fromTs, untilTs) {
     }
 }
 
-async function fetchIodaAlerts(entityType, entityCode) {
+async function fetchIodaAlerts(entityType, entityCode, fromTs, untilTs) {
     try {
-        const url = `${IODA_BASE}/outages/alerts/${entityType}/${entityCode}`;
+        const url = `${IODA_BASE}/outages/alerts?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 7000);
         if (!res.ok) return { data: [], ok: false };
         const json = await res.json();
@@ -84,6 +93,34 @@ async function fetchBgpPrefixCount(asn) {
     } catch {
         return null;
     }
+}
+
+async function fetchBgpAsnInfo(asn) {
+    try {
+        const res = await fetchWithTimeout(`${BGPVIEW_BASE}/asn/${asn}`, 6000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (json?.status !== 'ok') return null;
+        const d = json.data ?? {};
+        return {
+            trafficEstimation: d.traffic_estimation ?? null,
+            lookingGlass: d.looking_glass ?? null,
+        };
+    } catch { return null; }
+}
+
+async function fetchBgpIxs(asn) {
+    try {
+        const res = await fetchWithTimeout(`${BGPVIEW_BASE}/asn/${asn}/ixs`, 6000);
+        if (!res.ok) return null;
+        const json = await res.json();
+        if (json?.status !== 'ok') return null;
+        const v4ixs = Array.isArray(json?.data?.ipv4_ixs) ? json.data.ipv4_ixs : [];
+        const v6ixs = Array.isArray(json?.data?.ipv6_ixs) ? json.data.ipv6_ixs : [];
+        // Union dédupliquée par name
+        const allNames = [...new Set([...v4ixs, ...v6ixs].map(ix => ix.name_full || ix.name).filter(Boolean))];
+        return allNames.slice(0, 6); // max 6 pour le tooltip
+    } catch { return null; }
 }
 
 function normalizeIodaEvent(ev, entityType, entityCode, entityName, coordinates, isOngoing) {
@@ -119,7 +156,7 @@ export default async function handler(req, res) {
     // ── Fetches IODA ──────────────────────────────────────────────────────────
     const [countryEventsResult, countryAlertsResult] = await Promise.all([
         fetchIodaEvents('country', 'FR', from24h, now),
-        fetchIodaAlerts('country', 'FR'),
+        fetchIodaAlerts('country', 'FR', from24h, now),
     ]);
 
     // Limiter à 4 ASNs pour éviter le rate-limiting IODA
@@ -130,29 +167,59 @@ export default async function handler(req, res) {
         )
     );
 
-    // ── Fetches BGPView (prefix counts) ──────────────────────────────────────
-    const bgpResults = await Promise.allSettled(
-        FRENCH_ISPS.map(isp =>
-            fetchBgpPrefixCount(isp.asn).then(counts => ({ asn: isp.asn, counts }))
-        )
-    );
+    // ── Fetches BGPView (prefix counts + ASN info + IX list) ──────────────────
+    const [bgpResults, asnInfoResults, ixResults] = await Promise.all([
+        Promise.allSettled(
+            FRENCH_ISPS.map(isp =>
+                fetchBgpPrefixCount(isp.asn).then(counts => ({ asn: isp.asn, counts }))
+            )
+        ),
+        Promise.allSettled(
+            FRENCH_ISPS.map(isp =>
+                fetchBgpAsnInfo(isp.asn).then(info => ({ asn: isp.asn, info }))
+            )
+        ),
+        Promise.allSettled(
+            FRENCH_ISPS.map(isp =>
+                fetchBgpIxs(isp.asn).then(ixs => ({ asn: isp.asn, ixs }))
+            )
+        ),
+    ]);
+
     const bgpByAsn = {};
     for (const r of bgpResults) {
         if (r.status === 'fulfilled' && r.value.counts !== null) {
             bgpByAsn[r.value.asn] = r.value.counts;
         }
     }
+    const asnInfoByAsn = {};
+    for (const r of asnInfoResults) {
+        if (r.status === 'fulfilled' && r.value.info !== null) {
+            asnInfoByAsn[r.value.asn] = r.value.info;
+        }
+    }
+    const ixByAsn = {};
+    for (const r of ixResults) {
+        if (r.status === 'fulfilled' && r.value.ixs !== null) {
+            ixByAsn[r.value.asn] = r.value.ixs;
+        }
+    }
 
     // ── ISP BGP status ────────────────────────────────────────────────────────
     const ispStatus = FRENCH_ISPS.map(isp => {
-        const baseline     = BASELINE_PREFIXES[isp.asn] ?? { v4: 100, v6: 10 };
-        const current      = bgpByAsn[isp.asn];
+        const baseline      = BASELINE_PREFIXES[isp.asn] ?? { v4: 100, v6: 10 };
+        const enrichment    = ISP_ENRICHMENT[isp.asn] ?? {};
+        const current       = bgpByAsn[isp.asn];
+        const asnInfo       = asnInfoByAsn[isp.asn] ?? {};
+        const ixList        = ixByAsn[isp.asn] ?? [];
         const baselineTotal = baseline.v4 + baseline.v6;
-        const currentTotal  = current ? current.v4 + current.v6 : null;
+        const prefixV4      = current?.v4 ?? baseline.v4;
+        const prefixV6      = current?.v6 ?? baseline.v6;
+        const currentTotal  = prefixV4 + prefixV6;
 
-        const visibility = currentTotal !== null
+        const visibility = current
             ? Math.min(100, Math.round((currentTotal / baselineTotal) * 100))
-            : 100; // fallback: assume normal when no data
+            : 100;
 
         const status = visibility < 50 ? 'outage'
             : visibility < 85           ? 'degraded'
@@ -161,12 +228,25 @@ export default async function handler(req, res) {
         return {
             asn:               isp.asn,
             ispName:           isp.name,
-            prefixCount:       currentTotal ?? baselineTotal,
+            prefixCount:       currentTotal,
             prefixCountNormal: baselineTotal,
+            prefixV4,
+            prefixV6,
             visibility,
             status,
             coordinates:       isp.coordinates,
             lastUpdated:       new Date().toISOString(),
+            // Enrichissement OSINT
+            trafficEstimation: asnInfo.trafficEstimation ?? null,
+            lookingGlass:      asnInfo.lookingGlass ?? null,
+            ixList,
+            peerCount:         0, // BGPView /peers non fetchés pour éviter rate-limit
+            networkType:       enrichment.networkType ?? 'Réseau',
+            peeringPolicy:     enrichment.peeringPolicy ?? 'N/A',
+            arcepFiber:        enrichment.arcepFiber ?? null,
+            mobile:            enrichment.mobile ?? null,
+            noc:               enrichment.noc ?? null,
+            ipv6Label:         enrichment.ipv6Label ?? null,
         };
     });
 

@@ -57,6 +57,8 @@ export class MarketStrip {
   private container: HTMLElement;
   private bodyEl: HTMLElement | null = null;
   private stampEl: HTMLElement | null = null;
+  private barometerDotEl: HTMLElement | null = null;
+  private barometerTextEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -67,8 +69,12 @@ export class MarketStrip {
     root.className = 'under-map-card under-map-card--markets';
     root.innerHTML = `
       <div class="under-map-card__header">
-        <div>
+        <div style="display: flex; align-items: center;">
           <div class="under-map-card__title">Flux boursier</div>
+          <div style="font-size: 10px; font-weight: bold; display: flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); margin-left: 12px; letter-spacing: 0.5px;">
+            <span class="market-barometer-dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); display: inline-block;"></span>
+            <span class="market-barometer-text" style="color: var(--text-muted); text-transform: uppercase;">Évaluation en cours</span>
+          </div>
         </div>
         <div class="under-map-card__meta" id="market-strip-stamp">Chargement...</div>
       </div>
@@ -78,6 +84,8 @@ export class MarketStrip {
     this.container.appendChild(root);
     this.bodyEl = root.querySelector('#market-strip-body');
     this.stampEl = root.querySelector('#market-strip-stamp');
+    this.barometerDotEl = root.querySelector('.market-barometer-dot');
+    this.barometerTextEl = root.querySelector('.market-barometer-text');
     this.renderLoading();
   }
 
@@ -87,6 +95,24 @@ export class MarketStrip {
     if (!items.length) {
       this.renderEmpty();
       return;
+    }
+
+    const avgChange = items.reduce((sum, item) => sum + item.changePercent, 0) / (items.length || 1);
+    if (this.barometerDotEl && this.barometerTextEl) {
+      let color = '#9ca3af'; // text-muted / flat
+      let text = 'CLIMAT STABLE';
+      if (avgChange > 0.1) {
+        color = '#4ade80'; // theme green
+        text = `TENDANCE HAUSSIÈRE (+${avgChange.toFixed(2)}%)`;
+      } else if (avgChange < -0.1) {
+        color = '#f87171'; // theme red
+        text = `TENDANCE BAISSIÈRE (${avgChange.toFixed(2)}%)`;
+      }
+
+      this.barometerDotEl.style.background = color;
+      this.barometerDotEl.style.boxShadow = `0 0 6px ${color}`;
+      this.barometerTextEl.textContent = text;
+      this.barometerTextEl.style.color = color;
     }
 
     this.bodyEl.innerHTML = '';
