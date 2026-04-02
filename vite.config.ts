@@ -27,6 +27,7 @@ import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
 import { copernicusProxyPlugin } from './src/plugins/copernicus-proxy';
 import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
+import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -76,6 +77,10 @@ export default defineConfig(({ mode }) => {
       ministersProxyPlugin(),
       copernicusProxyPlugin(),
       sentinelNdwiProxyPlugin(),
+      nuclearProxyPlugin({
+        clientId: env.RTE_CLIENT_ID ?? '',
+        clientSecret: env.RTE_CLIENT_SECRET ?? '',
+      }),
       aisRelayPlugin(aisApiKey),
       VitePWA({
         registerType: 'autoUpdate',
