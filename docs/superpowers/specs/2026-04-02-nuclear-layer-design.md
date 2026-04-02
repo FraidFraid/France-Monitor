@@ -27,7 +27,7 @@ Différenciateur produit : l'avance informationnelle REMIT + la comparaison expl
 | Layer | Source | Auth | Fréquence |
 |---|---|---|---|
 | 0 — Référentiel | `NUCLEAR_PLANTS` (config/infrastructure.ts) | Aucune | Statique |
-| 1 — Temps réel structuré | RTE Open Data API `unavailability_additional_information/v4` | OAuth2 (RTE_CLIENT_ID / RTE_CLIENT_SECRET) | 15 min |
+| 1 — Temps réel structuré | RTE Open Data API `unavailability_additional_information` (version configurée dans le service) | OAuth2 (RTE_CLIENT_ID / RTE_CLIENT_SECRET) | Cache applicatif 15 min |
 | 2 — Signal faible REMIT | IIP RTE RSS via `rte-iip.ts` existant | Aucune (RSS public) | 10–12 min |
 | 3 — Enrichissement analytique | Corrélation Layer 1 + Layer 2 + éCO2mix national | Hérite | Calculé à chaque fetch |
 
@@ -53,7 +53,9 @@ Différenciateur produit : l'avance informationnelle REMIT + la comparaison expl
 | `src/components/LayerPanel.ts` | Ajout `nuclear` dans `LAYER_DEFS` (enfant `energyGroup`) |
 | `src/components/DeckGLMap.ts` | Couleurs dynamiques cercles nucléaires depuis `NuclearState` |
 
-**Non modifiés (structure) :** `rte-iip.ts` (consommé tel quel), `energy.ts` (garde son mock en fallback). `MapPopup.ts` : la méthode `showNuclearSite()` existe déjà mais n'est câblée qu'avec des données statiques. Le wiring dans `App.ts` devra lui passer les données du `NuclearState` réel — c'est une tâche d'implémentation, pas un fichier à modifier structurellement.
+**Non modifiés :** `rte-iip.ts` (consommé tel quel), `energy.ts` (garde son mock en fallback).
+
+**Modifiés potentiels :** `MapPopup.ts` — la méthode `showNuclearSite()` existe déjà mais reçoit des données statiques. Si le wiring dans `App.ts` lui passe le `NuclearState` réel, la signature du popup devra accepter les nouvelles données (`NuclearUnavailability[]`, `NuclearStressScore`). À évaluer à l'implémentation.
 
 ---
 
@@ -116,7 +118,7 @@ export interface NuclearStressScore {
   level: 'NORMAL' | 'TENSION' | 'CRITIQUE'; // 0–10% / 10–25% / >25%
   gridTensionRisk: boolean;     // stressRatio > 0.10 + consommation nationale élevée
   updatedAt: Date;
-  freshness: 'realtime' | 'quasi-realtime' | 'stale' | 'unavailable';
+  freshness: 'quasi-realtime' | 'stale' | 'unavailable'; // 'realtime' retiré : aucune source n'est push temps-réel
 }
 
 // État global du module
@@ -176,13 +178,13 @@ buildNuclearState(
   - `installedCapacityMW` = somme `capacity` des `NUCLEAR_PLANTS` où `status !== 'shutdown'`
   - `availableCapacityMW` = `installedCapacityMW` − somme `(nominalPowerMW − availablePowerMW)` des `unavailabilities` actives (dont `endDate` est null ou dans le futur)
   - `stressRatio` = `(installedCapacityMW − availableCapacityMW) / installedCapacityMW`
-  - `gridTensionRisk` = `stressRatio > 0.10 && nationalMix != null && nationalMix.nuclear < nationalMix.total * 0.35` (production nucléaire < 35% du mix national, seuil typique de tension)
+  - `gridTensionRisk` = `stressRatio > 0.10 && nationalMix != null && nationalMix.nuclear < nationalMix.total * 0.35` — **heuristique produit v1** : production nucléaire < 35% du mix national. Seuil ajustable, non représentatif d'une règle système officielle.
   - `avgNuclear` n'est pas utilisé — remplacé par le seuil absolu 35% du mix ci-dessus
 - **Règles `freshness`** :
   - `rteAvailable && fetchedAt < 15 min` → `'quasi-realtime'`
   - `rteAvailable && fetchedAt 15–30 min` → `'stale'`
   - `!rteAvailable` → `'unavailable'`
-  - `'realtime'` non utilisé (aucune source n'est truly temps-réel push)
+  - (valeur `'realtime'` absente du type)
 
 ### `api/nuclear/rte-unavailability.js` (Vercel)
 ```
@@ -190,7 +192,8 @@ POST https://digital.iservices.rte-france.com/token/oauth/token
   body: grant_type=client_credentials, client_id=RTE_CLIENT_ID, client_secret=RTE_CLIENT_SECRET
   → { access_token, token_type, expires_in }
 
-GET https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/v4/generation_unavailabilities
+GET https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/{API_VERSION}/generation_unavailabilities
+  # API_VERSION configurable (ex. v4) — ne pas figer dans le code, lire depuis env ou constante
   ?resource_type=NUCLEAR&status=ACTIVE
   Authorization: Bearer <access_token>
   → JSON
