@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
   // Serve from cache if fresh
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    res.setHeader('Cache-Control', `public, max-age=${Math.floor(CACHE_TTL_MS / 1000)}`);
+    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
     res.status(200).json(_cache.data);
     return;
   }
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
     const payload = { items, available: true, fetchedAt: new Date().toISOString() };
     _cache = { data: payload, fetchedAt: Date.now() };
 
-    res.setHeader('Cache-Control', `public, max-age=${Math.floor(CACHE_TTL_MS / 1000)}`);
+    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
     res.status(200).json(payload);
   } catch (err) {
     console.error('[nuclear-rte] Unexpected error:', err);
