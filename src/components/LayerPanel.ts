@@ -413,7 +413,7 @@ export class LayerPanel {
       </div>
       <div class="layer-help-content">
         <div class="layer-help-section">
-          <div class="layer-help-title">Données temps réel</div>
+          <div class="layer-help-title">Données TEMPS RÉEL</div>
           ${LAYER_DEFS.map(def => `
             <div class="layer-help-item">
               <span>${def.icon} ${def.label}</span>
@@ -454,14 +454,14 @@ export class LayerPanel {
       hospitals: 'Carte des établissements de soins (base FINESS)',
       infrastructure: 'Nœuds énergétiques vitaux: électricité, gaz et pétrole',
       traffic: 'Groupe TRAFICS (routier, maritime, aérien civils)',
-      trafficRoad: 'Incidents routiers temps réel (TomTom)',
+      trafficRoad: 'Incidents routiers TEMPS RÉEL (TomTom)',
       trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
       trafficAir: 'Trafic aérien civil (airplanes.live) — militaires dans DÉFENSE',
       trafficRail: 'Réseau ferroviaire SNCF — perturbations actives (arcs + gares)',
       environmentGroup: 'Groupe environnement: météo/crues, feux de forêt et terminateur jour/nuit',
       environmental: 'Alertes météo et crues',
       fires: 'Feux de forêt actifs — données satellite NASA FIRMS (VIIRS, latence ~3h)',
-      metropoles: 'Consommation électrique temps réel des grandes métropoles',
+      metropoles: 'Consommation électrique TEMPS RÉEL des grandes métropoles',
       sovereignty: 'Groupe souveraineté: défense, connectivité sous-marine et vigilance cyber',
       military: 'Bases (▲), vols (avion) et navires militaires France + DROM',
       subseaCables: 'Câbles de télécommunications sous-marins et points d’atterrage en France',
@@ -474,6 +474,7 @@ export class LayerPanel {
       cyber: 'Alertes CERT-FR, ransomware et CVE critiques',
       gas: 'Stockages gaz, terminaux GNL et flux PIR',
       oil: 'Raffineries, stocks pétroliers et vigilance approvisionnement',
+      nuclear: 'Disponibilité des réacteurs nucléaires (RTE) et signaux REMIT',
       dayNight: 'Terminateur jour/nuit (zone d\'ombre calculée en temps réel)',
       elus: 'Élus & Représentants — en cours de configuration, non livré dans cette version',
     };

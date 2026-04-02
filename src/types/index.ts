@@ -89,6 +89,7 @@ export interface MapLayers {
   cyber: boolean;
   gas: boolean;
   oil: boolean;
+  nuclear: boolean;
   dayNight?: boolean;
   elus?: boolean;
 }
@@ -439,6 +440,8 @@ export interface InfrastructurePoint {
   storageCapacityHm3?: number;
   throughputKbpd?: number;
   notes?: string;
+  /** Couleur CSS override (ex. pour statut nucléaire dynamique RTE). */
+  colorOverride?: string;
 }
 
 // ═══ Nuclear Sites (RTE / ASN) ═══
@@ -476,6 +479,78 @@ export interface NuclearSiteStats {
   asnLink?: string;
   /** Timestamp ISO des données RTE/éCO2mix */
   updatedAt?: string;
+}
+
+// ═══ Nuclear Module (RTE Layer 1 + REMIT Layer 2 + Correlation Layer 3) ═══
+
+export type ReactorAvailabilityStatus =
+  | 'AVAILABLE'
+  | 'REDUCED'
+  | 'OUTAGE_PLANNED'
+  | 'OUTAGE_UNPLANNED'
+  | 'UNKNOWN';
+
+/** Indisponibilité structurée RTE (Layer 1 — OAuth2 API) */
+export interface NuclearUnavailability {
+  id: string;
+  plantName: string;          // ex. "Gravelines"
+  unitName: string;           // ex. "GRAVELINES-1" (nom RTE normalisé)
+  nominalPowerMW: number;
+  availablePowerMW: number;
+  status: ReactorAvailabilityStatus;
+  startDate: Date;
+  endDate: Date | null;
+  type: 'PLANNED' | 'UNPLANNED' | 'FORCE_MAJEURE';
+  updatedAt: Date;
+}
+
+/** Signal REMIT filtré pour le nucléaire (Layer 2 — IIP RSS) */
+export interface NuclearRemitSignal {
+  id: string;
+  plantName: string;
+  unitName: string | null;
+  classifiedAs:
+    | 'UNPLANNED_OUTAGE'
+    | 'PLANNED_MAINTENANCE'
+    | 'RESTART'
+    | 'EXTENSION'
+    | 'OTHER';
+  capacityMW: number | null;
+  publishedAt: Date;
+  title: string;
+  link: string;
+  /** false par défaut dans nuclear-remit.ts, résolu dans nuclear-correlation.ts */
+  confirmedByRTE: boolean;
+  matchConfidence: number; // 0–1
+}
+
+/** Signal REMIT non reflété dans les données RTE structurées */
+export interface UnconfirmedRemitSignal {
+  remitSignal: NuclearRemitSignal;
+  reason: string;
+  confidence: number;
+}
+
+/** Score de tension nucléaire (Layer 3) */
+export interface NuclearStressScore {
+  installedCapacityMW: number;
+  availableCapacityMW: number;
+  stressRatio: number;  // (installed - available) / installed
+  level: 'NORMAL' | 'TENSION' | 'CRITIQUE'; // <10% / 10–25% / >25%
+  gridTensionRisk: boolean;
+  updatedAt: Date;
+  freshness: 'quasi-realtime' | 'stale' | 'unavailable';
+}
+
+/** État global du module nucléaire */
+export interface NuclearState {
+  unavailabilities: NuclearUnavailability[];
+  remitSignals: NuclearRemitSignal[];
+  unconfirmedSignals: UnconfirmedRemitSignal[];
+  stress: NuclearStressScore | null;
+  rteAvailable: boolean;
+  remitAvailable: boolean;
+  fetchedAt: Date;
 }
 
 // ═══ Military (Def & Sec) ═══
@@ -539,7 +614,7 @@ export interface MilitaryFlight {
   nacP?: number;
 }
 
-export type MilitaryFlightsMode = 'live' | 'stale-cache' | 'mock' | 'empty';
+export type MilitaryFlightsMode = 'live' | 'stale-cache' | 'empty';
 
 export interface MilitaryFlightsSnapshot {
   source: string;
@@ -1190,7 +1265,7 @@ export interface OreIncident {
 
 // ═══ Gas Network (EcoGaz + GRTgaz/Teréga) ═══
 
-export type EcoGazSignal = 'green' | 'yellow' | 'orange' | 'red';
+export type EcoGazSignal = 'green' | 'yellow' | 'orange' | 'red' | 'unknown';
 
 export interface GasTerminal {
   id: string;

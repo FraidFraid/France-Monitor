@@ -45,6 +45,7 @@ const DEFAULT_FILTER: FilterState = {
         cyber: false,
         gas: false,
         oil: false,
+        nuclear: false,
         subseaCables: false,
     },
     searchQuery: '',

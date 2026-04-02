@@ -63,6 +63,7 @@ const DEFAULT_LAYERS: MapLayers = {
   cyber: false,
   gas: false,
   oil: false,
+  nuclear: false,
   dayNight: false,
   elus: false,
 };

@@ -36,10 +36,6 @@ import { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
-import {
-  MOCK_ECOWATT_REGIONS,
-  MOCK_METEO_ALERTS,
-} from './config/mock-data.ts';
 import { ALL_INFRASTRUCTURE } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges } from './config/military.ts';
 import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
@@ -72,6 +68,7 @@ import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
+import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
@@ -126,6 +123,7 @@ const DEFAULT_LAYERS: MapLayers = {
   cyber: false,
   gas: false,
   oil: false,
+  nuclear: false,
   dayNight: false,
   elus: false,
 };
@@ -1043,11 +1041,11 @@ export class App {
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
     switch (status) {
       case 'ok':
-        return 'réel';
+        return 'TEMPS RÉEL';
       case 'stale':
-        return 'partiel / fallback';
+        return 'CACHE FIGÉ';
       default:
-        return 'indisponible';
+        return 'INDISPONIBLE';
     }
   }
 
@@ -1057,11 +1055,11 @@ export class App {
     const electricityNotes = this.currentEcowattResponse
       ? this.currentEcowattUsesFallback
         ? [
-            'Qualité des données : signal électrique en fallback mock',
-            'Mix/interconnexions : indisponibles ou partiels',
+            'Qualité des données : INDISPONIBLE',
+            'Mix/interconnexions : INDISPONIBLE',
           ]
         : [
-            'Qualité des données : signal, mix et interconnexions réels (eco2mix/ODRE)',
+            'Qualité des données : signal, mix et interconnexions en TEMPS RÉEL (eco2mix/ODRE)',
             'Détail réacteurs nucléaires : non inclus ici',
           ]
       : [
@@ -1071,8 +1069,8 @@ export class App {
     const gasNotes = this.currentGasData
       ? [
           `EcoGaz : ${this.formatLegendSourceStatus(this.currentGasData.sourceStatus.ecogaz)}`,
-          'Stockages/flux : ODRE réels quand disponibles, fallback visuel sinon',
-          'Terminaux et sites : statiques enrichis localement',
+          'Stockages/flux : données ODRE (TEMPS RÉEL) quand disponibles, sinon INDISPONIBLE',
+          'Terminaux et sites : HISTORIQUE / référentiel local',
         ]
       : [
           'Qualité des données : chargement en cours',
@@ -1080,7 +1078,7 @@ export class App {
 
     const oilNotes = this.currentOilData
       ? [
-          `Dashboard pétrole : SDES/Insee/UFIP ${Object.values(this.currentOilData.sourceStatus).every((s) => s === 'ok') ? 'réel' : 'mixte'}`,
+          `Dashboard pétrole : SDES/Insee/UFIP ${Object.values(this.currentOilData.sourceStatus).every((s) => s === 'ok') ? 'TEMPS RÉEL' : 'CACHE FIGÉ'}`,
           'Pipelines, dépôts et raffineries : fond carto statique consolidé',
           'Arcs : projection OSINT à partir des parts d’origine, pas du port-à-port mesuré',
         ]
@@ -1090,7 +1088,7 @@ export class App {
 
     const infraNotes = [
       'Sites et tracés : majoritairement statiques',
-      'Détail nucléaire réacteur par réacteur : mock / démonstrateur',
+      'Détail nucléaire : affichage simplifié (actif/arrêt)',
     ];
 
     this.mapLegend.addCategory(cloneLegend(ENERGY_ECOWATT_LEGEND, { notes: electricityNotes }));
@@ -2422,7 +2420,7 @@ export class App {
         this.statusPanel?.updateSource('Vols militaires', {
           status: 'loading',
           lastUpdate: null,
-          detail: 'adsb.fi -> airplanes.live -> OpenSky -> mock',
+          detail: 'adsb.fi -> airplanes.live -> OpenSky',
           error: undefined,
         });
         const snapshot = await fetchMilitaryFlights();
@@ -2434,8 +2432,8 @@ export class App {
           .map(([source, count]) => `${source} ${count}`)
           .join(' + ');
         const modeLabel =
-          snapshot.mode === 'mock'
-            ? 'MOCK ACTIF'
+          snapshot.mode === 'empty'
+            ? 'VIDE'
             : snapshot.mode === 'stale-cache'
               ? 'CACHE'
               : snapshot.errors.length > 0
@@ -2443,7 +2441,7 @@ export class App {
                 : 'LIVE';
         const detail = `${modeLabel} · ${sourceBreakdown || snapshot.source}${snapshot.errors.length > 0 ? ` · fallback ${snapshot.errors.map((e) => e.source).join(', ')}` : ''}`;
         this.statusPanel?.updateSource('Vols militaires', {
-          status: snapshot.mode === 'mock' || snapshot.mode === 'stale-cache' || snapshot.errors.length > 0 ? 'stale' : 'ok',
+          status: snapshot.mode === 'empty' || snapshot.mode === 'stale-cache' || snapshot.errors.length > 0 ? 'stale' : 'ok',
           lastUpdate: new Date(snapshot.fetchedAt),
           detail,
           error: undefined,
@@ -2485,7 +2483,7 @@ export class App {
         this.statusPanel?.updateSource('Vols militaires', {
           status: 'error',
           lastUpdate: new Date(),
-          detail: 'adsb.fi -> airplanes.live -> OpenSky -> mock',
+          detail: 'adsb.fi -> airplanes.live -> OpenSky',
           error: err instanceof Error ? err.message : 'Échec vols militaires',
         });
       }
@@ -2749,7 +2747,7 @@ export class App {
 
       if (rawItems.length === 0) {
         this.statusPanel?.updateSource('RSS PQR', { status: 'stale', lastUpdate: new Date() });
-        return; // Keep mock data
+        return; // Keep previous data
       }
 
       // 1. Classify by keywords IMMEDIATELY
@@ -2926,7 +2924,12 @@ export class App {
       this.mapContainer?.updateEnergyTooltipData(energyRegions.regions, energyRegions.flows, borderHistory);
       this.statusPanel?.updateSource('Écowatt RTE', { status: 'ok', lastUpdate: new Date() });
     } else {
-      this.currentEcowattResponse = { signals: MOCK_ECOWATT_REGIONS, mixes: {}, national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 }, interconnections: [] };
+      this.currentEcowattResponse = {
+        signals: {},
+        mixes: {},
+        national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
+        interconnections: [],
+      };
       this.currentEcowattUsesFallback = true;
       await this.mapContainer?.updateEnergy(this.currentEcowattResponse);
       this.mapContainer?.updateEnergyTooltipData(energyRegions.regions, energyRegions.flows, borderHistory);
@@ -2963,8 +2966,8 @@ export class App {
       await this.mapContainer?.updateWeather(fallbackAlerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else {
-      this.currentMeteoAlerts = MOCK_METEO_ALERTS;
-      await this.mapContainer?.updateWeather(MOCK_METEO_ALERTS);
+      this.currentMeteoAlerts = [];
+      await this.mapContainer?.updateWeather([]);
       this.statusPanel?.updateSource('Météo-France', { status: 'stale', lastUpdate: new Date() });
     }
 
@@ -2982,9 +2985,9 @@ export class App {
       this.mapContainer?.updateFloods(segments);
       const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
       const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
-      const mockOnly = segments.length > 0 && segments.every((segment) => segment.dataSource === 'mock');
+      const reconstructedOnly = segments.length > 0 && segments.every((segment) => segment.dataSource !== 'live');
 
-      if (mockOnly) {
+      if (reconstructedOnly) {
         this.activeLayers.environmental = true;
         this.activeLayers.environmentGroup = true;
         this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
@@ -3006,14 +3009,14 @@ export class App {
 
       if (segments.length > 0) {
         console.info(
-          `[App/Vigicrues] Rendering ${segments.length} ${mockOnly ? 'mock' : 'live'} segments ` +
+          `[App/Vigicrues] Rendering ${segments.length} ${reconstructedOnly ? 'reconstructed' : 'live'} segments ` +
           `(matched=${matchedCount}, corridor=${corridorCount})`,
         );
         this.statusPanel?.updateSource('Vigicrues', {
           status: 'ok',
           lastUpdate: new Date(),
-          detail: mockOnly
-            ? `${segments.length} tronçons mock`
+          detail: reconstructedOnly
+            ? `${segments.length} tronçons reconstruits`
             : `${matchedCount + corridorCount}/${segments.length} tronçons cartographiés`,
         });
       } else {
@@ -3141,7 +3144,7 @@ export class App {
     this.statusPanel?.updateSource('Trafic aérien', {
       status: 'loading',
       lastUpdate: null,
-      detail: 'OpenSky primaire · airplanes.live fallback · 12 s',
+      detail: 'OpenSky + airplanes.live · proxy agrégé · 12 s',
       error: undefined,
     });
 
@@ -3513,12 +3516,13 @@ export class App {
       })
       .catch(() => {});
 
-    // Sources rapides (<2s) : télécom, électrique, réseau, infra
-    const [telecoms, powers, network, infra] = await Promise.all([
+    // Sources rapides (<2s) : télécom, électrique, réseau, infra, IIP RTE
+    const [telecoms, powers, network, infra, iipResult] = await Promise.all([
       fetchTelecomOutages(),
       fetchPowerOutages(),
       fetchNetworkOutages(),
       fetchInfraNetwork(),
+      fetchRTEIIPIncidents().catch(() => null),
     ]);
     this.currentTelecomOutages = telecoms;
     this.currentPowerOutages = powers;
@@ -3527,6 +3531,14 @@ export class App {
     await this.mapContainer?.updateOutages(telecoms, powers);
     this.mapContainer?.updateNetworkOutages(network);
     if (infra) this.mapContainer?.updateInfraNetwork(infra);
+
+    // Injecter les données IIP dans le panneau
+    if (iipResult) {
+      this.outagesPanel?.setRTEIIP(iipResult);
+    }
+
+    // Date de fetch ARCEP pour le badge J/J-1 (on prend l'heure courante car le fetch vient de se faire)
+    this.outagesPanel?.setArcepFetchedDate(new Date());
 
     // Attendre les zones citoyennes pour que loadOutages ne se termine pas avant elles
     await citizenZonesPromise;
@@ -3667,15 +3679,20 @@ export class App {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
         name: 'ecowatt', task: this.loadEcowatt().catch(() => {
-          this.currentEcowattResponse = { signals: MOCK_ECOWATT_REGIONS, mixes: {}, national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 }, interconnections: [] };
+          this.currentEcowattResponse = {
+            signals: {},
+            mixes: {},
+            national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
+            interconnections: [],
+          };
           this.mapContainer?.updateEnergy(this.currentEcowattResponse);
           this.statusPanel?.updateSource('Écowatt RTE', { status: 'error', lastUpdate: new Date() });
         })
       },
       {
         name: 'weather', task: this.loadWeather().catch(() => {
-          this.currentMeteoAlerts = MOCK_METEO_ALERTS;
-          this.mapContainer?.updateWeather(MOCK_METEO_ALERTS);
+          this.currentMeteoAlerts = [];
+          this.mapContainer?.updateWeather([]);
           this.statusPanel?.updateSource('Météo-France', { status: 'error', lastUpdate: new Date() });
         })
       },
