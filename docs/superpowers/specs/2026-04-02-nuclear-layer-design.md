@@ -53,7 +53,7 @@ Différenciateur produit : l'avance informationnelle REMIT + la comparaison expl
 | `src/components/LayerPanel.ts` | Ajout `nuclear` dans `LAYER_DEFS` (enfant `energyGroup`) |
 | `src/components/DeckGLMap.ts` | Couleurs dynamiques cercles nucléaires depuis `NuclearState` |
 
-**Non modifiés :** `rte-iip.ts` (consommé tel quel), `energy.ts` (garde son mock en fallback), `MapPopup.ts` (popup nucléaire déjà opérationnelle).
+**Non modifiés (structure) :** `rte-iip.ts` (consommé tel quel), `energy.ts` (garde son mock en fallback). `MapPopup.ts` : la méthode `showNuclearSite()` existe déjà mais n'est câblée qu'avec des données statiques. Le wiring dans `App.ts` devra lui passer les données du `NuclearState` réel — c'est une tâche d'implémentation, pas un fichier à modifier structurellement.
 
 ---
 
@@ -97,7 +97,7 @@ export interface NuclearRemitSignal {
   publishedAt: Date;
   title: string;
   link: string;
-  confirmedByRTE: boolean;    // résolu dans nuclear-correlation.ts
+  confirmedByRTE: boolean;    // initialisé à false dans nuclear-remit.ts, passé à true dans nuclear-correlation.ts si une NuclearUnavailability correspondante est trouvée
   matchConfidence: number;    // 0–1
 }
 
@@ -144,9 +144,12 @@ export interface NuclearState {
 ### `nuclear-remit.ts`
 - Accepte un `RTEIIPState` (déjà fetchté par `fetchRTEIIPIncidents()`).
 - Filtre `incidents` de type `production`.
-- Match fuzzy sur les noms de centrales (`NUCLEAR_PLANTS`) :
-  - Score > 0.7 → `matchConfidence` haute, `plantName` renseigné
-  - Score < 0.4 → signal ignoré (trop ambigu)
+- **Matching plant name** — algorithme sans dépendance externe : normalisation lowercase + suppression accents, puis `includes()` entre le titre IIP et chaque `plant.name` de `NUCLEAR_PLANTS`. Si match exact → `matchConfidence: 1.0`. Si match partiel (Levenshtein distance ≤ 2 sur les 6 premiers chars) → `matchConfidence: 0.7`. Score < 0.4 → signal ignoré. Pas de lib tierce — implémentation inline (~20 lignes).
+- `confirmedByRTE` initialisé à `false` ; sera résolu par `nuclear-correlation.ts`.
+- **NUCLEAR_PLANTS shape** (depuis `config/infrastructure.ts`) :
+  ```ts
+  { id: string; name: string; coordinates: [number, number]; status: 'active' | 'shutdown'; capacity: number /* MW installés */; operator: string }
+  ```
 - Classification heuristique du texte :
   - `unplanned outage` / `avarie` / `arrêt fortuit` → `UNPLANNED_OUTAGE`
   - `maintenance` / `arrêt programmé` → `PLANNED_MAINTENANCE`
@@ -156,26 +159,43 @@ export interface NuclearState {
 - Aucun appel réseau propre.
 
 ### `nuclear-correlation.ts`
-- `buildNuclearState(unavailabilities, iipState, nationalMix?)`: `NuclearState`
-- Pour chaque `NuclearRemitSignal` : cherche une `NuclearUnavailability` correspondante (même centrale, overlap temporel).
+Signature complète :
+```ts
+buildNuclearState(
+  unavailabilities: NuclearUnavailability[],
+  iipState: RTEIIPState,
+  nationalMix?: { nuclear: number; total: number; timestamp: Date }
+): NuclearState
+```
+`nationalMix` est un sous-ensemble de `EnergyMix` (déjà défini dans `types/index.ts`) — seuls `nuclear` (MW) et `total` (MW) sont nécessaires.
+
+- Pour chaque `NuclearRemitSignal` : cherche une `NuclearUnavailability` correspondante (même `plantName` normalisé, overlap temporel `startDate–endDate`).
   - Trouvée → `confirmedByRTE: true`
-  - Non trouvée → `UnconfirmedRemitSignal` avec reason explicite
-- `NuclearStressScore` calculé depuis les `NuclearUnavailability[]` actives :
-  - `installedCapacityMW` = somme `NUCLEAR_PLANTS` (actifs)
-  - `availableCapacityMW` = somme `availablePowerMW` des tranches actives
-  - `gridTensionRisk` = `stressRatio > 0.10 && nationalMix?.nuclear < avgNuclear * 0.85` (si disponible)
+  - Non trouvée → `UnconfirmedRemitSignal { reason: "Aucune indisponibilité RTE correspondante", confidence: remitSignal.matchConfidence }`
+- `NuclearStressScore` :
+  - `installedCapacityMW` = somme `capacity` des `NUCLEAR_PLANTS` où `status !== 'shutdown'`
+  - `availableCapacityMW` = `installedCapacityMW` − somme `(nominalPowerMW − availablePowerMW)` des `unavailabilities` actives (dont `endDate` est null ou dans le futur)
+  - `stressRatio` = `(installedCapacityMW − availableCapacityMW) / installedCapacityMW`
+  - `gridTensionRisk` = `stressRatio > 0.10 && nationalMix != null && nationalMix.nuclear < nationalMix.total * 0.35` (production nucléaire < 35% du mix national, seuil typique de tension)
+  - `avgNuclear` n'est pas utilisé — remplacé par le seuil absolu 35% du mix ci-dessus
+- **Règles `freshness`** :
+  - `rteAvailable && fetchedAt < 15 min` → `'quasi-realtime'`
+  - `rteAvailable && fetchedAt 15–30 min` → `'stale'`
+  - `!rteAvailable` → `'unavailable'`
+  - `'realtime'` non utilisé (aucune source n'est truly temps-réel push)
 
 ### `api/nuclear/rte-unavailability.js` (Vercel)
 ```
 POST https://digital.iservices.rte-france.com/token/oauth/token
-  body: grant_type=client_credentials, client_id, client_secret
-  → Bearer access_token
+  body: grant_type=client_credentials, client_id=RTE_CLIENT_ID, client_secret=RTE_CLIENT_SECRET
+  → { access_token, token_type, expires_in }
 
 GET https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/v4/generation_unavailabilities
   ?resource_type=NUCLEAR&status=ACTIVE
-  Authorization: Bearer <token>
+  Authorization: Bearer <access_token>
   → JSON
 ```
+- OAuth flow **réimplémenté inline** dans ce fichier (pas de helper partagé — pattern cohérent avec `api/energy/ecowatt.js` qui n'utilise pas OAuth non plus). Aucune dépendance sur d'autres Vercel functions.
 - Si `RTE_CLIENT_ID` absent → 503 avec message explicite (aucun mock silencieux).
 - Cache Upstash 15 min si `UPSTASH_REDIS_REST_URL` dispo.
 
