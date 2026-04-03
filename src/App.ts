@@ -36,7 +36,7 @@ import { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
-import { ALL_INFRASTRUCTURE } from './config/infrastructure.ts';
+import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges } from './config/military.ts';
 import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
 import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
@@ -69,6 +69,10 @@ import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
+import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
+import { buildNuclearState } from './services/nuclear-correlation.ts';
+import { NuclearPanel } from './components/NuclearPanel.ts';
+import type { NuclearState } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
@@ -604,6 +608,25 @@ function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory
   };
 }
 
+const NUCLEAR_LEGEND: LegendCategory = {
+  id: 'nuclear',
+  title: 'Nucléaire — Indisponibilités RTE',
+  items: [
+    { id: 'nuc-available',  label: 'Disponible',          color: '#2ECC71', shape: 'circle' },
+    { id: 'nuc-reduced',    label: 'Production réduite',  color: '#F59E0B', shape: 'circle' },
+    { id: 'nuc-planned',    label: 'Arrêt planifié',      color: '#7B8CDE', shape: 'circle' },
+    { id: 'nuc-unplanned',  label: 'Arrêt non planifié',  color: '#E74C3C', shape: 'circle' },
+    { id: 'nuc-unknown',    label: 'Inconnu',             color: '#6B7280', shape: 'circle' },
+    { id: 'nuc-remit',      label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
+  ],
+  source: {
+    label: 'RTE Open Data · IIP REMIT',
+    year: new Date().getFullYear(),
+  },
+  refresh: { label: 'Cache applicatif 15 min' },
+  notes: ['REMIT = signal anticipatoire non confirmé par données structurées RTE.'],
+};
+
 const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
   {
     id: 'newsGroup',
@@ -712,6 +735,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     dependsOnGroup: false,
     label: 'Métropoles électriques',
     legend: METROPOLES_ELECTRIC_LEGEND,
+  },
+  {
+    id: 'nuclear',
+    groupId: 'energy',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Nucléaire (RTE)',
+    legend: NUCLEAR_LEGEND,
   },
   // ─── Health Group ───
   {
@@ -878,6 +909,8 @@ export class App {
   private currentGasData: import('./types').GasNetworkState | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
+  private currentNuclearState: NuclearState | null = null;
+  private nuclearPanel: NuclearPanel | null = null;
   private dayNightPanel: DayNightPanel | null = null;
   private outagesPanel: OutagesPanel | null = null;
   private currentPowerOutages: PowerOutage[] = [];
@@ -921,6 +954,7 @@ export class App {
   private _intervalMilitaryFlights: ReturnType<typeof setInterval> | null = null;
   private _intervalShips: ReturnType<typeof setInterval> | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
+  private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: ReturnType<typeof setInterval> | null = null;
   private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
@@ -932,6 +966,7 @@ export class App {
     if (this._intervalMilitaryFlights !== null) { clearInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null; }
     if (this._intervalShips !== null) { clearInterval(this._intervalShips); this._intervalShips = null; }
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
+    if (this._intervalNuclear !== null) { clearInterval(this._intervalNuclear); this._intervalNuclear = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
     if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
@@ -1739,6 +1774,15 @@ export class App {
     });
     this.oilPanel.mount();
 
+    // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
+    this.nuclearPanel = new NuclearPanel(document.getElementById('app') ?? document.body);
+    this.nuclearPanel.mount();
+    this.nuclearPanel.setOnClose(() => {
+      this.activeLayers.nuclear = false;
+      this.layerPanel?.updateLayers(this.activeLayers);
+      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+    });
+
     // Outages Panel (Pannes Réseau — incidents ORE Enedis)
     this.outagesPanel = new OutagesPanel(floatContainer);
     this.outagesPanel.setOnClose(() => {
@@ -1986,13 +2030,14 @@ export class App {
     if (key === 'military' || key === 'subseaCables' || key === 'cyber') {
       this.activeLayers.sovereignty = this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
     }
-    if (key === 'energy' || key === 'gas' || key === 'oil' || key === 'infrastructure' || key === 'metropoles') {
+    if (key === 'energy' || key === 'gas' || key === 'oil' || key === 'infrastructure' || key === 'metropoles' || key === 'nuclear') {
       this.activeLayers.energyGroup =
         this.activeLayers.energy ||
         this.activeLayers.gas ||
         this.activeLayers.oil ||
         this.activeLayers.infrastructure ||
-        this.activeLayers.metropoles;
+        this.activeLayers.metropoles ||
+        (this.activeLayers.nuclear ?? false);
     }
     if (key === 'environmental' || key === 'fires' || key === 'dayNight') {
       this.activeLayers.environmentGroup =
@@ -2176,6 +2221,17 @@ export class App {
         this.oilPanel?.show(this.currentOilData);
       } else {
         this.oilPanel?.hide();
+      }
+    } else if (key === 'nuclear') {
+      if (this.activeLayers.nuclear) {
+        if (!this.currentNuclearState) {
+          void this.loadNuclear();
+        }
+        this.nuclearPanel?.show(this.currentNuclearState);
+        this.layoutEnergyFloatingPanels();
+      } else {
+        this.nuclearPanel?.hide();
+        this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'fires') {
       if (this.activeLayers.fires) {
@@ -2693,6 +2749,11 @@ export class App {
     };
     fetchFinance();
     this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), 5 * 60_000); // 5 min
+    this._intervalNuclear = setInterval(() => {
+      if (this.activeLayers.nuclear) {
+        void this.loadNuclear();
+      }
+    }, 15 * 60_000);
   }
 
   private startCommodityPolling(): void {
@@ -3071,6 +3132,47 @@ export class App {
     const statuses = await fetchNuclearPlantsStatus();
     const staticInfrastructure = ALL_INFRASTRUCTURE.filter((point) => point.type !== 'nuclear');
     this.mapContainer?.updateInfrastructure([...statuses, ...staticInfrastructure]);
+  }
+
+  private async loadNuclear(): Promise<void> {
+    this.statusPanel?.updateSource('Nucléaire RTE', { status: 'loading', lastUpdate: null });
+    try {
+      const [unavailabilities, iipState] = await Promise.all([
+        fetchNuclearUnavailabilities(),
+        fetchRTEIIPIncidents(),
+      ]);
+
+      const nationalMix = this.currentEcowattResponse?.national;
+      const nuclearState = buildNuclearState(
+        unavailabilities,
+        iipState,
+        nationalMix ? { nuclear: nationalMix.nuclear, total: nationalMix.total } : undefined,
+      );
+
+      this.currentNuclearState = nuclearState;
+
+      if (this.activeLayers.nuclear && this.nuclearPanel?.isVisible()) {
+        this.nuclearPanel.update(nuclearState);
+      }
+
+      const colorMap = buildNuclearColorMap(unavailabilities);
+      const staticInfra = ALL_INFRASTRUCTURE.filter((p) => p.type !== 'nuclear');
+      const enrichedNuclear = NUCLEAR_PLANTS
+        .filter((p) => p.status !== 'shutdown')
+        .map((p) => ({ ...p, colorOverride: colorMap[p.name] ?? '#6B7280' }));
+      this.mapContainer?.updateInfrastructure([...enrichedNuclear, ...staticInfra]);
+
+      this.statusPanel?.updateSource('Nucléaire RTE', {
+        status: nuclearState.rteAvailable ? 'ok' : 'stale',
+        lastUpdate: new Date(),
+        detail: nuclearState.rteAvailable
+          ? `RTE · ${unavailabilities.length} indisponibilités · ${nuclearState.unconfirmedSignals.length} signaux REMIT non confirmés`
+          : 'API RTE indisponible',
+      });
+    } catch (err) {
+      console.error('[App] loadNuclear failed:', err);
+      this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
+    }
   }
 
   private async loadTraffic(): Promise<void> {
