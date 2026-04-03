@@ -12,6 +12,8 @@
 export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
+  // RTE / Énergie — REMIT / IIP
+  'iip.cloud-rte-france.com',
   // Sécurité / cyber
   'cert.ssi.gouv.fr',
   // Nationales
