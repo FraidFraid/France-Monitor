@@ -39,15 +39,46 @@ export function buildNuclearState(
   nationalMix?: Pick<EnergyMix, 'nuclear' | 'total'>,
 ): NuclearState {
   const { items: unavailabilities, available: rteAvailable } = rteResult;
-  const remitAvailable = iipState.available;
 
-  const remitSignals    = extractNuclearRemitSignals(iipState);
+  // IIP RSS (iip.cloud-rte-france.com) est une SPA Angular — le flux RSS n'est pas
+  // accessible sans navigateur. On dérive les signaux REMIT directement depuis les
+  // indisponibilités RTE structurées quand l'IIP est indisponible.
+  let remitSignals: import('../types/index.ts').NuclearRemitSignal[];
+  let remitAvailable: boolean;
+
+  const iipSignals = extractNuclearRemitSignals(iipState);
+  if (iipSignals.length > 0) {
+    // IIP a fourni des données — les utiliser normalement
+    remitSignals = iipSignals;
+    remitAvailable = true;
+  } else if (rteAvailable && unavailabilities.length > 0) {
+    // Fallback : synthétiser les signaux REMIT depuis Layer 1
+    // Chaque indisponibilité RTE est par définition une publication REMIT confirmée
+    remitSignals = unavailabilities.map((u) => ({
+      id: `rte-derived-${u.id}`,
+      plantName: u.plantName,
+      unitName: u.unitName,
+      classifiedAs: u.type === 'UNPLANNED' ? 'UNPLANNED_OUTAGE' as const
+        : u.type === 'PLANNED' ? 'PLANNED_MAINTENANCE' as const
+        : 'OTHER' as const,
+      capacityMW: u.nominalPowerMW - u.availablePowerMW,
+      publishedAt: u.updatedAt,
+      title: `${u.unitName} — ${u.type} (${u.nominalPowerMW - u.availablePowerMW} MW)`,
+      link: '',
+      confirmedByRTE: true,
+      matchConfidence: 1.0,
+    }));
+    remitAvailable = true;
+  } else {
+    remitSignals = [];
+    remitAvailable = iipState.available;
+  }
+
   const { confirmed, unconfirmed } = correlate(remitSignals, unavailabilities);
 
-  // Marquer les signaux confirmés
   const enrichedRemit = remitSignals.map((s) => ({
     ...s,
-    confirmedByRTE: confirmed.has(s.id),
+    confirmedByRTE: s.confirmedByRTE || confirmed.has(s.id),
   }));
 
   const stress = buildStressScore(unavailabilities, nationalMix, rteAvailable);

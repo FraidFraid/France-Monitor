@@ -148,6 +148,13 @@ async function fetchFeed(
         return [];
     }
 
+    if (json.items.length === 0) {
+        // Vérification défensive : si le proxy a reçu du HTML (SPA Angular) au lieu de XML,
+        // il retourne items:[] sans erreur. On ne peut pas distinguer "flux vide" de "HTML reçu".
+        // On traite les deux cas pareil : flux vide → 0 incidents (pas d'erreur).
+        return [];
+    }
+
     return json.items.map(item => parseItem(item, type));
 }
 
