@@ -10073,7 +10073,7 @@ export class DeckGLMap {
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: points.filter((p) => p.status !== 'shutdown').map((p) => {
-        let color = INFRA_COLORS[p.type] ?? '#8e8e93';
+        let color = p.colorOverride ?? INFRA_COLORS[p.type] ?? '#8e8e93';
         const isElectricGeneration = p.type === 'nuclear' || p.type === 'thermal' || p.type === 'hydro';
         const baseRadius =
           p.type === 'nuclear' ? 8
@@ -10082,7 +10082,7 @@ export class DeckGLMap {
                 : p.type === 'gas-storage' || p.type === 'oil-depot' ? 6.2
                   : 5.8;
 
-        if (p.type === 'nuclear' && p.status === 'maintenance') color = '#B7D6E7';
+        if (!p.colorOverride && p.type === 'nuclear' && p.status === 'maintenance') color = '#B7D6E7';
 
         return {
           type: 'Feature' as const,
@@ -10803,9 +10803,9 @@ export class DeckGLMap {
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_INFRA_VITAL_HALO, vis(layers.infrastructure));
-    this.setVis(LYR_INFRA_NUCLEAR_RING, vis(layers.infrastructure));
-    this.setVis(LYR_INFRA_CIRCLE, vis(layers.infrastructure));
-    this.setVis(LYR_INFRA_LABEL, vis(layers.infrastructure));
+    this.setVis(LYR_INFRA_NUCLEAR_RING, vis(layers.nuclear ?? false));
+    this.setVis(LYR_INFRA_CIRCLE, vis(layers.infrastructure || (layers.nuclear ?? false)));
+    this.setVis(LYR_INFRA_LABEL, vis(layers.infrastructure || (layers.nuclear ?? false)));
     // Gas layer: réseau + organes vitaux
     const gasVis = vis(layers.gas ?? false);
     this.setVis(LYR_GAS_NETWORK_GRT, gasVis);
