@@ -23,6 +23,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'oil', label: 'RÉSEAU PÉTROLE', icon: '&#128738;', sublayerOf: 'energyGroup' },
   { key: 'infrastructure', label: 'INFRAS VITALES', icon: '&#9881;', sublayerOf: 'energyGroup' },
   { key: 'metropoles', label: 'MÉTROPOLES ÉLECTRIQUES', icon: '&#127963;', sublayerOf: 'energyGroup' },
+  { key: 'nuclear', label: 'NUCLÉAIRE (RTE)', icon: '&#9883;', sublayerOf: 'energyGroup' },
   { key: 'health', label: 'SANTÉ / ÉPIDÉMIO', icon: '&#127973;' },
   { key: 'healthOscour', label: 'OSCOUR / SOS MÉDECINS', icon: '&#128657;', sublayerOf: 'health' },
   { key: 'healthApl', label: 'APL — DÉSERTS MÉDICAUX', icon: '&#127979;', sublayerOf: 'health' },
