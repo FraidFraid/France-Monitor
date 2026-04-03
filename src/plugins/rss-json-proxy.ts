@@ -7,6 +7,26 @@
  */
 
 import type { Plugin } from 'vite';
+import https from 'node:https';
+
+// Certains serveurs RTE (iip.cloud-rte-france.com) utilisent une CA intermédiaire
+// non reconnue par le bundle TLS de Node.js. On désactive la vérification uniquement
+// pour ces domaines en dev — jamais en prod (Vercel gère son propre TLS).
+const INSECURE_DOMAINS = ['iip.cloud-rte-france.com'];
+
+/** Fetch HTTPS en ignorant la vérification du certificat (dev uniquement). */
+function fetchInsecure(url: string, headers: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { rejectUnauthorized: false, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(10_000, () => { req.destroy(new Error('timeout')); });
+  });
+}
 
 interface RssItem {
   title: string;
@@ -114,7 +134,6 @@ export function rssJsonProxyPlugin(): Plugin {
         }
 
         try {
-          // User-Agent réaliste pour éviter les blocages anti-bot
           const userAgents = [
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -123,29 +142,40 @@ export function rssJsonProxyPlugin(): Plugin {
 
           console.log('[rss-json-proxy] Fetching:', feedUrl);
 
-          const resp = await fetch(feedUrl, {
-            headers: {
-              'User-Agent': ua,
-              'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
-              'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-              'Cache-Control': 'no-cache',
-            },
-            redirect: 'follow',
-            signal: AbortSignal.timeout(10000),
-          });
+          const hostname = new URL(feedUrl).hostname;
+          const needsInsecure = INSECURE_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
 
-          if (!resp.ok) {
-            console.error('[rss-json-proxy] Upstream error:', resp.status, resp.statusText);
-            res.statusCode = resp.status;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({
-              error: `Upstream HTTP ${resp.status}`,
-              items: []
-            }));
-            return;
+          let xml: string;
+          if (needsInsecure) {
+            // CA intermédiaire non reconnue par Node — bypass TLS vérification en dev uniquement
+            xml = await fetchInsecure(feedUrl, {
+              'User-Agent': ua,
+              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+              'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+            });
+          } else {
+            const resp = await fetch(feedUrl, {
+              headers: {
+                'User-Agent': ua,
+                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+                'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+                'Cache-Control': 'no-cache',
+              },
+              redirect: 'follow',
+              signal: AbortSignal.timeout(10000),
+            });
+
+            if (!resp.ok) {
+              console.error('[rss-json-proxy] Upstream error:', resp.status, resp.statusText);
+              res.statusCode = resp.status;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: `Upstream HTTP ${resp.status}`, items: [] }));
+              return;
+            }
+
+            xml = await resp.text();
           }
 
-          const xml = await resp.text();
           console.log('[rss-json-proxy] Received XML length:', xml.length);
 
           const items = parseRssXml(xml);
