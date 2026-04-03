@@ -122,10 +122,11 @@ export class NuclearPanel extends Panel {
 
   hide(): void {
     if (this.modalEl) this.modalEl.style.display = 'none';
+    this.onCloseCallback?.();
   }
 
   isVisible(): boolean {
-    return this.modalEl?.style.display !== 'none';
+    return this.modalEl?.style.display === 'flex';
   }
 
   destroy(): void {
@@ -267,7 +268,7 @@ export class NuclearPanel extends Panel {
   private _renderRemit(state: NuclearState): string {
     if (!state.remitAvailable) return this._renderUnavailable('Flux IIP RTE indisponible.');
 
-    const freshnessBadge = this._freshnessBadge('quasi-realtime');
+    const freshnessBadge = this._freshnessBadge(state.remitAvailable ? 'quasi-realtime' : 'unavailable');
 
     if (state.unconfirmedSignals.length === 0 && state.remitSignals.length === 0) {
       return `${freshnessBadge}
