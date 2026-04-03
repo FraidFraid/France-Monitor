@@ -1775,7 +1775,7 @@ export class App {
     this.oilPanel.mount();
 
     // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
-    this.nuclearPanel = new NuclearPanel(document.getElementById('app') ?? document.body);
+    this.nuclearPanel = new NuclearPanel(floatContainer);
     this.nuclearPanel.mount();
     this.nuclearPanel.setOnClose(() => {
       this.activeLayers.nuclear = false;
