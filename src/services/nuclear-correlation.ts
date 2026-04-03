@@ -19,6 +19,7 @@ import type { RTEIIPState } from './rte-iip.ts';
 import { NUCLEAR_PLANTS } from '../config/infrastructure.ts';
 import { extractNuclearRemitSignals } from './nuclear-remit.ts';
 import { invalidateNuclearRTECache } from './nuclear-rte.ts';
+import type { NuclearRTEResult } from './nuclear-rte.ts';
 
 // Re-export pour App.ts
 export { invalidateNuclearRTECache };
@@ -33,11 +34,11 @@ export { invalidateNuclearRTECache };
  * @param nationalMix       Mix national éCO2mix (optionnel, pour gridTensionRisk)
  */
 export function buildNuclearState(
-  unavailabilities: NuclearUnavailability[],
+  rteResult: NuclearRTEResult,
   iipState: RTEIIPState,
   nationalMix?: Pick<EnergyMix, 'nuclear' | 'total'>,
 ): NuclearState {
-  const rteAvailable  = unavailabilities.length > 0 || iipState.available;
+  const { items: unavailabilities, available: rteAvailable } = rteResult;
   const remitAvailable = iipState.available;
 
   const remitSignals    = extractNuclearRemitSignals(iipState);

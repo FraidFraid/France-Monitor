@@ -3137,17 +3137,18 @@ export class App {
   private async loadNuclear(): Promise<void> {
     this.statusPanel?.updateSource('Nucléaire RTE', { status: 'loading', lastUpdate: null });
     try {
-      const [unavailabilities, iipState] = await Promise.all([
+      const [rteResult, iipState] = await Promise.all([
         fetchNuclearUnavailabilities(),
         fetchRTEIIPIncidents(),
       ]);
 
       const nationalMix = this.currentEcowattResponse?.national;
       const nuclearState = buildNuclearState(
-        unavailabilities,
+        rteResult,
         iipState,
         nationalMix ? { nuclear: nationalMix.nuclear, total: nationalMix.total } : undefined,
       );
+      const unavailabilities = rteResult.items;
 
       this.currentNuclearState = nuclearState;
 

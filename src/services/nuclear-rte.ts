@@ -15,17 +15,24 @@ const API_URL = import.meta.env.PROD
   : '/api/nuclear/rte-unavailability'; // Vite proxy same path
 
 const CACHE_TTL_MS = 15 * 60_000;
-let _cache: { items: NuclearUnavailability[]; fetchedAt: number } | null = null;
+let _cache: { items: NuclearUnavailability[]; available: boolean; fetchedAt: number } | null = null;
+
+export interface NuclearRTEResult {
+  items: NuclearUnavailability[];
+  /** true si l'API a répondu avec succès, même si 0 indisponibilités actives */
+  available: boolean;
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Retourne les indisponibilités nucléaires actives depuis RTE.
- * Retourne [] si l'API est indisponible (pas de données fictives).
+ * `available: false` uniquement si l'API est réellement inaccessible.
+ * Un tableau vide avec `available: true` = toutes les tranches disponibles.
  */
-export async function fetchNuclearUnavailabilities(): Promise<NuclearUnavailability[]> {
+export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> {
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    return _cache.items;
+    return { items: _cache.items, available: _cache.available };
   }
 
   try {
@@ -33,7 +40,7 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearUnavailabil
 
     if (!resp.ok) {
       console.warn('[nuclear-rte] HTTP error:', resp.status);
-      return [];
+      return { items: [], available: false };
     }
 
     const json = (await resp.json()) as {
@@ -42,17 +49,18 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearUnavailabil
       error?: string;
     };
 
-    if (!json.available || !Array.isArray(json.items)) {
-      console.warn('[nuclear-rte] Unavailable or malformed response:', json.error ?? 'no items');
-      return [];
+    if (json.available === false) {
+      console.warn('[nuclear-rte] API reported unavailable:', json.error);
+      return { items: [], available: false };
     }
 
-    const items = json.items.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
-    _cache = { items, fetchedAt: Date.now() };
-    return items;
+    const rawItems = Array.isArray(json.items) ? json.items : [];
+    const items = rawItems.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
+    _cache = { items, available: true, fetchedAt: Date.now() };
+    return { items, available: true };
   } catch (err) {
     console.warn('[nuclear-rte] Fetch failed:', err);
-    return [];
+    return { items: [], available: false };
   }
 }
 
