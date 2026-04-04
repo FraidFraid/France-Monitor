@@ -20,6 +20,8 @@ const DEFAULT_FILTER: FilterState = {
         alerts: false,
         energyGroup: false,
         energy: false,
+        hydraulic: false,
+        eolien: false,
         health: false,
         healthOscour: false,
         healthApl: false,

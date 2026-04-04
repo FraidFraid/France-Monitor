@@ -7,6 +7,7 @@
 
 import { Panel } from './Panel.ts';
 import type {
+  EcowattResponse,
   NuclearState,
   NuclearUnavailability,
   NuclearUnitReference,
@@ -35,6 +36,7 @@ export class NuclearPanel extends Panel {
   private contentEl!: HTMLElement;
   private activeTab: ActiveTab = 'status';
   private currentState: NuclearState | null = null;
+  private currentEcowatt: EcowattResponse | null = null;
   private onCloseCallback?: () => void;
   private onPlantHoverCallback?: (plantName: string | null) => void;
   private hoveredPlantName: string | null = null;
@@ -130,16 +132,18 @@ export class NuclearPanel extends Panel {
     this.onPlantHoverCallback = cb;
   }
 
-  show(state: NuclearState | null = null): void {
+  show(state: NuclearState | null = null, ecowatt: EcowattResponse | null = null): void {
     if (state) this.currentState = state;
+    if (ecowatt !== null) this.currentEcowatt = ecowatt;
     if (this.modalEl) {
       this.modalEl.style.display = 'flex';
       this._renderContent();
     }
   }
 
-  update(state: NuclearState): void {
+  update(state: NuclearState, ecowatt: EcowattResponse | null = this.currentEcowatt): void {
     this.currentState = state;
+    this.currentEcowatt = ecowatt;
     if (this.modalEl?.style.display !== 'none') {
       this._renderContent();
     }
@@ -213,6 +217,8 @@ export class NuclearPanel extends Panel {
       : availabilityRatio >= 0.70 ? '#F59E0B'
       : '#E74C3C';
     const donutDeg = Math.max(0, Math.min(360, availabilityRatio * 360));
+    const currentProductionMW = this.currentEcowatt?.national?.nuclear ?? null;
+    const productionUpdatedAt = this.currentEcowatt?.national?.timestamp ?? null;
 
     const plantCards = NUCLEAR_PLANTS
       .filter((plant) => plant.status !== 'shutdown')
@@ -342,8 +348,39 @@ export class NuclearPanel extends Panel {
           </div>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
+        <div style="
+          padding:10px 12px;border-radius:10px;
+          background:rgba(143,200,232,0.10);border:1px solid rgba(143,200,232,0.18);
+        ">
+          <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:0.08em;text-transform:uppercase;">
+            Production
+          </div>
+          <div style="font-size:18px;font-weight:800;color:#8FC8E8;margin-top:6px;">
+            ${currentProductionMW != null ? fmtGW(currentProductionMW) : 'n/d'}
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">
+            Nucléaire FR instantané Écowatt
+          </div>
+        </div>
+        <div style="
+          padding:10px 12px;border-radius:10px;
+          background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+        ">
+          <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:0.08em;text-transform:uppercase;">
+            Disponibilité
+          </div>
+          <div style="font-size:18px;font-weight:800;color:var(--text-primary);margin-top:6px;">
+            ${Math.round(availabilityRatio * 100)}%
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">
+            Capacité RTE disponible
+          </div>
+        </div>
+      </div>
       <div style="font-size:10px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
         Vue instantanée des ${NUCLEAR_UNIT_COUNT} tranches de référence du parc suivi par France Monitor.
+        ${productionUpdatedAt ? ` Production Écowatt mise à jour à ${fmtTime(productionUpdatedAt)}.` : ''}
       </div>
       <div style="margin-top:8px;">${plantCards.join('')}</div>`;
   }
@@ -600,6 +637,13 @@ function fmtGW(mw: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })} GW`;
+}
+
+function fmtTime(d: Date): string {
+  return d.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function normalizePlantKey(value: string): string {

@@ -12,7 +12,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -26,6 +26,8 @@ import { formatUpdateTime } from '../utils/format-date.ts';
 import { buildSparklineSVG } from '../utils/sparkline.ts';
 import type { LineString, MultiLineString } from 'geojson';
 import { computeFloodSegmentBbox, buildEoBrowserUrl } from '../services/copernicus.ts';
+import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
+import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
@@ -103,6 +105,8 @@ const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fon
 const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
 const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
+const SRC_HYDRAULIC = 'hydraulic-src';
+const SRC_EOLIEN = 'eolien-src';
 const SRC_TRAFFIC = 'traffic-flow-src';
 const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 const SRC_TRAIN_ROUTE = 'train-route-src';
@@ -154,6 +158,14 @@ const LYR_INFRA_HIGHLIGHT_GLOW = 'infra-highlight-glow';
 const LYR_INFRA_HIGHLIGHT_RING = 'infra-highlight-ring';
 const LYR_INFRA_CIRCLE = 'infra-circles';
 const LYR_INFRA_LABEL = 'infra-labels';
+const LYR_HYDRAULIC_HALO = 'hydraulic-halo';
+const LYR_HYDRAULIC_SIGNAL_RING = 'hydraulic-signal-ring';
+const LYR_HYDRAULIC_CIRCLE = 'hydraulic-circles';
+const LYR_HYDRAULIC_LABEL = 'hydraulic-labels';
+const LYR_EOLIEN_HALO = 'eolien-halo';
+const LYR_EOLIEN_SIGNAL_RING = 'eolien-signal-ring';
+const LYR_EOLIEN_CIRCLE = 'eolien-circles';
+const LYR_EOLIEN_LABEL = 'eolien-labels';
 const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
 const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
 const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
@@ -1140,6 +1152,17 @@ const INFRA_COLORS: Record<string, string> = {
 
 const INFRA_VITAL_HALO_COLOR = 'rgba(242, 244, 247, 0.94)';
 const INFRA_NUCLEAR_RING_COLOR = 'rgba(232, 242, 250, 0.98)';
+const HYDRAULIC_COLORS: Record<string, string> = {
+  hydro_production: '#3B82F6',
+  step_storage: '#8B5CF6',
+  water_regulation: '#9CA3AF',
+};
+const HYDRAULIC_TREND_COLORS: Record<string, string> = {
+  low: '#60A5FA',
+  normal: '#BFDBFE',
+  high: '#2563EB',
+  stress: '#EF4444',
+};
 
 const DEFAULT_VIEW: MapViewState = {
   longitude: 2.2,
@@ -1154,6 +1177,10 @@ function deptCodeToId(code: string): number {
   if (code === '2B') return 201;
   const n = parseInt(code, 10);
   return isNaN(n) ? 999 : n;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function getFeatureCenter(feature: GeoJSON.Feature): [number, number] | null {
@@ -1345,6 +1372,7 @@ export class DeckGLMap {
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
+  private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
@@ -1613,6 +1641,8 @@ export class DeckGLMap {
     // Infrastructure
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_HYDRAULIC, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_EOLIEN, { type: 'geojson', data: emptyFC() });
 
     // Réseau de Transport Gaz Pression (GRTgaz, Teréga)
     this.map.addSource(SRC_GAS_NETWORK_GRT, {
@@ -3115,6 +3145,154 @@ export class DeckGLMap {
         'text-color': '#e8e8ec',
         'text-halo-color': '#0a0a0f',
         'text-halo-width': 1.5,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_HYDRAULIC_HALO,
+      type: 'circle',
+      source: SRC_HYDRAULIC,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['+', 4, ['/', ['get', 'radius'], 2.2]],
+          8, ['+', 5, ['/', ['get', 'radius'], 1.5]],
+          12, ['+', 6, ['/', ['get', 'radius'], 1.1]],
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': [
+          'case',
+          ['==', ['get', 'hydroTrend'], 'stress'], 0.24,
+          ['==', ['get', 'hydroTrend'], 'high'], 0.18,
+          ['==', ['get', 'hydroTrend'], 'low'], 0.10,
+          0.12,
+        ],
+        'circle-blur': 0.7,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_HYDRAULIC_SIGNAL_RING,
+      type: 'circle',
+      source: SRC_HYDRAULIC,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['+', ['*', ['get', 'radius'], 0.88], ['*', ['get', 'signalRadiusBoost'], 0.62]],
+          8, ['+', ['*', ['get', 'radius'], 1.02], ['*', ['get', 'signalRadiusBoost'], 0.72]],
+          12, ['+', ['*', ['get', 'radius'], 1.16], ['*', ['get', 'signalRadiusBoost'], 0.82]],
+        ],
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': ['get', 'signalColor'],
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'],
+          4, ['get', 'signalStrokeWidth'],
+          8, ['*', ['get', 'signalStrokeWidth'], 1.12],
+          12, ['*', ['get', 'signalStrokeWidth'], 1.24],
+        ],
+        'circle-opacity': ['get', 'signalOpacity'],
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_HYDRAULIC_CIRCLE,
+      type: 'circle',
+      source: SRC_HYDRAULIC,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['*', ['get', 'radius'], 0.75],
+          8, ['get', 'radius'],
+          12, ['*', ['get', 'radius'], 1.22],
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.94,
+        'circle-stroke-width': 0,
+        'circle-stroke-color': 'rgba(0,0,0,0)',
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_HYDRAULIC_LABEL,
+      type: 'symbol',
+      source: SRC_HYDRAULIC,
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-offset': [0, 1.5],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': '#e8eef5',
+        'text-halo-color': '#0a0a0f',
+        'text-halo-width': 1.4,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_HALO,
+      type: 'circle',
+      source: SRC_EOLIEN,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
+          8, ['+', 5.5, ['/', ['get', 'radius'], 1.7]],
+          12, ['+', 6.4, ['/', ['get', 'radius'], 1.2]],
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.16,
+        'circle-blur': 0.75,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_SIGNAL_RING,
+      type: 'circle',
+      source: SRC_EOLIEN,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['+', ['*', ['get', 'radius'], 0.9], 2.8],
+          8, ['+', ['*', ['get', 'radius'], 1.02], 3.3],
+          12, ['+', ['*', ['get', 'radius'], 1.14], 4.0],
+        ],
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': ['get', 'ringColor'],
+        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 8, 2.0, 12, 2.4],
+        'circle-opacity': ['get', 'opacity'],
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_CIRCLE,
+      type: 'circle',
+      source: SRC_EOLIEN,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['*', ['get', 'radius'], 0.78],
+          8, ['get', 'radius'],
+          12, ['*', ['get', 'radius'], 1.22],
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': ['get', 'opacity'],
+        'circle-stroke-width': 0,
+        'circle-stroke-color': 'rgba(0,0,0,0)',
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_LABEL,
+      type: 'symbol',
+      source: SRC_EOLIEN,
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-offset': [0, 1.55],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': '#e8eef5',
+        'text-halo-color': '#08111b',
+        'text-halo-width': 1.4,
       },
     });
 
@@ -4983,6 +5161,26 @@ export class DeckGLMap {
     });
     this.map.on('mouseleave', LYR_INFRA_CIRCLE, hideEnrichedHover);
 
+    this.map.on('mouseenter', LYR_HYDRAULIC_CIRCLE, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mousemove', LYR_HYDRAULIC_CIRCLE, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const p = e.features[0].properties || {};
+      this.showEnrichedHoverPopup(e.lngLat, this.buildHydraulicHoverHtml(p));
+    });
+    this.map.on('mouseleave', LYR_HYDRAULIC_CIRCLE, hideEnrichedHover);
+
+    this.map.on('mouseenter', LYR_EOLIEN_CIRCLE, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mousemove', LYR_EOLIEN_CIRCLE, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const p = e.features[0].properties || {};
+      this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
+    });
+    this.map.on('mouseleave', LYR_EOLIEN_CIRCLE, hideEnrichedHover);
+
     this.map.on('mouseenter', LYR_GAS_TERMINALS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
@@ -5399,7 +5597,7 @@ export class DeckGLMap {
       if (!this.map || !e.features?.length) return;
       // Arc or gas feature takes priority over the region fill
       const overrideFeats = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_INTERCONN_HITAREA, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_GAS_PIR_MARKER],
+        layers: [LYR_INTERCONN_HITAREA, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_GAS_PIR_MARKER, LYR_HYDRAULIC_CIRCLE],
       });
       if (overrideFeats.length) {
         this.energyRegionPopup?.remove();
@@ -6605,6 +6803,96 @@ export class DeckGLMap {
         ${notes ? `<div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#a1a1aa;">${this.escapeHtml(notes)}</div>` : ''}
       </div>
     `;
+  }
+
+  private buildHydraulicHoverHtml(properties: Record<string, unknown>): string {
+    const type = String(properties.type ?? 'hydro_production');
+    const subtype = String(properties.subtype ?? 'dam');
+    const typeLabel =
+      type === 'step_storage' ? 'STEP / pompage'
+        : type === 'water_regulation' ? 'Régulation / retenue'
+          : 'Hydro production';
+    const subtypeLabel =
+      subtype === 'pumped_storage' ? 'Pumped storage'
+        : subtype === 'run_of_river' ? "Fil de l'eau"
+          : subtype === 'reservoir' ? 'Réservoir'
+            : 'Barrage';
+    const criticalityScore = Number(properties.criticalityScore ?? 0);
+    const capacityMw = Number(properties.capacityMw ?? 0);
+    const reservoirVolume = Number(properties.reservoirVolume ?? 0);
+    const operator = String(properties.operator ?? '');
+    const river = String(properties.river ?? '');
+    const commune = String(properties.commune ?? '');
+    const department = String(properties.department ?? '');
+    const technology = String(properties.technology ?? '');
+    const locationAccuracy = String(properties.locationAccuracy ?? '');
+    const sourceDate = String(properties.sourceDate ?? '');
+    const hydroTrend = String(properties.hydroTrend ?? 'normal');
+    const lastUpdate = String(properties.lastUpdate ?? '');
+    const region = String(properties.region ?? '');
+
+    const trendColors: Record<string, string> = {
+      low: '#60A5FA',
+      normal: '#A5B4FC',
+      high: '#2563EB',
+      stress: '#EF4444',
+    };
+    const trendLabels: Record<string, string> = {
+      low: 'Bas',
+      normal: 'Normal',
+      high: 'Haut',
+      stress: 'Stress',
+    };
+    const trendColor = trendColors[hydroTrend] ?? '#A5B4FC';
+
+    return `
+      <div style="color:#e8e8ec; font-family:sans-serif; min-width:230px; max-width:300px;">
+        <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(String(properties.name ?? 'Actif hydraulique'))}</div>
+        <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${this.escapeHtml(String(properties.color ?? '#3B82F6'))};">
+          ${this.escapeHtml(typeLabel)} · ${this.escapeHtml(subtypeLabel)}
+        </div>
+        <div style="display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:12px;">
+          ${region ? `<span style="color:#9898a8;">Région</span><strong>${this.escapeHtml(region)}</strong>` : ''}
+          ${commune ? `<span style="color:#9898a8;">Commune</span><strong>${this.escapeHtml(commune)}${department ? ` (${this.escapeHtml(department)})` : ''}</strong>` : ''}
+          ${operator ? `<span style="color:#9898a8;">Opérateur</span><strong>${this.escapeHtml(operator)}</strong>` : ''}
+          ${technology ? `<span style="color:#9898a8;">Technologie</span><strong>${this.escapeHtml(technology)}</strong>` : ''}
+          ${river ? `<span style="color:#9898a8;">Cours d’eau</span><strong>${this.escapeHtml(river)}</strong>` : ''}
+          ${capacityMw > 0 ? `<span style="color:#9898a8;">Capacité</span><strong>${capacityMw.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} MW</strong>` : ''}
+          ${reservoirVolume > 0 ? `<span style="color:#9898a8;">Retenue</span><strong>${reservoirVolume.toLocaleString('fr-FR')} hm3</strong>` : ''}
+          <span style="color:#9898a8;">Criticité</span><strong>${criticalityScore}/100</strong>
+          <span style="color:#9898a8;">Signal hydro</span><strong style="color:${trendColor};">${this.escapeHtml(trendLabels[hydroTrend] ?? hydroTrend)}</strong>
+        </div>
+        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#a1a1aa;">
+          ${this.escapeHtml('Selection d’actifs hydrauliques critiques — couverture non exhaustive')}
+          ${locationAccuracy ? `<div style="margin-top:4px;">Précision point : ${this.escapeHtml(locationAccuracy)}</div>` : ''}
+          ${sourceDate ? `<div style="margin-top:4px;">Référence registre : ${this.escapeHtml(sourceDate)}</div>` : ''}
+          ${lastUpdate ? `<div style="margin-top:4px;">Signal recalculé : ${this.escapeHtml(lastUpdate)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  private buildEolienHoverHtml(properties: Record<string, unknown>): string {
+    const live = this._latestEolienLive;
+    return buildEolienPopupHtml({
+      id: String(properties.id ?? ''),
+      name: String(properties.name ?? 'Parc éolien'),
+      status: String(properties.status ?? 'unknown') as 'operating' | 'construction' | 'authorized' | 'project' | 'inactive' | 'unknown',
+      kind: String(properties.kind ?? 'unknown') as 'onshore' | 'offshore' | 'unknown',
+      capacityMw: Number(properties.capacityMw ?? 0),
+      turbineCount: Number(properties.turbineCount ?? 0) || null,
+      commissioningYear: Number(properties.commissioningYear ?? 0) || null,
+      operator: String(properties.operator ?? '') || null,
+      commune: String(properties.commune ?? '') || null,
+      department: String(properties.department ?? '') || null,
+      region: String(properties.region ?? '') || null,
+      estimatedProductionMw: Number(properties.estimatedProductionMw ?? 0),
+      radius: Number(properties.radius ?? 0),
+      color: String(properties.color ?? '#38BDF8'),
+      ringColor: String(properties.ringColor ?? '#93C5FD'),
+      glowColor: String(properties.glowColor ?? '#38BDF855'),
+      opacity: Number(properties.opacity ?? 0.9),
+    }, live);
   }
 
   private buildGasHoverHtml(properties: Record<string, unknown>): string {
@@ -10153,6 +10441,71 @@ export class DeckGLMap {
     src?.setData(fc);
   }
 
+  updateHydraulicBackbone(assets: HydraulicBackboneAsset[]): void {
+    if (!this.map) return;
+
+    const fc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: assets.map((asset) => {
+        const radius = clamp(4.5 + asset.criticality_score * 0.08, 5, 14);
+        return {
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [asset.location.lon, asset.location.lat] as [number, number],
+          },
+          properties: {
+            name: asset.name,
+            type: asset.type,
+            subtype: asset.subtype,
+            region: asset.location.region,
+            capacityMw: asset.capacity_mw ?? 0,
+            reservoirVolume: asset.reservoir_volume ?? 0,
+            operator: asset.operator ?? '',
+            river: asset.river ?? '',
+            commune: asset.commune ?? '',
+            department: asset.department ?? '',
+            technology: asset.technology ?? '',
+            locationAccuracy: asset.location_accuracy ?? '',
+            sourceDate: asset.source_date ?? '',
+            signalColor: HYDRAULIC_TREND_COLORS[asset.signals.hydro_trend] ?? '#BFDBFE',
+            signalOpacity:
+              asset.signals.hydro_trend === 'stress' ? 0.98
+                : asset.signals.hydro_trend === 'high' ? 0.92
+                  : asset.signals.hydro_trend === 'low' ? 0.72
+                    : 0.58,
+            signalStrokeWidth:
+              asset.signals.hydro_trend === 'stress' ? 3.2
+                : asset.signals.hydro_trend === 'high' ? 2.6
+                  : asset.signals.hydro_trend === 'low' ? 1.9
+                    : 1.5,
+            signalRadiusBoost:
+              asset.signals.hydro_trend === 'stress' ? 5.6
+                : asset.signals.hydro_trend === 'high' ? 4.4
+                  : asset.signals.hydro_trend === 'low' ? 3.2
+                    : 2.6,
+            criticalityScore: asset.criticality_score,
+            hydroTrend: asset.signals.hydro_trend,
+            lastUpdate: asset.signals.last_update,
+            color: HYDRAULIC_COLORS[asset.type] ?? '#3B82F6',
+            radius,
+          },
+        };
+      }),
+    };
+
+    const src = this.map.getSource(SRC_HYDRAULIC) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(fc);
+  }
+
+  updateEolien(live: EolienLive | null, parks: EolienParkSummary[]): void {
+    if (!this.map) return;
+    this._latestEolienLive = live;
+    const fc = buildEolienLayerFeatureCollection(live, parks);
+    const src = this.map.getSource(SRC_EOLIEN) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(fc);
+  }
+
   // ─── Métropoles Layer ───
 
   updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
@@ -10868,13 +11221,21 @@ export class DeckGLMap {
     this.setVis(LYR_INFRA_HIGHLIGHT_RING, vis(layers.infrastructure || (layers.nuclear ?? false)));
     this.setVis(LYR_INFRA_CIRCLE, vis(layers.infrastructure || (layers.nuclear ?? false)));
     this.setVis(LYR_INFRA_LABEL, vis(layers.infrastructure || (layers.nuclear ?? false)));
+    this.setVis(LYR_HYDRAULIC_HALO, vis(layers.hydraulic ?? false));
+    this.setVis(LYR_HYDRAULIC_SIGNAL_RING, vis(layers.hydraulic ?? false));
+    this.setVis(LYR_HYDRAULIC_CIRCLE, vis(layers.hydraulic ?? false));
+    this.setVis(LYR_HYDRAULIC_LABEL, vis(layers.hydraulic ?? false));
+    this.setVis(LYR_EOLIEN_HALO, vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_SIGNAL_RING, vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_CIRCLE, vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_LABEL, vis(layers.eolien ?? false));
 
     if (this.map) {
       try {
         if (this.map.getLayer(LYR_INFRA_CIRCLE) && this.map.getLayer(LYR_INFRA_LABEL)) {
           if (layers.infrastructure) {
-            this.map.setFilter(LYR_INFRA_CIRCLE, null);
-            this.map.setFilter(LYR_INFRA_LABEL, null);
+            this.map.setFilter(LYR_INFRA_CIRCLE, ['!=', ['get', 'type'], 'nuclear']);
+            this.map.setFilter(LYR_INFRA_LABEL, ['!=', ['get', 'type'], 'nuclear']);
           } else if (layers.nuclear) {
             this.map.setFilter(LYR_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
             this.map.setFilter(LYR_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);

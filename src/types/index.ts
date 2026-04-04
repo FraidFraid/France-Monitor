@@ -63,6 +63,8 @@ export interface MapLayers {
   alerts: boolean;
   energyGroup: boolean;
   energy: boolean;
+  hydraulic: boolean;
+  eolien: boolean;
   health: boolean;
   healthOscour: boolean;
   healthApl: boolean;
@@ -442,6 +444,53 @@ export interface InfrastructurePoint {
   notes?: string;
   /** Couleur CSS override (ex. pour statut nucléaire dynamique RTE). */
   colorOverride?: string;
+}
+
+export type HydraulicAssetType =
+  | 'hydro_production'
+  | 'step_storage'
+  | 'water_regulation';
+
+export type HydraulicAssetSubtype =
+  | 'dam'
+  | 'reservoir'
+  | 'pumped_storage'
+  | 'run_of_river';
+
+export type HydraulicTrend = 'low' | 'normal' | 'high' | 'stress';
+
+export type HydraulicLocationAccuracy = 'site' | 'commune' | 'approx';
+
+export interface HydraulicBackboneAsset {
+  id: string;
+  name: string;
+  type: HydraulicAssetType;
+  subtype: HydraulicAssetSubtype;
+  location: {
+    lat: number;
+    lon: number;
+    region: string;
+    country: 'FR';
+  };
+  capacity_mw: number | null;
+  reservoir_volume: number | null;
+  operator: string | null;
+  river: string | null;
+  commune?: string | null;
+  department?: string | null;
+  technology?: string | null;
+  head_m?: number | null;
+  annual_generation_gwh?: number | null;
+  location_accuracy?: HydraulicLocationAccuracy;
+  official_name?: string | null;
+  source_date?: string | null;
+  verification_sources?: string[];
+  criticality_score: number;
+  signals: {
+    hydro_trend: HydraulicTrend;
+    last_update: string;
+  };
+  selection_reason?: string;
 }
 
 // ═══ Nuclear Sites (RTE / ASN) ═══

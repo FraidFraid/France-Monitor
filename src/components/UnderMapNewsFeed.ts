@@ -37,6 +37,8 @@ const DEFAULT_LAYERS: MapLayers = {
   alerts: false,
   energyGroup: false,
   energy: false,
+  hydraulic: false,
+  eolien: false,
   health: false,
   healthOscour: false,
   healthApl: false,

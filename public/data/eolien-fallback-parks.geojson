@@ -1,0 +1,65 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [0.4538, 49.9812] },
+      "properties": { "id": "fr-fecamp-offshore", "name": "Fécamp", "status": "operating", "kind": "offshore", "capacityMw": 497, "turbineCount": 71, "operator": "EDF Renouvelables", "commune": "Fécamp", "department": "76", "region": "Normandie", "commissioningYear": 2024 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-2.6281, 47.1608] },
+      "properties": { "id": "fr-saintnazaire-offshore", "name": "Saint-Nazaire", "status": "operating", "kind": "offshore", "capacityMw": 480, "turbineCount": 80, "operator": "Parc du Banc de Guérande", "commune": "Saint-Nazaire", "department": "44", "region": "Pays de la Loire", "commissioningYear": 2022 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-2.5390, 48.8530] },
+      "properties": { "id": "fr-saintbrieuc-offshore", "name": "Saint-Brieuc", "status": "operating", "kind": "offshore", "capacityMw": 496, "turbineCount": 62, "operator": "Ailes Marines", "commune": "Saint-Brieuc", "department": "22", "region": "Bretagne", "commissioningYear": 2024 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-2.5585, 46.9001] },
+      "properties": { "id": "fr-yeunoirmoutier-offshore", "name": "Yeu-Noirmoutier", "status": "construction", "kind": "offshore", "capacityMw": 496, "turbineCount": 61, "operator": "EMYN", "commune": "Noirmoutier-en-l'Île", "department": "85", "region": "Pays de la Loire", "commissioningYear": 2026 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [3.100, 50.096] },
+      "properties": { "id": "fr-fruges-onshore", "name": "Fruges", "status": "operating", "kind": "onshore", "capacityMw": 140, "turbineCount": 70, "operator": "EDF Renouvelables", "commune": "Fruges", "department": "62", "region": "Hauts-de-France", "commissioningYear": 2008 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [4.707, 48.758] },
+      "properties": { "id": "fr-montdesquatrevallees-onshore", "name": "Mont des Quatre Vallées", "status": "operating", "kind": "onshore", "capacityMw": 84, "turbineCount": 28, "operator": "Boralex", "commune": "Le Meix-Tiercelin", "department": "51", "region": "Grand Est", "commissioningYear": 2021 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [0.507, 49.606] },
+      "properties": { "id": "fr-caux-onshore", "name": "Plateau de Caux", "status": "operating", "kind": "onshore", "capacityMw": 72, "turbineCount": 24, "operator": "Engie Green", "commune": "Fauville-en-Caux", "department": "76", "region": "Normandie", "commissioningYear": 2017 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-0.600, 48.818] },
+      "properties": { "id": "fr-montsurs-onshore", "name": "Montsûrs", "status": "operating", "kind": "onshore", "capacityMw": 54, "turbineCount": 18, "operator": "Valorem", "commune": "Montsûrs", "department": "53", "region": "Pays de la Loire", "commissioningYear": 2019 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [5.021, 46.387] },
+      "properties": { "id": "fr-sainttrivier-onshore", "name": "Plaine de Bresse", "status": "operating", "kind": "onshore", "capacityMw": 32, "turbineCount": 16, "operator": "JP Energie Environnement", "commune": "Saint-Trivier-de-Courtes", "department": "01", "region": "Auvergne-Rhône-Alpes", "commissioningYear": 2018 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.713, 43.717] },
+      "properties": { "id": "fr-hautlanguedoc-onshore", "name": "Haut-Languedoc", "status": "operating", "kind": "onshore", "capacityMw": 69, "turbineCount": 23, "operator": "Qair", "commune": "Fraisse-sur-Agout", "department": "34", "region": "Occitanie", "commissioningYear": 2016 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [6.936, 48.748] },
+      "properties": { "id": "fr-vosgesmoselle-onshore", "name": "Vosges Mosellanes", "status": "operating", "kind": "onshore", "capacityMw": 57, "turbineCount": 19, "operator": "WPD", "commune": "Sarraltroff", "department": "57", "region": "Grand Est", "commissioningYear": 2020 }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-1.142, 46.928] },
+      "properties": { "id": "fr-plainevendee-onshore", "name": "Plaine Vendéenne", "status": "operating", "kind": "onshore", "capacityMw": 45, "turbineCount": 15, "operator": "Boralex", "commune": "Sainte-Hermine", "department": "85", "region": "Pays de la Loire", "commissioningYear": 2015 }
+    }
+  ]
+}

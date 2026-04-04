@@ -10,6 +10,7 @@ import { jsonProxyPlugin } from './src/plugins/json-proxy';
 import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
 import { osmRailwaysProxyPlugin } from './src/plugins/osm-railways-proxy';
 import { ecowattProxyPlugin } from './src/plugins/ecowatt-proxy';
+import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { arcepProxyPlugin } from './src/plugins/arcep-proxy';
@@ -60,6 +61,7 @@ export default defineConfig(({ mode }) => {
       sncfProxyPlugin(),
       osmRailwaysProxyPlugin(),
       ecowattProxyPlugin(),
+      eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
       arcepProxyPlugin(),

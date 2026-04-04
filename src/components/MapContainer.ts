@@ -6,11 +6,12 @@
 import { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
+import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -176,6 +177,14 @@ export class MapContainer {
   // ─── Infrastructure ───
   updateInfrastructure(points: InfrastructurePoint[]): void {
     this.deckMap?.updateInfrastructure(points);
+  }
+
+  updateHydraulicBackbone(assets: HydraulicBackboneAsset[]): void {
+    this.deckMap?.updateHydraulicBackbone(assets);
+  }
+
+  updateEolien(live: EolienLive | null, parks: EolienParkSummary[]): void {
+    this.deckMap?.updateEolien(live, parks);
   }
 
   // ─── Traffic ───

@@ -19,6 +19,8 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'news',
     'stability',
     'energy',
+    'hydraulic',
+    'eolien',
     'health',
     'environmental',
     'fires',
