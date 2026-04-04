@@ -11,8 +11,55 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 let _devCache: { value: string; expiresAt: number } | null = null;
 
 type ISNRDeptContext = { name: string; score: number; social: number; security: number };
+type NuclearBriefingContext = {
+  rteAvailable: boolean;
+  availableCapacityMW: number | null;
+  installedCapacityMW: number | null;
+  unplannedOutageCount: number;
+  plannedOutageCount: number;
+  reducedCount: number;
+  affectedSites: string[];
+  gridTensionRisk: boolean;
+  remitUnconfirmedCount: number;
+};
 
-function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrNationalScore?: number, isnrDepts?: ISNRDeptContext[]): string {
+function formatCapacityGW(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${(value / 1000).toFixed(1).replace('.', ',')} GW`
+    : 'indisponible';
+}
+
+function buildNuclearBlock(nuclear?: NuclearBriefingContext): string {
+  if (!nuclear) {
+    return '';
+  }
+
+  if (!nuclear.rteAvailable) {
+    return '\nContexte nucléaire : données RTE indisponibles, ne pas extrapoler.';
+  }
+
+  const outageCount = (nuclear.unplannedOutageCount ?? 0) + (nuclear.plannedOutageCount ?? 0);
+  const notableSignal = outageCount > 0 || (nuclear.reducedCount ?? 0) > 0 || (nuclear.remitUnconfirmedCount ?? 0) > 0 || nuclear.gridTensionRisk;
+  const affectedSites = Array.isArray(nuclear.affectedSites) && nuclear.affectedSites.length > 0
+    ? nuclear.affectedSites.join(', ')
+    : 'aucun site signalé';
+
+  return `\nContexte nucléaire France :
+- Parc : ${formatCapacityGW(nuclear.availableCapacityMW)} disponibles sur ${formatCapacityGW(nuclear.installedCapacityMW)} installés
+- Tranches : ${nuclear.unplannedOutageCount ?? 0} arrêts fortuits, ${nuclear.plannedOutageCount ?? 0} arrêts programmés, ${nuclear.reducedCount ?? 0} réductions de puissance
+- Sites concernés : ${affectedSites}
+- Risque réseau nucléaire : ${nuclear.gridTensionRisk ? 'oui' : 'non'}
+- Écarts REMIT non confirmés par RTE : ${nuclear.remitUnconfirmedCount ?? 0}
+- Lecture analyste : ${notableSignal ? 'signal nucléaire notable' : 'parc nucléaire nominal'}`;
+}
+
+function buildPrompt(
+  scores: Record<string, unknown>,
+  headlines: string[],
+  isnrNationalScore?: number,
+  isnrDepts?: ISNRDeptContext[],
+  nuclear?: NuclearBriefingContext,
+): string {
   const details = scores.details as Record<string, number | null> ?? {};
   const score = scores.score as number ?? 0;
   const status = scores.status as string ?? 'unknown';
@@ -27,6 +74,7 @@ function buildPrompt(scores: Record<string, unknown>, headlines: string[], isnrN
   const deptsBlock = isnrDepts && isnrDepts.length > 0
     ? `\nDépartements les plus instables (score bas = instable) :\n${isnrDepts.map((d, i) => `${i + 1}. ${d.name} : ${d.score}/100 (social: ${d.social}, sécurité: ${d.security})`).join('\n')}`
     : '';
+  const nuclearBlock = buildNuclearBlock(nuclear);
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -38,15 +86,16 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Cyber (CERT-FR) : ${details['cyber'] ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
-${isnrLine}${deptsBlock}
+${isnrLine}${deptsBlock}${nuclearBlock}
 
 Actualités récentes à impact (format [catégorie/niveau] titre (source)) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables et les actualités.
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables, le signal nucléaire et les actualités.
 2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel. Mentionne les zones géographiques si pertinent.
-3. Fournis un score d'impact sur la stabilité de 0 à 100.
+3. Intègre le nucléaire dans le briefing seulement s'il apporte un signal utile : arrêt fortuit, réduction, site impacté, écart REMIT/RTE ou risque réseau. Si le parc est nominal, tu peux l'omettre ou le résumer en une très courte clause.
+4. Fournis un score d'impact sur la stabilité de 0 à 100.
 
 IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
 
@@ -86,11 +135,12 @@ export function synthesisProxyPlugin(): Plugin {
           }
 
           try {
-            const { scores, headlines, isnrNationalScore, isnrDepts } = JSON.parse(body) as {
+            const { scores, headlines, isnrNationalScore, isnrDepts, nuclear } = JSON.parse(body) as {
               scores: Record<string, unknown>;
               headlines: string[];
               isnrNationalScore?: number;
               isnrDepts?: ISNRDeptContext[];
+              nuclear?: NuclearBriefingContext;
             };
 
             const groqRes = await fetch(GROQ_URL, {
@@ -101,7 +151,7 @@ export function synthesisProxyPlugin(): Plugin {
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
-                messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts) }],
+                messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear) }],
                 temperature: 0.3,
                 max_tokens: 300,
               }),

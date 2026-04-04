@@ -17,38 +17,78 @@ const SYMBOL_NAMES: Record<string, string> = {
 };
 
 // Fonction utilitaire pour générer une fausse courbe (random walk) qui se termine par `currentPrice` et a varié de `changePercent`
-function generateMockHistory(currentPrice: number, changePercent: number, points = 20): number[] {
-    const openPrice = currentPrice / (1 + (changePercent / 100));
-    const history = [openPrice];
-    // Génère les points intermédiaires
-    for (let i = 1; i < points - 1; i++) {
-        // Tendance linéaire vers le prix final + du bruit aléatoire
-        const progress = i / (points - 1);
-        const targetValue = openPrice + (currentPrice - openPrice) * progress;
-        // Bruit de +/- 0.5%
-        const noise = targetValue * (Math.random() * 0.01 - 0.005);
-        history.push(targetValue + noise);
+const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services'> = {
+    'CAC.INDX': 'indices',
+    'DAX.INDX': 'indices',
+    'STOXX50.INDX': 'indices',
+    'SPX.INDX': 'indices',
+    'TTE.PA': 'defense',
+    'AIR.PA': 'defense',
+    'HO.PA': 'defense',
+    'SAF.PA': 'defense',
+    'DG.PA': 'services',
+    'SAN.PA': 'services',
+    'ORA.PA': 'services',
+    'GLE.PA': 'services'
+};
+
+function createSeededRandom(seedText: string): () => number {
+    let seed = 2166136261;
+    for (let i = 0; i < seedText.length; i += 1) {
+        seed ^= seedText.charCodeAt(i);
+        seed = Math.imul(seed, 16777619);
     }
 
-    // Le dernier point est exactement le prix courant
-    history.push(currentPrice);
-    return history;
+    return () => {
+        seed += 0x6D2B79F5;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
-const MOCK_MARKET_DATA: MarketData[] = [
-    { symbol: 'CAC.INDX',    name: 'CAC 40',       price: 7532.14,  changePercent: -1.24, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(7532.14,  -1.24), category: 'indices' },
-    { symbol: 'DAX.INDX',    name: 'DAX 40',       price: 22418.50, changePercent:  0.63, trend: 'up',   lastUpdated: new Date(), history: generateMockHistory(22418.50,  0.63), category: 'indices' },
-    { symbol: 'STOXX50.INDX',name: 'Euro Stoxx 50',price: 5328.30,  changePercent: -0.45, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(5328.30,  -0.45), category: 'indices' },
-    { symbol: 'SPX.INDX',    name: 'S&P 500',      price: 5667.20,  changePercent: -0.28, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(5667.20,  -0.28), category: 'indices' },
-    { symbol: 'TTE.PA', name: 'TotalEnergies', price: 62.45, changePercent: 0.85, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(62.45, 0.85), category: 'defense' },
-    { symbol: 'AIR.PA', name: 'Airbus', price: 154.20, changePercent: -0.30, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(154.20, -0.30), category: 'defense' },
-    { symbol: 'HO.PA', name: 'Thales', price: 142.60, changePercent: 1.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(142.60, 1.15), category: 'defense' },
-    { symbol: 'SAF.PA', name: 'Safran', price: 204.30, changePercent: -0.10, trend: 'flat', lastUpdated: new Date(), history: generateMockHistory(204.30, -0.10), category: 'defense' },
-    { symbol: 'DG.PA', name: 'Vinci', price: 112.80, changePercent: -2.10, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(112.80, -2.10), category: 'services' },
-    { symbol: 'SAN.PA', name: 'Sanofi', price: 89.50, changePercent: 0.40, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(89.50, 0.40), category: 'services' },
-    { symbol: 'ORA.PA', name: 'Orange', price: 10.85, changePercent: 0.15, trend: 'up', lastUpdated: new Date(), history: generateMockHistory(10.85, 0.15), category: 'services' },
-    { symbol: 'GLE.PA', name: 'Soc. Générale', price: 24.10, changePercent: -1.80, trend: 'down', lastUpdated: new Date(), history: generateMockHistory(24.10, -1.80), category: 'services' },
-];
+function buildSyntheticHistory(
+    symbol: string,
+    currentPrice: number,
+    referencePrice: number,
+    trend: MarketData['trend'],
+): number[] {
+    if (!(currentPrice > 0) || !(referencePrice > 0)) {
+        return [];
+    }
+
+    const points = 36;
+    const start = referencePrice;
+    const end = currentPrice;
+    const delta = end - start;
+    const rand = createSeededRandom(`${symbol}:${start.toFixed(4)}:${end.toFixed(4)}:${trend}`);
+    const volatility = Math.max(Math.abs(delta) * 0.9, currentPrice * (trend === 'flat' ? 0.0025 : 0.0065));
+
+    const series: number[] = [start];
+    let runningNoise = 0;
+
+    for (let index = 1; index < points - 1; index += 1) {
+        const progress = index / (points - 1);
+        const baseline = start + delta * progress;
+
+        // Brownian bridge style: bruit irrégulier au milieu, ancré aux extrémités.
+        const taper = Math.sin(progress * Math.PI);
+        const driftBias =
+            trend === 'up' ? 0.18 :
+            trend === 'down' ? -0.18 :
+            0;
+        const shock = ((rand() - 0.5) * 2 + driftBias * (1 - progress)) * volatility * 0.22;
+        runningNoise = (runningNoise * 0.55) + shock;
+
+        const microJitter = ((rand() - 0.5) * 2) * volatility * 0.04;
+        const value = baseline + (runningNoise * taper) + microJitter;
+        series.push(Math.max(0, value));
+    }
+
+    series.push(end);
+    return series;
+}
 
 /**
  * Fetch market data from proxy (or vercel edge fn).
@@ -58,14 +98,14 @@ export async function fetchMarketData(): Promise<MarketData[]> {
     try {
         const resp = await fetch('/api/finance/market');
         if (!resp.ok) {
-            console.warn('[Finance] API returned', resp.status, 'using fallback mock data');
-            return MOCK_MARKET_DATA;
+            console.warn('[Finance] API returned', resp.status);
+            return [];
         }
 
         const data = await resp.json();
         if (!data || !data.data || !Array.isArray(data.data)) {
-            console.warn('[Finance] Invalid data structure or missing keys, using fallback mock data');
-            return MOCK_MARKET_DATA;
+            console.warn('[Finance] Invalid data structure or missing keys');
+            return [];
         }
 
         const results: MarketData[] = [];
@@ -100,21 +140,15 @@ export async function fetchMarketData(): Promise<MarketData[]> {
                 changePercent: pctChange,
                 trend,
                 lastUpdated: new Date(item.date || Date.now()),
-                history: generateMockHistory(last, pctChange) // On génère un mock visuel basé sur la variation réelle pour afficher la courbe
+                history: buildSyntheticHistory(sym, last, open, trend),
+                category: SYMBOL_CATEGORIES[sym] || 'indices'
             });
         }
 
-        const bySymbol = new Map(results.map((item) => [item.symbol, item]));
-        return MOCK_MARKET_DATA.map((mock) => {
-            const realData = bySymbol.get(mock.symbol);
-            if (realData) {
-                return { ...realData, category: mock.category };
-            }
-            return mock;
-        });
+        return results;
 
     } catch (err) {
         console.error('[Finance] Fetch failed', err);
-        return MOCK_MARKET_DATA;
+        return [];
     }
 }

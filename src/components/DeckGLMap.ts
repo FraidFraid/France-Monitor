@@ -102,6 +102,7 @@ const SRC_FLOODS_HIGHLIGHT = 'flood-segments-highlight-src';
 const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fond)
 const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
+const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
 const SRC_TRAFFIC = 'traffic-flow-src';
 const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 const SRC_TRAIN_ROUTE = 'train-route-src';
@@ -149,6 +150,8 @@ const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
 const LYR_SENTINEL_SCENE = 'sentinel-scene-overlay';
 const LYR_INFRA_VITAL_HALO = 'infra-vital-halo';
 const LYR_INFRA_NUCLEAR_RING = 'infra-nuclear-ring';
+const LYR_INFRA_HIGHLIGHT_GLOW = 'infra-highlight-glow';
+const LYR_INFRA_HIGHLIGHT_RING = 'infra-highlight-ring';
 const LYR_INFRA_CIRCLE = 'infra-circles';
 const LYR_INFRA_LABEL = 'infra-labels';
 const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
@@ -1609,6 +1612,7 @@ export class DeckGLMap {
 
     // Infrastructure
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
     // Réseau de Transport Gaz Pression (GRTgaz, Teréga)
     this.map.addSource(SRC_GAS_NETWORK_GRT, {
@@ -3044,6 +3048,30 @@ export class DeckGLMap {
         'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 8, 2.2, 12, 2.9],
         'circle-stroke-opacity': 0.98,
         'circle-stroke-color': INFRA_NUCLEAR_RING_COLOR,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_INFRA_HIGHLIGHT_GLOW,
+      type: 'circle',
+      source: SRC_INFRA_HIGHLIGHT,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 18, 8, 26, 12, 34],
+        'circle-color': 'rgba(255,255,255,0.14)',
+        'circle-blur': 0.6,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_INFRA_HIGHLIGHT_RING,
+      type: 'circle',
+      source: SRC_INFRA_HIGHLIGHT,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14, 12, 18],
+        'circle-color': 'transparent',
+        'circle-stroke-width': 2.6,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.96,
       },
     });
 
@@ -6537,12 +6565,25 @@ export class DeckGLMap {
     const capacity = Number(properties.capacity ?? 0);
     const capacityUnit = String(properties.capacityUnit ?? 'MW');
     const operator = String(properties.operator ?? '');
+    const status = String(properties.status ?? '');
     const voltageKv = Number(properties.voltageKv ?? 0);
     const fuelType = String(properties.fuelType ?? '');
     const storageCapacityHm3 = Number(properties.storageCapacityHm3 ?? 0);
     const throughputKbpd = Number(properties.throughputKbpd ?? 0);
     const notes = String(properties.notes ?? '');
     const hasEnergyData = Number.isFinite(power) && power > 0;
+    const statusLabel =
+      type === 'nuclear'
+        ? status === 'maintenance' ? 'Sous contrainte'
+          : status === 'shutdown' ? 'Arrêté'
+          : 'En service'
+        : '';
+    const statusColor =
+      type === 'nuclear'
+        ? status === 'maintenance' ? '#E74C3C'
+          : status === 'shutdown' ? '#6B7280'
+          : '#2ECC71'
+        : '#9898a8';
 
     return `
       <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
@@ -6552,6 +6593,7 @@ export class DeckGLMap {
         </div>
         <div style="display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:12px;">
           ${operator ? `<span style="color:#9898a8;">Opérateur</span><strong>${this.escapeHtml(operator)}</strong>` : ''}
+          ${statusLabel ? `<span style="color:#9898a8;">Statut</span><strong style="color:${statusColor};">${this.escapeHtml(statusLabel)}</strong>` : ''}
           ${capacity > 0 ? `<span style="color:#9898a8;">Capacité</span><strong>${capacity.toLocaleString('fr-FR', { maximumFractionDigits: capacity < 100 ? 1 : 0 })} ${this.escapeHtml(capacityUnit)}</strong>` : ''}
           ${hasEnergyData ? `<span style="color:#9898a8;">Disponible</span><strong>${Math.round(available).toLocaleString('fr-FR')} MW</strong>` : ''}
           ${hasEnergyData ? `<span style="color:#9898a8;">Disponibilité</span><strong>${Math.round(Math.max(0, Math.min(1, availabilityRatio)) * 100)} %</strong>` : ''}
@@ -10477,6 +10519,24 @@ export class DeckGLMap {
     this.refreshAisLayers();
   }
 
+  setHighlightedInfrastructurePoint(coordinates: [number, number] | null): void {
+    if (!this.map) return;
+    const src = this.map.getSource(SRC_INFRA_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (!coordinates) {
+      src.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates },
+        properties: {},
+      }],
+    });
+  }
+
   setSelectedShip(mmsi: string | null): void {
     this._selectedShipMmsi = mmsi;
     this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, mmsi);
@@ -10804,8 +10864,26 @@ export class DeckGLMap {
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_INFRA_VITAL_HALO, vis(layers.infrastructure));
     this.setVis(LYR_INFRA_NUCLEAR_RING, vis(layers.nuclear ?? false));
+    this.setVis(LYR_INFRA_HIGHLIGHT_GLOW, vis(layers.infrastructure || (layers.nuclear ?? false)));
+    this.setVis(LYR_INFRA_HIGHLIGHT_RING, vis(layers.infrastructure || (layers.nuclear ?? false)));
     this.setVis(LYR_INFRA_CIRCLE, vis(layers.infrastructure || (layers.nuclear ?? false)));
     this.setVis(LYR_INFRA_LABEL, vis(layers.infrastructure || (layers.nuclear ?? false)));
+
+    if (this.map) {
+      try {
+        if (this.map.getLayer(LYR_INFRA_CIRCLE) && this.map.getLayer(LYR_INFRA_LABEL)) {
+          if (layers.infrastructure) {
+            this.map.setFilter(LYR_INFRA_CIRCLE, null);
+            this.map.setFilter(LYR_INFRA_LABEL, null);
+          } else if (layers.nuclear) {
+            this.map.setFilter(LYR_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
+            this.map.setFilter(LYR_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);
+          }
+        }
+      } catch {
+        // Silently ignore if layers are not ready
+      }
+    }
     // Gas layer: réseau + organes vitaux
     const gasVis = vis(layers.gas ?? false);
     this.setVis(LYR_GAS_NETWORK_GRT, gasVis);

@@ -274,7 +274,7 @@ async function fetchFromAdsbFi(): Promise<{ flights: MilitaryFlight[]; source: '
             if (!adsbCorsErrorLogged) {
                 const msg = err instanceof Error ? err.message : String(err);
                 if (msg.includes('CORS') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-                    console.warn('[Military] CORS bloqué sur APIs ADS-B - fallback OpenSky ou mocks');
+                    console.warn('[Military] CORS bloqué sur APIs ADS-B - fallback OpenSky');
                 } else {
                     console.warn(`[Military] ${url.split('/')[2]} indisponible`);
                 }
@@ -377,58 +377,13 @@ async function fetchFromOpenSky(): Promise<MilitaryFlight[]> {
     }
 }
 
-// ─── Mock flights enrichis (affichés si aucune source réelle ne répond) ───
-const MOCK_FLIGHTS: MilitaryFlight[] = (() => {
-    const raw = [
-        { id: '3b7b63', callsign: 'MILAN7V', lon: 1.22, lat: 49.03, altitude: 1100, speed: 180, heading: 180, t: 'DH8D', desc: 'De Havilland DHC-8-400 Dash 8', reg: 'F-ZBMH' },
-        { id: '3b9bd6', callsign: 'FNY5627', lon: 4.92, lat: 43.52, altitude: 23000, speed: 280, heading: 90, t: 'ATLA', desc: 'Breguet Atlantique 2', reg: '18' },
-        { id: '3aabf8', callsign: 'FMY8030', lon: 5.92, lat: 43.12, altitude: 16000, speed: 220, heading: 45, t: 'TBM7', desc: 'Socata TBM-700', reg: '160' },
-        { id: '3b75ec', callsign: 'CTM2081', lon: -0.51, lat: 43.91, altitude: 26000, speed: 310, heading: 320, t: 'C30J', desc: 'Lockheed Martin KC-130J Hercules', reg: '5890' },
-        { id: '3a9f12', callsign: 'FAF4503', lon: 4.90, lat: 48.64, altitude: 8000, speed: 480, heading: 270, t: 'RFAL', desc: 'Dassault Rafale', reg: '' },
-        { id: '3b8901', callsign: 'FGN221', lon: -4.50, lat: 48.38, altitude: 500, speed: 80, heading: 200, t: 'EC45', desc: 'Airbus Helicopters EC-145', reg: 'F-MFGC' },
-        { id: '3b7b89', callsign: 'DRAGO06', lon: 2.36, lat: 48.85, altitude: 150, speed: 70, heading: 220, t: 'EC45', desc: 'Airbus Helicopters EC-145 (Séc. Civile)', reg: 'F-ZBQU' },
-        { id: '3a8021', callsign: 'FAT501', lon: 3.87, lat: 43.60, altitude: 800, speed: 130, heading: 110, t: 'AS3', desc: 'Eurocopter AS332 Cougar', reg: '' },
-    ];
-    return raw.map(r => {
-        const info = determineAircraftInfo(r.callsign, r.id);
-        const typeInfo = identifyFrenchAircraftType(r.t);
-        // Check securite civile by registration
-        let operator = info.operator;
-        let operatorLabel = info.operatorLabel;
-        if (r.reg.startsWith('F-ZB')) {
-            operator = 'securite-civile';
-            operatorLabel = FRENCH_OPERATOR_LABELS['securite-civile'];
-        }
-        return {
-            id: r.id,
-            callsign: r.callsign,
-            country: 'France',
-            longitude: r.lon,
-            latitude: r.lat,
-            altitude: r.altitude,
-            velocity: r.speed / 1.94384,
-            speed: r.speed,
-            heading: r.heading,
-            lastContact: Date.now() / 1000,
-            isMilitary: true,
-            hexCode: r.id.toUpperCase(),
-            registration: r.reg || undefined,
-            aircraftType: typeInfo?.type ?? info.aircraftType,
-            aircraftModel: r.desc,
-            operator,
-            operatorLabel,
-            confidence: info.confidence,
-        };
-    });
-})();
-
 // ─── Main export ───
 
 // Proxy endpoint for military flights (bypasses CORS)
 const MILITARY_PROXY_URL = '/api/traffic/military';
 
-// Track if we've logged the mock fallback
-let mockFallbackLogged = false;
+// Track if we've logged the empty fallback
+let emptyFallbackLogged = false;
 let proxyErrorLogged = false;
 
 interface ProxyAircraft {
@@ -456,7 +411,7 @@ interface ProxyResponse {
     aircraft: ProxyAircraft[];
     sourceCounts?: Record<string, number>;
     errors: Array<{ source: string; message: string }>;
-    mode?: Exclude<MilitaryFlightsMode, 'mock'>;
+    mode?: MilitaryFlightsMode;
     isStale?: boolean;
 }
 
@@ -553,7 +508,7 @@ function buildSnapshot(
         sourceCounts: options.sourceCounts ?? {},
         errors: options.errors ?? [],
         mode,
-        isMock: mode === 'mock',
+        isMock: false,
         isStale: mode === 'stale-cache',
     };
 }
@@ -584,7 +539,7 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
 
         if (data.aircraft?.length > 0) {
             proxyErrorLogged = false;
-            mockFallbackLogged = false;
+            emptyFallbackLogged = false;
 
             const flights = data.aircraft
                 .map(parseProxyAircraft)
@@ -603,7 +558,7 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
         }
     } catch (err) {
         if (!proxyErrorLogged) {
-            console.warn('[Military] Proxy indisponible, fallback données démo');
+            console.warn('[Military] Proxy indisponible, échec API');
             proxyErrorLogged = true;
         }
         upstreamErrors.push({
@@ -615,7 +570,7 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
     // Fallback: try legacy direct calls (may fail with CORS in browser)
     const adsbResult = await fetchFromAdsbFi();
     if (adsbResult && adsbResult.flights.length > 0) {
-        mockFallbackLogged = false;
+        emptyFallbackLogged = false;
         return buildSnapshot(adsbResult.flights, adsbResult.source, 'live', {
             sourceCounts: { [adsbResult.source]: adsbResult.flights.length },
             errors: upstreamErrors,
@@ -624,7 +579,7 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
 
     const oskyFlights = await fetchFromOpenSky();
     if (oskyFlights.length > 0) {
-        mockFallbackLogged = false;
+        emptyFallbackLogged = false;
         console.log(`[Military] ${oskyFlights.length} vols via OpenSky direct`);
         return buildSnapshot(oskyFlights, 'opensky', 'live', {
             sourceCounts: { opensky: oskyFlights.length },
@@ -632,13 +587,13 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
         });
     }
 
-    // Mock data as last resort
-    if (!mockFallbackLogged) {
-        console.log('[Military] Utilisation des données de démonstration');
-        mockFallbackLogged = true;
+    // Empty data as last resort
+    if (!emptyFallbackLogged) {
+        console.log('[Military] Aucune donnée live, API indisponible');
+        emptyFallbackLogged = true;
     }
-    return buildSnapshot(MOCK_FLIGHTS, 'mock', 'mock', {
-        sourceCounts: { mock: MOCK_FLIGHTS.length },
+    return buildSnapshot([], 'none', 'empty', {
+        sourceCounts: {},
         errors: upstreamErrors,
     });
 }

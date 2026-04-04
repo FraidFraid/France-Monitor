@@ -481,6 +481,15 @@ export interface NuclearSiteStats {
   updatedAt?: string;
 }
 
+export interface NuclearUnitReference {
+  id: string;
+  plantId: string;
+  plantName: string;
+  unitName: string;
+  nominalPowerMW: number;
+  aliases?: string[];
+}
+
 // ═══ Nuclear Module (RTE Layer 1 + REMIT Layer 2 + Correlation Layer 3) ═══
 
 export type ReactorAvailabilityStatus =
@@ -550,6 +559,7 @@ export interface NuclearState {
   stress: NuclearStressScore | null;
   rteAvailable: boolean;
   remitAvailable: boolean;
+  remitStatus: 'ok' | 'empty' | 'html' | 'unavailable';
   fetchedAt: Date;
 }
 

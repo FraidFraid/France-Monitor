@@ -5,14 +5,6 @@ export function financeProxyPlugin(): Plugin {
         name: 'finance-proxy',
         configureServer(server) {
             server.middlewares.use('/api/finance/market', async (_req, res) => {
-                const API_KEY = process.env.MARKETSTACK_API_KEY;
-                if (!API_KEY) {
-                    res.statusCode = 500;
-                    res.setHeader('Content-Type', 'application/json');
-                    res.end(JSON.stringify({ error: 'MARKETSTACK_API_KEY is not defined in env' }));
-                    return;
-                }
-
                 console.log('[Finance] Fetching from Boursorama (Scraping)');
                 const BOURSO_MAP = {
                     'CAC.INDX': 'bourse/indices/cours/1rPCAC/',
@@ -40,10 +32,12 @@ export function financeProxyPlugin(): Plugin {
                         const varMatch = html.match(/class="c-instrument c-instrument--variation"[^>]*>([^<]+)<\/span>/);
                         
                         if (priceMatch && priceMatch[1]) {
-                            const price = parseFloat(priceMatch[1].replace(/\\s/g, '').replace(',', '.'));
+                            const cleanPriceStr = priceMatch[1].replace(/[^\d,\.-]/g, '').replace(',', '.');
+                            const price = parseFloat(cleanPriceStr);
                             let pct = 0;
                             if (varMatch && varMatch[1]) {
-                                pct = parseFloat(varMatch[1].replace('%', '').replace('+', '').replace(/\\s/g, '').replace(',', '.'));
+                                const cleanPctStr = varMatch[1].replace(/[^\d,\.-]/g, '').replace(',', '.');
+                                pct = parseFloat(cleanPctStr);
                             }
                             return {
                                 symbol,

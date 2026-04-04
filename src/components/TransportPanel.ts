@@ -104,7 +104,7 @@ export class TransportPanel extends Panel {
       <div style="font-size: 24px;">🚆</div>
       <div>
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Perturbations SNCF</div>
-        <div style="color: var(--text-muted); font-size: 11px;">Trafic ferroviaire temps réel</div>
+        <div style="color: var(--text-muted); font-size: 11px;">Trafic ferroviaire TEMPS RÉEL</div>
       </div>
     `;
         this.modalEl.appendChild(header);

@@ -9,9 +9,9 @@ const FLOOD_COLORS: Record<string, string> = {
 };
 
 function describeTrace(item: FloodSegment): string {
-    if (item.dataSource === 'mock') return 'Mock manuel';
+    if (item.dataSource === 'mock') return 'RECONSTRUIT / ESTIMÉ';
     if (item.geometryFidelity === 'matched') return 'Tracé hydrographique recalé';
-    if (item.geometryFidelity === 'fallback') return 'Corridor hydrographique';
+    if (item.geometryFidelity === 'fallback') return 'RECONSTRUIT / ESTIMÉ';
     return 'Tracé brut Vigicrues';
 }
 
@@ -154,7 +154,7 @@ export class FloodsPanel extends Panel {
       <div style="margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.03);">
         <div style="color: var(--text-primary); font-size: 12px; font-weight: 600; margin-bottom: 4px;">Qualité du tracé</div>
         <div style="color: var(--text-muted); font-size: 11px;">
-          Source live: ${liveCount}
+          TEMPS RÉEL: ${liveCount}
         </div>
         <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
           Affichés sur carte: ${renderableCount}/${activeSegments.length} · recalés: ${matchedCount} · corridors: ${corridorCount}
@@ -186,7 +186,7 @@ export class FloodsPanel extends Panel {
               ${item.name}
             </div>
             <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
-              ${describeTrace(item)} · source ${item.dataSource} · confiance ${Math.round(item.matchConfidence * 100)}%
+              ${describeTrace(item)} · source ${item.dataSource === 'live' ? 'TEMPS RÉEL' : 'RECONSTRUIT / ESTIMÉ'} · confiance ${Math.round(item.matchConfidence * 100)}%
             </div>
           </div>
         `;

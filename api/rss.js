@@ -117,6 +117,24 @@ function parseRssXml(xml) {
   return items;
 }
 
+/** @param {string} payload */
+function detectSourceFormat(payload) {
+  const sample = String(payload || '').slice(0, 400).toLowerCase();
+  if (
+    sample.includes('<!doctype html') ||
+    sample.includes('<html') ||
+    sample.includes('<body') ||
+    sample.includes('<app-root') ||
+    sample.includes('ng-version')
+  ) {
+    return 'html';
+  }
+  if (sample.includes('<rss') || sample.includes('<feed') || sample.includes('<rdf:rdf')) {
+    return 'xml';
+  }
+  return 'unknown';
+}
+
 /** @param {string} xml @param {string} tagName */
 function extractTag(xml, tagName) {
   const cdataRegex = new RegExp(`<${tagName}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tagName}>`, 'i');
@@ -201,8 +219,9 @@ export default async function handler(request) {
 
     const xml = await resp.text();
     const items = parseRssXml(xml);
+    const sourceFormat = detectSourceFormat(xml);
 
-    return new Response(JSON.stringify({ items }), {
+    return new Response(JSON.stringify({ items, sourceFormat }), {
       status: 200,
       headers: {
         ...JSON_HEADERS,

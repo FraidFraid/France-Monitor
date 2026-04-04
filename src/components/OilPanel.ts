@@ -257,7 +257,7 @@ export class OilPanel extends Panel {
     const warningBanner = data.meta.partialData ? `
       <div style="background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.32); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 16px;">⚠️</span>
-        <span style="color: ${OIL_PANEL_COLORS.title}; font-size: 11px;">Sources pétrolières partielles / indisponibles</span>
+        <span style="color: ${OIL_PANEL_COLORS.title}; font-size: 11px;">Sources pétrolières INDISPONIBLES</span>
       </div>
     ` : '';
 

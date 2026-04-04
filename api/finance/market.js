@@ -11,12 +11,6 @@ export default async function handler(req, res) {
         return;
     }
 
-    const API_KEY = process.env.MARKETSTACK_API_KEY;
-    if (!API_KEY) {
-        res.status(500).json({ error: 'Missing MARKETSTACK API KEY in environment' });
-        return;
-    }
-
     const SYMBOLS = 'CAC.INDX,TTE.PA,AIR.PA,HO.PA,SAF.PA,DG.PA,SAN.PA,ORA.PA,GLE.PA';
     const CACHE_KEY = `fm:finance:market:${SYMBOLS}`;
 

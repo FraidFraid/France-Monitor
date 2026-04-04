@@ -5,13 +5,13 @@
  * Renvoie un tableau d'indisponibilités normalisées.
  *
  * Env vars requises : RTE_CLIENT_ID, RTE_CLIENT_SECRET
- * Env var optionnelle : RTE_API_VERSION (défaut: v4)
+ * Env var optionnelle : RTE_API_VERSION (défaut: v7)
  *
  * Source : https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/
  */
 
 const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/token';
-const API_VERSION   = process.env.RTE_API_VERSION ?? 'v4';
+const API_VERSION   = process.env.RTE_API_VERSION ?? 'v7';
 const RTE_UNAV_URL  =
   `https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/${API_VERSION}/generation_unavailabilities`;
 

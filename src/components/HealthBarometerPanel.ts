@@ -183,6 +183,11 @@ export class HealthBarometerPanel {
     const timeStr = m.computedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
     return `
+      <div style="margin-bottom:16px; display:flex; justify-content:center;">
+        <div style="font-size:11px; color:#9898a8; border:1px solid rgba(255,255,255,0.12); border-radius:999px; padding:6px 10px; background:rgba(255,255,255,0.04);">
+          Provenance des données : <span style="color:#fff; font-weight:600;">${m.dataTruthLabel}</span>
+        </div>
+      </div>
       ${this.renderGlobalGauge(m)}
       ${this.renderSubIndicesGrid(m)}
       ${this.renderWeightsInfo()}

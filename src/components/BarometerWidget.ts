@@ -7,6 +7,7 @@
 
 import type { NetworkBarometerResult } from '../services/network-barometer.ts';
 import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
+import type { NuclearState } from '../types/index.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -25,6 +26,12 @@ export class BarometerWidget {
   private briefingTimeEl: HTMLElement | null = null;
   private stabilityBarContainerEl: HTMLElement | null = null;
   private stabilityBarFillEl: HTMLElement | null = null;
+  private currentDetails: Record<string, number | null> | null = null;
+  private currentNuclear: {
+    label: string;
+    score: number | null;
+    color: string;
+  } | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -317,9 +324,41 @@ export class BarometerWidget {
       status === 'degraded' ? 'Dégradé'  : 'Critique';
     this.statusLabelEl.style.color = color;
 
-    if (this.tooltipEl) {
-      this.tooltipEl.innerHTML = this._renderTooltip(details);
+    this.currentDetails = details;
+    this._refreshTooltip();
+  }
+
+  updateNuclear(state: NuclearState | null): void {
+    if (!state || !state.stress) {
+      this.currentNuclear = null;
+      this._refreshTooltip();
+      return;
     }
+
+    if (!state.rteAvailable) {
+      this.currentNuclear = {
+        label: 'Indisponible',
+        score: null,
+        color: 'var(--text-muted)',
+      };
+      this._refreshTooltip();
+      return;
+    }
+
+    const installed = state.stress.installedCapacityMW;
+    const available = state.stress.availableCapacityMW;
+    const ratio = installed > 0 ? available / installed : 0;
+    const score = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+    const color = score >= 85 ? '#34c759' : score >= 60 ? '#ffcc00' : '#ff2d55';
+    const label =
+      state.unconfirmedSignals.length > 0
+        ? `${score}/100 · écart REMIT`
+        : state.stress.gridTensionRisk
+          ? `${score}/100 · sous tension`
+          : `${score}/100`;
+
+    this.currentNuclear = { label, score, color };
+    this._refreshTooltip();
   }
 
   updateBriefing(result: ISNRSynthesisResult | null): void {
@@ -339,7 +378,7 @@ export class BarometerWidget {
     this.briefingTextEl.style.fontStyle = 'normal';
 
     const mins = Math.round((Date.now() - result.computedAt.getTime()) / 60_000);
-    const cacheLabel = result.fromCache ? ' · cache' : '';
+    const cacheLabel = result.fromCache ? ' · CACHE FIGÉ' : '';
     this.briefingTimeEl.textContent = `Llama · il y a ${mins} min${cacheLabel}`;
 
     // Stability bar
@@ -374,7 +413,8 @@ export class BarometerWidget {
   private _renderTooltip(details: Record<string, number | null>): string {
     const rows: [string, number | null][] = [
       ['BGP / Internet',   details.bgp    ?? null],
-      ['Électricité',      details.elec   ?? null],
+      ['Électricité (Ecowatt)', details.elec   ?? null],
+      ['Nucléaire (RTE)', this.currentNuclear?.score ?? null],
       ['Telecom ARCEP',    details.telecom ?? null],
       ['Cloud / Web',      details.cloud  ?? null],
       ['Météo Spatiale',   details.space  ?? null],
@@ -382,8 +422,13 @@ export class BarometerWidget {
     ];
 
     const rowsHtml = rows.map(([label, val]) => {
-      const display = val !== null ? `${val} / 100` : '—';
-      const color = val === null ? 'var(--text-muted)'
+      const isNuclear = label === 'Nucléaire (RTE)';
+      const display = isNuclear
+        ? (this.currentNuclear?.label ?? '—')
+        : val !== null ? `${val} / 100` : '—';
+      const color = isNuclear
+        ? (this.currentNuclear?.color ?? 'var(--text-muted)')
+        : val === null ? 'var(--text-muted)'
         : val >= 85 ? '#34c759'
         : val >= 60 ? '#ffcc00'
         : '#ff2d55';
@@ -400,6 +445,14 @@ export class BarometerWidget {
       </div>
       ${rowsHtml}
     `;
+  }
+
+  private _refreshTooltip(): void {
+    if (!this.tooltipEl || !this.currentDetails) {
+      return;
+    }
+
+    this.tooltipEl.innerHTML = this._renderTooltip(this.currentDetails);
   }
 
   destroy(): void {

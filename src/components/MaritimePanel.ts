@@ -472,13 +472,14 @@ export class MaritimePanel {
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="color:var(--text-primary);font-weight:600;font-size:11px;${showFullName ? 'white-space:normal;overflow:visible;text-overflow:clip;max-width:none;line-height:1.25;' : 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;'}">${ship.name}</span>
           ${isNavy ? '<span style="font-size:9px;color:#67e8f9;border:1px solid #67e8f944;border-radius:3px;padding:1px 4px;flex-shrink:0;">Marine nat.</span>' : ''}
+          ${isNavy && ship.isLive === false ? '<span style="font-size:9px;color:#9ca3af;border:1px solid #9ca3af44;border-radius:3px;padding:1px 4px;flex-shrink:0;">port d’attache</span>' : ''}
           ${hasHomonym && !isNavy && mmsiSuffix ? `<span style="font-size:9px;color:var(--text-muted);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:1px 4px;flex-shrink:0;">MMSI …${mmsiSuffix}</span>` : ''}
-          ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">données figées</span>' : ''}
+          ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">CACHE FIGÉ</span>' : ''}
           <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${riskColor};flex-shrink:0;" title="${ship.riskLevel ?? 'none'}"></span>
         </div>
         <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${ship.type} · ${flagEmoji} ${countryName || 'Inconnu'}</div>
         <div style="color:var(--text-muted);font-size:10px;">
-          ${ship.speed != null ? `${ship.speed.toFixed(1)} kn` : '—'}
+          ${ship.isLive === false ? 'position de référence' : ship.speed != null ? `${ship.speed.toFixed(1)} kn` : '—'}
           ${ship.nearestPort ? ` → ${ship.nearestPort.name} (${ship.nearestPort.distanceKm}km)` : ''}
           ${hasHomonym && ship.mmsi ? ` · MMSI ${ship.mmsi}` : ''}
           ${elapsed != null ? ` · vu il y a ${elapsed}min` : ''}
@@ -692,7 +693,7 @@ export class MaritimePanel {
       badge.textContent = `● ${state.franceShipCount} navires FR`;
     } else if (state.status === 'stale') {
       badge.style.cssText = 'color:#F59E0B;font-size:9px;';
-      badge.textContent = `⚠ données figées`;
+      badge.textContent = `⚠ CACHE FIGÉ`;
     } else if (state.status === 'connecting' || state.status === 'disconnected') {
       badge.style.cssText = 'color:#ff9500;font-size:9px;';
       badge.textContent = `○ reconnexion…`;

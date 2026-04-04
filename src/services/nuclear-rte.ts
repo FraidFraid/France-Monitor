@@ -8,7 +8,7 @@
  */
 
 import type { NuclearUnavailability, ReactorAvailabilityStatus } from '../types/index.ts';
-import { NUCLEAR_PLANTS } from '../config/infrastructure.ts';
+import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 
 const API_URL = import.meta.env.PROD
   ? '/api/nuclear/rte-unavailability'
@@ -21,6 +21,8 @@ export interface NuclearRTEResult {
   items: NuclearUnavailability[];
   /** true si l'API a répondu avec succès, même si 0 indisponibilités actives */
   available: boolean;
+  /** Date du dernier fetch réussi, pour calculer la fraîcheur */
+  fetchedAt?: Date;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ export interface NuclearRTEResult {
  */
 export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> {
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    return { items: _cache.items, available: _cache.available };
+    return { items: _cache.items, available: _cache.available, fetchedAt: new Date(_cache.fetchedAt) };
   }
 
   try {
@@ -40,6 +42,8 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
 
     if (!resp.ok) {
       console.warn('[nuclear-rte] HTTP error:', resp.status);
+      // Servir le cache périmé si disponible (stale fallback)
+      if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
       return { items: [], available: false };
     }
 
@@ -51,15 +55,18 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
 
     if (json.available === false) {
       console.warn('[nuclear-rte] API reported unavailable:', json.error);
+      if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
       return { items: [], available: false };
     }
 
     const rawItems = Array.isArray(json.items) ? json.items : [];
     const items = rawItems.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
-    _cache = { items, available: true, fetchedAt: Date.now() };
-    return { items, available: true };
+    const now = Date.now();
+    _cache = { items, available: true, fetchedAt: now };
+    return { items, available: true, fetchedAt: new Date(now) };
   } catch (err) {
     console.warn('[nuclear-rte] Fetch failed:', err);
+    if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
     return { items: [], available: false };
   }
 }
@@ -136,20 +143,58 @@ function normalizeItem(raw: unknown): NuclearUnavailability | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
 
-  // L'API RTE peut renvoyer unit.name ou asset_name selon la version
-  const unit = (r['unit'] as Record<string, unknown> | undefined) ?? {};
-  const unitName  = String(unit['name'] ?? r['asset_name'] ?? r['unit_name'] ?? '').trim();
-  const plantName = derivePlantName(unitName);
-  if (!plantName) return null;
+  // ── Payload v7 (champs observés en production) ────────────────────────────
+  // affected_asset_or_unit_name           → nom de la tranche
+  // affected_asset_or_unit_installed_capacity → puissance installée MW
+  // values[].available_capacity           → puissance disponible MW
+  // identifier                            → id unique
+  // publication_date                      → updatedAt
+  // fuel_type                             → "NUCLEAR" pour filtrage
+  //
+  // Fallbacks v4/v5 conservés pour rétrocompatibilité.
+  const unitName = String(
+    r['affected_asset_or_unit_name'] ??
+    (r['unit'] as Record<string, unknown> | undefined)?.['name'] ??
+    r['asset_name'] ??
+    r['unit_name'] ??
+    '',
+  ).trim();
 
-  const nominalPowerMW   = toNumber(r['installed_capacity'] ?? r['nominal_capacity'] ?? 0);
-  const availablePowerMW = toNumber(r['available_capacity'] ?? 0);
-  const startDate        = parseDate(r['start_date'] as string | undefined);
-  const endDate          = r['end_date'] ? parseDate(r['end_date'] as string) : null;
+  if (!unitName) return null;
+  const ref = findNuclearUnitReference(unitName);
+  if (!ref) return null;
+  const plantName = ref.plantName;
+
+  const nominalPowerMW = toNumber(
+    r['affected_asset_or_unit_installed_capacity'] ??
+    r['installed_capacity'] ??
+    r['nominal_capacity'] ??
+    ref.nominalPowerMW,
+  );
+
+  // v7 : la capacité disponible est dans le premier élément du tableau values[]
+  const values = Array.isArray(r['values']) ? r['values'] as Record<string, unknown>[] : [];
+  const availablePowerMW = values.length > 0
+    ? toNumber(
+        values[0]['available_capacity'] ??
+        (values[0]['unavailable_capacity'] != null
+          ? nominalPowerMW - toNumber(values[0]['unavailable_capacity'])
+          : nominalPowerMW),
+      )
+    : toNumber(r['available_capacity'] ?? nominalPowerMW);
+
+  const startDate = parseDate(
+    (values[0]?.['start_date'] as string | undefined) ??
+    (r['start_date'] as string | undefined),
+  );
+  const endDate = (() => {
+    const s = (values[0]?.['end_date'] as string | undefined) ?? (r['end_date'] as string | undefined);
+    return s ? parseDate(s) : null;
+  })();
 
   if (!startDate) return null;
 
-  const rawType   = String(r['unavailability_type'] ?? r['type'] ?? '').toUpperCase();
+  const rawType = String(r['unavailability_type'] ?? r['type'] ?? '').toUpperCase();
   const type: NuclearUnavailability['type'] =
     rawType.includes('FORCED') || rawType.includes('UNPLANNED') ? 'UNPLANNED'
     : rawType.includes('FORCE_MAJEURE') ? 'FORCE_MAJEURE'
@@ -158,16 +203,20 @@ function normalizeItem(raw: unknown): NuclearUnavailability | null {
   const status = deriveStatus(nominalPowerMW, availablePowerMW, type);
 
   return {
-    id: String(r['id'] ?? r['eic_code'] ?? unitName + '-' + startDate.toISOString()),
+    id: String(r['identifier'] ?? r['id'] ?? r['eic_code'] ?? unitName + '-' + startDate.toISOString()),
     plantName,
-    unitName,
+    unitName: ref.unitName,
     nominalPowerMW,
     availablePowerMW,
     status,
     startDate,
     endDate,
     type,
-    updatedAt: parseDate(r['updated_date'] as string | undefined) ?? new Date(),
+    updatedAt: parseDate(
+      (r['publication_date'] as string | undefined) ??
+      (r['creation_date'] as string | undefined) ??
+      (r['updated_date'] as string | undefined),
+    ) ?? new Date(),
   };
 }
 
@@ -183,16 +232,12 @@ function deriveStatus(
   return type === 'UNPLANNED' ? 'OUTAGE_UNPLANNED' : 'OUTAGE_PLANNED';
 }
 
-/** Extrait le nom de centrale depuis le nom d'unité RTE (ex. "GRAVELINES-1" → "Gravelines") */
-function derivePlantName(unitName: string): string {
-  // Cherche un match dans NUCLEAR_PLANTS par comparaison normalisée
+function findNuclearUnitReference(unitName: string) {
   const norm = normalizeText(unitName);
-  for (const plant of NUCLEAR_PLANTS) {
-    if (norm.includes(normalizeText(plant.name))) return plant.name;
-  }
-  // Fallback : strip le numéro de tranche (GRAVELINES-1 → Gravelines)
-  const base = unitName.replace(/-\d+$/, '').replace(/_\d+$/, '').trim();
-  return base || unitName;
+  return NUCLEAR_UNITS.find((unit) => {
+    if (normalizeText(unit.unitName) === norm) return true;
+    return (unit.aliases ?? []).some((alias) => normalizeText(alias) === norm);
+  }) ?? null;
 }
 
 function normalizeText(s: string): string {

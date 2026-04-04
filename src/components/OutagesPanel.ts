@@ -7,6 +7,7 @@
 
 import { Panel } from './Panel.ts';
 import type { PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
+import type { RTEIIPState } from '../services/rte-iip.ts';
 import { iodaScoreColor, iodaScoreLabel, ispStatusColor, ispStatusLabel } from '../services/internet-outages.ts';
 import { dcStatusColor, dcStatusLabel, ixpStatusColor } from '../services/infra-network.ts';
 
@@ -35,6 +36,10 @@ export class OutagesPanel extends Panel {
   private lastNetwork: NetworkOutageState | null = null;
   private lastInfra: InfraNetworkState | null = null;
   private lastZones: OutageZone[] = [];
+  private lastRTEIIP: RTEIIPState | null = null;
+
+  // ARCEP fetch date (J ou J-1) — utilisé pour le badge UI
+  private arcepFetchedDate: Date | null = null;
 
   // hover callbacks
   private onDeptHoverCb?: (deptCode: string | null) => void;
@@ -56,6 +61,20 @@ export class OutagesPanel extends Panel {
 
   setOnDeptHover(cb: (deptCode: string | null) => void): void {
     this.onDeptHoverCb = cb;
+  }
+
+  /** Injecte les données IIP RTE (incidents HTB/production) dans le panneau. */
+  setRTEIIP(state: RTEIIPState | null): void {
+    this.lastRTEIIP = state;
+    // Refresh le contenu si l'onglet électrique est actif
+    if (this.activeTab === 'electric' && this.modalEl.style.display !== 'none') {
+      this._renderContent();
+    }
+  }
+
+  /** Met à jour la date de fetch ARCEP pour affichage J/J-1 dans l'UI. */
+  setArcepFetchedDate(date: Date | null): void {
+    this.arcepFetchedDate = date;
   }
 
   setOnZoneHover(cb: (clusterId: number | null) => void): void {
@@ -347,7 +366,7 @@ export class OutagesPanel extends Panel {
     // ── Note DataFair ──
     const disclaimer = document.createElement('div');
     disclaimer.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:10px;line-height:1.4;';
-    disclaimer.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données annuelles historiques Enedis (DataFair) — il ne reflète pas le temps réel. La tension réseau (Ecowatt) et les zones signalées sont bien du temps réel/prévisionnel.";
+    disclaimer.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
     frag.appendChild(disclaimer);
 
     // ── Résumé badges ──
@@ -382,10 +401,15 @@ export class OutagesPanel extends Panel {
       frag.appendChild(this._buildZonesAccordion(zones));
     }
 
+    // ── Incidents HTB / Production RTE (IIP) ──
+    if (this.lastRTEIIP && (this.lastRTEIIP.productionCount + this.lastRTEIIP.transmissionCount) > 0) {
+      frag.appendChild(this._buildIIPAccordion(this.lastRTEIIP));
+    }
+
     // ── Sources ──
     const footer = document.createElement('div');
     footer.style.cssText = `margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);`;
-    footer.textContent = '⚡ Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens';
+    footer.textContent = '⚡ Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (HTB)';
     frag.appendChild(footer);
 
     this.contentEl!.innerHTML = '';
@@ -767,7 +791,28 @@ export class OutagesPanel extends Panel {
     // ── Sources ──
     const footer = document.createElement('div');
     footer.style.cssText = 'margin-top:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);';
-    footer.textContent = '🟢 ARCEP — Observatoire qualité mobile (données J-1)';
+
+    // Badge J / J-1 selon la date de fetch ARCEP
+    const now = new Date();
+    let arcepDateLabel = 'J-1';
+    if (this.arcepFetchedDate) {
+      const d = this.arcepFetchedDate;
+      const isToday = d.getFullYear() === now.getFullYear()
+        && d.getMonth() === now.getMonth()
+        && d.getDate() === now.getDate();
+      arcepDateLabel = isToday ? 'J' : 'J-1';
+    }
+    const arcepDateStr = this.arcepFetchedDate
+      ? ` (${this.arcepFetchedDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`
+      : '';
+    footer.innerHTML = `
+      🟢 ARCEP — Observatoire qualité mobile
+      <span style="display:inline-block;margin-left:4px;padding:1px 6px;background:rgba(59,130,246,0.15);
+        border:1px solid rgba(59,130,246,0.3);border-radius:8px;font-size:9px;font-weight:700;
+        color:#60A5FA;">${arcepDateLabel}${arcepDateStr}</span>
+      <span style="display:block;margin-top:4px;opacity:0.6;font-style:italic;"
+        >Données jour J ou J-1 — pas de mise à jour infra-journalière</span>
+    `;
     frag.appendChild(footer);
 
     this.contentEl!.innerHTML = '';
@@ -1126,5 +1171,91 @@ export class OutagesPanel extends Panel {
 
     this.contentEl!.innerHTML = '';
     this.contentEl!.appendChild(frag);
+  }
+
+  private _buildIIPAccordion(iip: RTEIIPState): HTMLElement {
+    let expanded = false;
+    const total = iip.productionCount + iip.transmissionCount;
+    const hasCapacity = iip.totalCapacityMW > 0;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `border:1px solid rgba(99,102,241,0.25);border-radius:10px;overflow:hidden;margin-bottom:12px;`;
+
+    const header = document.createElement('div');
+    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(99,102,241,0.08);cursor:pointer;user-select:none;`;
+    const chevron = document.createElement('span');
+    chevron.textContent = '▸';
+    chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
+
+    const capacityStr = hasCapacity ? ` · ${iip.totalCapacityMW.toLocaleString('fr-FR')} MW` : '';
+    header.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;font-weight:700;color:#818CF8;">⚡ Incidents HTB RTE (IIP)</span>
+        <span style="font-size:10px;font-weight:700;color:#818CF8;background:rgba(99,102,241,0.15);padding:1px 7px;border-radius:10px;">${total}${capacityStr}</span>
+        <span style="font-size:9px;font-weight:700;background:rgba(16,185,129,0.15);color:#10B981;padding:1px 6px;border-radius:8px;">TEMPS RÉEL</span>
+      </div>
+    `;
+    header.appendChild(chevron);
+    wrapper.appendChild(header);
+
+    const body = document.createElement('div');
+    body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
+    const inner = document.createElement('div');
+    inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
+
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(99,102,241,0.05);border-left:2px solid #818CF8;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
+    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE — publiées au fil des déclarations.';
+    inner.appendChild(note);
+
+    for (const inc of iip.incidents.slice(0, 10)) {
+      const isProduction = inc.type === 'production';
+      const col = isProduction ? '#F59E0B' : '#818CF8';
+      const typeLabel = isProduction ? '🏭 Production' : '🔌 Transport HTB';
+      const statusBg = inc.status === 'active' ? '#EF444420' : '#6B728020';
+      const statusCol = inc.status === 'active' ? '#EF4444' : '#9CA3AF';
+      const statusLabel = inc.status === 'active' ? 'Actif' : inc.status === 'inactive' ? 'Terminé' : 'Retiré';
+      const dateStr = inc.publishedAt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+      const mwStr = inc.capacityMW ? `${inc.capacityMW.toLocaleString('fr-FR')} MW · ` : '';
+
+      const card = document.createElement('div');
+      card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:9px 11px;cursor:pointer;transition:background 0.15s;`;
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
+          <span style="font-size:11px;font-weight:600;color:var(--text-primary);flex:1;min-width:0;line-height:1.3;">${inc.title.slice(0, 80)}${inc.title.length > 80 ? '…' : ''}</span>
+          <span style="font-size:9px;font-weight:700;background:${statusBg};color:${statusCol};padding:2px 6px;border-radius:8px;flex-shrink:0;">${statusLabel}</span>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">
+          <span>${typeLabel}</span>
+          ${mwStr ? `<span style="color:${col};font-weight:700;">${mwStr}</span>` : ''}
+          <span>📅 ${dateStr}</span>
+        </div>
+      `;
+      if (inc.link) {
+        card.title = 'Voir sur IIP RTE';
+        card.addEventListener('click', () => window.open(inc.link, '_blank', 'noopener'));
+      }
+      card.addEventListener('mouseenter', () => { card.style.background = 'rgba(255,255,255,0.08)'; });
+      card.addEventListener('mouseleave', () => { card.style.background = 'rgba(255,255,255,0.04)'; });
+      inner.appendChild(card);
+    }
+
+    if (iip.incidents.length > 10) {
+      const more = document.createElement('div');
+      more.style.cssText = 'text-align:center;font-size:10px;color:var(--text-muted);padding:6px;';
+      more.textContent = `+ ${iip.incidents.length - 10} autres — iip.cloud-rte-france.com`;
+      inner.appendChild(more);
+    }
+
+    body.appendChild(inner);
+    wrapper.appendChild(body);
+
+    header.addEventListener('click', () => {
+      expanded = !expanded;
+      body.style.maxHeight = expanded ? `${inner.scrollHeight + 20}px` : '0';
+      chevron.style.transform = expanded ? 'rotate(90deg)' : '';
+    });
+
+    return wrapper;
   }
 }

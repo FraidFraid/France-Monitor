@@ -35,6 +35,23 @@ interface RssItem {
   description?: string;
 }
 
+function detectSourceFormat(payload: string): 'xml' | 'html' | 'unknown' {
+  const sample = payload.slice(0, 400).toLowerCase();
+  if (
+    sample.includes('<!doctype html') ||
+    sample.includes('<html') ||
+    sample.includes('<body') ||
+    sample.includes('<app-root') ||
+    sample.includes('ng-version')
+  ) {
+    return 'html';
+  }
+  if (sample.includes('<rss') || sample.includes('<feed') || sample.includes('<rdf:rdf')) {
+    return 'xml';
+  }
+  return 'unknown';
+}
+
 /**
  * Parse RSS/Atom XML into structured JSON items
  */
@@ -179,12 +196,13 @@ export function rssJsonProxyPlugin(): Plugin {
           console.log('[rss-json-proxy] Received XML length:', xml.length);
 
           const items = parseRssXml(xml);
+          const sourceFormat = detectSourceFormat(xml);
           console.log('[rss-json-proxy] Parsed items:', items.length);
 
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.setHeader('Cache-Control', 'public, max-age=300');
-          res.end(JSON.stringify({ items }));
+          res.end(JSON.stringify({ items, sourceFormat }));
 
         } catch (err) {
           console.error('[rss-json-proxy] Fetch error:', feedUrl, err);

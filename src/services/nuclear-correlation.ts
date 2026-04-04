@@ -45,33 +45,25 @@ export function buildNuclearState(
   // indisponibilités RTE structurées quand l'IIP est indisponible.
   let remitSignals: import('../types/index.ts').NuclearRemitSignal[];
   let remitAvailable: boolean;
+  let remitStatus: NuclearState['remitStatus'];
 
   const iipSignals = extractNuclearRemitSignals(iipState);
   if (iipSignals.length > 0) {
-    // IIP a fourni des données — les utiliser normalement
     remitSignals = iipSignals;
     remitAvailable = true;
-  } else if (rteAvailable && unavailabilities.length > 0) {
-    // Fallback : synthétiser les signaux REMIT depuis Layer 1
-    // Chaque indisponibilité RTE est par définition une publication REMIT confirmée
-    remitSignals = unavailabilities.map((u) => ({
-      id: `rte-derived-${u.id}`,
-      plantName: u.plantName,
-      unitName: u.unitName,
-      classifiedAs: u.type === 'UNPLANNED' ? 'UNPLANNED_OUTAGE' as const
-        : u.type === 'PLANNED' ? 'PLANNED_MAINTENANCE' as const
-        : 'OTHER' as const,
-      capacityMW: u.nominalPowerMW - u.availablePowerMW,
-      publishedAt: u.updatedAt,
-      title: `${u.unitName} — ${u.type} (${u.nominalPowerMW - u.availablePowerMW} MW)`,
-      link: '',
-      confirmedByRTE: true,
-      matchConfidence: 1.0,
-    }));
+    remitStatus = 'ok';
+  } else if (iipState.productionFeedStatus === 'ok' || iipState.productionFeedStatus === 'empty') {
+    remitSignals = [];
     remitAvailable = true;
+    remitStatus = 'empty';
+  } else if (iipState.productionFeedStatus === 'html') {
+    remitSignals = [];
+    remitAvailable = false;
+    remitStatus = 'html';
   } else {
     remitSignals = [];
-    remitAvailable = iipState.available;
+    remitAvailable = false;
+    remitStatus = 'unavailable';
   }
 
   const { confirmed, unconfirmed } = correlate(remitSignals, unavailabilities);
@@ -81,7 +73,7 @@ export function buildNuclearState(
     confirmedByRTE: s.confirmedByRTE || confirmed.has(s.id),
   }));
 
-  const stress = buildStressScore(unavailabilities, nationalMix, rteAvailable);
+  const stress = buildStressScore(unavailabilities, nationalMix, rteAvailable, rteResult.fetchedAt);
 
   return {
     unavailabilities,
@@ -90,6 +82,7 @@ export function buildNuclearState(
     stress,
     rteAvailable,
     remitAvailable,
+    remitStatus,
     fetchedAt: new Date(),
   };
 }
@@ -134,10 +127,14 @@ function correlate(
 
 // ── Stress score ──────────────────────────────────────────────────────────────
 
+const STALE_THRESHOLD_MS = 15 * 60_000;
+const UNAVAIL_THRESHOLD_MS = 30 * 60_000;
+
 function buildStressScore(
   unavailabilities: NuclearUnavailability[],
   nationalMix: Pick<EnergyMix, 'nuclear' | 'total'> | undefined,
   rteAvailable: boolean,
+  dataFetchedAt?: Date,
 ): NuclearStressScore {
   const now = Date.now();
 
@@ -167,9 +164,12 @@ function buildStressScore(
     nationalMix.total > 0 &&
     nationalMix.nuclear < nationalMix.total * 0.35;
 
+  const ageMs = dataFetchedAt ? Date.now() - dataFetchedAt.getTime() : Infinity;
   const freshness: NuclearStressScore['freshness'] = !rteAvailable
     ? 'unavailable'
-    : 'quasi-realtime'; // fetchedAt est évalué dans App.ts si stale
+    : ageMs >= UNAVAIL_THRESHOLD_MS ? 'unavailable'
+    : ageMs >= STALE_THRESHOLD_MS ? 'stale'
+    : 'quasi-realtime';
 
   return {
     installedCapacityMW,

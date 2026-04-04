@@ -226,8 +226,8 @@ export class GasPanel extends Panel {
     const color = getEcoGazColor(signal);
     const label = ECOGAZ_LABELS[signal];
 
-    // Ring fill based on signal severity (green=100%, yellow=75%, orange=50%, red=25%)
-    const fillMap: Record<EcoGazSignal, number> = { green: 100, yellow: 75, orange: 50, red: 25 };
+    // Ring fill based on signal severity (green=100%, yellow=75%, orange=50%, red=25%, unknown=0%)
+    const fillMap: Record<EcoGazSignal, number> = { green: 100, yellow: 75, orange: 50, red: 25, unknown: 0 };
     if (ringProgress) {
       ringProgress.setAttribute('stroke-dasharray', `${fillMap[signal]} 100`);
       ringProgress.setAttribute('stroke', color);

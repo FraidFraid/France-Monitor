@@ -4,11 +4,11 @@
  * Sources:
  *  1. aisstream.io WebSocket (gratuit avec clé API) → AIS live
  *  2. Données statiques enrichies (navires connus de la Marine Nationale)
- *     avec positions mock réalistes (ports d'attache)
+ *     avec position de référence au port d'attache
  *
  * L'AIS des navires militaires est souvent coupé. On affiche :
  *  - Les navires détectés en AIS live
- *  - La base statique (navigation simulée depuis le port d'attache)
+ *  - La base statique au port d'attache quand aucun AIS récent n'est disponible
  */
 
 import { getMmsiCountry } from '../utils/mmsi-country.ts';
@@ -560,7 +560,7 @@ if (typeof window !== 'undefined') {
 /**
  * Retourne la liste des navires militaires français avec positions.
  * Cherche dans TOUTES les données AIS reçues globalement (pas de restriction géographique).
- * Priorité : position AIS live → position port d'attache (statique après 10 min sans données).
+ * Priorité : position AIS live → position de référence au port d'attache (après 10 min sans données).
  */
 export function getMilitaryShips(): MilitaryShip[] {
     const now = Date.now();

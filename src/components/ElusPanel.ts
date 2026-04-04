@@ -152,13 +152,13 @@ export class ElusPanel {
     private _formatVerificationStatus(minister: Minister): string | null {
         switch (minister.verificationStatus) {
             case 'official-live':
-                return 'Source officielle live';
+                return 'Source officielle (TEMPS RÉEL)';
             case 'official-directory':
-                return 'Source officielle annuaire';
+                return 'Source officielle (HISTORIQUE)';
             case 'official-static':
-                return 'Source officielle statique';
+                return 'Source officielle (HISTORIQUE)';
             case 'fallback-static':
-                return 'Fallback statique';
+                return 'CACHE FIGÉ';
             default:
                 return null;
         }

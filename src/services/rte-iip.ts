@@ -19,6 +19,8 @@ export type IIPUnavailabilityType =
     | 'transmission'    // Indisponibilité réseau HTB (transport)
     | 'other';          // Autres informations marché
 
+export type IIPFeedStatus = 'ok' | 'empty' | 'html' | 'error';
+
 export interface RTEIIPIncident {
     id: string;
     type: IIPUnavailabilityType;
@@ -46,6 +48,8 @@ export interface RTEIIPState {
     available: boolean;
     /** 'realtime' : données fraîches, 'stale' : cache expiré, 'unavailable' */
     freshness: 'realtime' | 'stale' | 'unavailable';
+    productionFeedStatus: IIPFeedStatus;
+    transmissionFeedStatus: IIPFeedStatus;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -53,11 +57,11 @@ export interface RTEIIPState {
 // Flux RSS IIP — publics sans authentification (REMIT obligatoire)
 const IIP_FEEDS: Array<{ url: string; type: IIPUnavailabilityType }> = [
     {
-        url: 'https://iip.cloud-rte-france.com/rss/production-unavailability',
+        url: 'https://iip.cloud-rte-france.com/data/rss/production_unavailability/production_unavailability.xml',
         type: 'production',
     },
     {
-        url: 'https://iip.cloud-rte-france.com/rss/transmission-unavailability',
+        url: 'https://iip.cloud-rte-france.com/data/rss/transmission_unavailability/transmission_unavailability.xml',
         type: 'transmission',
     },
 ];
@@ -68,6 +72,12 @@ const FETCH_TIMEOUT_MS = 15_000;
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let _cache: { state: RTEIIPState; fetchedAt: number } | null = null;
+
+interface FeedFetchResult {
+    type: IIPUnavailabilityType;
+    status: IIPFeedStatus;
+    incidents: RTEIIPIncident[];
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -87,19 +97,19 @@ export async function fetchRTEIIPIncidents(): Promise<RTEIIPState> {
     );
 
     const incidents: RTEIIPIncident[] = [];
-    let available = false;
+    const feedStatuses: Record<'production' | 'transmission', IIPFeedStatus> = {
+        production: 'error',
+        transmission: 'error',
+    };
 
     for (const result of results) {
-        if (result.status === 'fulfilled' && result.value.length > 0) {
-            incidents.push(...result.value);
-            available = true;
-        } else if (result.status === 'fulfilled' && result.value.length === 0) {
-            // Feed returned OK but empty — still counts as available
-            available = true;
+        if (result.status === 'fulfilled') {
+            feedStatuses[result.value.type as 'production' | 'transmission'] = result.value.status;
+            incidents.push(...result.value.incidents);
         }
     }
 
-    const state = buildState(incidents, available);
+    const state = buildState(incidents, feedStatuses);
     _cache = { state, fetchedAt: now };
     return state;
 }
@@ -116,7 +126,7 @@ export function invalidateRTEIIPCache(): void {
 async function fetchFeed(
     feedUrl: string,
     type: IIPUnavailabilityType
-): Promise<RTEIIPIncident[]> {
+): Promise<FeedFetchResult> {
     // Utilisation du proxy RSS JSON. En dev : plugin Vite rss-json-proxy.ts (/api/rss).
     // En prod : api/rss.js (Vercel). Retourne { items: [...] } JSON parsé depuis XML.
     // ⚠ Ne PAS utiliser /api/rss-proxy : il retourne du XML brut, pas du JSON.
@@ -141,21 +151,28 @@ async function fetchFeed(
             id?: string;
         }>;
         error?: string;
+        sourceFormat?: 'xml' | 'html' | 'unknown';
     };
 
     if (json.error || !Array.isArray(json.items)) {
         console.warn(`[rte-iip] No items from ${feedUrl}:`, json.error ?? 'no items array');
-        return [];
+        return { type, status: 'error', incidents: [] };
+    }
+
+    if (json.sourceFormat === 'html') {
+        console.warn(`[rte-iip] HTML received instead of RSS from ${feedUrl}`);
+        return { type, status: 'html', incidents: [] };
     }
 
     if (json.items.length === 0) {
-        // Vérification défensive : si le proxy a reçu du HTML (SPA Angular) au lieu de XML,
-        // il retourne items:[] sans erreur. On ne peut pas distinguer "flux vide" de "HTML reçu".
-        // On traite les deux cas pareil : flux vide → 0 incidents (pas d'erreur).
-        return [];
+        return { type, status: 'empty', incidents: [] };
     }
 
-    return json.items.map(item => parseItem(item, type));
+    return {
+        type,
+        status: 'ok',
+        incidents: json.items.map(item => parseItem(item, type)),
+    };
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────────
@@ -207,7 +224,11 @@ function parseItem(
 
 // ── State builder ─────────────────────────────────────────────────────────────
 
-function buildState(incidents: RTEIIPIncident[], available: boolean): RTEIIPState {
+function buildState(
+    incidents: RTEIIPIncident[],
+    feedStatuses: Record<'production' | 'transmission', IIPFeedStatus>,
+): RTEIIPState {
+    const available = Object.values(feedStatuses).some(status => status !== 'error');
     const activeIncidents = incidents.filter(i => i.status !== 'withdrawn');
     const productionCount   = activeIncidents.filter(i => i.type === 'production').length;
     const transmissionCount = activeIncidents.filter(i => i.type === 'transmission').length;
@@ -223,6 +244,8 @@ function buildState(incidents: RTEIIPIncident[], available: boolean): RTEIIPStat
         fetchedAt: new Date(),
         available,
         freshness: available ? 'realtime' : 'unavailable',
+        productionFeedStatus: feedStatuses.production,
+        transmissionFeedStatus: feedStatuses.transmission,
     };
 }
 

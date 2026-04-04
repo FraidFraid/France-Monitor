@@ -406,6 +406,10 @@ export class MapContainer {
     this.deckMap?.setHighlightedShip(mmsi);
   }
 
+  setHighlightedInfrastructurePoint(coordinates: [number, number] | null): void {
+    this.deckMap?.setHighlightedInfrastructurePoint(coordinates);
+  }
+
   setSelectedShip(mmsi: string | null): void {
     this.deckMap?.setSelectedShip(mmsi);
   }

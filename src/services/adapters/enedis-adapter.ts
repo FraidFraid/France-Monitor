@@ -10,11 +10,17 @@
 /**
  * Raw record from indicateur-continuite-dalimentation dataset.
  * Fields use year-keyed columns (aaa2020, aaa2021, aaa2022...).
+ *
+ * NOTE: OpenDataSoft v2.1 API returns `ndeg_departement` as the primary
+ * department code field (vs legacy `code_departement` from DataFair v1).
  */
 export interface DataFairContinuityRecord {
   _id: string;
   _i?: number;
-  // Department code variations
+  // OpenDataSoft v2.1 primary field (prioritaire)
+  ndeg_departement?: string;
+  intitule_departement?: string;
+  // Department code variations (legacy DataFair v1)
   code_departement?: string;
   code_dep?: string;
   code_dept?: string;
@@ -87,7 +93,9 @@ export interface NationalFrequency {
 // ═══ Adapter Functions ═══
 
 // Candidate keys for department code extraction
+// Ordered by priority: OpenDataSoft v2.1 field first, then legacy DataFair v1 variants
 const DEPT_CODE_KEYS = [
+  'ndeg_departement',       // OpenDataSoft v2.1 — champ principal
   'code_departement',
   'code_dep',
   'code_dept',

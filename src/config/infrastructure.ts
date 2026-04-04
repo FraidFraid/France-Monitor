@@ -4,7 +4,7 @@
  * Coordonnées [lng, lat].
  */
 
-import type { InfrastructurePoint } from '../types/index.ts';
+import type { InfrastructurePoint, NuclearUnitReference } from '../types/index.ts';
 
 // ═══ Électricité ═══
 // Source de référence visuelle : parc EDF / RTE.
@@ -31,6 +31,119 @@ export const NUCLEAR_PLANTS: InfrastructurePoint[] = [
   { id: 'nuc-belleville',    name: 'Belleville-sur-Loire',   type: 'nuclear', coordinates: [2.8689, 47.5086], status: 'active',   capacity: 2620, capacityUnit: 'MW', operator: 'EDF' },
   { id: 'nuc-fessenheim',    name: 'Fessenheim',             type: 'nuclear', coordinates: [7.5667, 47.9021], status: 'shutdown', capacity: 0,    capacityUnit: 'MW', operator: 'EDF', notes: 'Site arrêté, non affiché par défaut' },
 ];
+
+const makeNuclearUnits = (
+  plantId: string,
+  plantName: string,
+  units: Array<{ unitName: string; nominalPowerMW: number; aliases?: string[] }>,
+): NuclearUnitReference[] =>
+  units.map((unit, index) => ({
+    id: `${plantId}-unit-${index + 1}`,
+    plantId,
+    plantName,
+    unitName: unit.unitName,
+    nominalPowerMW: unit.nominalPowerMW,
+    aliases: unit.aliases ?? [],
+  }));
+
+export const NUCLEAR_UNITS: NuclearUnitReference[] = [
+  ...makeNuclearUnits('nuc-belleville', 'Belleville-sur-Loire', [
+    { unitName: 'BELLEVILLE 1', nominalPowerMW: 1310 },
+    { unitName: 'BELLEVILLE 2', nominalPowerMW: 1310 },
+  ]),
+  ...makeNuclearUnits('nuc-blayais', 'Blayais', [
+    { unitName: 'BLAYAIS 1', nominalPowerMW: 950 },
+    { unitName: 'BLAYAIS 2', nominalPowerMW: 950 },
+    { unitName: 'BLAYAIS 3', nominalPowerMW: 950 },
+    { unitName: 'BLAYAIS 4', nominalPowerMW: 950 },
+  ]),
+  ...makeNuclearUnits('nuc-bugey', 'Bugey', [
+    { unitName: 'BUGEY 2', nominalPowerMW: 900 },
+    { unitName: 'BUGEY 3', nominalPowerMW: 900 },
+    { unitName: 'BUGEY 4', nominalPowerMW: 900 },
+    { unitName: 'BUGEY 5', nominalPowerMW: 900 },
+  ]),
+  ...makeNuclearUnits('nuc-cattenom', 'Cattenom', [
+    { unitName: 'CATTENOM 1', nominalPowerMW: 1300 },
+    { unitName: 'CATTENOM 2', nominalPowerMW: 1300 },
+    { unitName: 'CATTENOM 3', nominalPowerMW: 1300 },
+    { unitName: 'CATTENOM 4', nominalPowerMW: 1300 },
+  ]),
+  ...makeNuclearUnits('nuc-chinon', 'Chinon', [
+    { unitName: 'CHINON B1', nominalPowerMW: 925, aliases: ['CHINON 1'] },
+    { unitName: 'CHINON B2', nominalPowerMW: 925, aliases: ['CHINON 2'] },
+    { unitName: 'CHINON B3', nominalPowerMW: 925, aliases: ['CHINON 3'] },
+    { unitName: 'CHINON B4', nominalPowerMW: 925, aliases: ['CHINON 4'] },
+  ]),
+  ...makeNuclearUnits('nuc-chooz', 'Chooz', [
+    { unitName: 'CHOOZ 1', nominalPowerMW: 1490, aliases: ['CHOOZ B1'] },
+    { unitName: 'CHOOZ 2', nominalPowerMW: 1490, aliases: ['CHOOZ B2'] },
+  ]),
+  ...makeNuclearUnits('nuc-civaux', 'Civaux', [
+    { unitName: 'CIVAUX 1', nominalPowerMW: 1485 },
+    { unitName: 'CIVAUX 2', nominalPowerMW: 1485 },
+  ]),
+  ...makeNuclearUnits('nuc-cruas', 'Cruas-Meysse', [
+    { unitName: 'CRUAS 1', nominalPowerMW: 900 },
+    { unitName: 'CRUAS 2', nominalPowerMW: 900 },
+    { unitName: 'CRUAS 3', nominalPowerMW: 900 },
+    { unitName: 'CRUAS 4', nominalPowerMW: 900 },
+  ]),
+  ...makeNuclearUnits('nuc-dampierre', 'Dampierre-en-Burly', [
+    { unitName: 'DAMPIERRE 1', nominalPowerMW: 890 },
+    { unitName: 'DAMPIERRE 2', nominalPowerMW: 890 },
+    { unitName: 'DAMPIERRE 3', nominalPowerMW: 890 },
+    { unitName: 'DAMPIERRE 4', nominalPowerMW: 890 },
+  ]),
+  ...makeNuclearUnits('nuc-flamanville', 'Flamanville', [
+    { unitName: 'FLAMANVILLE 1', nominalPowerMW: 1345 },
+    { unitName: 'FLAMANVILLE 2', nominalPowerMW: 1345 },
+  ]),
+  ...makeNuclearUnits('nuc-golfech', 'Golfech', [
+    { unitName: 'GOLFECH 1', nominalPowerMW: 1310 },
+    { unitName: 'GOLFECH 2', nominalPowerMW: 1310 },
+  ]),
+  ...makeNuclearUnits('nuc-gravelines', 'Gravelines', [
+    { unitName: 'GRAVELINES 1', nominalPowerMW: 910, aliases: ['GRAVELINES-1'] },
+    { unitName: 'GRAVELINES 2', nominalPowerMW: 910, aliases: ['GRAVELINES-2'] },
+    { unitName: 'GRAVELINES 3', nominalPowerMW: 910, aliases: ['GRAVELINES-3'] },
+    { unitName: 'GRAVELINES 4', nominalPowerMW: 910, aliases: ['GRAVELINES-4'] },
+    { unitName: 'GRAVELINES 5', nominalPowerMW: 900, aliases: ['GRAVELINES-5'] },
+    { unitName: 'GRAVELINES 6', nominalPowerMW: 900, aliases: ['GRAVELINES-6'] },
+  ]),
+  ...makeNuclearUnits('nuc-nogent', 'Nogent-sur-Seine', [
+    { unitName: 'NOGENT 1', nominalPowerMW: 1310 },
+    { unitName: 'NOGENT 2', nominalPowerMW: 1310 },
+  ]),
+  ...makeNuclearUnits('nuc-paluel', 'Paluel', [
+    { unitName: 'PALUEL 1', nominalPowerMW: 1330 },
+    { unitName: 'PALUEL 2', nominalPowerMW: 1330 },
+    { unitName: 'PALUEL 3', nominalPowerMW: 1330 },
+    { unitName: 'PALUEL 4', nominalPowerMW: 1330 },
+  ]),
+  ...makeNuclearUnits('nuc-penly', 'Penly', [
+    { unitName: 'PENLY 1', nominalPowerMW: 1345 },
+    { unitName: 'PENLY 2', nominalPowerMW: 1345 },
+  ]),
+  ...makeNuclearUnits('nuc-saint-alban', 'Saint-Alban', [
+    { unitName: 'ST ALBAN 1', nominalPowerMW: 1425, aliases: ['SAINT ALBAN 1'] },
+    { unitName: 'ST ALBAN 2', nominalPowerMW: 1425, aliases: ['SAINT ALBAN 2'] },
+  ]),
+  ...makeNuclearUnits('nuc-saint-laurent', 'Saint-Laurent-des-Eaux', [
+    { unitName: 'ST LAURENT 1', nominalPowerMW: 915, aliases: ['SAINT LAURENT 1'] },
+    { unitName: 'ST LAURENT 2', nominalPowerMW: 915, aliases: ['SAINT LAURENT 2'] },
+  ]),
+  ...makeNuclearUnits('nuc-tricastin', 'Tricastin', [
+    { unitName: 'TRICASTIN 1', nominalPowerMW: 900 },
+    { unitName: 'TRICASTIN 2', nominalPowerMW: 900 },
+    { unitName: 'TRICASTIN 3', nominalPowerMW: 900 },
+    { unitName: 'TRICASTIN 4', nominalPowerMW: 900 },
+  ]),
+];
+
+export const NUCLEAR_UNIT_COUNT = NUCLEAR_UNITS.length;
+export const NUCLEAR_FLEET_INSTALLED_CAPACITY_MW = NUCLEAR_UNITS
+  .reduce((sum, unit) => sum + unit.nominalPowerMW, 0);
 
 export const MAJOR_THERMAL_PLANTS: InfrastructurePoint[] = [
   { id: 'th-saint-avold', name: 'Saint-Avold / Émile-Huchet', type: 'thermal', coordinates: [6.7080, 49.1080], status: 'active', capacity: 1295, capacityUnit: 'MW', operator: 'GazelEnergie', notes: 'Grand pôle thermique Grand Est' },

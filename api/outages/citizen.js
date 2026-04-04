@@ -317,14 +317,36 @@ async function fetchDeptCities(code) {
  *       </a>
  *     </h2>
  *   </article>
+ *
+ * Structure validation :
+ *   On considère le HTML valide si la page contient au moins l'un des marqueurs :
+ *   - Une balise <article avec class="post"
+ *   - Une balise <h2 class="entry-title"
+ *   - Une balise <div class="entry-content"
+ *   Si aucun de ces marqueurs n'est présent, on logue une alerte "structure inattendue"
+ *   pour qu'on n'interprète pas une réponse HTML incompatible comme "zéro panne".
  */
 function parseDeptArticles(html, deptCode) {
   const results = [];
 
+  // ── Validation de structure ──
+  // Vérifier que la page ressemble à du WordPress (infocoupure est un site WP)
+  const IS_WORDPRESS = /<article[^>]+class="[^"]*post[^"]*"[^>]*>/i.test(html)
+    || /<h2[^>]+class="[^"]*entry-title[^"]*"/i.test(html)
+    || /<div[^>]+class="[^"]*entry-content[^"]*"/i.test(html);
+
+  if (!IS_WORDPRESS) {
+    console.warn(
+      `[infocoupure] /departement-${deptCode}/ : structure HTML inattendue — ` +
+      'marqueurs WordPress absents. Le scraper est peut-\u00eatre cass\u00e9.'
+    );
+    return [];
+  }
+
   // Regex pour extraire le contenu de chaque article de la catégorie du département
   // On cherche les <article> avec la classe category-departement-{code}
   const articlePattern = new RegExp(
-    `<article[^>]+category-departement-${deptCode}[^>]*>[\\s\\S]*?</article>`,
+    `<article[^>]+category-departement-${deptCode}[^>]*>[\\s\\S]*?<\/article>`,
     'gi'
   );
   const articles = html.match(articlePattern) ?? [];
@@ -333,6 +355,12 @@ function parseDeptArticles(html, deptCode) {
   const sourceArticles = articles.length > 0
     ? articles
     : (html.match(/<article[^>]+class="[^"]*post[^"]*"[^>]*>[\s\S]*?<\/article>/gi) ?? []);
+
+  if (sourceArticles.length === 0) {
+    // La page est bien un WP mais sans article pour ce dépt = aucune panne connue
+    console.info(`[infocoupure] /departement-${deptCode}/ : aucune panne publiée (0 article)`);
+    return [];
+  }
 
   for (const article of sourceArticles) {
     // Extraire le lien + titre depuis <h2 class="entry-title"><a href="...">...</a></h2>
@@ -572,10 +600,18 @@ async function scrapeCoupureElec() {
  * Sélecteur clé : a[href^="/ville/"] — chaque lien ville identifie une panne.
  * On remonte au conteneur .p-6 pour lire le statut et le nombre de signalements.
  *
+ * Structure validation :
+ *   On vérifie que la page est bien une page Next.js de coupure-elec.fr en cherchant
+ *   l'un des marqueurs attendus :
+ *   - Un lien <a href="/ville/..."
+ *   - Un élément [class*="p-6"]
+ *   Si aucun marqueur n'est présent, on considère la structure changée et on le logue.
+ *
  * Retourne { results, stats } pour permettre le diagnostic en prod :
  *   - stats.total    : entrées brutes trouvées (liens /ville/ avec container)
  *   - stats.active   : entrées retenues après filtre statut
  *   - stats.statuses : échantillon des libellés de statut rencontrés (dédup, max 5)
+ *   - stats.structureValid : false si la structure HTML a changé
  */
 function parseCoupureElecDept(cheerio, html, dept) {
   const $ = cheerio.load(html);
@@ -583,9 +619,23 @@ function parseCoupureElecDept(cheerio, html, dept) {
   let totalFound = 0;
   const seenStatuses = new Set();
 
+  // ── Validation de structure ──
+  // Vérifier la présence des sélecteurs attendus avant d'inter-préter
+  const hasVilleLinks = $('a[href^="/ville/"]').length > 0;
+  const hasPContainer = $('[class*="p-6"]').length > 0;
+
+  if (!hasVilleLinks && !hasPContainer) {
+    // Aucun marqueur de structure trouvé — la page a peut-être changé
+    console.warn(
+      `[coupure-elec] /departement/${dept.slug} : structure HTML inattendue — ` +
+      'aucun lien /ville/ ni conteneur .p-6 trouvé. Scraper peut-être cassé.'
+    );
+    return { results: [], stats: { total: 0, active: 0, statuses: [], structureValid: false } };
+  }
+
   $('a[href^="/ville/"]').each((_, el) => {
     const $link = $(el);
-    const city = $link.text().replace(/^[\s\u2192→]+/, '').trim();
+    const city = $link.text().replace(/^[\s\u2192\u2192]+/, '').trim();
     if (!city) return;
 
     const $container = $link.closest('[class*="p-6"]');
@@ -605,7 +655,7 @@ function parseCoupureElecDept(cheerio, html, dept) {
     results.push({ city, deptName: dept.name, deptCode: dept.code, count });
   });
 
-  return { results, stats: { total: totalFound, active: results.length, statuses: [...seenStatuses] } };
+  return { results, stats: { total: totalFound, active: results.length, statuses: [...seenStatuses], structureValid: true } };
 }
 
 // ── Clustering DBSCAN (Turf.js) ─────────────────────────────────────────────

@@ -12,6 +12,18 @@ export interface ISNRDeptContext {
   security: number;
 }
 
+export interface NuclearBriefingContext {
+  rteAvailable: boolean;
+  availableCapacityMW: number | null;
+  installedCapacityMW: number | null;
+  unplannedOutageCount: number;
+  plannedOutageCount: number;
+  reducedCount: number;
+  affectedSites: string[];
+  gridTensionRisk: boolean;
+  remitUnconfirmedCount: number;
+}
+
 export interface ISNRSynthesisResult {
   briefing: string | null;
   stabilityImpact: number | null;
@@ -29,6 +41,7 @@ export async function fetchISNRSynthesis(
   newsItems: NewsItem[],
   isnrNationalScore?: number,
   isnrDepts?: ISNRDeptContext[],
+  nuclear?: NuclearBriefingContext,
 ): Promise<ISNRSynthesisResult | null> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) {
     return _cache.data;
@@ -50,6 +63,9 @@ export async function fetchISNRSynthesis(
     }
     if (isnrDepts && isnrDepts.length > 0) {
       body.isnrDepts = isnrDepts;
+    }
+    if (nuclear) {
+      body.nuclear = nuclear;
     }
 
     const res = await fetch(ENDPOINT, {

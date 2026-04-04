@@ -88,11 +88,99 @@ import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
-import { fetchISNRSynthesis } from './services/isnr-synthesis.ts';
+import { fetchISNRSynthesis, type NuclearBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
 
 
 const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
+
+function summarizeNuclearPlantForMap(
+  plantName: string,
+  installedCapacityMW: number,
+  unavailabilities: Array<{
+    plantName: string;
+    unitName: string;
+    nominalPowerMW: number;
+    availablePowerMW: number;
+    startDate: Date;
+    endDate: Date | null;
+    status: string;
+  }>,
+): {
+  availableMW: number;
+  availabilityRatio: number;
+  status: 'active' | 'maintenance' | 'shutdown';
+  notes?: string;
+} {
+  const now = Date.now();
+  const activeUnits = unavailabilities.filter(
+    (u) =>
+      normalizePlantKey(u.plantName) === normalizePlantKey(plantName) &&
+      u.startDate.getTime() <= now &&
+      (u.endDate === null || u.endDate.getTime() >= now),
+  );
+
+  if (activeUnits.length === 0) {
+    return {
+      availableMW: installedCapacityMW,
+      availabilityRatio: installedCapacityMW > 0 ? 1 : 0,
+      status: 'active',
+    };
+  }
+
+  const unavailableMW = activeUnits.reduce(
+    (sum, u) => sum + Math.max(0, u.nominalPowerMW - u.availablePowerMW),
+    0,
+  );
+  const availableMW = Math.max(0, installedCapacityMW - unavailableMW);
+  const availabilityRatio = installedCapacityMW > 0 ? availableMW / installedCapacityMW : 0;
+  const impactedUnits = activeUnits
+    .map((u) => `${u.unitName} (${u.status === 'OUTAGE_UNPLANNED' ? 'arrêt fortuit' : u.status === 'OUTAGE_PLANNED' ? 'arrêt programmé' : 'réduit'})`)
+    .join(' · ');
+
+  return {
+    availableMW,
+    availabilityRatio,
+    status: 'maintenance',
+    notes: impactedUnits ? `Tranches impactées : ${impactedUnits}` : undefined,
+  };
+}
+
+function normalizePlantKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function buildNuclearBriefingContext(state: NuclearState | null): NuclearBriefingContext | undefined {
+  if (!state || !state.stress) {
+    return undefined;
+  }
+
+  const now = Date.now();
+  const activeUnavailabilities = state.unavailabilities.filter(
+    (item) =>
+      item.startDate.getTime() <= now &&
+      (item.endDate === null || item.endDate.getTime() >= now),
+  );
+  const affectedSites = Array.from(
+    new Set(activeUnavailabilities.map((item) => item.plantName).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  return {
+    rteAvailable: state.rteAvailable,
+    availableCapacityMW: state.stress.availableCapacityMW ?? null,
+    installedCapacityMW: state.stress.installedCapacityMW ?? null,
+    unplannedOutageCount: activeUnavailabilities.filter((item) => item.status === 'OUTAGE_UNPLANNED').length,
+    plannedOutageCount: activeUnavailabilities.filter((item) => item.status === 'OUTAGE_PLANNED').length,
+    reducedCount: activeUnavailabilities.filter((item) => item.status === 'REDUCED').length,
+    affectedSites,
+    gridTensionRisk: state.stress.gridTensionRisk,
+    remitUnconfirmedCount: state.unconfirmedSignals.length,
+  };
+}
 
 // Default layer visibility (alerts remain implicitly enabled)
 const DEFAULT_LAYERS: MapLayers = {
@@ -1602,6 +1690,7 @@ export class App {
     const refreshNetworkBarometer = async (): Promise<void> => {
       const result = await fetchNetworkBarometer();
       this.networkBarometerWidget?.update(result);
+      this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
 
       // Headline filtering: medium/high first (dense signal), fallback to low
       // to confirm stability when no high-impact events are present
@@ -1626,7 +1715,14 @@ export class App {
         .slice(0, 5)
         .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
 
-      const synthesis = await fetchISNRSynthesis(result, headlines, this.currentISNRData?.nationalScore, isnrDepts).catch(() => null);
+      const nuclearBriefing = buildNuclearBriefingContext(this.currentNuclearState);
+      const synthesis = await fetchISNRSynthesis(
+        result,
+        headlines,
+        this.currentISNRData?.nationalScore,
+        isnrDepts,
+        nuclearBriefing,
+      ).catch(() => null);
       this.networkBarometerWidget?.updateBriefing(synthesis);
     };
     void refreshNetworkBarometer();
@@ -1777,8 +1873,17 @@ export class App {
     // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
     this.nuclearPanel = new NuclearPanel(floatContainer);
     this.nuclearPanel.mount();
+    this.nuclearPanel.setOnPlantHover((plantName) => {
+      if (!plantName) {
+        this.mapContainer?.setHighlightedInfrastructurePoint(null);
+        return;
+      }
+      const plant = NUCLEAR_PLANTS.find((item) => item.name === plantName);
+      this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
+    });
     this.nuclearPanel.setOnClose(() => {
       this.activeLayers.nuclear = false;
+      this.mapContainer?.setHighlightedInfrastructurePoint(null);
       this.layerPanel?.updateLayers(this.activeLayers);
       this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
     });
@@ -2750,9 +2855,7 @@ export class App {
     fetchFinance();
     this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), 5 * 60_000); // 5 min
     this._intervalNuclear = setInterval(() => {
-      if (this.activeLayers.nuclear) {
-        void this.loadNuclear();
-      }
+      void this.loadNuclear();
     }, 15 * 60_000);
   }
 
@@ -3151,6 +3254,7 @@ export class App {
       const unavailabilities = rteResult.items;
 
       this.currentNuclearState = nuclearState;
+      this.networkBarometerWidget?.updateNuclear(nuclearState);
 
       if (this.activeLayers.nuclear && this.nuclearPanel?.isVisible()) {
         this.nuclearPanel.update(nuclearState);
@@ -3160,7 +3264,18 @@ export class App {
       const staticInfra = ALL_INFRASTRUCTURE.filter((p) => p.type !== 'nuclear');
       const enrichedNuclear = NUCLEAR_PLANTS
         .filter((p) => p.status !== 'shutdown')
-        .map((p) => ({ ...p, colorOverride: colorMap[p.name] ?? '#6B7280' }));
+        .map((p) => {
+          const summary = summarizeNuclearPlantForMap(p.name, p.capacity ?? 0, unavailabilities);
+          return {
+            ...p,
+            colorOverride: colorMap[p.name] ?? '#6B7280',
+            totalPower: p.capacity ?? 0,
+            totalAvailable: summary.availableMW,
+            globalAvailability: summary.availabilityRatio,
+            status: summary.status,
+            notes: summary.notes ?? p.notes,
+          };
+        });
       this.mapContainer?.updateInfrastructure([...enrichedNuclear, ...staticInfra]);
 
       this.statusPanel?.updateSource('Nucléaire RTE', {
@@ -3815,6 +3930,13 @@ export class App {
       {
         name: 'infrastructure', task: this.loadInfrastructure().catch(() => {
           this.mapContainer?.updateInfrastructure(ALL_INFRASTRUCTURE);
+        })
+      },
+      {
+        name: 'nuclear', task: this.loadNuclear().catch(() => {
+          this.currentNuclearState = null;
+          this.networkBarometerWidget?.updateNuclear(null);
+          this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
         })
       },
       ...(this.activeLayers.trafficRoad ? [{

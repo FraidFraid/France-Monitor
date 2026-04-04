@@ -8,7 +8,7 @@
 import type { Plugin } from 'vite';
 
 const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/token';
-const API_VERSION   = process.env.RTE_API_VERSION ?? 'v4';
+const API_VERSION   = process.env.RTE_API_VERSION ?? 'v7';
 const RTE_UNAV_URL  =
   `https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/${API_VERSION}/generation_unavailabilities`;
 

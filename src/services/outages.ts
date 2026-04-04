@@ -2,9 +2,14 @@
  * outages.ts — Service for telecom and power outage data.
  *
  * Sources:
- * - ARCEP: Mobile network outages (GeoJSON)
- * - Enedis DataFair: Historical continuity metrics
- * - RTE Ecowatt: Grid tension signals
+ * - ARCEP: Mobile network outages (GeoJSON) — données J ou J-1
+ * - Enedis OpenDataSoft v2.1: Historical continuity metrics (HISTORIQUE)
+ * - RTE Ecowatt: Grid tension signals (TEMPS RÉEL)
+ *
+ * Enedis URLs migration:
+ *   Deprecated: opendata.enedis.fr/data-fair/api/v1/datasets/[id]/lines  (410 Gone)
+ *   Stable:     opendata.enedis.fr/api/explore/v2.1/catalog/datasets/[id]/records
+ *   Key field: ndeg_departement (vs previous code_departement variants)
  */
 
 import type { TelecomOutage, PowerOutage } from '../types/index.ts';
@@ -96,13 +101,14 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
 
 // ═══ Enedis Power Outages ═══
 
-// DataFair API v1 endpoints
+// OpenDataSoft v2.1 catalogue endpoints (stable — remplace les v1 DataFair dépréciés)
+const ENEDIS_BASE = 'https://opendata.enedis.fr/api/explore/v2.1/catalog/datasets';
 const ENEDIS_CONTINUITY_URL =
-    'https://opendata.enedis.fr/data-fair/api/v1/datasets/indicateur-continuite-dalimentation/lines?size=200';
+    `${ENEDIS_BASE}/indicateur-continuite-dalimentation/records?limit=200&timezone=Europe%2FParis`;
 const ENEDIS_FREQ_URL =
-    'https://opendata.enedis.fr/data-fair/api/v1/datasets/frequence-moyenne-de-coupure-par-client-bt/lines?size=200';
+    `${ENEDIS_BASE}/frequence-moyenne-de-coupure-par-client-bt/records?limit=200&timezone=Europe%2FParis`;
 const ENEDIS_DURATION_URL =
-    'https://opendata.enedis.fr/data-fair/api/v1/datasets/duree-moyenne-de-coupure-bt/lines?size=200';
+    `${ENEDIS_BASE}/duree-moyenne-de-coupure-bt/records?limit=200&timezone=Europe%2FParis`;
 
 // Cache configuration
 const POWER_CACHE_TTL_MS = 15 * 60_000; // 15 minutes for DataFair data

@@ -84,6 +84,8 @@ export interface HealthBarometerMetrics {
     computedAt: Date;
     /** Quantité de départements utilisés */
     departmentsUsed: number;
+    /** Statut synthétique de fraîcheur / disponibilité des sources */
+    dataTruthLabel: 'TEMPS RÉEL' | 'CACHE FIGÉ' | 'INDISPONIBLE';
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -213,6 +215,12 @@ export function computeHealthBarometer(
     );
 
     const level = scoreToLevel(gs);
+    const sourceStates = Object.values(healthFeatures.sourceStatus);
+    const dataTruthLabel: HealthBarometerMetrics['dataTruthLabel'] = sourceStates.every((status) => status === 'ok')
+        ? 'TEMPS RÉEL'
+        : sourceStates.some((status) => status === 'ok' || status === 'stale')
+            ? 'CACHE FIGÉ'
+            : 'INDISPONIBLE';
 
     // Deltas vs calcul précédent
     const prevSubs = previousMetrics?.subIndices;
@@ -263,5 +271,6 @@ export function computeHealthBarometer(
         },
         computedAt: new Date(),
         departmentsUsed: departments.length,
+        dataTruthLabel,
     };
 }

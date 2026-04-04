@@ -93,13 +93,12 @@ async function fetchEcoGazSignal(): Promise<{ data: EcoGazStatus; status: 'ok' |
       status: 'ok',
     };
   } catch (err) {
-    console.warn('[Gas/EcoGaz] Fetch failed, using fallback:', err);
-    // Fallback: mock green signal
+    console.warn('[Gas/EcoGaz] Fetch failed:', err);
     return {
       data: {
         date: now.toISOString().split('T')[0],
-        signal: 'green',
-        message: 'Consommation normale (données indisponibles)',
+        signal: 'unknown',
+        message: 'Données indisponibles',
         forecast: [],
         lastUpdate: now,
       },
@@ -195,18 +194,10 @@ interface OdrePirRecord {
   date?: string;
 }
 
-const FALLBACK_PIR_FLOWS_GWH_DAY: Record<string, number> = {
-  'pir-biriatou': -45,
-  'pir-larrau': -18,
-  'pir-obergailbach': 85,
-  'pir-taisnieres': 120,
-  'pir-oltingue': -25,
-};
-
 function buildFallbackInterconnections(): GasInterconnection[] {
   return GAS_INTERCONNECTIONS.map(pir => ({
     ...pir,
-    flowGWhDay: FALLBACK_PIR_FLOWS_GWH_DAY[pir.id] ?? 0,
+    flowGWhDay: 0,
   }));
 }
 
@@ -236,7 +227,7 @@ async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]
 
       const flowGWhDay = (liveFlow !== undefined && liveFlow !== null)
         ? liveFlow
-        : (FALLBACK_PIR_FLOWS_GWH_DAY[pir.id] ?? 0);
+        : 0;
 
       return {
         ...pir,
@@ -318,6 +309,7 @@ export function getEcoGazColor(signal: EcoGazSignal): string {
     case 'red':    return '#A855F7'; // violet vif — alerte
     case 'orange': return '#C084FC'; // violet clair — tension
     case 'yellow': return '#67E8F9'; // cyan clair — vigilance légère
+    case 'unknown': return '#6B7280'; // gris clair — indisponible
     default:       return '#06B6D4'; // cyan — réseau détendu
   }
 }
@@ -340,4 +332,5 @@ export const ECOGAZ_LABELS: Record<EcoGazSignal, string> = {
   yellow: 'Vigilance',
   orange: 'Alerte',
   red: 'Crise',
+  unknown: 'Indisponible',
 };

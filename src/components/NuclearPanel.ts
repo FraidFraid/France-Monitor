@@ -6,10 +6,29 @@
  */
 
 import { Panel } from './Panel.ts';
-import type { NuclearState, NuclearUnavailability } from '../types/index.ts';
+import type {
+  NuclearState,
+  NuclearUnavailability,
+  NuclearUnitReference,
+  ReactorAvailabilityStatus,
+} from '../types/index.ts';
 import { NUCLEAR_STATUS_COLORS, NUCLEAR_REMIT_UNCONFIRMED_COLOR } from '../services/nuclear-rte.ts';
+import {
+  NUCLEAR_FLEET_INSTALLED_CAPACITY_MW,
+  NUCLEAR_PLANTS,
+  NUCLEAR_UNIT_COUNT,
+  NUCLEAR_UNITS,
+} from '../config/infrastructure.ts';
 
 type ActiveTab = 'status' | 'timeline' | 'remit' | 'stress';
+type FleetUnitStatus = {
+  ref: NuclearUnitReference;
+  nominalPowerMW: number;
+  availablePowerMW: number;
+  status: ReactorAvailabilityStatus;
+  currentSignals: NuclearUnavailability[];
+  nextSignal: NuclearUnavailability | null;
+};
 
 export class NuclearPanel extends Panel {
   private modalEl!: HTMLElement;
@@ -17,6 +36,8 @@ export class NuclearPanel extends Panel {
   private activeTab: ActiveTab = 'status';
   private currentState: NuclearState | null = null;
   private onCloseCallback?: () => void;
+  private onPlantHoverCallback?: (plantName: string | null) => void;
+  private hoveredPlantName: string | null = null;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'Veille Nucléaire', icon: '⚛', collapsible: false });
@@ -105,6 +126,10 @@ export class NuclearPanel extends Panel {
     this.onCloseCallback = cb;
   }
 
+  setOnPlantHover(cb: (plantName: string | null) => void): void {
+    this.onPlantHoverCallback = cb;
+  }
+
   show(state: NuclearState | null = null): void {
     if (state) this.currentState = state;
     if (this.modalEl) {
@@ -122,6 +147,7 @@ export class NuclearPanel extends Panel {
 
   hide(): void {
     if (this.modalEl) this.modalEl.style.display = 'none';
+    this._emitPlantHover(null);
     this.onCloseCallback?.();
   }
 
@@ -130,6 +156,7 @@ export class NuclearPanel extends Panel {
   }
 
   destroy(): void {
+    this._emitPlantHover(null);
     this.modalEl?.remove();
   }
 
@@ -161,6 +188,12 @@ export class NuclearPanel extends Panel {
       case 'remit':    this.contentEl.innerHTML = this._renderRemit(state);    break;
       case 'stress':   this.contentEl.innerHTML = this._renderStress(state);   break;
     }
+
+    if (this.activeTab === 'status') {
+      this._bindStatusHover();
+    } else {
+      this._emitPlantHover(null);
+    }
   }
 
   // ── STATUS tab ──────────────────────────────────────────────────────────────
@@ -171,48 +204,148 @@ export class NuclearPanel extends Panel {
     }
 
     const freshnessBadge = this._freshnessBadge(state.stress?.freshness ?? 'unavailable');
+    const fleet = buildFleetSnapshot(state.unavailabilities);
+    const availabilityRatio = NUCLEAR_FLEET_INSTALLED_CAPACITY_MW > 0
+      ? fleet.totalAvailableMW / NUCLEAR_FLEET_INSTALLED_CAPACITY_MW
+      : 0;
+    const donutColor =
+      availabilityRatio >= 0.85 ? '#2ECC71'
+      : availabilityRatio >= 0.70 ? '#F59E0B'
+      : '#E74C3C';
+    const donutDeg = Math.max(0, Math.min(360, availabilityRatio * 360));
 
-    const byPlant = new Map<string, NuclearUnavailability[]>();
-    for (const u of state.unavailabilities) {
-      if (!byPlant.has(u.plantName)) byPlant.set(u.plantName, []);
-      byPlant.get(u.plantName)!.push(u);
-    }
+    const plantCards = NUCLEAR_PLANTS
+      .filter((plant) => plant.status !== 'shutdown')
+      .map((plant) => {
+        const units = fleet.units
+          .filter((unit) => normalizePlantKey(unit.ref.plantName) === normalizePlantKey(plant.name))
+          .sort((a, b) => a.ref.unitName.localeCompare(b.ref.unitName, 'fr-FR'));
 
-    if (byPlant.size === 0) {
-      return `
-        ${freshnessBadge}
-        <div style="color:var(--text-muted);font-size:12px;margin-top:8px;">
-          Aucune indisponibilité active. Toutes les centrales disponibles.
-        </div>`;
-    }
+        const plantSummary = summarizePlantUnits(units);
+        const siteColor = NUCLEAR_STATUS_COLORS[plantSummary.worstStatus];
 
-    const cards = Array.from(byPlant.entries()).map(([plant, units]) => {
-      const order = ['OUTAGE_UNPLANNED','OUTAGE_PLANNED','REDUCED','AVAILABLE','UNKNOWN'];
-      const worstStatus = units.reduce<string>((worst, u) => {
-        return order.indexOf(u.status) < order.indexOf(worst) ? u.status : worst;
-      }, 'AVAILABLE');
-      const color = (NUCLEAR_STATUS_COLORS as Record<string, string>)[worstStatus] ?? '#6B7280';
-      const totalNominal   = units.reduce((s, u) => s + u.nominalPowerMW, 0);
-      const totalAvailable = units.reduce((s, u) => s + u.availablePowerMW, 0);
-      return `
-        <div style="
-          background:rgba(255,255,255,0.04);border-radius:8px;
-          padding:10px 12px;margin-bottom:8px;border-left:3px solid ${color};
-        ">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${plant}</span>
-            <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${color}22;color:${color};font-weight:700;">
-              ${worstStatus.replace('_', ' ')}
-            </span>
+        const unitsHtml = units.length > 0
+          ? units.map((unit) => {
+            const unitColor = NUCLEAR_STATUS_COLORS[unit.status] ?? '#6B7280';
+            const nextInfo = unit.nextSignal
+              ? `<div style="font-size:9px;color:var(--text-muted);margin-top:4px;">
+                  Prochaine fenêtre ${fmtShortDate(unit.nextSignal.startDate)}
+                </div>`
+              : '';
+            return `
+              <div style="
+                padding:9px 10px;border-radius:10px;
+                background:${unitColor}12;border:1px solid ${unitColor}35;
+              ">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                  <div style="min-width:0;">
+                    <div style="
+                      font-size:10px;font-weight:700;color:var(--text-primary);letter-spacing:0.04em;
+                      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                    ">
+                      ${unit.ref.unitName}
+                    </div>
+                    <div style="font-size:15px;font-weight:700;color:${unitColor};margin-top:4px;">
+                      ${fmtGW(unit.availablePowerMW)}
+                    </div>
+                    <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">
+                      / ${fmtGW(unit.nominalPowerMW)} installés
+                    </div>
+                  </div>
+                  <span style="
+                    font-size:8px;padding:2px 6px;border-radius:999px;
+                    background:${unitColor}22;color:${unitColor};font-weight:700;white-space:nowrap;
+                    flex-shrink:0;
+                  ">${compactUnitStatusLabel(unit.status)}</span>
+                </div>
+                ${unit.currentSignals.length > 0 ? `
+                  <div style="font-size:9px;color:var(--text-muted);margin-top:6px;">
+                    ${unit.currentSignals[0].type} · ${fmtDate(unit.currentSignals[0].startDate)}
+                  </div>` : ''}
+                ${unit.currentSignals.length === 0 ? nextInfo : ''}
+              </div>`;
+          }).join('')
+          : `
+            <div style="
+              margin-top:8px;padding:8px 10px;border-radius:8px;
+              background:rgba(46,204,113,0.08);color:var(--text-muted);font-size:10px;
+            ">
+              Aucune tranche signalée par RTE pour ce site.
+            </div>`;
+
+        return `
+          <div style="
+            background:rgba(255,255,255,0.04);border-radius:10px;
+            padding:10px 12px;margin-bottom:10px;border-left:3px solid ${siteColor};
+          " data-nuclear-plant="${escapeHtmlAttr(plant.name)}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+              <div>
+                <div style="font-size:12px;font-weight:700;color:var(--text-primary);">${plant.name}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">
+                  ${fmtGW(plantSummary.availableMW)} / ${fmtGW(plantSummary.installedMW)} disponibles
+                  · ${plantSummary.currentlyImpactedCount} tranche${plantSummary.currentlyImpactedCount > 1 ? 's' : ''} impactée${plantSummary.currentlyImpactedCount > 1 ? 's' : ''}
+                </div>
+              </div>
+              <span style="
+                font-size:10px;padding:2px 7px;border-radius:10px;
+                background:${siteColor}22;color:${siteColor};font-weight:700;white-space:nowrap;
+              ">${compactStatusLabel(plantSummary.worstStatus)}</span>
+            </div>
+            <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:0.08em;text-transform:uppercase;margin-top:10px;">
+              Indicateurs par tranche
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px;">
+              ${unitsHtml}
+            </div>
+          </div>`;
+      });
+
+    return `
+      ${freshnessBadge}
+      <div style="
+        margin-top:10px;padding:14px 12px;border-radius:12px;
+        background:linear-gradient(135deg, rgba(255,255,255,0.05), rgba(143,200,232,0.08));
+        border:1px solid rgba(143,200,232,0.16);
+      ">
+        <div style="font-size:10px;font-weight:700;color:#9CA3AF;letter-spacing:0.1em;text-transform:uppercase;">
+          France Nuclear Now
+        </div>
+        <div style="display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:center;margin-top:10px;">
+          <div style="
+            width:118px;height:118px;border-radius:50%;
+            background:conic-gradient(${donutColor} 0deg ${donutDeg}deg, rgba(255,255,255,0.08) ${donutDeg}deg 360deg);
+            display:flex;align-items:center;justify-content:center;
+            margin:0 auto;
+          ">
+            <div style="
+              width:82px;height:82px;border-radius:50%;
+              background:var(--bg-surface);border:1px solid rgba(255,255,255,0.06);
+              display:flex;flex-direction:column;align-items:center;justify-content:center;
+            ">
+              <div style="font-size:19px;font-weight:800;color:var(--text-primary);line-height:1;">${fmtGW(fleet.totalAvailableMW)}</div>
+              <div style="font-size:8px;color:var(--text-muted);letter-spacing:0.08em;text-transform:uppercase;margin-top:4px;">sur ${fmtGW(NUCLEAR_FLEET_INSTALLED_CAPACITY_MW)}</div>
+            </div>
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
-            ${totalAvailable.toLocaleString('fr-FR')} / ${totalNominal.toLocaleString('fr-FR')} MW disponibles
-            · ${units.length} tranche${units.length > 1 ? 's' : ''} en indisponibilité
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--text-primary);">
+              ${fleet.availableCount}/${NUCLEAR_UNIT_COUNT} tranches nominales
+            </div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:5px;line-height:1.5;">
+              Disponibilité estimée par tranche à partir des indisponibilités RTE actives.
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+              ${this._renderMiniStat('Vert', fleet.availableCount, '#2ECC71')}
+              ${this._renderMiniStat('Orange', fleet.reducedCount, '#F59E0B')}
+              ${this._renderMiniStat('Rouge', fleet.outageCount, '#E74C3C')}
+              ${this._renderMiniStat('Gris', fleet.unknownCount, '#6B7280')}
+            </div>
           </div>
-        </div>`;
-    });
-
-    return `${freshnessBadge}<div style="margin-top:8px;">${cards.join('')}</div>`;
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:10px;line-height:1.5;">
+        Vue instantanée des ${NUCLEAR_UNIT_COUNT} tranches de référence du parc suivi par France Monitor.
+      </div>
+      <div style="margin-top:8px;">${plantCards.join('')}</div>`;
   }
 
   // ── TIMELINE tab ────────────────────────────────────────────────────────────
@@ -266,9 +399,14 @@ export class NuclearPanel extends Panel {
   // ── REMIT tab ───────────────────────────────────────────────────────────────
 
   private _renderRemit(state: NuclearState): string {
-    if (!state.remitAvailable) return this._renderUnavailable('Flux IIP RTE indisponible.');
+    if (state.remitStatus === 'html') {
+      return this._renderUnavailable('Flux IIP joignable mais non exploitable : HTML / SPA reçu au lieu du RSS.');
+    }
+    if (state.remitStatus === 'unavailable') {
+      return this._renderUnavailable('Flux IIP RTE indisponible.');
+    }
 
-    const freshnessBadge = this._freshnessBadge(state.remitAvailable ? 'quasi-realtime' : 'unavailable');
+    const freshnessBadge = this._freshnessBadge('quasi-realtime');
 
     if (state.unconfirmedSignals.length === 0 && state.remitSignals.length === 0) {
       return `${freshnessBadge}
@@ -406,7 +544,7 @@ export class NuclearPanel extends Panel {
   private _freshnessBadge(freshness: string): string {
     const label =
       freshness === 'quasi-realtime' ? 'QUASI TEMPS RÉEL'
-      : freshness === 'stale' ? 'HISTORIQUE'
+      : freshness === 'stale' ? 'RECONSTRUIT / ESTIMÉ'
       : 'INDISPONIBLE';
     const color =
       freshness === 'quasi-realtime' ? '#2ECC71'
@@ -417,6 +555,30 @@ export class NuclearPanel extends Panel {
       background:${color}22;color:${color};font-weight:700;
     ">${label}</span>`;
   }
+
+  private _renderMiniStat(label: string, value: number, color: string): string {
+    return `<span style="
+      font-size:9px;padding:4px 7px;border-radius:999px;
+      background:${color}18;border:1px solid ${color}35;color:${color};font-weight:700;
+    ">${label} ${value}</span>`;
+  }
+
+  private _bindStatusHover(): void {
+    this.contentEl.querySelectorAll<HTMLElement>('[data-nuclear-plant]').forEach((el) => {
+      el.addEventListener('mouseenter', () => {
+        this._emitPlantHover(el.dataset['nuclearPlant'] ?? null);
+      });
+      el.addEventListener('mouseleave', () => {
+        this._emitPlantHover(null);
+      });
+    });
+  }
+
+  private _emitPlantHover(plantName: string | null): void {
+    if (this.hoveredPlantName === plantName) return;
+    this.hoveredPlantName = plantName;
+    this.onPlantHoverCallback?.(plantName);
+  }
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -425,4 +587,159 @@ function fmtDate(d: Date): string {
   return d.toLocaleString('fr-FR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function fmtShortDate(d: Date): string {
+  return d.toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function fmtGW(mw: number): string {
+  return `${(mw / 1000).toLocaleString('fr-FR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} GW`;
+}
+
+function normalizePlantKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function isCurrentUnavailability(u: NuclearUnavailability): boolean {
+  const now = Date.now();
+  return u.startDate.getTime() <= now && (u.endDate === null || u.endDate.getTime() >= now);
+}
+
+function summarizePlantUnits(
+  units: FleetUnitStatus[],
+): {
+  availableMW: number;
+  installedMW: number;
+  worstStatus: ReactorAvailabilityStatus;
+  currentlyImpactedCount: number;
+} {
+  const availableMW = units.reduce((sum, unit) => sum + unit.availablePowerMW, 0);
+  const installedMW = units.reduce((sum, unit) => sum + unit.nominalPowerMW, 0);
+
+  const priority: ReactorAvailabilityStatus[] = [
+    'OUTAGE_UNPLANNED',
+    'OUTAGE_PLANNED',
+    'REDUCED',
+    'AVAILABLE',
+    'UNKNOWN',
+  ];
+
+  const activeStatuses = units
+    .filter((unit) => unit.currentSignals.length > 0)
+    .map((unit) => unit.status);
+  const worstStatus = priority.find((status) => activeStatuses.includes(status)) ?? 'AVAILABLE';
+
+  return {
+    availableMW,
+    installedMW,
+    worstStatus,
+    currentlyImpactedCount: units.filter((unit) => unit.currentSignals.length > 0).length,
+  };
+}
+
+function buildFleetSnapshot(unavailabilities: NuclearUnavailability[]) {
+  const units = NUCLEAR_UNITS.map((ref) => buildUnitStatus(ref, unavailabilities));
+  return {
+    units,
+    totalAvailableMW: units.reduce((sum, unit) => sum + unit.availablePowerMW, 0),
+    availableCount: units.filter((unit) => unit.status === 'AVAILABLE').length,
+    reducedCount: units.filter((unit) => unit.status === 'REDUCED').length,
+    outageCount: units.filter((unit) => unit.status === 'OUTAGE_PLANNED' || unit.status === 'OUTAGE_UNPLANNED').length,
+    unknownCount: units.filter((unit) => unit.status === 'UNKNOWN').length,
+  };
+}
+
+function buildUnitStatus(
+  ref: NuclearUnitReference,
+  unavailabilities: NuclearUnavailability[],
+): FleetUnitStatus {
+  const matching = unavailabilities.filter((unit) => matchesUnitReference(ref, unit.unitName));
+  const currentSignals = matching.filter((unit) => isCurrentUnavailability(unit));
+  const nextSignal = matching
+    .filter((unit) => unit.startDate.getTime() > Date.now())
+    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())[0] ?? null;
+
+  if (currentSignals.length === 0) {
+    return {
+      ref,
+      nominalPowerMW: ref.nominalPowerMW,
+      availablePowerMW: ref.nominalPowerMW,
+      status: 'AVAILABLE',
+      currentSignals,
+      nextSignal,
+    };
+  }
+
+  const worstStatus = pickWorstStatus(currentSignals.map((unit) => unit.status));
+  const availablePowerMW = Math.max(0, Math.min(
+    ...currentSignals.map((unit) => unit.availablePowerMW),
+  ));
+  const nominalPowerMW = Math.max(
+    ref.nominalPowerMW,
+    ...currentSignals.map((unit) => unit.nominalPowerMW),
+  );
+
+  return {
+    ref,
+    nominalPowerMW,
+    availablePowerMW,
+    status: worstStatus,
+    currentSignals,
+    nextSignal,
+  };
+}
+
+function matchesUnitReference(ref: NuclearUnitReference, unitName: string): boolean {
+  const norm = normalizePlantKey(unitName);
+  if (normalizePlantKey(ref.unitName) === norm) return true;
+  return (ref.aliases ?? []).some((alias) => normalizePlantKey(alias) === norm);
+}
+
+function pickWorstStatus(statuses: ReactorAvailabilityStatus[]): ReactorAvailabilityStatus {
+  const priority: ReactorAvailabilityStatus[] = [
+    'OUTAGE_UNPLANNED',
+    'OUTAGE_PLANNED',
+    'REDUCED',
+    'AVAILABLE',
+    'UNKNOWN',
+  ];
+  return priority.find((status) => statuses.includes(status)) ?? 'UNKNOWN';
+}
+
+function compactStatusLabel(status: ReactorAvailabilityStatus): string {
+  switch (status) {
+    case 'AVAILABLE': return 'OK';
+    case 'REDUCED': return 'RÉDUIT';
+    case 'OUTAGE_PLANNED': return 'ARRÊT PLANIFIÉ';
+    case 'OUTAGE_UNPLANNED': return 'ARRÊT FORTUIT';
+    default: return 'INCONNU';
+  }
+}
+
+function compactUnitStatusLabel(status: ReactorAvailabilityStatus): string {
+  switch (status) {
+    case 'AVAILABLE': return 'OK';
+    case 'REDUCED': return 'RÉDUIT';
+    case 'OUTAGE_PLANNED': return 'PLANIFIÉ';
+    case 'OUTAGE_UNPLANNED': return 'FORTUIT';
+    default: return 'INCONNU';
+  }
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

@@ -20,9 +20,9 @@ const STATUS_ICONS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-    ok: 'OK',
-    stale: 'Obsolète',
-    error: 'Erreur',
+    ok: 'TEMPS RÉEL',
+    stale: 'CACHE FIGÉ',
+    error: 'INDISPONIBLE',
     loading: 'Chargement…',
 };
 
@@ -97,8 +97,8 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky → mock' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'airplanes.live · échantillon gratuit' },
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
             { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
@@ -159,8 +159,8 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky → mock' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'airplanes.live · échantillon gratuit' },
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
             { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
@@ -199,11 +199,11 @@ export class StatusPanel {
         const stale = this.sources.filter((src) => src.status === 'stale').length;
         const loading = this.sources.filter((src) => src.status === 'loading').length;
 
-        let summary = `${ok}/${this.sources.length} OK`;
+        let summary = `${ok}/${this.sources.length} TEMPS RÉEL`;
         if (errors > 0) {
-            summary = `${errors} erreur${errors > 1 ? 's' : ''}`;
+            summary = `${errors} INDISPONIBLE${errors > 1 ? 'S' : ''}`;
         } else if (stale > 0) {
-            summary = `${stale} obsolète${stale > 1 ? 's' : ''}`;
+            summary = `${stale} CACHE FIGÉ`;
         } else if (loading > 0) {
             summary = 'Chargement…';
         }
