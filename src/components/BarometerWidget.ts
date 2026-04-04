@@ -8,6 +8,7 @@
 import type { NetworkBarometerResult } from '../services/network-barometer.ts';
 import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
 import type { NuclearState } from '../types/index.ts';
+import type { EolienLive } from '../services/eolien/types.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -32,6 +33,7 @@ export class BarometerWidget {
     score: number | null;
     color: string;
   } | null = null;
+  private currentEolienLive: EolienLive | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -352,14 +354,20 @@ export class BarometerWidget {
     const color = score >= 85 ? '#34c759' : score >= 60 ? '#ffcc00' : '#ff2d55';
     const label =
       state.unconfirmedSignals.length > 0
-        ? `${score}/100 · écart REMIT`
+        ? `${score} / 100 · écart REMIT`
         : state.stress.gridTensionRisk
-          ? `${score}/100 · sous tension`
-          : `${score}/100`;
+          ? `${score} / 100 · sous tension`
+          : `${score} / 100`;
 
     this.currentNuclear = { label, score, color };
     this._refreshTooltip();
   }
+
+  updateEolien(live: EolienLive | null): void {
+    this.currentEolienLive = live;
+    this._refreshTooltip();
+  }
+
 
   updateBriefing(result: ISNRSynthesisResult | null): void {
     if (!this.briefingTextEl || !this.briefingTimeEl || !this.stabilityBarContainerEl || !this.stabilityBarFillEl) return;
@@ -411,31 +419,44 @@ export class BarometerWidget {
   }
 
   private _renderTooltip(details: Record<string, number | null>): string {
+    // Compute wind score directly from live data (avoids barometer cache lag)
+    const eolien = this.currentEolienLive;
+    const windScore: number | null = eolien
+      ? (eolien.alertLevel === 'normal' ? 100 : eolien.alertLevel === 'watch' ? 70 : 40)
+      : (details.wind ?? null);
+    const windColor = windScore !== null
+      ? (windScore >= 85 ? '#34c759' : windScore >= 60 ? '#ffcc00' : '#ff2d55')
+      : 'var(--text-muted)';
+
     const rows: [string, number | null][] = [
-      ['BGP / Internet',   details.bgp    ?? null],
+      ['BGP / Internet',        details.bgp    ?? null],
       ['Électricité (Ecowatt)', details.elec   ?? null],
-      ['Nucléaire (RTE)', this.currentNuclear?.score ?? null],
-      ['Telecom ARCEP',    details.telecom ?? null],
-      ['Cloud / Web',      details.cloud  ?? null],
-      ['Météo Spatiale',   details.space  ?? null],
-      ['Cyber (CERT-FR)',  details.cyber  ?? null],
+      ['Nucléaire (RTE)',       this.currentNuclear?.score ?? null],
+      ['Éolien (éCO2mix)',      windScore],
+      ['Telecom ARCEP',         details.telecom ?? null],
+      ['Cloud / Web',           details.cloud  ?? null],
+      ['Météo Spatiale',        details.space  ?? null],
+      ['Cyber (CERT-FR)',       details.cyber  ?? null],
     ];
 
     const rowsHtml = rows.map(([label, val]) => {
       const isNuclear = label === 'Nucléaire (RTE)';
+      const isWind    = label === 'Éolien (éCO2mix)';
       const display = isNuclear
         ? (this.currentNuclear?.label ?? '—')
         : val !== null ? `${val} / 100` : '—';
       const color = isNuclear
         ? (this.currentNuclear?.color ?? 'var(--text-muted)')
-        : val === null ? 'var(--text-muted)'
-        : val >= 85 ? '#34c759'
-        : val >= 60 ? '#ffcc00'
-        : '#ff2d55';
+        : isWind
+          ? windColor
+          : val === null ? 'var(--text-muted)'
+          : val >= 85 ? '#34c759'
+          : val >= 60 ? '#ffcc00'
+          : '#ff2d55';
       return `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:2px 0;">
           <span style="color:var(--text-secondary);">${label}</span>
-          <span style="font-weight:600;color:${color};font-family:monospace;">${display}</span>
+          <span style="font-weight:600;color:${color};font-family:monospace;font-size:10px;">${display}</span>
         </div>`;
     }).join('');
 

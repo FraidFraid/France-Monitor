@@ -11,33 +11,9 @@ const INSTALLED_CAPACITY_URL =
   '?limit=100&select=annee,parc_installe_eolien&order_by=-annee';
 // Fallback officiel — France Renouvelables / SDES fin 2025
 const FALLBACK_INSTALLED_GW = 26.1;
-const OFFICIAL_ONSHORE_WFS_URL =
-  'https://mapsrefrec.brgm.fr/wxs/georisques/georisques_services' +
-  '?service=WFS&version=2.0.0&request=GetFeature&typeNames=ms:eolienne_wfs' +
-  '&outputFormat=application/json;%20subtype=geojson;%20charset=utf-8&srsName=EPSG:4326';
-
-function emptyGeoJSON(): { type: 'FeatureCollection'; features: unknown[] } {
-  return { type: 'FeatureCollection', features: [] };
-}
-
-function loadOffshoreFallback(): { type: 'FeatureCollection'; features: unknown[] } {
-  try {
-    const fallbackPath = resolve(process.cwd(), 'public/data/eolien-fallback-parks.geojson');
-    const payload = JSON.parse(readFileSync(fallbackPath, 'utf8')) as { features?: Array<{ properties?: Record<string, unknown> }> };
-    return {
-      type: 'FeatureCollection',
-      features: Array.isArray(payload.features)
-        ? payload.features.filter((feature) => feature?.properties?.kind === 'offshore')
-        : [],
-    };
-  } catch {
-    return emptyGeoJSON();
-  }
-}
-
-function isUsableOnshorePayload(payload: { type?: string; features?: unknown[] }): payload is { type: 'FeatureCollection'; features: unknown[] } {
-  return payload.type === 'FeatureCollection' && Array.isArray(payload.features) && payload.features.length > 1000;
-}
+// Dataset Géorisques — export complet (8 554 turbines)
+// Le WFS live est plafonné à 54 features côté serveur BRGM, sans possibilité de pagination
+const GEORISQUES_LOCAL_PATH = 'public/data/eolien-france.geojson';
 
 async function fetchInstalledCapacityGw(): Promise<number> {
   try {
@@ -69,26 +45,8 @@ export function eolienProxyPlugin(): Plugin {
 
         try {
           if (wantsParks) {
-            let geojson: { type: 'FeatureCollection'; features: unknown[] } = emptyGeoJSON();
-            try {
-              const upstream = await fetch(OFFICIAL_ONSHORE_WFS_URL, { signal: AbortSignal.timeout(20_000) });
-              if (!upstream.ok) {
-                throw new Error(`Official onshore WFS error ${upstream.status}`);
-              }
-              const onshore = await upstream.json() as { type?: string; features?: unknown[] };
-              if (!isUsableOnshorePayload(onshore)) {
-                throw new Error(`Official onshore WFS payload insuffisant (${Array.isArray(onshore.features) ? onshore.features.length : 0} features)`);
-              }
-              const offshore = loadOffshoreFallback();
-              geojson = {
-                type: 'FeatureCollection',
-                features: [...onshore.features, ...offshore.features],
-              };
-            } catch (error) {
-              console.warn('[eolien-proxy] Official WFS unavailable, fallback local dataset', error);
-              const fallbackPath = resolve(process.cwd(), 'public/data/eolien-france.geojson');
-              geojson = JSON.parse(readFileSync(fallbackPath, 'utf8')) as { type: 'FeatureCollection'; features: unknown[] };
-            }
+            const dataPath = resolve(process.cwd(), GEORISQUES_LOCAL_PATH);
+            const geojson = JSON.parse(readFileSync(dataPath, 'utf8')) as { type: 'FeatureCollection'; features: unknown[] };
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -125,7 +83,7 @@ export function eolienProxyPlugin(): Plugin {
             production_gw: Number((record.eolien / 1000).toFixed(2)),
             installed_gw: installedGw,
             timestamp: record.date_heure,
-            alertThresholdGw: 5,
+            alertThresholdGw: 3,
             terre_mer_split: (terreMw != null && merMw != null)
               ? { terre: Number((terreMw / 1000).toFixed(2)), mer: Number((merMw / 1000).toFixed(2)) }
               : undefined,

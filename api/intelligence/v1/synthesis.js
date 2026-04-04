@@ -41,7 +41,18 @@ function buildNuclearBlock(nuclear) {
 - Lecture analyste : ${notableSignal ? 'signal nucléaire notable' : 'parc nucléaire nominal'}`;
 }
 
-function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear) {
+function buildEolienBlock(eolien) {
+  if (!eolien) return '';
+  const alertLabels = { normal: 'nominal', watch: 'vent modéré', 'low-production': 'production faible — alerte' };
+  return `
+Éolien France (temps réel éCO2mix) :
+- Production : ${typeof eolien.production_gw === 'number' ? eolien.production_gw.toFixed(1) + ' GW' : 'N/A'} sur ${typeof eolien.puissance_installee === 'number' ? eolien.puissance_installee.toFixed(1) + ' GW installés' : 'N/A installés'}
+- Facteur de charge : ${typeof eolien.facteur_charge === 'number' ? Math.round(eolien.facteur_charge * 100) + '%' : 'N/A'}
+- Parcs actifs : ${typeof eolien.parcs_actifs === 'number' ? eolien.parcs_actifs : 'N/A'}
+- Signal : ${alertLabels[eolien.alertLevel] ?? eolien.alertLevel}`;
+}
+
+function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien) {
   const { details, score, status } = scores;
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
@@ -55,6 +66,7 @@ function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear) {
     ? `\nDépartements les plus instables (score bas = instable) :\n${isnrDepts.map((d, i) => `${i + 1}. ${d.name} : ${d.score}/100 (social: ${d.social}, sécurité: ${d.security})`).join('\n')}`
     : '';
   const nuclearBlock = buildNuclearBlock(nuclear);
+  const eolienBlock = buildEolienBlock(eolien);
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -64,18 +76,20 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Télécom (ARCEP) : ${details.telecom ?? 'N/A'}/100
 - Météo Spatiale : ${details.space ?? 'N/A'}/100
 - Cyber (CERT-FR) : ${details.cyber ?? 'N/A'}/100
+- Éolien : ${details.wind ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
-${isnrLine}${deptsBlock}${nuclearBlock}
+${isnrLine}${deptsBlock}${nuclearBlock}${eolienBlock}
 
 Actualités récentes à impact (format [catégorie/niveau] titre (source)) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables, le signal nucléaire et les actualités.
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables, le signal nucléaire, le signal éolien et les actualités.
 2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel. Mentionne les zones géographiques si pertinent.
 3. Intègre le nucléaire dans le briefing seulement s'il apporte un signal utile : arrêt fortuit, réduction, site impacté, écart REMIT/RTE ou risque réseau. Si le parc est nominal, tu peux l'omettre ou le résumer en une très courte clause.
-4. Fournis un score d'impact sur la stabilité de 0 à 100.
+4. Intègre l'éolien seulement si l'alerte est 'low-production' ou 'watch', sinon omets-le.
+5. Fournis un score d'impact sur la stabilité de 0 à 100.
 
 IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
 
@@ -92,9 +106,9 @@ export default async function handler(request) {
     });
   }
 
-  let scores, headlines, isnrNationalScore, isnrDepts, nuclear;
+  let scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien;
   try {
-    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear } = await request.json());
+    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien } = await request.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
@@ -132,7 +146,7 @@ export default async function handler(request) {
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
-        messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear) }],
+        messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien) }],
         temperature: 0.3,
         max_tokens: 300,
       }),

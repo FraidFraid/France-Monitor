@@ -35,7 +35,7 @@ import { SentinelModal } from './components/SentinelModal.ts';
 import { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
 import { RightSidebar } from './components/RightSidebar.ts';
-import { fetchNetworkBarometer } from './services/network-barometer.ts';
+import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
@@ -92,7 +92,7 @@ import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
-import { fetchISNRSynthesis, type NuclearBriefingContext } from './services/isnr-synthesis.ts';
+import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 
@@ -577,13 +577,14 @@ const EOLIEN_LEGEND: LegendCategory = {
   title: 'Veille Éolienne',
   type: 'categorical',
   columns: 2,
-  splitIndex: 2,
+  splitIndex: 3,
   items: [
-    { id: 'wind-onshore', label: 'Éolienne terrestre', color: '#38BDF8', shape: 'circle' },
-    { id: 'wind-offshore', label: 'Parc en mer', color: '#14B8A6', shape: 'circle' },
-    { id: 'wind-normal', label: 'Signal nominal', color: '#93C5FD', shape: 'ring' },
-    { id: 'wind-watch', label: 'Vent modéré', color: '#F59E0B', shape: 'ring' },
-    { id: 'wind-low', label: 'Alerte < 5 GW', color: '#EF4444', shape: 'ring' },
+    { id: 'wind-onshore',   label: 'Éolienne terrestre', color: '#38BDF8', shape: 'circle' },
+    { id: 'wind-offshore',  label: 'Parc en mer',        color: '#14B8A6', shape: 'circle' },
+    { id: 'wind-inactive',  label: 'Défaillant',         color: '#EF4444', shape: 'circle' },
+    { id: 'wind-cluster-sm', label: 'Cluster < 50 points', color: '#7DD3FC', shape: 'circle' },
+    { id: 'wind-cluster-md', label: 'Cluster 50 à 199', color: '#2563EB', shape: 'circle' },
+    { id: 'wind-cluster-lg', label: 'Cluster 200+', color: '#1E3A8A', shape: 'circle' },
   ],
   source: {
     label: 'ODRE eco2mix + Géorisques / référentiel éolien',
@@ -594,6 +595,7 @@ const EOLIEN_LEGEND: LegendCategory = {
   notes: [
     'Production nationale live via eco2mix.',
     'Les parcs servent de fond OSINT cartographique, pas de télémesure parc-à-parc.',
+    'Les points sont agrégés en clusters jusqu’au zoom 7 et éclatent au zoom 8.',
   ],
 };
 
@@ -1315,7 +1317,7 @@ export class App {
           `Production live France : ${this.currentEolienLive.production_gw.toFixed(1)} GW`,
           `Facteur de charge estimé : ${Math.round(this.currentEolienLive.facteur_charge * 100)}%`,
           `Parcs suivis : ${this.currentEolienParks.length} · points carte : ${this.currentEolienPoints.length}`,
-          'Alerte faible production si la production nationale passe sous 5 GW',
+          'Alerte production critique si la puissance nationale passe sous 3 GW',
         ]
       : [
           'Production live France via eco2mix/ODRE',
@@ -1829,6 +1831,7 @@ export class App {
       const result = await fetchNetworkBarometer();
       this.networkBarometerWidget?.update(result);
       this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
+      this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
 
       // Headline filtering: medium/high first (dense signal), fallback to low
       // to confirm stability when no high-impact events are present
@@ -1854,12 +1857,25 @@ export class App {
         .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
 
       const nuclearBriefing = buildNuclearBriefingContext(this.currentNuclearState);
+
+      // Build eolien briefing context from current live snapshot
+      const eolienBriefing: EolienBriefingContext | undefined = this.currentEolienLive
+        ? {
+            production_gw: this.currentEolienLive.production_gw,
+            puissance_installee: this.currentEolienLive.puissance_installee,
+            facteur_charge: this.currentEolienLive.facteur_charge,
+            parcs_actifs: this.currentEolienLive.parcs_actifs,
+            alertLevel: this.currentEolienLive.alertLevel,
+          }
+        : undefined;
+
       const synthesis = await fetchISNRSynthesis(
         result,
         headlines,
         this.currentISNRData?.nationalScore,
         isnrDepts,
         nuclearBriefing,
+        eolienBriefing,
       ).catch(() => null);
       this.networkBarometerWidget?.updateBriefing(synthesis);
     };
@@ -3431,8 +3447,12 @@ export class App {
       this.currentEolienPoints = snapshot.points;
       this.currentEolienParks = snapshot.parks;
 
+      // Update barometer wind score + widget tooltip immediately
+      setBarometerEolienLive(snapshot.live);
+      this.networkBarometerWidget?.updateEolien(snapshot.live);
+
       try {
-        this.mapContainer?.updateEolien(snapshot.live, snapshot.points);
+        this.mapContainer?.updateEolien(snapshot.live, [...snapshot.points, ...snapshot.parks]);
       } catch (error) {
         console.error('[App/Eolien] map update failed', error);
       }

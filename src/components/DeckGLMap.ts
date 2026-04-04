@@ -107,6 +107,7 @@ const SRC_INFRA = 'infra-src';
 const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
 const SRC_HYDRAULIC = 'hydraulic-src';
 const SRC_EOLIEN = 'eolien-src';
+const SRC_EOLIEN_PARKS = 'eolien-parks-src';
 const SRC_TRAFFIC = 'traffic-flow-src';
 const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 const SRC_TRAIN_ROUTE = 'train-route-src';
@@ -162,10 +163,14 @@ const LYR_HYDRAULIC_HALO = 'hydraulic-halo';
 const LYR_HYDRAULIC_SIGNAL_RING = 'hydraulic-signal-ring';
 const LYR_HYDRAULIC_CIRCLE = 'hydraulic-circles';
 const LYR_HYDRAULIC_LABEL = 'hydraulic-labels';
-const LYR_EOLIEN_HALO = 'eolien-halo';
-const LYR_EOLIEN_SIGNAL_RING = 'eolien-signal-ring';
-const LYR_EOLIEN_CIRCLE = 'eolien-circles';
-const LYR_EOLIEN_LABEL = 'eolien-labels';
+const LYR_EOLIEN_CLUSTER       = 'eolien-cluster';
+const LYR_EOLIEN_CLUSTER_COUNT = 'eolien-cluster-count';
+const LYR_EOLIEN_HALO          = 'eolien-halo';
+const LYR_EOLIEN_CIRCLE        = 'eolien-circles';
+const LYR_EOLIEN_LABEL         = 'eolien-labels';
+const LYR_EOLIEN_PARK_HALO     = 'eolien-park-halo';
+const LYR_EOLIEN_PARK_CIRCLE   = 'eolien-park-circles';
+const LYR_EOLIEN_PARK_LABEL    = 'eolien-park-labels';
 const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
 const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
 const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
@@ -1642,7 +1647,18 @@ export class DeckGLMap {
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_HYDRAULIC, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_EOLIEN, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_EOLIEN, {
+      type: 'geojson',
+      data: emptyFC(),
+      cluster: true,
+      clusterMaxZoom: 7,   // éclate au zoom 8+
+      clusterRadius: 40,
+    });
+    this.map.addSource(SRC_EOLIEN_PARKS, {
+      type: 'geojson',
+      data: emptyFC(),
+      cluster: false,
+    });
 
     // Réseau de Transport Gaz Pression (GRTgaz, Teréga)
     this.map.addSource(SRC_GAS_NETWORK_GRT, {
@@ -3231,6 +3247,7 @@ export class DeckGLMap {
       id: LYR_EOLIEN_HALO,
       type: 'circle',
       source: SRC_EOLIEN,
+      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
@@ -3244,26 +3261,83 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_SIGNAL_RING,
+      id: LYR_EOLIEN_PARK_HALO,
       type: 'circle',
-      source: SRC_EOLIEN,
+      source: SRC_EOLIEN_PARKS,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['+', ['*', ['get', 'radius'], 0.9], 2.8],
-          8, ['+', ['*', ['get', 'radius'], 1.02], 3.3],
-          12, ['+', ['*', ['get', 'radius'], 1.14], 4.0],
+          4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
+          8, ['+', 5.5, ['/', ['get', 'radius'], 1.7]],
+          12, ['+', 6.4, ['/', ['get', 'radius'], 1.2]],
         ],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': ['get', 'ringColor'],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 8, 2.0, 12, 2.4],
-        'circle-opacity': ['get', 'opacity'],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.16,
+        'circle-blur': 0.75,
       },
+    });
+
+    // ─── Éolien : cluster bubbles (zoom < 10) ───
+    this.map.addLayer({
+      id: LYR_EOLIEN_CLUSTER,
+      type: 'circle',
+      source: SRC_EOLIEN,
+      filter: ['has', 'point_count'],
+      maxzoom: 8,
+      paint: {
+        'circle-color': [
+          'step', ['get', 'point_count'],
+          '#7DD3FC',   // 1-49
+          50,  '#2563EB',  // 50-199
+          200, '#1E3A8A',  // 200+
+        ],
+        'circle-radius': [
+          'step', ['get', 'point_count'],
+          14,
+          50,  20,
+          200, 28,
+        ],
+        'circle-opacity': 0.88,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': 'rgba(255,255,255,0.35)',
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_EOLIEN,
+      filter: ['has', 'point_count'],
+      maxzoom: 8,
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 11,
+        'text-font': ['Open Sans Bold'],
+      },
+      paint: { 'text-color': '#ffffff' },
     });
 
     this.map.addLayer({
       id: LYR_EOLIEN_CIRCLE,
       type: 'circle',
       source: SRC_EOLIEN,
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+          4, ['*', ['get', 'radius'], 0.78],
+          8, ['get', 'radius'],
+          12, ['*', ['get', 'radius'], 1.22],
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': ['get', 'opacity'],
+        'circle-stroke-width': 0,
+        'circle-stroke-color': 'rgba(0,0,0,0)',
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_PARK_CIRCLE,
+      type: 'circle',
+      source: SRC_EOLIEN_PARKS,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['*', ['get', 'radius'], 0.78],
@@ -3281,6 +3355,27 @@ export class DeckGLMap {
       id: LYR_EOLIEN_LABEL,
       type: 'symbol',
       source: SRC_EOLIEN,
+      filter: ['!', ['has', 'point_count']],
+      minzoom: 8,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-offset': [0, 1.55],
+        'text-anchor': 'top',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': '#e8eef5',
+        'text-halo-color': '#08111b',
+        'text-halo-width': 1.4,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_EOLIEN_PARK_LABEL,
+      type: 'symbol',
+      source: SRC_EOLIEN_PARKS,
+      filter: ['==', ['get', 'kind'], 'offshore'],
       minzoom: 8,
       layout: {
         'text-field': ['get', 'name'],
@@ -5180,6 +5275,16 @@ export class DeckGLMap {
       this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
     });
     this.map.on('mouseleave', LYR_EOLIEN_CIRCLE, hideEnrichedHover);
+
+    this.map.on('mouseenter', LYR_EOLIEN_PARK_CIRCLE, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mousemove', LYR_EOLIEN_PARK_CIRCLE, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const p = e.features[0].properties || {};
+      this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
+    });
+    this.map.on('mouseleave', LYR_EOLIEN_PARK_CIRCLE, hideEnrichedHover);
 
     this.map.on('mouseenter', LYR_GAS_TERMINALS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
@@ -10501,9 +10606,14 @@ export class DeckGLMap {
   updateEolien(live: EolienLive | null, parks: EolienParkSummary[]): void {
     if (!this.map) return;
     this._latestEolienLive = live;
-    const fc = buildEolienLayerFeatureCollection(live, parks);
+    const clusteredPoints = parks.filter((park) => park.kind !== 'offshore');
+    const standaloneParks = parks.filter((park) => park.kind === 'offshore');
+    const clusteredFc = buildEolienLayerFeatureCollection(live, clusteredPoints);
+    const parksFc = buildEolienLayerFeatureCollection(live, standaloneParks);
     const src = this.map.getSource(SRC_EOLIEN) as maplibregl.GeoJSONSource | undefined;
-    src?.setData(fc);
+    const parksSrc = this.map.getSource(SRC_EOLIEN_PARKS) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(clusteredFc);
+    parksSrc?.setData(parksFc);
   }
 
   // ─── Métropoles Layer ───
@@ -11225,10 +11335,14 @@ export class DeckGLMap {
     this.setVis(LYR_HYDRAULIC_SIGNAL_RING, vis(layers.hydraulic ?? false));
     this.setVis(LYR_HYDRAULIC_CIRCLE, vis(layers.hydraulic ?? false));
     this.setVis(LYR_HYDRAULIC_LABEL, vis(layers.hydraulic ?? false));
-    this.setVis(LYR_EOLIEN_HALO, vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_SIGNAL_RING, vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_CIRCLE, vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_LABEL, vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_CLUSTER,        vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_CLUSTER_COUNT,  vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_HALO,           vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_CIRCLE,         vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_LABEL,          vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_PARK_HALO,      vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_PARK_CIRCLE,    vis(layers.eolien ?? false));
+    this.setVis(LYR_EOLIEN_PARK_LABEL,     vis(layers.eolien ?? false));
 
     if (this.map) {
       try {

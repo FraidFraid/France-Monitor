@@ -13,7 +13,7 @@ import type {
 const DEFAULT_LIVE_ENDPOINT = '/api/energy/eolien';
 const DEFAULT_PARKS_ENDPOINT = '/api/energy/eolien?parks=1';
 const DEFAULT_FALLBACK_PARKS_ENDPOINT = '/data/eolien-france.geojson';
-const DEFAULT_ALERT_THRESHOLD_GW = 5;
+const DEFAULT_ALERT_THRESHOLD_GW = 3;  // Production nationale < 3 GW = alerte critique (< ~12% facteur de charge)
 const DEFAULT_CACHE_TTL_MS = 60 * 60_000;
 // Source : France Renouvelables / SDES — puissance raccordée fin 2025
 // 24,1 GW terrestre + 2,0 GW offshore = 26,1 GW total
@@ -453,6 +453,9 @@ export class EolienTracker {
       facteur_charge: Number(facteurCharge.toFixed(3)),
       parcs_actifs: activeParks.length,
       timestamp: new Date(livePayload.timestamp),
+      // Alerte nationale : low-production si prod < 3 GW ou facteur < 12%
+      //                    watch        si facteur < 18%
+      //                    normal       sinon
       alertLevel: livePayload.production_gw < this.alertThresholdGw
         ? 'low-production'
         : facteurCharge < 0.18

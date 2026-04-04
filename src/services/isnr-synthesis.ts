@@ -24,6 +24,14 @@ export interface NuclearBriefingContext {
   remitUnconfirmedCount: number;
 }
 
+export interface EolienBriefingContext {
+  production_gw: number;
+  puissance_installee: number | null;
+  facteur_charge: number;
+  parcs_actifs: number;
+  alertLevel: string;
+}
+
 export interface ISNRSynthesisResult {
   briefing: string | null;
   stabilityImpact: number | null;
@@ -42,6 +50,7 @@ export async function fetchISNRSynthesis(
   isnrNationalScore?: number,
   isnrDepts?: ISNRDeptContext[],
   nuclear?: NuclearBriefingContext,
+  eolien?: EolienBriefingContext,
 ): Promise<ISNRSynthesisResult | null> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) {
     return _cache.data;
@@ -66,6 +75,9 @@ export async function fetchISNRSynthesis(
     }
     if (nuclear) {
       body.nuclear = nuclear;
+    }
+    if (eolien) {
+      body.eolien = eolien;
     }
 
     const res = await fetch(ENDPOINT, {

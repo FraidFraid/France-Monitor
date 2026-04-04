@@ -226,7 +226,7 @@ export class EolienPanel extends Panel {
           </div>
           <div style="text-align:right;">
             <div style="font-size:12px;font-weight:700;color:${statusColor(live)};">${statusLabel(live)}</div>
-            <div style="font-size:10px;color:${EOLIEN_PANEL_COLORS.muted};">alerte &lt; 5 GW</div>
+            <div style="font-size:10px;color:${EOLIEN_PANEL_COLORS.muted};">alerte &lt; 3 GW national</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;">

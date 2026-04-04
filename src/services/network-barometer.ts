@@ -14,6 +14,7 @@ import type { EcowattResponse, TelecomOutage } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
 import type { CyberState } from '../types/index.ts';
 import type { InfraNetworkState } from '../types/index.ts';
+import type { EolienLive } from './eolien/types.ts';
 import { fetchEcowatt } from './ecowatt.ts';
 import { fetchNetworkOutages } from './internet-outages.ts';
 import { fetchTelecomOutages } from './outages.ts';
@@ -31,6 +32,10 @@ export interface NetworkBarometerResult {
   reliable: boolean;                         // false si activeWeights < 30% du total
 }
 
+export interface EolienBarometerInput {
+  live: EolienLive | null;
+}
+
 // ── Pondérations ──────────────────────────────────────────────────────────────
 
 const WEIGHTS = {
@@ -40,6 +45,7 @@ const WEIGHTS = {
   cloud:   15,
   space:   10,
   cyber:    5,
+  wind:     5,   // Éolien : alerte de production faible sur le réseau électrique
 } as const;
 
 type WeightKey = keyof typeof WEIGHTS;
@@ -48,6 +54,12 @@ type WeightKey = keyof typeof WEIGHTS;
 
 const CACHE_TTL_MS = 5 * 60_000;
 let _cache: { data: NetworkBarometerResult; ts: number } | null = null;
+let _eolienLive: EolienLive | null = null;
+
+/** Called from App.ts when eolien snapshot is updated */
+export function setBarometerEolienLive(live: EolienLive | null): void {
+  _eolienLive = live;
+}
 
 // ── Normalisations par source (→ health score 0-100, 100 = nominal) ───────────
 
@@ -85,6 +97,20 @@ function normalizeCloud(state: InfraNetworkState): number {
 function normalizeCyber(state: CyberState): number {
   // globalScore : 0=calme, 100=crise → inverser pour obtenir un score de santé
   return 100 - state.meta.globalScore;
+}
+
+function normalizeWind(live: EolienLive): number {
+  // facteur_charge : 0–1 (ratio production/installé)
+  // alerté si production_gw < alertLevel seuil ou facteur < 5%
+  // On pénalise sur la qualité du signal, pas sur le volume absolu :
+  //   - 'normal'         → 100 (pas de problème)
+  //   - 'watch'          →  70 (vent modéré, production réduite)
+  //   - 'low-production' →  40 (production faible, risque réseau)
+  switch (live.alertLevel) {
+    case 'normal': return 100;
+    case 'watch':  return 70;
+    default:       return 40;   // low-production
+  }
 }
 
 // ── Score global ──────────────────────────────────────────────────────────────
@@ -133,6 +159,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
     cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
     cyber:   cyberRes.status    === 'fulfilled' ? normalizeCyber(cyberRes.value)        : null,
+    wind:    _eolienLive !== null ? normalizeWind(_eolienLive) : null,
   };
 
   const activeWeights = (Object.entries(WEIGHTS) as [WeightKey, number][])
@@ -146,7 +173,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
     const fallback = _cache?.data ?? {
       score: 75,
       status: 'degraded' as const,
-      details: { elec: null, bgp: null, telecom: null, cloud: null, space: null, cyber: null },
+      details: { elec: null, bgp: null, telecom: null, cloud: null, space: null, cyber: null, wind: null },
       computedAt: new Date(),
       reliable: false,
     };
@@ -163,6 +190,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
       cloud:   scores.cloud   ?? null,
       space:   scores.space   ?? null,
       cyber:   scores.cyber   ?? null,
+      wind:    scores.wind    ?? null,
     },
     computedAt: new Date(),
     reliable: activeWeights >= 30,

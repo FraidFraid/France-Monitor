@@ -6,11 +6,7 @@ const EOLIEN_KIND_COLORS = {
   unknown: '#7DD3FC',
 } as const;
 
-const ALERT_RING_COLORS = {
-  normal: '#93C5FD',
-  watch: '#F59E0B',
-  'low-production': '#EF4444',
-} as const;
+const EOLIEN_INACTIVE_COLOR = '#EF4444'; // rouge si défaillant / inactif
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -55,7 +51,7 @@ export function buildEolienLayerFeatureCollection(
   live: EolienLive | null,
   parks: EolienParkSummary[],
 ): EolienLayerGeoJSON {
-  const ringColor = ALERT_RING_COLORS[live?.alertLevel ?? 'normal'];
+  void live; // live no longer drives ring color — status drives point color
 
   return {
     type: 'FeatureCollection',
@@ -64,13 +60,18 @@ export function buildEolienLayerFeatureCollection(
       const estimatedProductionMw = park.estimatedProductionMw ?? 0;
       const radius = park.sourceType === 'turbine'
         ? clamp(2.4 + capacityMw * 0.4, 2.8, 5.4)
-        : clamp(5 + capacityMw * 0.018, 5.5, 18);
-      const color = EOLIEN_KIND_COLORS[park.kind];
+        : park.kind === 'offshore'
+          ? clamp(5 + capacityMw * 0.018, 5.5, 18)
+          : clamp(2.8 + Math.sqrt(Math.max(capacityMw, 0)) * 0.18, 3.2, 6.2);
+      // Rouge si inactif/défaillant, sinon couleur par type
+      const color = park.status === 'inactive'
+        ? EOLIEN_INACTIVE_COLOR
+        : EOLIEN_KIND_COLORS[park.kind];
       const opacity = park.status === 'operating'
-        ? (park.sourceType === 'turbine' ? 0.88 : 0.94)
+        ? (park.sourceType === 'turbine' ? 0.88 : (park.kind === 'offshore' ? 0.94 : 0.46))
         : park.status === 'construction'
-          ? 0.86
-          : 0.74;
+          ? (park.sourceType === 'park' && park.kind !== 'offshore' ? 0.42 : 0.86)
+          : (park.sourceType === 'park' && park.kind !== 'offshore' ? 0.36 : 0.74);
 
       return {
         type: 'Feature' as const,
@@ -90,10 +91,11 @@ export function buildEolienLayerFeatureCollection(
           commune: park.commune,
           department: park.department,
           region: park.region,
+          sourceType: park.sourceType,
           estimatedProductionMw,
           radius,
           color,
-          ringColor,
+          ringColor: 'rgba(0,0,0,0)',  // ring désactivé — le statut est porté par la couleur du point
           glowColor: `${color}55`,
           opacity,
         } satisfies EolienLayerFeatureProperties,
