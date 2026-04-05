@@ -71,7 +71,7 @@ import { fetchFiresData } from './services/fires.ts';
 import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
-import { fetchTelecomOutages, fetchPowerOutages } from './services/outages.ts';
+import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
@@ -2130,14 +2130,9 @@ export class App {
     this.outagesPanel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
     this.outagesPanel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
     this.outagesPanel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
-    this.outagesPanel.setOnTabChange((tab) => {
-      const categoryId =
-        tab === 'electric' ? 'outagesElec'
-        : tab === 'telecom' ? 'outagesTelecom'
-        : tab === 'internet' ? 'outagesInternet'
-        : tab === 'cloud' ? 'outagesCloud'
-        : null;
-      this.mapContainer?.setLegendHover(categoryId);
+    this.outagesPanel.setOnTabChange((_tab) => {
+      // Tab changes drive panel content only — layer dimming is driven exclusively
+      // by legend card hover, not by which panel tab is active.
     });
     this.outagesPanel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
     this.outagesPanel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
@@ -4134,15 +4129,7 @@ export class App {
   private async loadOutages(): Promise<void> {
     this.statusPanel?.updateSource('Télécoms', { status: 'loading', lastUpdate: null });
 
-    // Citizen zones (scraping HTML ~8-15s) lancé indépendamment pour ne pas bloquer les autres sources
-    const citizenZonesPromise = fetchOutageZoneCollection()
-      .then(zones => {
-        this.currentCitizenZones = zones;
-        this.mapContainer?.updateCitizenOutageZones(zones);
-      })
-      .catch(() => {});
-
-    // Sources rapides (<2s) : télécom, électrique, réseau, infra, IIP RTE
+    // ── Sources rapides (<2s) : télécom, électrique, réseau, infra, IIP RTE ──
     const [telecoms, powers, network, infra, iipResult] = await Promise.all([
       fetchTelecomOutages(),
       fetchPowerOutages(),
@@ -4158,16 +4145,14 @@ export class App {
     this.mapContainer?.updateNetworkOutages(network);
     if (infra) this.mapContainer?.updateInfraNetwork(infra);
 
-    // Injecter les données IIP dans le panneau
     if (iipResult) {
       this.outagesPanel?.setRTEIIP(iipResult);
     }
 
-    // Date de fetch ARCEP pour le badge J/J-1 (on prend l'heure courante car le fetch vient de se faire)
     this.outagesPanel?.setArcepFetchedDate(new Date());
+    this.outagesPanel?.setOutagesMeta(getPowerOutagesMeta());
 
-    // Attendre les zones citoyennes pour que loadOutages ne se termine pas avant elles
-    await citizenZonesPromise;
+    // ── Afficher le panel immédiatement avec les données rapides ─────────────
     if (this.outagesPanel?.isVisible()) {
       this.outagesPanel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
     }
@@ -4176,6 +4161,18 @@ export class App {
       status: network.sourcesStatus.ioda === 'ok' ? 'ok' : 'stale',
       lastUpdate: network.lastUpdate,
     });
+
+    // ── Zones citoyennes fire-and-forget (scraping HTML ~8-15s) ─────────────
+    // Le panel s'est déjà affiché ; on met à jour les zones quand elles arrivent.
+    fetchOutageZoneCollection()
+      .then(zones => {
+        this.currentCitizenZones = zones;
+        this.mapContainer?.updateCitizenOutageZones(zones);
+        if (this.outagesPanel?.isVisible()) {
+          this.outagesPanel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, zones);
+        }
+      })
+      .catch(() => {});
   }
 
   private async loadHealth(): Promise<void> {

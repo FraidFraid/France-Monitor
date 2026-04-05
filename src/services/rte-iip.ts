@@ -25,13 +25,21 @@ export interface RTEIIPIncident {
     id: string;
     type: IIPUnavailabilityType;
     title: string;
+    /** Nom de l'asset extrait du titre (sans préfixe dates ISO) */
+    assetLabel: string;
     description: string;
     publishedAt: Date;
     updatedAt: Date | null;
+    /** Début de la période d'indisponibilité (extrait du titre) */
+    startDate: Date | null;
+    /** Fin prévue de la période d'indisponibilité (extrait du titre) */
+    endDate: Date | null;
     /** URL de la publication sur l'IIP */
     link: string;
     /** Capacité indisponible en MW (extraite du titre/description si présente) */
     capacityMW: number | null;
+    /** Cause extraite de la description (Défaillance, Maintenance…) */
+    cause: string | null;
     /** Statut de l'incident (Active, Inactive, Withdrawn…) */
     status: 'active' | 'inactive' | 'withdrawn' | 'unknown';
     /** Unités/centrales affectées (noms extraits du titre) */
@@ -197,10 +205,23 @@ function parseItem(
     const pubDate     = parseDate(raw.isoDate ?? raw.pubDate);
     const id          = String(raw.guid ?? raw.id ?? link ?? `iip-${Date.now()}-${Math.random()}`);
 
+    // ── Dates début/fin (préfixe ISO dans le titre) ──
+    // Format : "2026-03-21T00:15Z - 2026-05-12T19:00Z - Asset Name..."
+    const datePrefixRe = /^(\d{4}-\d{2}-\d{2}T[\d:Z]+)\s*-\s*(\d{4}-\d{2}-\d{2}T[\d:Z]+)\s*-\s*/i;
+    const dateMatch = title.match(datePrefixRe);
+    const startDate = dateMatch ? parseDate(dateMatch[1]) : null;
+    const endDate   = dateMatch ? parseDate(dateMatch[2]) : null;
+    const rawLabel = dateMatch ? title.replace(datePrefixRe, '').trim() : title;
+    const assetLabel = rawLabel
+        .replace(/^Transmission Network[-\s]*/i, '')
+        .replace(/^Production Unavailability[-\s]*/i, '')
+        .trim();
+
     // ── Capacité MW ──
-    // Patterns courants dans les titres IIP :
-    //   "UNIT_NAME 1300 MW" / "910 MW unavailable" / "indisponibilité 450MW"
     const capacityMW = extractCapacityMW(title + ' ' + description);
+
+    // ── Cause ──
+    const cause = extractCause(description);
 
     // ── Statut ──
     const status = extractStatus(title, description);
@@ -212,11 +233,15 @@ function parseItem(
         id,
         type,
         title,
-        description: description.slice(0, 500),   // Tronquer pour l'UI
+        assetLabel,
+        description: description.slice(0, 500),
         publishedAt: pubDate ?? new Date(),
         updatedAt: null,
+        startDate,
+        endDate,
         link,
         capacityMW,
+        cause,
         status,
         assetNames,
     };
@@ -229,7 +254,20 @@ function buildState(
     feedStatuses: Record<'production' | 'transmission', IIPFeedStatus>,
 ): RTEIIPState {
     const available = Object.values(feedStatuses).some(status => status !== 'error');
-    const activeIncidents = incidents.filter(i => i.status !== 'withdrawn');
+    const rawActive = incidents.filter(i => i.status !== 'withdrawn');
+
+    // Dédupliquer : le flux REMIT publie une nouvelle entrée à chaque mise à jour
+    // du même incident. On garde l'entrée la plus récente par titre normalisé.
+    const seen = new Map<string, RTEIIPIncident>();
+    for (const inc of rawActive) {
+        const key = inc.title.trim().toLowerCase();
+        const existing = seen.get(key);
+        if (!existing || inc.publishedAt > existing.publishedAt) {
+            seen.set(key, inc);
+        }
+    }
+    const activeIncidents = Array.from(seen.values());
+
     const productionCount   = activeIncidents.filter(i => i.type === 'production').length;
     const transmissionCount = activeIncidents.filter(i => i.type === 'transmission').length;
     const totalCapacityMW   = activeIncidents
@@ -295,6 +333,14 @@ function extractStatus(title: string, description: string): RTEIIPIncident['stat
         return 'active';
     }
     return 'unknown';
+}
+
+function extractCause(description: string): string | null {
+    const lower = description.toLowerCase();
+    if (lower.includes('défaillance') || lower.includes('defaillance') || lower.includes('failure') || lower.includes('fortuite')) return 'Défaillance';
+    if (lower.includes('maintenance') || lower.includes('programmé') || lower.includes('planned')) return 'Maintenance';
+    if (lower.includes('test')) return 'Test';
+    return null;
 }
 
 function extractAssetNames(title: string, type: IIPUnavailabilityType): string[] {

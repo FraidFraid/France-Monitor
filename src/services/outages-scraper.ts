@@ -55,7 +55,7 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
 
     try {
         const resp = await fetch(ENDPOINT, {
-            signal: AbortSignal.timeout(90_000), // scraping HTML prend ~15-60s selon le réseau
+            signal: AbortSignal.timeout(15_000), // timeout court : afficher le cache stale plutôt que bloquer
         });
 
         if (!resp.ok) {

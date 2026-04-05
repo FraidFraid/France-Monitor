@@ -113,7 +113,37 @@ const ENEDIS_DURATION_URL =
 // Cache configuration
 const POWER_CACHE_TTL_MS = 15 * 60_000; // 15 minutes for DataFair data
 
-// Module-level state
+// ── Circuit Breaker ──────────────────────────────────────────────────────────
+
+type CircuitState = 'closed' | 'open' | 'half-open';
+
+const CB_FAILURE_THRESHOLD = 3;
+const CB_COOLDOWN_MS = 30 * 60_000; // 30 min before half-open probe
+
+let _cb: { failures: number; lastFailureAt: number | null; state: CircuitState } = {
+    failures: 0,
+    lastFailureAt: null,
+    state: 'closed',
+};
+
+// ── Outages Meta ─────────────────────────────────────────────────────────────
+
+export type OutagesMeta = {
+    /** Timestamp of last successful fetch, or null if never fetched. */
+    fetchedAt: number | null;
+    /** True when circuit breaker is open (Enedis unreachable). */
+    cbOpen: boolean;
+    /** ID of the request that produced the current cache entry. */
+    requestId: string;
+};
+
+let _meta: OutagesMeta = { fetchedAt: null, cbOpen: false, requestId: '' };
+
+/** Race condition guard — tracks the most recent in-flight request ID. */
+let _currentRequestId = '';
+
+// ── Module-level state ───────────────────────────────────────────────────────
+
 let powerCache: { data: PowerOutage[]; fetchedAt: number } | null = null;
 const previousPowerByDept = new Map<string, number>();
 
@@ -123,10 +153,27 @@ const previousPowerByDept = new Map<string, number>();
  * 2. Ecowatt grid tension signals (context)
  */
 export async function fetchPowerOutages(): Promise<PowerOutage[]> {
-    // Return cached data if still fresh
-    if (powerCache && Date.now() - powerCache.fetchedAt < POWER_CACHE_TTL_MS) {
+    const now = Date.now();
+
+    // ── Circuit breaker ──────────────────────────────────────────────────────
+    if (_cb.state === 'open') {
+        if (_cb.lastFailureAt !== null && now - _cb.lastFailureAt >= CB_COOLDOWN_MS) {
+            _cb.state = 'half-open';
+            console.warn('[outages]', { event: 'cb_half_open', note: 'probing Enedis' });
+        } else {
+            _meta.cbOpen = true;
+            return powerCache?.data ?? [];
+        }
+    }
+
+    // ── Cache check (skipped in half-open to force a live probe) ─────────────
+    if (_cb.state === 'closed' && powerCache && now - powerCache.fetchedAt < POWER_CACHE_TTL_MS) {
         return powerCache.data;
     }
+
+    // ── Race condition guard ─────────────────────────────────────────────────
+    const requestId = crypto.randomUUID();
+    _currentRequestId = requestId;
 
     try {
         // Fetch all data sources in parallel
@@ -136,6 +183,12 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
             fetchDataFairRecords<DataFairDurationRecord>(ENEDIS_DURATION_URL),
             fetchEcowatt(),
         ]);
+
+        // Stale response: a newer call already took over
+        if (_currentRequestId !== requestId) {
+            console.warn('[outages]', { event: 'stale_response_dropped', requestId });
+            return powerCache?.data ?? [];
+        }
 
         // Use adapters to transform DataFair records
         const continuityByDept = adaptContinuityRecords(continuityRows);
@@ -213,16 +266,71 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
         // Sort by affected count (descending)
         results.sort((a, b) => b.offGridCount - a.offGridCount);
 
-        // Update cache
-        powerCache = { data: results, fetchedAt: Date.now() };
+        // ── CB success reset ─────────────────────────────────────────────────
+        if (_cb.state !== 'closed' || _cb.failures > 0) {
+            console.warn('[outages]', { event: 'cb_reset', prevFailures: _cb.failures, prevState: _cb.state });
+        }
+        _cb.failures = 0;
+        _cb.lastFailureAt = null;
+        _cb.state = 'closed';
+
+        // Update cache and meta
+        powerCache = { data: results, fetchedAt: now };
+        _meta = { fetchedAt: now, cbOpen: false, requestId };
 
         return results;
 
     } catch (error) {
-        console.warn('[Outages] Power outage fetch error', error);
+        // ── CB failure tracking ──────────────────────────────────────────────
+        _cb.failures++;
+        _cb.lastFailureAt = Date.now();
+
+        if (_cb.failures >= CB_FAILURE_THRESHOLD) {
+            if (_cb.failures === CB_FAILURE_THRESHOLD) {
+                // Log only on first threshold crossing
+                console.warn('[outages]', {
+                    event: 'cb_open',
+                    failures: _cb.failures,
+                    cooldownMin: CB_COOLDOWN_MS / 60_000,
+                });
+            }
+            _cb.state = 'open';
+        } else {
+            console.warn('[outages]', {
+                event: 'fetch_error',
+                failures: _cb.failures,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+
+        _meta.cbOpen = _cb.state === 'open';
+
         // Return cached data or empty array
         return powerCache?.data ?? [];
     }
+}
+
+// ── Public meta helpers ───────────────────────────────────────────────────────
+
+/** Returns freshness metadata for the last successful power outage fetch. */
+export function getPowerOutagesMeta(): OutagesMeta {
+    return { ..._meta };
+}
+
+/**
+ * Derives a freshness state from OutagesMeta.
+ * - degraded : circuit breaker open (Enedis unreachable)
+ * - stale    : data older than 20 min (or never fetched)
+ * - aging    : data between 5 and 20 min old
+ * - fresh    : data less than 5 min old
+ */
+export function getFreshnessState(meta: OutagesMeta): 'fresh' | 'aging' | 'stale' | 'degraded' {
+    if (meta.cbOpen) return 'degraded';
+    if (meta.fetchedAt === null) return 'stale';
+    const ageMs = Date.now() - meta.fetchedAt;
+    if (ageMs > 20 * 60_000) return 'stale';
+    if (ageMs > 5 * 60_000) return 'aging';
+    return 'fresh';
 }
 
 // ═══ Data Fetchers ═══

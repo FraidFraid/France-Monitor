@@ -8,6 +8,8 @@
 import { Panel } from './Panel.ts';
 import type { PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
 import type { RTEIIPState } from '../services/rte-iip.ts';
+import type { OutagesMeta } from '../services/outages.ts';
+import { getFreshnessState } from '../services/outages.ts';
 import { iodaScoreColor, iodaScoreLabel, ispStatusColor, ispStatusLabel } from '../services/internet-outages.ts';
 import { dcStatusColor, dcStatusLabel, ixpStatusColor } from '../services/infra-network.ts';
 
@@ -41,6 +43,9 @@ export class OutagesPanel extends Panel {
   // ARCEP fetch date (J ou J-1) — utilisé pour le badge UI
   private arcepFetchedDate: Date | null = null;
 
+  // Freshness meta for Enedis power outage data
+  private _outagesMeta: OutagesMeta | null = null;
+
   // hover callbacks
   private onDeptHoverCb?: (deptCode: string | null) => void;
   private onZoneHoverCb?: (clusterId: number | null) => void;
@@ -61,6 +66,12 @@ export class OutagesPanel extends Panel {
 
   setOnDeptHover(cb: (deptCode: string | null) => void): void {
     this.onDeptHoverCb = cb;
+  }
+
+  /** Met à jour les métadonnées de fraîcheur des données Enedis. */
+  setOutagesMeta(meta: OutagesMeta): void {
+    this._outagesMeta = meta;
+    if (this.headerCountEl) this._updateHeaderCount();
   }
 
   /** Injecte les données IIP RTE (incidents HTB/production) dans le panneau. */
@@ -329,10 +340,29 @@ export class OutagesPanel extends Panel {
     const ispProblems   = this.lastNetwork?.ispStatus.filter(i => i.status !== 'normal').length ?? 0;
     const dcProblems    = this.lastInfra?.datacenters.filter(d => d.status !== 'operational' && d.status !== 'unknown').length ?? 0;
     const total = powerProblems + telecomDepts + iodaCount + ispProblems + dcProblems;
-    this.headerCountEl.textContent = total > 0
+
+    // ── Stale badge ──────────────────────────────────────────────────────────
+    const freshness = this._outagesMeta ? getFreshnessState(this._outagesMeta) : null;
+    const staleNote = (() => {
+      if (!freshness || freshness === 'fresh') return '';
+      if (freshness === 'degraded') return ' · ⚠ Enedis indisponible';
+      if (freshness === 'stale') {
+        const ageMin = this._outagesMeta?.fetchedAt
+          ? Math.round((Date.now() - this._outagesMeta.fetchedAt) / 60_000)
+          : null;
+        return ageMin !== null ? ` · ⚠ données périmées (${ageMin}min)` : ' · ⚠ données périmées';
+      }
+      return ' · données vieillissantes';
+    })();
+
+    const countText = total > 0
       ? `${total} incident${total > 1 ? 's' : ''} détecté${total > 1 ? 's' : ''}`
       : 'Réseau nominal';
-    this.headerCountEl.style.color = total > 0 ? '#F97316' : 'var(--text-muted)';
+
+    this.headerCountEl.textContent = countText + staleNote;
+    this.headerCountEl.style.color = freshness === 'degraded' || freshness === 'stale'
+      ? '#F97316'
+      : total > 0 ? '#F97316' : 'var(--text-muted)';
   }
 
   private _renderContent(): void {
@@ -362,12 +392,6 @@ export class OutagesPanel extends Panel {
     }
 
     const frag = document.createDocumentFragment();
-
-    // ── Note DataFair ──
-    const disclaimer = document.createElement('div');
-    disclaimer.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:10px;line-height:1.4;';
-    disclaimer.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
-    frag.appendChild(disclaimer);
 
     // ── Résumé badges ──
     const mkBadge = (count: number, label: string, color: string) => {
@@ -456,6 +480,14 @@ export class OutagesPanel extends Panel {
     const inner = document.createElement('div');
     inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
 
+    // Note DataFair — uniquement dans la section PDL hors réseau
+    if (title.includes('PDL hors réseau')) {
+      const note = document.createElement('div');
+      note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:4px;line-height:1.4;';
+      note.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
+      inner.appendChild(note);
+    }
+
     if (powers.length === 0 && emptyMsg) {
       const empty = document.createElement('div');
       empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:12px 0;font-size:12px;';
@@ -534,6 +566,11 @@ export class OutagesPanel extends Panel {
     const inner = document.createElement('div');
     inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
 
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(249,115,22,0.05);border-left:2px solid #F97316;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
+    note.textContent = 'Signal Ecowatt RTE — indique une tension sur l\'équilibre offre/demande du réseau électrique national. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes. Aucun PDL mesuré hors réseau dans ces départements.';
+    inner.appendChild(note);
+
     for (const p of powers) {
       // Extract signal from eventCause (e.g. "Signal 🟠 orange")
       const signalMatch = p.eventCause.match(/Signal ([^\s·]+)/);
@@ -599,6 +636,11 @@ export class OutagesPanel extends Panel {
     body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
     const inner = document.createElement('div');
     inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
+
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(168,85,247,0.05);border-left:2px solid #A855F7;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
+    note.textContent = 'Zones géographiques reconstituées à partir de signalements citoyens (coupure-elec.fr, InfoCoupure.fr). Données participatives — non validées par Enedis. La taille de la zone reflète la densité de signalements, pas le périmètre réel de la coupure.';
+    inner.appendChild(note);
 
     // Palette violet uniquement pour les zones (cohérence avec la légende)
     const sevColor: Record<string, string> = { critical: '#C026D3', high: '#9333EA', medium: '#A855F7', low: '#C084FC' };
@@ -1205,46 +1247,59 @@ export class OutagesPanel extends Panel {
 
     const note = document.createElement('div');
     note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(99,102,241,0.05);border-left:2px solid #818CF8;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE — publiées au fil des déclarations.';
+    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE — publiées au fil des déclarations. Peuvent être des maintenances programmées ou des incidents en cours, pas nécessairement des coupures pour les foyers.';
     inner.appendChild(note);
 
-    for (const inc of iip.incidents.slice(0, 10)) {
+    const fmtDate = (d: Date | null) => d
+      ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+      : '?';
+
+    const buildCard = (inc: import('../services/rte-iip.ts').RTEIIPIncident): HTMLElement => {
       const isProduction = inc.type === 'production';
       const col = isProduction ? '#F59E0B' : '#818CF8';
       const typeLabel = isProduction ? '🏭 Production' : '🔌 Transport HTB';
       const statusBg = inc.status === 'active' ? '#EF444420' : '#6B728020';
       const statusCol = inc.status === 'active' ? '#EF4444' : '#9CA3AF';
       const statusLabel = inc.status === 'active' ? 'Actif' : inc.status === 'inactive' ? 'Terminé' : 'Retiré';
-      const dateStr = inc.publishedAt.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-      const mwStr = inc.capacityMW ? `${inc.capacityMW.toLocaleString('fr-FR')} MW · ` : '';
+      const mwStr = inc.capacityMW ? `${inc.capacityMW.toLocaleString('fr-FR')} MW` : '';
+      const period = `${fmtDate(inc.startDate)} → ${fmtDate(inc.endDate)}`;
+      const causeStr = inc.cause ? ` · ${inc.cause}` : '';
+      const periodMw = [period, mwStr].filter(Boolean).join(' · ');
 
       const card = document.createElement('div');
-      card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:9px 11px;cursor:pointer;transition:background 0.15s;`;
+      card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:9px 11px;cursor:default;`;
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
-          <span style="font-size:11px;font-weight:600;color:var(--text-primary);flex:1;min-width:0;line-height:1.3;">${inc.title.slice(0, 80)}${inc.title.length > 80 ? '…' : ''}</span>
+          <span style="font-size:11px;font-weight:600;color:var(--text-primary);flex:1;min-width:0;line-height:1.3;">${inc.assetLabel}</span>
           <span style="font-size:9px;font-weight:700;background:${statusBg};color:${statusCol};padding:2px 6px;border-radius:8px;flex-shrink:0;">${statusLabel}</span>
         </div>
-        <div style="font-size:10px;color:var(--text-muted);display:flex;gap:10px;flex-wrap:wrap;">
-          <span>${typeLabel}</span>
-          ${mwStr ? `<span style="color:${col};font-weight:700;">${mwStr}</span>` : ''}
-          <span>📅 ${dateStr}</span>
-        </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">${periodMw}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${typeLabel}${causeStr}</div>
       `;
-      if (inc.link) {
-        card.title = 'Voir sur IIP RTE';
-        card.addEventListener('click', () => window.open(inc.link, '_blank', 'noopener'));
-      }
-      card.addEventListener('mouseenter', () => { card.style.background = 'rgba(255,255,255,0.08)'; });
-      card.addEventListener('mouseleave', () => { card.style.background = 'rgba(255,255,255,0.04)'; });
-      inner.appendChild(card);
-    }
+      return card;
+    };
 
-    if (iip.incidents.length > 10) {
-      const more = document.createElement('div');
-      more.style.cssText = 'text-align:center;font-size:10px;color:var(--text-muted);padding:6px;';
-      more.textContent = `+ ${iip.incidents.length - 10} autres — iip.cloud-rte-france.com`;
-      inner.appendChild(more);
+    const PAGE = 10;
+    iip.incidents.slice(0, PAGE).forEach(inc => inner.appendChild(buildCard(inc)));
+
+    if (iip.incidents.length > PAGE) {
+      const remaining = iip.incidents.slice(PAGE);
+      const loadBtn = document.createElement('button');
+      loadBtn.style.cssText = `
+        width:100%;margin-top:4px;padding:7px;
+        background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);
+        border-radius:8px;color:#818CF8;font-size:11px;font-weight:600;
+        cursor:pointer;transition:background 0.15s;
+      `;
+      loadBtn.textContent = `Charger ${remaining.length} incident${remaining.length > 1 ? 's' : ''} supplémentaire${remaining.length > 1 ? 's' : ''}`;
+      loadBtn.addEventListener('mouseenter', () => { loadBtn.style.background = 'rgba(129,140,248,0.15)'; });
+      loadBtn.addEventListener('mouseleave', () => { loadBtn.style.background = 'rgba(129,140,248,0.08)'; });
+      loadBtn.addEventListener('click', () => {
+        remaining.forEach(inc => inner.insertBefore(buildCard(inc), loadBtn));
+        loadBtn.remove();
+        body.style.maxHeight = `${inner.scrollHeight + 20}px`;
+      });
+      inner.appendChild(loadBtn);
     }
 
     body.appendChild(inner);

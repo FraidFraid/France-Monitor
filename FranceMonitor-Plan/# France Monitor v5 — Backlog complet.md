@@ -22,6 +22,20 @@
 
 ---
 
+## Mise à jour repo (2026-04-05) — Pannes réseau : polish UI & fiabilisation IIP
+
+- ✅ **Bug dim layers pannes réseau corrigé** — `setOnTabChange` dans `App.ts` appelait `setLegendHover(categoryId)` à chaque changement d'onglet du panel, laissant `legendHoverCategory` non-null en permanence. Les layers internet/cloud/telecom étaient dimés à `0.15` dès l'ouverture du panel. Le dim est désormais exclusivement piloté par le hover des legend cards en bas de carte.
+- ✅ **Déduplication incidents IIP RTE** — le flux REMIT publie une nouvelle entrée à chaque mise à jour du même incident. `buildState()` dans `rte-iip.ts` déduplique par titre normalisé (clé lowercase), en gardant l'entrée la plus récente. Le compteur dans l'en-tête reflète désormais le nombre d'incidents réels.
+- ✅ **Disclaimer PDL déplacé dans l'accordéon** — la note "⚠ seul l'indicateur PDL hors réseau repose sur des données historiques Enedis (DataFair)..." a été retirée du haut du panel et insérée dans le body de l'accordéon "PDL hors réseau". Visible uniquement au dépliement.
+- ✅ **Note contextuelle "Tension réseau Ecowatt"** — explication ajoutée dans le body de l'accordéon : distinction orange (sobriété) / rouge (coupures tournantes), rappel qu'aucun PDL n'est mesuré hors réseau dans ces départements.
+- ✅ **Note contextuelle "Zones signalées"** — explication ajoutée : données participatives (coupure-elec.fr, InfoCoupure.fr), non validées par Enedis, taille de zone = densité de signalements ≠ périmètre réel.
+- ✅ **Note contextuelle IIP RTE complétée** — la note existante précise désormais que les incidents peuvent être des maintenances programmées ou des incidents en cours, pas nécessairement des coupures pour les foyers.
+- ✅ **Cartes IIP reformatées** — les préfixes dates ISO (`2026-03-21T00:15Z - 2026-05-12T19:00Z - `) et les préfixes génériques (`Transmission Network-`, `Production Unavailability-`) sont strippés. Chaque carte affiche : nom de l'asset · période début→fin · MW indisponibles · type · cause. Plus de `…` de troncature.
+- ✅ **Lazy load incidents IIP** — les 10 premiers incidents sont affichés immédiatement ; un bouton "Charger X incidents supplémentaires" injecte les cartes restantes inline sans navigation externe.
+- ✅ **Cartes IIP non-cliquables** — le lien vers iip.cloud-rte-france.com supprimé (rendu illisible côté leur site). Hover effect retiré pour ne pas laisser croire à une interaction.
+
+---
+
 ## Mise à jour repo (2026-04-05) — OilNetwork & tension carburants
 
 - ✅ **OilNetwork branché côté produit** : service dédié `src/services/oil.ts`, panneau `OilPanel.ts`, entrée sidebar `PÉTROLE – RÉSEAU & STOCKS`, légende carte et statut de source raccordés dans `App.ts`. Le pétrole n’est plus seulement un item de backlog, mais un module front complet.
