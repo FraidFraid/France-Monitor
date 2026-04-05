@@ -315,6 +315,13 @@ export class GasPanel extends Panel {
           <span>${stats.currentStorageTWh.toFixed(1)} / ${stats.totalStorageCapacityTWh.toFixed(1)} TWh</span>
           <span style="color: ${stats.storageTrend === 'withdrawing' ? '#A855F7' : stats.storageTrend === 'stable' ? '#8e8e93' : '#06B6D4'};">${trendIcon} ${trendLabel}</span>
         </div>
+        
+        ${stats.storageNetFlowGWhDay !== undefined && !Number.isNaN(stats.storageNetFlowGWhDay) ? `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 11px;">
+          <span style="color: var(--text-muted);">Débit net national</span>
+          <strong style="color: ${stats.storageNetFlowGWhDay > 0 ? '#22C55E' : '#EF4444'};">${stats.storageNetFlowGWhDay > 0 ? '+' : ''}${stats.storageNetFlowGWhDay.toFixed(0)} GWh/j</strong>
+        </div>
+        ` : ''}
       </div>
 
       <!-- Import/Export Summary -->

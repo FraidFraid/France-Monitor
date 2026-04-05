@@ -15,6 +15,7 @@
 - ✅ **Épaisseur des flèches PIR augmentée** — `GAS_FLOW_STYLE` dans `DeckGLMap.ts` : `minLineWidth 2→4 px`, `maxLineWidth 6→10 px`. Les flux sont désormais mieux lisibles sur fond de carte sombre.
 - ✅ **Badges EcoGaz J+1/J+2/J+3 dans GasPanel** — La prévision sur 3 jours est maintenant affichée dans l'en-tête du panel. Labels raccourcis (`ECOGAZ_SHORT` : `green→Normal`, `yellow→Vigilance`, `orange→Alerte`, `red→Critique`) avec tooltip complet au survol. Overflow corrigé : `white-space: nowrap` sur chaque badge.
 - ✅ **Toggle gazoduc dans GasPanel (off par défaut)** — Nouveau bouton bascule dans le panel gaz permettant d'afficher / masquer les couches `LYR_GAS_NETWORK_GRT` et `LYR_GAS_NETWORK_TEREGA`. Par défaut désactivé : les gazoducs ne s'affichent pas à l'ouverture du module, même si la couche `gasNetwork` est active. Le toggle appelle `MapContainer.setGasPipelineVisible()` → `DeckGLMap.setGasPipelineVisible()`. État `gasPipelineVisible = false` maintenu dans `DeckGLMap.ts` et appliqué dans `setLayerVisibility()`.
+- ✅ **Enrichissement Terminaux GNL & Fiabilisation Stockages (AGSI/ALSI)** — Terminus des bugs d'écrasement de données. Le fetch AGSI n'écrase plus aveuglément les données des stockages individuels par opérateur (ce qui bloquait l'affichage de la *Tendance* par site). Le *Débit net national* global est désormais consolidé et affiché proprement dans le `GasPanel`. Les terminaux GNL sont quant à eux enrichis au survol de leurs métriques ALSI dédiées (`Remplissage cuves`, `Stock GNL`, `Émission réseau`).
 
 ---
 

@@ -1347,6 +1347,9 @@ export interface GasTerminal {
   capacityGWh: number; // Daily regasification capacity
   currentSendOut?: number; // Current send-out rate (GWh/day)
   utilizationPct?: number; // Utilization percentage
+  inventory?: number; // Current LNG stock level
+  inventoryCapacity?: number; // Total tank capacity
+  inventoryPct?: number; // Fill level of tanks
   status: 'active' | 'maintenance' | 'offline';
 }
 
@@ -1417,6 +1420,7 @@ export interface GasNetworkState {
     storageTrend: 'filling' | 'stable' | 'withdrawing';
     totalImportGWhDay: number;
     totalExportGWhDay: number;
+    storageNetFlowGWhDay?: number; // Total national injection(+) or withdrawal(-) from underground storages
   };
   sourceStatus: {
     ecogaz: 'ok' | 'stale' | 'error';

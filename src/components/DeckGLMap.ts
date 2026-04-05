@@ -1483,7 +1483,6 @@ export class DeckGLMap {
 
   // ─── Gas tooltip data ───
   private gasFlowStats = new Map<string, import('../types/index.ts').GasInterconnectionFlowStats>();
-  private gasPipelineVisible: boolean = false;
   private gasBorderHistory = new Map<string, number[]>(); // sparkline 7j par borderCode
   private gasFlowPopup: maplibregl.Popup | null = null;
 
@@ -7187,6 +7186,8 @@ export class DeckGLMap {
     const flowRate = Number(properties.flowRateGWhDay ?? NaN);
     const sendOut = Number(properties.currentSendOut ?? NaN);
     const utilPct = Number(properties.utilizationPct ?? NaN);
+    const inventoryPct = Number(properties.inventoryPct ?? NaN);
+    const inventory = Number(properties.inventory ?? NaN);
 
     return `
       <div style="color:#e8e8ec; font-family:sans-serif; min-width:240px; padding:2px;">
@@ -7204,13 +7205,16 @@ export class DeckGLMap {
           ${!isTerminal && Number.isFinite(flowRate) ? `<span style="color:#9898a8;">Débit net</span><strong style="color:${flowRate > 0 ? '#22C55E' : '#EF4444'}">${flowRate > 0 ? '+' : ''}${flowRate.toFixed(0)} GWh/j</strong>` : ''}
           ${!isTerminal && !Number.isFinite(flowRate) ? `<span style="color:#9898a8;">Tendance</span><strong style="color:${trend === 'filling' ? '#22C55E' : trend === 'withdrawing' ? '#EF4444' : '#6B7280'}">${this.escapeHtml(trendLabel)}</strong>` : ''}
 
-          ${isTerminal && (Number.isFinite(sendOut) || Number.isFinite(utilPct)) ? `<div style="grid-column: 1 / -1; height:1px; background:rgba(255,255,255,0.1); margin:4px 0;"></div>` : ''}
+          ${isTerminal && (Number.isFinite(sendOut) || Number.isFinite(utilPct) || Number.isFinite(inventoryPct)) ? `<div style="grid-column: 1 / -1; height:1px; background:rgba(255,255,255,0.1); margin:4px 0;"></div>` : ''}
+          ${isTerminal && Number.isFinite(inventoryPct) ? `<span style="color:#9898a8;">Remplissage cuves</span><strong>${inventoryPct.toFixed(1)} %</strong>` : ''}
+          ${isTerminal && Number.isFinite(inventory) ? `<span style="color:#9898a8;">Stock GNL</span><strong>${inventory.toFixed(0)} GWh</strong>` : ''}
           ${isTerminal && Number.isFinite(sendOut) ? `<span style="color:#9898a8;">Émission réseau</span><strong>${sendOut.toFixed(0)} GWh/j</strong>` : ''}
           ${isTerminal && Number.isFinite(utilPct) ? `<span style="color:#9898a8;">Taux d'utilisation</span><strong>${utilPct.toFixed(1)} %</strong>` : ''}
         </div>
       </div>
     `;
   }
+
 
   private buildGasPirHoverHtml(properties: Record<string, unknown>): string {
     // Enriched tooltip si les stats sont disponibles
