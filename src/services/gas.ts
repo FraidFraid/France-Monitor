@@ -3,7 +3,8 @@
  *
  * Agrège les données du réseau gaz français:
  * - EcoGaz (GRTgaz): Signal de tension réseau (équivalent Ecowatt)
- * - ODRE: Stockages souterrains, terminaux méthaniers, flux PIR
+ * - ODRE: Stockages souterrains, terminaux méthaniers
+ * - ENTSOG: Flux PIR (Points d'Interconnexion de Réseau frontière France)
  *
  * Sources:
  * - https://www.ecogaz.fr/api/ (signal + prévisions)
@@ -211,9 +212,10 @@ async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const json = (await resp.json()) as EntsogPirResponse;
+    const points = Array.isArray(json.points) ? json.points : [];
 
     const enriched = GAS_INTERCONNECTIONS.map(ic => {
-      const pirData = json.points.find(p => p.pointKey === ic.entsogKey);
+      const pirData = points.find(p => p.pointKey === ic.entsogKey);
       return { ...ic, flowGWhDay: pirData?.flowGWhDay ?? 0 };
     });
 
