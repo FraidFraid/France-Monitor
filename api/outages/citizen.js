@@ -19,10 +19,6 @@
  *         User-Agent poli, anonymisation ville/dept uniquement.
  */
 
-// Note: cheerio doit être installé côté serveur uniquement.
-// npm install --save-dev cheerio   (ou dans les deps serverless)
-// Si non disponible, les parseurs HTML tombent en mode dégradé.
-
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête (< 1req/s par politesse)
