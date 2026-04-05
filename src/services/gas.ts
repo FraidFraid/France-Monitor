@@ -182,16 +182,20 @@ function deriveNationalTrend(
   return 'stable';
 }
 
-// ═══ PIR Flow Fetch (ODRE) ═══
+// ═══ PIR Flow Fetch (ENTSOG) ═══
 
-interface OdrePirRecord {
-  point_interconnexion?: string;
-  titre?: string;
-  point_d_echange?: string;
-  flux_gwh_jour?: number;
-  quantite_gwh?: number;
-  volume_echange_gwh?: number;
-  date?: string;
+interface EntsogPirPoint {
+  pointKey: string;
+  pointLabel: string;
+  flowGWhDay: number;
+  periodFrom: string | null;
+}
+
+interface EntsogPirResponse {
+  points: EntsogPirPoint[];
+  fetchedAt: string;
+  status: 'ok' | 'partial' | 'error';
+  error?: string;
 }
 
 function buildFallbackInterconnections(): GasInterconnection[] {
@@ -203,46 +207,21 @@ function buildFallbackInterconnections(): GasInterconnection[] {
 
 async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]; status: 'ok' | 'stale' | 'error' }> {
   try {
-    // ODRE dataset for PIR/PEG flows
-    const url = `${ODRE_BASE}/evolution-de-lactivite-aux-points-dechange-de-gaz-peg-sur-le-reseau-natran/records?limit=100&order_by=date%20desc`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-
+    const resp = await fetch('/api/energy/gas-pir', { signal: AbortSignal.timeout(20_000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    const json = await resp.json();
-    const records = (json.results || []) as OdrePirRecord[];
+    const json = (await resp.json()) as EntsogPirResponse;
 
-    let matchedRecords = 0;
-    const enriched = GAS_INTERCONNECTIONS.map(pir => {
-      const liveRecord = records.find((r: any) => {
-        const loc = (r.point_interconnexion || r.point_d_echange || r.titre || '').toLowerCase();
-        return loc.includes(pir.name.toLowerCase());
-      });
-
-      const liveFlow = liveRecord?.flux_gwh_jour ?? liveRecord?.quantite_gwh ?? liveRecord?.volume_echange_gwh;
-
-      if (liveFlow !== undefined && liveFlow !== null) {
-        matchedRecords += 1;
-      }
-
-      const flowGWhDay = (liveFlow !== undefined && liveFlow !== null)
-        ? liveFlow
-        : 0;
-
-      return {
-        ...pir,
-        flowGWhDay,
-      };
+    const enriched = GAS_INTERCONNECTIONS.map(ic => {
+      const pirData = json.points.find(p => p.pointKey === ic.entsogKey);
+      return { ...ic, flowGWhDay: pirData?.flowGWhDay ?? 0 };
     });
 
-    if (matchedRecords === 0) {
-      console.warn('[Gas/PIR] No live PIR records matched configured interconnections, using fallback flows');
-      return { interconnections: buildFallbackInterconnections(), status: 'stale' };
-    }
-
-    return { interconnections: enriched, status: 'ok' };
+    // 'ok' ou 'partial' = données live (même partielles) ; 'error' = stale
+    const status: 'ok' | 'stale' = (json.status === 'ok' || json.status === 'partial') ? 'ok' : 'stale';
+    return { interconnections: enriched, status };
   } catch (err) {
-    console.warn('[Gas/PIR] ODRE fetch failed, using fallback flows:', err);
+    console.warn('[Gas/PIR] ENTSOG fetch failed, using fallback flows:', err);
     return { interconnections: buildFallbackInterconnections(), status: 'stale' };
   }
 }
@@ -291,7 +270,7 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
       ecogaz: ecogazResult.status,
       grtgaz: pirResult.status,
       terega: pirResult.status,
-      odre: storageResult.status === 'ok' && pirResult.status === 'ok' ? 'ok' : 'stale',
+      odre: storageResult.status,
     },
     lastUpdate: new Date(),
   };
