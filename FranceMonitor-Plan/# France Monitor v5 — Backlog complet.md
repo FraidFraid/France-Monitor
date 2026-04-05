@@ -7,6 +7,32 @@
 
 ---
 
+## Mise à jour repo (2026-04-05) — Robustesse bloc pannes électricité ✅ Item 1 Top 10 clôturé
+
+- ✅ **Circuit breaker 3 états dans `outages.ts`** — états `closed / open / half-open`, threshold 3 échecs consécutifs, cooldown 30 min, sonde automatique en half-open. L'API Enedis ne sera plus martelée en cas d'indisponibilité.
+- ✅ **Race condition guard (requestId)** — chaque appel concurrent `fetchPowerOutages()` est tracé par UUID ; les réponses obsolètes sont silencieusement ignorées sans écraser le cache.
+- ✅ **Meta tracking + `getFreshnessState()`** — `getPowerOutagesMeta()` expose `{ fetchedAt, cbOpen, requestId }`. `getFreshnessState()` dérive `'fresh' | 'aging' | 'stale' | 'degraded'` sans toucher à la signature publique `fetchPowerOutages(): Promise<PowerOutage[]>`.
+- ✅ **Stale badge dans `OutagesPanel`** — `setOutagesMeta()` injecte la fraîcheur dans `_updateHeaderCount()`. En cas de CB ouvert ou données périmées, le header affiche discrètement `⚠ Enedis indisponible` ou `⚠ données périmées (23min)`.
+- ✅ **Timeout citoyen 90 s → 15 s** dans `outages-scraper.ts` — le circuit breaker existant (threshold=2, cooldown=5 min) prend le relais si le scraping échoue.
+- ✅ **Panel affiché immédiatement** — zones citoyennes passées en fire-and-forget dans `App.ts`. Le panneau s'ouvre avec les données rapides (Enedis, IIP RTE, Ecowatt) ; les zones GeoJSON mettent à jour le rendu dès qu'elles arrivent (~8–15 s), sans bloquer l'UI.
+- ✅ **Cheerio installé comme vraie dépendance** — `await import('cheerio')` ne tombait plus silencieusement en fallback `[]` en prod Vercel. La source `coupure-elec.fr` (5 depts à forte densité, ~35 % de la population métropolitaine) est désormais opérationnelle.
+- ✅ **IS_WORDPRESS guard dans le dev proxy** — `parseDeptArticles` dans `citizen-outages-proxy.ts` valide la structure HTML avant de parser. Une réponse Cloudflare / maintenance est désormais loguée explicitement plutôt qu'interprétée comme "zéro panne".
+- ✅ **Clustering dev/prod documenté** — `buildDevZones` porte un commentaire expliquant la divergence intentionnelle avec Turf DBSCAN côté prod (raison : interop CJS/ESM dans le middleware Vite).
+- ⚠️ **Caveat restant** : `offGridCount = continuityPct × 120` reste une heuristique sans cap ni commentaire explicite. La corrélation Ecowatt peut encore override un fort signal citoyen. Non bloquant pour la mise en ligne.
+
+---
+
+## Mise à jour repo (2026-04-05) — OilNetwork & tension carburants
+
+- ✅ **OilNetwork branché côté produit** : service dédié `src/services/oil.ts`, panneau `OilPanel.ts`, entrée sidebar `PÉTROLE – RÉSEAU & STOCKS`, légende carte et statut de source raccordés dans `App.ts`. Le pétrole n’est plus seulement un item de backlog, mais un module front complet.
+- ✅ **Couche carte pétrole opérationnelle** : raffineries, dépôts stratégiques / terminaux / distribution, oléoducs et flux import / export sont rendus sur la carte avec légende dédiée, popup contextualisé et chargement optionnel du tracé GeoJSON des pipelines (`/data/oil_pipelines.geojson`).
+- ✅ **Agrégation pétrole hybride** : `OilDashboard` consolide désormais un socle structurel et mensuel via `SDES`, `Insee`, `data.gouv` et communiqués filière (`energiesetmobilites / ex-CPDP`), avec cache, fallback documenté et mode dégradé propre si une source échoue.
+- ✅ **Tension carburants quasi temps réel** : module séparé `src/services/fuel-tension.ts` branché au panneau pétrole et à la carte, fondé sur l’API publique `prix des carburants`. Le repo expose un signal national, une watchlist départements, part d’anomalies, fraîcheur des stations et lecture cartographique activable.
+- ✅ **Alignement dev / prod pétrole** : proxy Vite `src/plugins/oil-proxy.ts` et route serverless `api/oil-proxy.js` ajoutés avec allowlist de domaines (`SDES`, `Insee`, `data.gouv`, `energiesetmobilites`) pour éviter les fetchs clients fragiles et garder le même cheminement de données entre développement et production.
+- ⚠️ **Caveat pétrole** : la couche reste une lecture OSINT `HYBRID / MONTHLY / STRUCTURAL + QUASI-LIVE`. Le repo ne dispose pas d’une télémesure live du raffinage, des oléoducs ni des stocks site par site ; le temps réel porte surtout sur la tension carburants observée via les stations.
+
+---
+
 ## Mise à jour repo (2026-04-04) — Backbone hydraulique & veille éolienne
 
 - ✅ **Backbone hydraulique** : nouveau module `hydraulic-backbone` branché côté front avec panneau dédié, couche carte et sélection d’actifs critiques. Le signal croise `Ecowatt`, `Vigicrues` et `Vigilance météo` pour prioriser barrages, STEP, grands réservoirs et actifs structurants.
@@ -84,6 +110,18 @@
 
 ---
 
+
+## Mise à jour repo (2026-03-28) — Sentinel NDWI crues + retrait du mock dev
+
+- ✅ **Viewer NDWI Sentinel-2 branché pour les crues** — depuis un tronçon Vigicrues réel, le modal Sentinel peut désormais générer un rendu NDWI via `STAC + CDSE Process API`, avec cache mémoire côté backend/proxy, fallback explicite EO Browser si l'auth CDSE échoue et comparaison `avant / après` dans l'UI.
+- ✅ **Couleurs NDWI réalignées sur le rendu Copernicus / Sentinel Hub** — le rendu utilise désormais une rampe continue officielle `vert -> blanc -> bleu`, sans seuil local ajouté côté app. Le sujet restant n'est plus la connectique technique mais uniquement le choix produit/UX autour de cette visualisation.
+- 🔄 **UI Sentinel nettoyée mais encore à stabiliser finement** — le modal a été compacté, les métadonnées ont été rationalisées et l'ascenseur desktop a été réduit, mais le polish final reste un sujet UX à reprendre séparément si l'on veut figer une version vraiment définitive.
+- ✅ **Mock Vigicrues de développement retiré** — le segment `TEST DEV — Seine Paris centre` injecté en `DEV` a été supprimé de `src/services/vigicrues.ts`. Le service revient à un comportement `live only`, sans fallback artificiel local.
+- ℹ️ **Conclusion backlog** — la brique `S2 / NDWI crues` est maintenant suffisamment prouvée techniquement pour servir de base produit. Le vrai sujet de phase suivante reste `qualité UX` côté modal et, pour `S1`, un backend raster dédié si l'on veut sortir du simple gel produit.
+
+---
+
+
 ## Mise à jour repo (2026-03-28) — Sentinel crues : état réel du repo
 
 - ✅ **Sentinel-2 recentré sur les crues** — le flux news n'est plus le point d'entrée produit. Le chantier utile est désormais `Vigicrues -> modal Sentinel -> comparaison avant / après` sur zone de crue.
@@ -92,42 +130,6 @@
 - 🔄 **UI Sentinel nettoyée mais encore à stabiliser** — le modal a été simplifié, recentré sur l'image et les métadonnées utiles, mais le polish final desktop reste encore un sujet d'ajustement UX.
 - ⏸️ **Sentinel-1 SAR gelé proprement** — pas de faux viewer SAR in-app basé sur des thumbnails catalogue. `S1` reste explicitement un sujet `Phase 2 backend raster`.
 - ✅ **Mock Vigicrues retiré** — le segment `TEST DEV — Seine Paris centre` injecté en développement a été supprimé. Le service `vigicrues.ts` revient à un comportement `live only`.
-
----
-
-## Roadmap mise à jour (2026-03-28) — Après sprint Sentinel
-
-### Ce qui est effectivement livré
-
-| Bloc | État réel | Notes |
-|---|---|---|
-| `S2 crues` | ✅ Fonctionnel | modal Sentinel depuis Vigicrues, scènes S2, comparaison `avant / après`, génération NDWI |
-| `NDWI backend` | ✅ Fonctionnel | `STAC + CDSE Process API`, cache mémoire, erreurs explicites, fallback EO Browser |
-| `S1 viewer in-app` | ⏸️ Gelé | pas de preview SAR trompeuse tant qu'aucun backend raster dédié n'est disponible |
-| `News -> Sentinel` | ❌ Retiré | le flux Sentinel n'est plus branché sur les actualités |
-| `Blink / afficher sur carte` | ❌ Retiré | options supprimées car non fiables / non produit |
-| `Mock Vigicrues dev` | ❌ Retiré | retour au flux réel uniquement |
-
-### Position produit actuelle
-
-| Sujet | Décision actuelle | Ce qui manque encore |
-|---|---|---|
-| Sentinel-2 | focalisé sur `crues + NDWI + avant / après` | polish UX final, stabilité visuelle, éventuel affinage AOI |
-| Sentinel-1 | gelé côté front | source raster/tuiles crédible avant toute réintégration |
-| Carte principale | pas d'overlay Sentinel persistant | si besoin futur : vraie source raster standard branchée proprement |
-| EO Browser | fallback assumé | reste l'outil de secours quand le rendu in-app échoue |
-
-### Phase 2 à ouvrir si on continue
-
-| Ticket | Objet | Avantages | Risques | Taille |
-|---|---|---|---|---|
-| Option A | **Étudier Sentinel Hub** | Intégration rapide, vraies tiles / recipes prêtes | coût récurrent, dépendance SaaS | M |
-| Option B | **Étudier microservice raster self-hosted** (`TiTiler / GDAL`) | maîtrise complète, architecture pérenne | plus de DevOps, coût d'intégration plus élevé | L |
-| Option C | **Étudier produits flood officiels** | posture OSINT crédible, temps d'intégration réduit | couverture / formats / licences à valider | S-M |
-
-### Tâche backlog à conserver
-
-- **Backend raster Sentinel-1/2 (Phase 2)** : brancher une source tuilée `S1 / S2` (`Sentinel Hub`, microservice raster ou produits flood officiels) et l'exposer comme layer standard dans la carte.
 
 ---
 
@@ -164,7 +166,48 @@
 - 🔄 Le **maritime AIS** est déjà **bien présent en couche live partielle** : relais AIS local, `trafficMaritime`, trafic mondial/civil, navires militaires français, loader de connexion, statut de source, anomalies AIS et premiers signaux défense/câbles. Reste : robustesse produit, filtrage, port intelligence et UX analytique dédiée.
 - 🔄 Le **gaz** est déjà **branché sur des sources réelles** : `EcoGaz` (signal) + `ODRE` (stockages, flux PIR) + infrastructure statique enrichie. La couche reste **partielle** car certains flux/interconnexions basculent encore sur des valeurs de fallback visuel quand la donnée live manque ou ne matche pas proprement.
 
+--
+
+## Roadmap mise à jour (2026-03-28) — Après sprint Sentinel
+
+### Ce qui est effectivement livré
+
+| Bloc | État réel | Notes |
+|---|---|---|
+| `S2 crues` | ✅ Fonctionnel | modal Sentinel depuis Vigicrues, scènes S2, comparaison `avant / après`, génération NDWI |
+| `NDWI backend` | ✅ Fonctionnel | `STAC + CDSE Process API`, cache mémoire, erreurs explicites, fallback EO Browser |
+| `S1 viewer in-app` | ⏸️ Gelé | pas de preview SAR trompeuse tant qu'aucun backend raster dédié n'est disponible |
+| `News -> Sentinel` | ❌ Retiré | le flux Sentinel n'est plus branché sur les actualités |
+| `Blink / afficher sur carte` | ❌ Retiré | options supprimées car non fiables / non produit |
+| `Mock Vigicrues dev` | ❌ Retiré | retour au flux réel uniquement |
+
+### Position produit actuelle
+
+| Sujet | Décision actuelle | Ce qui manque encore |
+|---|---|---|
+| Sentinel-2 | focalisé sur `crues + NDWI + avant / après` | polish UX final, stabilité visuelle, éventuel affinage AOI |
+| Sentinel-1 | gelé côté front | source raster/tuiles crédible avant toute réintégration |
+| Carte principale | pas d'overlay Sentinel persistant | si besoin futur : vraie source raster standard branchée proprement |
+| EO Browser | fallback assumé | reste l'outil de secours quand le rendu in-app échoue |
+
+### Phase 2 à ouvrir si on continue
+
+| Ticket | Objet | Avantages | Risques | Taille |
+|---|---|---|---|---|
+| Option A | **Étudier Sentinel Hub** | Intégration rapide, vraies tiles / recipes prêtes | coût récurrent, dépendance SaaS | M |
+| Option B | **Étudier microservice raster self-hosted** (`TiTiler / GDAL`) | maîtrise complète, architecture pérenne | plus de DevOps, coût d'intégration plus élevé | L |
+| Option C | **Étudier produits flood officiels** | posture OSINT crédible, temps d'intégration réduit | couverture / formats / licences à valider | S-M |
+
+### Tâche backlog à conserver
+
+- **Backend raster Sentinel-1/2 (Phase 2)** : brancher une source tuilée `S1 / S2` (`Sentinel Hub`, microservice raster ou produits flood officiels) et l'exposer comme layer standard dans la carte.
+
+
+
+
 ---
+
+
 
 ## Priorité HAUTE (9 features)
 
@@ -222,13 +265,13 @@
 | **Pannes 📱 Télécom 4G/5G** | ARCEP data.gouv | ✅ Réel | `api/arcep.js` + proxy dev |
 | **Pannes ☁️ Internet BGP** | IODA (CAIDA) + BGPView | ✅ Réel | 6 ISPs français, events 24h + alerts actives, score national 0–100, circuit breaker |
 | **Pannes ☁️ Cloud / IXP** | OVH·Scaleway·AWS·GCP·CF Statuspage + PeeringDB | ✅ Réel | CF Radar optionnel (CLOUDFLARE_RADAR_TOKEN) |
-| **Pannes ⚡ Crowd-sourced** | infocoupure.fr + coupure-elec.fr | ✅ Réel | `api/outages/citizen.js` — scraping HTML réel (wpDiscuz comments), clustering DBSCAN Turf.js (rayon 10km, min 3 points), géocodage API Adresse, corrélation Ecowatt côté client. Vite plugin dev avec fallback mock. |
+| **Pannes ⚡ Crowd-sourced** | infocoupure.fr + coupure-elec.fr | ✅ Réel | `api/outages/citizen.js` — scraping HTML réel (wpDiscuz + Cheerio), clustering DBSCAN Turf.js (rayon 10km, min 3 points), géocodage API Adresse, corrélation Ecowatt côté client. IS_WORDPRESS guard. Cheerio en vraie dep. Vite plugin dev avec fallback mock. |
 | **Énergie / Ecowatt** | RTE Écowatt | ✅ Réel | OAuth2 RTE |
 | **Backbone hydraulique** | Sélection consolidée DREAL/Ministère + EDF + croisement Ecowatt/Vigicrues/Vigilance | ✅ Implémenté | Couche d’actifs critiques hydraulique avec scoring et panneau dédié. Couverture volontairement sélective, pas un inventaire exhaustif de tous les ouvrages. |
 | **Nucléaire** | EDF → | 🟡 Simulé | API EDF non publique — statuts de maintenance mockés |
 | **Éolien France** | ODRE eco2mix + référentiel éolien + fallback offshore | 🟡 Partiel | Production live nationale réelle via ODRE. Carte et panel opérationnels, clustering terrestre en place. Le référentiel terrestre exhaustif reste à fiabiliser côté source nationale officielle. |
 | **Réseau Gaz** | EcoGaz + ODRE + config infra | 🟡 Partiel | `fetchGasNetwork()` consomme déjà EcoGaz + stockages + flux PIR/ODRE. Les interconnexions restent à rendre plus explicitement réelles côté UI et certains flux sont encore simulés en fallback. |
-| **Réseau Pétrole** | UFIP / data.gouv | ✅ Réel | Stocks, raffineries, dépôts |
+| **Réseau Pétrole** | SDES + Insee + data.gouv + API prix carburants + référentiel infra | ✅ Hybride réel | Module `OilNetwork` réellement branché : panneau dédié, couche carte (raffineries, dépôts, oléoducs, flux import/export) et signal carburants quasi temps réel par départements. Limite assumée : pas de télémesure live du raffinage ni des pipelines. |
 | **Câbles sous-marins** | GeoJSON statique | ✅ Réel | Données statiques (SubmarineCableMap) |
 
 ## État des layers — Surveillance / Sécurité
@@ -732,15 +775,6 @@ Act as a Senior Fullstack Engineer & OSINT Specialist. Implement the "Baromètre
 - Add a tiny, grisé (grayed out) placeholder label at the bottom of the widget: "ISNR: Pending Synthesis..." to prepare the UI for the future AI-driven national stability index.
 
 ---
-
-## Mise à jour repo (2026-03-28) — Sentinel NDWI crues + retrait du mock dev
-
-- ✅ **Viewer NDWI Sentinel-2 branché pour les crues** — depuis un tronçon Vigicrues réel, le modal Sentinel peut désormais générer un rendu NDWI via `STAC + CDSE Process API`, avec cache mémoire côté backend/proxy, fallback explicite EO Browser si l'auth CDSE échoue et comparaison `avant / après` dans l'UI.
-- ✅ **Couleurs NDWI réalignées sur le rendu Copernicus / Sentinel Hub** — le rendu utilise désormais une rampe continue officielle `vert -> blanc -> bleu`, sans seuil local ajouté côté app. Le sujet restant n'est plus la connectique technique mais uniquement le choix produit/UX autour de cette visualisation.
-- 🔄 **UI Sentinel nettoyée mais encore à stabiliser finement** — le modal a été compacté, les métadonnées ont été rationalisées et l'ascenseur desktop a été réduit, mais le polish final reste un sujet UX à reprendre séparément si l'on veut figer une version vraiment définitive.
-- ✅ **Mock Vigicrues de développement retiré** — le segment `TEST DEV — Seine Paris centre` injecté en `DEV` a été supprimé de `src/services/vigicrues.ts`. Le service revient à un comportement `live only`, sans fallback artificiel local.
-- ℹ️ **Conclusion backlog** — la brique `S2 / NDWI crues` est maintenant suffisamment prouvée techniquement pour servir de base produit. Le vrai sujet de phase suivante reste `qualité UX` côté modal et, pour `S1`, un backend raster dédié si l'on veut sortir du simple gel produit.
-
 
 
 - sur les legendes prevoir bouton pour réduite les legendes
