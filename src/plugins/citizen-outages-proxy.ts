@@ -320,6 +320,23 @@ async function geocodeCity(city: string, dept: string): Promise<[number, number]
 // ── Dev clustering (sans Turf) ────────────────────────────────────────────────
 
 function buildDevZones(reports: CitizenReportRaw[]) {
+    // ── Dev-only simplified clustering ───────────────────────────────────────────
+    // This function is intentionally different from the Turf DBSCAN clustering
+    // used in prod (api/outages/citizen.js → clusterZones).
+    //
+    // Grid: quantised to 0.1° (~11 km lat / ~7.6 km lng at French latitudes).
+    // Each grid cell → an 8 km radius circle centred on the cluster centroid.
+    //
+    // Prod: Turf DBSCAN, 10 km radius, min 3 points → convex hull polygons.
+    //
+    // Why not use Turf here?
+    //   @turf/turf uses ESM exports. Importing it inside a Vite configureServer()
+    //   Node.js middleware causes CJS/ESM interop issues that are not worth fixing
+    //   for a dev-only code path. Turf is available in package.json if this
+    //   ever becomes a priority.
+    //
+    // Zone shapes and sizes WILL differ between dev and prod — this is expected.
+    // ─────────────────────────────────────────────────────────────────────────────
     const grid = new Map<string, { reports: CitizenReportRaw[]; total: number }>();
     for (const r of reports) {
         if (!r.coordinates) continue;
