@@ -73,7 +73,6 @@ export function gasPirProxyPlugin(): Plugin {
     name: 'gas-pir-proxy',
     configureServer(server) {
       server.middlewares.use('/api/energy/gas-pir', async (_req, res) => {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
         try {
           const from = isoDate(-3);
           const to = isoDate(0);
@@ -101,11 +100,13 @@ export function gasPirProxyPlugin(): Plugin {
           else if (points.length > 0) status = 'partial';
 
           res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(JSON.stringify({ points, fetchedAt: new Date().toISOString(), status }));
         } catch (err) {
           console.error('[gas-pir-proxy]', err);
           res.statusCode = 200;
-          res.end(JSON.stringify({ points: [], fetchedAt: new Date().toISOString(), status: 'error', error: String(err) }));
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ points: [], fetchedAt: new Date().toISOString(), status: 'error', error: err instanceof Error ? err.message : String(err) }));
         }
       });
     },
