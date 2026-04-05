@@ -206,23 +206,15 @@ export const GAS_STORAGES: GasStorage[] = [
 export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
   {
     id: 'pir-biriatou',
-    name: 'Biriatou',
+    // Biriatou + Larrau fusionnés en VIP PIRINEOS depuis oct. 2014 (ENTSOG ITP-00304)
+    // ITP-00033 et ITP-00018 ne publient plus de données Physical Flow individuellement.
+    name: 'Pyrénées (Biriatou/Larrau)',
     country: 'Espagne',
     direction: 'bidirectional',
-    coordinates: [-1.7500, 43.3200],
+    coordinates: [-1.3500, 43.1500],
     flowGWhDay: 0,
-    maxCapacityGWhDay: 165,
-    entsogKey: 'ITP-00033',
-  },
-  {
-    id: 'pir-larrau',
-    name: 'Larrau',
-    country: 'Espagne',
-    direction: 'bidirectional',
-    coordinates: [-0.9500, 43.0200],
-    flowGWhDay: 0,
-    maxCapacityGWhDay: 55,
-    entsogKey: 'ITP-00018',
+    maxCapacityGWhDay: 220,
+    entsogKey: 'ITP-00304', // VIP PIRINEOS — opérateur FR-TSO-0002 (TERÉGA)
   },
   {
     id: 'pir-obergailbach',

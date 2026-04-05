@@ -1,15 +1,23 @@
 /**
  * api/energy/gas-pir.js — Vercel Serverless Function
  *
- * Proxy ENTSOG pour les flux Physical Flow journaliers aux 5 PIR frontière France.
+ * Proxy ENTSOG pour les flux Physical Flow journaliers aux PIR frontière France.
  * Retourne { points, fetchedAt, status } avec flowGWhDay en GWh/j (flux net FR).
  *
  * Source : https://transparency.entsog.eu/api/v1/operationaldata
  * Pas d'authentification requise.
+ *
+ * Stratégie de fetch :
+ *   - Le filtre ?points=... de l'API ENTSOG ne fonctionne pas correctement.
+ *   - On interroge par operatorKey pour les deux TSOs français :
+ *     - FR-TSO-0003 (NaTran / GRTgaz) : Taisnières (ITP-00115), Oltingue (ITP-00039), Obergailbach (ITP-00137)
+ *     - FR-TSO-0002 (TERÉGA) : VIP PIRINEOS (ITP-00304) = Biriatou + Larrau fusionnés depuis oct. 2014
+ *   - Les deux requêtes sont lancées en parallèle, les résultats mergés.
  */
 
 const ENTSOG_URL = 'https://transparency.entsog.eu/api/v1/operationaldata';
-const PIR_POINTS = ['ITP-00033', 'ITP-00018', 'ITP-00137', 'ITP-00115', 'ITP-00039'];
+// PIR points attendus dans la réponse après merge des deux opérateurs
+const PIR_POINTS = ['ITP-00304', 'ITP-00137', 'ITP-00115', 'ITP-00039'];
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 let _cache = null; // { data, fetchedAt }
@@ -19,6 +27,18 @@ function isoDate(deltaDays = 0) {
   const d = new Date();
   d.setDate(d.getDate() + deltaDays);
   return d.toISOString().slice(0, 10);
+}
+
+/** Construit l'URL ENTSOG pour un operatorKey donné. */
+function buildUrl(operatorKey, from, to) {
+  const url = new URL(ENTSOG_URL);
+  url.searchParams.set('indicator', 'Physical Flow');
+  url.searchParams.set('periodType', 'day');
+  url.searchParams.set('operatorKey', operatorKey);
+  url.searchParams.set('from', from);
+  url.searchParams.set('to', to);
+  url.searchParams.set('limit', '300');
+  return url.toString();
 }
 
 /** Extrait le flux net (GWh/j) pour un pointKey donné depuis le tableau items ENTSOG. */
@@ -84,19 +104,17 @@ export default async function handler(req, res) {
     const from = isoDate(-3); // J-3
     const to = isoDate(0);    // J0
 
-    const url = new URL(ENTSOG_URL);
-    url.searchParams.set('indicator', 'Physical Flow');
-    url.searchParams.set('periodType', 'day');
-    url.searchParams.set('points', PIR_POINTS.join(','));
-    url.searchParams.set('from', from);
-    url.searchParams.set('to', to);
-    url.searchParams.set('limit', '100');
+    // Deux requêtes parallèles par operatorKey (le filtre ?points= est ignoré par l'API ENTSOG)
+    const [r1, r2] = await Promise.all([
+      fetch(buildUrl('FR-TSO-0003', from, to), { signal: AbortSignal.timeout(15_000) }),
+      fetch(buildUrl('FR-TSO-0002', from, to), { signal: AbortSignal.timeout(15_000) }),
+    ]);
 
-    const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-    if (!resp.ok) throw new Error(`ENTSOG HTTP ${resp.status}`);
+    if (!r1.ok) throw new Error(`ENTSOG FR-TSO-0003 HTTP ${r1.status}`);
+    if (!r2.ok) throw new Error(`ENTSOG FR-TSO-0002 HTTP ${r2.status}`);
 
-    const json = await resp.json();
-    const items = json.operationaldata ?? [];
+    const [j1, j2] = await Promise.all([r1.json(), r2.json()]);
+    const items = [...(j1.operationaldata ?? []), ...(j2.operationaldata ?? [])];
 
     // Calculer le flux net pour chaque PIR
     const points = PIR_POINTS
@@ -114,9 +132,6 @@ export default async function handler(req, res) {
     res.status(200).json(data);
   } catch (err) {
     console.error('[gas-pir] ENTSOG fetch failed:', err.message);
-    // HTTP 200 même en cas d'erreur : le client inspecte json.status, pas le code HTTP.
-    // Diverge volontairement de ecowatt.js (qui fait res.status(502)) pour simplifier
-    // la gestion côté fetchPirFlows() dans gas.ts.
     res.status(200).json({ points: [], fetchedAt: new Date().toISOString(), status: 'error', error: err.message });
   }
 }

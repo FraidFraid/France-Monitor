@@ -4,17 +4,35 @@
  * Passthrough stateless pour /api/energy/gas-pir.
  * Même logique que api/energy/gas-pir.js, sans cache in-process
  * (le cache est uniquement utile en prod Vercel pour amortir les cold starts).
+ *
+ * Stratégie de fetch :
+ *   - Le filtre ?points= de l'API ENTSOG ne fonctionne pas correctement.
+ *   - On interroge par operatorKey pour les deux TSOs français :
+ *     - FR-TSO-0003 (NaTran) : Taisnières (ITP-00115), Oltingue (ITP-00039), Obergailbach (ITP-00137)
+ *     - FR-TSO-0002 (TERÉGA) : VIP PIRINEOS (ITP-00304) = Biriatou + Larrau fusionnés depuis oct. 2014
  */
 
 import type { Plugin } from 'vite';
 
 const ENTSOG_URL = 'https://transparency.entsog.eu/api/v1/operationaldata';
-const PIR_POINTS = ['ITP-00033', 'ITP-00018', 'ITP-00137', 'ITP-00115', 'ITP-00039'];
+// PIR points attendus dans la réponse après merge des deux opérateurs
+const PIR_POINTS = ['ITP-00304', 'ITP-00137', 'ITP-00115', 'ITP-00039'];
 
 function isoDate(deltaDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + deltaDays);
   return d.toISOString().slice(0, 10);
+}
+
+function buildUrl(operatorKey: string, from: string, to: string): string {
+  const url = new URL(ENTSOG_URL);
+  url.searchParams.set('indicator', 'Physical Flow');
+  url.searchParams.set('periodType', 'day');
+  url.searchParams.set('operatorKey', operatorKey);
+  url.searchParams.set('from', from);
+  url.searchParams.set('to', to);
+  url.searchParams.set('limit', '300');
+  return url.toString();
 }
 
 interface EntsogItem {
@@ -77,19 +95,20 @@ export function gasPirProxyPlugin(): Plugin {
           const from = isoDate(-3);
           const to = isoDate(0);
 
-          const url = new URL(ENTSOG_URL);
-          url.searchParams.set('indicator', 'Physical Flow');
-          url.searchParams.set('periodType', 'day');
-          url.searchParams.set('points', PIR_POINTS.join(','));
-          url.searchParams.set('from', from);
-          url.searchParams.set('to', to);
-          url.searchParams.set('limit', '100');
+          // Deux requêtes parallèles par operatorKey (le filtre ?points= est ignoré par l'API ENTSOG)
+          const [r1, r2] = await Promise.all([
+            fetch(buildUrl('FR-TSO-0003', from, to), { signal: AbortSignal.timeout(15_000) }),
+            fetch(buildUrl('FR-TSO-0002', from, to), { signal: AbortSignal.timeout(15_000) }),
+          ]);
 
-          const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-          if (!resp.ok) throw new Error(`ENTSOG HTTP ${resp.status}`);
+          if (!r1.ok) throw new Error(`ENTSOG FR-TSO-0003 HTTP ${r1.status}`);
+          if (!r2.ok) throw new Error(`ENTSOG FR-TSO-0002 HTTP ${r2.status}`);
 
-          const json = await resp.json() as { operationaldata?: EntsogItem[] };
-          const items = json.operationaldata ?? [];
+          const [j1, j2] = await Promise.all([
+            r1.json() as Promise<{ operationaldata?: EntsogItem[] }>,
+            r2.json() as Promise<{ operationaldata?: EntsogItem[] }>,
+          ]);
+          const items = [...(j1.operationaldata ?? []), ...(j2.operationaldata ?? [])];
 
           const points = PIR_POINTS
             .map(key => extractNetFlow(items, key))
