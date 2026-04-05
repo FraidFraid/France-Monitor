@@ -17,15 +17,15 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'newsGroup', label: 'ACTUALITÉS', icon: '&#128240;' },
   { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: '&#128240;', sublayerOf: 'newsGroup' },
   { key: 'stability', label: 'INDICE STABILITÉ', icon: '&#128202;', sublayerOf: 'newsGroup' },
-  { key: 'energyGroup', label: 'ÉNERGIE', icon: '&#9889;' },
-  { key: 'energy', label: 'ÉLECTRICITÉ / ÉCOWATT', icon: '&#9889;', sublayerOf: 'energyGroup' },
-  { key: 'hydraulic', label: 'BACKBONE HYDRAULIQUE', icon: '&#128167;', sublayerOf: 'energyGroup' },
-  { key: 'eolien', label: 'VEILLE ÉOLIENNE', icon: '&#127788;', sublayerOf: 'energyGroup' },
-  { key: 'gas', label: 'RÉSEAU GAZ', icon: '&#128293;', sublayerOf: 'energyGroup' },
-  { key: 'oil', label: 'RÉSEAU PÉTROLE', icon: '&#128738;', sublayerOf: 'energyGroup' },
-  { key: 'infrastructure', label: 'INFRAS VITALES', icon: '&#9881;', sublayerOf: 'energyGroup' },
-  { key: 'metropoles', label: 'MÉTROPOLES ÉLECTRIQUES', icon: '&#127963;', sublayerOf: 'energyGroup' },
-  { key: 'nuclear', label: 'PARC NUCLÉAIRE', icon: '&#9883;', sublayerOf: 'energyGroup' },
+  { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: '&#9889;' },
+  { key: 'powerGrid', label: 'RÉSEAU ÉLECTRIQUE / ÉCOWATT', icon: '&#9889;', sublayerOf: 'energySystems' },
+  { key: 'nuclearFleet', label: 'PARC NUCLÉAIRE', icon: '&#9883;', sublayerOf: 'energySystems' },
+  { key: 'gasNetwork', label: 'RÉSEAU GAZ', icon: '&#128293;', sublayerOf: 'energySystems' },
+  { key: 'hydroBackbone', label: 'HYDRO – STRESS HYDRO-ÉNERGÉTIQUE', icon: '&#128167;', sublayerOf: 'energySystems' },
+  { key: 'oilNetwork', label: 'PÉTROLE – RÉSEAU & STOCKS', icon: '&#128738;', sublayerOf: 'energySystems' },
+  { key: 'windMonitor', label: 'VEILLE ÉOLIENNE', icon: '&#127788;', sublayerOf: 'energySystems' },
+  { key: 'criticalEnergyInfra', label: 'INFRA CRITIQUES ÉNERGIE', icon: '&#9881;', sublayerOf: 'energySystems' },
+  { key: 'metroLoad', label: 'CHARGE MÉTROPOLITAINE', icon: '&#127963;', sublayerOf: 'energySystems' },
   { key: 'health', label: 'SANTÉ / ÉPIDÉMIO', icon: '&#127973;' },
   { key: 'healthOscour', label: 'OSCOUR / SOS MÉDECINS', icon: '&#128657;', sublayerOf: 'health' },
   { key: 'healthApl', label: 'APL — DÉSERTS MÉDICAUX', icon: '&#127979;', sublayerOf: 'health' },
@@ -103,7 +103,7 @@ export class LayerPanel {
   private render(): void {
     if (!this.element) return;
 
-    const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energyGroup', 'traffic', 'sovereignty', 'outages', 'environmentGroup']);
+    const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energySystems', 'traffic', 'sovereignty', 'outages', 'environmentGroup']);
     const enabledCount = LAYER_DEFS.filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
 
     let listHtml = '';
@@ -139,7 +139,7 @@ export class LayerPanel {
             <div class="layer-panel-accordion-content" style="display: ${this.newsExpanded ? 'block' : 'none'}; border-left: 2px solid rgba(255,255,255,0.1); margin-left: 10px; padding-left: 4px; margin-bottom: 8px; margin-top: 4px;">
         `;
         inNewsGroup = true;
-      } else if (def.key === 'energyGroup') {
+      } else if (def.key === 'energySystems') {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.energyExpanded ? 'expanded' : ''}">
@@ -190,7 +190,7 @@ export class LayerPanel {
         inSovereigntyGroup = true;
       } else if (inNewsGroup && def.sublayerOf === 'newsGroup') {
         listHtml += this.renderItem(def);
-      } else if (inEnergyGroup && def.sublayerOf === 'energyGroup') {
+      } else if (inEnergyGroup && def.sublayerOf === 'energySystems') {
         listHtml += this.renderItem(def);
       } else if (inHealthGroup && def.sublayerOf === 'health') {
         listHtml += this.renderItem(def);
@@ -449,15 +449,15 @@ export class LayerPanel {
       newsGroup: 'Groupe actualités : actus géolocalisées et indice de stabilité',
       news: 'Articles PQR géolocalisés',
       alerts: 'Alertes critiques en cours',
-      energyGroup: 'Groupe énergie: électricité, hydraulique, éolien, gaz et métropoles électriques',
-      energy: 'État du réseau électrique (Écowatt)',
-      hydraulic: 'Backbone énergétique hydraulique : barrages, STEP et réservoirs critiques non exhaustifs',
-      eolien: 'Veille éolienne : production live France et parcs terrestres / en mer',
+      energySystems: 'Groupe énergie : réseau électrique, hydraulique, éolien, gaz, pétrole, nucléaire et charge métropolitaine',
+      powerGrid: 'État du réseau électrique national (Écowatt)',
+      hydroBackbone: 'Score de stress hydro-énergétique dérivé, appuyé sur des mesures hydrométriques Hub’Eau quasi temps réel là où disponible. DÉRIVÉ – APPUI MESURES RÉELLES.',
+      windMonitor: 'Veille éolienne : production live France et parcs terrestres / en mer',
       health: 'Indicateurs épidémiologiques régionaux (SPF/data.gouv)',
       healthOscour: 'Motifs pathologiques en hausse — OSCOUR / SOS Médecins (SPF)',
       healthApl: 'Accessibilité Potentielle Localisée aux médecins (DREES 2023)',
       hospitals: 'Carte des établissements de soins (base FINESS)',
-      infrastructure: 'Nœuds énergétiques vitaux: électricité, gaz et pétrole',
+      criticalEnergyInfra: 'Nœuds énergétiques critiques : électricité, gaz et pétrole',
       traffic: 'Groupe TRAFICS (routier, maritime, aérien civils)',
       trafficRoad: 'Incidents routiers TEMPS RÉEL (TomTom)',
       trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
@@ -466,7 +466,7 @@ export class LayerPanel {
       environmentGroup: 'Groupe environnement: météo/crues, feux de forêt et terminateur jour/nuit',
       environmental: 'Alertes météo et crues',
       fires: 'Feux de forêt actifs — données satellite NASA FIRMS (VIIRS, latence ~3h)',
-      metropoles: 'Consommation électrique TEMPS RÉEL des grandes métropoles',
+      metroLoad: 'Consommation électrique TEMPS RÉEL des grandes métropoles',
       sovereignty: 'Groupe souveraineté: défense, connectivité sous-marine et vigilance cyber',
       military: 'Bases (▲), vols (avion) et navires militaires France + DROM',
       subseaCables: 'Câbles de télécommunications sous-marins et points d’atterrage en France',
@@ -477,9 +477,9 @@ export class LayerPanel {
       outagesCloud: 'Pannes datacenters et points d\'échange Internet (IXP) en France',
       stability: 'Indice de stabilité par département',
       cyber: 'Alertes CERT-FR, ransomware et CVE critiques',
-      gas: 'Stockages gaz, terminaux GNL et flux PIR',
-      oil: 'Raffineries, stocks pétroliers et vigilance approvisionnement',
-      nuclear: 'Disponibilité des réacteurs nucléaires (RTE) et signaux REMIT',
+      gasNetwork: 'Stockages gaz, terminaux GNL et flux PIR',
+      oilNetwork: 'Vue OSINT structurelle du système pétrolier français, combinant infrastructures (raffineries, dépôts, oléoducs) et indicateurs mensuels SDES sur consommations et origines de brut. Inclut aussi un module national distinct de tension carburants quasi temps réel. Fraîcheur : HYBRID / MONTHLY / STRUCTURAL + QUASI-LIVE.',
+      nuclearFleet: 'Disponibilité des réacteurs nucléaires (RTE) et signaux REMIT',
       dayNight: 'Terminateur jour/nuit (zone d\'ombre calculée en temps réel)',
       elus: 'Élus & Représentants — en cours de configuration, non livré dans cette version',
     };

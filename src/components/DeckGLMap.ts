@@ -12,7 +12,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -28,6 +28,7 @@ import type { LineString, MultiLineString } from 'geojson';
 import { computeFloodSegmentBbox, buildEoBrowserUrl } from '../services/copernicus.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
+import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
@@ -94,7 +95,7 @@ async function getFrenchStyle(): Promise<maplibregl.StyleSpecification> {
 const SRC = 'news-src';              // Clusterable news (excludes critical)
 const SRC_CRITICAL = 'news-critical-src';  // Critical alerts (never clustered)
 const SRC_SEL = 'news-sel-src';
-const SRC_ENERGY = 'energy-regions-src';
+const SRC_POWER_REGIONS = 'power-regions-src';
 const SRC_INTERCONN = 'interconn-src';
 const SRC_WEATHER = 'weather-depts-src';
 const SRC_HEALTH = 'health-regions-src';
@@ -105,9 +106,9 @@ const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fon
 const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
 const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
-const SRC_HYDRAULIC = 'hydraulic-src';
-const SRC_EOLIEN = 'eolien-src';
-const SRC_EOLIEN_PARKS = 'eolien-parks-src';
+const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
+const SRC_WIND_TURBINES = 'wind-turbines-src';
+const SRC_WIND_PARKS = 'wind-parks-src';
 const SRC_TRAFFIC = 'traffic-flow-src';
 const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 const SRC_TRAIN_ROUTE = 'train-route-src';
@@ -118,8 +119,8 @@ const LYR_CLUSTER_CIRCLE = 'news-cluster-circle';
 const LYR_CLUSTER_COUNT = 'news-cluster-count';
 const LYR_SEL_GLOW = 'news-sel-glow';
 const LYR_SEL_RING = 'news-sel-ring';
-const LYR_ENERGY_FILL = 'energy-fill';
-const LYR_ENERGY_LINE = 'energy-line';
+const LYR_POWER_REGION_FILL = 'power-region-fill';
+const LYR_POWER_REGION_LINE = 'power-region-line';
 const LYR_INTERCONN_LINE = 'interconn-line';
 const LYR_INTERCONN_LABEL = 'interconn-label';
 const SRC_INTERCONN_ARCS = 'interconn-arcs-src';
@@ -153,24 +154,24 @@ const SRC_MODIS = 'modis-overlay-src';
 const LYR_MODIS = 'modis-overlay';
 const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
 const LYR_SENTINEL_SCENE = 'sentinel-scene-overlay';
-const LYR_INFRA_VITAL_HALO = 'infra-vital-halo';
-const LYR_INFRA_NUCLEAR_RING = 'infra-nuclear-ring';
-const LYR_INFRA_HIGHLIGHT_GLOW = 'infra-highlight-glow';
-const LYR_INFRA_HIGHLIGHT_RING = 'infra-highlight-ring';
-const LYR_INFRA_CIRCLE = 'infra-circles';
-const LYR_INFRA_LABEL = 'infra-labels';
-const LYR_HYDRAULIC_HALO = 'hydraulic-halo';
-const LYR_HYDRAULIC_SIGNAL_RING = 'hydraulic-signal-ring';
-const LYR_HYDRAULIC_CIRCLE = 'hydraulic-circles';
-const LYR_HYDRAULIC_LABEL = 'hydraulic-labels';
-const LYR_EOLIEN_CLUSTER       = 'eolien-cluster';
-const LYR_EOLIEN_CLUSTER_COUNT = 'eolien-cluster-count';
-const LYR_EOLIEN_HALO          = 'eolien-halo';
-const LYR_EOLIEN_CIRCLE        = 'eolien-circles';
-const LYR_EOLIEN_LABEL         = 'eolien-labels';
-const LYR_EOLIEN_PARK_HALO     = 'eolien-park-halo';
-const LYR_EOLIEN_PARK_CIRCLE   = 'eolien-park-circles';
-const LYR_EOLIEN_PARK_LABEL    = 'eolien-park-labels';
+const LYR_ENERGY_INFRA_VITAL_HALO = 'energy-infra-vital-halo';
+const LYR_ENERGY_INFRA_NUCLEAR_RING = 'energy-infra-nuclear-ring';
+const LYR_ENERGY_INFRA_HIGHLIGHT_GLOW = 'energy-infra-highlight-glow';
+const LYR_ENERGY_INFRA_HIGHLIGHT_RING = 'energy-infra-highlight-ring';
+const LYR_ENERGY_INFRA_CIRCLE = 'energy-infra-circles';
+const LYR_ENERGY_INFRA_LABEL = 'energy-infra-labels';
+const LYR_HYDRO_BACKBONE_HALO = 'hydro-backbone-halo';
+const LYR_HYDRO_BACKBONE_SIGNAL_RING = 'hydro-backbone-signal-ring';
+const LYR_HYDRO_BACKBONE_CIRCLE = 'hydro-backbone-circles';
+const LYR_HYDRO_BACKBONE_LABEL = 'hydro-backbone-labels';
+const LYR_WIND_CLUSTER       = 'wind-cluster';
+const LYR_WIND_CLUSTER_COUNT = 'wind-cluster-count';
+const LYR_WIND_TURBINE_HALO          = 'wind-turbine-halo';
+const LYR_WIND_TURBINE_CIRCLE        = 'wind-turbine-circles';
+const LYR_WIND_TURBINE_LABEL         = 'wind-turbine-labels';
+const LYR_WIND_PARK_HALO     = 'wind-park-halo';
+const LYR_WIND_PARK_CIRCLE   = 'wind-park-circles';
+const LYR_WIND_PARK_LABEL    = 'wind-park-labels';
 const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
 const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
 const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
@@ -194,11 +195,14 @@ const SRC_OIL_FLOW_ARCS = 'oil-flow-arcs-src';
 const SRC_OIL_FLOW_MARKERS = 'oil-flow-markers-src';
 const SRC_OIL_FLOW_DIRECTION = 'oil-flow-direction-src';
 const SRC_OIL_FLOW_CHEVRON_PTS = 'oil-flow-chevron-pts-src';
+const SRC_FUEL_TENSION = 'fuel-tension-depts-src';
 const LYR_OIL_FLOW_ARC_GLOW = 'oil-flow-arc-glow';
 const LYR_OIL_FLOW_ARC = 'oil-flow-arc';
 const LYR_OIL_FLOW_CHEVRONS = 'oil-flow-chevrons';
 const LYR_OIL_FLOW_MARKER = 'oil-flow-marker';
 const LYR_OIL_FLOW_LABEL = 'oil-flow-label';
+const LYR_FUEL_TENSION_FILL = 'fuel-tension-fill';
+const LYR_FUEL_TENSION_LINE = 'fuel-tension-line';
 // Oil infrastructure (pipelines, refineries, depots)
 const SRC_OIL_PIPELINES = 'oil-pipelines-src';
 const SRC_OIL_REFINERIES = 'oil-refineries-src';
@@ -223,10 +227,10 @@ const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
 const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
 const LYR_TRAIN_ROUTE = 'train-route-line';
 const LYR_TRAIN_STATIONS = 'train-stations';
-const SRC_METROPOLES = 'metropoles-src';
-const LYR_METROPOLES_GLOW = 'metropoles-glow';
-const LYR_METROPOLES_CIRCLE = 'metropoles-circles';
-const LYR_METROPOLES_LABEL = 'metropoles-labels';
+const SRC_METRO_LOAD = 'metro-load-src';
+const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
+const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
+const LYR_METRO_LOAD_LABEL = 'metro-load-labels';
 
 const SRC_MILITARY_ZONES = 'military-zones-src';
 const SRC_MILITARY_BASES = 'military-bases-src';
@@ -1374,6 +1378,7 @@ export class DeckGLMap {
   private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
+  private fuelTensionHoverPopup: maplibregl.Popup | null = null;
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
@@ -1383,6 +1388,7 @@ export class DeckGLMap {
   private enrichedHoverPopup: maplibregl.Popup | null = null;
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastHoveredHealthId: number | null = null;
+  private _lastHoveredFuelDeptId: string | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
 
@@ -1571,7 +1577,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_SEL, { type: 'geojson', data: emptyFC() });
 
     // Energy regions
-    this.map.addSource(SRC_ENERGY, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_POWER_REGIONS, { type: 'geojson', data: emptyFC() });
 
     // Interconnections (point markers + arc lines + animated chevron points)
     this.map.addSource(SRC_INTERCONN, { type: 'geojson', data: emptyFC() });
@@ -1646,15 +1652,15 @@ export class DeckGLMap {
     // Infrastructure
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_HYDRAULIC, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_EOLIEN, {
+    this.map.addSource(SRC_HYDRO_BACKBONE, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_WIND_TURBINES, {
       type: 'geojson',
       data: emptyFC(),
       cluster: true,
       clusterMaxZoom: 7,   // éclate au zoom 8+
       clusterRadius: 40,
     });
-    this.map.addSource(SRC_EOLIEN_PARKS, {
+    this.map.addSource(SRC_WIND_PARKS, {
       type: 'geojson',
       data: emptyFC(),
       cluster: false,
@@ -1681,6 +1687,11 @@ export class DeckGLMap {
     this.map.addSource(SRC_OIL_FLOW_MARKERS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_OIL_FLOW_DIRECTION, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_OIL_FLOW_CHEVRON_PTS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_FUEL_TENSION, {
+      type: 'geojson',
+      data: emptyFC(),
+      promoteId: 'code',
+    });
     // Oil infrastructure (pipelines, refineries, depots)
     this.map.addSource(SRC_OIL_PIPELINES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_OIL_REFINERIES, { type: 'geojson', data: emptyFC() });
@@ -1710,7 +1721,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_TRAIN_ROUTE, { type: 'geojson', data: emptyFC() });
 
     // Métropoles consumption
-    this.map.addSource(SRC_METROPOLES, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_METRO_LOAD, { type: 'geojson', data: emptyFC() });
 
     // Outages (Telecom endpoints & Power regions)
     this.map.addSource(SRC_TELECOM, { type: 'geojson', data: emptyFC() });
@@ -1789,18 +1800,18 @@ export class DeckGLMap {
 
     // ─── Energy: region fill ───
     this.map.addLayer({
-      id: LYR_ENERGY_FILL,
+      id: LYR_POWER_REGION_FILL,
       type: 'fill',
-      source: SRC_ENERGY,
+      source: SRC_POWER_REGIONS,
       paint: {
         'fill-color': ['get', 'fillColor'],
         'fill-opacity': 0.7,
       },
     });
     this.map.addLayer({
-      id: LYR_ENERGY_LINE,
+      id: LYR_POWER_REGION_LINE,
       type: 'line',
-      source: SRC_ENERGY,
+      source: SRC_POWER_REGIONS,
       paint: {
         'line-color': ['get', 'lineColor'],
         'line-width': 1.5,
@@ -2887,6 +2898,42 @@ export class DeckGLMap {
       },
     });
 
+    // ─── Fuel tension pilot: department tint + red outline ───
+    this.map.addLayer({
+      id: LYR_FUEL_TENSION_FILL,
+      type: 'fill',
+      source: SRC_FUEL_TENSION,
+      paint: {
+        'fill-color': ['get', 'fillColor'],
+        'fill-opacity': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],
+          0.32,
+          ['coalesce', ['get', 'fillOpacity'], 0.18],
+        ],
+      },
+    });
+    this.map.addLayer({
+      id: LYR_FUEL_TENSION_LINE,
+      type: 'line',
+      source: SRC_FUEL_TENSION,
+      paint: {
+        'line-color': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],
+          '#FFFFFF',
+          ['get', 'lineColor'],
+        ],
+        'line-width': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false],
+          1.9,
+          ['coalesce', ['get', 'lineWidth'], 1.0],
+        ],
+        'line-opacity': 0.95,
+      },
+    });
+
     // ─── Oil Infrastructure: Refinery glow (halo ambiant derrière le triangle) ───
     this.map.addLayer({
       id: LYR_OIL_REFINERIES_GLOW,
@@ -3061,7 +3108,7 @@ export class DeckGLMap {
 
     // ─── Infrastructure: vital halo commun ───
     this.map.addLayer({
-      id: LYR_INFRA_VITAL_HALO,
+      id: LYR_ENERGY_INFRA_VITAL_HALO,
       type: 'circle',
       source: SRC_INFRA,
       filter: ['!=', ['get', 'type'], 'nuclear'],
@@ -3080,7 +3127,7 @@ export class DeckGLMap {
 
     // ─── Infrastructure: nuclear accent ring ───
     this.map.addLayer({
-      id: LYR_INFRA_NUCLEAR_RING,
+      id: LYR_ENERGY_INFRA_NUCLEAR_RING,
       type: 'circle',
       source: SRC_INFRA,
       filter: ['==', ['get', 'type'], 'nuclear'],
@@ -3098,7 +3145,7 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_INFRA_HIGHLIGHT_GLOW,
+      id: LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
       type: 'circle',
       source: SRC_INFRA_HIGHLIGHT,
       paint: {
@@ -3109,7 +3156,7 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_INFRA_HIGHLIGHT_RING,
+      id: LYR_ENERGY_INFRA_HIGHLIGHT_RING,
       type: 'circle',
       source: SRC_INFRA_HIGHLIGHT,
       paint: {
@@ -3123,7 +3170,7 @@ export class DeckGLMap {
 
     // ─── Infrastructure: circles ───
     this.map.addLayer({
-      id: LYR_INFRA_CIRCLE,
+      id: LYR_ENERGY_INFRA_CIRCLE,
       type: 'circle',
       source: SRC_INFRA,
       paint: {
@@ -3141,7 +3188,7 @@ export class DeckGLMap {
 
     // ─── Infrastructure: labels (zoom > 9) ───
     this.map.addLayer({
-      id: LYR_INFRA_LABEL,
+      id: LYR_ENERGY_INFRA_LABEL,
       type: 'symbol',
       source: SRC_INFRA,
       minzoom: 9,
@@ -3165,9 +3212,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_HYDRAULIC_HALO,
+      id: LYR_HYDRO_BACKBONE_HALO,
       type: 'circle',
-      source: SRC_HYDRAULIC,
+      source: SRC_HYDRO_BACKBONE,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['+', 4, ['/', ['get', 'radius'], 2.2]],
@@ -3187,9 +3234,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_HYDRAULIC_SIGNAL_RING,
+      id: LYR_HYDRO_BACKBONE_SIGNAL_RING,
       type: 'circle',
-      source: SRC_HYDRAULIC,
+      source: SRC_HYDRO_BACKBONE,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['+', ['*', ['get', 'radius'], 0.88], ['*', ['get', 'signalRadiusBoost'], 0.62]],
@@ -3208,9 +3255,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_HYDRAULIC_CIRCLE,
+      id: LYR_HYDRO_BACKBONE_CIRCLE,
       type: 'circle',
-      source: SRC_HYDRAULIC,
+      source: SRC_HYDRO_BACKBONE,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['*', ['get', 'radius'], 0.75],
@@ -3225,9 +3272,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_HYDRAULIC_LABEL,
+      id: LYR_HYDRO_BACKBONE_LABEL,
       type: 'symbol',
-      source: SRC_HYDRAULIC,
+      source: SRC_HYDRO_BACKBONE,
       minzoom: 8,
       layout: {
         'text-field': ['get', 'name'],
@@ -3244,9 +3291,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_HALO,
+      id: LYR_WIND_TURBINE_HALO,
       type: 'circle',
-      source: SRC_EOLIEN,
+      source: SRC_WIND_TURBINES,
       filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
@@ -3261,9 +3308,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_PARK_HALO,
+      id: LYR_WIND_PARK_HALO,
       type: 'circle',
-      source: SRC_EOLIEN_PARKS,
+      source: SRC_WIND_PARKS,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
@@ -3278,9 +3325,9 @@ export class DeckGLMap {
 
     // ─── Éolien : cluster bubbles (zoom < 10) ───
     this.map.addLayer({
-      id: LYR_EOLIEN_CLUSTER,
+      id: LYR_WIND_CLUSTER,
       type: 'circle',
-      source: SRC_EOLIEN,
+      source: SRC_WIND_TURBINES,
       filter: ['has', 'point_count'],
       maxzoom: 8,
       paint: {
@@ -3303,9 +3350,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_CLUSTER_COUNT,
+      id: LYR_WIND_CLUSTER_COUNT,
       type: 'symbol',
-      source: SRC_EOLIEN,
+      source: SRC_WIND_TURBINES,
       filter: ['has', 'point_count'],
       maxzoom: 8,
       layout: {
@@ -3317,9 +3364,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_CIRCLE,
+      id: LYR_WIND_TURBINE_CIRCLE,
       type: 'circle',
-      source: SRC_EOLIEN,
+      source: SRC_WIND_TURBINES,
       filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
@@ -3335,9 +3382,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_PARK_CIRCLE,
+      id: LYR_WIND_PARK_CIRCLE,
       type: 'circle',
-      source: SRC_EOLIEN_PARKS,
+      source: SRC_WIND_PARKS,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['*', ['get', 'radius'], 0.78],
@@ -3352,9 +3399,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_LABEL,
+      id: LYR_WIND_TURBINE_LABEL,
       type: 'symbol',
-      source: SRC_EOLIEN,
+      source: SRC_WIND_TURBINES,
       filter: ['!', ['has', 'point_count']],
       minzoom: 8,
       layout: {
@@ -3372,9 +3419,9 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
-      id: LYR_EOLIEN_PARK_LABEL,
+      id: LYR_WIND_PARK_LABEL,
       type: 'symbol',
-      source: SRC_EOLIEN_PARKS,
+      source: SRC_WIND_PARKS,
       filter: ['==', ['get', 'kind'], 'offshore'],
       minzoom: 8,
       layout: {
@@ -3393,9 +3440,9 @@ export class DeckGLMap {
 
     // ─── Métropoles: halo de fond ───
     this.map.addLayer({
-      id: LYR_METROPOLES_GLOW,
+      id: LYR_METRO_LOAD_GLOW,
       type: 'circle',
-      source: SRC_METROPOLES,
+      source: SRC_METRO_LOAD,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['/', ['get', 'radius'], 1.6],
@@ -3410,9 +3457,9 @@ export class DeckGLMap {
 
     // ─── Métropoles: cercle principal ───
     this.map.addLayer({
-      id: LYR_METROPOLES_CIRCLE,
+      id: LYR_METRO_LOAD_CIRCLE,
       type: 'circle',
-      source: SRC_METROPOLES,
+      source: SRC_METRO_LOAD,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['/', ['get', 'radius'], 2.1],
@@ -3428,9 +3475,9 @@ export class DeckGLMap {
 
     // ─── Métropoles: labels (zoom > 7) ───
     this.map.addLayer({
-      id: LYR_METROPOLES_LABEL,
+      id: LYR_METRO_LOAD_LABEL,
       type: 'symbol',
-      source: SRC_METROPOLES,
+      source: SRC_METRO_LOAD,
       minzoom: 7,
       layout: {
         'text-field': ['concat', ['get', 'name'], '\n', ['get', 'mwLabel']],
@@ -5246,45 +5293,45 @@ export class DeckGLMap {
       this.hideEnrichedHoverPopup();
     };
 
-    this.map.on('mouseenter', LYR_INFRA_CIRCLE, () => {
+    this.map.on('mouseenter', LYR_ENERGY_INFRA_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_INFRA_CIRCLE, (e) => {
+    this.map.on('mousemove', LYR_ENERGY_INFRA_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildInfrastructureHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_INFRA_CIRCLE, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_ENERGY_INFRA_CIRCLE, hideEnrichedHover);
 
-    this.map.on('mouseenter', LYR_HYDRAULIC_CIRCLE, () => {
+    this.map.on('mouseenter', LYR_HYDRO_BACKBONE_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_HYDRAULIC_CIRCLE, (e) => {
+    this.map.on('mousemove', LYR_HYDRO_BACKBONE_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildHydraulicHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_HYDRAULIC_CIRCLE, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_HYDRO_BACKBONE_CIRCLE, hideEnrichedHover);
 
-    this.map.on('mouseenter', LYR_EOLIEN_CIRCLE, () => {
+    this.map.on('mouseenter', LYR_WIND_TURBINE_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_EOLIEN_CIRCLE, (e) => {
+    this.map.on('mousemove', LYR_WIND_TURBINE_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_EOLIEN_CIRCLE, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_WIND_TURBINE_CIRCLE, hideEnrichedHover);
 
-    this.map.on('mouseenter', LYR_EOLIEN_PARK_CIRCLE, () => {
+    this.map.on('mouseenter', LYR_WIND_PARK_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_EOLIEN_PARK_CIRCLE, (e) => {
+    this.map.on('mousemove', LYR_WIND_PARK_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_EOLIEN_PARK_CIRCLE, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_WIND_PARK_CIRCLE, hideEnrichedHover);
 
     this.map.on('mouseenter', LYR_GAS_TERMINALS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
@@ -5362,15 +5409,15 @@ export class DeckGLMap {
       this.gasFlowPopup = null;
     });
 
-    this.map.on('mouseenter', LYR_METROPOLES_CIRCLE, () => {
+    this.map.on('mouseenter', LYR_METRO_LOAD_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_METROPOLES_CIRCLE, (e) => {
+    this.map.on('mousemove', LYR_METRO_LOAD_CIRCLE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildMetropoleHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_METROPOLES_CIRCLE, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_METRO_LOAD_CIRCLE, hideEnrichedHover);
 
     // Symbol layers: écouter directement sur le layer + bbox élargie pour near-miss
     this.map.on('mouseenter', LYR_OIL_REFINERIES, () => {
@@ -5676,6 +5723,87 @@ export class DeckGLMap {
       this._lastHoveredDeptId = featureId;
     });
 
+    // ─── Fuel tension department interactions ───
+    this.map.on('mouseenter', LYR_FUEL_TENSION_FILL, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', LYR_FUEL_TENSION_FILL, () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+      this.fuelTensionHoverPopup?.remove();
+      this.clearFuelTensionHoverState();
+    });
+    this.map.on('mousemove', LYR_FUEL_TENSION_FILL, (e) => {
+      if (!this.map || !e.features || e.features.length === 0) return;
+
+      const feature = e.features[0];
+      const properties = feature.properties ?? {};
+      const code = String(properties.code ?? '');
+      const departmentName = String(properties.nom ?? properties.name ?? 'Département');
+      const tensionLevel = String(properties.tensionLevel ?? 'LOW');
+      const stationCount = Number(properties.stationCount ?? 0);
+      const anomalyShare = Number(properties.anomalyShare ?? 0);
+      const avgUpdateAgeMinutes = Number(properties.avgUpdateAgeMinutes ?? Number.NaN);
+      const deltaPrice7d = Number(properties.deltaPrice7d ?? Number.NaN);
+      const freshnessBadge = String(properties.freshnessBadge ?? 'QUASI-LIVE');
+      const lineColor = String(properties.lineColor ?? '#EF4444');
+
+      const deltaHtml = Number.isFinite(deltaPrice7d)
+        ? `${deltaPrice7d > 0 ? '+' : ''}${deltaPrice7d.toFixed(1)} cts/L`
+        : 'n.d.';
+      const freshnessHtml = Number.isFinite(avgUpdateAgeMinutes)
+        ? avgUpdateAgeMinutes < 60 ? `${Math.round(avgUpdateAgeMinutes)} min`
+          : avgUpdateAgeMinutes < 24 * 60 ? `${(avgUpdateAgeMinutes / 60).toFixed(1)} h`
+          : `${(avgUpdateAgeMinutes / (24 * 60)).toFixed(1)} j`
+        : 'n.d.';
+
+      const html = `
+        <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
+            <div>
+              <strong style="font-size:14px; color:#fff;">${departmentName}</strong>
+              <div style="font-size:11px; color:#9898a8;">Département ${code}</div>
+            </div>
+            <span style="font-size:10px; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; background:${lineColor};">${tensionLevel}</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+              <div style="font-size:10px; color:#9898a8;">Delta 7j</div>
+              <div style="font-size:12px; color:#fff; font-weight:700;">${deltaHtml}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+              <div style="font-size:10px; color:#9898a8;">Anomalies</div>
+              <div style="font-size:12px; color:#fff; font-weight:700;">${anomalyShare.toFixed(1)}%</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+              <div style="font-size:10px; color:#9898a8;">Stations</div>
+              <div style="font-size:12px; color:#fff; font-weight:700;">${stationCount}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+              <div style="font-size:10px; color:#9898a8;">Fraîcheur</div>
+              <div style="font-size:12px; color:#fff; font-weight:700;">${freshnessBadge} · ${freshnessHtml}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      if (!this.fuelTensionHoverPopup) {
+        this.fuelTensionHoverPopup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 16,
+          maxWidth: '340px',
+          className: 'dark-popup',
+        });
+      }
+      this.fuelTensionHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
+
+      if (this._lastHoveredFuelDeptId !== null && this._lastHoveredFuelDeptId !== code) {
+        this.map.setFeatureState({ source: SRC_FUEL_TENSION, id: this._lastHoveredFuelDeptId }, { hover: false });
+      }
+      this.map.setFeatureState({ source: SRC_FUEL_TENSION, id: code }, { hover: true });
+      this._lastHoveredFuelDeptId = code;
+    });
+
     // ─── Energy Region Interactions (tooltip on hover) ───
     const ECOWATT_SIG_COLORS: Record<string, string> = { green: '#34c759', orange: '#ff9500', red: '#ff3b30' };
     const ECOWATT_SIG_LABELS: Record<string, string> = { green: 'Consommation normale', orange: 'Système électrique tendu', red: 'Coupures ciblées possibles' };
@@ -5690,19 +5818,19 @@ export class DeckGLMap {
     const sectionLabel = (txt: string) =>
       `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:3px;">${txt}</div>`;
 
-    this.map.on('mouseenter', LYR_ENERGY_FILL, () => {
+    this.map.on('mouseenter', LYR_POWER_REGION_FILL, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'crosshair';
     });
-    this.map.on('mouseleave', LYR_ENERGY_FILL, () => {
+    this.map.on('mouseleave', LYR_POWER_REGION_FILL, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
       this.energyRegionPopup?.remove();
       this.energyRegionPopup = null;
     });
-    this.map.on('mousemove', LYR_ENERGY_FILL, (e) => {
+    this.map.on('mousemove', LYR_POWER_REGION_FILL, (e) => {
       if (!this.map || !e.features?.length) return;
       // Arc or gas feature takes priority over the region fill
       const overrideFeats = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_INTERCONN_HITAREA, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_GAS_PIR_MARKER, LYR_HYDRAULIC_CIRCLE],
+        layers: [LYR_INTERCONN_HITAREA, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_GAS_PIR_MARKER, LYR_HYDRO_BACKBONE_CIRCLE],
       });
       if (overrideFeats.length) {
         this.energyRegionPopup?.remove();
@@ -6934,6 +7062,14 @@ export class DeckGLMap {
     const sourceDate = String(properties.sourceDate ?? '');
     const hydroTrend = String(properties.hydroTrend ?? 'normal');
     const lastUpdate = String(properties.lastUpdate ?? '');
+    const signalSource = String(properties.signalSource ?? 'DERIVED_CONTEXT_ONLY');
+    const dataFreshness = String(properties.dataFreshness ?? 'unavailable');
+    const measuredSupportLevel = String(properties.measuredSupportLevel ?? 'none');
+    const observationTrend = String(properties.observationTrend ?? 'unavailable');
+    const observationTimestamp = String(properties.observationTimestamp ?? '');
+    const confidence = Number(properties.confidence ?? 0.25);
+    const measuredStationCount = Number(properties.measuredStationCount ?? 0);
+    const sourceDetail = String(properties.sourceDetail ?? '');
     const region = String(properties.region ?? '');
 
     const trendColors: Record<string, string> = {
@@ -6947,6 +7083,28 @@ export class DeckGLMap {
       normal: 'Normal',
       high: 'Haut',
       stress: 'Stress',
+    };
+    const sourceLabels: Record<string, string> = {
+      DERIVED_CONTEXT_ONLY: 'Dérivé contexte, pas de station Hub’Eau liée',
+      DERIVED_REAL_MEASURE_SUPPORT: 'Dérivé appuyé sur mesures hydrométriques Hub’Eau',
+    };
+    const freshnessLabels: Record<string, string> = {
+      fresh: 'fraîche',
+      aging: 'à confirmer',
+      stale: 'ancienne',
+      unavailable: 'indisponible',
+    };
+    const supportLabels: Record<string, string> = {
+      none: 'aucun appui',
+      partial: 'appui partiel',
+      strong: 'appui fort',
+    };
+    const observationTrendLabels: Record<string, string> = {
+      rising: 'hausse',
+      falling: 'baisse',
+      stable: 'stable',
+      mixed: 'mixte',
+      unavailable: 'n/d',
     };
     const trendColor = trendColors[hydroTrend] ?? '#A5B4FC';
 
@@ -6965,13 +7123,25 @@ export class DeckGLMap {
           ${capacityMw > 0 ? `<span style="color:#9898a8;">Capacité</span><strong>${capacityMw.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} MW</strong>` : ''}
           ${reservoirVolume > 0 ? `<span style="color:#9898a8;">Retenue</span><strong>${reservoirVolume.toLocaleString('fr-FR')} hm3</strong>` : ''}
           <span style="color:#9898a8;">Criticité</span><strong>${criticalityScore}/100</strong>
-          <span style="color:#9898a8;">Signal hydro</span><strong style="color:${trendColor};">${this.escapeHtml(trendLabels[hydroTrend] ?? hydroTrend)}</strong>
+          <span style="color:#9898a8;">Stress hydro</span><strong style="color:${trendColor};">${this.escapeHtml(trendLabels[hydroTrend] ?? hydroTrend)}</strong>
+          <span style="color:#9898a8;">Taxonomie</span><strong>${this.escapeHtml(sourceLabels[signalSource] ?? signalSource)}</strong>
+          <span style="color:#9898a8;">Appui mesuré</span><strong>${this.escapeHtml(supportLabels[measuredSupportLevel] ?? measuredSupportLevel)}</strong>
+          <span style="color:#9898a8;">Tendance obs.</span><strong>${this.escapeHtml(observationTrendLabels[observationTrend] ?? observationTrend)}</strong>
+          <span style="color:#9898a8;">Confiance</span><strong>${Math.round(clamp(confidence, 0, 1) * 100)}%</strong>
         </div>
         <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#a1a1aa;">
-          ${this.escapeHtml('Selection d’actifs hydrauliques critiques — couverture non exhaustive')}
+          ${this.escapeHtml(
+            measuredSupportLevel !== 'none'
+              ? `Stress hydro : ${trendLabels[hydroTrend] ?? hydroTrend} – dérivé appuyé sur mesures hydrométriques Hub’Eau.`
+              : `Stress hydro : ${trendLabels[hydroTrend] ?? hydroTrend} – dérivé contexte, pas de station Hub’Eau liée.`,
+          )}
           ${locationAccuracy ? `<div style="margin-top:4px;">Précision point : ${this.escapeHtml(locationAccuracy)}</div>` : ''}
           ${sourceDate ? `<div style="margin-top:4px;">Référence registre : ${this.escapeHtml(sourceDate)}</div>` : ''}
           ${lastUpdate ? `<div style="margin-top:4px;">Signal recalculé : ${this.escapeHtml(lastUpdate)}</div>` : ''}
+          <div style="margin-top:4px;">Fraîcheur mesures : ${this.escapeHtml(freshnessLabels[dataFreshness] ?? dataFreshness)}</div>
+          ${measuredStationCount > 0 ? `<div style="margin-top:4px;">Stations liées : ${measuredStationCount}</div>` : ''}
+          ${observationTimestamp ? `<div style="margin-top:4px;">Dernière observation : ${this.escapeHtml(observationTimestamp)}</div>` : ''}
+          ${sourceDetail ? `<div style="margin-top:4px;">Source : ${this.escapeHtml(sourceDetail)}</div>` : ''}
         </div>
       </div>
     `;
@@ -7170,6 +7340,9 @@ export class DeckGLMap {
           ${capacity > 0 ? `<span style="color:#9898a8;">Capacité</span><strong>${capacity.toLocaleString('fr-FR')} Mt/an</strong>` : ''}
           <span style="color:#9898a8;">Statut</span><strong style="color:${statusColor};">${this.escapeHtml(statusLabel)}</strong>
         </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#9898a8; line-height:1.45;">
+          Raffinerie – couche structurelle, signal mensuel agrégé (SDES). Pas de télémesure site par site.
+        </div>
       </div>
     `;
   }
@@ -7188,6 +7361,11 @@ export class DeckGLMap {
       <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
         <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(String(properties.name ?? 'Dépôt pétrolier'))}</div>
         <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${roleColor};">${this.escapeHtml(roleLabel)}</div>
+        <div style="font-size:11px; color:#9898a8; line-height:1.45;">
+          ${role === 'strategic'
+            ? 'Dépôt stratégique – élément structurel, suivi via indicateurs mensuels de stocks/flux.'
+            : 'Dépôt pétrolier – élément structurel, suivi via indicateurs mensuels de stocks/flux.'}
+        </div>
       </div>
     `;
   }
@@ -8314,7 +8492,7 @@ export class DeckGLMap {
           signal,
         };
       }
-      const src = this.map.getSource(SRC_ENERGY) as maplibregl.GeoJSONSource;
+      const src = this.map.getSource(SRC_POWER_REGIONS) as maplibregl.GeoJSONSource;
       src?.setData(geojson);
 
       // --- Interconnections (curved arcs + endpoint markers) ---
@@ -9372,6 +9550,83 @@ export class DeckGLMap {
     }
   }
   private _lastHoveredDeptId: string | null = null;
+
+  private clearFuelTensionHoverState(): void {
+    if (!this.map) return;
+    if (this._lastHoveredFuelDeptId !== null) {
+      this.map.setFeatureState(
+        { source: SRC_FUEL_TENSION, id: this._lastHoveredFuelDeptId },
+        { hover: false },
+      );
+      this._lastHoveredFuelDeptId = null;
+    }
+  }
+
+  async updateFuelTensionDepartments(dashboard: FuelTensionDashboard | null): Promise<void> {
+    if (!this.map) return;
+
+    const src = this.map.getSource(SRC_FUEL_TENSION) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+
+    if (!dashboard || dashboard.summaries.length === 0) {
+      src.setData(emptyFC());
+      this.clearFuelTensionHoverState();
+      this.fuelTensionHoverPopup?.remove();
+      return;
+    }
+
+    const summariesByCode = new Map(dashboard.summaries.map((summary) => [summary.departmentCode, summary]));
+
+    try {
+      const resp = await fetch('/data/departements.geojson');
+      if (!resp.ok) return;
+      const geojson = await resp.json() as GeoJSON.FeatureCollection;
+      geojson.features = geojson.features.filter((feature) => {
+        const code = String(feature.properties?.code ?? '');
+        return summariesByCode.has(code);
+      });
+
+      for (const feature of geojson.features) {
+        const code = String(feature.properties?.code ?? '');
+        const summary = summariesByCode.get(code);
+        if (!summary) continue;
+        const fillColor = getFuelTensionLevelColor(summary.tensionLevel);
+        const lineColor =
+          summary.tensionLevel === 'CRITICAL' ? '#FF4D4F' :
+          summary.tensionLevel === 'HIGH' ? '#FF5A5F' :
+          '#EF4444';
+        const lineWidth =
+          summary.tensionLevel === 'CRITICAL' ? 1.25 :
+          summary.tensionLevel === 'HIGH' ? 1.15 :
+          summary.tensionLevel === 'MEDIUM' ? 1.05 :
+          0.95;
+        const fillOpacity =
+          summary.tensionLevel === 'CRITICAL' ? 0.26 :
+          summary.tensionLevel === 'HIGH' ? 0.20 :
+          summary.tensionLevel === 'MEDIUM' ? 0.15 :
+          0.10;
+
+        feature.id = code;
+        feature.properties = {
+          ...feature.properties,
+          fillColor,
+          lineColor,
+          lineWidth,
+          fillOpacity,
+          tensionLevel: summary.tensionLevel,
+          anomalyShare: summary.anomalyShare,
+          stationCount: summary.stationCount,
+          avgUpdateAgeMinutes: summary.avgUpdateAgeMinutes,
+          deltaPrice7d: summary.deltaPrice7d,
+          freshnessBadge: summary.freshness.badge,
+        };
+      }
+
+      src.setData(geojson);
+    } catch (error) {
+      console.warn('[DeckGLMap] Failed to update fuel tension departments', error);
+    }
+  }
 
   // ─── Hospitals Layer (FINESS) ───
 
@@ -10553,6 +10808,9 @@ export class DeckGLMap {
       type: 'FeatureCollection',
       features: assets.map((asset) => {
         const radius = clamp(4.5 + asset.criticality_score * 0.08, 5, 14);
+        const observationTimestamp = asset.signals.observationTimestamp
+          ? new Date(asset.signals.observationTimestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+          : '';
         return {
           type: 'Feature' as const,
           geometry: {
@@ -10592,6 +10850,14 @@ export class DeckGLMap {
             criticalityScore: asset.criticality_score,
             hydroTrend: asset.signals.hydro_trend,
             lastUpdate: asset.signals.last_update,
+            signalSource: asset.signals.signalSource,
+            dataFreshness: asset.signals.dataFreshness,
+            measuredSupportLevel: asset.signals.measuredSupportLevel,
+            observationTrend: asset.signals.hydroTrend,
+            observationTimestamp,
+            confidence: asset.signals.confidence,
+            measuredStationCount: asset.signals.measuredStationCount,
+            sourceDetail: asset.signals.sourceDetail ?? '',
             color: HYDRAULIC_COLORS[asset.type] ?? '#3B82F6',
             radius,
           },
@@ -10599,7 +10865,7 @@ export class DeckGLMap {
       }),
     };
 
-    const src = this.map.getSource(SRC_HYDRAULIC) as maplibregl.GeoJSONSource | undefined;
+    const src = this.map.getSource(SRC_HYDRO_BACKBONE) as maplibregl.GeoJSONSource | undefined;
     src?.setData(fc);
   }
 
@@ -10610,8 +10876,8 @@ export class DeckGLMap {
     const standaloneParks = parks.filter((park) => park.kind === 'offshore');
     const clusteredFc = buildEolienLayerFeatureCollection(live, clusteredPoints);
     const parksFc = buildEolienLayerFeatureCollection(live, standaloneParks);
-    const src = this.map.getSource(SRC_EOLIEN) as maplibregl.GeoJSONSource | undefined;
-    const parksSrc = this.map.getSource(SRC_EOLIEN_PARKS) as maplibregl.GeoJSONSource | undefined;
+    const src = this.map.getSource(SRC_WIND_TURBINES) as maplibregl.GeoJSONSource | undefined;
+    const parksSrc = this.map.getSource(SRC_WIND_PARKS) as maplibregl.GeoJSONSource | undefined;
     src?.setData(clusteredFc);
     parksSrc?.setData(parksFc);
   }
@@ -10655,7 +10921,7 @@ export class DeckGLMap {
       }),
     };
 
-    const src = this.map.getSource(SRC_METROPOLES) as maplibregl.GeoJSONSource;
+    const src = this.map.getSource(SRC_METRO_LOAD) as maplibregl.GeoJSONSource;
     src?.setData(fc);
   }
 
@@ -11294,14 +11560,14 @@ export class DeckGLMap {
     this.setVis(LYR_SEL_GLOW, vis(layers.news));
     this.setVis(LYR_SEL_RING, vis(layers.news));
     this.setVis(LYR_GLOW, vis(layers.alerts && layers.news)); // Glow only if both alerts AND news
-    this.setVis(LYR_ENERGY_FILL, vis(layers.energy));
-    this.setVis(LYR_ENERGY_LINE, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_ARC, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_ARC_GLOW, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_HITAREA, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_LINE, vis(layers.energy));
-    this.setVis(LYR_INTERCONN_LABEL, vis(layers.energy));
+    this.setVis(LYR_POWER_REGION_FILL, vis(layers.powerGrid));
+    this.setVis(LYR_POWER_REGION_LINE, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_ARC, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_ARC_GLOW, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_HITAREA, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_LINE, vis(layers.powerGrid));
+    this.setVis(LYR_INTERCONN_LABEL, vis(layers.powerGrid));
     this.setVis(LYR_WEATHER_FILL, vis(layers.environmental));
     this.setVis(LYR_WEATHER_LINE, vis(layers.environmental));
     this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
@@ -11325,34 +11591,34 @@ export class DeckGLMap {
     this.setVis(LYR_FIRES_HIGHLIGHT, vis(layers.fires ?? false));
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
-    this.setVis(LYR_INFRA_VITAL_HALO, vis(layers.infrastructure));
-    this.setVis(LYR_INFRA_NUCLEAR_RING, vis(layers.nuclear ?? false));
-    this.setVis(LYR_INFRA_HIGHLIGHT_GLOW, vis(layers.infrastructure || (layers.nuclear ?? false)));
-    this.setVis(LYR_INFRA_HIGHLIGHT_RING, vis(layers.infrastructure || (layers.nuclear ?? false)));
-    this.setVis(LYR_INFRA_CIRCLE, vis(layers.infrastructure || (layers.nuclear ?? false)));
-    this.setVis(LYR_INFRA_LABEL, vis(layers.infrastructure || (layers.nuclear ?? false)));
-    this.setVis(LYR_HYDRAULIC_HALO, vis(layers.hydraulic ?? false));
-    this.setVis(LYR_HYDRAULIC_SIGNAL_RING, vis(layers.hydraulic ?? false));
-    this.setVis(LYR_HYDRAULIC_CIRCLE, vis(layers.hydraulic ?? false));
-    this.setVis(LYR_HYDRAULIC_LABEL, vis(layers.hydraulic ?? false));
-    this.setVis(LYR_EOLIEN_CLUSTER,        vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_CLUSTER_COUNT,  vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_HALO,           vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_CIRCLE,         vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_LABEL,          vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_PARK_HALO,      vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_PARK_CIRCLE,    vis(layers.eolien ?? false));
-    this.setVis(LYR_EOLIEN_PARK_LABEL,     vis(layers.eolien ?? false));
+    this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, vis(layers.criticalEnergyInfra));
+    this.setVis(LYR_ENERGY_INFRA_NUCLEAR_RING, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_GLOW, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
+    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
+    this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
+    this.setVis(LYR_ENERGY_INFRA_LABEL, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
+    this.setVis(LYR_HYDRO_BACKBONE_HALO, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_HYDRO_BACKBONE_SIGNAL_RING, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_HYDRO_BACKBONE_CIRCLE, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_HYDRO_BACKBONE_LABEL, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_WIND_CLUSTER,        vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_CLUSTER_COUNT,  vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_TURBINE_HALO,           vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_TURBINE_CIRCLE,         vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_TURBINE_LABEL,          vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_PARK_HALO,      vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_PARK_CIRCLE,    vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_PARK_LABEL,     vis(layers.windMonitor ?? false));
 
     if (this.map) {
       try {
-        if (this.map.getLayer(LYR_INFRA_CIRCLE) && this.map.getLayer(LYR_INFRA_LABEL)) {
-          if (layers.infrastructure) {
-            this.map.setFilter(LYR_INFRA_CIRCLE, ['!=', ['get', 'type'], 'nuclear']);
-            this.map.setFilter(LYR_INFRA_LABEL, ['!=', ['get', 'type'], 'nuclear']);
-          } else if (layers.nuclear) {
-            this.map.setFilter(LYR_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
-            this.map.setFilter(LYR_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);
+        if (this.map.getLayer(LYR_ENERGY_INFRA_CIRCLE) && this.map.getLayer(LYR_ENERGY_INFRA_LABEL)) {
+          if (layers.criticalEnergyInfra) {
+            this.map.setFilter(LYR_ENERGY_INFRA_CIRCLE, ['!=', ['get', 'type'], 'nuclear']);
+            this.map.setFilter(LYR_ENERGY_INFRA_LABEL, ['!=', ['get', 'type'], 'nuclear']);
+          } else if (layers.nuclearFleet) {
+            this.map.setFilter(LYR_ENERGY_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
+            this.map.setFilter(LYR_ENERGY_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);
           }
         }
       } catch {
@@ -11360,7 +11626,7 @@ export class DeckGLMap {
       }
     }
     // Gas layer: réseau + organes vitaux
-    const gasVis = vis(layers.gas ?? false);
+    const gasVis = vis(layers.gasNetwork ?? false);
     this.setVis(LYR_GAS_NETWORK_GRT, gasVis);
     this.setVis(LYR_GAS_NETWORK_TEREGA, gasVis);
     this.setVis(LYR_GAS_TERMINALS, gasVis);
@@ -11373,7 +11639,7 @@ export class DeckGLMap {
     this.setVis(LYR_GAS_PIR_MARKER, gasVis);
     this.setVis(LYR_GAS_PIR_LABEL, gasVis);
     // Oil layer (refineries, depots, pipelines, flows)
-    const oilVis = vis(layers.oil ?? false);
+    const oilVis = vis(layers.oilNetwork ?? false);
     this.setVis(LYR_OIL_PIPELINES_GLOW, oilVis);
     this.setVis(LYR_OIL_PIPELINES, oilVis);
     this.setVis(LYR_OIL_REFINERIES_GLOW, oilVis);
@@ -11392,6 +11658,8 @@ export class DeckGLMap {
     this.setVis(LYR_OIL_FLOW_CHEVRONS, oilVis);
     this.setVis(LYR_OIL_FLOW_MARKER, oilVis);
     this.setVis(LYR_OIL_FLOW_LABEL, oilVis);
+    this.setVis(LYR_FUEL_TENSION_FILL, oilVis);
+    this.setVis(LYR_FUEL_TENSION_LINE, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
     const roadVis = vis(layers.trafficRoad);
     this.setVis(LYR_TRAFFIC_CLUSTER, roadVis);
@@ -11408,9 +11676,9 @@ export class DeckGLMap {
     this.setVis(LYR_RAIL_STATION_LABEL, railVis);
     this.setVis(LYR_TRAIN_ROUTE,        railVis);
     this.setVis(LYR_TRAIN_STATIONS,     railVis);
-    this.setVis(LYR_METROPOLES_GLOW, vis(layers.metropoles));
-    this.setVis(LYR_METROPOLES_CIRCLE, vis(layers.metropoles));
-    this.setVis(LYR_METROPOLES_LABEL, vis(layers.metropoles));
+    this.setVis(LYR_METRO_LOAD_GLOW, vis(layers.metroLoad));
+    this.setVis(LYR_METRO_LOAD_CIRCLE, vis(layers.metroLoad));
+    this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
 
     // Military layers
     this.setVis(LYR_MILITARY_ZONES_FILL, vis(layers.military));

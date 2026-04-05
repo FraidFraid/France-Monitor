@@ -5,8 +5,9 @@
  */
 
 import * as d3 from 'd3';
-import type { NewsItem } from '../types/index.ts';
+import type { FuelTensionDashboard, NewsItem } from '../types/index.ts';
 import type { GeoPermissibleObjects } from 'd3';
+import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 
 // Couleurs par niveau de menace (identiques à DeckGLMap)
 const LEVEL_COLORS: Record<string, string> = {
@@ -23,6 +24,7 @@ export class Map {
     private projection: d3.GeoProjection | null = null;
     private newsItems: NewsItem[] = [];
     private selectedId: string | null = null;
+    private currentFuelTension: FuelTensionDashboard | null = null;
     private onItemClick: ((item: NewsItem) => void) | null = null;
     private onItemHover: ((item: NewsItem | null, x: number, y: number) => void) | null = null;
 
@@ -72,6 +74,7 @@ export class Map {
                     .attr('fill', '#1a1a2e')
                     .attr('stroke', '#2a2a3e')
                     .attr('stroke-width', '0.8');
+                this.renderFuelTensionOverlay();
             } else {
                 this.drawFrancePlaceholder(gMap, pathGen, width, height);
             }
@@ -100,6 +103,11 @@ export class Map {
     updateNews(items: NewsItem[]): void {
         this.newsItems = items.filter((i) => i.lat != null && i.lon != null);
         this.renderPoints();
+    }
+
+    updateFuelTension(dashboard: FuelTensionDashboard | null): void {
+        this.currentFuelTension = dashboard;
+        this.renderFuelTensionOverlay();
     }
 
     selectItem(item: NewsItem | null): void {
@@ -189,6 +197,35 @@ export class Map {
 
         // Exit
         circles.exit().remove();
+    }
+
+    private renderFuelTensionOverlay(): void {
+        if (!this.svg) return;
+
+        const summaries = this.currentFuelTension?.summaries ?? [];
+        const summaryByCode = new globalThis.Map(summaries.map((summary) => [summary.departmentCode, summary]));
+
+        this.svg
+            .selectAll<SVGPathElement, GeoJSON.Feature>('.dept')
+            .attr('fill', (d) => {
+                const code = String(d.properties?.code ?? '');
+                const summary = summaryByCode.get(code);
+                return summary ? getFuelTensionLevelColor(summary.tensionLevel) : '#1a1a2e';
+            })
+            .attr('fill-opacity', (d) => {
+                const code = String(d.properties?.code ?? '');
+                return summaryByCode.has(code) ? '0.22' : '1';
+            })
+            .attr('stroke', (d) => {
+                const code = String(d.properties?.code ?? '');
+                return summaryByCode.has(code) ? '#ef4444' : '#2a2a3e';
+            })
+            .attr('stroke-width', (d) => {
+                const code = String(d.properties?.code ?? '');
+                const summary = summaryByCode.get(code);
+                if (!summary) return '0.8';
+                return summary.tensionLevel === 'CRITICAL' ? '1.1' : summary.tensionLevel === 'HIGH' ? '1.0' : '0.9';
+            });
     }
 
     /** Placeholder quand GeoJSON absent — rectangle bleu pour la France */

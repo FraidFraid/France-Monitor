@@ -64,6 +64,7 @@ import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } f
 import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { buildHydraulicBackboneAssets } from './services/hydraulic-backbone.ts';
+import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
 import { fetchFiresData } from './services/fires.ts';
@@ -86,13 +87,14 @@ import type { HealthBarometerMetrics } from './services/health-barometer.ts';
 import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
+import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
-import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext } from './services/isnr-synthesis.ts';
+import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 
@@ -126,7 +128,7 @@ function summarizeNuclearPlantForMap(
   );
 
   if (activeUnits.length === 0) {
-    return {
+  return {
       availableMW: installedCapacityMW,
       availabilityRatio: installedCapacityMW > 0 ? 1 : 0,
       status: 'active',
@@ -148,6 +150,31 @@ function summarizeNuclearPlantForMap(
     availabilityRatio,
     status: 'maintenance',
     notes: impactedUnits ? `Tranches impactées : ${impactedUnits}` : undefined,
+  };
+}
+
+function buildOilBriefingContext(
+  oilData: OilDashboard | null,
+  fuelTension: FuelTensionDashboard | null,
+): OilBriefingContext | undefined {
+  if (!oilData && !fuelTension) return undefined;
+
+  const topDepartments = fuelTension?.national.topDepartments
+    ?.slice(0, 3)
+    .map((summary) => `${summary.departmentName} (${summary.tensionLevel})`)
+    ?? [];
+
+  return {
+    structuralStatus: oilData?.meta.status ?? 'unknown',
+    structuralScore: oilData?.meta.vigilanceScore ?? null,
+    nationalStocksDays: oilData?.stocks.nationalStocksDays ?? null,
+    monthlyRoadFuelYoYPct: oilData?.deliveries?.[0]?.roadFuelYoYPct ?? null,
+    fuelTensionCoverage: fuelTension?.coverageLabel ?? null,
+    fuelTensionLevel: fuelTension?.national.topDepartments?.[0]?.tensionLevel ?? null,
+    fuelTensionAnomalyShare: fuelTension?.national.anomalyShare ?? null,
+    fuelTensionAvgUpdateAgeMinutes: fuelTension?.national.avgUpdateAgeMinutes ?? null,
+    fuelTensionTopDepartments: topDepartments,
+    fuelTensionStationCount: fuelTension?.national.stationCount ?? null,
   };
 }
 
@@ -192,10 +219,10 @@ const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
   news: false,
   alerts: true,
-  energyGroup: false,
-  energy: false,
-  hydraulic: false,
-  eolien: false,
+  energySystems: false,
+  powerGrid: false,
+  hydroBackbone: false,
+  windMonitor: false,
   health: false,
   healthOscour: false,
   healthApl: false,
@@ -203,13 +230,13 @@ const DEFAULT_LAYERS: MapLayers = {
   environmentGroup: false,
   environmental: false,
   fires: false,
-  infrastructure: false,
+  criticalEnergyInfra: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,
   trafficAir: false,
   trafficRail: false,
-  metropoles: false,
+  metroLoad: false,
   sovereignty: false,
   military: false,
   subseaCables: false,
@@ -220,12 +247,36 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   stability: false,
   cyber: false,
-  gas: false,
-  oil: false,
-  nuclear: false,
+  gasNetwork: false,
+  oilNetwork: false,
+  nuclearFleet: false,
   dayNight: false,
   elus: false,
 };
+
+const ENERGY_SYSTEM_LAYER_KEYS: Array<
+  'powerGrid' |
+  'hydroBackbone' |
+  'windMonitor' |
+  'gasNetwork' |
+  'oilNetwork' |
+  'criticalEnergyInfra' |
+  'metroLoad' |
+  'nuclearFleet'
+> = [
+  'powerGrid',
+  'hydroBackbone',
+  'windMonitor',
+  'gasNetwork',
+  'oilNetwork',
+  'criticalEnergyInfra',
+  'metroLoad',
+  'nuclearFleet',
+];
+
+function hasActiveEnergySystems(layers: Pick<MapLayers, typeof ENERGY_SYSTEM_LAYER_KEYS[number] | 'energySystems'>): boolean {
+  return ENERGY_SYSTEM_LAYER_KEYS.some((key) => layers[key]);
+}
 
 const HYDRAULIC_SIGNAL_POLL_MS = 10 * 60_000;
 const EOLIEN_SIGNAL_POLL_MS = 5 * 60_000;
@@ -491,8 +542,8 @@ const CYBER_LEGEND: LegendCategory = {
 };
 
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
-  id: 'energy',
-  title: 'Énergie — Écowatt (Électricité)',
+  id: 'powerGrid',
+  title: 'Électricité — Écowatt',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
@@ -518,8 +569,8 @@ const ENERGY_ECOWATT_LEGEND: LegendCategory = {
 };
 
 const INFRASTRUCTURE_LEGEND: LegendCategory = {
-  id: 'infrastructure',
-  title: 'Infras Vitales',
+  id: 'criticalEnergyInfra',
+  title: 'Infrastructures critiques énergie',
   type: 'categorical',
   columns: 2,
   splitIndex: 4,
@@ -546,7 +597,7 @@ const INFRASTRUCTURE_LEGEND: LegendCategory = {
 };
 
 const HYDRAULIC_LEGEND: LegendCategory = {
-  id: 'hydraulic',
+  id: 'hydroBackbone',
   title: 'Backbone énergétique — Hydraulique',
   type: 'categorical',
   columns: 2,
@@ -561,19 +612,20 @@ const HYDRAULIC_LEGEND: LegendCategory = {
     { id: 'hydro-stress', label: 'Signal stress', color: '#EF4444', shape: 'ring' },
   ],
   source: {
-    label: 'Sélection consolidée DREAL/Ministère + EDF + enrichissement géospatial',
+    label: 'Sélection consolidée + Hub’Eau hydrométrie en appui',
   },
   refresh: {
-    label: 'Structure statique · signaux auto-recalculés toutes les 10 min (Écowatt / Vigicrues / vigilance météo)'
+    label: 'Structure statique · score dérivé recalculé ~10 min avec appui Hub’Eau si disponible'
   },
   notes: [
     'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
     'STEP, barrages > 50 MW, grands réservoirs et actifs insulaires structurants uniquement.',
+    'Stress hydro-énergétique estimé à partir de signaux hydrométriques Hub’Eau + contexte énergie.',
   ],
 };
 
 const EOLIEN_LEGEND: LegendCategory = {
-  id: 'eolien',
+  id: 'windMonitor',
   title: 'Veille Éolienne',
   type: 'categorical',
   columns: 2,
@@ -595,13 +647,12 @@ const EOLIEN_LEGEND: LegendCategory = {
   notes: [
     'Production nationale live via eco2mix.',
     'Les parcs servent de fond OSINT cartographique, pas de télémesure parc-à-parc.',
-    'Les points sont agrégés en clusters jusqu’au zoom 7 et éclatent au zoom 8.',
   ],
 };
 
 const METROPOLES_ELECTRIC_LEGEND: LegendCategory = {
-  id: 'metropoles',
-  title: 'Métropoles électriques',
+  id: 'metroLoad',
+  title: 'Charge métropolitaine',
   type: 'categorical',
   items: [
     { id: 'metro-low', label: 'Consommation relative faible', color: '#34C759', shape: 'circle' },
@@ -618,7 +669,7 @@ const METROPOLES_ELECTRIC_LEGEND: LegendCategory = {
 };
 
 const GAS_LEGEND: LegendCategory = {
-  id: 'gas',
+  id: 'gasNetwork',
   title: 'Réseau Gaz',
   type: 'categorical',
   columns: 2,
@@ -649,8 +700,8 @@ const GAS_LEGEND: LegendCategory = {
 };
 
 const OIL_LEGEND: LegendCategory = {
-  id: 'oil',
-  title: 'Réseau Pétrole',
+  id: 'oilNetwork',
+  title: 'Pétrole – Réseau & stocks',
   type: 'categorical',
   columns: 2,
   splitIndex: 5,
@@ -671,10 +722,10 @@ const OIL_LEGEND: LegendCategory = {
     { id: 'oil-export',            label: 'Flux export',                 color: '#F59E0B', icon: '→', iconSize: 18 },
   ],
   source: {
-    label: 'Stocks pétroliers / tracés et points consolidés',
+    label: 'SDES (Chiffres clés de l’énergie 2025, données 2024) + séries mensuelles produits pétroliers data.gouv',
   },
   refresh: {
-    label: '~15 min pour l’état, tracés majoritairement statiques'
+    label: 'HYBRID / MONTHLY / STRUCTURAL — pas de télémesure temps réel du raffinage ou du réseau'
   },
   notes: [
     'Qualité des données : chargement en cours',
@@ -761,7 +812,7 @@ function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory
 }
 
 const NUCLEAR_LEGEND: LegendCategory = {
-  id: 'nuclear',
+  id: 'nuclearFleet',
   title: 'Nucléaire — Indisponibilités RTE',
   items: [
     { id: 'nuc-available',  label: 'Disponible',          color: '#2ECC71', shape: 'circle' },
@@ -842,75 +893,75 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
   },
   // ─── Energy Group ───
   {
-    id: 'energyGroup',
-    groupId: 'energy',
+    id: 'energySystems',
+    groupId: 'energySystems',
     role: 'groupMaster',
     dependsOnGroup: false,
-    label: 'Énergie',
+    label: 'Systèmes énergétiques',
   },
   {
-    id: 'energy',
-    groupId: 'energy',
+    id: 'powerGrid',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Électricité / Écowatt',
+    label: 'Réseau électrique / Écowatt',
     legend: ENERGY_ECOWATT_LEGEND,
   },
   {
-    id: 'hydraulic',
-    groupId: 'energy',
+    id: 'nuclearFleet',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Backbone énergétique — Hydraulique',
-    legend: HYDRAULIC_LEGEND,
+    label: 'Parc nucléaire',
+    legend: NUCLEAR_LEGEND,
   },
   {
-    id: 'eolien',
-    groupId: 'energy',
-    role: 'child',
-    dependsOnGroup: true,
-    label: 'Veille Éolienne',
-    legend: EOLIEN_LEGEND,
-  },
-  {
-    id: 'gas',
-    groupId: 'energy',
+    id: 'gasNetwork',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
     label: 'Réseau Gaz',
     legend: GAS_LEGEND,
   },
   {
-    id: 'oil',
-    groupId: 'energy',
+    id: 'hydroBackbone',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Réseau Pétrole',
+    label: 'Backbone hydraulique',
+    legend: HYDRAULIC_LEGEND,
+  },
+  {
+    id: 'oilNetwork',
+    groupId: 'energySystems',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Pétrole – Réseau & stocks',
     legend: OIL_LEGEND,
   },
   {
-    id: 'infrastructure',
-    groupId: 'energy',
+    id: 'windMonitor',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Infras Vitales',
+    label: 'Veille Éolienne',
+    legend: EOLIEN_LEGEND,
+  },
+  {
+    id: 'criticalEnergyInfra',
+    groupId: 'energySystems',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Infra critiques énergie',
     legend: INFRASTRUCTURE_LEGEND,
   },
   {
-    id: 'metropoles',
-    groupId: 'energy',
-    role: 'standalone',
-    dependsOnGroup: false,
-    label: 'Métropoles électriques',
-    legend: METROPOLES_ELECTRIC_LEGEND,
-  },
-  {
-    id: 'nuclear',
-    groupId: 'energy',
+    id: 'metroLoad',
+    groupId: 'energySystems',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Nucléaire (RTE)',
-    legend: NUCLEAR_LEGEND,
+    label: 'Charge métropolitaine',
+    legend: METROPOLES_ELECTRIC_LEGEND,
   },
   // ─── Health Group ───
   {
@@ -1079,6 +1130,7 @@ export class App {
   private currentGasData: import('./types').GasNetworkState | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
+  private currentFuelTensionData: FuelTensionDashboard | null = null;
   private currentNuclearState: NuclearState | null = null;
   private nuclearPanel: NuclearPanel | null = null;
   private dayNightPanel: DayNightPanel | null = null;
@@ -1112,6 +1164,7 @@ export class App {
   private currentEcowattResponse: EcowattResponse | null = null;
   private currentEcowattUsesFallback = false;
   private currentHydraulicAssets: HydraulicBackboneAsset[] = [];
+  private currentHydraulicHydrometry: HydraulicHydrometrySnapshot | null = null;
   private currentEolienLive: EolienLive | null = null;
   private currentEolienPoints: EolienParkSummary[] = [];
   private currentEolienParks: EolienParkSummary[] = [];
@@ -1131,6 +1184,7 @@ export class App {
   private _intervalShips: ReturnType<typeof setInterval> | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
   private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
+  private _intervalOil: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: ReturnType<typeof setInterval> | null = null;
   private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
@@ -1145,6 +1199,7 @@ export class App {
     if (this._intervalShips !== null) { clearInterval(this._intervalShips); this._intervalShips = null; }
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
     if (this._intervalNuclear !== null) { clearInterval(this._intervalNuclear); this._intervalNuclear = null; }
+    if (this._intervalOil !== null) { clearInterval(this._intervalOil); this._intervalOil = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
     if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
@@ -1286,8 +1341,7 @@ export class App {
 
     const oilNotes = this.currentOilData
       ? [
-          `Dashboard pétrole : SDES/Insee/UFIP ${Object.values(this.currentOilData.sourceStatus).every((s) => s === 'ok') ? 'TEMPS RÉEL' : 'CACHE FIGÉ'}`,
-          'Pipelines, dépôts et raffineries : fond carto statique consolidé',
+          'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
           'Arcs : projection OSINT à partir des parts d’origine, pas du port-à-port mesuré',
         ]
       : [
@@ -1302,9 +1356,9 @@ export class App {
     const hydraulicNotes = this.currentHydraulicAssets.length > 0
       ? [
           `Couche chargée : ${this.currentHydraulicAssets.length} actifs critiques sélectionnés`,
-          'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
-          'Signaux auto-recalculés toutes les 10 minutes quand la couche est active',
-          'Signaux déduits de la pression hydro-régionale, des crues et des alertes pluie-inondation',
+          `Hub’Eau hydrométrie : ${this.currentHydraulicHydrometry?.detail ?? 'appui en chargement'}`,
+          `Fraîcheur mesures : ${this.currentHydraulicHydrometry?.maxObservationAgeMinutes != null ? `${this.currentHydraulicHydrometry.maxObservationAgeMinutes} min max` : 'non disponible'}`,
+          'Limite : pas de télémesure EDF barrage par barrage.',
         ]
       : [
           'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
@@ -1327,11 +1381,13 @@ export class App {
         ];
 
     this.mapLegend.addCategory(cloneLegend(ENERGY_ECOWATT_LEGEND, { notes: electricityNotes }));
-    this.mapLegend.addCategory(cloneLegend(HYDRAULIC_LEGEND, { notes: hydraulicNotes }));
-    this.mapLegend.addCategory(cloneLegend(EOLIEN_LEGEND, { notes: eolienNotes }));
+    this.mapLegend.addCategory(NUCLEAR_LEGEND);
     this.mapLegend.addCategory(cloneLegend(GAS_LEGEND, { notes: gasNotes }));
+    this.mapLegend.addCategory(cloneLegend(HYDRAULIC_LEGEND, { notes: hydraulicNotes }));
     this.mapLegend.addCategory(cloneLegend(OIL_LEGEND, { notes: oilNotes }));
+    this.mapLegend.addCategory(cloneLegend(EOLIEN_LEGEND, { notes: eolienNotes }));
     this.mapLegend.addCategory(cloneLegend(INFRASTRUCTURE_LEGEND, { notes: infraNotes }));
+    this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
   }
 
   constructor(container: HTMLElement) {
@@ -1349,7 +1405,7 @@ export class App {
       // Back-compat: old shared links used `traffic` for road incidents.
       if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
       merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir || (merged.trafficRail ?? false);
-      merged.energyGroup = merged.energy || merged.hydraulic || merged.eolien || merged.gas || merged.oil || merged.infrastructure || merged.metropoles || (merged.nuclear ?? false);
+      merged.energySystems = hasActiveEnergySystems(merged);
       merged.environmentGroup = merged.environmental || merged.fires || (merged.dayNight ?? false);
       merged.sovereignty = merged.military || merged.subseaCables || merged.cyber;
       merged.outages = merged.outagesElec || merged.outagesTelecom || merged.outagesInternet || merged.outagesCloud || merged.outages;
@@ -1503,6 +1559,7 @@ export class App {
     // Start finance polling
     this.startFinancePolling();
     this.startCommodityPolling();
+    this.startOilPolling();
     // Start civilian air traffic polling (free-tier friendly cadence)
     this.startAirTrafficPolling();
     this.startHealthPolling();
@@ -1778,15 +1835,18 @@ export class App {
 
     this.energyPanel = new EnergyPanel(floatContainer);
     this.energyPanel.setOnClose(() => {
-      this.activeLayers.energy = false;
+      this.activeLayers.powerGrid = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.layerPanel?.updateLayers(this.activeLayers);
+      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
       this.layoutEnergyFloatingPanels();
     });
     this.energyPanel.mount();
 
     this.hydraulicPanel = new HydraulicPanel(floatContainer);
     this.hydraulicPanel.setOnClose(() => {
-      this.activeLayers.hydraulic = false;
+      this.activeLayers.hydroBackbone = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.layerPanel?.updateLayers(this.activeLayers);
       this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
       this.layoutEnergyFloatingPanels();
@@ -1798,7 +1858,8 @@ export class App {
 
     this.eolienPanel = new EolienPanel(floatContainer);
     this.eolienPanel.setOnClose(() => {
-      this.activeLayers.eolien = false;
+      this.activeLayers.windMonitor = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.layerPanel?.updateLayers(this.activeLayers);
       this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
       this.layoutEnergyFloatingPanels();
@@ -1857,6 +1918,7 @@ export class App {
         .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
 
       const nuclearBriefing = buildNuclearBriefingContext(this.currentNuclearState);
+      const oilBriefing = buildOilBriefingContext(this.currentOilData, this.currentFuelTensionData);
 
       // Build eolien briefing context from current live snapshot
       const eolienBriefing: EolienBriefingContext | undefined = this.currentEolienLive
@@ -1876,6 +1938,7 @@ export class App {
         isnrDepts,
         nuclearBriefing,
         eolienBriefing,
+        oilBriefing,
       ).catch(() => null);
       this.networkBarometerWidget?.updateBriefing(synthesis);
     };
@@ -2010,8 +2073,10 @@ export class App {
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
     this.gasPanel.setOnClose(() => {
-      this.activeLayers.gas = false;
+      this.activeLayers.gasNetwork = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.layerPanel?.updateLayers(this.activeLayers);
+      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
       this.layoutEnergyFloatingPanels();
     });
     this.gasPanel.mount();
@@ -2019,8 +2084,13 @@ export class App {
     // Oil Panel (Vigilance Pétrole - Raffineries, Stocks, Flux)
     this.oilPanel = new OilPanel(floatContainer);
     this.oilPanel.setOnClose(() => {
-      this.activeLayers.oil = false;
+      this.activeLayers.oilNetwork = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.layerPanel?.updateLayers(this.activeLayers);
+      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+    });
+    this.oilPanel.setOnFuelTensionMapVisibilityChange((visible) => {
+      void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
     });
     this.oilPanel.mount();
 
@@ -2036,7 +2106,8 @@ export class App {
       this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
     });
     this.nuclearPanel.setOnClose(() => {
-      this.activeLayers.nuclear = false;
+      this.activeLayers.nuclearFleet = false;
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
       this.mapContainer?.setHighlightedInfrastructurePoint(null);
       this.layerPanel?.updateLayers(this.activeLayers);
       this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
@@ -2293,16 +2364,8 @@ export class App {
     if (key === 'military' || key === 'subseaCables' || key === 'cyber') {
       this.activeLayers.sovereignty = this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
     }
-    if (key === 'energy' || key === 'hydraulic' || key === 'eolien' || key === 'gas' || key === 'oil' || key === 'infrastructure' || key === 'metropoles' || key === 'nuclear') {
-      this.activeLayers.energyGroup =
-        this.activeLayers.energy ||
-        this.activeLayers.hydraulic ||
-        this.activeLayers.eolien ||
-        this.activeLayers.gas ||
-        this.activeLayers.oil ||
-        this.activeLayers.infrastructure ||
-        this.activeLayers.metropoles ||
-        (this.activeLayers.nuclear ?? false);
+    if (ENERGY_SYSTEM_LAYER_KEYS.includes(key as typeof ENERGY_SYSTEM_LAYER_KEYS[number])) {
+      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
     }
     if (key === 'environmental' || key === 'fires' || key === 'dayNight') {
       this.activeLayers.environmentGroup =
@@ -2379,8 +2442,8 @@ export class App {
       } else {
         this.isnrPanel?.hide();
       }
-    } else if (key === 'energyGroup') {
-      if (!this.activeLayers.energyGroup) {
+    } else if (key === 'energySystems') {
+      if (!this.activeLayers.energySystems) {
         this.energyPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
@@ -2455,16 +2518,16 @@ export class App {
       }
     } else if (key === 'subseaCables') {
       // No panel to toggle: layer is visual-only, threat panel remains tied to defense alerts.
-    } else if (key === 'energy') {
-      if (this.activeLayers.energy) {
+    } else if (key === 'powerGrid') {
+      if (this.activeLayers.powerGrid) {
         this.energyPanel?.show(this.currentEcowattResponse);
         this.layoutEnergyFloatingPanels();
       } else {
         this.energyPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
-    } else if (key === 'hydraulic') {
-      if (this.activeLayers.hydraulic) {
+    } else if (key === 'hydroBackbone') {
+      if (this.activeLayers.hydroBackbone) {
         void this.refreshHydraulicSignalSources();
         this.hydraulicPanel?.show(this.currentHydraulicAssets, this.currentEcowattResponse);
         this.layoutEnergyFloatingPanels();
@@ -2472,8 +2535,8 @@ export class App {
         this.hydraulicPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
-    } else if (key === 'eolien') {
-      if (this.activeLayers.eolien) {
+    } else if (key === 'windMonitor') {
+      if (this.activeLayers.windMonitor) {
         void this.loadEolien();
         this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
         this.layoutEnergyFloatingPanels();
@@ -2481,9 +2544,9 @@ export class App {
         this.eolienPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
-    } else if (key === 'gas') {
-      console.log('[App/onLayerToggle] gas toggle:', this.activeLayers.gas);
-      if (this.activeLayers.gas) {
+    } else if (key === 'gasNetwork') {
+      console.log('[App/onLayerToggle] gas toggle:', this.activeLayers.gasNetwork);
+      if (this.activeLayers.gasNetwork) {
         // Load data if not yet fetched
         if (!this.currentGasData) {
           this.loadGas();
@@ -2494,19 +2557,19 @@ export class App {
         this.gasPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
-    } else if (key === 'oil') {
-      console.log('[App/onLayerToggle] oil toggle:', this.activeLayers.oil);
-      if (this.activeLayers.oil) {
+    } else if (key === 'oilNetwork') {
+      console.log('[App/onLayerToggle] oil toggle:', this.activeLayers.oilNetwork);
+      if (this.activeLayers.oilNetwork) {
         // Load data if not yet fetched
         if (!this.currentOilData) {
-          this.loadOil();
+          void this.loadOil();
         }
-        this.oilPanel?.show(this.currentOilData);
+        this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
       } else {
         this.oilPanel?.hide();
       }
-    } else if (key === 'nuclear') {
-      if (this.activeLayers.nuclear) {
+    } else if (key === 'nuclearFleet') {
+      if (this.activeLayers.nuclearFleet) {
         if (!this.currentNuclearState) {
           void this.loadNuclear();
         }
@@ -2697,8 +2760,11 @@ export class App {
     this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
     this.mapLegend.addCategory(HOSPITALS_LEGEND);
     this.mapLegend.addCategory(ENERGY_ECOWATT_LEGEND);
+    this.mapLegend.addCategory(NUCLEAR_LEGEND);
     this.mapLegend.addCategory(GAS_LEGEND);
+    this.mapLegend.addCategory(HYDRAULIC_LEGEND);
     this.mapLegend.addCategory(OIL_LEGEND);
+    this.mapLegend.addCategory(EOLIEN_LEGEND);
     this.mapLegend.addCategory(INFRASTRUCTURE_LEGEND);
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
     this.mapLegend.addCategory(ENVIRONMENTAL_LEGEND);
@@ -3037,6 +3103,15 @@ export class App {
     }, 15 * 60_000);
   }
 
+  private startOilPolling(): void {
+    if (this._intervalOil !== null) clearInterval(this._intervalOil);
+
+    this._intervalOil = setInterval(() => {
+      if (!this.activeLayers.oilNetwork) return;
+      void this.loadOil();
+    }, 10 * 60_000);
+  }
+
   private startCommodityPolling(): void {
     const fetchCommodities = async () => {
       try {
@@ -3278,12 +3353,12 @@ export class App {
       this.statusPanel?.updateSource('Écowatt RTE', { status: 'stale', lastUpdate: new Date() });
     }
 
-    if (this.activeLayers.energy) {
+    if (this.activeLayers.powerGrid) {
       this.energyPanel?.show(this.currentEcowattResponse);
       this.layoutEnergyFloatingPanels();
     }
 
-    this.refreshHydraulicLayer();
+    await this.refreshHydraulicLayer();
     this.refreshEnergyDataLegends();
   }
 
@@ -3319,7 +3394,7 @@ export class App {
       this.layoutEnvironmentFloatingPanels();
     }
 
-    this.refreshHydraulicLayer();
+    await this.refreshHydraulicLayer();
   }
 
   private async loadFloods(): Promise<void> {
@@ -3376,7 +3451,7 @@ export class App {
         this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
         this.layoutEnvironmentFloatingPanels();
       }
-      this.refreshHydraulicLayer();
+      await this.refreshHydraulicLayer();
     } catch (error) {
       this.currentFloodSegments = [];
       this.mapContainer?.updateFloods([]);
@@ -3391,7 +3466,7 @@ export class App {
         this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
         this.layoutEnvironmentFloatingPanels();
       }
-      this.refreshHydraulicLayer();
+      await this.refreshHydraulicLayer();
     }
   }
 
@@ -3419,22 +3494,36 @@ export class App {
     this.mapContainer?.updateInfrastructure(gasInfra);
   }
 
-  private refreshHydraulicLayer(): void {
+  private async refreshHydraulicLayer(): Promise<void> {
+    this.currentHydraulicHydrometry = await fetchHydraulicHydrometrySnapshot(
+      this.currentHydraulicAssets.length > 0 ? this.currentHydraulicAssets : buildHydraulicBackboneAssets(null, [], []),
+    );
     this.currentHydraulicAssets = buildHydraulicBackboneAssets(
       this.currentEcowattResponse,
       this.currentFloodSegments,
       this.currentMeteoAlerts,
+      this.currentHydraulicHydrometry,
     );
     this.mapContainer?.updateHydraulicBackbone(this.currentHydraulicAssets);
     this.hydraulicPanel?.update(this.currentHydraulicAssets, this.currentEcowattResponse);
-    if (this.activeLayers.hydraulic && this.hydraulicPanel?.isVisible()) {
+
+    const hydrometryLastUpdate = this.currentHydraulicHydrometry.lastUpdated
+      ? new Date(this.currentHydraulicHydrometry.lastUpdated)
+      : null;
+    this.statusPanel?.updateSource('Hub’Eau hydrométrie', {
+      status: this.currentHydraulicHydrometry.sourceStatus,
+      lastUpdate: hydrometryLastUpdate,
+      detail: this.currentHydraulicHydrometry.detail,
+    });
+
+    if (this.activeLayers.hydroBackbone && this.hydraulicPanel?.isVisible()) {
       this.layoutEnergyFloatingPanels();
     }
     this.refreshEnergyDataLegends();
   }
 
   private async loadHydraulic(): Promise<void> {
-    this.refreshHydraulicLayer();
+    await this.refreshHydraulicLayer();
   }
 
   private async loadEolien(): Promise<void> {
@@ -3468,7 +3557,7 @@ export class App {
         lastUpdate: snapshot.live.timestamp,
         detail: `${snapshot.live.production_gw.toFixed(1)} GW · ${snapshot.parks.length} parcs`,
       });
-      if (this.activeLayers.eolien && this.eolienPanel?.isVisible()) {
+      if (this.activeLayers.windMonitor && this.eolienPanel?.isVisible()) {
         this.layoutEnergyFloatingPanels();
       }
       this.refreshEnergyDataLegends();
@@ -3505,7 +3594,7 @@ export class App {
       this.currentNuclearState = nuclearState;
       this.networkBarometerWidget?.updateNuclear(nuclearState);
 
-      if (this.activeLayers.nuclear && this.nuclearPanel?.isVisible()) {
+      if (this.activeLayers.nuclearFleet && this.nuclearPanel?.isVisible()) {
         this.nuclearPanel.update(nuclearState, this.currentEcowattResponse);
       }
 
@@ -3768,47 +3857,93 @@ export class App {
 
     if (!isOilPanelEnabled()) {
       console.log('[App/loadOil] Feature DISABLED, skipping...');
-      this.statusPanel?.updateSource('Pétrole', { status: 'stale', lastUpdate: null });
+      this.statusPanel?.updateSource('Pétrole', {
+        status: 'stale',
+        lastUpdate: null,
+        detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+      });
       this.currentOilData = null;
+      this.currentFuelTensionData = null;
+      await this.mapContainer?.updateFuelTension(null);
       this.refreshEnergyDataLegends();
       return;
     }
 
-    this.statusPanel?.updateSource('Pétrole', { status: 'loading', lastUpdate: null });
+    this.statusPanel?.updateSource('Pétrole', {
+      status: 'loading',
+      lastUpdate: null,
+      detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+    });
 
     try {
-      const oilData = await fetchOilDashboard();
-      this.currentOilData = oilData;
+      const [oilData, fuelTensionResult] = await Promise.allSettled([
+        fetchOilDashboard(),
+        fetchFuelTensionDashboard(),
+      ]);
+
+      if (oilData.status !== 'fulfilled') {
+        throw oilData.reason;
+      }
+
+      const resolvedOilData = oilData.value;
+      const resolvedFuelTension = fuelTensionResult.status === 'fulfilled'
+        ? fuelTensionResult.value
+        : buildDegradedFuelTensionDashboard(undefined, fuelTensionResult.reason);
+
+      this.currentFuelTensionData = resolvedFuelTension;
+      this.currentOilData = resolvedOilData;
 
       // Update map visualization (refineries, depots, pipelines, origin-linked flows)
-      const oilFlows = this.buildOilFlowsFromDashboard(oilData);
+      const oilFlows = this.buildOilFlowsFromDashboard(resolvedOilData);
 
       await this.mapContainer?.updateOil(oilFlows);
-      await this.mapContainer?.updateOilInfrastructure(oilData);
+      await this.mapContainer?.updateOilInfrastructure(resolvedOilData);
+      await this.mapContainer?.updateFuelTension(this.oilPanel?.isFuelTensionMapVisible() === false ? null : resolvedFuelTension);
 
       // Try to load pipeline GeoJSON
       await this.mapContainer?.loadOilPipelines();
 
       // Determine status
-      const allOk = Object.values(oilData.sourceStatus).every(s => s === 'ok');
-      const someOk = Object.values(oilData.sourceStatus).some(s => s === 'ok');
+      const allOk = Object.values(resolvedOilData.sourceStatus).every(s => s === 'ok');
+      const someOk = Object.values(resolvedOilData.sourceStatus).some(s => s === 'ok');
 
       if (allOk) {
-        this.statusPanel?.updateSource('Pétrole', { status: 'ok', lastUpdate: new Date() });
+        this.statusPanel?.updateSource('Pétrole', {
+          status: 'ok',
+          lastUpdate: new Date(),
+          detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+        });
       } else if (someOk) {
-        this.statusPanel?.updateSource('Pétrole', { status: 'stale', lastUpdate: new Date() });
+        this.statusPanel?.updateSource('Pétrole', {
+          status: 'stale',
+          lastUpdate: new Date(),
+          detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+        });
       } else {
-      this.statusPanel?.updateSource('Pétrole', { status: 'error', lastUpdate: new Date() });
+      this.statusPanel?.updateSource('Pétrole', {
+        status: 'error',
+        lastUpdate: new Date(),
+        detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+      });
       }
 
       // Update panel if visible
-      this.oilPanel?.update(oilData);
+      this.oilPanel?.update(resolvedOilData, resolvedFuelTension);
       this.refreshEnergyDataLegends();
 
-      console.log(`[App/loadOil] Complete: Status=${oilData.meta.status}, StocksDays=${oilData.stocks.nationalStocksDays}`);
+      console.log(`[App/loadOil] Complete: Status=${resolvedOilData.meta.status}, StocksDays=${resolvedOilData.stocks.nationalStocksDays}`);
     } catch (err) {
       console.error('[App/loadOil] Failed:', err);
-      this.statusPanel?.updateSource('Pétrole', { status: 'error', lastUpdate: new Date() });
+      this.currentFuelTensionData = buildDegradedFuelTensionDashboard(undefined, err);
+      await this.mapContainer?.updateFuelTension(this.currentFuelTensionData);
+      this.statusPanel?.updateSource('Pétrole', {
+        status: 'error',
+        lastUpdate: new Date(),
+        detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+      });
+      if (this.currentOilData) {
+        this.oilPanel?.update(this.currentOilData, this.currentFuelTensionData);
+      }
       this.refreshEnergyDataLegends();
     }
   }
@@ -3892,11 +4027,35 @@ export class App {
       };
     }
 
+    if (label.includes('afrique du nord')) {
+      return {
+        coordinates: [9.5, 31.5],
+        franceCoordinates: [4.94, 43.43],
+        hubName: 'Fos / Lavera',
+      };
+    }
+
+    if (label.includes('afrique subsaharienne')) {
+      return {
+        coordinates: [2.0, 4.0],
+        franceCoordinates: [4.94, 43.43],
+        hubName: 'Fos / Lavera',
+      };
+    }
+
     if (label.includes('afrique')) {
       return {
         coordinates: [2.0, 17.0],
         franceCoordinates: [4.94, 43.43],
         hubName: 'Fos / Lavera',
+      };
+    }
+
+    if (label.includes('amérique du nord') || label.includes('amerique du nord')) {
+      return {
+        coordinates: [-72.0, 41.0],
+        franceCoordinates: [-0.15, 49.67],
+        hubName: 'Antifer / Le Havre',
       };
     }
 
@@ -4114,7 +4273,7 @@ export class App {
     ]);
 
     if (results.every((result) => result.status === 'rejected')) {
-      this.refreshHydraulicLayer();
+      await this.refreshHydraulicLayer();
     }
   }
 
@@ -4126,7 +4285,7 @@ export class App {
     const poll = async (): Promise<void> => {
       if (inFlight) return;
       const shouldRefresh =
-        this.activeLayers.hydraulic ||
+        this.activeLayers.hydroBackbone ||
         this.hydraulicPanel?.isVisible() === true;
 
       if (!shouldRefresh) return;
@@ -4154,7 +4313,7 @@ export class App {
     const poll = async (): Promise<void> => {
       if (inFlight) return;
       const shouldRefresh =
-        this.activeLayers.eolien ||
+        this.activeLayers.windMonitor ||
         this.eolienPanel?.isVisible() === true;
 
       if (!shouldRefresh) return;
@@ -4252,7 +4411,9 @@ export class App {
       {
         name: 'hydraulic', task: this.loadHydraulic().catch(() => {
           this.currentHydraulicAssets = [];
+          this.currentHydraulicHydrometry = null;
           this.mapContainer?.updateHydraulicBackbone([]);
+          this.statusPanel?.updateSource('Hub’Eau hydrométrie', { status: 'error', lastUpdate: new Date() });
         })
       },
       {

@@ -2,7 +2,7 @@
 // Frontend service: calls /api/intelligence/v1/synthesis and caches the result.
 
 import type { NetworkBarometerResult } from './network-barometer.ts';
-import type { NewsItem } from '../types/index.ts';
+import type { FuelTensionLevel, NewsItem } from '../types/index.ts';
 
 /** Minimal dept context forwarded to the AI prompt */
 export interface ISNRDeptContext {
@@ -32,6 +32,19 @@ export interface EolienBriefingContext {
   alertLevel: string;
 }
 
+export interface OilBriefingContext {
+  structuralStatus: 'normal' | 'tense' | 'critical' | 'unknown';
+  structuralScore: number | null;
+  nationalStocksDays: number | null;
+  monthlyRoadFuelYoYPct: number | null;
+  fuelTensionCoverage: string | null;
+  fuelTensionLevel: FuelTensionLevel | null;
+  fuelTensionAnomalyShare: number | null;
+  fuelTensionAvgUpdateAgeMinutes: number | null;
+  fuelTensionTopDepartments: string[];
+  fuelTensionStationCount: number | null;
+}
+
 export interface ISNRSynthesisResult {
   briefing: string | null;
   stabilityImpact: number | null;
@@ -51,6 +64,7 @@ export async function fetchISNRSynthesis(
   isnrDepts?: ISNRDeptContext[],
   nuclear?: NuclearBriefingContext,
   eolien?: EolienBriefingContext,
+  oil?: OilBriefingContext,
 ): Promise<ISNRSynthesisResult | null> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) {
     return _cache.data;
@@ -78,6 +92,9 @@ export async function fetchISNRSynthesis(
     }
     if (eolien) {
       body.eolien = eolien;
+    }
+    if (oil) {
+      body.oil = oil;
     }
 
     const res = await fetch(ENDPOINT, {

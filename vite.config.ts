@@ -19,6 +19,7 @@ import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
 import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
 import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
+import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
 import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
 import { infraNetworkProxyPlugin } from './src/plugins/infra-network-proxy';
 import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
@@ -70,6 +71,7 @@ export default defineConfig(({ mode }) => {
       trafficRoadProxyPlugin(),
       militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
+      fuelPricesProxyPlugin(),
       internetOutagesProxyPlugin(),
       infraNetworkProxyPlugin(),
       citizenOutagesProxyPlugin(),

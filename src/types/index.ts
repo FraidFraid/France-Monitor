@@ -61,10 +61,10 @@ export interface MapLayers {
   newsGroup: boolean;
   news: boolean;
   alerts: boolean;
-  energyGroup: boolean;
-  energy: boolean;
-  hydraulic: boolean;
-  eolien: boolean;
+  energySystems: boolean;
+  powerGrid: boolean;
+  hydroBackbone: boolean;
+  windMonitor: boolean;
   health: boolean;
   healthOscour: boolean;
   healthApl: boolean;
@@ -72,13 +72,13 @@ export interface MapLayers {
   environmentGroup: boolean;
   environmental: boolean;
   fires: boolean;
-  infrastructure: boolean;
+  criticalEnergyInfra: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;
   trafficAir: boolean;
   trafficRail: boolean;
-  metropoles: boolean;
+  metroLoad: boolean;
   sovereignty: boolean;
   military: boolean;
   subseaCables: boolean;
@@ -89,9 +89,9 @@ export interface MapLayers {
   outagesCloud: boolean;
   stability: boolean;
   cyber: boolean;
-  gas: boolean;
-  oil: boolean;
-  nuclear: boolean;
+  gasNetwork: boolean;
+  oilNetwork: boolean;
+  nuclearFleet: boolean;
   dayNight?: boolean;
   elus?: boolean;
 }
@@ -458,6 +458,10 @@ export type HydraulicAssetSubtype =
   | 'run_of_river';
 
 export type HydraulicTrend = 'low' | 'normal' | 'high' | 'stress';
+export type HydraulicSignalSource = 'DERIVED_CONTEXT_ONLY' | 'DERIVED_REAL_MEASURE_SUPPORT';
+export type HydraulicMeasuredSupportLevel = 'none' | 'partial' | 'strong';
+export type HydraulicDataFreshness = 'fresh' | 'aging' | 'stale' | 'unavailable';
+export type HydraulicObservationTrend = 'rising' | 'falling' | 'stable' | 'mixed' | 'unavailable';
 
 export type HydraulicLocationAccuracy = 'site' | 'commune' | 'approx';
 
@@ -489,6 +493,14 @@ export interface HydraulicBackboneAsset {
   signals: {
     hydro_trend: HydraulicTrend;
     last_update: string;
+    signalSource: HydraulicSignalSource;
+    dataFreshness: HydraulicDataFreshness;
+    measuredSupportLevel: HydraulicMeasuredSupportLevel;
+    hydroTrend: HydraulicObservationTrend;
+    observationTimestamp: string | null;
+    confidence: number;
+    measuredStationCount: number;
+    sourceDetail: string | null;
   };
   selection_reason?: string;
 }
@@ -1503,6 +1515,15 @@ export interface OilProductStock {
   trend: 'up' | 'down' | 'stable';
 }
 
+export type OilFreshnessLevel = 'HYBRID' | 'MONTHLY' | 'STRUCTURAL';
+
+export interface OilFreshnessInfo {
+  level: OilFreshnessLevel;
+  label: string;
+  detail: string;
+  asOf?: string;
+}
+
 export interface OilStocksSnapshot {
   date: string;
   nationalStocksDays: number; // Total national stock in days of consumption
@@ -1536,6 +1557,7 @@ export interface OilMonthlyDelivery {
   title: string;
   periodLabel: string;
   publicationDate?: string;
+  sourceLabel?: string;
   roadFuelMillionM3: number | null;
   roadFuelYoYPct: number | null;
   totalProductsMillionTons: number | null;
@@ -1556,6 +1578,7 @@ export interface OilLocalConsumptionSnapshot {
   year: number;
   totalRoadFuelVolume: number;
   topRegions: OilLocalConsumptionRegion[];
+  sourceLabel?: string;
 }
 
 export interface OilDashboard {
@@ -1564,6 +1587,11 @@ export interface OilDashboard {
     vigilanceScore: number; // 0-100, higher = more tension
     status: OilVigilanceStatus;
     partialData: boolean;
+    freshness: {
+      dashboard: OilFreshnessInfo;
+      deliveries: OilFreshnessInfo;
+      infrastructure: OilFreshnessInfo;
+    };
   };
   stocks: OilStocksSnapshot;
   flows: OilFlowsSnapshot;
@@ -1575,11 +1603,97 @@ export interface OilDashboard {
   sourceStatus: {
     sdes: 'ok' | 'stale' | 'error';
     insee: 'ok' | 'stale' | 'error';
-    ufip: 'ok' | 'stale' | 'error';
+    cpdp: 'ok' | 'stale' | 'error';
     monthlyConsumption: 'ok' | 'stale' | 'error';
     localConsumption: 'ok' | 'stale' | 'error';
     pipelines: 'ok' | 'stale' | 'error';
   };
+}
+
+// ═══ Fuel Tension (Prix Carburants) ═══
+
+export type FuelType = 'gazole' | 'sp95' | 'sp98' | 'e10';
+
+export type FuelTensionLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type FuelTensionBadge = 'LIVE' | 'QUASI-LIVE' | 'NO_DATA';
+
+export interface FuelFreshness {
+  timestamp: string | null;
+  ageMinutes: number | null;
+  badge: FuelTensionBadge;
+}
+
+export interface FuelStationFuelStatus {
+  fuelType: FuelType;
+  label: string;
+  price: number | null; // EUR/L
+  updatedAt: string | null;
+  updateAgeMinutes: number | null;
+  ruptureType: 'temporaire' | 'definitive' | null;
+  available: boolean;
+}
+
+export interface FuelStation {
+  id: string;
+  departmentCode: string;
+  departmentName: string;
+  city: string;
+  address?: string;
+  location: [number, number] | null;
+  fetchedAt: string;
+  fuels: Partial<Record<FuelType, FuelStationFuelStatus>>;
+}
+
+export interface FuelTensionSignal {
+  departmentCode: string;
+  departmentName: string;
+  fuelType: FuelType;
+  avgPrice: number | null; // EUR/L
+  deltaPrice7d: number | null; // cents/L
+  stationCount: number;
+  anomalyShare: number; // percent
+  avgUpdateAgeMinutes: number | null;
+  tensionLevel: FuelTensionLevel;
+  dataFreshness: FuelFreshness;
+}
+
+export interface FuelTensionDepartmentSummary {
+  departmentCode: string;
+  departmentName: string;
+  stationCount: number;
+  anomalyShare: number; // percent
+  avgUpdateAgeMinutes: number | null;
+  deltaPrice7d: number | null; // cents/L, mean of comparable fuels
+  maxDeltaPrice7d: number | null; // cents/L
+  tensionLevel: FuelTensionLevel;
+  freshness: FuelFreshness;
+  fuelSignals: FuelTensionSignal[];
+}
+
+export interface FuelTensionNationalSummary {
+  stationCount: number;
+  departmentCount: number;
+  anomalyShare: number; // percent
+  avgUpdateAgeMinutes: number | null;
+  medianUpdateAgeMinutes: number | null;
+  avgPrices: Partial<Record<FuelType, number>>;
+  topDepartments: FuelTensionDepartmentSummary[];
+}
+
+export interface FuelTensionDashboard {
+  generatedAt: string;
+  departments: string[];
+  signals: FuelTensionSignal[];
+  summaries: FuelTensionDepartmentSummary[];
+  national: FuelTensionNationalSummary;
+  sourceStatus: 'ok' | 'stale' | 'error';
+  degraded: boolean;
+  sourceLabel: string;
+  coverageLabel: string;
+  disclaimerFr: string;
+  disclaimerEn?: string;
+  errorMessage?: string;
 }
 
 // ═══ GPS Jamming / Guerre Électronique ═══

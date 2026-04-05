@@ -6,7 +6,7 @@ export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../utils/redis.js';
 
-const CACHE_KEY = 'isnr:synthesis:fr';
+const CACHE_KEY = 'isnr:synthesis:fr:v2';
 const CACHE_TTL = 900; // 15 minutes
 const GROQ_URL  = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
@@ -52,7 +52,31 @@ function buildEolienBlock(eolien) {
 - Signal : ${alertLabels[eolien.alertLevel] ?? eolien.alertLevel}`;
 }
 
-function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien) {
+function buildOilBlock(oil) {
+  if (!oil) return '';
+
+  const structuralLabels = {
+    normal: 'nominal',
+    tense: 'tendu',
+    critical: 'critique',
+    unknown: 'indéterminé',
+  };
+
+  const topDepartments = Array.isArray(oil.fuelTensionTopDepartments) && oil.fuelTensionTopDepartments.length > 0
+    ? oil.fuelTensionTopDepartments.join(', ')
+    : 'aucun département notable';
+
+  return `
+Pétrole / carburants France :
+- OilNetwork structurel : ${structuralLabels[oil.structuralStatus] ?? oil.structuralStatus} (${typeof oil.structuralScore === 'number' ? `${oil.structuralScore}/100` : 'score indisponible'})
+- Stocks nationaux : ${typeof oil.nationalStocksDays === 'number' ? `${oil.nationalStocksDays} jours` : 'indisponibles'}
+- Dernière tendance livraisons carburants routiers : ${typeof oil.monthlyRoadFuelYoYPct === 'number' ? `${oil.monthlyRoadFuelYoYPct > 0 ? '+' : ''}${oil.monthlyRoadFuelYoYPct.toFixed(1)}% vs N-1` : 'indisponible'}
+- Tension carburants : ${oil.fuelTensionCoverage ?? 'couverture inconnue'}, ${typeof oil.fuelTensionStationCount === 'number' ? `${oil.fuelTensionStationCount} stations exploitées` : 'stations indisponibles'}
+- Signal carburants national : ${oil.fuelTensionLevel ?? 'indisponible'}, anomalies ${typeof oil.fuelTensionAnomalyShare === 'number' ? `${oil.fuelTensionAnomalyShare.toFixed(1)}%` : 'n.d.'}, fraîcheur ${typeof oil.fuelTensionAvgUpdateAgeMinutes === 'number' ? `${Math.round(oil.fuelTensionAvgUpdateAgeMinutes)} min` : 'n.d.'}
+- Départements carburants les plus tendus : ${topDepartments}`;
+}
+
+function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil) {
   const { details, score, status } = scores;
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
@@ -67,6 +91,7 @@ function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, e
     : '';
   const nuclearBlock = buildNuclearBlock(nuclear);
   const eolienBlock = buildEolienBlock(eolien);
+  const oilBlock = buildOilBlock(oil);
 
   return `Tu es un analyste OSINT spécialisé dans la résilience des infrastructures françaises.
 
@@ -79,17 +104,18 @@ Voici les scores techniques actuels du Baromètre Réseau France :
 - Éolien : ${details.wind ?? 'N/A'}/100
 Score composite : ${score}/100 (${status})
 
-${isnrLine}${deptsBlock}${nuclearBlock}${eolienBlock}
+${isnrLine}${deptsBlock}${nuclearBlock}${eolienBlock}${oilBlock}
 
 Actualités récentes à impact (format [catégorie/niveau] titre (source)) :
 ${headlineList}
 
 Instructions :
-1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables, le signal nucléaire, le signal éolien et les actualités.
+1. Détecte les CONVERGENCES entre les scores techniques, le score ISNR, les départements instables, le signal nucléaire, le signal éolien, le contexte pétrole/carburants et les actualités.
 2. Rédige un "Situation Briefing" en exactement 2 phrases, en français, concis et factuel. Mentionne les zones géographiques si pertinent.
 3. Intègre le nucléaire dans le briefing seulement s'il apporte un signal utile : arrêt fortuit, réduction, site impacté, écart REMIT/RTE ou risque réseau. Si le parc est nominal, tu peux l'omettre ou le résumer en une très courte clause.
 4. Intègre l'éolien seulement si l'alerte est 'low-production' ou 'watch', sinon omets-le.
-5. Fournis un score d'impact sur la stabilité de 0 à 100.
+5. Intègre le pétrole/carburants seulement s'il existe un signal utile : tension carburants HIGH/CRITICAL, anomalies carburants significatives, départements sous tension, baisse de stocks ou signal structurel pétrole tendu/critique. Si le pétrole est nominal, tu peux l'omettre.
+6. Fournis un score d'impact sur la stabilité de 0 à 100.
 
 IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTABILITÉ ou un DANGER élevé pour la résilience nationale. Un score bas (proche de 0) signifie une situation stable et nominale.
 
@@ -106,9 +132,9 @@ export default async function handler(request) {
     });
   }
 
-  let scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien;
+  let scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil;
   try {
-    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien } = await request.json());
+    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil } = await request.json());
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
@@ -146,7 +172,7 @@ export default async function handler(request) {
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
-        messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien) }],
+        messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil) }],
         temperature: 0.3,
         max_tokens: 300,
       }),
