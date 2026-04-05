@@ -94,6 +94,7 @@ export class StatusPanel {
         this.setSources([
             { name: 'RSS PQR', lastUpdate: null, status: 'loading' },
             { name: 'Écowatt RTE', lastUpdate: null, status: 'loading' },
+            { name: 'Hub’Eau hydrométrie', lastUpdate: null, status: 'loading', detail: 'API publique open data, licence Etalab' },
             { name: 'Éolien France', lastUpdate: null, status: 'loading' },
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
@@ -157,6 +158,7 @@ export class StatusPanel {
         this.setSources([
             { name: 'RSS PQR', lastUpdate: null, status: 'loading' },
             { name: 'Écowatt RTE', lastUpdate: null, status: 'loading' },
+            { name: 'Hub’Eau hydrométrie', lastUpdate: null, status: 'loading', detail: 'API publique open data, licence Etalab' },
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },

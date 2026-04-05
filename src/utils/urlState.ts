@@ -1,7 +1,7 @@
 /**
  * urlState.ts — Encode/décode l'état de la vue dans l'URL.
  * Permet de partager un lien vers une vue précise de la carte.
- * Paramètres : ?lng=2.2&lat=46.6&z=6&layers=news,energy&time=24h&q=paris
+ * Paramètres : ?lng=2.2&lat=46.6&z=6&layers=news,powerGrid&time=24h&q=paris
  */
 
 import type { MapLayers } from '../types/index.ts';
@@ -18,21 +18,36 @@ export interface UrlState {
 const LAYER_KEYS: (keyof MapLayers)[] = [
     'news',
     'stability',
-    'energy',
-    'hydraulic',
-    'eolien',
+    'powerGrid',
+    'hydroBackbone',
+    'windMonitor',
     'health',
     'environmental',
     'fires',
-    'infrastructure',
+    'criticalEnergyInfra',
     'traffic',
     'trafficRoad',
     'trafficMaritime',
     'trafficAir',
-    'metropoles',
+    'metroLoad',
     'military',
     'outages',
+    'gasNetwork',
+    'oilNetwork',
+    'nuclearFleet',
 ];
+
+const LEGACY_LAYER_KEY_MAP: Partial<Record<string, keyof MapLayers>> = {
+    energy: 'powerGrid',
+    hydraulic: 'hydroBackbone',
+    eolien: 'windMonitor',
+    infrastructure: 'criticalEnergyInfra',
+    metropoles: 'metroLoad',
+    gas: 'gasNetwork',
+    oil: 'oilNetwork',
+    nuclear: 'nuclearFleet',
+    energyGroup: 'energySystems',
+};
 
 /**
  * Read the current URL search params and extract state.
@@ -51,7 +66,11 @@ export function readUrlState(): UrlState {
 
     const layersParam = params.get('layers');
     if (layersParam) {
-        const activeSet = new Set(layersParam.split(','));
+        const activeSet = new Set(
+            layersParam
+                .split(',')
+                .map((raw) => LEGACY_LAYER_KEY_MAP[raw] ?? raw)
+        );
         const layers: Partial<MapLayers> = {};
         for (const key of LAYER_KEYS) {
             layers[key] = activeSet.has(key);

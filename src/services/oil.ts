@@ -1,6 +1,7 @@
 import type {
   OilDashboard,
   OilFlowsSnapshot,
+  OilFreshnessInfo,
   OilLocalConsumptionSnapshot,
   OilMonthlyDelivery,
   OilOriginShare,
@@ -28,6 +29,7 @@ interface AnnualOilStats {
   refinedExportMtep: number;
   refinedConsumptionMtep: number;
   reserveMtep: number;
+  sourceLabel?: string;
 }
 
 interface MonthlyOilConsumptionRow {
@@ -52,24 +54,30 @@ const DATA_GOUV_MONTHLY_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/d
 
 let cache: OilCache | null = null;
 
-// ─── Données de référence statiques (France, ~2022) ──────────────────────────
-// Utilisées comme fallback quand les sources SDES/INSEE sont inaccessibles
+// ─── Données de référence SDES/CPDP (dernier millésime consolidé) ────────────
+// Utilisées comme fallback quand le scraping des pages vivantes échoue.
 const FALLBACK_ANNUAL_STATS: AnnualOilStats = {
-  year: 2022,
-  crudeImportMtep: 58.0,      // ~58 Mt pétrole brut importé/an
-  refinedImportMtep: 12.0,    // ~12 Mt produits raffinés importés/an
-  refinedExportMtep: 18.0,    // ~18 Mt produits raffinés exportés/an
-  refinedConsumptionMtep: 73.0, // ~73 Mt consommation finale/an
-  reserveMtep: 18.0,           // ~90 jours de réserves stratégiques
+  year: 2024,
+  crudeImportMtep: 45.6,
+  refinedImportMtep: 38.5,
+  refinedExportMtep: 16.0,
+  refinedConsumptionMtep: 60.9,
+  reserveMtep: 7.6,
+  sourceLabel: 'SDES — Chiffres clés de l’énergie 2025 (données 2024)',
 };
 
 const FALLBACK_ORIGINS: OilOriginShare[] = [
-  { label: 'Moyen-Orient', sharePct: 30, volumeMt: 17.4, referenceYear: 2022, sourceLabel: 'Données de référence (SDES)', partialBreakdown: false, breakdown: [] },
-  { label: 'Afrique',      sharePct: 25, volumeMt: 14.5, referenceYear: 2022, sourceLabel: 'Données de référence (SDES)', partialBreakdown: false, breakdown: [] },
-  { label: 'Mer du Nord',  sharePct: 20, volumeMt: 11.6, referenceYear: 2022, sourceLabel: 'Données de référence (SDES)', partialBreakdown: false, breakdown: [] },
-  { label: 'URSS / Russie',sharePct: 10, volumeMt:  5.8, referenceYear: 2022, sourceLabel: 'Données de référence (SDES)', partialBreakdown: false, breakdown: [] },
-  { label: 'Amériques',    sharePct: 15, volumeMt:  8.7, referenceYear: 2022, sourceLabel: 'Données de référence (SDES)', partialBreakdown: false, breakdown: [] },
+  { label: 'Amérique du Nord',      sharePct: 23.0, volumeMt: 10.5, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Afrique subsaharienne', sharePct: 21.0, volumeMt: 9.6, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Afrique du Nord',       sharePct: 17.0, volumeMt: 7.8, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Autres origines SDES',  sharePct: 39.0, volumeMt: 17.8, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: true, breakdown: [] },
 ];
+
+const OIL_FRESHNESS_TEXT = {
+  dashboard: 'Bilan national HYBRID: agrégation d’un socle annuel SDES et de signaux mensuels CPDP/SDES. Pas de télémesure live.',
+  deliveries: 'Vue MONTHLY: publications mensuelles CPDP/SDES ou communiqué filière de secours. Pas d’instantané temps réel.',
+  infrastructure: 'Vue STRUCTURAL: raffineries, dépôts, pipelines et hubs cartographiés comme référentiel, sans état opérationnel live.',
+} as const;
 
 export function isOilPanelEnabled(): boolean {
   const flag = import.meta.env.VITE_ENABLE_OIL_LAYER;
@@ -342,6 +350,7 @@ export async function fetchAnnualOilStatsFromSdes(): Promise<AnnualOilStats> {
       'SDES refined exports',
     ),
     refinedConsumptionMtep: extractFirstNumber(html, /Consommation de produits raffinés[^]*?TOTAL\s*:\s*([0-9]+,[0-9]+)\s*Mtep/i, 'SDES refined consumption'),
+    sourceLabel: `SDES — Chiffres clés de l’énergie (${year})`,
   };
 }
 
@@ -423,7 +432,7 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
   const articles = Array.from(document.querySelectorAll('article.article'));
 
   const deliveries = articles
-    .map((article) => {
+    .map((article): OilMonthlyDelivery | null => {
       const title = article.querySelector('h1.title a')?.textContent?.trim() ?? '';
       if (!title.toLowerCase().startsWith('la consommation française de produits énergétiques')) {
         return null;
@@ -435,6 +444,7 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
       return {
         title,
         periodLabel,
+        sourceLabel: 'UFIP Énergies et Mobilités — communiqué mensuel',
         roadFuelMillionM3: extractVolume(bodyText, /carburants routiers[^.]{0,220}?(?:volume de|s['’]établ(?:it|ies|is|issent) à)\s*([0-9]+,[0-9]+)\s*millions?\s+de(?:\s+de)?\s+m3/i),
         roadFuelYoYPct: extractSignedPercent(bodyText, /carburants routiers[^.]{0,220}?(hausse|augmentation|progression|baisse|repli|recul|baiss[ée]s?|augmentent|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
         totalProductsMillionTons: extractVolume(bodyText, /produits pétroliers énergétiques[^.]{0,260}?([0-9]+,[0-9]+)\s*millions?\s+de\s+tonnes/i),
@@ -443,7 +453,7 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
         jetFuelYoYPct: extractSignedPercent(bodyText, /carbur[ée]acteur[^.]{0,180}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
         gasoilYoYPct: extractSignedPercent(bodyText, /gazoles?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse|baiss[ée]s?)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
         gasolineYoYPct: extractSignedPercent(bodyText, /supercarburants?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
-      } satisfies OilMonthlyDelivery;
+      };
     })
     .filter((entry): entry is OilMonthlyDelivery => entry !== null)
     .slice(0, 6);
@@ -496,6 +506,7 @@ export async function fetchLocalOilConsumption(): Promise<OilLocalConsumptionSna
     year: latestYear,
     totalRoadFuelVolume: Array.from(byRegion.values()).reduce((sum, region) => sum + region.roadFuelVolume, 0),
     topRegions,
+    sourceLabel: `SDES / CPDP — données locales ${latestYear}`,
   };
 }
 
@@ -563,6 +574,33 @@ function buildFlowsSnapshot(annual: AnnualOilStats, latestDelivery: OilMonthlyDe
   };
 }
 
+function buildFreshnessInfo(
+  annual: AnnualOilStats,
+  latestDelivery: OilMonthlyDelivery | null,
+): OilDashboard['meta']['freshness'] {
+  const deliveryAsOf = latestDelivery?.periodLabel ?? 'dernier mensuel disponible';
+
+  return {
+    dashboard: {
+      level: 'HYBRID',
+      label: 'HYBRID',
+      detail: OIL_FRESHNESS_TEXT.dashboard,
+      asOf: String(annual.year),
+    } satisfies OilFreshnessInfo,
+    deliveries: {
+      level: 'MONTHLY',
+      label: 'MONTHLY',
+      detail: OIL_FRESHNESS_TEXT.deliveries,
+      asOf: deliveryAsOf,
+    } satisfies OilFreshnessInfo,
+    infrastructure: {
+      level: 'STRUCTURAL',
+      label: 'STRUCTURAL',
+      detail: OIL_FRESHNESS_TEXT.infrastructure,
+    } satisfies OilFreshnessInfo,
+  };
+}
+
 export async function fetchOilDashboard(): Promise<OilDashboard> {
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
     return cache.data;
@@ -584,18 +622,20 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
 
   if (!annualResult.data) {
     if (cache) return cache.data;
-    console.warn('[Oil] SDES unavailable — using static reference data (2022)');
+    console.warn('[Oil] SDES unavailable — using latest consolidated SDES fallback (2024)');
     annualResult.data = FALLBACK_ANNUAL_STATS;
     annualResult.status = 'stale';
   }
 
   if (!originsResult.data || originsResult.data.length === 0) {
     originsResult.data = FALLBACK_ORIGINS;
+    originsResult.status = originsResult.status === 'ok' ? 'stale' : originsResult.status;
   }
 
   const stocks = buildStocksSnapshot(annualResult.data, monthlyRowsResult.data);
   const flows = buildFlowsSnapshot(annualResult.data, deliveriesResult.data?.[0] ?? null);
   const { score, status } = computeVigilanceScore(stocks.nationalStocksDays, flows.trend);
+  const freshness = buildFreshnessInfo(annualResult.data, deliveriesResult.data?.[0] ?? null);
 
   const partialData = [
     annualResult.status,
@@ -611,6 +651,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
       vigilanceScore: score,
       status,
       partialData,
+      freshness,
     },
     stocks,
     flows,
@@ -622,7 +663,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     sourceStatus: {
       sdes: annualResult.status,
       insee: originsResult.status,
-      ufip: deliveriesResult.status,
+      cpdp: deliveriesResult.status,
       monthlyConsumption: monthlyRowsResult.status,
       localConsumption: localConsumptionResult.status,
       pipelines: 'ok',

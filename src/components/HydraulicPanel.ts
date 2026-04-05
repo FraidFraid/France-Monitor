@@ -59,6 +59,36 @@ function trendColor(trend: HydraulicBackboneAsset['signals']['hydro_trend']): st
   }
 }
 
+function supportLabel(level: HydraulicBackboneAsset['signals']['measuredSupportLevel']): string {
+  switch (level) {
+    case 'strong':
+      return 'Mesures fortes';
+    case 'partial':
+      return 'Mesures partielles';
+    default:
+      return 'Dérivé seul';
+  }
+}
+
+function freshnessLabel(freshness: HydraulicBackboneAsset['signals']['dataFreshness']): string {
+  switch (freshness) {
+    case 'fresh':
+      return 'Fraîche';
+    case 'aging':
+      return 'À confirmer';
+    case 'stale':
+      return 'Ancienne';
+    default:
+      return 'Sans mesure';
+  }
+}
+
+function sourceLabel(signalSource: HydraulicBackboneAsset['signals']['signalSource']): string {
+  return signalSource === 'DERIVED_REAL_MEASURE_SUPPORT'
+    ? 'Dérivé appuyé sur mesures réelles'
+    : 'Dérivé contexte seul';
+}
+
 function typeLabel(asset: HydraulicBackboneAsset): string {
   if (asset.type === 'step_storage') return 'STEP';
   if (asset.subtype === 'run_of_river') return "Fil de l'eau";
@@ -154,10 +184,10 @@ export class HydraulicPanel extends Panel {
       </div>
       <div style="flex:1;min-width:0;">
         <div style="font-size:14px;font-weight:700;color:${HYDRAULIC_PANEL_COLORS.text};">
-          Backbone énergétique - Hydraulique
+          Hydro – Stress hydro-énergétique
         </div>
         <div id="hydraulic-status-label" style="margin-top:2px;font-size:11px;color:${HYDRAULIC_PANEL_COLORS.cyan};">
-          Sélection critique - couverture non exhaustive
+          DÉRIVÉ – APPUI MESURES RÉELLES
         </div>
         <div id="hydraulic-update-time" style="margin-top:5px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};"></div>
       </div>
@@ -271,6 +301,7 @@ export class HydraulicPanel extends Panel {
 
     const stressed = assets.filter((asset) => asset.signals.hydro_trend === 'stress').length;
     const elevated = assets.filter((asset) => asset.signals.hydro_trend === 'high' || asset.signals.hydro_trend === 'stress').length;
+    const measured = assets.filter((asset) => asset.signals.signalSource === 'DERIVED_REAL_MEASURE_SUPPORT').length;
     const ratio = assets.length > 0 ? Math.min(100, Math.round((elevated / assets.length) * 100)) : 0;
     const topScore = assets.length > 0 ? Math.max(...assets.map((asset) => asset.criticality_score)) : 0;
 
@@ -286,16 +317,19 @@ export class HydraulicPanel extends Panel {
         ? `${stressed} actif${stressed > 1 ? 's' : ''} en stress`
         : elevated > 0
           ? `${elevated} actif${elevated > 1 ? 's' : ''} sous pression`
-          : `Pic criticité ${topScore}/100`;
+          : measured > 0
+            ? `${measured} actif${measured > 1 ? 's' : ''} appuyé${measured > 1 ? 's' : ''} par Hub’Eau`
+            : `Pic criticité ${topScore}/100`;
       statusEl.textContent = label;
       statusEl.style.color = stressed > 0 ? HYDRAULIC_PANEL_COLORS.stress : HYDRAULIC_PANEL_COLORS.cyan;
     }
     if (updateEl) {
-      const last = assets[0]?.signals.last_update;
+      const last = assets.find((asset) => asset.signals.observationTimestamp)?.signals.observationTimestamp
+        ?? assets[0]?.signals.last_update;
       const date = last ? new Date(last) : null;
       updateEl.textContent = date && !Number.isNaN(date.getTime())
-        ? `Signaux recalculés: ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-        : 'Signaux recalculés en continu';
+        ? `Dernier appui mesure: ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+        : 'Signal hydraulique recalculé en continu';
     }
   }
 
@@ -308,6 +342,8 @@ export class HydraulicPanel extends Panel {
     const regulationCount = assets.filter((asset) => asset.type === 'water_regulation').length;
     const stressed = assets.filter((asset) => asset.signals.hydro_trend === 'stress').length;
     const high = assets.filter((asset) => asset.signals.hydro_trend === 'high').length;
+    const measuredSupportCount = assets.filter((asset) => asset.signals.signalSource === 'DERIVED_REAL_MEASURE_SUPPORT').length;
+    const strongMeasuredCount = assets.filter((asset) => asset.signals.measuredSupportLevel === 'strong').length;
     const siteAccurate = assets.filter((asset) => asset.location_accuracy === 'site').length;
     const manualVerified = assets.filter((asset) => !(asset.verification_sources ?? []).some((source) => source.includes('RTE/ODRE'))).length;
     const officialVerified = assets.filter((asset) => (asset.verification_sources ?? []).some((source) => source.includes('RTE/ODRE'))).length;
@@ -341,7 +377,7 @@ export class HydraulicPanel extends Panel {
           <div>
             <div style="font-size:12px;font-weight:700;color:${HYDRAULIC_PANEL_COLORS.text};">Base vérifiée</div>
             <div style="margin-top:6px;font-size:11px;line-height:1.5;color:${HYDRAULIC_PANEL_COLORS.muted};">
-              Sélection d’actifs hydrauliques critiques — couverture non exhaustive
+              Score de stress hydro-énergétique dérivé, appuyé sur des mesures hydrométriques Hub’Eau quasi temps réel là où disponible.
             </div>
           </div>
           <div style="text-align:right;">
@@ -355,12 +391,13 @@ export class HydraulicPanel extends Panel {
           ${this.renderMiniStat('Manuel', `${manualVerified}`, HYDRAULIC_PANEL_COLORS.slate)}
         </div>
         <div style="margin-top:10px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
-          Production = puissance hydro nationale instantanée issue d’Écowatt, pas la somme temps réel des 113 actifs.
+          Ce layer n’est pas une télémesure EDF barrage par barrage. Il estime un stress hydro-énergétique à partir de signaux publics (Hub’Eau, crues, météo, mix électrique) et de liens de bassin vers un sous-ensemble d’ouvrages critiques.
         </div>
         <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
           ${this.renderSourceBadge('RTE/ODRE 30/09/2025', HYDRAULIC_PANEL_COLORS.blueSoft, HYDRAULIC_PANEL_COLORS.blue)}
           ${this.renderSourceBadge('BAN / géocodage', HYDRAULIC_PANEL_COLORS.cyanSoft, HYDRAULIC_PANEL_COLORS.cyan)}
-          ${this.renderSourceBadge('Signaux: Écowatt + Vigicrues + vigilance pluie', HYDRAULIC_PANEL_COLORS.slateSoft, HYDRAULIC_PANEL_COLORS.slate)}
+          ${this.renderSourceBadge('DÉRIVÉ – APPUI MESURES RÉELLES', HYDRAULIC_PANEL_COLORS.purpleSoft, HYDRAULIC_PANEL_COLORS.purple)}
+          ${this.renderSourceBadge('Sources : Hub’Eau – Hydrométrie (mesures H/Q quasi temps réel), signaux Écowatt, Vigicrues et vigilance météo.', HYDRAULIC_PANEL_COLORS.slateSoft, HYDRAULIC_PANEL_COLORS.slate)}
         </div>
       </div>
 
@@ -389,6 +426,8 @@ export class HydraulicPanel extends Panel {
             <div style="display:flex;justify-content:space-between;"><span>Hydro stress</span><strong style="color:${HYDRAULIC_PANEL_COLORS.stress};">${stressed}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Hydro FR instantané</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${formatMw(nationalHydroMw)}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Ouvrages régulation</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${regulationCount}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>Appui Hub’Eau</span><strong style="color:${HYDRAULIC_PANEL_COLORS.cyan};">${measuredSupportCount}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>Appui fort</span><strong style="color:${HYDRAULIC_PANEL_COLORS.blue};">${strongMeasuredCount}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Puissance moyenne</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${Math.round(totalMw / Math.max(assets.length, 1)).toLocaleString('fr-FR')} MW</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Référentiel manuel</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${manualVerified}</strong></div>
           </div>
@@ -434,6 +473,8 @@ export class HydraulicPanel extends Panel {
         ? 'commune'
         : 'approx';
     const sourceLine = asset.technology ?? asset.selection_reason ?? 'Référentiel critique';
+    const support = supportLabel(asset.signals.measuredSupportLevel);
+    const freshness = freshnessLabel(asset.signals.dataFreshness);
     const stats = [
       formatMw(asset.capacity_mw),
       asset.reservoir_volume ? formatHm3(asset.reservoir_volume) : null,
@@ -466,7 +507,10 @@ export class HydraulicPanel extends Panel {
           </div>
         </div>
         <div style="margin-top:6px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
-          ${sourceLine}
+          ${sourceLabel(asset.signals.signalSource)} · ${support} · ${freshness}
+        </div>
+        <div style="margin-top:4px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
+          ${asset.signals.sourceDetail ?? sourceLine}
         </div>
       </button>
     `;
@@ -481,6 +525,9 @@ export class HydraulicPanel extends Panel {
         </div>
         <div style="margin-top:3px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
           ${formatMw(asset.capacity_mw)} · ${asset.location.region}
+        </div>
+        <div style="margin-top:3px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
+          ${supportLabel(asset.signals.measuredSupportLevel)} · ${freshnessLabel(asset.signals.dataFreshness)}
         </div>
       </div>
     `;

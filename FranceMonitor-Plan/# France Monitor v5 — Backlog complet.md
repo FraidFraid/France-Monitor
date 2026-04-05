@@ -7,6 +7,17 @@
 
 ---
 
+## Mise à jour repo (2026-04-04) — Backbone hydraulique & veille éolienne
+
+- ✅ **Backbone hydraulique** : nouveau module `hydraulic-backbone` branché côté front avec panneau dédié, couche carte et sélection d’actifs critiques. Le signal croise `Ecowatt`, `Vigicrues` et `Vigilance météo` pour prioriser barrages, STEP, grands réservoirs et actifs structurants.
+- ✅ **Panneau hydraulique** : `HydraulicPanel.ts` en place, calé sur le pattern des panneaux énergie. Ouverture via la sidebar, recentrage carte au clic sur actif, notes et légende raccordées dans `App.ts`.
+- ✅ **Veille éolienne live** : nouveau tracker `src/services/eolien/` + panneau `EolienPanel.ts` + couche MapLibre dédiée. La production live France remonte via `eco2mix / ODRE`, avec split estimé `terre / mer`, facteur de charge, watchlist et alertes basse production.
+- ✅ **Clustering carte éolienne** : agrégation des turbines terrestres en clusters à faible zoom, éclatement à partir du zoom `8`. Les parcs `offshore` restent visibles individuellement.
+- ✅ **Alignement dev / prod éolien** : proxy Vite `src/plugins/eolien-proxy.ts`, route serverless `api/energy/eolien.js` et handler `server/eolien/server-endpoint.ts` ajoutés. Cache HTTP neutralisé pour éviter de servir des géométries périmées en dev.
+- ⚠️ **Caveat source terrestre éolienne** : le flux WFS BRGM/Géorisques testé côté terrestre s’est révélé partiel dans son état actuel. Le repo garde donc un fallback cartographique local dense tant qu’un flux national officiel exhaustif et stable n’est pas validé.
+
+---
+
 ## Mise à jour repo (2026-04-01) — Trafic routier : fiabilisation TomTom + coût maîtrisé
 
 - ✅ **Chargement TomTom à la demande** : `loadTraffic()` n'est plus exécuté systématiquement au boot. Le layer routier ne déclenche désormais le fetch que si `trafficRoad` est réellement activé.
@@ -213,7 +224,9 @@
 | **Pannes ☁️ Cloud / IXP** | OVH·Scaleway·AWS·GCP·CF Statuspage + PeeringDB | ✅ Réel | CF Radar optionnel (CLOUDFLARE_RADAR_TOKEN) |
 | **Pannes ⚡ Crowd-sourced** | infocoupure.fr + coupure-elec.fr | ✅ Réel | `api/outages/citizen.js` — scraping HTML réel (wpDiscuz comments), clustering DBSCAN Turf.js (rayon 10km, min 3 points), géocodage API Adresse, corrélation Ecowatt côté client. Vite plugin dev avec fallback mock. |
 | **Énergie / Ecowatt** | RTE Écowatt | ✅ Réel | OAuth2 RTE |
+| **Backbone hydraulique** | Sélection consolidée DREAL/Ministère + EDF + croisement Ecowatt/Vigicrues/Vigilance | ✅ Implémenté | Couche d’actifs critiques hydraulique avec scoring et panneau dédié. Couverture volontairement sélective, pas un inventaire exhaustif de tous les ouvrages. |
 | **Nucléaire** | EDF → | 🟡 Simulé | API EDF non publique — statuts de maintenance mockés |
+| **Éolien France** | ODRE eco2mix + référentiel éolien + fallback offshore | 🟡 Partiel | Production live nationale réelle via ODRE. Carte et panel opérationnels, clustering terrestre en place. Le référentiel terrestre exhaustif reste à fiabiliser côté source nationale officielle. |
 | **Réseau Gaz** | EcoGaz + ODRE + config infra | 🟡 Partiel | `fetchGasNetwork()` consomme déjà EcoGaz + stockages + flux PIR/ODRE. Les interconnexions restent à rendre plus explicitement réelles côté UI et certains flux sont encore simulés en fallback. |
 | **Réseau Pétrole** | UFIP / data.gouv | ✅ Réel | Stocks, raffineries, dépôts |
 | **Câbles sous-marins** | GeoJSON statique | ✅ Réel | Données statiques (SubmarineCableMap) |

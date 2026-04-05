@@ -4,9 +4,11 @@ import type {
   FloodSegment,
   FloodVigilanceLevel,
   HydraulicBackboneAsset,
+  HydraulicObservationTrend,
   HydraulicTrend,
   MeteoAlert,
 } from '../types/index.ts';
+import type { HydraulicHydrometrySnapshot } from './hubeau-hydrometry.ts';
 
 const REGION_TO_CODE: Record<string, string> = {
   'Ile-de-France': '11',
@@ -193,17 +195,15 @@ function computeCriticality(asset: HydraulicBackboneAsset): number {
   return Math.round(clamp(capacityScore + reservoirScore + regionalDependency + downstreamRisk + isolationScore + storageBonus, 0, 100));
 }
 
-function computeHydroTrend(
+function computeDerivedHydroScore(
   asset: HydraulicBackboneAsset,
   ecowatt: EcowattResponse | null,
   floods: FloodSegment[],
   alerts: MeteoAlert[],
-): HydraulicTrend {
+): number {
   const regionCode = REGION_TO_CODE[asset.location.region];
   const mix = regionCode ? ecowatt?.mixes[regionCode] : undefined;
   const ecowattSignal = regionCode ? ecowatt?.signals[regionCode] : undefined;
-  const floodLevel = getNearestFloodLevel(asset, floods);
-  const weatherPressure = getWeatherPressure(asset, alerts);
   const hydroShare = mix && mix.total > 0 ? mix.hydro / mix.total : null;
 
   let score = 0;
@@ -216,25 +216,67 @@ function computeHydroTrend(
   if (ecowattSignal === 'red') score += asset.type === 'step_storage' ? 3 : 1;
   else if (ecowattSignal === 'orange') score += asset.type === 'step_storage' ? 2 : 1;
 
-  if (floodLevel) score += FLOOD_LEVEL_SCORES[floodLevel];
-  score += weatherPressure;
+  score += FLOOD_LEVEL_SCORES[getNearestFloodLevel(asset, floods) ?? 'green'];
+  score += getWeatherPressure(asset, alerts);
 
   if (!regionCode && (ISOLATION_FACTOR[asset.location.region] ?? 0) >= 4) {
     score += 1;
   }
 
+  return score;
+}
+
+function classifyHydroTrend(score: number): HydraulicTrend {
   if (score <= -1) return 'low';
   if (score >= 6) return 'stress';
   if (score >= 3) return 'high';
   return 'normal';
 }
 
+function computeHydrometrySynergy(
+  observationTrend: HydraulicObservationTrend,
+  floods: FloodSegment[],
+  alerts: MeteoAlert[],
+  asset: HydraulicBackboneAsset,
+  ecowatt: EcowattResponse | null,
+): number {
+  const floodLevel = getNearestFloodLevel(asset, floods);
+  const weatherPressure = getWeatherPressure(asset, alerts);
+  const regionCode = REGION_TO_CODE[asset.location.region];
+  const ecowattSignal = regionCode ? ecowatt?.signals[regionCode] : undefined;
+  const mix = regionCode ? ecowatt?.mixes[regionCode] : undefined;
+  const hydroShare = mix && mix.total > 0 ? mix.hydro / mix.total : null;
+
+  if (observationTrend === 'rising') {
+    return floodLevel && FLOOD_LEVEL_SCORES[floodLevel] >= 2
+      ? 0.8
+      : weatherPressure >= 2
+        ? 0.5
+        : 0;
+  }
+
+  if (observationTrend === 'falling') {
+    return ecowattSignal === 'red' || hydroShare != null && hydroShare <= 0.1
+      ? 0.7
+      : ecowattSignal === 'orange'
+        ? 0.4
+        : 0;
+  }
+
+  if (observationTrend === 'mixed') {
+    return 0.4;
+  }
+
+  return 0;
+}
+
 export function buildHydraulicBackboneAssets(
   ecowatt: EcowattResponse | null,
   floods: FloodSegment[] = [],
   alerts: MeteoAlert[] = [],
+  hydrometrySnapshot: HydraulicHydrometrySnapshot | null = null,
 ): HydraulicBackboneAsset[] {
-  const lastUpdate = ecowatt?.national.timestamp?.toISOString() ?? new Date().toISOString();
+  const computedAt = new Date().toISOString();
 
   return HYDRAULIC_BACKBONE_SEEDS
     .map((seed) => {
@@ -243,19 +285,45 @@ export function buildHydraulicBackboneAssets(
         criticality_score: 0,
         signals: {
           hydro_trend: 'normal',
-          last_update: lastUpdate,
+          last_update: computedAt,
+          signalSource: 'DERIVED_CONTEXT_ONLY',
+          dataFreshness: 'unavailable',
+          measuredSupportLevel: 'none',
+          hydroTrend: 'unavailable',
+          observationTimestamp: null,
+          confidence: 0.25,
+          measuredStationCount: 0,
+          sourceDetail: null,
         },
       };
 
       const criticalityScore = computeCriticality(baseAsset);
-      const hydroTrend = computeHydroTrend(baseAsset, ecowatt, floods, alerts);
+      const hydrometrySupport = hydrometrySnapshot?.assets[seed.id] ?? null;
+      const derivedScore = computeDerivedHydroScore(baseAsset, ecowatt, floods, alerts);
+      const measuredAdjustment = hydrometrySupport?.measuredStressAdjustment ?? 0;
+      const finalScore = derivedScore + measuredAdjustment + computeHydrometrySynergy(
+        hydrometrySupport?.hydroTrend ?? 'unavailable',
+        floods,
+        alerts,
+        baseAsset,
+        ecowatt,
+      );
+      const hydroTrend = classifyHydroTrend(finalScore);
 
       return {
         ...baseAsset,
         criticality_score: criticalityScore,
         signals: {
           hydro_trend: hydroTrend,
-          last_update: lastUpdate,
+          last_update: computedAt,
+          signalSource: hydrometrySupport?.signalSource ?? 'DERIVED_CONTEXT_ONLY',
+          dataFreshness: hydrometrySupport?.dataFreshness ?? 'unavailable',
+          measuredSupportLevel: hydrometrySupport?.measuredSupportLevel ?? 'none',
+          hydroTrend: hydrometrySupport?.hydroTrend ?? 'unavailable',
+          observationTimestamp: hydrometrySupport?.observationTimestamp ?? null,
+          confidence: hydrometrySupport?.confidence ?? 0.25,
+          measuredStationCount: hydrometrySupport?.observedStationCount ?? 0,
+          sourceDetail: hydrometrySupport?.detail ?? hydrometrySupport?.note ?? null,
         },
       };
     })
