@@ -406,8 +406,8 @@ export const GAS_FLOW_STYLE = {
   glowImportColor: '#7C3AED',  // Violet-600 : halo import
   glowExportColor: '#0891B2',  // Cyan-600   : halo export
   // Line properties: Thinner than electricity
-  minLineWidth: 2,
-  maxLineWidth: 6,
+  minLineWidth: 4,
+  maxLineWidth: 10,
   lineWidthDivisor: 80,        // flowGWhDay / 80 for width scaling
   glowMultiplier: 2.0,         // Softer glow (2x line width)
   glowOpacity: 0.25,
@@ -1423,6 +1423,7 @@ export class DeckGLMap {
   // Gas PIR chevron animation
   private gasChevronAnimFrame: number | null = null;
   private gasChevronPhase = 0;
+  private gasPipelineVisible = false; // controlled by GasPanel toggle only, off by default
   private gasArcs: Array<{
     coords: [number, number][];
     color: string;
@@ -1482,6 +1483,7 @@ export class DeckGLMap {
 
   // ─── Gas tooltip data ───
   private gasFlowStats = new Map<string, import('../types/index.ts').GasInterconnectionFlowStats>();
+  private gasPipelineVisible: boolean = false;
   private gasBorderHistory = new Map<string, number[]>(); // sparkline 7j par borderCode
   private gasFlowPopup: maplibregl.Popup | null = null;
 
@@ -2643,7 +2645,7 @@ export class DeckGLMap {
         'circle-radius': ['interpolate', ['linear'], ['get', 'capacity'], 1, 8, 7, 18],
         'circle-color': ['get', 'fillColor'],
         'circle-opacity': 0.85,
-        'circle-stroke-width': 2,
+        'circle-stroke-width': 4,
         'circle-stroke-color': ['get', 'strokeColor'],
       },
     });
@@ -7181,17 +7183,30 @@ export class DeckGLMap {
       : trend === 'filling' ? 'Remplissage'
         : 'Stable';
 
+    const currentStockTWh = Number(properties.currentStockTWh ?? NaN);
+    const flowRate = Number(properties.flowRateGWhDay ?? NaN);
+    const sendOut = Number(properties.currentSendOut ?? NaN);
+    const utilPct = Number(properties.utilizationPct ?? NaN);
+
     return `
-      <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
+      <div style="color:#e8e8ec; font-family:sans-serif; min-width:240px; padding:2px;">
         <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(String(properties.name ?? 'Site gaz'))}</div>
         <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${isTerminal ? '#A78BFA' : '#2DD4BF'};">
           ${isTerminal ? 'Terminal GNL' : 'Stockage gaz'}
         </div>
-        <div style="display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:12px;">
+        <div style="display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12px;">
           <span style="color:#9898a8;">Opérateur</span><strong>${this.escapeHtml(operator)}</strong>
-          ${capacity > 0 ? `<span style="color:#9898a8;">Capacité</span><strong>${capacity.toLocaleString('fr-FR')} ${isTerminal ? 'GWh' : 'TWh'}</strong>` : ''}
-          ${Number.isFinite(fillLevel) ? `<span style="color:#9898a8;">Remplissage</span><strong>${fillLevel.toFixed(0)} %</strong>` : ''}
-          ${!isTerminal ? `<span style="color:#9898a8;">Tendance</span><strong>${this.escapeHtml(trendLabel)}</strong>` : ''}
+          ${capacity > 0 ? `<span style="color:#9898a8;">Capacité max</span><strong>${capacity.toLocaleString('fr-FR')} ${isTerminal ? 'GWh/j' : 'TWh'}</strong>` : ''}
+
+          ${!isTerminal && Number.isFinite(fillLevel) ? `<div style="grid-column: 1 / -1; height:1px; background:rgba(255,255,255,0.1); margin:4px 0;"></div>` : ''}
+          ${!isTerminal && Number.isFinite(fillLevel) ? `<span style="color:#9898a8;">Remplissage</span><strong>${fillLevel.toFixed(1)} %</strong>` : ''}
+          ${!isTerminal && Number.isFinite(currentStockTWh) ? `<span style="color:#9898a8;">Volume stocké</span><strong>${currentStockTWh.toFixed(2)} TWh</strong>` : ''}
+          ${!isTerminal && Number.isFinite(flowRate) ? `<span style="color:#9898a8;">Débit net</span><strong style="color:${flowRate > 0 ? '#22C55E' : '#EF4444'}">${flowRate > 0 ? '+' : ''}${flowRate.toFixed(0)} GWh/j</strong>` : ''}
+          ${!isTerminal && !Number.isFinite(flowRate) ? `<span style="color:#9898a8;">Tendance</span><strong style="color:${trend === 'filling' ? '#22C55E' : trend === 'withdrawing' ? '#EF4444' : '#6B7280'}">${this.escapeHtml(trendLabel)}</strong>` : ''}
+
+          ${isTerminal && (Number.isFinite(sendOut) || Number.isFinite(utilPct)) ? `<div style="grid-column: 1 / -1; height:1px; background:rgba(255,255,255,0.1); margin:4px 0;"></div>` : ''}
+          ${isTerminal && Number.isFinite(sendOut) ? `<span style="color:#9898a8;">Émission réseau</span><strong>${sendOut.toFixed(0)} GWh/j</strong>` : ''}
+          ${isTerminal && Number.isFinite(utilPct) ? `<span style="color:#9898a8;">Taux d'utilisation</span><strong>${utilPct.toFixed(1)} %</strong>` : ''}
         </div>
       </div>
     `;
@@ -8846,6 +8861,8 @@ export class DeckGLMap {
             name: terminal.name,
             operator: terminal.operator,
             capacity: terminal.capacityGWh,
+            currentSendOut: terminal.currentSendOut,
+            utilizationPct: terminal.utilizationPct,
             status: terminal.status,
           },
         });
@@ -8867,6 +8884,8 @@ export class DeckGLMap {
             operator: storage.operator,
             capacity: storage.capacityTWh,
             fillLevel: storage.fillLevel,
+            currentStockTWh: storage.currentStockTWh,
+            flowRateGWhDay: storage.flowRateGWhDay,
             fillLabel: `${storage.fillLevel.toFixed(0)}%`,
             fillColor,
             strokeColor,
@@ -8969,6 +8988,15 @@ export class DeckGLMap {
       console.log(`[DeckGLMap/Gas] Updated: ${state.terminals.length} terminals, ${state.storages.length} storages, ${pirArcFeatures.length} PIR flows`);
     } catch (e) {
       console.warn('[DeckGLMap/Gas] Update failed:', e);
+    }
+  }
+
+  setGasPipelineVisible(show: boolean): void {
+    this.gasPipelineVisible = show;
+    if (this.currentLayers?.gasNetwork) {
+      const v = show ? 'visible' : 'none';
+      this.setVis(LYR_GAS_NETWORK_GRT, v);
+      this.setVis(LYR_GAS_NETWORK_TEREGA, v);
     }
   }
 
@@ -11627,8 +11655,9 @@ export class DeckGLMap {
     }
     // Gas layer: réseau + organes vitaux
     const gasVis = vis(layers.gasNetwork ?? false);
-    this.setVis(LYR_GAS_NETWORK_GRT, gasVis);
-    this.setVis(LYR_GAS_NETWORK_TEREGA, gasVis);
+    const pipeVis = (gasVis === 'visible' && this.gasPipelineVisible) ? 'visible' : 'none';
+    this.setVis(LYR_GAS_NETWORK_GRT, pipeVis);
+    this.setVis(LYR_GAS_NETWORK_TEREGA, pipeVis);
     this.setVis(LYR_GAS_TERMINALS, gasVis);
     this.setVis(LYR_GAS_STORAGES_GLOW, gasVis);
     this.setVis(LYR_GAS_STORAGES, gasVis);

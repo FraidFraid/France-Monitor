@@ -6,6 +6,10 @@
 import { Panel } from './Panel.ts';
 import type { NewsItem, FilterState, EventCategory, ThreatLevel } from '../types/index.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 /** Escape HTML to prevent XSS */
 function escapeHtml(str: string): string {
     const div = document.createElement('div');
@@ -45,6 +49,7 @@ export class NewsPanel extends Panel {
     private filter: FilterState | null = null;
     private onItemClick: NewsItemClickHandler | null = null;
     private listEl: HTMLElement | null = null;
+    private _badgeEl: HTMLElement | null = null;
 
     constructor(container: HTMLElement) {
         super(container, {
@@ -68,6 +73,24 @@ export class NewsPanel extends Panel {
         if (filter) this.filter = filter;
         this.applyFilter();
         this.renderList();
+        this._updateTruthBadge();
+    }
+
+    private _updateTruthBadge(): void {
+        if (!this._badgeEl) return;
+        if (this.items.length === 0) {
+            this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
+            return;
+        }
+        const mostRecentMs = this.items[0].pubDate.getTime();
+        const ageMin = (Date.now() - mostRecentMs) / 60000;
+        if (ageMin < 30) {
+            this._badgeEl.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+        } else if (ageMin < 120) {
+            this._badgeEl.innerHTML = renderTruthBadge('CACHE FIGÉ', '#F59E0B');
+        } else {
+            this._badgeEl.innerHTML = renderTruthBadge('HISTORIQUE', '#60A5FA');
+        }
     }
 
     /** Highlight item visually without scrolling (for map hover) */
@@ -119,6 +142,10 @@ export class NewsPanel extends Panel {
 
     protected render(): void {
         if (!this.bodyEl) return;
+
+        this._badgeEl = document.createElement('div');
+        this._badgeEl.style.cssText = 'padding:4px 8px 0;';
+        this.bodyEl.appendChild(this._badgeEl);
 
         this.listEl = document.createElement('div');
         this.listEl.className = 'news-list';

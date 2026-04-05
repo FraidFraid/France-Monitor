@@ -14,6 +14,10 @@ import { getCyberScoreColor, formatCyberDate, getSeverityColor, isCyberPanelEnab
 
 // ═══ Constantes UI ═══
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 const SEVERITY_LABELS: Record<CyberSeverity, string> = {
   critical: 'Critique',
   high: 'Élevée',
@@ -112,6 +116,7 @@ export class CyberPanel extends Panel {
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Vigilance Cyber Nationale</div>
         <div id="cyber-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Chargement...</div>
         <div id="cyber-trend" style="font-size: 10px; margin-top: 4px;"></div>
+        <div id="cyber-truth-badge" style="margin-top:4px;"></div>
       </div>
     `;
     this.modalEl.appendChild(header);
@@ -303,6 +308,17 @@ export class CyberPanel extends Panel {
           MàJ: ${data.meta.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
         </span>
       `;
+    }
+
+    const truthBadge = this.modalEl.querySelector('#cyber-truth-badge') as HTMLElement | null;
+    if (truthBadge) {
+      const allUp = data.meta.sources.every(s => s.isUp);
+      const stale = Date.now() - data.meta.lastUpdate.getTime() > 4 * 3600 * 1000;
+      if (stale || !allUp) {
+        truthBadge.innerHTML = renderTruthBadge('CACHE FIGÉ', '#F59E0B');
+      } else {
+        truthBadge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+      }
     }
   }
 

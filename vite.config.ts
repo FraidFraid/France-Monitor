@@ -31,6 +31,7 @@ import { copernicusProxyPlugin } from './src/plugins/copernicus-proxy';
 import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
+import gieProxyPlugin from './src/plugins/gie-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -64,6 +65,7 @@ export default defineConfig(({ mode }) => {
       osmRailwaysProxyPlugin(),
       ecowattProxyPlugin(),
       gasPirProxyPlugin(),
+      gieProxyPlugin(),
       eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),

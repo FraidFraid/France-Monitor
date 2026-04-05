@@ -2,6 +2,10 @@ import { Panel } from './Panel.ts';
 import type { EcowattSignal, EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 // ─── Palette signal Écowatt ───
 const SIG_COLOR: Record<EcowattSignal, string> = {
   green: '#16A34A',
@@ -134,6 +138,7 @@ export class EnergyPanel extends Panel {
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Écowatt RTE - Météo de l'électricité</div>
         <div id="elec-signal-label" style="color: ${SIG_COLOR.green}; font-size: 11px; margin-top: 2px;">${SIG_LABEL.green}</div>
         <div id="elec-update-time" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;"></div>
+        <div id="elec-truth-badge" style="margin-top:4px;"></div>
       </div>
     `;
     this.modalEl.appendChild(header);
@@ -199,6 +204,8 @@ export class EnergyPanel extends Panel {
           <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.6;">🔌</div>
           <div style="color: var(--text-muted);">Aucune donnée Écowatt disponible.</div>
         </div>`;
+      const badgeEl = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
+      if (badgeEl) badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
       return;
     }
 
@@ -226,6 +233,8 @@ export class EnergyPanel extends Panel {
     if (icon) icon.textContent = SIG_ICON[worstSig];
     if (lbl) { lbl.textContent = SIG_LABEL[worstSig]; lbl.style.color = SIG_COLOR[worstSig]; }
     if (time) time.textContent = `MàJ : ${data.national.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    const badge = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
+    if (badge) badge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
   }
 
   private renderContent(data: EcowattResponse): void {

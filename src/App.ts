@@ -688,7 +688,7 @@ const GAS_LEGEND: LegendCategory = {
     { id: 'pir-export', label: 'Export gaz', color: '#06B6D4', icon: '→', iconSize: 18 },
   ],
   source: {
-    label: 'GRTgaz / ODRE / Teréga',
+    label: 'PEG NaTran / ODRE / Teréga',
     year: new Date().getFullYear(),
   },
   refresh: {
@@ -2078,6 +2078,9 @@ export class App {
       this.layerPanel?.updateLayers(this.activeLayers);
       this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
       this.layoutEnergyFloatingPanels();
+    });
+    this.gasPanel.setPipelineCallback((show) => {
+      this.mapContainer?.setGasPipelineVisible(show);
     });
     this.gasPanel.mount();
 

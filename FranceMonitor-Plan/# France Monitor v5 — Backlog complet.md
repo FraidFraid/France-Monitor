@@ -7,6 +7,29 @@
 
 ---
 
+## Mise à jour repo (2026-04-05) — Gaz PIR ENTSOG & UX GasPanel
+
+- ✅ **Migration PIR : ODRE → ENTSOG Transparency Platform** — `api/energy/gas-pir.js` et `src/plugins/gas-pir-proxy.ts` réécrits. L'ancien endpoint ODRE ne remontait aucune donnée exploitable. Remplacement par deux requêtes parallèles à l'API ENTSOG v1 (`operatorKey=FR-TSO-0003` pour GRTgaz + `operatorKey=FR-TSO-0002` pour TERÉGA), filtrées sur les 4 points d'interconnexion PIR actifs.
+- ✅ **Découverte VIP PIRINEOS** — Biriatou et Larrau ont été fusionnés en un point virtuel unique (`ITP-00304 VIP PIRINEOS`) depuis octobre 2014 par TERÉGA. L'API ENTSOG ne retourne aucune donnée sous les anciens IDs `ITP-00033 / ITP-00018`. Config `gas-infrastructure.ts` mise à jour : 4 PIR au lieu de 5, entrée `pir-biriatou` renommée `Pyrénées (Biriatou/Larrau)` avec `entsogKey: 'ITP-00304'`.
+- ✅ **Données live confirmées** — 3 flux actifs sur 4 points : Espagne (VIP PIRINEOS) +140 GWh/j · Belgique (Taisnières) +20 GWh/j · Suisse (Oltingue) −124 GWh/j. Point Obergailbach (Allemagne) : données ENTSOG disponibles mais volume proche de zéro ce jour.
+- ✅ **Épaisseur des flèches PIR augmentée** — `GAS_FLOW_STYLE` dans `DeckGLMap.ts` : `minLineWidth 2→4 px`, `maxLineWidth 6→10 px`. Les flux sont désormais mieux lisibles sur fond de carte sombre.
+- ✅ **Badges EcoGaz J+1/J+2/J+3 dans GasPanel** — La prévision sur 3 jours est maintenant affichée dans l'en-tête du panel. Labels raccourcis (`ECOGAZ_SHORT` : `green→Normal`, `yellow→Vigilance`, `orange→Alerte`, `red→Critique`) avec tooltip complet au survol. Overflow corrigé : `white-space: nowrap` sur chaque badge.
+- ✅ **Toggle gazoduc dans GasPanel (off par défaut)** — Nouveau bouton bascule dans le panel gaz permettant d'afficher / masquer les couches `LYR_GAS_NETWORK_GRT` et `LYR_GAS_NETWORK_TEREGA`. Par défaut désactivé : les gazoducs ne s'affichent pas à l'ouverture du module, même si la couche `gasNetwork` est active. Le toggle appelle `MapContainer.setGasPipelineVisible()` → `DeckGLMap.setGasPipelineVisible()`. État `gasPipelineVisible = false` maintenu dans `DeckGLMap.ts` et appliqué dans `setLayerVisibility()`.
+
+---
+
+## Mise à jour repo (2026-04-05) — Uniformisation de la vérité des données ✅ Couverture complète
+
+**Vocabulaire standard appliqué partout** : `TEMPS RÉEL` · `QUASI TEMPS RÉEL` · `HISTORIQUE` · `CACHE FIGÉ` · `RECONSTRUIT / ESTIMÉ` · `INDISPONIBLE`
+
+- ✅ **`renderTruthBadge()` présent sur tous les panels dynamiques** — EnergyPanel, GasPanel, EolienPanel, CyberPanel, DefensePanel, FinancePanel, FiresPanel, NewsPanel, ISNRPanel, TrafficPanel, WeatherPanel. Chaque panel expose un badge en header qui reflète l'état réel de ses sources à chaque refresh.
+- ✅ **Labels inline sur les panels à logique propre** — FloodsPanel (`TEMPS RÉEL` / `RECONSTRUIT / ESTIMÉ` par tronçon Vigicrues selon `dataSource` et `geometryFidelity`), NuclearPanel (`QUASI TEMPS RÉEL` / `RECONSTRUIT / ESTIMÉ` / `INDISPONIBLE` selon fraîcheur RTE), OutagesPanel (`TEMPS RÉEL` Ecowatt/BGP + mention `HISTORIQUE` DataFair Enedis), TransportPanel et TrafficPanel (badge statique `TEMPS RÉEL`), MaritimePanel (`CACHE FIGÉ` AIS si stale), BarometerWidget (`CACHE FIGÉ` si résultat depuis cache).
+- ✅ **StatusPanel unifié** — constantes `ok → 'TEMPS RÉEL'`, `stale → 'CACHE FIGÉ'`, `error → 'INDISPONIBLE'` centralisées dans `StatusPanel.ts`. Le panneau de statut sources reflète le même vocabulaire que les panels métier.
+- ✅ **ElusPanel** — affiche `Source officielle (TEMPS RÉEL)`, `Source officielle (HISTORIQUE)`, `CACHE FIGÉ` selon le statut de vérification remontant de la chaîne `ministers.ts`.
+- ✅ **Fiabilisation bloc gaz (dernier manquant)** — `GasPanel.renderSourceBadge()` corrigé : couleurs désormais distinctes par état (`ok` vert / `stale` orange+label "(cache)" / `error` rouge+label "(erreur)"). Jauge de stockage : étiquette `"estimé"` (orange) ou `"indisponible"` (rouge) sous le % quand `sourceStatus.odre !== 'ok'`, pour distinguer les valeurs ODRE live des fallback structurels de `gas-infrastructure.ts`.
+
+---
+
 ## Mise à jour repo (2026-04-05) — Robustesse bloc pannes électricité ✅ Item 1 Top 10 clôturé
 
 - ✅ **Circuit breaker 3 états dans `outages.ts`** — états `closed / open / half-open`, threshold 3 échecs consécutifs, cooldown 30 min, sonde automatique en half-open. L'API Enedis ne sera plus martelée en cas d'indisponibilité.

@@ -17,6 +17,10 @@ const SCORE_COLORS: Record<string, string> = {
   stable: 'var(--text-muted)',
 };
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 function scoreToColor(score: number): string {
   if (score >= 80) return SCORE_COLORS.critical;
   if (score >= 60) return SCORE_COLORS.high;
@@ -132,6 +136,7 @@ export class ISNRPanel extends Panel {
           <div>
             <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">ISNR</div>
             <div style="color: var(--text-muted); font-size: 11px;">Indice de Stabilité</div>
+            <div style="margin-top:3px;">${renderTruthBadge('RECONSTRUIT / ESTIMÉ', '#F97316')}</div>
           </div>
         </div>
         <div style="text-align: right;">

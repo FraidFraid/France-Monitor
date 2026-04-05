@@ -12,6 +12,10 @@ import { Panel } from './Panel.ts';
 import type { GasNetworkState, EcoGazSignal } from '../types/index.ts';
 import { getEcoGazColor, isGasPanelEnabled, ECOGAZ_LABELS } from '../services/gas.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 const GAS_PANEL_COLORS = {
   terminal: '#A78BFA',
   import: '#A855F7',
@@ -26,6 +30,10 @@ const GAS_PANEL_COLORS = {
 
 // ═══ GasPanel Class ═══
 
+const ECOGAZ_SHORT: Record<EcoGazSignal, string> = {
+  green: 'Normal', yellow: 'Vigilance', orange: 'Alerte', red: 'Critique', unknown: '?',
+};
+
 export class GasPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
@@ -34,6 +42,9 @@ export class GasPanel extends Panel {
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private showPipeline = false;
+  private onPipelineToggle?: (show: boolean) => void;
+  private lastGasData: GasNetworkState | null = null;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'EcoGaz - Réseau Gaz', icon: '🔥', collapsible: false });
@@ -115,6 +126,8 @@ export class GasPanel extends Panel {
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">EcoGaz - Météo du Gaz</div>
         <div id="gas-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Chargement...</div>
         <div id="gas-update-time" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;"></div>
+        <div id="gas-truth-badge" style="margin-top:4px;"></div>
+        <div id="gas-forecast" style="display:flex; gap:6px; margin-top:6px;"></div>
       </div>
     `;
     this.modalEl.appendChild(header);
@@ -170,6 +183,10 @@ export class GasPanel extends Panel {
 
   setOnClose(handler: () => void): void {
     this.onClose = handler;
+  }
+
+  setPipelineCallback(cb: (show: boolean) => void): void {
+    this.onPipelineToggle = cb;
   }
 
   show(data: GasNetworkState | null): void {
@@ -241,10 +258,33 @@ export class GasPanel extends Panel {
     if (updateTime) {
       updateTime.textContent = `MàJ: ${data.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
     }
+
+    const forecastEl = this.modalEl.querySelector('#gas-forecast') as HTMLElement | null;
+    if (forecastEl) {
+      const days = ['J+1', 'J+2', 'J+3'];
+      forecastEl.innerHTML = data.ecogaz.forecast.slice(0, 3).map((f, i) => {
+        const fc = getEcoGazColor(f.signal);
+        const fl = ECOGAZ_SHORT[f.signal];
+        return `<div title="${ECOGAZ_LABELS[f.signal]}" style="font-size:9px; padding:2px 6px; border-radius:3px; background:${fc}22; color:${fc}; border:1px solid ${fc}55; white-space:nowrap;">${days[i]} ${fl}</div>`;
+      }).join('');
+    }
+
+    const truthBadge = this.modalEl.querySelector('#gas-truth-badge') as HTMLElement | null;
+    if (truthBadge) {
+      const statuses = Object.values(data.sourceStatus) as Array<'ok' | 'stale' | 'error'>;
+      if (statuses.some(s => s === 'error')) {
+        truthBadge.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
+      } else if (statuses.some(s => s === 'stale')) {
+        truthBadge.innerHTML = renderTruthBadge('CACHE FIGÉ', '#F59E0B');
+      } else {
+        truthBadge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+      }
+    }
   }
 
   private renderContent(data: GasNetworkState): void {
     if (!this.contentEl) return;
+    this.lastGasData = data;
 
     const stats = data.nationalStats;
     const fillColor = this.getFillColor(stats.averageFillLevel);
@@ -264,7 +304,11 @@ export class GasPanel extends Panel {
               <div style="height: 100%; width: ${stats.averageFillLevel}%; background: ${fillColor}; transition: width 0.5s ease;"></div>
             </div>
           </div>
-          <div style="font-size: 16px; font-weight: 700; color: ${fillColor};">${stats.averageFillLevel.toFixed(1)}%</div>
+          <div>
+            <div style="font-size: 16px; font-weight: 700; color: ${fillColor}; text-align: right;">${stats.averageFillLevel.toFixed(1)}%</div>
+            ${data.sourceStatus.odre === 'stale' ? `<div style="font-size: 9px; color: #F59E0B; text-align: right; margin-top: 1px;">estimé</div>` : ''}
+            ${data.sourceStatus.odre === 'error' ? `<div style="font-size: 9px; color: #EF4444; text-align: right; margin-top: 1px;">indisponible</div>` : ''}
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
@@ -302,6 +346,22 @@ export class GasPanel extends Panel {
         `).join('')}
       </div>
 
+      <!-- Pipeline toggle -->
+      <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:11px; color:var(--text-secondary);">Gazoducs principaux</span>
+        <button id="gas-pipeline-toggle" style="
+          width:36px; height:20px; border-radius:10px; border:none; cursor:pointer; position:relative;
+          background:${this.showPipeline ? '#10B981' : 'rgba(255,255,255,0.15)'};
+          transition: background 0.2s;
+        ">
+          <span style="
+            position:absolute; top:3px; left:${this.showPipeline ? '17px' : '3px'};
+            width:14px; height:14px; border-radius:50%; background:#fff;
+            transition: left 0.2s;
+          "></span>
+        </button>
+      </div>
+
       <!-- Source Status -->
       <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.05);">
         <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px;">
@@ -310,26 +370,34 @@ export class GasPanel extends Panel {
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
           ${this.renderSourceBadge('EcoGaz', data.sourceStatus.ecogaz)}
           ${this.renderSourceBadge('ODRE', data.sourceStatus.odre)}
-          ${this.renderSourceBadge('GRTgaz', data.sourceStatus.grtgaz)}
+          ${this.renderSourceBadge('PEG NaTran', data.sourceStatus.grtgaz)}
           ${this.renderSourceBadge('Teréga', data.sourceStatus.terega)}
         </div>
       </div>
     `;
 
     this.contentEl.innerHTML = html;
+
+    const pipelineBtn = this.contentEl.querySelector('#gas-pipeline-toggle') as HTMLButtonElement | null;
+    pipelineBtn?.addEventListener('click', () => {
+      this.showPipeline = !this.showPipeline;
+      this.onPipelineToggle?.(this.showPipeline);
+      if (this.lastGasData) this.renderContent(this.lastGasData);
+    });
   }
 
   private renderSourceBadge(name: string, status: 'ok' | 'stale' | 'error'): string {
     const colors: Record<string, { bg: string; text: string; dot: string }> = {
-      ok: { bg: 'rgba(255,255,255,0.06)', text: '#cbd5e1', dot: '#94a3b8' },
-      stale: { bg: 'rgba(255,255,255,0.06)', text: '#cbd5e1', dot: '#94a3b8' },
-      error: { bg: 'rgba(255,255,255,0.06)', text: '#cbd5e1', dot: '#94a3b8' },
+      ok:    { bg: 'rgba(16, 185, 129, 0.10)', text: '#6EE7B7', dot: '#10B981' },
+      stale: { bg: 'rgba(245, 158, 11, 0.10)', text: '#FCD34D', dot: '#F59E0B' },
+      error: { bg: 'rgba(239, 68, 68, 0.10)',  text: '#FCA5A5', dot: '#EF4444' },
     };
     const c = colors[status];
+    const label = status === 'ok' ? name : status === 'stale' ? `${name} (cache)` : `${name} (erreur)`;
     return `
       <div style="display: flex; align-items: center; gap: 4px; background: ${c.bg}; padding: 4px 8px; border-radius: 4px;">
         <div style="width: 6px; height: 6px; border-radius: 50%; background: ${c.dot};"></div>
-        <span style="font-size: 10px; color: ${c.text};">${name}</span>
+        <span style="font-size: 10px; color: ${c.text};">${label}</span>
       </div>
     `;
   }

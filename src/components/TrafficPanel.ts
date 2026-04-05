@@ -6,6 +6,10 @@
 import { Panel } from './Panel.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 export class TrafficPanel extends Panel {
     private contentEl: HTMLElement | null = null;
     private closeBtn: HTMLElement | null = null;
@@ -86,7 +90,7 @@ export class TrafficPanel extends Panel {
       <div style="font-size: 24px;">🚗</div>
       <div>
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Infos Trafic</div>
-        <div style="color: var(--text-muted); font-size: 11px;">TomTom Traffic (temps réel)</div>
+        <div style="color: var(--text-muted); font-size: 11px; display:flex; align-items:center; gap:6px;">TomTom Traffic ${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>
       </div>
     `;
         this.modalEl.appendChild(header);

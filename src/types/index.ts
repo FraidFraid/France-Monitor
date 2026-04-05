@@ -1346,6 +1346,7 @@ export interface GasTerminal {
   operator: 'Elengy' | 'Dunkerque LNG';
   capacityGWh: number; // Daily regasification capacity
   currentSendOut?: number; // Current send-out rate (GWh/day)
+  utilizationPct?: number; // Utilization percentage
   status: 'active' | 'maintenance' | 'offline';
 }
 
@@ -1357,6 +1358,8 @@ export interface GasStorage {
   operator: 'Storengy' | 'Terega' | 'Geomethane';
   capacityTWh: number; // Max capacity
   fillLevel: number; // 0-100 percentage
+  currentStockTWh?: number; // Absolute stock value
+  flowRateGWhDay?: number; // Daily injection/withdrawal rate
   fillTrend: 'filling' | 'stable' | 'withdrawing';
   status: 'active' | 'maintenance';
 }

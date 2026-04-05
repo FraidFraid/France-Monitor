@@ -1,4 +1,8 @@
 import type { ActiveFire, FireIncident } from '../types/index.ts';
+
+function renderTruthBadge(label: string, color: string): string {
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
 import { applyFiresFilter, DEFAULT_FIRES_FILTER } from '../services/fires.ts';
 import type { FiresFilterState } from '../services/fires.ts';
 import { clusterFireDetections } from '../services/fire-clustering.ts';
@@ -8,6 +12,7 @@ export class FiresPanel {
     private modalEl!: HTMLElement;
     private contentEl!: HTMLElement;
     private headerSubEl?: HTMLElement;
+    private _badgeEl?: HTMLElement;
     private rawFires: ActiveFire[] = [];
     private filterState: FiresFilterState = { ...DEFAULT_FIRES_FILTER };
     private onFilteredFiresCb: ((fires: ActiveFire[]) => void) | null = null;
@@ -115,7 +120,11 @@ export class FiresPanel {
         this.headerSubEl = document.createElement('div');
         this.headerSubEl.style.cssText = 'color:var(--text-muted);font-size:11px;margin-top:2px;';
         this.headerSubEl.textContent = 'NASA FIRMS · VIIRS SNPP · latence ~3h';
+        this._badgeEl = document.createElement('div');
+        this._badgeEl.style.cssText = 'margin-top:4px;';
+        this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
         headerText.appendChild(this.headerSubEl);
+        headerText.appendChild(this._badgeEl);
         header.innerHTML = '<div style="font-size:24px">🔥</div>';
         header.appendChild(headerText);
         this.modalEl.appendChild(header);
@@ -136,6 +145,15 @@ export class FiresPanel {
             this.headerSubEl.textContent = `NASA FIRMS · ${this.sourcesInfo.join(' · ')} · latence ~1h`;
         } else if (this.sourcesInfo.length > 0) {
             this.headerSubEl.textContent = `NASA FIRMS · ${this.sourcesInfo[0]} · latence ~3h`;
+        }
+        if (this._badgeEl) {
+            if (this.sourcesInfo.length === 0) {
+                this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
+            } else if (this.apiKeyUsed) {
+                this._badgeEl.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+            } else {
+                this._badgeEl.innerHTML = renderTruthBadge('HISTORIQUE', '#60A5FA');
+            }
         }
     }
 

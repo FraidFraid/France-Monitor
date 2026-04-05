@@ -1,6 +1,10 @@
 import { Panel } from './Panel.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 const EOLIEN_PANEL_COLORS = {
   cyan: '#38BDF8',
   cyanSoft: 'rgba(56, 189, 248, 0.16)',
@@ -97,6 +101,7 @@ export class EolienPanel extends Panel {
           <div style="font-size:14px;font-weight:700;color:${EOLIEN_PANEL_COLORS.text};">Backbone énergétique - Éolien</div>
           <div id="eolien-status-label" style="margin-top:2px;font-size:11px;color:${EOLIEN_PANEL_COLORS.cyan};">Production live France</div>
           <div id="eolien-update-time" style="margin-top:5px;font-size:10px;color:${EOLIEN_PANEL_COLORS.muted};"></div>
+          <div id="eolien-truth-badge" style="margin-top:4px;"></div>
         </div>
       </div>
     `;
@@ -135,6 +140,8 @@ export class EolienPanel extends Panel {
     if (!this.isVisible()) return;
     if (!live) {
       this.showLoadingState();
+      const truthBadge = this.modalEl.querySelector('#eolien-truth-badge') as HTMLElement | null;
+      if (truthBadge) truthBadge.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
       return;
     }
     this.updateHeader(live);
@@ -194,6 +201,18 @@ export class EolienPanel extends Panel {
     }
     if (updateEl) {
       updateEl.textContent = `Mise à jour: ${live.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    const truthBadge = this.modalEl.querySelector('#eolien-truth-badge') as HTMLElement | null;
+    if (truthBadge) {
+      const ageMs = Date.now() - live.timestamp.getTime();
+      if (ageMs < 30 * 60 * 1000) {
+        truthBadge.innerHTML = renderTruthBadge('QUASI TEMPS RÉEL', '#34D399');
+      } else if (ageMs < 2 * 3600 * 1000) {
+        truthBadge.innerHTML = renderTruthBadge('CACHE FIGÉ', '#F59E0B');
+      } else {
+        truthBadge.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
+      }
     }
   }
 

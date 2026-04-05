@@ -571,10 +571,7 @@ export class NuclearPanel extends Panel {
       ">
         <span style="font-size:20px;opacity:0.4;">⚛</span>
         <span style="font-size:12px;color:var(--text-muted);text-align:center;">${msg}</span>
-        <span style="
-          font-size:9px;padding:2px 8px;border-radius:8px;
-          background:rgba(107,114,128,0.2);color:#6B7280;font-weight:700;
-        ">INDISPONIBLE</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#EF444422;border:1px solid #EF444433;color:#EF4444;font-size:9px;font-weight:700;letter-spacing:0.06em;">INDISPONIBLE</span>
       </div>`;
   }
 
@@ -584,13 +581,10 @@ export class NuclearPanel extends Panel {
       : freshness === 'stale' ? 'RECONSTRUIT / ESTIMÉ'
       : 'INDISPONIBLE';
     const color =
-      freshness === 'quasi-realtime' ? '#2ECC71'
-      : freshness === 'stale' ? '#F59E0B'
-      : '#6B7280';
-    return `<span style="
-      font-size:9px;padding:2px 8px;border-radius:8px;
-      background:${color}22;color:${color};font-weight:700;
-    ">${label}</span>`;
+      freshness === 'quasi-realtime' ? '#34D399'
+      : freshness === 'stale' ? '#F97316'
+      : '#EF4444';
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
   }
 
   private _renderMiniStat(label: string, value: number, color: string): string {

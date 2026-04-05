@@ -3,6 +3,10 @@ import type { MeteoAlert } from '../types/index.ts';
 import { RISK_LABELS } from '../types/index.ts';
 import type { VigilanceTimeline, VigilanceTimeSlot } from '../services/vigilance-meteo.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 const METEO_COLORS: Record<string, string> = {
   red: 'var(--threat-critical)',
   orange: 'var(--threat-high)',
@@ -117,6 +121,7 @@ export class WeatherPanel extends Panel {
       <div>
         <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Météo-France</div>
         <div style="color: var(--text-muted); font-size: 11px;">Vigilance Nationale</div>
+        <div id="weather-truth-badge" style="margin-top:4px;"></div>
       </div>
     `;
     this.modalEl.appendChild(header);
@@ -169,6 +174,14 @@ export class WeatherPanel extends Panel {
 
     if (!this.contentEl) return;
     this.modalEl.style.display = 'flex';
+
+    const truthBadge = this.modalEl.querySelector('#weather-truth-badge') as HTMLElement | null;
+    if (truthBadge) {
+      const hasData = alerts.length > 0 || (timeline != null && timeline.slots.length > 0);
+      truthBadge.innerHTML = hasData
+        ? renderTruthBadge('TEMPS RÉEL', '#10B981')
+        : renderTruthBadge('INDISPONIBLE', '#EF4444');
+    }
 
     // Render timeline if available
     this.renderTimeline();

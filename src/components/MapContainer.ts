@@ -103,6 +103,10 @@ export class MapContainer {
     await this.deckMap?.updateGas(state);
   }
 
+  setGasPipelineVisible(show: boolean): void {
+    this.deckMap?.setGasPipelineVisible(show);
+  }
+
   // ─── Oil (Vigilance Pétrole - Raffineries, Stocks) ───
   async updateOil(flows: Array<{ id: string; name: string; country?: string; flowKbd: number; coordinates: [number, number]; franceCoordinates?: [number, number]; hubName?: string; originSharePct?: number; originVolumeMt?: number; originReferenceYear?: number; originSourceLabel?: string; originPartialBreakdown?: boolean; originBreakdown?: Array<{ label: string; volumeMt: number; sharePct: number }> }>): Promise<void> {
     await this.deckMap?.updateOil(flows);

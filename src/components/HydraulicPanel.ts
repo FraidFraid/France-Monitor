@@ -310,17 +310,18 @@ export class HydraulicPanel extends Panel {
       ring.style.stroke = stressed > 0 ? HYDRAULIC_PANEL_COLORS.stress : HYDRAULIC_PANEL_COLORS.blue;
     }
     if (scoreEl) {
-      scoreEl.textContent = `${assets.length}`;
+      scoreEl.textContent = `${ratio}%`;
+      scoreEl.style.fontSize = ratio >= 10 ? '12px' : '14px';
     }
     if (statusEl) {
-      const label = stressed > 0
-        ? `${stressed} actif${stressed > 1 ? 's' : ''} en stress`
+      const stateLabel = stressed > 0
+        ? `${stressed} en stress · ${assets.length} actifs`
         : elevated > 0
-          ? `${elevated} actif${elevated > 1 ? 's' : ''} sous pression`
+          ? `${elevated} sous pression · ${assets.length} actifs`
           : measured > 0
-            ? `${measured} actif${measured > 1 ? 's' : ''} appuyé${measured > 1 ? 's' : ''} par Hub’Eau`
-            : `Pic criticité ${topScore}/100`;
-      statusEl.textContent = label;
+            ? `${measured} appuyés Hub'Eau · ${assets.length} actifs`
+            : `${assets.length} actifs · pic criticité ${topScore}`;
+      statusEl.textContent = stateLabel;
       statusEl.style.color = stressed > 0 ? HYDRAULIC_PANEL_COLORS.stress : HYDRAULIC_PANEL_COLORS.cyan;
     }
     if (updateEl) {
@@ -377,7 +378,7 @@ export class HydraulicPanel extends Panel {
           <div>
             <div style="font-size:12px;font-weight:700;color:${HYDRAULIC_PANEL_COLORS.text};">Base vérifiée</div>
             <div style="margin-top:6px;font-size:11px;line-height:1.5;color:${HYDRAULIC_PANEL_COLORS.muted};">
-              Score de stress hydro-énergétique dérivé, appuyé sur des mesures hydrométriques Hub’Eau quasi temps réel là où disponible.
+              Score de stress hydro-énergétique dérivé, appuyé sur des mesures hydrométriques Hub'Eau quasi temps réel là où disponible.
             </div>
           </div>
           <div style="text-align:right;">
@@ -391,13 +392,13 @@ export class HydraulicPanel extends Panel {
           ${this.renderMiniStat('Manuel', `${manualVerified}`, HYDRAULIC_PANEL_COLORS.slate)}
         </div>
         <div style="margin-top:10px;font-size:10px;color:${HYDRAULIC_PANEL_COLORS.muted};">
-          Ce layer n’est pas une télémesure EDF barrage par barrage. Il estime un stress hydro-énergétique à partir de signaux publics (Hub’Eau, crues, météo, mix électrique) et de liens de bassin vers un sous-ensemble d’ouvrages critiques.
+          Ce layer n'est pas une télémesure EDF barrage par barrage. Il estime un stress hydro-énergétique à partir de signaux publics (Hub'Eau, crues, météo, mix électrique) et de liens de bassin vers un sous-ensemble d'ouvrages critiques.
         </div>
         <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
           ${this.renderSourceBadge('RTE/ODRE 30/09/2025', HYDRAULIC_PANEL_COLORS.blueSoft, HYDRAULIC_PANEL_COLORS.blue)}
           ${this.renderSourceBadge('BAN / géocodage', HYDRAULIC_PANEL_COLORS.cyanSoft, HYDRAULIC_PANEL_COLORS.cyan)}
           ${this.renderSourceBadge('DÉRIVÉ – APPUI MESURES RÉELLES', HYDRAULIC_PANEL_COLORS.purpleSoft, HYDRAULIC_PANEL_COLORS.purple)}
-          ${this.renderSourceBadge('Sources : Hub’Eau – Hydrométrie (mesures H/Q quasi temps réel), signaux Écowatt, Vigicrues et vigilance météo.', HYDRAULIC_PANEL_COLORS.slateSoft, HYDRAULIC_PANEL_COLORS.slate)}
+          ${this.renderSourceBadge('Sources : Hub\u2019Eau – Hydrométrie (mesures H/Q quasi temps réel), signaux Écowatt, Vigicrues et vigilance météo.', HYDRAULIC_PANEL_COLORS.slateSoft, HYDRAULIC_PANEL_COLORS.slate)}
         </div>
       </div>
 
@@ -426,7 +427,7 @@ export class HydraulicPanel extends Panel {
             <div style="display:flex;justify-content:space-between;"><span>Hydro stress</span><strong style="color:${HYDRAULIC_PANEL_COLORS.stress};">${stressed}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Hydro FR instantané</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${formatMw(nationalHydroMw)}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Ouvrages régulation</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${regulationCount}</strong></div>
-            <div style="display:flex;justify-content:space-between;"><span>Appui Hub’Eau</span><strong style="color:${HYDRAULIC_PANEL_COLORS.cyan};">${measuredSupportCount}</strong></div>
+            <div style="display:flex;justify-content:space-between;"><span>Appui Hub'Eau</span><strong style="color:${HYDRAULIC_PANEL_COLORS.cyan};">${measuredSupportCount}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Appui fort</span><strong style="color:${HYDRAULIC_PANEL_COLORS.blue};">${strongMeasuredCount}</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Puissance moyenne</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${Math.round(totalMw / Math.max(assets.length, 1)).toLocaleString('fr-FR')} MW</strong></div>
             <div style="display:flex;justify-content:space-between;"><span>Référentiel manuel</span><strong style="color:${HYDRAULIC_PANEL_COLORS.text};">${manualVerified}</strong></div>

@@ -474,7 +474,7 @@ export class MaritimePanel {
           ${isNavy ? '<span style="font-size:9px;color:#67e8f9;border:1px solid #67e8f944;border-radius:3px;padding:1px 4px;flex-shrink:0;">Marine nat.</span>' : ''}
           ${isNavy && ship.isLive === false ? '<span style="font-size:9px;color:#9ca3af;border:1px solid #9ca3af44;border-radius:3px;padding:1px 4px;flex-shrink:0;">port d’attache</span>' : ''}
           ${hasHomonym && !isNavy && mmsiSuffix ? `<span style="font-size:9px;color:var(--text-muted);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:1px 4px;flex-shrink:0;">MMSI …${mmsiSuffix}</span>` : ''}
-          ${isStale ? '<span style="font-size:9px;color:#F59E0B;border:1px solid #F59E0B44;border-radius:3px;padding:1px 4px;margin-left:4px;flex-shrink:0;">CACHE FIGÉ</span>' : ''}
+          ${isStale ? '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#F59E0B22;border:1px solid #F59E0B33;color:#F59E0B;font-size:9px;font-weight:700;letter-spacing:0.06em;flex-shrink:0;">CACHE FIGÉ</span>' : ''}
           <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${riskColor};flex-shrink:0;" title="${ship.riskLevel ?? 'none'}"></span>
         </div>
         <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${ship.type} · ${flagEmoji} ${countryName || 'Inconnu'}</div>

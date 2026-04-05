@@ -1234,7 +1234,7 @@ export class OutagesPanel extends Panel {
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:12px;font-weight:700;color:#818CF8;">⚡ Incidents HTB RTE (IIP)</span>
         <span style="font-size:10px;font-weight:700;color:#818CF8;background:rgba(99,102,241,0.15);padding:1px 7px;border-radius:10px;">${total}${capacityStr}</span>
-        <span style="font-size:9px;font-weight:700;background:rgba(16,185,129,0.15);color:#10B981;padding:1px 6px;border-radius:8px;">TEMPS RÉEL</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span>
       </div>
     `;
     header.appendChild(chevron);

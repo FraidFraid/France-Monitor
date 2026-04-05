@@ -2,11 +2,16 @@ import { Panel } from './Panel.ts';
 import type { MarketData } from '../types/index.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 /**
  * FinancePanel affiche les cours de la Bourse en temps réel (CAC40, etc.)
  */
 export class FinancePanel extends Panel {
     private contentContainer: HTMLElement;
+    private _badgeEl: HTMLElement | null = null;
 
     constructor(container: HTMLElement) {
         super(container, {
@@ -27,6 +32,9 @@ export class FinancePanel extends Panel {
 
     protected render(): void {
         if (this.bodyEl) {
+            this._badgeEl = document.createElement('div');
+            this._badgeEl.style.cssText = 'padding:4px 8px 0;';
+            this.bodyEl.appendChild(this._badgeEl);
             this.bodyEl.appendChild(this.contentContainer);
         }
     }
@@ -37,8 +45,17 @@ export class FinancePanel extends Panel {
         <div style="font-size: 11px; color: var(--text-muted); padding: 8px;">
           Données financières non disponibles.
         </div>`;
+            if (this._badgeEl) this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
             this.setBadge(0);
             return;
+        }
+
+        const mostRecentMs = Math.max(...data.map(d => d.lastUpdated.getTime()));
+        const ageMin = (Date.now() - mostRecentMs) / 60000;
+        if (this._badgeEl) {
+            this._badgeEl.innerHTML = ageMin > 15
+                ? renderTruthBadge('CACHE FIGÉ', '#F59E0B')
+                : renderTruthBadge('TEMPS RÉEL', '#10B981');
         }
 
         this.contentContainer.innerHTML = '';

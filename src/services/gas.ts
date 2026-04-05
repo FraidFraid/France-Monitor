@@ -139,7 +139,7 @@ async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: '
     const json = await resp.json();
     const records = (json.results || []) as OdreStorageRecord[];
 
-    // Enrich static storage config with live fill levels
+    // Enrich static storage config with live fill levels from ODRE
     const enriched = GAS_STORAGES.map(storage => {
       const liveRecord = records.find(r =>
         r.nom_site?.toLowerCase().includes(storage.name.toLowerCase()) ||
@@ -152,6 +152,26 @@ async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: '
         fillTrend: determineFillTrend(liveRecord),
       };
     });
+
+    // Try to enrich with detailed GIE AGSI data if available
+    try {
+      const agsiResp = await fetch('/api/gie/agsi', { signal: AbortSignal.timeout(5_000) });
+      if (agsiResp.ok) {
+        const agsiData = await agsiResp.json();
+        for (const storage of enriched) {
+          const agsiMatch = agsiData.data?.find((d: any) =>
+             storage.operator.toLowerCase().includes(d.name?.toLowerCase() || '') ||
+             d.name?.toLowerCase().includes(storage.operator.toLowerCase())
+          );
+          if (agsiMatch) {
+            storage.currentStockTWh = Number(agsiMatch.workingGas) / 10; // Assuming workingGas is roughly matching TWh scaled
+            storage.flowRateGWhDay = Number(agsiMatch.injection) > 0 ? Number(agsiMatch.injection) : -Number(agsiMatch.withdrawal);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Gas/AGSI] Failed to load GIE AGSI data:', e);
+    }
 
     return { storages: enriched, status: 'ok' };
   } catch (err) {
@@ -255,9 +275,28 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
   const totalImport = interconnections.filter(i => i.flowGWhDay > 0).reduce((sum, i) => sum + i.flowGWhDay, 0);
   const totalExport = Math.abs(interconnections.filter(i => i.flowGWhDay < 0).reduce((sum, i) => sum + i.flowGWhDay, 0));
 
+  const terminals = [...GAS_TERMINALS];
+  try {
+    const alsiResp = await fetch('/api/gie/alsi', { signal: AbortSignal.timeout(5_000) });
+    if (alsiResp.ok) {
+      const alsiData = await alsiResp.json();
+      for (const t of terminals) {
+        const alsiMatch = alsiData.data?.find((d: any) =>
+           d.name?.toLowerCase().includes(t.name.split(' ')[0].toLowerCase())
+        );
+        if (alsiMatch) {
+          t.currentSendOut = Number(alsiMatch.sendOut);
+          t.utilizationPct = (t.currentSendOut / t.capacityGWh) * 100;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Gas/ALSI] Failed to load GIE ALSI data:', err);
+  }
+
   const state: GasNetworkState = {
     ecogaz: ecogazResult.data,
-    terminals: GAS_TERMINALS,
+    terminals,
     storages,
     interconnections,
     nationalStats: {

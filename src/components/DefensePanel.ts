@@ -13,6 +13,10 @@ import { formatProximityDistance } from '../utils/cable-proximity.ts';
 
 // ═══ Constantes UI ═══
 
+function renderTruthBadge(label: string, color: string): string {
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
+
 const SEVERITY_COLORS: Record<DefenseAlert['severity'], string> = {
   high: '#EF4444',
   medium: '#F59E0B',
@@ -141,6 +145,7 @@ export class DefensePanel extends Panel {
           ">0</span>
         </div>
         <div id="defense-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 3px;">Surveillance câbles sous-marins</div>
+        <div id="defense-truth-badge" style="margin-top:4px;"></div>
       </div>
     `;
     this.modalEl.appendChild(header);
@@ -339,6 +344,11 @@ export class DefensePanel extends Panel {
         statusEl.textContent = parts.join(', ') || `${totalCount} alerte${totalCount > 1 ? 's' : ''}`;
         statusEl.style.color = highCount > 0 ? '#EF4444' : mediumCount > 0 ? '#F59E0B' : 'var(--text-muted)';
       }
+    }
+
+    const truthBadge = this.modalEl.querySelector('#defense-truth-badge') as HTMLElement | null;
+    if (truthBadge) {
+      truthBadge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
     }
   }
 

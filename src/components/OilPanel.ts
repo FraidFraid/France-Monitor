@@ -44,8 +44,8 @@ export class OilPanel extends Panel {
   private latestOilData: OilDashboard | null = null;
   private latestFuelTensionData: FuelTensionDashboard | null = null;
   private fuelTensionSearch = '';
-  private fuelTensionListVisible = true;
-  private fuelTensionMapVisible = true;
+  private fuelTensionListVisible = false;
+  private fuelTensionMapVisible = false;
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
