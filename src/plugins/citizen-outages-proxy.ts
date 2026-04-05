@@ -187,6 +187,23 @@ async function fetchDeptCities(code: string): Promise<CitizenReportRaw[]> {
 function parseDeptArticles(html: string, code: string): Array<{ city: string; href: string }> {
     const results: Array<{ city: string; href: string }> = [];
 
+    // ── Validation de structure ──
+    // Vérifier que la page ressemble à du WordPress (infocoupure est un site WP).
+    // Si absente, une réponse Cloudflare / erreur / maintenance est silencieusement
+    // interprétée comme "zéro panne" — ce guard rend l'échec visible.
+    const IS_WORDPRESS =
+        /<article[^>]+class="[^"]*post[^"]*"[^>]*>/i.test(html) ||
+        /<h2[^>]+class="[^"]*entry-title[^"]*"/i.test(html) ||
+        /<div[^>]+class="[^"]*entry-content[^"]*"/i.test(html);
+
+    if (!IS_WORDPRESS) {
+        console.warn(
+            `[infocoupure] /departement-${code}/ : structure HTML inattendue — ` +
+            'marqueurs WordPress absents. Le scraper est peut-\u00eatre cass\u00e9.'
+        );
+        return [];
+    }
+
     const articleRe = new RegExp(
         `<article[^>]+category-departement-${code}[^>]*>[\\s\\S]*?</article>`,
         'gi'
