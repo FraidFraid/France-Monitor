@@ -212,6 +212,7 @@ export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
     coordinates: [-1.7500, 43.3200],
     flowGWhDay: 0,
     maxCapacityGWhDay: 165,
+    entsogKey: 'ITP-00033',
   },
   {
     id: 'pir-larrau',
@@ -221,6 +222,7 @@ export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
     coordinates: [-0.9500, 43.0200],
     flowGWhDay: 0,
     maxCapacityGWhDay: 55,
+    entsogKey: 'ITP-00018',
   },
   {
     id: 'pir-obergailbach',
@@ -230,6 +232,7 @@ export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
     coordinates: [7.2100, 49.1300],
     flowGWhDay: 0,
     maxCapacityGWhDay: 620,
+    entsogKey: 'ITP-00137',
   },
   {
     id: 'pir-taisnieres',
@@ -239,6 +242,7 @@ export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
     coordinates: [3.8200, 50.3600],
     flowGWhDay: 0,
     maxCapacityGWhDay: 240,
+    entsogKey: 'ITP-00115',
   },
   {
     id: 'pir-oltingue',
@@ -248,6 +252,7 @@ export const GAS_INTERCONNECTIONS: GasInterconnection[] = [
     coordinates: [7.3900, 47.4900],
     flowGWhDay: 0,
     maxCapacityGWhDay: 180,
+    entsogKey: 'ITP-00039',
   },
 ];
 

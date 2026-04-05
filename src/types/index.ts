@@ -1369,6 +1369,7 @@ export interface GasInterconnection {
   coordinates: [number, number]; // Border point [lng, lat]
   flowGWhDay: number; // Current flow (positive = import, negative = export)
   maxCapacityGWhDay: number;
+  entsogKey?: string; // ENTSOG connectionpoint key (ITP-XXXXX)
 }
 
 export type GasDirection = 'import' | 'export';
