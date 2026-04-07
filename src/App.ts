@@ -22,6 +22,9 @@ import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import { CyberPanel } from './components/CyberPanel.ts';
+import { FranceIntelPanel } from './components/FranceIntelPanel.ts';
+import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
+import type { FranceIntelData } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import { HydraulicPanel } from './components/HydraulicPanel.ts';
 import { EolienPanel } from './components/EolienPanel.ts';
@@ -1126,6 +1129,7 @@ export class App {
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
   private cyberPanel: CyberPanel | null = null;
+  private franceIntelPanel: FranceIntelPanel | null = null;
   private currentCyberData: CyberState | null = null;
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
@@ -1734,6 +1738,43 @@ export class App {
     };
     mapArea.appendChild(barometerBtn);
 
+    // ── Bouton flottant "France Intelligence" ──
+    const franceIntelBtn = document.createElement('button');
+    franceIntelBtn.id = 'france-intel-fab';
+    franceIntelBtn.innerHTML = '🇫🇷 Intelligence France';
+    franceIntelBtn.style.cssText = `
+      position: absolute;
+      top: 110px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 900;
+      background: linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95));
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #e8e8ec;
+      padding: 8px 18px;
+      border-radius: 24px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      backdrop-filter: blur(12px);
+      transition: all 0.2s;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    `;
+    franceIntelBtn.onmouseover = () => {
+      franceIntelBtn.style.borderColor = 'rgba(255,255,255,0.3)';
+      franceIntelBtn.style.transform = 'translateX(-50%) scale(1.04)';
+    };
+    franceIntelBtn.onmouseout = () => {
+      franceIntelBtn.style.borderColor = 'rgba(255,255,255,0.18)';
+      franceIntelBtn.style.transform = 'translateX(-50%) scale(1)';
+    };
+    franceIntelBtn.onclick = () => {
+      document.dispatchEvent(new CustomEvent('open-france-intel'));
+    };
+    mapArea.appendChild(franceIntelBtn);
+
     main.appendChild(mapArea);
 
     // ── Right Sidebar ──
@@ -1981,6 +2022,7 @@ export class App {
           this.elusPanel?.hide();
           this.trafficPanel?.hide();
           this.isnrPanel?.hide();
+          this.franceIntelPanel?.hide();
 
           this.nationalHealthPanel?.show(features);
         }
@@ -2006,9 +2048,68 @@ export class App {
         this.elusPanel?.hide();
         this.trafficPanel?.hide();
         this.isnrPanel?.hide();
+        this.franceIntelPanel?.hide();
         // Remove nationalHealthPanel?.hide() to allow both panels to be open simultaneously
         this.healthBarometerPanel?.show(metrics);
       }
+    });
+
+    // France Intelligence Panel — open on FAB click or map click
+    document.addEventListener('open-france-intel', () => {
+      const stability = this.currentISNRData;
+      const cyber     = this.currentCyberData;
+      if (!stability || !cyber) return;
+
+      // Restore the last lang the user selected (defaults to 'fr' on first open)
+      const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+
+      const data: FranceIntelData = {
+        stability,
+        cyber,
+        meteo:    this.currentMeteoAlerts,
+        topNews:  this.newsItems.slice(0, 20),
+        briefLang: lang,
+      };
+
+      // Hide other floating panels
+      this.environmentPanel?.hide();
+      this.energyPanel?.hide();
+      this.isnrPanel?.hide();
+      this.cyberPanel?.hide();
+      this.healthBarometerPanel?.hide();
+      this.firesPanel?.hide();
+      this.transportPanel?.hide();
+      this.trafficPanel?.hide();
+
+      this.franceIntelPanel?.show(data);
+
+      // Fetch brief async, update panel when ready
+      void fetchFranceIntelBrief(data, lang).then(({ brief, freshness }) => {
+        this.franceIntelPanel?.updateBrief(brief, freshness);
+      });
+    });
+
+    // Handle lang toggle from panel header button
+    document.addEventListener('france-intel-lang-toggle', (e: Event) => {
+      const { lang } = (e as CustomEvent<{ lang: 'fr' | 'en' }>).detail;
+      const stability = this.currentISNRData;
+      const cyber     = this.currentCyberData;
+      if (!stability || !cyber) return;
+
+      const data: FranceIntelData = {
+        stability,
+        cyber,
+        meteo:    this.currentMeteoAlerts,
+        topNews:  this.newsItems.slice(0, 20),
+        briefLang: lang,
+      };
+
+      // Re-render with new lang (brief spinner shows while fetching)
+      this.franceIntelPanel?.show(data);
+
+      void fetchFranceIntelBrief(data, lang).then(({ brief, freshness }) => {
+        this.franceIntelPanel?.updateBrief(brief, freshness);
+      });
     });
 
     this.transportPanel = new TransportPanel(floatContainer);
@@ -2081,6 +2182,11 @@ export class App {
       // Optional: could update StatusPanel state here
     });
     this.cyberPanel.mount();
+
+    // France Intelligence Panel
+    this.franceIntelPanel = new FranceIntelPanel(floatContainer);
+    this.franceIntelPanel.setOnClose(() => { /* nothing to clean up */ });
+    this.franceIntelPanel.mount();
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
@@ -2299,6 +2405,7 @@ export class App {
     this.trafficPanel?.hide();
     this.isnrPanel?.hide();
     this.nationalHealthPanel?.hide();
+    this.franceIntelPanel?.hide();
 
     if (name === 'Météo-France' || name === 'Vigicrues') {
       this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
@@ -2728,8 +2835,12 @@ export class App {
 
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
     this.mapContainer.setOnRawMapClick((lat, lon) => {
-      void lat;
-      void lon;
+      // Click within rough France bounding box + elus layer inactive → open intel panel
+      const inFrance = lat >= 41.3 && lat <= 51.2 && lon >= -5.2 && lon <= 9.6;
+      if (inFrance && !this.activeLayers.elus) {
+        document.dispatchEvent(new CustomEvent('open-france-intel'));
+        return;
+      }
       if (this.activeLayers.elus) this.elusPanel?.showPlaceholder();
     });
 

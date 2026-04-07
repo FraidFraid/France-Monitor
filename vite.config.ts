@@ -26,6 +26,7 @@ import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
 import { firesProxyPlugin } from './src/plugins/fires-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
+import { franceIntelProxyPlugin } from './src/plugins/france-intel-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
 import { copernicusProxyPlugin } from './src/plugins/copernicus-proxy';
 import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
@@ -82,6 +83,7 @@ export default defineConfig(({ mode }) => {
       firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
+      franceIntelProxyPlugin(),
       ministersProxyPlugin(),
       copernicusProxyPlugin(),
       sentinelNdwiProxyPlugin(),

@@ -1205,6 +1205,26 @@ export interface CyberState {
   };
 }
 
+// ═══ France Intelligence Card ═══
+
+export interface FranceIntelData {
+  /** ISNRData — full national stability data. NOTE: does NOT have national-level dimensions.
+   *  Compute social/security/infra by averaging scores[].dimensions across all departments. */
+  stability: ISNRData;
+  /** Full cyber state — use cyber.meta.globalScore for the composite score bar. */
+  cyber: CyberState;
+  /** Active météo vigilance alerts. */
+  meteo: MeteoAlert[];
+  /** Top news items — panel will sort+slice to 6 by severity. */
+  topNews: NewsItem[];
+  /** LLM-generated brief. undefined while loading, null if unavailable. */
+  brief?: string | null;
+  /** Default: 'fr' */
+  briefLang: 'fr' | 'en';
+  /** Mapped from API's fromCache boolean. */
+  briefFreshness?: 'fresh' | 'cached';
+}
+
 /** Seuils pour le calcul du score cyber */
 export const CYBER_THRESHOLDS = {
   // Alertes CERT-FR
