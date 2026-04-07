@@ -2056,9 +2056,14 @@ export class App {
 
     // France Intelligence Panel — open on FAB click or map click
     document.addEventListener('open-france-intel', () => {
-      const stability = this.currentISNRData;
-      const cyber     = this.currentCyberData;
-      if (!stability || !cyber) return;
+      // Use available data or fallback defaults — never block opening on missing data
+      const stability = this.currentISNRData ?? { scores: [], nationalScore: 0, timestamp: new Date() };
+      const cyber = this.currentCyberData ?? {
+        meta: { globalScore: 0, trend: 'stable' as const, sources: [], lastUpdate: new Date() },
+        alerts: { count30d: 0, latest: [] },
+        ransomware: { total30d: 0, topSectors: [] },
+        vulnerabilities: { criticalCount: 0, topCVEs: [] },
+      };
 
       // Restore the last lang the user selected (defaults to 'fr' on first open)
       const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
@@ -2092,9 +2097,13 @@ export class App {
     // Handle lang toggle from panel header button
     document.addEventListener('france-intel-lang-toggle', (e: Event) => {
       const { lang } = (e as CustomEvent<{ lang: 'fr' | 'en' }>).detail;
-      const stability = this.currentISNRData;
-      const cyber     = this.currentCyberData;
-      if (!stability || !cyber) return;
+      const stability = this.currentISNRData ?? { scores: [], nationalScore: 0, timestamp: new Date() };
+      const cyber = this.currentCyberData ?? {
+        meta: { globalScore: 0, trend: 'stable' as const, sources: [], lastUpdate: new Date() },
+        alerts: { count30d: 0, latest: [] },
+        ransomware: { total30d: 0, topSectors: [] },
+        vulnerabilities: { criticalCount: 0, topCVEs: [] },
+      };
 
       const data: FranceIntelData = {
         stability,
