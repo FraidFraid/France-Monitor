@@ -1,6 +1,6 @@
 // src/components/FranceIntelPanel.ts
 // ⚠️ mount() does NOT call super.mount() — Panel base class would append a
-// duplicate container and call render(). This class manages its own modal DOM.
+// duplicate container and call render(). This class manages its own slide-in DOM.
 import { Panel } from './Panel.ts';
 import type { FranceIntelData, ISNRDimensionScores, MeteoVigilanceLevel } from '../types/index.ts';
 
@@ -112,18 +112,12 @@ export class FranceIntelPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
   private onClose?: () => void;
-  private isDragging = false;
-  private dragOffsetX = 0;
-  private dragOffsetY = 0;
-  private boundMouseMove: (e: MouseEvent) => void;
-  private boundMouseUp: () => void;
+  private _isVisible = false;
   /** Tracks the currently displayed language so reopening restores it. */
   private currentLang: 'fr' | 'en' = 'fr';
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
-    this.boundMouseMove = (e: MouseEvent) => this.onMouseMove(e);
-    this.boundMouseUp  = () => this.onMouseUp();
   }
 
   // ⚠️ Does NOT call super.mount() — see file header.
@@ -131,20 +125,20 @@ export class FranceIntelPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'france-intel-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top, 60px);
-      right: 20px;
+      position: fixed;
+      top: 0;
+      right: 0;
       width: 380px;
-      max-height: calc(100vh - var(--right-panel-top, 60px) - 20px);
+      height: 100vh;
       background: var(--bg-surface, #13131a);
-      border: 1px solid var(--border-color, rgba(255,255,255,0.1));
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
+      border-left: 1px solid var(--border-color, rgba(255,255,255,0.1));
+      box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+      z-index: 1100;
+      display: flex;
       flex-direction: column;
       backdrop-filter: blur(10px);
-      cursor: grab;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
       overflow: hidden;
     `;
 
@@ -204,37 +198,6 @@ export class FranceIntelPanel extends Panel {
       }));
     };
 
-    // Drag — header area only (not content scroll area)
-    this.modalEl.addEventListener('mousedown', (e) => {
-      if ((e.target as HTMLElement).closest('.fi-close')) return;
-      if ((e.target as HTMLElement).closest('.fi-lang-toggle')) return;
-      if ((e.target as HTMLElement).closest('.france-intel-content')) return;
-      this.isDragging = true;
-      const rect = this.modalEl.getBoundingClientRect();
-      this.dragOffsetX = e.clientX - rect.left;
-      this.dragOffsetY = e.clientY - rect.top;
-      this.modalEl.style.cursor = 'grabbing';
-    });
-
-    document.addEventListener('mousemove', this.boundMouseMove);
-    document.addEventListener('mouseup', this.boundMouseUp);
-  }
-
-  private onMouseMove(e: MouseEvent): void {
-    if (!this.isDragging) return;
-    const x = Math.max(0, Math.min(e.clientX - this.dragOffsetX, window.innerWidth  - this.modalEl.offsetWidth));
-    const y = Math.max(0, Math.min(e.clientY - this.dragOffsetY, window.innerHeight - this.modalEl.offsetHeight));
-    this.modalEl.style.left   = `${x}px`;
-    this.modalEl.style.top    = `${y}px`;
-    this.modalEl.style.right  = 'auto';
-    this.modalEl.style.bottom = 'auto';
-  }
-
-  private onMouseUp(): void {
-    if (this.isDragging) {
-      this.isDragging = false;
-      this.modalEl.style.cursor = 'grab';
-    }
   }
 
   protected render(): void { /* populated by show() — not called by base mount() */ }
@@ -255,7 +218,8 @@ export class FranceIntelPanel extends Panel {
     const langBtn = this.modalEl.querySelector('.fi-lang-toggle') as HTMLElement | null;
     if (langBtn) langBtn.textContent = this.currentLang.toUpperCase();
     this.renderContent(data);
-    this.modalEl.style.display = 'flex';
+    this._isVisible = true;
+    this.modalEl.style.transform = 'translateX(0)';
   }
 
   showBriefLoading(): void {
@@ -283,17 +247,16 @@ export class FranceIntelPanel extends Panel {
   }
 
   hide(): void {
-    if (this.modalEl) this.modalEl.style.display = 'none';
+    if (this.modalEl) this.modalEl.style.transform = 'translateX(100%)';
+    this._isVisible = false;
     this.onClose?.();
   }
 
   isVisible(): boolean {
-    return this.modalEl?.style.display === 'flex';
+    return this._isVisible;
   }
 
   destroy(): void {
-    document.removeEventListener('mousemove', this.boundMouseMove);
-    document.removeEventListener('mouseup', this.boundMouseUp);
     this.modalEl?.remove();
   }
 

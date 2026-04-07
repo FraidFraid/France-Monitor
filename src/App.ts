@@ -1738,43 +1738,6 @@ export class App {
     };
     mapArea.appendChild(barometerBtn);
 
-    // ── Bouton flottant "France Intelligence" ──
-    const franceIntelBtn = document.createElement('button');
-    franceIntelBtn.id = 'france-intel-fab';
-    franceIntelBtn.innerHTML = '🇫🇷 Intelligence France';
-    franceIntelBtn.style.cssText = `
-      position: absolute;
-      top: 110px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 900;
-      background: linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95));
-      border: 1px solid rgba(255,255,255,0.18);
-      color: #e8e8ec;
-      padding: 8px 18px;
-      border-radius: 24px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      backdrop-filter: blur(12px);
-      transition: all 0.2s;
-      white-space: nowrap;
-      letter-spacing: 0.2px;
-    `;
-    franceIntelBtn.onmouseover = () => {
-      franceIntelBtn.style.borderColor = 'rgba(255,255,255,0.3)';
-      franceIntelBtn.style.transform = 'translateX(-50%) scale(1.04)';
-    };
-    franceIntelBtn.onmouseout = () => {
-      franceIntelBtn.style.borderColor = 'rgba(255,255,255,0.18)';
-      franceIntelBtn.style.transform = 'translateX(-50%) scale(1)';
-    };
-    franceIntelBtn.onclick = () => {
-      document.dispatchEvent(new CustomEvent('open-france-intel'));
-    };
-    mapArea.appendChild(franceIntelBtn);
-
     main.appendChild(mapArea);
 
     // ── Right Sidebar ──
@@ -1819,6 +1782,38 @@ export class App {
     // Baromètre Pannes Réseau (premier élément de la sidebar, avant les couches)
     this.networkBarometerWidget = new BarometerWidget(sidebarEl);
     this.networkBarometerWidget.mount();
+
+    // Bouton Intelligence France (juste au-dessus des couches)
+    const intelSidebarBtn = document.createElement('button');
+    intelSidebarBtn.innerHTML = '🇫🇷 &nbsp;Intelligence France';
+    intelSidebarBtn.style.cssText = `
+      display: block;
+      width: calc(100% - 16px);
+      margin: 8px 8px 4px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: #c8c8d0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      letter-spacing: 0.2px;
+      transition: background 0.15s, border-color 0.15s;
+    `;
+    intelSidebarBtn.onmouseover = () => {
+      intelSidebarBtn.style.background = 'rgba(255,255,255,0.08)';
+      intelSidebarBtn.style.borderColor = 'rgba(255,255,255,0.22)';
+    };
+    intelSidebarBtn.onmouseout = () => {
+      intelSidebarBtn.style.background = 'rgba(255,255,255,0.04)';
+      intelSidebarBtn.style.borderColor = 'rgba(255,255,255,0.12)';
+    };
+    intelSidebarBtn.onclick = () => {
+      document.dispatchEvent(new CustomEvent('open-france-intel'));
+    };
+    sidebarEl.appendChild(intelSidebarBtn);
 
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
@@ -2054,7 +2049,7 @@ export class App {
       }
     });
 
-    // France Intelligence Panel — open on FAB click or map click
+    // France Intelligence Panel — open on sidebar button click or map click
     document.addEventListener('open-france-intel', () => {
       // Use available data or fallback defaults — never block opening on missing data
       const stability = this.currentISNRData ?? { scores: [], nationalScore: 0, timestamp: new Date() };
@@ -2064,6 +2059,10 @@ export class App {
         ransomware: { total30d: 0, topSectors: [] },
         vulnerabilities: { criticalCount: 0, topCVEs: [] },
       };
+
+      // Trigger data loads if not yet fetched — panel re-renders automatically when they complete
+      if (!this.currentCyberData) void this.loadCyber();
+      if (!this.currentISNRData) this.updateISNR();
 
       // Restore the last lang the user selected (defaults to 'fr' on first open)
       const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
@@ -3941,6 +3940,19 @@ export class App {
       this.currentCyberData = cyberData;
       console.log('[App/loadCyber] this.currentCyberData SET');
 
+      // Re-render France Intel panel with fresh cyber data if open
+      if (this.franceIntelPanel?.isVisible()) {
+        const lang = this.franceIntelPanel.getCurrentLang();
+        const stability = this.currentISNRData ?? { scores: [], nationalScore: 0, timestamp: new Date() };
+        this.franceIntelPanel.show({
+          stability,
+          cyber: cyberData,
+          meteo:    this.currentMeteoAlerts,
+          topNews:  this.newsItems.slice(0, 20),
+          briefLang: lang,
+        });
+      }
+
       // Determine status based on source availability
       const allSourcesUp = cyberData.meta.sources.every(s => s.isUp);
       const someSourcesUp = cyberData.meta.sources.some(s => s.isUp);
@@ -4699,9 +4711,27 @@ export class App {
     // Update map layer
     this.mapContainer?.updateISNR(this.currentISNRData.scores);
 
-    // Update panel if visible
+    // Update ISNR panel if visible
     if (this.isnrPanel?.isVisible()) {
       this.isnrPanel.show(this.currentISNRData);
+    }
+
+    // Re-render France Intel panel with fresh ISNR data if open
+    if (this.franceIntelPanel?.isVisible()) {
+      const lang = this.franceIntelPanel.getCurrentLang();
+      const cyber = this.currentCyberData ?? {
+        meta: { globalScore: 0, trend: 'stable' as const, sources: [], lastUpdate: new Date() },
+        alerts: { count30d: 0, latest: [] },
+        ransomware: { total30d: 0, topSectors: [] },
+        vulnerabilities: { criticalCount: 0, topCVEs: [] },
+      };
+      this.franceIntelPanel.show({
+        stability: this.currentISNRData,
+        cyber,
+        meteo:    this.currentMeteoAlerts,
+        topNews:  this.newsItems.slice(0, 20),
+        briefLang: lang,
+      });
     }
   }
 
