@@ -1582,7 +1582,12 @@ export class App {
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
-      <div class="header-title">France <span>Monitor</span></div>
+      <div class="header-title">
+        <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
+        <span class="header-title-text">
+          <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
+        </span>
+      </div>
       <div class="header-center" id="region-presets"></div>
       <div class="header-status">
         <div id="header-data-sources"></div>
@@ -2112,7 +2117,9 @@ export class App {
         briefLang: lang,
       };
 
-      // Re-render with new lang (brief spinner shows while fetching)
+      // Reset brief cache so the new-lang brief shows loading spinner
+      this.franceIntelPanel?.resetBrief();
+      // Re-render with new lang
       this.franceIntelPanel?.show(data);
 
       void fetchFranceIntelBrief(data, lang).then(({ brief, freshness }) => {

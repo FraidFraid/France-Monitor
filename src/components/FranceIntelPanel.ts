@@ -113,6 +113,8 @@ export class FranceIntelPanel extends Panel {
   private contentEl: HTMLElement | null = null;
   private onClose?: () => void;
   private _isVisible = false;
+  /** null = never received a brief yet → show loading spinner on next render */
+  private _lastBriefHtml: string | null = null;
   /** Tracks the currently displayed language so reopening restores it. */
   private currentLang: 'fr' | 'en' = 'fr';
 
@@ -233,17 +235,23 @@ export class FranceIntelPanel extends Panel {
   }
 
   updateBrief(brief: string | null, freshness: 'fresh' | 'cached'): void {
+    const innerHtml = brief
+      ? brief.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n\n/g, '<br><br>')
+      : `<span style="color:#555;font-size:12px;font-style:italic;">Brief indisponible</span>`;
+    this._lastBriefHtml = innerHtml;
+
     const briefEl = this.modalEl.querySelector('.fi-brief-text');
     const badgeEl = this.modalEl.querySelector('.fi-brief-badge');
-    if (briefEl) {
-      briefEl.innerHTML = brief
-        ? brief.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n\n/g, '<br><br>')
-        : `<span style="color:#555;font-size:12px;font-style:italic;">Brief indisponible</span>`;
-    }
+    if (briefEl) briefEl.innerHTML = innerHtml;
     if (badgeEl) {
       badgeEl.textContent = freshness === 'fresh' ? 'Fresh' : 'Cached';
       (badgeEl as HTMLElement).style.color = freshness === 'fresh' ? '#2ecc71' : '#f39c12';
     }
+  }
+
+  /** Reset brief cache — call before show() when lang changes to force re-fetch. */
+  resetBrief(): void {
+    this._lastBriefHtml = null;
   }
 
   hide(): void {
@@ -371,7 +379,12 @@ export class FranceIntelPanel extends Panel {
       </div>
     `;
 
-    // Show brief loading state (populated async by App.ts)
-    this.showBriefLoading();
+    // Restore brief: if we have a cached brief, show it; otherwise show loading spinner
+    if (this._lastBriefHtml !== null) {
+      const briefEl = this.contentEl.querySelector('.fi-brief-text');
+      if (briefEl) briefEl.innerHTML = this._lastBriefHtml;
+    } else {
+      this.showBriefLoading();
+    }
   }
 }
