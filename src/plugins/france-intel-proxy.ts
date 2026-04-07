@@ -96,7 +96,11 @@ export function franceIntelProxyPlugin(): Plugin {
           }
 
           try {
-            const parsed = JSON.parse(body) as {
+            // Strip ASCII + C1 Unicode control characters — RSS titles can
+            // contain literal control chars (U+0000–U+001F, U+007F, U+0080–U+009F)
+            // that make JSON.parse throw
+            const cleanBody = body.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
+            const parsed = JSON.parse(cleanBody) as {
               lang?: unknown;
               isnrScore?: unknown;
               cyberScore?: unknown;
@@ -138,7 +142,11 @@ export function franceIntelProxyPlugin(): Plugin {
               return;
             }
 
-            const groqData = await groqRes.json() as { choices: Array<{ message: { content: string } }> };
+            // Read as text + strip control chars before parsing — Groq can return
+            // brief text with literal control characters that break JSON.parse
+            const groqText = await groqRes.text();
+            const groqClean = groqText.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
+            const groqData = JSON.parse(groqClean) as { choices: Array<{ message: { content: string } }> };
             const raw = groqData.choices?.[0]?.message?.content ?? '';
             // Extract JSON robustly — handle markdown fences and surrounding text
             const jsonMatch = raw.match(/\{[\s\S]*"brief"[\s\S]*\}/);
@@ -154,7 +162,8 @@ export function franceIntelProxyPlugin(): Plugin {
             _devCache = { value: JSON.stringify(result), expiresAt: Date.now() + CACHE_TTL };
             res.end(JSON.stringify(result));
           } catch (err) {
-            console.error('[france-intel-proxy]', err);
+            console.error('[france-intel-proxy] Error:', err instanceof Error ? err.message : err);
+            console.error('[france-intel-proxy] Body (first 200):', body.slice(0, 200));
             res.end(JSON.stringify({ brief: null, fromCache: false, computedAt: new Date().toISOString() }));
           }
         });
