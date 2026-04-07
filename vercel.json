@@ -3,8 +3,22 @@
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
     { "source": "/api/rss", "destination": "/api/rss" },
     { "source": "/api/json-proxy", "destination": "/api/json-proxy" },
+    { "source": "/api/oil-proxy", "destination": "/api/oil-proxy" },
+    { "source": "/api/fuel-prices-proxy", "destination": "/api/fuel-prices-proxy" },
+    { "source": "/api/arcep", "destination": "/api/arcep" },
+    { "source": "/api/copernicus", "destination": "/api/copernicus" },
+    { "source": "/api/fires", "destination": "/api/fires" },
+    { "source": "/api/infra-network", "destination": "/api/infra-network" },
+    { "source": "/api/internet-outages", "destination": "/api/internet-outages" },
     { "source": "/api/finance/(.*)", "destination": "/api/finance/$1" },
     { "source": "/api/energy/(.*)", "destination": "/api/energy/$1" },
+    { "source": "/api/health/(.*)", "destination": "/api/health/$1" },
+    { "source": "/api/traffic/(.*)", "destination": "/api/traffic/$1" },
+    { "source": "/api/nuclear/(.*)", "destination": "/api/nuclear/$1" },
+    { "source": "/api/ministers/(.*)", "destination": "/api/ministers/$1" },
+    { "source": "/api/outages/(.*)", "destination": "/api/outages/$1" },
+    { "source": "/api/elus/(.*)", "destination": "/api/elus/$1" },
+    { "source": "/api/intelligence/(.*)", "destination": "/api/intelligence/$1" },
     { "source": "/api/weather/(.*)", "destination": "/api/weather/$1" },
     { "source": "/api/floods/(.*)", "destination": "/api/floods/$1" },
     { "source": "/api/transport/(.*)", "destination": "/api/transport/$1" },
@@ -16,8 +30,19 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=120" },
         { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; connect-src 'self' https: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://vercel.live https://challenges.cloudflare.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
   ]

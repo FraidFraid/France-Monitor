@@ -112,7 +112,19 @@ export default defineConfig(({ mode }) => {
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json,geojson}'],
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          // Exclure les workers AI (~800 KB chacun) et les chunks lourds du precache.
+          // Ils sont chargés à la demande et mis en cache via runtimeCaching.
+          globIgnores: [
+            '**/ai-worker-*.js',
+            '**/summarization-worker-*.js',
+            '**/maplibre-*.js',
+            '**/onnxruntime-*.js',
+            '**/transformers-*.js',
+            // GeoJSON lourds (> 3 MB) : chargés à la demande, pas au démarrage
+            'data/eolien-france.geojson',
+            'data/departements.geojson',
+          ],
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           skipWaiting: true,
           runtimeCaching: [
             {

@@ -35,8 +35,6 @@ function summarizeT5(text: string): Promise<string> {
 
 const OLLAMA_URL = import.meta.env.VITE_OLLAMA_URL ?? 'http://localhost:11434/api/generate';
 const OLLAMA_MODEL = 'mistral:instruct';
-const GROQ_URL = import.meta.env.VITE_GROQ_URL ?? 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
 
 // Set VITE_USE_OLLAMA=true in .env.local to enable Ollama calls (disabled by default in prod)
 const USE_OLLAMA = import.meta.env.VITE_USE_OLLAMA === 'true';
@@ -65,37 +63,26 @@ export async function summarizeWithFallback(text: string): Promise<string | unde
                 }
             }
         } catch (err) {
-            console.warn('[Summarization] Ollama error, fallback to Groq:', err instanceof Error ? err.message : err);
+            console.warn('[Summarization] Ollama error, fallback to Groq proxy:', err instanceof Error ? err.message : err);
         }
     }
 
-    // 2. Groq cloud
-    if (GROQ_API_KEY) {
-        try {
-            const groqRes = await fetch(GROQ_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: 'llama3-8b-8192',
-                    messages: [
-                        { role: 'system', content: 'Tu es un analyste francais. Résume les articles en 1 seule courte phrase factuelle.' },
-                        { role: 'user', content: text }
-                    ]
-                }),
-                signal: AbortSignal.timeout(5000)
-            });
-            if (groqRes.ok) {
-                const data = await groqRes.json() as { choices?: { message?: { content: string } }[] };
-                if (data.choices?.[0]?.message) {
-                    return data.choices[0].message.content.trim();
-                }
+    // 2. Groq via proxy serveur (clé jamais exposée côté client)
+    try {
+        const proxyRes = await fetch('/api/intelligence/v1/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+            signal: AbortSignal.timeout(10000),
+        });
+        if (proxyRes.ok) {
+            const data = await proxyRes.json() as { summary?: string };
+            if (data.summary) {
+                return data.summary;
             }
-        } catch (err) {
-            console.warn('[Summarization] Groq error, fallback to T5:', err instanceof Error ? err.message : err);
         }
+    } catch (err) {
+        console.warn('[Summarization] Groq proxy error, fallback to T5:', err instanceof Error ? err.message : err);
     }
 
     // 3. Browser T5

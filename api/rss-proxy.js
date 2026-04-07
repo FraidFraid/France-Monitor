@@ -6,6 +6,67 @@
 
 export const config = { runtime: 'edge' };
 
+// Domaines RSS autorisés (allowlist SSRF)
+const ALLOWED_RSS_DOMAINS = new Set([
+  // PQR / presse nationale
+  'actu.fr',
+  'atlantico.fr',
+  'la1ere.francetvinfo.fr',
+  'services.lesechos.fr',
+  'www.01net.com',
+  'www.20minutes.fr',
+  'www.bfmtv.com',
+  'www.challenges.fr',
+  'www.courrierinternational.com',
+  'www.dna.fr',
+  'www.estrepublicain.fr',
+  'www.europe1.fr',
+  'www.france24.com',
+  'www.francebleu.fr',
+  'www.franceinfo.fr',
+  'www.futura-sciences.com',
+  'www.guadeloupe.fr',
+  'www.imazpress.com',
+  'www.ladepeche.fr',
+  'www.lavoixdunord.fr',
+  'www.ledauphine.com',
+  'www.lefigaro.fr',
+  'www.lemonde.fr',
+  'www.leprogres.fr',
+  'www.letelegramme.fr',
+  'www.liberation.fr',
+  'www.marianne.net',
+  'www.mayottehebdo.com',
+  'www.mediapart.fr',
+  'www.midilibre.fr',
+  'www.nicematin.com',
+  'www.nouvelobs.com',
+  'www.numerama.com',
+  'www.ouest-france.fr',
+  'www.paris-normandie.fr',
+  'www.rfi.fr',
+  'www.sciencesetavenir.fr',
+  'www.slate.fr',
+  'www.sudouest.fr',
+  'www.valeursactuelles.com',
+  'www.zinfos974.com',
+  // Sources institutionnelles / énergie
+  'iip.cloud-rte-france.com',
+]);
+
+/**
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isAllowedDomain(url) {
+  try {
+    const { hostname } = new URL(url);
+    return ALLOWED_RSS_DOMAINS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * @param {Request} request
  * @returns {Promise<Response>}
@@ -21,7 +82,7 @@ export default async function handler(request) {
         });
     }
 
-    // Validate URL (basic whitelist: only http/https)
+    // Validate URL: protocol + domain allowlist (SSRF protection)
     let parsed;
     try {
         parsed = new URL(feedUrl);
@@ -31,6 +92,13 @@ export default async function handler(request) {
     } catch {
         return new Response(JSON.stringify({ error: 'Invalid URL' }), {
             status: 400,
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
+    if (!isAllowedDomain(feedUrl)) {
+        return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
+            status: 403,
             headers: { 'Content-Type': 'application/json' },
         });
     }
