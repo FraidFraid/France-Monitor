@@ -128,16 +128,21 @@ export function franceIntelProxyPlugin(): Plugin {
                 temperature: 0.4,
                 max_tokens: 700,
               }),
+              signal: AbortSignal.timeout(30_000),
             });
 
             if (!groqRes.ok) {
+              const errText = await groqRes.text().catch(() => '');
+              console.error(`[france-intel-proxy] Groq error ${groqRes.status}:`, errText.slice(0, 300));
               res.end(JSON.stringify({ brief: null, fromCache: false, computedAt: new Date().toISOString() }));
               return;
             }
 
             const groqData = await groqRes.json() as { choices: Array<{ message: { content: string } }> };
             const raw = groqData.choices?.[0]?.message?.content ?? '';
-            const clean = raw.replace(/```json|```/g, '').trim();
+            // Extract JSON robustly — handle markdown fences and surrounding text
+            const jsonMatch = raw.match(/\{[\s\S]*"brief"[\s\S]*\}/);
+            const clean = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim();
             const { brief } = JSON.parse(clean) as { brief: string };
 
             const result = {

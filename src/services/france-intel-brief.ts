@@ -61,7 +61,10 @@ export async function fetchFranceIntelBrief(
       freshness: payload.fromCache ? 'cached' : 'fresh',
     };
 
-    _cache.set(lang, { brief: result.brief, freshness: result.freshness, expiresAt: Date.now() + CACHE_TTL_MS });
+    // Only cache successful (non-null) briefs — a null result should not block for 2h
+    if (result.brief !== null) {
+      _cache.set(lang, { brief: result.brief, freshness: result.freshness, expiresAt: Date.now() + CACHE_TTL_MS });
+    }
     return result;
   } catch {
     return { brief: null, freshness: 'fresh' };
