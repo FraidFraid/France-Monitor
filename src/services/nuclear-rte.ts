@@ -9,6 +9,14 @@
 
 import type { NuclearUnavailability, ReactorAvailabilityStatus } from '../types/index.ts';
 import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('nuclear-rte', {
+    label: 'Nucléaire RTE',
+    staleAfterMs: 15 * 60_000,
+    detail: 'RTE Open Data · indisponibilités de production · OAuth2',
+});
 
 const API_URL = import.meta.env.PROD
   ? '/api/nuclear/rte-unavailability'
@@ -37,11 +45,15 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     return { items: _cache.items, available: _cache.available, fetchedAt: new Date(_cache.fetchedAt) };
   }
 
+  Watchdog.report('nuclear-rte', { type: 'loading' });
+  const t0 = Date.now();
+
   try {
     const resp = await fetch(API_URL, { signal: AbortSignal.timeout(20_000) });
 
     if (!resp.ok) {
       console.warn('[nuclear-rte] HTTP error:', resp.status);
+      Watchdog.report('nuclear-rte', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!_cache });
       // Servir le cache périmé si disponible (stale fallback)
       if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
       return { items: [], available: false };
@@ -55,6 +67,7 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
 
     if (json.available === false) {
       console.warn('[nuclear-rte] API reported unavailable:', json.error);
+      Watchdog.report('nuclear-rte', { type: 'failure', error: json.error ?? 'API indisponible', isFallback: !!_cache });
       if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
       return { items: [], available: false };
     }
@@ -63,9 +76,12 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     const items = rawItems.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
     const now = Date.now();
     _cache = { items, available: true, fetchedAt: now };
+    Watchdog.report('nuclear-rte', { type: 'success', responseTimeMs: Date.now() - t0 });
     return { items, available: true, fetchedAt: new Date(now) };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.warn('[nuclear-rte] Fetch failed:', err);
+    Watchdog.report('nuclear-rte', { type: 'failure', error: msg, isFallback: !!_cache });
     if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
     return { items: [], available: false };
   }

@@ -12,6 +12,15 @@
  * Fréquence de refresh recommandée : 10–15 min
  */
 
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('rte-iip', {
+    label: 'IIP RTE',
+    staleAfterMs: 12 * 60_000,
+    detail: 'Indisponibilités production & réseau HTB · /api/rss (IIP RSS)',
+    freshness: 'TEMPS_REEL',
+});
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type IIPUnavailabilityType =
@@ -100,26 +109,46 @@ export async function fetchRTEIIPIncidents(): Promise<RTEIIPState> {
         return _cache.state;
     }
 
-    const results = await Promise.allSettled(
-        IIP_FEEDS.map(feed => fetchFeed(feed.url, feed.type))
-    );
+    Watchdog.report('rte-iip', { type: 'loading' });
+    const t0 = Date.now();
 
-    const incidents: RTEIIPIncident[] = [];
-    const feedStatuses: Record<'production' | 'transmission', IIPFeedStatus> = {
-        production: 'error',
-        transmission: 'error',
-    };
+    try {
+        const results = await Promise.allSettled(
+            IIP_FEEDS.map(feed => fetchFeed(feed.url, feed.type))
+        );
 
-    for (const result of results) {
-        if (result.status === 'fulfilled') {
-            feedStatuses[result.value.type as 'production' | 'transmission'] = result.value.status;
-            incidents.push(...result.value.incidents);
+        const incidents: RTEIIPIncident[] = [];
+        const feedStatuses: Record<'production' | 'transmission', IIPFeedStatus> = {
+            production: 'error',
+            transmission: 'error',
+        };
+
+        for (const result of results) {
+            if (result.status === 'fulfilled') {
+                feedStatuses[result.value.type as 'production' | 'transmission'] = result.value.status;
+                incidents.push(...result.value.incidents);
+            }
         }
-    }
 
-    const state = buildState(incidents, feedStatuses);
-    _cache = { state, fetchedAt: now };
-    return state;
+        const state = buildState(incidents, feedStatuses);
+        _cache = { state, fetchedAt: now };
+
+        if (!state.available) {
+            Watchdog.report('rte-iip', { type: 'failure', error: 'Aucun flux IIP disponible', isFallback: false });
+        } else {
+            Watchdog.report('rte-iip', {
+                type: 'success',
+                responseTimeMs: Date.now() - t0,
+                detail: `${state.productionCount} prod · ${state.transmissionCount} réseau · ${state.totalCapacityMW} MW`,
+            });
+        }
+
+        return state;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        Watchdog.report('rte-iip', { type: 'failure', error: msg, isFallback: !!_cache });
+        return _cache?.state ?? buildState([], { production: 'error', transmission: 'error' });
+    }
 }
 
 /**

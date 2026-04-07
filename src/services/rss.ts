@@ -8,6 +8,14 @@
  */
 
 import type { NewsItem, Feed } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('rss-pqr', {
+    label: 'RSS PQR',
+    staleAfterMs: 10 * 60_000,
+    detail: 'Flux RSS PQR via proxy /api/rss-proxy + Scrapling (Cloudflare)',
+});
 
 // ─── Scrapling Proxy (Cloudflare bypass) ───
 
@@ -200,6 +208,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     // Check circuit breaker
     if (isOpen(feed.url)) {
         console.warn(`[RSS] Circuit breaker OPEN for ${feed.name}`);
+        Watchdog.report('rss-pqr', { type: 'failure', error: 'circuit breaker ouvert', isFallback: true });
         return cache.get(feed.url)?.items ?? [];
     }
 
@@ -209,11 +218,15 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
         return cached.items;
     }
 
+    Watchdog.report('rss-pqr', { type: 'loading' });
+    const t0 = Date.now();
+
     try {
         let xml: string;
 
         if (needsScrapling(feed.url)) {
             console.log(`[RSS] ${feed.name}: using Scrapling proxy`);
+            Watchdog.report('rss-pqr', { type: 'fallback', reason: 'Scrapling (Cloudflare bypass)' });
             xml = await fetchViaScrapling(feed.url);
         } else {
             const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feed.url)}`;
@@ -222,6 +235,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
             if (!resp.ok) {
                 recordFailure(feed.url);
                 console.warn(`[RSS] ${feed.name} returned ${resp.status}`);
+                Watchdog.report('rss-pqr', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!cached });
                 return cached?.items ?? [];
             }
 
@@ -232,12 +246,15 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
         recordSuccess(feed.url);
         cache.set(feed.url, { items, fetchedAt: Date.now() });
+        Watchdog.report('rss-pqr', { type: 'success', responseTimeMs: Date.now() - t0 });
 
         console.log(`[RSS] ${feed.name}: ${items.length} items`);
         return items;
     } catch (err) {
         recordFailure(feed.url);
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[RSS] ${feed.name} fetch failed:`, err);
+        Watchdog.report('rss-pqr', { type: 'failure', error: msg, isFallback: !!cached });
         return cached?.items ?? [];
     }
 }

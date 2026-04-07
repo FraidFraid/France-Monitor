@@ -8,6 +8,14 @@ import type {
   HydraulicSignalSource,
 } from '../types/index.ts';
 import { resilientFetch } from '../utils/resilientFetch.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('hubeau', {
+  label: 'Hub’Eau hydrométrie',
+  staleAfterMs: 10 * 60_000,
+  detail: 'hubeau.eaufrance.fr · API publique open data, licence Etalab',
+});
 
 const HUBEAU_STATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations';
 const HUBEAU_OBSERVATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr';
@@ -576,31 +584,38 @@ export async function fetchHydraulicHydrometrySnapshot(
 
   if (circuitBreaker.isOpen && now < circuitBreaker.cooldownUntil) {
     console.warn('[HubEau/Hydrometrie] Circuit breaker open, using cached/fallback snapshot');
+    Watchdog.report('hubeau', { type: 'failure', error: 'circuit breaker ouvert (cooldown)', isFallback: true });
     return buildFallbackSnapshot(
       assets,
       snapshotCache && now - snapshotCache.fetchedAt < STALE_TTL_MS ? 'stale' : 'error',
-      'Hub’Eau en cooldown temporaire ; maintien du signal dérivé local.',
+      'Hub’Eau en cooldown temporaire ; maintien du signal dérivé local.',
       snapshotCache?.data ?? null,
     );
   }
 
   if (inFlightSnapshot) return inFlightSnapshot;
 
+  Watchdog.report('hubeau', { type: 'loading' });
+  const t0 = Date.now();
+
   inFlightSnapshot = (async () => {
     try {
       const snapshot = await loadHydrometrySnapshot(assets);
       snapshotCache = { data: snapshot, fetchedAt: Date.now() };
       resetCircuitBreaker();
+      Watchdog.report('hubeau', { type: 'success', responseTimeMs: Date.now() - t0 });
       console.info(`[HubEau/Hydrometrie] ${snapshot.detail}`);
       return snapshot;
     } catch (error) {
       recordFailure();
+      const msg = error instanceof Error ? error.message : String(error);
       console.warn('[HubEau/Hydrometrie] Snapshot fetch failed:', error);
       const staleStatus = snapshotCache && now - snapshotCache.fetchedAt < STALE_TTL_MS ? 'stale' : 'error';
+      Watchdog.report('hubeau', { type: 'failure', error: msg, isFallback: !!snapshotCache });
       return buildFallbackSnapshot(
         assets,
         staleStatus,
-        'Hub’Eau indisponible ; maintien de la logique hydraulique dérivée.',
+        'Hub’Eau indisponible ; maintien de la logique hydraulique dérivée.',
         snapshotCache?.data ?? null,
       );
     } finally {

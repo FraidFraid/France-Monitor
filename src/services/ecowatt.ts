@@ -11,6 +11,14 @@
  */
 
 import type { EcowattSignal, EcowattResponse, EnergyMix, InterconnectionFlow } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('ecowatt', {
+    label: 'Écowatt RTE',
+    staleAfterMs: 15 * 60_000,
+    detail: 'ODRE éco2mix-regional-tr · mise à jour ~15 min',
+});
 
 interface Eco2mixRecord {
     code_insee_region: string;
@@ -91,6 +99,9 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;
 
     const fallback: EcowattResponse = { signals: {}, mixes: {}, national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 }, interconnections: [] };
+
+    Watchdog.report('ecowatt', { type: 'loading' });
+    const t0 = Date.now();
 
     try {
         const resp = await fetch(API_URL, { signal: AbortSignal.timeout(10_000) });
@@ -189,6 +200,7 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
         const result: EcowattResponse = { signals, mixes, national, interconnections };
 
         cache = { data: result, fetchedAt: Date.now() };
+        Watchdog.report('ecowatt', { type: 'success', responseTimeMs: Date.now() - t0 });
 
         const nRegions = Object.keys(signals).length;
         const nOrange = Object.values(signals).filter(s => s === 'orange').length;
@@ -197,7 +209,9 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
 
         return result;
     } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn('[Éco2mix] Fetch failed, using cache or defaults:', err);
+        Watchdog.report('ecowatt', { type: 'failure', error: msg, isFallback: !!cache });
         return cache?.data ?? fallback;
     }
 }

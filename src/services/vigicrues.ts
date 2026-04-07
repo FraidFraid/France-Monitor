@@ -6,6 +6,14 @@
  */
 
 import type { FloodSegment, FloodVigilanceLevel } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('vigicrues', {
+    label: 'Vigicrues',
+    staleAfterMs: 15 * 60_000,
+    detail: 'vigicrues.gouv.fr · GeoJSON public',
+});
 
 const LEVEL_MAP: Record<number, FloodVigilanceLevel> = {
     1: 'green', 2: 'yellow', 3: 'orange', 4: 'red',
@@ -60,6 +68,9 @@ function parseVigicruesGeoJson(
 export async function fetchVigicrues(): Promise<FloodSegment[]> {
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;
 
+    Watchdog.report('vigicrues', { type: 'loading' });
+    const t0 = Date.now();
+
     try {
         // API Vigicrues — vigilance en cours (GeoJSON)
         const url = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
@@ -74,18 +85,22 @@ export async function fetchVigicrues(): Promise<FloodSegment[]> {
         const segments = parseVigicruesGeoJson(geojson, 'live');
 
         cache = { data: segments, fetchedAt: Date.now() };
+        Watchdog.report('vigicrues', { type: 'success', responseTimeMs: Date.now() - t0 });
+
         const avgVertices = segments.length > 0
             ? (segments.reduce((sum, segment) => sum + segment.displayVertexCount, 0) / segments.length).toFixed(1)
             : '0.0';
         console.log(`[Vigicrues] ${segments.length} tronçons live bruts (avgVertices=${avgVertices})`);
         return segments;
     } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn('[Vigicrues] Fetch failed:', err);
         if (cache) {
             console.warn('[Vigicrues] Returning stale cached data');
+            Watchdog.report('vigicrues', { type: 'failure', error: msg, isFallback: true });
             return cache.data;
         }
-
+        Watchdog.report('vigicrues', { type: 'failure', error: msg });
         throw err;
     }
 }

@@ -1034,7 +1034,32 @@ export interface HealthFeatures {
   }>;
 }
 
-// ═══ Data Freshness ═══
+// ═══ Data Freshness & Watchdog ═══
+
+/**
+ * Vérité intrinsèque de la donnée exposée par une source.
+ *
+ * TEMPS_REEL     — flux live mis à jour en continu (< quelques minutes)
+ * HISTORIQUE     — agrégats statistiques ou archives (jour/mois/an)
+ * CACHE_FIGE     — dernière valeur connue, source injoignable
+ * RECONSTRUIT    — calculé / estimé à partir d'autres signaux
+ * INDISPONIBLE   — source en échec, aucune donnée servie
+ */
+export type DataFreshness =
+  | 'TEMPS_REEL'
+  | 'HISTORIQUE'
+  | 'CACHE_FIGE'
+  | 'RECONSTRUIT'
+  | 'INDISPONIBLE';
+
+/** Labels d'affichage correspondant à chaque DataFreshness */
+export const DATA_FRESHNESS_LABELS: Record<DataFreshness, string> = {
+  TEMPS_REEL:  'TEMPS RÉEL',
+  HISTORIQUE:  'HISTORIQUE',
+  CACHE_FIGE:  'CACHE FIGÉ',
+  RECONSTRUIT: 'RECONSTRUIT / ESTIMÉ',
+  INDISPONIBLE:'INDISPONIBLE',
+};
 
 export interface DataSourceStatus {
   name: string;
@@ -1042,6 +1067,45 @@ export interface DataSourceStatus {
   status: 'ok' | 'stale' | 'error' | 'loading';
   error?: string;
   detail?: string;
+  /** Vérité intrinsèque de la donnée (indépendante du statut de fetch) */
+  freshness?: DataFreshness;
+  // ── Watchdog metrics (optionnels, rétrocompatibles) ──
+  lastSuccess?: Date | null;
+  lastError?: Date | null;
+  cacheAgeMs?: number | null;      // ms depuis le dernier fetch réussi
+  fetchCount?: number;             // total de fetches tentés (session)
+  failureCount?: number;           // total d'échecs cumulés (session)
+  fallbackCount?: number;          // nombre de fallbacks activés (session)
+  responseTimeMs?: number | null;  // durée du dernier fetch réussi (ms)
+}
+
+/**
+ * Événement émis par un service vers le Watchdog.
+ * Chaque fetch doit émettre loading → success | failure.
+ * Un fallback peut être déclaré indépendamment.
+ */
+export type WatchdogEvent =
+  | { type: 'loading' }
+  | { type: 'success'; responseTimeMs?: number; detail?: string }
+  | { type: 'failure'; error: string; isFallback?: boolean }
+  | { type: 'fallback'; reason: string };
+
+/** Configuration déclarée une fois par service au module load */
+export interface WatchdogSourceConfig {
+  /** Nom affiché dans StatusPanel */
+  label: string;
+  /** Délai en ms avant de passer automatiquement à 'stale' (défaut: 10 min) */
+  staleAfterMs?: number;
+  /** Description fixe (provenance, licence…) affichée sous le nom */
+  detail?: string;
+  /** Vérité intrinsèque de la donnée servie par cette source */
+  freshness?: DataFreshness;
+}
+
+/** Snapshot exporté par Watchdog.getSnapshot() */
+export interface WatchdogSnapshot {
+  sourceId: string;
+  status: DataSourceStatus;
 }
 
 // ═══ Cache ═══

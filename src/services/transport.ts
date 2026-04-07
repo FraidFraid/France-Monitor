@@ -7,6 +7,14 @@
 import type { TransportDisruption, ThreatLevel, TrainStop, RailNetworkData } from '../types/index.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { FeatureCollection, LineString } from 'geojson';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('sncf', {
+    label: 'SNCF',
+    staleAfterMs: 5 * 60_000,
+    detail: 'API SNCF Disruptions · /api/transport/disruptions',
+});
 import { geocode } from './geocoder.ts';
 import { distance, point } from '@turf/turf';
 import type { OsmRailwayFeature } from './osm-rail-graph.ts';
@@ -461,6 +469,9 @@ export async function fetchSncfDisruptions(
         return disruptionCache.data;
     }
 
+    Watchdog.report('sncf', { type: 'loading' });
+    const t0 = Date.now();
+
     try {
         const resp = await fetch('/api/transport/disruptions', {
             signal: AbortSignal.timeout(15000),
@@ -691,9 +702,8 @@ export async function fetchSncfDisruptions(
         };
         disruptions.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
-        // Return disruptions immediately (panel + map usable right away)
-        // Geocoding + OSM route matching run in background; onEnriched fires when done
         disruptionCache = { data: disruptions, fetchedAt: Date.now() };
+        Watchdog.report('sncf', { type: 'success', responseTimeMs: Date.now() - t0 });
         console.log(`[SNCF] ${disruptions.length} perturbations chargées — enrichissement en cours…`);
 
         if (onEnriched) {
@@ -756,7 +766,7 @@ export async function fetchSncfDisruptions(
                     (d) => d.coordinates || d.departure?.coordinates || d.arrival?.coordinates
                 ).length;
                 const matchedRoutes = disruptions.filter((d) => d.routeGeometry?.coordinates?.length).length;
-                console.log(`[SNCF] Enrichissement terminé — ${mappedDisruptions}/${disruptions.length} géocodées, ${matchedRoutes} tracés OSM`);
+                console.log(`[SNCF] Enrichissement terminé — ${mappedDisruptions}/${disruptions.length} géocodées, ${matchedRoutes} tracés OSM`);
 
                 onEnriched(disruptions);
             })().catch((err) => console.warn('[SNCF] Enrichissement échoué:', err));
@@ -764,7 +774,9 @@ export async function fetchSncfDisruptions(
 
         return disruptions;
     } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn('[SNCF] Fetch failed, using cache or empty:', err);
+        Watchdog.report('sncf', { type: 'failure', error: msg, isFallback: !!disruptionCache });
         return disruptionCache?.data ?? [];
     }
 }

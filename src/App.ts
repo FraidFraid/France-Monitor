@@ -97,6 +97,7 @@ import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
+import { Watchdog } from './services/watchdog.ts';
 
 
 const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
@@ -1606,6 +1607,15 @@ export class App {
       this.statusPanel = new StatusPanel(headerDataSources, { variant: 'dropdown', icon: '' });
       this.statusPanel.setOnSourceClick((name) => this.handleSourcePanelClick(name));
       this.statusPanel.mount();
+
+      // ── Abonnement Watchdog → StatusPanel (coexiste avec les appels directs existants) ──
+      // Les appels statusPanel?.updateSource() épars dans chaque loadXxx() continuent de
+      // fonctionner. Les events Watchdog les enrichissent avec les métriques de monitoring.
+      Watchdog.on('update', (snapshots) => {
+        for (const snap of snapshots) {
+          this.statusPanel?.updateSource(snap.status.name, snap.status);
+        }
+      });
     }
 
     // ── Main layout ──

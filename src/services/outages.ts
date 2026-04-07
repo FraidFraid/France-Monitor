@@ -25,6 +25,21 @@ import {
     type DataFairDurationRecord,
     type DataFairFrequencyRecord,
 } from './adapters/enedis-adapter.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('arcep', {
+    label: 'ARCEP Réseau Mobile',
+    staleAfterMs: 24 * 60 * 60_000, // fichier journalier
+    detail: 'Sites HS opérateurs mobiles · data.gouv.fr GeoJSON J ou J-1',
+    freshness: 'HISTORIQUE',
+});
+
+Watchdog.register('enedis-power', {
+    label: 'Enedis / Pannes Électricité',
+    staleAfterMs: 15 * 60_000,
+    detail: 'Continuité BT · OpenDataSoft v2.1 DataFair + Écowatt',
+    freshness: 'HISTORIQUE',
+});
 
 // ═══ ARCEP Mobile Network Outages ═══
 
@@ -33,6 +48,8 @@ import {
  * The file is named using the current date. Should it fail, tries to fetch D-1.
  */
 export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
+    Watchdog.report('arcep', { type: 'loading' });
+    const t0 = Date.now();
     try {
         const today = new Date();
         const formatDate = (date: Date) => {
@@ -45,6 +62,7 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
         let dateStr = formatDate(today);
         let url = `/api/arcep?date=${dateStr}`;
         let res = await fetch(url);
+        let usedFallback = false;
 
         // Fallback to yesterday if today's file is not yet uploaded
         if (!res.ok) {
@@ -53,13 +71,25 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
             dateStr = formatDate(yesterday);
             url = `/api/arcep?date=${dateStr}`;
             res = await fetch(url);
+            usedFallback = true;
             if (!res.ok) {
                 throw new Error(`Failed to fetch ARCEP data for ${dateStr}. Status: ${res.status}`);
             }
         }
 
         const json = await res.json();
-        if (!json.features) return [];
+        if (!json.features) {
+            Watchdog.report('arcep', { type: 'success', responseTimeMs: Date.now() - t0, detail: 'Aucun site HS' });
+            return [];
+        }
+
+        const sitesHS = json.features.length;
+        Watchdog.report('arcep', {
+            type: 'success',
+            responseTimeMs: Date.now() - t0,
+            detail: `${sitesHS} sites HS${usedFallback ? ' · J-1' : ' · J'}`,
+        });
+        if (usedFallback) Watchdog.report('arcep', { type: 'fallback', reason: 'fichier J indisponible → J-1' });
 
         return json.features.map((f: any, index: number) => {
             const props = f.properties;
@@ -68,7 +98,6 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
             let dataStatus: 'OK' | 'HS' | 'Degraded' = 'OK';
 
             // voix/data aggregate = 'HS' when ANY sub-tech is HS (not all).
-            // Use per-tech fields for accurate total vs partial distinction.
             const allVoiceHS = props.voix2g === 'HS' && props.voix3g === 'HS' && props.voix4g === 'HS';
             const anyVoiceHS = props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS';
             voice = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
@@ -94,7 +123,9 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
             };
         }).filter((o: TelecomOutage) => o.coordinates[0] !== 0 && o.coordinates[1] !== 0);
     } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         console.warn('[Outages] ARCEP fetch error', error);
+        Watchdog.report('arcep', { type: 'failure', error: msg });
         return [];
     }
 }
@@ -162,6 +193,7 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
             console.warn('[outages]', { event: 'cb_half_open', note: 'probing Enedis' });
         } else {
             _meta.cbOpen = true;
+            Watchdog.report('enedis-power', { type: 'fallback', reason: 'circuit breaker ouvert' });
             return powerCache?.data ?? [];
         }
     }
@@ -174,6 +206,9 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
     // ── Race condition guard ─────────────────────────────────────────────────
     const requestId = crypto.randomUUID();
     _currentRequestId = requestId;
+
+    Watchdog.report('enedis-power', { type: 'loading' });
+    const _t0 = Date.now();
 
     try {
         // Fetch all data sources in parallel
@@ -278,6 +313,12 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
         powerCache = { data: results, fetchedAt: now };
         _meta = { fetchedAt: now, cbOpen: false, requestId };
 
+        Watchdog.report('enedis-power', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${results.length} dpts · ${continuityByDept.size} enedis records`,
+        });
+
         return results;
 
     } catch (error) {
@@ -304,6 +345,9 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
         }
 
         _meta.cbOpen = _cb.state === 'open';
+
+        const msg = error instanceof Error ? error.message : String(error);
+        Watchdog.report('enedis-power', { type: 'failure', error: msg, isFallback: !!powerCache });
 
         // Return cached data or empty array
         return powerCache?.data ?? [];

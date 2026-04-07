@@ -13,6 +13,14 @@
  */
 
 import type { MeteoAlert, MeteoVigilanceLevel, MeteoRiskType } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ── Watchdog registration ──
+Watchdog.register('meteo-france', {
+    label: 'Météo-France',
+    staleAfterMs: 15 * 60_000,
+    detail: 'API DPVigilance publique · apikey VITE_METEOFRANCE_API_KEY',
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES EXPORTS
@@ -247,8 +255,12 @@ export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
     const apiKey = import.meta.env.VITE_METEOFRANCE_API_KEY;
     if (!apiKey) {
         console.info('[MeteoFrance] API key missing (VITE_METEOFRANCE_API_KEY), skipping fetch');
+        Watchdog.report('meteo-france', { type: 'failure', error: 'VITE_METEOFRANCE_API_KEY manquante' });
         return [];
     }
+
+    Watchdog.report('meteo-france', { type: 'loading' });
+    const t0 = Date.now();
 
     try {
         const resp = await fetch(API_URL, {
@@ -266,19 +278,21 @@ export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
         const contentType = resp.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
             console.warn(`[MeteoFrance] Unexpected content-type: ${contentType}`);
-            // Lire le body pour debug (tronqué)
             const text = await resp.text();
             console.warn(`[MeteoFrance] Response preview: ${text.slice(0, 100)}...`);
+            Watchdog.report('meteo-france', { type: 'failure', error: `content-type inattendu: ${contentType}`, isFallback: !!cache });
             return cache?.data ?? [];
         }
 
         // Gérer les erreurs HTTP
         if (resp.status === 401 || resp.status === 403) {
             console.warn(`[MeteoFrance] Auth error ${resp.status} - check API key`);
+            Watchdog.report('meteo-france', { type: 'failure', error: `Auth ${resp.status} - vérifier apikey`, isFallback: !!cache });
             return cache?.data ?? [];
         }
         if (!resp.ok) {
             console.warn(`[MeteoFrance] HTTP error ${resp.status}`);
+            Watchdog.report('meteo-france', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!cache });
             return cache?.data ?? [];
         }
 
@@ -288,12 +302,14 @@ export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
 
         // Mettre en cache
         cache = { data: alerts, fetchedAt: Date.now() };
+        Watchdog.report('meteo-france', { type: 'success', responseTimeMs: Date.now() - t0 });
         console.log(`[MeteoFrance] ${alerts.length} départements en alerte`);
         return alerts;
 
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[MeteoFrance] Fetch failed: ${msg}`);
+        Watchdog.report('meteo-france', { type: 'failure', error: msg, isFallback: !!cache });
         return cache?.data ?? [];
     }
 }

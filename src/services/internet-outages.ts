@@ -9,6 +9,14 @@
  */
 
 import type { IodaOutageEvent, IspBgpStatus, NetworkOutageState } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('ioda-bgp', {
+    label: 'IODA / BGP',
+    staleAfterMs: 5 * 60_000,
+    detail: 'Pannes Internet · IODA (Georgia Tech) + BGPView · /api/internet-outages',
+    freshness: 'TEMPS_REEL',
+});
 
 // ── Cache ──────────────────────────────────────────────────────────────────────
 
@@ -134,8 +142,12 @@ export async function fetchNetworkOutages(): Promise<NetworkOutageState> {
     // Circuit breaker
     if (failureCount >= 2 && Date.now() < cooldownUntil) {
         console.warn('[NetworkOutages] Circuit breaker ouvert — cooldown actif');
+        Watchdog.report('ioda-bgp', { type: 'fallback', reason: 'circuit breaker ouvert' });
         return cache?.data ?? buildEmptyState('error');
     }
+
+    Watchdog.report('ioda-bgp', { type: 'loading' });
+    const t0 = Date.now();
 
     try {
         const res = await fetch('/api/internet-outages', {
@@ -167,12 +179,22 @@ export async function fetchNetworkOutages(): Promise<NetworkOutageState> {
 
         cache         = { data: state, fetchedAt: Date.now() };
         failureCount  = 0;
+
+        const ongoingCount = events.filter(e => e.isOngoing).length;
+        Watchdog.report('ioda-bgp', {
+            type: 'success',
+            responseTimeMs: Date.now() - t0,
+            detail: `score=${state.nationalScore} · ${ongoingCount} évt actifs · IODA:${iodaStatus} BGP:${bgpvStatus}`,
+        });
+
         return state;
 
     } catch (err) {
         failureCount++;
         if (failureCount >= 2) cooldownUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn('[NetworkOutages] Fetch error:', err);
+        Watchdog.report('ioda-bgp', { type: 'failure', error: msg, isFallback: !!cache });
         return cache?.data ?? buildEmptyState('error');
     }
 }

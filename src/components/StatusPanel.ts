@@ -37,6 +37,25 @@ function formatLastUpdate(date: Date | null): string {
     return `il y a ${hours}h`;
 }
 
+/** Format âge du cache en compact (ex: "2 min", "47 s", "1h 3min") */
+function formatCacheAge(ms: number | null | undefined): string | null {
+    if (ms === null || ms === undefined) return null;
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return rm > 0 ? `${h}h ${rm}min` : `${h}h`;
+}
+
+/** Format temps de réponse (ex: "312ms", "~2.1s") */
+function formatResponseTime(ms: number | null | undefined): string | null {
+    if (ms === null || ms === undefined) return null;
+    if (ms < 1000) return `${ms}ms`;
+    return `~${(ms / 1000).toFixed(1)}s`;
+}
+
 export class StatusPanel {
     private container: HTMLElement;
     private sources: DataSourceStatus[] = [];
@@ -226,8 +245,7 @@ export class StatusPanel {
         for (const src of this.sources) {
             const row = document.createElement('div');
             row.style.cssText =
-                'display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-bottom:1px solid var(--border-color);cursor:pointer;border-radius:4px;transition:background 0.2s;';
-            row.style.setProperty('border-bottom', 'none', '');
+                'display:flex;align-items:flex-start;justify-content:space-between;padding:5px 8px;border-radius:4px;transition:background 0.2s;';
 
             row.onmouseover = () => { row.style.background = 'var(--bg-surface-hover)'; };
             row.onmouseout = () => { row.style.background = 'transparent'; };
@@ -241,17 +259,19 @@ export class StatusPanel {
             left.style.cssText = 'display:flex;align-items:flex-start;gap:6px;min-width:0;flex:1;';
 
             const dotWrap = document.createElement('span');
+            dotWrap.style.cssText = 'margin-top:2px;flex-shrink:0;';
             dotWrap.innerHTML = `<span class="status-dot status-dot--${src.status}"></span>`;
 
             const textWrap = document.createElement('div');
             textWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-width:0;';
 
+            // ── Nom de la source ──
             const nameEl = document.createElement('span');
             nameEl.style.cssText = 'font-size:12px;color:var(--text-secondary);';
             nameEl.textContent = src.name;
-
             textWrap.appendChild(nameEl);
 
+            // ── Détail statique (provenance, licence…) ──
             if (src.detail) {
                 const detailEl = document.createElement('span');
                 detailEl.style.cssText = 'font-size:10px;color:var(--text-muted);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -260,13 +280,65 @@ export class StatusPanel {
                 textWrap.appendChild(detailEl);
             }
 
+            // ── Ligne de métriques Watchdog (optionnelle) ──
+            const metricParts: Array<{ text: string; color?: string }> = [];
+
+            // Âge du cache
+            const cacheStr = formatCacheAge(src.cacheAgeMs);
+            if (cacheStr) {
+                // Orange si > 8 min (80% du TTL 10min par défaut)
+                const isAging = (src.cacheAgeMs ?? 0) > 8 * 60_000;
+                metricParts.push({
+                    text: `cache: ${cacheStr}`,
+                    color: isAging ? 'var(--threat-medium, #f59e0b)' : undefined,
+                });
+            }
+
+            // Compteur de fallbacks
+            if (src.fallbackCount && src.fallbackCount > 0) {
+                metricParts.push({
+                    text: `${src.fallbackCount} fallback${src.fallbackCount > 1 ? 's' : ''}`,
+                    color: 'var(--threat-medium, #f59e0b)',
+                });
+            }
+
+            // Temps de réponse
+            const rtStr = formatResponseTime(src.responseTimeMs);
+            if (rtStr) {
+                metricParts.push({ text: rtStr });
+            }
+
+            // Dernier échec récent (< 30 min)
+            if (src.lastError) {
+                const errorAgeMs = Date.now() - src.lastError.getTime();
+                if (errorAgeMs < 30 * 60_000) {
+                    const errAge = formatCacheAge(errorAgeMs);
+                    metricParts.push({
+                        text: `⚠ échec ${errAge ?? ''}`,
+                        color: 'var(--threat-critical, #ef4444)',
+                    });
+                }
+            }
+
+            if (metricParts.length > 0) {
+                const metricsEl = document.createElement('div');
+                metricsEl.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:1px;';
+                for (const part of metricParts) {
+                    const chip = document.createElement('span');
+                    chip.style.cssText = `font-size:9px;color:${part.color ?? 'var(--text-muted)'};`;
+                    chip.textContent = part.text;
+                    metricsEl.appendChild(chip);
+                }
+                textWrap.appendChild(metricsEl);
+            }
+
             left.appendChild(dotWrap);
             left.appendChild(textWrap);
 
             const right = document.createElement('div');
-            right.style.cssText = 'display:flex;align-items:center;gap:6px;';
+            right.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:4px;';
 
-            if (src.error) {
+            if (src.error && src.status === 'error') {
                 const errEl = document.createElement('span');
                 errEl.style.cssText = 'font-size:10px;color:var(--threat-critical);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
                 errEl.title = src.error;

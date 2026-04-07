@@ -18,6 +18,14 @@ import type {
     OutageZoneCollection,
     OutageZoneProperties,
 } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('scraping-citoyen', {
+    label: 'Pannes Citoyennes',
+    staleAfterMs: 10 * 60_000,
+    detail: 'Signalements crowd-sourced infocoupure.fr · /api/outages/citizen',
+    freshness: 'TEMPS_REEL',
+});
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -45,6 +53,7 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
     // Circuit breaker : évite de spammer un endpoint défaillant
     if (_failureCount >= CIRCUIT_BREAKER_THRESHOLD && now < _cooldownUntil) {
         console.warn('[outages-scraper] Circuit breaker open — returning cached or empty data');
+        Watchdog.report('scraping-citoyen', { type: 'fallback', reason: 'circuit breaker ouvert' });
         return _cache?.data ?? buildEmptyResponse();
     }
 
@@ -53,9 +62,12 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
         return _cache.data;
     }
 
+    Watchdog.report('scraping-citoyen', { type: 'loading' });
+    const t0 = Date.now();
+
     try {
         const resp = await fetch(ENDPOINT, {
-            signal: AbortSignal.timeout(15_000), // timeout court : afficher le cache stale plutôt que bloquer
+            signal: AbortSignal.timeout(15_000),
         });
 
         if (!resp.ok) {
@@ -70,6 +82,14 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
 
         // Update cache
         _cache = { data, fetchedAt: now };
+
+        const zoneCount = data.zones?.features?.length ?? 0;
+        Watchdog.report('scraping-citoyen', {
+            type: 'success',
+            responseTimeMs: Date.now() - t0,
+            detail: `${zoneCount} zones · ${data.reports?.length ?? 0} signalements`,
+        });
+
         return data;
     } catch (err) {
         _failureCount++;
@@ -82,6 +102,9 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
         } else {
             console.warn('[outages-scraper] Fetch error:', err instanceof Error ? err.message : err);
         }
+
+        const msg = err instanceof Error ? err.message : String(err);
+        Watchdog.report('scraping-citoyen', { type: 'failure', error: msg, isFallback: !!_cache });
 
         // Return stale cache on error
         return _cache?.data ?? buildEmptyResponse();
