@@ -19,6 +19,14 @@ import type {
   GasInterconnection,
 } from '../types';
 import { GAS_TERMINALS, GAS_STORAGES, GAS_INTERCONNECTIONS } from '../config/gas-infrastructure';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('gas-network', {
+  label: 'Réseau Gaz / EcoGaz',
+  staleAfterMs: 15 * 60_000,
+  detail: 'GRTgaz EcoGaz + ODRE stockages + ENTSOG PIR',
+  freshness: 'TEMPS_REEL',
+});
 
 // ═══ Cache ═══
 
@@ -260,6 +268,9 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
     return cache.data;
   }
 
+  Watchdog.report('gas-network', { type: 'loading' });
+  const t0 = Date.now();
+
   // Fetch all sources in parallel
   const [ecogazResult, storageResult, pirResult] = await Promise.all([
     fetchEcoGazSignal(),
@@ -330,6 +341,11 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
 
   cache = { data: state, fetchedAt: Date.now() };
   console.log(`[Gas] Data cached: EcoGaz=${state.ecogaz.signal}, Storages=${storages.length}, Fill=${avgFill.toFixed(1)}%`);
+  Watchdog.report('gas-network', {
+    type: 'success',
+    responseTimeMs: Date.now() - t0,
+    detail: `EcoGaz ${state.ecogaz.signal} · ${storages.length} stockages · fill ${avgFill.toFixed(0)}%`,
+  });
 
   return state;
 }

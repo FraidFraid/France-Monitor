@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     } else {
       snapshot = await fetchAirTrafficSnapshot(fetch);
     }
-    res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=5');
+    res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=30');
     res.status(200).json(snapshot);
   } catch (error) {
     console.error('[air-traffic]', error);

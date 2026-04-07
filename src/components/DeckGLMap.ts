@@ -13,7 +13,7 @@ import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
 import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
-import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS } from '../types/index.ts';
+import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
@@ -5745,7 +5745,7 @@ export class DeckGLMap {
       const anomalyShare = Number(properties.anomalyShare ?? 0);
       const avgUpdateAgeMinutes = Number(properties.avgUpdateAgeMinutes ?? Number.NaN);
       const deltaPrice7d = Number(properties.deltaPrice7d ?? Number.NaN);
-      const freshnessBadge = String(properties.freshnessBadge ?? 'QUASI-LIVE');
+      const freshnessBadge = String(properties.freshnessBadge ?? DATA_FRESHNESS_LABELS.TEMPS_REEL);
       const lineColor = String(properties.lineColor ?? '#EF4444');
 
       const deltaHtml = Number.isFinite(deltaPrice7d)
@@ -6708,19 +6708,13 @@ export class DeckGLMap {
       ? `<br><span style="color:#cbd5e1;font-size:10px">ETA: ${new Date(flight.eta).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>`
       : '';
     const source = flight.source ? `<br><span style="color:#64748b;font-size:10px">Source: ${flight.source}</span>` : '';
-    const airportContext = flight.nearbyAirportIata
-      ? `<br><span style="color:#facc15;font-size:10px">Aéroport: ${flight.nearbyAirportIata}${flight.nearbyAirportName ? ` · ${flight.nearbyAirportName}` : ''}${flight.nearbyAirportDistanceKm != null ? ` · ${flight.nearbyAirportDistanceKm} km` : ''}</span>`
-      : '';
-    const airportScore = flight.airportScore != null
-      ? `<br><span style="color:#fbbf24;font-size:10px">Score aéroport: ${flight.airportScore}/100${flight.airportSeverity ? ` · ${flight.airportSeverity}` : ''}</span>`
-      : '';
     const anomalies = Array.isArray(flight.anomalies) && flight.anomalies.length > 0
       ? `<br><span style="color:#fda4af;font-size:10px">Anomalies: ${flight.anomalies.map((anomaly) => anomaly.label).join(' · ')}</span>`
       : '';
 
     this.showMilitaryTooltip(
       lngLat,
-      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${airportContext}${airportScore}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
+      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
     );
   }
 

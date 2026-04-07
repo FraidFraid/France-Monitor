@@ -14,6 +14,14 @@ import {
   OIL_REFINERIES,
   OIL_VIGILANCE_THRESHOLDS,
 } from '../config/oil-infrastructure';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('oil-dashboard', {
+  label: 'Pétrole SDES / INSEE',
+  staleAfterMs: 30 * 60_000,
+  detail: 'SDES stocks + INSEE origines + CPDP livraisons',
+  freshness: 'HISTORIQUE',
+});
 
 type SourceFetchStatus = 'ok' | 'stale' | 'error';
 
@@ -606,6 +614,9 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     return cache.data;
   }
 
+  Watchdog.report('oil-dashboard', { type: 'loading' });
+  const _t0 = Date.now();
+
   const [
     annualResult,
     originsResult,
@@ -674,6 +685,13 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     data: dashboard,
     fetchedAt: Date.now(),
   };
+
+  const detail = `stocks ${dashboard.stocks.nationalStocksDays?.toFixed(0) ?? 'n.d.'}j · vigilance ${dashboard.meta.status}`;
+  if (dashboard.meta.partialData) {
+    Watchdog.report('oil-dashboard', { type: 'fallback', reason: `données partielles · ${detail}` });
+  } else {
+    Watchdog.report('oil-dashboard', { type: 'success', responseTimeMs: Date.now() - _t0, detail });
+  }
 
   return dashboard;
 }

@@ -17,9 +17,18 @@ export function arcepProxyPlugin(): Plugin {
                         return;
                     }
 
-                    const targetUrl = `https://object.files.data.gouv.fr/arcep/sites-indisponibles/all/${dateStr}/raw${dateStr}.geojson`;
+                    const arcepUrl = (d: string) =>
+                        `https://object.files.data.gouv.fr/arcep/sites-indisponibles/all/${d}/raw${d}.geojson`;
 
-                    const resp = await fetch(targetUrl);
+                    let resp = await fetch(arcepUrl(dateStr));
+
+                    // Fallback J-1 si le fichier du jour n'est pas encore publié (cohérence avec prod)
+                    if (!resp.ok && resp.status === 404) {
+                        const date = new Date(dateStr + 'T12:00:00');
+                        date.setDate(date.getDate() - 1);
+                        const fallbackDateStr = date.toISOString().split('T')[0];
+                        resp = await fetch(arcepUrl(fallbackDateStr));
+                    }
 
                     if (!resp.ok) {
                         res.statusCode = resp.status;

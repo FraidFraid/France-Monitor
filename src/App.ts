@@ -71,7 +71,7 @@ import { fetchFiresData } from './services/fires.ts';
 import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
-import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta } from './services/outages.ts';
+import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
@@ -92,7 +92,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
@@ -1151,6 +1151,8 @@ export class App {
   private rightSidebar: RightSidebar | null = null;
   private lastBarometerMetrics: HealthBarometerMetrics | null = null;
   private hasHealthData = false;
+  private currentHealthFeatures: HealthFeatures | null = null;
+  private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
   private toastNotification: ToastNotification | null = null;
   private layerPanel: LayerPanel | null = null;
@@ -2313,6 +2315,34 @@ export class App {
       this.trafficPanel?.show(this.currentTrafficIncidents);
     } else if (name === 'Cyber') {
       this.cyberPanel?.show(this.currentCyberData);
+    } else if (name === 'Écowatt RTE') {
+      this.energyPanel?.show(this.currentEcowattResponse);
+    } else if (
+      name === 'ARCEP Réseau Mobile' ||
+      name === 'Enedis / Pannes Électricité' ||
+      name === 'Infra Réseau DC / IXP' ||
+      name === 'IODA Internet'
+    ) {
+      this.outagesPanel?.show(
+        this.currentPowerOutages,
+        this.currentTelecomOutages,
+        this.currentNetworkState,
+        this.currentInfraState,
+        this.currentCitizenZones ?? undefined,
+      );
+    } else if (name === 'Réseau Gaz / EcoGaz') {
+      if (this.currentGasData) this.gasPanel?.show(this.currentGasData);
+    } else if (name === 'Pétrole SDES / INSEE') {
+      if (this.currentOilData) this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
+    } else if (name === 'Vols Militaires ADS-B') {
+      this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
+    } else if (name === 'Feux NASA FIRMS') {
+      this.firesPanel?.show(this.currentActiveFires);
+      this.layoutEnvironmentFloatingPanels();
+    } else if (name === 'Marchés Financiers') {
+      if (this.currentMarketData.length > 0) this.financePanel?.show(this.currentMarketData);
+    } else if (name === 'Santé SPF / DREES') {
+      if (this.currentHealthFeatures) this.nationalHealthPanel?.show(this.currentHealthFeatures);
     }
   }
 
@@ -3096,6 +3126,7 @@ export class App {
     const fetchFinance = async () => {
       try {
         const data = await fetchMarketData();
+        this.currentMarketData = data;
         this.marketStrip?.update(data);
         if (data.length > 0) {
           this.financePanel?.show(data);
@@ -4162,7 +4193,7 @@ export class App {
       this.outagesPanel?.setRTEIIP(iipResult);
     }
 
-    this.outagesPanel?.setArcepFetchedDate(new Date());
+    this.outagesPanel?.setArcepFetchedDate(lastArcepDataDate ?? new Date());
     this.outagesPanel?.setOutagesMeta(getPowerOutagesMeta());
 
     // ── Afficher le panel immédiatement avec les données rapides ─────────────
@@ -4194,6 +4225,7 @@ export class App {
     this.statusPanel?.updateSource('ANSM Médicaments', { status: 'loading', lastUpdate: null });
     const payload = await fetchHealthData();
     this.hasHealthData = payload.departments.length > 0 || payload.regions.length > 0;
+    this.currentHealthFeatures = payload.healthFeatures;
 
     let sentinellesScore = undefined;
     try {

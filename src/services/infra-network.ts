@@ -10,6 +10,14 @@
  */
 
 import type { InfraNetworkState, DatacenterStatus, IxpStatus, CloudflareRadarAnomaly } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('infra-network', {
+    label: 'Infra Réseau DC / IXP',
+    staleAfterMs: 15 * 60_000,
+    detail: 'OVH · Scaleway · AWS · GCP · Cloudflare · PeeringDB IXP',
+    freshness: 'TEMPS_REEL',
+});
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
 
@@ -139,6 +147,8 @@ export async function fetchInfraNetwork(): Promise<InfraNetworkState | null> {
         return cache.data;
     }
 
+    Watchdog.report('infra-network', { type: 'loading' });
+    const _t0 = Date.now();
     try {
         const resp = await fetch('/api/infra-network', {
             signal: AbortSignal.timeout(15_000),
@@ -152,11 +162,18 @@ export async function fetchInfraNetwork(): Promise<InfraNetworkState | null> {
 
         cache = { data: state, fetchedAt: Date.now() };
         failureCount = 0;
+        Watchdog.report('infra-network', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${state.datacenters.length} DC · ${state.ixps.length} IXP`,
+        });
         return state;
     } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         failureCount++;
         if (failureCount >= 2) cooldownUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
         console.warn('[infra-network] fetch failed:', err);
+        Watchdog.report('infra-network', { type: 'failure', error: msg });
         return cache?.data ?? null;
     }
 }

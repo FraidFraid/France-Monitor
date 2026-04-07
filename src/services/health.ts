@@ -6,6 +6,14 @@ import type {
   ISSLevel,
 } from '../types/index.ts';
 import { ISS_LEVELS } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('health', {
+  label: 'Santé SPF / DREES',
+  staleAfterMs: 15 * 60_000,
+  detail: 'Épidémiologie SPF + Sentinelles + ANSM médicaments + DREES urgences',
+  freshness: 'HISTORIQUE',
+});
 
 // ═══ Payload ═══════════════════════════════════════════════════════════════
 
@@ -306,6 +314,9 @@ export async function fetchHealthData(): Promise<HealthPayload> {
     return cache.payload;
   }
 
+  Watchdog.report('health', { type: 'loading' });
+  const _t0 = Date.now();
+
   const emptyPayload: HealthPayload = {
     departments: [],
     regions: [],
@@ -412,9 +423,16 @@ export async function fetchHealthData(): Promise<HealthPayload> {
       cache = { fetchedAt: Date.now(), payload };
     }
 
+    Watchdog.report('health', {
+      type: 'success',
+      responseTimeMs: Date.now() - _t0,
+      detail: `${effectiveDepartments.length} dép · ${regions.length} régions`,
+    });
     return payload;
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.warn('[Health] Fetch error', error);
+    Watchdog.report('health', { type: 'failure', error: msg });
     return cache?.payload ?? emptyPayload;
   }
 }

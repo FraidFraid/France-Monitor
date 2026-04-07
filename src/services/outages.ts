@@ -14,6 +14,9 @@
 
 import type { TelecomOutage, PowerOutage } from '../types/index.ts';
 import { DEPARTMENTS } from './stability-index.ts';
+
+/** Date réelle du fichier ARCEP servi (J ou J-1) — live binding ESM. */
+export let lastArcepDataDate: Date | null = null;
 import { fetchEcowatt } from './ecowatt.ts';
 import { resilientFetchResults } from '../utils/resilientFetch.ts';
 import {
@@ -76,6 +79,9 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
                 throw new Error(`Failed to fetch ARCEP data for ${dateStr}. Status: ${res.status}`);
             }
         }
+
+        // Mémorise la date réelle du fichier servi (J ou J-1) pour l'UI
+        lastArcepDataDate = new Date(dateStr + 'T12:00:00');
 
         const json = await res.json();
         if (!json.features) {

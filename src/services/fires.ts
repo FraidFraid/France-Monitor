@@ -1,6 +1,14 @@
 import type { ActiveFire } from '../types/index.ts';
 import type { FireIncident } from '../types/index.ts';
 import { clusterFireDetections } from './fire-clustering.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('fires-nasa', {
+  label: 'Feux NASA FIRMS',
+  staleAfterMs: 60 * 60_000,
+  detail: 'VIIRS SNPP + NOAA-20 + NOAA-21 · détections satellites',
+  freshness: 'HISTORIQUE',
+});
 
 /**
  * fires.ts — NASA FIRMS Active Fire Data
@@ -144,6 +152,9 @@ export async function fetchFiresData(): Promise<FiresApiResponse> {
         return _cache.data;
     }
 
+    Watchdog.report('fires-nasa', { type: 'loading' });
+    const _t0 = Date.now();
+
     try {
         const response = await fetch('/api/fires', { signal: AbortSignal.timeout(20_000) });
 
@@ -209,11 +220,17 @@ export async function fetchFiresData(): Promise<FiresApiResponse> {
 
         _cache = { data: result, timestamp: Date.now() };
         console.log(`[FIRMS] ${detections.length} détections · ${incidents.length} incidents · sources: ${result.sources.join(', ')}`);
+        Watchdog.report('fires-nasa', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${detections.length} détections · ${incidents.length} incidents`,
+        });
         return result;
 
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.warn('[FIRMS] Erreur:', msg);
+        Watchdog.report('fires-nasa', { type: 'failure', error: msg });
         return _cache?.data ?? { detections: [], incidents: [], sources: [], fetchedAt: 0, apiKeyUsed: false };
     }
 }

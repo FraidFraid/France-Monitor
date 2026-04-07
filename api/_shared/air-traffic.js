@@ -3,7 +3,7 @@ import { FRANCE_AIRPORTS, matchFranceAirport } from './airports-fr.js';
 const AIRPLANES_LIVE_POINT_BASE = 'https://api.airplanes.live/v2/point';
 const OPENSKY_STATES_URL = 'https://opensky-network.org/api/states/all';
 const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
-const CACHE_TTL_MS = 5 * 1000;
+const CACHE_TTL_MS = 20 * 1000;
 const OFFICIAL_AIRPORT_CACHE_TTL_MS = 10 * 60 * 1000;
 const FLIGHT_HISTORY_TTL_MS = 20 * 60 * 1000;
 const MAX_HISTORY_SAMPLES = 12;
@@ -26,6 +26,23 @@ let cachedSnapshot = null;
 let cachedOpenSkyToken = null;
 const cachedOfficialFlightDirectories = new Map();
 const flightHistory = new Map();
+
+// ── Rate-limit backoff tracker (warm-instance protection) ──
+const rateLimitedUntil = new Map(); // source → timestamp
+const RATE_LIMIT_BACKOFF_MS = 60_000; // 1 min cooldown after 429
+
+function isRateLimited(source) {
+  const until = rateLimitedUntil.get(source);
+  if (!until) return false;
+  if (Date.now() < until) return true;
+  rateLimitedUntil.delete(source);
+  return false;
+}
+
+function markRateLimited(source) {
+  rateLimitedUntil.set(source, Date.now() + RATE_LIMIT_BACKOFF_MS);
+  console.warn(`[air-traffic] ${source} rate-limited, backoff ${RATE_LIMIT_BACKOFF_MS / 1000}s`);
+}
 
 const OFFICIAL_AIRPORT_PROVIDERS = {
   BVA: {
@@ -619,10 +636,20 @@ function normalizeOpenSkyState(state) {
 }
 
 async function fetchArea(fetchImpl, area) {
+  const source = `airplanes.live:${area.id}`;
+  if (isRateLimited(source)) {
+    throw new Error(`Air traffic upstream rate-limited (429) for ${area.id}`);
+  }
+
   const response = await fetchImpl(buildUrl(area), {
     headers: buildGenericHeaders(),
     signal: AbortSignal.timeout(12_000),
   });
+
+  if (response.status === 429) {
+    markRateLimited(source);
+    throw new Error(`Air traffic upstream rate-limited (429) for ${area.id}`);
+  }
 
   if (!response.ok) {
     throw new Error(`Air traffic upstream HTTP ${response.status} for ${area.id}`);
@@ -633,11 +660,21 @@ async function fetchArea(fetchImpl, area) {
 }
 
 async function fetchOpenSky(fetchImpl) {
+  const source = 'opensky';
+  if (isRateLimited(source)) {
+    throw new Error('OpenSky rate-limited (429) — backoff actif');
+  }
+
   const url = `${OPENSKY_STATES_URL}?lamin=${FRANCE_BOUNDS.minLat}&lomin=${FRANCE_BOUNDS.minLon}&lamax=${FRANCE_BOUNDS.maxLat}&lomax=${FRANCE_BOUNDS.maxLon}`;
   const response = await fetchImpl(url, {
     headers: await buildOpenSkyHeaders(fetchImpl),
     signal: AbortSignal.timeout(12_000),
   });
+
+  if (response.status === 429) {
+    markRateLimited(source);
+    throw new Error('OpenSky rate-limited (429) — backoff actif');
+  }
 
   if (!response.ok) {
     throw new Error(`OpenSky HTTP ${response.status}`);
@@ -1073,7 +1110,7 @@ export async function fetchAirTrafficSnapshot(fetchImpl = fetch) {
     areas: AIR_TRAFFIC_AREAS.map(({ id, lat, lon, radiusNm }) => ({ id, lat, lon, radiusNm })),
     flights: enrichedFlights,
     sourceCounts: countFlightsBySource(enrichedFlights),
-    topAirports: airportSummaries.filter((summary) => summary.score > 0 || summary.signals.length > 0).slice(0, 6),
+    topAirports: airportSummaries.filter((summary) => summary.score > 0 || summary.signals.length > 0).slice(0, 10),
     anomalyCount: enrichedFlights.reduce(
       (total, flight) => total + (Array.isArray(flight.anomalies) ? flight.anomalies.length : 0),
       0

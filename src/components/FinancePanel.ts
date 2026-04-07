@@ -41,11 +41,22 @@ export class FinancePanel extends Panel {
 
     show(data: MarketData[]): void {
         if (!data || data.length === 0) {
+            const now = new Date();
+            const dayOfWeek = now.getDay(); // 0=dim, 6=sam
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const parisHour = parseInt(
+                new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }).format(now),
+                10
+            );
+            const isMarketClosed = isWeekend || parisHour < 9 || parisHour >= 18;
+            const reason = isMarketClosed ? 'Marché fermé · données indisponibles hors séance.' : 'Source Marketstack inaccessible · réessai au prochain cycle.';
             this.contentContainer.innerHTML = `
         <div style="font-size: 11px; color: var(--text-muted); padding: 8px;">
-          Données financières non disponibles.
+          ${reason}
         </div>`;
-            if (this._badgeEl) this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
+            if (this._badgeEl) this._badgeEl.innerHTML = isMarketClosed
+                ? renderTruthBadge('FERMÉ', '#6B7280')
+                : renderTruthBadge('INDISPONIBLE', '#EF4444');
             this.setBadge(0);
             return;
         }
@@ -61,7 +72,11 @@ export class FinancePanel extends Panel {
         this.contentContainer.innerHTML = '';
         let hasCrash = false;
 
-        for (const item of data) {
+        const top10 = [...data]
+            .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+            .slice(0, 10);
+
+        for (const item of top10) {
             const card = document.createElement('div');
             card.style.background = 'rgba(255, 255, 255, 0.05)';
             card.style.borderRadius = '6px';
@@ -104,6 +119,6 @@ export class FinancePanel extends Panel {
             this.contentContainer.appendChild(card);
         }
 
-        this.setBadge(data.length, hasCrash);
+        this.setBadge(top10.length, hasCrash);
     }
 }

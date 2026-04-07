@@ -10,6 +10,14 @@
  */
 
 import type { MilitaryFlight, MilitaryFlightsSnapshot, MilitaryFlightsMode } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('military-flights', {
+  label: 'Vols Militaires ADS-B',
+  staleAfterMs: 5 * 60_000,
+  detail: 'adsb.fi + airplanes.live + OpenSky · mise à jour ~30s',
+  freshness: 'TEMPS_REEL',
+});
 import {
     determineAircraftInfo,
     identifyFrenchAircraftType,
@@ -514,6 +522,8 @@ function buildSnapshot(
 }
 
 export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
+    Watchdog.report('military-flights', { type: 'loading' });
+    const _t0 = Date.now();
     const upstreamErrors: Array<{ source: string; message: string }> = [];
 
     try {
@@ -548,12 +558,18 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
             if (flights.length > 0) {
                 console.log(`[Military] ${flights.length} vols via proxy (${data.source})`);
                 const mode = data.mode ?? (data.isStale ? 'stale-cache' : 'live');
-                return buildSnapshot(flights, data.source, mode, {
+                const snap = buildSnapshot(flights, data.source, mode, {
                     fetchedAt: data.fetchedAt,
                     ttlMs: data.ttlMs,
                     sourceCounts: data.sourceCounts ?? {},
                     errors: data.errors ?? [],
                 });
+                Watchdog.report('military-flights', {
+                    type: 'success',
+                    responseTimeMs: Date.now() - _t0,
+                    detail: `${flights.length} vols · ${data.source}`,
+                });
+                return snap;
             }
         }
     } catch (err) {
@@ -571,6 +587,12 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
     const adsbResult = await fetchFromAdsbFi();
     if (adsbResult && adsbResult.flights.length > 0) {
         emptyFallbackLogged = false;
+        Watchdog.report('military-flights', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${adsbResult.flights.length} vols · ${adsbResult.source} (fallback)`,
+        });
+        if (upstreamErrors.length > 0) Watchdog.report('military-flights', { type: 'fallback', reason: 'proxy KO → direct ADS-B' });
         return buildSnapshot(adsbResult.flights, adsbResult.source, 'live', {
             sourceCounts: { [adsbResult.source]: adsbResult.flights.length },
             errors: upstreamErrors,
@@ -581,6 +603,12 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
     if (oskyFlights.length > 0) {
         emptyFallbackLogged = false;
         console.log(`[Military] ${oskyFlights.length} vols via OpenSky direct`);
+        Watchdog.report('military-flights', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${oskyFlights.length} vols · opensky (fallback)`,
+        });
+        Watchdog.report('military-flights', { type: 'fallback', reason: 'proxy + adsb.fi KO → OpenSky' });
         return buildSnapshot(oskyFlights, 'opensky', 'live', {
             sourceCounts: { opensky: oskyFlights.length },
             errors: upstreamErrors,
@@ -592,6 +620,7 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
         console.log('[Military] Aucune donnée live, API indisponible');
         emptyFallbackLogged = true;
     }
+    Watchdog.report('military-flights', { type: 'failure', error: 'Toutes les sources ADS-B indisponibles' });
     return buildSnapshot([], 'none', 'empty', {
         sourceCounts: {},
         errors: upstreamErrors,

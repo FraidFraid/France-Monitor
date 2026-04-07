@@ -13,6 +13,7 @@ import type {
   NuclearUnitReference,
   ReactorAvailabilityStatus,
 } from '../types/index.ts';
+import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import { NUCLEAR_STATUS_COLORS, NUCLEAR_REMIT_UNCONFIRMED_COLOR } from '../services/nuclear-rte.ts';
 import {
   NUCLEAR_FLEET_INSTALLED_CAPACITY_MW,
@@ -577,9 +578,9 @@ export class NuclearPanel extends Panel {
 
   private _freshnessBadge(freshness: string): string {
     const label =
-      freshness === 'quasi-realtime' ? 'QUASI TEMPS RÉEL'
-      : freshness === 'stale' ? 'RECONSTRUIT / ESTIMÉ'
-      : 'INDISPONIBLE';
+      freshness === 'quasi-realtime' ? DATA_FRESHNESS_LABELS.TEMPS_REEL
+      : freshness === 'stale' ? DATA_FRESHNESS_LABELS.RECONSTRUIT
+      : DATA_FRESHNESS_LABELS.INDISPONIBLE;
     const color =
       freshness === 'quasi-realtime' ? '#34D399'
       : freshness === 'stale' ? '#F97316'

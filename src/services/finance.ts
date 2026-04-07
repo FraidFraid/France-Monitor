@@ -1,4 +1,12 @@
 import type { MarketData } from '../types/index.ts';
+import { Watchdog } from './watchdog.ts';
+
+Watchdog.register('finance', {
+  label: 'Marchés Financiers',
+  staleAfterMs: 15 * 60_000,
+  detail: 'Marketstack — CAC 40, indices, valeurs défense / énergie',
+  freshness: 'TEMPS_REEL',
+});
 
 // Hardcode mapping of symbols to human names
 const SYMBOL_NAMES: Record<string, string> = {
@@ -95,16 +103,21 @@ function buildSyntheticHistory(
  * Returns array of parsed MarketData.
  */
 export async function fetchMarketData(): Promise<MarketData[]> {
+    Watchdog.report('finance', { type: 'loading' });
+    const _t0 = Date.now();
     try {
         const resp = await fetch('/api/finance/market');
         if (!resp.ok) {
+            const reason = resp.status === 429 ? 'quota Marketstack dépassé' : `HTTP ${resp.status}`;
             console.warn('[Finance] API returned', resp.status);
+            Watchdog.report('finance', { type: 'failure', error: reason });
             return [];
         }
 
         const data = await resp.json();
         if (!data || !data.data || !Array.isArray(data.data)) {
             console.warn('[Finance] Invalid data structure or missing keys');
+            Watchdog.report('finance', { type: 'failure', error: 'structure API inattendue' });
             return [];
         }
 
@@ -145,10 +158,17 @@ export async function fetchMarketData(): Promise<MarketData[]> {
             });
         }
 
+        Watchdog.report('finance', {
+            type: 'success',
+            responseTimeMs: Date.now() - _t0,
+            detail: `${results.length} symboles`,
+        });
         return results;
 
     } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.error('[Finance] Fetch failed', err);
+        Watchdog.report('finance', { type: 'failure', error: msg });
         return [];
     }
 }
