@@ -148,9 +148,12 @@ export function franceIntelProxyPlugin(): Plugin {
             const groqClean = groqText.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
             const groqData = JSON.parse(groqClean) as { choices: Array<{ message: { content: string } }> };
             const raw = groqData.choices?.[0]?.message?.content ?? '';
+            // The model may embed literal \n inside the JSON string value (invalid JSON).
+            // Strip control chars from raw content BEFORE the second JSON.parse.
+            const rawClean = raw.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
             // Extract JSON robustly — handle markdown fences and surrounding text
-            const jsonMatch = raw.match(/\{[\s\S]*"brief"[\s\S]*\}/);
-            const clean = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim();
+            const jsonMatch = rawClean.match(/\{[\s\S]*"brief"[\s\S]*\}/);
+            const clean = jsonMatch ? jsonMatch[0] : rawClean.replace(/```json|```/g, '').trim();
             const { brief } = JSON.parse(clean) as { brief: string };
 
             const result = {
