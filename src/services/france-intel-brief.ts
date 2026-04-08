@@ -1,5 +1,5 @@
 // src/services/france-intel-brief.ts
-import type { FranceIntelData, ISNRDimensionScores } from '../types/index.ts';
+import type { FranceBriefContext } from '../types/index.ts';
 
 interface BriefCacheEntry {
   brief: string | null;
@@ -11,23 +11,13 @@ interface BriefCacheEntry {
 const _cache = new Map<'fr' | 'en', BriefCacheEntry>();
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
 
-/** Compute national average of an ISNR dimension across all departments. */
-function avgDim(
-  scores: FranceIntelData['stability']['scores'],
-  key: keyof ISNRDimensionScores,
-): number {
-  if (scores.length === 0) return 0;
-  const sum = scores.reduce((acc, s) => acc + (s.dimensions?.[key] ?? 0), 0);
-  return Math.round(sum / scores.length);
-}
-
 export interface FranceBriefResult {
   brief: string | null;
   freshness: 'fresh' | 'cached';
 }
 
 export async function fetchFranceIntelBrief(
-  data: FranceIntelData,
+  ctx: FranceBriefContext,
   lang: 'fr' | 'en' = 'fr',
 ): Promise<FranceBriefResult> {
   // Check client-side cache
@@ -36,24 +26,20 @@ export async function fetchFranceIntelBrief(
     return { brief: cached.brief, freshness: 'cached' };
   }
 
-  const isnrScore = data.stability.nationalScore;
-  const isnrComponents = {
-    social:   avgDim(data.stability.scores, 'social'),
-    security: avgDim(data.stability.scores, 'security'),
-    infra:    avgDim(data.stability.scores, 'infra'),
-  };
-  const cyberScore      = data.cyber.meta.globalScore;
-  const meteoAlertCount = data.meteo.filter(a => a.level === 'orange' || a.level === 'red' || a.level === 'violet').length;
-  const topHeadlines    = data.topNews.slice(0, 6).map(n => n.title);
-  const signalCounts = data.operational;
-  const energy = data.energy ? {
-    ecowattSignal: data.energy.ecowattSignal,
-    nuclearShare: data.energy.shares.nuclear,
-    gasShare: data.energy.shares.gas,
-    hydroShare: data.energy.shares.hydro,
-    windShare: data.energy.shares.wind,
-    solarShare: data.energy.shares.solar,
-    totalMw: data.energy.totalMw,
+  const isnrScore      = ctx.score;
+  const isnrComponents = ctx.isnrComponents;
+  const cyberScore     = ctx.cyberScore;
+  const meteoAlertCount = ctx.signals.meteoAlerts;
+  const topHeadlines   = ctx.topHeadlines;
+  const signalCounts   = ctx.signals;
+  const energy = ctx.energySummary ? {
+    ecowattSignal: ctx.energySummary.ecowattSignal,
+    nuclearShare:  ctx.energySummary.shares.nuclear,
+    gasShare:      ctx.energySummary.shares.gas,
+    hydroShare:    ctx.energySummary.shares.hydro,
+    windShare:     ctx.energySummary.shares.wind,
+    solarShare:    ctx.energySummary.shares.solar,
+    totalMw:       ctx.energySummary.totalMw,
   } : null;
 
   try {

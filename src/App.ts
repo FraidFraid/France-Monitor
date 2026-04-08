@@ -2088,7 +2088,7 @@ export class App {
       this.franceIntelPanel?.resetBrief();
       const snapshot = this.buildFranceSnapshot(lang);
       this.franceIntelPanel?.show(snapshot);
-      void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
+      void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
         this.franceIntelPanel?.updateBrief(brief, freshness);
       });
     });
@@ -4781,7 +4781,7 @@ export class App {
     const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
     const snapshot = this.buildFranceSnapshot(lang);
     this.franceIntelPanel?.show(snapshot);
-    void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
+    void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
       this.franceIntelPanel?.updateBrief(brief, freshness);
     });
   }

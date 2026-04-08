@@ -60,10 +60,15 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+function getActiveScores(scores: FranceIntelData['stability']['scores']): FranceIntelData['stability']['scores'] {
+  return scores.filter((score) => score.score > 0 || score.eventCount > 0);
+}
+
 function avgDim(scores: FranceIntelData['stability']['scores'], key: keyof ISNRDimensionScores): number {
-  if (scores.length === 0) return 0;
-  const sum = scores.reduce((acc, score) => acc + (score.dimensions?.[key] ?? 0), 0);
-  return Math.round(sum / scores.length);
+  const activeScores = getActiveScores(scores);
+  if (activeScores.length === 0) return 0;
+  const sum = activeScores.reduce((acc, score) => acc + (score.dimensions?.[key] ?? 0), 0);
+  return Math.round(sum / activeScores.length);
 }
 
 function computeCII(data: FranceIntelData): number {
@@ -72,6 +77,52 @@ function computeCII(data: FranceIntelData): number {
   const infra = avgDim(data.stability.scores, 'infra');
   const cyber = data.cyber.meta.globalScore;
   return Math.round(social * 0.25 + security * 0.3 + infra * 0.2 + cyber * 0.25);
+}
+
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function computeNationalPostureAxes(data: FranceIntelData, lang: 'fr' | 'en'): Array<{ label: string; value: number; color: string }> {
+  const socialBase = avgDim(data.stability.scores, 'social');
+  const securityBase = avgDim(data.stability.scores, 'security');
+
+  const troubles = clampScore(Math.max(
+    socialBase,
+    data.signals.highNews * 5
+      + data.signals.railDisruptions * 2
+      + data.signals.roadIncidents
+      + (data.signals.powerOutages + data.signals.telecomOutages) * 3,
+  ));
+
+  const conflict = clampScore(
+    data.signals.defenseAlerts * 18
+      + data.signals.jammingSignals * 16
+      + Math.min(data.signals.militaryFlights, 20) * 2
+      + Math.min(data.signals.maritimeTrafficFrance, 20),
+  );
+
+  const security = clampScore(Math.max(
+    securityBase,
+    data.signals.criticalNews * 18
+      + data.signals.highNews * 8
+      + data.signals.defenseHigh * 18
+      + data.signals.jammingSignals * 10,
+  ));
+
+  const information = clampScore(
+    Math.min(data.topNews.length, 20)
+      + data.signals.highNews * 4
+      + data.signals.criticalNews * 10
+      + data.signals.marketStress * 5,
+  );
+
+  return [
+    { label: t(lang, 'Troubles', 'Troubles'), value: troubles, color: '#7ddc6f' },
+    { label: t(lang, 'Conflit', 'Conflict'), value: conflict, color: '#9ca3af' },
+    { label: t(lang, 'Sécurité', 'Security'), value: security, color: '#ff6b35' },
+    { label: t(lang, 'Information', 'Information'), value: information, color: '#7ddc6f' },
+  ];
 }
 
 function ciiBand(score: number): 'stable' | 'elevated' | 'high' | 'critical' {
@@ -273,10 +324,7 @@ export class FranceIntelPanel extends Panel {
     const cii = computeCII(data);
     const ciiBandLabel = ciiLabel(cii, lang);
     const ciiTint = ciiColor(cii);
-    const social = avgDim(data.stability.scores, 'social');
-    const security = avgDim(data.stability.scores, 'security');
-    const infra = avgDim(data.stability.scores, 'infra');
-    const cyber = data.cyber.meta.globalScore;
+    const postureAxes = computeNationalPostureAxes(data, lang);
     const updatedTime = new Date(data.stability.timestamp).toLocaleString(
       lang === 'fr' ? 'fr-FR' : 'en-US',
       { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
@@ -291,11 +339,11 @@ export class FranceIntelPanel extends Panel {
       .slice(0, 6);
 
     const dominantRisk = [
-      { label: t(lang, 'Cyber', 'Cyber'), value: data.operational.cyberAlerts + data.operational.cyberCritical },
-      { label: t(lang, 'Transport', 'Transport'), value: data.operational.railDisruptions + data.operational.roadIncidents },
-      { label: t(lang, 'Pannes', 'Outages'), value: data.operational.powerOutages + data.operational.telecomOutages },
-      { label: t(lang, 'Météo', 'Weather'), value: data.operational.weatherAlerts + data.operational.floodAlerts },
-      { label: t(lang, 'Défense', 'Defense'), value: data.operational.defenseAlerts + data.operational.jammingSignals },
+      { label: t(lang, 'Cyber', 'Cyber'), value: data.signals.cyberAlerts + data.signals.cyberCritical },
+      { label: t(lang, 'Transport', 'Transport'), value: data.signals.railDisruptions + data.signals.roadIncidents },
+      { label: t(lang, 'Pannes', 'Outages'), value: data.signals.powerOutages + data.signals.telecomOutages },
+      { label: t(lang, 'Météo', 'Weather'), value: data.signals.meteoAlerts + data.signals.floodAlerts },
+      { label: t(lang, 'Défense', 'Defense'), value: data.signals.defenseAlerts + data.signals.jammingSignals },
     ].sort((a, b) => b.value - a.value)[0];
 
     const riskMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
@@ -310,26 +358,33 @@ export class FranceIntelPanel extends Panel {
     }
 
     const signalChips: string[] = [];
-    if (data.operational.criticalNews > 0) signalChips.push(`<span class="frintel-chip chip-critical">🚨 ${data.operational.criticalNews} ${t(lang, 'titre critique', 'critical headline')}${data.operational.criticalNews > 1 ? 's' : ''}</span>`);
-    if (data.operational.defenseAlerts > 0) signalChips.push(`<span class="frintel-chip chip-defense">🛡️ ${data.operational.defenseAlerts} ${t(lang, 'alerte défense', 'defense alert')}${data.operational.defenseAlerts > 1 ? 's' : ''}</span>`);
-    if (data.operational.jammingSignals > 0) signalChips.push(`<span class="frintel-chip chip-defense">📡 ${data.operational.jammingSignals} ${t(lang, 'signal GPS', 'GPS jamming signal')}${data.operational.jammingSignals > 1 ? 's' : ''}</span>`);
-    if (data.operational.cyberCritical > 0) signalChips.push(`<span class="frintel-chip chip-cyber">🧬 ${data.operational.cyberCritical} ${t(lang, 'CVE critiques', 'critical CVEs')}</span>`);
-    if (data.operational.railSevere > 0) signalChips.push(`<span class="frintel-chip chip-transport">🚆 ${data.operational.railSevere} ${t(lang, 'perturbations SNCF fortes', 'severe rail disruptions')}</span>`);
-    if (data.operational.powerOutages + data.operational.telecomOutages > 0) signalChips.push(`<span class="frintel-chip chip-outage">🌐 ${data.operational.powerOutages + data.operational.telecomOutages} ${t(lang, 'pannes en cours', 'outages active')}</span>`);
+    if (data.signals.criticalNews > 0) signalChips.push(`<span class="frintel-chip chip-critical">🚨 ${data.signals.criticalNews} ${t(lang, 'titre critique', 'critical headline')}${data.signals.criticalNews > 1 ? 's' : ''}</span>`);
+    if (data.signals.militaryFlights > 0) signalChips.push(`<span class="frintel-chip chip-defense">✈️ ${data.signals.militaryFlights} ${t(lang, 'vols militaires', 'military flights')}</span>`);
+    if (data.signals.maritimeTrafficFrance > 0) signalChips.push(`<span class="frintel-chip chip-transport">🚢 ${data.signals.maritimeTrafficFrance} ${t(lang, 'navires en zone France', 'ships in French waters')}</span>`);
+    if (data.signals.defenseAlerts > 0) signalChips.push(`<span class="frintel-chip chip-defense">🛡️ ${data.signals.defenseAlerts} ${t(lang, 'alerte défense', 'defense alert')}${data.signals.defenseAlerts > 1 ? 's' : ''}</span>`);
+    if (data.signals.jammingSignals > 0) signalChips.push(`<span class="frintel-chip chip-defense">📡 ${data.signals.jammingSignals} ${t(lang, 'signal GPS', 'GPS jamming signal')}${data.signals.jammingSignals > 1 ? 's' : ''}</span>`);
+    if (data.signals.cyberCritical > 0) signalChips.push(`<span class="frintel-chip chip-cyber">🧬 ${data.signals.cyberCritical} ${t(lang, 'CVE critiques', 'critical CVEs')}</span>`);
+    if (data.signals.railSevere > 0) signalChips.push(`<span class="frintel-chip chip-transport">🚆 ${data.signals.railSevere} ${t(lang, 'perturbations SNCF fortes', 'severe rail disruptions')}</span>`);
+    if (data.signals.fireDetections > 0) signalChips.push(`<span class="frintel-chip chip-weather">🔥 ${data.signals.fireDetections} ${t(lang, 'détections de feux', 'fire detections')}</span>`);
+    if (data.signals.marketStress > 0) signalChips.push(`<span class="frintel-chip chip-critical">📉 ${data.signals.marketStress} ${t(lang, 'lignes marché sous tension', 'market stress lines')}</span>`);
+    if (data.signals.powerOutages + data.signals.telecomOutages > 0) signalChips.push(`<span class="frintel-chip chip-outage">🌐 ${data.signals.powerOutages + data.signals.telecomOutages} ${t(lang, 'pannes en cours', 'outages active')}</span>`);
     for (const [risk, item] of riskMap.entries()) {
       signalChips.push(`<span class="frintel-chip chip-weather">${escapeHtml(RISK_LABELS[risk] ?? risk)} · ${escapeHtml(VIGILANCE_LABELS[item.level])}${item.count > 1 ? ` ×${item.count}` : ''}</span>`);
     }
 
-    const totalSignals = data.operational.criticalNews
-      + data.operational.highNews
-      + data.operational.weatherAlerts
-      + data.operational.floodAlerts
-      + data.operational.railDisruptions
-      + data.operational.roadIncidents
-      + data.operational.powerOutages
-      + data.operational.telecomOutages
-      + data.operational.defenseAlerts
-      + data.operational.jammingSignals;
+    const totalSignals = data.signals.criticalNews
+      + data.signals.highNews
+      + data.signals.meteoAlerts
+      + data.signals.floodAlerts
+      + data.signals.railDisruptions
+      + data.signals.roadIncidents
+      + data.signals.powerOutages
+      + data.signals.telecomOutages
+      + data.signals.fireDetections
+      + data.signals.militaryFlights
+      + data.signals.maritimeTrafficFrance
+      + data.signals.defenseAlerts
+      + data.signals.jammingSignals;
 
     const energy = data.energy;
     const energySegments = energy
@@ -357,10 +412,7 @@ export class FranceIntelPanel extends Panel {
               <div class="frintel-score-note">${t(lang, 'CII national composite', 'Composite national CII')}</div>
             </div>
           </div>
-          ${this.renderMetricBar(t(lang, 'Social', 'Social'), social, '#ef4444')}
-          ${this.renderMetricBar(t(lang, 'Sécurité', 'Security'), security, '#f97316')}
-          ${this.renderMetricBar(t(lang, 'Infrastructure', 'Infrastructure'), infra, '#facc15')}
-          ${this.renderMetricBar('Cyber', cyber, '#a855f7')}
+          ${postureAxes.map((axis) => this.renderMetricBar(axis.label, axis.value, axis.color)).join('')}
         </section>
 
         <section class="frintel-card">
@@ -369,12 +421,13 @@ export class FranceIntelPanel extends Panel {
             <div class="frintel-card-meta">${t(lang, 'Risque dominant', 'Dominant risk')} • ${escapeHtml(dominantRisk?.label ?? 'n/a')}</div>
           </div>
           <div class="frintel-metric-grid">
-            ${this.renderStatTile(t(lang, 'Cyber', 'Cyber'), data.operational.cyberAlerts.toString(), t(lang, 'alertes 30j', '30d alerts'))}
-            ${this.renderStatTile(t(lang, 'Rail', 'Rail'), data.operational.railDisruptions.toString(), t(lang, 'perturbations', 'disruptions'))}
-            ${this.renderStatTile(t(lang, 'Route', 'Road'), data.operational.roadIncidents.toString(), t(lang, 'incidents', 'incidents'))}
-            ${this.renderStatTile(t(lang, 'Pannes', 'Outages'), (data.operational.powerOutages + data.operational.telecomOutages).toString(), t(lang, 'élec + télécom', 'power + telecom'))}
-            ${this.renderStatTile(t(lang, 'Défense', 'Defense'), data.operational.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
-            ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (data.operational.weatherAlerts + data.operational.floodAlerts).toString(), t(lang, 'vigies actives', 'active watches'))}
+            ${this.renderStatTile(t(lang, 'Cyber', 'Cyber'), data.signals.cyberAlerts.toString(), t(lang, 'alertes 30j', '30d alerts'))}
+            ${this.renderStatTile(t(lang, 'Rail', 'Rail'), data.signals.railDisruptions.toString(), t(lang, 'perturbations', 'disruptions'))}
+            ${this.renderStatTile(t(lang, 'Militaire', 'Military'), data.signals.militaryFlights.toString(), t(lang, 'vols actifs', 'active flights'))}
+            ${this.renderStatTile(t(lang, 'Maritime', 'Maritime'), data.signals.maritimeTrafficFrance.toString(), t(lang, 'navires en zone FR', 'ships in FR waters'))}
+            ${this.renderStatTile(t(lang, 'Pannes', 'Outages'), (data.signals.powerOutages + data.signals.telecomOutages).toString(), t(lang, 'élec + télécom', 'power + telecom'))}
+            ${this.renderStatTile(t(lang, 'Défense', 'Defense'), data.signals.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
+            ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (data.signals.meteoAlerts + data.signals.floodAlerts + data.signals.fireDetections).toString(), t(lang, 'vigies + feux', 'watches + fires'))}
           </div>
         </section>
       </div>
