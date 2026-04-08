@@ -30,6 +30,7 @@ import type {
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
+import type { TrafficIncident } from '@/services/traffic.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -42,7 +43,7 @@ export interface FranceRawData {
   meteoAlerts: MeteoAlert[];
   floodSegments: FloodSegment[];
   sncfDisruptions: TransportDisruption[];
-  trafficIncidents: TransportDisruption[];
+  trafficIncidents: TrafficIncident[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   defenseAlerts: DefenseAlert[];

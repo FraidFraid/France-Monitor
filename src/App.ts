@@ -24,7 +24,11 @@ import { ISNRPanel } from './components/ISNRPanel.ts';
 import { CyberPanel } from './components/CyberPanel.ts';
 import { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
-import type { FranceIntelData } from './types/index.ts';
+import {
+  buildFranceCountrySnapshot as buildFranceEngine,
+  type FranceRawData,
+} from './services/france-country-intel.ts';
+import type { FranceCountrySnapshot, FranceIntelTimelineLane } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import { HydraulicPanel } from './components/HydraulicPanel.ts';
 import { EolienPanel } from './components/EolienPanel.ts';
@@ -1148,6 +1152,8 @@ export class App {
   private defensePanel: DefensePanel | null = null;
   private currentDefenseAlerts: DefenseAlert[] = [];
   private currentJammingSignals: import('./types/index.ts').GpsJammingSignal[] = [];
+  private currentMilitaryFlightsCount = 0;
+  private currentMaritimeTrafficFranceCount = 0;
   private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
   private nationalHealthPanel: NationalHealthPanel | null = null;
   private healthBarometerPanel: HealthBarometerPanel | null = null;
@@ -1640,6 +1646,22 @@ export class App {
     sidebarContent.className = 'sidebar-content';
     sidebarContent.id = 'sidebar-content';
     sidebar.appendChild(sidebarContent);
+    const sidebarCredit = document.createElement('div');
+    sidebarCredit.className = 'sidebar-credit';
+    sidebarCredit.innerHTML = `
+      <div class="sidebar-credit__title">France Monitor</div>
+      <a
+        class="sidebar-credit__link"
+        href="https://www.linkedin.com/in/fredaubourg/"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Profil LinkedIn de Fraid"
+      >
+        v1.0 - @Fraid
+      </a>
+      <div class="sidebar-credit__subtitle">Projet inspiré de World Monitor</div>
+    `;
+    sidebar.appendChild(sidebarCredit);
     main.appendChild(sidebar);
 
     // ── Map area ──
@@ -2064,9 +2086,9 @@ export class App {
       const { lang } = (e as CustomEvent<{ lang: 'fr' | 'en' }>).detail;
       // Reset brief cache so the new-lang brief shows loading spinner
       this.franceIntelPanel?.resetBrief();
-      const data = this.buildFranceIntelData(lang);
-      this.franceIntelPanel?.show(data);
-      void fetchFranceIntelBrief(data, lang).then(({ brief, freshness }) => {
+      const snapshot = this.buildFranceSnapshot(lang);
+      this.franceIntelPanel?.show(snapshot);
+      void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
         this.franceIntelPanel?.updateBrief(brief, freshness);
       });
     });
@@ -2938,6 +2960,7 @@ export class App {
         });
         const snapshot = await fetchMilitaryFlights();
         const flights = snapshot.flights;
+        this.currentMilitaryFlightsCount = flights.length;
         this.mapContainer?.updateMilitaryFlights(flights);
 
         const sourceBreakdown = Object.entries(snapshot.sourceCounts)
@@ -3085,6 +3108,7 @@ export class App {
 
         // Tout le trafic AIS mondial (civils, étrangers, etc.)
         const allTraffic = getAllLiveTraffic();
+        this.currentMaritimeTrafficFranceCount = getAllLiveTraffic(10 * 60 * 1000, true).length;
 
         if (allTraffic.length > 0) {
           this._aisZeroWarnLogged = false; // Reset so we can warn again if connection drops
@@ -4654,15 +4678,7 @@ export class App {
     }, 15 * 60_000);
   }
 
-  private buildFranceIntelData(lang: 'fr' | 'en'): FranceIntelData {
-    const stability = this.currentISNRData ?? { scores: [], nationalScore: 0, timestamp: new Date() };
-    const cyber = this.currentCyberData ?? {
-      meta: { globalScore: 0, trend: 'stable' as const, sources: [], lastUpdate: new Date() },
-      alerts: { count30d: 0, latest: [] },
-      ransomware: { total30d: 0, topSectors: [] },
-      vulnerabilities: { criticalCount: 0, topCVEs: [] },
-    };
-
+  private buildFranceTimeline(lang: 'fr' | 'en'): { days: string[]; lanes: FranceIntelTimelineLane[] } {
     const now = new Date();
     const days = Array.from({ length: 7 }, (_, index) => {
       const day = new Date(now);
@@ -4670,14 +4686,16 @@ export class App {
       day.setDate(day.getDate() - (6 - index));
       return day;
     });
-    const dayKeys = days.map((day) => day.toISOString().slice(0, 10));
+    const dayKeys = days.map((d) => d.toISOString().slice(0, 10));
     const laneMap = {
-      social: { key: 'social' as const, label: lang === 'fr' ? 'Social' : 'Social', color: '#ef4444', counts: Array(7).fill(0) as number[] },
-      security: { key: 'security' as const, label: lang === 'fr' ? 'Sécurité' : 'Security', color: '#f97316', counts: Array(7).fill(0) as number[] },
-      weather: { key: 'weather' as const, label: lang === 'fr' ? 'Météo' : 'Weather', color: '#facc15', counts: Array(7).fill(0) as number[] },
+      social:    { key: 'social'    as const, label: lang === 'fr' ? 'Social'    : 'Social',    color: '#ef4444', counts: Array(7).fill(0) as number[] },
+      security:  { key: 'security'  as const, label: lang === 'fr' ? 'Sécurité'  : 'Security',  color: '#f97316', counts: Array(7).fill(0) as number[] },
+      weather:   { key: 'weather'   as const, label: lang === 'fr' ? 'Météo'     : 'Weather',   color: '#facc15', counts: Array(7).fill(0) as number[] },
       transport: { key: 'transport' as const, label: lang === 'fr' ? 'Transport' : 'Transport', color: '#60a5fa', counts: Array(7).fill(0) as number[] },
-      cyber: { key: 'cyber' as const, label: 'Cyber', color: '#a855f7', counts: Array(7).fill(0) as number[] },
+      cyber:     { key: 'cyber'     as const, label: 'Cyber',                                   color: '#a855f7', counts: Array(7).fill(0) as number[] },
     };
+
+    const cyber = this.currentCyberData ?? null;
 
     for (const item of this.newsItems) {
       const key = item.pubDate.toISOString().slice(0, 10);
@@ -4686,87 +4704,65 @@ export class App {
       const category = item.threat?.category;
       if (category === 'social') laneMap.social.counts[dayIndex] += 1;
       else if (category === 'security') laneMap.security.counts[dayIndex] += 1;
-      else if (category === 'weather' || category === 'floods' || category === 'fires' || category === 'energy' || category === 'infrastructure') laneMap.weather.counts[dayIndex] += 1;
+      else if (
+        category === 'weather' || category === 'floods' || category === 'fires' ||
+        category === 'energy' || category === 'infrastructure'
+      ) laneMap.weather.counts[dayIndex] += 1;
       else if (category === 'transport') laneMap.transport.counts[dayIndex] += 1;
       else if (category === 'cyber') laneMap.cyber.counts[dayIndex] += 1;
     }
 
     const todayIndex = dayKeys.length - 1;
-    laneMap.weather.counts[todayIndex] += this.currentMeteoAlerts.filter((item) => item.level !== 'green').length;
-    laneMap.weather.counts[todayIndex] += this.currentFloodSegments.filter((item) => item.level !== 'green').length;
+    laneMap.weather.counts[todayIndex]   += this.currentMeteoAlerts.filter((a) => a.level !== 'green').length;
+    laneMap.weather.counts[todayIndex]   += this.currentFloodSegments.filter((a) => a.level !== 'green').length;
     laneMap.transport.counts[todayIndex] += this.currentSncfDisruptions.length + this.currentTrafficIncidents.length;
-    laneMap.security.counts[todayIndex] += this.currentDefenseAlerts.length + this.currentJammingSignals.length;
-    laneMap.cyber.counts[todayIndex] += cyber.alerts.latest.filter((item) => {
-      const ts = new Date(item.date);
+    laneMap.security.counts[todayIndex]  += this.currentDefenseAlerts.length + this.currentJammingSignals.length;
+    laneMap.cyber.counts[todayIndex]     += cyber?.alerts.latest.filter((a) => {
+      const ts = new Date(a.date);
       return Number.isFinite(ts.getTime()) && (now.getTime() - ts.getTime()) <= 7 * 24 * 60 * 60 * 1000;
-    }).length;
-
-    const criticalNews = this.newsItems.filter((item) => item.threat?.level === 'critical').length;
-    const highNews = this.newsItems.filter((item) => item.threat?.level === 'high').length;
-    const railSevere = this.currentSncfDisruptions.filter((item) => item.severity === 'critical' || item.severity === 'high').length;
-    const defenseHigh = this.currentDefenseAlerts.filter((item) => item.severity === 'high').length;
-
-    const nationalMix = this.currentEcowattResponse?.national ?? null;
-    const totalMw = nationalMix && nationalMix.total > 0 ? Math.round(nationalMix.total) : null;
-    const share = (value: number): number => {
-      if (!nationalMix || !totalMw || totalMw <= 0) return 0;
-      return Math.round((value / nationalMix.total) * 100);
-    };
+    }).length ?? 0;
 
     return {
-      stability,
-      cyber,
-      meteo: this.currentMeteoAlerts,
-      topNews: this.newsItems.slice(0, 20),
-      briefLang: lang,
-      operational: {
-        criticalNews,
-        highNews,
-        weatherAlerts: this.currentMeteoAlerts.filter((item) => item.level === 'orange' || item.level === 'red' || item.level === 'violet').length,
-        floodAlerts: this.currentFloodSegments.filter((item) => item.level === 'orange' || item.level === 'red').length,
-        railDisruptions: this.currentSncfDisruptions.length,
-        railSevere,
-        roadIncidents: this.currentTrafficIncidents.length,
-        powerOutages: this.currentPowerOutages.length,
-        telecomOutages: this.currentTelecomOutages.length,
-        cyberAlerts: cyber.alerts.count30d,
-        cyberCritical: cyber.vulnerabilities.criticalCount,
-        defenseAlerts: this.currentDefenseAlerts.length,
-        defenseHigh,
-        jammingSignals: this.currentJammingSignals.length,
-      },
-      energy: nationalMix ? {
-        ecowattSignal: Object.values(this.currentEcowattResponse?.signals ?? {}).includes('red')
-          ? 'red'
-          : Object.values(this.currentEcowattResponse?.signals ?? {}).includes('orange')
-            ? 'orange'
-            : Object.values(this.currentEcowattResponse?.signals ?? {}).includes('green')
-              ? 'green'
-              : null,
-        totalMw,
-        shares: {
-          nuclear: share(nationalMix.nuclear),
-          gas: share(nationalMix.gas),
-          hydro: share(nationalMix.hydro),
-          wind: share(nationalMix.wind),
-          solar: share(nationalMix.solar),
-          other: share(nationalMix.other),
-        },
-        nuclearStress: this.currentNuclearState?.stress ? Math.round(this.currentNuclearState.stress.stressRatio * 100) : null,
-        windGw: this.currentEolienLive?.production_gw ?? null,
-        windLoadFactor: this.currentEolienLive ? Math.round(this.currentEolienLive.facteur_charge * 100) : null,
-      } : null,
-      timeline: {
-        days: days.map((day) => day.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' })),
-        lanes: Object.values(laneMap),
-      },
+      days: days.map((d) =>
+        d.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US', { month: 'short', day: 'numeric' }),
+      ),
+      lanes: Object.values(laneMap),
     };
+  }
+
+  private buildFranceSnapshot(
+    lang: 'fr' | 'en',
+    options?: { brief?: string | null; briefFreshness?: 'fresh' | 'cached' },
+  ): FranceCountrySnapshot {
+    const raw: FranceRawData = {
+      newsItems:            this.newsItems,
+      isnrData:             this.currentISNRData,
+      cyberData:            this.currentCyberData,
+      meteoAlerts:          this.currentMeteoAlerts,
+      floodSegments:        this.currentFloodSegments,
+      sncfDisruptions:      this.currentSncfDisruptions,
+      trafficIncidents:     this.currentTrafficIncidents,
+      powerOutages:         this.currentPowerOutages,
+      telecomOutages:       this.currentTelecomOutages,
+      defenseAlerts:        this.currentDefenseAlerts,
+      jammingSignals:       this.currentJammingSignals,
+      militaryFlightsCount: this.currentMilitaryFlightsCount,
+      maritimeCount:        this.currentMaritimeTrafficFranceCount,
+      activeFires:          this.currentActiveFires,
+      marketData:           this.currentMarketData,
+      ecowattResponse:      this.currentEcowattResponse,
+      nuclearState:         this.currentNuclearState,
+      eolienLive:           this.currentEolienLive,
+      timeline:             this.buildFranceTimeline(lang),
+      briefLang:            lang,
+    };
+    return buildFranceEngine(raw, options);
   }
 
   private refreshFranceIntelPanel(): void {
     if (!this.franceIntelPanel?.isVisible()) return;
     const lang = this.franceIntelPanel.getCurrentLang();
-    this.franceIntelPanel.show(this.buildFranceIntelData(lang));
+    this.franceIntelPanel.show(this.buildFranceSnapshot(lang));
   }
 
   private openFranceIntelPanel(): void {
@@ -4783,9 +4779,9 @@ export class App {
     this.trafficPanel?.hide();
 
     const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
-    const data = this.buildFranceIntelData(lang);
-    this.franceIntelPanel?.show(data);
-    void fetchFranceIntelBrief(data, lang).then(({ brief, freshness }) => {
+    const snapshot = this.buildFranceSnapshot(lang);
+    this.franceIntelPanel?.show(snapshot);
+    void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
       this.franceIntelPanel?.updateBrief(brief, freshness);
     });
   }
