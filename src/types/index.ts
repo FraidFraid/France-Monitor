@@ -1296,9 +1296,6 @@ export interface FranceIntelTimelineLane {
   counts: number[];
 }
 
-/** @deprecated Use FranceCountrySnapshot instead. Removed after migration. */
-export type FranceIntelData = FranceCountrySnapshot;
-
 /** Seuils pour le calcul du score cyber */
 export const CYBER_THRESHOLDS = {
   // Alertes CERT-FR

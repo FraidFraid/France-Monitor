@@ -31,7 +31,6 @@ export async function fetchFranceIntelBrief(
   const cyberScore     = ctx.cyberScore;
   const meteoAlertCount = ctx.signals.meteoAlerts;
   const topHeadlines   = ctx.topHeadlines;
-  const signalCounts   = ctx.signals;
   const energy = ctx.energySummary ? {
     ecowattSignal: ctx.energySummary.ecowattSignal,
     nuclearShare:  ctx.energySummary.shares.nuclear,
@@ -52,7 +51,23 @@ export async function fetchFranceIntelBrief(
         cyberScore,
         meteoAlertCount,
         topHeadlines,
-        signalCounts,
+        signalCounts: {
+          criticalNews:          ctx.signals.criticalNews,
+          highNews:              ctx.signals.highNews,
+          weatherAlerts:         ctx.signals.meteoAlerts,   // API contract uses "weatherAlerts"
+          floodAlerts:           ctx.signals.floodAlerts,
+          fireDetections:        ctx.signals.fireDetections,
+          railDisruptions:       ctx.signals.railDisruptions,
+          roadIncidents:         ctx.signals.roadIncidents,
+          powerOutages:          ctx.signals.powerOutages,
+          telecomOutages:        ctx.signals.telecomOutages,
+          cyberAlerts:           ctx.signals.cyberAlerts,
+          militaryFlights:       ctx.signals.militaryFlights,
+          maritimeTrafficFrance: ctx.signals.maritimeTrafficFrance,
+          defenseAlerts:         ctx.signals.defenseAlerts,
+          jammingSignals:        ctx.signals.jammingSignals,
+          marketStress:          ctx.signals.marketStress,
+        },
         energy,
         lang,
       }),
