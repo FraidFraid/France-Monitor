@@ -1207,6 +1207,46 @@ export interface CyberState {
 
 // ═══ France Intelligence Card ═══
 
+export interface FranceIntelOperationalSummary {
+  criticalNews: number;
+  highNews: number;
+  weatherAlerts: number;
+  floodAlerts: number;
+  railDisruptions: number;
+  railSevere: number;
+  roadIncidents: number;
+  powerOutages: number;
+  telecomOutages: number;
+  cyberAlerts: number;
+  cyberCritical: number;
+  defenseAlerts: number;
+  defenseHigh: number;
+  jammingSignals: number;
+}
+
+export interface FranceIntelEnergySummary {
+  ecowattSignal: EcowattSignal | null;
+  totalMw: number | null;
+  shares: {
+    nuclear: number;
+    gas: number;
+    hydro: number;
+    wind: number;
+    solar: number;
+    other: number;
+  };
+  nuclearStress: number | null;
+  windGw: number | null;
+  windLoadFactor: number | null;
+}
+
+export interface FranceIntelTimelineLane {
+  key: 'social' | 'security' | 'weather' | 'transport' | 'cyber';
+  label: string;
+  color: string;
+  counts: number[];
+}
+
 export interface FranceIntelData {
   /** ISNRData — full national stability data. NOTE: does NOT have national-level dimensions.
    *  Compute social/security/infra by averaging scores[].dimensions across all departments. */
@@ -1223,6 +1263,15 @@ export interface FranceIntelData {
   briefLang: 'fr' | 'en';
   /** Mapped from API's fromCache boolean. */
   briefFreshness?: 'fresh' | 'cached';
+  /** Aggregated operational signals used by the drawer cards. */
+  operational: FranceIntelOperationalSummary;
+  /** Current national energy posture snapshot. */
+  energy: FranceIntelEnergySummary | null;
+  /** Last 7 days signal lanes for the mini timeline. */
+  timeline: {
+    days: string[];
+    lanes: FranceIntelTimelineLane[];
+  };
 }
 
 /** Seuils pour le calcul du score cyber */

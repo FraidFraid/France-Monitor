@@ -14,10 +14,15 @@ function sanitizeHeadlines(raw) {
     .map(h => String(h).replace(/[\r\n]+/g, ' ').slice(0, 120));
 }
 
-function buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, lang) {
+function buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) {
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : lang === 'fr' ? '(aucune actualité significative)' : '(no significant news)';
+  const energyLine = energy
+    ? lang === 'fr'
+      ? `- Energie: signal Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}%, gaz ${energy.gasShare}%, hydro ${energy.hydroShare}%, éolien ${energy.windShare}%, solaire ${energy.solarShare}%`
+      : `- Energy: Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}%, gas ${energy.gasShare}%, hydro ${energy.hydroShare}%, wind ${energy.windShare}%, solar ${energy.solarShare}%`
+    : '';
 
   if (lang === 'en') {
     return `You are a senior intelligence analyst specializing in France's national security and stability.
@@ -29,17 +34,17 @@ Current situation data:
 - Infrastructure dimension (weather, floods, outages): ${isnrComponents.infra}/100
 - Cyber dimension (CERT-FR, ransomware, CVE): ${cyberScore}/100
 - Active weather alerts: ${meteoAlertCount}
+- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.defenseAlerts} defense alerts
+${energyLine}
 
 Recent significant headlines:
 ${headlineList}
 
-Write a 3-4 paragraph intelligence brief (250-350 words) covering:
-1. Current Situation — key active signals and their convergence
-2. Security & Stability Posture — dominant threats
-3. Infrastructure & Risk Factors — energy, transport, cyber, weather
-4. Outlook — short-term trajectory
+Write a concise national brief in two short sections and under 140 words total:
+1. SITUATION NOW
+2. WHAT THIS MEANS FOR FRANCE
 
-Be analytical, specific, and factual. No speculation.
+Use only the provided inputs. If signals are low, say the posture is calm. Do not invent actors, motives, or foreign topics not present in the inputs. Be factual and restrained.
 
 Respond with valid JSON only: {"brief": "..."}`;
   }
@@ -53,17 +58,17 @@ Données situationnelles actuelles :
 - Dimension infrastructure (météo, crues, pannes) : ${isnrComponents.infra}/100
 - Dimension cyber (CERT-FR, ransomware, CVE) : ${cyberScore}/100
 - Alertes météo actives : ${meteoAlertCount}
+- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.defenseAlerts} alertes défense
+${energyLine}
 
 Actualités récentes significatives :
 ${headlineList}
 
-Rédige un brief de renseignement en 3-4 paragraphes (250-350 mots) couvrant :
-1. Situation actuelle — signaux actifs et convergences
-2. Posture sécuritaire et stabilité — menaces dominantes
-3. Facteurs de risque — énergie, transport, cyber, météo
-4. Perspectives — trajectoire à court terme
+Rédige un brief national concis en deux sections courtes et moins de 140 mots au total :
+1. SITUATION ACTUELLE
+2. CE QUE CELA IMPLIQUE POUR LA FRANCE
 
-Sois analytique, précis et factuel. Pas de spéculation.
+Utilise uniquement les données fournies. Si les signaux sont faibles, dis-le explicitement. N'invente ni acteurs, ni causes, ni sujets absents des entrées. Style factuel et sobre.
 
 Réponds en JSON valide uniquement : {"brief": "..."}`;
 }
@@ -99,6 +104,24 @@ export default async function handler(request) {
     infra:    typeof body.isnrComponents?.infra    === 'number' ? Math.round(body.isnrComponents.infra)    : 0,
   };
   const headlines = sanitizeHeadlines(body.topHeadlines);
+  const signalCounts = {
+    criticalNews: typeof body.signalCounts?.criticalNews === 'number' ? Math.round(body.signalCounts.criticalNews) : 0,
+    railDisruptions: typeof body.signalCounts?.railDisruptions === 'number' ? Math.round(body.signalCounts.railDisruptions) : 0,
+    roadIncidents: typeof body.signalCounts?.roadIncidents === 'number' ? Math.round(body.signalCounts.roadIncidents) : 0,
+    powerOutages: typeof body.signalCounts?.powerOutages === 'number' ? Math.round(body.signalCounts.powerOutages) : 0,
+    telecomOutages: typeof body.signalCounts?.telecomOutages === 'number' ? Math.round(body.signalCounts.telecomOutages) : 0,
+    cyberAlerts: typeof body.signalCounts?.cyberAlerts === 'number' ? Math.round(body.signalCounts.cyberAlerts) : 0,
+    defenseAlerts: typeof body.signalCounts?.defenseAlerts === 'number' ? Math.round(body.signalCounts.defenseAlerts) : 0,
+  };
+  const energy = body.energy ? {
+    ecowattSignal: typeof body.energy.ecowattSignal === 'string' ? body.energy.ecowattSignal : null,
+    nuclearShare: typeof body.energy.nuclearShare === 'number' ? Math.round(body.energy.nuclearShare) : 0,
+    gasShare: typeof body.energy.gasShare === 'number' ? Math.round(body.energy.gasShare) : 0,
+    hydroShare: typeof body.energy.hydroShare === 'number' ? Math.round(body.energy.hydroShare) : 0,
+    windShare: typeof body.energy.windShare === 'number' ? Math.round(body.energy.windShare) : 0,
+    solarShare: typeof body.energy.solarShare === 'number' ? Math.round(body.energy.solarShare) : 0,
+    totalMw: typeof body.energy.totalMw === 'number' ? Math.round(body.energy.totalMw) : null,
+  } : null;
 
   // Try Redis cache (global key — acceptable at 15-min TTL)
   const cacheKey = `france-intel:brief:${lang}:v1`;
@@ -124,12 +147,13 @@ export default async function handler(request) {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${GROQ_API_KEY}`,
+        'User-Agent': 'FranceMonitor/1.0',
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
-        messages: [{ role: 'user', content: buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, lang) }],
-        temperature: 0.4,
-        max_tokens: 700,
+        messages: [{ role: 'user', content: buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) }],
+        temperature: 0.2,
+        max_tokens: 220,
       }),
     });
 
@@ -139,9 +163,13 @@ export default async function handler(request) {
       });
     }
 
-    const groqData = await groqRes.json();
+    const groqText = await groqRes.text();
+    const groqClean = groqText.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
+    const groqData = JSON.parse(groqClean);
     const raw = groqData.choices?.[0]?.message?.content ?? '';
-    const clean = raw.replace(/```json|```/g, '').trim();
+    const rawClean = String(raw).replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
+    const jsonMatch = rawClean.match(/\{[\s\S]*"brief"[\s\S]*\}/);
+    const clean = jsonMatch ? jsonMatch[0] : rawClean.replace(/```json|```/g, '').trim();
     const { brief } = JSON.parse(clean);
 
     const result = {

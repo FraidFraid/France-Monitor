@@ -20,11 +20,35 @@ function buildPrompt(
   cyberScore: number,
   meteoAlertCount: number,
   headlines: string[],
+  signalCounts: {
+    criticalNews: number;
+    railDisruptions: number;
+    roadIncidents: number;
+    powerOutages: number;
+    telecomOutages: number;
+    cyberAlerts: number;
+    defenseAlerts: number;
+  },
+  energy: {
+    ecowattSignal: string | null;
+    nuclearShare: number;
+    gasShare: number;
+    hydroShare: number;
+    windShare: number;
+    solarShare: number;
+    totalMw: number | null;
+  } | null,
   lang: 'fr' | 'en',
 ): string {
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : lang === 'fr' ? '(aucune actualité significative)' : '(no significant news)';
+
+  const energyLine = energy
+    ? lang === 'fr'
+      ? `- Energie: signal Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}%, gaz ${energy.gasShare}%, hydro ${energy.hydroShare}%, éolien ${energy.windShare}%, solaire ${energy.solarShare}%`
+      : `- Energy: Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}%, gas ${energy.gasShare}%, hydro ${energy.hydroShare}%, wind ${energy.windShare}%, solar ${energy.solarShare}%`
+    : '';
 
   if (lang === 'en') {
     return `You are a senior intelligence analyst specializing in France's national security and stability.
@@ -36,17 +60,17 @@ Current situation data:
 - Infrastructure dimension (weather, floods, outages): ${isnrComponents.infra}/100
 - Cyber dimension (CERT-FR, ransomware, CVE): ${cyberScore}/100
 - Active weather alerts: ${meteoAlertCount}
+- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.defenseAlerts} defense alerts
+${energyLine}
 
 Recent significant headlines:
 ${headlineList}
 
-Write a 3-4 paragraph intelligence brief (250-350 words) covering:
-1. Current Situation
-2. Security & Stability Posture
-3. Infrastructure & Risk Factors
-4. Outlook
+Write a concise national brief in two short sections and under 140 words total:
+1. SITUATION NOW
+2. WHAT THIS MEANS FOR FRANCE
 
-Be analytical, specific, factual. No speculation.
+Use only the provided inputs. If signals are low, say the posture is calm. Do not invent actors, motives, or foreign topics not present in the inputs. Be factual and restrained.
 Respond with valid JSON only: {"brief": "..."}`;
   }
 
@@ -59,12 +83,17 @@ Données situationnelles actuelles :
 - Dimension infrastructure (météo, crues, pannes) : ${isnrComponents.infra}/100
 - Dimension cyber (CERT-FR, ransomware, CVE) : ${cyberScore}/100
 - Alertes météo actives : ${meteoAlertCount}
+- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.defenseAlerts} alertes défense
+${energyLine}
 
 Actualités récentes significatives :
 ${headlineList}
 
-Rédige un brief en 3-4 paragraphes (250-350 mots) : Situation actuelle / Posture sécuritaire / Facteurs de risque / Perspectives.
-Factuel, précis, pas de spéculation.
+Rédige un brief national concis en deux sections courtes et moins de 140 mots au total :
+1. SITUATION ACTUELLE
+2. CE QUE CELA IMPLIQUE POUR LA FRANCE
+
+Utilise uniquement les données fournies. Si les signaux sont faibles, dis-le explicitement. N'invente ni acteurs, ni causes, ni sujets absents des entrées. Style factuel et sobre.
 Réponds en JSON valide uniquement : {"brief": "..."}`;
 }
 
@@ -107,6 +136,24 @@ export function franceIntelProxyPlugin(): Plugin {
               meteoAlertCount?: unknown;
               isnrComponents?: { social?: unknown; security?: unknown; infra?: unknown };
               topHeadlines?: unknown;
+              signalCounts?: {
+                criticalNews?: unknown;
+                railDisruptions?: unknown;
+                roadIncidents?: unknown;
+                powerOutages?: unknown;
+                telecomOutages?: unknown;
+                cyberAlerts?: unknown;
+                defenseAlerts?: unknown;
+              };
+              energy?: {
+                ecowattSignal?: unknown;
+                nuclearShare?: unknown;
+                gasShare?: unknown;
+                hydroShare?: unknown;
+                windShare?: unknown;
+                solarShare?: unknown;
+                totalMw?: unknown;
+              } | null;
             };
 
             const lang: 'fr' | 'en'   = parsed.lang === 'en' ? 'en' : 'fr';
@@ -119,6 +166,24 @@ export function franceIntelProxyPlugin(): Plugin {
               infra:    typeof parsed.isnrComponents?.infra    === 'number' ? Math.round(parsed.isnrComponents.infra)    : 0,
             };
             const headlines = sanitizeHeadlines(parsed.topHeadlines);
+            const signalCounts = {
+              criticalNews: typeof parsed.signalCounts?.criticalNews === 'number' ? Math.round(parsed.signalCounts.criticalNews) : 0,
+              railDisruptions: typeof parsed.signalCounts?.railDisruptions === 'number' ? Math.round(parsed.signalCounts.railDisruptions) : 0,
+              roadIncidents: typeof parsed.signalCounts?.roadIncidents === 'number' ? Math.round(parsed.signalCounts.roadIncidents) : 0,
+              powerOutages: typeof parsed.signalCounts?.powerOutages === 'number' ? Math.round(parsed.signalCounts.powerOutages) : 0,
+              telecomOutages: typeof parsed.signalCounts?.telecomOutages === 'number' ? Math.round(parsed.signalCounts.telecomOutages) : 0,
+              cyberAlerts: typeof parsed.signalCounts?.cyberAlerts === 'number' ? Math.round(parsed.signalCounts.cyberAlerts) : 0,
+              defenseAlerts: typeof parsed.signalCounts?.defenseAlerts === 'number' ? Math.round(parsed.signalCounts.defenseAlerts) : 0,
+            };
+            const energy = parsed.energy ? {
+              ecowattSignal: typeof parsed.energy.ecowattSignal === 'string' ? parsed.energy.ecowattSignal : null,
+              nuclearShare: typeof parsed.energy.nuclearShare === 'number' ? Math.round(parsed.energy.nuclearShare) : 0,
+              gasShare: typeof parsed.energy.gasShare === 'number' ? Math.round(parsed.energy.gasShare) : 0,
+              hydroShare: typeof parsed.energy.hydroShare === 'number' ? Math.round(parsed.energy.hydroShare) : 0,
+              windShare: typeof parsed.energy.windShare === 'number' ? Math.round(parsed.energy.windShare) : 0,
+              solarShare: typeof parsed.energy.solarShare === 'number' ? Math.round(parsed.energy.solarShare) : 0,
+              totalMw: typeof parsed.energy.totalMw === 'number' ? Math.round(parsed.energy.totalMw) : null,
+            } : null;
 
             const groqRes = await fetch(GROQ_URL, {
               method: 'POST',
@@ -128,9 +193,9 @@ export function franceIntelProxyPlugin(): Plugin {
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
-                messages: [{ role: 'user', content: buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, lang) }],
-                temperature: 0.4,
-                max_tokens: 700,
+                messages: [{ role: 'user', content: buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) }],
+                temperature: 0.2,
+                max_tokens: 220,
               }),
               signal: AbortSignal.timeout(30_000),
             });

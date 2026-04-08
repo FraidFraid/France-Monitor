@@ -1,105 +1,57 @@
-// src/components/FranceIntelPanel.ts
-// ⚠️ mount() does NOT call super.mount() — Panel base class would append a
-// duplicate container and call render(). This class manages its own slide-in DOM.
 import { Panel } from './Panel.ts';
-import type { FranceIntelData, ISNRDimensionScores, MeteoVigilanceLevel } from '../types/index.ts';
+import type {
+  FranceIntelData,
+  FranceIntelTimelineLane,
+  ISNRDimensionScores,
+  MeteoVigilanceLevel,
+} from '../types/index.ts';
 
 const LEVEL_COLORS: Record<string, string> = {
-  critical: '#e74c3c',
-  high:     '#e67e22',
-  medium:   '#f1c40f',
-  low:      '#3498db',
-  info:     '#95a5a6',
-};
-
-const VIGILANCE_EMOJI: Record<MeteoVigilanceLevel, string> = {
-  red:    '🔴',
-  violet: '🟣',
-  orange: '🟠',
-  yellow: '🟡',
-  green:  '🟢',
+  critical: 'var(--threat-critical)',
+  high: 'var(--threat-high)',
+  medium: 'var(--threat-medium)',
+  low: 'var(--threat-low)',
+  info: 'var(--threat-info)',
 };
 
 const THREAT_LABELS: Record<string, string> = {
   critical: 'CRITIQUE',
-  high:     'ÉLEVÉ',
-  medium:   'MODÉRÉ',
-  low:      'BAS',
-  info:     'INFO',
+  high: 'ÉLEVÉ',
+  medium: 'MODÉRÉ',
+  low: 'FAIBLE',
+  info: 'INFO',
+};
+
+const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
+  green: 'Vert',
+  yellow: 'Jaune',
+  orange: 'Orange',
+  red: 'Rouge',
+  violet: 'Violet',
 };
 
 const RISK_LABELS: Record<string, string> = {
-  'wind':        'Vent',
-  'rain-flood':  'Pluie',
-  'thunderstorm':'Orages',
-  'flood':       'Crues',
-  'snow-ice':    'Neige',
-  'heat':        'Canicule',
-  'cold':        'Grand froid',
-  'avalanche':   'Avalanches',
-  'wave-surge':  'Vagues',
+  wind: 'Vent',
+  'rain-flood': 'Pluie-inondation',
+  thunderstorm: 'Orages',
+  flood: 'Crues',
+  'snow-ice': 'Neige-verglas',
+  heat: 'Canicule',
+  cold: 'Grand froid',
+  avalanche: 'Avalanches',
+  'wave-surge': 'Vagues-submersion',
 };
 
-const SEV: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
+const SEVERITY_ORDER: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  info: 0,
+};
 
-function ciiColor(score: number): string {
-  if (score >= 70) return '#e74c3c';
-  if (score >= 55) return '#e67e22';
-  if (score >= 40) return '#f1c40f';
-  if (score >= 25) return '#3498db';
-  return '#2ecc71';
-}
-
-function ciiLabel(score: number): string {
-  if (score >= 70) return 'Critique';
-  if (score >= 55) return 'Élevé';
-  if (score >= 40) return 'Modéré';
-  if (score >= 25) return 'Normal';
-  return 'Bas';
-}
-
-function avgDim(
-  scores: FranceIntelData['stability']['scores'],
-  key: keyof ISNRDimensionScores,
-): number {
-  if (scores.length === 0) return 0;
-  const sum = scores.reduce((acc, s) => acc + (s.dimensions?.[key] ?? 0), 0);
-  return Math.round(sum / scores.length);
-}
-
-function computeCII(data: FranceIntelData): number {
-  const social   = avgDim(data.stability.scores, 'social');
-  const security = avgDim(data.stability.scores, 'security');
-  const infra    = avgDim(data.stability.scores, 'infra');
-  const cyber    = data.cyber.meta.globalScore;
-  return Math.round(social * 0.25 + security * 0.30 + infra * 0.20 + cyber * 0.25);
-}
-
-function scoreBar(value: number, color: string): string {
-  const pct = Math.min(100, Math.max(0, value));
-  return `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-      <div style="flex:1;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">
-        <div style="width:${pct}%;height:100%;background:${color};border-radius:2px;transition:width 0.4s;"></div>
-      </div>
-      <span style="font-size:11px;color:#aaa;font-variant-numeric:tabular-nums;min-width:26px;text-align:right;">${value}</span>
-    </div>`;
-}
-
-function timeAgo(date: Date, lang: 'fr' | 'en'): string {
-  const diff = Date.now() - date.getTime();
-  const mins = Math.floor(diff / 60_000);
-  const hrs  = Math.floor(mins / 60);
-  if (lang === 'en') {
-    if (mins < 2)  return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (hrs < 24)  return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  }
-  if (mins < 2)  return 'à l\'instant';
-  if (mins < 60) return `il y a ${mins} min`;
-  if (hrs < 24)  return `il y a ${hrs} h`;
-  return `il y a ${Math.floor(hrs / 24)} j`;
+function t(lang: 'fr' | 'en', fr: string, en: string): string {
+  return lang === 'fr' ? fr : en;
 }
 
 function escapeHtml(text: string): string {
@@ -108,160 +60,206 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+function avgDim(scores: FranceIntelData['stability']['scores'], key: keyof ISNRDimensionScores): number {
+  if (scores.length === 0) return 0;
+  const sum = scores.reduce((acc, score) => acc + (score.dimensions?.[key] ?? 0), 0);
+  return Math.round(sum / scores.length);
+}
+
+function computeCII(data: FranceIntelData): number {
+  const social = avgDim(data.stability.scores, 'social');
+  const security = avgDim(data.stability.scores, 'security');
+  const infra = avgDim(data.stability.scores, 'infra');
+  const cyber = data.cyber.meta.globalScore;
+  return Math.round(social * 0.25 + security * 0.3 + infra * 0.2 + cyber * 0.25);
+}
+
+function ciiBand(score: number): 'stable' | 'elevated' | 'high' | 'critical' {
+  if (score <= 25) return 'stable';
+  if (score <= 50) return 'elevated';
+  if (score <= 75) return 'high';
+  return 'critical';
+}
+
+function ciiLabel(score: number, lang: 'fr' | 'en'): string {
+  if (score <= 25) return t(lang, 'Stable', 'Stable');
+  if (score <= 50) return t(lang, 'Sous tension', 'Elevated');
+  if (score <= 75) return t(lang, 'Élevé', 'High');
+  return t(lang, 'Critique', 'Critical');
+}
+
+function ciiColor(score: number): string {
+  const band = ciiBand(score);
+  if (band === 'critical') return 'var(--threat-critical)';
+  if (band === 'high') return 'var(--threat-high)';
+  if (band === 'elevated') return 'var(--threat-medium)';
+  return 'var(--threat-low)';
+}
+
+function timeAgo(date: Date, lang: 'fr' | 'en'): string {
+  const diff = Date.now() - date.getTime();
+  const mins = Math.max(0, Math.floor(diff / 60_000));
+  const hours = Math.floor(mins / 60);
+  if (lang === 'en') {
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+  if (mins < 2) return 'à l’instant';
+  if (mins < 60) return `il y a ${mins} min`;
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${Math.floor(hours / 24)} j`;
+}
+
+function summarizeBrief(text: string): string {
+  const stripped = text.replace(/\*\*(.*?)\*\*/g, '$1').trim();
+  const lines = stripped.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length >= 4) return lines.slice(0, 4).join('\n');
+  const sentences = stripped.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).filter(Boolean);
+  return sentences.slice(0, 4).join(' ');
+}
+
+function formatBriefHtml(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const escaped = escapeHtml(line.replace(/\*\*(.*?)\*\*/g, '$1'));
+      if (/^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s:'-]{4,}$/.test(line)) {
+        return `<div class="frintel-brief-kicker">${escaped}</div>`;
+      }
+      return `<p>${escaped}</p>`;
+    })
+    .join('');
+}
+
+function intensity(count: number): number {
+  if (count <= 0) return 0.08;
+  if (count === 1) return 0.25;
+  if (count === 2) return 0.45;
+  if (count === 3) return 0.65;
+  return 0.9;
+}
+
+function renderTimelineLane(lane: FranceIntelTimelineLane): string {
+  return `
+    <div class="frintel-timeline-row">
+      <div class="frintel-timeline-label">${escapeHtml(lane.label)}</div>
+      <div class="frintel-timeline-track">
+        ${lane.counts.map((count) => `
+          <span
+            class="frintel-timeline-cell"
+            title="${escapeHtml(`${lane.label}: ${count}`)}"
+            style="--fi-timeline-color:${lane.color};--fi-timeline-alpha:${intensity(count)};"
+          >${count > 0 ? count : ''}</span>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 export class FranceIntelPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
   private onClose?: () => void;
-  private _isVisible = false;
-  /** null = never received a brief yet → show loading spinner on next render */
-  private _lastBriefHtml: string | null = null;
-  /** Tracks the currently displayed language so reopening restores it. */
+  private isOpen = false;
   private currentLang: 'fr' | 'en' = 'fr';
+  private briefState: { text: string | null; freshness: 'fresh' | 'cached' } | null = null;
+  private briefExpanded = false;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
   }
 
-  // ⚠️ Does NOT call super.mount() — see file header.
   mount(): void {
-    this.modalEl = document.createElement('div');
-    this.modalEl.className = 'france-intel-panel-modal';
-    this.modalEl.style.cssText = `
-      position: fixed;
-      top: 0;
-      right: 0;
-      width: 380px;
-      height: 100vh;
-      background: var(--bg-surface, #13131a);
-      border-left: 1px solid var(--border-color, rgba(255,255,255,0.1));
-      box-shadow: -8px 0 32px rgba(0,0,0,0.5);
-      z-index: 1100;
-      display: flex;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
-      transform: translateX(100%);
-      transition: transform 0.3s ease;
-      overflow: hidden;
-    `;
-
-    // Header (built once, persists across show() calls)
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 16px 10px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-      flex-shrink: 0;
-    `;
-    header.innerHTML = `
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:20px;">🇫🇷</span>
-          <span style="font-size:15px;font-weight:700;color:#f0f0f0;letter-spacing:0.2px;">France</span>
-        </div>
-        <div style="font-size:10px;color:#666;letter-spacing:0.08em;text-transform:uppercase;margin-top:2px;">Country Intelligence</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button class="fi-lang-toggle" style="
-          background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);
-          color:#aaa;font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;
-          cursor:pointer;letter-spacing:0.06em;">FR</button>
-        <button class="fi-close" style="
-          background:transparent;border:none;color:#666;font-size:16px;
-          cursor:pointer;padding:2px 6px;line-height:1;">×</button>
+    this.modalEl = document.createElement('aside');
+    this.modalEl.className = 'frintel-drawer';
+    this.modalEl.setAttribute('aria-hidden', 'true');
+    this.modalEl.innerHTML = `
+      <div class="frintel-shell">
+        <header class="frintel-header">
+          <div class="frintel-header-left">
+            <div class="frintel-flag">🇫🇷</div>
+            <div>
+              <h2 class="frintel-title">France</h2>
+              <div class="frintel-subtitle">FR • Country Intelligence</div>
+            </div>
+          </div>
+          <div class="frintel-header-actions">
+            <button type="button" class="frintel-action fi-lang-toggle">FR</button>
+            <button type="button" class="frintel-close fi-close" aria-label="Fermer">×</button>
+          </div>
+        </header>
+        <div class="frintel-content"></div>
       </div>
     `;
 
-    this.contentEl = document.createElement('div');
-    this.contentEl.className = 'france-intel-content';
-    this.contentEl.style.cssText = `
-      overflow-y: auto;
-      flex: 1;
-      padding: 0 16px 16px;
-    `;
-
-    this.modalEl.appendChild(header);
-    this.modalEl.appendChild(this.contentEl);
+    this.contentEl = this.modalEl.querySelector('.frintel-content');
     this.container.appendChild(this.modalEl);
 
-    // Close button
-    const closeBtn = header.querySelector('.fi-close') as HTMLElement;
-    closeBtn.onclick = () => this.hide();
+    const closeBtn = this.modalEl.querySelector('.fi-close') as HTMLButtonElement | null;
+    closeBtn?.addEventListener('click', () => this.hide());
 
-    // Lang toggle
-    const langBtn = header.querySelector('.fi-lang-toggle') as HTMLElement;
-    langBtn.onclick = () => {
-      const current = langBtn.textContent?.trim() ?? 'FR';
-      const next    = current === 'FR' ? 'EN' : 'FR';
-      langBtn.textContent = next;
+    const langBtn = this.modalEl.querySelector('.fi-lang-toggle') as HTMLButtonElement | null;
+    langBtn?.addEventListener('click', () => {
+      const next = this.currentLang === 'fr' ? 'en' : 'fr';
+      langBtn.textContent = next.toUpperCase();
       document.dispatchEvent(new CustomEvent('france-intel-lang-toggle', {
-        detail: { lang: next.toLowerCase() as 'fr' | 'en' },
+        detail: { lang: next },
       }));
-    };
-
+    });
   }
 
-  protected render(): void { /* populated by show() — not called by base mount() */ }
+  protected render(): void {}
 
   setOnClose(handler: () => void): void {
     this.onClose = handler;
   }
 
-  /** Returns the lang currently displayed — App.ts should pass this back when re-opening. */
   getCurrentLang(): 'fr' | 'en' {
     return this.currentLang;
   }
 
+  isVisible(): boolean {
+    return this.isOpen;
+  }
+
   show(data: FranceIntelData): void {
     if (!this.contentEl) return;
-    this.currentLang = data.briefLang ?? 'fr';
-    // Sync toggle button text to currentLang
-    const langBtn = this.modalEl.querySelector('.fi-lang-toggle') as HTMLElement | null;
+    this.currentLang = data.briefLang;
+    const langBtn = this.modalEl.querySelector('.fi-lang-toggle');
     if (langBtn) langBtn.textContent = this.currentLang.toUpperCase();
     this.renderContent(data);
-    this._isVisible = true;
-    this.modalEl.style.transform = 'translateX(0)';
-  }
-
-  showBriefLoading(): void {
-    const briefEl = this.modalEl.querySelector('.fi-brief-text');
-    if (briefEl) {
-      briefEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;color:#666;font-size:12px;">
-        <span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.1);border-top-color:#4a9eff;border-radius:50%;animation:fi-spin 0.8s linear infinite;"></span>
-        Génération du brief…
-      </div>`;
-    }
-  }
-
-  updateBrief(brief: string | null, freshness: 'fresh' | 'cached'): void {
-    const innerHtml = brief
-      ? brief.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n\n/g, '<br><br>')
-      : `<span style="color:#555;font-size:12px;font-style:italic;">Brief indisponible</span>`;
-    this._lastBriefHtml = innerHtml;
-
-    const briefEl = this.modalEl.querySelector('.fi-brief-text');
-    const badgeEl = this.modalEl.querySelector('.fi-brief-badge');
-    if (briefEl) briefEl.innerHTML = innerHtml;
-    if (badgeEl) {
-      badgeEl.textContent = freshness === 'fresh' ? 'Fresh' : 'Cached';
-      (badgeEl as HTMLElement).style.color = freshness === 'fresh' ? '#2ecc71' : '#f39c12';
-    }
-  }
-
-  /** Reset brief cache — call before show() when lang changes to force re-fetch. */
-  resetBrief(): void {
-    this._lastBriefHtml = null;
+    this.isOpen = true;
+    this.modalEl.classList.add('active');
+    this.modalEl.setAttribute('aria-hidden', 'false');
   }
 
   hide(): void {
-    if (this.modalEl) this.modalEl.style.transform = 'translateX(100%)';
-    this._isVisible = false;
+    this.isOpen = false;
+    this.modalEl.classList.remove('active');
+    this.modalEl.setAttribute('aria-hidden', 'true');
     this.onClose?.();
   }
 
-  isVisible(): boolean {
-    return this._isVisible;
+  resetBrief(): void {
+    this.briefState = null;
+    this.briefExpanded = false;
+    this.renderBriefSection();
+  }
+
+  showBriefLoading(): void {
+    this.briefState = null;
+    this.briefExpanded = false;
+    this.renderBriefSection();
+  }
+
+  updateBrief(brief: string | null, freshness: 'fresh' | 'cached'): void {
+    this.briefState = { text: brief, freshness };
+    this.briefExpanded = false;
+    this.renderBriefSection();
   }
 
   destroy(): void {
@@ -271,120 +269,276 @@ export class FranceIntelPanel extends Panel {
   private renderContent(data: FranceIntelData): void {
     if (!this.contentEl) return;
 
-    const cii      = computeCII(data);
-    const color    = ciiColor(cii);
-    const social   = avgDim(data.stability.scores, 'social');
+    const lang = data.briefLang;
+    const cii = computeCII(data);
+    const ciiBandLabel = ciiLabel(cii, lang);
+    const ciiTint = ciiColor(cii);
+    const social = avgDim(data.stability.scores, 'social');
     const security = avgDim(data.stability.scores, 'security');
-    const infra    = avgDim(data.stability.scores, 'infra');
-    const cyber    = data.cyber.meta.globalScore;
-    const lang     = data.briefLang ?? 'fr';
+    const infra = avgDim(data.stability.scores, 'infra');
+    const cyber = data.cyber.meta.globalScore;
+    const updatedTime = new Date(data.stability.timestamp).toLocaleString(
+      lang === 'fr' ? 'fr-FR' : 'en-US',
+      { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+    );
 
-    // Active signals: non-green meteo alerts grouped by risk type
-    const activeAlerts = data.meteo.filter(a => a.level !== 'green');
-    const signalMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
-    for (const a of activeAlerts) {
-      for (const risk of a.risks) {
-        const existing = signalMap.get(risk);
-        const isHigher = !existing || ['red', 'violet'].includes(a.level);
-        signalMap.set(risk, {
-          level: isHigher ? a.level : existing.level,
-          count: (existing?.count ?? 0) + 1,
+    const news = [...data.topNews]
+      .sort((a, b) => {
+        const severityDelta = (SEVERITY_ORDER[b.threat?.level ?? 'info'] ?? 0) - (SEVERITY_ORDER[a.threat?.level ?? 'info'] ?? 0);
+        if (severityDelta !== 0) return severityDelta;
+        return b.pubDate.getTime() - a.pubDate.getTime();
+      })
+      .slice(0, 6);
+
+    const dominantRisk = [
+      { label: t(lang, 'Cyber', 'Cyber'), value: data.operational.cyberAlerts + data.operational.cyberCritical },
+      { label: t(lang, 'Transport', 'Transport'), value: data.operational.railDisruptions + data.operational.roadIncidents },
+      { label: t(lang, 'Pannes', 'Outages'), value: data.operational.powerOutages + data.operational.telecomOutages },
+      { label: t(lang, 'Météo', 'Weather'), value: data.operational.weatherAlerts + data.operational.floodAlerts },
+      { label: t(lang, 'Défense', 'Defense'), value: data.operational.defenseAlerts + data.operational.jammingSignals },
+    ].sort((a, b) => b.value - a.value)[0];
+
+    const riskMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
+    for (const alert of data.meteo.filter((item) => item.level !== 'green')) {
+      for (const risk of alert.risks) {
+        const prev = riskMap.get(risk);
+        riskMap.set(risk, {
+          level: prev && (prev.level === 'red' || prev.level === 'violet') ? prev.level : alert.level,
+          count: (prev?.count ?? 0) + 1,
         });
       }
     }
 
-    const sortedNews = [...data.topNews]
-      .sort((a, b) => (SEV[b.threat?.level ?? 'info'] ?? 0) - (SEV[a.threat?.level ?? 'info'] ?? 0))
-      .slice(0, 6);
-
-    const signalChips = [...signalMap.entries()]
-      .map(([risk, { level, count }]) => {
-        const emoji = VIGILANCE_EMOJI[level] ?? '⚪';
-        const label = RISK_LABELS[risk] ?? risk;
-        return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);font-size:11px;color:#ccc;margin:2px;">${emoji} ${label}${count > 1 ? ` ×${count}` : ''}</span>`;
-      }).join('');
-
-    const updatedTime = new Date(data.stability.timestamp).toLocaleTimeString(
-      lang === 'fr' ? 'fr-FR' : 'en-US',
-      { hour: '2-digit', minute: '2-digit' },
-    );
-
-    // Inject spinner keyframe once
-    if (!document.getElementById('fi-spin-style')) {
-      const style = document.createElement('style');
-      style.id = 'fi-spin-style';
-      style.textContent = '@keyframes fi-spin { to { transform: rotate(360deg); } }';
-      document.head.appendChild(style);
+    const signalChips: string[] = [];
+    if (data.operational.criticalNews > 0) signalChips.push(`<span class="frintel-chip chip-critical">🚨 ${data.operational.criticalNews} ${t(lang, 'titre critique', 'critical headline')}${data.operational.criticalNews > 1 ? 's' : ''}</span>`);
+    if (data.operational.defenseAlerts > 0) signalChips.push(`<span class="frintel-chip chip-defense">🛡️ ${data.operational.defenseAlerts} ${t(lang, 'alerte défense', 'defense alert')}${data.operational.defenseAlerts > 1 ? 's' : ''}</span>`);
+    if (data.operational.jammingSignals > 0) signalChips.push(`<span class="frintel-chip chip-defense">📡 ${data.operational.jammingSignals} ${t(lang, 'signal GPS', 'GPS jamming signal')}${data.operational.jammingSignals > 1 ? 's' : ''}</span>`);
+    if (data.operational.cyberCritical > 0) signalChips.push(`<span class="frintel-chip chip-cyber">🧬 ${data.operational.cyberCritical} ${t(lang, 'CVE critiques', 'critical CVEs')}</span>`);
+    if (data.operational.railSevere > 0) signalChips.push(`<span class="frintel-chip chip-transport">🚆 ${data.operational.railSevere} ${t(lang, 'perturbations SNCF fortes', 'severe rail disruptions')}</span>`);
+    if (data.operational.powerOutages + data.operational.telecomOutages > 0) signalChips.push(`<span class="frintel-chip chip-outage">🌐 ${data.operational.powerOutages + data.operational.telecomOutages} ${t(lang, 'pannes en cours', 'outages active')}</span>`);
+    for (const [risk, item] of riskMap.entries()) {
+      signalChips.push(`<span class="frintel-chip chip-weather">${escapeHtml(RISK_LABELS[risk] ?? risk)} · ${escapeHtml(VIGILANCE_LABELS[item.level])}${item.count > 1 ? ` ×${item.count}` : ''}</span>`);
     }
 
+    const totalSignals = data.operational.criticalNews
+      + data.operational.highNews
+      + data.operational.weatherAlerts
+      + data.operational.floodAlerts
+      + data.operational.railDisruptions
+      + data.operational.roadIncidents
+      + data.operational.powerOutages
+      + data.operational.telecomOutages
+      + data.operational.defenseAlerts
+      + data.operational.jammingSignals;
+
+    const energy = data.energy;
+    const energySegments = energy
+      ? [
+          { label: 'Nuclear', color: '#7c3aed', value: energy.shares.nuclear },
+          { label: 'Gas', color: '#2563eb', value: energy.shares.gas },
+          { label: 'Hydro', color: '#38bdf8', value: energy.shares.hydro },
+          { label: 'Wind', color: '#60a5fa', value: energy.shares.wind },
+          { label: 'Solar', color: '#facc15', value: energy.shares.solar },
+          { label: t(lang, 'Autre', 'Other'), color: '#34c759', value: energy.shares.other },
+        ].filter((segment) => segment.value > 0)
+      : [];
+
     this.contentEl.innerHTML = `
-      <!-- Section 1: Instability Index -->
-      <div style="margin-top:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-size:10px;color:#666;letter-spacing:0.1em;text-transform:uppercase;">${lang === 'fr' ? 'Indice d\'instabilité' : 'Instability Index'}</span>
-          <span style="font-size:10px;color:#555;">${lang === 'fr' ? 'Mis à jour' : 'Updated'} ${updatedTime}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-          <div style="font-size:32px;font-weight:800;color:${color};font-variant-numeric:tabular-nums;line-height:1;">${cii}</div>
-          <div>
-            <div style="font-size:12px;color:#aaa;">/ 100</div>
-            <div style="font-size:11px;color:${color};font-weight:600;margin-top:2px;">→ ${ciiLabel(cii)}</div>
+      <div class="frintel-summary-grid">
+        <section class="frintel-card frintel-score-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Indice d’instabilité', 'Instability Index')}</div>
+            <div class="frintel-card-meta">${t(lang, 'Mis à jour', 'Updated')} ${updatedTime}</div>
           </div>
-        </div>
-        <div style="font-size:11px;color:#666;margin-bottom:4px;">${lang === 'fr' ? 'Social' : 'Social'}</div>
-        ${scoreBar(social, '#e74c3c')}
-        <div style="font-size:11px;color:#666;margin-bottom:4px;">${lang === 'fr' ? 'Sécurité' : 'Security'}</div>
-        ${scoreBar(security, '#e67e22')}
-        <div style="font-size:11px;color:#666;margin-bottom:4px;">${lang === 'fr' ? 'Infrastructure' : 'Infrastructure'}</div>
-        ${scoreBar(infra, '#f1c40f')}
-        <div style="font-size:11px;color:#666;margin-bottom:4px;">Cyber</div>
-        ${scoreBar(cyber, '#9b59b6')}
+          <div class="frintel-score-row">
+            <div class="frintel-score-value" style="color:${ciiTint};">${cii}/100</div>
+            <div class="frintel-score-side">
+              <div class="frintel-score-band" style="color:${ciiTint};">${escapeHtml(ciiBandLabel)}</div>
+              <div class="frintel-score-note">${t(lang, 'CII national composite', 'Composite national CII')}</div>
+            </div>
+          </div>
+          ${this.renderMetricBar(t(lang, 'Social', 'Social'), social, '#ef4444')}
+          ${this.renderMetricBar(t(lang, 'Sécurité', 'Security'), security, '#f97316')}
+          ${this.renderMetricBar(t(lang, 'Infrastructure', 'Infrastructure'), infra, '#facc15')}
+          ${this.renderMetricBar('Cyber', cyber, '#a855f7')}
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Posture nationale', 'National Posture')}</div>
+            <div class="frintel-card-meta">${t(lang, 'Risque dominant', 'Dominant risk')} • ${escapeHtml(dominantRisk?.label ?? 'n/a')}</div>
+          </div>
+          <div class="frintel-metric-grid">
+            ${this.renderStatTile(t(lang, 'Cyber', 'Cyber'), data.operational.cyberAlerts.toString(), t(lang, 'alertes 30j', '30d alerts'))}
+            ${this.renderStatTile(t(lang, 'Rail', 'Rail'), data.operational.railDisruptions.toString(), t(lang, 'perturbations', 'disruptions'))}
+            ${this.renderStatTile(t(lang, 'Route', 'Road'), data.operational.roadIncidents.toString(), t(lang, 'incidents', 'incidents'))}
+            ${this.renderStatTile(t(lang, 'Pannes', 'Outages'), (data.operational.powerOutages + data.operational.telecomOutages).toString(), t(lang, 'élec + télécom', 'power + telecom'))}
+            ${this.renderStatTile(t(lang, 'Défense', 'Defense'), data.operational.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
+            ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (data.operational.weatherAlerts + data.operational.floodAlerts).toString(), t(lang, 'vigies actives', 'active watches'))}
+          </div>
+        </section>
       </div>
 
-      <!-- Section 2: Active Signals -->
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:10px;color:#666;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">${lang === 'fr' ? 'Signaux Actifs' : 'Active Signals'}</div>
-        <div style="line-height:1.8;">
-          ${signalChips || `<span style="font-size:12px;color:#555;font-style:italic;">${lang === 'fr' ? 'Aucun signal actif' : 'No active signals'}</span>`}
-        </div>
-      </div>
+      <div class="frintel-grid">
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Brief renseignement', 'Intelligence Brief')}</div>
+            <div class="frintel-card-meta fi-brief-meta"></div>
+          </div>
+          <div class="frintel-brief-body fi-brief-body"></div>
+          <button type="button" class="frintel-inline-action fi-brief-toggle" hidden></button>
+        </section>
 
-      <!-- Section 3: Intelligence Brief -->
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-size:10px;color:#666;letter-spacing:0.1em;text-transform:uppercase;">${lang === 'fr' ? 'Brief Renseignement' : 'Intelligence Brief'}</span>
-          <span class="fi-brief-badge" style="font-size:10px;color:#666;font-weight:600;"></span>
-        </div>
-        <div class="fi-brief-text" style="font-size:12px;color:#bbb;line-height:1.65;"></div>
-      </div>
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Signaux actifs', 'Active Signals')}</div>
+            <div class="frintel-card-meta">${totalSignals} ${t(lang, 'signaux agrégés', 'aggregated signals')}</div>
+          </div>
+          <div class="frintel-chip-wrap">
+            ${signalChips.length > 0 ? signalChips.join('') : `<div class="frintel-empty">${t(lang, 'Aucun signal dominant à cette minute.', 'No dominant signal right now.')}</div>`}
+          </div>
+        </section>
 
-      <!-- Section 4: Top News -->
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:10px;color:#666;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">${lang === 'fr' ? 'Actualités Principales' : 'Key Headlines'}</div>
-        ${sortedNews.map(item => {
-          const level = item.threat?.level ?? 'info';
-          const col   = LEVEL_COLORS[level] ?? '#666';
-          const ago   = timeAgo(item.pubDate, lang);
-          const title = escapeHtml(item.title);
-          return `
-            <div style="display:flex;gap:8px;margin-bottom:10px;align-items:flex-start;">
-              <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${col}22;border:1px solid ${col}44;color:${col};font-size:9px;font-weight:700;letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;">${THREAT_LABELS[level] ?? level.toUpperCase()}</span>
-              <div style="flex:1;min-width:0;">
-                <div style="font-size:11px;color:#ccc;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${title}</div>
-                <div style="font-size:10px;color:#555;margin-top:2px;">${escapeHtml(item.source)} • ${ago}</div>
-              </div>
-            </div>`;
-        }).join('')}
-        ${sortedNews.length === 0 ? `<span style="font-size:12px;color:#555;font-style:italic;">${lang === 'fr' ? 'Aucune actualité récente' : 'No recent news'}</span>` : ''}
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Chronologie 7 jours', '7-Day Timeline')}</div>
+            <div class="frintel-card-meta">${t(lang, 'Lecture par intensité de signal', 'Signal intensity view')}</div>
+          </div>
+          <div class="frintel-timeline-head">
+            <div></div>
+            <div class="frintel-timeline-days">
+              ${data.timeline.days.map((day) => `<span>${escapeHtml(day)}</span>`).join('')}
+            </div>
+          </div>
+          <div class="frintel-timeline">
+            ${data.timeline.lanes.map(renderTimelineLane).join('')}
+          </div>
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Profil énergie', 'Energy Profile')}</div>
+            <div class="frintel-card-meta">${energy?.ecowattSignal ? `Ecowatt ${escapeHtml(energy.ecowattSignal.toUpperCase())}` : t(lang, 'Données partielles', 'Partial data')}</div>
+          </div>
+          ${energy ? `
+            <div class="frintel-energy-stack">
+              ${energySegments.map((segment) => `<span style="width:${segment.value}%;background:${segment.color};"></span>`).join('')}
+            </div>
+            <div class="frintel-energy-legend">
+              ${energySegments.map((segment) => `
+                <div class="frintel-energy-row">
+                  <span class="frintel-energy-dot" style="background:${segment.color};"></span>
+                  <span>${escapeHtml(segment.label)} ${segment.value}%</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="frintel-energy-meta">
+              <span>${t(lang, 'Production totale', 'Total production')} ${energy.totalMw ?? 'n/a'} MW</span>
+              <span>${t(lang, 'Éolien live', 'Live wind')} ${energy.windGw != null ? `${energy.windGw.toFixed(1)} GW` : 'n/a'}</span>
+              <span>${t(lang, 'Charge éolienne', 'Wind load factor')} ${energy.windLoadFactor != null ? `${energy.windLoadFactor}%` : 'n/a'}</span>
+            </div>
+          ` : `<div class="frintel-empty">${t(lang, 'Aucun profil énergie disponible.', 'No energy profile available.')}</div>`}
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Actualités principales', 'Key Headlines')}</div>
+            <div class="frintel-card-meta">${news.length} ${t(lang, 'éléments', 'items')}</div>
+          </div>
+          <div class="frintel-news-list">
+            ${news.length > 0 ? news.map((item) => {
+              const level = item.threat?.level ?? 'info';
+              const badge = lang === 'en'
+                ? (level === 'critical' ? 'CRITICAL' : level === 'high' ? 'HIGH' : level === 'medium' ? 'MODERATE' : level === 'low' ? 'LOW' : 'INFO')
+                : THREAT_LABELS[level] ?? level.toUpperCase();
+              return `
+                <a class="frintel-news-item" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">
+                  <div class="frintel-news-top">
+                    <span class="frintel-news-badge" style="--fi-badge:${LEVEL_COLORS[level] ?? 'var(--text-muted)'};">${escapeHtml(badge)}</span>
+                    <span class="frintel-news-time">${escapeHtml(timeAgo(item.pubDate, lang))}</span>
+                  </div>
+                  <div class="frintel-news-title">${escapeHtml(item.title)}</div>
+                  <div class="frintel-news-meta">${escapeHtml(item.source)}</div>
+                </a>
+              `;
+            }).join('') : `<div class="frintel-empty">${t(lang, 'Aucune actualité récente spécifique.', 'No recent specific headlines.')}</div>`}
+          </div>
+        </section>
       </div>
     `;
 
-    // Restore brief: if we have a cached brief, show it; otherwise show loading spinner
-    if (this._lastBriefHtml !== null) {
-      const briefEl = this.contentEl.querySelector('.fi-brief-text');
-      if (briefEl) briefEl.innerHTML = this._lastBriefHtml;
-    } else {
-      this.showBriefLoading();
+    this.renderBriefSection();
+  }
+
+  private renderMetricBar(label: string, value: number, color: string): string {
+    const clamped = Math.max(0, Math.min(100, value));
+    return `
+      <div class="frintel-bar-row">
+        <div class="frintel-bar-label">${escapeHtml(label)}</div>
+        <div class="frintel-bar-track">
+          <span class="frintel-bar-fill" style="width:${clamped}%;background:${color};"></span>
+        </div>
+        <div class="frintel-bar-value">${value}</div>
+      </div>
+    `;
+  }
+
+  private renderStatTile(label: string, value: string, meta: string): string {
+    return `
+      <div class="frintel-stat-tile">
+        <div class="frintel-stat-label">${escapeHtml(label)}</div>
+        <div class="frintel-stat-value">${escapeHtml(value)}</div>
+        <div class="frintel-stat-meta">${escapeHtml(meta)}</div>
+      </div>
+    `;
+  }
+
+  private renderBriefSection(): void {
+    const body = this.modalEl.querySelector('.fi-brief-body');
+    const meta = this.modalEl.querySelector('.fi-brief-meta');
+    const toggle = this.modalEl.querySelector('.fi-brief-toggle') as HTMLButtonElement | null;
+    if (!body || !meta || !toggle) return;
+
+    const lang = this.currentLang;
+
+    if (this.briefState === null) {
+      meta.textContent = t(lang, 'Génération…', 'Generating…');
+      body.innerHTML = `
+        <div class="frintel-loading">
+          <span class="frintel-loading-line"></span>
+          <span class="frintel-loading-line short"></span>
+          <span class="frintel-loading-text">${t(lang, 'Construction du brief national…', 'Building national brief…')}</span>
+        </div>
+      `;
+      toggle.hidden = true;
+      return;
+    }
+
+    meta.textContent = this.briefState.freshness === 'fresh'
+      ? t(lang, 'Fresh', 'Fresh')
+      : t(lang, 'Cached', 'Cached');
+
+    if (!this.briefState.text) {
+      body.innerHTML = `<div class="frintel-empty">${t(lang, 'Brief indisponible pour le moment.', 'Brief currently unavailable.')}</div>`;
+      toggle.hidden = true;
+      return;
+    }
+
+    const sourceText = this.briefState.text.trim();
+    const compact = summarizeBrief(sourceText);
+    const activeText = this.briefExpanded ? sourceText : compact;
+    body.innerHTML = `<div class="frintel-brief-copy">${formatBriefHtml(activeText)}</div>`;
+
+    const canExpand = sourceText.length > compact.length + 20;
+    toggle.hidden = !canExpand;
+    if (canExpand) {
+      toggle.textContent = this.briefExpanded
+        ? t(lang, 'Réduire', 'Collapse')
+        : t(lang, 'Lire le brief complet', 'Read full brief');
+      toggle.onclick = () => {
+        this.briefExpanded = !this.briefExpanded;
+        this.renderBriefSection();
+      };
     }
   }
 }

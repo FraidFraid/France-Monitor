@@ -45,12 +45,31 @@ export async function fetchFranceIntelBrief(
   const cyberScore      = data.cyber.meta.globalScore;
   const meteoAlertCount = data.meteo.filter(a => a.level === 'orange' || a.level === 'red' || a.level === 'violet').length;
   const topHeadlines    = data.topNews.slice(0, 6).map(n => n.title);
+  const signalCounts = data.operational;
+  const energy = data.energy ? {
+    ecowattSignal: data.energy.ecowattSignal,
+    nuclearShare: data.energy.shares.nuclear,
+    gasShare: data.energy.shares.gas,
+    hydroShare: data.energy.shares.hydro,
+    windShare: data.energy.shares.wind,
+    solarShare: data.energy.shares.solar,
+    totalMw: data.energy.totalMw,
+  } : null;
 
   try {
     const res = await fetch('/api/intelligence/v1/france-intel-brief', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isnrScore, isnrComponents, cyberScore, meteoAlertCount, topHeadlines, lang }),
+      body: JSON.stringify({
+        isnrScore,
+        isnrComponents,
+        cyberScore,
+        meteoAlertCount,
+        topHeadlines,
+        signalCounts,
+        energy,
+        lang,
+      }),
     });
 
     if (!res.ok) return { brief: null, freshness: 'fresh' };
