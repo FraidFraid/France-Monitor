@@ -1207,21 +1207,70 @@ export interface CyberState {
 
 // ═══ France Intelligence Card ═══
 
-export interface FranceIntelOperationalSummary {
+export interface FranceCountrySignals {
+  // News
   criticalNews: number;
   highNews: number;
-  weatherAlerts: number;
-  floodAlerts: number;
+  topNewsCount: number;      // min(newsItems.length, 20) — used in information axis formula
+  // Météo / crues / feux (severe levels only)
+  meteoAlerts: number;       // orange | red | violet
+  floodAlerts: number;       // orange | red
+  fireDetections: number;
+  // Transport
   railDisruptions: number;
   railSevere: number;
   roadIncidents: number;
+  // Infrastructure
   powerOutages: number;
   telecomOutages: number;
+  // Cyber
   cyberAlerts: number;
   cyberCritical: number;
+  // Defense / intelligence
+  militaryFlights: number;
+  maritimeTrafficFrance: number;
   defenseAlerts: number;
   defenseHigh: number;
   jammingSignals: number;
+  // Finance (weak signal)
+  marketStress: number;
+}
+
+export interface FranceCountryAxes {
+  troubles: number;    // 0–100 — civil unrest / perturbation
+  conflict: number;    // 0–100 — military posture / confrontation
+  security: number;    // 0–100 — security severity
+  information: number; // 0–100 — multi-source signal pressure
+}
+
+export interface FranceBriefContext {
+  score: number;
+  axes: FranceCountryAxes;
+  signals: FranceCountrySignals;
+  topHeadlines: string[];              // max 6 normalized titles
+  ecowattSignal: string | null;
+  meteoMaxLevel: string | null;
+  cyberScore: number;
+  isnrComponents: { social: number; security: number; infra: number };
+  energySummary: FranceIntelEnergySummary | null;
+}
+
+export interface FranceCountrySnapshot {
+  // Computed by the engine
+  signals: FranceCountrySignals;
+  axes: FranceCountryAxes;
+  score: number;                       // CII 0–100
+  briefContext: FranceBriefContext;
+  // Raw data for the renderer (mirrors old FranceIntelData fields)
+  stability: ISNRData;
+  cyber: CyberState;
+  meteo: MeteoAlert[];
+  topNews: NewsItem[];
+  energy: FranceIntelEnergySummary | null;
+  timeline: { days: string[]; lanes: FranceIntelTimelineLane[] };
+  brief?: string | null;
+  briefLang: 'fr' | 'en';
+  briefFreshness?: 'fresh' | 'cached';
 }
 
 export interface FranceIntelEnergySummary {
@@ -1247,32 +1296,8 @@ export interface FranceIntelTimelineLane {
   counts: number[];
 }
 
-export interface FranceIntelData {
-  /** ISNRData — full national stability data. NOTE: does NOT have national-level dimensions.
-   *  Compute social/security/infra by averaging scores[].dimensions across all departments. */
-  stability: ISNRData;
-  /** Full cyber state — use cyber.meta.globalScore for the composite score bar. */
-  cyber: CyberState;
-  /** Active météo vigilance alerts. */
-  meteo: MeteoAlert[];
-  /** Top news items — panel will sort+slice to 6 by severity. */
-  topNews: NewsItem[];
-  /** LLM-generated brief. undefined while loading, null if unavailable. */
-  brief?: string | null;
-  /** Default: 'fr' */
-  briefLang: 'fr' | 'en';
-  /** Mapped from API's fromCache boolean. */
-  briefFreshness?: 'fresh' | 'cached';
-  /** Aggregated operational signals used by the drawer cards. */
-  operational: FranceIntelOperationalSummary;
-  /** Current national energy posture snapshot. */
-  energy: FranceIntelEnergySummary | null;
-  /** Last 7 days signal lanes for the mini timeline. */
-  timeline: {
-    days: string[];
-    lanes: FranceIntelTimelineLane[];
-  };
-}
+/** @deprecated Use FranceCountrySnapshot instead. Removed after migration. */
+export type FranceIntelData = FranceCountrySnapshot;
 
 /** Seuils pour le calcul du score cyber */
 export const CYBER_THRESHOLDS = {
