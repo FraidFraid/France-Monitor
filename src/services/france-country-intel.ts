@@ -26,10 +26,10 @@ import type {
   FranceIntelEnergySummary,
   FranceIntelTimelineLane,
   EcowattSignal,
+  GpsJammingSignal,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
-import type { GpsJammingSignal } from '@/types/index.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -68,7 +68,7 @@ export interface FranceRawData {
 function avgDim(scores: ISNRScore[], key: keyof ISNRDimensionScores): number {
   const activeScores = scores.filter((s) => s.score > 0 || s.eventCount > 0);
   if (activeScores.length === 0) return 0;
-  const sum = activeScores.reduce((acc, s) => acc + (s.dimensions?.[key] ?? 0), 0);
+  const sum = activeScores.reduce((acc, s) => acc + s.dimensions[key], 0);
   return Math.round(sum / activeScores.length);
 }
 
@@ -92,7 +92,7 @@ function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | nul
   };
 
   const signals = raw.ecowattResponse?.signals ?? {};
-  const signalValues = Object.values(signals) as EcowattSignal[];
+  const signalValues = Object.values(signals);
   const ecowattSignal: EcowattSignal | null = signalValues.includes('red')
     ? 'red'
     : signalValues.includes('orange')
@@ -242,7 +242,7 @@ export function buildFranceBriefContext(
     .slice(0, 6)
     .map((n) => n.title.replace(/[\r\n]+/g, ' ').slice(0, 120));
 
-  const signalValues = Object.values(raw.ecowattResponse?.signals ?? {}) as EcowattSignal[];
+  const signalValues = Object.values(raw.ecowattResponse?.signals ?? {});
   const ecowattSignal: string | null = signalValues.includes('red')
     ? 'red'
     : signalValues.includes('orange')
