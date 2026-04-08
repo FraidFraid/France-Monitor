@@ -52,9 +52,10 @@ export interface FranceCountrySignals {
   // News
   criticalNews: number;
   highNews: number;
-  // Météo / crues / feux
-  meteoAlerts: number;
-  floodAlerts: number;
+  topNewsCount: number;   // min(newsItems.length, 20) — utilisé dans la formule information
+  // Météo / crues / feux  (filtrés : niveaux sévères uniquement)
+  meteoAlerts: number;    // orange | red | violet uniquement
+  floodAlerts: number;    // orange | red uniquement
   fireDetections: number;
   // Transports
   railDisruptions: number;
@@ -167,8 +168,9 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals
 ```
 Comptage normalisé de chaque source. Retourne des zéros pour les sources absentes.
 - `criticalNews` / `highNews` : filtrer `raw.newsItems` par severity
-- `meteoAlerts` : `raw.meteoAlerts.length`
-- `floodAlerts` : `raw.floodSegments.length`
+- `topNewsCount` : `Math.min(raw.newsItems.length, 20)` — plafond identique au prod actuel
+- `meteoAlerts` : `raw.meteoAlerts.filter(a => ['orange','red','violet'].includes(a.level)).length`
+- `floodAlerts` : `raw.floodSegments.filter(s => ['orange','red'].includes(s.level)).length`
 - `fireDetections` : `raw.activeFires.length`
 - `railDisruptions` : `raw.sncfDisruptions.length`
 - `railSevere` : disruptions avec severity critique ou haute
@@ -193,30 +195,34 @@ export function computeFranceAxes(
 ): FranceCountryAxes
 ```
 
-Formules (toutes clampées à [0, 100]) :
+Formules **exactes du prod** (portées depuis `FranceIntelPanel.ts`, zéro drift), toutes clampées à [0, 100] :
 
-| Axe | Formule |
+| Axe | Formule (identique prod) |
 |---|---|
 | `troubles` | `max(isnrSocial, highNews×5 + railDisruptions×2 + roadIncidents + (powerOutages + telecomOutages)×3)` |
-| `conflict` | `defenseAlerts×18 + jammingSignals×16 + min(militaryFlights, 15)×4 + maritimeTrafficFrance×2` |
-| `security` | `max(isnrSecurity, criticalNews×20 + cyberCritical×15 + defenseHigh×12)` |
-| `information` | `railSevere×5 + cyberAlerts×4 + meteoAlerts×3 + floodAlerts×3 + fireDetections×2 + marketStress×2` |
+| `conflict` | `defenseAlerts×18 + jammingSignals×16 + min(militaryFlights, 20)×2 + min(maritimeTrafficFrance, 20)` |
+| `security` | `max(isnrSecurity, criticalNews×18 + highNews×8 + defenseHigh×18 + jammingSignals×10)` |
+| `information` | `topNewsCount + highNews×4 + criticalNews×10 + marketStress×5` |
 
-Note : `militaryFlights` est cappé à `min(militaryFlights, 15)` avant pondération pour éviter les pics artificiels sur compteurs bruts. `information` représente la pression informationnelle multi-source, pas le volume news brut.
-
-`isnrSocial` et `isnrSecurity` sont les moyennes nationales des dimensions ISNR (calcul identique à l'actuel `avgDim()` dans `FranceIntelPanel.ts`).
+`isnrSocial` et `isnrSecurity` : moyennes nationales `avgDim()` sur `isnr.scores` (calcul porté tel quel depuis le panel).
+`topNewsCount` = `signals.topNewsCount` = `min(newsItems.length, 20)`.
 
 ---
 
 ```typescript
-export function computeFranceRiskScore(axes: FranceCountryAxes): number
+export function computeFranceRiskScore(
+  isnrComponents: { social: number; security: number; infra: number },
+  cyberScore: number,
+): number
 ```
 
-CII 0–100 :
+CII **exact du prod** (porté depuis `computeCII()` dans `FranceIntelPanel.ts`) :
 ```
-score = troubles×0.25 + conflict×0.20 + security×0.35 + information×0.20
+score = social×0.25 + security×0.30 + infra×0.20 + cyber×0.25
 ```
-Pondération : security reçoit le plus de poids (0.35), cohérent avec la gravité des incidents sécuritaires.
+Aucun changement de pondération. `isnrComponents` et `cyberScore` sont déjà calculés dans `buildFranceBriefContext` — le moteur les passe directement.
+
+Note : la signature prend `isnrComponents + cyberScore` (et non `axes`) car le CII actuel est basé sur les dimensions ISNR/cyber, pas sur les axes dérivés des signaux opérationnels.
 
 ---
 
@@ -224,18 +230,19 @@ Pondération : security reçoit le plus de poids (0.35), cohérent avec la gravi
 export function buildFranceBriefContext(
   signals: FranceCountrySignals,
   axes: FranceCountryAxes,
-  score: number,
   raw: FranceRawData,
-): FranceBriefContext
+): Omit<FranceBriefContext, 'score'>
 ```
 
-Construit le contexte LLM depuis le snapshot calculé :
+Calcule tous les champs du contexte LLM sauf `score` (calculé ensuite par `computeFranceRiskScore`) :
 - `topHeadlines` : `raw.newsItems.slice(0, 6).map(n => n.title)` (normalisé, max 120 chars)
-- `ecowattSignal` : depuis `raw.ecowattResponse`
-- `meteoMaxLevel` : niveau max parmi `raw.meteoAlerts`
+- `ecowattSignal` : depuis `raw.ecowattResponse` (même logique que prod App.ts l.4748–4754)
+- `meteoMaxLevel` : niveau max parmi `raw.meteoAlerts` (rouge > orange > jaune > vert)
 - `cyberScore` : `raw.cyberData?.meta.globalScore ?? 0`
-- `isnrComponents` : calcul `avgDim` sur `raw.isnrData?.scores`
+- `isnrComponents` : calcul `avgDim` sur `raw.isnrData?.scores` (social, security, infra)
 - `energySummary` : assemblé depuis `raw.ecowattResponse`, `raw.nuclearState`, `raw.eolienLive`
+
+`buildFranceCountrySnapshot` injecte ensuite `score` dans le context avant d'assembler le snapshot final.
 
 ---
 
@@ -249,9 +256,11 @@ export function buildFranceCountrySnapshot(
 Orchestre le pipeline :
 1. `signals = buildFranceSignals(raw)`
 2. `axes = computeFranceAxes(signals, raw.isnrData)`
-3. `score = computeFranceRiskScore(axes)`
-4. `briefContext = buildFranceBriefContext(signals, axes, score, raw)`
+3. `briefContext = buildFranceBriefContext(signals, axes, raw)`  ← calcule aussi `isnrComponents` + `cyberScore`
+4. `score = computeFranceRiskScore(briefContext.isnrComponents, briefContext.cyberScore)`
 5. Assemble `FranceCountrySnapshot` avec toutes les données brutes + calculées
+
+Note : l'étape 3 précède l'étape 4 car `isnrComponents` et `cyberScore` (nécessaires au CII) sont calculés dans `buildFranceBriefContext`. Le score final est ensuite injecté dans `briefContext.score`.
 
 ---
 
@@ -282,8 +291,8 @@ private buildFranceCountrySnapshot(
     telecomOutages:       this.currentTelecomOutages,
     defenseAlerts:        this.currentDefenseAlerts,
     jammingSignals:       this.currentJammingSignals,
-    militaryFlightsCount: this.getMilitaryFlightsCount(),
-    maritimeCount:        this.currentMaritimeCount ?? 0,
+    militaryFlightsCount: this.currentMilitaryFlightsCount,
+    maritimeCount:        this.currentMaritimeTrafficFranceCount,
     activeFires:          this.currentActiveFires,
     marketData:           this.currentMarketData ?? [],
     ecowattResponse:      this.currentEcowattResponse,
@@ -430,7 +439,8 @@ La source du payload change (vient de `FranceBriefContext` au lieu de `FranceInt
 ## 10. Ce qui n'est PAS dans ce scope
 
 - Évolution vers un moteur auto-piloté (option A) — laissé pour plus tard
-- Modification des formules des axes — V1 assumée
+- Modification des formules des axes ou du CII — refactor pur, zéro drift fonctionnel
+- Rapprochement du scoring vers WorldMonitor — chantier séparé explicite
 - Refactor du handler Redis côté API
 - Modification d'autres panels
 
@@ -447,10 +457,11 @@ App.ts
       │
       ▼
   france-country-intel.ts
-    buildFranceSignals(raw)        → FranceCountrySignals
-    computeFranceAxes(sig, isnr)   → FranceCountryAxes
-    computeFranceRiskScore(axes)   → number (CII)
-    buildFranceBriefContext(...)   → FranceBriefContext
+    buildFranceSignals(raw)                      → FranceCountrySignals
+    computeFranceAxes(sig, isnr)                 → FranceCountryAxes
+    buildFranceBriefContext(sig, axes, raw)       → Omit<FranceBriefContext, 'score'>
+    computeFranceRiskScore(isnrComponents, cyber) → number (CII — formule prod inchangée)
+    ← score injecté dans briefContext
       │
       ▼
   FranceCountrySnapshot
