@@ -1,4 +1,10 @@
 // api/intelligence/v1/france-intel-brief.js
+// Vercel Edge Function — generates a national intelligence brief via Groq.
+// Input payload (unchanged after client-side migration):
+//   { isnrScore, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
+//     signalCounts, energy, lang }
+// Payload is now built from FranceBriefContext by france-intel-brief.ts (client).
+// No changes required to parsing or prompt logic.
 export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../utils/redis.js';
@@ -34,7 +40,7 @@ Current situation data:
 - Infrastructure dimension (weather, floods, outages): ${isnrComponents.infra}/100
 - Cyber dimension (CERT-FR, ransomware, CVE): ${cyberScore}/100
 - Active weather alerts: ${meteoAlertCount}
-- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.defenseAlerts} defense alerts
+- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.highNews} high-severity headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.militaryFlights} military flights, ${signalCounts.maritimeTrafficFrance} ships in French waters, ${signalCounts.defenseAlerts} defense alerts, ${signalCounts.jammingSignals} jamming signals, ${signalCounts.fireDetections} fire detections, ${signalCounts.marketStress} stressed market lines
 ${energyLine}
 
 Recent significant headlines:
@@ -58,7 +64,7 @@ Données situationnelles actuelles :
 - Dimension infrastructure (météo, crues, pannes) : ${isnrComponents.infra}/100
 - Dimension cyber (CERT-FR, ransomware, CVE) : ${cyberScore}/100
 - Alertes météo actives : ${meteoAlertCount}
-- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.defenseAlerts} alertes défense
+- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.highNews} titres à gravité élevée, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.maritimeTrafficFrance} navires en zone France, ${signalCounts.defenseAlerts} alertes défense, ${signalCounts.jammingSignals} signaux de brouillage, ${signalCounts.fireDetections} détections de feux, ${signalCounts.marketStress} lignes de marché sous tension
 ${energyLine}
 
 Actualités récentes significatives :
@@ -106,12 +112,20 @@ export default async function handler(request) {
   const headlines = sanitizeHeadlines(body.topHeadlines);
   const signalCounts = {
     criticalNews: typeof body.signalCounts?.criticalNews === 'number' ? Math.round(body.signalCounts.criticalNews) : 0,
+    highNews: typeof body.signalCounts?.highNews === 'number' ? Math.round(body.signalCounts.highNews) : 0,
+    weatherAlerts: typeof body.signalCounts?.weatherAlerts === 'number' ? Math.round(body.signalCounts.weatherAlerts) : 0,
+    floodAlerts: typeof body.signalCounts?.floodAlerts === 'number' ? Math.round(body.signalCounts.floodAlerts) : 0,
+    fireDetections: typeof body.signalCounts?.fireDetections === 'number' ? Math.round(body.signalCounts.fireDetections) : 0,
     railDisruptions: typeof body.signalCounts?.railDisruptions === 'number' ? Math.round(body.signalCounts.railDisruptions) : 0,
     roadIncidents: typeof body.signalCounts?.roadIncidents === 'number' ? Math.round(body.signalCounts.roadIncidents) : 0,
     powerOutages: typeof body.signalCounts?.powerOutages === 'number' ? Math.round(body.signalCounts.powerOutages) : 0,
     telecomOutages: typeof body.signalCounts?.telecomOutages === 'number' ? Math.round(body.signalCounts.telecomOutages) : 0,
     cyberAlerts: typeof body.signalCounts?.cyberAlerts === 'number' ? Math.round(body.signalCounts.cyberAlerts) : 0,
+    militaryFlights: typeof body.signalCounts?.militaryFlights === 'number' ? Math.round(body.signalCounts.militaryFlights) : 0,
+    maritimeTrafficFrance: typeof body.signalCounts?.maritimeTrafficFrance === 'number' ? Math.round(body.signalCounts.maritimeTrafficFrance) : 0,
     defenseAlerts: typeof body.signalCounts?.defenseAlerts === 'number' ? Math.round(body.signalCounts.defenseAlerts) : 0,
+    jammingSignals: typeof body.signalCounts?.jammingSignals === 'number' ? Math.round(body.signalCounts.jammingSignals) : 0,
+    marketStress: typeof body.signalCounts?.marketStress === 'number' ? Math.round(body.signalCounts.marketStress) : 0,
   };
   const energy = body.energy ? {
     ecowattSignal: typeof body.energy.ecowattSignal === 'string' ? body.energy.ecowattSignal : null,

@@ -1,4 +1,10 @@
 // src/plugins/france-intel-proxy.ts
+// Dev proxy for /api/intelligence/v1/france-intel-brief (Vite dev server only).
+// Receives the same JSON payload shape as the Vercel handler (unchanged after migration):
+//   { isnrScore, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
+//     signalCounts, energy, lang }
+// Source of that payload is now FranceBriefContext (built by france-country-intel.ts).
+// No structural changes required here.
 import type { Plugin } from 'vite';
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
@@ -22,12 +28,20 @@ function buildPrompt(
   headlines: string[],
   signalCounts: {
     criticalNews: number;
+    highNews: number;
+    weatherAlerts: number;
+    floodAlerts: number;
+    fireDetections: number;
     railDisruptions: number;
     roadIncidents: number;
     powerOutages: number;
     telecomOutages: number;
     cyberAlerts: number;
+    militaryFlights: number;
+    maritimeTrafficFrance: number;
     defenseAlerts: number;
+    jammingSignals: number;
+    marketStress: number;
   },
   energy: {
     ecowattSignal: string | null;
@@ -60,7 +74,7 @@ Current situation data:
 - Infrastructure dimension (weather, floods, outages): ${isnrComponents.infra}/100
 - Cyber dimension (CERT-FR, ransomware, CVE): ${cyberScore}/100
 - Active weather alerts: ${meteoAlertCount}
-- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.defenseAlerts} defense alerts
+- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.highNews} high-severity headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.militaryFlights} military flights, ${signalCounts.maritimeTrafficFrance} ships in French waters, ${signalCounts.defenseAlerts} defense alerts, ${signalCounts.jammingSignals} jamming signals, ${signalCounts.fireDetections} fire detections, ${signalCounts.marketStress} stressed market lines
 ${energyLine}
 
 Recent significant headlines:
@@ -83,7 +97,7 @@ Données situationnelles actuelles :
 - Dimension infrastructure (météo, crues, pannes) : ${isnrComponents.infra}/100
 - Dimension cyber (CERT-FR, ransomware, CVE) : ${cyberScore}/100
 - Alertes météo actives : ${meteoAlertCount}
-- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.defenseAlerts} alertes défense
+- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.highNews} titres à gravité élevée, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.maritimeTrafficFrance} navires en zone France, ${signalCounts.defenseAlerts} alertes défense, ${signalCounts.jammingSignals} signaux de brouillage, ${signalCounts.fireDetections} détections de feux, ${signalCounts.marketStress} lignes de marché sous tension
 ${energyLine}
 
 Actualités récentes significatives :
@@ -138,12 +152,20 @@ export function franceIntelProxyPlugin(): Plugin {
               topHeadlines?: unknown;
               signalCounts?: {
                 criticalNews?: unknown;
+                highNews?: unknown;
+                weatherAlerts?: unknown;
+                floodAlerts?: unknown;
+                fireDetections?: unknown;
                 railDisruptions?: unknown;
                 roadIncidents?: unknown;
                 powerOutages?: unknown;
                 telecomOutages?: unknown;
                 cyberAlerts?: unknown;
+                militaryFlights?: unknown;
+                maritimeTrafficFrance?: unknown;
                 defenseAlerts?: unknown;
+                jammingSignals?: unknown;
+                marketStress?: unknown;
               };
               energy?: {
                 ecowattSignal?: unknown;
@@ -168,12 +190,20 @@ export function franceIntelProxyPlugin(): Plugin {
             const headlines = sanitizeHeadlines(parsed.topHeadlines);
             const signalCounts = {
               criticalNews: typeof parsed.signalCounts?.criticalNews === 'number' ? Math.round(parsed.signalCounts.criticalNews) : 0,
+              highNews: typeof parsed.signalCounts?.highNews === 'number' ? Math.round(parsed.signalCounts.highNews) : 0,
+              weatherAlerts: typeof parsed.signalCounts?.weatherAlerts === 'number' ? Math.round(parsed.signalCounts.weatherAlerts) : 0,
+              floodAlerts: typeof parsed.signalCounts?.floodAlerts === 'number' ? Math.round(parsed.signalCounts.floodAlerts) : 0,
+              fireDetections: typeof parsed.signalCounts?.fireDetections === 'number' ? Math.round(parsed.signalCounts.fireDetections) : 0,
               railDisruptions: typeof parsed.signalCounts?.railDisruptions === 'number' ? Math.round(parsed.signalCounts.railDisruptions) : 0,
               roadIncidents: typeof parsed.signalCounts?.roadIncidents === 'number' ? Math.round(parsed.signalCounts.roadIncidents) : 0,
               powerOutages: typeof parsed.signalCounts?.powerOutages === 'number' ? Math.round(parsed.signalCounts.powerOutages) : 0,
               telecomOutages: typeof parsed.signalCounts?.telecomOutages === 'number' ? Math.round(parsed.signalCounts.telecomOutages) : 0,
               cyberAlerts: typeof parsed.signalCounts?.cyberAlerts === 'number' ? Math.round(parsed.signalCounts.cyberAlerts) : 0,
+              militaryFlights: typeof parsed.signalCounts?.militaryFlights === 'number' ? Math.round(parsed.signalCounts.militaryFlights) : 0,
+              maritimeTrafficFrance: typeof parsed.signalCounts?.maritimeTrafficFrance === 'number' ? Math.round(parsed.signalCounts.maritimeTrafficFrance) : 0,
               defenseAlerts: typeof parsed.signalCounts?.defenseAlerts === 'number' ? Math.round(parsed.signalCounts.defenseAlerts) : 0,
+              jammingSignals: typeof parsed.signalCounts?.jammingSignals === 'number' ? Math.round(parsed.signalCounts.jammingSignals) : 0,
+              marketStress: typeof parsed.signalCounts?.marketStress === 'number' ? Math.round(parsed.signalCounts.marketStress) : 0,
             };
             const energy = parsed.energy ? {
               ecowattSignal: typeof parsed.energy.ecowattSignal === 'string' ? parsed.energy.ecowattSignal : null,
