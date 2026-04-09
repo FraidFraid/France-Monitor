@@ -91,9 +91,19 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60_000; // 10 min
 
-// ─── Dedup by URL ───
+interface JsonProxyItem {
+    title?: string;
+    link?: string;
+    pubDate?: string;
+    description?: string;
+}
 
-const seenUrls = new Set<string>();
+interface JsonProxyResponse {
+    items?: JsonProxyItem[];
+    sourceFormat?: 'xml' | 'html' | 'unknown';
+    error?: string;
+    message?: string;
+}
 
 // ─── Timezone Handling ───
 
@@ -135,28 +145,46 @@ function parseRSSDate(pubDateStr: string, feedRegion?: string): Date {
 
 // ─── XML Parsing ───
 
-function parseRSSItems(xml: string, feed: Feed): NewsItem[] {
+/**
+ * Returns null if the XML is actually an HTML page (bot-detection / redirect).
+ * Returning null lets fetchFeed treat this as a failure and avoid caching empty results.
+ */
+function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
+    // Detect HTML responses (Cloudflare challenge, paywall redirect, etc.)
+    const head = xml.trimStart().slice(0, 300).toLowerCase();
+    if (
+        head.startsWith('<!doctype html') ||
+        head.startsWith('<html') ||
+        head.includes('<body') ||
+        head.includes('<app-root')
+    ) {
+        console.warn(`[RSS] ${feed.name}: received HTML instead of XML — likely bot-detection`);
+        return null;
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, 'application/xml');
 
     // Check for parse errors
     const parseError = doc.querySelector('parsererror');
-    if (parseError) return [];
+    if (parseError) {
+        console.warn(`[RSS] ${feed.name}: XML parse error`);
+        return null;
+    }
 
     const items: NewsItem[] = [];
     const entries = doc.querySelectorAll('item, entry'); // RSS vs Atom
 
     for (const entry of entries) {
         const title = entry.querySelector('title')?.textContent?.trim() ?? '';
+        // Use || (not ??) so empty string falls through to getAttribute('href').
+        // Atom feeds use <link href="..."/> (no text content) — ?? would keep "" and skip all items.
         const link =
-            entry.querySelector('link')?.textContent?.trim() ??
-            entry.querySelector('link')?.getAttribute('href') ??
+            entry.querySelector('link')?.textContent?.trim() ||
+            entry.querySelector('link')?.getAttribute('href') ||
             '';
 
         if (!title || !link) continue;
-        if (seenUrls.has(link)) continue;
-        seenUrls.add(link);
-
         const pubDateStr =
             entry.querySelector('pubDate')?.textContent ??
             entry.querySelector('published')?.textContent ??
@@ -196,6 +224,44 @@ function hashString(str: string): string {
         hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
     }
     return Math.abs(hash).toString(36);
+}
+
+async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourceFormat: 'xml' | 'html' | 'unknown' }> {
+    const proxyUrl = `/api/rss?url=${encodeURIComponent(feed.url)}`;
+    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!resp.ok) {
+        throw new Error(`JSON RSS proxy returned ${resp.status}`);
+    }
+
+    const payload = await resp.json() as JsonProxyResponse;
+    const sourceFormat = payload.sourceFormat ?? 'unknown';
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const items: NewsItem[] = [];
+
+    for (const rawItem of rawItems) {
+        const title = typeof rawItem.title === 'string' ? rawItem.title.trim() : '';
+        const link = typeof rawItem.link === 'string' ? rawItem.link.trim() : '';
+        if (!title || !link) continue;
+
+        const rawDate = typeof rawItem.pubDate === 'string' ? rawItem.pubDate : '';
+        const pubDate = rawDate ? parseRSSDate(rawDate, feed.region) : new Date();
+        if (isNaN(pubDate.getTime())) continue;
+
+        const id = `rss-${hashString(link)}`;
+        items.push({
+            id,
+            source: feed.name,
+            title,
+            link,
+            pubDate,
+            isAlert: false,
+            tier: feed.tier,
+            feedRegion: feed.region,
+            summary: rawItem.description?.slice(0, 200) || undefined,
+        });
+    }
+
+    return { items, sourceFormat };
 }
 
 // ─── Public API ───
@@ -242,14 +308,45 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
             xml = await resp.text();
         }
 
-        const items = parseRSSItems(xml, feed);
+        const strictItems = parseRSSItems(xml, feed);
+        let items = strictItems;
+
+        // Some publishers return XML that is valid enough for a tolerant parser but rejected
+        // by DOMParser in the browser. Recover these feeds through the existing server-side
+        // JSON parser before declaring the source failed.
+        if (strictItems === null || strictItems.length === 0) {
+            try {
+                const fallback = await fetchViaJsonProxy(feed);
+                if (fallback.items.length > 0) {
+                    items = fallback.items;
+                    console.warn(`[RSS] ${feed.name}: recovered ${fallback.items.length} items via JSON fallback`);
+                } else if (strictItems === null) {
+                    const reason = fallback.sourceFormat === 'html'
+                        ? 'HTML response (bot-detection?)'
+                        : 'XML parse failure';
+                    recordFailure(feed.url);
+                    Watchdog.report('rss-pqr', { type: 'failure', error: reason, isFallback: !!cached });
+                    return cached?.items ?? [];
+                } else {
+                    items = [];
+                }
+            } catch (fallbackErr) {
+                if (strictItems === null) {
+                    recordFailure(feed.url);
+                    const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+                    Watchdog.report('rss-pqr', { type: 'failure', error: fallbackMsg, isFallback: !!cached });
+                    return cached?.items ?? [];
+                }
+                items = [];
+            }
+        }
 
         recordSuccess(feed.url);
-        cache.set(feed.url, { items, fetchedAt: Date.now() });
+        cache.set(feed.url, { items: items ?? [], fetchedAt: Date.now() });
         Watchdog.report('rss-pqr', { type: 'success', responseTimeMs: Date.now() - t0 });
 
-        console.log(`[RSS] ${feed.name}: ${items.length} items`);
-        return items;
+        console.log(`[RSS] ${feed.name}: ${(items ?? []).length} items`);
+        return items ?? [];
     } catch (err) {
         recordFailure(feed.url);
         const msg = err instanceof Error ? err.message : String(err);
@@ -265,9 +362,14 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 export async function fetchAllFeeds(feeds: Feed[]): Promise<NewsItem[]> {
     const results = await Promise.allSettled(feeds.map(fetchFeed));
     const allItems: NewsItem[] = [];
+    const seenUrls = new Set<string>();
     for (const result of results) {
         if (result.status === 'fulfilled') {
-            allItems.push(...result.value);
+            for (const item of result.value) {
+                if (seenUrls.has(item.link)) continue;
+                seenUrls.add(item.link);
+                allItems.push(item);
+            }
         }
     }
     // Sort by pubDate desc
@@ -278,6 +380,5 @@ export async function fetchAllFeeds(feeds: Feed[]): Promise<NewsItem[]> {
 /** Clear all caches (useful for testing) */
 export function clearRSSCache(): void {
     cache.clear();
-    seenUrls.clear();
     breakers.clear();
 }

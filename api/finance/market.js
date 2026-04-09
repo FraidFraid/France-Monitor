@@ -1,3 +1,12 @@
+/**
+ * api/finance/market.js — Vercel Serverless Function
+ *
+ * Source : TradingView Scanner API
+ * Remplace Yahoo Finance qui bloque avec des 429 Too Many Requests.
+ *
+ * Cache Redis 15 min pour ne pas surcharger TradingView.
+ */
+
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -5,81 +14,99 @@ const redis = new Redis({
     token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
 });
 
+const INTERNAL_TO_TV = {
+    'CAC.INDX':     'EURONEXT:PX1',
+    'DAX.INDX':     'XETR:DAX',
+    'STOXX50.INDX': 'TVC:SX5E',
+    'SPX.INDX':     'SP:SPX',
+    'TTE.PA':       'EURONEXT:TTE',
+    'AIR.PA':       'EURONEXT:AIR',
+    'HO.PA':        'EURONEXT:HO',
+    'SAF.PA':       'EURONEXT:SAF',
+    'DG.PA':        'EURONEXT:DG',
+    'SAN.PA':       'EURONEXT:SAN',
+    'ORA.PA':       'EURONEXT:ORA',
+    'GLE.PA':       'EURONEXT:GLE',
+    'EURUSD=X':     'FX:EURUSD',
+    'EURGBP=X':     'FX:EURGBP',
+    'EURCHF=X':     'FX:EURCHF',
+    'EURJPY=X':     'FX:EURJPY',
+};
+
+const TV_TO_INTERNAL = Object.fromEntries(
+    Object.entries(INTERNAL_TO_TV).map(([k, v]) => [v, k])
+);
+
+const CACHE_KEY = 'fm:finance:market:v7:tv:fx4';
+
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
         res.status(405).json({ error: 'Method not allowed' });
         return;
     }
 
-    const SYMBOLS = 'CAC.INDX,TTE.PA,AIR.PA,HO.PA,SAF.PA,DG.PA,SAN.PA,ORA.PA,GLE.PA';
-    const CACHE_KEY = `fm:finance:market:${SYMBOLS}`;
-
     try {
-        // Obtenir le cache (TTL de 15 min = 900s) pour ne pas brûler le quota Marketstack
+        // Lecture cache Redis
         const cached = await redis.get(CACHE_KEY);
         if (cached) {
-            console.log('[Finance] Cache Hit');
+            console.log('[Finance] Cache hit TV');
             res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=120');
             res.status(200).json(cached);
             return;
         }
 
-        const BOURSO_MAP = {
-            'CAC.INDX': 'bourse/indices/cours/1rPCAC/',
-            'DAX.INDX': 'bourse/indices/cours/1rPDAX/',
-            'STOXX50.INDX': 'bourse/indices/cours/1rPSTOXX50E/',
-            'SPX.INDX': 'bourse/indices/cours/1xSPX/',
-            'TTE.PA': 'cours/1rPTTE/',
-            'AIR.PA': 'cours/1rPAIR/',
-            'HO.PA': 'cours/1rPHO/',
-            'SAF.PA': 'cours/1rPSAF/',
-            'DG.PA': 'cours/1rPDG/',
-            'SAN.PA': 'cours/1rPSAN/',
-            'ORA.PA': 'cours/1rPORA/',
-            'GLE.PA': 'cours/1rPGLE/'
+        console.log('[Finance] Cache miss — fetching TradingView Scanner');
+
+        const tickers = Object.values(INTERNAL_TO_TV);
+        const payload = {
+            symbols: { tickers },
+            columns: ["name", "close", "change"]
         };
 
-        console.log('[Finance] Cache Miss - Fetching from Boursorama (Scraping)');
-        const fetchBourso = async (symbol, path) => {
-            try {
-                const res = await fetch(`https://www.boursorama.com/${path}`, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Safari/537.36' },
-                    signal: AbortSignal.timeout(6000)
-                });
-                const html = await res.text();
-                const priceMatch = html.match(/class="c-instrument c-instrument--last"[^>]*>([^<]+)<\/span>/);
-                const varMatch = html.match(/class="c-instrument c-instrument--variation"[^>]*>([^<]+)<\/span>/);
-                
-                if (priceMatch && priceMatch[1]) {
-                    const price = parseFloat(priceMatch[1].replace(/\s/g, '').replace(',', '.'));
-                    let pct = 0;
-                    if (varMatch && varMatch[1]) {
-                        pct = parseFloat(varMatch[1].replace('%', '').replace('+', '').replace(/\s/g, '').replace(',', '.'));
-                    }
-                    return {
-                        symbol,
-                        last: price,
-                        open: price / (1 + (pct / 100)),
-                        date: new Date().toISOString()
-                    };
-                }
-            } catch (e) {
-                console.error(`[Finance] Boursorama fetch failed for ${symbol}:`, e.message);
-            }
-            return null;
-        };
+        const resp = await fetch('https://scanner.tradingview.com/global/scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'FranceMonitor/1.0',
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(8000),
+        });
 
-        const results = await Promise.all(
-            Object.entries(BOURSO_MAP).map(([sym, path]) => fetchBourso(sym, path))
-        );
+        if (!resp.ok) {
+            throw new Error(`TradingView API returned ${resp.status}`);
+        }
 
-        const data = { data: results.filter(Boolean) };
+        const raw = await resp.json();
+        
+        const data = (raw.data || []).map(item => {
+            const internalSym = TV_TO_INTERNAL[item.s];
+            if (!internalSym) return null;
+            
+            const close = item.d[1] || 0;
+            const changePercent = item.d[2] || 0; 
+            const open = close / (1 + (changePercent / 100));
 
-        // Stockage cache dans Redis 
-        await redis.setex(CACHE_KEY, 900, data);
+            return {
+                symbol: internalSym,
+                last: close,
+                open: open,
+                date: new Date().toISOString()
+            };
+        }).filter(Boolean);
+
+        console.log(`[Finance] ${data.length} symboles récupérés via TV`);
+
+        const responsePayload = { data };
+
+        // Mise en cache 15 min
+        if (data.length > 0) {
+            await redis.setex(CACHE_KEY, 900, responsePayload);
+        }
 
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=120');
-        res.status(200).json(data);
+        res.status(200).json(responsePayload);
+
     } catch (err) {
         console.error('[Finance] Error:', err);
         res.status(500).json({ error: 'Internal Server Error' });

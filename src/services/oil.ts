@@ -1,7 +1,11 @@
 import type {
+  FuelPriceHistorySnapshot,
+  FuelPriceSeries,
+  FuelPriceSeriesKey,
   OilDashboard,
   OilFlowsSnapshot,
   OilFreshnessInfo,
+  OilHarmonizedSnapshot,
   OilLocalConsumptionSnapshot,
   OilMonthlyDelivery,
   OilOriginShare,
@@ -53,12 +57,21 @@ interface MonthlyOilConsumptionRow {
 
 const CACHE_TTL = 30 * 60_000;
 const OIL_PROXY_ENDPOINT = '/api/oil-proxy';
+const FUEL_PRICES_PROXY_ENDPOINT = '/api/fuel-prices-proxy';
 
 const SDES_PETROLE_URL = 'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/fr/12-petrole';
 const INSEE_PETROLE_URL = 'https://www.insee.fr/fr/statistiques/2119697';
 const UFIP_COMMUNIQUES_URL = 'https://www.energiesetmobilites.fr/presse/communiques';
 const DATA_GOUV_LOCAL_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-locales-de-consommation-de-produits-petroliers-departement-a-partir-de-2005/';
 const DATA_GOUV_MONTHLY_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-mensuelles-de-consommation-de-produits-petroliers-a-partir-de-2017/';
+const CARBU_PRIX_MOYENS_URL = 'https://carbu.com/france/prixmoyens';
+const CARBU_API_URL_FALLBACK = 'https://api.carbu.com/v1.1';
+const CARBU_API_KEY_FALLBACK = 'VsVAqT5t6NoRsIAMtUbxAFJh9UVOjkhfibyArhS7';
+const OFFICIAL_FUEL_DATASET_URL = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
+const OFFICIAL_FUEL_HISTORY_LIMIT = 400;
+const JODI_OIL_BASE_URL = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv';
+const JODI_GAS_ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
+const JODI_GAS_ZIP_ENTRY = 'STAGING_world_NewFormat.csv';
 
 let cache: OilCache | null = null;
 
@@ -82,10 +95,59 @@ const FALLBACK_ORIGINS: OilOriginShare[] = [
 ];
 
 const OIL_FRESHNESS_TEXT = {
-  dashboard: 'Bilan national HYBRID: agrégation d’un socle annuel SDES et de signaux mensuels CPDP/SDES. Pas de télémesure live.',
-  deliveries: 'Vue MONTHLY: publications mensuelles CPDP/SDES ou communiqué filière de secours. Pas d’instantané temps réel.',
+  dashboard: 'Vue France structurale: backbone SDES/CPDP/UFIP, avec stocks, flux, origines et raffinage ramenés à un référentiel FR stable.',
+  deliveries: 'Vue mensuelle UFIP/CPDP: indicateurs de livraisons et de consommation, utiles pour la fraîcheur mais non assimilables à une télémesure live.',
   infrastructure: 'Vue STRUCTURAL: raffineries, dépôts, pipelines et hubs cartographiés comme référentiel, sans état opérationnel live.',
+  harmonized: 'Vue harmonisée JODI/UFIP: plus fraîche, mais méthodologie mixte et partiellement internationale. À lire comme signal provisoire.',
+  fuelPrices: 'Vue DAILY: prix et ruptures carburants quasi temps réel. Ces flux décrivent les prix/disponibilités, pas les volumes livrés.',
 } as const;
+
+interface JodiOilProductSnapshot {
+  demandKbd: number | null;
+  importsKbd: number | null;
+}
+
+interface JodiOilSnapshot {
+  dataMonth: string;
+  gasoline: JodiOilProductSnapshot;
+  diesel: JodiOilProductSnapshot;
+  jet: JodiOilProductSnapshot;
+  lpg: JodiOilProductSnapshot;
+  crudeImportsKbd: number | null;
+}
+
+interface JodiGasSnapshot {
+  dataMonth: string;
+  totalDemandTj: number | null;
+  lngImportsTj: number | null;
+  pipeImportsTj: number | null;
+  totalImportsTj: number | null;
+  lngSharePct: number | null;
+}
+
+const CARBU_FUEL_SERIES: Array<{
+  fuelId: number;
+  fuelType: FuelPriceSeriesKey;
+  label: string;
+  color: string;
+}> = [
+  { fuelId: 1, fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B' },
+  { fuelId: 2, fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8' },
+  { fuelId: 3, fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E' },
+  { fuelId: 4, fuelType: 'gpl', label: 'GPL', color: '#A78BFA' },
+] as const;
+
+const OFFICIAL_FUEL_SERIES: Array<{
+  fuelType: Extract<FuelPriceSeriesKey, 'gazole' | 'sp95' | 'sp98'>;
+  label: string;
+  color: string;
+  priceField: 'gazole_prix' | 'sp95_prix' | 'sp98_prix';
+  updatedField: 'gazole_maj' | 'sp95_maj' | 'sp98_maj';
+}> = [
+  { fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B', priceField: 'gazole_prix', updatedField: 'gazole_maj' },
+  { fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8', priceField: 'sp95_prix', updatedField: 'sp95_maj' },
+  { fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E', priceField: 'sp98_prix', updatedField: 'sp98_maj' },
+] as const;
 
 export function isOilPanelEnabled(): boolean {
   const flag = import.meta.env.VITE_ENABLE_OIL_LAYER;
@@ -113,6 +175,253 @@ async function fetchProxyText(targetUrl: string): Promise<string> {
 async function fetchProxyJson<T>(targetUrl: string): Promise<T> {
   const text = await fetchProxyText(targetUrl);
   return JSON.parse(text) as T;
+}
+
+async function fetchProxyArrayBuffer(targetUrl: string): Promise<ArrayBuffer> {
+  const response = await fetch(buildProxyUrl(targetUrl), {
+    signal: AbortSignal.timeout(45_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} on ${targetUrl}`);
+  }
+
+  return response.arrayBuffer();
+}
+
+async function fetchFuelPricesProxyJson<T>(targetUrl: string): Promise<T> {
+  const response = await fetch(`${FUEL_PRICES_PROXY_ENDPOINT}?url=${encodeURIComponent(targetUrl)}`, {
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} on ${targetUrl}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+function formatDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildCarbuApiUrl(apiUrl: string, apiKey: string, fuelId: number, dateStart: string, dateEnd: string): string {
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    dateStart,
+    dateEnd,
+  });
+  return `${apiUrl}/maxfuelprice/FR/${fuelId}?${params.toString()}`;
+}
+
+function extractCarbuApiConfig(html: string): { apiUrl: string; apiKey: string } {
+  const apiUrl = html.match(/var\s+APIURL\s*=\s*['"]([^'"]+)['"]/)?.[1]?.trim() ?? '';
+  const apiKey = html.match(/var\s+APIKEY\s*=\s*['"]([^'"]+)['"]/)?.[1]?.trim() ?? '';
+
+  if (!apiUrl || !apiKey) {
+    throw new Error('Unable to extract CARBU API configuration from prixmoyens page');
+  }
+
+  return { apiUrl, apiKey };
+}
+
+async function resolveCarbuApiConfig(): Promise<{ apiUrl: string; apiKey: string }> {
+  try {
+    const pageHtml = await fetchProxyText(CARBU_PRIX_MOYENS_URL);
+    return extractCarbuApiConfig(pageHtml);
+  } catch (error) {
+    console.warn('[Oil] Falling back to baked CARBU API config:', error);
+    return {
+      apiUrl: CARBU_API_URL_FALLBACK,
+      apiKey: CARBU_API_KEY_FALLBACK,
+    };
+  }
+}
+
+function toIsoFromUnixSeconds(value: string): string | null {
+  const seconds = Number.parseInt(value, 10);
+  if (!Number.isFinite(seconds)) return null;
+  return new Date(seconds * 1000).toISOString();
+}
+
+function findPointAtOrBefore(
+  points: Array<{ timestamp: string; price: number }>,
+  targetTime: number,
+): { timestamp: string; price: number } | null {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const pointTime = new Date(points[index].timestamp).getTime();
+    if (Number.isFinite(pointTime) && pointTime <= targetTime) {
+      return points[index];
+    }
+  }
+  return null;
+}
+
+function computeDeltaCents(
+  points: Array<{ timestamp: string; price: number }>,
+  latestPrice: number | null,
+  days: number,
+): number | null {
+  if (latestPrice === null || points.length === 0) return null;
+  const latestTime = new Date(points[points.length - 1].timestamp).getTime();
+  if (!Number.isFinite(latestTime)) return null;
+
+  const reference = findPointAtOrBefore(points, latestTime - days * 24 * 60 * 60 * 1000);
+  if (!reference) return null;
+  return Math.round((latestPrice - reference.price) * 1000) / 10;
+}
+
+async function fetchFuelPriceHistory(): Promise<FuelPriceHistorySnapshot> {
+  const { apiUrl, apiKey } = await resolveCarbuApiConfig();
+
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setFullYear(startDate.getFullYear() - 1);
+
+  const dateStart = formatDateInput(startDate);
+  const dateEnd = formatDateInput(endDate);
+
+  const seriesResults = await Promise.allSettled(CARBU_FUEL_SERIES.map(async (fuel): Promise<FuelPriceSeries> => {
+    const payload = await fetchProxyJson<{
+      data?: Record<string, string>;
+    }>(buildCarbuApiUrl(apiUrl, apiKey, fuel.fuelId, dateStart, dateEnd));
+
+    const points = Object.entries(payload.data ?? {})
+      .map(([unixSeconds, price]) => {
+        const timestamp = toIsoFromUnixSeconds(unixSeconds);
+        const numericPrice = Number.parseFloat(price);
+        if (!timestamp || !Number.isFinite(numericPrice)) return null;
+        return { timestamp, price: numericPrice };
+      })
+      .filter((point): point is { timestamp: string; price: number } => point !== null)
+      .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+
+    const latestPrice = points.at(-1)?.price ?? null;
+
+    return {
+      fuelType: fuel.fuelType,
+      label: fuel.label,
+      color: fuel.color,
+      latestPrice,
+      delta7dCents: computeDeltaCents(points, latestPrice, 7),
+      delta30dCents: computeDeltaCents(points, latestPrice, 30),
+      points,
+    };
+  }));
+
+  const series = seriesResults.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [result.value];
+    console.warn(`[Oil] Fuel price series fetch failed for ${CARBU_FUEL_SERIES[index]?.fuelType ?? 'unknown'}:`, result.reason);
+    return [];
+  });
+
+  if (series.length === 0 || series.every((entry) => entry.points.length === 0)) {
+    return fetchFuelPriceHistoryFromOfficialDataset();
+  }
+
+  return {
+    provider: 'carbu',
+    generatedAt: new Date().toISOString(),
+    sourceLabel: 'Prix moyens France via CARBU.COM (API utilisée par la page prixmoyens)',
+    rangeStart: dateStart,
+    rangeEnd: dateEnd,
+    series,
+  };
+}
+
+type OfficialFuelHistoryRow = {
+  avg_price?: number | null;
+  ['year(gazole_maj)']?: number | null;
+  ['month(gazole_maj)']?: number | null;
+  ['day(gazole_maj)']?: number | null;
+  ['year(sp95_maj)']?: number | null;
+  ['month(sp95_maj)']?: number | null;
+  ['day(sp95_maj)']?: number | null;
+  ['year(sp98_maj)']?: number | null;
+  ['month(sp98_maj)']?: number | null;
+  ['day(sp98_maj)']?: number | null;
+};
+
+function toOfficialHistoryTimestamp(year: number | null | undefined, month: number | null | undefined, day: number | null | undefined): string | null {
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toISOString();
+}
+
+async function fetchOfficialFuelHistorySeries(config: typeof OFFICIAL_FUEL_SERIES[number]): Promise<FuelPriceSeries> {
+  const params = new URLSearchParams({
+    select: [
+      `year(${config.updatedField}) as y`,
+      `month(${config.updatedField}) as m`,
+      `day(${config.updatedField}) as d`,
+      `avg(${config.priceField}) as avg_price`,
+    ].join(','),
+    where: `${config.priceField} is not null and ${config.updatedField} is not null`,
+    group_by: [
+      `year(${config.updatedField})`,
+      `month(${config.updatedField})`,
+      `day(${config.updatedField})`,
+    ].join(','),
+    limit: String(OFFICIAL_FUEL_HISTORY_LIMIT),
+  });
+
+  const payload = await fetchFuelPricesProxyJson<{
+    results?: OfficialFuelHistoryRow[];
+  }>(`${OFFICIAL_FUEL_DATASET_URL}?${params.toString()}`);
+
+  const points = (payload.results ?? [])
+    .map((row) => {
+      const timestamp = toOfficialHistoryTimestamp(
+        (row as Record<string, number | null | undefined>)[`year(${config.updatedField})`],
+        (row as Record<string, number | null | undefined>)[`month(${config.updatedField})`],
+        (row as Record<string, number | null | undefined>)[`day(${config.updatedField})`],
+      );
+      const price = typeof row.avg_price === 'number' ? row.avg_price : Number.NaN;
+      if (!timestamp || !Number.isFinite(price)) return null;
+      return { timestamp, price: Math.round(price * 1000) / 1000 };
+    })
+    .filter((point): point is { timestamp: string; price: number } => point !== null)
+    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+
+  const latestPrice = points.at(-1)?.price ?? null;
+
+  return {
+    fuelType: config.fuelType,
+    label: config.label,
+    color: config.color,
+    latestPrice,
+    delta7dCents: computeDeltaCents(points, latestPrice, 7),
+    delta30dCents: computeDeltaCents(points, latestPrice, 30),
+    points,
+  };
+}
+
+async function fetchFuelPriceHistoryFromOfficialDataset(): Promise<FuelPriceHistorySnapshot> {
+  const seriesResults = await Promise.allSettled(
+    OFFICIAL_FUEL_SERIES.map((config) => fetchOfficialFuelHistorySeries(config)),
+  );
+
+  const series = seriesResults.flatMap((result, index) => {
+    if (result.status === 'fulfilled' && result.value.points.length > 0) return [result.value];
+    if (result.status === 'rejected') {
+      console.warn(`[Oil] Official fuel history fetch failed for ${OFFICIAL_FUEL_SERIES[index]?.fuelType ?? 'unknown'}:`, result.reason);
+    }
+    return [];
+  });
+
+  if (series.length === 0) {
+    throw new Error('No official fuel price history series available');
+  }
+
+  const timestamps = series.flatMap((entry) => entry.points.map((point) => point.timestamp)).sort();
+
+  return {
+    provider: 'data-economie',
+    generatedAt: new Date().toISOString(),
+    sourceLabel: 'API prix des carburants en France – flux instantané v2 (agrégation journalière nationale)',
+    rangeStart: timestamps[0]?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    rangeEnd: timestamps.at(-1)?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    series,
+  };
 }
 
 function parseFrNumber(raw: string | null | undefined): number {
@@ -188,6 +497,225 @@ function parseDelimitedRecords(text: string, delimiter = ';'): Array<Record<stri
     });
     return row;
   });
+}
+
+function parseJodiObsValue(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'x' || trimmed.toLowerCase() === 'na') return null;
+  const value = Number.parseFloat(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+const JODI_OIL_PRODUCTS = {
+  GASOLINE: 'Gasoline',
+  GASDIES: 'Diesel',
+  JETKERO: 'Jet fuel',
+  LPG: 'LPG',
+} as const;
+
+const JODI_GAS_FLOW_MAP = {
+  IMPLNG: 'lngImportsTj',
+  IMPPIP: 'pipeImportsTj',
+  TOTIMPSB: 'totalImportsTj',
+  TOTDEMO: 'totalDemandTj',
+} as const;
+
+function extractFranceJodiOil(records: Array<Record<string, string>>): JodiOilSnapshot | null {
+  const rows = records.filter((row) =>
+    row.REF_AREA === 'FR' &&
+    row.UNIT_MEASURE === 'KBD',
+  );
+  if (rows.length === 0) return null;
+
+  const rowsByMonth = new Map<string, Array<Record<string, string>>>();
+  for (const row of rows) {
+    const month = row.TIME_PERIOD;
+    if (!month) continue;
+    if (!rowsByMonth.has(month)) rowsByMonth.set(month, []);
+    rowsByMonth.get(month)!.push(row);
+  }
+
+  const months = [...rowsByMonth.keys()].sort((left, right) => right.localeCompare(left));
+  const selectedMonth = months.find((month) => {
+    const monthRows = rowsByMonth.get(month) ?? [];
+    const validRows = monthRows.filter((row) => row.ASSESSMENT_CODE === '1' || row.ASSESSMENT_CODE === '2');
+    const hasSecondaryData = validRows.some((row) => row.ENERGY_PRODUCT in JODI_OIL_PRODUCTS);
+    return hasSecondaryData;
+  });
+
+  if (!selectedMonth) return null;
+  const monthRows = rowsByMonth.get(selectedMonth) ?? [];
+
+  const pickValue = (energyProduct: string, flow: string, capDemand = false): number | null => {
+    const row = monthRows.find((entry) =>
+      entry.ENERGY_PRODUCT === energyProduct &&
+      entry.FLOW_BREAKDOWN === flow &&
+      (entry.ASSESSMENT_CODE === '1' || entry.ASSESSMENT_CODE === '2'),
+    );
+    const value = parseJodiObsValue(row?.OBS_VALUE);
+    if (value == null) return null;
+    if (capDemand && value > 10_000) return null;
+    return value;
+  };
+
+  return {
+    dataMonth: selectedMonth,
+    gasoline: {
+      demandKbd: pickValue('GASOLINE', 'TOTDEMO', true),
+      importsKbd: pickValue('GASOLINE', 'TOTIMPSB'),
+    },
+    diesel: {
+      demandKbd: pickValue('GASDIES', 'TOTDEMO', true),
+      importsKbd: pickValue('GASDIES', 'TOTIMPSB'),
+    },
+    jet: {
+      demandKbd: pickValue('JETKERO', 'TOTDEMO', true),
+      importsKbd: pickValue('JETKERO', 'TOTIMPSB'),
+    },
+    lpg: {
+      demandKbd: pickValue('LPG', 'TOTDEMO', true),
+      importsKbd: pickValue('LPG', 'TOTIMPSB'),
+    },
+    crudeImportsKbd: pickValue('CRUDEOIL', 'TOTIMPSB') ?? pickValue('TOTCRUDE', 'TOTIMPSB'),
+  };
+}
+
+async function fetchJodiOilSnapshot(): Promise<JodiOilSnapshot> {
+  const currentYear = new Date().getUTCFullYear();
+  const candidateYears = [currentYear - 1, currentYear - 2];
+  const urls = candidateYears.flatMap((year) => [
+    `${JODI_OIL_BASE_URL}/primary/${year}.csv`,
+    `${JODI_OIL_BASE_URL}/secondary/${year}.csv`,
+  ]);
+
+  const responses = await Promise.allSettled(urls.map((url) => fetchProxyText(url)));
+  const records = responses.flatMap((result) => (
+    result.status === 'fulfilled' ? parseDelimitedRecords(result.value, ',') : []
+  ));
+
+  if (records.length === 0) {
+    throw new Error('No JODI Oil CSV rows available');
+  }
+
+  const snapshot = extractFranceJodiOil(records);
+  if (!snapshot) {
+    throw new Error('No France JODI Oil snapshot parsed');
+  }
+
+  return snapshot;
+}
+
+function findZipEntry(buffer: ArrayBuffer, filename: string): {
+  dataOffset: number;
+  compressedSize: number;
+  compression: number;
+} | null {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const LOCAL_HEADER_SIG = 0x04034b50;
+  let offset = 0;
+
+  while (offset < buffer.byteLength - 30) {
+    const sig = view.getUint32(offset, true);
+    if (sig !== LOCAL_HEADER_SIG) {
+      offset += 1;
+      continue;
+    }
+
+    const flags = view.getUint16(offset + 6, true);
+    const compression = view.getUint16(offset + 8, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const filenameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const entryName = new TextDecoder().decode(bytes.slice(offset + 30, offset + 30 + filenameLength));
+    const dataOffset = offset + 30 + filenameLength + extraLength;
+
+    if (entryName === filename || entryName.endsWith(`/${filename}`)) {
+      if ((flags & 0x08) !== 0 && compressedSize === 0) {
+        throw new Error('JODI Gas ZIP entry uses data descriptor without compressed size');
+      }
+      return { dataOffset, compressedSize, compression };
+    }
+
+    if ((flags & 0x08) !== 0 && compressedSize === 0) {
+      offset += 1;
+      continue;
+    }
+
+    offset = dataOffset + compressedSize;
+  }
+
+  return null;
+}
+
+async function extractZipEntryText(zipBuffer: ArrayBuffer, filename: string): Promise<string> {
+  const entry = findZipEntry(zipBuffer, filename);
+  if (!entry) {
+    throw new Error(`ZIP entry not found: ${filename}`);
+  }
+
+  const bytes = new Uint8Array(zipBuffer, entry.dataOffset, entry.compressedSize);
+  if (entry.compression === 0) {
+    return new TextDecoder().decode(bytes);
+  }
+  if (entry.compression !== 8) {
+    throw new Error(`Unsupported ZIP compression: ${entry.compression}`);
+  }
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('DecompressionStream is unavailable for JODI Gas ZIP parsing');
+  }
+
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Response(stream).text();
+}
+
+function extractFranceJodiGas(csvText: string): JodiGasSnapshot | null {
+  const rows = parseDelimitedRecords(csvText, ',').filter((row) =>
+    row.REF_AREA === 'FR' &&
+    row.UNIT_MEASURE === 'TJ' &&
+    row.FLOW_BREAKDOWN in JODI_GAS_FLOW_MAP &&
+    (row.ASSESSMENT_CODE === '1' || row.ASSESSMENT_CODE === '2'),
+  );
+
+  if (rows.length === 0) return null;
+
+  const periods = [...new Set(rows.map((row) => row.TIME_PERIOD).filter(Boolean))].sort().reverse();
+  const selectedMonth = periods[0];
+  if (!selectedMonth) return null;
+
+  const monthRows = rows.filter((row) => row.TIME_PERIOD === selectedMonth);
+  const values: Partial<Record<(typeof JODI_GAS_FLOW_MAP)[keyof typeof JODI_GAS_FLOW_MAP], number | null>> = {};
+
+  for (const row of monthRows) {
+    const field = JODI_GAS_FLOW_MAP[row.FLOW_BREAKDOWN as keyof typeof JODI_GAS_FLOW_MAP];
+    values[field] = parseJodiObsValue(row.OBS_VALUE);
+  }
+
+  const totalImportsTj = values.totalImportsTj ?? null;
+  const lngImportsTj = values.lngImportsTj ?? null;
+  const lngSharePct = totalImportsTj && totalImportsTj > 0 && lngImportsTj != null
+    ? (lngImportsTj / totalImportsTj) * 100
+    : null;
+
+  return {
+    dataMonth: selectedMonth,
+    totalDemandTj: values.totalDemandTj ?? null,
+    lngImportsTj,
+    pipeImportsTj: values.pipeImportsTj ?? null,
+    totalImportsTj,
+    lngSharePct,
+  };
+}
+
+async function fetchJodiGasSnapshot(): Promise<JodiGasSnapshot> {
+  const zipBuffer = await fetchProxyArrayBuffer(JODI_GAS_ZIP_URL);
+  const csvText = await extractZipEntryText(zipBuffer, JODI_GAS_ZIP_ENTRY);
+  const snapshot = extractFranceJodiGas(csvText);
+  if (!snapshot) {
+    throw new Error('No France JODI Gas snapshot parsed');
+  }
+  return snapshot;
 }
 
 function parseHtmlDocument(html: string): Document {
@@ -582,22 +1110,58 @@ function buildFlowsSnapshot(annual: AnnualOilStats, latestDelivery: OilMonthlyDe
   };
 }
 
+function buildHarmonizedSnapshot(
+  jodiOil: JodiOilSnapshot | null,
+  jodiGas: JodiGasSnapshot | null,
+  latestDelivery: OilMonthlyDelivery | null,
+): OilHarmonizedSnapshot | null {
+  if (!jodiOil && !jodiGas && !latestDelivery) return null;
+
+  return {
+    available: true,
+    provisional: true,
+    methodologyLabel: 'Vue harmonisée JODI/UFIP',
+    sourceLabel: 'JODI Oil + JODI Gas + UFIP mensuel',
+    caveat: 'Méthodologie mixte: séries internationales JODI et communiqué mensuel UFIP. Lecture utile pour la fraîcheur 2025–2026, mais non strictement homogène avec le backbone FR SDES/CPDP.',
+    oilDataMonth: jodiOil?.dataMonth ?? null,
+    gasDataMonth: jodiGas?.dataMonth ?? null,
+    latestUfipPeriodLabel: latestDelivery?.periodLabel ?? null,
+    oilProducts: [
+      { product: 'Gasoline', demandKbd: jodiOil?.gasoline.demandKbd ?? null, importsKbd: jodiOil?.gasoline.importsKbd ?? null },
+      { product: 'Diesel', demandKbd: jodiOil?.diesel.demandKbd ?? null, importsKbd: jodiOil?.diesel.importsKbd ?? null },
+      { product: 'Jet fuel', demandKbd: jodiOil?.jet.demandKbd ?? null, importsKbd: jodiOil?.jet.importsKbd ?? null },
+      { product: 'LPG', demandKbd: jodiOil?.lpg.demandKbd ?? null, importsKbd: jodiOil?.lpg.importsKbd ?? null },
+    ],
+    crudeImportsKbd: jodiOil?.crudeImportsKbd ?? null,
+    gasTotalDemandTj: jodiGas?.totalDemandTj ?? null,
+    gasLngImportsTj: jodiGas?.lngImportsTj ?? null,
+    gasPipeImportsTj: jodiGas?.pipeImportsTj ?? null,
+    gasLngSharePct: jodiGas?.lngSharePct ?? null,
+  };
+}
+
 function buildFreshnessInfo(
   annual: AnnualOilStats,
   latestDelivery: OilMonthlyDelivery | null,
+  harmonized: OilHarmonizedSnapshot | null,
 ): OilDashboard['meta']['freshness'] {
   const deliveryAsOf = latestDelivery?.periodLabel ?? 'dernier mensuel disponible';
+  const harmonizedAsOf = [
+    harmonized?.oilDataMonth,
+    harmonized?.gasDataMonth,
+    harmonized?.latestUfipPeriodLabel,
+  ].filter(Boolean).join(' · ');
 
   return {
     dashboard: {
       level: 'HYBRID',
-      label: 'HYBRID',
+      label: 'FR STRUCTURAL',
       detail: OIL_FRESHNESS_TEXT.dashboard,
       asOf: String(annual.year),
     } satisfies OilFreshnessInfo,
     deliveries: {
       level: 'MONTHLY',
-      label: 'MONTHLY',
+      label: 'UFIP MONTHLY',
       detail: OIL_FRESHNESS_TEXT.deliveries,
       asOf: deliveryAsOf,
     } satisfies OilFreshnessInfo,
@@ -605,6 +1169,18 @@ function buildFreshnessInfo(
       level: 'STRUCTURAL',
       label: 'STRUCTURAL',
       detail: OIL_FRESHNESS_TEXT.infrastructure,
+    } satisfies OilFreshnessInfo,
+    harmonized: {
+      level: 'PROVISIONAL',
+      label: 'PROVISIONAL',
+      detail: OIL_FRESHNESS_TEXT.harmonized,
+      asOf: harmonizedAsOf || undefined,
+    } satisfies OilFreshnessInfo,
+    fuelPrices: {
+      level: 'DAILY',
+      label: 'PRIX / RUPTURES',
+      detail: OIL_FRESHNESS_TEXT.fuelPrices,
+      asOf: new Date().toISOString().slice(0, 10),
     } satisfies OilFreshnessInfo,
   };
 }
@@ -623,12 +1199,18 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     deliveriesResult,
     monthlyRowsResult,
     localConsumptionResult,
+    jodiOilResult,
+    jodiGasResult,
+    fuelPriceHistoryResult,
   ] = await Promise.all([
     settleSource(fetchAnnualOilStatsFromSdes),
     settleSource(fetchOilOriginsFromInsee),
     settleSource(fetchMonthlyDeliveriesFromUfip),
     settleSource(fetchMonthlyOilConsumptionRows),
     settleSource(fetchLocalOilConsumption),
+    settleSource(fetchJodiOilSnapshot),
+    settleSource(fetchJodiGasSnapshot),
+    settleSource(fetchFuelPriceHistory),
   ]);
 
   if (!annualResult.data) {
@@ -646,7 +1228,12 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
   const stocks = buildStocksSnapshot(annualResult.data, monthlyRowsResult.data);
   const flows = buildFlowsSnapshot(annualResult.data, deliveriesResult.data?.[0] ?? null);
   const { score, status } = computeVigilanceScore(stocks.nationalStocksDays, flows.trend);
-  const freshness = buildFreshnessInfo(annualResult.data, deliveriesResult.data?.[0] ?? null);
+  const harmonized = buildHarmonizedSnapshot(
+    jodiOilResult.data,
+    jodiGasResult.data,
+    deliveriesResult.data?.[0] ?? null,
+  );
+  const freshness = buildFreshnessInfo(annualResult.data, deliveriesResult.data?.[0] ?? null, harmonized);
 
   const partialData = [
     annualResult.status,
@@ -654,6 +1241,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     deliveriesResult.status,
     monthlyRowsResult.status,
     localConsumptionResult.status,
+    fuelPriceHistoryResult.status,
   ].some((sourceStatus) => sourceStatus !== 'ok');
 
   const dashboard: OilDashboard = {
@@ -668,6 +1256,8 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     flows,
     origins: originsResult.data ?? [],
     deliveries: deliveriesResult.data ?? [],
+    harmonized,
+    fuelPriceHistory: fuelPriceHistoryResult.data,
     localConsumption: localConsumptionResult.data,
     refineries: OIL_REFINERIES.map((refinery) => ({ ...refinery })),
     depots: OIL_DEPOTS.map((depot) => ({ ...depot })),
@@ -677,6 +1267,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
       cpdp: deliveriesResult.status,
       monthlyConsumption: monthlyRowsResult.status,
       localConsumption: localConsumptionResult.status,
+      fuelPrices: fuelPriceHistoryResult.status,
       pipelines: 'ok',
     },
   };

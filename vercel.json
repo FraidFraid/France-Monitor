@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "api/outages/citizen.js": { "maxDuration": 60 },
+    "api/outages/telecom.js": { "maxDuration": 30 },
+    "api/finance/*.js":       { "maxDuration": 30 },
+    "api/transport/*.js":     { "maxDuration": 30 }
+  },
   "rewrites": [
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
     { "source": "/api/rss", "destination": "/api/rss" },

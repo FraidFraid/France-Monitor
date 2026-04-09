@@ -7,9 +7,30 @@ interface BriefCacheEntry {
   expiresAt: number;
 }
 
-// In-memory cache keyed by lang
-const _cache = new Map<'fr' | 'en', BriefCacheEntry>();
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2h
+const PROMPT_VERSION = 'v10';
+const _cache = new Map<string, BriefCacheEntry>();
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+
+function hashCacheSeed(seed: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildClientCacheKey(ctx: FranceBriefContext, lang: 'fr' | 'en'): string {
+  return `${PROMPT_VERSION}:${lang}:${hashCacheSeed(JSON.stringify({
+    score: ctx.score,
+    axes: ctx.axes,
+    isnrComponents: ctx.isnrComponents,
+    cyberScore: ctx.cyberScore,
+    signals: ctx.signals,
+    topHeadlines: ctx.topHeadlines,
+    energySummary: ctx.energySummary,
+  }))}`;
+}
 
 export interface FranceBriefResult {
   brief: string | null;
@@ -20,13 +41,15 @@ export async function fetchFranceIntelBrief(
   ctx: FranceBriefContext,
   lang: 'fr' | 'en' = 'fr',
 ): Promise<FranceBriefResult> {
+  const cacheKey = buildClientCacheKey(ctx, lang);
   // Check client-side cache
-  const cached = _cache.get(lang);
+  const cached = _cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return { brief: cached.brief, freshness: 'cached' };
   }
 
-  const isnrScore      = ctx.score;
+  const countryScore   = ctx.score;
+  const axes = ctx.axes;
   const isnrComponents = ctx.isnrComponents;
   const cyberScore     = ctx.cyberScore;
   const meteoAlertCount = ctx.signals.meteoAlerts;
@@ -39,6 +62,10 @@ export async function fetchFranceIntelBrief(
     windShare:     ctx.energySummary.shares.wind,
     solarShare:    ctx.energySummary.shares.solar,
     totalMw:       ctx.energySummary.totalMw,
+    oilStocksDays: ctx.energySummary.oilStocksDays,
+    oilVigilanceStatus: ctx.energySummary.oilVigilanceStatus,
+    fuelTensionLevel: ctx.energySummary.fuelTensionLevel,
+    fuelTensionAnomalyShare: ctx.energySummary.fuelTensionAnomalyShare,
   } : null;
 
   try {
@@ -46,7 +73,8 @@ export async function fetchFranceIntelBrief(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        isnrScore,
+        countryScore,
+        axes,
         isnrComponents,
         cyberScore,
         meteoAlertCount,
@@ -83,7 +111,7 @@ export async function fetchFranceIntelBrief(
 
     // Only cache successful (non-null) briefs — a null result should not block for 2h
     if (result.brief !== null) {
-      _cache.set(lang, { brief: result.brief, freshness: result.freshness, expiresAt: Date.now() + CACHE_TTL_MS });
+      _cache.set(cacheKey, { brief: result.brief, freshness: result.freshness, expiresAt: Date.now() + CACHE_TTL_MS });
     }
     return result;
   } catch {
@@ -94,7 +122,9 @@ export async function fetchFranceIntelBrief(
 /** Clear client-side brief cache (e.g. on lang toggle to force refetch). */
 export function clearFranceBriefCache(lang?: 'fr' | 'en'): void {
   if (lang) {
-    _cache.delete(lang);
+    for (const key of _cache.keys()) {
+      if (key.includes(`:${lang}:`)) _cache.delete(key);
+    }
   } else {
     _cache.clear();
   }

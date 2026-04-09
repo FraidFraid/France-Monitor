@@ -41,6 +41,7 @@ const ALLOWED_DOMAINS = [
   'francebleu.fr',
   'atlantico.fr',
   'valeursactuelles.com',
+  'guadeloupe.fr',
   // PQR régionale
   'ouest-france.fr',
   'letelegramme.fr',

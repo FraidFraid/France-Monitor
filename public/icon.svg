@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1 {
+        opacity: .8;
+        stroke: #26ff70;
+        stroke-width: 16px;
+      }
+
+      .cls-1, .cls-2, .cls-3, .cls-4, .cls-5, .cls-6, .cls-7, .cls-8 {
+        isolation: isolate;
+      }
+
+      .cls-1, .cls-2, .cls-9, .cls-4, .cls-5, .cls-6, .cls-10, .cls-8, .cls-11 {
+        fill: none;
+      }
+
+      .cls-1, .cls-9, .cls-4 {
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .cls-2 {
+        opacity: .4;
+        stroke: #00d8ff;
+        stroke-width: 28px;
+      }
+
+      .cls-2, .cls-5, .cls-6, .cls-10, .cls-8, .cls-11 {
+        stroke-linecap: square;
+        stroke-miterlimit: 8;
+      }
+
+      .cls-12 {
+        fill: url(#radial-gradient);
+      }
+
+      .cls-3 {
+        fill: #0f5;
+        opacity: .6;
+      }
+
+      .cls-9 {
+        stroke: #c2ffdb;
+      }
+
+      .cls-9, .cls-8 {
+        stroke-width: 8px;
+      }
+
+      .cls-13 {
+        fill: #d9ffea;
+      }
+
+      .cls-4 {
+        stroke: #0f5;
+        stroke-width: 32px;
+      }
+
+      .cls-4, .cls-8 {
+        opacity: .5;
+      }
+
+      .cls-5 {
+        opacity: .7;
+        stroke: #5ce6ff;
+        stroke-width: 12px;
+      }
+
+      .cls-6 {
+        opacity: .2;
+        stroke: #0ac;
+        stroke-width: 20px;
+      }
+
+      .cls-7 {
+        fill: #38ff7b;
+        opacity: .9;
+      }
+
+      .cls-10 {
+        stroke: #87d7e6;
+        stroke-width: 4px;
+      }
+
+      .cls-8 {
+        stroke: #2dbfd9;
+      }
+
+      .cls-11 {
+        stroke: #dffaff;
+        stroke-width: 6px;
+      }
+    </style>
+    <radialGradient id="radial-gradient" cx="1.5" cy="1024.79" fx="1.5" fy="1024.79" r=".7" gradientTransform="translate(-1020.16 1049892.29) scale(1024 -1024)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#141a2e"/>
+      <stop offset=".7" stop-color="#0a0d18"/>
+      <stop offset="1" stop-color="#05070a"/>
+    </radialGradient>
+  </defs>
+  <rect class="cls-12" width="1024" height="1024"/>
+  <g id="hexagons">
+    <polygon class="cls-2" points="512 72 893 292 893 732 512 952 131 732 131 292 512 72"/>
+    <polygon class="cls-5" points="512 72 893 292 893 732 512 952 131 732 131 292 512 72"/>
+    <polygon class="cls-11" points="512 72 893 292 893 732 512 952 131 732 131 292 512 72"/>
+    <polygon class="cls-6" points="512 122 849.8 317 849.8 707 512 902 174.2 707 174.2 317 512 122"/>
+    <polygon class="cls-8" points="512 122 849.8 317 849.8 707 512 902 174.2 707 174.2 317 512 122"/>
+    <polygon class="cls-10" points="512 122 849.8 317 849.8 707 512 902 174.2 707 174.2 317 512 122"/>
+  </g>
+  <g id="heartbeat">
+    <path class="cls-4" d="M232,560h120l40-80,50,120,70-310,40,440,70-260,40,90h120"/>
+    <path class="cls-1" d="M232,560h120l40-80,50,120,70-310,40,440,70-260,40,90h120"/>
+    <path class="cls-9" d="M232,560h120l40-80,50,120,70-310,40,440,70-260,40,90h120"/>
+    <circle class="cls-3" cx="782" cy="560" r="24"/>
+    <circle class="cls-7" cx="782" cy="560" r="15"/>
+    <circle class="cls-13" cx="782" cy="560" r="9"/>
+  </g>
+</svg>

@@ -21,11 +21,15 @@ const SYMBOL_NAMES: Record<string, string> = {
     'DG.PA': 'Vinci',        // Infrastructures / Autoroutes
     'SAN.PA': 'Sanofi',      // Santé / Épidémies
     'ORA.PA': 'Orange',      // Télécoms / Cyber
-    'GLE.PA': 'Soc. Générale' // Banques / Stabilité financière
+    'GLE.PA': 'Soc. Générale', // Banques / Stabilité financière
+    'EURUSD=X': 'EUR / USD',
+    'EURGBP=X': 'EUR / GBP',
+    'EURCHF=X': 'EUR / CHF',
+    'EURJPY=X': 'EUR / JPY'
 };
 
 // Fonction utilitaire pour générer une fausse courbe (random walk) qui se termine par `currentPrice` et a varié de `changePercent`
-const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services'> = {
+const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services' | 'devises'> = {
     'CAC.INDX': 'indices',
     'DAX.INDX': 'indices',
     'STOXX50.INDX': 'indices',
@@ -37,7 +41,11 @@ const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services'> = {
     'DG.PA': 'services',
     'SAN.PA': 'services',
     'ORA.PA': 'services',
-    'GLE.PA': 'services'
+    'GLE.PA': 'services',
+    'EURUSD=X': 'devises',
+    'EURGBP=X': 'devises',
+    'EURCHF=X': 'devises',
+    'EURJPY=X': 'devises'
 };
 
 function createSeededRandom(seedText: string): () => number {
@@ -130,6 +138,7 @@ export async function fetchMarketData(): Promise<MarketData[]> {
 
         for (const item of data.data) {
             const sym = item.symbol;
+            if (!SYMBOL_CATEGORIES[sym]) continue;
             if (seen.has(sym)) continue;
             seen.add(sym);
 

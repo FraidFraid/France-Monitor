@@ -1,73 +1,99 @@
 import type { Plugin } from 'vite';
 
+/**
+ * finance-proxy.ts — Plugin Vite dev pour /api/finance/market.
+ *
+ * Source : TradingView Scanner API
+ * Remplace Yahoo Finance qui bloque avec 429.
+ */
+
+const INTERNAL_TO_TV: Record<string, string> = {
+    'CAC.INDX':     'EURONEXT:PX1',
+    'DAX.INDX':     'XETR:DAX',
+    'STOXX50.INDX': 'TVC:SX5E',
+    'SPX.INDX':     'SP:SPX',
+    'TTE.PA':       'EURONEXT:TTE',
+    'AIR.PA':       'EURONEXT:AIR',
+    'HO.PA':        'EURONEXT:HO',
+    'SAF.PA':       'EURONEXT:SAF',
+    'DG.PA':        'EURONEXT:DG',
+    'SAN.PA':       'EURONEXT:SAN',
+    'ORA.PA':       'EURONEXT:ORA',
+    'GLE.PA':       'EURONEXT:GLE',
+    'EURUSD=X':     'FX:EURUSD',
+    'EURGBP=X':     'FX:EURGBP',
+    'EURCHF=X':     'FX:EURCHF',
+    'EURJPY=X':     'FX:EURJPY',
+};
+
+const TV_TO_INTERNAL = Object.fromEntries(
+    Object.entries(INTERNAL_TO_TV).map(([k, v]) => [v, k])
+);
+
 export function financeProxyPlugin(): Plugin {
     return {
         name: 'finance-proxy',
         configureServer(server) {
             server.middlewares.use('/api/finance/market', async (_req, res) => {
-                console.log('[Finance] Fetching from Boursorama (Scraping)');
-                const BOURSO_MAP = {
-                    'CAC.INDX': 'bourse/indices/cours/1rPCAC/',
-                    'DAX.INDX': 'bourse/indices/cours/1rPDAX/',
-                    'STOXX50.INDX': 'bourse/indices/cours/1rPSTOXX50E/',
-                    'SPX.INDX': 'bourse/indices/cours/1xSPX/',
-                    'TTE.PA': 'cours/1rPTTE/',
-                    'AIR.PA': 'cours/1rPAIR/',
-                    'HO.PA': 'cours/1rPHO/',
-                    'SAF.PA': 'cours/1rPSAF/',
-                    'DG.PA': 'cours/1rPDG/',
-                    'SAN.PA': 'cours/1rPSAN/',
-                    'ORA.PA': 'cours/1rPORA/',
-                    'GLE.PA': 'cours/1rPGLE/'
-                };
-
-                const fetchBourso = async (symbol: string, path: string) => {
-                    try {
-                        const res = await fetch(`https://www.boursorama.com/${path}`, {
-                            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Safari/537.36' },
-                            signal: AbortSignal.timeout(6000)
-                        });
-                        const html = await res.text();
-                        const priceMatch = html.match(/class="c-instrument c-instrument--last"[^>]*>([^<]+)<\/span>/);
-                        const varMatch = html.match(/class="c-instrument c-instrument--variation"[^>]*>([^<]+)<\/span>/);
-                        
-                        if (priceMatch && priceMatch[1]) {
-                            const cleanPriceStr = priceMatch[1].replace(/[^\d,\.-]/g, '').replace(',', '.');
-                            const price = parseFloat(cleanPriceStr);
-                            let pct = 0;
-                            if (varMatch && varMatch[1]) {
-                                const cleanPctStr = varMatch[1].replace(/[^\d,\.-]/g, '').replace(',', '.');
-                                pct = parseFloat(cleanPctStr);
-                            }
-                            return {
-                                symbol,
-                                last: price,
-                                open: price / (1 + (pct / 100)),
-                                date: new Date().toISOString()
-                            };
-                        }
-                    } catch (e: any) {
-                        console.error(`[Finance] Boursorama fetch failed for ${symbol}:`, e.message);
-                    }
-                    return null;
-                };
+                console.log('[Finance] Fetching from TradingView Scanner');
 
                 try {
-                    const results = await Promise.all(
-                        Object.entries(BOURSO_MAP).map(([sym, path]) => fetchBourso(sym, path))
-                    );
+                    const tickers = Object.values(INTERNAL_TO_TV);
+                    const payload = {
+                        symbols: { tickers },
+                        columns: ["name", "close", "change"]
+                    };
 
-                    const json = { data: results.filter(Boolean) };
+                    const resp = await fetch('https://scanner.tradingview.com/global/scan', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'User-Agent': 'FranceMonitor/1.0',
+                        },
+                        body: JSON.stringify(payload),
+                        signal: AbortSignal.timeout(10_000),
+                    });
 
+                    if (!resp.ok) {
+                        console.error(`[Finance] TradingView returned ${resp.status}`);
+                        res.statusCode = resp.status;
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify({ error: `TV upstream ${resp.status}`, data: [] }));
+                        return;
+                    }
+
+                    const raw = await resp.json() as {
+                        data?: Array<{
+                            s: string;
+                            d: any[];
+                        }>;
+                    };
+
+                    const quotes = raw?.data || [];
+                    const data = quotes
+                        .map((item) => {
+                            const internalSym = TV_TO_INTERNAL[item.s];
+                            if (!internalSym) return null;
+                            
+                            const close = item.d[1] || 0;
+                            const changePercent = item.d[2] || 0; 
+                            const open = close / (1 + (changePercent / 100));
+
+                            return { symbol: internalSym, last: close, open: open, date: new Date().toISOString() };
+                        })
+                        .filter(Boolean);
+
+                    console.log(`[Finance] ${data.length} symboles récupérés (TV)`);
                     res.statusCode = 200;
                     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                    res.setHeader('Cache-Control', 'public, max-age=900'); // Cache 15 minutes
-                    res.end(JSON.stringify(json));
-                } catch (err: any) {
-                    console.error('[finance-proxy]', err);
-                    res.statusCode = 500;
+                    res.setHeader('Cache-Control', 'public, max-age=300');
+                    res.end(JSON.stringify({ data }));
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    console.error('[finance-proxy] Fetch error:', msg);
+                    res.statusCode = 502;
                     res.setHeader('Content-Type', 'application/json');
-                    res.end(JSON.stringify({ error: 'Fetch failed' }));
+                    res.end(JSON.stringify({ error: 'Fetch failed', data: [] }));
                 }
             });
         },

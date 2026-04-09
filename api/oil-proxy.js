@@ -11,6 +11,10 @@ const ALLOWED_DOMAINS = [
   'insee.fr',
   'www.energiesetmobilites.fr',
   'energiesetmobilites.fr',
+  'carbu.com',
+  'api.carbu.com',
+  'www.jodidata.org',
+  'jodidata.org',
 ];
 
 function isAllowedDomain(url) {
@@ -59,11 +63,13 @@ export default async function handler(request) {
       });
     }
 
-    const body = await resp.text();
+    const contentType = resp.headers.get('content-type') ?? 'text/plain; charset=utf-8';
+    const isBinary = /application\/(x-zip-compressed|zip|octet-stream)/i.test(contentType);
+    const body = isBinary ? await resp.arrayBuffer() : await resp.text();
     return new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': resp.headers.get('content-type') ?? 'text/plain; charset=utf-8',
+        'Content-Type': contentType,
         'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=300',
         'Access-Control-Allow-Origin': '*',
       },

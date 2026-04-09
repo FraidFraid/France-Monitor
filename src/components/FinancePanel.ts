@@ -25,7 +25,7 @@ export class FinancePanel extends Panel {
         this.contentContainer.className = 'finance-content';
         // Style inline global appliqué sur le conteneur pour la vue
         this.contentContainer.style.display = 'grid';
-        this.contentContainer.style.gridTemplateColumns = 'repeat(auto-fit, minmax(130px, 1fr))';
+        this.contentContainer.style.gridTemplateColumns = 'repeat(4, 1fr)';
         this.contentContainer.style.gap = '8px';
         this.contentContainer.style.padding = '8px';
     }
@@ -72,53 +72,104 @@ export class FinancePanel extends Panel {
         this.contentContainer.innerHTML = '';
         let hasCrash = false;
 
-        const top10 = [...data]
-            .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
-            .slice(0, 10);
+        // On groupe par catégorie pour bien séparer Indices/Actions et Devises
+        const categories = [
+            { id: 'indices', title: 'Indices' },
+            { id: 'devises', title: 'Devises internationales' },
+            { id: 'defense', title: 'Défense & Énergie' },
+            { id: 'services', title: 'Infrastructures & Services' }
+        ];
 
-        for (const item of top10) {
-            const card = document.createElement('div');
-            card.style.background = 'rgba(255, 255, 255, 0.05)';
-            card.style.borderRadius = '6px';
-            card.style.padding = '8px';
-            card.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-            card.style.display = 'flex';
-            card.style.flexDirection = 'column';
+        let totalDisplayed = 0;
 
-            let color = 'var(--text-muted)';
-            let arrow = '';
-            if (item.trend === 'up') {
-                color = '#4ade80'; // Tailwind green-400
-                arrow = '↑';
-            } else if (item.trend === 'down') {
-                color = '#f87171'; // Tailwind red-400
-                arrow = '↓';
-                if (item.changePercent <= -3) {
-                    hasCrash = true;
-                }
+        for (const cat of categories) {
+            const items = data.filter(d => d.category === cat.id);
+            if (items.length === 0) continue;
+
+            const sectionHeader = document.createElement('div');
+            // Full width header
+            sectionHeader.style.gridColumn = '1 / -1';
+            sectionHeader.style.fontSize = '11px';
+            sectionHeader.style.fontWeight = 'bold';
+            sectionHeader.style.color = 'var(--text-muted)';
+            sectionHeader.style.marginTop = '12px';
+            sectionHeader.style.marginBottom = '4px';
+            sectionHeader.style.borderBottom = '1px solid rgba(255, 255, 255, 0.1)';
+            sectionHeader.style.paddingBottom = '4px';
+            sectionHeader.textContent = cat.title;
+
+            if (totalDisplayed > 0) {
+                this.contentContainer.appendChild(sectionHeader);
             } else {
-                color = '#9ca3af'; // Flat
-                arrow = '→';
+                sectionHeader.style.marginTop = '0';
+                this.contentContainer.appendChild(sectionHeader);
             }
 
-            const valStr = (item.changePercent > 0 ? '+' : '') + item.changePercent.toFixed(2) + '%';
+            // Pour l'affichage dans la section :
+            // Devises et Indices : afficher tout
+            // Actions : afficher les plus gros mouvements
+            const displayItems = cat.id === 'devises' || cat.id === 'indices' 
+                ? items 
+                : items.sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 6);
 
-            const sparklineSvg = buildMarketSparkline(item.history, item.trend);
+            for (const item of displayItems) {
+                totalDisplayed++;
+                const card = document.createElement('div');
+                card.style.background = 'rgba(255, 255, 255, 0.05)';
+                card.style.borderRadius = '6px';
+                card.style.padding = '8px';
+                card.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
 
-            card.innerHTML = `
-        <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
-          ${item.name}
-        </div>
-        <div style="font-size: 14px; font-weight: bold; margin-top: 4px; display: flex; align-items: baseline; gap: 6px;">
-          ${item.price.toFixed(2)}€
-          <span style="color: ${color}; font-size: 11px; font-weight: normal;">${arrow} ${valStr}</span>
-        </div>
-        ${sparklineSvg}
-      `;
+                let color = 'var(--text-muted)';
+                let arrow = '';
+                if (item.trend === 'up') {
+                    color = '#4ade80'; // Tailwind green-400
+                    arrow = '↑';
+                } else if (item.trend === 'down') {
+                    color = '#f87171'; // Tailwind red-400
+                    arrow = '↓';
+                    if (item.changePercent <= -3) {
+                        hasCrash = true;
+                    }
+                } else {
+                    color = '#9ca3af'; // Flat
+                    arrow = '→';
+                }
 
-            this.contentContainer.appendChild(card);
+                const valStr = (item.changePercent > 0 ? '+' : '') + item.changePercent.toFixed(2) + '%';
+                const sparklineSvg = buildMarketSparkline(item.history, item.trend);
+
+                const isDevise = item.category === 'devises';
+                // Remove € for SP500, FTSE, devises. Or keep simple formatting
+                let suffix = '';
+                if (!isDevise && !item.name.includes('S&P')) {
+                    suffix = '€'; // We assume European indices/stocks are in EUR, roughly. Or just indices pts
+                }
+                if (item.name === 'DAX 40' || item.name === 'CAC 40' || item.name === 'Euro Stoxx 50') {
+                    suffix = ' pts';
+                } else if (item.name.includes('S&P')) {
+                    suffix = ' pts';
+                }
+                
+                const priceFmt = isDevise ? item.price.toFixed(4) : Math.round(item.price * 100) / 100 + suffix;
+
+                card.innerHTML = `
+            <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">
+            ${item.name}
+            </div>
+            <div style="font-size: 14px; font-weight: bold; margin-top: 4px; display: flex; align-items: baseline; gap: 6px;">
+            ${priceFmt}
+            <span style="color: ${color}; font-size: 11px; font-weight: normal;">${arrow} ${valStr}</span>
+            </div>
+            ${sparklineSvg}
+        `;
+
+                this.contentContainer.appendChild(card);
+            }
         }
 
-        this.setBadge(top10.length, hasCrash);
+        this.setBadge(totalDisplayed, hasCrash);
     }
 }

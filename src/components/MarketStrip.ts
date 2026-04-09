@@ -7,7 +7,8 @@ function escapeHtml(value: string): string {
   return el.innerHTML;
 }
 
-function formatPrice(value: number): string {
+function formatPrice(value: number, category?: string): string {
+  if (category === 'devises') return value.toFixed(4);
   if (Math.abs(value) >= 1000) return value.toFixed(0);
   if (Math.abs(value) >= 100) return value.toFixed(2);
   return value.toFixed(2);
@@ -18,10 +19,11 @@ function formatPct(value: number): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-type MarketCategory = 'indices' | 'defense' | 'services';
+type MarketCategory = 'indices' | 'defense' | 'services' | 'devises';
 
 const MARKET_SECTIONS: { key: MarketCategory; label: string }[] = [
   { key: 'indices',  label: 'Indices' },
+  { key: 'devises',  label: 'Devises internationales' },
   { key: 'defense',  label: 'Défense & Énergie' },
   { key: 'services', label: 'Services' },
 ];
@@ -122,7 +124,7 @@ export class MarketStrip {
             <span class="market-strip__name">${escapeHtml(item.name)}</span>
             <span class="market-strip__symbol">${escapeHtml(item.symbol)}</span>
           </div>
-          <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
+          <div class="market-strip__price">${escapeHtml(formatPrice(item.price, item.category))}</div>
           <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
           ${buildMarketSparkline(item.history, item.trend)}
         `;

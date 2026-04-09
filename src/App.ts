@@ -67,7 +67,7 @@ import { fetchEcowatt } from './services/ecowatt.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
 import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
-import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
+import { DEPT_CENTROIDS, fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { buildHydraulicBackboneAssets } from './services/hydraulic-backbone.ts';
@@ -237,6 +237,7 @@ const DEFAULT_LAYERS: MapLayers = {
   hospitals: false,
   environmentGroup: false,
   environmental: false,
+  weatherRadar: false,
   fires: false,
   criticalEnergyInfra: false,
   traffic: false,
@@ -404,6 +405,28 @@ const ENVIRONMENTAL_LEGEND: LegendCategory = {
   notes: [
     'Météo-France = vigilance par département.',
     'Vigicrues = vigilance par tronçon de cours d’eau.',
+  ],
+};
+
+const WEATHER_RADAR_LEGEND: LegendCategory = {
+  id: 'weatherRadar',
+  title: 'Radar météo',
+  items: [
+    { id: 'weather-radar-light', label: 'Précipitations faibles', color: '#4FC3F7', shape: 'square' },
+    { id: 'weather-radar-moderate', label: 'Précipitations modérées', color: '#8BC34A', shape: 'square' },
+    { id: 'weather-radar-heavy', label: 'Précipitations fortes', color: '#FF9800', shape: 'square' },
+    { id: 'weather-radar-intense', label: 'Cellules intenses', color: '#E53935', shape: 'square' },
+  ],
+  source: {
+    label: 'RainViewer radar mosaic',
+  },
+  refresh: {
+    label: 'Environ 10 min'
+  },
+  notes: [
+    'Overlay raster pluie/précipitations.',
+    'Masqué aux gros zooms pour éviter une lecture trompeuse.',
+    'À lire avec la vigilance Météo-France pour qualifier le risque régional.',
   ],
 };
 
@@ -1089,6 +1112,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'MÉTÉO / CRUES',
     legend: ENVIRONMENTAL_LEGEND,
   },
+  {
+    id: 'weatherRadar',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'RADAR MÉTÉO',
+    legend: WEATHER_RADAR_LEGEND,
+  },
   // ─── Feux de forêt ───
   {
     id: 'fires',
@@ -1108,6 +1139,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: '🏛️ Élus & Représentants',
   },
 ];
+
+const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 export class App {
 
@@ -1134,6 +1167,8 @@ export class App {
   private isnrPanel: ISNRPanel | null = null;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
+  private franceIntelBriefRequestId = 0;
+  private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private currentCyberData: CyberState | null = null;
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
@@ -1419,7 +1454,7 @@ export class App {
       if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
       merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir || (merged.trafficRail ?? false);
       merged.energySystems = hasActiveEnergySystems(merged);
-      merged.environmentGroup = merged.environmental || merged.fires || (merged.dayNight ?? false);
+      merged.environmentGroup = merged.environmental || merged.weatherRadar || merged.fires || (merged.dayNight ?? false);
       merged.sovereignty = merged.military || merged.subseaCables || merged.cyber;
       merged.outages = merged.outagesElec || merged.outagesTelecom || merged.outagesInternet || merged.outagesCloud || merged.outages;
       this.activeLayers = merged;
@@ -1540,6 +1575,18 @@ export class App {
     this.toastNotification.setOnAisAnomalyClick((anomaly: AisAnomaly) => {
       this.mapContainer?.flyTo(anomaly.position[0], anomaly.position[1], 10);
       this.maritimePanel?.openAlertsTab();
+    });
+    this.toastNotification.setOnWeatherAlertClick((alert) => {
+      if (!this.activeLayers.environmental) {
+        this.onLayerToggle('environmental', true);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      }
+      const centroid = DEPT_CENTROIDS[alert.departmentCode];
+      if (centroid) {
+        this.mapContainer?.flyTo(centroid[0], centroid[1], 7);
+      }
+      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+      this.layoutEnvironmentFloatingPanels();
     });
 
     // Apply URL view if present
@@ -1882,7 +1929,13 @@ export class App {
       timeRange: initialUrlState.timeRange === '1h' || initialUrlState.timeRange === '6h' || initialUrlState.timeRange === '24h' || initialUrlState.timeRange === '48h' || initialUrlState.timeRange === '7d' || initialUrlState.timeRange === 'all'
         ? initialUrlState.timeRange
         : '24h',
-      searchQuery: initialUrlState.searchQuery ?? '',
+      searchQuery: '',
+    });
+    writeUrlState({
+      timeRange: initialUrlState.timeRange === '1h' || initialUrlState.timeRange === '6h' || initialUrlState.timeRange === '24h' || initialUrlState.timeRange === '48h' || initialUrlState.timeRange === '7d' || initialUrlState.timeRange === 'all'
+        ? initialUrlState.timeRange
+        : '24h',
+      searchQuery: undefined,
     });
 
     // Floating panels (mounted to App root container)
@@ -2084,13 +2137,9 @@ export class App {
     // Handle lang toggle from panel header button
     document.addEventListener('france-intel-lang-toggle', (e: Event) => {
       const { lang } = (e as CustomEvent<{ lang: 'fr' | 'en' }>).detail;
-      // Reset brief cache so the new-lang brief shows loading spinner
-      this.franceIntelPanel?.resetBrief();
       const snapshot = this.buildFranceSnapshot(lang);
       this.franceIntelPanel?.show(snapshot);
-      void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
-        this.franceIntelPanel?.updateBrief(brief, freshness);
-      });
+      this.requestFranceIntelBrief(snapshot, lang);
     });
 
     this.transportPanel = new TransportPanel(floatContainer);
@@ -2166,7 +2215,9 @@ export class App {
 
     // France Intelligence Panel
     this.franceIntelPanel = new FranceIntelPanel(floatContainer);
-    this.franceIntelPanel.setOnClose(() => { /* nothing to clean up */ });
+    this.franceIntelPanel.setOnClose(() => {
+      this.clearFranceIntelBriefRefresh();
+    });
     this.franceIntelPanel.mount();
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
@@ -2493,9 +2544,10 @@ export class App {
     if (ENERGY_SYSTEM_LAYER_KEYS.includes(key as typeof ENERGY_SYSTEM_LAYER_KEYS[number])) {
       this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
     }
-    if (key === 'environmental' || key === 'fires' || key === 'dayNight') {
+    if (key === 'environmental' || key === 'weatherRadar' || key === 'fires' || key === 'dayNight') {
       this.activeLayers.environmentGroup =
         this.activeLayers.environmental ||
+        this.activeLayers.weatherRadar ||
         this.activeLayers.fires ||
         (this.activeLayers.dayNight ?? false);
     }
@@ -2898,6 +2950,7 @@ export class App {
     this.mapLegend.addCategory(INFRASTRUCTURE_LEGEND);
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
     this.mapLegend.addCategory(ENVIRONMENTAL_LEGEND);
+    this.mapLegend.addCategory(WEATHER_RADAR_LEGEND);
     this.mapLegend.addCategory(MILITARY_LEGEND);
     this.mapLegend.addCategory(SUBSEA_CABLES_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
@@ -2962,6 +3015,7 @@ export class App {
         const flights = snapshot.flights;
         this.currentMilitaryFlightsCount = flights.length;
         this.mapContainer?.updateMilitaryFlights(flights);
+        this.refreshFranceIntelPanel();
 
         const sourceBreakdown = Object.entries(snapshot.sourceCounts)
           .filter(([, count]) => count > 0)
@@ -3011,6 +3065,7 @@ export class App {
         const jammingSignals = detectGpsJammingSignals(flights);
         this.currentJammingSignals = jammingSignals;
         this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
+        this.refreshFranceIntelPanel();
         if (jammingSignals.length > 0) {
           this.toastNotification?.showJammingSignals(jammingSignals);
         }
@@ -3109,6 +3164,7 @@ export class App {
         // Tout le trafic AIS mondial (civils, étrangers, etc.)
         const allTraffic = getAllLiveTraffic();
         this.currentMaritimeTrafficFranceCount = getAllLiveTraffic(10 * 60 * 1000, true).length;
+        this.refreshFranceIntelPanel();
 
         if (allTraffic.length > 0) {
           this._aisZeroWarnLogged = false; // Reset so we can warn again if connection drops
@@ -3318,6 +3374,7 @@ export class App {
       this.newsPanel?.updateItems(this.newsItems);
       this.searchModal?.updateNewsItems(this.newsItems);
       this.statusPanel?.updateSource('RSS PQR', { status: 'ok', lastUpdate: new Date() });
+      this.refreshFranceIntelPanel();
 
       // Detect new critical items and show toast notifications
       const newCriticalItems = rawItems.filter((item) => {
@@ -3373,6 +3430,7 @@ export class App {
         this.mapContainer?.updateNews(this.newsItems);
         this.newsPanel?.updateItems(this.newsItems);
         this.searchModal?.updateNewsItems(this.newsItems);
+        this.refreshFranceIntelPanel();
       }
     } catch (err) {
       console.error('[RSS] AI classification failed:', err);
@@ -3406,6 +3464,7 @@ export class App {
           this.mapContainer?.updateNews(this.newsItems);
           this.newsPanel?.updateItems(this.newsItems);
           this.searchModal?.updateNewsItems(this.newsItems);
+          this.refreshFranceIntelPanel();
         }
 
         // Small delay between batches
@@ -3443,6 +3502,7 @@ export class App {
           this.mapContainer?.updateNews(this.newsItems);
           this.newsPanel?.updateItems(this.newsItems);
           this.searchModal?.updateNewsItems(this.newsItems);
+          this.refreshFranceIntelPanel();
         }
 
         if (i + BATCH_SIZE < toSummarize.length) {
@@ -3509,6 +3569,7 @@ export class App {
     if (alerts.length > 0) {
       this.currentMeteoAlerts = alerts;
       await this.mapContainer?.updateWeather(alerts);
+      this.toastNotification?.showWeatherAlerts(alerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else if (timeline && timeline.slots.some((slot) => slot.alerts.length > 0)) {
       const fallbackAlerts = timeline.slots[timeline.currentSlotIndex]?.alerts
@@ -3516,6 +3577,7 @@ export class App {
         ?? [];
       this.currentMeteoAlerts = fallbackAlerts;
       await this.mapContainer?.updateWeather(fallbackAlerts);
+      this.toastNotification?.showWeatherAlerts(fallbackAlerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else {
       this.currentMeteoAlerts = [];
@@ -4000,13 +4062,14 @@ export class App {
 
   private async loadOil(): Promise<void> {
     console.log('[App/loadOil] Entry');
+    const oilStatusDetail = 'OilNetwork : vue France structurale SDES/CPDP + vue harmonisée JODI/UFIP + signal prix/ruptures carburants';
 
     if (!isOilPanelEnabled()) {
       console.log('[App/loadOil] Feature DISABLED, skipping...');
       this.statusPanel?.updateSource('Pétrole', {
         status: 'stale',
         lastUpdate: null,
-        detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+        detail: oilStatusDetail,
       });
       this.currentOilData = null;
       this.currentFuelTensionData = null;
@@ -4018,7 +4081,7 @@ export class App {
     this.statusPanel?.updateSource('Pétrole', {
       status: 'loading',
       lastUpdate: null,
-      detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+      detail: oilStatusDetail,
     });
 
     try {
@@ -4057,25 +4120,26 @@ export class App {
         this.statusPanel?.updateSource('Pétrole', {
           status: 'ok',
           lastUpdate: new Date(),
-          detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+          detail: oilStatusDetail,
         });
       } else if (someOk) {
         this.statusPanel?.updateSource('Pétrole', {
           status: 'stale',
           lastUpdate: new Date(),
-          detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+          detail: oilStatusDetail,
         });
       } else {
       this.statusPanel?.updateSource('Pétrole', {
         status: 'error',
         lastUpdate: new Date(),
-        detail: 'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
+        detail: oilStatusDetail,
       });
       }
 
       // Update panel if visible
       this.oilPanel?.update(resolvedOilData, resolvedFuelTension);
       this.refreshEnergyDataLegends();
+      this.refreshFranceIntelPanel();
 
       console.log(`[App/loadOil] Complete: Status=${resolvedOilData.meta.status}, StocksDays=${resolvedOilData.stocks.nationalStocksDays}`);
     } catch (err) {
@@ -4755,6 +4819,8 @@ export class App {
       eolienLive:           this.currentEolienLive,
       timeline:             this.buildFranceTimeline(lang),
       briefLang:            lang,
+      oilDashboard:         this.currentOilData ?? null,
+      fuelTensionDashboard: this.currentFuelTensionData ?? null,
     };
     return buildFranceEngine(raw, options);
   }
@@ -4765,9 +4831,46 @@ export class App {
     this.franceIntelPanel.show(this.buildFranceSnapshot(lang));
   }
 
+  private requestFranceIntelBrief(
+    snapshot: FranceCountrySnapshot,
+    lang: 'fr' | 'en',
+    options?: { showLoading?: boolean },
+  ): void {
+    const requestId = ++this.franceIntelBriefRequestId;
+    if (options?.showLoading !== false) {
+      this.franceIntelPanel?.showBriefLoading();
+    }
+
+    void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
+      if (requestId !== this.franceIntelBriefRequestId) return;
+      if (!this.franceIntelPanel?.isVisible()) return;
+      if (this.franceIntelPanel.getCurrentLang() !== lang) return;
+      this.franceIntelPanel.updateBrief(brief, freshness);
+    });
+  }
+
+  private clearFranceIntelBriefRefresh(): void {
+    if (this.franceIntelBriefRefreshTimer) {
+      clearInterval(this.franceIntelBriefRefreshTimer);
+      this.franceIntelBriefRefreshTimer = null;
+    }
+  }
+
+  private scheduleFranceIntelBriefRefresh(): void {
+    this.clearFranceIntelBriefRefresh();
+    this.franceIntelBriefRefreshTimer = setInterval(() => {
+      if (!this.franceIntelPanel?.isVisible()) return;
+      const lang = this.franceIntelPanel.getCurrentLang();
+      const snapshot = this.buildFranceSnapshot(lang);
+      this.franceIntelPanel.show(snapshot);
+      this.requestFranceIntelBrief(snapshot, lang, { showLoading: false });
+    }, FRANCE_INTEL_BRIEF_REFRESH_MS);
+  }
+
   private openFranceIntelPanel(): void {
     if (!this.currentCyberData) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
+    if (!this.currentOilData) void this.loadOil();
 
     this.environmentPanel?.hide();
     this.energyPanel?.hide();
@@ -4781,9 +4884,8 @@ export class App {
     const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
     const snapshot = this.buildFranceSnapshot(lang);
     this.franceIntelPanel?.show(snapshot);
-    void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
-      this.franceIntelPanel?.updateBrief(brief, freshness);
-    });
+    this.requestFranceIntelBrief(snapshot, lang);
+    this.scheduleFranceIntelBriefRefresh();
   }
 
   private updateISNR(): void {
@@ -4810,7 +4912,7 @@ export class App {
     this.routeGovernmentContext(filter.categories);
     writeUrlState({
       timeRange: filter.timeRange,
-      searchQuery: filter.searchQuery || undefined,
+      searchQuery: undefined,
     });
   }
 

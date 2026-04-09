@@ -10,6 +10,10 @@ const ALLOWED_DOMAINS = [
   'insee.fr',
   'www.energiesetmobilites.fr',
   'energiesetmobilites.fr',
+  'carbu.com',
+  'api.carbu.com',
+  'www.jodidata.org',
+  'jodidata.org',
 ];
 
 function isAllowedDomain(url: string): boolean {
@@ -62,9 +66,13 @@ export function oilProxyPlugin(): Plugin {
             return;
           }
 
-          const body = await upstream.text();
+          const contentType = upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8';
+          const isBinary = /application\/(x-zip-compressed|zip|octet-stream)/i.test(contentType);
+          const body = isBinary
+            ? Buffer.from(await upstream.arrayBuffer())
+            : await upstream.text();
           res.statusCode = 200;
-          res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'text/plain; charset=utf-8');
+          res.setHeader('Content-Type', contentType);
           res.setHeader('Cache-Control', 'public, max-age=900');
           res.end(body);
         } catch (error) {

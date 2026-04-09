@@ -71,6 +71,7 @@ export interface MapLayers {
   hospitals: boolean;
   environmentGroup: boolean;
   environmental: boolean;
+  weatherRadar: boolean;
   fires: boolean;
   criticalEnergyInfra: boolean;
   traffic: boolean;
@@ -781,7 +782,7 @@ export interface MarketData {
   trend: 'up' | 'down' | 'flat';
   lastUpdated: Date;
   history?: number[];
-  category?: 'indices' | 'defense' | 'services';
+  category?: 'indices' | 'defense' | 'services' | 'devises';
 }
 
 // ═══ Finance (Matières premières) ═══
@@ -1237,10 +1238,10 @@ export interface FranceCountrySignals {
 }
 
 export interface FranceCountryAxes {
-  troubles: number;    // 0–100 — civil unrest / perturbation
-  conflict: number;    // 0–100 — military posture / confrontation
+  continuity: number;  // 0–100 — continuity / operations 
+  defense: number;     // 0–100 — military posture / defense
   security: number;    // 0–100 — security severity
-  information: number; // 0–100 — multi-source signal pressure
+  signal: number;      // 0–100 — multi-source signal pressure
 }
 
 export interface FranceBriefContext {
@@ -1287,6 +1288,13 @@ export interface FranceIntelEnergySummary {
   nuclearStress: number | null;
   windGw: number | null;
   windLoadFactor: number | null;
+  // Souveraineté pétrolière (CPDP/SDES via oil.ts)
+  oilStocksDays: number | null;
+  oilVigilanceStatus: OilVigilanceStatus | null;
+  // Tension carburants (fuel-tension.ts)
+  fuelTensionLevel: FuelTensionLevel | null;
+  fuelTensionAnomalyShare: number | null;
+  fuelPriceHistory: FuelPriceHistorySnapshot | null;
 }
 
 export interface FranceIntelTimelineLane {
@@ -1678,7 +1686,7 @@ export interface OilProductStock {
   trend: 'up' | 'down' | 'stable';
 }
 
-export type OilFreshnessLevel = 'HYBRID' | 'MONTHLY' | 'STRUCTURAL';
+export type OilFreshnessLevel = 'HYBRID' | 'MONTHLY' | 'STRUCTURAL' | 'DAILY' | 'PROVISIONAL';
 
 export interface OilFreshnessInfo {
   level: OilFreshnessLevel;
@@ -1731,6 +1739,32 @@ export interface OilMonthlyDelivery {
   gasolineYoYPct: number | null;
 }
 
+export type FuelPriceSeriesKey = 'gazole' | 'sp95' | 'sp98' | 'gpl';
+
+export interface FuelPricePoint {
+  timestamp: string;
+  price: number;
+}
+
+export interface FuelPriceSeries {
+  fuelType: FuelPriceSeriesKey;
+  label: string;
+  color: string;
+  latestPrice: number | null;
+  delta7dCents: number | null;
+  delta30dCents: number | null;
+  points: FuelPricePoint[];
+}
+
+export interface FuelPriceHistorySnapshot {
+  provider: 'carbu' | 'data-economie';
+  generatedAt: string;
+  sourceLabel: string;
+  rangeStart: string;
+  rangeEnd: string;
+  series: FuelPriceSeries[];
+}
+
 export interface OilLocalConsumptionRegion {
   regionCode: string;
   regionName: string;
@@ -1744,6 +1778,29 @@ export interface OilLocalConsumptionSnapshot {
   sourceLabel?: string;
 }
 
+export interface OilHarmonizedProductRow {
+  product: string;
+  demandKbd: number | null;
+  importsKbd: number | null;
+}
+
+export interface OilHarmonizedSnapshot {
+  available: boolean;
+  provisional: boolean;
+  methodologyLabel: string;
+  sourceLabel: string;
+  caveat: string;
+  oilDataMonth: string | null;
+  gasDataMonth: string | null;
+  latestUfipPeriodLabel: string | null;
+  oilProducts: OilHarmonizedProductRow[];
+  crudeImportsKbd: number | null;
+  gasTotalDemandTj: number | null;
+  gasLngImportsTj: number | null;
+  gasPipeImportsTj: number | null;
+  gasLngSharePct: number | null;
+}
+
 export interface OilDashboard {
   meta: {
     lastUpdate: string;
@@ -1754,12 +1811,16 @@ export interface OilDashboard {
       dashboard: OilFreshnessInfo;
       deliveries: OilFreshnessInfo;
       infrastructure: OilFreshnessInfo;
+      harmonized: OilFreshnessInfo;
+      fuelPrices: OilFreshnessInfo;
     };
   };
   stocks: OilStocksSnapshot;
   flows: OilFlowsSnapshot;
   origins: OilOriginShare[];
   deliveries: OilMonthlyDelivery[];
+  harmonized: OilHarmonizedSnapshot | null;
+  fuelPriceHistory: FuelPriceHistorySnapshot | null;
   localConsumption: OilLocalConsumptionSnapshot | null;
   refineries: OilRefinery[];
   depots: OilDepot[];
@@ -1769,6 +1830,7 @@ export interface OilDashboard {
     cpdp: 'ok' | 'stale' | 'error';
     monthlyConsumption: 'ok' | 'stale' | 'error';
     localConsumption: 'ok' | 'stale' | 'error';
+    fuelPrices: 'ok' | 'stale' | 'error';
     pipelines: 'ok' | 'stale' | 'error';
   };
 }

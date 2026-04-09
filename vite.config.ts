@@ -83,7 +83,9 @@ export default defineConfig(({ mode }) => {
       firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
-      franceIntelProxyPlugin(),
+      franceIntelProxyPlugin({
+        groqApiKey: env.GROQ_API_KEY ?? '',
+      }),
       ministersProxyPlugin(),
       copernicusProxyPlugin(),
       sentinelNdwiProxyPlugin(),
@@ -94,7 +96,7 @@ export default defineConfig(({ mode }) => {
       aisRelayPlugin(aisApiKey),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['vite.svg', 'data/*.geojson'],
+        includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'data/*.geojson'],
         manifest: {
           name: 'France Monitor',
           short_name: 'FranceMonitor',
@@ -104,9 +106,20 @@ export default defineConfig(({ mode }) => {
           display: 'standalone',
           icons: [
             {
-              src: 'vite.svg',
+              src: 'icon.svg',
               sizes: 'any',
               type: 'image/svg+xml',
+            },
+            {
+              src: 'icon-192.png',
+              sizes: '192x192',
+              type: 'image/png',
+            },
+            {
+              src: 'icon-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable',
             },
           ],
         },
@@ -168,6 +181,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3001,
+      strictPort: true,
     },
   };
 });

@@ -4,7 +4,7 @@
  * critiques arrivent ou quand des surges militaires sont détectés.
  */
 
-import type { NewsItem, GpsJammingSignal, AisAnomaly } from '../types/index.ts';
+import type { NewsItem, GpsJammingSignal, AisAnomaly, MeteoAlert } from '../types/index.ts';
 import type { MilitarySurge } from '../config/military.ts';
 import type { DefenseAlert } from '../services/cable-threats.ts';
 
@@ -20,6 +20,7 @@ export type MilitarySurgeClickHandler = (surge: MilitarySurge) => void;
 export type DefenseAlertClickHandler = (alert: DefenseAlert) => void;
 export type GpsJammingSignalClickHandler = (signal: GpsJammingSignal) => void;
 export type AisAnomalyClickHandler = (anomaly: AisAnomaly) => void;
+export type WeatherAlertClickHandler = (alert: MeteoAlert) => void;
 
 export class ToastNotification {
   private container: HTMLElement;
@@ -28,16 +29,19 @@ export class ToastNotification {
   private onDefenseAlertClick: DefenseAlertClickHandler | null = null;
   private onJammingSignalClick: GpsJammingSignalClickHandler | null = null;
   private onAisAnomalyClick: AisAnomalyClickHandler | null = null;
+  private onWeatherAlertClick: WeatherAlertClickHandler | null = null;
   private seenAnomalyIds: Set<string> = new Set();
   private activeToasts: Map<string, HTMLElement> = new Map();
   private seenSurges: Set<string> = new Set(); // Dedup surges by type+flightCount
   private seenDefenseAlerts: Set<string> = new Set(); // Dedup defense alerts by ship+cable
   private seenJammingSignals: Set<string> = new Set(); // Dedup jamming signals by position+severity
+  private seenWeatherAlerts: Set<string> = new Set(); // Dedup meteo alerts by dept+level
   private maxToasts = 3; // Maximum simultaneous toasts
   private autoHideMs = 8000; // Auto-dismiss after 8 seconds
   private surgeCooldownMs = 60_000; // 1 minute cooldown for same surge type
   private defenseAlertCooldownMs = 5 * 60_000; // 5 min cooldown for same cable threat
   private jammingCooldownMs = 3 * 60_000; // 3 min cooldown for same jamming zone
+  private weatherAlertCooldownMs = 30 * 60_000; // 30 min cooldown per dept alert
 
   constructor() {
     this.container = document.createElement('div');
@@ -68,6 +72,11 @@ export class ToastNotification {
   /** Register a click handler for AIS anomaly toasts */
   setOnAisAnomalyClick(handler: AisAnomalyClickHandler): void {
     this.onAisAnomalyClick = handler;
+  }
+
+  /** Register a click handler for weather alert toasts */
+  setOnWeatherAlertClick(handler: WeatherAlertClickHandler): void {
+    this.onWeatherAlertClick = handler;
   }
 
   /**
@@ -441,6 +450,44 @@ export class ToastNotification {
     this.seenAnomalyIds.add(anomaly.id);
   }
 
+  showWeatherAlerts(alerts: MeteoAlert[]): void {
+    const significant = [...alerts]
+      .filter((alert) => alert.level === 'red' || alert.level === 'orange')
+      .sort((a, b) => {
+        const score = (level: MeteoAlert['level']) => level === 'red' ? 2 : level === 'orange' ? 1 : 0;
+        return score(b.level) - score(a.level);
+      });
+
+    for (const alert of significant.slice(0, 2)) {
+      this.showWeatherAlert(alert);
+    }
+  }
+
+  showWeatherAlert(alert: MeteoAlert): void {
+    const key = `weather-${alert.departmentCode}-${alert.level}-${alert.risks.join('-')}`;
+    if (this.seenWeatherAlerts.has(key)) return;
+    if (this.activeToasts.has(key)) return;
+
+    if (this.activeToasts.size >= this.maxToasts) {
+      const firstKey = this.activeToasts.keys().next().value;
+      if (firstKey) this.dismissToast(firstKey, false);
+    }
+
+    const toast = this.createWeatherAlertToastElement(alert, key);
+    this.container.appendChild(toast);
+    this.activeToasts.set(key, toast);
+    this.seenWeatherAlerts.add(key);
+
+    const dismissTime = alert.level === 'red' ? 12_000 : this.autoHideMs;
+    setTimeout(() => {
+      this.dismissToast(key, true);
+    }, dismissTime);
+
+    setTimeout(() => {
+      this.seenWeatherAlerts.delete(key);
+    }, this.weatherAlertCooldownMs);
+  }
+
   /** Create DOM element for an AIS anomaly toast. */
   private createAisAnomalyToastElement(anomaly: AisAnomaly): HTMLElement {
     const icon = anomaly.type === 'radio_silence' ? '🔇' : '⚓';
@@ -491,6 +538,54 @@ export class ToastNotification {
 
     toast.addEventListener('click', navigate);
 
+    return toast;
+  }
+
+  private createWeatherAlertToastElement(alert: MeteoAlert, key: string): HTMLElement {
+    const levelClass = alert.level === 'red' ? 'critical' : 'high';
+    const icon = alert.level === 'red' ? '🌩️' : '🌧️';
+    const riskLabels: Record<string, string> = {
+      wind: 'vent',
+      'rain-flood': 'pluie-inondation',
+      thunderstorm: 'orages',
+      flood: 'crues',
+      'snow-ice': 'neige-verglas',
+      heat: 'canicule',
+      cold: 'grand froid',
+      avalanche: 'avalanches',
+      'wave-surge': 'vagues-submersion',
+    };
+    const risks = alert.risks.slice(0, 2).map((risk) => riskLabels[risk] ?? risk).join(', ');
+    const title = `Vigilance ${alert.level} · ${alert.department}${risks ? ` · ${risks}` : ''}`;
+    const truncated = title.length > 80 ? `${title.slice(0, 77)}...` : title;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${levelClass} toast--weather`;
+    toast.innerHTML = `
+      <span class="toast-icon">${icon}</span>
+      <span class="toast-title">${escapeHtml(truncated)}</span>
+      <button class="toast-action">Voir</button>
+      <button class="toast-close" title="Fermer">&times;</button>
+    `;
+
+    const navigate = () => {
+      this.dismissToast(key, true);
+      this.onWeatherAlertClick?.(alert);
+    };
+
+    const actionBtn = toast.querySelector('.toast-action') as HTMLButtonElement;
+    actionBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate();
+    });
+
+    const closeBtn = toast.querySelector('.toast-close') as HTMLButtonElement;
+    closeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.dismissToast(key, true);
+    });
+
+    toast.addEventListener('click', navigate);
     return toast;
   }
 
@@ -551,6 +646,7 @@ export class ToastNotification {
     this.seenDefenseAlerts.clear();
     this.seenJammingSignals.clear();
     this.seenAnomalyIds.clear();
+    this.seenWeatherAlerts.clear();
   }
 
   /**

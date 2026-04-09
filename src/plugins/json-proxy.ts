@@ -36,8 +36,6 @@ export function jsonProxyPlugin(): Plugin {
         const url = new URL(req.url ?? '', 'http://localhost');
         const targetUrl = url.searchParams.get('url');
 
-        console.log('[json-proxy] Request for:', targetUrl);
-
         if (!targetUrl) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');
@@ -62,8 +60,6 @@ export function jsonProxyPlugin(): Plugin {
           ];
           const ua = userAgents[Math.floor(Math.random() * userAgents.length)];
 
-          console.log('[json-proxy] Fetching:', targetUrl);
-
           const resp = await fetch(targetUrl, {
             headers: {
               'User-Agent': ua,
@@ -87,7 +83,6 @@ export function jsonProxyPlugin(): Plugin {
           }
 
           const data = await resp.json();
-          console.log('[json-proxy] Received data type:', Array.isArray(data) ? 'array' : typeof data);
 
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');

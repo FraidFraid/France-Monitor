@@ -1,7 +1,7 @@
 // api/intelligence/v1/france-intel-brief.js
 // Vercel Edge Function — generates a national intelligence brief via Groq.
 // Input payload (unchanged after client-side migration):
-//   { isnrScore, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
+//   { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
 //     signalCounts, energy, lang }
 // Payload is now built from FranceBriefContext by france-intel-brief.ts (client).
 // No changes required to parsing or prompt logic.
@@ -11,7 +11,70 @@ import { redisGet, redisSet } from '../../utils/redis.js';
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const CACHE_TTL  = 900; // 15 minutes — global cache (not per-snapshot), acceptable at this TTL
+const CACHE_TTL  = 6 * 60 * 60; // 6 hours
+const BRIEF_PROMPT_VERSION = 'v11';
+
+function describeStability(score, lang) {
+  if (score >= 80) return lang === 'fr' ? 'stable' : 'stable';
+  if (score >= 65) return lang === 'fr' ? 'sous tension' : 'under pressure';
+  if (score >= 50) return lang === 'fr' ? 'dégradée' : 'degraded';
+  return lang === 'fr' ? 'critique' : 'critical';
+}
+
+function describeAxis(value, lang) {
+  if (value >= 75) return lang === 'fr' ? 'très élevée' : 'very high';
+  if (value >= 55) return lang === 'fr' ? 'élevée' : 'high';
+  if (value >= 35) return lang === 'fr' ? 'modérée' : 'moderate';
+  return lang === 'fr' ? 'faible' : 'low';
+}
+
+function describeCyber(score, lang) {
+  if (score >= 75) return lang === 'fr' ? 'forte' : 'high';
+  if (score >= 50) return lang === 'fr' ? 'soutenue' : 'elevated';
+  if (score >= 25) return lang === 'fr' ? 'modérée' : 'moderate';
+  return lang === 'fr' ? 'faible' : 'low';
+}
+
+function hashCacheSeed(seed) {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy) {
+  const seed = JSON.stringify({
+    lang,
+    countryScore,
+    axes,
+    isnrComponents,
+    cyberScore,
+    meteoAlertCount,
+    headlines,
+    signalCounts,
+    energy,
+  });
+  return `france-intel:brief:${lang}:${BRIEF_PROMPT_VERSION}:${hashCacheSeed(seed)}`;
+}
+
+function hasLowImmediateSignals(signalCounts) {
+  return (
+    signalCounts.criticalNews === 0
+    && signalCounts.highNews === 0
+    && signalCounts.weatherAlerts === 0
+    && signalCounts.floodAlerts === 0
+    && signalCounts.cyberAlerts === 0
+    && signalCounts.railDisruptions === 0
+    && signalCounts.roadIncidents === 0
+    && signalCounts.powerOutages === 0
+    && signalCounts.telecomOutages === 0
+    && signalCounts.defenseAlerts === 0
+    && signalCounts.jammingSignals === 0
+    && signalCounts.marketStress === 0
+  );
+}
 
 function sanitizeHeadlines(raw) {
   if (!Array.isArray(raw)) return [];
@@ -20,64 +83,355 @@ function sanitizeHeadlines(raw) {
     .map(h => String(h).replace(/[\r\n]+/g, ' ').slice(0, 120));
 }
 
-function buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) {
+function extractBriefText(raw, lang) {
+  const cleaned = String(raw)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0080-\u009F]/gu, ' ')
+    .replace(/```(?:json|text)?/gi, '')
+    .trim();
+
+  try {
+    const jsonMatch = cleaned.match(/\{[\s\S]*"brief"[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (typeof parsed?.brief === 'string' && parsed.brief.trim()) {
+        return parsed.brief.trim();
+      }
+    }
+  } catch {
+    // Fall through to plain-text extraction.
+  }
+
+  const firstTitle = lang === 'fr' ? 'SITUATION ACTUELLE' : 'CURRENT SITUATION';
+  const titleIndex = cleaned.indexOf(firstTitle);
+  const candidate = (titleIndex >= 0 ? cleaned.slice(titleIndex) : cleaned)
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return candidate.length > 0 ? candidate : null;
+}
+
+function hasEnergyTension(energy) {
+  if (!energy) return false;
+  return (
+    energy.ecowattSignal === 'orange'
+    || energy.ecowattSignal === 'red'
+    || energy.oilVigilanceStatus === 'tense'
+    || energy.oilVigilanceStatus === 'critical'
+    || energy.fuelTensionLevel === 'MEDIUM'
+    || energy.fuelTensionLevel === 'HIGH'
+    || energy.fuelTensionLevel === 'CRITICAL'
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 5
+  );
+}
+
+function dominantRiskLabel(axes, signalCounts, energy, lang) {
+  const candidates = [
+    { score: hasEnergyTension(energy) ? 70 : 0, fr: 'énergie et carburants', en: 'energy and fuel' },
+    { score: Math.min(100, signalCounts.railDisruptions * 4 + signalCounts.roadIncidents), fr: 'transport', en: 'transport' },
+    { score: axes.security + (signalCounts.cyberAlerts > 0 ? 10 : 0), fr: 'sécurité', en: 'security' },
+    { score: signalCounts.defenseAlerts * 8 + signalCounts.jammingSignals * 10, fr: 'défense', en: 'defense' },
+    { score: signalCounts.weatherAlerts * 8 + signalCounts.floodAlerts * 8, fr: 'météo et crues', en: 'weather and floods' },
+    { score: axes.signal + signalCounts.highNews * 2 + signalCounts.criticalNews * 4, fr: 'pression informationnelle', en: 'information pressure' },
+  ].sort((a, b) => b.score - a.score);
+  return lang === 'fr' ? candidates[0].fr : candidates[0].en;
+}
+
+function buildSituationSummary(signalCounts, energy, lang) {
+  const lines = [];
+  if (lang === 'fr') {
+    if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
+      lines.push(`${signalCounts.weatherAlerts} alertes météo sévères + ${signalCounts.floodAlerts} alertes crues actives`);
+    }
+    if (signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0) {
+      lines.push(`${signalCounts.railDisruptions} perturbations ferroviaires SNCF, ${signalCounts.roadIncidents} incidents routiers`);
+    }
+    if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
+      lines.push(`${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom`);
+    }
+    if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
+      lines.push(`${signalCounts.defenseAlerts} alertes défense (câbles sous-marins), ${signalCounts.jammingSignals} signaux brouillage GPS`);
+    }
+    if (energy && hasEnergyTension(energy)) {
+      const parts = [];
+      if (energy.ecowattSignal === 'orange' || energy.ecowattSignal === 'red') parts.push(`Ecowatt ${energy.ecowattSignal}`);
+      if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`carburants ${energy.fuelTensionLevel}`);
+      if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`pétrole ${energy.oilVigilanceStatus}`);
+      if (parts.length > 0) lines.push(`Tension énergie : ${parts.join(', ')}`);
+    }
+    if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} détections de feux actifs`);
+    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} alertes cyber CERT-FR (30j)`);
+    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} vols militaires actifs`);
+  } else {
+    if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
+      lines.push(`${signalCounts.weatherAlerts} severe weather alerts + ${signalCounts.floodAlerts} active flood alerts`);
+    }
+    if (signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0) {
+      lines.push(`${signalCounts.railDisruptions} SNCF rail disruptions, ${signalCounts.roadIncidents} road incidents`);
+    }
+    if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
+      lines.push(`${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom incidents`);
+    }
+    if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
+      lines.push(`${signalCounts.defenseAlerts} defense alerts (subsea cables), ${signalCounts.jammingSignals} GPS jamming signals`);
+    }
+    if (energy && hasEnergyTension(energy)) {
+      const parts = [];
+      if (energy.ecowattSignal === 'orange' || energy.ecowattSignal === 'red') parts.push(`Ecowatt ${energy.ecowattSignal}`);
+      if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`fuel tension ${energy.fuelTensionLevel}`);
+      if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`oil ${energy.oilVigilanceStatus}`);
+      if (parts.length > 0) lines.push(`Energy tension: ${parts.join(', ')}`);
+    }
+    if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} active fire detections`);
+    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} CERT-FR cyber alerts (30d)`);
+    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} active military flights`);
+  }
+  return lines.length > 0 ? lines.join('\n') : (lang === 'fr' ? 'Aucune pression opérationnelle significative détectée.' : 'No significant operational pressure detected.');
+}
+
+function buildDeterministicBrief(lang, countryScore, axes, signalCounts, energy) {
+  const posture = describeStability(countryScore, lang);
+  const dominantRisk = dominantRiskLabel(axes, signalCounts, energy, lang);
+  const immediateShock = signalCounts.criticalNews > 0
+    || signalCounts.weatherAlerts > 0
+    || signalCounts.floodAlerts > 0
+    || signalCounts.defenseAlerts > 0
+    || signalCounts.jammingSignals > 0;
+  const energyTension = hasEnergyTension(energy);
+  const transportActive = signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0;
+  const securityActive = axes.security >= 50 || signalCounts.cyberAlerts > 0 || signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0;
+  const weatherActive = signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0;
+
+  const pressureLines = [];
+  if (lang === 'fr') {
+    if (energyTension) {
+      const fuelDetail = energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW'
+        ? ` (tension carburants ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''})` : '';
+      pressureLines.push(`Les indicateurs énergie contribuent à la pression de continuité${fuelDetail}.`);
+    }
+    if (transportActive) {
+      pressureLines.push(`${signalCounts.railDisruptions} perturbations ferroviaires et ${signalCounts.roadIncidents} incidents routiers pèsent sur la mobilité.`);
+    }
+    if (securityActive) {
+      const details = [];
+      if (signalCounts.cyberAlerts > 0) details.push(`${signalCounts.cyberAlerts} alertes cyber`);
+      if (signalCounts.defenseAlerts > 0) details.push(`${signalCounts.defenseAlerts} alertes défense`);
+      if (signalCounts.jammingSignals > 0) details.push(`${signalCounts.jammingSignals} signaux brouillage`);
+      pressureLines.push(`Pression sécuritaire active${details.length > 0 ? ` : ${details.join(', ')}` : ''}.`);
+    }
+    if (weatherActive) {
+      pressureLines.push(`${signalCounts.weatherAlerts} alertes météo sévères et ${signalCounts.floodAlerts} alertes crues en cours.`);
+    }
+    if (pressureLines.length === 0) {
+      pressureLines.push('La pression reste diffuse, sans point de convergence dominant.');
+    }
+    return [
+      'SITUATION ACTUELLE',
+      `La France se situe dans une posture ${posture} avec une pression dominante centrée sur ${dominantRisk}.`,
+      immediateShock
+        ? 'Les signaux opérationnels indiquent une tension active et non une situation normalisée.'
+        : 'Pas de choc immédiat majeur, mais la pression de fond reste mesurable.',
+      'POINTS DE PRESSION',
+      ...pressureLines,
+      'ANALYSE',
+      `La lecture nationale doit être ${posture} : les marges de résilience sont ${countryScore >= 80 ? 'préservées' : countryScore >= 65 ? 'réduites' : 'sensiblement entamées'}.`,
+      securityActive
+        ? 'La continuité de l\'État est maintenue mais les capacités sécuritaires sont sollicitées.'
+        : 'La continuité de l\'État est maintenue, les indicateurs de fond restent à surveiller.',
+      'À SURVEILLER (6H)',
+      `Surveiller en priorité le domaine ${dominantRisk} pour détecter toute escalade opérationnelle.`,
+      transportActive
+        ? 'Observer si les perturbations transport restent localisées ou se propagent.'
+        : 'Observer la convergence éventuelle des signaux faibles vers un schéma d\'instabilité.',
+    ].join('\n');
+  }
+
+  // English
+  if (energyTension) {
+    const fuelDetail = energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW'
+      ? ` (fuel tension ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''})` : '';
+    pressureLines.push(`Energy indicators contribute to continuity pressure${fuelDetail}.`);
+  }
+  if (transportActive) {
+    pressureLines.push(`${signalCounts.railDisruptions} rail disruptions and ${signalCounts.roadIncidents} road incidents weigh on mobility.`);
+  }
+  if (securityActive) {
+    const details = [];
+    if (signalCounts.cyberAlerts > 0) details.push(`${signalCounts.cyberAlerts} cyber alerts`);
+    if (signalCounts.defenseAlerts > 0) details.push(`${signalCounts.defenseAlerts} defense alerts`);
+    if (signalCounts.jammingSignals > 0) details.push(`${signalCounts.jammingSignals} jamming signals`);
+    pressureLines.push(`Security pressure active${details.length > 0 ? `: ${details.join(', ')}` : ''}.`);
+  }
+  if (weatherActive) {
+    pressureLines.push(`${signalCounts.weatherAlerts} severe weather alerts and ${signalCounts.floodAlerts} flood alerts active.`);
+  }
+  if (pressureLines.length === 0) {
+    pressureLines.push('Pressure remains diffuse with no dominant convergence point.');
+  }
+  return [
+    'CURRENT SITUATION',
+    `France is in a ${posture} posture with the main pressure centered on ${dominantRisk}.`,
+    immediateShock
+      ? 'Operational signals indicate active stress rather than a normalized situation.'
+      : 'No major immediate shock, but background pressure remains measurable.',
+    'PRESSURE POINTS',
+    ...pressureLines,
+    'ANALYSIS',
+    `The national reading should be ${posture}: resilience margins are ${countryScore >= 80 ? 'preserved' : countryScore >= 65 ? 'reduced' : 'significantly eroded'}.`,
+    securityActive
+      ? 'State continuity is maintained but security capabilities are under solicitation.'
+      : 'State continuity is maintained, background indicators warrant continued monitoring.',
+    'NEXT 6 HOURS TO WATCH',
+    `Watch the ${dominantRisk} domain as priority for any operational escalation.`,
+    transportActive
+      ? 'Track whether transport disruptions stay localized or begin to propagate.'
+      : 'Watch for potential convergence of weak signals into a broader instability pattern.',
+  ].join('\n');
+}
+
+function isBriefCoherent(brief, lang, countryScore, axes, signalCounts, energy) {
+  if (!brief || brief.trim().length < 40) return false;
+  const text = brief.toLowerCase();
+
+  const titlesV11 = lang === 'fr'
+    ? ['situation actuelle', 'points de pression', 'analyse', 'surveiller']
+    : ['current situation', 'pressure points', 'analysis', 'to watch'];
+  const titlesV10 = lang === 'fr'
+    ? ['situation actuelle', 'points de vigilance', 'ce que cela implique', 'surveiller']
+    : ['current situation', 'pressure points', 'what this means', 'to watch'];
+  const matchCount = Math.max(
+    titlesV11.filter((t) => text.includes(t)).length,
+    titlesV10.filter((t) => text.includes(t)).length,
+  );
+  if (matchCount < 3) return false;
+
+  const calmWords = lang === 'fr'
+    ? /(période de stabilité|période de calme|situation stable|situation normalisée|sous contrôle|pas menacée|fonctionnent normalement)/i
+    : /(stable period|calm period|situation is stable|normalized situation|under control|not threatened|operating normally)/i;
+  if ((countryScore < 80 || Math.max(axes.continuity, axes.defense, axes.security, axes.signal) >= 35) && calmWords.test(brief)) {
+    return false;
+  }
+
+  if (countryScore < 50 && /(faible|low)/i.test(brief) && !/(critique|critical|dégrad|degraded|sous tension|under pressure|pression)/i.test(brief)) {
+    return false;
+  }
+
+  if (hasEnergyTension(energy) && !/(énergie|carburant|pétrol|fuel|energy|ecowatt|électri)/i.test(brief)) {
+    return false;
+  }
+
+  if ((signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0)
+    && !/(rail|ferrovia|rout|transport|sncf|train|mobilité|mobility|traffic)/i.test(brief)) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) {
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : lang === 'fr' ? '(aucune actualité significative)' : '(no significant news)';
-  const energyLine = energy
+  const stabilityLabel = describeStability(countryScore, lang);
+  const cyberLabel = describeCyber(cyberScore, lang);
+  const maxAxis = Math.max(axes.continuity, axes.defense, axes.security, axes.signal);
+  const immediateSignalsLow = hasLowImmediateSignals(signalCounts);
+  const calmAllowedText = countryScore >= 88 && maxAxis < 20 && immediateSignalsLow
+    ? (lang === 'fr' ? 'autorisé' : 'allowed')
+    : (lang === 'fr' ? 'interdit' : 'forbidden');
+
+  const situationSummary = buildSituationSummary(signalCounts, energy, lang);
+
+  const energyBlock = energy
     ? lang === 'fr'
-      ? `- Energie: signal Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}%, gaz ${energy.gasShare}%, hydro ${energy.hydroShare}%, éolien ${energy.windShare}%, solaire ${energy.solarShare}%`
-      : `- Energy: Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}%, gas ${energy.gasShare}%, hydro ${energy.hydroShare}%, wind ${energy.windShare}%, solar ${energy.solarShare}%`
+      ? `Énergie — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}% / gaz ${energy.gasShare}% / hydro ${energy.hydroShare}% / éolien ${energy.windShare}% / solaire ${energy.solarShare}%, production ${energy.totalMw ?? 'n.d.'} MW, stocks pétroliers ${energy.oilStocksDays != null ? `${energy.oilStocksDays}j` : 'n.d.'} (${energy.oilVigilanceStatus ?? 'n.d.'}), carburants ${energy.fuelTensionLevel ?? 'n.d.'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}`
+      : `Energy — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}% / gas ${energy.gasShare}% / hydro ${energy.hydroShare}% / wind ${energy.windShare}% / solar ${energy.solarShare}%, production ${energy.totalMw ?? 'n/a'} MW, oil stocks ${energy.oilStocksDays != null ? `${energy.oilStocksDays}d` : 'n/a'} (${energy.oilVigilanceStatus ?? 'n/a'}), fuel ${energy.fuelTensionLevel ?? 'n/a'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}`
     : '';
 
   if (lang === 'en') {
-    return `You are a senior intelligence analyst specializing in France's national security and stability.
+    return `[SYSTEM]
+You are a senior OSINT intelligence analyst producing a national situational brief for France. Your output must read like a classified daily brief: factual, precise, no filler. Each sentence must carry operational value.
 
-Current situation data:
-- National Instability Index (CII): ${isnrScore}/100
-- Social dimension (protests, strikes): ${isnrComponents.social}/100
-- Security dimension (incidents, interventions): ${isnrComponents.security}/100
-- Infrastructure dimension (weather, floods, outages): ${isnrComponents.infra}/100
-- Cyber dimension (CERT-FR, ransomware, CVE): ${cyberScore}/100
-- Active weather alerts: ${meteoAlertCount}
-- Operational signals: ${signalCounts.criticalNews} critical headlines, ${signalCounts.highNews} high-severity headlines, ${signalCounts.cyberAlerts} cyber alerts, ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages, ${signalCounts.militaryFlights} military flights, ${signalCounts.maritimeTrafficFrance} ships in French waters, ${signalCounts.defenseAlerts} defense alerts, ${signalCounts.jammingSignals} jamming signals, ${signalCounts.fireDetections} fire detections, ${signalCounts.marketStress} stressed market lines
-${energyLine}
+[DATA]
+Posture: ${stabilityLabel} | Axes: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher=more pressure)
+Cyber pressure: ${cyberLabel} (score ${cyberScore}/100)
+Active severe weather alerts: ${meteoAlertCount}
+${energyBlock ? energyBlock : 'Energy: no data'}
 
-Recent significant headlines:
+Operational signals:
+- Headlines: ${signalCounts.criticalNews} critical, ${signalCounts.highNews} high-severity
+- Transport: ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents
+- Infrastructure: ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom outages
+- Defense: ${signalCounts.defenseAlerts} cable alerts, ${signalCounts.jammingSignals} GPS jamming, ${signalCounts.militaryFlights} military flights
+- Maritime: ${signalCounts.maritimeTrafficFrance} ships in French waters
+- Fires: ${signalCounts.fireDetections} active detections
+- Markets: ${signalCounts.marketStress} stressed lines
+
+Situation summary:
+${situationSummary}
+
+Recent headlines (with severity and category):
 ${headlineList}
 
-Write a concise national brief in two short sections and under 140 words total:
-1. SITUATION NOW
-2. WHAT THIS MEANS FOR FRANCE
-
-Use only the provided inputs. If signals are low, say the posture is calm. Do not invent actors, motives, or foreign topics not present in the inputs. Be factual and restrained.
+[INSTRUCTIONS]
+1. Write exactly 4 sections: CURRENT SITUATION / PRESSURE POINTS / ANALYSIS / NEXT 6 HOURS TO WATCH
+2. Each section: 2-4 short factual lines. Total 10-16 lines, under 280 words.
+3. CURRENT SITUATION: synthesize the overall posture in 2-3 sentences. Name the dominant pressure domain.
+4. PRESSURE POINTS: identify concrete convergences between signals. Cite specific signal types (rail, cyber, fuel, defense) — do not stay generic.
+5. ANALYSIS: what national capabilities are under strain. Mention resilience margins honestly.
+6. NEXT 6 HOURS TO WATCH: name specific indicators to monitor. Be precise (e.g. "fuel anomaly share" not "energy situation").
+7. Calm/stability wording is ${calmAllowedText}. If forbidden, never use "stable", "calm", "normal", "under control".
+8. Never quote numeric scores, indices, or /100 values.
+9. Never invent facts, actors, locations not present in the data.
+10. If energy shows tension, explain whether it is background or operational.
+11. Prefer the strongest concrete signals. Every sentence must carry information — no generic filler.
+12. Do not prefix lines with bullets, dashes, or asterisks.
 
 Respond with valid JSON only: {"brief": "..."}`;
   }
 
-  return `Tu es un analyste senior en renseignement spécialisé dans la sécurité nationale et la stabilité française.
+  return `[SYSTEM]
+Tu es un analyste OSINT senior produisant un brief situationnel national pour la France. Chaque phrase doit porter une valeur opérationnelle. Ton de note classifiée : factuel, précis, aucun remplissage.
 
-Données situationnelles actuelles :
-- Indice d'Instabilité Composite (CII) : ${isnrScore}/100
-- Dimension sociale (protestations, grèves) : ${isnrComponents.social}/100
-- Dimension sécurité (incidents, interventions) : ${isnrComponents.security}/100
-- Dimension infrastructure (météo, crues, pannes) : ${isnrComponents.infra}/100
-- Dimension cyber (CERT-FR, ransomware, CVE) : ${cyberScore}/100
-- Alertes météo actives : ${meteoAlertCount}
-- Signaux opérationnels : ${signalCounts.criticalNews} titres critiques, ${signalCounts.highNews} titres à gravité élevée, ${signalCounts.cyberAlerts} alertes cyber, ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers, ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.maritimeTrafficFrance} navires en zone France, ${signalCounts.defenseAlerts} alertes défense, ${signalCounts.jammingSignals} signaux de brouillage, ${signalCounts.fireDetections} détections de feux, ${signalCounts.marketStress} lignes de marché sous tension
-${energyLine}
+[DONNÉES]
+Posture : ${stabilityLabel} | Axes : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
+Pression cyber : ${cyberLabel} (score ${cyberScore}/100)
+Alertes météo sévères actives : ${meteoAlertCount}
+${energyBlock ? energyBlock : 'Énergie : pas de données'}
 
-Actualités récentes significatives :
+Signaux opérationnels :
+- Titres : ${signalCounts.criticalNews} critiques, ${signalCounts.highNews} à gravité élevée
+- Transport : ${signalCounts.railDisruptions} perturbations SNCF, ${signalCounts.roadIncidents} incidents routiers
+- Infrastructure : ${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom
+- Défense : ${signalCounts.defenseAlerts} alertes câbles, ${signalCounts.jammingSignals} brouillages GPS, ${signalCounts.militaryFlights} vols militaires
+- Maritime : ${signalCounts.maritimeTrafficFrance} navires en zone FR
+- Feux : ${signalCounts.fireDetections} détections actives
+- Marchés : ${signalCounts.marketStress} lignes sous tension
+
+Résumé situationnel :
+${situationSummary}
+
+Actualités récentes (avec sévérité et catégorie) :
 ${headlineList}
 
-Rédige un brief national concis en deux sections courtes et moins de 140 mots au total :
-1. SITUATION ACTUELLE
-2. CE QUE CELA IMPLIQUE POUR LA FRANCE
-
-Utilise uniquement les données fournies. Si les signaux sont faibles, dis-le explicitement. N'invente ni acteurs, ni causes, ni sujets absents des entrées. Style factuel et sobre.
+[CONSIGNES]
+1. Rédige exactement 4 sections : SITUATION ACTUELLE / POINTS DE PRESSION / ANALYSE / À SURVEILLER (6H)
+2. Chaque section : 2-4 lignes courtes et factuelles. Total 10-16 lignes, moins de 280 mots.
+3. SITUATION ACTUELLE : synthétise la posture globale en 2-3 phrases. Nomme le domaine de pression dominant.
+4. POINTS DE PRESSION : identifie les convergences concrètes entre signaux. Cite les types de signaux précis (ferroviaire, cyber, carburants, défense) — ne reste pas générique.
+5. ANALYSE : quelles capacités nationales sont sous tension. Mentionne honnêtement les marges de résilience.
+6. À SURVEILLER (6H) : nomme des indicateurs précis à suivre. Sois spécifique (ex: "part anomalies carburants" pas "situation énergétique").
+7. Vocabulaire stable/calme : ${calmAllowedText}. Si interdit, n'écris jamais "stable", "calme", "normal", "sous contrôle".
+8. Ne cite jamais de scores numériques, d'indices ou de valeurs /100.
+9. N'invente aucun fait, acteur ou lieu absent des données.
+10. Si l'énergie montre une tension, précise s'il s'agit d'un bruit de fond ou d'un problème opérationnel.
+11. Privilégie les signaux concrets les plus forts. Chaque phrase doit porter de l'information — aucune phrase générique.
+12. N'ajoute jamais de préfixe ":" "-" "•" ou "*" devant les phrases.
 
 Réponds en JSON valide uniquement : {"brief": "..."}`;
 }
+
+
 
 const FALLBACK = { brief: null, fromCache: false };
 
@@ -101,7 +455,17 @@ export default async function handler(request) {
 
   // Validate & sanitize inputs
   const lang = body.lang === 'en' ? 'en' : 'fr';
-  const isnrScore  = typeof body.isnrScore === 'number'  ? Math.round(body.isnrScore)  : 0;
+  const countryScore = typeof body.countryScore === 'number'
+    ? Math.round(body.countryScore)
+    : typeof body.isnrScore === 'number'
+      ? Math.round(body.isnrScore)
+      : 0;
+  const axes = {
+    continuity: typeof body.axes?.continuity === 'number' ? Math.round(body.axes.continuity) : 0,
+    defense: typeof body.axes?.defense === 'number' ? Math.round(body.axes.defense) : 0,
+    security: typeof body.axes?.security === 'number' ? Math.round(body.axes.security) : 0,
+    signal: typeof body.axes?.signal === 'number' ? Math.round(body.axes.signal) : 0,
+  };
   const cyberScore = typeof body.cyberScore === 'number' ? Math.round(body.cyberScore) : 0;
   const meteoAlertCount = typeof body.meteoAlertCount === 'number' ? body.meteoAlertCount : 0;
   const isnrComponents = {
@@ -135,10 +499,25 @@ export default async function handler(request) {
     windShare: typeof body.energy.windShare === 'number' ? Math.round(body.energy.windShare) : 0,
     solarShare: typeof body.energy.solarShare === 'number' ? Math.round(body.energy.solarShare) : 0,
     totalMw: typeof body.energy.totalMw === 'number' ? Math.round(body.energy.totalMw) : null,
+    oilStocksDays: typeof body.energy.oilStocksDays === 'number' ? Math.round(body.energy.oilStocksDays) : null,
+    oilVigilanceStatus: typeof body.energy.oilVigilanceStatus === 'string' ? body.energy.oilVigilanceStatus : null,
+    fuelTensionLevel: typeof body.energy.fuelTensionLevel === 'string' ? body.energy.fuelTensionLevel : null,
+    fuelTensionAnomalyShare: typeof body.energy.fuelTensionAnomalyShare === 'number' ? body.energy.fuelTensionAnomalyShare : null,
   } : null;
 
-  // Try Redis cache (global key — acceptable at 15-min TTL)
-  const cacheKey = `france-intel:brief:${lang}:v1`;
+  // Try Redis cache using the request context, so one bad or outdated response
+  // does not mask newer national states for the whole TTL window.
+  const cacheKey = buildCacheKey(
+    lang,
+    countryScore,
+    axes,
+    isnrComponents,
+    cyberScore,
+    meteoAlertCount,
+    headlines,
+    signalCounts,
+    energy,
+  );
   const cached = await redisGet(cacheKey);
   if (cached) {
     try {
@@ -150,7 +529,11 @@ export default async function handler(request) {
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) {
-    return new Response(JSON.stringify({ ...FALLBACK, computedAt: new Date().toISOString() }), {
+    return new Response(JSON.stringify({
+      brief: buildDeterministicBrief(lang, countryScore, axes, signalCounts, energy),
+      fromCache: false,
+      computedAt: new Date().toISOString(),
+    }), {
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -165,41 +548,51 @@ export default async function handler(request) {
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
-        messages: [{ role: 'user', content: buildPrompt(isnrScore, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) }],
-        temperature: 0.2,
-        max_tokens: 220,
+        messages: [{ role: 'user', content: buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, lang) }],
+        temperature: 0.3,
+        max_tokens: 420,
       }),
     });
 
     if (!groqRes.ok) {
-      return new Response(JSON.stringify({ ...FALLBACK, computedAt: new Date().toISOString() }), {
+      return new Response(JSON.stringify({
+        brief: buildDeterministicBrief(lang, countryScore, axes, signalCounts, energy),
+        fromCache: false,
+        computedAt: new Date().toISOString(),
+      }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
     const groqText = await groqRes.text();
-    const groqClean = groqText.replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
+    const groqClean = groqText.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0080-\u009F]/gu, ' ');
     const groqData = JSON.parse(groqClean);
     const raw = groqData.choices?.[0]?.message?.content ?? '';
-    const rawClean = String(raw).replace(/[\u0000-\u001F\u007F\u0080-\u009F]/gu, ' ');
-    const jsonMatch = rawClean.match(/\{[\s\S]*"brief"[\s\S]*\}/);
-    const clean = jsonMatch ? jsonMatch[0] : rawClean.replace(/```json|```/g, '').trim();
-    const { brief } = JSON.parse(clean);
+    const llmBrief = extractBriefText(raw, lang);
+    const brief = isBriefCoherent(llmBrief, lang, countryScore, axes, signalCounts, energy)
+      ? llmBrief
+      : buildDeterministicBrief(lang, countryScore, axes, signalCounts, energy);
 
     const result = {
-      brief: typeof brief === 'string' ? brief : null,
+      brief,
       fromCache: false,
       computedAt: new Date().toISOString(),
     };
 
-    await redisSet(cacheKey, JSON.stringify(result), CACHE_TTL);
+    if (result.brief && result.brief.trim().length > 0) {
+      await redisSet(cacheKey, JSON.stringify(result), CACHE_TTL);
+    }
 
     return new Response(JSON.stringify(result), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
     console.error('[france-intel-brief]', err);
-    return new Response(JSON.stringify({ ...FALLBACK, computedAt: new Date().toISOString() }), {
+    return new Response(JSON.stringify({
+      brief: buildDeterministicBrief(lang, countryScore, axes, signalCounts, energy),
+      fromCache: false,
+      computedAt: new Date().toISOString(),
+    }), {
       headers: { 'Content-Type': 'application/json' },
     });
   }

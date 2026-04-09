@@ -94,42 +94,27 @@ async function fetchCertFrAlerts(): Promise<{ alerts: CyberAlert[]; status: Cybe
   const certFrFeedUrl = 'https://www.cert.ssi.gouv.fr/feed/';
   const proxyUrl = `${CERT_FR_RSS_URL}?url=${encodeURIComponent(certFrFeedUrl)}`;
 
-  console.log('[Cyber/CERT-FR] Starting fetch...');
-  console.log('[Cyber/CERT-FR] Proxy URL:', proxyUrl);
-
   try {
     const resp = await fetch(proxyUrl, {
       signal: AbortSignal.timeout(10_000),
     });
-
-    console.log('[Cyber/CERT-FR] Response status:', resp.status, resp.statusText);
 
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
     }
 
     const data = await resp.json();
-    console.log('[Cyber/CERT-FR] Response keys:', Object.keys(data));
-    console.log('[Cyber/CERT-FR] Items count:', data.items?.length ?? 'NO ITEMS FIELD');
-
     const items: CertFrRawItem[] = data.items || [];
 
     if (items.length === 0) {
-      console.warn('[Cyber/CERT-FR] No items in response. Full response:', JSON.stringify(data).slice(0, 500));
+      console.warn('[Cyber/CERT-FR] No items in response');
     }
 
     // Filtrer les 30 derniers jours
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const alerts: CyberAlert[] = items
-      .filter((item) => {
-        const pubTime = new Date(item.pubDate).getTime();
-        const isRecent = pubTime > thirtyDaysAgo;
-        if (!isRecent) {
-          console.log('[Cyber/CERT-FR] Filtered out old item:', item.title?.slice(0, 50));
-        }
-        return isRecent;
-      })
+      .filter((item) => new Date(item.pubDate).getTime() > thirtyDaysAgo)
       .map((item, idx) => ({
         id: `cert-${idx}-${Date.now()}`,
         title: item.title || 'Sans titre',
@@ -139,11 +124,6 @@ async function fetchCertFrAlerts(): Promise<{ alerts: CyberAlert[]; status: Cybe
         source: 'CERT-FR' as const,
       }))
       .slice(0, 20);
-
-    console.log('[Cyber/CERT-FR] Final alerts count:', alerts.length);
-    if (alerts.length > 0) {
-      console.log('[Cyber/CERT-FR] First alert:', alerts[0].title.slice(0, 60));
-    }
 
     return {
       alerts,
@@ -178,24 +158,16 @@ async function fetchRansomwareData(): Promise<{
   // Utiliser le proxy JSON pour contourner CORS
   const proxyUrl = `${JSON_PROXY_URL}?url=${encodeURIComponent(RANSOMWARE_API_URL)}`;
 
-  console.log('[Cyber/Ransomware] Starting fetch...');
-  console.log('[Cyber/Ransomware] Proxy URL:', proxyUrl);
-
   try {
     const resp = await fetch(proxyUrl, {
       signal: AbortSignal.timeout(15_000),
     });
-
-    console.log('[Cyber/Ransomware] Response status:', resp.status, resp.statusText);
 
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
     }
 
     const rawData = await resp.json();
-    console.log('[Cyber/Ransomware] Response type:', Array.isArray(rawData) ? 'array' : typeof rawData);
-    console.log('[Cyber/Ransomware] Total victims received:', Array.isArray(rawData) ? rawData.length : 'N/A');
-
     const victims: RansomwareRawVictim[] = Array.isArray(rawData) ? rawData : [];
 
     // Filtrer victimes françaises des 30 derniers jours
@@ -208,8 +180,6 @@ async function fetchRansomwareData(): Promise<{
       return isFrench && isRecent;
     });
 
-    console.log('[Cyber/Ransomware] French victims (30d):', frenchVictims.length);
-
     // Agrégation par secteur
     const sectorCounts = new Map<string, number>();
     for (const v of frenchVictims) {
@@ -221,8 +191,6 @@ async function fetchRansomwareData(): Promise<{
       .map(([sector, count]) => ({ sector, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-
-    console.log('[Cyber/Ransomware] Top sectors:', topSectors);
 
     return {
       total30d: frenchVictims.length,
@@ -375,83 +343,77 @@ function determineTrend(currentScore: number, previousScore?: number): 'rising' 
 // ═══ Main Fetch Function ═══
 
 let previousScore: number | undefined;
+let fetchInFlight: Promise<CyberState> | null = null;
 
 export async function fetchCyberDashboard(): Promise<CyberState> {
-  console.log('[Cyber] ========== fetchCyberDashboard() called ==========');
-  console.log('[Cyber] Feature enabled:', isCyberPanelEnabled());
-
   // Check cache
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
-    console.log('[Cyber] Returning CACHED data (age:', Math.round((Date.now() - cache.fetchedAt) / 1000), 's)');
     return cache.data;
   }
 
-  console.log('[Cyber] Cache miss or expired. Fetching fresh data from all 3 sources...');
+  // Deduplicate concurrent calls (race condition guard)
+  if (fetchInFlight) {
+    return fetchInFlight;
+  }
 
-  // Fetch all sources in parallel
-  const [certResult, ransomResult, nvdResult] = await Promise.all([
-    fetchCertFrAlerts(),
-    fetchRansomwareData(),
-    fetchNvdCves(),
-  ]);
+  fetchInFlight = (async (): Promise<CyberState> => {
+    // Fetch all sources in parallel
+    const [certResult, ransomResult, nvdResult] = await Promise.all([
+      fetchCertFrAlerts(),
+      fetchRansomwareData(),
+      fetchNvdCves(),
+    ]);
 
-  console.log('[Cyber] ===== FETCH RESULTS SUMMARY =====');
-  console.log('[Cyber] CERT-FR: isUp=', certResult.status.isUp, ', alerts=', certResult.alerts.length);
-  console.log('[Cyber] Ransomware: isUp=', ransomResult.status.isUp, ', total30d=', ransomResult.total30d);
-  console.log('[Cyber] NVD: isUp=', nvdResult.status.isUp, ', criticalCount=', nvdResult.criticalCount);
+    // Count severities for scoring
+    const certCriticalCount = certResult.alerts.filter((a) => a.severity === 'critical').length;
+    const certHighCount = certResult.alerts.filter((a) => a.severity === 'high').length;
+    const hasCriticalCertAlert = certCriticalCount > 0;
 
-  // Count severities for scoring
-  const certCriticalCount = certResult.alerts.filter((a) => a.severity === 'critical').length;
-  const certHighCount = certResult.alerts.filter((a) => a.severity === 'high').length;
-  const hasCriticalCertAlert = certCriticalCount > 0;
+    // Calcul du score avec les deux arguments requis : inputs ET sources
+    const globalScore = calculateGlobalScore({
+      certCriticalCount,
+      certHighCount,
+      ransomwareCount: ransomResult.total30d,
+      cveCriticalCount: nvdResult.criticalCount,
+      hasCriticalCertAlert,
+    }, [certResult.status, ransomResult.status, nvdResult.status]);
 
-  console.log('[Cyber] Severity counts: critical=', certCriticalCount, ', high=', certHighCount);
+    const trend = determineTrend(globalScore, previousScore);
+    previousScore = globalScore;
 
-  // Calcul du score avec les deux arguments requis : inputs ET sources
-  const globalScore = calculateGlobalScore({
-    certCriticalCount,
-    certHighCount,
-    ransomwareCount: ransomResult.total30d,
-    cveCriticalCount: nvdResult.criticalCount,
-    hasCriticalCertAlert,
-  }, [certResult.status, ransomResult.status, nvdResult.status]);
+    const state: CyberState = {
+      meta: {
+        globalScore,
+        trend,
+        sources: [
+          certResult.status,
+          ransomResult.status,
+          nvdResult.status,
+        ],
+        lastUpdate: new Date(),
+      },
+      alerts: {
+        count30d: certResult.alerts.length,
+        latest: certResult.alerts.slice(0, 10),
+      },
+      ransomware: {
+        total30d: ransomResult.total30d,
+        topSectors: ransomResult.topSectors,
+      },
+      vulnerabilities: {
+        criticalCount: nvdResult.criticalCount,
+        topCVEs: nvdResult.topCVEs.slice(0, 5),
+      },
+    };
 
-  const trend = determineTrend(globalScore, previousScore);
-  previousScore = globalScore;
+    // Update cache
+    cache = { data: state, fetchedAt: Date.now() };
+    console.log(`[Cyber] score=${globalScore} trend=${trend} alerts=${state.alerts.count30d} ransomware=${state.ransomware.total30d} cves=${state.vulnerabilities.criticalCount}`);
 
-  console.log('[Cyber] Calculated globalScore:', globalScore, ', trend:', trend);
+    return state;
+  })().finally(() => { fetchInFlight = null; });
 
-  const state: CyberState = {
-    meta: {
-      globalScore,
-      trend,
-      sources: [
-        certResult.status,
-        ransomResult.status,
-        nvdResult.status,
-      ],
-      lastUpdate: new Date(),
-    },
-    alerts: {
-      count30d: certResult.alerts.length,
-      latest: certResult.alerts.slice(0, 10),
-    },
-    ransomware: {
-      total30d: ransomResult.total30d,
-      topSectors: ransomResult.topSectors,
-    },
-    vulnerabilities: {
-      criticalCount: nvdResult.criticalCount,
-      topCVEs: nvdResult.topCVEs.slice(0, 5),
-    },
-  };
-
-  // Update cache
-  cache = { data: state, fetchedAt: Date.now() };
-  console.log('[Cyber] ===== DATA CACHED =====');
-  console.log('[Cyber] Final state: score=', globalScore, ', alerts=', state.alerts.count30d, ', ransomware=', state.ransomware.total30d, ', cves=', state.vulnerabilities.criticalCount);
-
-  return state;
+  return fetchInFlight;
 }
 
 // ═══ Helpers ═══

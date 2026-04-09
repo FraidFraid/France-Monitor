@@ -46,6 +46,10 @@ function toFeatureCollection(elements: any[]) {
   };
 }
 
+// Circuit breaker state (server-side, persists across page reloads)
+let circuitOpenUntil = 0;
+const CIRCUIT_BACKOFF_MS = 5 * 60_000; // 5 min after a 429/504
+
 export function osmRailwaysProxyPlugin(): Plugin {
   const cache = new Map<string, { at: number; data: unknown }>();
 
@@ -73,6 +77,16 @@ export function osmRailwaysProxyPlugin(): Plugin {
           return;
         }
 
+        // Circuit breaker: refuse immediately if Overpass recently rate-limited us
+        if (Date.now() < circuitOpenUntil) {
+          const waitSec = Math.ceil((circuitOpenUntil - Date.now()) / 1000);
+          console.warn(`[osm-railways-proxy] circuit open — skipping Overpass for ${waitSec}s`);
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: `Overpass rate-limited, retry in ${waitSec}s` }));
+          return;
+        }
+
         try {
           const upstream = await fetch(OVERPASS_URL, {
             method: 'POST',
@@ -87,6 +101,11 @@ export function osmRailwaysProxyPlugin(): Plugin {
           if (!upstream.ok) {
             const body = await upstream.text();
             console.error('[osm-railways-proxy] upstream error:', upstream.status, body);
+            // Open circuit on rate-limit or server overload
+            if (upstream.status === 429 || upstream.status === 504) {
+              circuitOpenUntil = Date.now() + CIRCUIT_BACKOFF_MS;
+              console.warn(`[osm-railways-proxy] circuit opened for 5min (status ${upstream.status})`);
+            }
             res.statusCode = 502;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Overpass error ${upstream.status}` }));

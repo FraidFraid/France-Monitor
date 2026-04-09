@@ -28,8 +28,45 @@ const CATEGORY_ICONS: Record<string, string> = {
   general: '📰',
 };
 
+const CATEGORY_LABELS: Record<EventCategory, string> = {
+  social: 'Social',
+  security: 'Sécurité',
+  energy: 'Énergie',
+  weather: 'Météo',
+  transport: 'Transport',
+  infrastructure: 'Infrastructure',
+  health: 'Santé',
+  general: 'Général',
+  finance: 'Finance',
+  floods: 'Crues',
+  fires: 'Feux',
+  cyber: 'Cyber',
+};
+
+const LEVEL_LABELS: Record<ThreatLevel, string> = {
+  critical: 'Critique',
+  high: 'Élevé',
+  medium: 'Modéré',
+  low: 'Faible',
+  info: 'Info',
+};
+
+const LEVEL_PRIORITY: Record<ThreatLevel, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  info: 0,
+};
+
 export type NewsItemClickHandler = (item: NewsItem) => void;
 export type NewsFilterChangeHandler = (filter: FilterState) => void;
+
+type ActiveFilterPill =
+  | { kind: 'time'; label: string; value: TimeRange }
+  | { kind: 'search'; label: string }
+  | { kind: 'category'; label: string; value: EventCategory }
+  | { kind: 'level'; label: string; value: ThreatLevel };
 
 const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
@@ -45,6 +82,7 @@ const DEFAULT_LAYERS: MapLayers = {
   hospitals: false,
   environmentGroup: false,
   environmental: false,
+  weatherRadar: false,
   fires: false,
   criticalEnergyInfra: false,
   traffic: true,
@@ -89,12 +127,12 @@ const TIME_OPTIONS: Array<{ label: string; value: TimeRange }> = [
 
 const CATEGORY_OPTIONS: Array<{ label: string; icon: string; value: EventCategory }> = [
   { label: 'Social', icon: '✊', value: 'social' },
-  { label: 'Securite', icon: '🚨', value: 'security' },
-  { label: 'Energie', icon: '⚡', value: 'energy' },
-  { label: 'Meteo', icon: '🌩️', value: 'weather' },
+  { label: 'Sécurité', icon: '🚨', value: 'security' },
+  { label: 'Énergie', icon: '⚡', value: 'energy' },
+  { label: 'Météo', icon: '🌩️', value: 'weather' },
   { label: 'Transport', icon: '🚆', value: 'transport' },
   { label: 'Infra', icon: '🏗️', value: 'infrastructure' },
-  { label: 'Sante', icon: '🏥', value: 'health' },
+  { label: 'Santé', icon: '🏥', value: 'health' },
 ];
 
 const LEVEL_OPTIONS: Array<{ label: string; value: ThreatLevel; color: string }> = [
@@ -105,10 +143,37 @@ const LEVEL_OPTIONS: Array<{ label: string; value: ThreatLevel; color: string }>
   { label: 'INFO', value: 'info', color: 'var(--threat-info)' },
 ];
 
+function compareNewsPriority(a: NewsItem, b: NewsItem): number {
+  const alertDelta = Number(b.isAlert) - Number(a.isAlert);
+  if (alertDelta !== 0) return alertDelta;
+
+  const levelDelta = LEVEL_PRIORITY[b.threat?.level ?? 'info'] - LEVEL_PRIORITY[a.threat?.level ?? 'info'];
+  if (levelDelta !== 0) return levelDelta;
+
+  const geoDelta = Number(!!b.locationName) - Number(!!a.locationName);
+  if (geoDelta !== 0) return geoDelta;
+
+  return b.pubDate.getTime() - a.pubDate.getTime();
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function getSummaryText(item: NewsItem): string | null {
+  if (item.aiSummary) return item.aiSummary;
+  if (item.aiSummaryStatus === 'pending') return 'Résumé IA en cours…';
+  if (item.summary) return truncateText(item.summary, 180);
+  return null;
+}
+
 export class UnderMapNewsFeed {
   private container: HTMLElement;
   private rootEl: HTMLElement | null = null;
   private countEl: HTMLElement | null = null;
+  private pulseEl: HTMLElement | null = null;
+  private activeFiltersEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
   private items: NewsItem[] = [];
   private filteredItems: NewsItem[] = [];
@@ -148,8 +213,10 @@ export class UnderMapNewsFeed {
             placeholder="Rechercher une actu, une source, un lieu..."
           />
         </div>
+        <div class="under-map-news__pulse" id="under-map-news-pulse"></div>
+        <div class="under-map-news__active-filters" id="under-map-news-active-filters"></div>
         <div class="under-map-news__filter-group">
-          <div class="under-map-news__filter-label">Categories</div>
+          <div class="under-map-news__filter-label">Catégories</div>
           <div class="under-map-news__filter-row">
             ${CATEGORY_OPTIONS.map((option) => `
               <button
@@ -182,6 +249,8 @@ export class UnderMapNewsFeed {
     this.container.appendChild(root);
     this.rootEl = root;
     this.countEl = root.querySelector('#under-map-news-count');
+    this.pulseEl = root.querySelector('#under-map-news-pulse');
+    this.activeFiltersEl = root.querySelector('#under-map-news-active-filters');
     this.listEl = root.querySelector('#under-map-news-list');
     this.bindControls(root);
     this.syncControls();
@@ -213,7 +282,7 @@ export class UnderMapNewsFeed {
   }
 
   updateItems(items: NewsItem[], filter?: FilterState): void {
-    this.items = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    this.items = [...items].sort(compareNewsPriority);
     if (filter) {
       this.filter = {
         ...filter,
@@ -258,6 +327,15 @@ export class UnderMapNewsFeed {
   private renderLoading(): void {
     if (!this.listEl || !this.countEl) return;
     this.countEl.textContent = 'Chargement...';
+    if (this.pulseEl) {
+      this.pulseEl.innerHTML = `
+        <span class="under-map-news__pulse-pill">Analyse du flux…</span>
+      `;
+    }
+    if (this.activeFiltersEl) {
+      this.activeFiltersEl.innerHTML = '';
+      this.activeFiltersEl.hidden = true;
+    }
     this.listEl.innerHTML = `
       <div class="under-map-card__empty">
         <div class="under-map-card__empty-title">Chargement du flux</div>
@@ -295,13 +373,34 @@ export class UnderMapNewsFeed {
       }
       return true;
     });
+    this.filteredItems.sort(compareNewsPriority);
   }
 
   private renderList(): void {
     if (!this.listEl || !this.countEl) return;
 
+    const now = Date.now();
     const alertCount = this.filteredItems.filter((i) => i.isAlert).length;
-    this.countEl.textContent = `${this.filteredItems.length} actus${alertCount > 0 ? ` · ${alertCount} alertes` : ''}`;
+    const sourceCount = new Set(this.filteredItems.map((item) => item.source)).size;
+    const criticalCount = this.filteredItems.filter((item) => (item.threat?.level ?? 'info') === 'critical').length;
+    const highCount = this.filteredItems.filter((item) => (item.threat?.level ?? 'info') === 'high').length;
+    const localizedCount = this.filteredItems.filter((item) => !!item.locationName).length;
+    const freshCount = this.filteredItems.filter((item) => now - item.pubDate.getTime() <= 6 * 60 * 60 * 1000).length;
+    const hasActiveFilters =
+      this.filter.searchQuery.length > 0 ||
+      this.filter.categories.length > 0 ||
+      this.filter.threatLevels.length > 0 ||
+      this.filter.timeRange !== '24h';
+    this.countEl.textContent = `${this.filteredItems.length} actus · ${sourceCount} sources${alertCount > 0 ? ` · ${alertCount} alertes` : ''}${hasActiveFilters ? ' · filtres actifs' : ''}`;
+    if (this.pulseEl) {
+      this.pulseEl.innerHTML = [
+        `<span class="under-map-news__pulse-pill"><strong>${criticalCount}</strong> critiques</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${highCount}</strong> élevées</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${freshCount}</strong> < 6h</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${localizedCount}</strong> localisées</span>`,
+      ].join('');
+    }
+    this.renderActiveFilterPills();
     this.listEl.innerHTML = '';
 
     if (this.filteredItems.length === 0) {
@@ -314,7 +413,6 @@ export class UnderMapNewsFeed {
       return;
     }
 
-    const now = Date.now();
     const ONE_HOUR_MS = 60 * 60 * 1000;
 
     for (const item of this.filteredItems) {
@@ -325,19 +423,39 @@ export class UnderMapNewsFeed {
       const level = item.threat?.level ?? 'info';
       const category = item.threat?.category ?? 'general';
       const icon = CATEGORY_ICONS[category] ?? '📰';
+      const categoryLabel = CATEGORY_LABELS[category] ?? category;
       const isNew = now - item.pubDate.getTime() < ONE_HOUR_MS;
-      const newBadge = isNew ? '<span class="badge-new">NEW</span>' : '';
+      const summaryText = getSummaryText(item);
+      const locationLabel = item.locationName ?? item.feedRegion ?? null;
+      const confidenceLabel = item.threat?.confidence != null
+        ? `${Math.round(item.threat.confidence * 100)}%`
+        : null;
+      const sourceLabel = item.threat?.source === 'llm'
+        ? 'LLM'
+        : item.threat?.source === 'ml'
+          ? 'IA'
+          : item.threat?.source === 'keyword'
+            ? 'Règles'
+            : null;
 
       el.dataset.itemId = item.id;
       el.innerHTML = `
-        <div class="news-item-title">${escapeHtml(item.title)}${newBadge}</div>
-        ${item.aiSummary ? `<div class="news-item-summary under-map-news__summary">${escapeHtml(item.aiSummary)}</div>` : ''}
-        <div class="news-item-meta under-map-news__meta">
-          <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(level)}</span>
-          <span class="category-badge">${icon} ${escapeHtml(category)}</span>
-          <span class="news-item-source">${escapeHtml(item.source)}</span>
+        <div class="under-map-news__item-head">
+          <div class="under-map-news__badges">
+            <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(LEVEL_LABELS[level])}</span>
+            <span class="category-badge">${icon} ${escapeHtml(categoryLabel)}</span>
+            ${item.isAlert ? '<span class="under-map-news__signal-pill under-map-news__signal-pill--alert">Alerte</span>' : ''}
+            ${isNew ? '<span class="under-map-news__signal-pill">Nouveau</span>' : ''}
+          </div>
           <span class="news-item-time">${escapeHtml(timeAgo(item.pubDate))}</span>
-          ${item.threat?.source === 'ml' ? '<span title="IA" style="font-size:10px;margin-left:auto;">🤖</span>' : ''}
+        </div>
+        <div class="news-item-title">${escapeHtml(item.title)}</div>
+        ${summaryText ? `<div class="news-item-summary under-map-news__summary${item.aiSummaryStatus === 'pending' && !item.aiSummary ? ' under-map-news__summary--pending' : ''}">${escapeHtml(summaryText)}</div>` : ''}
+        <div class="news-item-meta under-map-news__meta">
+          <span class="news-item-source">${escapeHtml(item.source)}</span>
+          ${locationLabel ? `<span class="under-map-news__location">📍 ${escapeHtml(locationLabel)}</span>` : ''}
+          ${confidenceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(confidenceLabel)}</span>` : ''}
+          ${sourceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(sourceLabel)}</span>` : ''}
         </div>
       `;
 
@@ -353,23 +471,18 @@ export class UnderMapNewsFeed {
         const btnRow = document.createElement('div');
         btnRow.className = 'under-map-news__actions';
 
-        const btn = document.createElement('button');
-        btn.className = 'read-article-btn';
-        btn.textContent = 'Lire ↗';
-        btn.style.cssText = 'font-size:11px;padding:3px 8px;background:rgba(108,140,255,0.15);border:1px solid rgba(108,140,255,0.32);border-radius:4px;color:#8cacff;cursor:pointer;font-family:inherit;';
+        const btn = document.createElement('a');
+        btn.className = 'under-map-news__read-btn read-article-btn';
+        btn.textContent = 'Ouvrir l’article ↗';
+        btn.href = item.link;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          window.open(item.link, '_blank', 'noopener');
         });
         btnRow.appendChild(btn);
         el.appendChild(btnRow);
       }
-
-      if (item.isAlert) {
-        el.style.borderLeft = '3px solid var(--threat-critical)';
-        el.style.paddingLeft = '9px';
-      }
-
       this.listEl.appendChild(el);
     }
   }
@@ -414,6 +527,37 @@ export class UnderMapNewsFeed {
         }, 180);
       });
     }
+
+    this.activeFiltersEl?.addEventListener('click', (event) => {
+      const target = (event.target as HTMLElement).closest<HTMLElement>('[data-filter-kind]');
+      if (!target) return;
+
+      const kind = target.dataset.filterKind;
+      const value = target.dataset.filterValue;
+
+      if (kind === 'time') {
+        this.updateFilter({ timeRange: '24h' });
+        return;
+      }
+
+      if (kind === 'search') {
+        this.updateFilter({ searchQuery: '' });
+        return;
+      }
+
+      if (kind === 'category' && value) {
+        this.updateFilter({
+          categories: this.filter.categories.filter((category) => category !== value),
+        });
+        return;
+      }
+
+      if (kind === 'level' && value) {
+        this.updateFilter({
+          threatLevels: this.filter.threatLevels.filter((level) => level !== value),
+        });
+      }
+    });
   }
 
   private syncControls(): void {
@@ -457,5 +601,55 @@ export class UnderMapNewsFeed {
       threatLevels: [...this.filter.threatLevels],
       layers: { ...this.filter.layers },
     });
+  }
+
+  private renderActiveFilterPills(): void {
+    if (!this.activeFiltersEl) return;
+
+    const pills: ActiveFilterPill[] = [];
+
+    if (this.filter.timeRange !== '24h') {
+      const timeLabel = TIME_OPTIONS.find((option) => option.value === this.filter.timeRange)?.label ?? this.filter.timeRange;
+      pills.push({ kind: 'time', label: `Période ${timeLabel}`, value: this.filter.timeRange });
+    }
+
+    if (this.filter.searchQuery) {
+      pills.push({ kind: 'search', label: `Recherche "${truncateText(this.filter.searchQuery, 24)}"` });
+    }
+
+    for (const category of this.filter.categories) {
+      pills.push({
+        kind: 'category',
+        label: CATEGORY_LABELS[category] ?? category,
+        value: category,
+      });
+    }
+
+    for (const level of this.filter.threatLevels) {
+      pills.push({
+        kind: 'level',
+        label: LEVEL_LABELS[level],
+        value: level,
+      });
+    }
+
+    if (pills.length === 0) {
+      this.activeFiltersEl.innerHTML = '';
+      this.activeFiltersEl.hidden = true;
+      return;
+    }
+
+    this.activeFiltersEl.hidden = false;
+    this.activeFiltersEl.innerHTML = pills.map((pill) => {
+      const valueAttr = 'value' in pill ? ` data-filter-value="${pill.value}"` : '';
+      return `
+        <button
+          type="button"
+          class="under-map-news__active-pill"
+          data-filter-kind="${pill.kind}"${valueAttr}
+          title="Retirer ce filtre"
+        >${escapeHtml(pill.label)} <span aria-hidden="true">×</span></button>
+      `;
+    }).join('');
   }
 }

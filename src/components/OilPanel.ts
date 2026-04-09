@@ -12,6 +12,13 @@ import { Panel } from './Panel.ts';
 import type { FuelTensionDashboard, OilDashboard } from '../types/index.ts';
 import { isOilPanelEnabled, getVigilanceLabel, getVigilanceColor } from '../services/oil.ts';
 import { getFuelBadgeColor, getFuelTensionLevelColor } from '../services/fuel-tension.ts';
+import {
+  filterFuelPriceSeries,
+  formatFuelDeltaCents,
+  formatFuelPrice,
+  renderFuelPriceChartSvg,
+  type FuelPriceChartRange,
+} from '../utils/fuelPriceChart.ts';
 
 const OIL_PANEL_COLORS = {
   title: '#FCD34D',
@@ -27,11 +34,13 @@ const OIL_PANEL_COLORS = {
 } as const;
 
 const OIL_PANEL_TITLE = 'Pétrole – Réseau & stocks';
-const OIL_PANEL_DESCRIPTION = 'Vue OSINT structurelle du système pétrolier français, combinant infrastructures (raffineries, dépôts, oléoducs) et indicateurs mensuels SDES sur consommations et origines de brut.';
-const OIL_PANEL_FRESHNESS_BADGE = 'HYBRID / MONTHLY / STRUCTURAL';
-const OIL_PANEL_SOURCES_TEXT = 'Sources : SDES (Chiffres clés de l’énergie, millésime 2024) + séries mensuelles de produits pétroliers sur data.gouv.fr (consommations, origines, flux).';
-const OIL_PANEL_FRESHNESS_TEXT = 'Fréquence : hybrid / monthly / structural – pas de télémesure temps réel du raffinage ou du réseau, mais une mise à jour régulière du contexte stocks/consommation.';
-const OIL_PANEL_DISCLAIMER_TEXT = 'Cette couche ne fournit pas de télémesure live du raffinage ni des oléoducs. Elle combine un référentiel structurel d’infrastructures avec des indicateurs mensuels SDES pour suivre l’évolution des consommations, stocks et origines de brut.';
+const OIL_PANEL_DESCRIPTION = 'Deux lectures complémentaires: une référence France structurale, et une vue harmonisée plus fraîche mais provisoire.';
+const OIL_PANEL_FRESHNESS_BADGE = 'FR STRUCTURAL + JODI/UFIP';
+const OIL_PANEL_SOURCES_TEXT = 'Référence FR: SDES, INSEE, CPDP/UFIP, data.gouv';
+const OIL_PANEL_COMPLEMENT_TEXT = 'Complément fraîcheur: JODI Oil, JODI Gas, UFIP mensuel';
+const OIL_PANEL_DAILY_TEXT = 'Vue Daily: prix et ruptures carburants, pas volumes livrés';
+const OIL_PANEL_FRESHNESS_TEXT = 'Vue JODI/UFIP: plus fraîche pour 2025–2026, mais méthodologie mixte et provisoire.';
+const OIL_PANEL_DISCLAIMER_TEXT = 'Limite: pas de télémesure live du raffinage, des oléoducs ni des livraisons station.';
 
 // ═══ OilPanel Class ═══
 
@@ -46,6 +55,8 @@ export class OilPanel extends Panel {
   private fuelTensionSearch = '';
   private fuelTensionListVisible = false;
   private fuelTensionMapVisible = false;
+  private fuelPriceHistoryRange: FuelPriceChartRange = '1m';
+  private freshnessSectionExpanded = false;
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
@@ -61,7 +72,8 @@ export class OilPanel extends Panel {
       position: absolute;
       top: var(--right-panel-top);
       right: 20px;
-      width: 360px;
+      width: 420px;
+      max-width: min(420px, calc(100vw - 24px));
       max-height: calc(100vh - var(--right-panel-top) - 20px);
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
@@ -287,57 +299,275 @@ export class OilPanel extends Panel {
     ` : '';
 
     const freshnessSection = this.renderFreshnessSection();
-    const fuelTensionSection = this.renderFuelTensionSection(fuelTension);
-
-    // Stocks section
+    const structuralHeader = this.renderViewHeader(
+      'Vue France structurale (SDES/CPDP)',
+      'Backbone FR pour stocks, flux, origines, capacités et raffinage. Référentiel principal du layer pétrole.',
+      [
+        this.renderFreshnessBadge(data.meta.freshness.dashboard.label),
+        this.renderFreshnessBadge(data.meta.freshness.infrastructure.label),
+      ],
+    );
     const stocksSection = this.renderStocksSection(data);
-
-    // Flows section
     const flowsSection = this.renderFlowsSection(data);
-
-    // Origins and recent deliveries
     const originsSection = this.renderOriginsSection(data);
-    const deliveriesSection = this.renderDeliveriesSection(data);
-
-    // Products breakdown
     const productsSection = this.renderProductsSection(data);
-
-    // Refineries summary
     const refineriesSection = this.renderRefineriesSection(data);
+    const harmonizedHeader = this.renderViewHeader(
+      'Vue harmonisée JODI/UFIP',
+      'Complément plus frais pour 2025–2026. Méthodologie mixte France + international, à lire comme signal provisoire.',
+      [
+        this.renderFreshnessBadge(data.meta.freshness.harmonized.label),
+        this.renderDynamicBadge('INTERNATIONAL', '#60A5FA'),
+      ],
+    );
+    const harmonizedSection = this.renderHarmonizedSection(data);
+    const deliveriesSection = this.renderDeliveriesSection(data);
+    const fuelTensionSection = this.renderFuelTensionSection(fuelTension);
+    const fuelPriceHistorySection = this.renderFuelPriceHistorySection(data, fuelTension);
 
     this.contentEl.innerHTML = `
       ${warningBanner}
       ${freshnessSection}
-      ${fuelTensionSection}
+      ${structuralHeader}
       ${stocksSection}
       ${flowsSection}
       ${originsSection}
-      ${deliveriesSection}
       ${productsSection}
       ${refineriesSection}
+      ${harmonizedHeader}
+      ${harmonizedSection}
+      ${deliveriesSection}
+      ${fuelTensionSection}
+      ${fuelPriceHistorySection}
     `;
 
+    this.bindFreshnessSectionToggle();
     this.bindFuelTensionSearch();
+    this.bindFuelPriceHistoryControls();
   }
 
   private renderFreshnessSection(): string {
+    const expanded = this.freshnessSectionExpanded;
+
     return `
-      <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Sources & fraîcheur</span>
-          ${this.renderFreshnessBadge(OIL_PANEL_FRESHNESS_BADGE)}
-        </div>
-        <div style="color: var(--text-secondary); font-size: 11px; line-height: 1.45; margin-bottom: 8px;">${OIL_PANEL_DESCRIPTION}</div>
+      <details
+        id="oil-freshness-section"
+        style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};"
+        ${expanded ? 'open' : ''}
+      >
+        <summary style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; cursor: pointer; list-style: none;">
+          <div style="flex: 1; min-width: 0;">
+            <div style="color: var(--text-primary); font-weight: 700; font-size: 13px; line-height: 1.25; white-space: nowrap;">Sources & fraîcheur</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+              ${this.renderFreshnessBadge(OIL_PANEL_FRESHNESS_BADGE)}
+            </div>
+          </div>
+          <span style="color: var(--text-muted); font-size: 10px; flex-shrink: 0; margin-top: 2px;">${expanded ? 'Masquer' : 'Afficher'}</span>
+        </summary>
+        <div style="color: var(--text-secondary); font-size: 11px; line-height: 1.55; margin: 12px 0 10px;">${OIL_PANEL_DESCRIPTION}</div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
           <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(252, 211, 77, 0.08); border-radius: 6px; padding: 8px;">
-            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.4;">${OIL_PANEL_SOURCES_TEXT}</div>
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55;">${OIL_PANEL_SOURCES_TEXT}</div>
           </div>
           <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(252, 211, 77, 0.08); border-radius: 6px; padding: 8px;">
-            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.4;">${OIL_PANEL_FRESHNESS_TEXT}</div>
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55;">${OIL_PANEL_COMPLEMENT_TEXT}</div>
+          </div>
+          <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(252, 211, 77, 0.08); border-radius: 6px; padding: 8px;">
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55;">${OIL_PANEL_DAILY_TEXT}</div>
+          </div>
+          <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(252, 211, 77, 0.08); border-radius: 6px; padding: 8px;">
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55;">${OIL_PANEL_FRESHNESS_TEXT}</div>
           </div>
           <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.16); border-radius: 6px; padding: 8px;">
-            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45;">${OIL_PANEL_DISCLAIMER_TEXT}</div>
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55;">${OIL_PANEL_DISCLAIMER_TEXT}</div>
           </div>
+        </div>
+      </details>
+    `;
+  }
+
+  private renderViewHeader(title: string, subtitle: string, badges: string[] = []): string {
+    const uniqueBadges = Array.from(new Set(badges.filter(Boolean)));
+
+    return `
+      <div style="margin: 12px 0 10px;">
+        <div style="color: var(--text-primary); font-weight: 700; font-size: 12px; letter-spacing: 0.02em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
+        ${uniqueBadges.length > 0 ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; margin-bottom:6px;">${uniqueBadges.join('')}</div>` : ''}
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.55; max-width: 100%;">${subtitle}</div>
+      </div>
+    `;
+  }
+
+  private renderHarmonizedSection(data: OilDashboard): string {
+    const harmonized = data.harmonized;
+    if (!harmonized?.available) {
+      return `
+        <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px dashed rgba(255,255,255,0.12); color: var(--text-muted); font-size: 11px;">
+          Vue harmonisée indisponible sur ce cycle. Le layer continue d’utiliser le backbone France structurale.
+        </div>
+      `;
+    }
+
+    const oilRows = harmonized.oilProducts
+      .filter((row) => row.demandKbd !== null || row.importsKbd !== null)
+      .map((row) => `
+        <tr>
+          <td style="padding:4px 0;color:var(--text-secondary);font-size:11px;">${this.escapeHtml(row.product)}</td>
+          <td style="padding:4px 0;color:var(--text-primary);font-size:11px;text-align:right;">${this.formatKbd(row.demandKbd)}</td>
+          <td style="padding:4px 0;color:var(--text-primary);font-size:11px;text-align:right;">${this.formatKbd(row.importsKbd)}</td>
+        </tr>
+      `)
+      .join('');
+
+    const gasDemandBcm = harmonized.gasTotalDemandTj != null
+      ? harmonized.gasTotalDemandTj / 36_000
+      : null;
+    const lngShare = harmonized.gasLngSharePct;
+    const pipeShare = lngShare == null ? null : Math.max(0, 100 - lngShare);
+
+    return `
+      <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Signal mensuel harmonisé</span>
+          <span style="display:flex; align-items:center; gap:6px;">
+            ${harmonized.provisional ? this.renderDynamicBadge('PROVISOIRE', '#F59E0B') : ''}
+            ${this.renderFreshnessBadge(data.meta.freshness.harmonized.label)}
+          </span>
+        </div>
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px;">
+          ${this.escapeHtml(harmonized.sourceLabel)}${harmonized.oilDataMonth || harmonized.gasDataMonth || harmonized.latestUfipPeriodLabel ? ` · ${this.escapeHtml([harmonized.oilDataMonth, harmonized.gasDataMonth, harmonized.latestUfipPeriodLabel].filter(Boolean).join(' · '))}` : ''}
+        </div>
+        ${oilRows ? `
+          <table style="width:100%; border-collapse:collapse; margin-bottom:10px;">
+            <thead>
+              <tr>
+                <th style="padding:0 0 6px; color:var(--text-muted); font-size:10px; text-align:left;">Produit</th>
+                <th style="padding:0 0 6px; color:var(--text-muted); font-size:10px; text-align:right;">Demande</th>
+                <th style="padding:0 0 6px; color:var(--text-muted); font-size:10px; text-align:right;">Imports</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${oilRows}
+              ${harmonized.crudeImportsKbd != null ? `
+                <tr>
+                  <td style="padding:4px 0;color:var(--text-secondary);font-size:11px;">Crude</td>
+                  <td style="padding:4px 0;color:var(--text-muted);font-size:11px;text-align:right;">—</td>
+                  <td style="padding:4px 0;color:var(--text-primary);font-size:11px;text-align:right;">${this.formatKbd(harmonized.crudeImportsKbd)}</td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+        ` : ''}
+        ${(gasDemandBcm != null || lngShare != null) ? `
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px;">
+            ${gasDemandBcm != null ? `<span style="color: var(--text-primary); font-size: 12px; font-weight: 600;">Gaz: ${gasDemandBcm.toFixed(gasDemandBcm >= 10 ? 0 : 1)} BCM/an</span>` : ''}
+            ${lngShare != null ? this.renderDynamicBadge(`LNG ${lngShare.toFixed(0)}%`, lngShare >= 70 ? '#F97316' : lngShare >= 40 ? '#FBBF24' : '#60A5FA') : ''}
+            ${pipeShare != null ? this.renderDynamicBadge(`Pipeline ${pipeShare.toFixed(0)}%`, '#6B7280') : ''}
+          </div>
+        ` : ''}
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.16); border-radius: 6px; padding: 8px;">
+          <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45;">${this.escapeHtml(harmonized.caveat)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  private bindFreshnessSectionToggle(): void {
+    if (!this.contentEl) return;
+    const details = this.contentEl.querySelector('#oil-freshness-section') as HTMLDetailsElement | null;
+    if (!details) return;
+
+    details.addEventListener('toggle', () => {
+      this.freshnessSectionExpanded = details.open;
+    });
+  }
+
+  private renderFuelPriceHistorySection(data: OilDashboard, fuelTension: FuelTensionDashboard | null = null): string {
+    const history = data.fuelPriceHistory;
+    if (!history || history.series.length === 0) {
+      const currentPriceChips = fuelTension
+        ? Object.entries(fuelTension.national.avgPrices)
+          .map(([fuelType, price]) => `
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06); border-radius: 999px; padding: 3px 7px; color: var(--text-secondary); font-size: 9px;">
+              <span style="color: var(--text-muted);">${fuelType.toUpperCase()}</span>
+              <strong style="color: var(--text-primary); font-weight: 600;">${price.toFixed(3)}€</strong>
+            </span>
+          `)
+          .join('')
+        : '';
+
+      return `
+        <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Prix moyens carburants</span>
+            <span style="display:flex; align-items:center; gap:6px;">
+              ${this.renderDynamicBadge('FALLBACK', '#F59E0B')}
+            </span>
+          </div>
+          <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px;">
+            Historique journalier indisponible sur ce cycle. La courbe n’a pas pu être reconstruite, mais les niveaux prix/ruptures restent visibles ci-dessous. Ce bloc ne mesure pas des volumes livrés.
+          </div>
+          ${currentPriceChips
+            ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">${currentPriceChips}</div>`
+            : ''}
+          <div style="padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(255,255,255,0.12); color: var(--text-muted); font-size: 11px;">
+            Source prix carburants: ${data.sourceStatus.fuelPrices === 'error' ? 'erreur amont' : 'données indisponibles'} · signal prix/ruptures uniquement.
+          </div>
+        </div>
+      `;
+    }
+
+    const rangeLabel = this.fuelPriceHistoryRange === '1m' ? '1 mois' : '1 an';
+    const visibleSeries = filterFuelPriceSeries(history, this.fuelPriceHistoryRange);
+    const chartSvg = renderFuelPriceChartSvg(visibleSeries, {
+      width: 320,
+      height: 170,
+      showAxes: true,
+    });
+
+    const legendRows = visibleSeries.map((series) => {
+      const delta = this.fuelPriceHistoryRange === '1m' ? series.delta30dCents : series.delta7dCents;
+      const deltaLabel = this.fuelPriceHistoryRange === '1m' ? '30j' : '7j';
+      const deltaColor = delta == null
+        ? 'var(--text-muted)'
+        : delta > 0
+          ? OIL_PANEL_COLORS.importGlow
+          : delta < 0
+            ? '#34D399'
+            : 'var(--text-primary)';
+
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid rgba(255,255,255,0.05);">
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+            <span style="display:inline-flex; width:10px; height:10px; border-radius:999px; background:${series.color}; flex-shrink:0;"></span>
+            <span style="color: var(--text-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${this.escapeHtml(series.label)}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+            <span style="color: var(--text-primary); font-size:11px; font-weight:600;">${formatFuelPrice(series.latestPrice)}</span>
+            <span style="color:${deltaColor}; font-size:10px; font-weight:700;">${deltaLabel} ${formatFuelDeltaCents(delta)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
+        <div style="display:flex; justify-content:flex-start; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+          <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            ${this.renderFreshnessBadge(data.meta.freshness.fuelPrices.label)}
+            <button id="fuel-price-range-1m" type="button" style="${this.getToggleButtonStyle(this.fuelPriceHistoryRange === '1m')}">1 mois</button>
+            <button id="fuel-price-range-1y" type="button" style="${this.getToggleButtonStyle(this.fuelPriceHistoryRange === '1y')}">1 an</button>
+          </span>
+        </div>
+        <div style="color: var(--text-primary); font-weight: 600; font-size: 12px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom:8px;">Prix & ruptures carburants</div>
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px;">
+          ${this.escapeHtml(history.sourceLabel)} · vue ${rangeLabel} · prix/disponibilité, pas volumes livrés.
+        </div>
+        <div style="padding: 6px 0 2px;">
+          ${chartSvg || '<div style="color: var(--text-muted); font-size: 11px;">Historique carburants indisponible.</div>'}
+        </div>
+        <div style="display:flex; flex-direction:column; margin-top:8px;">
+          ${legendRows}
         </div>
       </div>
     `;
@@ -540,6 +770,25 @@ export class OilPanel extends Panel {
     }
   }
 
+  private bindFuelPriceHistoryControls(): void {
+    if (!this.contentEl || !this.latestOilData) return;
+
+    const btn1m = this.contentEl.querySelector('#fuel-price-range-1m') as HTMLButtonElement | null;
+    const btn1y = this.contentEl.querySelector('#fuel-price-range-1y') as HTMLButtonElement | null;
+
+    btn1m?.addEventListener('click', () => {
+      if (this.fuelPriceHistoryRange === '1m') return;
+      this.fuelPriceHistoryRange = '1m';
+      this.renderContent(this.latestOilData!, this.latestFuelTensionData);
+    });
+
+    btn1y?.addEventListener('click', () => {
+      if (this.fuelPriceHistoryRange === '1y') return;
+      this.fuelPriceHistoryRange = '1y';
+      this.renderContent(this.latestOilData!, this.latestFuelTensionData);
+    });
+  }
+
   private renderStocksSection(data: OilDashboard): string {
     const stocks = data.stocks;
     const status = data.meta.status;
@@ -551,7 +800,18 @@ export class OilPanel extends Panel {
     return `
       <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Stocks nationaux</span>
+          <span class="oil-stock-tooltip-trigger" style="display:flex; align-items:center; gap:6px; min-width:0; padding:4px 8px; margin:-4px -8px; border-radius:8px; cursor:help; position:relative;">
+            <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Stocks nationaux</span>
+            <span
+              style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:var(--text-muted); font-size:10px; flex-shrink:0;"
+            >i</span>
+            <span class="oil-stock-tooltip-bubble">
+              <strong>France Monitor</strong><br>
+              jours = stocks physiques FR / consommation moyenne FR<br><br>
+              <strong>Méthode IEA</strong><br>
+              jours = stocks IEA / net imports
+            </span>
+          </span>
           ${this.renderFreshnessBadge(data.meta.freshness.dashboard.label)}
         </div>
         <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 8px;">${data.meta.freshness.dashboard.detail}</div>
@@ -668,13 +928,13 @@ export class OilPanel extends Panel {
     return `
       <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">Livraisons récentes</span>
+          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">UFIP mensuel</span>
           <span style="display: flex; align-items: center; gap: 8px;">
             ${this.renderFreshnessBadge(data.meta.freshness.deliveries.label)}
             <span style="color: var(--text-muted); font-size: 10px;">${latest.periodLabel}</span>
           </span>
         </div>
-        <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 10px;">${latest.sourceLabel ?? data.meta.freshness.deliveries.detail}</div>
+        <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 10px;">${latest.sourceLabel ?? data.meta.freshness.deliveries.detail} · signal mensuel FR utile pour la fraîcheur, sans remplacer le backbone structural.</div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
           <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(245, 158, 11, 0.14); border-radius: 6px; padding: 8px;">
             <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 2px;">Produits énergétiques</div>
@@ -733,13 +993,19 @@ export class OilPanel extends Panel {
     return Math.round(tons) + ' t';
   }
 
+  private formatKbd(value: number | null): string {
+    if (value == null || Number.isNaN(value)) return '—';
+    return `${value.toFixed(value >= 100 ? 1 : 3)} kbd`;
+  }
+
   private formatPct(value: number | null): string {
     if (value === null || Number.isNaN(value)) return 'n.d.';
     return `${value > 0 ? '+' : ''}${value.toFixed(1)}% vs N-1`;
   }
 
   private renderFreshnessBadge(label: string): string {
-    return `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 74px; padding: 2px 8px; border-radius: 999px; background: rgba(252, 211, 77, 0.12); border: 1px solid rgba(252, 211, 77, 0.18); color: ${OIL_PANEL_COLORS.title}; font-size: 9px; font-weight: 700; letter-spacing: 0.06em;">${label}</span>`;
+    const normalizedLabel = label.trim() === 'FR STRUCTURAL' ? 'STRUCTURAL' : label;
+    return `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 74px; padding: 2px 8px; border-radius: 999px; background: rgba(252, 211, 77, 0.12); border: 1px solid rgba(252, 211, 77, 0.18); color: ${OIL_PANEL_COLORS.title}; font-size: 9px; font-weight: 700; letter-spacing: 0.06em;">${normalizedLabel}</span>`;
   }
 
   private renderDynamicBadge(label: string, color: string): string {

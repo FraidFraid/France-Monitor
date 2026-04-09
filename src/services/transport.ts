@@ -88,6 +88,14 @@ interface SncfApiResponse {
 
 let disruptionCache: { data: TransportDisruption[]; fetchedAt: number } | null = null;
 const osmRailCache = new Map<string, Promise<OsmRailwayFeature[]>>();
+
+// Overpass rate-limit guard: max 1 concurrent request
+let overpassQueue: Promise<unknown> = Promise.resolve();
+function enqueueOverpass<T>(fn: () => Promise<T>): Promise<T> {
+  const next = overpassQueue.then(fn, fn);
+  overpassQueue = next.then(() => undefined, () => undefined);
+  return next;
+}
 const CACHE_TTL = 5 * 60_000; // 5 min
 
 // ─── Severity Mapping ───
@@ -388,7 +396,7 @@ async function fetchOsmRailFeaturesForBBox(
     const cached = osmRailCache.get(key);
     if (cached) return cached;
 
-    const pending = (async () => {
+    const pending = enqueueOverpass(async () => {
         const params = new URLSearchParams({
             bbox: `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}`,
         });
@@ -408,7 +416,7 @@ async function fetchOsmRailFeaturesForBBox(
             feature.geometry.type === 'LineString' &&
             (feature.geometry.coordinates?.length ?? 0) >= 2
         ));
-    })();
+    });
 
     osmRailCache.set(key, pending);
     try {

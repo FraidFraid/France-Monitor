@@ -22,8 +22,8 @@ import type {
 const DIMENSION_WEIGHTS = {
   social: 0.3,
   security: 0.3,
-  infra: 0.2,
-  velocity: 0.2,
+  infra: 0.3,
+  velocity: 0.1,
 };
 
 const THREAT_WEIGHTS: Record<ThreatLevel, number> = {
@@ -316,8 +316,8 @@ function computeDimensionScore(
       total += THREAT_WEIGHTS[item.threat.level] ?? 0;
     }
   }
-  // Normaliser avec un max raisonnable (3 événements critical = max)
-  return Math.min(maxScore, (total / 300) * maxScore);
+  // Normaliser avec un max raisonnable (12 événements critical = max, seuil ×4 vs avant)
+  return Math.min(maxScore, (total / 1200) * maxScore);
 }
 
 function computeVelocityScore(items: NewsItem[], _timeRangeMs: number): number {
@@ -327,8 +327,8 @@ function computeVelocityScore(items: NewsItem[], _timeRangeMs: number): number {
   // Compter les articles de la dernière heure
   const recentCount = items.filter(i => i.pubDate.getTime() > oneHourAgo).length;
 
-  // Score basé sur la densité (5+ articles/h = max)
-  return Math.min(100, (recentCount / 5) * 100);
+  // Score basé sur la densité (25+ articles/h = max — seuil ×5 vs avant)
+  return Math.min(100, (recentCount / 25) * 100);
 }
 
 function computeInfraFromMeteo(alerts: MeteoAlert[], deptCode: string): number {
@@ -426,7 +426,9 @@ export function computeISNR(
       lastUpdate: now,
     });
 
-    if (score > 0 || items.length > 0) {
+    // Seuil minimal : seuls les depts avec score ≥ 5 entrent dans la moyenne nationale
+    // (évite que des alertes météo mineures ou 1 article low gonfle le score pays)
+    if (score >= 5) {
       nationalTotal += score;
       deptCount++;
     }
@@ -435,7 +437,7 @@ export function computeISNR(
   // Trier par score décroissant
   scores.sort((a, b) => b.score - a.score);
 
-  // Score national = moyenne des départements actifs
+  // Score national = moyenne des départements significativement actifs
   const nationalScore = deptCount > 0 ? Math.round(nationalTotal / deptCount) : 0;
 
   return {

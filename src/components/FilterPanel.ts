@@ -28,6 +28,7 @@ const DEFAULT_FILTER: FilterState = {
         hospitals: false,
         environmentGroup: false,
         environmental: false,
+        weatherRadar: false,
         fires: false,
         criticalEnergyInfra: false,
         traffic: true,

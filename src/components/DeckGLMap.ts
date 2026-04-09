@@ -172,6 +172,27 @@ const LYR_WIND_TURBINE_LABEL         = 'wind-turbine-labels';
 const LYR_WIND_PARK_HALO     = 'wind-park-halo';
 const LYR_WIND_PARK_CIRCLE   = 'wind-park-circles';
 const LYR_WIND_PARK_LABEL    = 'wind-park-labels';
+
+const WEATHER_RADAR_REGIONS = [
+  // RainViewer is global, but we clip the raster to keep the overlay focused.
+  // Extend the main window from France to a Europe-wide footprint so the radar
+  // remains visible when the user pans eastward.
+  { id: 'metro', bounds: [-12.0, 34.0, 45.0, 72.0] as [number, number, number, number] },
+  { id: 'guadeloupe', bounds: [-61.95, 15.75, -60.95, 16.7] as [number, number, number, number] },
+  { id: 'martinique', bounds: [-61.35, 14.2, -60.75, 15.0] as [number, number, number, number] },
+  { id: 'guyane', bounds: [-54.8, 1.8, -51.5, 6.0] as [number, number, number, number] },
+  { id: 'reunion', bounds: [55.0, -21.5, 55.95, -20.8] as [number, number, number, number] },
+  { id: 'mayotte', bounds: [44.9, -13.1, 45.4, -12.5] as [number, number, number, number] },
+] as const;
+const WEATHER_RADAR_MAX_ZOOM = 9;
+
+function getWeatherRadarSourceId(regionId: string): string {
+  return `weather-radar-src-${regionId}`;
+}
+
+function getWeatherRadarLayerId(regionId: string): string {
+  return `weather-radar-${regionId}`;
+}
 const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
 const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
 const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
@@ -1378,6 +1399,8 @@ export class DeckGLMap {
   private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
+  private weatherRadarTileTemplate: string | null = null;
+  private weatherRadarFetchedAt = 0;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
@@ -1936,6 +1959,7 @@ export class DeckGLMap {
     });
 
     // ─── Weather: department fill ───
+    await this.ensureWeatherRadarLayer();
     this.map.addLayer({
       id: LYR_WEATHER_FILL,
       type: 'fill',
@@ -11575,6 +11599,10 @@ export class DeckGLMap {
     this.updatePulseMarkerPositions();
     if (!this.map) return;
 
+    if (layers.weatherRadar) {
+      void this.ensureWeatherRadarLayer();
+    }
+
     const vis = (visible: boolean) => visible ? 'visible' : 'none';
 
     // News layers (all must be toggled together)
@@ -11594,6 +11622,9 @@ export class DeckGLMap {
     this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LINE, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LABEL, vis(layers.powerGrid));
+    for (const region of WEATHER_RADAR_REGIONS) {
+      this.setVis(getWeatherRadarLayerId(region.id), vis(layers.weatherRadar ?? false));
+    }
     this.setVis(LYR_WEATHER_FILL, vis(layers.environmental));
     this.setVis(LYR_WEATHER_LINE, vis(layers.environmental));
     this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
@@ -11774,6 +11805,101 @@ export class DeckGLMap {
       }
     } catch {
       // Silently ignore - layer may not exist yet during initialization
+    }
+  }
+
+  private async ensureWeatherRadarLayer(force = false): Promise<void> {
+    if (!this.map) return;
+    const now = Date.now();
+    if (!force && this.weatherRadarTileTemplate && (now - this.weatherRadarFetchedAt) < 10 * 60_000) {
+      for (const region of WEATHER_RADAR_REGIONS) {
+        const sourceId = getWeatherRadarSourceId(region.id);
+        const layerId = getWeatherRadarLayerId(region.id);
+        if (!this.map.getSource(sourceId)) {
+          this.map.addSource(sourceId, {
+            type: 'raster',
+            tiles: [this.weatherRadarTileTemplate],
+            tileSize: 256,
+            attribution: 'RainViewer',
+            bounds: region.bounds,
+            maxzoom: WEATHER_RADAR_MAX_ZOOM,
+          });
+        }
+        if (!this.map.getLayer(layerId)) {
+          this.map.addLayer({
+            id: layerId,
+            type: 'raster',
+            source: sourceId,
+            maxzoom: WEATHER_RADAR_MAX_ZOOM,
+            paint: {
+              'raster-opacity': 0.58,
+              'raster-resampling': 'linear',
+              'raster-fade-duration': 0,
+            },
+          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
+        }
+      }
+      return;
+    }
+
+    try {
+      const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      if (!response.ok) return;
+      const payload = await response.json() as {
+        host?: string;
+        radar?: { past?: Array<{ path?: string }>; nowcast?: Array<{ path?: string }> };
+      };
+      const host = typeof payload.host === 'string' && payload.host.length > 0
+        ? payload.host
+        : 'https://tilecache.rainviewer.com';
+      const frames = [
+        ...(Array.isArray(payload.radar?.past) ? payload.radar!.past : []),
+        ...(Array.isArray(payload.radar?.nowcast) ? payload.radar!.nowcast : []),
+      ].filter((frame): frame is { path: string } => typeof frame?.path === 'string' && frame.path.length > 0);
+      const latest = frames.at(-1);
+      if (!latest) return;
+
+      const tileTemplate = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
+      this.weatherRadarTileTemplate = tileTemplate;
+      this.weatherRadarFetchedAt = now;
+
+      for (const region of WEATHER_RADAR_REGIONS) {
+        const sourceId = getWeatherRadarSourceId(region.id);
+        const layerId = getWeatherRadarLayerId(region.id);
+        const existingSource = this.map.getSource(sourceId) as maplibregl.RasterTileSource | undefined;
+        if (!existingSource) {
+          this.map.addSource(sourceId, {
+            type: 'raster',
+            tiles: [tileTemplate],
+            tileSize: 256,
+            attribution: 'RainViewer',
+            bounds: region.bounds,
+            maxzoom: WEATHER_RADAR_MAX_ZOOM,
+          });
+        } else {
+          (existingSource as any).setTiles?.([tileTemplate]);
+        }
+
+        if (!this.map.getLayer(layerId)) {
+          this.map.addLayer({
+            id: layerId,
+            type: 'raster',
+            source: sourceId,
+            maxzoom: WEATHER_RADAR_MAX_ZOOM,
+            paint: {
+              'raster-opacity': 0.58,
+              'raster-resampling': 'linear',
+              'raster-fade-duration': 0,
+            },
+          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
+        }
+      }
+
+      for (const region of WEATHER_RADAR_REGIONS) {
+        this.setVis(getWeatherRadarLayerId(region.id), this.currentLayers?.weatherRadar ? 'visible' : 'none');
+      }
+    } catch (error) {
+      console.warn('[DeckGLMap] Failed to refresh weather radar tiles', error);
     }
   }
 
