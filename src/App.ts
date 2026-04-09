@@ -178,7 +178,7 @@ function buildOilBriefingContext(
     nationalStocksDays: oilData?.stocks.nationalStocksDays ?? null,
     monthlyRoadFuelYoYPct: oilData?.deliveries?.[0]?.roadFuelYoYPct ?? null,
     fuelTensionCoverage: fuelTension?.coverageLabel ?? null,
-    fuelTensionLevel: fuelTension?.national.topDepartments?.[0]?.tensionLevel ?? null,
+    fuelTensionLevel: fuelTension?.national.tensionLevel ?? null,
     fuelTensionAnomalyShare: fuelTension?.national.anomalyShare ?? null,
     fuelTensionAvgUpdateAgeMinutes: fuelTension?.national.avgUpdateAgeMinutes ?? null,
     fuelTensionTopDepartments: topDepartments,
@@ -1855,35 +1855,21 @@ export class App {
 
     // Baromètre Pannes Réseau (premier élément de la sidebar, avant les couches)
     this.networkBarometerWidget = new BarometerWidget(sidebarEl);
-    this.networkBarometerWidget.mount();
+    this.networkBarometerWidget.mount({ attach: false });
 
     // Bouton Intelligence France (juste au-dessus des couches)
     const intelSidebarBtn = document.createElement('button');
-    intelSidebarBtn.innerHTML = '🇫🇷 &nbsp;Intelligence France';
-    intelSidebarBtn.style.cssText = `
-      display: block;
-      width: calc(100% - 16px);
-      margin: 8px 8px 4px;
-      padding: 8px 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 8px;
-      color: #c8c8d0;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
-      letter-spacing: 0.2px;
-      transition: background 0.15s, border-color 0.15s;
+    intelSidebarBtn.className = 'sidebar-intel-entry';
+    intelSidebarBtn.type = 'button';
+    intelSidebarBtn.setAttribute('aria-label', 'Ouvrir Intelligence France');
+    intelSidebarBtn.innerHTML = `
+      <span class="sidebar-intel-entry__flag">🇫🇷</span>
+      <span class="sidebar-intel-entry__body">
+        <span class="sidebar-intel-entry__title">Intelligence France</span>
+        <span class="sidebar-intel-entry__meta">Synthèse nationale, signaux actifs, énergie, sécurité</span>
+      </span>
+      <span class="sidebar-intel-entry__arrow" aria-hidden="true">›</span>
     `;
-    intelSidebarBtn.onmouseover = () => {
-      intelSidebarBtn.style.background = 'rgba(255,255,255,0.08)';
-      intelSidebarBtn.style.borderColor = 'rgba(255,255,255,0.22)';
-    };
-    intelSidebarBtn.onmouseout = () => {
-      intelSidebarBtn.style.background = 'rgba(255,255,255,0.04)';
-      intelSidebarBtn.style.borderColor = 'rgba(255,255,255,0.12)';
-    };
     intelSidebarBtn.onclick = () => {
       document.dispatchEvent(new CustomEvent('open-france-intel'));
     };
@@ -2215,6 +2201,7 @@ export class App {
 
     // France Intelligence Panel
     this.franceIntelPanel = new FranceIntelPanel(floatContainer);
+    this.franceIntelPanel.setInfrastructureWidget(this.networkBarometerWidget);
     this.franceIntelPanel.setOnClose(() => {
       this.clearFranceIntelBriefRefresh();
     });

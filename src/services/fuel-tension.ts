@@ -228,6 +228,7 @@ function createEmptyNationalSummary(): FuelTensionNationalSummary {
     anomalyShare: 0,
     avgUpdateAgeMinutes: null,
     medianUpdateAgeMinutes: null,
+    tensionLevel: 'LOW',
     avgPrices: {},
     topDepartments: [],
   };
@@ -289,6 +290,7 @@ function persistHistorySnapshot(
 function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], stationAnomalyCount: number): FuelTensionNationalSummary {
   const stationCount = summaries.reduce((sum, summary) => sum + summary.stationCount, 0);
   const anomalyShare = stationCount > 0 ? round((stationAnomalyCount / stationCount) * 100, 1) : 0;
+  const avgUpdateAgeMinutes = average(summaries.map((summary) => summary.avgUpdateAgeMinutes), 0);
 
   const allFuelSignals = summaries.flatMap((summary) => summary.fuelSignals);
   const avgPrices = FUEL_TYPES.reduce<Partial<Record<FuelType, number>>>((acc, fuelType) => {
@@ -306,8 +308,13 @@ function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], station
     stationCount,
     departmentCount: summaries.length,
     anomalyShare,
-    avgUpdateAgeMinutes: average(summaries.map((summary) => summary.avgUpdateAgeMinutes), 0),
+    avgUpdateAgeMinutes,
     medianUpdateAgeMinutes: median(summaries.map((summary) => summary.avgUpdateAgeMinutes), 0),
+    tensionLevel: getSignalLevel(
+      maxNumber(summaries.map((summary) => summary.maxDeltaPrice7d), 1),
+      anomalyShare,
+      avgUpdateAgeMinutes,
+    ),
     avgPrices,
     topDepartments: summaries.slice(0, 5),
   };

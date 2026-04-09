@@ -2,7 +2,7 @@
  * BarometerWidget.ts — Baromètre Pannes Réseau France
  *
  * Premier élément de la colonne gauche (sidebar), avant les couches.
- * Affiche un score 0-100 sous forme d'arc SVG + détail au survol.
+ * Affiche un score 0-100 sous forme d'arc SVG + détail développé.
  */
 
 import type { NetworkBarometerResult } from '../services/network-barometer.ts';
@@ -16,6 +16,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export class BarometerWidget {
   private container: HTMLElement;
+  private homeContainer: HTMLElement;
   private el: HTMLElement | null = null;
   private arcEl: SVGCircleElement | null = null;
   private scoreTextEl: SVGTextElement | null = null;
@@ -34,19 +35,22 @@ export class BarometerWidget {
     color: string;
   } | null = null;
   private currentEolienLive: EolienLive | null = null;
+  private readonly homeMarginBottom = '8px';
+  private attachedToHome = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.homeContainer = container;
   }
 
-  mount(): void {
+  mount(options?: { attach?: boolean }): void {
     this.el = document.createElement('div');
     this.el.id = 'network-barometer-widget';
     this.el.style.cssText = `
       position: relative;
       width: 100%;
       box-sizing: border-box;
-      margin-bottom: 8px;
+      margin-bottom: ${this.homeMarginBottom};
       display: flex;
       flex-direction: column;
       padding: 10px 14px 10px 10px;
@@ -66,10 +70,24 @@ export class BarometerWidget {
     this.el.appendChild(this._buildTooltip());
     this.el.appendChild(this._buildBriefing());
 
-    this.el.addEventListener('mouseenter', this._onMouseEnter);
-    this.el.addEventListener('mouseleave', this._onMouseLeave);
+    if (options?.attach !== false) {
+      this.container.appendChild(this.el);
+      this.attachedToHome = true;
+    }
+  }
 
+  attachTo(container: HTMLElement): void {
+    if (!this.el) return;
+    this.container = container;
+    this.el.style.marginBottom = '0';
     this.container.appendChild(this.el);
+  }
+
+  restoreHome(): void {
+    if (!this.el || !this.attachedToHome) return;
+    this.container = this.homeContainer;
+    this.el.style.marginBottom = this.homeMarginBottom;
+    this.homeContainer.appendChild(this.el);
   }
 
   // ── Builder helpers ──────────────────────────────────────────────────────────
@@ -158,18 +176,15 @@ export class BarometerWidget {
   private _buildTooltip(): HTMLElement {
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.style.cssText = `
-      display: none;
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      right: 0;
+      display: block;
+      position: static;
+      margin-top: 8px;
       background: var(--bg-surface);
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 10px;
       padding: 10px 14px;
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-      z-index: 901;
       font-size: 11px;
       color: var(--text-secondary);
       box-shadow: 0 8px 32px rgba(0,0,0,0.5);
@@ -285,16 +300,6 @@ export class BarometerWidget {
     this.stabilityBarContainerEl.appendChild(track);
     return this.stabilityBarContainerEl;
   }
-
-  // ── Event handlers (stored as fields for removeEventListener) ────────────────
-
-  private _onMouseEnter = (): void => {
-    if (this.tooltipEl) this.tooltipEl.style.display = 'block';
-  };
-
-  private _onMouseLeave = (): void => {
-    if (this.tooltipEl) this.tooltipEl.style.display = 'none';
-  };
 
   // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -478,8 +483,6 @@ export class BarometerWidget {
 
   destroy(): void {
     if (!this.el) return;
-    this.el.removeEventListener('mouseenter', this._onMouseEnter);
-    this.el.removeEventListener('mouseleave', this._onMouseLeave);
     this.el.remove();
     this.el = null;
     this.arcEl = null;

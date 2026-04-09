@@ -59,13 +59,13 @@ export class LayerPanel {
   private layers: MapLayers;
   private onChange: LayerToggleHandler | null = null;
   private collapsed = false;
-  private newsExpanded = false;
-  private healthExpanded = false;
-  private trafficExpanded = false;
-  private energyExpanded = false;
-  private sovereigntyExpanded = false;
-  private outagesExpanded = false;
-  private environmentExpanded = false;
+  private newsExpanded = true;
+  private healthExpanded = true;
+  private trafficExpanded = true;
+  private energyExpanded = true;
+  private sovereigntyExpanded = true;
+  private outagesExpanded = true;
+  private environmentExpanded = true;
   private element: HTMLElement | null = null;
 
   constructor(container: HTMLElement, initialLayers: MapLayers) {

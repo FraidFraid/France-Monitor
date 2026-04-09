@@ -1902,6 +1902,7 @@ export interface FuelTensionNationalSummary {
   anomalyShare: number; // percent
   avgUpdateAgeMinutes: number | null;
   medianUpdateAgeMinutes: number | null;
+  tensionLevel: FuelTensionLevel;
   avgPrices: Partial<Record<FuelType, number>>;
   topDepartments: FuelTensionDepartmentSummary[];
 }

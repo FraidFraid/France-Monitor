@@ -1,4 +1,5 @@
 import { Panel } from './Panel.ts';
+import type { BarometerWidget } from './BarometerWidget.ts';
 import type {
   FranceCountrySnapshot,
   FranceIntelTimelineLane,
@@ -247,6 +248,7 @@ export class FranceIntelPanel extends Panel {
   private currentLang: 'fr' | 'en' = 'fr';
   private briefState: { text: string | null; freshness: 'fresh' | 'cached' } | null = null;
   private briefExpanded = false;
+  private infrastructureWidget: BarometerWidget | null = null;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
@@ -297,6 +299,10 @@ export class FranceIntelPanel extends Panel {
     this.onClose = handler;
   }
 
+  setInfrastructureWidget(widget: BarometerWidget | null): void {
+    this.infrastructureWidget = widget;
+  }
+
   getCurrentLang(): 'fr' | 'en' {
     return this.currentLang;
   }
@@ -307,10 +313,13 @@ export class FranceIntelPanel extends Panel {
 
   show(snapshot: FranceCountrySnapshot): void {
     if (!this.contentEl) return;
+    const preservedScrollTop = this.isOpen ? this.contentEl.scrollTop : 0;
     this.currentLang = snapshot.briefLang;
     const langBtn = this.modalEl.querySelector('.fi-lang-toggle');
     if (langBtn) langBtn.textContent = this.currentLang.toUpperCase();
     this.renderContent(snapshot);
+    this.mountInfrastructureWidget();
+    this.contentEl.scrollTop = preservedScrollTop;
     this.isOpen = true;
     this.modalEl.classList.add('active');
     this.modalEl.setAttribute('aria-hidden', 'false');
@@ -491,6 +500,8 @@ export class FranceIntelPanel extends Panel {
           </div>
         </section>
 
+        <div class="fi-infra-widget-slot"></div>
+
         <section class="frintel-card">
           <div class="frintel-card-top">
             <div class="frintel-card-title">${t(lang, 'Profil énergie', 'Energy Profile')}</div>
@@ -575,6 +586,12 @@ export class FranceIntelPanel extends Panel {
     `;
 
     this.renderBriefSection();
+  }
+
+  private mountInfrastructureWidget(): void {
+    const slot = this.modalEl.querySelector('.fi-infra-widget-slot') as HTMLElement | null;
+    if (!slot || !this.infrastructureWidget) return;
+    this.infrastructureWidget.attachTo(slot);
   }
 
   private renderMetricBar(label: string, value: number, color: string): string {

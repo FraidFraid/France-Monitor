@@ -498,6 +498,91 @@ body {
   color: var(--text-primary);
 }
 
+.sidebar-intel-entry {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 6px;
+  padding: 11px 12px;
+  border: 1px solid rgba(104, 117, 255, 0.2);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(47, 54, 92, 0.5), rgba(21, 23, 38, 0.92)),
+    radial-gradient(circle at top left, rgba(88, 101, 242, 0.18), transparent 52%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.sidebar-intel-entry:hover {
+  border-color: rgba(133, 145, 255, 0.38);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.sidebar-intel-entry__flag {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-intel-entry__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-intel-entry__eyebrow {
+  color: rgba(182, 190, 218, 0.72);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.sidebar-intel-entry__title {
+  color: #f4f6ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.sidebar-intel-entry__meta {
+  color: rgba(200, 205, 228, 0.62);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.sidebar-intel-entry__arrow {
+  color: rgba(226, 230, 247, 0.72);
+  font-size: 18px;
+  line-height: 1;
+  transform: translateX(0);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-intel-entry:hover .sidebar-intel-entry__arrow {
+  color: #f4f6ff;
+  transform: translateX(2px);
+}
+
 .right-sidebar {
   width: 0;
   min-width: 0;
@@ -4246,6 +4331,12 @@ body {
 
 .frintel-grid {
   margin-top: 10px;
+}
+
+.fi-infra-widget-slot {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0;
 }
 
 .frintel-card {

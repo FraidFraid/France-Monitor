@@ -339,7 +339,7 @@ function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | nul
     oilStocksDays: raw.oilDashboard?.stocks.nationalStocksDays ?? null,
     oilVigilanceStatus: raw.oilDashboard?.meta.status ?? null,
     // Tension carburants
-    fuelTensionLevel: raw.fuelTensionDashboard?.national.topDepartments?.[0]?.tensionLevel ?? null,
+    fuelTensionLevel: raw.fuelTensionDashboard?.national.tensionLevel ?? null,
     fuelTensionAnomalyShare: raw.fuelTensionDashboard?.national.anomalyShare ?? null,
     fuelPriceHistory: raw.oilDashboard?.fuelPriceHistory ?? null,
   };
