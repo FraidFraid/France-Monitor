@@ -2002,63 +2002,9 @@ export class App {
     this.healthBarometerPanel = new HealthBarometerPanel(floatContainer);
     this.healthBarometerPanel.mount();
 
-    const refreshNetworkBarometer = async (): Promise<void> => {
-      const result = await fetchNetworkBarometer();
-      this.networkBarometerWidget?.update(result);
-      this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
-      this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
-
-      // Headline filtering: medium/high first (dense signal), fallback to low
-      // to confirm stability when no high-impact events are present
-      const medium = this.newsItems
-        .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
-        .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
-        .slice(0, 10);
-
-      const headlines = medium.length >= 3
-        ? medium
-        : [
-            ...medium,
-            ...this.newsItems
-              .filter(n => n.threat?.level === 'low')
-              .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
-              .slice(0, 10 - medium.length),
-          ];
-
-      const isnrDepts = this.currentISNRData?.scores
-        .slice()
-        .sort((a, b) => a.score - b.score)
-        .slice(0, 5)
-        .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
-
-      const nuclearBriefing = buildNuclearBriefingContext(this.currentNuclearState);
-      const oilBriefing = buildOilBriefingContext(this.currentOilData, this.currentFuelTensionData);
-
-      // Build eolien briefing context from current live snapshot
-      const eolienBriefing: EolienBriefingContext | undefined = this.currentEolienLive
-        ? {
-            production_gw: this.currentEolienLive.production_gw,
-            puissance_installee: this.currentEolienLive.puissance_installee,
-            facteur_charge: this.currentEolienLive.facteur_charge,
-            parcs_actifs: this.currentEolienLive.parcs_actifs,
-            alertLevel: this.currentEolienLive.alertLevel,
-          }
-        : undefined;
-
-      const synthesis = await fetchISNRSynthesis(
-        result,
-        headlines,
-        this.currentISNRData?.nationalScore,
-        isnrDepts,
-        nuclearBriefing,
-        eolienBriefing,
-        oilBriefing,
-      ).catch(() => null);
-      this.networkBarometerWidget?.updateBriefing(synthesis);
-    };
-    void refreshNetworkBarometer();
+    void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(
-      () => refreshNetworkBarometer().catch(err => console.error('[App] Network barometer poll error', err)),
+      () => this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err)),
       5 * 60_000
     );
 
@@ -4818,6 +4764,58 @@ export class App {
     this.franceIntelPanel.show(this.buildFranceSnapshot(lang));
   }
 
+  private async refreshNetworkBarometerWidget(): Promise<void> {
+    const result = await fetchNetworkBarometer();
+    this.networkBarometerWidget?.update(result);
+    this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
+    this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
+
+    const medium = this.newsItems
+      .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
+      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .slice(0, 10);
+
+    const headlines = medium.length >= 3
+      ? medium
+      : [
+          ...medium,
+          ...this.newsItems
+            .filter(n => n.threat?.level === 'low')
+            .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+            .slice(0, 10 - medium.length),
+        ];
+
+    const isnrDepts = this.currentISNRData?.scores
+      .slice()
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 5)
+      .map(d => ({ name: d.name, score: d.score, social: d.dimensions.social, security: d.dimensions.security }));
+
+    const nuclearBriefing = buildNuclearBriefingContext(this.currentNuclearState);
+    const oilBriefing = buildOilBriefingContext(this.currentOilData, this.currentFuelTensionData);
+
+    const eolienBriefing: EolienBriefingContext | undefined = this.currentEolienLive
+      ? {
+          production_gw: this.currentEolienLive.production_gw,
+          puissance_installee: this.currentEolienLive.puissance_installee,
+          facteur_charge: this.currentEolienLive.facteur_charge,
+          parcs_actifs: this.currentEolienLive.parcs_actifs,
+          alertLevel: this.currentEolienLive.alertLevel,
+        }
+      : undefined;
+
+    const synthesis = await fetchISNRSynthesis(
+      result,
+      headlines,
+      this.currentISNRData?.nationalScore,
+      isnrDepts,
+      nuclearBriefing,
+      eolienBriefing,
+      oilBriefing,
+    ).catch(() => null);
+    this.networkBarometerWidget?.updateBriefing(synthesis);
+  }
+
   private requestFranceIntelBrief(
     snapshot: FranceCountrySnapshot,
     lang: 'fr' | 'en',
@@ -4858,6 +4856,9 @@ export class App {
     if (!this.currentCyberData) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
     if (!this.currentOilData) void this.loadOil();
+    void this.refreshNetworkBarometerWidget().catch((err) => {
+      console.error('[App] Network barometer refresh on France Intel open failed', err);
+    });
 
     this.environmentPanel?.hide();
     this.energyPanel?.hide();

@@ -23,6 +23,14 @@ type NuclearBriefingContext = {
   remitUnconfirmedCount: number;
 };
 
+type SynthesisRequestBody = {
+  scores: Record<string, unknown>;
+  headlines: string[];
+  isnrNationalScore?: number;
+  isnrDepts?: ISNRDeptContext[];
+  nuclear?: NuclearBriefingContext;
+};
+
 function formatCapacityGW(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? `${(value / 1000).toFixed(1).replace('.', ',')} GW`
@@ -102,6 +110,60 @@ IMPORTANT : Un score stabilityImpact élevé (proche de 100) signifie une INSTAB
 Réponds UNIQUEMENT en JSON valide, sans texte avant ou après : {"briefing": "...", "stabilityImpact": 42}`;
 }
 
+function toNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function buildFallbackSynthesis(body: SynthesisRequestBody): {
+  briefing: string;
+  stabilityImpact: number;
+  fromCache: boolean;
+  computedAt: string;
+} {
+  const score = toNumber(body.scores.score) ?? 0;
+  const status = typeof body.scores.status === 'string' ? body.scores.status : 'unknown';
+  const details = (body.scores.details as Record<string, unknown> | undefined) ?? {};
+  const elec = toNumber(details.elec);
+  const bgp = toNumber(details.bgp);
+  const telecom = toNumber(details.telecom);
+  const cyber = toNumber(details.cyber);
+  const weakest = [
+    { label: 'électricité', value: elec },
+    { label: 'internet', value: bgp },
+    { label: 'télécoms', value: telecom },
+    { label: 'cyber', value: cyber },
+  ]
+    .filter((item): item is { label: string; value: number } => item.value !== null)
+    .sort((a, b) => a.value - b.value)[0];
+
+  const unstableDept = body.isnrDepts?.[0]?.name ?? null;
+  const hasNuclearSignal = !!body.nuclear && (
+    body.nuclear.unplannedOutageCount > 0
+    || body.nuclear.reducedCount > 0
+    || body.nuclear.remitUnconfirmedCount > 0
+    || body.nuclear.gridTensionRisk
+  );
+
+  const sentence1 = weakest
+    ? `La résilience des infrastructures françaises reste ${status === 'critical' ? 'critique' : status === 'degraded' ? 'dégradée' : 'sous tension'}, avec un score composite de ${score}/100 et un point de fragilité principal sur ${weakest.label} (${weakest.value}/100).`
+    : `La résilience des infrastructures françaises reste ${status === 'critical' ? 'critique' : status === 'degraded' ? 'dégradée' : 'sous tension'}, avec un score composite de ${score}/100.`;
+
+  const sentence2Parts: string[] = [];
+  if (unstableDept) sentence2Parts.push(`Le signal territorial le plus fragile remonte autour de ${unstableDept}`);
+  if (hasNuclearSignal) sentence2Parts.push('un signal nucléaire notable reste à surveiller');
+  if (body.headlines.length > 0) sentence2Parts.push('les actualités récentes confirment une pression opérationnelle mesurable');
+  if (sentence2Parts.length === 0) sentence2Parts.push('aucune convergence brutale supplémentaire n’est détectée à cette minute');
+
+  const stabilityImpact = Math.max(0, Math.min(100, Math.round(100 - score + ((cyber != null && cyber < 60) ? 8 : 0))));
+
+  return {
+    briefing: `${sentence1} ${sentence2Parts.join(', ')}.`,
+    stabilityImpact,
+    fromCache: false,
+    computedAt: new Date().toISOString(),
+  };
+}
+
 export function synthesisProxyPlugin(): Plugin {
   return {
     name: 'synthesis-proxy',
@@ -127,21 +189,14 @@ export function synthesisProxyPlugin(): Plugin {
 
           const GROQ_API_KEY = process.env['GROQ_API_KEY'];
           if (!GROQ_API_KEY) {
-            res.end(JSON.stringify({
-              briefing: null, stabilityImpact: null, fromCache: false,
-              computedAt: new Date().toISOString(),
-            }));
+            const parsed = JSON.parse(body) as SynthesisRequestBody;
+            res.end(JSON.stringify(buildFallbackSynthesis(parsed)));
             return;
           }
 
           try {
-            const { scores, headlines, isnrNationalScore, isnrDepts, nuclear } = JSON.parse(body) as {
-              scores: Record<string, unknown>;
-              headlines: string[];
-              isnrNationalScore?: number;
-              isnrDepts?: ISNRDeptContext[];
-              nuclear?: NuclearBriefingContext;
-            };
+            const parsed = JSON.parse(body) as SynthesisRequestBody;
+            const { scores, headlines, isnrNationalScore, isnrDepts, nuclear } = parsed;
 
             const groqRes = await fetch(GROQ_URL, {
               method: 'POST',
@@ -158,10 +213,7 @@ export function synthesisProxyPlugin(): Plugin {
             });
 
             if (!groqRes.ok) {
-              res.end(JSON.stringify({
-                briefing: null, stabilityImpact: null, fromCache: false,
-                computedAt: new Date().toISOString(),
-              }));
+              res.end(JSON.stringify(buildFallbackSynthesis(parsed)));
               return;
             }
 
@@ -186,10 +238,17 @@ export function synthesisProxyPlugin(): Plugin {
             res.end(JSON.stringify(result));
           } catch (err) {
             console.error('[synthesis-proxy]', err);
-            res.end(JSON.stringify({
-              briefing: null, stabilityImpact: null, fromCache: false,
-              computedAt: new Date().toISOString(),
-            }));
+            try {
+              const parsed = JSON.parse(body) as SynthesisRequestBody;
+              res.end(JSON.stringify(buildFallbackSynthesis(parsed)));
+            } catch {
+              res.end(JSON.stringify({
+                briefing: 'Synthèse indisponible pour ce cycle.',
+                stabilityImpact: null,
+                fromCache: false,
+                computedAt: new Date().toISOString(),
+              }));
+            }
           }
         });
       });

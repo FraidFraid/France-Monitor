@@ -146,13 +146,9 @@ export class BarometerWidget {
     const group = document.createElement('div');
     group.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-width:0;';
 
-    const line1 = document.createElement('div');
-    line1.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);line-height:1.3;';
-    line1.textContent = 'INFRASTRUCTURES';
-
-    const line2 = document.createElement('div');
-    line2.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);line-height:1.3;';
-    line2.textContent = 'FRANCE';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-primary);line-height:1.3;white-space:nowrap;';
+    title.textContent = 'INFRASTRUCTURES FRANCE';
 
     const statusRow = document.createElement('div');
     statusRow.style.cssText = 'display:flex;align-items:center;gap:5px;margin-top:3px;';
@@ -166,8 +162,7 @@ export class BarometerWidget {
 
     statusRow.appendChild(this.dotEl);
     statusRow.appendChild(this.statusLabelEl);
-    group.appendChild(line1);
-    group.appendChild(line2);
+    group.appendChild(title);
     group.appendChild(statusRow);
 
     return group;
