@@ -4,22 +4,12 @@ import type {
   FranceIntelTimelineLane,
   MeteoVigilanceLevel,
 } from '../types/index.ts';
-
-const LEVEL_COLORS: Record<string, string> = {
-  critical: 'var(--threat-critical)',
-  high: 'var(--threat-high)',
-  medium: 'var(--threat-medium)',
-  low: 'var(--threat-low)',
-  info: 'var(--threat-info)',
-};
-
-const THREAT_LABELS: Record<string, string> = {
-  critical: 'CRITIQUE',
-  high: 'ÉLEVÉ',
-  medium: 'MODÉRÉ',
-  low: 'FAIBLE',
-  info: 'INFO',
-};
+import {
+  filterFuelPriceSeries,
+  formatFuelDeltaCents,
+  formatFuelPrice,
+  renderFuelPriceChartSvg,
+} from '../utils/fuelPriceChart.ts';
 
 const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
   green: 'Vert',
@@ -41,14 +31,6 @@ const RISK_LABELS: Record<string, string> = {
   'wave-surge': 'Vagues-submersion',
 };
 
-const SEVERITY_ORDER: Record<string, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-  info: 0,
-};
-
 function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
@@ -60,63 +42,174 @@ function escapeHtml(text: string): string {
 }
 
 
-function ciiBand(score: number): 'stable' | 'elevated' | 'high' | 'critical' {
-  if (score <= 25) return 'stable';
-  if (score <= 50) return 'elevated';
-  if (score <= 75) return 'high';
+function ciiBand(score: number): 'stable' | 'tense' | 'degraded' | 'critical' {
+  if (score >= 80) return 'stable';
+  if (score >= 65) return 'tense';
+  if (score >= 50) return 'degraded';
   return 'critical';
 }
 
 function ciiLabel(score: number, lang: 'fr' | 'en'): string {
-  if (score <= 25) return t(lang, 'Stable', 'Stable');
-  if (score <= 50) return t(lang, 'Sous tension', 'Elevated');
-  if (score <= 75) return t(lang, 'Élevé', 'High');
+  if (score >= 80) return t(lang, 'Stable', 'Stable');
+  if (score >= 65) return t(lang, 'Sous tension', 'Under Pressure');
+  if (score >= 50) return t(lang, 'Dégradé', 'Degraded');
   return t(lang, 'Critique', 'Critical');
 }
 
 function ciiColor(score: number): string {
   const band = ciiBand(score);
   if (band === 'critical') return 'var(--threat-critical)';
-  if (band === 'high') return 'var(--threat-high)';
-  if (band === 'elevated') return 'var(--threat-medium)';
+  if (band === 'degraded') return 'var(--threat-high)';
+  if (band === 'tense') return 'var(--threat-medium)';
   return 'var(--threat-low)';
 }
 
-function timeAgo(date: Date, lang: 'fr' | 'en'): string {
-  const diff = Date.now() - date.getTime();
-  const mins = Math.max(0, Math.floor(diff / 60_000));
-  const hours = Math.floor(mins / 60);
-  if (lang === 'en') {
-    if (mins < 2) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
+function axisRiskColor(value: number): string {
+  if (value >= 75) return 'var(--threat-critical)';
+  if (value >= 55) return 'var(--threat-high)';
+  if (value >= 35) return 'var(--threat-medium)';
+  return 'var(--threat-low)';
+}
+
+type BriefSection = {
+  heading: string | null;
+  body: string;
+};
+
+const BRIEF_COLLAPSED_LINES = 16;
+const BRIEF_COLLAPSED_MAX_HEIGHT_PX = 336;
+const INLINE_BRIEF_SECTION_TITLES = [
+  'ANALYSE',
+  'ANALYSIS',
+  'À SURVEILLER (6H)',
+  'NEXT 6 HOURS TO WATCH',
+  'SITUATION ACTUELLE',
+  'CURRENT SITUATION',
+  'POINTS DE PRESSION',
+  'PRESSURE POINTS',
+] as const;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeBriefText(text: string): string {
+  let normalized = text.replace(/\r\n/g, '\n');
+
+  for (const title of INLINE_BRIEF_SECTION_TITLES) {
+    const escapedTitle = escapeRegExp(title);
+    normalized = normalized.replace(
+      new RegExp(`\\s*(${escapedTitle})(?=\\s+|\\n|$)`, 'g'),
+      '\n$1\n',
+    );
   }
-  if (mins < 2) return 'à l’instant';
-  if (mins < 60) return `il y a ${mins} min`;
-  if (hours < 24) return `il y a ${hours} h`;
-  return `il y a ${Math.floor(hours / 24)} j`;
+
+  return normalized
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
 }
 
-function summarizeBrief(text: string): string {
-  const stripped = text.replace(/\*\*(.*?)\*\*/g, '$1').trim();
-  const lines = stripped.split('\n').map((line) => line.trim()).filter(Boolean);
-  if (lines.length >= 4) return lines.slice(0, 4).join('\n');
-  const sentences = stripped.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).filter(Boolean);
-  return sentences.slice(0, 4).join(' ');
+function normalizeBriefLine(line: string): string {
+  return line
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/^[\s:•\-*]+/, '')
+    .trim();
 }
 
-function formatBriefHtml(text: string): string {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const escaped = escapeHtml(line.replace(/\*\*(.*?)\*\*/g, '$1'));
-      if (/^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s:'-]{4,}$/.test(line)) {
-        return `<div class="frintel-brief-kicker">${escaped}</div>`;
-      }
-      return `<p>${escaped}</p>`;
+function isBriefHeading(line: string): boolean {
+  return /^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’:/()\-]{4,}$/.test(line);
+}
+
+function formatBriefHeading(line: string): string {
+  const normalized = normalizeBriefLine(line).replace(/\s+/g, ' ').trim();
+  const headingMap: Record<string, string> = {
+    'situation actuelle': 'Situation actuelle',
+    'points de pression': 'Points de pression',
+    analyse: 'Analyse',
+    'à surveiller (6h)': 'À surveiller (6h)',
+    'current situation': 'Current situation',
+    'pressure points': 'Pressure points',
+    analysis: 'Analysis',
+    'next 6 hours to watch': 'Next 6 Hours To Watch',
+    'points de vigilance': 'Points de vigilance',
+    'ce que cela implique': 'Ce que cela implique',
+    'what this means': 'What this means',
+  };
+
+  const key = normalized.toLocaleLowerCase('fr-FR');
+  if (headingMap[key]) return headingMap[key];
+
+  const lower = normalized.toLocaleLowerCase('fr-FR');
+  return lower.charAt(0).toLocaleUpperCase('fr-FR') + lower.slice(1);
+}
+
+function splitBriefHeadingLine(line: string): { heading: string; body: string } | null {
+  const match = line.match(/^((?:\d+[.)]\s*)?[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’/()\-]{4,})\s*:\s+(.+)$/);
+  if (!match) return null;
+
+  const heading = match[1].replace(/^\d+[.)]\s*/, '').trim();
+  const body = match[2].trim();
+  if (!heading || !body || !isBriefHeading(heading)) return null;
+  return { heading, body };
+}
+
+function parseBriefSections(text: string): BriefSection[] {
+  const rawLines = normalizeBriefText(text).split('\n').map(normalizeBriefLine).filter(Boolean);
+  const sections: BriefSection[] = [];
+  let currentSection: { heading: string | null; lines: string[] } | null = null;
+
+  const pushCurrentSection = () => {
+    if (!currentSection) return;
+    const body = currentSection.lines.join(' ').replace(/\s+/g, ' ').trim();
+    if (!currentSection.heading && !body) return;
+    sections.push({
+      heading: currentSection.heading,
+      body,
+    });
+  };
+
+  for (const line of rawLines) {
+    const splitLine = splitBriefHeadingLine(line);
+    if (splitLine) {
+      pushCurrentSection();
+      currentSection = {
+        heading: formatBriefHeading(splitLine.heading),
+        lines: [splitLine.body],
+      };
+      continue;
+    }
+
+    if (isBriefHeading(line)) {
+      pushCurrentSection();
+      currentSection = {
+        heading: formatBriefHeading(line),
+        lines: [],
+      };
+      continue;
+    }
+
+    if (!currentSection) {
+      currentSection = { heading: null, lines: [line] };
+    } else {
+      currentSection.lines.push(line);
+    }
+  }
+
+  pushCurrentSection();
+  return sections;
+}
+
+function formatBriefHtml(sections: BriefSection[]): string {
+  return sections
+    .map((section) => {
+      const heading = section.heading
+        ? `<div class="frintel-brief-kicker">${escapeHtml(section.heading)}</div>`
+        : '';
+      const body = section.body
+        ? `<p class="frintel-brief-paragraph">${escapeHtml(section.body)}</p>`
+        : '';
+      return `<section class="frintel-brief-section">${heading}${body}</section>`;
     })
     .join('');
 }
@@ -260,23 +353,15 @@ export class FranceIntelPanel extends Panel {
     const ciiBandLabel = ciiLabel(cii, lang);
     const ciiTint = ciiColor(cii);
     const postureAxes = [
-      { label: t(lang, 'Troubles',     'Troubles'),    value: snapshot.axes.troubles,    color: '#7ddc6f' },
-      { label: t(lang, 'Conflit',      'Conflict'),    value: snapshot.axes.conflict,    color: '#9ca3af' },
-      { label: t(lang, 'Sécurité',     'Security'),    value: snapshot.axes.security,    color: '#ff6b35' },
-      { label: t(lang, 'Information',  'Information'), value: snapshot.axes.information, color: '#7ddc6f' },
+      { label: t(lang, 'Continuité', 'Continuity'), value: snapshot.axes.continuity, color: axisRiskColor(snapshot.axes.continuity) },
+      { label: t(lang, 'Défense',    'Defense'),    value: snapshot.axes.defense,    color: axisRiskColor(snapshot.axes.defense) },
+      { label: t(lang, 'Sécurité',   'Security'),   value: snapshot.axes.security,   color: axisRiskColor(snapshot.axes.security) },
+      { label: t(lang, 'Veille',     'Watch'),       value: snapshot.axes.signal,     color: axisRiskColor(snapshot.axes.signal) },
     ];
     const updatedTime = new Date(snapshot.stability.timestamp).toLocaleString(
       lang === 'fr' ? 'fr-FR' : 'en-US',
       { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
     );
-
-    const news = [...snapshot.topNews]
-      .sort((a, b) => {
-        const severityDelta = (SEVERITY_ORDER[b.threat?.level ?? 'info'] ?? 0) - (SEVERITY_ORDER[a.threat?.level ?? 'info'] ?? 0);
-        if (severityDelta !== 0) return severityDelta;
-        return b.pubDate.getTime() - a.pubDate.getTime();
-      })
-      .slice(0, 6);
 
     const dominantRisk = [
       { label: t(lang, 'Cyber', 'Cyber'), value: snapshot.signals.cyberAlerts + snapshot.signals.cyberCritical },
@@ -300,7 +385,6 @@ export class FranceIntelPanel extends Panel {
     const signalChips: string[] = [];
     if (snapshot.signals.criticalNews > 0) signalChips.push(`<span class="frintel-chip chip-critical">🚨 ${snapshot.signals.criticalNews} ${t(lang, 'titre critique', 'critical headline')}${snapshot.signals.criticalNews > 1 ? 's' : ''}</span>`);
     if (snapshot.signals.militaryFlights > 0) signalChips.push(`<span class="frintel-chip chip-defense">✈️ ${snapshot.signals.militaryFlights} ${t(lang, 'vols militaires', 'military flights')}</span>`);
-    if (snapshot.signals.maritimeTrafficFrance > 0) signalChips.push(`<span class="frintel-chip chip-transport">🚢 ${snapshot.signals.maritimeTrafficFrance} ${t(lang, 'navires en zone France', 'ships in French waters')}</span>`);
     if (snapshot.signals.defenseAlerts > 0) signalChips.push(`<span class="frintel-chip chip-defense">🛡️ ${snapshot.signals.defenseAlerts} ${t(lang, 'alerte défense', 'defense alert')}${snapshot.signals.defenseAlerts > 1 ? 's' : ''}</span>`);
     if (snapshot.signals.jammingSignals > 0) signalChips.push(`<span class="frintel-chip chip-defense">📡 ${snapshot.signals.jammingSignals} ${t(lang, 'signal GPS', 'GPS jamming signal')}${snapshot.signals.jammingSignals > 1 ? 's' : ''}</span>`);
     if (snapshot.signals.cyberCritical > 0) signalChips.push(`<span class="frintel-chip chip-cyber">🧬 ${snapshot.signals.cyberCritical} ${t(lang, 'CVE critiques', 'critical CVEs')}</span>`);
@@ -322,7 +406,6 @@ export class FranceIntelPanel extends Panel {
       + snapshot.signals.telecomOutages
       + snapshot.signals.fireDetections
       + snapshot.signals.militaryFlights
-      + snapshot.signals.maritimeTrafficFrance
       + snapshot.signals.defenseAlerts
       + snapshot.signals.jammingSignals;
 
@@ -342,17 +425,28 @@ export class FranceIntelPanel extends Panel {
       <div class="frintel-summary-grid">
         <section class="frintel-card frintel-score-card">
           <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Indice d’instabilité', 'Instability Index')}</div>
+            <div class="frintel-card-title">${t(lang, 'Indice de stabilité', 'Stability Index')}</div>
             <div class="frintel-card-meta">${t(lang, 'Mis à jour', 'Updated')} ${updatedTime}</div>
           </div>
           <div class="frintel-score-row">
             <div class="frintel-score-value" style="color:${ciiTint};">${cii}/100</div>
             <div class="frintel-score-side">
               <div class="frintel-score-band" style="color:${ciiTint};">${escapeHtml(ciiBandLabel)}</div>
-              <div class="frintel-score-note">${t(lang, 'CII national composite', 'Composite national CII')}</div>
+              <div class="frintel-score-note">${t(lang, 'Score haut = pays plus stable. Base France stable + dégradation temps réel. Axes hauts = risque plus fort.', 'Higher score = more stable country. Stable-France baseline plus real-time degradation. Higher axes = stronger risk pressure.')}</div>
             </div>
           </div>
           ${postureAxes.map((axis) => this.renderMetricBar(axis.label, axis.value, axis.color)).join('')}
+        </section>
+      </div>
+
+      <div class="frintel-grid">
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Brief renseignement', 'Intelligence Brief')}</div>
+            <div class="frintel-card-meta fi-brief-meta"></div>
+          </div>
+          <div class="frintel-brief-body fi-brief-body"></div>
+          <button type="button" class="frintel-inline-action fi-brief-toggle" hidden></button>
         </section>
 
         <section class="frintel-card">
@@ -369,17 +463,6 @@ export class FranceIntelPanel extends Panel {
             ${this.renderStatTile(t(lang, 'Défense', 'Defense'), snapshot.signals.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
             ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (snapshot.signals.meteoAlerts + snapshot.signals.floodAlerts + snapshot.signals.fireDetections).toString(), t(lang, 'vigies + feux', 'watches + fires'))}
           </div>
-        </section>
-      </div>
-
-      <div class="frintel-grid">
-        <section class="frintel-card">
-          <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Brief renseignement', 'Intelligence Brief')}</div>
-            <div class="frintel-card-meta fi-brief-meta"></div>
-          </div>
-          <div class="frintel-brief-body fi-brief-body"></div>
-          <button type="button" class="frintel-inline-action fi-brief-toggle" hidden></button>
         </section>
 
         <section class="frintel-card">
@@ -430,32 +513,63 @@ export class FranceIntelPanel extends Panel {
               <span>${t(lang, 'Éolien live', 'Live wind')} ${energy.windGw != null ? `${energy.windGw.toFixed(1)} GW` : 'n/a'}</span>
               <span>${t(lang, 'Charge éolienne', 'Wind load factor')} ${energy.windLoadFactor != null ? `${energy.windLoadFactor}%` : 'n/a'}</span>
             </div>
-          ` : `<div class="frintel-empty">${t(lang, 'Aucun profil énergie disponible.', 'No energy profile available.')}</div>`}
-        </section>
-
-        <section class="frintel-card">
-          <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Actualités principales', 'Key Headlines')}</div>
-            <div class="frintel-card-meta">${news.length} ${t(lang, 'éléments', 'items')}</div>
-          </div>
-          <div class="frintel-news-list">
-            ${news.length > 0 ? news.map((item) => {
-              const level = item.threat?.level ?? 'info';
-              const badge = lang === 'en'
-                ? (level === 'critical' ? 'CRITICAL' : level === 'high' ? 'HIGH' : level === 'medium' ? 'MODERATE' : level === 'low' ? 'LOW' : 'INFO')
-                : THREAT_LABELS[level] ?? level.toUpperCase();
+            ${(() => {
+              const oilDays = energy.oilStocksDays;
+              const oilStatus = energy.oilVigilanceStatus;
+              const fuelLevel = energy.fuelTensionLevel;
+              const fuelAnomaly = energy.fuelTensionAnomalyShare;
+              const fuelHistory = energy.fuelPriceHistory;
+              const hasFuelHistory = !!fuelHistory && fuelHistory.series.length > 0;
+              if (!oilDays && !fuelLevel && !hasFuelHistory) return '';
+              const oilColor = oilStatus === 'critical' ? 'var(--threat-critical)' : oilStatus === 'tense' ? 'var(--threat-medium)' : 'var(--threat-low)';
+              const oilLabel = oilStatus === 'critical' ? t(lang, 'Critique', 'Critical') : oilStatus === 'tense' ? t(lang, 'Sous tension', 'Tense') : t(lang, 'Normal', 'Normal');
+              const fuelColor = fuelLevel === 'CRITICAL' ? 'var(--threat-critical)' : fuelLevel === 'HIGH' ? 'var(--threat-high)' : fuelLevel === 'MEDIUM' ? 'var(--threat-medium)' : 'var(--threat-low)';
+              const visibleSeries = hasFuelHistory ? filterFuelPriceSeries(fuelHistory, '1m') : [];
+              const fuelChart = visibleSeries.length > 0
+                ? renderFuelPriceChartSvg(visibleSeries, {
+                    width: 320,
+                    height: 92,
+                    showAxes: false,
+                  })
+                : '';
+              const fuelLegend = visibleSeries.map((series) => `
+                <div class="frintel-fuel-row">
+                  <span class="frintel-fuel-name">
+                    <span class="frintel-fuel-dot" style="background:${series.color};"></span>
+                    ${escapeHtml(series.label)}
+                  </span>
+                  <span class="frintel-fuel-value">${escapeHtml(formatFuelPrice(series.latestPrice))}</span>
+                  <span class="frintel-fuel-delta" style="color:${series.delta7dCents != null && series.delta7dCents > 0 ? 'var(--threat-high)' : series.delta7dCents != null && series.delta7dCents < 0 ? 'var(--threat-low)' : 'var(--text-muted)'};">7j ${escapeHtml(formatFuelDeltaCents(series.delta7dCents))}</span>
+                </div>
+              `).join('');
               return `
-                <a class="frintel-news-item" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">
-                  <div class="frintel-news-top">
-                    <span class="frintel-news-badge" style="--fi-badge:${LEVEL_COLORS[level] ?? 'var(--text-muted)'};">${escapeHtml(badge)}</span>
-                    <span class="frintel-news-time">${escapeHtml(timeAgo(item.pubDate, lang))}</span>
+                <div class="frintel-oil-block">
+                  <div class="frintel-oil-title">${t(lang, '🛢️ Pétrole & Carburants', '🛢️ Oil & Fuels')}</div>
+                  <div class="frintel-oil-grid">
+                    ${oilDays != null ? `
+                      <div class="frintel-oil-row">
+                        <span class="frintel-oil-label">${t(lang, 'Stocks nationaux', 'National stocks')}</span>
+                        <span class="frintel-oil-value" style="color:${oilColor};">${oilDays}j <span class="frintel-oil-badge" style="color:${oilColor};">${escapeHtml(oilLabel)}</span></span>
+                      </div>
+                    ` : ''}
+                    ${fuelLevel != null ? `
+                      <div class="frintel-oil-row">
+                        <span class="frintel-oil-label">${t(lang, 'Tension carburants', 'Fuel tension')}</span>
+                        <span class="frintel-oil-value" style="color:${fuelColor};">${escapeHtml(fuelLevel)}${fuelAnomaly != null ? ` <span class="frintel-oil-badge" style="color:${fuelColor};">${fuelAnomaly.toFixed(1)}% ${t(lang, 'anomalies', 'anomalies')}</span>` : ''}</span>
+                      </div>
+                    ` : ''}
                   </div>
-                  <div class="frintel-news-title">${escapeHtml(item.title)}</div>
-                  <div class="frintel-news-meta">${escapeHtml(item.source)}</div>
-                </a>
+                  ${fuelChart ? `
+                    <div class="frintel-fuel-history">
+                      <div class="frintel-fuel-history-title">${t(lang, 'Prix moyens carburants · 30 jours', 'Average fuel prices · 30 days')}</div>
+                      <div class="frintel-fuel-chart">${fuelChart}</div>
+                      <div class="frintel-fuel-legend">${fuelLegend}</div>
+                    </div>
+                  ` : ''}
+                </div>
               `;
-            }).join('') : `<div class="frintel-empty">${t(lang, 'Aucune actualité récente spécifique.', 'No recent specific headlines.')}</div>`}
-          </div>
+            })()}
+          ` : `<div class="frintel-empty">${t(lang, 'Aucun profil énergie disponible.', 'No energy profile available.')}</div>`}
         </section>
       </div>
     `;
@@ -469,7 +583,7 @@ export class FranceIntelPanel extends Panel {
       <div class="frintel-bar-row">
         <div class="frintel-bar-label">${escapeHtml(label)}</div>
         <div class="frintel-bar-track">
-          <span class="frintel-bar-fill" style="width:${clamped}%;background:${color};"></span>
+          <span class="frintel-bar-fill" style="width:${clamped}%;background:${color};box-shadow:0 0 12px color-mix(in srgb, ${color} 45%, transparent);"></span>
         </div>
         <div class="frintel-bar-value">${value}</div>
       </div>
@@ -518,20 +632,24 @@ export class FranceIntelPanel extends Panel {
     }
 
     const sourceText = this.briefState.text.trim();
-    const compact = summarizeBrief(sourceText);
-    const activeText = this.briefExpanded ? sourceText : compact;
-    body.innerHTML = `<div class="frintel-brief-copy">${formatBriefHtml(activeText)}</div>`;
+    const sections = parseBriefSections(sourceText);
+    const lineCount = normalizeBriefText(sourceText).split('\n').map(normalizeBriefLine).filter(Boolean).length;
+    body.classList.toggle('is-collapsed', !this.briefExpanded);
+    body.innerHTML = `<div class="frintel-brief-copy">${formatBriefHtml(sections)}</div>`;
 
-    const canExpand = sourceText.length > compact.length + 20;
+    const canExpand = body.scrollHeight > BRIEF_COLLAPSED_MAX_HEIGHT_PX + 8 || lineCount > BRIEF_COLLAPSED_LINES;
     toggle.hidden = !canExpand;
     if (canExpand) {
       toggle.textContent = this.briefExpanded
-        ? t(lang, 'Réduire', 'Collapse')
-        : t(lang, 'Lire le brief complet', 'Read full brief');
+        ? t(lang, 'Moins', 'Less')
+        : t(lang, 'Plus', 'More');
       toggle.onclick = () => {
         this.briefExpanded = !this.briefExpanded;
         this.renderBriefSection();
       };
+      body.classList.toggle('is-collapsed', !this.briefExpanded);
+    } else {
+      body.classList.remove('is-collapsed');
     }
   }
 }
