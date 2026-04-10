@@ -2008,14 +2008,14 @@ export interface SituationSnapshotAxes {
   continuity: number | null;  // FranceCountryAxes.continuity — infra/ops
   defense:    number | null;  // FranceCountryAxes.defense — military posture
   security:   number | null;  // FranceCountryAxes.security — security severity
-  signal:     number | null;  // multi-source pressure
+  signal:     number | null;  // FranceCountryAxes.signal — multi-source pressure
   cyber:      number | null;  // CyberState.meta.globalScore
   social:     number | null;  // ISNRData.nationalScore
 }
 
 export interface SnapshotSituation {
   id:            string;
-  type:          string;
+  type:          string;  // SituationType value — kept as string for forward-compat serialisation
   severity:      SituationSeverity;
   title:         string;
   topDriver:     string;          // first driver, max 80 chars
@@ -2037,6 +2037,7 @@ export interface SituationSnapshot {
   };
   dataStatus: {
     overall:  'ok' | 'degraded';
+    // 'missing' = source absent at push time. No 'stale'/'error' needed — client-push model.
     sources: {
       countryAxes: 'ok' | 'missing';
       cyber:       'ok' | 'missing';
