@@ -449,6 +449,8 @@ export function computeISNR(
   floodSegments: FloodSegment[],
   ecowatt: EcowattResponse | null,
   timeRange: TimeRange,
+  telecomOutages: TelecomOutage[],
+  powerOutages: PowerOutage[],
 ): ISNRData {
   const now = new Date();
   const timeRangeMs = TIME_RANGE_MS[timeRange];
@@ -471,12 +473,16 @@ export function computeISNR(
     const social = Math.round(computeDimensionScore(items, SOCIAL_CATEGORIES));
     const security = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
 
-    // Infra = max(météo, crues, ecowatt) + events infra
+    // Infra = max(météo, crues, ecowatt, pannes) + events infra
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
     const infraFromMeteo = computeInfraFromMeteo(meteoAlerts, code);
     const infraFromFlood = computeInfraFromFloods(floodSegments);
     const infraFromEcowatt = computeInfraFromEcowatt(ecowatt, code);
-    const infra = Math.round(Math.min(100, Math.max(infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt)));
+    const infraFromOutages = computeInfraFromOutages(code, telecomOutages, powerOutages);
+    const infra = Math.round(Math.min(100, Math.max(
+      infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt,
+      infraFromOutages?.score ?? 0,
+    )));
 
     const velocity = Math.round(computeVelocityScore(items, timeRangeMs));
 
@@ -488,7 +494,11 @@ export function computeISNR(
       if (maxDimScore === infra) {
         let source = 'Infrastructures';
         let label = 'Tension Infrastructure';
-        if (infra === infraFromMeteo) { source = 'Météo France'; label = 'Alerte Météo'; }
+        // Priorité : pannes > météo > ecowatt > crues > events réseau
+        if (infraFromOutages && infra === infraFromOutages.score) {
+          source = infraFromOutages.source;
+          label = infraFromOutages.label;
+        } else if (infra === infraFromMeteo) { source = 'Météo France'; label = 'Alerte Météo'; }
         else if (infra === infraFromEcowatt) { source = 'Ecowatt'; label = 'Tension Électrique'; }
         else if (infra === infraFromFlood) { source = 'Vigicrues'; label = 'Risque Crues'; }
         else if (infra === infraFromEvents) { source = 'Signal Réseau'; label = 'Incidents Infra'; }
