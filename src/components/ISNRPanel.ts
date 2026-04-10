@@ -172,9 +172,8 @@ export class ISNRPanel extends Panel {
           <div style="font-size: 24px;">📊</div>
           <div>
             <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">ISNR</div>
-            <div style="color: var(--text-muted); font-size: 11px;">Indice de Stabilité</div>
-            <div style="color: var(--text-muted); font-size: 10px; margin-top:2px; line-height:1.4;">Score 0–100 · Social 30% · Sécurité 30%<br>Infra 30% · Vélocité 10% · seuils RSS 5 min</div>
-            <div style="margin-top:3px;">${renderTruthBadge('RECONSTRUIT / ESTIMÉ', '#F97316')}</div>
+            <div style="color: var(--text-muted); font-size: 11px;">Indice de Stabilité Nationale & Régionale</div>
+            <div style="margin-top:4px;">${renderTruthBadge('RECONSTRUIT / ESTIMÉ', '#F97316')}</div>
           </div>
         </div>
         <div style="text-align: right;">
@@ -183,6 +182,48 @@ export class ISNRPanel extends Panel {
             <span style="font-size: 18px; font-weight: 700; color: ${nationalColor};">${data.nationalScore}</span>
             <span style="font-size: 16px;">${nationalEmoji}</span>
           </div>
+        </div>
+      </div>
+    `;
+
+    // ── Bloc explication du score ────────────────────────────────────────────
+    html += `
+      <div style="
+        padding: 10px 16px 11px;
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+        background: rgba(255,255,255,0.015);
+      ">
+        <!-- Barre de pondération -->
+        <div style="display:flex; height:3px; border-radius:2px; overflow:hidden; gap:1px; margin-bottom:7px;">
+          <div style="flex:30; background:#F59E0B; opacity:0.75;" title="Social · 30%"></div>
+          <div style="flex:30; background:#EF4444; opacity:0.75;" title="Sécurité · 30%"></div>
+          <div style="flex:30; background:#3B82F6; opacity:0.75;" title="Infrastructure · 30%"></div>
+          <div style="flex:10; background:#8B5CF6; opacity:0.75;" title="Vélocité médiatique · 10%"></div>
+        </div>
+        <!-- Légendes -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:2px;">
+          <div style="display:flex; flex-direction:column; align-items:flex-start; gap:1px;">
+            <span style="font-size:9px; font-family:monospace; letter-spacing:0.04em; color:#F59E0B; opacity:0.9;">SOC</span>
+            <span style="font-size:9px; color:var(--text-muted); opacity:0.7;">30%</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:1px;">
+            <span style="font-size:9px; font-family:monospace; letter-spacing:0.04em; color:#EF4444; opacity:0.9;">SÉC</span>
+            <span style="font-size:9px; color:var(--text-muted); opacity:0.7;">30%</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:1px;">
+            <span style="font-size:9px; font-family:monospace; letter-spacing:0.04em; color:#3B82F6; opacity:0.9;">INF</span>
+            <span style="font-size:9px; color:var(--text-muted); opacity:0.7;">30%</span>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:1px;">
+            <span style="font-size:9px; font-family:monospace; letter-spacing:0.04em; color:#8B5CF6; opacity:0.9;">VEL</span>
+            <span style="font-size:9px; color:var(--text-muted); opacity:0.7;">10%</span>
+          </div>
+        </div>
+        <!-- Caption -->
+        <div style="margin-top:7px; font-size:9px; color:var(--text-muted); opacity:0.65; line-height:1.5; letter-spacing:0.01em;">
+          Moyenne pondérée 0–100 · remplacée par le max si une dimension dépasse 60.
+          Pannes Enedis / ARCEP intégrées à l'Infra. Rafraîchi à chaque tick RSS (~5 min).
         </div>
       </div>
     `;
