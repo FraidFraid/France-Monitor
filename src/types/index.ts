@@ -2002,6 +2002,70 @@ export interface DetectedSituation {
   activateLayers?: string[];       // clés de layers MapLayers à activer (ex: ['subseaCables', 'trafficMaritime'])
 }
 
+// ─── Situation History ────────────────────────────────────────────────────────
+
+export interface SituationSnapshotAxes {
+  continuity: number | null;  // FranceCountryAxes.continuity — infra/ops
+  defense:    number | null;  // FranceCountryAxes.defense — military posture
+  security:   number | null;  // FranceCountryAxes.security — security severity
+  signal:     number | null;  // multi-source pressure
+  cyber:      number | null;  // CyberState.meta.globalScore
+  social:     number | null;  // ISNRData.nationalScore
+}
+
+export interface SnapshotSituation {
+  id:            string;
+  type:          string;
+  severity:      SituationSeverity;
+  title:         string;
+  topDriver:     string;          // first driver, max 80 chars
+  affectedZones: string[];        // max 3
+  confidence:    number;
+}
+
+export interface SituationSnapshot {
+  version:     1;
+  slotKey:     string;            // "2026-04-10T12:00" — UTC, canonical slot
+  capturedAt:  string;            // ISO8601 actual push time
+  score:       number;            // CII 0–100
+  axes:        SituationSnapshotAxes;
+  situations:  SnapshotSituation[];
+  meta: {
+    totalSituations: number;
+    maxSeverity:     SituationSeverity | null;
+    avgConfidence:   number;
+  };
+  dataStatus: {
+    overall:  'ok' | 'degraded';
+    sources: {
+      countryAxes: 'ok' | 'missing';
+      cyber:       'ok' | 'missing';
+      social:      'ok' | 'missing';
+    };
+  };
+}
+
+export type HistorySlot = SituationSnapshot | { slotKey: string; status: 'missing' };
+
+export interface HistoryResponse {
+  requestedRange: { from: string; to: string };
+  slotCount: {
+    expected: number;
+    captured: number;
+    missing:  number;
+    degraded: number;
+  };
+  slots: HistorySlot[];
+}
+
+export interface HistoryResult {
+  data:                    HistoryResponse;
+  source:                  'fresh' | 'cached' | 'stale';
+  fetchedAt:               string;
+  isDegraded:              boolean;
+  errorRecoveredFromCache: boolean;
+}
+
 // ═══ AIS Anomalies ═══
 
 export interface AisAnomaly {
