@@ -241,7 +241,7 @@ getHistory(days: 7 | 30, force?: boolean): Promise<HistoryResult>
 
 **Flux interne :**
 
-1. Si `force` est `false` (défaut) : vérifier le cache localStorage (`fm:situation-history:7j` ou `fm:situation-history:30j`)
+1. Si `force` est `false` (défaut) : vérifier le cache localStorage (`fm:situation-history:v1:7j` ou `fm:situation-history:v1:30j`)
 2. Si le cache existe et a moins de 20 minutes → retourner directement (`source: "cached"`)
 3. Sinon : appeler `/api/situation-history?days=N`
 4. Si succès : mettre à jour le cache localStorage, retourner (`source: "fresh"`)
