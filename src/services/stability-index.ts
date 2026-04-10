@@ -15,6 +15,8 @@ import type {
   EventCategory,
   ISNRData,
   ISNRScore,
+  TelecomOutage,
+  PowerOutage,
 } from '../types/index.ts';
 
 // ═══ Configuration ═══
@@ -361,6 +363,83 @@ function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, deptCode: stri
   return 0;
 }
 
+
+// ═══ Normalisation nom département (pour matching ARCEP fallback) ═══
+
+function normalizeDepartmentName(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/['\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ═══ Scoring pannes Enedis/ARCEP → composante Infra ═══
+
+export function computeInfraFromOutages(
+  deptCode: string,
+  telecom: TelecomOutage[],
+  power: PowerOutage[],
+): { score: number; label: string; source: string } | null {
+  let bestScore = 0;
+  let bestLabel = '';
+  let bestSource = '';
+
+  // ── PowerOutage (Enedis) ──
+  const po = power.find(p => p.departmentCode === deptCode);
+  if (po && po.totalPDL > 0) {
+    const ratio = po.offGridCount / po.totalPDL;
+    let poScore = 0;
+    if (ratio >= 0.30) poScore = 80;
+    else if (ratio >= 0.15) poScore = 70;
+    else if (ratio >= 0.05) poScore = 50;
+
+    if (poScore > 0 && po.trend === 'worsening') {
+      poScore = Math.min(80, poScore + 10);
+    }
+
+    if (poScore > bestScore) {
+      bestScore = poScore;
+      bestLabel = '⚠️ Blackout Zone';
+      bestSource = 'Enedis';
+    }
+  }
+
+  // ── TelecomOutage (ARCEP) ──
+  const deptNorm = normalizeDepartmentName(DEPARTMENTS[deptCode]?.name ?? '');
+
+  const sitesByDept = telecom.filter(t => {
+    // 1. Matching par coordonnées (primaire)
+    if (t.coordinates[0] !== 0 || t.coordinates[1] !== 0) {
+      const resolved = findDepartmentByCoords(t.coordinates[0], t.coordinates[1]);
+      if (resolved !== null) return resolved === deptCode;
+    }
+    // 2. Fallback : matching normalisé sur le nom du département
+    return normalizeDepartmentName(t.department) === deptNorm;
+  });
+
+  const hsCount = sitesByDept.filter(
+    t => t.voiceStatus === 'HS' || t.dataStatus === 'HS',
+  ).length;
+  const degradedOrHsCount = sitesByDept.filter(
+    t => t.voiceStatus !== 'OK' || t.dataStatus !== 'OK',
+  ).length;
+
+  let telecomScore = 0;
+  if (hsCount >= 5) telecomScore = 65;
+  else if (degradedOrHsCount >= 3) telecomScore = 50;
+
+  if (telecomScore > bestScore) {
+    bestScore = telecomScore;
+    bestLabel = '⚠️ Panne Réseau';
+    bestSource = 'ARCEP';
+  }
+
+  if (bestScore === 0) return null;
+  return { score: bestScore, label: bestLabel, source: bestSource };
+}
 
 // ═══ Calcul ISNR Principal ═══
 
