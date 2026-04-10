@@ -84,6 +84,8 @@ import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/n
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
+import { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
+import { pushHistorySnapshot } from './services/situation-history.ts';
 import { AlertMonitor } from './components/AlertMonitor.ts';
 import type { NuclearState } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
@@ -1206,6 +1208,7 @@ export class App {
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
+  private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -2903,6 +2906,11 @@ export class App {
     });
     this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
       this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
+    });
+    this.situationHistoryPanel?.destroy();
+    this.situationHistoryPanel = new SituationHistoryPanel(mapEl);
+    this.situationMonitor?.setOnHistoryOpen(() => {
+      this.situationHistoryPanel?.open();
     });
     this.mapPopup = new MapPopup(mapEl);
 
@@ -4997,6 +5005,7 @@ export class App {
     const snapshot = this.buildFranceSnapshot(lang);
     this.alertMonitor?.update(this.buildAlertMonitorSituations(), lang);
     this.situationMonitor?.update(snapshot.situations, lang);
+    void pushHistorySnapshot(snapshot);
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
   }

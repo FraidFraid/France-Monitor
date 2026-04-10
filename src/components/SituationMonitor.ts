@@ -87,6 +87,11 @@ export class SituationMonitor {
 
   private onLayerActivate: ((layerKeys: string[]) => void) | null = null;
   private onFlyTo: ((lon: number, lat: number, zoom?: number) => void) | null = null;
+  private onHistoryOpen: (() => void) | null = null;
+
+  setOnHistoryOpen(handler: () => void): void {
+    this.onHistoryOpen = handler;
+  }
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -156,6 +161,7 @@ export class SituationMonitor {
         <span class="sit-mon__dot" style="background:${worstColor};"></span>
         <span class="sit-mon__title">${headerLabel}</span>
         <span class="sit-mon__count">${total}</span>
+        <button class="sit-mon__hist-btn" type="button" title="Historique" style="font-size:10px;padding:1px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);border-radius:3px;color:#94a3b8;cursor:pointer;font-family:inherit;">hist.</button>
         <button class="sit-mon__toggle" type="button" title="${collapseTitle}" aria-label="${collapseTitle}">
           ${this.collapsed ? '▲' : '▼'}
         </button>
@@ -174,6 +180,11 @@ export class SituationMonitor {
       this.collapsed = !this.collapsed;
       this.expandedAll = false;
       this.render();
+    });
+
+    this.el.querySelector<HTMLElement>('.sit-mon__hist-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onHistoryOpen?.();
     });
 
     this.el.querySelectorAll<HTMLElement>('.sit-mon__item').forEach((itemEl, i) => {
