@@ -1138,10 +1138,19 @@ export interface ISNRScore {
   code: string;           // Code département (01-95, 971-976)
   name: string;           // Nom département
   score: number;          // Score global 0-100
+  status: 'stable' | 'elevated' | 'critical';
   dimensions: ISNRDimensionScores;
   trend: 'up' | 'down' | 'stable';  // Tendance vs période précédente
+  momentum?: number;
+  topDriver?: {
+    dimension: keyof ISNRDimensionScores;
+    label: string;
+    score: number;
+    source: string;
+  };
   eventCount: number;     // Nombre d'événements dans la fenêtre
   lastUpdate: Date;
+  history?: number[];     // sliding window max 12 snapshots (scores 0-100)
 }
 
 export interface ISNRData {
@@ -1262,6 +1271,7 @@ export interface FranceCountrySnapshot {
   axes: FranceCountryAxes;
   score: number;                       // CII 0–100
   briefContext: FranceBriefContext;
+  situations: DetectedSituation[];     // Situation engine output
   // Raw data for the renderer (mirrors old FranceIntelData fields)
   stability: ISNRData;
   cyber: CyberState;
@@ -1940,6 +1950,57 @@ export interface GpsJammingSignal {
   reasons: string[];             // indicateurs déclencheurs lisibles
   affectedIcao24s: string[];     // codes ICAO24 (hex) des aéronefs impliqués
   clusterRadius?: number;        // km — rayon de la zone, si signal multi-aéronefs
+}
+
+// ═══ Situation Engine ═══
+
+export type SituationType =
+  | 'ENERGY_STRESS'
+  | 'IMPORT_DEPENDENCY_RISK'
+  | 'FLOOD_CRISIS'
+  | 'WILDFIRE_ESCALATION'
+  | 'CYBER_PRESSURE'
+  | 'SOCIAL_ESCALATION'
+  | 'TELECOM_DISRUPTION'
+  | 'MARITIME_ANOMALY'
+  | 'DEFENSE_SIGNAL_ELEVATED'
+  | 'FUEL_SUPPLY_RISK'
+  | 'NEWS_ALERT'
+  | 'MILITARY_SURGE_ALERT'
+  | 'WEATHER_ALERT'
+  | 'AIS_ANOMALY_ALERT'
+  | 'DEFENSE_ALERT'
+  | 'GPS_JAMMING_ALERT';
+
+export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
+
+export type SituationActionType = 'investigate' | 'monitor' | 'cross-check' | 'escalate';
+
+export interface SituationAction {
+  label: string;
+  ownerHint: string;
+  actionType: SituationActionType;
+  automatable?: boolean;
+}
+
+export interface DetectedSituation {
+  id: string;                      // slug stable ex: 'energy-stress-paca'
+  type: SituationType;
+  severity: SituationSeverity;
+  confidence: number;              // 0.0–1.0
+  title: string;
+  summary: string;
+  affectedZones: string[];         // régions ou dept concernés
+  drivers: string[];               // facteurs causaux lisibles (2-4)
+  recommendedActions: SituationAction[]; // actions immédiates structurées
+  sourceRefs: string[];            // sources de données impliquées
+  linkUrl?: string;
+  linkLabel?: string;
+  updatedAt: Date;
+  // Optionnel : position géo pour fly-to + layers à activer au clic
+  lat?: number;
+  lon?: number;
+  activateLayers?: string[];       // clés de layers MapLayers à activer (ex: ['subseaCables', 'trafficMaritime'])
 }
 
 // ═══ AIS Anomalies ═══
