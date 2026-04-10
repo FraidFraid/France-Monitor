@@ -217,7 +217,7 @@ const DEPT_BBOXES: Record<string, DeptBBox> = {
 
 // ═══ Cache pour la tendance (scores précédents) ═══
 
-const previousScores: Map<string, number> = new Map();
+const previousScores: Map<string, number[]> = new Map();
 
 // ═══ Fonctions Utilitaires ═══
 
@@ -246,9 +246,9 @@ export function trendToArrow(trend: 'up' | 'down' | 'stable'): string {
 }
 
 function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stable' {
-  const prev = previousScores.get(code);
-  if (prev === undefined) return 'stable';
-  const diff = currentScore - prev;
+  const arr = previousScores.get(code);
+  if (!arr || arr.length === 0) return 'stable';
+  const diff = currentScore - arr[arr.length - 1];
   if (diff > 5) return 'up';
   if (diff < -5) return 'down';
   return 'stable';
@@ -354,8 +354,10 @@ function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, deptCode: stri
   if (!dept) return 0;
   const signal = ecowatt.signals[dept.regionCode];
   if (!signal) return 0;
-  if (signal === 'red') return 80;
-  if (signal === 'orange') return 40;
+  // Les tensions électriques (Ecowatt) sont des routines hivernales en France.
+  // Elles ne constituent PAS un facteur OSINT de déstabilisation à moins de se traduire par des coupures réelles.
+  if (signal === 'red') return 30;
+  if (signal === 'orange') return 15;
   return 0;
 }
 
@@ -386,44 +388,81 @@ export function computeISNR(
     const items = itemsByDept.get(code) ?? [];
 
     // Calculer chaque dimension
-    const social = computeDimensionScore(items, SOCIAL_CATEGORIES);
-    const security = computeDimensionScore(items, SECURITY_CATEGORIES);
+    const social = Math.round(computeDimensionScore(items, SOCIAL_CATEGORIES));
+    const security = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
 
     // Infra = max(météo, crues, ecowatt) + events infra
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
     const infraFromMeteo = computeInfraFromMeteo(meteoAlerts, code);
     const infraFromFlood = computeInfraFromFloods(floodSegments);
     const infraFromEcowatt = computeInfraFromEcowatt(ecowatt, code);
-    const infra = Math.min(100, Math.max(infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt));
+    const infra = Math.round(Math.min(100, Math.max(infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt)));
 
-    const velocity = computeVelocityScore(items, timeRangeMs);
+    const velocity = Math.round(computeVelocityScore(items, timeRangeMs));
 
-    // Score global pondéré
-    const score = Math.round(
+    // Déterminer le driver principal
+    let topDriver = undefined;
+    const maxDimScore = Math.max(social, security, infra, velocity);
+
+    if (maxDimScore > 0) {
+      if (maxDimScore === infra) {
+        let source = 'Infrastructures';
+        let label = 'Tension Infrastructure';
+        if (infra === infraFromMeteo) { source = 'Météo France'; label = 'Alerte Météo'; }
+        else if (infra === infraFromEcowatt) { source = 'Ecowatt'; label = 'Tension Électrique'; }
+        else if (infra === infraFromFlood) { source = 'Vigicrues'; label = 'Risque Crues'; }
+        else if (infra === infraFromEvents) { source = 'Signal Réseau'; label = 'Incidents Infra'; }
+        topDriver = { dimension: 'infra', label, score: infra, source };
+      } else if (maxDimScore === security) {
+        topDriver = { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
+      } else if (maxDimScore === social) {
+        topDriver = { dimension: 'social', label: 'Tension Sociale', score: social, source: 'Signal Réseau' };
+      } else if (maxDimScore === velocity) {
+        topDriver = { dimension: 'velocity', label: 'Vélocité Médiatique', score: velocity, source: 'Signal Réseau' };
+      }
+    }
+
+    // Score hybride (Moyenne pondérée par défaut, remplacée par Max si alerte)
+    const weightedAverage = Math.round(
       social * DIMENSION_WEIGHTS.social +
       security * DIMENSION_WEIGHTS.security +
       infra * DIMENSION_WEIGHTS.infra +
       velocity * DIMENSION_WEIGHTS.velocity
     );
 
-    const trend = computeTrend(code, score);
+    let score = weightedAverage;
+    let status: 'stable' | 'elevated' | 'critical' = 'stable';
 
-    // Stocker pour la prochaine comparaison
-    previousScores.set(code, score);
+    if (maxDimScore >= 75) {
+      score = maxDimScore;
+      status = 'critical';
+    } else if (maxDimScore >= 60) {
+      score = maxDimScore;
+      status = 'elevated';
+    } else {
+      if (weightedAverage >= 40) status = 'elevated';
+    }
+
+    const trend = computeTrend(code, score);
+    const prevArr = previousScores.get(code);
+    const momentum = prevArr && prevArr.length > 0 ? score - prevArr[prevArr.length - 1] : 0;
+
+    // Stocker pour la prochaine comparaison (append non-mutatif, fenêtre glissante de 12)
+    const next = [...(prevArr ?? []), score].slice(-12);
+    previousScores.set(code, next);
 
     scores.push({
       code,
       name: dept.name,
       score,
-      dimensions: {
-        social: Math.round(social),
-        security: Math.round(security),
-        infra: Math.round(infra),
-        velocity: Math.round(velocity),
-      },
+      status,
+      dimensions: { social, security, infra, velocity },
       trend,
+      momentum,
+      topDriver: topDriver as any,
       eventCount: items.length,
       lastUpdate: now,
+      history: next,
     });
 
     // Seuil minimal : seuls les depts avec score ≥ 5 entrent dans la moyenne nationale
@@ -434,8 +473,11 @@ export function computeISNR(
     }
   }
 
-  // Trier par score décroissant
-  scores.sort((a, b) => b.score - a.score);
+  // Trier par score décroissant, puis par momentum
+  scores.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return (b.momentum || 0) - (a.momentum || 0);
+  });
 
   // Score national = moyenne des départements significativement actifs
   const nationalScore = deptCount > 0 ? Math.round(nationalTotal / deptCount) : 0;
