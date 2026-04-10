@@ -2024,6 +2024,7 @@ export interface SnapshotSituation {
 }
 
 export interface SituationSnapshot {
+  readonly status?: never;   // discriminant — ensures HistorySlot narrows without casts
   version:     1;
   slotKey:     string;            // "2026-04-10T12:00" — UTC, canonical slot
   capturedAt:  string;            // ISO8601 actual push time

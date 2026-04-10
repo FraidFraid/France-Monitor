@@ -214,10 +214,11 @@ export class SituationHistoryPanel {
 
   private renderTimeline7j(slots: HistorySlot[]): string {
     const groups = groupByDay(slots);
-    const dayGroups = groups.map(group => {
+    const lastGroupIdx = groups.length - 1;
+    const dayGroups = groups.map((group, gi) => {
       const bars = group.map((slot, slotIdx) => {
         const globalIdx = slots.indexOf(slot);
-        return this.renderBar(slot, globalIdx, slotIdx === group.length - 1 && groups.indexOf(group) === groups.length - 1);
+        return this.renderBar(slot, globalIdx, slotIdx === group.length - 1 && gi === lastGroupIdx);
       }).join('');
       return `<div class="sit-hist__day-group">${bars}</div>`;
     }).join('');
@@ -383,7 +384,7 @@ export class SituationHistoryPanel {
     this.tooltipEl.innerHTML = content;
     this.tooltipEl.classList.add('is-visible');
     const x = Math.min(e.clientX + 12, window.innerWidth - 240);
-    const y = Math.min(e.clientY - 10, window.innerHeight - 120);
+    const y = Math.max(8, Math.min(e.clientY - 10, window.innerHeight - 120));
     this.tooltipEl.style.left = `${x}px`;
     this.tooltipEl.style.top  = `${y}px`;
   }
