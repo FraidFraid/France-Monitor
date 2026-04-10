@@ -40,9 +40,39 @@ const previousScores: Map<string, number> = new Map();
 const previousScores: Map<string, number[]> = new Map();
 ```
 
-`computeTrend(code, currentScore)` lit `arr[arr.length - 1]` (avant-dernier) au lieu d'un scalaire — comportement identique.
+`computeTrend(code, currentScore)` doit être mis à jour pour lire le dernier élément du tableau :
 
-À la fin de chaque tick `computeISNR`, pour chaque département :
+```ts
+// avant
+function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stable' {
+  const prev = previousScores.get(code);
+  if (prev === undefined) return 'stable';
+  const diff = currentScore - prev;
+  ...
+}
+
+// après
+function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stable' {
+  const arr = previousScores.get(code);
+  if (!arr || arr.length === 0) return 'stable';
+  const diff = currentScore - arr[arr.length - 1];
+  ...
+}
+```
+
+De même, le calcul du `momentum` (line ~448 de `stability-index.ts`) doit être mis à jour :
+
+```ts
+// avant
+const prevScore = previousScores.get(code);
+const momentum = prevScore !== undefined ? score - prevScore : 0;
+
+// après
+const prevArr = previousScores.get(code);
+const momentum = prevArr && prevArr.length > 0 ? score - prevArr[prevArr.length - 1] : 0;
+```
+
+À la fin de chaque tick `computeISNR`, pour chaque département, **après** avoir lu `momentum` et `trend` (qui lisent l'ancien tableau) :
 ```ts
 const arr = previousScores.get(code) ?? [];
 arr.push(score);
@@ -54,6 +84,12 @@ previousScores.set(code, arr);
 ---
 
 ## Section 2 — `computeInfraFromOutages()`
+
+### Placement
+
+`computeInfraFromOutages` est définie dans **`src/services/stability-index.ts`** (même fichier que `computeISNR`). Elle peut ainsi appeler `findDepartmentByCoords` directement — cette fonction reste privée (non exportée), aucune modification d'export requise.
+
+Les types `TelecomOutage` et `PowerOutage` sont importés depuis `src/types/index.ts` (pas depuis `outages.ts`), ce qui évite toute dépendance circulaire (`outages.ts` → `stability-index.ts` → `types/index.ts`).
 
 ### Signature
 
@@ -76,7 +112,7 @@ Match sur `PowerOutage.departmentCode === deptCode`.
 | ≥ 5%                        | 50    |
 | ≥ 15%                       | 70    |
 | ≥ 30%                       | 80    |
-| + `trend === 'worsening'`   | +10 (plafonné à 80) |
+| + `trend === 'worsening'`   | +10 (total plafonné à 80 — le bonus s'applique uniquement aux tiers inférieurs à 70 ; à 80, il est sans effet) |
 
 - `topDriver.label` : `"⚠️ Blackout Zone"`
 - `topDriver.source` : `"Enedis"`
@@ -134,7 +170,9 @@ export function computeISNR(
 
 ### Tick couplage (`App.ts`)
 
-Dans `fetchAndProcessRSS()`, après la mise à jour de `this.newsItems`, appeler `this.updateISNR()`.
+`updateISNR()` est un point d'entrée unique — mettre à jour son corps suffit à corriger tous les call sites (appel initial dans `loadAll()` et appel lazy dans `openFranceIntelPanel()`).
+
+Dans `fetchAndProcessRSS()`, appeler `this.updateISNR()` **après** la mise à jour de `this.newsItems` et **après** le return anticipé sur `rawItems.length === 0` (comportement intentionnel : pas de nouveau snapshot si le RSS ne ramène rien).
 
 `updateISNR()` passe les deux nouveaux arguments déjà disponibles sur la classe :
 
@@ -158,7 +196,7 @@ Nouvelle fonction pure :
 function renderSparkline(history: number[]): string
 ```
 
-- N'est rendue que si `history.length >= 2`
+- N'est rendue que si `score.history != null && score.history.length >= 2` (champ optionnel, guard complet requis pour TypeScript strict)
 - Conteneur : `<div style="display:flex;align-items:flex-end;gap:1px;height:14px;padding:3px 0">`
 - Chaque barre : `width:2px`, `height: Math.max(1, (val/100)*14)px`, `background: scoreToColor(val)`, `opacity: 0.7`
 - Dernière barre (point courant) : `width:3px`, `opacity:1`, `box-shadow: 0 0 3px <color>`
