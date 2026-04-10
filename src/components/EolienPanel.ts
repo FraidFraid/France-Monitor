@@ -66,7 +66,7 @@ export class EolienPanel extends Panel {
       position: absolute;
       top: var(--right-panel-top);
       right: 20px;
-      width: 396px;
+      width: 400px;
       max-height: calc(100vh - var(--right-panel-top) - 20px);
       background: linear-gradient(180deg, rgba(7, 18, 31, 0.97), rgba(7, 15, 26, 0.96));
       border: 1px solid rgba(56, 189, 248, 0.22);

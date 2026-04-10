@@ -134,7 +134,7 @@ export class OutagesPanel extends Panel {
     this.modalEl.style.cssText = `
       position: absolute;
       top: var(--right-panel-top); right: 20px;
-      width: 340px;
+      width: 400px;
       max-height: calc(100vh - var(--right-panel-top) - 20px);
       background: var(--bg-surface);
       border: 1px solid var(--border-color);

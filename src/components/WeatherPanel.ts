@@ -66,7 +66,7 @@ export class WeatherPanel extends Panel {
     this.modalEl.className = 'weather-panel-modal';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '380px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
         backgroundStart: 'rgba(10, 18, 30, 0.97)',
         backgroundEnd: 'rgba(12, 16, 24, 0.96)',

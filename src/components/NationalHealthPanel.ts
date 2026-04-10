@@ -52,7 +52,7 @@ export class NationalHealthPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '360px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--header-height) - 40px)',
         backgroundStart: 'rgba(12, 18, 31, 0.97)',
         backgroundEnd: 'rgba(13, 16, 26, 0.96)',

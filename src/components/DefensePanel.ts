@@ -67,7 +67,7 @@ export class DefensePanel extends Panel {
     this.modalEl.className = 'defense-panel-modal';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '360px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
         backgroundStart: 'rgba(10, 16, 31, 0.97)',
         backgroundEnd: 'rgba(16, 12, 29, 0.96)',

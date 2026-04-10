@@ -34,7 +34,7 @@ export class HealthBarometerPanel {
     this.modalEl.id = 'health-barometer-panel';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '480px',
+        width: '400px',
         maxHeight: 'calc(100vh - 40px)',
         backgroundStart: 'rgba(16, 20, 32, 0.97)',
         backgroundEnd: 'rgba(14, 16, 28, 0.96)',

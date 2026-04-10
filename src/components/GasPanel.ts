@@ -61,7 +61,7 @@ export class GasPanel extends Panel {
     this.modalEl.className = 'gas-panel-modal';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '360px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
         backgroundStart: 'rgba(9, 18, 31, 0.97)',
         backgroundEnd: 'rgba(12, 16, 27, 0.96)',

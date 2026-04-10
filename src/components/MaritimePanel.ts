@@ -88,7 +88,7 @@ export class MaritimePanel {
     this.containerEl = document.createElement('div');
     this.containerEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '360px',
+        width: '400px',
         maxHeight: 'min(640px, calc(100vh - 110px))',
         backgroundStart: 'rgba(7, 18, 31, 0.97)',
         backgroundEnd: 'rgba(8, 15, 27, 0.96)',

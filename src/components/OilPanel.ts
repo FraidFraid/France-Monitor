@@ -76,12 +76,12 @@ export class OilPanel extends Panel {
     this.modalEl.className = 'oil-panel-modal';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '420px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
         backgroundStart: 'rgba(24, 18, 8, 0.97)',
         backgroundEnd: 'rgba(16, 12, 9, 0.96)',
         borderColor: 'rgba(252, 211, 77, 0.18)',
-        extra: 'max-width: min(420px, calc(100vw - 24px));',
+        extra: 'max-width: min(400px, calc(100vw - 24px));',
       })}
       cursor: grab;
     `;

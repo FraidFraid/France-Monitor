@@ -39,7 +39,7 @@ export class TrafficPanel extends Panel {
         this.modalEl = document.createElement('div');
         this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-            width: '320px',
+            width: '400px',
             maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
             backgroundStart: 'rgba(18, 15, 10, 0.97)',
             backgroundEnd: 'rgba(16, 13, 10, 0.96)',

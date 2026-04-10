@@ -81,7 +81,7 @@ export class EnvironmentPanel extends Panel {
     this.modalEl.className = 'environment-panel-modal';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-        width: '380px',
+        width: '400px',
         maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
         backgroundStart: 'rgba(8, 18, 31, 0.97)',
         backgroundEnd: 'rgba(10, 16, 26, 0.96)',

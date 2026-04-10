@@ -81,7 +81,7 @@ export class FiresPanel {
         this.modalEl.className = 'fires-panel-modal';
         this.modalEl.style.cssText = [
             getPremiumModalStyle({
-                width: '370px',
+                width: '400px',
                 maxHeight: 'calc(100vh - 88px)',
                 backgroundStart: 'rgba(24, 12, 10, 0.97)',
                 backgroundEnd: 'rgba(20, 11, 10, 0.96)',

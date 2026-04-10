@@ -118,7 +118,7 @@ export class HydraulicPanel extends Panel {
       position: absolute;
       top: var(--right-panel-top);
       right: 20px;
-      width: 396px;
+      width: 400px;
       max-height: calc(100vh - var(--right-panel-top) - 20px);
       background: linear-gradient(180deg, rgba(8, 15, 32, 0.97), rgba(10, 16, 29, 0.96));
       border: 1px solid rgba(59, 130, 246, 0.22);

@@ -44,7 +44,7 @@ export class FloodsPanel extends Panel {
         this.modalEl.className = 'floods-panel-modal';
         this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
-            width: '320px',
+            width: '400px',
             maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
             backgroundStart: 'rgba(8, 18, 31, 0.97)',
             backgroundEnd: 'rgba(9, 16, 28, 0.96)',

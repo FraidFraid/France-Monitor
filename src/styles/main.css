@@ -897,7 +897,8 @@ body {
   position: absolute;
   bottom: 72px;
   left: 12px;
-  width: 272px;
+  width: 400px;
+  max-width: calc(100vw - 24px);
   z-index: 12;
   background: rgba(10, 12, 20, 0.88);
   backdrop-filter: blur(10px);
@@ -3886,7 +3887,8 @@ body {
   position: fixed;
   top: var(--right-panel-top);
   right: 12px;
-  width: 272px;
+  width: 400px;
+  max-width: calc(100vw - 24px);
   max-height: calc(100vh - var(--right-panel-top) - 20px);
   overflow-y: auto;
   display: flex;
