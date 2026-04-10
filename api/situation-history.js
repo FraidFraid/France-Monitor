@@ -34,7 +34,7 @@ async function handlePush(req, res) {
     || typeof payload !== 'object'
     || typeof payload.slotKey !== 'string'
     || !SLOT_RE.test(payload.slotKey)
-    || typeof payload.score !== 'number'
+    || !Number.isFinite(payload.score)
     || payload.version !== 1
   ) {
     return res.status(400).json({ error: 'invalid_payload' });

@@ -105,7 +105,9 @@ export async function redisRPush(key, value) {
       `${BASE_URL}/rpush/${encodeURIComponent(key)}/${encodeURIComponent(value)}`,
       { method: 'POST', headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
     );
-  } catch {}
+  } catch (e) {
+    console.error('[redis] RPUSH failed', key, e);
+  }
 }
 
 /**
@@ -122,5 +124,7 @@ export async function redisLTrim(key, start, stop) {
       `${BASE_URL}/ltrim/${encodeURIComponent(key)}/${start}/${stop}`,
       { method: 'POST', headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
     );
-  } catch {}
+  } catch (e) {
+    console.error('[redis] LTRIM failed', key, e);
+  }
 }
