@@ -43,7 +43,7 @@ import { BarometerWidget } from './components/BarometerWidget.ts';
 import { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
-import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
+import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
 import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
@@ -2021,13 +2021,7 @@ export class App {
     this.isnrPanel.setOnHoverDepartment((code) => {
       this.mapContainer?.highlightISNRDepartment(code);
     });
-    this.isnrPanel.setOnClickDepartment((code) => {
-      const dept = DEPARTMENTS[code];
-      if (dept) {
-        // Fly to department centroid (approximate)
-        this.mapContainer?.flyTo(2.2, 46.6, 8); // Default, will be overridden by actual coords
-      }
-    });
+    // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
 
     this.nationalHealthPanel = new NationalHealthPanel(floatContainer);

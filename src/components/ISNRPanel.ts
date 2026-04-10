@@ -173,6 +173,7 @@ export class ISNRPanel extends Panel {
           <div>
             <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">ISNR</div>
             <div style="color: var(--text-muted); font-size: 11px;">Indice de Stabilité</div>
+            <div style="color: var(--text-muted); font-size: 10px; margin-top:2px; line-height:1.4;">Score 0–100 · Social 30% · Sécurité 30%<br>Infra 30% · Vélocité 10% · seuils RSS 5 min</div>
             <div style="margin-top:3px;">${renderTruthBadge('RECONSTRUIT / ESTIMÉ', '#F97316')}</div>
           </div>
         </div>
