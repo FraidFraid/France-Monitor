@@ -487,14 +487,16 @@ export function computeISNR(
     const velocity = Math.round(computeVelocityScore(items, timeRangeMs));
 
     // Déterminer le driver principal
-    let topDriver = undefined;
+    let topDriver: ISNRScore['topDriver'] = undefined;
     const maxDimScore = Math.max(social, security, infra, velocity);
 
     if (maxDimScore > 0) {
       if (maxDimScore === infra) {
         let source = 'Infrastructures';
         let label = 'Tension Infrastructure';
-        // Priorité : pannes > météo > ecowatt > crues > events réseau
+        // Priorité intentionnelle : pannes > météo > ecowatt > crues > events réseau
+        // En cas d'égalité de score entre sources, la source la plus haute dans la
+        // hiérarchie remporte le driver. Ex : si méteo=60 et outage=60 → outage gagne.
         if (infraFromOutages && infra === infraFromOutages.score) {
           source = infraFromOutages.source;
           label = infraFromOutages.label;
@@ -549,7 +551,7 @@ export function computeISNR(
       dimensions: { social, security, infra, velocity },
       trend,
       momentum,
-      topDriver: topDriver as any,
+      topDriver,
       eventCount: items.length,
       lastUpdate: now,
       history: next,
