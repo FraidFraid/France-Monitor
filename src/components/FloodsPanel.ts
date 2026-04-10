@@ -1,4 +1,10 @@
 import { Panel } from './Panel.ts';
+import {
+    applyPremiumCloseButtonHover,
+    createPremiumIconHeader,
+    getPremiumCloseButtonStyle,
+    getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { FloodSegment } from '../types/index.ts';
 
 const FLOOD_COLORS: Record<string, string> = {
@@ -37,67 +43,33 @@ export class FloodsPanel extends Panel {
         this.modalEl = document.createElement('div');
         this.modalEl.className = 'floods-panel-modal';
         this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 320px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+            width: '320px',
+            maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+            backgroundStart: 'rgba(8, 18, 31, 0.97)',
+            backgroundEnd: 'rgba(9, 16, 28, 0.96)',
+            borderColor: 'rgba(59, 130, 246, 0.18)',
+        })}
     `;
 
         this.closeBtn = document.createElement('button');
         this.closeBtn.innerHTML = '✕';
-        this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    `;
-        this.closeBtn.onmouseover = () => {
-            this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-            this.closeBtn!.style.color = 'var(--text-primary)';
-        };
-        this.closeBtn.onmouseout = () => {
-            this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-            this.closeBtn!.style.color = 'var(--text-muted)';
-        };
+        this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+        applyPremiumCloseButtonHover(this.closeBtn);
         this.closeBtn.onclick = () => this.hide();
 
         this.modalEl.appendChild(this.closeBtn);
 
-        const header = document.createElement('div');
-        header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    `;
-        header.innerHTML = `
-      <div style="font-size: 24px;">🌊</div>
-      <div>
-        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Vigicrues</div>
-        <div style="color: var(--text-muted); font-size: 11px;">Surveillance des cours d'eau</div>
-      </div>
-    `;
+        const header = createPremiumIconHeader({
+            icon: '🌊',
+            title: 'Vigicrues',
+            subtitle: "Surveillance des cours d'eau",
+            gradientStart: 'rgba(14, 116, 144, 0.18)',
+            gradientEnd: 'rgba(59, 130, 246, 0.10)',
+            iconGradientStart: 'rgba(14, 165, 233, 0.22)',
+            iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
+            titlePrefix: 'Hydrologie opérationnelle',
+        });
         this.modalEl.appendChild(header);
 
         this.contentEl = document.createElement('div');

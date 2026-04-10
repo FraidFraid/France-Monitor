@@ -6,7 +6,9 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { fetchAirTrafficSnapshot } from './api/_shared/air-traffic.js';
 
 const DEFAULT_RELAY_PORT = 8090;
-const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const DEFAULT_AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60_000;
 const SUBSCRIPTION = {
   APIKey: '',
   BoundingBoxes: [
@@ -56,6 +58,7 @@ export function startRelayServer(options = {}) {
 
   const relayPort = Number(options.port || process.env.RELAY_PORT || DEFAULT_RELAY_PORT);
   const aisApiKey = options.aisApiKey ?? process.env.AISSTREAM_API_KEY ?? process.env.VITE_AISSTREAM_KEY ?? '';
+  const upstreamUrl = options.upstreamUrl ?? process.env.AISSTREAM_UPSTREAM_URL ?? DEFAULT_AISSTREAM_URL;
   const subscription = {
     ...SUBSCRIPTION,
     APIKey: aisApiKey,
@@ -68,6 +71,7 @@ export function startRelayServer(options = {}) {
       sendJson(res, 200, {
         ok: true,
         ais: Boolean(aisApiKey),
+        upstreamUrl,
         opensky: Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET),
       }, { 'Cache-Control': 'no-store' });
       return;
@@ -96,8 +100,27 @@ export function startRelayServer(options = {}) {
   let reconnectTimer = null;
   let reconnectDelayMs = 2000;
   let usingExternalRelay = false;
+  let consecutiveFailures = 0;
+  let circuitBreakerUntil = 0;
+  let lastUpstreamError = null;
+
+  const hasDownstreamClients = () => {
+    for (const client of wsServer.clients) {
+      if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const clearReconnectTimer = () => {
+    if (!reconnectTimer) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  };
 
   const closeLocalRelay = () => {
+    clearReconnectTimer();
     try {
       upstream?.close();
     } catch {}
@@ -140,6 +163,19 @@ export function startRelayServer(options = {}) {
 
   const scheduleReconnect = () => {
     if (reconnectTimer || !aisApiKey) return;
+    if (!hasDownstreamClients()) return;
+
+    const now = Date.now();
+    if (circuitBreakerUntil > now) {
+      const waitMs = circuitBreakerUntil - now;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectUpstream();
+      }, waitMs);
+      console.warn(`[AIS Relay] ⏸️ Circuit breaker actif — nouvelle tentative dans ${waitMs}ms`);
+      return;
+    }
+
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connectUpstream();
@@ -156,17 +192,22 @@ export function startRelayServer(options = {}) {
   };
 
   const connectUpstream = () => {
+    if (!aisApiKey) return;
+    if (!hasDownstreamClients()) return;
     if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    upstream = new WebSocket(AISSTREAM_URL);
+    upstream = new WebSocket(upstreamUrl);
 
     let pingInterval = null;
 
     upstream.on('open', () => {
       reconnectDelayMs = 2000;
-      console.log('[AIS Relay] ✅ Connecté à aisstream.io — souscription envoyée');
+      consecutiveFailures = 0;
+      circuitBreakerUntil = 0;
+      lastUpstreamError = null;
+      console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} — souscription envoyée`);
       upstream?.send(JSON.stringify(subscription));
 
       // Keep connection alive
@@ -187,14 +228,37 @@ export function startRelayServer(options = {}) {
     });
 
     upstream.on('error', (err) => {
-      console.error('[AIS Relay] ❌ Erreur upstream:', err.message);
+      lastUpstreamError = err instanceof Error ? err.message : String(err);
+      console.error('[AIS Relay] ❌ Erreur upstream:', lastUpstreamError);
       upstream?.close();
     });
 
     upstream.on('close', (code, reason) => {
       if (pingInterval) clearInterval(pingInterval);
-      console.warn(`[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — reconnexion dans ${reconnectDelayMs}ms`);
       upstream = null;
+
+      const reasonText = Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason || '');
+      if (code !== 1000) {
+        consecutiveFailures++;
+      }
+      if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        circuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+      }
+
+      if (!hasDownstreamClients()) {
+        console.warn(`[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — aucun client local, pause des reconnexions`);
+        return;
+      }
+
+      const extra = [
+        lastUpstreamError ? `erreur=${lastUpstreamError}` : '',
+        reasonText ? `reason=${reasonText}` : '',
+        consecutiveFailures > 1 ? `échecs=${consecutiveFailures}` : '',
+      ].filter(Boolean).join(' · ');
+
+      console.warn(
+        `[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — reconnexion dans ${reconnectDelayMs}ms${extra ? ` · ${extra}` : ''}`,
+      );
       scheduleReconnect();
     });
   };
@@ -213,6 +277,14 @@ export function startRelayServer(options = {}) {
       }));
       return;
     }
+
+    client.on('close', () => {
+      if (hasDownstreamClients()) return;
+      clearReconnectTimer();
+      if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
+        upstream.close(1000, 'No downstream clients');
+      }
+    });
 
     connectUpstream();
   });

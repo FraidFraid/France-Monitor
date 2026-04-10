@@ -1,0 +1,201 @@
+/**
+ * AlertMonitor.ts — Overlay flottant dédié aux alertes live ex-toast.
+ *
+ * Visuellement aligné sur SituationMonitor, mais séparé pour ne pas
+ * mélanger alertes temps réel et situations agrégées.
+ */
+
+import type { DetectedSituation, SituationSeverity } from '../types/index.ts';
+
+function t(lang: 'fr' | 'en', fr: string, en: string): string {
+  return lang === 'fr' ? fr : en;
+}
+
+function escapeHtml(str: string): string {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+const SEV_COLOR: Record<SituationSeverity, string> = {
+  critical: '#ef4444',
+  high: '#f97316',
+  medium: '#eab308',
+  watch: '#3b82f6',
+};
+
+const SEV_LABEL_FR: Record<SituationSeverity, string> = {
+  critical: 'CRIT',
+  high: 'ÉLEVÉ',
+  medium: 'MOYEN',
+  watch: 'VEILLE',
+};
+
+const SEV_LABEL_EN: Record<SituationSeverity, string> = {
+  critical: 'CRIT',
+  high: 'HIGH',
+  medium: 'MEDIUM',
+  watch: 'WATCH',
+};
+
+const TYPE_ICON: Record<string, string> = {
+  NEWS_ALERT: '📰',
+  MILITARY_SURGE_ALERT: '✈️',
+  WEATHER_ALERT: '🌩️',
+  AIS_ANOMALY_ALERT: '⚓',
+  DEFENSE_ALERT: '🛡️',
+  GPS_JAMMING_ALERT: '📡',
+};
+
+export class AlertMonitor {
+  private static readonly COMPACT_LIMIT = 3;
+  private readonly el: HTMLElement;
+  private readonly container: HTMLElement;
+  private collapsed = false;
+  private expandedAll = false;
+  private allAlerts: DetectedSituation[] = [];
+  private lang: 'fr' | 'en' = 'fr';
+
+  constructor(container: HTMLElement) {
+    this.container = container;
+    this.el = document.createElement('div');
+    this.el.className = 'alert-monitor';
+    this.el.setAttribute('aria-live', 'polite');
+    this.el.style.display = 'none';
+    this.container.appendChild(this.el);
+  }
+
+  update(alerts: DetectedSituation[], lang: 'fr' | 'en' = 'fr'): void {
+    this.allAlerts = [...alerts];
+    if (this.allAlerts.length <= AlertMonitor.COMPACT_LIMIT) {
+      this.expandedAll = false;
+    }
+    this.lang = lang;
+    this.render();
+  }
+
+  destroy(): void {
+    this.el.remove();
+  }
+
+  private render(): void {
+    if (this.allAlerts.length === 0) {
+      this.el.style.display = 'none';
+      return;
+    }
+
+    this.el.style.display = '';
+    const visibleAlerts = this.expandedAll
+      ? this.allAlerts
+      : this.allAlerts.slice(0, AlertMonitor.COMPACT_LIMIT);
+
+    const critCount = this.allAlerts.filter((s) => s.severity === 'critical').length;
+    const highCount = this.allAlerts.filter((s) => s.severity === 'high').length;
+    const total = this.allAlerts.length;
+    const hiddenCount = Math.max(0, total - visibleAlerts.length);
+    const worstColor = critCount > 0 ? SEV_COLOR.critical : highCount > 0 ? SEV_COLOR.high : SEV_COLOR.medium;
+    const collapseTitle = this.collapsed ? t(this.lang, 'Afficher', 'Expand') : t(this.lang, 'Réduire', 'Collapse');
+    const toggleAllLabel = this.expandedAll ? t(this.lang, 'Réduire la liste', 'Show less') : t(this.lang, 'Voir toutes', 'View all');
+
+    this.el.innerHTML = `
+      <header class="sit-mon__header">
+        <span class="sit-mon__dot" style="background:${worstColor};"></span>
+        <span class="sit-mon__title">${t(this.lang, 'Alertes', 'Alerts')}</span>
+        <span class="sit-mon__count">${total}</span>
+        <button class="sit-mon__toggle" type="button" title="${collapseTitle}" aria-label="${collapseTitle}">
+          ${this.collapsed ? '▲' : '▼'}
+        </button>
+      </header>
+      ${this.collapsed ? '' : `
+        <div class="sit-mon__list">${visibleAlerts.map((alert) => this.renderItem(alert)).join('')}</div>
+        ${total > AlertMonitor.COMPACT_LIMIT ? `
+          <div class="sit-mon__footer">
+            <button class="sit-mon__show-all" type="button">${toggleAllLabel}${!this.expandedAll && hiddenCount > 0 ? ` (+${hiddenCount})` : ''}</button>
+          </div>
+        ` : ''}
+      `}
+    `;
+
+    this.el.querySelector('.sit-mon__header')!.addEventListener('click', () => {
+      this.collapsed = !this.collapsed;
+      this.expandedAll = false;
+      this.render();
+    });
+
+    this.el.querySelectorAll<HTMLElement>('.sit-mon__item').forEach((itemEl, i) => {
+      itemEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showDetail(visibleAlerts[i]);
+      });
+    });
+
+    this.el.querySelector<HTMLElement>('.sit-mon__show-all')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.expandedAll = !this.expandedAll;
+      this.render();
+    });
+  }
+
+  private renderItem(s: DetectedSituation): string {
+    const color = SEV_COLOR[s.severity];
+    const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
+    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const pct = Math.round(s.confidence * 100);
+    const zone = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
+    const extraZones = s.affectedZones.length > 1 ? `+${s.affectedZones.length - 1}` : '';
+
+    return `
+      <div class="sit-mon__item" role="button" tabindex="0" title="${escapeHtml(s.summary)}">
+        <span class="sit-mon__item-bar" style="background:${color};"></span>
+        <div class="sit-mon__item-body">
+          <div class="sit-mon__item-top">
+            <span class="sit-mon__item-icon">${icon}</span>
+            <span class="sit-mon__item-title">${escapeHtml(s.title)}</span>
+            <span class="sit-mon__item-badge" style="color:${color};">${sevLabel}</span>
+            <span class="sit-mon__item-conf">${pct}%</span>
+          </div>
+          ${zone ? `<div class="sit-mon__item-zone">📍 ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  private showDetail(s: DetectedSituation): void {
+    document.querySelector('.sit-mon__detail')?.remove();
+
+    const color = SEV_COLOR[s.severity];
+    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
+    const pct = Math.round(s.confidence * 100);
+    const zones = s.affectedZones.map((z) => escapeHtml(z)).join(' · ');
+
+    const detail = document.createElement('div');
+    detail.className = 'sit-mon__detail';
+    detail.innerHTML = `
+      <div class="sit-mon__detail-inner">
+        <header class="sit-mon__detail-header" style="border-left-color:${color};">
+          <span>${icon}</span>
+          <span class="sit-mon__detail-title">${escapeHtml(s.title)}</span>
+          <span class="sit-mon__detail-badge" style="background:${color};">${sevLabel} · ${pct}%</span>
+          <button class="sit-mon__detail-close" type="button" aria-label="Fermer">✕</button>
+        </header>
+        <p class="sit-mon__detail-summary">${escapeHtml(s.summary)}</p>
+        ${zones ? `<div class="sit-mon__detail-zones">📍 ${zones}</div>` : ''}
+        ${s.linkUrl ? `
+          <div class="alert-mon__detail-actions">
+            <a
+              class="alert-mon__detail-link"
+              href="${escapeHtml(s.linkUrl)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >${escapeHtml(s.linkLabel ?? t(this.lang, 'Ouvrir la source', 'Open source'))}</a>
+          </div>
+        ` : ''}
+        <div class="sit-mon__detail-sources">${s.sourceRefs.map((r) => `<span class="sit-mon__detail-source" title="${escapeHtml(r)}">${escapeHtml(r)}</span>`).join('')}</div>
+      </div>
+    `;
+
+    detail.querySelector('.sit-mon__detail-close')!.addEventListener('click', () => detail.remove());
+    detail.addEventListener('click', (e) => { if (e.target === detail) detail.remove(); });
+    document.body.appendChild(detail);
+  }
+}

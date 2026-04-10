@@ -1,4 +1,10 @@
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumRingHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { EcowattSignal, EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
 
@@ -64,19 +70,13 @@ export class EnergyPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'energy-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 360px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+        width: '360px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(9, 18, 24, 0.97)',
+        backgroundEnd: 'rgba(12, 16, 22, 0.96)',
+        borderColor: 'rgba(34, 197, 94, 0.18)',
+      })}
       cursor: grab;
     `;
 
@@ -84,63 +84,27 @@ export class EnergyPanel extends Panel {
     this.closeBtnEl = document.createElement('button');
     this.closeBtnEl.innerHTML = '✕';
     this.closeBtnEl.className = 'energy-panel-close';
-    this.closeBtnEl.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtnEl.onmouseover = () => {
-      this.closeBtnEl!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtnEl!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtnEl.onmouseout = () => {
-      this.closeBtnEl!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtnEl!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtnEl.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtnEl);
     this.closeBtnEl.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtnEl);
 
-    // ─── Header : ring + titre + signal + heure ───
-    const header = document.createElement('div');
+    const header = createPremiumRingHeader({
+      ringId: 'elec-ring-progress',
+      centerId: 'elec-ring-icon',
+      centerText: '⚡',
+      centerFontSize: '20px',
+      ringStroke: SIG_COLOR.green,
+      title: 'Écowatt RTE - Réseau électrique',
+      subtitle: SIG_LABEL.green,
+      statusId: 'elec-signal-label',
+      updateId: 'elec-update-time',
+      badgeId: 'elec-truth-badge',
+      gradientStart: 'rgba(22, 163, 74, 0.18)',
+      gradientEnd: 'rgba(249, 115, 22, 0.08)',
+      titlePrefix: 'Backbone énergétique',
+    });
     header.className = 'energy-panel-header';
-    header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    `;
-    header.innerHTML = `
-      <div class="energy-ring-container" style="position: relative; width: 64px; height: 64px;">
-        <svg viewBox="0 0 36 36" style="width: 64px; height: 64px; transform: rotate(-90deg);">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"></circle>
-          <circle id="elec-ring-progress" cx="18" cy="18" r="15.9" fill="none"
-            stroke="${SIG_COLOR.green}" stroke-width="3"
-            stroke-dasharray="100 100" stroke-linecap="round"
-            style="transition: stroke-dasharray 0.5s ease, stroke 0.3s ease;"></circle>
-        </svg>
-        <div id="elec-ring-icon" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px;">⚡</div>
-      </div>
-      <div style="flex: 1;">
-        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Écowatt RTE - Météo de l'électricité</div>
-        <div id="elec-signal-label" style="color: ${SIG_COLOR.green}; font-size: 11px; margin-top: 2px;">${SIG_LABEL.green}</div>
-        <div id="elec-update-time" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;"></div>
-        <div id="elec-truth-badge" style="margin-top:4px;"></div>
-      </div>
-    `;
     this.modalEl.appendChild(header);
 
     // ─── Contenu scrollable ───

@@ -73,7 +73,6 @@ export interface MapLayers {
   environmental: boolean;
   weatherRadar: boolean;
   fires: boolean;
-  criticalEnergyInfra: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;

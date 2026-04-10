@@ -30,7 +30,6 @@ const DEFAULT_FILTER: FilterState = {
         environmental: false,
         weatherRadar: false,
         fires: false,
-        criticalEnergyInfra: false,
         traffic: true,
         trafficRoad: false,
         trafficMaritime: true,

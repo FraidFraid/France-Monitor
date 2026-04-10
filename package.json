@@ -13,6 +13,7 @@
     "scrapling:docker": "docker run -p 8080:8080 scrapling-proxy",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-situation-engine.mjs",
     "preview": "vite preview",
     "lint": "eslint src/ --ext .ts",
     "format": "prettier --write 'src/**/*.ts'",

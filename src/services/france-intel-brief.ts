@@ -7,7 +7,7 @@ interface BriefCacheEntry {
   expiresAt: number;
 }
 
-const PROMPT_VERSION = 'v10';
+const PROMPT_VERSION = 'v11';
 const _cache = new Map<string, BriefCacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
@@ -66,6 +66,16 @@ export async function fetchFranceIntelBrief(
     oilVigilanceStatus: ctx.energySummary.oilVigilanceStatus,
     fuelTensionLevel: ctx.energySummary.fuelTensionLevel,
     fuelTensionAnomalyShare: ctx.energySummary.fuelTensionAnomalyShare,
+    fuelPriceDelta7dCents: ctx.energySummary.fuelPriceHistory?.series.reduce<number | null>((max, series) => {
+      const delta = series.delta7dCents;
+      if (delta == null || delta <= 0) return max;
+      return max == null ? delta : Math.max(max, delta);
+    }, null) ?? null,
+    fuelPriceDelta30dCents: ctx.energySummary.fuelPriceHistory?.series.reduce<number | null>((max, series) => {
+      const delta = series.delta30dCents;
+      if (delta == null || delta <= 0) return max;
+      return max == null ? delta : Math.max(max, delta);
+    }, null) ?? null,
   } : null;
 
   try {

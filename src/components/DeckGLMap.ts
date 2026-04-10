@@ -3498,24 +3498,24 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Métropoles: labels (zoom > 7) ───
+    // ─── Métropoles: labels ───
     this.map.addLayer({
       id: LYR_METRO_LOAD_LABEL,
       type: 'symbol',
       source: SRC_METRO_LOAD,
-      minzoom: 7,
       layout: {
         'text-field': ['concat', ['get', 'name'], '\n', ['get', 'mwLabel']],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 7, 9, 11, 11],
-        'text-offset': [0, 2.0],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 13],
+        'text-offset': [0, 1.6],
         'text-anchor': 'top',
-        'text-allow-overlap': false,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
         'text-font': ['Open Sans Regular'],
       },
       paint: {
-        'text-color': '#e8eef5',
+        'text-color': '#ffffff',
         'text-halo-color': '#0a0a0f',
-        'text-halo-width': 1.4,
+        'text-halo-width': 1.6,
         'text-opacity': 0.96,
       },
     });
@@ -11648,12 +11648,12 @@ export class DeckGLMap {
     this.setVis(LYR_FIRES_HIGHLIGHT, vis(layers.fires ?? false));
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
-    this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, vis(layers.criticalEnergyInfra));
+    this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');
     this.setVis(LYR_ENERGY_INFRA_NUCLEAR_RING, vis(layers.nuclearFleet ?? false));
-    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_GLOW, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
-    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
-    this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
-    this.setVis(LYR_ENERGY_INFRA_LABEL, vis(layers.criticalEnergyInfra || (layers.nuclearFleet ?? false)));
+    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_GLOW, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_ENERGY_INFRA_LABEL, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_HALO, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_SIGNAL_RING, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_CIRCLE, vis(layers.hydroBackbone ?? false));
@@ -11670,10 +11670,7 @@ export class DeckGLMap {
     if (this.map) {
       try {
         if (this.map.getLayer(LYR_ENERGY_INFRA_CIRCLE) && this.map.getLayer(LYR_ENERGY_INFRA_LABEL)) {
-          if (layers.criticalEnergyInfra) {
-            this.map.setFilter(LYR_ENERGY_INFRA_CIRCLE, ['!=', ['get', 'type'], 'nuclear']);
-            this.map.setFilter(LYR_ENERGY_INFRA_LABEL, ['!=', ['get', 'type'], 'nuclear']);
-          } else if (layers.nuclearFleet) {
+          if (layers.nuclearFleet) {
             this.map.setFilter(LYR_ENERGY_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
             this.map.setFilter(LYR_ENERGY_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);
           }

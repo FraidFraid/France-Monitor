@@ -159,8 +159,10 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
         low: ['rassemblement', 'pétition', 'grève', 'préavis', 'mouvement social', 'syndicat', 'débrayage'],
     },
     security: {
-        high: ['attentat', 'fusillade', 'prise d\'otage', 'terrorisme', 'explosion', 'bombe', 'assaut', 'meurtre'],
-        medium: ['agression', 'braquage', 'incendie criminel', 'évasion', 'alerte à la bombe', 'coups de feu', 'homicide', 'violence', 'rixe'],
+        // Intentionnel + grande échelle uniquement en high — "explosion" seul retiré (trop large : accidents domestiques)
+        high: ['attentat', 'fusillade', 'prise d\'otage', 'terrorisme', 'bombe', 'assaut', 'engin explosif', 'voiture piégée', 'colis piégé'],
+        // "meurtre" déplacé en medium (fait divers ≠ menace systémique), "explosion" en medium (contexte ambivalent)
+        medium: ['meurtre', 'homicide', 'agression', 'braquage', 'incendie criminel', 'évasion', 'alerte à la bombe', 'coups de feu', 'violence armée', 'rixe', 'explosion'],
         low: ['cambriolage', 'vol', 'interpellation', 'garde à vue', 'délinquance', 'trafic', 'stupéfiants', 'fait divers', 'dégradation', 'vandalisme'],
     },
     energy: {
@@ -215,13 +217,41 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
     },
 };
 
-// ─── Critical keywords (override level to critical) ───
+// ─── Critical keywords (mots seuls, sans ambiguïté possible) ───
+// Règle : ne mettre ici QUE des termes qui sont TOUJOURS critiques, sans contexte.
+// "explosion" retiré → trop large (barbecue, gaz domestique, accident).
+// "fusillade" retiré → déjà en security.high, et "fusillade verbale" existe.
+// "effondrement" retiré → "effondrement boursier", "effondrement des ventes" → faux positifs.
 
 const CRITICAL_KEYWORDS = [
-    'attentat', 'terrorisme', 'explosion', 'fusillade', 'prise d\'otage',
-    'vigilance rouge', 'blackout', 'effondrement', 'rupture barrage',
+    'attentat', 'terrorisme', 'prise d\'otage',
+    'vigilance rouge', 'blackout', 'rupture barrage',
     'épidémie', 'pandémie', 'crash aérien', 'séisme', 'tsunami',
 ];
+
+// ─── Expressions composées critiques (phrase entière requise) ───
+// Ces expressions multi-mots éliminent les faux positifs sur les termes seuls.
+const CRITICAL_COMPOUND_PHRASES: string[] = [
+    'fusillade de masse', 'fusillade meurtrière', 'tirs de masse',
+    'explosion bombe', 'attentat à la bombe', 'explosion attentat', 'explosion criminelle',
+    'effondrement immeuble', 'effondrement bâtiment', 'effondrement pont', 'effondrement de pont',
+    'fuite radioactive', 'accident nucléaire grave', 'nuage toxique',
+    'coup d\'état', 'guerre civile', 'assaut terroriste',
+    'alerte enlèvement',
+];
+
+// ─── Contextes d'accidents domestiques (désescalade) ───
+// Un "explosion" dans ce contexte = accident, pas menace sécurité.
+const DOMESTIC_ACCIDENT_KEYWORDS: string[] = [
+    'barbecue', 'accident domestique', 'accident ménager',
+    'fuite de gaz domestique', 'chaudière', 'tente d\'allumer', 'tentative d\'allumer',
+    'accidentellement', 'par mégarde', 'brûlure accidentelle',
+];
+
+export function isDomesticAccident(text: string): boolean {
+    const normalized = text.toLowerCase();
+    return DOMESTIC_ACCIDENT_KEYWORDS.some((kw) => normalized.includes(kw));
+}
 
 /**
  * Classify a news item title + summary by keyword matching.
@@ -238,40 +268,52 @@ export function classifyByKeywords(
     let bestConfidence = 0;
     let matchCount = 0;
 
-    // Custom compound conditions for critical incidents (e.g. accident + autoroute)
-    if (text.includes('accident') && !text.includes('accident mortel')) {
-        const isInfrastructure = text.includes('centrale') || text.includes('nucléaire') || text.includes('usine');
-        const isMajorTransport = text.includes('autoroute') || text.includes('tgv') || text.includes('train');
+    // ── 1. Expressions composées critiques (priorité max, sans ambiguïté) ──
+    for (const phrase of CRITICAL_COMPOUND_PHRASES) {
+        if (text.includes(phrase)) {
+            for (const [cat, levels] of Object.entries(KEYWORDS)) {
+                if (levels.high.some((kw) => phrase.includes(kw))) {
+                    return { level: 'critical', category: cat as EventCategory, confidence: 0.92, source: 'keyword' };
+                }
+            }
+            return { level: 'critical', category: 'security', confidence: 0.88, source: 'keyword' };
+        }
+    }
 
-        if (isInfrastructure || isMajorTransport) {
+    // ── 2. Mots-clés critiques sans ambiguïté (terme seul suffisant) ──
+    for (const kw of CRITICAL_KEYWORDS) {
+        if (text.includes(kw)) {
+            for (const [cat, levels] of Object.entries(KEYWORDS)) {
+                if (levels.high.includes(kw)) {
+                    return { level: 'critical', category: cat as EventCategory, confidence: 0.9, source: 'keyword' };
+                }
+            }
+            return { level: 'critical', category: 'security', confidence: 0.85, source: 'keyword' };
+        }
+    }
+
+    // ── 3. Accidents transport/infra majeurs → high (pas critical) ──
+    // "accident" seul + contexte majeur = high, pas critical. Nécessite "mortel" pour critical.
+    if (text.includes('accident mortel')) {
+        const isInfra = text.includes('centrale') || text.includes('nucléaire') || text.includes('usine');
+        const isMajorTransport = text.includes('autoroute') || text.includes('tgv') || text.includes('train');
+        if (isInfra || isMajorTransport) {
             return {
                 level: 'critical',
-                category: isInfrastructure ? 'infrastructure' : 'transport',
-                confidence: 0.9,
+                category: isInfra ? 'infrastructure' : 'transport',
+                confidence: 0.85,
                 source: 'keyword',
             };
         }
     }
-
-    // Check critical override first
-    for (const kw of CRITICAL_KEYWORDS) {
-        if (text.includes(kw)) {
-            // Find which category it belongs to
-            for (const [cat, levels] of Object.entries(KEYWORDS)) {
-                if (levels.high.includes(kw)) {
-                    return {
-                        level: 'critical',
-                        category: cat as EventCategory,
-                        confidence: 0.9,
-                        source: 'keyword',
-                    };
-                }
-            }
-            // Fallback critical
+    if (text.includes('accident') && !text.includes('accident mortel')) {
+        const isInfra = text.includes('centrale') || text.includes('nucléaire') || text.includes('usine');
+        const isMajorTransport = text.includes('autoroute') || text.includes('tgv') || text.includes('train');
+        if (isInfra || isMajorTransport) {
             return {
-                level: 'critical',
-                category: 'security',
-                confidence: 0.85,
+                level: 'high',  // Était 'critical' — downgrade car sans confirmation de gravité
+                category: isInfra ? 'infrastructure' : 'transport',
+                confidence: 0.72,
                 source: 'keyword',
             };
         }
@@ -328,21 +370,27 @@ export function classifyByKeywords(
     // Boost confidence if multiple keywords match
     if (matchCount >= 3) bestConfidence = Math.min(bestConfidence + 0.1, 0.95);
 
+    // ─── Mitigation accidents domestiques ───
+    // "explosion" dans un contexte barbecue/accident ménager ≠ menace sécurité.
+    // Downgrade systématique en info/général.
+    if (isDomesticAccident(text) && (bestCategory === 'security' || bestCategory === 'infrastructure')) {
+        return { level: 'info', category: 'general', confidence: 0.2, source: 'keyword' };
+    }
+
     // ─── Mitigation Bruit PQR ───
     // Pour les événements "security" de niveau "low" (faits divers),
-    // on exige 2 entités nommées (Lieu + Institution) pour valider.
-    // Sinon, on filtre le bruit.
+    // on exige une institution pour valider.
     if (bestCategory === 'security' && bestLevel === 'low') {
         if (isFaitDiversNoise(text)) {
-            // Bruit détecté : pas assez de contexte stratégique
-            // Option 1 : filtrer complètement (return undefined)
-            // Option 2 : downgrader en 'info' avec confiance réduite
-            return {
-                level: 'info',
-                category: 'general',
-                confidence: 0.2,
-                source: 'keyword',
-            };
+            return { level: 'info', category: 'general', confidence: 0.2, source: 'keyword' };
+        }
+    }
+
+    // ─── Mitigation security/medium sans institution ───
+    // "meurtre", "homicide" dans un fait divers local sans institution = bruit PQR élevé
+    if (bestCategory === 'security' && bestLevel === 'medium') {
+        if (isFaitDiversNoise(text)) {
+            return { level: 'low', category: 'security', confidence: 0.3, source: 'keyword' };
         }
     }
 

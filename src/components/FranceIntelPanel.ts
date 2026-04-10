@@ -458,48 +458,6 @@ export class FranceIntelPanel extends Panel {
           <button type="button" class="frintel-inline-action fi-brief-toggle" hidden></button>
         </section>
 
-        <section class="frintel-card">
-          <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Posture nationale', 'National Posture')}</div>
-            <div class="frintel-card-meta">${t(lang, 'Risque dominant', 'Dominant risk')} • ${escapeHtml(dominantRisk?.label ?? 'n/a')}</div>
-          </div>
-          <div class="frintel-metric-grid">
-            ${this.renderStatTile(t(lang, 'Cyber', 'Cyber'), snapshot.signals.cyberAlerts.toString(), t(lang, 'alertes 30j', '30d alerts'))}
-            ${this.renderStatTile(t(lang, 'Rail', 'Rail'), snapshot.signals.railDisruptions.toString(), t(lang, 'perturbations', 'disruptions'))}
-            ${this.renderStatTile(t(lang, 'Militaire', 'Military'), snapshot.signals.militaryFlights.toString(), t(lang, 'vols actifs', 'active flights'))}
-            ${this.renderStatTile(t(lang, 'Maritime', 'Maritime'), snapshot.signals.maritimeTrafficFrance.toString(), t(lang, 'navires en zone FR', 'ships in FR waters'))}
-            ${this.renderStatTile(t(lang, 'Pannes', 'Outages'), (snapshot.signals.powerOutages + snapshot.signals.telecomOutages).toString(), t(lang, 'élec + télécom', 'power + telecom'))}
-            ${this.renderStatTile(t(lang, 'Défense', 'Defense'), snapshot.signals.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
-            ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (snapshot.signals.meteoAlerts + snapshot.signals.floodAlerts + snapshot.signals.fireDetections).toString(), t(lang, 'vigies + feux', 'watches + fires'))}
-          </div>
-        </section>
-
-        <section class="frintel-card">
-          <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Signaux actifs', 'Active Signals')}</div>
-            <div class="frintel-card-meta">${totalSignals} ${t(lang, 'signaux agrégés', 'aggregated signals')}</div>
-          </div>
-          <div class="frintel-chip-wrap">
-            ${signalChips.length > 0 ? signalChips.join('') : `<div class="frintel-empty">${t(lang, 'Aucun signal dominant à cette minute.', 'No dominant signal right now.')}</div>`}
-          </div>
-        </section>
-
-        <section class="frintel-card">
-          <div class="frintel-card-top">
-            <div class="frintel-card-title">${t(lang, 'Chronologie 7 jours', '7-Day Timeline')}</div>
-            <div class="frintel-card-meta">${t(lang, 'Lecture par intensité de signal', 'Signal intensity view')}</div>
-          </div>
-          <div class="frintel-timeline-head">
-            <div></div>
-            <div class="frintel-timeline-days">
-              ${snapshot.timeline.days.map((day) => `<span>${escapeHtml(day)}</span>`).join('')}
-            </div>
-          </div>
-          <div class="frintel-timeline">
-            ${snapshot.timeline.lanes.map(renderTimelineLane).join('')}
-          </div>
-        </section>
-
         <div class="fi-infra-widget-slot"></div>
 
         <section class="frintel-card">
@@ -581,6 +539,48 @@ export class FranceIntelPanel extends Panel {
               `;
             })()}
           ` : `<div class="frintel-empty">${t(lang, 'Aucun profil énergie disponible.', 'No energy profile available.')}</div>`}
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Posture nationale', 'National Posture')}</div>
+            <div class="frintel-card-meta">${t(lang, 'Risque dominant', 'Dominant risk')} • ${escapeHtml(dominantRisk?.label ?? 'n/a')}</div>
+          </div>
+          <div class="frintel-metric-grid">
+            ${this.renderStatTile(t(lang, 'Cyber', 'Cyber'), snapshot.signals.cyberAlerts.toString(), t(lang, 'alertes 30j', '30d alerts'))}
+            ${this.renderStatTile(t(lang, 'Rail', 'Rail'), snapshot.signals.railDisruptions.toString(), t(lang, 'perturbations', 'disruptions'))}
+            ${this.renderStatTile(t(lang, 'Militaire', 'Military'), snapshot.signals.militaryFlights.toString(), t(lang, 'vols actifs', 'active flights'))}
+            ${this.renderStatTile(t(lang, 'Maritime', 'Maritime'), snapshot.signals.maritimeTrafficFrance.toString(), t(lang, 'navires en zone FR', 'ships in FR waters'))}
+            ${this.renderStatTile(t(lang, 'Pannes', 'Outages'), (snapshot.signals.powerOutages + snapshot.signals.telecomOutages).toString(), t(lang, 'élec + télécom', 'power + telecom'))}
+            ${this.renderStatTile(t(lang, 'Défense', 'Defense'), snapshot.signals.defenseAlerts.toString(), t(lang, 'alertes câbles', 'cable alerts'))}
+            ${this.renderStatTile(t(lang, 'Météo', 'Weather'), (snapshot.signals.meteoAlerts + snapshot.signals.floodAlerts + snapshot.signals.fireDetections).toString(), t(lang, 'vigies + feux', 'watches + fires'))}
+          </div>
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Chronologie 7 jours', '7-Day Timeline')}</div>
+            <div class="frintel-card-meta">${t(lang, 'Lecture par intensité de signal', 'Signal intensity view')}</div>
+          </div>
+          <div class="frintel-timeline-head">
+            <div></div>
+            <div class="frintel-timeline-days">
+              ${snapshot.timeline.days.map((day) => `<span>${escapeHtml(day)}</span>`).join('')}
+            </div>
+          </div>
+          <div class="frintel-timeline">
+            ${snapshot.timeline.lanes.map(renderTimelineLane).join('')}
+          </div>
+        </section>
+
+        <section class="frintel-card">
+          <div class="frintel-card-top">
+            <div class="frintel-card-title">${t(lang, 'Signaux actifs', 'Active Signals')}</div>
+            <div class="frintel-card-meta">${totalSignals} ${t(lang, 'signaux agrégés', 'aggregated signals')}</div>
+          </div>
+          <div class="frintel-chip-wrap">
+            ${signalChips.length > 0 ? signalChips.join('') : `<div class="frintel-empty">${t(lang, 'Aucun signal dominant à cette minute.', 'No dominant signal right now.')}</div>`}
+          </div>
         </section>
       </div>
     `;

@@ -1,4 +1,10 @@
 import { Panel } from './Panel.ts';
+import {
+    applyPremiumCloseButtonHover,
+    createPremiumIconHeader,
+    getPremiumCloseButtonStyle,
+    getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { TransportDisruption, ThreatLevel } from '../types/index.ts';
 
 const SEVERITY_COLORS: Record<ThreatLevel, string> = {
@@ -46,67 +52,34 @@ export class TransportPanel extends Panel {
     mount(): void {
         this.modalEl = document.createElement('div');
         this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 380px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+            width: '380px',
+            maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+            backgroundStart: 'rgba(9, 18, 31, 0.97)',
+            backgroundEnd: 'rgba(12, 16, 27, 0.96)',
+            borderColor: 'rgba(96, 165, 250, 0.18)',
+        })}
     `;
 
         this.closeBtn = document.createElement('button');
         this.closeBtn.innerHTML = '✕';
-        this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    `;
-        this.closeBtn.onmouseover = () => {
-            this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-            this.closeBtn!.style.color = 'var(--text-primary)';
-        };
-        this.closeBtn.onmouseout = () => {
-            this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-            this.closeBtn!.style.color = 'var(--text-muted)';
-        };
+        this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+        applyPremiumCloseButtonHover(this.closeBtn);
         this.closeBtn.onclick = () => this.hide();
 
         this.modalEl.appendChild(this.closeBtn);
 
-        const header = document.createElement('div');
-        header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    `;
-        header.innerHTML = `
-      <div style="font-size: 24px;">🚆</div>
-      <div>
-        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Perturbations SNCF</div>
-        <div style="color: var(--text-muted); font-size: 11px; display:flex; align-items:center; gap:6px;">Trafic ferroviaire <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span></div>
-      </div>
-    `;
+        const header = createPremiumIconHeader({
+            icon: '🚆',
+            title: 'Perturbations SNCF',
+            subtitle: 'Trafic ferroviaire',
+            gradientStart: 'rgba(59, 130, 246, 0.16)',
+            gradientEnd: 'rgba(14, 165, 233, 0.10)',
+            iconGradientStart: 'rgba(59, 130, 246, 0.22)',
+            iconGradientEnd: 'rgba(14, 165, 233, 0.14)',
+            titlePrefix: 'Mobilité ferroviaire',
+            extraTopRowHtml: '<div style="margin-top:4px;"><span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span></div>',
+        });
         this.modalEl.appendChild(header);
 
         this.contentEl = document.createElement('div');

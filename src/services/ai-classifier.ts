@@ -81,7 +81,7 @@ export async function classifyWithAI(title: string, summary?: string): Promise<T
             return undefined; // Meaning it's a general article with no specific threat
         }
 
-        const category = LABEL_TO_CATEGORY[topLabel];
+        let category = LABEL_TO_CATEGORY[topLabel];
 
         // Basic threat level heuristic based on confidence
         let level: ThreatLevel = 'info';
@@ -89,17 +89,32 @@ export async function classifyWithAI(title: string, summary?: string): Promise<T
         else if (topScore > 0.5) level = 'medium';
         else level = 'low';
 
-        // Critical override for security/weather with extreme confidence
-        if ((category === 'security' || category === 'weather') && topScore > 0.95) {
-            level = 'critical';
+        // L'IA ne peut PAS assigner "critical" — seul le keyword classifier le fait.
+        // L'IA manque de contexte factuel pour garantir cette sévérité.
+        // (critical reste réservé aux mots-clés sans ambiguïté : attentat, séisme, blackout…)
+
+        // ─── Correction catégorie "social" pour événements militaires/criminels ───
+        // Le modèle zero-shot confond parfois "social" avec des événements géopolitiques
+        // (général tué, coup d'état, assassinat…) car il associe "politique/militaire" à "social".
+        // Si le label AI est "social" mais le texte contient des termes létaux/militaires → security.
+        if (category === 'social') {
+            const lowerText = text.toLowerCase();
+            const LETHAL_OR_MILITARY = [
+                'tué', 'tués', 'tuer', 'assassiné', 'assassinat', 'mort', 'décédé', 'décès',
+                'blessé grave', 'blessés graves', 'victime', 'victimes',
+                'coup d\'état', 'général', 'militaire', 'armée', 'soldats', 'guerre', 'conflit armé',
+                'exécuté', 'massacre', 'atrocités',
+            ];
+            if (LETHAL_OR_MILITARY.some((term) => lowerText.includes(term))) {
+                category = 'security';
+                level = 'low'; // événement étranger/contexte incertain → low par défaut
+            }
         }
 
         // ─── Mitigation Bruit PQR ───
-        // Pour les événements "security" de niveau "low" ou "medium" avec un score modéré,
-        // on exige 2 entités nommées (Lieu + Institution) pour valider si c'est un fait divers.
         if (category === 'security' && (level === 'low' || level === 'medium')) {
             if (isFaitDiversNoise(text)) {
-                return undefined; // Bruit PQR = on ignore (général)
+                return undefined;
             }
         }
 

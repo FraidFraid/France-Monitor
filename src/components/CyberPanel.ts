@@ -9,6 +9,12 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumRingHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { CyberState, CyberAlert, CyberCVE, CyberSeverity } from '../types/index.ts';
 import { getCyberScoreColor, formatCyberDate, getSeverityColor, isCyberPanelEnabled } from '../services/cyber.ts';
 
@@ -44,19 +50,13 @@ export class CyberPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'cyber-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 380px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+        width: '380px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(10, 17, 30, 0.97)',
+        backgroundEnd: 'rgba(16, 12, 24, 0.96)',
+        borderColor: 'rgba(16, 185, 129, 0.18)',
+      })}
       cursor: grab;
     `;
 
@@ -64,61 +64,26 @@ export class CyberPanel extends Panel {
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
     this.closeBtn.className = 'cyber-panel-close';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
-    // Header with ring chart
-    const header = document.createElement('div');
+    const header = createPremiumRingHeader({
+      ringId: 'cyber-ring-progress',
+      centerId: 'cyber-ring-score',
+      centerText: '--',
+      ringStroke: '#10B981',
+      title: 'Vigilance Cyber Nationale',
+      subtitle: 'Chargement...',
+      statusId: 'cyber-status-label',
+      badgeId: 'cyber-truth-badge',
+      gradientStart: 'rgba(16, 185, 129, 0.16)',
+      gradientEnd: 'rgba(99, 102, 241, 0.10)',
+      titlePrefix: 'Surveillance souveraine',
+      extraTopRowHtml: '<div id="cyber-trend" style="font-size:10px;margin-top:4px;color:var(--text-muted);"></div>',
+    });
     header.className = 'cyber-panel-header';
-    header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    `;
-    header.innerHTML = `
-      <div class="cyber-ring-container" style="position: relative; width: 64px; height: 64px;">
-        <svg viewBox="0 0 36 36" style="width: 64px; height: 64px; transform: rotate(-90deg);">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"></circle>
-          <circle id="cyber-ring-progress" cx="18" cy="18" r="15.9" fill="none" stroke="#10B981" stroke-width="3"
-            stroke-dasharray="0 100" stroke-linecap="round" style="transition: stroke-dasharray 0.5s ease, stroke 0.3s ease;"></circle>
-        </svg>
-        <div id="cyber-ring-score" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 16px; font-weight: 700; color: var(--text-primary);">--</div>
-      </div>
-      <div style="flex: 1;">
-        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Vigilance Cyber Nationale</div>
-        <div id="cyber-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Chargement...</div>
-        <div id="cyber-trend" style="font-size: 10px; margin-top: 4px;"></div>
-        <div id="cyber-truth-badge" style="margin-top:4px;"></div>
-      </div>
-    `;
     this.modalEl.appendChild(header);
 
     // Content container

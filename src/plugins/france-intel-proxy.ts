@@ -10,7 +10,7 @@ import type { Plugin } from 'vite';
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const CACHE_TTL  = 6 * 60 * 60 * 1000; // 6 h in ms
-const BRIEF_PROMPT_VERSION = 'v11';
+const BRIEF_PROMPT_VERSION = 'v12';
 
 const _devCache = new Map<string, { value: string; expiresAt: number }>();
 
@@ -74,6 +74,8 @@ function buildCacheKey(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
 ): string {
   const seed = JSON.stringify({
@@ -170,6 +172,8 @@ function hasEnergyTension(energy: {
   oilVigilanceStatus: string | null;
   fuelTensionLevel: string | null;
   fuelTensionAnomalyShare: number | null;
+  fuelPriceDelta7dCents: number | null;
+  fuelPriceDelta30dCents: number | null;
 } | null): boolean {
   if (!energy) return false;
   return (
@@ -181,7 +185,95 @@ function hasEnergyTension(energy: {
     || energy.fuelTensionLevel === 'HIGH'
     || energy.fuelTensionLevel === 'CRITICAL'
     || (energy.fuelTensionAnomalyShare ?? 0) >= 5
+    || (energy.fuelPriceDelta7dCents ?? 0) >= 8
+    || (energy.fuelPriceDelta30dCents ?? 0) >= 15
   );
+}
+
+function hasOperationalEnergyStress(energy: {
+  ecowattSignal: string | null;
+  nuclearShare: number;
+  gasShare: number;
+  hydroShare: number;
+  windShare: number;
+  solarShare: number;
+  totalMw: number | null;
+  oilStocksDays: number | null;
+  oilVigilanceStatus: string | null;
+  fuelTensionLevel: string | null;
+  fuelTensionAnomalyShare: number | null;
+  fuelPriceDelta7dCents: number | null;
+  fuelPriceDelta30dCents: number | null;
+} | null): boolean {
+  if (!energy) return false;
+  return (
+    energy.ecowattSignal === 'red'
+    || energy.oilVigilanceStatus === 'critical'
+    || energy.fuelTensionLevel === 'HIGH'
+    || energy.fuelTensionLevel === 'CRITICAL'
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 12
+    || (energy.fuelPriceDelta7dCents ?? 0) >= 12
+    || (energy.fuelPriceDelta30dCents ?? 0) >= 20
+  );
+}
+
+function hasBackgroundEnergyPressure(energy: {
+  ecowattSignal: string | null;
+  nuclearShare: number;
+  gasShare: number;
+  hydroShare: number;
+  windShare: number;
+  solarShare: number;
+  totalMw: number | null;
+  oilStocksDays: number | null;
+  oilVigilanceStatus: string | null;
+  fuelTensionLevel: string | null;
+  fuelTensionAnomalyShare: number | null;
+  fuelPriceDelta7dCents: number | null;
+  fuelPriceDelta30dCents: number | null;
+} | null): boolean {
+  return hasEnergyTension(energy) && !hasOperationalEnergyStress(energy);
+}
+
+function hasOperationalTransportStress(signalCounts: {
+  criticalNews: number;
+  highNews: number;
+  weatherAlerts: number;
+  floodAlerts: number;
+  fireDetections: number;
+  railDisruptions: number;
+  roadIncidents: number;
+  powerOutages: number;
+  telecomOutages: number;
+  cyberAlerts: number;
+  militaryFlights: number;
+  maritimeTrafficFrance: number;
+  defenseAlerts: number;
+  jammingSignals: number;
+  marketStress: number;
+}): boolean {
+  return signalCounts.railDisruptions >= 8 || signalCounts.roadIncidents >= 25;
+}
+
+function hasBackgroundTransportPressure(signalCounts: {
+  criticalNews: number;
+  highNews: number;
+  weatherAlerts: number;
+  floodAlerts: number;
+  fireDetections: number;
+  railDisruptions: number;
+  roadIncidents: number;
+  powerOutages: number;
+  telecomOutages: number;
+  cyberAlerts: number;
+  militaryFlights: number;
+  maritimeTrafficFrance: number;
+  defenseAlerts: number;
+  jammingSignals: number;
+  marketStress: number;
+}): boolean {
+  return !hasOperationalTransportStress(signalCounts)
+    && (signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0);
 }
 
 function dominantRiskLabel(
@@ -215,12 +307,14 @@ function dominantRiskLabel(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
   lang: 'fr' | 'en',
 ): string {
   const candidates = [
-    { key: 'energy', score: hasEnergyTension(energy) ? 70 : 0, fr: 'énergie et carburants', en: 'energy and fuel' },
-    { key: 'transport', score: Math.min(100, signalCounts.railDisruptions * 4 + signalCounts.roadIncidents), fr: 'transport', en: 'transport' },
+    { key: 'energy', score: hasOperationalEnergyStress(energy) ? 85 : hasBackgroundEnergyPressure(energy) ? 35 : 0, fr: 'énergie et carburants', en: 'energy and fuel' },
+    { key: 'transport', score: hasOperationalTransportStress(signalCounts) ? Math.min(100, signalCounts.railDisruptions * 5 + signalCounts.roadIncidents) : hasBackgroundTransportPressure(signalCounts) ? 18 : 0, fr: 'transport', en: 'transport' },
     { key: 'security', score: axes.security + (signalCounts.cyberAlerts > 0 ? 10 : 0), fr: 'sécurité', en: 'security' },
     { key: 'defense', score: signalCounts.defenseAlerts * 8 + signalCounts.jammingSignals * 10, fr: 'défense', en: 'defense' },
     { key: 'weather', score: signalCounts.weatherAlerts * 8 + signalCounts.floodAlerts * 8, fr: 'météo et crues', en: 'weather and floods' },
@@ -260,6 +354,8 @@ function buildSituationSummary(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
   lang: 'fr' | 'en',
 ): string {
@@ -268,8 +364,10 @@ function buildSituationSummary(
     if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
       lines.push(`${signalCounts.weatherAlerts} alertes météo sévères + ${signalCounts.floodAlerts} alertes crues actives`);
     }
-    if (signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0) {
+    if (hasOperationalTransportStress(signalCounts)) {
       lines.push(`${signalCounts.railDisruptions} perturbations ferroviaires SNCF, ${signalCounts.roadIncidents} incidents routiers`);
+    } else if (hasBackgroundTransportPressure(signalCounts)) {
+      lines.push(`mobilité sous bruit de fond: ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers`);
     }
     if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
       lines.push(`${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom`);
@@ -277,12 +375,15 @@ function buildSituationSummary(
     if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
       lines.push(`${signalCounts.defenseAlerts} alertes défense (câbles sous-marins), ${signalCounts.jammingSignals} signaux brouillage GPS`);
     }
-    if (energy && hasEnergyTension(energy)) {
+    if (energy && hasOperationalEnergyStress(energy)) {
       const parts: string[] = [];
-      if (energy.ecowattSignal === 'orange' || energy.ecowattSignal === 'red') parts.push(`Ecowatt ${energy.ecowattSignal}`);
+      if (energy.ecowattSignal === 'red') parts.push('Ecowatt rouge');
       if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`carburants ${energy.fuelTensionLevel}`);
       if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`pétrole ${energy.oilVigilanceStatus}`);
+      if ((energy.fuelPriceDelta7dCents ?? 0) >= 8) parts.push(`prix +${energy.fuelPriceDelta7dCents?.toFixed(1)} c/L sur 7j`);
       if (parts.length > 0) lines.push(`Tension énergie : ${parts.join(', ')}`);
+    } else if (energy && hasBackgroundEnergyPressure(energy)) {
+      lines.push('Énergie sous tension de fond sans rupture opérationnelle immédiate');
     }
     if (signalCounts.fireDetections > 0) {
       lines.push(`${signalCounts.fireDetections} détections de feux actifs`);
@@ -297,8 +398,10 @@ function buildSituationSummary(
     if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
       lines.push(`${signalCounts.weatherAlerts} severe weather alerts + ${signalCounts.floodAlerts} active flood alerts`);
     }
-    if (signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0) {
+    if (hasOperationalTransportStress(signalCounts)) {
       lines.push(`${signalCounts.railDisruptions} SNCF rail disruptions, ${signalCounts.roadIncidents} road incidents`);
+    } else if (hasBackgroundTransportPressure(signalCounts)) {
+      lines.push(`mobility background friction: ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents`);
     }
     if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
       lines.push(`${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom incidents`);
@@ -306,12 +409,15 @@ function buildSituationSummary(
     if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
       lines.push(`${signalCounts.defenseAlerts} defense alerts (subsea cables), ${signalCounts.jammingSignals} GPS jamming signals`);
     }
-    if (energy && hasEnergyTension(energy)) {
+    if (energy && hasOperationalEnergyStress(energy)) {
       const parts: string[] = [];
-      if (energy.ecowattSignal === 'orange' || energy.ecowattSignal === 'red') parts.push(`Ecowatt ${energy.ecowattSignal}`);
+      if (energy.ecowattSignal === 'red') parts.push('Ecowatt red');
       if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`fuel tension ${energy.fuelTensionLevel}`);
       if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`oil ${energy.oilVigilanceStatus}`);
+      if ((energy.fuelPriceDelta7dCents ?? 0) >= 8) parts.push(`fuel prices +${energy.fuelPriceDelta7dCents?.toFixed(1)} c/L in 7d`);
       if (parts.length > 0) lines.push(`Energy tension: ${parts.join(', ')}`);
+    } else if (energy && hasBackgroundEnergyPressure(energy)) {
+      lines.push('Energy remains under background strain without immediate operational rupture.');
     }
     if (signalCounts.fireDetections > 0) {
       lines.push(`${signalCounts.fireDetections} active fire detections`);
@@ -359,6 +465,8 @@ function buildDeterministicBrief(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
 ): string {
   const posture = describeStability(countryScore, lang);
@@ -369,19 +477,31 @@ function buildDeterministicBrief(
     || signalCounts.defenseAlerts > 0
     || signalCounts.jammingSignals > 0;
   const energyTension = hasEnergyTension(energy);
+  const energyOperational = hasOperationalEnergyStress(energy);
   const transportActive = signalCounts.railDisruptions > 0 || signalCounts.roadIncidents > 0;
+  const transportOperational = hasOperationalTransportStress(signalCounts);
   const securityActive = axes.security >= 50 || signalCounts.cyberAlerts > 0 || signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0;
   const weatherActive = signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0;
 
   const pressureLines: string[] = [];
   if (lang === 'fr') {
-    if (energyTension) {
-      const fuelDetail = energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW'
-        ? ` (tension carburants ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''})` : '';
-      pressureLines.push(`Les indicateurs énergie contribuent à la pression de continuité${fuelDetail}.`);
+    if (energyOperational) {
+      const energyDetails: string[] = [];
+      if (energy?.ecowattSignal === 'red') energyDetails.push('Ecowatt rouge');
+      if (energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') {
+        energyDetails.push(`carburants ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''}`);
+      }
+      if ((energy?.fuelPriceDelta7dCents ?? 0) >= 8) {
+        energyDetails.push(`hausse carburants ${energy?.fuelPriceDelta7dCents?.toFixed(1)} c/L sur 7j`);
+      }
+      pressureLines.push(`L'énergie devient un sujet opérationnel${energyDetails.length > 0 ? ` : ${energyDetails.join(', ')}` : ''}.`);
+    } else if (energyTension) {
+      pressureLines.push('L\'énergie reste sous tension de fond, sans rupture immédiate de continuité.');
     }
-    if (transportActive) {
-      pressureLines.push(`${signalCounts.railDisruptions} perturbations ferroviaires et ${signalCounts.roadIncidents} incidents routiers pèsent sur la mobilité.`);
+    if (transportOperational) {
+      pressureLines.push(`${signalCounts.railDisruptions} perturbations ferroviaires et ${signalCounts.roadIncidents} incidents routiers dépassent le bruit habituel de mobilité.`);
+    } else if (transportActive) {
+      pressureLines.push('Les perturbations transport relèvent surtout du bruit de fond du réseau et restent à confirmer avant d\'en faire une tension nationale.');
     }
     if (securityActive) {
       const details: string[] = [];
@@ -412,19 +532,31 @@ function buildDeterministicBrief(
         : 'La continuité de l\'État est maintenue, les indicateurs de fond restent à surveiller.',
       'À SURVEILLER (6H)',
       `Surveiller en priorité le domaine ${dominantRisk} pour détecter toute escalade opérationnelle.`,
-      transportActive
-        ? 'Observer si les perturbations transport restent localisées ou se propagent.'
-        : 'Observer la convergence éventuelle des signaux faibles vers un schéma d\'instabilité.',
+      energyOperational
+        ? 'Suivre la part d\'anomalies carburants et la dérive des prix à 7 jours.'
+        : transportOperational
+          ? 'Observer si les perturbations transport restent localisées ou se propagent.'
+          : 'Observer la convergence éventuelle des signaux faibles vers un schéma d\'instabilité.',
     ].join('\n');
   }
 
-  if (energyTension) {
-    const fuelDetail = energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW'
-      ? ` (fuel tension ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''})` : '';
-    pressureLines.push(`Energy indicators contribute to continuity pressure${fuelDetail}.`);
+  if (energyOperational) {
+    const energyDetails: string[] = [];
+    if (energy?.ecowattSignal === 'red') energyDetails.push('Ecowatt red');
+    if (energy?.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') {
+      energyDetails.push(`fuel tension ${energy.fuelTensionLevel}${energy.fuelTensionAnomalyShare != null ? `, ${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies` : ''}`);
+    }
+    if ((energy?.fuelPriceDelta7dCents ?? 0) >= 8) {
+      energyDetails.push(`fuel prices +${energy?.fuelPriceDelta7dCents?.toFixed(1)} c/L over 7d`);
+    }
+    pressureLines.push(`Energy has become an operational issue${energyDetails.length > 0 ? `: ${energyDetails.join(', ')}` : ''}.`);
+  } else if (energyTension) {
+    pressureLines.push('Energy remains under background strain without immediate continuity rupture.');
   }
-  if (transportActive) {
-    pressureLines.push(`${signalCounts.railDisruptions} rail disruptions and ${signalCounts.roadIncidents} road incidents weigh on mobility.`);
+  if (transportOperational) {
+    pressureLines.push(`${signalCounts.railDisruptions} rail disruptions and ${signalCounts.roadIncidents} road incidents exceed routine mobility noise.`);
+  } else if (transportActive) {
+    pressureLines.push('Transport disruptions currently resemble background network friction more than a national pressure point.');
   }
   if (securityActive) {
     const details: string[] = [];
@@ -455,9 +587,11 @@ function buildDeterministicBrief(
       : 'State continuity is maintained, background indicators warrant continued monitoring.',
     'NEXT 6 HOURS TO WATCH',
     `Watch the ${dominantRisk} domain as priority for any operational escalation.`,
-    transportActive
-      ? 'Track whether transport disruptions stay localized or begin to propagate.'
-      : 'Watch for potential convergence of weak signals into a broader instability pattern.',
+    energyOperational
+      ? 'Track fuel anomaly share and short-term fuel price acceleration.'
+      : transportOperational
+        ? 'Track whether transport disruptions stay localized or begin to propagate.'
+        : 'Watch for potential convergence of weak signals into a broader instability pattern.',
   ].join('\n');
 }
 
@@ -495,6 +629,8 @@ function isBriefCoherent(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
 ): boolean {
   if (!brief || brief.trim().length < 40) return false;
@@ -576,6 +712,8 @@ function buildPrompt(
     oilVigilanceStatus: string | null;
     fuelTensionLevel: string | null;
     fuelTensionAnomalyShare: number | null;
+    fuelPriceDelta7dCents: number | null;
+    fuelPriceDelta30dCents: number | null;
   } | null,
   lang: 'fr' | 'en',
 ): string {
@@ -594,8 +732,8 @@ function buildPrompt(
 
   const energyBlock = energy
     ? lang === 'fr'
-      ? `Énergie — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}% / gaz ${energy.gasShare}% / hydro ${energy.hydroShare}% / éolien ${energy.windShare}% / solaire ${energy.solarShare}%, production ${energy.totalMw ?? 'n.d.'} MW, stocks pétroliers ${energy.oilStocksDays != null ? `${energy.oilStocksDays}j` : 'n.d.'} (${energy.oilVigilanceStatus ?? 'n.d.'}), carburants ${energy.fuelTensionLevel ?? 'n.d.'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}`
-      : `Energy — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}% / gas ${energy.gasShare}% / hydro ${energy.hydroShare}% / wind ${energy.windShare}% / solar ${energy.solarShare}%, production ${energy.totalMw ?? 'n/a'} MW, oil stocks ${energy.oilStocksDays != null ? `${energy.oilStocksDays}d` : 'n/a'} (${energy.oilVigilanceStatus ?? 'n/a'}), fuel ${energy.fuelTensionLevel ?? 'n/a'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}`
+      ? `Énergie — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nucléaire ${energy.nuclearShare}% / gaz ${energy.gasShare}% / hydro ${energy.hydroShare}% / éolien ${energy.windShare}% / solaire ${energy.solarShare}%, production ${energy.totalMw ?? 'n.d.'} MW, stocks pétroliers ${energy.oilStocksDays != null ? `${energy.oilStocksDays}j` : 'n.d.'} (${energy.oilVigilanceStatus ?? 'n.d.'}), carburants ${energy.fuelTensionLevel ?? 'n.d.'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}${energy.fuelPriceDelta7dCents != null ? `, delta 7j ${energy.fuelPriceDelta7dCents >= 0 ? '+' : ''}${energy.fuelPriceDelta7dCents.toFixed(1)} c/L` : ''}${energy.fuelPriceDelta30dCents != null ? `, delta 30j ${energy.fuelPriceDelta30dCents >= 0 ? '+' : ''}${energy.fuelPriceDelta30dCents.toFixed(1)} c/L` : ''}`
+      : `Energy — Ecowatt ${energy.ecowattSignal ?? 'n/a'}, mix nuclear ${energy.nuclearShare}% / gas ${energy.gasShare}% / hydro ${energy.hydroShare}% / wind ${energy.windShare}% / solar ${energy.solarShare}%, production ${energy.totalMw ?? 'n/a'} MW, oil stocks ${energy.oilStocksDays != null ? `${energy.oilStocksDays}d` : 'n/a'} (${energy.oilVigilanceStatus ?? 'n/a'}), fuel ${energy.fuelTensionLevel ?? 'n/a'}${energy.fuelTensionAnomalyShare != null ? ` (${energy.fuelTensionAnomalyShare.toFixed(1)}% anomalies)` : ''}${energy.fuelPriceDelta7dCents != null ? `, 7d delta ${energy.fuelPriceDelta7dCents >= 0 ? '+' : ''}${energy.fuelPriceDelta7dCents.toFixed(1)} c/L` : ''}${energy.fuelPriceDelta30dCents != null ? `, 30d delta ${energy.fuelPriceDelta30dCents >= 0 ? '+' : ''}${energy.fuelPriceDelta30dCents.toFixed(1)} c/L` : ''}`
     : '';
 
   if (lang === 'en') {
@@ -633,9 +771,11 @@ ${headlineList}
 7. Calm/stability wording is ${calmAllowedText}. If forbidden, never use "stable", "calm", "normal", "under control".
 8. Never quote numeric scores, indices, or /100 values.
 9. Never invent facts, actors, locations not present in the data.
-10. If energy shows tension, explain whether it is background or operational.
-11. Prefer the strongest concrete signals. Every sentence must carry information — no generic filler.
-12. Do not prefix lines with bullets, dashes, or asterisks.
+10. Treat routine rail disruptions and ordinary Ecowatt variability as background unless counts are unusually high or fuel stress is clearly worsening.
+11. Escalate energy only when fuel tension is material: red oil vigilance, high/critical fuel tension, large anomaly share, or sharp short-term fuel price increase.
+12. If energy shows tension, explain whether it is background or operational.
+13. Prefer the strongest concrete signals. Every sentence must carry information — no generic filler.
+14. Do not prefix lines with bullets, dashes, or asterisks.
 
 Respond with valid JSON only: {"brief": "..."}`;
   }
@@ -674,9 +814,11 @@ ${headlineList}
 7. Vocabulaire stable/calme : ${calmAllowedText}. Si interdit, n'écris jamais "stable", "calme", "normal", "sous contrôle".
 8. Ne cite jamais de scores numériques, d'indices ou de valeurs /100.
 9. N'invente aucun fait, acteur ou lieu absent des données.
-10. Si l'énergie montre une tension, précise s'il s'agit d'un bruit de fond ou d'un problème opérationnel.
-11. Privilégie les signaux concrets les plus forts. Chaque phrase doit porter de l'information — aucune phrase générique.
-12. N'ajoute jamais de préfixe ":" "-" "•" ou "*" devant les phrases.
+10. Considère les perturbations ferroviaires courantes et la variabilité ordinaire d'Ecowatt comme du bruit de fond, sauf si les volumes deviennent anormalement élevés ou si la tension carburants se dégrade nettement.
+11. Fais émerger l'énergie comme problème seulement si la tension carburants/pétrole est matérielle : vigilance pétrole rouge/critique, carburants HIGH/CRITICAL, part d'anomalies élevée, ou hausse courte des prix.
+12. Si l'énergie montre une tension, précise s'il s'agit d'un bruit de fond ou d'un problème opérationnel.
+13. Privilégie les signaux concrets les plus forts. Chaque phrase doit porter de l'information — aucune phrase générique.
+14. N'ajoute jamais de préfixe ":" "-" "•" ou "*" devant les phrases.
 
 Réponds en JSON valide uniquement : {"brief": "..."}`;
 }
@@ -744,6 +886,8 @@ export function franceIntelProxyPlugin(options: FranceIntelProxyPluginOptions = 
                 oilVigilanceStatus?: unknown;
                 fuelTensionLevel?: unknown;
                 fuelTensionAnomalyShare?: unknown;
+                fuelPriceDelta7dCents?: unknown;
+                fuelPriceDelta30dCents?: unknown;
               } | null;
             };
 
@@ -796,6 +940,8 @@ export function franceIntelProxyPlugin(options: FranceIntelProxyPluginOptions = 
               oilVigilanceStatus: typeof parsed.energy.oilVigilanceStatus === 'string' ? parsed.energy.oilVigilanceStatus : null,
               fuelTensionLevel: typeof parsed.energy.fuelTensionLevel === 'string' ? parsed.energy.fuelTensionLevel : null,
               fuelTensionAnomalyShare: typeof parsed.energy.fuelTensionAnomalyShare === 'number' ? parsed.energy.fuelTensionAnomalyShare : null,
+              fuelPriceDelta7dCents: typeof parsed.energy.fuelPriceDelta7dCents === 'number' ? parsed.energy.fuelPriceDelta7dCents : null,
+              fuelPriceDelta30dCents: typeof parsed.energy.fuelPriceDelta30dCents === 'number' ? parsed.energy.fuelPriceDelta30dCents : null,
             } : null;
             const cacheKey = buildCacheKey(
               lang,

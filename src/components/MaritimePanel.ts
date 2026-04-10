@@ -6,6 +6,12 @@
 
 import { getAllLiveTraffic, getMilitaryShips, getAisConnectionState, NAVY_MMSI_SET, type MilitaryShip, type RiskLevel } from '../services/military-ships.ts';
 import { BLACK_LIST_FLAGS, GREY_LIST_FLAGS, SANCTIONED_FLAGS } from '../config/risk-flags.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumIconHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 
 const RISK_COLORS: Record<RiskLevel, string> = {
   none: '#34c759', low: '#ffcc00', medium: '#ff9500', high: '#ff3b30', critical: '#ff2d55',
@@ -81,71 +87,39 @@ export class MaritimePanel {
 
     this.containerEl = document.createElement('div');
     this.containerEl.style.cssText = `
-      position: fixed;
-      top: 68px;
-      right: 20px;
-      width: 360px;
-      max-height: min(640px, calc(100vh - 110px));
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-      z-index: 9999;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
-      overflow: hidden;
+      ${getPremiumModalStyle({
+        width: '360px',
+        maxHeight: 'min(640px, calc(100vh - 110px))',
+        backgroundStart: 'rgba(7, 18, 31, 0.97)',
+        backgroundEnd: 'rgba(8, 15, 27, 0.96)',
+        borderColor: 'rgba(56, 189, 248, 0.16)',
+        position: 'fixed',
+        top: '68px',
+        zIndex: 9999,
+      })}
       cursor: grab;
     `;
 
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = [
-      'position:absolute',
-      'top:12px',
-      'right:12px',
-      'background:rgba(255,255,255,0.1)',
-      'border:none',
-      'color:var(--text-muted)',
-      'cursor:pointer',
-      'font-size:14px',
-      'width:28px',
-      'height:28px',
-      'border-radius:14px',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center',
-      'z-index:10',
-      'transition:all 0.2s',
-    ].join(';');
-    closeBtn.onmouseover = () => {
-      closeBtn.style.background = 'rgba(255,255,255,0.2)';
-      closeBtn.style.color = 'var(--text-primary)';
-    };
-    closeBtn.onmouseout = () => {
-      closeBtn.style.background = 'rgba(255,255,255,0.1)';
-      closeBtn.style.color = 'var(--text-muted)';
-    };
+    closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(closeBtn);
     closeBtn.onclick = () => this.hide();
     this.containerEl.appendChild(closeBtn);
 
-    const header = document.createElement('div');
+    const header = createPremiumIconHeader({
+      icon: '⚓',
+      title: 'Maritime',
+      subtitle: 'Trafic FR, Marine nationale et alertes',
+      gradientStart: 'rgba(8, 145, 178, 0.18)',
+      gradientEnd: 'rgba(59, 130, 246, 0.10)',
+      iconGradientStart: 'rgba(8, 145, 178, 0.22)',
+      iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
+      titlePrefix: 'Approches maritimes',
+      extraTopRowHtml: '<span id="ais-status-badge" style="display:inline-flex;margin-top:4px;font-size:9px;flex-shrink:0;"></span>',
+    });
     this._headerEl = header;
-    header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
-    `;
-    header.innerHTML = `
-      <div style="font-size:24px;">⚓</div>
-      <div style="min-width:0;flex:1;">
-        <div style="color:var(--text-primary);font-weight:600;font-size:14px;">Maritime</div>
-        <div style="color:var(--text-muted);font-size:11px;">Trafic FR, Marine nationale et alertes</div>
-      </div>
-      <span id="ais-status-badge" style="font-size:9px;flex-shrink:0;"></span>`;
+    header.style.flexShrink = '0';
     this.containerEl.appendChild(header);
 
     const staleBanner = document.createElement('div');

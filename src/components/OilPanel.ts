@@ -9,6 +9,12 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumRingHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { FuelTensionDashboard, OilDashboard } from '../types/index.ts';
 import { isOilPanelEnabled, getVigilanceLabel, getVigilanceColor } from '../services/oil.ts';
 import { getFuelBadgeColor, getFuelTensionLevelColor } from '../services/fuel-tension.ts';
@@ -69,20 +75,14 @@ export class OilPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'oil-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 420px;
-      max-width: min(420px, calc(100vw - 24px));
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+        width: '420px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(24, 18, 8, 0.97)',
+        backgroundEnd: 'rgba(16, 12, 9, 0.96)',
+        borderColor: 'rgba(252, 211, 77, 0.18)',
+        extra: 'max-width: min(420px, calc(100vw - 24px));',
+      })}
       cursor: grab;
     `;
 
@@ -90,60 +90,26 @@ export class OilPanel extends Panel {
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
     this.closeBtn.className = 'oil-panel-close';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
-    // Header with vigilance ring
-    const header = document.createElement('div');
+    const header = createPremiumRingHeader({
+      ringId: 'oil-ring-progress',
+      centerId: 'oil-ring-score',
+      centerText: '--',
+      ringStroke: OIL_PANEL_COLORS.export,
+      title: OIL_PANEL_TITLE,
+      subtitle: 'Chargement...',
+      statusId: 'oil-status-label',
+      updateId: 'oil-update-time',
+      gradientStart: 'rgba(245, 158, 11, 0.18)',
+      gradientEnd: 'rgba(194, 65, 12, 0.10)',
+      titlePrefix: 'Backbone énergétique',
+      textColor: OIL_PANEL_COLORS.title,
+    });
     header.className = 'oil-panel-header';
-    header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    `;
-    header.innerHTML = `
-      <div class="oil-ring-container" style="position: relative; width: 64px; height: 64px;">
-        <svg viewBox="0 0 36 36" style="width: 64px; height: 64px; transform: rotate(-90deg);">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"></circle>
-          <circle id="oil-ring-progress" cx="18" cy="18" r="15.9" fill="none" stroke="${OIL_PANEL_COLORS.export}" stroke-width="3"
-            stroke-dasharray="0 100" stroke-linecap="round" style="transition: stroke-dasharray 0.5s ease, stroke 0.3s ease;"></circle>
-        </svg>
-        <div id="oil-ring-score" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 16px; font-weight: 700; color: var(--text-primary);">--</div>
-      </div>
-      <div style="flex: 1;">
-        <div style="color: ${OIL_PANEL_COLORS.title}; font-weight: 600; font-size: 14px;">${OIL_PANEL_TITLE}</div>
-        <div id="oil-status-label" style="color: ${OIL_PANEL_COLORS.export}; font-size: 11px; margin-top: 2px;">Chargement...</div>
-        <div id="oil-update-time" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;"></div>
-      </div>
-    `;
     this.modalEl.appendChild(header);
 
     // Content container

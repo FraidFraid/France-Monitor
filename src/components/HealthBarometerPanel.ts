@@ -8,6 +8,12 @@
 
 import type { HealthBarometerMetrics, HealthBarometerSubIndex } from '../services/health-barometer.ts';
 import { BAROMETER_WEIGHTS } from '../services/health-barometer.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumIconHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 
 export class HealthBarometerPanel {
   private container: HTMLElement;
@@ -27,65 +33,42 @@ export class HealthBarometerPanel {
     this.modalEl = document.createElement('div');
     this.modalEl.id = 'health-barometer-panel';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      width: 480px;
-      max-width: calc(100vw - 40px);
-      max-height: calc(100vh - 40px);
-      background: var(--bg-surface, #1a1a2e);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 14px;
-      box-shadow: 0 12px 48px rgba(0,0,0,0.65);
-      z-index: 1010;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(14px);
-      overflow: hidden;
+      ${getPremiumModalStyle({
+        width: '480px',
+        maxHeight: 'calc(100vh - 40px)',
+        backgroundStart: 'rgba(16, 20, 32, 0.97)',
+        backgroundEnd: 'rgba(14, 16, 28, 0.96)',
+        borderColor: 'rgba(46, 204, 113, 0.18)',
+        top: '20px',
+        right: 'auto',
+        zIndex: 1010,
+        extra: 'left: 20px; max-width: calc(100vw - 40px);',
+      })}
       font-family: system-ui, sans-serif;
     `;
 
     // Header
-    const header = document.createElement('div');
-    header.style.cssText = `
-      padding: 16px 20px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-    `;
-    header.innerHTML = `
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span style="font-size:22px;">🩺</span>
-        <div>
-          <div style="color:#fff; font-weight:700; font-size:15px; letter-spacing:-0.3px;">Baromètre national Santé</div>
-          <div style="color:#9898a8; font-size:11px; margin-top:1px;">ISS · OSCOUR · APL · ANSM — France entière</div>
-        </div>
-      </div>
-    `;
+    const header = createPremiumIconHeader({
+      icon: '🩺',
+      title: 'Baromètre national Santé',
+      subtitle: 'ISS · OSCOUR · APL · ANSM — France entière',
+      gradientStart: 'rgba(46, 204, 113, 0.16)',
+      gradientEnd: 'rgba(59, 130, 246, 0.10)',
+      iconGradientStart: 'rgba(46, 204, 113, 0.22)',
+      iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
+      titlePrefix: 'Santé publique',
+      textColor: '#fff',
+      mutedColor: '#9898a8',
+    });
+    header.style.padding = '18px 20px 14px';
+    header.style.flexShrink = '0';
 
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = `
-      background: rgba(255,255,255,0.08);
-      border: none;
-      color: #9898a8;
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      flex-shrink: 0;
-    `;
-    closeBtn.onmouseover = () => { closeBtn.style.background = 'rgba(255,255,255,0.16)'; closeBtn.style.color = '#fff'; };
-    closeBtn.onmouseout = () => { closeBtn.style.background = 'rgba(255,255,255,0.08)'; closeBtn.style.color = '#9898a8'; };
+    closeBtn.style.cssText = `${getPremiumCloseButtonStyle('#9898a8')} position:absolute;top:12px;right:12px;`;
+    applyPremiumCloseButtonHover(closeBtn, '#9898a8', '#fff');
     closeBtn.onclick = () => this.hide();
-    header.appendChild(closeBtn);
+    this.modalEl.appendChild(closeBtn);
 
     // Make it draggable
     let isDragging = false;

@@ -313,7 +313,6 @@ const DEFAULT_LAYERS: MapLayers = {
   environmental: false,
   weatherRadar: false,
   fires: false,
-  criticalEnergyInfra: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,
@@ -340,19 +339,17 @@ const DEFAULT_LAYERS: MapLayers = {
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'powerGrid' |
   'hydroBackbone' |
-  'windMonitor' |
   'gasNetwork' |
   'oilNetwork' |
-  'criticalEnergyInfra' |
+  'windMonitor' |
   'metroLoad' |
   'nuclearFleet'
 > = [
   'powerGrid',
   'hydroBackbone',
-  'windMonitor',
   'gasNetwork',
   'oilNetwork',
-  'criticalEnergyInfra',
+  'windMonitor',
   'metroLoad',
   'nuclearFleet',
 ];
@@ -669,37 +666,11 @@ const ENERGY_ECOWATT_LEGEND: LegendCategory = {
   },
   notes: [
     'Qualité des données : chargement en cours',
-    'Dépôts stratégiques affichés : principaux sites souterrains et hubs de stockage (sélection non exhaustive)',
+    'Données de consommation/production nationales aggrégées (estimations partielles J-1, etc.)',
   ],
 };
 
-const INFRASTRUCTURE_LEGEND: LegendCategory = {
-  id: 'criticalEnergyInfra',
-  title: 'Infrastructures critiques énergie',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 4,
-  items: [
-    { id: 'nuclear', label: 'Nucléaire', color: '#8FC8E8', shape: 'circle', borderColor: '#E8F2FA', borderWidth: 2 },
-    { id: 'electric-generation', label: 'Thermique / hydro', color: '#74B6DC', shape: 'circle' },
-    { id: 'substation', label: 'Poste RTE 400 kV', color: '#5EA6D6', shape: 'circle' },
-    { id: 'gas-terminal', label: 'Terminal méthanier', color: '#8EDFD8', shape: 'circle' },
-    { id: 'gas-storage', label: 'Stockage gaz', color: '#C0F0E8', shape: 'circle' },
-    { id: 'refinery', label: 'Raffinerie', color: '#E7BE98', shape: 'circle' },
-    { id: 'oil-depot', label: 'Dépôt pétrolier majeur', color: '#F1D6BA', shape: 'circle' },
-    { id: 'vital-halo', label: 'Anneau vital', color: '#F2F4F7', shape: 'ring' },
-  ],
-  source: {
-    label: 'EDF / RTE / GRTgaz / stockages et hubs consolidés',
-  },
-  refresh: {
-    label: 'Mixte: nucléaire dynamique, autres points majoritairement statiques'
-  },
-  notes: [
-    'Sélection volontairement restreinte aux nœuds énergétiques structurants.',
-    'Palette pastel dédiée pour rester en retrait des layers énergie spécialisés.',
-  ],
-};
+
 
 const HYDRAULIC_LEGEND: LegendCategory = {
   id: 'hydroBackbone',
@@ -1052,14 +1023,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'Veille Éolienne',
     legend: EOLIEN_LEGEND,
   },
-  {
-    id: 'criticalEnergyInfra',
-    groupId: 'energySystems',
-    role: 'child',
-    dependsOnGroup: true,
-    label: 'Infra critiques énergie',
-    legend: INFRASTRUCTURE_LEGEND,
-  },
+
   {
     id: 'metroLoad',
     groupId: 'energySystems',
@@ -1346,8 +1310,6 @@ export class App {
 
   private layoutEnergyFloatingPanels(): void {
     requestAnimationFrame(() => {
-      const rawTop = getComputedStyle(document.documentElement).getPropertyValue('--right-panel-top').trim();
-      const defaultTop = Number.parseFloat(rawTop) || 68;
       const panels = [
         this.container.querySelector<HTMLElement>('.energy-panel-modal'),
         this.container.querySelector<HTMLElement>('.hydraulic-panel-modal'),
@@ -1356,21 +1318,25 @@ export class App {
         this.container.querySelector<HTMLElement>('.oil-panel-modal'),
       ].filter((panel): panel is HTMLElement => this.isPanelVisible(panel));
 
-      let nextTop = defaultTop;
-      for (const panel of panels) {
-        panel.style.top = `${nextTop}px`;
+      let previousBottom = 0;
+      for (const [index, panel] of panels.entries()) {
         panel.style.right = '20px';
         panel.style.left = 'auto';
         panel.style.bottom = 'auto';
-        nextTop = panel.offsetTop + panel.offsetHeight + 16;
+        
+        if (index === 0) {
+          panel.style.top = 'var(--right-panel-top)';
+        } else {
+          panel.style.top = `${previousBottom + 16}px`;
+        }
+        
+        previousBottom = panel.offsetTop + panel.offsetHeight;
       }
     });
   }
 
   private layoutEnvironmentFloatingPanels(): void {
     requestAnimationFrame(() => {
-      const rawTop = getComputedStyle(document.documentElement).getPropertyValue('--right-panel-top').trim();
-      const defaultTop = Number.parseFloat(rawTop) || 68;
       const panels = [
         document.body.querySelector<HTMLElement>('.environment-panel-modal'),
         document.body.querySelector<HTMLElement>('.fires-panel-modal'),
@@ -1382,7 +1348,13 @@ export class App {
         panel.style.right = '20px';
         panel.style.left = 'auto';
         panel.style.bottom = 'auto';
-        panel.style.top = index === 0 ? `${defaultTop}px` : `${previousBottom + 16}px`;
+        
+        if (index === 0) {
+          panel.style.top = 'var(--right-panel-top)';
+        } else {
+          panel.style.top = `${previousBottom + 16}px`;
+        }
+        
         previousBottom = panel.offsetTop + panel.offsetHeight;
       }
     });
@@ -1474,10 +1446,6 @@ export class App {
           'Qualité des données : chargement en cours',
         ];
 
-    const infraNotes = [
-      'Sites et tracés : majoritairement statiques',
-      'Détail nucléaire : affichage simplifié (actif/arrêt)',
-    ];
 
     const hydraulicNotes = this.currentHydraulicAssets.length > 0
       ? [
@@ -1512,7 +1480,7 @@ export class App {
     this.mapLegend.addCategory(cloneLegend(HYDRAULIC_LEGEND, { notes: hydraulicNotes }));
     this.mapLegend.addCategory(cloneLegend(OIL_LEGEND, { notes: oilNotes }));
     this.mapLegend.addCategory(cloneLegend(EOLIEN_LEGEND, { notes: eolienNotes }));
-    this.mapLegend.addCategory(cloneLegend(INFRASTRUCTURE_LEGEND, { notes: infraNotes }));
+
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
   }
 
@@ -2819,12 +2787,6 @@ export class App {
 
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
     this.mapContainer.setOnRawMapClick((lat, lon) => {
-      // Click within rough France bounding box + elus layer inactive → open intel panel
-      const inFrance = lat >= 41.3 && lat <= 51.2 && lon >= -5.2 && lon <= 9.6;
-      if (inFrance && !this.activeLayers.elus && !this.activeLayers.stability) {
-        document.dispatchEvent(new CustomEvent('open-france-intel'));
-        return;
-      }
       if (this.activeLayers.elus) this.elusPanel?.showPlaceholder();
     });
 
@@ -2912,7 +2874,7 @@ export class App {
     this.mapLegend.addCategory(HYDRAULIC_LEGEND);
     this.mapLegend.addCategory(OIL_LEGEND);
     this.mapLegend.addCategory(EOLIEN_LEGEND);
-    this.mapLegend.addCategory(INFRASTRUCTURE_LEGEND);
+
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
     this.mapLegend.addCategory(ENVIRONMENTAL_LEGEND);
     this.mapLegend.addCategory(WEATHER_RADAR_LEGEND);

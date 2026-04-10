@@ -1,4 +1,10 @@
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumIconHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { HealthFeatures } from '../types/index.ts';
 
 const ODISSE_WINTER_ALERTS_URL =
@@ -45,66 +51,35 @@ export class NationalHealthPanel extends Panel {
   mount(): void {
     this.modalEl = document.createElement('div');
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: calc(var(--header-height) + 20px);
-      right: 20px;
-      width: 360px;
-      max-height: calc(100vh - var(--header-height) - 40px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
-      overflow: hidden;
+      ${getPremiumModalStyle({
+        width: '360px',
+        maxHeight: 'calc(100vh - var(--header-height) - 40px)',
+        backgroundStart: 'rgba(12, 18, 31, 0.97)',
+        backgroundEnd: 'rgba(13, 16, 26, 0.96)',
+        borderColor: 'rgba(52, 211, 153, 0.16)',
+        top: 'calc(var(--header-height) + 20px)',
+      })}
     `;
 
     // Close button
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     // Create separate header to attach drag events
-    const header = document.createElement('div');
-    header.style.cssText = `
-      padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; cursor: move;
-    `;
-    header.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="font-size: 24px;">🇫🇷</div>
-        <div>
-          <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Indicateurs Santé Nationaux</div>
-          <div style="color: var(--text-muted); font-size: 11px;">France métropolitaine et outre-mer</div>
-        </div>
-      </div>
-    `;
+    const header = createPremiumIconHeader({
+      icon: '🇫🇷',
+      title: 'Indicateurs Santé Nationaux',
+      subtitle: 'France métropolitaine et outre-mer',
+      gradientStart: 'rgba(52, 211, 153, 0.16)',
+      gradientEnd: 'rgba(59, 130, 246, 0.10)',
+      iconGradientStart: 'rgba(52, 211, 153, 0.22)',
+      iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
+      titlePrefix: 'Santé publique',
+    });
+    header.style.cursor = 'move';
+    header.style.flexShrink = '0';
 
     // Make it draggable
     let isDragging = false;
@@ -152,7 +127,7 @@ export class NationalHealthPanel extends Panel {
       document.removeEventListener('mouseup', onMouseUp);
     };
 
-    header.appendChild(this.closeBtn);
+    this.modalEl.appendChild(this.closeBtn);
     this.modalEl.appendChild(header);
 
     this.contentEl = document.createElement('div');

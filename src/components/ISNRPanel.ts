@@ -152,6 +152,45 @@ export class ISNRPanel extends Panel {
     `;
     this.modalEl.appendChild(this.contentEl);
 
+    // ─── Drag Logic ───
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
+
+    this.modalEl.addEventListener('mousedown', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.isnr-drag-handle')) {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = this.modalEl.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        this.modalEl.style.right = 'auto'; // Disable CSS right property so left works
+        this.modalEl.style.left = `${initialLeft}px`;
+        this.modalEl.style.top = `${initialTop}px`;
+        document.body.style.userSelect = 'none';
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      this.modalEl.style.left = `${initialLeft + dx}px`;
+      this.modalEl.style.top = `${initialTop + dy}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = '';
+      }
+    });
+
     this.container.appendChild(this.modalEl);
     this.render();
   }
@@ -165,22 +204,39 @@ export class ISNRPanel extends Panel {
     const nationalEmoji = scoreToEmoji(data.nationalScore);
     const nationalColor = scoreToColor(data.nationalScore);
 
-    // Header with national score
+    let nationalStatusText = '';
+    if (data.nationalScore >= 80) nationalStatusText = 'CRITIQUE';
+    else if (data.nationalScore >= 60) nationalStatusText = 'ÉLEVÉ';
+    else if (data.nationalScore >= 40) nationalStatusText = 'TENSION';
+    else if (data.nationalScore >= 20) nationalStatusText = 'VEILLE';
+    else nationalStatusText = 'STABLE';
+
+    const radius = 18;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (data.nationalScore / 100) * circumference;
+
+    // Header with national score (Circular UI style)
     let html = `
-      <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="font-size: 24px;">📊</div>
-          <div>
-            <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">ISNR</div>
-            <div style="color: var(--text-muted); font-size: 11px;">Indice de Stabilité Nationale & Régionale</div>
-            <div style="margin-top:4px;">${renderTruthBadge('RECONSTRUIT / ESTIMÉ', '#F97316')}</div>
+      <div class="isnr-drag-handle" style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; cursor: grab;">
+        <div style="display: flex; align-items: center; gap: 16px; pointer-events: none;">
+          <!-- Circular Score indicator -->
+          <div style="position: relative; width: 48px; height: 48px;">
+            <svg width="48" height="48" viewBox="0 0 48 48" style="transform: rotate(-90deg);">
+              <circle cx="24" cy="24" r="${radius}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"></circle>
+              <circle cx="24" cy="24" r="${radius}" fill="none" stroke="${nationalColor}" stroke-width="4" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
+            </svg>
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff;">
+              ${data.nationalScore}
+            </div>
           </div>
-        </div>
-        <div style="text-align: right;">
-          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">National</div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-size: 18px; font-weight: 700; color: ${nationalColor};">${data.nationalScore}</span>
-            <span style="font-size: 16px;">${nationalEmoji}</span>
+          <!-- Title & Status -->
+          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
+            <div style="color: var(--text-primary); font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;">ISNR FRANCE</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background-color: ${nationalColor};"></div>
+              <span style="font-size: 11px; font-weight: 600; color: ${nationalColor}; text-transform: uppercase; letter-spacing: 0.05em;">${nationalStatusText}</span>
+            </div>
+            <div style="margin-top: 2px;">${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>
           </div>
         </div>
       </div>
@@ -220,10 +276,17 @@ export class ISNRPanel extends Panel {
             <span style="font-size:9px; color:var(--text-muted); opacity:0.7;">10%</span>
           </div>
         </div>
+        <!-- Scale -->
+        <div style="display:flex; justify-content:space-between; margin-top:10px; padding:6px; background:rgba(0,0,0,0.15); border-radius:4px; border: 1px solid rgba(255,255,255,0.02);">
+          <div style="display:flex; align-items:center; gap:3px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);"></div><span style="font-size:8px;color:var(--text-muted);font-weight:600;">0-19 STABLE</span></div>
+          <div style="display:flex; align-items:center; gap:3px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--threat-low);"></div><span style="font-size:8px;color:var(--text-muted);font-weight:600;">20-39 VEILLE</span></div>
+          <div style="display:flex; align-items:center; gap:3px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--threat-medium);"></div><span style="font-size:8px;color:var(--text-muted);font-weight:600;">40-59 TENSION</span></div>
+          <div style="display:flex; align-items:center; gap:3px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--threat-high);"></div><span style="font-size:8px;color:var(--text-muted);font-weight:600;">60-79 ÉLEVÉ</span></div>
+          <div style="display:flex; align-items:center; gap:3px;"><div style="width:6px;height:6px;border-radius:50%;background:var(--threat-critical);"></div><span style="font-size:8px;color:var(--text-muted);font-weight:600;">80+ CRITIQUE</span></div>
+        </div>
         <!-- Caption -->
         <div style="margin-top:7px; font-size:9px; color:var(--text-muted); opacity:0.65; line-height:1.5; letter-spacing:0.01em;">
-          Moyenne pondérée 0–100 · remplacée par le max si une dimension dépasse 60.
-          Pannes Enedis / ARCEP intégrées à l'Infra. Rafraîchi à chaque tick RSS (~5 min).
+          <b>Interprétation :</b> Score hybride 0-100 en temps réel. Fonctionne par moyenne pondérée, mais <u>bascule automatiquement sur la valeur maximale</u> d'une dimension dès qu'elle atteint 60 (Règle d'escalade OSINT) pour ne jamais lisser une urgence. Pannes réseau (IODA/ARCEP) intégrées à l'Infra.
         </div>
       </div>
     `;

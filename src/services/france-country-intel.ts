@@ -3,8 +3,13 @@
 // Inspired by WorldMonitor's country-intel.ts pattern.
 // App.ts assembles FranceRawData and calls buildFranceCountrySnapshot().
 // FranceIntelPanel and france-intel-brief consume the resulting FranceCountrySnapshot.
+//
+// Pipeline:
+//   FranceRawData ──→ buildFranceCountrySnapshot() ──→ FranceCountrySnapshot
+//                └──→ detectSituations()            ──→ DetectedSituation[]
 
 import type {
+  AisAnomaly,
   NewsItem,
   ISNRData,
   ISNRScore,
@@ -18,6 +23,7 @@ import type {
   TelecomOutage,
   PowerOutage,
   EcowattResponse,
+  GasNetworkState,
   NuclearState,
   FranceCountrySignals,
   FranceCountryAxes,
@@ -33,6 +39,7 @@ import type {
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
 import type { TrafficIncident } from '@/services/traffic.ts';
+import { detectSituations } from './situation-engine.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -55,8 +62,10 @@ export interface FranceRawData {
   activeFires: ActiveFire[];
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
+  gasState: GasNetworkState | null;
   nuclearState: NuclearState | null;
   eolienLive: EolienLive | null;
+  aisAnomalies: AisAnomaly[];
   timeline: { days: string[]; lanes: FranceIntelTimelineLane[] };
   briefLang: 'fr' | 'en';
   // Souveraineté pétrolière
@@ -550,11 +559,14 @@ export function buildFranceCountrySnapshot(
     vulnerabilities: { criticalCount: 0, topCVEs: [] },
   };
 
+  const situations = detectSituations(raw);
+
   return {
     signals,
     axes,
     score,
     briefContext,
+    situations,
     stability,
     cyber,
     meteo: raw.meteoAlerts,

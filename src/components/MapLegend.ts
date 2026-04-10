@@ -52,6 +52,7 @@ export class MapLegend {
     private element: HTMLElement | null = null;
     private categories: LegendCategory[] = [];
     private onHoverCallback: ((categoryId: string | null) => void) | null = null;
+    private isCollapsed: boolean = false;
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -76,9 +77,24 @@ export class MapLegend {
             return '';
         }
 
-        const cardsHtml = activeCategories.map(cat => this.renderCategoryCard(cat)).join('');
+        const cardsHtml = this.isCollapsed 
+            ? '' 
+            : activeCategories.map(cat => this.renderCategoryCard(cat)).join('');
+
+        const chevron = this.isCollapsed ? '▲' : '▼';
+
+        const toggleHtml = `
+            <div class="legend-collapse-wrapper">
+                <button class="legend-collapse-btn" title="Replier/Déplier la légende">${chevron}</button>
+            </div>
+        `;
+
+        if (this.isCollapsed) {
+            return toggleHtml;
+        }
 
         return `
+            ${toggleHtml}
             <div class="legend-scroll-area">
                 ${cardsHtml}
             </div>
@@ -253,6 +269,14 @@ export class MapLegend {
                 }
             });
         });
+
+        const toggleBtn = this.element.querySelector('.legend-collapse-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                this.isCollapsed = !this.isCollapsed;
+                this.update();
+            });
+        }
     }
 
     update(): void {

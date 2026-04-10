@@ -9,6 +9,12 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumRingHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { GasNetworkState, EcoGazSignal } from '../types/index.ts';
 import { getEcoGazColor, isGasPanelEnabled, ECOGAZ_LABELS } from '../services/gas.ts';
 
@@ -54,19 +60,13 @@ export class GasPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'gas-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 360px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+        width: '360px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(9, 18, 31, 0.97)',
+        backgroundEnd: 'rgba(12, 16, 27, 0.96)',
+        borderColor: 'rgba(34, 211, 238, 0.18)',
+      })}
       cursor: grab;
     `;
 
@@ -74,62 +74,28 @@ export class GasPanel extends Panel {
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
     this.closeBtn.className = 'gas-panel-close';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
-    // Header with EcoGaz ring
-    const header = document.createElement('div');
+    const header = createPremiumRingHeader({
+      ringId: 'gas-ring-progress',
+      centerId: 'gas-ring-icon',
+      centerText: '🔥',
+      centerFontSize: '20px',
+      ringStroke: '#06B6D4',
+      title: 'Réseau Gaz National',
+      subtitle: 'Chargement...',
+      statusId: 'gas-status-label',
+      updateId: 'gas-update-time',
+      badgeId: 'gas-truth-badge',
+      gradientStart: 'rgba(6, 182, 212, 0.18)',
+      gradientEnd: 'rgba(168, 85, 247, 0.10)',
+      titlePrefix: 'Backbone énergétique',
+      extraTopRowHtml: '<div id="gas-forecast" style="display:flex;gap:6px;margin-top:6px;"></div>',
+    });
     header.className = 'gas-panel-header';
-    header.style.cssText = `
-      padding: 16px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    `;
-    header.innerHTML = `
-      <div class="gas-ring-container" style="position: relative; width: 64px; height: 64px;">
-        <svg viewBox="0 0 36 36" style="width: 64px; height: 64px; transform: rotate(-90deg);">
-          <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"></circle>
-          <circle id="gas-ring-progress" cx="18" cy="18" r="15.9" fill="none" stroke="#06B6D4" stroke-width="3"
-            stroke-dasharray="100 100" stroke-linecap="round" style="transition: stroke-dasharray 0.5s ease, stroke 0.3s ease;"></circle>
-        </svg>
-        <div id="gas-ring-icon" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px;">🔥</div>
-      </div>
-      <div style="flex: 1;">
-        <div style="color: var(--text-primary); font-weight: 600; font-size: 14px;">EcoGaz - Météo du Gaz</div>
-        <div id="gas-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Chargement...</div>
-        <div id="gas-update-time" style="font-size: 10px; color: var(--text-muted); margin-top: 4px;"></div>
-        <div id="gas-truth-badge" style="margin-top:4px;"></div>
-        <div id="gas-forecast" style="display:flex; gap:6px; margin-top:6px;"></div>
-      </div>
-    `;
     this.modalEl.appendChild(header);
 
     // Content container
@@ -353,6 +319,32 @@ export class GasPanel extends Panel {
         `).join('')}
       </div>
 
+      <!-- Storages List -->
+      <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05);">
+        <div id="gas-storages-toggle" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; cursor: pointer; user-select: none;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+            Stockages Souterrains (${data.storages.length})
+          </div>
+          <div id="gas-storages-chevron" style="color: var(--text-muted); font-size: 10px; transition: transform 0.2s;">▼</div>
+        </div>
+        <div id="gas-storages-list" style="display: none; margin-top: 10px;">
+          ${[...data.storages].sort((a,b) => b.capacityTWh - a.capacityTWh).map(s => `
+            <div style="padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+                <span style="color: var(--text-secondary); font-size: 11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${s.name}">${s.name} <span style="color:var(--text-muted); font-size:9px;">(${s.operator})</span></span>
+                <span style="font-size: 10px; font-weight: 600; color: ${this.getFillColor(s.fillLevel)};">${s.fillLevel.toFixed(1)}%</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="flex: 1; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                  <div style="height: 100%; width: ${s.fillLevel}%; background: ${this.getFillColor(s.fillLevel)};"></div>
+                </div>
+                <div style="font-size: 9px; color: var(--text-muted); min-width: 45px; text-align: right;">${s.currentStockTWh ? s.currentStockTWh.toFixed(1) : (s.capacityTWh * s.fillLevel / 100).toFixed(1)} TWh</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
       <!-- Pipeline toggle -->
       <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:space-between;">
         <span style="font-size:11px; color:var(--text-secondary);">Gazoducs principaux</span>
@@ -384,6 +376,18 @@ export class GasPanel extends Panel {
     `;
 
     this.contentEl.innerHTML = html;
+
+    const storagesToggle = this.contentEl.querySelector('#gas-storages-toggle') as HTMLElement | null;
+    const storagesList = this.contentEl.querySelector('#gas-storages-list') as HTMLElement | null;
+    const storagesChevron = this.contentEl.querySelector('#gas-storages-chevron') as HTMLElement | null;
+    
+    if (storagesToggle && storagesList && storagesChevron) {
+      storagesToggle.addEventListener('click', () => {
+        const isHidden = storagesList.style.display === 'none';
+        storagesList.style.display = isHidden ? 'block' : 'none';
+        storagesChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      });
+    }
 
     const pipelineBtn = this.contentEl.querySelector('#gas-pipeline-toggle') as HTMLButtonElement | null;
     pipelineBtn?.addEventListener('click', () => {

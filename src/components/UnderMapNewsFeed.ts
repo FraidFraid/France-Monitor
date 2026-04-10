@@ -84,7 +84,6 @@ const DEFAULT_LAYERS: MapLayers = {
   environmental: false,
   weatherRadar: false,
   fires: false,
-  criticalEnergyInfra: false,
   traffic: true,
   trafficRoad: false,
   trafficMaritime: true,
@@ -359,8 +358,8 @@ export class UnderMapNewsFeed {
 
     this.filteredItems = this.items.filter((item) => {
       if (now - item.pubDate.getTime() > maxAge) return false;
-      if (cats.size > 0 && item.threat && !cats.has(item.threat.category)) return false;
-      if (levels.size > 0 && item.threat && !levels.has(item.threat.level)) return false;
+      if (cats.size > 0 && !cats.has(item.threat?.category ?? 'general')) return false;
+      if (levels.size > 0 && !levels.has(item.threat?.level ?? 'info')) return false;
       if (this.filter.searchQuery) {
         const q = this.filter.searchQuery.toLowerCase();
         if (

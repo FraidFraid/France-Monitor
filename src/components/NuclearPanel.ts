@@ -6,6 +6,12 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumIconHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type {
   EcowattResponse,
   NuclearState,
@@ -50,45 +56,43 @@ export class NuclearPanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'nuclear-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top, 70px);
-      right: 20px;
-      width: 400px;
-      max-height: calc(100vh - var(--right-panel-top, 70px) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
-      overflow: hidden;
+      ${getPremiumModalStyle({
+        width: '400px',
+        maxHeight: 'calc(100vh - var(--right-panel-top, 70px) - 20px)',
+        backgroundStart: 'rgba(12, 18, 32, 0.97)',
+        backgroundEnd: 'rgba(12, 15, 25, 0.96)',
+        borderColor: 'rgba(143, 200, 232, 0.18)',
+        top: 'var(--right-panel-top, 70px)',
+      })}
     `;
 
-    this.modalEl.innerHTML = `
-      <div class="nuclear-panel-header" style="
-        padding: 14px 16px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-shrink: 0;
-      ">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:18px;">⚛</span>
-          <span style="font-size:13px;font-weight:600;color:var(--text-primary);letter-spacing:0.05em;">
-            VEILLE NUCLÉAIRE
-          </span>
-        </div>
-        <button class="nuclear-panel-close" style="
-          background:rgba(255,255,255,0.1);border:none;color:var(--text-muted);
-          cursor:pointer;font-size:14px;width:28px;height:28px;border-radius:14px;
-          display:flex;align-items:center;justify-content:center;
-        ">✕</button>
-      </div>
-      <div class="nuclear-panel-tabs" style="
-        display:flex;gap:4px;padding:10px 16px 0;flex-shrink:0;border-bottom:1px solid var(--border-color);
-      ">
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'nuclear-panel-close';
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(closeBtn);
+    this.modalEl.appendChild(closeBtn);
+
+    const header = createPremiumIconHeader({
+      icon: '⚛',
+      title: 'Veille Nucléaire',
+      subtitle: 'Parc EDF · disponibilité · stress système',
+      gradientStart: 'rgba(143, 200, 232, 0.16)',
+      gradientEnd: 'rgba(59, 130, 246, 0.10)',
+      iconGradientStart: 'rgba(143, 200, 232, 0.22)',
+      iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
+      titlePrefix: 'Backbone énergétique',
+    });
+    header.className = 'nuclear-panel-header';
+    header.style.flexShrink = '0';
+    this.modalEl.appendChild(header);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'nuclear-panel-tabs';
+    tabs.style.cssText = `
+      display:flex;gap:4px;padding:10px 16px 0;flex-shrink:0;border-bottom:1px solid var(--border-color);
+    `;
+    tabs.innerHTML = `
         ${(['status','timeline','remit','stress'] as ActiveTab[]).map(tab => `
           <button data-tab="${tab}" class="nuclear-tab-btn" style="
             background:none;border:none;cursor:pointer;
@@ -98,11 +102,15 @@ export class NuclearPanel extends Panel {
             transition:color 0.15s,border-color 0.15s;
           ">${tab === 'status' ? 'STATUS' : tab === 'timeline' ? 'TIMELINE' : tab === 'remit' ? 'REMIT ⚑' : 'STRESS'}</button>
         `).join('')}
-      </div>
-      <div class="nuclear-panel-content" style="
-        flex:1;overflow-y:auto;padding:12px 16px;min-height:0;
-      "></div>
     `;
+    this.modalEl.appendChild(tabs);
+
+    const content = document.createElement('div');
+    content.className = 'nuclear-panel-content';
+    content.style.cssText = `
+      flex:1;overflow-y:auto;padding:12px 16px;min-height:0;
+    `;
+    this.modalEl.appendChild(content);
 
     this.contentEl = this.modalEl.querySelector('.nuclear-panel-content')!;
 

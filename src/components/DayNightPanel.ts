@@ -94,8 +94,14 @@ export class DayNightPanel {
   private render(): void {
     this.el.innerHTML = `
       <header class="dn-panel__header">
-        <span class="dn-panel__icon">🌙</span>
-        <span class="dn-panel__title">JOUR / NUIT</span>
+        <div class="dn-panel__icon-wrap">
+          <span class="dn-panel__icon">🌙</span>
+        </div>
+        <div class="dn-panel__header-text">
+          <span class="dn-panel__eyebrow">Lecture solaire</span>
+          <span class="dn-panel__title">Jour / Nuit</span>
+          <span class="dn-panel__subtitle">Temps UTC, crépuscules et point subsolaire</span>
+        </div>
       </header>
 
       <!-- SECTION TEMPS -->

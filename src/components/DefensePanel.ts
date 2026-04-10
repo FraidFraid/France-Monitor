@@ -7,6 +7,12 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  createPremiumIconHeader,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { DefenseAlert } from '../services/cable-threats.ts';
 import type { GpsJammingSignal } from '../types/index.ts';
 import { formatProximityDistance } from '../utils/cable-proximity.ts';
@@ -60,19 +66,13 @@ export class DefensePanel extends Panel {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'defense-panel-modal';
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 360px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
+      ${getPremiumModalStyle({
+        width: '360px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(10, 16, 31, 0.97)',
+        backgroundEnd: 'rgba(16, 12, 29, 0.96)',
+        borderColor: 'rgba(59, 130, 246, 0.18)',
+      })}
       cursor: grab;
     `;
 
@@ -80,74 +80,25 @@ export class DefensePanel extends Panel {
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
     this.closeBtn.className = 'defense-panel-close';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
-    // Header
-    const header = document.createElement('div');
+    const header = createPremiumIconHeader({
+      icon: '🛡️',
+      title: 'Alertes Défense',
+      subtitle: 'Surveillance câbles sous-marins',
+      gradientStart: 'rgba(59, 130, 246, 0.18)',
+      gradientEnd: 'rgba(147, 51, 234, 0.10)',
+      iconGradientStart: 'rgba(59, 130, 246, 0.22)',
+      iconGradientEnd: 'rgba(147, 51, 234, 0.14)',
+      titlePrefix: 'Sûreté stratégique',
+      statusId: 'defense-status-label',
+      badgeId: 'defense-truth-badge',
+      extraTopRowHtml: `<div style="margin-top:4px;"><span id="defense-alert-count" style="background: rgba(59, 130, 246, 0.2); color: #60A5FA; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;">0</span></div>`,
+    });
     header.className = 'defense-panel-header';
-    header.style.cssText = `
-      padding: 14px 16px;
-      padding-right: 48px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    `;
-    header.innerHTML = `
-      <div style="
-        width: 44px;
-        height: 44px;
-        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(147, 51, 234, 0.2));
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 22px;
-        flex-shrink: 0;
-      ">🛡️</div>
-      <div style="flex: 1; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="color: var(--text-primary); font-weight: 600; font-size: 14px;">Alertes Défense</span>
-          <span id="defense-alert-count" style="
-            background: rgba(59, 130, 246, 0.2);
-            color: #3B82F6;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 600;
-          ">0</span>
-        </div>
-        <div id="defense-status-label" style="color: var(--text-muted); font-size: 11px; margin-top: 3px;">Surveillance câbles sous-marins</div>
-        <div id="defense-truth-badge" style="margin-top:4px;"></div>
-      </div>
-    `;
     this.modalEl.appendChild(header);
 
     // Content container

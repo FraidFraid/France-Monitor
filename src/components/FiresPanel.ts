@@ -1,12 +1,18 @@
 import type { ActiveFire, FireIncident } from '../types/index.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import {
+    applyPremiumCloseButtonHover,
+    createPremiumIconHeader,
+    getPremiumCloseButtonStyle,
+    getPremiumModalStyle,
+} from './panelHeader.ts';
 import { applyFiresFilter, DEFAULT_FIRES_FILTER } from '../services/fires.ts';
 import type { FiresFilterState } from '../services/fires.ts';
 import { clusterFireDetections } from '../services/fire-clustering.ts';
 import { fetchNearbyCommuneLabel } from '../services/elus.ts';
+
+function renderTruthBadge(label: string, color: string): string {
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
+}
 
 export class FiresPanel {
     private modalEl!: HTMLElement;
@@ -74,59 +80,43 @@ export class FiresPanel {
         this.modalEl = document.createElement('div');
         this.modalEl.className = 'fires-panel-modal';
         this.modalEl.style.cssText = [
-            'position:fixed',
-            'top:68px',
-            'right:20px',
-            'width:370px',
-            'max-height:calc(100vh - 88px)',
-            'background:var(--bg-surface)',
-            'border:1px solid var(--border-color)',
-            'border-radius:12px',
-            'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
-            'z-index:9999',
-            'display:none',
-            'flex-direction:column',
-            'backdrop-filter:blur(10px)',
-            'overflow:hidden',
+            getPremiumModalStyle({
+                width: '370px',
+                maxHeight: 'calc(100vh - 88px)',
+                backgroundStart: 'rgba(24, 12, 10, 0.97)',
+                backgroundEnd: 'rgba(20, 11, 10, 0.96)',
+                borderColor: 'rgba(239, 68, 68, 0.18)',
+                position: 'fixed',
+                top: '68px',
+                zIndex: 9999,
+            }),
         ].join(';');
 
         // Close button
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✕';
-        closeBtn.style.cssText = [
-            'position:absolute',
-            'top:12px',
-            'right:12px',
-            'background:rgba(255,255,255,0.1)',
-            'border:none',
-            'color:var(--text-muted)',
-            'cursor:pointer',
-            'font-size:14px',
-            'width:28px',
-            'height:28px',
-            'border-radius:14px',
-            'display:flex',
-            'align-items:center',
-            'justify-content:center',
-        ].join(';');
+        closeBtn.style.cssText = getPremiumCloseButtonStyle();
+        applyPremiumCloseButtonHover(closeBtn);
         closeBtn.onclick = () => this.hide();
         this.modalEl.appendChild(closeBtn);
 
         // Header
-        const header = document.createElement('div');
-        header.style.cssText = 'padding:16px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:12px;flex-shrink:0;';
-        const headerText = document.createElement('div');
-        headerText.innerHTML = '<div style="color:var(--text-primary);font-weight:600;font-size:14px;">Feux de forêt actifs</div>';
-        this.headerSubEl = document.createElement('div');
-        this.headerSubEl.style.cssText = 'color:var(--text-muted);font-size:11px;margin-top:2px;';
-        this.headerSubEl.textContent = 'NASA FIRMS · VIIRS SNPP · latence ~3h';
-        this._badgeEl = document.createElement('div');
-        this._badgeEl.style.cssText = 'margin-top:4px;';
-        this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
-        headerText.appendChild(this.headerSubEl);
-        headerText.appendChild(this._badgeEl);
-        header.innerHTML = '<div style="font-size:24px">🔥</div>';
-        header.appendChild(headerText);
+        const header = createPremiumIconHeader({
+            icon: '🔥',
+            title: 'Feux de forêt actifs',
+            subtitle: 'NASA FIRMS · VIIRS SNPP · latence ~3h',
+            statusId: 'fires-status-label',
+            badgeId: 'fires-truth-badge',
+            gradientStart: 'rgba(239, 68, 68, 0.18)',
+            gradientEnd: 'rgba(245, 158, 11, 0.10)',
+            iconGradientStart: 'rgba(239, 68, 68, 0.22)',
+            iconGradientEnd: 'rgba(249, 115, 22, 0.14)',
+            titlePrefix: 'Veille feux & chaleur',
+        });
+        header.style.flexShrink = '0';
+        this.headerSubEl = header.querySelector('#fires-status-label') as HTMLElement | null ?? undefined;
+        this._badgeEl = header.querySelector('#fires-truth-badge') as HTMLElement | null ?? undefined;
+        if (this._badgeEl) this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
         this.modalEl.appendChild(header);
 
         // Content
