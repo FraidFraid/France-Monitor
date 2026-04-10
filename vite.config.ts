@@ -33,6 +33,7 @@ import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
 import gieProxyPlugin from './src/plugins/gie-proxy';
+import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,6 +94,7 @@ export default defineConfig(({ mode }) => {
         clientId: env.RTE_CLIENT_ID ?? '',
         clientSecret: env.RTE_CLIENT_SECRET ?? '',
       }),
+      situationHistoryProxyPlugin(),
       aisRelayPlugin(aisApiKey),
       VitePWA({
         registerType: 'autoUpdate',

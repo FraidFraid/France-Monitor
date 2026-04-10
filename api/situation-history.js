@@ -40,10 +40,17 @@ async function handlePush(req, res) {
     return res.status(400).json({ error: 'invalid_payload' });
   }
 
+  // Prevent outsized payloads — legitimate clients send at most 10 situations
+  if (Array.isArray(payload.situations) && payload.situations.length > 20) {
+    return res.status(400).json({ error: 'payload_too_large' });
+  }
+
   const key = snapKey(payload.slotKey);
   const written = await redisSetNX(key, JSON.stringify(payload), SNAP_TTL);
 
-  // Only update the index when this client won the SET NX race.
+  // Maintain a trimmed index of the 120 most-recent slot keys.
+  // Currently unused by GET (which uses buildSlotGrid instead).
+  // Reserved for a future "latest populated slot" query.
   if (written) {
     await redisRPush(INDEX_KEY, payload.slotKey);
     await redisLTrim(INDEX_KEY, 0, 119);

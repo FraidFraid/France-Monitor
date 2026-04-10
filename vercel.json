@@ -29,6 +29,7 @@
     { "source": "/api/floods/(.*)", "destination": "/api/floods/$1" },
     { "source": "/api/transport/(.*)", "destination": "/api/transport/$1" },
     { "source": "/api/geocode", "destination": "/api/geocode" },
+    { "source": "/api/situation-history", "destination": "/api/situation-history" },
     { "source": "/api/francemonitor/(.*)", "destination": "/api/francemonitor/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
