@@ -29,6 +29,43 @@ function scoreToColor(score: number): string {
   return SCORE_COLORS.stable;
 }
 
+function renderDimBadge(label: string, value: number) {
+  const height = Math.max(2, (value / 100) * 14); // max 14px height bar
+  if (value === 0) {
+    return `
+      <div style="display: flex; align-items: flex-end; gap: 4px; padding: 2px 4px; background: rgba(255,255,255,0.02); border-radius: 4px;">
+        <div style="width: 4px; height: 2px; background: rgba(255,255,255,0.1); border-radius: 1px;"></div>
+        <span style="font-size: 10px; color: rgba(255,255,255,0.2); line-height: 1; padding-bottom: 1px;">${label}:0</span>
+      </div>`;
+  }
+  const bubbleColor = scoreToColor(value);
+  return `
+    <div style="display: flex; align-items: flex-end; gap: 4px; padding: 2px 4px; background: ${bubbleColor}15; border: 1px solid ${bubbleColor}33; border-radius: 4px;">
+      <div style="width: 4px; height: ${height}px; background: ${bubbleColor}; border-radius: 1px; box-shadow: 0 0 4px ${bubbleColor}55;"></div>
+      <span style="font-size: 10px; color: ${bubbleColor}; font-weight: 600; line-height: 1; padding-bottom: 1px;">${label}:${value}</span>
+    </div>`;
+}
+
+function renderSparkline(history: number[]): string {
+  const bars = history.map((val, i) => {
+    const color = scoreToColor(val);
+    const h = Math.max(1, Math.round((val / 100) * 14));
+    const isLast = i === history.length - 1;
+    return `<div title="Tick ${i + 1}: ${val}" style="` +
+      `width:${isLast ? 3 : 2}px;` +
+      `height:${h}px;` +
+      `background:${color};` +
+      `border-radius:1px;` +
+      `opacity:${isLast ? 1 : 0.7};` +
+      `${isLast ? `box-shadow:0 0 3px ${color};` : ''}` +
+      `flex-shrink:0;` +
+      `"></div>`;
+  }).join('');
+  return `<div title="Historique ISNR (${history.length} ticks)" ` +
+    `style="display:flex;align-items:flex-end;gap:1px;height:14px;padding:3px 0;margin-top:4px;">` +
+    `${bars}</div>`;
+}
+
 export class ISNRPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
@@ -199,20 +236,19 @@ export class ISNRPanel extends Panel {
                 <span style="color: ${trendColor}; font-size: 14px;">${arrow}</span>
               </div>
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">
-                Soc:${dept.dimensions.social}
-              </span>
-              <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">
-                Sec:${dept.dimensions.security}
-              </span>
-              <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">
-                Inf:${dept.dimensions.infra}
-              </span>
-              <span style="font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">
-                Vel:${dept.dimensions.velocity}
-              </span>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              ${renderDimBadge('Soc', dept.dimensions.social)}
+              ${renderDimBadge('Sec', dept.dimensions.security)}
+              ${renderDimBadge('Inf', dept.dimensions.infra)}
+              ${renderDimBadge('Vel', dept.dimensions.velocity)}
             </div>
+            ${dept.history != null && dept.history.length >= 2 ? renderSparkline(dept.history) : ''}
+            ${dept.topDriver ? `
+              <div style="font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.03); padding: 4px 6px; border-radius: 4px; border-left: 2px solid ${scoreToColor(dept.topDriver.score)}">
+                <span style="color: var(--text-primary); font-weight: 500;">⚠️ ${dept.topDriver.label}</span>
+                <span style="color: var(--text-muted); font-size: 9px; margin-left: auto;">${dept.topDriver.source}</span>
+              </div>
+            ` : ''}
           </div>
         `;
       }
