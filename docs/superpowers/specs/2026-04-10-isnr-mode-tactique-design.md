@@ -74,11 +74,10 @@ const momentum = prevArr && prevArr.length > 0 ? score - prevArr[prevArr.length 
 
 À la fin de chaque tick `computeISNR`, pour chaque département, **après** avoir lu `momentum` et `trend` (qui lisent l'ancien tableau) :
 ```ts
-const arr = previousScores.get(code) ?? [];
-arr.push(score);
-if (arr.length > 12) arr.shift();
-previousScores.set(code, arr);
-// history exposé dans ISNRScore = [...arr]
+const prev = previousScores.get(code) ?? [];
+const next = [...prev, score].slice(-12);  // append non-mutatif, fenêtre glissante
+previousScores.set(code, next);
+// history exposé dans ISNRScore = next (référence stable, pas de mutation)
 ```
 
 ---
@@ -121,14 +120,16 @@ Match sur `PowerOutage.departmentCode === deptCode`.
 
 Matching en deux temps :
 1. **Coordonnées** : `findDepartmentByCoords(lon, lat)` (fonction existante)
-2. **Fallback** : comparaison normalisée `department.toLowerCase()` vs noms de `DEPARTMENTS`
+2. **Fallback** : helper privée `normalizeDepartmentName(s: string): string` — `trim + toLowerCase + suppression accents (normalize NFD + /[\u0300-\u036f]/g) + suppression tirets/apostrophes/espaces multiples` — appliquée aux deux côtés de la comparaison (`outage.department` vs chaque `DEPARTMENTS[code].name`). Les cas particuliers type "Côtes-d'Armor", "Puy-de-Dôme", "Territoire de Belfort" sont couverts par cette normalisation.
 
 Seuils sur les sites HS dans le département :
 
-| Condition                                  | Score |
-|--------------------------------------------|-------|
-| ≥ 3 sites HS (voice ou data dégradé)       | 50    |
-| ≥ 5 sites avec `voiceStatus/dataStatus: 'HS'` | 65 |
+| Condition                                                          | Score |
+|--------------------------------------------------------------------|-------|
+| ≥ 3 sites avec au moins un statut `'Degraded'` **ou** `'HS'`      | 50    |
+| ≥ 5 sites avec au moins un statut strictement `'HS'` (voice ou data) | 65 |
+
+Règle de progression explicite : dégradation significative (≥ 3 sites) → panne lourde (≥ 5 sites strictement HS). Les deux conditions sont mutuellement exclusives dans le code (la plus haute s'applique si remplie).
 
 - `topDriver.label` : `"⚠️ Panne Réseau"`
 - `topDriver.source` : `"ARCEP"`
@@ -197,8 +198,8 @@ function renderSparkline(history: number[]): string
 ```
 
 - N'est rendue que si `score.history != null && score.history.length >= 2` (champ optionnel, guard complet requis pour TypeScript strict)
-- Conteneur : `<div style="display:flex;align-items:flex-end;gap:1px;height:14px;padding:3px 0">`
-- Chaque barre : `width:2px`, `height: Math.max(1, (val/100)*14)px`, `background: scoreToColor(val)`, `opacity: 0.7`
+- Conteneur : `<div title="Historique ISNR (${history.length} ticks)" style="display:flex;align-items:flex-end;gap:1px;height:14px;padding:3px 0">`
+- Chaque barre : `width:2px`, `height: Math.max(1, (val/100)*14)px`, `background: scoreToColor(val)`, `opacity: 0.7`, `title="Tick ${i+1}: ${val}"`
 - Dernière barre (point courant) : `width:3px`, `opacity:1`, `box-shadow: 0 0 3px <color>`
 - Placement dans le rendu dept : entre les dim-badges et le bloc `topDriver`
 
