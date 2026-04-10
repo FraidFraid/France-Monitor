@@ -84,6 +84,12 @@ SituationSnapshot {
   dataStatus: {
     overall:   "ok" | "degraded"     // "degraded" si au moins un axe est null
     sources: {
+      // Correspondance explicite source → axe(s) alimenté(s) :
+      // energy    → axes.energy
+      // cyber     → axes.cyber
+      // stability → axes.social (données ISNR)
+      // meteo     → axes.weather
+      // network   → axes.infra + axes.transport
       energy:    "ok" | "missing"
       cyber:     "ok" | "missing"
       stability: "ok" | "missing"
