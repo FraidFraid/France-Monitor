@@ -361,6 +361,7 @@ function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, deptCode: stri
   return 0;
 }
 
+
 // ═══ Calcul ISNR Principal ═══
 
 export function computeISNR(
