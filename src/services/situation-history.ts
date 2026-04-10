@@ -142,20 +142,24 @@ function writeCache(days: 7 | 30, response: HistoryResponse): void {
   }
 }
 
+function computeIsDegraded(response: HistoryResponse): boolean {
+  if (response.slotCount.missing > 0 || response.slotCount.degraded > 0) return true;
+  return response.slots.some(
+    s => 'status' in s || (s as SituationSnapshot).dataStatus?.overall === 'degraded',
+  );
+}
+
 export async function getHistory(days: 7 | 30, force = false): Promise<HistoryResult> {
   const cached  = readCache(days);
   const now     = Date.now();
   const isFresh = cached !== null && (now - new Date(cached.fetchedAt).getTime()) < CACHE_FRESH_MS;
 
   if (!force && isFresh && cached) {
-    const degraded = cached.response.slots.some(
-      s => 'status' in s || (s as SituationSnapshot).dataStatus?.overall === 'degraded',
-    );
     return {
       data:                    cached.response,
       source:                  'cached',
       fetchedAt:               cached.fetchedAt,
-      isDegraded:              degraded || cached.response.slotCount.missing > 0,
+      isDegraded:              computeIsDegraded(cached.response),
       errorRecoveredFromCache: false,
     };
   }
@@ -166,22 +170,20 @@ export async function getHistory(days: 7 | 30, force = false): Promise<HistoryRe
     const data: HistoryResponse = await res.json();
     writeCache(days, data);
     const fetchedAt = new Date().toISOString();
-    const degraded  = data.slotCount.missing > 0 || data.slotCount.degraded > 0;
     return {
       data,
       source:                  'fresh',
       fetchedAt,
-      isDegraded:              degraded,
+      isDegraded:              computeIsDegraded(data),
       errorRecoveredFromCache: false,
     };
   } catch {
     if (cached) {
-      const degraded = cached.response.slotCount.missing > 0 || cached.response.slotCount.degraded > 0;
       return {
         data:                    cached.response,
         source:                  'stale',
         fetchedAt:               cached.fetchedAt,
-        isDegraded:              degraded,
+        isDegraded:              computeIsDegraded(cached.response),
         errorRecoveredFromCache: true,
       };
     }
