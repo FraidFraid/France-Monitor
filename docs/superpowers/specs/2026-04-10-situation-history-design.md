@@ -140,12 +140,25 @@ L'index est un accélérateur de lecture, pas la source de vérité pour la time
 
 **Comportement séquentiel à chaque appel :**
 
-1. **Calcul du slot courant** : détermine la `slotKey` du slot actif
-2. **Vérification idempotente** : tente `SET france:history:{slotKey} {snapshot} NX EX 2678400` (31 jours en secondes). Si le slot existe déjà (NX échoue), aucune écriture.
-3. **Construction du snapshot** (seulement si écriture nécessaire) : lecture des caches Redis déjà écrits par les proxies existants (Ecowatt, ISNR, Cyber, situations engine). Aucun appel API externe. Si une source est absente, l'axe est `null` et `dataStatus` l'indique.
-4. **Construction de la grille canonique** : génère la liste exhaustive de toutes les `slotKey` de la période demandée (`now - N jours` → `now`), indépendamment de l'index Redis.
-5. **MGET groupé** : récupère tous les snapshots de la grille en une seule commande Redis.
-6. **Projection** : chaque `slotKey` sans résultat dans le MGET devient `{ slotKey, status: "missing" }`.
+1. **Calcul du slot courant** : détermine la `slotKey` du slot actif (voir règle en section 3.3).
+
+2. **Vérification du slot** : `GET france:history:{slotKey}`.
+   - Si le slot existe déjà → aller directement à l'étape 4 (pas de construction).
+   - Si absent → continuer à l'étape 3.
+
+3. **Construction et écriture du snapshot** :
+   - Lire les caches Redis source (voir section 4.5 pour les clés et règles de fraîcheur).
+   - Construire le snapshot complet (`version`, `score`, `axes`, `situations`, `dataStatus`).
+   - `SET france:history:{slotKey} {snapshot} NX EX 2678400` (31 jours en secondes).
+   - Si NX échoue (écriture concurrente gagnante) : ignorer silencieusement. Les deux snapshots construits en concurrence dans le même slot sont équivalents (mêmes sources Redis dans la même fenêtre de 6h).
+   - `RPUSH france:history:index {slotKey}` + `LTRIM france:history:index 0 119`.
+
+4. **Construction de la grille canonique** : générer la liste exhaustive des `slotKey` attendus pour la période (voir section 4.3 pour la définition exacte de la fenêtre temporelle), indépendamment de l'index Redis.
+
+5. **MGET groupé** : récupérer tous les snapshots de la grille en une seule commande Redis.
+
+6. **Projection** : chaque `slotKey` absent du MGET devient `{ slotKey, status: "missing" }`.
+
 7. **Retour** de la réponse structurée.
 
 **Structure de réponse :**
@@ -170,16 +183,45 @@ Les slots sont ordonnés chronologiquement, du plus ancien au plus récent.
 
 ### 4.2 Idempotence et concurrence
 
-Deux appels simultanés dans le même slot ne peuvent pas écrire deux snapshots différents. `SET NX` garantit que seul le premier écrit. Le second lit simplement le slot déjà présent. Aucun lock distribué nécessaire.
+Deux appels simultanés dans le même slot peuvent tous deux passer l'étape GET (slot absent), construire un snapshot et tenter `SET NX`. Le premier gagne, le second est ignoré silencieusement. Les deux snapshots sont équivalents car construits depuis les mêmes caches Redis dans la même fenêtre de 6h. Aucun lock distribué nécessaire.
 
-### 4.3 Ce que cette route ne fait pas
+### 4.3 Définition exacte de la fenêtre temporelle
+
+La fenêtre est toujours exprimée en **nombre de slots UTC**, en remontant depuis le slot courant inclus.
+
+- **7 jours** = les 28 derniers slots, de `currentSlot - 27×6h` à `currentSlot` inclus
+- **30 jours** = les 120 derniers slots, de `currentSlot - 119×6h` à `currentSlot` inclus
+
+Les bornes sont **toujours alignées sur la grille UTC** (00h, 06h, 12h, 18h). La notion de "jour calendaire" n'intervient que dans l'agrégation visuelle 30j côté UI, non dans le calcul serveur. Le `slotCount.expected` est donc toujours exactement 28 ou 120.
+
+Pour l'agrégation journalière en vue 30j : un slot appartient au jour UTC dans lequel tombe sa `slotKey` (ex: `2026-04-10T00:00` → jour UTC `2026-04-10`).
+
+### 4.4 Ce que cette route ne fait pas
 
 - Elle ne recompute pas les données brutes : elle lit uniquement les caches Redis existants
 - Elle ne déclenche aucun appel API externe
 - Elle ne s'auto-déclenche pas : elle est toujours initiée par un client
 - Elle n'est pas couplée au brief IA ni à aucun autre service applicatif
 
-### 4.4 Migration future vers Cron (Approche A)
+### 4.5 Sources Redis — clés, fraîcheur et règle de présence
+
+Le snapshot construit en étape 3 lit les caches Redis déjà écrits par les proxies existants. L'implémenteur doit identifier les clés exactes en inspectant les handlers `api/` et plugins correspondants. La règle de présence est uniforme :
+
+> **Une source est `"ok"` si sa clé Redis existe et a été écrite il y a moins de `maxAge` minutes. Sinon elle est `"missing"` et l'axe correspondant est `null`.**
+
+| Source (`dataStatus.sources`) | Axe(s) alimenté(s) | `maxAge` retenu |
+|---|---|---|
+| `energy` | `axes.energy` | 45 min |
+| `cyber` | `axes.cyber` | 90 min |
+| `stability` | `axes.social` | 45 min |
+| `meteo` | `axes.weather` | 45 min |
+| `network` | `axes.infra` + `axes.transport` | 45 min |
+
+Les `maxAge` sont des seuils de présence, pas des TTL Redis. Une donnée peut être plus ancienne que `maxAge` tout en étant encore valide dans Redis — elle est simplement considérée trop périmée pour un snapshot de qualité. Si une source est `"missing"`, l'axe est `null` et `dataStatus.overall` passe à `"degraded"`.
+
+**Note pour l'implémenteur :** au moment de l'étape 3, lire la clé Redis source et vérifier son champ `updatedAt` ou `fetchedAt` (selon la structure de chaque cache). Si absent ou trop ancien → source manquante. Ne pas forcer de rafraîchissement.
+
+### 4.6 Migration future vers Cron (Approche A)
 
 Si la complétude des slots devient critique (trafic insuffisant la nuit, besoin de garantir les 4 slots/jour), la migration vers une Vercel Cron Function est directe : le modèle de snapshot ne change pas, seul le déclencheur de l'écriture change. La route `api/situation-history.js` reste identique pour la lecture.
 
@@ -225,9 +267,13 @@ getHistory(days: 7 | 30, force?: boolean): Promise<HistoryResult>
 **Structure du cache localStorage :**
 
 ```
-fm:situation-history:7j  →  { fetchedAt: string, days: 7, response: HistoryResponse }
-fm:situation-history:30j →  { fetchedAt: string, days: 30, response: HistoryResponse }
+fm:situation-history:v1:7j  →  { fetchedAt: string, schemaVersion: 1, days: 7, response: HistoryResponse }
+fm:situation-history:v1:30j →  { fetchedAt: string, schemaVersion: 1, days: 30, response: HistoryResponse }
 ```
+
+La version de schéma est encodée dans la clé (`v1`). Lors d'un changement de `SituationSnapshot.version`, la clé localStorage change de préfixe (`v2`, etc.). L'ancienne clé est ignorée et peut être supprimée au premier accès (`localStorage.removeItem`). Aucune migration de données n'est effectuée : en cas de changement de schéma, le client recharge depuis le serveur.
+
+**Règle de lecture :** si la clé attendue est absente, ou si `schemaVersion` dans le cache ne correspond pas à la version courante, le cache est considéré invalide et un appel réseau est déclenché.
 
 **Durée de fraîcheur :** 20 minutes. Un slot de 6h change au plus toutes les 6h ; 20 minutes est un équilibre entre réactivité et économie de requêtes.
 
@@ -270,9 +316,14 @@ Même structure, avec **agrégation journalière** : les 4 slots d'une journée 
 
 Règles d'agrégation :
 - **0 slot capturé** → journée `missing`, espace vide avec ligne pointillée à mi-hauteur (marqueur visible, jamais de blanc silencieux)
-- **1–3 slots capturés sur 4** → barre au max CII des slots capturés, bande hachurée de 2px indiquant la partialité de la journée
+- **1–3 slots capturés sur 4** → barre affichée avec bande hachurée de 2px indiquant la partialité, valeurs calculées sur les slots capturés uniquement
 - **4 slots capturés** → barre pleine ; indicateur `degraded` discret si au moins un slot l'est
-- **Sévérité** : sévérité maximale parmi les slots capturés de la journée
+
+**Hauteur de barre (CII agrégé) :** moyenne des scores CII des slots capturés de la journée. Ce choix assume que la hauteur traduit le niveau global de la journée, non son pic. Une journée avec un pic court et trois slots calmes apparaîtra à hauteur modérée.
+
+**Couleur de barre (sévérité) :** sévérité maximale parmi les slots capturés. La couleur capture le pire événement de la journée même si la hauteur est basse. Ces deux dimensions sont délibérément indépendantes : couleur = signal d'alerte, hauteur = niveau ambiant.
+
+Ce choix est un arbitrage produit assumé. Il n'est pas modifiable par configuration en V1.
 
 ### 6.4 Interactions
 
