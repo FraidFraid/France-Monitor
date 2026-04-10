@@ -6,6 +6,11 @@
  */
 
 import { Panel } from './Panel.ts';
+import {
+  applyPremiumCloseButtonHover,
+  getPremiumCloseButtonStyle,
+  getPremiumModalStyle,
+} from './panelHeader.ts';
 import type { ISNRData } from '../types/index.ts';
 import { scoreToEmoji, trendToArrow } from '../services/stability-index.ts';
 
@@ -93,51 +98,20 @@ export class ISNRPanel extends Panel {
   mount(): void {
     this.modalEl = document.createElement('div');
     this.modalEl.style.cssText = `
-      position: absolute;
-      top: var(--right-panel-top);
-      right: 20px;
-      width: 400px;
-      max-height: calc(100vh - var(--right-panel-top) - 20px);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-      z-index: 1000;
-      display: none;
-      flex-direction: column;
-      backdrop-filter: blur(10px);
-      overflow: hidden;
+      ${getPremiumModalStyle({
+        width: '400px',
+        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
+        backgroundStart: 'rgba(12, 18, 32, 0.97)',
+        backgroundEnd: 'rgba(13, 16, 28, 0.96)',
+        borderColor: 'rgba(59, 130, 246, 0.18)',
+      })}
     `;
 
     // Close button
     this.closeBtn = document.createElement('button');
     this.closeBtn.innerHTML = '✕';
-    this.closeBtn.style.cssText = `
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(255,255,255,0.1);
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 14px;
-      width: 28px;
-      height: 28px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      z-index: 10;
-    `;
-    this.closeBtn.onmouseover = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.2)';
-      this.closeBtn!.style.color = 'var(--text-primary)';
-    };
-    this.closeBtn.onmouseout = () => {
-      this.closeBtn!.style.background = 'rgba(255,255,255,0.1)';
-      this.closeBtn!.style.color = 'var(--text-muted)';
-    };
+    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
+    applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
@@ -217,26 +191,27 @@ export class ISNRPanel extends Panel {
 
     // Header with national score (Circular UI style)
     let html = `
-      <div class="isnr-drag-handle" style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; cursor: grab;">
-        <div style="display: flex; align-items: center; gap: 16px; pointer-events: none;">
+      <div class="isnr-drag-handle" style="padding: 18px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; cursor: grab; background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(14, 165, 233, 0.10));">
+        <div style="display: flex; align-items: center; gap: 14px; pointer-events: none;">
           <!-- Circular Score indicator -->
-          <div style="position: relative; width: 48px; height: 48px;">
-            <svg width="48" height="48" viewBox="0 0 48 48" style="transform: rotate(-90deg);">
+          <div style="position: relative; width: 68px; height: 68px;">
+            <svg width="68" height="68" viewBox="0 0 48 48" style="width:68px;height:68px;transform: rotate(-90deg);">
               <circle cx="24" cy="24" r="${radius}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"></circle>
-              <circle cx="24" cy="24" r="${radius}" fill="none" stroke="${nationalColor}" stroke-width="4" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round"></circle>
+              <circle cx="24" cy="24" r="${radius}" fill="none" stroke="${nationalColor}" stroke-width="4" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;"></circle>
             </svg>
-            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff;">
-              ${data.nationalScore}
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; font-weight: 700; color: #fff;">
+              <div style="font-size: 18px; line-height: 1;">${nationalEmoji}</div>
+              <div style="font-size: 13px; line-height: 1; margin-top: 2px;">${data.nationalScore}</div>
             </div>
           </div>
           <!-- Title & Status -->
-          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
-            <div style="color: var(--text-primary); font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;">ISNR FRANCE</div>
+          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0; min-width:0;">
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Stabilité nationale</div>
+            <div style="color: var(--text-primary); font-weight: 700; font-size: 14px;">ISNR France</div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <div style="width: 8px; height: 8px; border-radius: 50%; background-color: ${nationalColor};"></div>
               <span style="font-size: 11px; font-weight: 600; color: ${nationalColor}; text-transform: uppercase; letter-spacing: 0.05em;">${nationalStatusText}</span>
             </div>
-            <div style="margin-top: 2px;">${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>
+            <div style="margin-top: 5px;">${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>
           </div>
         </div>
       </div>

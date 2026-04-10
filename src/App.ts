@@ -1608,12 +1608,12 @@ export class App {
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
-      <div class="header-title">
+      <button class="header-title header-about-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="À propos de France Monitor">
         <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
         <span class="header-title-text">
           <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
         </span>
-      </div>
+      </button>
       <div class="header-center" id="region-presets"></div>
       <div class="header-status">
         <div id="header-data-sources"></div>
@@ -1622,6 +1622,78 @@ export class App {
       </div>
     `;
     this.container.appendChild(header);
+
+    const aboutModal = document.createElement('div');
+    aboutModal.className = 'about-modal';
+    aboutModal.setAttribute('aria-hidden', 'true');
+    aboutModal.innerHTML = `
+      <div class="about-modal__backdrop" data-close="true"></div>
+      <div class="about-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
+        <button class="about-modal__close" type="button" aria-label="Fermer la fenêtre À propos">✕</button>
+        <div class="about-modal__hero">
+          <div class="about-modal__brand">
+            <img class="about-modal__logo" src="/icon.svg" alt="Logo France Monitor" />
+            <div class="about-modal__brand-copy">
+              <div class="about-modal__title-row">
+                <div id="about-modal-title" class="about-modal__title">France Monitor</div>
+                <div class="about-modal__version">v1.0</div>
+              </div>
+              <div class="about-modal__subtitle">Tableau de bord situationnel pour la France</div>
+            </div>
+          </div>
+        </div>
+        <div class="about-modal__body">
+          <p class="about-modal__text">
+            Monitoring temps réel, lecture stratégique du territoire et interface inspirée des workflows OSINT opérationnels.
+          </p>
+          <div class="about-modal__links">
+            <a
+              class="about-modal__chip"
+              href="https://github.com/FraidFraid/France-Monitor"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Dépôt GitHub de France Monitor"
+            >
+              GitHub
+            </a>
+            <a
+              class="about-modal__chip"
+              href="https://www.linkedin.com/in/fredaubourg/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Profil LinkedIn de Fraid"
+            >
+              @Fraid
+            </a>
+            <span class="about-modal__chip about-modal__chip--static">MIT</span>
+          </div>
+          <div class="about-modal__legal">
+            <div>Copyright © 2026 Fraid</div>
+            <div>Licensed under the MIT License.</div>
+            <div>Projet inspiré de World Monitor</div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.container.appendChild(aboutModal);
+
+    const aboutTrigger = header.querySelector<HTMLButtonElement>('.header-about-trigger');
+    const setAboutModalOpen = (open: boolean) => {
+      aboutModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+      aboutTrigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.style.overflow = open ? 'hidden' : '';
+    };
+    aboutTrigger?.addEventListener('click', () => setAboutModalOpen(true));
+    aboutModal.querySelector('.about-modal__close')?.addEventListener('click', () => setAboutModalOpen(false));
+    aboutModal.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.dataset['close'] === 'true') setAboutModalOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && aboutModal.getAttribute('aria-hidden') === 'false') {
+        setAboutModalOpen(false);
+      }
+    });
 
     const clock = header.querySelector('#clock');
     const president = GOUVERNEMENT.find(m => m.isPresident);
@@ -1666,22 +1738,6 @@ export class App {
     sidebarContent.className = 'sidebar-content';
     sidebarContent.id = 'sidebar-content';
     sidebar.appendChild(sidebarContent);
-    const sidebarCredit = document.createElement('div');
-    sidebarCredit.className = 'sidebar-credit';
-    sidebarCredit.innerHTML = `
-      <div class="sidebar-credit__title">France Monitor</div>
-      <a
-        class="sidebar-credit__link"
-        href="https://www.linkedin.com/in/fredaubourg/"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Profil LinkedIn de Fraid"
-      >
-        v1.0 - @Fraid
-      </a>
-      <div class="sidebar-credit__subtitle">Projet inspiré de World Monitor</div>
-    `;
-    sidebar.appendChild(sidebarCredit);
     main.appendChild(sidebar);
 
     // ── Map area ──
@@ -2786,7 +2842,7 @@ export class App {
 
 
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
-    this.mapContainer.setOnRawMapClick((lat, lon) => {
+    this.mapContainer.setOnRawMapClick((_lat, _lon) => {
       if (this.activeLayers.elus) this.elusPanel?.showPlaceholder();
     });
 
