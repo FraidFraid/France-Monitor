@@ -9,7 +9,6 @@ import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
 import { SearchModal } from './components/SearchModal.ts';
-import { ToastNotification } from './components/ToastNotification.ts';
 import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
@@ -46,7 +45,7 @@ import { fetchNetworkBarometer, setBarometerEolienLive } from './services/networ
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR, DEPARTMENTS } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
-import { RESTRICTED_ZONES, detectMilitarySurges } from './config/military.ts';
+import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
 import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
 import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
 
@@ -67,7 +66,7 @@ import { fetchEcowatt } from './services/ecowatt.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
 import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
-import { DEPT_CENTROIDS, fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
+import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
 import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
 import { buildHydraulicBackboneAssets } from './services/hydraulic-backbone.ts';
@@ -84,6 +83,8 @@ import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import { NuclearPanel } from './components/NuclearPanel.ts';
+import { SituationMonitor } from './components/SituationMonitor.ts';
+import { AlertMonitor } from './components/AlertMonitor.ts';
 import type { NuclearState } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
@@ -99,7 +100,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import { GOUVERNEMENT } from './config/government.ts';
@@ -108,6 +109,79 @@ import { Watchdog } from './services/watchdog.ts';
 
 
 const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
+const ALERT_MONITOR_LIMIT = 2;
+const ALERT_MONITOR_TTLS_MS = {
+  NEWS_ALERT: 20 * 60_000,
+  MILITARY_SURGE_ALERT: 10 * 60_000,
+  WEATHER_ALERT: 30 * 60_000,
+  AIS_ANOMALY_ALERT: 30 * 60_000,
+  DEFENSE_ALERT: 15 * 60_000,
+  GPS_JAMMING_ALERT: 10 * 60_000,
+} as const;
+
+const SITUATION_SEVERITY_SCORE: Record<SituationSeverity, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  watch: 1,
+};
+
+const METEO_RISK_LABELS: Record<string, string> = {
+  wind: 'vent',
+  'rain-flood': 'pluie-inondation',
+  thunderstorm: 'orages',
+  flood: 'crues',
+  'snow-ice': 'neige-verglas',
+  heat: 'canicule',
+  cold: 'grand froid',
+  avalanche: 'avalanches',
+  'wave-surge': 'vagues-submersion',
+};
+
+function truncateLabel(value: string, maxLength = 96): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function sortSituations(items: DetectedSituation[]): DetectedSituation[] {
+  return [...items].sort((a, b) => {
+    const severityDelta = SITUATION_SEVERITY_SCORE[b.severity] - SITUATION_SEVERITY_SCORE[a.severity];
+    if (severityDelta !== 0) return severityDelta;
+    if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+    return b.updatedAt.getTime() - a.updatedAt.getTime();
+  });
+}
+
+function threatLevelToSituationSeverity(level?: ThreatLevel): SituationSeverity {
+  if (level === 'critical') return 'critical';
+  if (level === 'high') return 'high';
+  if (level === 'medium') return 'medium';
+  return 'watch';
+}
+
+function defenseSeverityToSituationSeverity(level: DefenseAlert['severity']): SituationSeverity {
+  if (level === 'high') return 'critical';
+  if (level === 'medium') return 'high';
+  return 'medium';
+}
+
+function getAlertMonitorExpiry(alert: DetectedSituation, nowMs: number): number {
+  switch (alert.type) {
+    case 'AIS_ANOMALY_ALERT':
+      return alert.updatedAt.getTime() + ALERT_MONITOR_TTLS_MS.AIS_ANOMALY_ALERT;
+    case 'NEWS_ALERT':
+      return nowMs + ALERT_MONITOR_TTLS_MS.NEWS_ALERT;
+    case 'MILITARY_SURGE_ALERT':
+      return nowMs + ALERT_MONITOR_TTLS_MS.MILITARY_SURGE_ALERT;
+    case 'WEATHER_ALERT':
+      return nowMs + ALERT_MONITOR_TTLS_MS.WEATHER_ALERT;
+    case 'DEFENSE_ALERT':
+      return nowMs + ALERT_MONITOR_TTLS_MS.DEFENSE_ALERT;
+    case 'GPS_JAMMING_ALERT':
+      return nowMs + ALERT_MONITOR_TTLS_MS.GPS_JAMMING_ALERT;
+    default:
+      return nowMs + 10 * 60_000;
+  }
+}
 
 function summarizeNuclearPlantForMap(
   plantName: string,
@@ -1167,6 +1241,8 @@ export class App {
   private isnrPanel: ISNRPanel | null = null;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
+  private situationMonitor: SituationMonitor | null = null;
+  private alertMonitor: AlertMonitor | null = null;
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private currentCyberData: CyberState | null = null;
@@ -1186,7 +1262,9 @@ export class App {
   private currentCitizenZones: import('./types/index.ts').OutageZoneCollection | null = null;
   private defensePanel: DefensePanel | null = null;
   private currentDefenseAlerts: DefenseAlert[] = [];
-  private currentJammingSignals: import('./types/index.ts').GpsJammingSignal[] = [];
+  private currentAisAnomalies: AisAnomaly[] = [];
+  private currentJammingSignals: GpsJammingSignal[] = [];
+  private currentMilitarySurges: MilitarySurge[] = [];
   private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
   private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
@@ -1199,11 +1277,10 @@ export class App {
   private currentHealthFeatures: HealthFeatures | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
-  private toastNotification: ToastNotification | null = null;
   private layerPanel: LayerPanel | null = null;
+  private alertMonitorCache = new Map<string, { situation: DetectedSituation; expiresAt: number }>();
   private newsItems: NewsItem[] = [];
   private currentISNRData: ISNRData | null = null;
-  private seenItemIds: Set<string> = new Set(); // Track seen items for toast notifications
   private currentMeteoAlerts: MeteoAlert[] = [];
   private _aisZeroWarnLogged = false; // Avoid spamming "0 ships" warning
   private _aisLoaderEl: HTMLElement | null = null; // Loader overlay while AIS connects
@@ -1218,6 +1295,7 @@ export class App {
   private currentEolienParks: EolienParkSummary[] = [];
   private currentEolienError: string | null = null;
   private readonly eolienTracker = new EolienTracker();
+  private underMapNewsHeightObserver: ResizeObserver | null = null;
 
   private currentSncfDisruptions: TransportDisruption[] = [];
   private currentRailNetworkData: RailNetworkData | null = null;
@@ -1471,16 +1549,6 @@ export class App {
     this.layerPanel?.updateLayers(this.activeLayers);
     this.updateBarometerFabVisibility();
 
-    // Initialize toast notification system
-    this.toastNotification = new ToastNotification();
-    this.toastNotification.setOnItemClick((item) => {
-      // Fly to item location and select it
-      if (item.lat != null && item.lon != null) {
-        this.mapContainer?.flyTo(item.lon, item.lat, 12);
-        this.mapContainer?.selectItem(item);
-        this.newsPanel?.selectItem(item.id);
-      }
-    });
     // ── CHARGEMENT DYNAMIQUE DU JSON (Depuis /public) ──
     // --- CHARGEMENT DYNAMIQUE DU JSON (Depuis /public) ---
     try {
@@ -1530,65 +1598,6 @@ export class App {
     } catch (err) {
       console.error("Erreur APL:", err);
     }
-    // Handle military surge toast clicks - fly to surge location
-    this.toastNotification.setOnSurgeClick((surge) => {
-      if (surge.location) {
-        // Ensure military layer is visible
-        if (!this.activeLayers.military) {
-          this.activeLayers.military = true;
-          this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        // Fly to surge location with appropriate zoom
-        const zoom = surge.type === 'concentration' ? 9 : 10;
-        this.mapContainer?.flyTo(surge.location.lon, surge.location.lat, zoom);
-      }
-    });
-
-    // Handle GPS jamming toast clicks - activate military layer and fly to zone
-    this.toastNotification.setOnJammingSignalClick((signal) => {
-      if (!this.activeLayers.military) {
-        this.onLayerToggle('military', true);
-        this.layerPanel?.updateLayers(this.activeLayers);
-      }
-      if (this.defensePanel) {
-        this.defensePanel.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-      // Cluster : zoom out proportionnel au rayon ; signal individuel : zoom serré
-      const zoom = signal.clusterRadius != null
-        ? (signal.clusterRadius > 50 ? 8 : 9)
-        : 11;
-      this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
-    });
-
-    // Handle defense alert toast clicks - fly to threat location and show panel
-    this.toastNotification.setOnDefenseAlertClick((alert) => {
-      // Fly to the threat coordinates
-      this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
-      // Open the defense panel with current alerts
-      if (this.defensePanel) {
-        this.defensePanel.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-    });
-
-    // Handle AIS anomaly toast clicks - fly to ship location and open maritime alerts tab
-    this.toastNotification.setOnAisAnomalyClick((anomaly: AisAnomaly) => {
-      this.mapContainer?.flyTo(anomaly.position[0], anomaly.position[1], 10);
-      this.maritimePanel?.openAlertsTab();
-    });
-    this.toastNotification.setOnWeatherAlertClick((alert) => {
-      if (!this.activeLayers.environmental) {
-        this.onLayerToggle('environmental', true);
-        this.layerPanel?.updateLayers(this.activeLayers);
-      }
-      const centroid = DEPT_CENTROIDS[alert.departmentCode];
-      if (centroid) {
-        this.mapContainer?.flyTo(centroid[0], centroid[1], 7);
-      }
-      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-      this.layoutEnvironmentFloatingPanels();
-    });
-
     // Apply URL view if present
     if (urlState.lng != null && urlState.lat != null) {
       this.mapContainer?.flyTo(urlState.lng, urlState.lat, urlState.zoom ?? 6);
@@ -1598,10 +1607,6 @@ export class App {
     const cached = loadNewsFromCache();
     if (cached && cached.length > 0) {
       this.newsItems = cached;
-      // Mark cached items as "seen" to avoid showing toasts for old articles
-      for (const item of cached) {
-        this.seenItemIds.add(item.id);
-      }
       this.mapContainer?.updateNews(this.newsItems);
       this.newsPanel?.updateItems(this.newsItems);
       this.statusPanel?.updateSource('RSS PQR', { status: 'ok', lastUpdate: new Date() });
@@ -1909,6 +1914,35 @@ export class App {
       }
       this.routeGovernmentContextForItem(item);
     });
+
+    const syncUnderMapNewsHeight = () => {
+      const desktop = window.matchMedia('(min-width: 1025px)').matches;
+      if (!desktop) {
+        newsFeedContainer.style.minHeight = '';
+        newsFeedContainer.style.height = '';
+        newsFeedContainer.style.maxHeight = '';
+        return;
+      }
+      const marketGroupHeight = Math.round(marketGroupWrapper.getBoundingClientRect().height);
+      if (marketGroupHeight > 0) {
+        const targetHeight = `${marketGroupHeight}px`;
+        newsFeedContainer.style.minHeight = targetHeight;
+        newsFeedContainer.style.height = targetHeight;
+        newsFeedContainer.style.maxHeight = targetHeight;
+      } else {
+        newsFeedContainer.style.minHeight = '';
+        newsFeedContainer.style.height = '';
+        newsFeedContainer.style.maxHeight = '';
+      }
+    };
+
+    syncUnderMapNewsHeight();
+    this.underMapNewsHeightObserver?.disconnect();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.underMapNewsHeightObserver = new ResizeObserver(() => syncUnderMapNewsHeight());
+      this.underMapNewsHeightObserver.observe(marketGroupWrapper);
+    }
+    window.addEventListener('resize', syncUnderMapNewsHeight, { passive: true });
     this.newsPanel.mount();
     const initialUrlState = readUrlState();
     this.newsPanel.setFilter({
@@ -2786,16 +2820,6 @@ export class App {
       const firstItem = items[0];
       this.newsPanel?.selectItem(firstItem.id);
 
-      // Show toast notification with cluster info
-      if (this.toastNotification) {
-        // Create a synthetic item for the toast
-        const clusterToast = {
-          ...firstItem,
-          title: `${items.length} articles au même endroit`,
-          threat: { ...firstItem.threat!, level: 'high' as const },
-        };
-        this.toastNotification.show(clusterToast);
-      }
     });
 
 
@@ -2803,7 +2827,7 @@ export class App {
     this.mapContainer.setOnRawMapClick((lat, lon) => {
       // Click within rough France bounding box + elus layer inactive → open intel panel
       const inFrance = lat >= 41.3 && lat <= 51.2 && lon >= -5.2 && lon <= 9.6;
-      if (inFrance && !this.activeLayers.elus) {
+      if (inFrance && !this.activeLayers.elus && !this.activeLayers.stability) {
         document.dispatchEvent(new CustomEvent('open-france-intel'));
         return;
       }
@@ -2854,6 +2878,20 @@ export class App {
     });
 
     await this.mapContainer.init();
+    this.alertMonitor?.destroy();
+    this.alertMonitor = new AlertMonitor(mapEl);
+    this.situationMonitor?.destroy();
+    this.situationMonitor = new SituationMonitor(mapEl);
+    this.situationMonitor.setOnLayerActivate((layerKeys) => {
+      for (const key of layerKeys) {
+        if (key in this.activeLayers && !this.activeLayers[key as keyof typeof this.activeLayers]) {
+          this.onLayerToggle(key as keyof typeof this.activeLayers, true);
+        }
+      }
+    });
+    this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
+      this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
+    });
     this.mapPopup = new MapPopup(mapEl);
 
     // Initialize map legend
@@ -2979,10 +3017,8 @@ export class App {
             squawkAlert: f.squawkAlert,
           }))
         );
+        this.currentMilitarySurges = surges;
         if (surges.length > 0) {
-          this.toastNotification?.showMilitarySurges(surges);
-
-          // If emergency surge, also update status panel
           const emergencies = surges.filter((s) => s.type === 'emergency');
           if (emergencies.length > 0) {
             this.statusPanel?.updateSource('Vols militaires', {
@@ -2999,11 +3035,11 @@ export class App {
         this.currentJammingSignals = jammingSignals;
         this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
         this.refreshFranceIntelPanel();
-        if (jammingSignals.length > 0) {
-          this.toastNotification?.showJammingSignals(jammingSignals);
-        }
       } catch (err) {
         console.error('[Military] Failed to fetch flights', err);
+        this.currentMilitarySurges = [];
+        this.currentJammingSignals = [];
+        this.refreshFranceIntelPanel();
         this.statusPanel?.updateSource('Vols militaires', {
           status: 'error',
           lastUpdate: new Date(),
@@ -3097,7 +3133,6 @@ export class App {
         // Tout le trafic AIS mondial (civils, étrangers, etc.)
         const allTraffic = getAllLiveTraffic();
         this.currentMaritimeTrafficFranceCount = getAllLiveTraffic(10 * 60 * 1000, true).length;
-        this.refreshFranceIntelPanel();
 
         if (allTraffic.length > 0) {
           this._aisZeroWarnLogged = false; // Reset so we can warn again if connection drops
@@ -3120,10 +3155,14 @@ export class App {
         this.mapContainer?.updateGlobalTraffic([...allTraffic], navyMmsiSet);
 
         // Détection anomalies AIS (radio silence, rendezvous suspects)
-        const aisAnomalies = detectAisAnomalies(getAllLiveTraffic());
-        for (const anomaly of aisAnomalies) {
-          this.toastNotification?.showAisAnomaly(anomaly);
-        }
+        const aisAnomalies = detectAisAnomalies(allTraffic);
+        const AIS_ANOMALY_TTL_MS = 30 * 60 * 1000;
+        const cutoff = Date.now() - AIS_ANOMALY_TTL_MS;
+        this.currentAisAnomalies = [
+          ...this.currentAisAnomalies.filter((anomaly) => anomaly.timestamp >= cutoff),
+          ...aisAnomalies,
+        ];
+        this.refreshFranceIntelPanel();
 
         // Détection de menaces sur câbles (plus coûteuse) à cadence réduite.
         const now = Date.now();
@@ -3195,9 +3234,7 @@ export class App {
         this.defensePanel.update(this.currentDefenseAlerts, this.currentJammingSignals);
       }
 
-      // Show toast notifications for high/medium severity alerts
       if (this.currentDefenseAlerts.length > 0) {
-        this.toastNotification?.showDefenseAlerts(this.currentDefenseAlerts);
         console.log(`[Defense] ${this.currentDefenseAlerts.length} cable threat(s) detected (excluding French Navy)`);
       }
     } catch (err) {
@@ -3309,15 +3346,8 @@ export class App {
       this.statusPanel?.updateSource('RSS PQR', { status: 'ok', lastUpdate: new Date() });
       this.refreshFranceIntelPanel();
 
-      // Detect new critical items and show toast notifications
-      const newCriticalItems = rawItems.filter((item) => {
-        if (this.seenItemIds.has(item.id)) return false;
-        this.seenItemIds.add(item.id);
-        return item.threat?.level === 'critical' || item.threat?.level === 'high';
-      });
-      if (newCriticalItems.length > 0 && this.toastNotification) {
-        this.toastNotification.showForNewCriticalItems(newCriticalItems);
-      }
+      // Snapshot ISNR sur chaque tick RSS (alimente l'historique sparkline)
+      this.updateISNR();
 
       console.log(`[RSS] Pipeline stage 1 complete: ${rawItems.length} items parsed and classified by keywords.`);
 
@@ -3502,7 +3532,6 @@ export class App {
     if (alerts.length > 0) {
       this.currentMeteoAlerts = alerts;
       await this.mapContainer?.updateWeather(alerts);
-      this.toastNotification?.showWeatherAlerts(alerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else if (timeline && timeline.slots.some((slot) => slot.alerts.length > 0)) {
       const fallbackAlerts = timeline.slots[timeline.currentSlotIndex]?.alerts
@@ -3510,7 +3539,6 @@ export class App {
         ?? [];
       this.currentMeteoAlerts = fallbackAlerts;
       await this.mapContainer?.updateWeather(fallbackAlerts);
-      this.toastNotification?.showWeatherAlerts(fallbackAlerts);
       this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
     } else {
       this.currentMeteoAlerts = [];
@@ -4748,8 +4776,10 @@ export class App {
       activeFires:          this.currentActiveFires,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
+      gasState:             this.currentGasData,
       nuclearState:         this.currentNuclearState,
       eolienLive:           this.currentEolienLive,
+      aisAnomalies:         this.currentAisAnomalies,
       timeline:             this.buildFranceTimeline(lang),
       briefLang:            lang,
       oilDashboard:         this.currentOilData ?? null,
@@ -4758,10 +4788,205 @@ export class App {
     return buildFranceEngine(raw, options);
   }
 
+  private buildAlertMonitorSituations(): DetectedSituation[] {
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    const newsSituations = this.newsItems
+      .filter((item) => item.threat?.level === 'critical' || item.threat?.level === 'high')
+      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .slice(0, ALERT_MONITOR_LIMIT)
+      .map((item) => ({
+        id: `news-alert-${item.id}`,
+        type: 'NEWS_ALERT' as const,
+        severity: threatLevelToSituationSeverity(item.threat?.level),
+        confidence: item.threat?.confidence ?? 0.8,
+        title: truncateLabel(item.title, 88),
+        summary: item.aiSummary ?? item.summary ?? item.title,
+        affectedZones: [item.locationName ?? item.feedRegion ?? item.source].filter(Boolean),
+        drivers: [
+          `Source ${item.source}`,
+          `Catégorie ${item.threat?.category ?? 'générale'}`,
+          `Publication ${item.pubDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        ],
+        recommendedActions: [
+          { label: 'Vérifier l’article et ses suites locales', ownerHint: 'Veille OSINT', actionType: 'investigate' as const },
+          { label: 'Suivre les mises à jour terrain', ownerHint: 'Cellule de suivi', actionType: 'monitor' as const, automatable: true },
+        ],
+        sourceRefs: [item.source, 'RSS PQR'],
+        linkUrl: item.link,
+        linkLabel: 'Ouvrir l’article',
+        updatedAt: item.pubDate,
+      }));
+
+    const surgeSituations = this.currentMilitarySurges
+      .slice(0, 3)
+      .map((surge) => ({
+        id: `military-surge-${surge.type}-${surge.severity}`,
+        type: 'MILITARY_SURGE_ALERT' as const,
+        severity: (surge.severity === 'alert' ? 'critical' : surge.severity === 'warning' ? 'high' : 'medium') as SituationSeverity,
+        confidence: surge.severity === 'alert' ? 0.96 : surge.severity === 'warning' ? 0.86 : 0.72,
+        title: truncateLabel(surge.description, 88),
+        summary: surge.location
+          ? `${surge.description} autour de [${surge.location.lat.toFixed(2)}, ${surge.location.lon.toFixed(2)}].`
+          : surge.description,
+        affectedZones: [surge.location ? 'Zone aérienne concernée' : 'France'],
+        drivers: [
+          `${surge.flightCount} aéronef(s) impliqués`,
+          ...(surge.flightTypes?.length ? [`Types ${surge.flightTypes.join(', ')}`] : []),
+          ...(surge.radius ? [`Rayon estimé ${Math.round(surge.radius)} km`] : []),
+        ],
+        recommendedActions: [
+          { label: 'Confirmer la nature du surge', ownerHint: 'Veille défense', actionType: 'cross-check' as const },
+          { label: 'Surveiller la persistance du trafic', ownerHint: 'Cellule air', actionType: 'monitor' as const, automatable: true },
+        ],
+        sourceRefs: ['Vols militaires', 'ADS-B agrégé'],
+        updatedAt: now,
+      }));
+
+    const weatherSituations = [...this.currentMeteoAlerts]
+      .filter((alert) => alert.level === 'red' || alert.level === 'orange')
+      .sort((a, b) => (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1))
+      .slice(0, ALERT_MONITOR_LIMIT)
+      .map((alert) => {
+        const risks = alert.risks.map((risk) => METEO_RISK_LABELS[risk] ?? risk);
+        return {
+          id: `weather-alert-${alert.departmentCode}-${alert.level}-${alert.risks.join('-')}`,
+          type: 'WEATHER_ALERT' as const,
+          severity: alert.level === 'red' ? 'critical' : 'high',
+          confidence: alert.level === 'red' ? 0.95 : 0.84,
+          title: `Vigilance ${alert.level} · ${alert.department}`,
+          summary: risks.length > 0
+            ? `Risque principal: ${risks.slice(0, 2).join(', ')}.`
+            : `Alerte météo ${alert.level} en cours.`,
+          affectedZones: [alert.department],
+          drivers: [
+            ...(risks.length > 0 ? [`Risques ${risks.join(', ')}`] : []),
+            ...(alert.startDate ? [`Début ${alert.startDate.toLocaleString('fr-FR')}`] : []),
+            ...(alert.endDate ? [`Fin ${alert.endDate.toLocaleString('fr-FR')}`] : []),
+          ],
+          recommendedActions: [
+            { label: 'Suivre la vigilance départementale', ownerHint: 'Cellule météo', actionType: 'monitor' as const, automatable: true },
+            { label: 'Recouper avec les impacts terrain', ownerHint: 'Coordination locale', actionType: 'cross-check' as const },
+          ],
+          sourceRefs: ['Météo-France'],
+          updatedAt: now,
+        };
+      });
+
+    const defenseSituations = this.currentDefenseAlerts
+      .filter((alert) => alert.severity === 'high' || alert.severity === 'medium')
+      .slice(0, ALERT_MONITOR_LIMIT)
+      .map((alert) => ({
+        id: `defense-alert-${alert.shipId}-${alert.cableId}`,
+        type: 'DEFENSE_ALERT' as const,
+        severity: defenseSeverityToSituationSeverity(alert.severity),
+        confidence: alert.severity === 'high' ? 0.93 : 0.81,
+        title: truncateLabel(`${alert.shipName} près du câble ${alert.cableName}`, 88),
+        summary: `${alert.message} Distance ${Math.round(alert.distanceMeters)} m, vitesse ${alert.speedKnots.toFixed(1)} nd.`,
+        affectedZones: [alert.cableName],
+        drivers: [
+          `Navire ${alert.shipName}`,
+          `Distance ${Math.round(alert.distanceMeters)} m`,
+          `Vitesse ${alert.speedKnots.toFixed(1)} nd`,
+        ],
+        recommendedActions: [
+          { label: 'Vérifier le comportement du navire', ownerHint: 'Veille maritime', actionType: 'investigate' as const },
+          { label: 'Suivre la zone câble en continu', ownerHint: 'Sûreté infrastructures', actionType: 'monitor' as const, automatable: true },
+        ],
+        sourceRefs: ['AIS maritime', 'Câbles sous-marins'],
+        updatedAt: new Date(alert.createdAt),
+        lon: alert.coordinates[0],
+        lat: alert.coordinates[1],
+        activateLayers: ['subseaCables', 'trafficMaritime'],
+      }));
+
+    const jammingSituations = this.currentJammingSignals
+      .filter((signal) => signal.severity === 'high' || signal.severity === 'medium')
+      .sort((a, b) => {
+        const severityDelta = (b.severity === 'high' ? 1 : 0) - (a.severity === 'high' ? 1 : 0);
+        if (severityDelta !== 0) return severityDelta;
+        return b.confidence - a.confidence;
+      })
+      .slice(0, ALERT_MONITOR_LIMIT)
+      .map((signal) => ({
+        id: `gps-jamming-${signal.id}`,
+        type: 'GPS_JAMMING_ALERT' as const,
+        severity: signal.severity === 'high' ? 'critical' : 'high',
+        confidence: signal.confidence,
+        title: `Suspicion de brouillage GPS (${Math.round(signal.confidence * 100)}%)`,
+        summary: signal.reasons[0] ?? 'Signal heuristique ADS-B à confirmer.',
+        affectedZones: ['Zone aérienne'],
+        drivers: [
+          `${signal.affectedIcao24s.length} aéronef(s) affecté(s)`,
+          ...(signal.clusterRadius ? [`Rayon estimé ${Math.round(signal.clusterRadius)} km`] : []),
+          ...signal.reasons.slice(0, 2),
+        ],
+        recommendedActions: [
+          { label: 'Recouper avec d’autres capteurs', ownerHint: 'Veille guerre électronique', actionType: 'cross-check' as const },
+          { label: 'Surveiller l’extension du signal', ownerHint: 'Cellule air', actionType: 'monitor' as const, automatable: true },
+        ],
+        sourceRefs: ['Vols militaires', 'Détection GPS jamming'],
+        updatedAt: new Date(signal.timestamp * 1000),
+      }));
+
+    const aisSituations = [...this.currentAisAnomalies]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, ALERT_MONITOR_LIMIT)
+      .map((anomaly) => ({
+        id: `ais-anomaly-${anomaly.id}`,
+        type: 'AIS_ANOMALY_ALERT' as const,
+        severity: anomaly.severity === 'high' ? 'high' : 'medium',
+        confidence: anomaly.severity === 'high' ? 0.82 : 0.7,
+        title: truncateLabel(anomaly.description, 88),
+        summary: anomaly.description,
+        affectedZones: ['Zone maritime'],
+        drivers: [
+          `Type ${anomaly.type === 'radio_silence' ? 'silence radio' : 'rendez-vous suspect'}`,
+          `${anomaly.mmsis.length} MMSI impliqué(s)`,
+        ],
+        recommendedActions: [
+          { label: 'Vérifier la persistance de l’anomalie', ownerHint: 'Veille maritime', actionType: 'monitor' as const, automatable: true },
+          { label: 'Recouper avec le contexte local', ownerHint: 'Sûreté maritime', actionType: 'cross-check' as const },
+        ],
+        sourceRefs: ['AIS maritime'],
+        updatedAt: new Date(anomaly.timestamp),
+      }));
+
+    const freshAlerts = [
+      ...newsSituations,
+      ...surgeSituations,
+      ...weatherSituations,
+      ...defenseSituations,
+      ...jammingSituations,
+      ...aisSituations,
+    ] as DetectedSituation[];
+
+    for (const alert of freshAlerts) {
+      this.alertMonitorCache.set(alert.id, {
+        situation: alert,
+        expiresAt: getAlertMonitorExpiry(alert, nowMs),
+      });
+    }
+
+    for (const [id, entry] of this.alertMonitorCache) {
+      if (entry.expiresAt <= nowMs) {
+        this.alertMonitorCache.delete(id);
+      }
+    }
+
+    return sortSituations(
+      [...this.alertMonitorCache.values()].map((entry) => entry.situation),
+    );
+  }
+
   private refreshFranceIntelPanel(): void {
+    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const snapshot = this.buildFranceSnapshot(lang);
+    this.alertMonitor?.update(this.buildAlertMonitorSituations(), lang);
+    this.situationMonitor?.update(snapshot.situations, lang);
     if (!this.franceIntelPanel?.isVisible()) return;
-    const lang = this.franceIntelPanel.getCurrentLang();
-    this.franceIntelPanel.show(this.buildFranceSnapshot(lang));
+    this.franceIntelPanel.show(snapshot);
   }
 
   private async refreshNetworkBarometerWidget(): Promise<void> {
@@ -4882,7 +5107,9 @@ export class App {
       this.currentMeteoAlerts,
       this.currentFloodSegments,
       this.currentEcowattResponse,
-      '24h', // Default time range for ISNR calculation
+      '24h',
+      this.currentTelecomOutages,
+      this.currentPowerOutages,
     );
 
     // Update map layer
