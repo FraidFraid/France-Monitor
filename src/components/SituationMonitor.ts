@@ -36,41 +36,41 @@ function actionTypeLabel(lang: 'fr' | 'en', actionType: SituationAction['actionT
 
 const SEV_COLOR: Record<SituationSeverity, string> = {
   critical: '#ef4444',
-  high:     '#f97316',
-  medium:   '#eab308',
-  watch:    '#3b82f6',
+  high: '#f97316',
+  medium: '#eab308',
+  watch: '#3b82f6',
 };
 
 const SEV_LABEL_FR: Record<SituationSeverity, string> = {
   critical: 'CRIT',
-  high:     'ÉLEVÉ',
-  medium:   'MOYEN',
-  watch:    'VEILLE',
+  high: 'ÉLEVÉ',
+  medium: 'MOYEN',
+  watch: 'VEILLE',
 };
 const SEV_LABEL_EN: Record<SituationSeverity, string> = {
   critical: 'CRIT',
-  high:     'HIGH',
-  medium:   'MEDIUM',
-  watch:    'WATCH',
+  high: 'HIGH',
+  medium: 'MEDIUM',
+  watch: 'WATCH',
 };
 
 const TYPE_ICON: Record<string, string> = {
-  ENERGY_STRESS:           '⚡',
-  IMPORT_DEPENDENCY_RISK:  '🔌',
-  FLOOD_CRISIS:            '🌊',
-  WILDFIRE_ESCALATION:     '🔥',
-  CYBER_PRESSURE:          '🛡️',
-  SOCIAL_ESCALATION:       '📢',
-  TELECOM_DISRUPTION:      '📡',
-  MARITIME_ANOMALY:        '⚓',
+  ENERGY_STRESS: '⚡',
+  IMPORT_DEPENDENCY_RISK: '🔌',
+  FLOOD_CRISIS: '🌊',
+  WILDFIRE_ESCALATION: '🔥',
+  CYBER_PRESSURE: '🛡️',
+  SOCIAL_ESCALATION: '📢',
+  TELECOM_DISRUPTION: '📡',
+  MARITIME_ANOMALY: '⚓',
   DEFENSE_SIGNAL_ELEVATED: '✈️',
-  FUEL_SUPPLY_RISK:        '⛽',
-  NEWS_ALERT:              '📰',
-  MILITARY_SURGE_ALERT:    '✈️',
-  WEATHER_ALERT:           '🌩️',
-  AIS_ANOMALY_ALERT:       '⚓',
-  DEFENSE_ALERT:           '🛡️',
-  GPS_JAMMING_ALERT:       '📡',
+  FUEL_SUPPLY_RISK: '⛽',
+  NEWS_ALERT: '📰',
+  MILITARY_SURGE_ALERT: '✈️',
+  WEATHER_ALERT: '🌩️',
+  AIS_ANOMALY_ALERT: '⚓',
+  DEFENSE_ALERT: '🛡️',
+  GPS_JAMMING_ALERT: '📡',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -87,12 +87,6 @@ export class SituationMonitor {
 
   private onLayerActivate: ((layerKeys: string[]) => void) | null = null;
   private onFlyTo: ((lon: number, lat: number, zoom?: number) => void) | null = null;
-  private onHistoryOpen: (() => void) | null = null;
-
-  setOnHistoryOpen(handler: () => void): void {
-    this.onHistoryOpen = handler;
-  }
-
   constructor(container: HTMLElement) {
     this.container = container;
     this.el = document.createElement('div');
@@ -128,19 +122,15 @@ export class SituationMonitor {
   // ── Rendering ───────────────────────────────────────────────────────────────
 
   private render(): void {
-    if (this.allSituations.length === 0) {
-      this.el.style.display = 'none';
-      return;
-    }
-
     this.el.style.display = '';
+
     const visibleSituations = this.expandedAll
       ? this.allSituations
       : this.allSituations.slice(0, SituationMonitor.COMPACT_LIMIT);
 
     const critCount = this.allSituations.filter(s => s.severity === 'critical').length;
-    const highCount  = this.allSituations.filter(s => s.severity === 'high').length;
-    const total      = this.allSituations.length;
+    const highCount = this.allSituations.filter(s => s.severity === 'high').length;
+    const total = this.allSituations.length;
     const hiddenCount = Math.max(0, total - visibleSituations.length);
 
     const headerLabel = t(this.lang, 'Situations', 'Situations');
@@ -151,21 +141,14 @@ export class SituationMonitor {
       ? t(this.lang, 'Réduire la liste', 'Show less')
       : t(this.lang, 'Voir toutes', 'View all');
 
-    // Dot indicator — color of worst active severity
+    // Dot indicator — grey when no active situations
     const worstColor = critCount > 0 ? SEV_COLOR.critical
       : highCount > 0 ? SEV_COLOR.high
-      : SEV_COLOR.medium;
+        : total > 0 ? SEV_COLOR.medium
+          : 'rgba(255,255,255,0.15)';
 
-    this.el.innerHTML = `
-      <header class="sit-mon__header">
-        <span class="sit-mon__dot" style="background:${worstColor};"></span>
-        <span class="sit-mon__title">${headerLabel}</span>
-        <span class="sit-mon__count">${total}</span>
-        <button class="sit-mon__hist-btn" type="button" title="Historique" style="font-size:10px;padding:1px 5px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.10);border-radius:3px;color:#94a3b8;cursor:pointer;font-family:inherit;">hist.</button>
-        <button class="sit-mon__toggle" type="button" title="${collapseTitle}" aria-label="${collapseTitle}">
-          ${this.collapsed ? '▲' : '▼'}
-        </button>
-      </header>
+    // When no situations: show header only (hist. button remains accessible)
+    const bodyHtml = total === 0 ? '' : `
       ${this.collapsed ? '' : `
         <div class="sit-mon__list">${visibleSituations.map(s => this.renderItem(s)).join('')}</div>
         ${total > SituationMonitor.COMPACT_LIMIT ? `
@@ -173,18 +156,23 @@ export class SituationMonitor {
             <button class="sit-mon__show-all" type="button">${toggleAllLabel}${!this.expandedAll && hiddenCount > 0 ? ` (+${hiddenCount})` : ''}</button>
           </div>
         ` : ''}
-      `}
+      `}`;
+
+    this.el.innerHTML = `
+      <header class="sit-mon__header">
+        <span class="sit-mon__dot" style="background:${worstColor};"></span>
+        <span class="sit-mon__title">${headerLabel}</span>
+        ${total > 0 ? `<span class="sit-mon__count">${total}</span>` : ''}
+        ${total > 0 ? `<button class="sit-mon__toggle" type="button" title="${collapseTitle}" aria-label="${collapseTitle}">${this.collapsed ? '▲' : '▼'}</button>` : ''}
+      </header>
+      ${bodyHtml}
     `;
 
     this.el.querySelector('.sit-mon__header')!.addEventListener('click', () => {
+      if (total === 0) return; // nothing to collapse
       this.collapsed = !this.collapsed;
       this.expandedAll = false;
       this.render();
-    });
-
-    this.el.querySelector<HTMLElement>('.sit-mon__hist-btn')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.onHistoryOpen?.();
     });
 
     this.el.querySelectorAll<HTMLElement>('.sit-mon__item').forEach((itemEl, i) => {
@@ -202,11 +190,11 @@ export class SituationMonitor {
   }
 
   private renderItem(s: DetectedSituation): string {
-    const color    = SEV_COLOR[s.severity];
+    const color = SEV_COLOR[s.severity];
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
-    const icon     = TYPE_ICON[s.type] ?? '⚠️';
-    const pct      = Math.round(s.confidence * 100);
-    const zone     = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
+    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const pct = Math.round(s.confidence * 100);
+    const zone = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
     const extraZones = s.affectedZones.length > 1 ? `+${s.affectedZones.length - 1}` : '';
 
     return `
@@ -230,14 +218,14 @@ export class SituationMonitor {
     // Remove any existing detail popup
     document.querySelector('.sit-mon__detail')?.remove();
 
-    const color   = SEV_COLOR[s.severity];
-    const icon    = TYPE_ICON[s.type] ?? '⚠️';
+    const color = SEV_COLOR[s.severity];
+    const icon = TYPE_ICON[s.type] ?? '⚠️';
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
-    const pct     = Math.round(s.confidence * 100);
+    const pct = Math.round(s.confidence * 100);
 
     const drivers = s.drivers.map(d => `<li>${escapeHtml(d)}</li>`).join('');
     const actions = s.recommendedActions.map((a) => this.renderAction(a)).join('');
-    const zones   = s.affectedZones.map(z => escapeHtml(z)).join(' · ');
+    const zones = s.affectedZones.map(z => escapeHtml(z)).join(' · ');
 
     const sourcesHtml = s.sourceRefs.map(r =>
       `<span class="sit-mon__detail-source">${escapeHtml(r)}</span>`

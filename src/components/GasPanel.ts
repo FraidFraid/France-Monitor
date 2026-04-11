@@ -202,18 +202,40 @@ export class GasPanel extends Panel {
 
   private updateHeader(data: GasNetworkState): void {
     const ringProgress = this.modalEl.querySelector('#gas-ring-progress') as SVGCircleElement;
-    const statusLabel = this.modalEl.querySelector('#gas-status-label') as HTMLElement;
-    const updateTime = this.modalEl.querySelector('#gas-update-time') as HTMLElement;
+    const ringIcon     = this.modalEl.querySelector('#gas-ring-icon') as HTMLElement | null;
+    const statusLabel  = this.modalEl.querySelector('#gas-status-label') as HTMLElement;
+    const updateTime   = this.modalEl.querySelector('#gas-update-time') as HTMLElement;
 
     const signal = data.ecogaz.signal;
-    const color = getEcoGazColor(signal);
-    const label = ECOGAZ_LABELS[signal];
+    const color  = getEcoGazColor(signal);
+    const label  = ECOGAZ_LABELS[signal];
 
-    // Ring fill based on signal severity (green=100%, yellow=75%, orange=50%, red=25%, unknown=0%)
-    const fillMap: Record<EcoGazSignal, number> = { green: 100, yellow: 75, orange: 50, red: 25, unknown: 0 };
+    // ── Composante 1 : Signal EcoGaz (40 pts) ────────────────────────────
+    const signalMap: Record<EcoGazSignal, number> = { green: 0, yellow: 13, orange: 27, red: 40, unknown: 0 };
+    const signalScore = signalMap[signal];
+
+    // ── Composante 2 : Niveau de stockage inversé (40 pts) ───────────────
+    // Faible stockage = tension. Fill à 100% = 0pt, Fill à 0% = 40pt
+    const fill = Math.max(0, Math.min(100, data.nationalStats.averageFillLevel));
+    const storageScore = Math.round((1 - fill / 100) * 40);
+
+    // ── Composante 3 : Import net (20 pts) ───────────────────────────────
+    // Dépendance aux imports = tension sur la souveraineté
+    const netImport = Math.max(0, data.nationalStats.totalImportGWhDay - data.nationalStats.totalExportGWhDay);
+    const importScore = Math.min(20, (netImport / 3000) * 20);
+
+    // ── Score total ───────────────────────────────────────────────────────
+    const gasScore = Math.round(signalScore + storageScore + importScore);
+
     if (ringProgress) {
-      ringProgress.setAttribute('stroke-dasharray', `${fillMap[signal]} 100`);
+      ringProgress.setAttribute('stroke-dasharray', `${gasScore} 100`);
       ringProgress.setAttribute('stroke', color);
+    }
+    if (ringIcon) {
+      ringIcon.textContent = String(gasScore);
+      ringIcon.style.fontSize = '20px';
+      ringIcon.style.fontWeight = '700';
+      ringIcon.style.color = color;
     }
 
     if (statusLabel) {

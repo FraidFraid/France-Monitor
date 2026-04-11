@@ -1,13 +1,17 @@
 // src/plugins/situation-history-proxy.ts
 // Vite dev proxy for /api/situation-history (POST + GET).
 //
-// In dev mode Redis is unavailable, so we return minimal valid stub responses
-// that match the production shapes exactly, preventing client errors:
-//   POST → { stored: false }
-//   GET  → HistoryResponse with all slots marked as missing
+// In dev mode Redis is unavailable, so we use a local JSON file
+// in public/data/history-dev.json to persist snapshots across restarts.
+//   POST → Save/update snapshot in local file
+//   GET  → Return HistoryResponse based on local file data
 
 import type { Plugin } from 'vite';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import type { SituationSnapshot, HistoryResponse } from '../types/index.ts';
 
+const HISTORY_FILE = resolve(process.cwd(), 'public/data/history-dev.json');
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 function currentSlotKey(now = new Date()): string {
@@ -33,10 +37,52 @@ function buildSlotGrid(currentSlot: string, count: number): string[] {
   return slots;
 }
 
-function buildMissingHistoryResponse(days: 7 | 30): object {
+function ensureHistoryFile() {
+  const dir = dirname(HISTORY_FILE);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  if (!existsSync(HISTORY_FILE)) {
+    writeFileSync(HISTORY_FILE, JSON.stringify({ slots: [] }, null, 2));
+  }
+}
+
+function getStoredSnapshots(): SituationSnapshot[] {
+  ensureHistoryFile();
+  try {
+    const data = JSON.parse(readFileSync(HISTORY_FILE, 'utf-8'));
+    return data.slots || [];
+  } catch {
+    return [];
+  }
+}
+
+function storeSnapshot(snapshot: SituationSnapshot) {
+  const snapshots = getStoredSnapshots();
+  // Filter out any existing same-slot entry
+  const filtered = snapshots.filter(s => s.slotKey !== snapshot.slotKey);
+  filtered.push(snapshot);
+  // Keep last 40 days (160 slots) max to avoid huge file
+  const limited = filtered.slice(-160);
+  writeFileSync(HISTORY_FILE, JSON.stringify({ slots: limited }, null, 2));
+}
+
+function buildHistoryResponse(days: 7 | 30): HistoryResponse {
   const count = days * 4;
   const current = currentSlotKey();
   const grid = buildSlotGrid(current, count);
+  const stored = getStoredSnapshots();
+
+  let captured = 0;
+  let missing = 0;
+
+  const slots = grid.map((slotKey) => {
+    const match = stored.find(s => s.slotKey === slotKey);
+    if (match) {
+      captured++;
+      return match;
+    }
+    missing++;
+    return { slotKey, status: 'missing' } as any;
+  });
 
   return {
     requestedRange: {
@@ -45,11 +91,11 @@ function buildMissingHistoryResponse(days: 7 | 30): object {
     },
     slotCount: {
       expected: count,
-      captured: 0,
-      missing:  count,
+      captured,
+      missing,
       degraded: 0,
     },
-    slots: grid.map((slotKey) => ({ slotKey, status: 'missing' })),
+    slots,
   };
 }
 
@@ -61,20 +107,25 @@ export function situationHistoryProxyPlugin(): Plugin {
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
 
-        // POST — stub: no Redis in dev, signal stored: false
+        // POST — persistence in local JSON
         if (req.method === 'POST') {
           let body = '';
           req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
           req.on('end', () => {
-            // Consume body to avoid socket errors; no validation needed in dev
-            void body;
-            res.statusCode = 200;
-            res.end(JSON.stringify({ stored: false }));
+            try {
+              const payload = JSON.parse(body) as SituationSnapshot;
+              storeSnapshot(payload);
+              res.statusCode = 200;
+              res.end(JSON.stringify({ stored: true, local: true }));
+            } catch (e) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Invalid payload' }));
+            }
           });
           return;
         }
 
-        // GET — return a valid HistoryResponse with all slots missing
+        // GET — return true HistoryResponse based on local file
         if (req.method === 'GET') {
           const url = new URL(req.url ?? '', 'http://localhost');
           const daysParam = Number(url.searchParams.get('days'));
@@ -85,7 +136,7 @@ export function situationHistoryProxyPlugin(): Plugin {
           }
           res.setHeader('Cache-Control', 'no-store');
           res.statusCode = 200;
-          res.end(JSON.stringify(buildMissingHistoryResponse(daysParam as 7 | 30)));
+          res.end(JSON.stringify(buildHistoryResponse(daysParam as 7 | 30)));
           return;
         }
 

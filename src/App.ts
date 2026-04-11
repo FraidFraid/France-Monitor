@@ -1262,7 +1262,7 @@ export class App {
   private currentEolienParks: EolienParkSummary[] = [];
   private currentEolienError: string | null = null;
   private readonly eolienTracker = new EolienTracker();
-  private underMapNewsHeightObserver: ResizeObserver | null = null;
+
 
   private currentSncfDisruptions: TransportDisruption[] = [];
   private currentRailNetworkData: RailNetworkData | null = null;
@@ -1929,9 +1929,26 @@ export class App {
     this.commodityStrip = new CommodityStrip(commodityStripContainer);
     this.commodityStrip.mount();
 
-    // Moitié droite : Flux actualités
+    // Moitié droite : Historique + Flux actualités
+    const rightColWrapper = document.createElement('div');
+    rightColWrapper.className = 'under-map-right-group';
+    rightColWrapper.style.display = 'flex';
+    rightColWrapper.style.flexDirection = 'column';
+    rightColWrapper.style.gap = '12px';
+    rightColWrapper.style.height = '100%';
+    underMapGrid.appendChild(rightColWrapper);
+
+    // 1. Historique situation — toujours visible
+    const historyContainer = document.createElement('div');
+    historyContainer.className = 'sit-hist-wrap';
+    rightColWrapper.appendChild(historyContainer);
+
+    // 2. Flux actualités (en-dessous de l'historique)
     const newsFeedContainer = document.createElement('div');
-    underMapGrid.appendChild(newsFeedContainer);
+    newsFeedContainer.style.flex = '1';
+    newsFeedContainer.style.minHeight = '0';
+    rightColWrapper.appendChild(newsFeedContainer);
+    
     this.newsPanel = new UnderMapNewsFeed(newsFeedContainer);
     this.newsPanel.setOnFilterChange((filter) => this.onFilterChange(filter));
     this.newsPanel.setOnItemClick((item) => {
@@ -1941,35 +1958,6 @@ export class App {
       }
       this.routeGovernmentContextForItem(item);
     });
-
-    const syncUnderMapNewsHeight = () => {
-      const desktop = window.matchMedia('(min-width: 1025px)').matches;
-      if (!desktop) {
-        newsFeedContainer.style.minHeight = '';
-        newsFeedContainer.style.height = '';
-        newsFeedContainer.style.maxHeight = '';
-        return;
-      }
-      const marketGroupHeight = Math.round(marketGroupWrapper.getBoundingClientRect().height);
-      if (marketGroupHeight > 0) {
-        const targetHeight = `${marketGroupHeight}px`;
-        newsFeedContainer.style.minHeight = targetHeight;
-        newsFeedContainer.style.height = targetHeight;
-        newsFeedContainer.style.maxHeight = targetHeight;
-      } else {
-        newsFeedContainer.style.minHeight = '';
-        newsFeedContainer.style.height = '';
-        newsFeedContainer.style.maxHeight = '';
-      }
-    };
-
-    syncUnderMapNewsHeight();
-    this.underMapNewsHeightObserver?.disconnect();
-    if (typeof ResizeObserver !== 'undefined') {
-      this.underMapNewsHeightObserver = new ResizeObserver(() => syncUnderMapNewsHeight());
-      this.underMapNewsHeightObserver.observe(marketGroupWrapper);
-    }
-    window.addEventListener('resize', syncUnderMapNewsHeight, { passive: true });
     this.newsPanel.mount();
     const initialUrlState = readUrlState();
     this.newsPanel.setFilter({
@@ -2909,9 +2897,10 @@ export class App {
     });
     this.situationHistoryPanel?.destroy();
     this.situationHistoryPanel = new SituationHistoryPanel(mapEl);
-    this.situationMonitor?.setOnHistoryOpen(() => {
-      this.situationHistoryPanel?.open();
-    });
+    const historyWrap = document.querySelector<HTMLElement>('.sit-hist-wrap');
+    if (historyWrap) {
+      this.situationHistoryPanel.mount(historyWrap);
+    }
     this.mapPopup = new MapPopup(mapEl);
 
     // Initialize map legend

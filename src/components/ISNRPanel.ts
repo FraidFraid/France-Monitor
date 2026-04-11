@@ -199,9 +199,8 @@ export class ISNRPanel extends Panel {
               <circle cx="24" cy="24" r="${radius}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="4"></circle>
               <circle cx="24" cy="24" r="${radius}" fill="none" stroke="${nationalColor}" stroke-width="4" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" style="transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;"></circle>
             </svg>
-            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; font-weight: 700; color: #fff;">
-              <div style="font-size: 18px; line-height: 1;">${nationalEmoji}</div>
-              <div style="font-size: 13px; line-height: 1; margin-top: 2px;">${data.nationalScore}</div>
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 20px;">
+              ${data.nationalScore}
             </div>
           </div>
           <!-- Title & Status -->

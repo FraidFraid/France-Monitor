@@ -1,9 +1,10 @@
 /**
- * SituationHistoryPanel.ts — Multi-day history of France's national situation.
+ * SituationHistoryPanel.ts — Historique multi-jours de la situation nationale.
  *
- * Floating panel, opened on demand. Renders a bar timeline (7j or 30j).
- * Each bar = one 6h slot. Missing slots shown as dashed markers.
- * Hover = tooltip. Click bar = inline detail.
+ * Widget inline toujours visible dans la zone sous-carte (under-map-grid),
+ * positionné au-dessus des flux d'actualités.
+ * Affiche une timeline en barres (7j ou 30j). Chaque barre = un créneau 6h.
+ * Survol = tooltip. Clic = détail inline.
  */
 
 import type {
@@ -52,20 +53,17 @@ function escapeHtml(s: string): string {
 }
 
 function slotKeyToLabel(slotKey: string): string {
-  // "2026-04-10T12:00" → "10 avr. 12h"
   const d = new Date(slotKey + ':00.000Z');
   const months = ['jan.','fév.','mar.','avr.','mai','juin','juil.','août','sep.','oct.','nov.','déc.'];
   return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2,'0')}h`;
 }
 
 function dayLabelFromSlotKey(slotKey: string): string {
-  // "2026-04-10T00:00" → "10/04"
   const [datePart] = slotKey.split('T');
   const [, m, d] = datePart.split('-');
   return `${d}/${m}`;
 }
 
-/** Group contiguous slots by UTC day for rendering. */
 function groupByDay(slots: HistorySlot[]): HistorySlot[][] {
   const groups: HistorySlot[][] = [];
   let current: HistorySlot[] = [];
@@ -84,7 +82,6 @@ function groupByDay(slots: HistorySlot[]): HistorySlot[][] {
   return groups;
 }
 
-/** Aggregate a day group for 30d view. */
 function aggregateDay(group: HistorySlot[]): {
   slotKey: string;
   avgScore: number;
@@ -119,12 +116,12 @@ export class SituationHistoryPanel {
   private currentDays: 7 | 30 = 7;
   private selectedSlotKey: string | null = null;
 
-  constructor(container: HTMLElement) {
+  constructor(_container: HTMLElement) {
+    // Panel element — appended to body so it can be moved via mount()
     this.el = document.createElement('div');
-    this.el.className = 'sit-hist';
-    container.appendChild(this.el);
+    this.el.className = 'sit-hist under-map-card';
 
-    // Global tooltip element
+    // Global tooltip
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.className = 'sit-hist__tooltip';
     document.body.appendChild(this.tooltipEl);
@@ -132,20 +129,19 @@ export class SituationHistoryPanel {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  open(): void {
-    this.el.classList.add('is-open');
+  /** Mount the widget into a given container element and start loading. */
+  mount(container: HTMLElement): void {
+    container.appendChild(this.el);
     if (!this.historyResult) {
       this.load(false);
+    } else {
+      this.render();
     }
   }
 
-  close(): void {
-    this.el.classList.remove('is-open');
-    this.hideTooltip();
-  }
-
-  isOpen(): boolean {
-    return this.el.classList.contains('is-open');
+  /** Refresh data (force = bypass cache). */
+  refresh(force = false): void {
+    this.load(force);
   }
 
   destroy(): void {
@@ -156,7 +152,7 @@ export class SituationHistoryPanel {
   // ── Internal ────────────────────────────────────────────────────────────────
 
   private async load(force: boolean): Promise<void> {
-    this.renderShell(); // show loading state immediately
+    this.renderShell();
     try {
       this.historyResult = await getHistory(this.currentDays, force);
     } catch {
@@ -169,8 +165,8 @@ export class SituationHistoryPanel {
   private renderShell(): void {
     this.el.innerHTML = `
       ${this.renderHeader()}
-      <div style="padding: 12px 0; text-align: center; color: var(--text-muted, #94a3b8); font-size: 10px;">
-        Chargement…
+      <div class="sit-hist__body">
+        <div class="sit-hist__loading">Chargement…</div>
       </div>
     `;
     this.attachHeaderListeners();
@@ -180,9 +176,14 @@ export class SituationHistoryPanel {
     if (!this.historyResult) { this.renderShell(); return; }
     this.el.innerHTML = `
       ${this.renderHeader()}
-      ${this.renderTimeline()}
-      ${this.renderDayLabels()}
-      ${this.selectedSlotKey ? this.renderDetail() : ''}
+      <div class="sit-hist__body">
+        ${this.renderLegend()}
+        <div class="sit-hist__timeline-wrap">
+          ${this.renderTimeline()}
+          ${this.renderDayLabels()}
+        </div>
+        ${this.selectedSlotKey ? this.renderDetail() : ''}
+      </div>
       ${this.renderFooter()}
     `;
     this.attachHeaderListeners();
@@ -190,13 +191,42 @@ export class SituationHistoryPanel {
   }
 
   private renderHeader(): string {
+    const subtitle = this.currentDays === 7
+      ? '7j · créneaux 6h'
+      : '30j · agrégation journalière';
     return `
-      <div class="sit-hist__header">
-        <span class="sit-hist__title">Historique situation</span>
-        <button class="sit-hist__toggle-btn ${this.currentDays === 7 ? 'is-active' : ''}" data-days="7" type="button">7j</button>
-        <button class="sit-hist__toggle-btn ${this.currentDays === 30 ? 'is-active' : ''}" data-days="30" type="button">30j</button>
-        <button class="sit-hist__refresh-btn" type="button" title="Actualiser">↺</button>
-        <button class="sit-hist__close-btn" type="button" title="Fermer">✕</button>
+      <div class="under-map-card__header">
+        <div class="under-map-card__header-copy">
+          <div class="under-map-card__title">Historique situation</div>
+        </div>
+        <div class="sit-hist__controls-wrap">
+          <span class="sit-hist__meta-label">${subtitle}</span>
+          <div class="sit-hist__controls">
+            <button class="sit-hist__toggle-btn ${this.currentDays === 7 ? 'is-active' : ''}" data-days="7" type="button">7j</button>
+            <button class="sit-hist__toggle-btn ${this.currentDays === 30 ? 'is-active' : ''}" data-days="30" type="button">30j</button>
+            <button class="sit-hist__refresh-btn" type="button">Refresh</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderLegend(): string {
+    const items: [string, string][] = [
+      ['#ef4444', 'Critique'],
+      ['#f97316', 'Élevé'],
+      ['#eab308', 'Moyen'],
+      ['#3b82f6', 'Veille'],
+      ['rgba(255,255,255,0.18)', 'Calme'],
+    ];
+    return `
+      <div class="sit-hist__legend">
+        ${items.map(([color, label]) => `
+          <div class="sit-hist__legend-item">
+            <div class="sit-hist__legend-dot" style="background:${color};"></div>
+            <span>${label}</span>
+          </div>
+        `).join('')}
       </div>
     `;
   }
@@ -204,12 +234,9 @@ export class SituationHistoryPanel {
   private renderTimeline(): string {
     if (!this.historyResult) return '';
     const slots = this.historyResult.data.slots;
-
-    if (this.currentDays === 7) {
-      return this.renderTimeline7j(slots);
-    } else {
-      return this.renderTimeline30j(slots);
-    }
+    return this.currentDays === 7
+      ? this.renderTimeline7j(slots)
+      : this.renderTimeline30j(slots);
   }
 
   private renderTimeline7j(slots: HistorySlot[]): string {
@@ -220,47 +247,46 @@ export class SituationHistoryPanel {
         const globalIdx = slots.indexOf(slot);
         return this.renderBar(slot, globalIdx, slotIdx === group.length - 1 && gi === lastGroupIdx);
       }).join('');
-      return `<div class="sit-hist__day-group">${bars}</div>`;
+      // On donne flex:1 à chaque groupe (chaque jour) pour qu'ils soient répartis équitablement
+      return `<div class="sit-hist__day-group" style="flex:1; display:flex; align-items:flex-end; gap:1px;">${bars}</div>`;
     }).join('');
-    return `<div class="sit-hist__timeline">${dayGroups}</div>`;
+    return `<div class="sit-hist__timeline" style="width:100%; display:flex; gap:6px;">${dayGroups}</div>`;
   }
 
   private renderTimeline30j(slots: HistorySlot[]): string {
     const groups = groupByDay(slots);
+    // On veut que ça occupe une largeur décente. On utilise flex:1 ou une largeur fixe correcte.
     const bars = groups.map((group, gi) => {
       const agg = aggregateDay(group);
       if (agg.captured === 0) {
-        return `<div class="sit-hist__missing" data-slot="${escapeHtml(agg.slotKey)}" data-idx="${gi}"><div class="sit-hist__missing-dot"></div></div>`;
+        return `<div class="sit-hist__missing" data-slot="${escapeHtml(agg.slotKey)}" data-idx="${gi}" style="flex:1;"><div class="sit-hist__missing-dot"></div></div>`;
       }
-      const barH    = Math.max(3, Math.round((agg.avgScore / 100) * 56));
-      const color   = agg.maxSeverity ? SEV_COLOR[agg.maxSeverity] : 'rgba(255,255,255,0.15)';
-      const partial = agg.captured < agg.total;
-      const isSel   = this.selectedSlotKey === agg.slotKey;
+      const barH  = Math.max(3, Math.ceil((agg.avgScore / 100) * 76));
+      const color = agg.maxSeverity ? SEV_COLOR[agg.maxSeverity] : 'rgba(255,255,255,0.25)';
+      const isSel = this.selectedSlotKey === agg.slotKey;
+      const deg   = agg.captured < agg.total || agg.hasDegraded ? 'is-degraded' : '';
       return `
-        <div class="sit-hist__bar ${partial ? 'is-degraded' : ''} ${agg.hasDegraded ? 'is-degraded' : ''}"
-          style="height:${barH}px;background:${color};${isSel ? `outline:1px solid ${color};` : ''}"
+        <div class="sit-hist__bar ${deg}"
+          style="height:${barH}px;background:${color};color:${color};flex:1;${isSel ? `outline:1px solid ${color};outline-offset:1px;` : ''}"
           data-slot="${escapeHtml(agg.slotKey)}"
-          data-idx="${gi}"
-          data-score="${agg.avgScore}"
-          data-sev="${agg.maxSeverity ?? ''}"
-          data-partial="${agg.captured}/${agg.total}">
+          data-idx="${gi}">
         </div>`;
     }).join('');
-    return `<div class="sit-hist__timeline" style="gap:2px;">${bars}</div>`;
+    return `<div class="sit-hist__timeline" style="gap:4px;display:flex;">${bars}</div>`;
   }
 
   private renderBar(slot: HistorySlot, idx: number, isCurrent: boolean): string {
     if ('status' in slot) {
-      return `<div class="sit-hist__missing" data-slot="${escapeHtml(slot.slotKey)}" data-idx="${idx}"><div class="sit-hist__missing-dot"></div></div>`;
+      return `<div class="sit-hist__missing" data-slot="${escapeHtml(slot.slotKey)}" data-idx="${idx}" style="flex:1;"><div class="sit-hist__missing-dot"></div></div>`;
     }
-    const snap   = slot as SituationSnapshot;
-    const barH   = Math.max(3, Math.round((snap.score / 100) * 56));
-    const color  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'rgba(255,255,255,0.2)';
-    const isSel  = this.selectedSlotKey === snap.slotKey;
-    const isDeg  = snap.dataStatus.overall === 'degraded';
+    const snap  = slot as SituationSnapshot;
+    const barH  = Math.max(3, Math.ceil((snap.score / 100) * 76));
+    const color = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'rgba(255,255,255,0.25)';
+    const isSel = this.selectedSlotKey === snap.slotKey;
+    const isDeg = snap.dataStatus.overall === 'degraded';
     return `
       <div class="sit-hist__bar ${isCurrent ? 'is-current' : ''} ${isDeg ? 'is-degraded' : ''}"
-        style="height:${barH}px;background:${color};color:${color};${isSel ? `outline:1px solid ${color};` : ''}"
+        style="height:${barH}px;background:${color};color:${color};flex:1;${isSel ? `outline:1px solid ${color};outline-offset:1px;` : ''}"
         data-slot="${escapeHtml(snap.slotKey)}"
         data-idx="${idx}">
       </div>`;
@@ -268,16 +294,16 @@ export class SituationHistoryPanel {
 
   private renderDayLabels(): string {
     if (!this.historyResult) return '';
-    const slots = this.historyResult.data.slots;
+    const slots  = this.historyResult.data.slots;
     const groups = groupByDay(slots);
-
-    // Show label for every Nth day to avoid crowding
-    const showEvery = this.currentDays === 7 ? 1 : 5;
     const labels = groups.map((group, i) => {
-      const text = i % showEvery === 0 ? dayLabelFromSlotKey(group[0].slotKey) : '';
-      return `<div class="sit-hist__day-label">${escapeHtml(text)}</div>`;
+      let text = '';
+      if (this.currentDays === 7) text = dayLabelFromSlotKey(group[0].slotKey);
+      else if (i % 5 === 0) text = dayLabelFromSlotKey(group[0].slotKey);
+      
+      return `<div class="sit-hist__day-label" style="flex:1;">${escapeHtml(text)}</div>`;
     }).join('');
-    return `<div class="sit-hist__day-labels">${labels}</div>`;
+    return `<div class="sit-hist__day-labels" style="display:flex;">${labels}</div>`;
   }
 
   private renderDetail(): string {
@@ -291,10 +317,10 @@ export class SituationHistoryPanel {
     }
 
     const items = snap.situations.map(s => {
-      const color   = SEV_COLOR[s.severity];
-      const icon    = TYPE_ICON[s.type] ?? '⚠️';
-      const sevLbl  = SEV_LABEL[s.severity];
-      const zones   = s.affectedZones.join(', ');
+      const color  = SEV_COLOR[s.severity];
+      const icon   = TYPE_ICON[s.type] ?? '⚠️';
+      const sevLbl = SEV_LABEL[s.severity];
+      const zones  = s.affectedZones.join(', ');
       return `
         <div class="sit-hist__detail-item">
           <span class="sit-hist__detail-sev" style="background:${color}22;color:${color};border:1px solid ${color}44;">${escapeHtml(sevLbl)}</span>
@@ -304,23 +330,21 @@ export class SituationHistoryPanel {
 
     return `
       <div class="sit-hist__detail">
-        <div class="sit-hist__detail-title">${escapeHtml(slotKeyToLabel(snap.slotKey))} — CII ${snap.score}/100</div>
+        <div class="sit-hist__detail-title">${escapeHtml(slotKeyToLabel(snap.slotKey))} · CII ${snap.score}/100</div>
         ${items}
       </div>`;
   }
 
   private renderFooter(): string {
     if (!this.historyResult) return '';
-    const r = this.historyResult;
-    const age  = Math.round((Date.now() - new Date(r.fetchedAt).getTime()) / 60_000);
-    const src  = r.source === 'fresh' ? `Serveur · il y a ${age} min`
-               : r.source === 'cached' ? `Cache local · ${age} min`
-               : `Réseau indisponible — données locales`;
-
+    const r   = this.historyResult;
+    const age = Math.round((Date.now() - new Date(r.fetchedAt).getTime()) / 60_000);
+    const src = r.source === 'fresh'  ? `Serveur · il y a ${age} min`
+              : r.source === 'cached' ? `Cache local · ${age} min`
+              : `Réseau indisponible — données locales`;
     const warn = r.isDegraded
       ? `<span class="sit-hist__footer-warn">⚠ ${r.data.slotCount.missing} slots non capturés</span>`
       : '';
-
     return `
       <div class="sit-hist__footer">
         <span>${escapeHtml(src)}</span>
@@ -331,11 +355,10 @@ export class SituationHistoryPanel {
   // ── Event listeners ─────────────────────────────────────────────────────────
 
   private attachHeaderListeners(): void {
-    this.el.querySelector('.sit-hist__close-btn')?.addEventListener('click', () => this.close());
     this.el.querySelector('.sit-hist__refresh-btn')?.addEventListener('click', () => this.load(true));
     this.el.querySelectorAll<HTMLElement>('[data-days]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const days = Number(btn.dataset.days) as 7 | 30;
+        const days = Number(btn.dataset['days']) as 7 | 30;
         if (days === this.currentDays) return;
         this.currentDays = days;
         this.historyResult = null;
@@ -350,7 +373,7 @@ export class SituationHistoryPanel {
       bar.addEventListener('mouseenter', e => this.showTooltip(e, bar));
       bar.addEventListener('mouseleave', () => this.hideTooltip());
       bar.addEventListener('click', () => {
-        const slotKey = bar.dataset.slot ?? null;
+        const slotKey = bar.dataset['slot'] ?? null;
         this.selectedSlotKey = this.selectedSlotKey === slotKey ? null : slotKey;
         this.render();
       });
@@ -358,7 +381,7 @@ export class SituationHistoryPanel {
   }
 
   private showTooltip(e: MouseEvent, bar: HTMLElement): void {
-    const slotKey = bar.dataset.slot;
+    const slotKey = bar.dataset['slot'];
     if (!slotKey || !this.historyResult) return;
 
     const slot = this.historyResult.data.slots.find(s => s.slotKey === slotKey);
@@ -368,13 +391,15 @@ export class SituationHistoryPanel {
     if ('status' in slot) {
       content = `<div class="sit-hist__tooltip-date">${escapeHtml(slotKeyToLabel(slotKey))}</div><div style="color:var(--text-muted)">Non capturé</div>`;
     } else {
-      const snap     = slot as SituationSnapshot;
-      const sevLbl   = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : '—';
-      const sevColor = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'inherit';
+      const snap      = slot as SituationSnapshot;
+      const sevLbl    = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : '—';
+      const sevColor  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'inherit';
       const situations = snap.situations.slice(0, 2).map(s =>
         `<div class="sit-hist__tooltip-situ">${TYPE_ICON[s.type] ?? '⚠️'} ${escapeHtml(s.title)}</div>`
       ).join('');
-      const more = snap.situations.length > 2 ? `<div style="color:var(--text-muted);margin-top:2px;">+${snap.situations.length - 2} autres</div>` : '';
+      const more = snap.situations.length > 2
+        ? `<div style="color:var(--text-muted);margin-top:2px;">+${snap.situations.length - 2} autres</div>`
+        : '';
       content = `
         <div class="sit-hist__tooltip-date">${escapeHtml(slotKeyToLabel(slotKey))}</div>
         <div class="sit-hist__tooltip-score">CII : ${snap.score}/100 · <span style="color:${sevColor}">${escapeHtml(sevLbl)}</span></div>

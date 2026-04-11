@@ -178,26 +178,48 @@ export class EnergyPanel extends Panel {
   }
 
   private updateHeader(data: EcowattResponse): void {
-    const valMap: Record<EcowattSignal, number> = { red: 3, orange: 2, green: 1 };
+    const nat = data.national;
+    const totalMW = nat.total > 0 ? nat.total : 1;
+
+    // ── Composante 1 : Charge du réseau (50 pts) ──────────────────────────
+    const chargeScore = Math.min(50, (totalMW / 85_000) * 50);
+
+    // ── Composante 2 : Régions en tension (30 pts) ────────────────────────
     const allSigs = Object.values(data.signals) as EcowattSignal[];
-    const worstSig: EcowattSignal = allSigs.reduce(
-      (worst, s) => valMap[s] > valMap[worst] ? s : worst,
-      'green' as EcowattSignal
-    );
+    const nRegions = allSigs.length || 1;
+    const nOrange = allSigs.filter(s => s === 'orange').length;
+    const nRed    = allSigs.filter(s => s === 'red').length;
+    const tensionScore = Math.min(30, (nOrange * 15 + nRed * 30) / nRegions);
+
+    // ── Composante 3 : Dépendance aux imports nets (20 pts) ───────────────
+    const netImportMW = data.interconnections.reduce((sum, ic) => sum + Math.max(0, ic.flowMW), 0);
+    const importScore = Math.min(20, (netImportMW / 10_000) * 20);
+
+    // ── Score total & couleur ─────────────────────────────────────────────
+    const gridScore = Math.round(chargeScore + tensionScore + importScore);
+    const valMap: Record<EcowattSignal, number> = { red: 3, orange: 2, green: 1 };
+    const worstSig: EcowattSignal = allSigs.length > 0
+      ? allSigs.reduce((worst, s) => valMap[s] > valMap[worst] ? s : worst, 'green' as EcowattSignal)
+      : 'green';
 
     const ring = this.modalEl.querySelector('#elec-ring-progress') as SVGCircleElement | null;
     const icon = this.modalEl.querySelector('#elec-ring-icon') as HTMLElement | null;
-    const lbl = this.modalEl.querySelector('#elec-signal-label') as HTMLElement | null;
+    const lbl  = this.modalEl.querySelector('#elec-signal-label') as HTMLElement | null;
     const time = this.modalEl.querySelector('#elec-update-time') as HTMLElement | null;
+    const badge = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
 
     if (ring) {
       ring.setAttribute('stroke', SIG_COLOR[worstSig]);
-      ring.setAttribute('stroke-dasharray', `${SIG_RING[worstSig]} 100`);
+      ring.setAttribute('stroke-dasharray', `${gridScore} 100`);
     }
-    if (icon) icon.textContent = SIG_ICON[worstSig];
-    if (lbl) { lbl.textContent = SIG_LABEL[worstSig]; lbl.style.color = SIG_COLOR[worstSig]; }
-    if (time) time.textContent = `MàJ : ${data.national.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-    const badge = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
+    if (icon) {
+      icon.textContent = String(gridScore);
+      icon.style.fontSize = '20px';
+      icon.style.fontWeight = '700';
+      icon.style.color = SIG_COLOR[worstSig];
+    }
+    if (lbl)   { lbl.textContent = SIG_LABEL[worstSig]; lbl.style.color = SIG_COLOR[worstSig]; }
+    if (time)  time.textContent = `MàJ : ${nat.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
     if (badge) badge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
   }
 

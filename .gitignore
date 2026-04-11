@@ -38,3 +38,4 @@ scripts/output/france-waterways-major.fgb
 # Caches runtime générés (oscour, etc.) — ne pas versionner
 .cache/
 .worktrees/
+public/data/history-dev.json
