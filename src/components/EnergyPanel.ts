@@ -23,10 +23,6 @@ const SIG_LABEL: Record<EcowattSignal, string> = {
   orange: 'Système électrique tendu',
   red: 'Coupures ciblées possibles',
 };
-const SIG_ICON: Record<EcowattSignal, string> = {
-  green: '⚡', orange: '⚡', red: '⚡',
-};
-const SIG_RING: Record<EcowattSignal, number> = { green: 100, orange: 55, red: 25 };
 
 // ─── Palette mix énergétique ───
 const MIX_COLORS = {

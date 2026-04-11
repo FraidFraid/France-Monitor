@@ -175,7 +175,6 @@ export class ISNRPanel extends Panel {
     if (!this.contentEl) return;
     this.modalEl.style.display = 'flex';
 
-    const nationalEmoji = scoreToEmoji(data.nationalScore);
     const nationalColor = scoreToColor(data.nationalScore);
 
     let nationalStatusText = '';
