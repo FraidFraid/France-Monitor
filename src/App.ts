@@ -13,7 +13,6 @@ import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
 import { FiresPanel } from './components/FiresPanel.ts';
-import { ElusPanel } from './components/ElusPanel.ts';
 import { TrafficPanel } from './components/TrafficPanel.ts';
 import { FinancePanel } from './components/FinancePanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
@@ -105,7 +104,6 @@ import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
-import { GOUVERNEMENT } from './config/government.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 
@@ -335,7 +333,6 @@ const DEFAULT_LAYERS: MapLayers = {
   oilNetwork: false,
   nuclearFleet: false,
   dayNight: false,
-  elus: false,
 };
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
@@ -1172,11 +1169,11 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'standalone',
     label: '🌙 Jour / Nuit',
   },
-  // ─── Élus & Représentants ───
+  // ─── Terminateur jour/nuit ───
   {
-    id: 'elus',
+    id: 'dayNight',
     role: 'standalone',
-    label: '🏛️ Élus & Représentants',
+    label: '🌙 Jour / Nuit',
   },
 ];
 
@@ -1196,7 +1193,6 @@ export class App {
   private eolienPanel: EolienPanel | null = null;
   private transportPanel: TransportPanel | null = null;
   private firesPanel: FiresPanel | null = null;
-  private elusPanel: ElusPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   private trafficPanel: TrafficPanel | null = null;
@@ -1698,20 +1694,7 @@ export class App {
       }
     });
 
-    const clock = header.querySelector('#clock');
-    const president = GOUVERNEMENT.find(m => m.isPresident);
-    let presidentToggle: HTMLButtonElement | null = null;
-    if (president && clock) {
-      presidentToggle = document.createElement('button');
-      presidentToggle.type = 'button';
-      presidentToggle.id = 'header-president-toggle';
-      presidentToggle.className = 'header-person-toggle';
-      presidentToggle.title = `Ouvrir le panneau gouvernement (${president.titre})`;
-      presidentToggle.setAttribute('aria-label', `Ouvrir le panneau gouvernement pour ${president.prenom} ${president.nom}`);
-      presidentToggle.setAttribute('aria-expanded', 'false');
-      presidentToggle.textContent = `PR · ${president.prenom[0]}. ${president.nom}`;
-      clock.before(presidentToggle);
-    }
+    // GOUVERNEMENT and ElusPanel disabled for Vercel limits
 
     this.renderRegionPresets(document.getElementById('region-presets')!);
     const headerDataSources = document.getElementById('header-data-sources');
@@ -1866,10 +1849,7 @@ export class App {
     const syncRightSidebarTriggers = (isOpen: boolean): void => {
       mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
       mobileToggle.textContent = isOpen ? '✕' : '☰';
-      if (presidentToggle) {
-        presidentToggle.setAttribute('aria-expanded', String(isOpen));
-        presidentToggle.title = isOpen ? `Fermer le panneau gouvernement (${president?.titre ?? 'Président de la République'})` : `Ouvrir le panneau gouvernement (${president?.titre ?? 'Président de la République'})`;
-      }
+      // presidentToggle aria-expanded disabled
     };
 
     this.rightSidebar.setOnToggle(syncRightSidebarTriggers);
@@ -1878,9 +1858,7 @@ export class App {
     mobileToggle.addEventListener('click', () => {
       this.rightSidebar?.toggle();
     });
-    presidentToggle?.addEventListener('click', () => {
-      this.rightSidebar?.toggle();
-    });
+    // presidentToggle listener removed
 
     // ── Mount sidebar panels ──
     const sidebarEl = document.getElementById('sidebar-content')!;
@@ -2069,7 +2047,6 @@ export class App {
           this.energyPanel?.hide();
           this.transportPanel?.hide();
           this.firesPanel?.hide();
-          this.elusPanel?.hide();
           this.trafficPanel?.hide();
           this.isnrPanel?.hide();
           this.franceIntelPanel?.hide();
@@ -2095,7 +2072,6 @@ export class App {
         this.energyPanel?.hide();
         this.transportPanel?.hide();
         this.firesPanel?.hide();
-        this.elusPanel?.hide();
         this.trafficPanel?.hide();
         this.isnrPanel?.hide();
         this.franceIntelPanel?.hide();
@@ -2178,8 +2154,7 @@ export class App {
       this.maritimePanel.show();
     }
 
-    this.elusPanel = new ElusPanel(floatContainer);
-    this.elusPanel.mount();
+    // ElusPanel disabled
 
     // Cyber Panel (Cybersecurity Dashboard)
     this.cyberPanel = new CyberPanel(floatContainer);
@@ -2409,7 +2384,6 @@ export class App {
     this.eolienPanel?.hide();
     this.transportPanel?.hide();
     this.firesPanel?.hide();
-    this.elusPanel?.hide();
     this.trafficPanel?.hide();
     this.isnrPanel?.hide();
     this.nationalHealthPanel?.hide();
@@ -2749,11 +2723,6 @@ export class App {
       }
     } else if (key === 'elus') {
       void this.mapContainer?.setMairesPolitiqueVisible(false);
-      if (enabled) {
-        this.elusPanel?.showPlaceholder();
-      } else {
-        this.elusPanel?.hide();
-      }
     } else if (key === 'outages') {
       // Parent master: si désactivé, ferme le panneau
       if (!this.activeLayers.outages) {
@@ -2834,7 +2803,6 @@ export class App {
 
     // Raw map click → élus panel (clic direct sur la carte, hors articles/clusters)
     this.mapContainer.setOnRawMapClick((_lat, _lon) => {
-      if (this.activeLayers.elus) this.elusPanel?.showPlaceholder();
     });
 
     this.mapContainer.setOnSatelliteView((request) => {
@@ -5143,7 +5111,6 @@ export class App {
 
   private routeGovernmentContext(categories: EventCategory[]): void {
     this.rightSidebar?.setGovernmentContext(categories);
-    this.elusPanel?.setGovernmentContext(categories);
   }
 
   private routeGovernmentContextForItem(item: NewsItem | null | undefined): void {
