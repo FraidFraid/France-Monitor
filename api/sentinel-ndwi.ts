@@ -1,3 +1,54 @@
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+type NdwiPolygon = {
+  type: 'Polygon';
+  coordinates: number[][][];
+};
+
+type DateRangeInput = {
+  from: string;
+  to: string;
+};
+
+type NdwiRequestBody = {
+  aoi?: NdwiPolygon;
+  date?: string | DateRangeInput;
+  maxCloudCoverage?: number;
+};
+
+type CdseTokenCache = {
+  token: string;
+  expiresAt: number;
+};
+
+type NdwiCacheEntry = {
+  expiresAt: number;
+  value: JsonValue;
+};
+
+type MinimalRequest = {
+  method?: string;
+  on(event: 'data', listener: (chunk: string | Buffer) => void): void;
+  on(event: 'end', listener: () => void): void;
+  on(event: 'error', listener: (error: unknown) => void): void;
+};
+
+type MinimalResponse = {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(body?: string): void;
+};
+
+type StacFeature = {
+  id?: string;
+  bbox?: number[];
+  properties?: {
+    datetime?: string;
+    'eo:cloud_cover'?: number | string | null;
+  };
+};
+
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1/search';
 const CDSE_PROCESS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/process';
 const CDSE_TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
@@ -22,10 +73,10 @@ function evaluatePixel(sample) {
   return [...viz.process(val), sample.dataMask];
 }`;
 
-const ndwiResponseCache = new Map();
-let cdseTokenCache = null;
+const ndwiResponseCache = new Map<string, NdwiCacheEntry>();
+let cdseTokenCache: CdseTokenCache | null = null;
 
-function explainNdwiError(error) {
+function explainNdwiError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? 'unknown_error');
   if (message === 'missing_cdse_credentials') {
     return 'CDSE credentials manquants: definir CDSE_ACCESS_TOKEN ou CDSE_CLIENT_ID/CDSE_CLIENT_SECRET';
@@ -51,7 +102,7 @@ function explainNdwiError(error) {
   return `NDWI indisponible pour cette crue (${message})`;
 }
 
-function buildCacheKey(aoi, dateInput, maxCloudCoverage) {
+function buildCacheKey(aoi: NdwiPolygon, dateInput: string | DateRangeInput | undefined, maxCloudCoverage: number) {
   return JSON.stringify({
     aoi,
     date: dateInput,
@@ -59,19 +110,19 @@ function buildCacheKey(aoi, dateInput, maxCloudCoverage) {
   });
 }
 
-function json(res, status, payload) {
+function json(res: MinimalResponse, status: number, payload: JsonValue) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
 }
 
-function readJsonBody(req) {
+function readJsonBody(req: MinimalRequest): Promise<NdwiRequestBody> {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk) => { body += chunk.toString(); });
+    req.on('data', (chunk: string | Buffer) => { body += chunk.toString(); });
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {});
+        resolve((body ? JSON.parse(body) : {}) as NdwiRequestBody);
       } catch (error) {
         reject(error);
       }
@@ -80,19 +131,22 @@ function readJsonBody(req) {
   });
 }
 
-function isIsoDate(value) {
+function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
 
-function isPolygon(value) {
-  return value
+function isPolygon(value: unknown): value is NdwiPolygon {
+  return !!value
+    && typeof value === 'object'
+    && 'type' in value
     && value.type === 'Polygon'
+    && 'coordinates' in value
     && Array.isArray(value.coordinates)
     && Array.isArray(value.coordinates[0])
     && value.coordinates[0].length >= 4;
 }
 
-function polygonToBbox(polygon) {
+function polygonToBbox(polygon: NdwiPolygon) {
   const ring = polygon.coordinates[0];
   let minLng = Infinity;
   let minLat = Infinity;
@@ -111,7 +165,7 @@ function polygonToBbox(polygon) {
   return [minLng, minLat, maxLng, maxLat];
 }
 
-function computeOutputSize(aoi, maxDimension = 1280) {
+function computeOutputSize(aoi: NdwiPolygon, maxDimension = 1280) {
   const [minLng, minLat, maxLng, maxLat] = polygonToBbox(aoi);
   const widthDeg = Math.max(0.0001, maxLng - minLng);
   const heightDeg = Math.max(0.0001, maxLat - minLat);
@@ -130,7 +184,7 @@ function computeOutputSize(aoi, maxDimension = 1280) {
   };
 }
 
-function toProcessingRange(dateString, paddingDays = 2) {
+function toProcessingRange(dateString: string, paddingDays = 2) {
   const value = new Date(dateString);
   const from = new Date(value);
   const to = new Date(value);
@@ -144,7 +198,7 @@ function toProcessingRange(dateString, paddingDays = 2) {
   };
 }
 
-function normalizeDateInput(input) {
+function normalizeDateInput(input: string | DateRangeInput | undefined) {
   if (typeof input === 'string' && isIsoDate(input)) {
     const target = new Date(input);
     const from = new Date(target);
@@ -213,7 +267,7 @@ async function getCdseAccessToken() {
     throw new Error(`cdse_token_http_${response.status}`);
   }
 
-  const payload = await response.json();
+  const payload = await response.json() as { access_token?: string; expires_in?: number };
   if (!payload?.access_token) {
     throw new Error('missing_cdse_access_token');
   }
@@ -227,7 +281,7 @@ async function getCdseAccessToken() {
   return payload.access_token;
 }
 
-async function fetchClosestScene(aoi, dateInput, maxCloudCoverage) {
+async function fetchClosestScene(aoi: NdwiPolygon, dateInput: string | DateRangeInput | undefined, maxCloudCoverage: number) {
   const { searchFrom, searchTo, targetTime } = normalizeDateInput(dateInput);
 
   const response = await fetch(STAC_BASE, {
@@ -251,15 +305,15 @@ async function fetchClosestScene(aoi, dateInput, maxCloudCoverage) {
     throw new Error(`stac_http_${response.status}`);
   }
 
-  const payload = await response.json();
+  const payload = await response.json() as { features?: StacFeature[] };
   const features = Array.isArray(payload?.features) ? payload.features : [];
 
   const filtered = features
-    .filter((feature) => {
+    .filter((feature: StacFeature) => {
       const cloudCover = feature?.properties?.['eo:cloud_cover'];
       return cloudCover == null || Number(cloudCover) <= maxCloudCoverage;
     })
-    .sort((left, right) => {
+    .sort((left: StacFeature, right: StacFeature) => {
       const leftTime = Date.parse(left?.properties?.datetime ?? '') || 0;
       const rightTime = Date.parse(right?.properties?.datetime ?? '') || 0;
       const leftDistance = Math.abs(leftTime - targetTime);
@@ -283,7 +337,7 @@ async function fetchClosestScene(aoi, dateInput, maxCloudCoverage) {
   };
 }
 
-async function fetchNdwiImage(aoi, acquisitionDate, maxCloudCoverage, accessToken) {
+async function fetchNdwiImage(aoi: NdwiPolygon, acquisitionDate: string, maxCloudCoverage: number, accessToken: string) {
   const dayRange = toProcessingRange(acquisitionDate, 2);
   const outputSize = computeOutputSize(aoi);
   const payload = {
@@ -340,7 +394,7 @@ async function fetchNdwiImage(aoi, acquisitionDate, maxCloudCoverage, accessToke
   return Buffer.from(arrayBuffer).toString('base64');
 }
 
-export default async function handler(req, res) {
+export default async function handler(req: MinimalRequest, res: MinimalResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -355,10 +409,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = await readJsonBody(req);
-    const aoi = body?.aoi;
-    const date = body?.date;
-    const maxCloudCoverage = Number.isFinite(body?.maxCloudCoverage)
+    const body: NdwiRequestBody = await readJsonBody(req);
+    const aoi = body.aoi;
+    const date = body.date;
+    const maxCloudCoverage = Number.isFinite(body.maxCloudCoverage)
       ? Math.max(0, Math.min(100, Number(body.maxCloudCoverage)))
       : 30;
 
