@@ -10,8 +10,8 @@
 //   Builds the canonical UTC slot grid, fetches all slots via MGET,
 //   returns missing slots explicitly as { slotKey, status: "missing" }.
 
-import { redisSetNX, redisMGet, redisRPush, redisLTrim } from '../utils/redis.js';
-import { currentSlotKey, buildSlotGrid } from '../utils/slots.js';
+import { redisSetNX, redisMGet, redisRPush, redisLTrim } from './utils/redis.js';
+import { currentSlotKey, buildSlotGrid } from './utils/slots.js';
 
 const SNAP_TTL    = 31 * 24 * 60 * 60; // 31 days in seconds
 const INDEX_KEY   = 'france:history:index';
