@@ -1,23 +1,28 @@
 // api/utils/redis.js
-// Upstash Redis REST helper — works in Edge (fetch) and Node runtimes.
-// Never throws: returns null on any network or parse error.
+// Upstash Redis client wrapper used by Vercel Node and Edge handlers.
+// Never throws: returns safe null/false fallbacks on any error.
 
-const BASE_URL   = process.env.UPSTASH_REDIS_REST_URL;
+import { Redis } from '@upstash/redis';
+
+const BASE_URL = process.env.UPSTASH_REDIS_REST_URL;
 const AUTH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const redis = BASE_URL && AUTH_TOKEN
+  ? new Redis({
+      url: BASE_URL,
+      token: AUTH_TOKEN,
+    })
+  : null;
 
 /**
  * @param {string} key
  * @returns {Promise<string | null>}
  */
 export async function redisGet(key) {
-  if (!BASE_URL || !AUTH_TOKEN) return null;
+  if (!redis) return null;
   try {
-    const res = await fetch(`${BASE_URL}/get/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.result ?? null;
+    const result = await redis.get(key);
+    return typeof result === 'string' ? result : result == null ? null : JSON.stringify(result);
   } catch {
     return null;
   }
@@ -30,15 +35,9 @@ export async function redisGet(key) {
  * @returns {Promise<void>}
  */
 export async function redisSet(key, value, ttlSec) {
-  if (!BASE_URL || !AUTH_TOKEN) return;
+  if (!redis) return;
   try {
-    await fetch(
-      `${BASE_URL}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/EX/${ttlSec}`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
-      },
-    );
+    await redis.set(key, value, { ex: ttlSec });
   } catch {
     // fire-and-forget: cache failure never propagates
   }
@@ -53,15 +52,10 @@ export async function redisSet(key, value, ttlSec) {
  * @returns {Promise<boolean>}
  */
 export async function redisSetNX(key, value, ttlSec) {
-  if (!BASE_URL || !AUTH_TOKEN) return false;
+  if (!redis) return false;
   try {
-    const res = await fetch(
-      `${BASE_URL}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/NX/EX/${ttlSec}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
-    );
-    if (!res.ok) return false;
-    const json = await res.json();
-    return json.result === 'OK';
+    const result = await redis.set(key, value, { nx: true, ex: ttlSec });
+    return result === 'OK';
   } catch {
     return false;
   }
@@ -74,19 +68,11 @@ export async function redisSetNX(key, value, ttlSec) {
  * @returns {Promise<Array<string | null>>}
  */
 export async function redisMGet(keys) {
-  if (!BASE_URL || !AUTH_TOKEN || keys.length === 0) return keys.map(() => null);
+  if (!redis || keys.length === 0) return keys.map(() => null);
   try {
-    const res = await fetch(`${BASE_URL}/pipeline`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([['MGET', ...keys]]),
-    });
-    if (!res.ok) return keys.map(() => null);
-    const json = await res.json();
-    return json[0]?.result ?? keys.map(() => null);
+    const result = await redis.mget(...keys);
+    if (!Array.isArray(result)) return keys.map(() => null);
+    return result.map((item) => (typeof item === 'string' ? item : item == null ? null : JSON.stringify(item)));
   } catch {
     return keys.map(() => null);
   }
@@ -99,12 +85,9 @@ export async function redisMGet(keys) {
  * @returns {Promise<void>}
  */
 export async function redisRPush(key, value) {
-  if (!BASE_URL || !AUTH_TOKEN) return;
+  if (!redis) return;
   try {
-    await fetch(
-      `${BASE_URL}/rpush/${encodeURIComponent(key)}/${encodeURIComponent(value)}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
-    );
+    await redis.rpush(key, value);
   } catch (e) {
     console.error('[redis] RPUSH failed', key, e);
   }
@@ -118,12 +101,9 @@ export async function redisRPush(key, value) {
  * @returns {Promise<void>}
  */
 export async function redisLTrim(key, start, stop) {
-  if (!BASE_URL || !AUTH_TOKEN) return;
+  if (!redis) return;
   try {
-    await fetch(
-      `${BASE_URL}/ltrim/${encodeURIComponent(key)}/${start}/${stop}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
-    );
+    await redis.ltrim(key, start, stop);
   } catch (e) {
     console.error('[redis] LTRIM failed', key, e);
   }
