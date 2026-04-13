@@ -159,6 +159,7 @@ export default defineConfig(({ mode }) => {
               },
             },
           ],
+          navigateFallbackDenylist: [/^\/api\//],
           navigateFallback: '/offline.html',
         },
       }),
