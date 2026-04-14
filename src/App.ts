@@ -108,7 +108,22 @@ import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 
 
-const RSS_POLL_INTERVAL_MS = 5 * 60_000; // 5 min
+// ─── Polling intervals (ms) ─────────────────────────────────────────────────
+// Single source of truth for every setInterval cadence in this file.
+// Tune here — never scatter magic numbers near each setInterval call.
+const RSS_POLL_INTERVAL_MS             =  5 * 60_000; //  5 min
+const POLL_FINANCE_MS                  =  5 * 60_000; //  5 min  (market data + nuclear snapshot)
+const POLL_NUCLEAR_MS                  = 15 * 60_000; // 15 min  (RTE real-time unavailabilities)
+const POLL_OIL_MS                      = 10 * 60_000; // 10 min  (oil stocks / refinery flows)
+const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
+const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
+const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
+const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
+const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
+const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
+const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
+const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
+
 const ALERT_MONITOR_LIMIT = 2;
 const ALERT_MONITOR_TTLS_MS = {
   NEWS_ALERT: 20 * 60_000,
@@ -356,9 +371,6 @@ const ENERGY_SYSTEM_LAYER_KEYS: Array<
 function hasActiveEnergySystems(layers: Pick<MapLayers, typeof ENERGY_SYSTEM_LAYER_KEYS[number] | 'energySystems'>): boolean {
   return ENERGY_SYSTEM_LAYER_KEYS.some((key) => layers[key]);
 }
-
-const HYDRAULIC_SIGNAL_POLL_MS = 10 * 60_000;
-const EOLIEN_SIGNAL_POLL_MS = 5 * 60_000;
 
 const HEALTH_ISS_LEGEND: LegendCategory = {
   id: 'health',
@@ -1250,6 +1262,7 @@ export class App {
   private pendingGovernmentCategories: EventCategory[] = [];
   private alertMonitorCache = new Map<string, { situation: DetectedSituation; expiresAt: number }>();
   private newsItems: NewsItem[] = [];
+  private rssRequestSeq = 0;
   private currentISNRData: ISNRData | null = null;
   private currentMeteoAlerts: MeteoAlert[] = [];
   private _aisZeroWarnLogged = false; // Avoid spamming "0 ships" warning
@@ -1289,6 +1302,8 @@ export class App {
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
+  private _intervalSpaceWeatherTerminator: ReturnType<typeof setInterval> | null = null;
+  private _intervalSpaceWeatherRefresh: ReturnType<typeof setInterval> | null = null;
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
@@ -1306,6 +1321,14 @@ export class App {
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
       this._intervalNetworkBarometer = null;
+    }
+    if (this._intervalSpaceWeatherTerminator !== null) {
+      clearInterval(this._intervalSpaceWeatherTerminator);
+      this._intervalSpaceWeatherTerminator = null;
+    }
+    if (this._intervalSpaceWeatherRefresh !== null) {
+      clearInterval(this._intervalSpaceWeatherRefresh);
+      this._intervalSpaceWeatherRefresh = null;
     }
     this.networkBarometerWidget?.destroy();
     this.networkBarometerWidget = null;
@@ -2070,36 +2093,18 @@ export class App {
     this.environmentPanel.mount();
 
     this.energyPanel = new EnergyPanel(floatContainer);
-    this.energyPanel.setOnClose(() => {
-      this.activeLayers.powerGrid = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-      this.layoutEnergyFloatingPanels();
-    });
+    this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
     this.energyPanel.mount();
 
     this.hydraulicPanel = new HydraulicPanel(floatContainer);
-    this.hydraulicPanel.setOnClose(() => {
-      this.activeLayers.hydroBackbone = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-      this.layoutEnergyFloatingPanels();
-    });
+    this.hydraulicPanel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
     this.hydraulicPanel.setOnSelectAsset((asset) => {
       this.mapContainer?.flyTo(asset.location.lon, asset.location.lat, 10.5);
     });
     this.hydraulicPanel.mount();
 
     this.eolienPanel = new EolienPanel(floatContainer);
-    this.eolienPanel.setOnClose(() => {
-      this.activeLayers.windMonitor = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-      this.layoutEnergyFloatingPanels();
-    });
+    this.eolienPanel.setOnClose(() => this.closeEnergyLayer('windMonitor'));
     this.eolienPanel.setOnSelectPark((park) => {
       this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
     });
@@ -2121,7 +2126,7 @@ export class App {
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(
       () => this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err)),
-      5 * 60_000
+      POLL_NETWORK_BAROMETER_MS
     );
 
     document.addEventListener('open-national-health', () => {
@@ -2260,13 +2265,7 @@ export class App {
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
-    this.gasPanel.setOnClose(() => {
-      this.activeLayers.gasNetwork = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-      this.layoutEnergyFloatingPanels();
-    });
+    this.gasPanel.setOnClose(() => this.closeEnergyLayer('gasNetwork'));
     this.gasPanel.setPipelineCallback((show) => {
       this.mapContainer?.setGasPipelineVisible(show);
     });
@@ -2274,12 +2273,8 @@ export class App {
 
     // Oil Panel (Vigilance Pétrole - Raffineries, Stocks, Flux)
     this.oilPanel = new OilPanel(floatContainer);
-    this.oilPanel.setOnClose(() => {
-      this.activeLayers.oilNetwork = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-    });
+    // skipLayout: oil panel doesn't use the energy floating stack
+    this.oilPanel.setOnClose(() => this.closeEnergyLayer('oilNetwork', { skipLayout: true }));
     this.oilPanel.setOnFuelTensionMapVisibilityChange((visible) => {
       void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
     });
@@ -2297,11 +2292,9 @@ export class App {
       this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
     });
     this.nuclearPanel.setOnClose(() => {
-      this.activeLayers.nuclearFleet = false;
-      this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
+      // Clear any highlighted plant before deactivating the layer
       this.mapContainer?.setHighlightedInfrastructurePoint(null);
-      this.layerPanel?.updateLayers(this.activeLayers);
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+      this.closeEnergyLayer('nuclearFleet');
     });
 
     // Outages Panel (Pannes Réseau — incidents ORE Enedis)
@@ -2561,8 +2554,75 @@ export class App {
     }
   }
 
+  /**
+   * Shared close handler for panels whose layer belongs to the energy group
+   * (powerGrid, hydroBackbone, windMonitor, gasNetwork, oilNetwork, nuclearFleet).
+   *
+   * Deactivates the layer, recomputes the energySystems aggregate flag,
+   * syncs the LayerPanel toggle UI, refreshes map visibility, and — unless
+   * skipLayout is true — restacks the energy floating panels.
+   *
+   * Usage in setOnClose:
+   *   this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
+   */
+  private closeEnergyLayer(layerKey: keyof MapLayers, opts: { skipLayout?: boolean } = {}): void {
+    this.activeLayers[layerKey] = false;
+    this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
+    this.layerPanel?.updateLayers(this.activeLayers);
+    this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+    if (!opts.skipLayout) this.layoutEnergyFloatingPanels();
+  }
+
   private onLayerToggle(key: keyof MapLayers, enabled: boolean): void {
     this.activeLayers[key] = enabled;
+    this._syncGroupFlags(key, enabled);
+
+    this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+    this.refreshLegendVisibility();
+    this.refreshTrafficLegend();
+
+    // Persist layer state across sessions
+    try {
+      localStorage.setItem('fm-active-layers', JSON.stringify(this.activeLayers));
+    } catch (err) {
+      console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
+    }
+    writeUrlState({ layers: this.activeLayers });
+
+    this.updateBarometerFabVisibility();
+
+    // AIS loader lifecycle — show while waiting for first ship data, hide when layer off
+    if (key === 'trafficMaritime' && !enabled && this._aisLoaderEl) {
+      this._aisLoaderEl.remove();
+      this._aisLoaderEl = null;
+    }
+    if (key === 'trafficMaritime' && enabled && getAllLiveTraffic().length === 0) {
+      this._showAisLoaderFn?.();
+    }
+
+    // Road traffic data is loaded on-demand (not pre-fetched) to save bandwidth
+    if (key === 'trafficRoad') {
+      if (enabled) {
+        void this.ensureTrafficLoaded().catch((error) => {
+          console.error('[App] Failed to load road traffic on demand', error);
+        });
+      } else if (!this.activeLayers.trafficRoad) {
+        this.mapContainer?.updateTrafficIncidents([]);
+      }
+    }
+    this._handlePanelVisibility(key, enabled);
+  }
+
+  /**
+   * Recalculate aggregate group flags after a child layer is toggled.
+   * Called at the top of onLayerToggle, before any map or panel update.
+   *
+   * Group flags (energySystems, environmentGroup, …) are derived values:
+   * they're true when at least one child layer in the group is active.
+   * They drive group-level toggles in the LayerPanel and guard panel show/hide.
+   */
+  private _syncGroupFlags(key: keyof MapLayers, enabled: boolean): void {
+    // If a child layer was enabled, also enable its parent group
     const toggledConfig = LAYER_CONFIGS.find((config) => config.id === key);
     if (enabled && toggledConfig?.role === 'child' && toggledConfig.dependsOnGroup && toggledConfig.groupId) {
       const parentConfig = LAYER_CONFIGS.find(
@@ -2572,8 +2632,10 @@ export class App {
         this.activeLayers[parentConfig.id] = true;
       }
     }
+
     if (key === 'military' || key === 'subseaCables' || key === 'cyber') {
-      this.activeLayers.sovereignty = this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
+      this.activeLayers.sovereignty =
+        this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
     }
     if (ENERGY_SYSTEM_LAYER_KEYS.includes(key as typeof ENERGY_SYSTEM_LAYER_KEYS[number])) {
       this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
@@ -2598,68 +2660,42 @@ export class App {
     if (key === 'news' || key === 'stability') {
       this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability;
     }
+  }
 
-    this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-
-    this.refreshLegendVisibility();
-    this.refreshTrafficLegend();
-
-    // Persist layer state to localStorage for next session
-    try {
-      localStorage.setItem('fm-active-layers', JSON.stringify(this.activeLayers));
-    } catch (err) {
-      console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
-    }
-    // Also update URL
-    writeUrlState({ layers: this.activeLayers });
-
-    // ➡️ 1. AJOUT : Mise à jour du bouton flottant (FAB)
-    this.updateBarometerFabVisibility();
-
-    // Masquer le loader AIS si le layer maritime est désactivé
-    if (key === 'trafficMaritime' && !enabled && this._aisLoaderEl) {
-      this._aisLoaderEl.remove();
-      this._aisLoaderEl = null;
-    }
-    // Afficher le loader AIS si le layer est activé et qu'on n'a pas encore de navires
-    if (key === 'trafficMaritime' && enabled && getAllLiveTraffic().length === 0) {
-      this._showAisLoaderFn?.();
-    }
-    if (key === 'trafficRoad') {
-      if (enabled) {
-        void this.ensureTrafficLoaded().catch((error) => {
-          console.error('[App] Failed to load road traffic on demand', error);
-        });
-      } else if (!this.activeLayers.trafficRoad) {
-        this.mapContainer?.updateTrafficIncidents([]);
-      }
-    }
-    // Show/hide MaritimePanel with layer
+  /**
+   * Show or hide the panel that corresponds to the toggled layer.
+   *
+   * Some layers have no panel (subseaCables: visual-only).
+   * Some panels are shared across child layers (outages tab auto-switch).
+   * Some trigger lazy data loads if the data hasn't been fetched yet.
+   *
+   * Called at the end of onLayerToggle, after map visibility and state
+   * have already been updated.
+   */
+  private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
+    // Traffic panels — standalone ifs so both run if key matches both (impossible in
+    // practice but safe: they guard on the specific key value).
     if (key === 'trafficMaritime') {
       if (enabled) this.maritimePanel?.show();
       else this.maritimePanel?.hide();
     }
-    // Show/hide TransportPanel with trafficRail layer
     if (key === 'trafficRail') {
-      if (enabled) {
-        this.transportPanel?.show(this.currentSncfDisruptions);
-      }
+      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions);
       else this.transportPanel?.hide();
     }
 
-    // Show/hide ISNR panel when stability layer is toggled
+    // All remaining panels use an if/else chain — at most one branch fires per toggle.
     if (key === 'stability') {
-      if (this.activeLayers.stability && this.currentISNRData) {
-        this.isnrPanel?.show(this.currentISNRData);
-      } else {
-        this.isnrPanel?.hide();
-      }
+      if (this.activeLayers.stability && this.currentISNRData) this.isnrPanel?.show(this.currentISNRData);
+      else this.isnrPanel?.hide();
     } else if (key === 'energySystems') {
+      // Group master turned off: collapse all energy panels
       if (!this.activeLayers.energySystems) {
         this.energyPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'environmentGroup') {
+      // Group master turned off: collapse all environment panels
       if (!this.activeLayers.environmentGroup) {
         this.environmentPanel?.hide();
         this.firesPanel?.hide();
@@ -2667,41 +2703,31 @@ export class App {
         this.layoutEnvironmentFloatingPanels();
       }
     } else if (key === 'environmental') {
-      if (enabled) {
-        this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-        this.layoutEnvironmentFloatingPanels();
-      } else {
-        this.environmentPanel?.hide();
-        this.layoutEnvironmentFloatingPanels();
-      }
+      if (enabled) this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+      else this.environmentPanel?.hide();
+      this.layoutEnvironmentFloatingPanels();
     } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
-      const isAnyHealthLayerActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals;
-
+      const anyHealthActive =
+        this.activeLayers.health || this.activeLayers.healthApl ||
+        this.activeLayers.healthOscour || this.activeLayers.hospitals;
+      // Lazy-load health data on first activation
       if (enabled && !this.hasHealthData) {
-        this.loadHealth().catch((error) => {
-          console.error('[App] Failed to reload health layers', error);
-        });
+        this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
       }
-
-      if (enabled && isAnyHealthLayerActive) {
+      if (enabled && anyHealthActive) {
         document.dispatchEvent(new CustomEvent('open-national-health'));
-      } else if (!isAnyHealthLayerActive) {
+      } else if (!anyHealthActive) {
         this.healthBarometerPanel?.hide();
         this.nationalHealthPanel?.hide();
       }
     } else if (key === 'sovereignty') {
+      // Group master: show/hide child panels based on which sub-layers are active
       if (!this.activeLayers.sovereignty) {
         this.cyberPanel?.hide();
         this.defensePanel?.hide();
       } else {
         if (this.activeLayers.cyber) {
-          if (!this.currentCyberData) {
-            this.loadCyber();
-          }
+          if (!this.currentCyberData) this.loadCyber();
           this.cyberPanel?.show(this.currentCyberData);
         }
         if (this.activeLayers.military) {
@@ -2709,17 +2735,10 @@ export class App {
         }
       }
     } else if (key === 'cyber') {
-      console.log('[App/onLayerToggle] cyber toggle:', this.activeLayers.cyber);
       if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        console.log('[App/onLayerToggle] Cyber layer ENABLED');
-        // Load data if not yet fetched
-        if (!this.currentCyberData) {
-          console.log('[App/onLayerToggle] No data yet, calling loadCyber()...');
-          this.loadCyber();
-        }
+        if (!this.currentCyberData) this.loadCyber(); // lazy-load on first enable
         this.cyberPanel?.show(this.currentCyberData);
       } else {
-        console.log('[App/onLayerToggle] Cyber layer DISABLED, hiding panel');
         this.cyberPanel?.hide();
       }
     } else if (key === 'military') {
@@ -2729,40 +2748,30 @@ export class App {
         this.defensePanel?.hide();
       }
     } else if (key === 'subseaCables') {
-      // No panel to toggle: layer is visual-only, threat panel remains tied to defense alerts.
+      // Visual-only layer — no panel to toggle.
     } else if (key === 'powerGrid') {
-      if (this.activeLayers.powerGrid) {
-        this.energyPanel?.show(this.currentEcowattResponse);
-        this.layoutEnergyFloatingPanels();
-      } else {
-        this.energyPanel?.hide();
-        this.layoutEnergyFloatingPanels();
-      }
+      if (this.activeLayers.powerGrid) this.energyPanel?.show(this.currentEcowattResponse);
+      else this.energyPanel?.hide();
+      this.layoutEnergyFloatingPanels();
     } else if (key === 'hydroBackbone') {
       if (this.activeLayers.hydroBackbone) {
         void this.refreshHydraulicSignalSources();
         this.hydraulicPanel?.show(this.currentHydraulicAssets, this.currentEcowattResponse);
-        this.layoutEnergyFloatingPanels();
       } else {
         this.hydraulicPanel?.hide();
-        this.layoutEnergyFloatingPanels();
       }
+      this.layoutEnergyFloatingPanels();
     } else if (key === 'windMonitor') {
       if (this.activeLayers.windMonitor) {
         void this.loadEolien();
         this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
-        this.layoutEnergyFloatingPanels();
       } else {
         this.eolienPanel?.hide();
-        this.layoutEnergyFloatingPanels();
       }
+      this.layoutEnergyFloatingPanels();
     } else if (key === 'gasNetwork') {
-      console.log('[App/onLayerToggle] gas toggle:', this.activeLayers.gasNetwork);
       if (this.activeLayers.gasNetwork) {
-        // Load data if not yet fetched
-        if (!this.currentGasData) {
-          this.loadGas();
-        }
+        if (!this.currentGasData) this.loadGas(); // lazy-load on first enable
         this.gasPanel?.show(this.currentGasData);
         this.layoutEnergyFloatingPanels();
       } else {
@@ -2770,21 +2779,15 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'oilNetwork') {
-      console.log('[App/onLayerToggle] oil toggle:', this.activeLayers.oilNetwork);
       if (this.activeLayers.oilNetwork) {
-        // Load data if not yet fetched
-        if (!this.currentOilData) {
-          void this.loadOil();
-        }
+        if (!this.currentOilData) void this.loadOil(); // lazy-load on first enable
         this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
       } else {
         this.oilPanel?.hide();
       }
     } else if (key === 'nuclearFleet') {
       if (this.activeLayers.nuclearFleet) {
-        if (!this.currentNuclearState) {
-          void this.loadNuclear();
-        }
+        if (!this.currentNuclearState) void this.loadNuclear(); // lazy-load on first enable
         this.nuclearPanel?.show(this.currentNuclearState, this.currentEcowattResponse);
         this.layoutEnergyFloatingPanels();
       } else {
@@ -2792,29 +2795,20 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'fires') {
-      if (this.activeLayers.fires) {
-        this.firesPanel?.show(this.currentActiveFires);
-        this.layoutEnvironmentFloatingPanels();
-      } else {
-        this.firesPanel?.hide();
-        this.layoutEnvironmentFloatingPanels();
-      }
+      if (this.activeLayers.fires) this.firesPanel?.show(this.currentActiveFires);
+      else this.firesPanel?.hide();
+      this.layoutEnvironmentFloatingPanels();
     } else if (key === 'dayNight') {
-      if (enabled) {
-        this.dayNightPanel?.show();
-      } else {
-        this.dayNightPanel?.hide();
-      }
+      if (enabled) this.dayNightPanel?.show();
+      else this.dayNightPanel?.hide();
     } else if (key === 'elus') {
       void this.mapContainer?.setMairesPolitiqueVisible(false);
     } else if (key === 'outages') {
-      // Parent master: si désactivé, ferme le panneau
-      if (!this.activeLayers.outages) {
-        this.outagesPanel?.hide();
-      }
+      // Group master turned off — collapse the panel
+      if (!this.activeLayers.outages) this.outagesPanel?.hide();
     } else if (key === 'outagesElec' || key === 'outagesTelecom' || key === 'outagesInternet' || key === 'outagesCloud') {
       if (this.activeLayers.outages) {
-        // Auto-switch tab only when exactly one sub-layer is active
+        // Auto-switch to the active tab when exactly one sub-layer is on
         const activeCount = [
           this.activeLayers.outagesElec,
           this.activeLayers.outagesTelecom,
@@ -2823,12 +2817,16 @@ export class App {
         ].filter(Boolean).length;
         let autoTab: 'electric' | 'telecom' | 'internet' | 'cloud' | undefined;
         if (activeCount === 1) {
-          if (this.activeLayers.outagesElec)      autoTab = 'electric';
+          if (this.activeLayers.outagesElec)          autoTab = 'electric';
           else if (this.activeLayers.outagesTelecom)  autoTab = 'telecom';
           else if (this.activeLayers.outagesInternet) autoTab = 'internet';
           else if (this.activeLayers.outagesCloud)    autoTab = 'cloud';
         }
-        this.outagesPanel?.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined, autoTab);
+        this.outagesPanel?.show(
+          this.currentPowerOutages, this.currentTelecomOutages,
+          this.currentNetworkState, this.currentInfraState,
+          this.currentCitizenZones ?? undefined, autoTab
+        );
       } else {
         this.outagesPanel?.hide();
       }
@@ -3317,10 +3315,10 @@ export class App {
       }
     };
     fetchFinance();
-    this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), 5 * 60_000); // 5 min
+    this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), POLL_FINANCE_MS);
     this._intervalNuclear = setInterval(() => {
       void this.loadNuclear();
-    }, 15 * 60_000);
+    }, POLL_NUCLEAR_MS);
   }
 
   private startOilPolling(): void {
@@ -3329,7 +3327,7 @@ export class App {
     this._intervalOil = setInterval(() => {
       if (!this.activeLayers.oilNetwork) return;
       void this.loadOil();
-    }, 10 * 60_000);
+    }, POLL_OIL_MS);
   }
 
   private startCommodityPolling(): void {
@@ -3344,12 +3342,11 @@ export class App {
     fetchCommodities();
     this._intervalCommodities = setInterval(
       () => fetchCommodities().catch(err => console.error('[App] Commodities poll error', err)),
-      15 * 60_000,
+      POLL_COMMODITIES_MS,
     );
   }
 
   private startAirTrafficPolling(): void {
-    const AIR_TRAFFIC_POLL_MS = 12_000;
     let inFlight = false;
 
     const poll = async () => {
@@ -3373,12 +3370,13 @@ export class App {
     void poll();
     this._intervalAirTraffic = setInterval(() => {
       poll().catch(err => console.error('[App] AirTraffic poll error', err));
-    }, AIR_TRAFFIC_POLL_MS);
+    }, POLL_AIR_TRAFFIC_MS);
   }
 
   private async fetchAndProcessRSS(): Promise<void> {
     try {
       this.statusPanel?.updateSource('RSS PQR', { status: 'loading', lastUpdate: null });
+      const requestId = ++this.rssRequestSeq;
       const rawItems = await fetchAllFeeds(ALL_FEEDS);
       console.log(`[RSS] Fetched ${rawItems.length} raw items`);
 
@@ -3396,16 +3394,8 @@ export class App {
       }
 
       // Update news items directly with RSS results (fast path)
-      this.newsItems = [...rawItems].sort(
-        (a, b) => b.pubDate.getTime() - a.pubDate.getTime(),
-      );
-
-      // Update UI immediately with keywords
-      this.mapContainer?.updateNews(this.newsItems);
-      this.newsPanel?.updateItems(this.newsItems);
-      this.searchModal?.updateNewsItems(this.newsItems);
+      this.applyNewsItems(rawItems);
       this.statusPanel?.updateSource('RSS PQR', { status: 'ok', lastUpdate: new Date() });
-      this.refreshFranceIntelPanel();
 
       // Snapshot ISNR sur chaque tick RSS (alimente l'historique sparkline)
       this.updateISNR();
@@ -3413,8 +3403,12 @@ export class App {
       console.log(`[RSS] Pipeline stage 1 complete: ${rawItems.length} items parsed and classified by keywords.`);
 
       // 2. Background processing for AI & Geocoding
-      // We don't await this so it doesn't block the next UI updates or user interactions
-      this.augmentItemsInBackground([...this.newsItems]);
+      // Deep-enough clone: each item object is a new reference so that in-place
+      // mutations from geocoding / AI / summarization (item.lat, item.threat, etc.)
+      // do NOT pollute the objects already handed to the map in stage 1.
+      // The WebGL animation loop reads item coords on every frame — without this
+      // clone, markers jump position progressively as geocoding completes (flicker).
+      this.augmentItemsInBackground(rawItems.map(item => ({ ...item })), requestId);
 
     } catch (err) {
       console.error('[RSS] Pipeline failed:', err);
@@ -3422,23 +3416,43 @@ export class App {
     }
   }
 
+  private applyNewsItems(items: NewsItem[]): void {
+    this.newsItems = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    this.mapContainer?.updateNews(this.newsItems);
+    this.newsPanel?.updateItems(this.newsItems);
+    this.searchModal?.updateNewsItems(this.newsItems);
+    this.refreshFranceIntelPanel();
+  }
+
   // ─── Background AI & Geocoding ─────────────────────────────────────────────
 
-  private async augmentItemsInBackground(items: NewsItem[]): Promise<void> {
+  private async augmentItemsInBackground(items: NewsItem[], requestId: number): Promise<void> {
     // Run AI classification and geocoding in PARALLEL — geocoding must NOT wait for AI model to load
     await Promise.all([
-      this.runAIClassification(items),
-      this.runGeocoding(items),
-      this.runSummarization(items),
+      this.runAIClassification(items, requestId),
+      this.runGeocoding(items, requestId),
+      this.runSummarization(items, requestId),
     ]);
+
+    if (requestId !== this.rssRequestSeq) {
+      console.log('[RSS] Background augmentation dropped for stale request', requestId);
+      return;
+    }
+
+    this.applyNewsItems(items);
 
     // Cache the fully augmented results once both are done
     saveNewsToCache(this.newsItems);
     console.log(`[RSS] Pipeline stage 2 (background) complete: AI, Geocoding & Summarization.`);
   }
 
+  private publishAugmentedItemsIfCurrent(items: NewsItem[], requestId: number): void {
+    if (requestId !== this.rssRequestSeq) return;
+    this.applyNewsItems(items);
+  }
+
   /** Classify items that have no threat yet via AI (slower — model load takes time) */
-  private async runAIClassification(items: NewsItem[]): Promise<void> {
+  private async runAIClassification(items: NewsItem[], requestId: number): Promise<void> {
     try {
       let updated = false;
       const itemsToAI = items.filter(it => !it.threat);
@@ -3450,11 +3464,7 @@ export class App {
         }
       }
       if (updated) {
-        this.newsItems = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-        this.mapContainer?.updateNews(this.newsItems);
-        this.newsPanel?.updateItems(this.newsItems);
-        this.searchModal?.updateNewsItems(this.newsItems);
-        this.refreshFranceIntelPanel();
+        this.publishAugmentedItemsIfCurrent(items, requestId);
       }
     } catch (err) {
       console.error('[RSS] AI classification failed:', err);
@@ -3462,7 +3472,7 @@ export class App {
   }
 
   /** Geocode items without coordinates, batched and throttled */
-  private async runGeocoding(items: NewsItem[]): Promise<void> {
+  private async runGeocoding(items: NewsItem[], requestId: number): Promise<void> {
     try {
       const toGeocode = items.filter((it) => it.lat == null);
       if (toGeocode.length === 0) return;
@@ -3484,11 +3494,7 @@ export class App {
         );
 
         if (batchUpdated) {
-          this.newsItems = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-          this.mapContainer?.updateNews(this.newsItems);
-          this.newsPanel?.updateItems(this.newsItems);
-          this.searchModal?.updateNewsItems(this.newsItems);
-          this.refreshFranceIntelPanel();
+          this.publishAugmentedItemsIfCurrent(items, requestId);
         }
 
         // Small delay between batches
@@ -3502,7 +3508,7 @@ export class App {
   }
 
   /** Summarize items that have no aiSummary yet */
-  private async runSummarization(items: NewsItem[]): Promise<void> {
+  private async runSummarization(items: NewsItem[], requestId: number): Promise<void> {
     try {
       const toSummarize = items.filter((it) => !it.aiSummary && it.summary);
       if (toSummarize.length === 0) return;
@@ -3522,11 +3528,7 @@ export class App {
         );
 
         if (batchUpdated) {
-          this.newsItems = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
-          this.mapContainer?.updateNews(this.newsItems);
-          this.newsPanel?.updateItems(this.newsItems);
-          this.searchModal?.updateNewsItems(this.newsItems);
-          this.refreshFranceIntelPanel();
+          this.publishAugmentedItemsIfCurrent(items, requestId);
         }
 
         if (i + BATCH_SIZE < toSummarize.length) {
@@ -4501,7 +4503,7 @@ export class App {
       this.loadHealth().catch((err) => {
         console.error('[App] Health poll error', err);
       });
-    }, 15 * 60_000);
+    }, POLL_HEALTH_MS);
   }
 
   private async refreshHydraulicSignalSources(): Promise<void> {
@@ -4541,7 +4543,7 @@ export class App {
 
     this._intervalHydraulic = setInterval(() => {
       poll().catch((err) => console.error('[App] Hydraulic poll error', err));
-    }, HYDRAULIC_SIGNAL_POLL_MS);
+    }, POLL_HYDRAULIC_MS);
   }
 
   private startEolienPolling(): void {
@@ -4569,7 +4571,7 @@ export class App {
 
     this._intervalEolien = setInterval(() => {
       poll().catch((err) => console.error('[App] Eolien poll error', err));
-    }, EOLIEN_SIGNAL_POLL_MS);
+    }, POLL_EOLIEN_MS);
   }
 
   private async loadHospitals(): Promise<void> {
@@ -4774,9 +4776,12 @@ export class App {
 
     // Terminator jour/nuit — calcul astronomique pur, instantané
     this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
-    setInterval(() => {
+    if (this._intervalSpaceWeatherTerminator !== null) {
+      clearInterval(this._intervalSpaceWeatherTerminator);
+    }
+    this._intervalSpaceWeatherTerminator = setInterval(() => {
       this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
-    }, 60_000); // recalcule chaque minute (le terminateur se déplace ~0.25°/min)
+    }, POLL_SPACE_WEATHER_TERMINATOR_MS);
 
     // Kp index NOAA
     const data = await fetchSpaceWeather();
@@ -4784,10 +4789,13 @@ export class App {
     this.statusPanel?.updateSource('NOAA SWPC', { status: 'ok', lastUpdate: data.fetchedAt });
 
     // Refresh Kp toutes les 15 min
-    setInterval(async () => {
+    if (this._intervalSpaceWeatherRefresh !== null) {
+      clearInterval(this._intervalSpaceWeatherRefresh);
+    }
+    this._intervalSpaceWeatherRefresh = setInterval(async () => {
       const fresh = await fetchSpaceWeather().catch(() => null);
       if (fresh) this.energyPanel?.updateSpaceWeather(fresh);
-    }, 15 * 60_000);
+    }, POLL_SPACE_WEATHER_REFRESH_MS);
   }
 
   private buildFranceTimeline(lang: 'fr' | 'en'): { days: string[]; lanes: FranceIntelTimelineLane[] } {
