@@ -12,7 +12,7 @@
 
 import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats } from '../types/index.ts';
 import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
-import Hls from 'hls.js';
+import type Hls from 'hls.js';
 
 /** Popup display mode */
 type PopupMode = 'none' | 'item' | 'cluster' | 'militaryFlight' | 'militaryBase' | 'nuclearSite';

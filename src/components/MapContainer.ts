@@ -3,7 +3,7 @@
  * Expose toutes les méthodes de calques unifié.
  */
 
-import { DeckGLMap } from './DeckGLMap.ts';
+import type { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
 import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
@@ -63,7 +63,8 @@ export class MapContainer {
       return;
     }
 
-    this.deckMap = new DeckGLMap(this.container);
+    const { DeckGLMap: DeckGLMapImpl } = await import('./DeckGLMap.ts');
+    this.deckMap = new DeckGLMapImpl(this.container);
     if (this.onItemClick) this.deckMap.setOnItemClick(this.onItemClick);
     if (this.onItemHover) this.deckMap.setOnItemHover(this.onItemHover);
     if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);

@@ -1,7 +1,8 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { resolve, dirname } from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { brotliCompressSync, constants } from 'zlib';
 import { VitePWA } from 'vite-plugin-pwa';
 
 import { rssProxyPlugin } from './src/plugins/rss-proxy';
@@ -35,6 +36,34 @@ import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
 import gieProxyPlugin from './src/plugins/gie-proxy';
 import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
 import { startRelayServer } from './ais-relay.js';
+
+// Brotli precompression — creates .br companion files for all JS/CSS/HTML assets.
+// Vercel edge serves .br automatically when the client sends Accept-Encoding: br.
+// Quality 11 = maximum compression (~60-70% smaller than gzip on JS).
+const brotliPrecompressPlugin = (): Plugin => ({
+  name: 'brotli-precompress',
+  apply: 'build',
+  generateBundle(_, bundle) {
+    const compressible = /\.(js|css|html|svg|json|wasm|xml|txt)$/;
+    for (const [fileName, chunk] of Object.entries(bundle)) {
+      if (!compressible.test(fileName)) continue;
+      const raw =
+        chunk.type === 'chunk'
+          ? chunk.code
+          : chunk.source instanceof Uint8Array
+            ? chunk.source
+            : String(chunk.source);
+      try {
+        const compressed = brotliCompressSync(raw, {
+          params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
+        });
+        this.emitFile({ type: 'asset', fileName: `${fileName}.br`, source: compressed });
+      } catch {
+        // skip files that fail to compress
+      }
+    }
+  },
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -96,6 +125,7 @@ export default defineConfig(({ mode }) => {
       }),
       situationHistoryProxyPlugin(),
       aisRelayPlugin(aisApiKey),
+      brotliPrecompressPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'data/*.geojson'],
@@ -145,6 +175,21 @@ export default defineConfig(({ mode }) => {
           skipWaiting: true,
           runtimeCaching: [
             {
+              urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/api/'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-runtime',
+                networkTimeoutSeconds: 4,
+                expiration: {
+                  maxEntries: 80,
+                  maxAgeSeconds: 10 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
               urlPattern: /^https:\/\/basemaps\.cartocdn\.com\/.*$/i,
               handler: 'CacheFirst',
               options: {
@@ -158,9 +203,55 @@ export default defineConfig(({ mode }) => {
                 },
               },
             },
+            {
+              urlPattern: /^https:\/\/fonts\.(?:gstatic|googleapis)\.com\/.*$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts',
+                expiration: {
+                  maxEntries: 24,
+                  maxAgeSeconds: 365 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) =>
+                url.origin === self.location.origin &&
+                /^\/assets\/(?:maplibre|onnxruntime|transformers|ai-worker|summarization-worker)-.*\.(?:js|css)$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'lazy-assets',
+                expiration: {
+                  maxEntries: 32,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) =>
+                url.origin === self.location.origin &&
+                (/^\/data\/.*\.(?:geojson|json)$/i.test(url.pathname) || /^\/assets\/.*\.geojson$/i.test(url.pathname)),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'geo-data',
+                expiration: {
+                  maxEntries: 32,
+                  maxAgeSeconds: 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
           ],
           navigateFallbackDenylist: [/^\/api\//],
-          navigateFallback: '/offline.html',
+          navigateFallback: '/index.html',
         },
       }),
     ],
@@ -178,6 +269,14 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules/d3')) return 'd3';
             if (id.includes('@xenova/transformers')) return 'transformers';
             if (id.includes('onnxruntime-web')) return 'onnxruntime';
+            // Deck.gl ecosystem — ~750 KB, cached independently from app code.
+            // Covered by the SW CacheFirst rule on lazy-assets.
+            if (
+              id.includes('@deck.gl') ||
+              id.includes('@luma.gl') ||
+              id.includes('@loaders.gl') ||
+              id.includes('@math.gl')
+            ) return 'deck-gl';
           },
         },
       },

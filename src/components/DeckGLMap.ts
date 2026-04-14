@@ -5117,7 +5117,7 @@ export class DeckGLMap {
       const realLat = Number(p.realLat ?? e.lngLat.lat);
       const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
       const incHtml = incidents.length
-        ? incidents.map(i => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">⚠ ${i.title}</div>`).join('')
+        ? incidents.map(i => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">⚠ ${escapeHtml(i.title)}</div>`).join('')
         : `<div style="font-size:11px;color:var(--text-muted);">Aucun incident actif</div>`;
       const html = `
         <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;">
@@ -5972,7 +5972,7 @@ export class DeckGLMap {
           ${row('J en cours', fmtMWh(f.dailyBalanceMWh))}
           ${row('Vs veille', `${deltaSign}${fmtMWh(dailyDelta)}`, deltaColor)}
           ${sparkline}
-          ${f.summary ? `${sep}<div style="font-size:11px;color:#9898a8;font-style:italic;line-height:1.4;">${f.summary}</div>` : ''}
+          ${f.summary ? `${sep}<div style="font-size:11px;color:#9898a8;font-style:italic;line-height:1.4;">${escapeHtml(f.summary)}</div>` : ''}
           ${formatUpdateTime(f.updatedAt) !== '-' ? `<div style="font-size:10px;color:#555;margin-top:6px;">Mis à jour ${formatUpdateTime(f.updatedAt)}</div>` : ''}
         </div>`;
 
@@ -6284,9 +6284,19 @@ export class DeckGLMap {
     this.initPulseOverlay();
     this.startSubseaPulseAnimation();
 
-    // Update pulse markers on map move
-    this.map.on('move', () => this.updatePulseMarkerPositions());
-    this.map.on('zoom', () => this.updatePulseMarkerPositions());
+    // Update pulse markers on map move — throttled via requestAnimationFrame
+    // so DOM style updates happen at most once per frame (≤ 16 ms) instead of
+    // firing on every pixel of a pan gesture.
+    let pulseRafId: number | null = null;
+    const schedulePulseUpdate = (): void => {
+      if (pulseRafId !== null) return;
+      pulseRafId = requestAnimationFrame(() => {
+        pulseRafId = null;
+        this.updatePulseMarkerPositions();
+      });
+    };
+    this.map.on('move', schedulePulseUpdate);
+    this.map.on('zoom', schedulePulseUpdate);
 
     // Keep health layer above other fills so it remains visible when enabled.
     try {

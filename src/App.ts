@@ -8,7 +8,7 @@ import { MapPopup } from './components/MapPopup.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
-import { SearchModal } from './components/SearchModal.ts';
+import type { SearchModal } from './components/SearchModal.ts';
 import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
@@ -20,7 +20,7 @@ import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import { CyberPanel } from './components/CyberPanel.ts';
-import { FranceIntelPanel } from './components/FranceIntelPanel.ts';
+import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -36,10 +36,10 @@ import { OutagesPanel } from './components/OutagesPanel.ts';
 import { DefensePanel } from './components/DefensePanel.ts';
 import { NationalHealthPanel } from './components/NationalHealthPanel.ts';
 import { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
-import { SentinelModal } from './components/SentinelModal.ts';
 import { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
-import { RightSidebar } from './components/RightSidebar.ts';
+import type { SentinelModal } from './components/SentinelModal.ts';
+import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR } from './services/stability-index.ts';
@@ -1235,12 +1235,19 @@ export class App {
   private healthBarometerPanel: HealthBarometerPanel | null = null;
   private sentinelModal: SentinelModal | null = null;
   private rightSidebar: RightSidebar | null = null;
+  private sentinelModalPromise: Promise<SentinelModal> | null = null;
+  private rightSidebarPromise: Promise<RightSidebar> | null = null;
   private lastBarometerMetrics: HealthBarometerMetrics | null = null;
   private hasHealthData = false;
   private currentHealthFeatures: HealthFeatures | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
+  private searchModalPromise: Promise<SearchModal> | null = null;
   private layerPanel: LayerPanel | null = null;
+  private floatContainerEl: HTMLElement | null = null;
+  private rightSidebarRootEl: HTMLElement | null = null;
+  private rightSidebarMobileToggleEl: HTMLButtonElement | null = null;
+  private pendingGovernmentCategories: EventCategory[] = [];
   private alertMonitorCache = new Map<string, { situation: DetectedSituation; expiresAt: number }>();
   private newsItems: NewsItem[] = [];
   private currentISNRData: ISNRData | null = null;
@@ -1266,6 +1273,7 @@ export class App {
   private currentTrafficIncidents: TrafficIncident[] = [];
   private trafficDataLoaded = false;
   private trafficLoadPromise: Promise<void> | null = null;
+  private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
@@ -1487,6 +1495,138 @@ export class App {
     this.container = container;
   }
 
+  private syncRightSidebarTriggers(isOpen: boolean): void {
+    const mobileToggle = this.rightSidebarMobileToggleEl;
+    if (!mobileToggle) return;
+    mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
+    mobileToggle.textContent = isOpen ? '✕' : '☰';
+  }
+
+  private ensureRightSidebar(): Promise<RightSidebar> {
+    if (this.rightSidebar) return Promise.resolve(this.rightSidebar);
+    if (this.rightSidebarPromise) return this.rightSidebarPromise;
+    if (!this.rightSidebarRootEl) {
+      return Promise.reject(new Error('Right sidebar root not ready'));
+    }
+
+    this.rightSidebarPromise = import('./components/RightSidebar.ts').then(({ RightSidebar }) => {
+      const sidebar = new RightSidebar(this.rightSidebarRootEl!);
+      sidebar.mount();
+      sidebar.setOnToggle((isOpen) => this.syncRightSidebarTriggers(isOpen));
+      sidebar.setGovernmentContext(this.pendingGovernmentCategories);
+      this.syncRightSidebarTriggers(sidebar.isOpen());
+      this.rightSidebar = sidebar;
+      return sidebar;
+    });
+
+    return this.rightSidebarPromise;
+  }
+
+  private ensureSentinelModal(): Promise<SentinelModal> {
+    if (this.sentinelModal) return Promise.resolve(this.sentinelModal);
+    if (this.sentinelModalPromise) return this.sentinelModalPromise;
+    if (!this.floatContainerEl) {
+      return Promise.reject(new Error('Floating container not ready'));
+    }
+
+    this.sentinelModalPromise = import('./components/SentinelModal.ts').then(({ SentinelModal }) => {
+      const modal = new SentinelModal(this.floatContainerEl!);
+      this.sentinelModal = modal;
+      return modal;
+    });
+
+    return this.sentinelModalPromise;
+  }
+
+  private ensureSearchModal(): Promise<SearchModal> {
+    if (this.searchModal) return Promise.resolve(this.searchModal);
+    if (this.searchModalPromise) return this.searchModalPromise;
+
+    this.searchModalPromise = import('./components/SearchModal.ts').then(({ SearchModal }) => {
+      const modal = new SearchModal(this.container, { bindKeyboardShortcut: false });
+      modal.setOnFlyTo((lon, lat, zoom, item) => {
+        this.mapContainer?.flyTo(lon, lat, zoom);
+        if (item) {
+          this.mapContainer?.selectItem(item);
+          this.newsPanel?.selectItem(item.id);
+          this.routeGovernmentContextForItem(item);
+        }
+      });
+      modal.updateNewsItems(this.newsItems);
+      this.searchModal = modal;
+      return modal;
+    });
+
+    return this.searchModalPromise;
+  }
+
+  private ensureFranceIntelPanel(): Promise<FranceIntelPanel> {
+    if (this.franceIntelPanel) return Promise.resolve(this.franceIntelPanel);
+    if (this.franceIntelPanelPromise) return this.franceIntelPanelPromise;
+    if (!this.floatContainerEl) {
+      return Promise.reject(new Error('Floating container not ready'));
+    }
+
+    this.franceIntelPanelPromise = import('./components/FranceIntelPanel.ts').then(({ FranceIntelPanel }) => {
+      const panel = new FranceIntelPanel(this.floatContainerEl!);
+      panel.setInfrastructureWidget(this.networkBarometerWidget);
+      panel.setOnClose(() => {
+        this.clearFranceIntelBriefRefresh();
+      });
+      panel.mount();
+      this.franceIntelPanel = panel;
+      return panel;
+    });
+
+    return this.franceIntelPanelPromise;
+  }
+
+  private async loadAplData(): Promise<void> {
+    const response = await fetch('/data/apl-departements.json');
+    const data = await response.json();
+
+    // Mise à jour de l'année réelle si présente dans le JSON
+    if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
+      HEALTH_APL_LEGEND.source.year = data.metadata.year;
+      // On utilise 'as any' pour forcer l'appel si la méthode n'est pas typée
+      (this.mapLegend as any)?.updateCategory?.(HEALTH_APL_LEGEND);
+    }
+
+    const aplDepartments = Array.isArray(data?.departements)
+      ? data.departements.map((item: any) => ({
+        depCode: String(item?.code_insee ?? '').trim(),
+        depName: '',
+        regionCode: '',
+        regionName: '',
+        incidenceRate: 0,
+        hospitalizations: 0,
+        reanimation: 0,
+        emergencyVisits: 0,
+        positivityRate: 0,
+        spfIncidence: null,
+        spfHospitalizations: null,
+        spfReanimation: null,
+        dreesUrgences: null,
+        sentinellesIncidence: null,
+        topMotifs: [],
+        aplIndex: Number.isFinite(Number(item?.apl_index)) ? Number(item.apl_index) : null,
+        aplCategory: ['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
+          ? String(item.category).trim().toLowerCase()
+          : 'indisponible',
+        iss: 0,
+        issLevel: 1,
+        trend: 'stable',
+        source: 'drees',
+        updatedAt: new Date(),
+      })).filter((item: any) => item.depCode)
+      : [];
+
+    if (aplDepartments.length > 0) {
+      this.hasHealthData = true;
+      this.mapContainer?.updateHealth([], {} as any, aplDepartments);
+    }
+  }
+
   async init(): Promise<void> {
     // ── Phase 0: Layer state ─────────────────────────────────────────────────
     // All layers start OFF by default. Only URL params (shared links) can override.
@@ -1516,55 +1656,8 @@ export class App {
     this.layerPanel?.updateLayers(this.activeLayers);
     this.updateBarometerFabVisibility();
 
-    // ── CHARGEMENT DYNAMIQUE DU JSON (Depuis /public) ──
-    // --- CHARGEMENT DYNAMIQUE DU JSON (Depuis /public) ---
-    try {
-      const response = await fetch('/data/apl-departements.json');
-      const data = await response.json();
-
-      // Mise à jour de l'année réelle si présente dans le JSON
-      if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
-        HEALTH_APL_LEGEND.source.year = data.metadata.year;
-        // On utilise 'as any' pour forcer l'appel si la méthode n'est pas typée
-        (this.mapLegend as any)?.updateCategory?.(HEALTH_APL_LEGEND);
-      }
-
-      const aplDepartments = Array.isArray(data?.departements)
-        ? data.departements.map((item: any) => ({
-          depCode: String(item?.code_insee ?? '').trim(),
-          depName: '',
-          regionCode: '',
-          regionName: '',
-          incidenceRate: 0,
-          hospitalizations: 0,
-          reanimation: 0,
-          emergencyVisits: 0,
-          positivityRate: 0,
-          spfIncidence: null,
-          spfHospitalizations: null,
-          spfReanimation: null,
-          dreesUrgences: null,
-          sentinellesIncidence: null,
-          topMotifs: [],
-          aplIndex: Number.isFinite(Number(item?.apl_index)) ? Number(item.apl_index) : null,
-          aplCategory: ['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
-            ? String(item.category).trim().toLowerCase()
-            : 'indisponible',
-          iss: 0,
-          issLevel: 1,
-          trend: 'stable',
-          source: 'drees',
-          updatedAt: new Date(),
-        })).filter((item: any) => item.depCode)
-        : [];
-
-      if (aplDepartments.length > 0) {
-        this.hasHealthData = true;
-        this.mapContainer?.updateHealth([], {} as any, aplDepartments);
-      }
-    } catch (err) {
-      console.error("Erreur APL:", err);
-    }
+    // APL JSON - non-blocking, the map does not need it to be interactive
+    this.loadAplData().catch((err) => console.warn('[Init] APL load failed:', err));
     // Apply URL view if present
     if (urlState.lng != null && urlState.lat != null) {
       this.mapContainer?.flyTo(urlState.lng, urlState.lat, urlState.zoom ?? 6);
@@ -1582,22 +1675,33 @@ export class App {
       this.newsItems = [];
     }
 
-    await this.loadAllLayers();
-
-    // Start RSS pipeline en arrière-plan (rafraîchit le cache)
+    // ── Polling — start immediately, independent of layer data
     this.startRSSPipeline();
-    // Start military polling
     this.startMilitaryPolling();
-    // Start finance polling
     this.startFinancePolling();
     this.startCommodityPolling();
     this.startOilPolling();
-    // Start civilian air traffic polling (free-tier friendly cadence)
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startHydraulicPolling();
     this.startEolienPolling();
-    console.log('[FranceMonitor] App initialized — Phase 4 (cache + clustering + URL state)');
+
+    // ── Static data — sync, instant
+    this.loadStaticData();
+
+    // ── CRITICAL layers — await: map becomes useful
+    await this.loadCriticalLayers();
+    this.updateISNR();
+
+    // ── SECONDARY layers — background
+    this.loadSecondaryLayers()
+      .then(() => this.updateISNR())
+      .catch((err) => console.error('[Init] Secondary layers error:', err));
+
+    // ── OPTIONAL layers — background
+    this.loadOptionalLayers().catch((err) => console.error('[Init] Optional layers error:', err));
+
+    console.log('[FranceMonitor] App initialized — map interactive, layers loading in background');
   }
 
   // ─── Shell Layout ───────────────────────────────────────────────────────────
@@ -1833,6 +1937,7 @@ export class App {
     const rightSidebarEl = document.createElement('aside');
     rightSidebarEl.id = 'right-sidebar';
     main.appendChild(rightSidebarEl);
+    this.rightSidebarRootEl = rightSidebarEl;
 
     // Mobile toggle button — only visible on small screens via CSS
     const mobileToggle = document.createElement('button');
@@ -1840,23 +1945,13 @@ export class App {
     mobileToggle.setAttribute('aria-label', 'Ouvrir le panneau latéral');
     mobileToggle.textContent = '☰';
     mapArea.appendChild(mobileToggle);
+    this.rightSidebarMobileToggleEl = mobileToggle;
 
     this.container.appendChild(main);
-
-    this.rightSidebar = new RightSidebar(rightSidebarEl);
-    this.rightSidebar.mount();
-
-    const syncRightSidebarTriggers = (isOpen: boolean): void => {
-      mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
-      mobileToggle.textContent = isOpen ? '✕' : '☰';
-      // presidentToggle aria-expanded disabled
-    };
-
-    this.rightSidebar.setOnToggle(syncRightSidebarTriggers);
-    syncRightSidebarTriggers(this.rightSidebar.isOpen());
+    this.syncRightSidebarTriggers(false);
 
     mobileToggle.addEventListener('click', () => {
-      this.rightSidebar?.toggle();
+      void this.ensureRightSidebar().then((sidebar) => sidebar.toggle());
     });
     // presidentToggle listener removed
 
@@ -1954,7 +2049,7 @@ export class App {
     // Floating panels (mounted to App root container)
     const floatContainer = document.createElement('div');
     this.container.appendChild(floatContainer);
-    this.sentinelModal = new SentinelModal(floatContainer);
+    this.floatContainerEl = floatContainer;
 
     this.environmentPanel = new EnvironmentPanel(floatContainer);
     this.environmentPanel.setOnHoverDepartment((code) => {
@@ -2082,7 +2177,7 @@ export class App {
 
     // France Intelligence Panel — open on sidebar button click or map click
     document.addEventListener('open-france-intel', () => {
-      this.openFranceIntelPanel();
+      void this.openFranceIntelPanel();
     });
 
     // Handle lang toggle from panel header button
@@ -2162,14 +2257,6 @@ export class App {
       // Optional: could update StatusPanel state here
     });
     this.cyberPanel.mount();
-
-    // France Intelligence Panel
-    this.franceIntelPanel = new FranceIntelPanel(floatContainer);
-    this.franceIntelPanel.setInfrastructureWidget(this.networkBarometerWidget);
-    this.franceIntelPanel.setOnClose(() => {
-      this.clearFranceIntelBriefRefresh();
-    });
-    this.franceIntelPanel.mount();
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
@@ -2284,13 +2371,10 @@ export class App {
     // Layer toggles now in header (UnifiedSettings modal)
 
     // ── Search Modal ──
-    this.searchModal = new SearchModal(this.container);
-    this.searchModal.setOnFlyTo((lon, lat, zoom, item) => {
-      this.mapContainer?.flyTo(lon, lat, zoom);
-      if (item) {
-        this.mapContainer?.selectItem(item);
-        this.newsPanel?.selectItem(item.id);
-        this.routeGovernmentContextForItem(item);
+    document.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        void this.ensureSearchModal().then((modal) => modal.show());
       }
     });
 
@@ -2808,7 +2892,7 @@ export class App {
     this.mapContainer.setOnSatelliteView((request) => {
       this.mapContainer?.setSentinelSceneOverlay(null);
       this.mapContainer?.fitBounds(request.bbox, 80);
-      this.sentinelModal?.show(request);
+      void this.ensureSentinelModal().then((modal) => modal.show(request));
     });
 
     // Handle military flight clicks → show detailed popup
@@ -4505,7 +4589,12 @@ export class App {
   // LOAD ALL LAYERS — Pattern WorldMonitor (static first, then parallel async)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private async loadAllLayers(): Promise<void> {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INIT DATA — 3 priority groups + 1 sync method
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Sync — called first, no network, instant display */
+  private loadStaticData(): void {
     // ─── STATIC DATA — Affichage immédiat (pas de fetch) ───────────────────
     // Affiche d'abord notre DB statique enrichie (~160 sites)
     this.mapContainer?.updateMilitaryBases(ACTIVE_INSTALLATIONS);
@@ -4521,10 +4610,9 @@ export class App {
     }).catch((err) => {
       console.warn('[App] Failed to load OSM military features:', err);
     });
-
-
-
-    // ─── ASYNC DATA — Chargement parallèle ─────────────────────────────────
+  }
+  /** CRITICAL — awaited in init(). 4 layers that seed the ISNR (energy + weather + floods). */
+  private async loadCriticalLayers(): Promise<void> {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
         name: 'ecowatt', task: this.loadEcowatt().catch(() => {
@@ -4553,6 +4641,25 @@ export class App {
         })
       },
       {
+        name: 'nuclear', task: this.loadNuclear().catch(() => {
+          this.currentNuclearState = null;
+          this.networkBarometerWidget?.updateNuclear(null);
+          this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
+        })
+      },
+    ];
+
+    const results = await Promise.allSettled(tasks.map((t) => t.task));
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[Critical] ${tasks[i]!.name} failed:`, r.reason);
+      }
+    });
+  }
+  /** SECONDARY — fire-and-forget. Caller does .then(() => this.updateISNR()). */
+  private async loadSecondaryLayers(): Promise<void> {
+    const tasks: Array<{ name: string; task: Promise<void> }> = [
+      {
         name: 'fires', task: this.loadFires().catch(() => {
           this.mapContainer?.updateFires([]);
           this.statusPanel?.updateSource('NASA FIRMS', { status: 'error', lastUpdate: new Date() });
@@ -4580,29 +4687,12 @@ export class App {
           this.statusPanel?.updateSource('Éolien France', { status: 'error', lastUpdate: new Date() });
         })
       },
-      {
-        name: 'nuclear', task: this.loadNuclear().catch(() => {
-          this.currentNuclearState = null;
-          this.networkBarometerWidget?.updateNuclear(null);
-          this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
-        })
-      },
       ...(this.activeLayers.trafficRoad ? [{
         name: 'traffic', task: this.loadTraffic().catch(() => {
           this.mapContainer?.updateTrafficIncidents([]);
           this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: new Date() });
         })
       }] : []),
-      {
-        name: 'air-traffic', task: this.loadAirTraffic().catch(() => {
-          this.mapContainer?.updateAirTraffic([]);
-          this.statusPanel?.updateSource('Trafic aérien', {
-            status: 'error',
-            lastUpdate: new Date(),
-            detail: 'airplanes.live · proxy gratuit',
-          });
-        })
-      },
       {
         name: 'sncf', task: this.loadSncf().catch(() => {
           this.currentSncfDisruptions = [];
@@ -4622,6 +4712,28 @@ export class App {
       {
         name: 'outages', task: this.loadOutages().catch(() => {
           this.statusPanel?.updateSource('Télécoms', { status: 'error', lastUpdate: new Date() });
+        })
+      },
+    ];
+
+    const results = await Promise.allSettled(tasks.map((t) => t.task));
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[Secondary] ${tasks[i]!.name} failed:`, r.reason);
+      }
+    });
+  }
+  /** OPTIONAL — fire-and-forget. Slow/heavy APIs that do not affect first visible state. */
+  private async loadOptionalLayers(): Promise<void> {
+    const tasks: Array<{ name: string; task: Promise<void> }> = [
+      {
+        name: 'air-traffic', task: this.loadAirTraffic().catch(() => {
+          this.mapContainer?.updateAirTraffic([]);
+          this.statusPanel?.updateSource('Trafic aérien', {
+            status: 'error',
+            lastUpdate: new Date(),
+            detail: 'airplanes.live · proxy gratuit',
+          });
         })
       },
       {
@@ -4648,16 +4760,14 @@ export class App {
       },
     ];
 
-    const results = await Promise.allSettled(tasks.map(t => t.task));
+    const results = await Promise.allSettled(tasks.map((t) => t.task));
     results.forEach((r, i) => {
       if (r.status === 'rejected') {
-        console.error(`[LoadAll] ${tasks[i].name} failed:`, r.reason);
+        console.error(`[Optional] ${tasks[i]!.name} failed:`, r.reason);
       }
     });
-
-    // ─── ISNR — Calculé après que toutes les données sont chargées ─────────
-    this.updateISNR();
   }
+
 
   private async loadSpaceWeather(): Promise<void> {
     this.statusPanel?.updateSource('NOAA SWPC', { status: 'loading', lastUpdate: null });
@@ -5055,7 +5165,7 @@ export class App {
     }, FRANCE_INTEL_BRIEF_REFRESH_MS);
   }
 
-  private openFranceIntelPanel(): void {
+  private async openFranceIntelPanel(): Promise<void> {
     if (!this.currentCyberData) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
     if (!this.currentOilData) void this.loadOil();
@@ -5072,9 +5182,10 @@ export class App {
     this.transportPanel?.hide();
     this.trafficPanel?.hide();
 
-    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const panel = await this.ensureFranceIntelPanel();
+    const lang = panel.getCurrentLang();
     const snapshot = this.buildFranceSnapshot(lang);
-    this.franceIntelPanel?.show(snapshot);
+    panel.show(snapshot);
     this.requestFranceIntelBrief(snapshot, lang);
     this.scheduleFranceIntelBriefRefresh();
   }
@@ -5110,6 +5221,7 @@ export class App {
   }
 
   private routeGovernmentContext(categories: EventCategory[]): void {
+    this.pendingGovernmentCategories = categories;
     this.rightSidebar?.setGovernmentContext(categories);
   }
 

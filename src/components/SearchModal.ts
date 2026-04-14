@@ -6,6 +6,10 @@
 import type { NewsItem } from '../types/index.ts';
 import { CITIES, REGIONS } from '../config/geo.ts';
 
+interface SearchModalOptions {
+    bindKeyboardShortcut?: boolean;
+}
+
 export class SearchModal {
     private container: HTMLElement;
     private modalEl: HTMLElement;
@@ -15,7 +19,7 @@ export class SearchModal {
     private onFlyTo: ((lon: number, lat: number, zoom: number, item?: NewsItem) => void) | null = null;
     private isVisible = false;
 
-    constructor(container: HTMLElement) {
+    constructor(container: HTMLElement, options: SearchModalOptions = {}) {
         this.container = container;
 
         // Create overlay
@@ -74,13 +78,13 @@ export class SearchModal {
         this.modalEl.appendChild(content);
         this.container.appendChild(this.modalEl);
 
-        this.bindEvents();
+        this.bindEvents(options.bindKeyboardShortcut !== false);
     }
 
-    private bindEvents() {
+    private bindEvents(bindKeyboardShortcut: boolean) {
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            if (bindKeyboardShortcut && (e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 this.toggle();
             }
