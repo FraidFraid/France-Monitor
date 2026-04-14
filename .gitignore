@@ -44,3 +44,11 @@ public/data/history-dev.json
 FranceMonitor-Plan/
 docs/superpowers/
 docs/superpowers/plans/2026-04-14-non-blocking-init.md
+.codex-backlog-tree-update.md
+.codex-backlog-update-today.md
+AGENTS.md
+CLAUDE.md
+test_api.js
+test_tv.js
+update_axes.js
+gemini-svg.svg
