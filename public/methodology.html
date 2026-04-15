@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Méthodologie - France Monitor</title>
+    <meta
+      name="description"
+      content="Méthodologie de France Monitor : familles de sources, logique d'agrégation et limites d'interprétation."
+    />
+    <link rel="canonical" href="https://www.francemonitor.com/methodology" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0f;
+        --panel: #11131b;
+        --border: rgba(255, 255, 255, 0.1);
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.6);
+        --accent: #4bfc94;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      .page-shell {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      .brandbar {
+        margin-bottom: 18px;
+      }
+      .header-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+      .header-about-trigger {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      .header-about-trigger:hover {
+        opacity: 0.92;
+      }
+      .header-logo {
+        width: 28px;
+        height: 28px;
+        display: block;
+        flex-shrink: 0;
+      }
+      .header-title-text {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0;
+      }
+      .header-title-word--france {
+        color: #ffffff;
+      }
+      .header-title-word--monitor {
+        color: #4bfc94;
+      }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin: 0 0 22px;
+      }
+      .nav a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .nav a:hover {
+        color: var(--text);
+      }
+      .nav a.is-active {
+        color: var(--text);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 30px 32px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+      }
+      h1, h2 { line-height: 1.2; }
+      h1 { margin: 0 0 14px; font-size: clamp(2rem, 4vw, 2.5rem); letter-spacing: -0.03em; }
+      h2 { margin: 28px 0 12px; font-size: 1.1rem; }
+      p, li { color: var(--muted); }
+      ul { padding-left: 18px; margin: 0 0 12px; }
+      li + li { margin-top: 8px; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page-shell">
+      <div class="brandbar">
+        <a class="header-title header-about-trigger" href="/" aria-label="Accueil France Monitor">
+          <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
+          <span class="header-title-text">
+            <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
+          </span>
+        </a>
+      </div>
+      <nav class="nav" aria-label="Navigation secondaire">
+        <a href="/">Accueil</a>
+        <a href="/about">À propos</a>
+        <a class="is-active" href="/methodology">Méthodologie</a>
+        <a href="/docs/documentation">Documentation</a>
+        <a href="/legal">Mentions légales</a>
+        <a href="/contact">Contact</a>
+      </nav>
+      <section class="card">
+        <h1>Méthodologie</h1>
+        <p>France Monitor agrège des signaux issus de sources ouvertes et publiques. L'objectif est la veille situationnelle, pas la production d'un récit éditorial autonome.</p>
+        <h2>Familles de sources</h2>
+        <ul>
+          <li>Open data et API publiques françaises : météo, crues, énergie, santé, transport, open data territoriale.</li>
+          <li>Flux RSS de presse et de presse quotidienne régionale pour le repérage de signaux et d'événements.</li>
+          <li>Flux techniques ou internationaux complémentaires : trafic aérien, maritime, incendies, marchés, indicateurs réseau.</li>
+        </ul>
+        <h2>Traitement</h2>
+        <ul>
+          <li>Collecte automatisée à fréquence régulière selon le type de signal.</li>
+          <li>Déduplication, géocodage et classification thématique.</li>
+          <li>Affichage cartographique et panneaux de synthèse pour faciliter la lecture croisée.</li>
+        </ul>
+        <h2>Limites</h2>
+        <ul>
+          <li>La fraîcheur et la qualité dépendent des fournisseurs de données.</li>
+          <li>Certains signaux sont inférentiels ou agrégés et demandent une validation humaine avant toute conclusion.</li>
+          <li>La présence d'un point, d'une alerte ou d'un article ne vaut pas confirmation indépendante d'un fait.</li>
+        </ul>
+        <h2>Principe d'usage</h2>
+        <p>Les informations affichées doivent être recoupées avec les sources primaires, les communiqués officiels et les médias de référence lorsque l'enjeu est éditorial, opérationnel, financier ou juridique.</p>
+      </section>
+      </div>
+    </main>
+  </body>
+</html>

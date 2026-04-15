@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact - France Monitor</title>
+    <meta name="description" content="Canaux de contact publics pour France Monitor." />
+    <link rel="canonical" href="https://www.francemonitor.com/contact" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0f;
+        --panel: #11131b;
+        --border: rgba(255, 255, 255, 0.1);
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.6);
+        --accent: #4bfc94;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      .page-shell {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      .brandbar {
+        margin-bottom: 18px;
+      }
+      .header-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+      .header-about-trigger {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      .header-about-trigger:hover {
+        opacity: 0.92;
+      }
+      .header-logo {
+        width: 28px;
+        height: 28px;
+        display: block;
+        flex-shrink: 0;
+      }
+      .header-title-text {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0;
+      }
+      .header-title-word--france {
+        color: #ffffff;
+      }
+      .header-title-word--monitor {
+        color: #4bfc94;
+      }
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin: 0 0 22px;
+      }
+      .nav a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .nav a:hover {
+        color: var(--text);
+      }
+      .nav a.is-active {
+        color: var(--text);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 30px 32px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+      }
+      h1 { margin: 0 0 14px; font-size: clamp(2rem, 4vw, 2.5rem); line-height: 1.2; letter-spacing: -0.03em; }
+      p { margin: 0 0 12px; color: var(--muted); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page-shell">
+      <div class="brandbar">
+        <a class="header-title header-about-trigger" href="/" aria-label="Accueil France Monitor">
+          <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
+          <span class="header-title-text">
+            <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
+          </span>
+        </a>
+      </div>
+      <nav class="nav" aria-label="Navigation secondaire">
+        <a href="/">Accueil</a>
+        <a href="/about">À propos</a>
+        <a href="/methodology">Méthodologie</a>
+        <a href="/docs/documentation">Documentation</a>
+        <a href="/legal">Mentions légales</a>
+        <a class="is-active" href="/contact">Contact</a>
+      </nav>
+      <section class="card">
+        <h1>Contact</h1>
+        <p>Pour toute question sur le projet, les sources, les données ou le code, utiliser les canaux publics ci-dessous.</p>
+        <p><a href="https://github.com/FraidFraid/France-Monitor" rel="noopener noreferrer" target="_blank">GitHub du projet</a></p>
+        <p><a href="https://www.linkedin.com/in/fredaubourg/" rel="noopener noreferrer" target="_blank">Profil LinkedIn</a></p>
+      </section>
+      </div>
+    </main>
+  </body>
+</html>

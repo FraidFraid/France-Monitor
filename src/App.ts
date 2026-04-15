@@ -1878,6 +1878,22 @@ export class App {
     underMapArea.innerHTML = `<div class="under-map-grid" id="under-map-grid"></div>`;
     mapArea.appendChild(underMapArea);
 
+    const bottomLinks = document.createElement('nav');
+    bottomLinks.className = 'app-bottom-links';
+    bottomLinks.setAttribute('aria-label', 'Pages d’information France Monitor');
+    bottomLinks.innerHTML = `
+      <a href="/about">À propos</a>
+      <span aria-hidden="true">·</span>
+      <a href="/methodology">Méthodologie</a>
+      <span aria-hidden="true">·</span>
+      <a href="/docs/documentation">Documentation</a>
+      <span aria-hidden="true">·</span>
+      <a href="/legal">Mentions légales</a>
+      <span aria-hidden="true">·</span>
+      <a href="/contact">Contact</a>
+    `;
+    mapArea.appendChild(bottomLinks);
+
     const underMapJumpBtn = document.createElement('button');
     underMapJumpBtn.className = 'map-underfold-btn';
     underMapJumpBtn.type = 'button';

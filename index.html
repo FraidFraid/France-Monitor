@@ -4,15 +4,86 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0f" />
-    <meta name="description" content="France Monitor — Tableau de bord de conscience situationnelle en temps réel pour la France" />
+    <title>France Monitor - Veille OSINT et tableau de bord situationnel pour la France</title>
+    <meta
+      name="description"
+      content="France Monitor est une plateforme indépendante de veille OSINT et de cartographie de signaux publics pour la France. Ce site n'est pas un média ni un organe de presse."
+    />
+    <meta
+      name="keywords"
+      content="France Monitor, OSINT France, veille stratégique, cartographie, infrastructures critiques, open data, actualités, dashboard, situation awareness"
+    />
+    <meta name="author" content="Fraid" />
+    <meta name="robots" content="index, follow" />
+    <meta name="application-name" content="France Monitor" />
+    <meta name="apple-mobile-web-app-title" content="France Monitor" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>France Monitor</title>
+    <link rel="canonical" href="https://www.francemonitor.com/" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:site_name" content="France Monitor" />
+    <meta property="og:url" content="https://www.francemonitor.com/" />
+    <meta property="og:title" content="France Monitor - Veille OSINT et tableau de bord situationnel pour la France" />
+    <meta
+      property="og:description"
+      content="Plateforme indépendante de veille OSINT et de cartographie de signaux publics pour la France. Ce site n'est pas un média ni un organe de presse."
+    />
+    <meta property="og:image" content="https://www.francemonitor.com/icon-512.png" />
+    <meta property="og:image:alt" content="Logo France Monitor" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="France Monitor - Veille OSINT et tableau de bord situationnel pour la France" />
+    <meta
+      name="twitter:description"
+      content="Plateforme indépendante de veille OSINT et de cartographie de signaux publics pour la France."
+    />
+    <meta name="twitter:image" content="https://www.francemonitor.com/icon-512.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "France Monitor",
+        "url": "https://www.francemonitor.com/",
+        "description": "Plateforme indépendante de veille OSINT et de cartographie de signaux publics pour la France. Ce site n'est pas un média ni un organe de presse.",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "fr-FR",
+        "author": {
+          "@type": "Person",
+          "name": "Fraid",
+          "sameAs": [
+            "https://github.com/FraidFraid/France-Monitor",
+            "https://www.linkedin.com/in/fredaubourg/"
+          ]
+        },
+        "sameAs": [
+          "https://github.com/FraidFraid/France-Monitor",
+          "https://www.linkedin.com/in/fredaubourg/"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>
+      <main style="max-width: 760px; margin: 0 auto; padding: 32px; font: 16px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #e8e8ef; background: #0a0a0f;">
+        <h1 style="margin: 0 0 12px;">France Monitor</h1>
+        <p style="margin: 0 0 12px;">
+          Plateforme indépendante de veille OSINT et de cartographie de signaux publics pour la France.
+        </p>
+        <p style="margin: 0 0 12px;">
+          Ce site n'est pas un média, ne publie pas de rédaction journalistique originale et n'a pas vocation à se substituer aux sources primaires ou aux médias de référence.
+        </p>
+        <p style="margin: 0;">
+          Voir <a href="/about" style="color: #9fc4ff;">À propos</a>,
+          <a href="/methodology" style="color: #9fc4ff;">Méthodologie</a>,
+          <a href="/legal" style="color: #9fc4ff;">Mentions légales</a>,
+          <a href="/contact" style="color: #9fc4ff;">Contact</a>.
+        </p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

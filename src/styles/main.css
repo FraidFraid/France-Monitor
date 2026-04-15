@@ -1547,6 +1547,28 @@ body {
   overflow: visible;
 }
 
+.app-bottom-links {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.app-bottom-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.app-bottom-links a:hover {
+  color: var(--threat-info);
+}
+
 .under-map-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2357,6 +2379,12 @@ body {
   .under-map-area {
     min-height: 154px;
     padding: 10px;
+  }
+
+  .app-bottom-links {
+    gap: 8px;
+    padding: 12px 16px 16px;
+    font-size: 11px;
   }
 
   .under-map-grid {

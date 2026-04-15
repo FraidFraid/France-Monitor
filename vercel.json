@@ -30,6 +30,11 @@
     { "source": "/api/geocode", "destination": "/api/geocode" },
     { "source": "/api/situation-history", "destination": "/api/situation-history" },
     { "source": "/api/francemonitor/(.*)", "destination": "/api/francemonitor/$1" },
+    { "source": "/about", "destination": "/about.html" },
+    { "source": "/methodology", "destination": "/methodology.html" },
+    { "source": "/legal", "destination": "/legal.html" },
+    { "source": "/contact", "destination": "/contact.html" },
+    { "source": "/docs/documentation", "destination": "/docs-documentation.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

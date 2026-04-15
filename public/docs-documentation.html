@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Documentation - France Monitor</title>
+    <meta
+      name="description"
+      content="Documentation publique de France Monitor : positionnement, fonctionnalités, architecture, sources, stack et limites."
+    />
+    <link rel="canonical" href="https://www.francemonitor.com/docs/documentation" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0f;
+        --panel: #11131b;
+        --border: rgba(255, 255, 255, 0.1);
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.6);
+        --accent: #4bfc94;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      .page-shell {
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+      .topbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin: 0 0 22px;
+      }
+      .brandbar {
+        margin-bottom: 18px;
+      }
+      .header-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+      .header-about-trigger {
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      .header-about-trigger:hover {
+        opacity: 0.92;
+      }
+      .header-logo {
+        width: 28px;
+        height: 28px;
+        display: block;
+        flex-shrink: 0;
+      }
+      .header-title-text {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0;
+      }
+      .header-title-word--france {
+        color: #ffffff;
+      }
+      .header-title-word--monitor {
+        color: #4bfc94;
+      }
+      .topbar a, .toc a, .hero-links a, .grid a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .topbar a.is-active {
+        color: var(--text);
+      }
+      .hero {
+        padding: 30px 32px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+        margin-bottom: 24px;
+      }
+      .hero-kicker {
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+        margin-bottom: 10px;
+      }
+      h1, h2, h3 {
+        line-height: 1.15;
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        max-width: 900px;
+        margin-bottom: 14px;
+      }
+      h2 {
+        font-size: 1.45rem;
+        margin-bottom: 14px;
+      }
+      h3 {
+        font-size: 1rem;
+        margin-bottom: 10px;
+      }
+      p {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+      .hero-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 36px;
+        padding: 0 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(90, 200, 250, 0.22);
+        background: rgba(90, 200, 250, 0.08);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+      .toc,
+      .section,
+      .mini-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+      }
+      .toc {
+        position: sticky;
+        top: 18px;
+        padding: 18px;
+      }
+      .toc h2 {
+        font-size: 0.95rem;
+        margin-bottom: 12px;
+      }
+      .toc a {
+        display: block;
+        padding: 6px 0;
+        color: var(--muted);
+      }
+      .toc a:hover,
+      .topbar a:hover,
+      .hero-links a:hover,
+      .grid a:hover {
+        color: var(--accent);
+      }
+      .content {
+        display: grid;
+        gap: 18px;
+      }
+      .section {
+        padding: 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .mini-card {
+        padding: 16px;
+      }
+      .mini-card p:last-child,
+      .section p:last-child {
+        margin-bottom: 0;
+      }
+      ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+      li + li {
+        margin-top: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+        vertical-align: top;
+        color: var(--muted);
+      }
+      th {
+        color: var(--text);
+        font-weight: 600;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92em;
+        color: var(--accent);
+      }
+      @media (max-width: 900px) {
+        .layout,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .toc {
+          position: static;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="page-shell">
+      <div class="brandbar">
+        <a class="header-title header-about-trigger" href="/" aria-label="Accueil France Monitor">
+          <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
+          <span class="header-title-text">
+            <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
+          </span>
+        </a>
+      </div>
+      <nav class="topbar" aria-label="Navigation secondaire">
+        <a href="/">Accueil</a>
+        <a href="/about">À propos</a>
+        <a href="/methodology">Méthodologie</a>
+        <a class="is-active" href="/docs/documentation">Documentation</a>
+        <a href="/legal">Mentions légales</a>
+        <a href="/contact">Contact</a>
+      </nav>
+
+      <section class="hero">
+        <div class="hero-kicker">Documentation</div>
+        <h1>France Monitor est une plateforme indépendante de veille OSINT et de lecture situationnelle pour la France.</h1>
+        <p>
+          Cette documentation publique décrit ce que fait l'outil, ce qu'il ne fait pas, les grandes familles de données utilisées,
+          la logique de traitement, l'architecture technique et les limites d'interprétation.
+        </p>
+        <p>
+          France Monitor n'est pas un média ni un organe de presse. Le site agrège et corrèle des signaux publics afin de faciliter
+          la veille, la cartographie et le recoupement.
+        </p>
+        <div class="hero-links">
+          <a class="chip" href="https://www.francemonitor.com">Live App</a>
+          <a class="chip" href="https://github.com/FraidFraid/France-Monitor" rel="noopener noreferrer" target="_blank">GitHub</a>
+          <a class="chip" href="/methodology">Méthodologie</a>
+          <a class="chip" href="/legal">Cadre public</a>
+        </div>
+      </section>
+
+      <div class="layout">
+        <nav class="toc" aria-label="Sommaire">
+          <h2>Sommaire</h2>
+          <a href="#what-it-does">Ce que fait l'outil</a>
+          <a href="#what-it-is-not">Ce que ce n'est pas</a>
+          <a href="#coverage">Couverture</a>
+          <a href="#features">Fonctionnalités</a>
+          <a href="#sources">Sources</a>
+          <a href="#processing">Traitement</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#stack">Stack</a>
+          <a href="#limitations">Limites</a>
+          <a href="#deployment">Déploiement</a>
+        </nav>
+
+        <div class="content">
+          <section class="section" id="what-it-does">
+            <h2>Ce que fait l'outil</h2>
+            <ul>
+              <li>Agrège des signaux publics liés à la France dans une interface unique de monitoring.</li>
+              <li>Cartographie des événements, infrastructures, alertes et indicateurs multi-domaines.</li>
+              <li>Recoupe des flux hétérogènes pour faire émerger du contexte, des anomalies et des signaux faibles.</li>
+              <li>Expose un environnement lisible pour la veille technique, territoriale et OSINT.</li>
+            </ul>
+          </section>
+
+          <section class="section" id="what-it-is-not">
+            <h2>Ce que ce n'est pas</h2>
+            <ul>
+              <li>Ce n'est pas une rédaction journalistique et ce n'est pas un titre de presse.</li>
+              <li>Ce n'est pas une source primaire officielle ni un service public d'alerte.</li>
+              <li>Ce n'est pas un outil de décision autonome : les signaux affichés demandent souvent validation et recoupement.</li>
+            </ul>
+          </section>
+
+          <section class="section" id="coverage">
+            <h2>Couverture</h2>
+            <div class="grid">
+              <div class="mini-card">
+                <h3>Territoire</h3>
+                <p>France métropolitaine en priorité, avec couches et signaux nationaux, départementaux, régionaux et ponctuellement transfrontaliers.</p>
+              </div>
+              <div class="mini-card">
+                <h3>Domaines</h3>
+                <p>Énergie, météo, crues, transports, aviation, maritime, santé, incidents réseau, marchés, incendies, actualités et signaux de souveraineté.</p>
+              </div>
+              <div class="mini-card">
+                <h3>Cadence</h3>
+                <p>Les rafraîchissements varient selon la source et le coût d'accès : temps quasi-réel pour certaines couches, polling périodique pour d'autres.</p>
+              </div>
+              <div class="mini-card">
+                <h3>Usage visé</h3>
+                <p>Veille, exploration, recoupement, démonstration technique, pédagogie et lecture transversale de signaux publics.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="features">
+            <h2>Fonctionnalités</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Bloc</th>
+                  <th>Capacités</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Carte</td>
+                  <td>Carte WebGL avec <code>MapLibre + Deck.gl</code> sur desktop, fallback <code>D3/SVG</code> sur mobile.</td>
+                </tr>
+                <tr>
+                  <td>News intelligence</td>
+                  <td>Flux RSS, classification instantanée par mots-clés, enrichissement IA asynchrone, géocodage et déduplication.</td>
+                </tr>
+                <tr>
+                  <td>Infrastructure</td>
+                  <td>Suivi énergie, nucléaire, gaz, hydraulique, ruptures réseau, incidents transport et état de certains systèmes critiques.</td>
+                </tr>
+                <tr>
+                  <td>Risque territorial</td>
+                  <td>Vigilance météo, segments Vigicrues, incendies, signaux sanitaires et synthèse territoriale.</td>
+                </tr>
+                <tr>
+                  <td>Veille souveraineté</td>
+                  <td>Vols militaires, maritime, câbles sous-marins, incidents cyber et autres indicateurs orientés OSINT.</td>
+                </tr>
+                <tr>
+                  <td>IA locale</td>
+                  <td>Chaîne de fallback <code>Ollama → Groq → Transformers.js</code> selon disponibilité et contexte.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="section" id="sources">
+            <h2>Familles de sources</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Famille</th>
+                  <th>Exemples</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Open data et API publiques</td>
+                  <td>RTE, Météo-France, Hub'Eau, Vigicrues, SNCF, santé publique, données territoriales.</td>
+                </tr>
+                <tr>
+                  <td>Flux médias</td>
+                  <td>RSS nationaux et PQR pour le repérage d'événements, incidents et signaux locaux.</td>
+                </tr>
+                <tr>
+                  <td>Flux techniques</td>
+                  <td>Trafic aérien, maritime, marchés, indicateurs réseau, incendies et autres sources complémentaires.</td>
+                </tr>
+                <tr>
+                  <td>Données internes</td>
+                  <td>Référentiels statiques, enrichissements, listes de callsigns, géométries et tables de correspondance.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="section" id="processing">
+            <h2>Logique de traitement</h2>
+            <ul>
+              <li>Collecte via fonctions serverless et proxys de développement quand nécessaire.</li>
+              <li>Normalisation, cache, déduplication et contrôle de fraîcheur par source.</li>
+              <li>Classification et enrichissement de certains contenus textuels via pipeline hybride mots-clés + IA.</li>
+              <li>Géocodage, corrélation spatiale, affichage cartographique et restitution dans des panneaux spécialisés.</li>
+            </ul>
+          </section>
+
+          <section class="section" id="architecture">
+            <h2>Architecture</h2>
+            <p>
+              Le frontend repose sur un orchestrateur central en Vanilla TypeScript. Les composants UI manipulent directement le DOM,
+              tandis que les services métier gèrent l'accès aux données, le cache, les enrichissements et la logique de restitution.
+            </p>
+            <p>
+              Les routes <code>/api/*</code> sont servies par des fonctions Vercel en production. En local, des plugins Vite émulent
+              ces proxys pour garder une expérience de développement proche de la production.
+            </p>
+            <p>
+              La carte utilise deux moteurs selon le contexte : <code>Deck.gl + MapLibre</code> sur desktop, <code>D3/SVG</code> sur mobile ou machines plus limitées.
+            </p>
+          </section>
+
+          <section class="section" id="stack">
+            <h2>Stack technique</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Couche</th>
+                  <th>Technologies</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Frontend</td>
+                  <td>Vanilla TypeScript, Vite, CSS unique, localStorage, IndexedDB.</td>
+                </tr>
+                <tr>
+                  <td>Cartographie</td>
+                  <td>MapLibre GL JS, Deck.gl, D3, Supercluster, Turf.</td>
+                </tr>
+                <tr>
+                  <td>Backend léger</td>
+                  <td>Vercel Serverless Functions, Upstash Redis, proxys spécialisés.</td>
+                </tr>
+                <tr>
+                  <td>IA</td>
+                  <td>Ollama local, Groq en fallback, Transformers.js / ONNX Runtime côté navigateur.</td>
+                </tr>
+                <tr>
+                  <td>PWA</td>
+                  <td>vite-plugin-pwa, Workbox, précompression Brotli.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="section" id="limitations">
+            <h2>Limites et biais</h2>
+            <ul>
+              <li>La qualité dépend de la disponibilité et de la stabilité des sources tierces.</li>
+              <li>Certains signaux sont des indicateurs de veille, pas des confirmations factuelles indépendantes.</li>
+              <li>Les classifications automatiques et enrichissements IA peuvent produire des erreurs ou simplifications.</li>
+              <li>Une visualisation cartographique claire n'implique pas qu'un événement soit confirmé ou exhaustivement documenté.</li>
+            </ul>
+          </section>
+
+          <section class="section" id="deployment">
+            <h2>Déploiement et accès</h2>
+            <p>
+              France Monitor est accessible en ligne sur <a href="https://www.francemonitor.com">francemonitor.com</a> et le code source
+              est publié sur <a href="https://github.com/FraidFraid/France-Monitor" rel="noopener noreferrer" target="_blank">GitHub</a>.
+            </p>
+            <p>
+              La documentation publique complète ce que montrent déjà l'application, le README et les pages <a href="/about">À propos</a>,
+              <a href="/methodology">Méthodologie</a> et <a href="/legal">Mentions légales</a>.
+            </p>
+          </section>
+        </div>
+      </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,8 +1,10 @@
 <div align="center">
 
+<img src="./public/icon.svg" alt="France Monitor logo" width="120" height="120" />
+
 # 🇫🇷 France Monitor
 
-**Real-time situational awareness dashboard for France**
+**Independent OSINT monitoring and situational awareness dashboard for France**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -13,6 +15,8 @@
 
 *v1.0 is the first public release — the feature set will expand rapidly.*
 
+[Live App](https://www.francemonitor.com) · [About](https://www.francemonitor.com/about) · [Methodology](https://www.francemonitor.com/methodology) · [Legal](https://www.francemonitor.com/legal)
+
 [Features](#-features) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [Data Sources](#-data-sources) · [Contributing](#-contributing)
 
 </div>
@@ -21,9 +25,24 @@
 
 ## What is France Monitor?
 
-France Monitor is an open-source OSINT situational awareness platform focused exclusively on France. It aggregates real-time signals from dozens of public APIs — energy grid, weather alerts, river floods, military flights, maritime AIS, news, transport disruptions, wildfires, cyber threats, financial markets, and more — into a single 3D interactive map dashboard.
+France Monitor is an open-source OSINT monitoring platform focused exclusively on France. It aggregates real-time signals from public APIs, open data, technical feeds, and RSS sources into a single interactive map dashboard covering infrastructure, environment, transport, health, markets, and public information flows.
 
-The goal is not to replace professional tools, but to give analysts, journalists, researchers, and curious citizens a unified, openly auditable view of what is happening across France's critical infrastructure and public information space.
+The goal is not to replace primary sources, official alerts, or newsroom verification. The project is designed as a public-facing monitoring and correlation tool for analysts, journalists, researchers, and technically curious users who want a unified view of weak signals and public data across France.
+
+France Monitor is **not a media outlet and not a press publication**. It does not publish original reporting as a newsroom would. Items shown in the app should be treated as monitoring signals that may require confirmation from primary sources.
+
+## What It Does
+
+- Aggregates public and open signals relevant to France into one monitoring interface
+- Maps infrastructure, environmental, transport, health, market, and news-related signals
+- Correlates heterogeneous sources to surface anomalies, weak signals, and situational context
+- Exposes a technical, inspectable stack built around Vanilla TypeScript, Vite, Vercel Functions, and local-first AI fallbacks
+
+## What It Is Not
+
+- Not a newsroom and not a press title
+- Not an official government alerting system
+- Not a substitute for source verification, editorial confirmation, or operational decision support
 
 > **v1.0 note:** This first public release covers the core monitoring surface. Many data sources, panels, and AI features are already in place but will be significantly extended, stabilised, and documented in the coming months.
 
@@ -164,7 +183,7 @@ Optional for full feature coverage:
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/france-monitor.git
+git clone https://github.com/FraidFraid/France-Monitor.git
 cd france-monitor
 
 # Install dependencies
