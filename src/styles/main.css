@@ -100,7 +100,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
   overflow: hidden;
 }
 
@@ -238,6 +238,7 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  padding-bottom: 46px;
 }
 
 /* Wrapper pour la zone carte (permet les overlays absolus) */
@@ -1548,14 +1549,19 @@ body {
 }
 
 .app-bottom-links {
-  flex: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-header);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
-  padding: 14px 20px 18px;
+  padding: 12px 20px;
   border-top: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  background: rgba(18, 18, 26, 0.96);
+  backdrop-filter: blur(10px);
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.4;
@@ -2385,7 +2391,7 @@ body {
 
   .app-bottom-links {
     gap: 8px;
-    padding: 12px 16px 16px;
+    padding: 10px 14px;
     font-size: 11px;
   }
 
