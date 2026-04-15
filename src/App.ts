@@ -1770,9 +1770,16 @@ export class App {
         </div>
         <div class="about-modal__body">
           <p class="about-modal__text">
-            Monitoring temps réel, lecture stratégique du territoire et interface inspirée des workflows OSINT opérationnels.
+            France Monitor est un tableau de bord OSINT expérimental de veille nationale, qui agrège des signaux publics (open data, flux RSS, APIs) sur l'énergie, les transports, la santé, l'environnement et les réseaux. Il ne s'agit ni d'un média ni d'un service officiel, mais d'un outil d'exploration et de détection de signaux faibles.
           </p>
           <div class="about-modal__links">
+            <a class="about-modal__chip" href="/about">À propos</a>
+            <a class="about-modal__chip" href="/methodology">Méthodologie</a>
+            <a class="about-modal__chip" href="/docs">Documentation</a>
+            <a class="about-modal__chip" href="/contact">Contact</a>
+            <a class="about-modal__chip" href="/legal">Légal</a>
+          </div>
+          <div class="about-modal__links" style="margin-top: 10px;">
             <a
               class="about-modal__chip"
               href="https://github.com/FraidFraid/France-Monitor"
@@ -1789,14 +1796,13 @@ export class App {
               rel="noopener noreferrer"
               aria-label="Profil LinkedIn de Fraid"
             >
-              @Fraid
+              LinkedIn
             </a>
-            <span class="about-modal__chip about-modal__chip--static">MIT</span>
+            <span class="about-modal__chip about-modal__chip--static">AGPL-3.0</span>
           </div>
           <div class="about-modal__legal">
             <div>Copyright © 2026 Fraid</div>
-            <div>Licensed under the MIT License.</div>
-            <div>Projet inspiré de World Monitor</div>
+            <div>Projet OSINT indépendant.</div>
           </div>
         </div>
       </div>
@@ -2010,7 +2016,7 @@ export class App {
       <span class="sidebar-intel-entry__flag">🇫🇷</span>
       <span class="sidebar-intel-entry__body">
         <span class="sidebar-intel-entry__title">Intelligence France</span>
-        <span class="sidebar-intel-entry__meta">Synthèse nationale, signaux actifs, énergie, sécurité</span>
+        <span class="sidebar-intel-entry__meta">Veille OSINT nationale en sources ouvertes. Synthèse nationale, signaux actifs, énergie, sécurité</span>
       </span>
       <span class="sidebar-intel-entry__arrow" aria-hidden="true">›</span>
     `;

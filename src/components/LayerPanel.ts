@@ -252,7 +252,7 @@ export class LayerPanel {
         ${listHtml}
       </div>
       <div class="layer-panel-footer ${this.collapsed ? 'collapsed' : ''}">
-        <span class="layer-panel-count">${enabledCount}/${LAYER_DEFS.length} actifs</span>
+        <span class="layer-panel-count" title="${enabledCount} couches affichées / ${LAYER_DEFS.length} disponibles">${enabledCount}/${LAYER_DEFS.length} actifs</span>
       </div>
     `;
 
