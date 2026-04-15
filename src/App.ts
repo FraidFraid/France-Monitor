@@ -1886,7 +1886,7 @@ export class App {
       <span aria-hidden="true">·</span>
       <a href="/methodology">Méthodologie</a>
       <span aria-hidden="true">·</span>
-      <a href="/docs/documentation">Documentation</a>
+      <a href="/docs">Documentation</a>
       <span aria-hidden="true">·</span>
       <a href="/legal">Mentions légales</a>
       <span aria-hidden="true">·</span>

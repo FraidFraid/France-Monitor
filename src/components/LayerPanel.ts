@@ -400,40 +400,28 @@ export class LayerPanel {
   }
 
   private showHelp(): void {
-    // Create help popup
     const existing = document.querySelector('.layer-help-popup');
-    if (existing) {
-      existing.remove();
-      return;
-    }
+    if (existing) { existing.remove(); return; }
 
     const popup = document.createElement('div');
     popup.className = 'layer-help-popup';
     popup.innerHTML = `
       <div class="layer-help-header">
-        <span>Guide des couches</span>
+        <span class="layer-help-header-icon">&#128506;</span>
+        <div class="layer-help-header-text">
+          <div class="layer-help-header-title">Guide des couches</div>
+          <div class="layer-help-header-subtitle">Description et fraîcheur de chaque couche cartographique</div>
+        </div>
         <button class="layer-help-close">&times;</button>
       </div>
       <div class="layer-help-content">
-        <div class="layer-help-section">
-          <div class="layer-help-title">Données TEMPS RÉEL</div>
-          ${LAYER_DEFS.map(def => `
-            <div class="layer-help-item">
-              <span>${def.icon} ${def.label}</span>
-              <span class="layer-help-desc">${this.getLayerDescription(def.key)}</span>
-            </div>
-          `).join('')}
-        </div>
+        ${this.renderHelpSections()}
       </div>
     `;
 
     document.body.appendChild(popup);
+    popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 
-    popup.querySelector('.layer-help-close')?.addEventListener('click', () => {
-      popup.remove();
-    });
-
-    // Close on outside click
     setTimeout(() => {
       document.addEventListener('click', function handler(e) {
         if (!popup.contains(e.target as Node)) {
@@ -444,45 +432,84 @@ export class LayerPanel {
     }, 100);
   }
 
-  private getLayerDescription(key: keyof MapLayers): string {
-    const descriptions: Record<keyof MapLayers, string> = {
-      newsGroup: 'Groupe actualités : actus géolocalisées et indice de stabilité',
-      news: 'Articles PQR géolocalisés',
-      alerts: 'Alertes critiques en cours',
-      energySystems: 'Groupe énergie : réseau électrique, hydraulique, éolien, gaz, pétrole, nucléaire et charge métropolitaine',
-      powerGrid: 'État du réseau électrique national (Écowatt)',
-      hydroBackbone: 'Score de stress hydro-énergétique dérivé, appuyé sur des mesures hydrométriques Hub’Eau quasi temps réel là où disponible. DÉRIVÉ – APPUI MESURES RÉELLES.',
-      windMonitor: 'Veille éolienne : production live France et parcs terrestres / en mer',
-      health: 'Indicateurs épidémiologiques régionaux (SPF/data.gouv)',
-      healthOscour: 'Motifs pathologiques en hausse — OSCOUR / SOS Médecins (SPF)',
-      healthApl: 'Accessibilité Potentielle Localisée aux médecins (DREES 2023)',
-      hospitals: 'Carte des établissements de soins (base FINESS)',
-      traffic: 'Groupe TRAFICS (routier, maritime, aérien civils)',
-      trafficRoad: 'Incidents routiers TEMPS RÉEL (TomTom)',
-      trafficMaritime: 'Trafic maritime AIS (civils) — militaires dans DÉFENSE',
-      trafficAir: 'Trafic aérien civil (airplanes.live) — militaires dans DÉFENSE',
-      trafficRail: 'Réseau ferroviaire SNCF — perturbations actives (arcs + gares)',
-      environmentGroup: 'Groupe environnement: météo/crues, radar pluie, feux de forêt et terminateur jour/nuit',
-      environmental: 'Alertes météo et crues',
-      weatherRadar: 'Radar précipitations temps réel (overlay raster pluie)',
-      fires: 'Feux de forêt actifs — données satellite NASA FIRMS (VIIRS, latence ~3h)',
-      metroLoad: 'Consommation électrique TEMPS RÉEL des grandes métropoles',
-      sovereignty: 'Groupe souveraineté: défense, connectivité sous-marine et vigilance cyber',
-      military: 'Bases (▲), vols (avion) et navires militaires France + DROM',
-      subseaCables: 'Câbles de télécommunications sous-marins et points d’atterrage en France',
-      outages: 'Groupe pannes réseau : électricité, télécom, internet et cloud',
-      outagesElec: 'Pannes électricité : Enedis DataFair, zones citoyennes et signal Ecowatt',
-      outagesTelecom: 'Pannes télécom 4G·5G : antennes HS et dégradées (ARCEP)',
-      outagesInternet: 'Pannes Internet/BGP : anomalies IODA et état des opérateurs (BGPView)',
-      outagesCloud: 'Pannes datacenters et points d\'échange Internet (IXP) en France',
-      stability: 'Indice de stabilité par département',
-      cyber: 'Alertes CERT-FR, ransomware et CVE critiques',
-      gasNetwork: 'Stockages gaz, terminaux GNL et flux PIR',
-      oilNetwork: 'Vue OSINT structurelle du système pétrolier français, combinant infrastructures (raffineries, dépôts, oléoducs) et indicateurs mensuels SDES sur consommations et origines de brut. Inclut aussi un module national distinct de tension carburants quasi temps réel. Fraîcheur : HYBRID / MONTHLY / STRUCTURAL + QUASI-LIVE.',
-      nuclearFleet: 'Disponibilité des réacteurs nucléaires (RTE) et signaux REMIT',
-      dayNight: 'Terminateur jour/nuit (zone d\'ombre calculée en temps réel)',
-      elus: 'Élus & Représentants — en cours de configuration, non livré dans cette version',
+  private badge(type: 'live' | 'derived' | 'monthly'): string {
+    const map: Record<string, [string, string]> = {
+      live:    ['live',    'LIVE'],
+      derived: ['derived', 'DÉRIVÉ'],
+      monthly: ['monthly', 'MENSUEL'],
     };
-    return descriptions[key] || '';
+    const [cls, label] = map[type];
+    return `<span class="layer-help-item-badge layer-help-item-badge--${cls}">${label}</span>`;
+  }
+
+  private helpItem(icon: string, label: string, desc: string, badgeType?: 'live' | 'derived' | 'monthly'): string {
+    return `
+      <div class="layer-help-item">
+        <div class="layer-help-item-name">
+          <span class="layer-help-item-name-icon">${icon}</span>
+          <span>${label}</span>
+          ${badgeType ? this.badge(badgeType) : ''}
+        </div>
+        <div class="layer-help-desc">${desc}</div>
+      </div>`;
+  }
+
+  private helpSection(icon: string, title: string, items: string[]): string {
+    return `
+      <div class="layer-help-section">
+        <div class="layer-help-section-header">
+          <span class="layer-help-section-icon">${icon}</span>
+          <span class="layer-help-section-title">${title}</span>
+          <span class="layer-help-section-count">${items.length} couche${items.length > 1 ? 's' : ''}</span>
+        </div>
+        <div class="layer-help-grid">${items.join('')}</div>
+      </div>`;
+  }
+
+  private renderHelpSections(): string {
+    return [
+      this.helpSection('&#128240;', 'Actualités', [
+        this.helpItem('&#128240;', 'Actualités géolocalisées', 'Articles PQR localisés sur la carte par département ou commune.', 'live'),
+        this.helpItem('&#128202;', 'Indice de stabilité', 'Score composite ISNR par département : sécurité, énergie, social, cyber.', 'live'),
+      ]),
+      this.helpSection('&#9889;', 'Énergie', [
+        this.helpItem('&#9889;', 'Réseau électrique / Écowatt', 'Signal national Écowatt (RTE) : vert / orange / rouge.', 'live'),
+        this.helpItem('&#9883;', 'Parc nucléaire', 'Disponibilité des réacteurs (RTE) et signaux REMIT — arrêts planifiés et fortuits.', 'live'),
+        this.helpItem('&#128293;', 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR en temps réel.', 'live'),
+        this.helpItem('&#128167;', 'Hydro – stress hydro-énergétique', 'Score de stress dérivé des mesures Hub’Eau. Indicateur de tension hydraulique.', 'derived'),
+        this.helpItem('&#128738;', 'Pétrole – réseau & stocks', 'Raffineries, dépôts, oléoducs + indicateurs SDES. Tension carburants quasi-live.', 'monthly'),
+        this.helpItem('&#127788;', 'Veille éolienne', 'Production éolienne live France — parcs terrestres et offshore.', 'live'),
+        this.helpItem('&#127963;', 'Charge métropolitaine', 'Consommation électrique temps réel des grandes métropoles françaises.', 'live'),
+      ]),
+      this.helpSection('&#127973;', 'Santé', [
+        this.helpItem('&#127973;', 'Santé / Épidémio', 'Indicateurs épidémiologiques régionaux (SPF / data.gouv.fr).', 'live'),
+        this.helpItem('&#128657;', 'OSCOUR / SOS Médecins', 'Motifs pathologiques en hausse — passages urgences et actes SOS Médecins.', 'live'),
+        this.helpItem('&#127979;', 'APL — Déserts médicaux', 'Accessibilité Potentielle Localisée aux médecins généralistes (DREES 2023).', 'monthly'),
+        this.helpItem('&#9702;', 'Hôpitaux (FINESS)', 'Établissements de soins géolocalisés — base FINESS nationale.', 'monthly'),
+      ]),
+      this.helpSection('&#128663;', 'Trafics', [
+        this.helpItem('&#128663;', 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
+        this.helpItem('&#128674;', 'Trafic maritime', 'Navires civils AIS — militaires dans la couche Défense.', 'live'),
+        this.helpItem('&#9992;', 'Trafic aérien', 'Vols civils airplanes.live — militaires dans la couche Défense.', 'live'),
+        this.helpItem('&#128641;', 'Réseau ferroviaire', 'Perturbations actives SNCF — arcs de lignes et gares impactées.', 'live'),
+      ]),
+      this.helpSection('&#127793;', 'Environnement', [
+        this.helpItem('&#127793;', 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),
+        this.helpItem('&#127782;', 'Radar météo', 'Overlay raster précipitations temps réel (Météo-France / RainViewer).', 'live'),
+        this.helpItem('&#128293;', 'Feux de forêt (NASA FIRMS)', 'Détections actives VIIRS satellite NASA. Latence ~3h.', 'derived'),
+        this.helpItem('&#127761;', 'Jour / Nuit', 'Terminateur jour/nuit calculé en temps réel (zone d’ombre).', 'live'),
+      ]),
+      this.helpSection('&#128737;', 'Souveraineté', [
+        this.helpItem('&#128737;', 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
+        this.helpItem('&#127754;', 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
+        this.helpItem('&#128274;', 'Vigilance cyber', 'Alertes CERT-FR, ransomware actifs et CVE critiques récentes.', 'live'),
+      ]),
+      this.helpSection('&#128225;', 'Pannes réseau', [
+        this.helpItem('&#9889;', 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),
+        this.helpItem('&#128225;', 'Télécom 4G·5G', 'Antennes dégradées ou hors service (données ARCEP).', 'live'),
+        this.helpItem('&#127760;', 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
+        this.helpItem('&#9729;', 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),
+      ]),
+    ].join('');
   }
 }

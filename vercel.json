@@ -34,7 +34,7 @@
     { "source": "/methodology", "destination": "/methodology.html" },
     { "source": "/legal", "destination": "/legal.html" },
     { "source": "/contact", "destination": "/contact.html" },
-    { "source": "/docs/documentation", "destination": "/docs-documentation.html" },
+    { "source": "/docs", "destination": "/docs.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
