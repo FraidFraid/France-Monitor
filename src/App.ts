@@ -1892,7 +1892,6 @@ export class App {
       <span aria-hidden="true">·</span>
       <a href="/contact">Contact</a>
     `;
-    mapArea.appendChild(bottomLinks);
 
     const underMapJumpBtn = document.createElement('button');
     underMapJumpBtn.className = 'map-underfold-btn';
@@ -1987,6 +1986,7 @@ export class App {
     this.rightSidebarMobileToggleEl = mobileToggle;
 
     this.container.appendChild(main);
+    this.container.appendChild(bottomLinks);
     this.syncRightSidebarTriggers(false);
 
     mobileToggle.addEventListener('click', () => {

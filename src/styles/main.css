@@ -1554,19 +1554,21 @@ body {
   justify-content: center;
   gap: 10px;
   padding: 14px 20px 18px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .app-bottom-links a {
-  color: var(--text-secondary);
+  color: #4bfc94;
   text-decoration: none;
   transition: color var(--transition-fast);
 }
 
 .app-bottom-links a:hover {
-  color: var(--threat-info);
+  color: #7ffdb2;
 }
 
 .under-map-grid {
