@@ -1118,9 +1118,9 @@ body {
   width: 400px;
   max-width: calc(100vw - 24px);
   z-index: 12;
-  background: rgba(10, 12, 20, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(10, 12, 20, 0.76);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
   overflow: hidden;
@@ -1134,9 +1134,9 @@ body {
   left: 12px;
   width: 272px;
   z-index: 12;
-  background: rgba(10, 12, 20, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(10, 12, 20, 0.76);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
   overflow: hidden;
@@ -1176,6 +1176,22 @@ body {
   cursor: pointer;
   user-select: none;
   border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.sit-mon__header--draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.situation-monitor.is-dragging,
+.alert-monitor.is-dragging {
+  box-shadow: 0 10px 30px rgba(0,0,0,0.56);
+  opacity: 0.98;
+}
+
+.situation-monitor.is-dragging .sit-mon__header--draggable,
+.alert-monitor.is-dragging .sit-mon__header--draggable {
+  cursor: grabbing;
 }
 
 .sit-mon__header:hover {

@@ -6,8 +6,30 @@
 export const config = { runtime: 'edge' };
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama3-8b-8192';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const MAX_INPUT_CHARS = 4000;
+const MAX_FALLBACK_CHARS = 220;
+
+function sanitizeInput(value) {
+  return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0080-\u009F]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildFallbackSummary(text) {
+  const clean = sanitizeInput(text);
+  if (!clean) {
+    return '';
+  }
+
+  const firstSentence = clean.match(/(.+?[.!?])(\s|$)/u)?.[1]?.trim() ?? clean;
+  if (firstSentence.length <= MAX_FALLBACK_CHARS) {
+    return firstSentence;
+  }
+
+  return `${firstSentence.slice(0, MAX_FALLBACK_CHARS - 1).trimEnd()}...`;
+}
 
 export default async function handler(request) {
   if (request.method === 'OPTIONS') {
@@ -37,7 +59,7 @@ export default async function handler(request) {
   let text;
   try {
     const body = await request.json();
-    text = typeof body?.text === 'string' ? body.text.trim() : '';
+    text = typeof body?.text === 'string' ? sanitizeInput(body.text) : '';
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
@@ -54,6 +76,7 @@ export default async function handler(request) {
 
   // Truncate input to avoid excessive token usage
   const truncated = text.length > MAX_INPUT_CHARS ? text.slice(0, MAX_INPUT_CHARS) : text;
+  const fallbackSummary = buildFallbackSummary(truncated);
 
   try {
     const groqRes = await fetch(GROQ_URL, {
@@ -61,6 +84,7 @@ export default async function handler(request) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'User-Agent': 'FranceMonitor/1.0',
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
@@ -68,20 +92,32 @@ export default async function handler(request) {
           { role: 'system', content: 'Tu es un analyste français. Résume en 1 seule courte phrase factuelle.' },
           { role: 'user', content: truncated },
         ],
+        temperature: 0.2,
         max_tokens: 120,
       }),
       signal: AbortSignal.timeout(8000),
     });
 
     if (!groqRes.ok) {
-      return new Response(JSON.stringify({ error: `Groq upstream ${groqRes.status}` }), {
-        status: 502,
+      const groqBody = await groqRes.text();
+      console.error('[summarize] Groq upstream rejected request', {
+        status: groqRes.status,
+        model: GROQ_MODEL,
+        body: groqBody.slice(0, 500),
+      });
+
+      return new Response(JSON.stringify({
+        summary: fallbackSummary,
+        degraded: true,
+        upstreamStatus: groqRes.status,
+      }), {
+        status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
     const data = await groqRes.json();
-    const summary = data.choices?.[0]?.message?.content?.trim() ?? '';
+    const summary = sanitizeInput(data.choices?.[0]?.message?.content ?? '') || fallbackSummary;
 
     return new Response(JSON.stringify({ summary }), {
       status: 200,
@@ -92,8 +128,13 @@ export default async function handler(request) {
       },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Groq fetch failed', message: err.message }), {
-      status: 502,
+    console.error('[summarize] Groq fetch failed', err);
+    return new Response(JSON.stringify({
+      summary: fallbackSummary,
+      degraded: true,
+      message: err instanceof Error ? err.message : String(err),
+    }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }

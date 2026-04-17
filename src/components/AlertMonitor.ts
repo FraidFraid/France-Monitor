@@ -49,12 +49,22 @@ const TYPE_ICON: Record<string, string> = {
 
 export class AlertMonitor {
   private static readonly COMPACT_LIMIT = 3;
+  private static readonly STORAGE_KEY = 'france-monitor.alert-monitor-position';
+  private static readonly DRAG_THRESHOLD_PX = 4;
   private readonly el: HTMLElement;
   private readonly container: HTMLElement;
   private collapsed = false;
   private expandedAll = false;
   private allAlerts: DetectedSituation[] = [];
   private lang: 'fr' | 'en' = 'fr';
+  private dragPointerId: number | null = null;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragOffsetX = 0;
+  private dragOffsetY = 0;
+  private dragging = false;
+  private suppressNextHeaderClick = false;
+  private hasCustomPosition = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -63,6 +73,7 @@ export class AlertMonitor {
     this.el.setAttribute('aria-live', 'polite');
     this.el.style.display = 'none';
     this.container.appendChild(this.el);
+    this.restorePosition();
   }
 
   update(alerts: DetectedSituation[], lang: 'fr' | 'en' = 'fr'): void {
@@ -75,6 +86,7 @@ export class AlertMonitor {
   }
 
   destroy(): void {
+    window.removeEventListener('resize', this.handleWindowResize);
     this.el.remove();
   }
 
@@ -116,7 +128,15 @@ export class AlertMonitor {
       `}
     `;
 
-    this.el.querySelector('.sit-mon__header')!.addEventListener('click', () => {
+    const headerEl = this.el.querySelector<HTMLElement>('.sit-mon__header');
+    headerEl?.classList.add('sit-mon__header--draggable');
+    this.bindDragHandle(headerEl);
+
+    headerEl?.addEventListener('click', () => {
+      if (this.suppressNextHeaderClick) {
+        this.suppressNextHeaderClick = false;
+        return;
+      }
       this.collapsed = !this.collapsed;
       this.expandedAll = false;
       this.render();
@@ -134,6 +154,134 @@ export class AlertMonitor {
       this.expandedAll = !this.expandedAll;
       this.render();
     });
+  }
+
+  private bindDragHandle(headerEl: HTMLElement | null): void {
+    headerEl?.addEventListener('pointerdown', this.handleHeaderPointerDown);
+  }
+
+  private readonly handleHeaderPointerDown = (event: PointerEvent): void => {
+    const target = event.target as HTMLElement | null;
+    if (!target || target.closest('button, a')) {
+      return;
+    }
+
+    const rect = this.el.getBoundingClientRect();
+    this.dragPointerId = event.pointerId;
+    this.dragStartX = event.clientX;
+    this.dragStartY = event.clientY;
+    this.dragOffsetX = event.clientX - rect.left;
+    this.dragOffsetY = event.clientY - rect.top;
+    this.dragging = false;
+
+    this.el.setPointerCapture(event.pointerId);
+    this.el.addEventListener('pointermove', this.handlePointerMove);
+    this.el.addEventListener('pointerup', this.handlePointerUp);
+    this.el.addEventListener('pointercancel', this.handlePointerUp);
+  };
+
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (this.dragPointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - this.dragStartX;
+    const deltaY = event.clientY - this.dragStartY;
+    if (!this.dragging && Math.hypot(deltaX, deltaY) < AlertMonitor.DRAG_THRESHOLD_PX) {
+      return;
+    }
+
+    if (!this.dragging) {
+      this.dragging = true;
+      this.el.classList.add('is-dragging');
+    }
+
+    event.preventDefault();
+    this.applyPointerPosition(event.clientX, event.clientY);
+  };
+
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    if (this.dragPointerId !== event.pointerId) {
+      return;
+    }
+
+    if (this.el.hasPointerCapture(event.pointerId)) {
+      this.el.releasePointerCapture(event.pointerId);
+    }
+
+    this.el.removeEventListener('pointermove', this.handlePointerMove);
+    this.el.removeEventListener('pointerup', this.handlePointerUp);
+    this.el.removeEventListener('pointercancel', this.handlePointerUp);
+
+    if (this.dragging) {
+      this.suppressNextHeaderClick = true;
+      this.hasCustomPosition = true;
+      this.persistPosition();
+    }
+
+    this.dragPointerId = null;
+    this.dragging = false;
+    this.el.classList.remove('is-dragging');
+  };
+
+  private readonly handleWindowResize = (): void => {
+    if (!this.hasCustomPosition) {
+      return;
+    }
+
+    const left = Number.parseFloat(this.el.style.left || '0');
+    const top = Number.parseFloat(this.el.style.top || '0');
+    this.applyPosition(left, top);
+    this.persistPosition();
+  };
+
+  private applyPointerPosition(clientX: number, clientY: number): void {
+    const containerRect = this.container.getBoundingClientRect();
+    const left = clientX - containerRect.left - this.dragOffsetX + this.container.scrollLeft;
+    const top = clientY - containerRect.top - this.dragOffsetY + this.container.scrollTop;
+    this.applyPosition(left, top);
+  }
+
+  private applyPosition(left: number, top: number): void {
+    const maxLeft = Math.max(12, this.container.scrollWidth - this.el.offsetWidth - 12);
+    const maxTop = Math.max(12, this.container.scrollHeight - this.el.offsetHeight - 12);
+    const nextLeft = Math.min(Math.max(12, left), maxLeft);
+    const nextTop = Math.min(Math.max(12, top), maxTop);
+
+    this.el.style.left = `${nextLeft}px`;
+    this.el.style.top = `${nextTop}px`;
+    this.el.style.right = 'auto';
+    this.el.style.bottom = 'auto';
+  }
+
+  private persistPosition(): void {
+    localStorage.setItem(AlertMonitor.STORAGE_KEY, JSON.stringify({
+      left: this.el.style.left,
+      top: this.el.style.top,
+    }));
+  }
+
+  private restorePosition(): void {
+    const raw = localStorage.getItem(AlertMonitor.STORAGE_KEY);
+    if (!raw) {
+      window.addEventListener('resize', this.handleWindowResize);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as { left?: string; top?: string };
+      if (parsed.left && parsed.top) {
+        this.el.style.left = parsed.left;
+        this.el.style.top = parsed.top;
+        this.el.style.right = 'auto';
+        this.el.style.bottom = 'auto';
+        this.hasCustomPosition = true;
+      }
+    } catch {
+      localStorage.removeItem(AlertMonitor.STORAGE_KEY);
+    }
+
+    window.addEventListener('resize', this.handleWindowResize);
   }
 
   private renderItem(s: DetectedSituation): string {

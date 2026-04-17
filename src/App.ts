@@ -3532,20 +3532,37 @@ export class App {
   /** Summarize items that have no aiSummary yet */
   private async runSummarization(items: NewsItem[], requestId: number): Promise<void> {
     try {
-      const toSummarize = items.filter((it) => !it.aiSummary && it.summary);
+      const toSummarize = items.filter(
+        (it) => !it.aiSummary && it.summary && it.aiSummaryStatus !== 'pending' && it.aiSummaryStatus !== 'failed',
+      );
       if (toSummarize.length === 0) return;
 
       const BATCH_SIZE = 3;
       for (let i = 0; i < toSummarize.length; i += BATCH_SIZE) {
         const batch = toSummarize.slice(i, i + BATCH_SIZE);
         let batchUpdated = false;
+
+        for (const item of batch) {
+          item.aiSummaryStatus = 'pending';
+        }
+        this.publishAugmentedItemsIfCurrent(items, requestId);
+
         await Promise.all(
           batch.map(async (item) => {
-            const sum = await summarizeWithFallback(item.summary!);
-            if (sum) {
-              item.aiSummary = sum;
-              batchUpdated = true;
+            try {
+              const sum = await summarizeWithFallback(item.summary!);
+              if (sum) {
+                item.aiSummary = sum;
+                item.aiSummaryStatus = 'done';
+                batchUpdated = true;
+                return;
+              }
+            } catch (err) {
+              console.warn('[RSS] Summarization item failed:', err);
             }
+
+            item.aiSummaryStatus = 'failed';
+            batchUpdated = true;
           }),
         );
 
