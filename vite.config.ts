@@ -167,6 +167,7 @@ export default defineConfig(({ mode }) => {
             '**/maplibre-*.js',
             '**/onnxruntime-*.js',
             '**/transformers-*.js',
+            'landing/*.png',
             // GeoJSON lourds (> 3 MB) : chargés à la demande, pas au démarrage
             'data/eolien-france.geojson',
             'data/departements.geojson',

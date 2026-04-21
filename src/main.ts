@@ -1,5 +1,7 @@
 import './styles/main.css';
+import './styles/landing.css';
 import { App } from './App';
+import { renderLandingPage } from './LandingPage';
 import { registerSW } from 'virtual:pwa-register';
 
 // Stale-chunk guard: after a new deploy, old hashed JS chunks are gone.
@@ -36,8 +38,22 @@ function installChunkReloadGuard(): void {
 installChunkReloadGuard();
 registerSW({ immediate: true });
 
+function shouldRenderLanding(): boolean {
+  const { pathname, searchParams, hash } = new URL(window.location.href);
+  if (searchParams.get('view') === 'app') {
+    return false;
+  }
+  return pathname === '/' && hash === '';
+}
+
 const container = document.getElementById('app');
 if (container) {
-  const app = new App(container);
-  app.init();
+  if (shouldRenderLanding()) {
+    renderLandingPage(container);
+  } else {
+    document.documentElement.classList.remove('fm-landing-mode');
+    document.body.classList.remove('fm-landing-mode');
+    const app = new App(container);
+    app.init();
+  }
 }
