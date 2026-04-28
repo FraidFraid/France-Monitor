@@ -31,6 +31,14 @@ function buildFallbackSummary(text) {
   return `${firstSentence.slice(0, MAX_FALLBACK_CHARS - 1).trimEnd()}...`;
 }
 
+function parseJsonMaybe(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 export default async function handler(request) {
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -98,25 +106,49 @@ export default async function handler(request) {
       signal: AbortSignal.timeout(8000),
     });
 
-    if (!groqRes.ok) {
-      const groqBody = await groqRes.text();
-      console.error('[summarize] Groq upstream rejected request', {
+    const groqBody = await groqRes.text();
+    const parsedBody = parseJsonMaybe(groqBody);
+
+    if (groqRes.status === 429) {
+      console.error('[summarize] Groq rate limited', {
         status: groqRes.status,
         model: GROQ_MODEL,
-        body: groqBody.slice(0, 500),
+        upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 500) : parsedBody,
       });
 
       return new Response(JSON.stringify({
+        error: 'groq_rate_limited',
+        message: 'Groq rate limit exceeded',
+        retryAfterSeconds: 2,
         summary: fallbackSummary,
         degraded: true,
-        upstreamStatus: groqRes.status,
+        upstream: parsedBody,
       }), {
-        status: 200,
+        status: 429,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
-    const data = await groqRes.json();
+    if (!groqRes.ok) {
+      console.error('[summarize] Groq upstream error', {
+        status: groqRes.status,
+        model: GROQ_MODEL,
+        upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 500) : parsedBody,
+      });
+
+      return new Response(JSON.stringify({
+        error: 'groq_upstream_error',
+        status: groqRes.status,
+        summary: fallbackSummary,
+        degraded: true,
+        upstream: parsedBody,
+      }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
+    const data = parseJsonMaybe(groqBody);
     const summary = sanitizeInput(data.choices?.[0]?.message?.content ?? '') || fallbackSummary;
 
     return new Response(JSON.stringify({ summary }), {
@@ -128,13 +160,12 @@ export default async function handler(request) {
       },
     });
   } catch (err) {
-    console.error('[summarize] Groq fetch failed', err);
+    console.error('[summarize] Unhandled error', err);
     return new Response(JSON.stringify({
-      summary: fallbackSummary,
-      degraded: true,
+      error: 'internal_error',
       message: err instanceof Error ? err.message : String(err),
     }), {
-      status: 200,
+      status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }

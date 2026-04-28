@@ -90,11 +90,9 @@ async function summarizeWithFallbackUncached(text: string): Promise<string | und
             body: JSON.stringify({ text }),
             signal: AbortSignal.timeout(10000),
         });
-        if (proxyRes.ok) {
-            const data = await proxyRes.json() as { summary?: string };
-            if (data.summary) {
-                return data.summary;
-            }
+        const data = await proxyRes.json() as { summary?: string };
+        if (data.summary) {
+            return data.summary;
         }
     } catch (err) {
         console.warn('[Summarization] Groq proxy error, fallback to T5:', err instanceof Error ? err.message : err);
