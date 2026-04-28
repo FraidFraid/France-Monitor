@@ -86,6 +86,7 @@ import { SituationMonitor } from './components/SituationMonitor.ts';
 import { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { pushHistorySnapshot } from './services/situation-history.ts';
 import { AlertMonitor } from './components/AlertMonitor.ts';
+import { UpdateNotification } from './components/UpdateNotification.ts';
 import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
@@ -106,6 +107,7 @@ import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
+import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -123,6 +125,7 @@ const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien te
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
+const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
 
 const ALERT_MONITOR_LIMIT = 2;
 const ALERT_MONITOR_TTLS_MS = {
@@ -1239,6 +1242,9 @@ export class App {
   private situationMonitor: SituationMonitor | null = null;
   private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
+  private updateNotification: UpdateNotification | null = null;
+  private currentVersionKey: string | null = null;
+  private hasUpdate = false;
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private currentCyberData: CyberState | null = null;
@@ -1326,6 +1332,7 @@ export class App {
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
   private _intervalSpaceWeatherTerminator: ReturnType<typeof setInterval> | null = null;
   private _intervalSpaceWeatherRefresh: ReturnType<typeof setInterval> | null = null;
+  private _intervalVersion: ReturnType<typeof setInterval> | null = null;
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
@@ -1352,6 +1359,12 @@ export class App {
       clearInterval(this._intervalSpaceWeatherRefresh);
       this._intervalSpaceWeatherRefresh = null;
     }
+    if (this._intervalVersion !== null) {
+      clearInterval(this._intervalVersion);
+      this._intervalVersion = null;
+    }
+    this.updateNotification?.destroy();
+    this.updateNotification = null;
     this.networkBarometerWidget?.destroy();
     this.networkBarometerWidget = null;
   }
@@ -1691,6 +1704,7 @@ export class App {
     }
 
     this.renderShell();
+    this.startVersionPolling();
     this.updateBarometerFabVisibility();
     await this.initMap();
 
@@ -2015,6 +2029,7 @@ export class App {
 
     this.container.appendChild(main);
     this.container.appendChild(bottomLinks);
+    this.updateNotification = new UpdateNotification(this.container);
     this.syncRightSidebarTriggers(false);
 
     mobileToggle.addEventListener('click', () => {
@@ -2417,6 +2432,29 @@ export class App {
 
     // ── Clock ──
     this.startClock();
+  }
+
+  private startVersionPolling(): void {
+    const checkVersion = async (): Promise<void> => {
+      const info = await fetchAppVersion();
+      if (!info) return;
+
+      const nextKey = getVersionKey(info);
+      if (this.currentVersionKey === null) {
+        this.currentVersionKey = nextKey;
+        return;
+      }
+
+      if (nextKey !== this.currentVersionKey && !this.hasUpdate) {
+        this.hasUpdate = true;
+        this.updateNotification?.show();
+      }
+    };
+
+    void checkVersion();
+    this._intervalVersion = setInterval(() => {
+      void checkVersion();
+    }, VERSION_POLL_INTERVAL_MS);
   }
 
   private renderRegionPresets(container: HTMLElement): void {

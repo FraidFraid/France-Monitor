@@ -65,6 +65,33 @@ const brotliPrecompressPlugin = (): Plugin => ({
   },
 });
 
+const appVersionPlugin = (): Plugin => {
+  const buildId =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GITHUB_SHA ||
+    process.env.FRANCE_MONITOR_BUILD_ID ||
+    String(Date.now());
+  const payload = `${JSON.stringify({ version: pkg.version, buildId })}\n`;
+
+  return {
+    name: 'app-version',
+    configureServer(server) {
+      server.middlewares.use('/version.json', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(payload);
+      });
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: payload,
+      });
+    },
+  };
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -125,6 +152,7 @@ export default defineConfig(({ mode }) => {
       }),
       situationHistoryProxyPlugin(),
       aisRelayPlugin(aisApiKey),
+      appVersionPlugin(),
       brotliPrecompressPlugin(),
       VitePWA({
         registerType: 'autoUpdate',
@@ -167,6 +195,7 @@ export default defineConfig(({ mode }) => {
             '**/maplibre-*.js',
             '**/onnxruntime-*.js',
             '**/transformers-*.js',
+            'version.json',
             'landing/*.png',
             // GeoJSON lourds (> 3 MB) : chargés à la demande, pas au démarrage
             'data/eolien-france.geojson',
