@@ -1210,6 +1210,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
 ];
 
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
+const MAX_SUMMARIZE_ITEMS_PER_CYCLE = 10;
 
 export class App {
 
@@ -1283,6 +1284,7 @@ export class App {
   private alertMonitorCache = new Map<string, { situation: DetectedSituation; expiresAt: number }>();
   private newsItems: NewsItem[] = [];
   private rssRequestSeq = 0;
+  private isSummarizationRunning = false;
   private currentISNRData: ISNRData | null = null;
   private currentMeteoAlerts: MeteoAlert[] = [];
   private _aisZeroWarnLogged = false; // Avoid spamming "0 ships" warning
@@ -3555,10 +3557,16 @@ export class App {
 
   /** Summarize items that have no aiSummary yet */
   private async runSummarization(items: NewsItem[], requestId: number): Promise<void> {
+    if (this.isSummarizationRunning) {
+      console.log('[RSS] Summarization skipped: previous cycle still running');
+      return;
+    }
+
+    this.isSummarizationRunning = true;
     try {
-      const toSummarize = items.filter(
-        (it) => !it.aiSummary && it.summary && it.aiSummaryStatus !== 'pending' && it.aiSummaryStatus !== 'failed',
-      );
+      const toSummarize = items
+        .filter((it) => !it.aiSummary && it.summary && it.aiSummaryStatus !== 'pending' && it.aiSummaryStatus !== 'failed' && it.aiSummaryStatus !== 'done')
+        .slice(0, MAX_SUMMARIZE_ITEMS_PER_CYCLE);
       if (toSummarize.length === 0) return;
 
       const BATCH_SIZE = 3;
@@ -3600,6 +3608,8 @@ export class App {
       }
     } catch (err) {
       console.error('[RSS] Summarization failed:', err);
+    } finally {
+      this.isSummarizationRunning = false;
     }
   }
 

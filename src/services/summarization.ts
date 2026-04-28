@@ -10,6 +10,7 @@ const worker = new Worker(new URL('./summarization-worker.ts', import.meta.url),
 let messageId = 0;
 type SummarizationPending = { resolve: (val: string) => void; reject: (err: Error) => void };
 const pendingRequests = new Map<number, SummarizationPending>();
+const inFlightSummaries = new Map<string, Promise<string | undefined>>();
 
 worker.addEventListener('message', (event) => {
     const { id, result, error } = event.data;
@@ -40,8 +41,22 @@ const OLLAMA_MODEL = 'mistral:instruct';
 const USE_OLLAMA = import.meta.env.VITE_USE_OLLAMA === 'true';
 
 export async function summarizeWithFallback(text: string): Promise<string | undefined> {
-    if (!text || text.trim().length === 0) return undefined;
+    const cleanText = text.trim();
+    if (!cleanText) return undefined;
 
+    const cacheKey = cleanText.replace(/\s+/g, ' ').slice(0, 4000);
+    const existing = inFlightSummaries.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = summarizeWithFallbackUncached(cleanText)
+        .finally(() => {
+            inFlightSummaries.delete(cacheKey);
+        });
+    inFlightSummaries.set(cacheKey, promise);
+    return promise;
+}
+
+async function summarizeWithFallbackUncached(text: string): Promise<string | undefined> {
     // 1. Ollama local
     if (USE_OLLAMA) {
         try {
