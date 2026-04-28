@@ -86,7 +86,7 @@ import { SituationMonitor } from './components/SituationMonitor.ts';
 import { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { pushHistorySnapshot } from './services/situation-history.ts';
 import { AlertMonitor } from './components/AlertMonitor.ts';
-import type { NuclearState } from './types/index.ts';
+import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
@@ -201,15 +201,7 @@ function getAlertMonitorExpiry(alert: DetectedSituation, nowMs: number): number 
 function summarizeNuclearPlantForMap(
   plantName: string,
   installedCapacityMW: number,
-  unavailabilities: Array<{
-    plantName: string;
-    unitName: string;
-    nominalPowerMW: number;
-    availablePowerMW: number;
-    startDate: Date;
-    endDate: Date | null;
-    status: string;
-  }>,
+  unavailabilities: NuclearUnavailability[],
 ): {
   availableMW: number;
   availabilityRatio: number;
@@ -248,6 +240,34 @@ function summarizeNuclearPlantForMap(
     status: 'maintenance',
     notes: impactedUnits ? `Tranches impactées : ${impactedUnits}` : undefined,
   };
+}
+
+function buildNuclearInfrastructurePoints(
+  unavailabilities: NuclearUnavailability[] = [],
+): InfrastructurePoint[] {
+  const colorMap = buildNuclearColorMap(unavailabilities);
+
+  return NUCLEAR_PLANTS
+    .filter((p) => p.status !== 'shutdown')
+    .map((p) => {
+      const summary = summarizeNuclearPlantForMap(p.name, p.capacity ?? 0, unavailabilities);
+      return {
+        ...p,
+        colorOverride: colorMap[p.name] ?? '#6B7280',
+        totalPower: p.capacity ?? 0,
+        totalAvailable: summary.availableMW,
+        globalAvailability: summary.availabilityRatio,
+        status: summary.status,
+        notes: summary.notes ?? p.notes,
+      };
+    });
+}
+
+function buildEnergyInfrastructurePoints(
+  unavailabilities: NuclearUnavailability[] = [],
+): InfrastructurePoint[] {
+  const gasInfra = ALL_INFRASTRUCTURE.filter((p) => p.type === 'gas-terminal' || p.type === 'gas-storage');
+  return [...buildNuclearInfrastructurePoints(unavailabilities), ...gasInfra];
 }
 
 function buildOilBriefingContext(
@@ -2809,6 +2829,10 @@ export class App {
       }
     } else if (key === 'nuclearFleet') {
       if (this.activeLayers.nuclearFleet) {
+        const nuclearInfra = this.currentNuclearState
+          ? buildEnergyInfrastructurePoints(this.currentNuclearState.unavailabilities)
+          : buildEnergyInfrastructurePoints();
+        this.mapContainer?.updateInfrastructure(nuclearInfra);
         if (!this.currentNuclearState) void this.loadNuclear(); // lazy-load on first enable
         this.nuclearPanel?.show(this.currentNuclearState, this.currentEcowattResponse);
         this.layoutEnergyFloatingPanels();
@@ -3862,23 +3886,7 @@ export class App {
         this.nuclearPanel.update(nuclearState, this.currentEcowattResponse);
       }
 
-      const colorMap = buildNuclearColorMap(unavailabilities);
-      const gasInfra = ALL_INFRASTRUCTURE.filter((p) => p.type === 'gas-terminal' || p.type === 'gas-storage');
-      const enrichedNuclear = NUCLEAR_PLANTS
-        .filter((p) => p.status !== 'shutdown')
-        .map((p) => {
-          const summary = summarizeNuclearPlantForMap(p.name, p.capacity ?? 0, unavailabilities);
-          return {
-            ...p,
-            colorOverride: colorMap[p.name] ?? '#6B7280',
-            totalPower: p.capacity ?? 0,
-            totalAvailable: summary.availableMW,
-            globalAvailability: summary.availabilityRatio,
-            status: summary.status,
-            notes: summary.notes ?? p.notes,
-          };
-        });
-      this.mapContainer?.updateInfrastructure([...enrichedNuclear, ...gasInfra]);
+      this.mapContainer?.updateInfrastructure(buildEnergyInfrastructurePoints(unavailabilities));
 
       this.statusPanel?.updateSource('Nucléaire RTE', {
         status: nuclearState.rteAvailable ? 'ok' : 'stale',
@@ -3890,6 +3898,7 @@ export class App {
       this.refreshFranceIntelPanel();
     } catch (err) {
       console.error('[App] loadNuclear failed:', err);
+      this.mapContainer?.updateInfrastructure(buildEnergyInfrastructurePoints());
       this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
       this.refreshFranceIntelPanel();
     }
