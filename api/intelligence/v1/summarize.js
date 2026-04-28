@@ -3,12 +3,20 @@
 // → { summary: string } | { error: string }
 // La clé Groq reste côté serveur (jamais dans le bundle client).
 
+import { redisGet, redisSet } from '../../utils/redis.js';
+
 export const config = { runtime: 'edge' };
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const SUMMARY_CACHE_TTL = 24 * 60 * 60;
 const MAX_INPUT_CHARS = 4000;
 const MAX_FALLBACK_CHARS = 220;
+
+function getEnv(name) {
+  return (typeof process !== 'undefined' ? process.env[name] : undefined)
+    ?? globalThis?.env?.[name];
+}
 
 function sanitizeInput(value) {
   return value
@@ -29,6 +37,11 @@ function buildFallbackSummary(text) {
   }
 
   return `${firstSentence.slice(0, MAX_FALLBACK_CHARS - 1).trimEnd()}...`;
+}
+
+async function hashText(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function parseJsonMaybe(text) {
@@ -54,16 +67,6 @@ export default async function handler(request) {
     });
   }
 
-  const GROQ_API_KEY = (typeof process !== 'undefined' ? process.env.GROQ_API_KEY : undefined)
-    ?? globalThis?.env?.GROQ_API_KEY;
-
-  if (!GROQ_API_KEY) {
-    return new Response(JSON.stringify({ error: 'Groq not configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-    });
-  }
-
   let text;
   try {
     const body = await request.json();
@@ -85,6 +88,28 @@ export default async function handler(request) {
   // Truncate input to avoid excessive token usage
   const truncated = text.length > MAX_INPUT_CHARS ? text.slice(0, MAX_INPUT_CHARS) : text;
   const fallbackSummary = buildFallbackSummary(truncated);
+  const cacheKey = `fm:rss:summary:${await hashText(truncated)}`;
+  const cachedSummary = await redisGet(cacheKey);
+
+  if (cachedSummary) {
+    return new Response(JSON.stringify({ summary: cachedSummary }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  const GROQ_API_KEY = getEnv('GROQ_API_KEY');
+
+  if (!GROQ_API_KEY) {
+    return new Response(JSON.stringify({ error: 'Groq not configured' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
 
   try {
     const groqRes = await fetch(GROQ_URL, {
@@ -116,6 +141,7 @@ export default async function handler(request) {
         upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 500) : parsedBody,
       });
 
+      await redisSet(cacheKey, fallbackSummary, SUMMARY_CACHE_TTL);
       return new Response(JSON.stringify({
         error: 'groq_rate_limited',
         message: 'Groq rate limit exceeded',
@@ -136,6 +162,7 @@ export default async function handler(request) {
         upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 500) : parsedBody,
       });
 
+      await redisSet(cacheKey, fallbackSummary, SUMMARY_CACHE_TTL);
       return new Response(JSON.stringify({
         error: 'groq_upstream_error',
         status: groqRes.status,
@@ -151,6 +178,7 @@ export default async function handler(request) {
     const data = parseJsonMaybe(groqBody);
     const summary = sanitizeInput(data.choices?.[0]?.message?.content ?? '') || fallbackSummary;
 
+    await redisSet(cacheKey, summary, SUMMARY_CACHE_TTL);
     return new Response(JSON.stringify({ summary }), {
       status: 200,
       headers: {
