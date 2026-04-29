@@ -5782,13 +5782,17 @@ export class DeckGLMap {
         : 'n.d.';
 
       const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:4px;">
+        <div style="color:#e8e8ec; font-family:sans-serif; min-width:230px; padding:4px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.10);">
+            <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#FBBF24; font-weight:800;">Tension carburants</div>
+            <div style="width:8px; height:8px; border-radius:999px; background:${lineColor}; box-shadow:0 0 12px ${lineColor}; flex-shrink:0;"></div>
+          </div>
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
             <div>
-              <strong style="font-size:14px; color:#fff;">${departmentName}</strong>
-              <div style="font-size:11px; color:#9898a8;">Département ${code}</div>
+              <strong style="font-size:14px; color:#fff;">${escapeHtml(departmentName)}</strong>
+              <div style="font-size:11px; color:#9898a8;">Département ${escapeHtml(code)}</div>
             </div>
-            <span style="font-size:10px; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; background:${lineColor};">${tensionLevel}</span>
+            <span style="font-size:10px; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; background:${lineColor};">${escapeHtml(tensionLevel)}</span>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
             <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">

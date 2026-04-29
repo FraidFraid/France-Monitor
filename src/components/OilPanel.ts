@@ -62,6 +62,12 @@ export class OilPanel extends Panel {
   private fuelTensionListVisible = false;
   private fuelTensionMapVisible = true;
   private fuelPriceHistoryRange: FuelPriceChartRange = '1m';
+  private latestVisibleFuelPriceSeries: Array<{
+    fuelType: string;
+    label: string;
+    color: string;
+    points: Array<{ timestamp: string; price: number }>;
+  }> = [];
   private freshnessSectionExpanded = false;
   private isDragging = false;
   private dragOffsetX = 0;
@@ -314,6 +320,7 @@ export class OilPanel extends Panel {
     this.bindFreshnessSectionToggle();
     this.bindFuelTensionSearch();
     this.bindFuelPriceHistoryControls();
+    this.bindFuelPriceHistoryTooltip();
   }
 
   private renderFreshnessSection(): string {
@@ -489,6 +496,12 @@ export class OilPanel extends Panel {
 
     const rangeLabel = this.fuelPriceHistoryRange === '1m' ? '1 mois' : '1 an';
     const visibleSeries = filterFuelPriceSeries(history, this.fuelPriceHistoryRange);
+    this.latestVisibleFuelPriceSeries = visibleSeries.map((series) => ({
+      fuelType: series.fuelType,
+      label: series.label,
+      color: series.color,
+      points: series.points.map((point) => ({ timestamp: point.timestamp, price: point.price })),
+    }));
     const chartSvg = renderFuelPriceChartSvg(visibleSeries, {
       width: 320,
       height: 170,
@@ -533,8 +546,12 @@ export class OilPanel extends Panel {
         <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px;">
           ${this.escapeHtml(history.sourceLabel)} · vue ${rangeLabel} · prix/disponibilité, pas volumes livrés.
         </div>
-        <div style="padding: 6px 0 2px;">
+        <div id="fuel-price-chart-container" style="position: relative; padding: 6px 0 2px;">
           ${chartSvg || '<div style="color: var(--text-muted); font-size: 11px;">Historique carburants indisponible.</div>'}
+          <div
+            id="fuel-price-hover-tooltip"
+            style="display:none; position:absolute; z-index:12; pointer-events:none; min-width:200px; max-width:260px; background:rgba(12,12,18,0.96); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px 10px; box-shadow:0 8px 24px rgba(0,0,0,0.45);"
+          ></div>
         </div>
         <div style="display:flex; flex-direction:column; margin-top:8px;">
           ${legendRows}
@@ -757,6 +774,100 @@ export class OilPanel extends Panel {
       this.fuelPriceHistoryRange = '1y';
       this.renderContent(this.latestOilData!, this.latestFuelTensionData);
     });
+  }
+
+  private bindFuelPriceHistoryTooltip(): void {
+    if (!this.contentEl || this.latestVisibleFuelPriceSeries.length === 0) return;
+
+    const container = this.contentEl.querySelector('#fuel-price-chart-container') as HTMLElement | null;
+    const tooltip = this.contentEl.querySelector('#fuel-price-hover-tooltip') as HTMLElement | null;
+    const svg = container?.querySelector('svg') as SVGSVGElement | null;
+    if (!container || !tooltip || !svg) return;
+
+    const timestampSet = new Set<number>();
+    for (const series of this.latestVisibleFuelPriceSeries) {
+      for (const point of series.points) {
+        const time = new Date(point.timestamp).getTime();
+        if (Number.isFinite(time)) timestampSet.add(time);
+      }
+    }
+    const timeline = Array.from(timestampSet).sort((a, b) => a - b);
+    if (timeline.length === 0) return;
+
+    const valuesBySeries = this.latestVisibleFuelPriceSeries.map((series) => ({
+      label: series.label,
+      color: series.color,
+      byTime: new Map(series.points
+        .map((point) => [new Date(point.timestamp).getTime(), point.price] as const)
+        .filter(([time, price]) => Number.isFinite(time) && Number.isFinite(price))),
+    }));
+
+    const formatDate = (timestamp: number): string => new Date(timestamp).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+    const renderTooltipHtml = (timestamp: number): string => {
+      const rows = valuesBySeries.map((series) => {
+        const value = series.byTime.get(timestamp);
+        const display = value == null ? 'n.d.' : `${value.toFixed(3).replace('.', ',')} €/L`;
+        return `
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:5px;">
+            <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+              <span style="display:inline-flex; width:8px; height:8px; border-radius:999px; background:${series.color}; flex-shrink:0;"></span>
+              <span style="font-size:11px; color:#d4d4dd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${this.escapeHtml(series.label)}</span>
+            </div>
+            <span style="font-size:11px; color:#ffffff; font-weight:600; flex-shrink:0;">${display}</span>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.07em; color:#fbbf24; font-weight:700;">Prix carburants</div>
+        <div style="font-size:12px; color:#ffffff; font-weight:700; margin-top:3px;">${formatDate(timestamp)}</div>
+        <div style="margin-top:4px;">${rows}</div>
+      `;
+    };
+
+    const nearestTimestamp = (mouseX: number): number => {
+      const rect = svg.getBoundingClientRect();
+      const ratio = rect.width > 0 ? (mouseX - rect.left) / rect.width : 0;
+      const clampedRatio = Math.max(0, Math.min(1, ratio));
+      const target = timeline[0] + clampedRatio * (timeline[timeline.length - 1] - timeline[0]);
+      let best = timeline[0];
+      let bestDelta = Math.abs(best - target);
+      for (let i = 1; i < timeline.length; i += 1) {
+        const delta = Math.abs(timeline[i] - target);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          best = timeline[i];
+        }
+      }
+      return best;
+    };
+
+    const hide = (): void => {
+      tooltip.style.display = 'none';
+    };
+
+    svg.addEventListener('mousemove', (event) => {
+      const ts = nearestTimestamp(event.clientX);
+      tooltip.innerHTML = renderTooltipHtml(ts);
+      tooltip.style.display = 'block';
+
+      const containerRect = container.getBoundingClientRect();
+      const offsetX = event.clientX - containerRect.left + 14;
+      const offsetY = event.clientY - containerRect.top - 8;
+      const estimatedWidth = 230;
+      const estimatedHeight = 170;
+      const left = Math.max(6, Math.min(offsetX, containerRect.width - estimatedWidth - 6));
+      const top = Math.max(6, Math.min(offsetY, containerRect.height - estimatedHeight - 6));
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    });
+
+    svg.addEventListener('mouseleave', hide);
   }
 
   private renderStocksSection(data: OilDashboard): string {
