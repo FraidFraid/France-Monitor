@@ -2,7 +2,9 @@ import type { Plugin } from 'vite';
 
 const ALLOWED_DOMAINS = [
   'data.economie.gouv.fr',
+  'www.data.economie.gouv.fr',
   'opendatamef.opendatasoft.com',
+  'odre.opendatasoft.com',
 ];
 
 function isAllowedDomain(url: string): boolean {
@@ -17,8 +19,19 @@ function isAllowedDomain(url: string): boolean {
 function buildOpendatasoftFallbackUrl(targetUrl: string): string | null {
   try {
     const parsed = new URL(targetUrl);
-    if (parsed.hostname !== 'data.economie.gouv.fr') return null;
+    if (parsed.hostname !== 'data.economie.gouv.fr' && parsed.hostname !== 'www.data.economie.gouv.fr') return null;
     parsed.hostname = 'opendatamef.opendatasoft.com';
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function buildOdreFallbackUrl(targetUrl: string): string | null {
+  try {
+    const parsed = new URL(targetUrl);
+    if (parsed.hostname !== 'data.economie.gouv.fr' && parsed.hostname !== 'www.data.economie.gouv.fr') return null;
+    parsed.hostname = 'odre.opendatasoft.com';
     return parsed.toString();
   } catch {
     return null;
@@ -48,24 +61,39 @@ export function fuelPricesProxyPlugin(): Plugin {
         }
 
         try {
+          const browserLikeHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Referer': 'https://data.economie.gouv.fr/',
+            'Origin': 'https://data.economie.gouv.fr',
+          };
+
           let upstream = await fetch(targetUrl, {
             headers: {
-              'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
+              ...browserLikeHeaders,
             },
             redirect: 'follow',
             signal: AbortSignal.timeout(20_000),
           });
 
           if (upstream.status === 403) {
-            const fallbackUrl = buildOpendatasoftFallbackUrl(targetUrl);
-            if (fallbackUrl) {
-              upstream = await fetch(fallbackUrl, {
+            const fallbackUrls = [buildOpendatasoftFallbackUrl(targetUrl), buildOdreFallbackUrl(targetUrl)].filter((entry): entry is string => Boolean(entry));
+            for (const fallbackUrl of fallbackUrls) {
+              const fallbackUpstream = await fetch(fallbackUrl, {
                 headers: {
-                  'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
+                  ...browserLikeHeaders,
                 },
                 redirect: 'follow',
                 signal: AbortSignal.timeout(20_000),
               });
+              if (fallbackUpstream.ok) {
+                upstream = fallbackUpstream;
+                break;
+              }
+              upstream = fallbackUpstream;
             }
           }
 
