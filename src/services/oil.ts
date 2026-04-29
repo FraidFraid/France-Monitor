@@ -976,10 +976,12 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
 
       const bodyText = normalizeText(article.innerHTML);
       const periodLabel = title.replace(/^La consommation française de produits énergétiques\s+/i, '').trim();
+      const publicationDate = article.querySelector('.date')?.textContent?.replace(/\s+/g, ' ').trim() ?? undefined;
 
       return {
         title,
         periodLabel,
+        publicationDate,
         sourceLabel: 'UFIP Énergies et Mobilités — communiqué mensuel',
         roadFuelMillionM3: extractVolume(bodyText, /carburants routiers[^.]{0,220}?(?:volume de|s['’]établ(?:it|ies|is|issent) à)\s*([0-9]+,[0-9]+)\s*millions?\s+de(?:\s+de)?\s+m3/i),
         roadFuelYoYPct: extractSignedPercent(bodyText, /carburants routiers[^.]{0,220}?(hausse|augmentation|progression|baisse|repli|recul|baiss[ée]s?|augmentent|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),

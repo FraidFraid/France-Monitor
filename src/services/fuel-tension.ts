@@ -8,12 +8,20 @@ import type {
   FuelType,
 } from '../types/index.ts';
 import { fetchFuelStations, NATIONAL_FUEL_DEPARTMENT_CODES } from './fuel-prices.ts';
+import { Watchdog } from './watchdog.ts';
 
 const FUEL_TYPES: FuelType[] = ['gazole', 'sp95', 'sp98', 'e10'];
-const FUEL_TENSION_CACHE_TTL_MS = 10 * 60_000;
+const FUEL_TENSION_CACHE_TTL_MS = 5 * 60_000;
 const HISTORY_STORAGE_KEY = 'france-monitor:fuel-tension-history:v2';
 const HISTORY_RETENTION_DAYS = 10;
 const TARGET_HISTORY_DAYS = 7;
+
+Watchdog.register('fuel-tension', {
+  label: 'Carburants temps réel',
+  staleAfterMs: 6 * 60_000,
+  detail: 'API prix carburants flux instantané v2 — prix, ruptures, fraîcheur stations',
+  freshness: 'TEMPS_REEL',
+});
 
 export const FUEL_TENSION_DISCLAIMER_FR = 'Tension carburants : signal quasi temps réel basé sur l’API prix carburants (Ministère de l’Économie). Il ne mesure pas les volumes livrés mais les prix, ruptures et l’actualité des stations.';
 export const FUEL_TENSION_DISCLAIMER_EN = 'Fuel tension: near real-time signal based on the public fuel prices API (Ministry of Economy). It tracks prices, outages and update freshness, not delivered volumes.';
@@ -470,14 +478,29 @@ export async function fetchFuelTensionDashboard(departmentCodes?: string[]): Pro
   const inflight = inflightRequests.get(cacheKey);
   if (inflight) return inflight;
 
+  Watchdog.report('fuel-tension', { type: 'loading' });
+  const startedAt = Date.now();
   const request = fetchFuelTensionDashboardUncached(normalizedCodes)
     .then((dashboard) => {
       cache.set(cacheKey, { data: dashboard, fetchedAt: Date.now() });
       inflightRequests.delete(cacheKey);
+      if (dashboard.sourceStatus === 'ok') {
+        Watchdog.report('fuel-tension', {
+          type: 'success',
+          responseTimeMs: Date.now() - startedAt,
+          detail: `${dashboard.national.stationCount.toLocaleString('fr-FR')} stations · ${dashboard.national.departmentCount} départements · ${dashboard.national.tensionLevel}`,
+        });
+      } else {
+        Watchdog.report('fuel-tension', { type: 'fallback', reason: dashboard.errorMessage ?? 'aucune station exploitable' });
+      }
       return dashboard;
     })
     .catch((error) => {
       inflightRequests.delete(cacheKey);
+      Watchdog.report('fuel-tension', {
+        type: 'failure',
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     });
 

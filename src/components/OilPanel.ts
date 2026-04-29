@@ -60,7 +60,7 @@ export class OilPanel extends Panel {
   private latestFuelTensionData: FuelTensionDashboard | null = null;
   private fuelTensionSearch = '';
   private fuelTensionListVisible = false;
-  private fuelTensionMapVisible = false;
+  private fuelTensionMapVisible = true;
   private fuelPriceHistoryRange: FuelPriceChartRange = '1m';
   private freshnessSectionExpanded = false;
   private isDragging = false;
@@ -191,7 +191,7 @@ export class OilPanel extends Panel {
       return;
     }
 
-    this.updateHeader(data);
+    this.updateHeader(data, fuelTension);
     this.renderContent(data, fuelTension);
   }
 
@@ -220,7 +220,7 @@ export class OilPanel extends Panel {
     `;
   }
 
-  private updateHeader(data: OilDashboard): void {
+  private updateHeader(data: OilDashboard, fuelTension: FuelTensionDashboard | null = null): void {
     const ring = this.modalEl.querySelector('#oil-ring-progress') as SVGCircleElement;
     const scoreEl = this.modalEl.querySelector('#oil-ring-score') as HTMLElement;
     const statusLabel = this.modalEl.querySelector('#oil-status-label') as HTMLElement;
@@ -248,8 +248,12 @@ export class OilPanel extends Panel {
     }
 
     if (updateTime) {
-      const d = new Date(data.meta.lastUpdate);
-      updateTime.textContent = `Mis à jour UI: ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · pas de télémesure live`;
+      const oilDate = new Date(data.meta.lastUpdate);
+      const fuelDate = fuelTension?.generatedAt ? new Date(fuelTension.generatedAt) : null;
+      const fuelLabel = fuelDate
+        ? `carburants quasi-live ${fuelDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+        : 'carburants quasi-live en attente';
+      updateTime.textContent = `Oil UI ${oilDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${fuelLabel}`;
     }
   }
 
@@ -891,33 +895,73 @@ export class OilPanel extends Panel {
       ? 'var(--text-muted)'
       : totalTrend > 0 ? OIL_PANEL_COLORS.export : totalTrend < 0 ? OIL_PANEL_COLORS.importGlow : 'var(--text-primary)';
 
+    const periodLabel = latest.periodLabel.replace(/^en\s+/i, '').trim() || latest.periodLabel;
+    const publicationLabel = latest.publicationDate ?? 'n.d.';
+    const roadFuelTrendLabel = latest.roadFuelYoYPct === null
+      ? 'n.d.'
+      : `${latest.roadFuelYoYPct > 0 ? '+' : ''}${latest.roadFuelYoYPct.toFixed(1)}%`;
+    const roadFuelTrendColor = latest.roadFuelYoYPct === null
+      ? 'var(--text-muted)'
+      : latest.roadFuelYoYPct > 0 ? OIL_PANEL_COLORS.export : latest.roadFuelYoYPct < 0 ? OIL_PANEL_COLORS.importGlow : 'var(--text-primary)';
+    const metricCard = (
+      label: string,
+      value: string,
+      trendLabel: string,
+      trendColor: string,
+      accentColor: string,
+      note: string,
+    ): string => `
+      <div style="background: rgba(255,255,255,0.035); border: 1px solid ${accentColor}; border-radius: 8px; padding: 10px 12px; min-width: 0;">
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.2; margin-bottom: 7px;">${label}</div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+          <div style="color: var(--text-primary); font-weight: 700; font-size: 15px; line-height: 1;">${value}</div>
+          <div style="color: ${trendColor}; font-size: 11px; font-weight: 700; white-space: nowrap;">${trendLabel}</div>
+        </div>
+        <div style="color: var(--text-muted); font-size: 9px; line-height: 1.35; margin-top: 7px;">${note}</div>
+      </div>
+    `;
+
     return `
       <div style="background: ${OIL_PANEL_COLORS.surface}; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid ${OIL_PANEL_COLORS.border};">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="color: var(--text-primary); font-weight: 600; font-size: 12px;">UFIP mensuel</span>
-          <span style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px;">
+          <div style="min-width: 0;">
+            <div style="color: var(--text-primary); font-weight: 700; font-size: 13px; line-height: 1.2;">UFIP mensuel</div>
+            <div style="color: var(--text-muted); font-size: 10px; line-height: 1.35; margin-top: 3px;">Livraisons CPDP / produits pétroliers</div>
+          </div>
+          <span style="display: flex; align-items: center; flex-shrink: 0;">
             ${this.renderFreshnessBadge(data.meta.freshness.deliveries.label)}
-            <span style="color: var(--text-muted); font-size: 10px;">${latest.periodLabel}</span>
           </span>
         </div>
-        <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 10px;">${latest.sourceLabel ?? data.meta.freshness.deliveries.detail} · signal mensuel FR utile pour la fraîcheur, sans remplacer le backbone structural.</div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px;">
+          <div style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 10px;">
+            <div style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px;">Mois de données</div>
+            <div style="color: var(--text-primary); font-size: 12px; font-weight: 700; line-height: 1.25;">${this.escapeHtml(periodLabel)}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 10px;">
+            <div style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px;">Publication</div>
+            <div style="color: var(--text-primary); font-size: 12px; font-weight: 700; line-height: 1.25;">${this.escapeHtml(publicationLabel)}</div>
+          </div>
+        </div>
+
+        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.45; margin-bottom: 10px;">${latest.sourceLabel ?? data.meta.freshness.deliveries.detail}</div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(245, 158, 11, 0.14); border-radius: 6px; padding: 8px;">
-            <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 2px;">Produits énergétiques</div>
-            <div style="color: var(--text-primary); font-weight: 600; font-size: 12px;">
-              ${latest.totalProductsMillionTons === null ? 'n.d.' : `${latest.totalProductsMillionTons.toFixed(2)} Mt`}
-            </div>
-            <div style="color: ${totalTrendColor}; font-size: 10px; margin-top: 2px;">${totalTrendLabel} vs N-1</div>
-          </div>
-          <div style="background: ${OIL_PANEL_COLORS.surfaceSoft}; border: 1px solid rgba(194, 65, 12, 0.14); border-radius: 6px; padding: 8px;">
-            <div style="color: var(--text-muted); font-size: 10px; margin-bottom: 2px;">Carburants routiers</div>
-            <div style="color: var(--text-primary); font-weight: 600; font-size: 12px;">
-              ${latest.roadFuelMillionM3 === null ? 'n.d.' : `${latest.roadFuelMillionM3.toFixed(3)} Mm3`}
-            </div>
-            <div style="color: ${this.getTrendColor(latest.roadFuelYoYPct)}; font-size: 10px; margin-top: 2px;">
-              ${this.formatPct(latest.roadFuelYoYPct)}
-            </div>
-          </div>
+          ${metricCard(
+            'Produits énergétiques',
+            latest.totalProductsMillionTons === null ? 'Volume n.d.' : `${latest.totalProductsMillionTons.toFixed(2)} Mt`,
+            totalTrendLabel,
+            totalTrendColor,
+            'rgba(245, 158, 11, 0.16)',
+            'Variation annuelle du total produits.',
+          )}
+          ${metricCard(
+            'Carburants routiers',
+            latest.roadFuelMillionM3 === null ? 'Volume n.d.' : `${latest.roadFuelMillionM3.toFixed(3)} Mm3`,
+            roadFuelTrendLabel,
+            roadFuelTrendColor,
+            'rgba(194, 65, 12, 0.16)',
+            'Variation annuelle des livraisons routières.',
+          )}
         </div>
       </div>
     `;
@@ -964,11 +1008,6 @@ export class OilPanel extends Panel {
     return `${value.toFixed(value >= 100 ? 1 : 3)} kbd`;
   }
 
-  private formatPct(value: number | null): string {
-    if (value === null || Number.isNaN(value)) return 'n.d.';
-    return `${value > 0 ? '+' : ''}${value.toFixed(1)}% vs N-1`;
-  }
-
   private renderFreshnessBadge(label: string): string {
     const normalizedLabel = label.trim() === 'FR STRUCTURAL' ? 'STRUCTURAL' : label;
     return `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 74px; padding: 2px 8px; border-radius: 999px; background: rgba(252, 211, 77, 0.12); border: 1px solid rgba(252, 211, 77, 0.18); color: ${OIL_PANEL_COLORS.title}; font-size: 9px; font-weight: 700; letter-spacing: 0.06em;">${normalizedLabel}</span>`;
@@ -1001,13 +1040,6 @@ export class OilPanel extends Panel {
     return `${(value / (24 * 60)).toFixed(1)} j`;
   }
 
-  private getTrendColor(value: number | null): string {
-    if (value === null || Number.isNaN(value)) return 'var(--text-muted)';
-    if (value > 0) return OIL_PANEL_COLORS.export;
-    if (value < 0) return OIL_PANEL_COLORS.importGlow;
-    return 'var(--text-primary)';
-  }
-
   private getPanelVigilanceColor(status: OilDashboard['meta']['status']): string {
     switch (status) {
       case 'critical':
@@ -1032,7 +1064,7 @@ export class OilPanel extends Panel {
     if (this.modalEl.style.display === 'none') return;
     this.latestOilData = data;
     this.latestFuelTensionData = fuelTension;
-    this.updateHeader(data);
+    this.updateHeader(data, fuelTension);
     this.renderContent(data, fuelTension);
   }
 

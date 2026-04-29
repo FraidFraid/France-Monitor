@@ -116,7 +116,7 @@ import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 const RSS_POLL_INTERVAL_MS             =  5 * 60_000; //  5 min
 const POLL_FINANCE_MS                  =  5 * 60_000; //  5 min  (market data + nuclear snapshot)
 const POLL_NUCLEAR_MS                  = 15 * 60_000; // 15 min  (RTE real-time unavailabilities)
-const POLL_OIL_MS                      = 10 * 60_000; // 10 min  (oil stocks / refinery flows)
+const POLL_OIL_MS                      =  5 * 60_000; //  5 min  (fuel tension quasi-live + oil structural cache)
 const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
 const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
 const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
@@ -4182,7 +4182,7 @@ export class App {
 
   private async loadOil(): Promise<void> {
     console.log('[App/loadOil] Entry');
-    const oilStatusDetail = 'OilNetwork : vue France structurale SDES/CPDP + vue harmonisée JODI/UFIP + signal prix/ruptures carburants';
+    const oilStatusDetail = 'OilNetwork : réseau et stocks structurels + carburants quasi-live via API prix carburants';
 
     if (!isOilPanelEnabled()) {
       console.log('[App/loadOil] Feature DISABLED, skipping...');
