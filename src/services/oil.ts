@@ -64,10 +64,7 @@ const INSEE_PETROLE_URL = 'https://www.insee.fr/fr/statistiques/2119697';
 const UFIP_COMMUNIQUES_URL = 'https://www.energiesetmobilites.fr/presse/communiques';
 const DATA_GOUV_LOCAL_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-locales-de-consommation-de-produits-petroliers-departement-a-partir-de-2005/';
 const DATA_GOUV_MONTHLY_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-mensuelles-de-consommation-de-produits-petroliers-a-partir-de-2017/';
-const CARBU_PRIX_MOYENS_URL = 'https://carbu.com/france/prixmoyens';
-const CARBU_API_URL_FALLBACK = 'https://api.carbu.com/v1.1';
-const CARBU_API_KEY_FALLBACK = 'VsVAqT5t6NoRsIAMtUbxAFJh9UVOjkhfibyArhS7';
-const OFFICIAL_FUEL_DATASET_URL = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records';
+const OFFICIAL_FUEL_DAILY_DATASET_URL = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-carburants-quotidien/records';
 const OFFICIAL_FUEL_HISTORY_LIMIT = 400;
 const JODI_OIL_BASE_URL = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv';
 const JODI_GAS_ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
@@ -125,28 +122,16 @@ interface JodiGasSnapshot {
   lngSharePct: number | null;
 }
 
-const CARBU_FUEL_SERIES: Array<{
-  fuelId: number;
+const OFFICIAL_FUEL_SERIES: Array<{
   fuelType: FuelPriceSeriesKey;
   label: string;
   color: string;
+  dailyFuelName: 'Gazole' | 'SP95' | 'SP98' | 'GPLc';
 }> = [
-  { fuelId: 1, fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B' },
-  { fuelId: 2, fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8' },
-  { fuelId: 3, fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E' },
-  { fuelId: 4, fuelType: 'gpl', label: 'GPL', color: '#A78BFA' },
-] as const;
-
-const OFFICIAL_FUEL_SERIES: Array<{
-  fuelType: Extract<FuelPriceSeriesKey, 'gazole' | 'sp95' | 'sp98'>;
-  label: string;
-  color: string;
-  priceField: 'gazole_prix' | 'sp95_prix' | 'sp98_prix';
-  updatedField: 'gazole_maj' | 'sp95_maj' | 'sp98_maj';
-}> = [
-  { fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B', priceField: 'gazole_prix', updatedField: 'gazole_maj' },
-  { fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8', priceField: 'sp95_prix', updatedField: 'sp95_maj' },
-  { fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E', priceField: 'sp98_prix', updatedField: 'sp98_maj' },
+  { fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B', dailyFuelName: 'Gazole' },
+  { fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8', dailyFuelName: 'SP95' },
+  { fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E', dailyFuelName: 'SP98' },
+  { fuelType: 'gpl', label: 'GPL', color: '#A78BFA', dailyFuelName: 'GPLc' },
 ] as const;
 
 export function isOilPanelEnabled(): boolean {
@@ -201,48 +186,6 @@ async function fetchFuelPricesProxyJson<T>(targetUrl: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function formatDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function buildCarbuApiUrl(apiUrl: string, apiKey: string, fuelId: number, dateStart: string, dateEnd: string): string {
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    dateStart,
-    dateEnd,
-  });
-  return `${apiUrl}/maxfuelprice/FR/${fuelId}?${params.toString()}`;
-}
-
-function extractCarbuApiConfig(html: string): { apiUrl: string; apiKey: string } {
-  const apiUrl = html.match(/var\s+APIURL\s*=\s*['"]([^'"]+)['"]/)?.[1]?.trim() ?? '';
-  const apiKey = html.match(/var\s+APIKEY\s*=\s*['"]([^'"]+)['"]/)?.[1]?.trim() ?? '';
-
-  if (!apiUrl || !apiKey) {
-    throw new Error('Unable to extract CARBU API configuration from prixmoyens page');
-  }
-
-  return { apiUrl, apiKey };
-}
-
-async function resolveCarbuApiConfig(): Promise<{ apiUrl: string; apiKey: string }> {
-  try {
-    const pageHtml = await fetchProxyText(CARBU_PRIX_MOYENS_URL);
-    return extractCarbuApiConfig(pageHtml);
-  } catch {
-    return {
-      apiUrl: CARBU_API_URL_FALLBACK,
-      apiKey: CARBU_API_KEY_FALLBACK,
-    };
-  }
-}
-
-function toIsoFromUnixSeconds(value: string): string | null {
-  const seconds = Number.parseInt(value, 10);
-  if (!Number.isFinite(seconds)) return null;
-  return new Date(seconds * 1000).toISOString();
-}
-
 function findPointAtOrBefore(
   points: Array<{ timestamp: string; price: number }>,
   targetTime: number,
@@ -271,113 +214,14 @@ function computeDeltaCents(
 }
 
 async function fetchFuelPriceHistory(): Promise<FuelPriceHistorySnapshot> {
-  if (!import.meta.env.DEV) {
-    return fetchFuelPriceHistoryFromOfficialDataset();
-  }
-
-  const { apiUrl, apiKey } = await resolveCarbuApiConfig();
-
-  const endDate = new Date();
-  const startDate = new Date(endDate);
-  startDate.setFullYear(startDate.getFullYear() - 1);
-
-  const dateStart = formatDateInput(startDate);
-  const dateEnd = formatDateInput(endDate);
-
-  const seriesResults = await Promise.allSettled(CARBU_FUEL_SERIES.map(async (fuel): Promise<FuelPriceSeries> => {
-    const payload = await fetchProxyJson<{
-      data?: Record<string, string>;
-    }>(buildCarbuApiUrl(apiUrl, apiKey, fuel.fuelId, dateStart, dateEnd));
-
-    const points = Object.entries(payload.data ?? {})
-      .map(([unixSeconds, price]) => {
-        const timestamp = toIsoFromUnixSeconds(unixSeconds);
-        const numericPrice = Number.parseFloat(price);
-        if (!timestamp || !Number.isFinite(numericPrice)) return null;
-        return { timestamp, price: numericPrice };
-      })
-      .filter((point): point is { timestamp: string; price: number } => point !== null)
-      .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-
-    const latestPrice = points.at(-1)?.price ?? null;
-
-    return {
-      fuelType: fuel.fuelType,
-      label: fuel.label,
-      color: fuel.color,
-      latestPrice,
-      delta7dCents: computeDeltaCents(points, latestPrice, 7),
-      delta30dCents: computeDeltaCents(points, latestPrice, 30),
-      points,
-    };
-  }));
-
-  const series: FuelPriceSeries[] = [];
-  const missingFuelTypes = new Set<Extract<FuelPriceSeriesKey, 'gazole' | 'sp95' | 'sp98'>>();
-
-  seriesResults.forEach((result, index) => {
-    const fuel = CARBU_FUEL_SERIES[index];
-    if (!fuel) return;
-
-    if (result.status === 'fulfilled' && result.value.points.length > 0) {
-      series.push(result.value);
-      return;
-    }
-
-    if (fuel.fuelType === 'gazole' || fuel.fuelType === 'sp95' || fuel.fuelType === 'sp98') {
-      missingFuelTypes.add(fuel.fuelType);
-    }
-  });
-
-  if (series.length === 0) {
-    return fetchFuelPriceHistoryFromOfficialDataset();
-  }
-
-  if (missingFuelTypes.size > 0) {
-    const supplementalResults = await Promise.allSettled(
-      OFFICIAL_FUEL_SERIES
-        .filter((config) => missingFuelTypes.has(config.fuelType))
-        .map((config) => fetchOfficialFuelHistorySeries(config)),
-    );
-
-    supplementalResults.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value.points.length > 0) {
-        series.push(result.value);
-      }
-    });
-  }
-
-  const hydratedSeries = [...series].sort(
-    (left, right) => CARBU_FUEL_SERIES.findIndex((fuel) => fuel.fuelType === left.fuelType)
-      - CARBU_FUEL_SERIES.findIndex((fuel) => fuel.fuelType === right.fuelType),
-  );
-
-  const supplementedByOfficial = hydratedSeries.some((entry) => entry.fuelType !== 'gpl')
-    && missingFuelTypes.size > 0;
-
-  return {
-    provider: supplementedByOfficial ? 'data-economie' : 'carbu',
-    generatedAt: new Date().toISOString(),
-    sourceLabel: supplementedByOfficial
-      ? 'Prix carburants France — CARBU.COM complété par l’API officielle prix des carburants'
-      : 'Prix moyens France via CARBU.COM (API utilisée par la page prixmoyens)',
-    rangeStart: dateStart,
-    rangeEnd: dateEnd,
-    series: hydratedSeries,
-  };
+  return fetchFuelPriceHistoryFromOfficialDataset();
 }
 
 type OfficialFuelHistoryRow = {
   avg_price?: number | null;
-  ['year(gazole_maj)']?: number | null;
-  ['month(gazole_maj)']?: number | null;
-  ['day(gazole_maj)']?: number | null;
-  ['year(sp95_maj)']?: number | null;
-  ['month(sp95_maj)']?: number | null;
-  ['day(sp95_maj)']?: number | null;
-  ['year(sp98_maj)']?: number | null;
-  ['month(sp98_maj)']?: number | null;
-  ['day(sp98_maj)']?: number | null;
+  y?: number | null;
+  m?: number | null;
+  d?: number | null;
 };
 
 function toOfficialHistoryTimestamp(year: number | null | undefined, month: number | null | undefined, day: number | null | undefined): string | null {
@@ -388,30 +232,31 @@ function toOfficialHistoryTimestamp(year: number | null | undefined, month: numb
 async function fetchOfficialFuelHistorySeries(config: typeof OFFICIAL_FUEL_SERIES[number]): Promise<FuelPriceSeries> {
   const params = new URLSearchParams({
     select: [
-      `year(${config.updatedField}) as y`,
-      `month(${config.updatedField}) as m`,
-      `day(${config.updatedField}) as d`,
-      `avg(${config.priceField}) as avg_price`,
+      'year(prix_maj) as y',
+      'month(prix_maj) as m',
+      'day(prix_maj) as d',
+      'avg(prix_valeur) as avg_price',
     ].join(','),
-    where: `${config.priceField} is not null and ${config.updatedField} is not null`,
+    where: `prix_nom = "${config.dailyFuelName}" and prix_valeur is not null and prix_maj is not null`,
     group_by: [
-      `year(${config.updatedField})`,
-      `month(${config.updatedField})`,
-      `day(${config.updatedField})`,
+      'year(prix_maj)',
+      'month(prix_maj)',
+      'day(prix_maj)',
     ].join(','),
+    order_by: 'y,m,d',
     limit: String(OFFICIAL_FUEL_HISTORY_LIMIT),
   });
 
   const payload = await fetchFuelPricesProxyJson<{
     results?: OfficialFuelHistoryRow[];
-  }>(`${OFFICIAL_FUEL_DATASET_URL}?${params.toString()}`);
+  }>(`${OFFICIAL_FUEL_DAILY_DATASET_URL}?${params.toString()}`);
 
   const points = (payload.results ?? [])
     .map((row) => {
       const timestamp = toOfficialHistoryTimestamp(
-        (row as Record<string, number | null | undefined>)[`year(${config.updatedField})`],
-        (row as Record<string, number | null | undefined>)[`month(${config.updatedField})`],
-        (row as Record<string, number | null | undefined>)[`day(${config.updatedField})`],
+        row.y,
+        row.m,
+        row.d,
       );
       const price = typeof row.avg_price === 'number' ? row.avg_price : Number.NaN;
       if (!timestamp || !Number.isFinite(price)) return null;
@@ -455,7 +300,7 @@ async function fetchFuelPriceHistoryFromOfficialDataset(): Promise<FuelPriceHist
   return {
     provider: 'data-economie',
     generatedAt: new Date().toISOString(),
-    sourceLabel: 'API prix des carburants en France – flux instantané v2 (agrégation journalière nationale)',
+    sourceLabel: 'API prix des carburants en France – flux quotidien (agrégation journalière nationale, J-1)',
     rangeStart: timestamps[0]?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     rangeEnd: timestamps.at(-1)?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     series,

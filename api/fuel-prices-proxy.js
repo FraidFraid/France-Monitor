@@ -2,15 +2,14 @@ export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
   'data.economie.gouv.fr',
-  'www.data.economie.gouv.fr',
   'opendatamef.opendatasoft.com',
-  'odre.opendatasoft.com',
 ];
 
 function isAllowedDomain(url) {
   try {
     const parsed = new URL(url);
-    return ALLOWED_DOMAINS.some((domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`));
+    const hostname = parsed.hostname.toLowerCase();
+    return ALLOWED_DOMAINS.includes(hostname);
   } catch {
     return false;
   }
@@ -19,19 +18,8 @@ function isAllowedDomain(url) {
 function buildOpendatasoftFallbackUrl(targetUrl) {
   try {
     const parsed = new URL(targetUrl);
-    if (parsed.hostname !== 'data.economie.gouv.fr' && parsed.hostname !== 'www.data.economie.gouv.fr') return null;
+    if (parsed.hostname.toLowerCase() !== 'data.economie.gouv.fr') return null;
     parsed.hostname = 'opendatamef.opendatasoft.com';
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-function buildOdreFallbackUrl(targetUrl) {
-  try {
-    const parsed = new URL(targetUrl);
-    if (parsed.hostname !== 'data.economie.gouv.fr' && parsed.hostname !== 'www.data.economie.gouv.fr') return null;
-    parsed.hostname = 'odre.opendatasoft.com';
     return parsed.toString();
   } catch {
     return null;
@@ -50,6 +38,19 @@ export default async function handler(request) {
   }
 
   if (!isAllowedDomain(targetUrl)) {
+    let targetHost = 'invalid-url';
+    try {
+      targetHost = new URL(targetUrl).hostname.toLowerCase();
+    } catch {
+      targetHost = 'invalid-url';
+    }
+    console.error('[fuel-prices-proxy] 403 domain_not_allowed', JSON.stringify({
+      reqUrl: request.url,
+      targetUrl,
+      targetHost,
+      allowedDomains: ALLOWED_DOMAINS,
+      vercelEnv: process.env.VERCEL_ENV ?? null,
+    }));
     return new Response(JSON.stringify({ error: 'Domain not allowed' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
@@ -57,32 +58,16 @@ export default async function handler(request) {
   }
 
   try {
-    const browserLikeHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-      'Referer': 'https://data.economie.gouv.fr/',
-      'Origin': 'https://data.economie.gouv.fr',
-    };
-
     let resp = await fetch(targetUrl, {
-      headers: {
-        ...browserLikeHeaders,
-      },
-      redirect: 'follow',
+      method: 'GET',
       signal: AbortSignal.timeout(20_000),
     });
 
     if (resp.status === 403) {
-      const fallbackUrls = [buildOpendatasoftFallbackUrl(targetUrl), buildOdreFallbackUrl(targetUrl)].filter(Boolean);
+      const fallbackUrls = [buildOpendatasoftFallbackUrl(targetUrl)].filter(Boolean);
       for (const fallbackUrl of fallbackUrls) {
         const fallbackResp = await fetch(fallbackUrl, {
-          headers: {
-            ...browserLikeHeaders,
-          },
-          redirect: 'follow',
+          method: 'GET',
           signal: AbortSignal.timeout(20_000),
         });
         if (fallbackResp.ok) {
