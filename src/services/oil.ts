@@ -271,6 +271,10 @@ function computeDeltaCents(
 }
 
 async function fetchFuelPriceHistory(): Promise<FuelPriceHistorySnapshot> {
+  if (!import.meta.env.DEV) {
+    return fetchFuelPriceHistoryFromOfficialDataset();
+  }
+
   const { apiUrl, apiKey } = await resolveCarbuApiConfig();
 
   const endDate = new Date();

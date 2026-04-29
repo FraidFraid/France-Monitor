@@ -14,6 +14,17 @@ function isAllowedDomain(url: string): boolean {
   }
 }
 
+function buildOpendatasoftFallbackUrl(targetUrl: string): string | null {
+  try {
+    const parsed = new URL(targetUrl);
+    if (parsed.hostname !== 'data.economie.gouv.fr') return null;
+    parsed.hostname = 'opendatamef.opendatasoft.com';
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function fuelPricesProxyPlugin(): Plugin {
   return {
     name: 'fuel-prices-proxy',
@@ -37,16 +48,26 @@ export function fuelPricesProxyPlugin(): Plugin {
         }
 
         try {
-          const upstream = await fetch(targetUrl, {
+          let upstream = await fetch(targetUrl, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
               'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-              'Cache-Control': 'no-cache',
             },
             redirect: 'follow',
             signal: AbortSignal.timeout(20_000),
           });
+
+          if (upstream.status === 403) {
+            const fallbackUrl = buildOpendatasoftFallbackUrl(targetUrl);
+            if (fallbackUrl) {
+              upstream = await fetch(fallbackUrl, {
+                headers: {
+                  'Accept': 'application/json,text/json;q=0.9,*/*;q=0.8',
+                },
+                redirect: 'follow',
+                signal: AbortSignal.timeout(20_000),
+              });
+            }
+          }
 
           if (!upstream.ok) {
             res.statusCode = upstream.status;
