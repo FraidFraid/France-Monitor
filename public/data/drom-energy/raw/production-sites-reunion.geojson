@@ -1,0 +1,22 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [55.538, -21.021]
+      },
+      "properties": {
+        "id": "RE_PROD_001",
+        "nom": "Site Production Test Sainte-Suzanne",
+        "filiere": "Solaire",
+        "puissance_mw": 5.2,
+        "commune": "Sainte-Suzanne",
+        "code_commune": "97420",
+        "territoire": "RE",
+        "operateur": "EDF SEI"
+      }
+    }
+  ]
+}

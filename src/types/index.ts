@@ -62,9 +62,12 @@ export interface MapLayers {
   news: boolean;
   alerts: boolean;
   energySystems: boolean;
+  dromEnergy: boolean;
   powerGrid: boolean;
   hydroBackbone: boolean;
   windMonitor: boolean;
+  biomethaneSites?: boolean;
+  mineGasSites?: boolean;
   health: boolean;
   healthOscour: boolean;
   healthApl: boolean;
@@ -1601,6 +1604,50 @@ export interface GasNetworkState {
     odre: 'ok' | 'stale' | 'error';
   };
   lastUpdate: Date;
+}
+
+// ═══ Energy Assets (Biomethane + Mine Gas) ═══
+
+export type EnergyLayerFreshness = 'live' | 'recent' | 'structural' | 'stale' | 'unknown';
+
+export type EnergyAssetSource = 'public-data' | 'api' | 'config' | 'manual' | 'unknown';
+
+export interface BiomethaneSite {
+  id: string;
+  name: string;
+  operator?: string;
+  commune?: string;
+  department?: string;
+  region?: string;
+  latitude: number;
+  longitude: number;
+  capacityGwhYear?: number;
+  status: 'active' | 'project' | 'unknown';
+  sourceName: string;
+  sourceUrl?: string;
+  updatedAt?: string;
+  raw?: unknown;
+}
+
+export interface MineGasSite {
+  id: string;
+  name: string;
+  basinName?: string;
+  operator?: string;
+  commune?: string;
+  department?: string;
+  region?: string;
+  latitude?: number;
+  longitude?: number;
+  geometry?: LineString | MultiLineString | Polygon;
+  gasType: 'AMM' | 'CMM' | 'CBM' | 'unknown';
+  exploitationStatus: 'active' | 'potential' | 'legacy' | 'risk_only' | 'unknown';
+  evidenceLevel: 1 | 2 | 3;
+  sourceName: string;
+  sourceUrl?: string;
+  updatedAt?: string;
+  notes?: string;
+  raw?: unknown;
 }
 
 // ═══ Pannes Crowd-sourced (Signalements Citoyens) ═══

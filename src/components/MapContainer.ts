@@ -12,6 +12,7 @@ import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
+import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -47,6 +48,8 @@ export class MapContainer {
   private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
+  private dromEnergyData: DromEnergyDashboard | null = null;
+  private dromEnergyLoadPromise: Promise<void> | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -195,6 +198,15 @@ export class MapContainer {
 
   updateEolien(live: EolienLive | null, parks: EolienParkSummary[]): void {
     this.deckMap?.updateEolien(live, parks);
+  }
+
+  updateDromEnergy(dashboard: DromEnergyDashboard): void {
+    this.dromEnergyData = dashboard;
+    this.deckMap?.updateDromEnergy(dashboard);
+  }
+
+  highlightDromEnergyAsset(asset: DromEnergyAsset | null): void {
+    this.deckMap?.highlightDromEnergyAsset(asset);
   }
 
   // ─── Traffic ───
@@ -349,7 +361,36 @@ export class MapContainer {
 
   // ─── Layer visibility ───
   setLayerVisibility(layers: MapLayers): void {
+    if (layers.dromEnergy) {
+      void this.ensureDromEnergyLoaded();
+    }
     this.deckMap?.setLayerVisibility(layers);
+  }
+
+  async ensureDromEnergyLoaded(): Promise<DromEnergyDashboard | null> {
+    if (this.dromEnergyData) {
+      this.deckMap?.updateDromEnergy(this.dromEnergyData);
+      return this.dromEnergyData;
+    }
+    if (this.dromEnergyLoadPromise) {
+      await this.dromEnergyLoadPromise;
+      return this.dromEnergyData;
+    }
+
+    this.dromEnergyLoadPromise = (async () => {
+      try {
+        const dashboard = await fetchDromEnergyDashboard();
+        this.dromEnergyData = dashboard;
+        this.deckMap?.updateDromEnergy(dashboard);
+      } catch (error) {
+        console.warn('[MapContainer] Failed to load DROM energy data', error);
+      } finally {
+        this.dromEnergyLoadPromise = null;
+      }
+    })();
+
+    await this.dromEnergyLoadPromise;
+    return this.dromEnergyData;
   }
 
   setLegendHover(categoryId: string | null): void {

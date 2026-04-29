@@ -353,7 +353,7 @@
                 </tr>
                 <tr>
                   <td>Infrastructure</td>
-                  <td>Suivi énergie, nucléaire, gaz, hydraulique, ruptures réseau, incidents transport et état de certains systèmes critiques.</td>
+                  <td>Suivi énergie, nucléaire, gaz, hydraulique, ruptures réseau, incidents transport et état de certains systèmes critiques, avec bloc carburants enrichi par prix officiels et tensions départementales.</td>
                 </tr>
                 <tr>
                   <td>Risque territorial</td>
@@ -383,7 +383,7 @@
               <tbody>
                 <tr>
                   <td>Open data et API publiques</td>
-                  <td>RTE, Météo-France, Hub'Eau, Vigicrues, SNCF, santé publique, données territoriales.</td>
+                  <td>RTE, Météo-France, Hub'Eau, Vigicrues, SNCF, santé publique, data.economie.gouv.fr pour les carburants, données territoriales.</td>
                 </tr>
                 <tr>
                   <td>Flux médias</td>
@@ -405,6 +405,7 @@
             <h2>Logique de traitement</h2>
             <ul>
               <li>Collecte via fonctions serverless et proxys de développement quand nécessaire.</li>
+              <li>Pour certains flux ouverts, comme les carburants, récupération directe possible côté navigateur avec repli automatique vers le proxy applicatif.</li>
               <li>Normalisation, cache, déduplication et contrôle de fraîcheur par source.</li>
               <li>Classification et enrichissement de certains contenus textuels via pipeline hybride mots-clés + IA.</li>
               <li>Géocodage, corrélation spatiale, affichage cartographique et restitution dans des panneaux spécialisés.</li>

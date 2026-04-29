@@ -15,6 +15,8 @@ import { DayNightLayer } from '../layers/DayNightLayer.ts';
 import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
+import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard, DromTerritoryCode } from '../services/drom-energy/index.ts';
+import { buildDromEnergyTooltipContent } from '../services/drom-energy/tooltip.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
@@ -106,6 +108,8 @@ const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fon
 const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
 const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
+const SRC_DROM_ENERGY = 'drom-energy-src';
+const SRC_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight-src';
 const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
 const SRC_WIND_TURBINES = 'wind-turbines-src';
 const SRC_WIND_PARKS = 'wind-parks-src';
@@ -160,6 +164,8 @@ const LYR_ENERGY_INFRA_HIGHLIGHT_GLOW = 'energy-infra-highlight-glow';
 const LYR_ENERGY_INFRA_HIGHLIGHT_RING = 'energy-infra-highlight-ring';
 const LYR_ENERGY_INFRA_CIRCLE = 'energy-infra-circles';
 const LYR_ENERGY_INFRA_LABEL = 'energy-infra-labels';
+const LYR_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight';
+const LYR_DROM_ENERGY_POINTS = 'drom-energy-points';
 const LYR_HYDRO_BACKBONE_HALO = 'hydro-backbone-halo';
 const LYR_HYDRO_BACKBONE_SIGNAL_RING = 'hydro-backbone-signal-ring';
 const LYR_HYDRO_BACKBONE_CIRCLE = 'hydro-backbone-circles';
@@ -548,6 +554,89 @@ function escapeHtml(value: unknown): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+const DROM_ENERGY_ASSET_TYPES = new Set<DromEnergyAssetType>([
+  'source_substation',
+  'htb_pylon',
+  'production_site',
+  'storage_site',
+  'hosting_capacity_point',
+]);
+
+const DROM_TERRITORY_CODES = new Set<DromTerritoryCode>(['GP', 'MQ', 'GF', 'RE', 'YT']);
+
+function cleanTooltipString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function finiteTooltipNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.replace(',', '.'));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function toDromEnergyAssetType(value: unknown): DromEnergyAssetType {
+  return typeof value === 'string' && DROM_ENERGY_ASSET_TYPES.has(value as DromEnergyAssetType)
+    ? value as DromEnergyAssetType
+    : 'source_substation';
+}
+
+function toDromTerritoryCode(value: unknown): DromTerritoryCode {
+  return typeof value === 'string' && DROM_TERRITORY_CODES.has(value as DromTerritoryCode)
+    ? value as DromTerritoryCode
+    : 'RE';
+}
+
+function dromEnergyAssetFromProperties(properties: Record<string, unknown>): DromEnergyAsset {
+  const id = cleanTooltipString(properties.id) ?? cleanTooltipString(properties.name) ?? 'drom-energy-asset';
+  const name = cleanTooltipString(properties.name) ?? id;
+  const asset: DromEnergyAsset = {
+    id,
+    territoryCode: toDromTerritoryCode(properties.territoryCode),
+    type: toDromEnergyAssetType(properties.assetType ?? properties.type),
+    name,
+    sourceDatasetId: cleanTooltipString(properties.sourceDatasetId) ?? 'drom-energy',
+  };
+
+  const communeName = cleanTooltipString(properties.communeName);
+  if (communeName) asset.communeName = communeName;
+  const operator = cleanTooltipString(properties.operator);
+  if (operator) asset.operator = operator;
+  const productionType = cleanTooltipString(properties.productionType);
+  if (productionType) asset.productionType = productionType;
+  const voltageKv = finiteTooltipNumber(properties.voltageKv);
+  if (voltageKv != null) asset.voltageKv = voltageKv;
+  const capacityMw = finiteTooltipNumber(properties.capacityMw);
+  if (capacityMw != null) asset.capacityMw = capacityMw;
+  const availableCapacityMw = finiteTooltipNumber(properties.availableCapacityMw);
+  if (availableCapacityMw != null) asset.availableCapacityMw = availableCapacityMw;
+
+  return asset;
+}
+
+function renderDromEnergyTooltipHtml(asset: DromEnergyAsset): string {
+  const content = buildDromEnergyTooltipContent(asset);
+  const rows = content.rows
+    .map((item) => `
+      <span style="color:#9898a8;">${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+    `)
+    .join('');
+
+  return `
+    <div style="color:#e8e8ec; min-width:220px;">
+      <div style="font-size:14px; font-weight:700; color:#fff;">${escapeHtml(content.title)}</div>
+      <div style="margin-top:8px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; font-size:12px;">
+        ${rows}
+      </div>
+    </div>
+  `;
 }
 
 function buildSubseaCableTooltip(properties: Record<string, unknown>): string {
@@ -1399,6 +1488,7 @@ export class DeckGLMap {
   private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
+  private dromEnergyHoverPopup: maplibregl.Popup | null = null;
   private weatherRadarTileTemplate: string | null = null;
   private weatherRadarFetchedAt = 0;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
@@ -1676,6 +1766,8 @@ export class DeckGLMap {
     // Infrastructure
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_DROM_ENERGY, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_DROM_ENERGY_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_HYDRO_BACKBONE, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_WIND_TURBINES, {
       type: 'geojson',
@@ -3233,6 +3325,33 @@ export class DeckGLMap {
         'text-color': '#e8e8ec',
         'text-halo-color': '#0a0a0f',
         'text-halo-width': 1.5,
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_DROM_ENERGY_POINTS,
+      type: 'circle',
+      source: SRC_DROM_ENERGY,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4.5, 8, 6, 12, 7.5],
+        'circle-color': '#38BDF8',
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#E0F2FE',
+      },
+    });
+
+    this.map.addLayer({
+      id: LYR_DROM_ENERGY_HIGHLIGHT,
+      type: 'circle',
+      source: SRC_DROM_ENERGY_HIGHLIGHT,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 12, 8, 18, 12, 24],
+        'circle-color': 'rgba(56, 189, 248, 0.18)',
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#E0F2FE',
+        'circle-opacity': 0.98,
+        'circle-blur': 0.15,
       },
     });
 
@@ -4923,6 +5042,53 @@ export class DeckGLMap {
     this.map.on('click', LYR_HEALTH_FILL, handleHealthClick);
     this.map.on('click', LYR_HEALTH_APL_FILL, handleHealthClick);
     this.map.on('click', LYR_HEALTH_APL_LINE, handleHealthClick);
+
+    this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
+      if (!this.map) return;
+      this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', LYR_DROM_ENERGY_POINTS, () => {
+      if (!this.map) return;
+      this.map.getCanvas().style.cursor = '';
+      this.dromEnergyHoverPopup?.remove();
+      this.dromEnergyHoverPopup = null;
+    });
+    this.map.on('mousemove', LYR_DROM_ENERGY_POINTS, (e) => {
+      if (!this.map) return;
+      const feature = e.features?.[0];
+      if (!feature) return;
+
+      this.dromEnergyHoverPopup?.remove();
+      this.dromEnergyHoverPopup = null;
+      const asset = dromEnergyAssetFromProperties((feature.properties ?? {}) as Record<string, unknown>);
+      const html = renderDromEnergyTooltipHtml(asset);
+
+      if (!this.dromEnergyHoverPopup) {
+        this.dromEnergyHoverPopup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          maxWidth: '280px',
+          className: 'dark-popup',
+        }).addTo(this.map);
+      }
+
+      this.dromEnergyHoverPopup
+        .setLngLat(e.lngLat)
+        .setHTML(html);
+    });
+    this.map.on('click', LYR_DROM_ENERGY_POINTS, (e) => {
+      if (!this.map) return;
+      const feature = e.features?.[0];
+      if (!feature) return;
+
+      const asset = dromEnergyAssetFromProperties((feature.properties ?? {}) as Record<string, unknown>);
+      const html = renderDromEnergyTooltipHtml(asset);
+
+      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(this.map);
+    });
     this.map.on('click', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthClick);
     this.map.on('click', LYR_HEALTH_MARKERS, handleHealthClick);
 
@@ -10865,6 +11031,79 @@ export class DeckGLMap {
     src?.setData(fc);
   }
 
+  updateDromEnergy(dashboard: DromEnergyDashboard): void {
+    if (!this.map) return;
+
+    const territories = new Map(dashboard.territories.map((territory) => [territory.code, territory.name]));
+    const datasetLabels = new Map(dashboard.datasets.map((dataset) => [dataset.id, dataset.label]));
+    const supportedTypes = new Set<DromEnergyAssetType>(['source_substation', 'htb_pylon', 'production_site']);
+    const typeLabels: Record<DromEnergyAssetType, string> = {
+      source_substation: 'Poste source',
+      htb_pylon: 'Pylône HTB',
+      production_site: 'Site de production',
+      storage_site: 'Stockage',
+      hosting_capacity_point: "Capacité d'accueil",
+    };
+    const fc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: dashboard.assets
+        .filter((asset) => supportedTypes.has(asset.type) && asset.coordinates)
+        .map((asset) => ({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: asset.coordinates!,
+          },
+          properties: {
+            id: asset.id,
+            name: asset.name,
+            territoryCode: asset.territoryCode,
+            territoryName: territories.get(asset.territoryCode) ?? asset.territoryCode,
+            assetType: asset.type,
+            typeLabel: typeLabels[asset.type],
+            sourceDatasetId: asset.sourceDatasetId,
+            datasetLabel: datasetLabels.get(asset.sourceDatasetId) ?? asset.sourceDatasetId,
+            communeName: asset.communeName ?? '',
+            operator: asset.operator ?? '',
+            voltageKv: asset.voltageKv ?? null,
+            capacityMw: asset.capacityMw ?? null,
+            availableCapacityMw: asset.availableCapacityMw ?? null,
+            productionType: asset.productionType ?? '',
+          },
+        })),
+    };
+
+    const src = this.map.getSource(SRC_DROM_ENERGY) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(fc);
+  }
+
+  highlightDromEnergyAsset(asset: DromEnergyAsset | null): void {
+    if (!this.map) return;
+    const src = this.map.getSource(SRC_DROM_ENERGY_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+
+    if (!asset?.coordinates) {
+      src.setData(emptyFC());
+      return;
+    }
+
+    src.setData({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: asset.coordinates,
+        },
+        properties: {
+          id: asset.id,
+          name: asset.name,
+          type: asset.type,
+        },
+      }],
+    });
+  }
+
   updateHydraulicBackbone(assets: HydraulicBackboneAsset[]): void {
     if (!this.map) return;
 
@@ -11668,6 +11907,8 @@ export class DeckGLMap {
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_LABEL, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_DROM_ENERGY_POINTS, vis(layers.dromEnergy ?? false));
+    this.setVis(LYR_DROM_ENERGY_HIGHLIGHT, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_HALO, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_SIGNAL_RING, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_CIRCLE, vis(layers.hydroBackbone ?? false));
@@ -11972,6 +12213,8 @@ export class DeckGLMap {
     this.energyRegionPopup?.remove();
     this.energyFlowPopup?.remove();
     this.gasFlowPopup?.remove();
+    this.dromEnergyHoverPopup?.remove();
+    this.dromEnergyHoverPopup = null;
 
     // Cleanup interconnection animation
     this.stopInterconnAnimation();

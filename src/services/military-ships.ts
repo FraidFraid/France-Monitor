@@ -12,7 +12,7 @@
  */
 
 import { getMmsiCountry } from '../utils/mmsi-country.ts';
-import { isInFranceZone, getNearestPort } from '../config/french-ports.ts';
+import { isInFranceZone, getNearestPort, getFrenchMaritimeTerritory, type FrenchMaritimeTerritoryCode } from '../config/french-ports.ts';
 import { getFlagRisk } from '../config/risk-flags.ts';
 import type { FlagRisk } from '../config/risk-flags.ts';
 import {
@@ -65,6 +65,7 @@ export interface MilitaryShip {
     riskLevel?: RiskLevel;
     riskReasons?: string[];
     nearestPort?: { name: string; locode: string; distanceKm: number };
+    maritimeTerritory?: { code: FrenchMaritimeTerritoryCode; name: string };
     flagRisk?: FlagRisk;
 }
 
@@ -594,13 +595,17 @@ export function getMilitaryShips(): MilitaryShip[] {
  * @param maxAgeMs - Age max des données en ms (défaut: 10 min). Les données plus anciennes sont exclues.
  * @returns Liste de tous les navires avec positions récentes
  */
-export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000, filterFrance = false): MilitaryShip[] {
+export function getAllLiveTraffic(
+    maxAgeMs: number = 10 * 60 * 1000,
+    filterFrance = false,
+    territoryCode?: FrenchMaritimeTerritoryCode
+): MilitaryShip[] {
     const now = Date.now();
     const ships: MilitaryShip[] = [];
 
     for (const [mmsi, pos] of livePositions) {
         if ((now - pos.ts) > maxAgeMs) continue;
-        if (filterFrance && !isInFranceZone(pos.lat, pos.lon)) continue;
+        if (filterFrance && !isInFranceZone(pos.lat, pos.lon, territoryCode)) continue;
 
         const staticData = staticByMmsi.get(mmsi);
         const navyShip = FRENCH_NAVY_SHIPS.find(s => s.mmsi === mmsi);
@@ -616,6 +621,7 @@ export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000, filterFranc
         const countryIso2 = pos.country?.split('|')[0];
         const flagRisk = getFlagRisk(countryIso2);
         const nearestPort = getNearestPort(pos.lat, pos.lon);
+        const maritimeTerritory = getFrenchMaritimeTerritory(pos.lat, pos.lon);
         const { level: riskLevel, reasons: riskReasons } = computeRiskLevel(mmsi, { ...pos, shipType: resolvedShipType }, flagRisk, nearestPort);
 
         const displayName = navyShip?.name ?? resolvedName ?? resolvedCallSign ?? `MMSI ${mmsi}`;
@@ -647,6 +653,7 @@ export function getAllLiveTraffic(maxAgeMs: number = 10 * 60 * 1000, filterFranc
             riskLevel,
             riskReasons,
             nearestPort: nearestPort ? { name: nearestPort.port.name, locode: nearestPort.port.locode, distanceKm: nearestPort.distanceKm } : undefined,
+            maritimeTerritory: maritimeTerritory ? { code: maritimeTerritory.code, name: maritimeTerritory.name } : undefined,
             flagRisk,
         });
     }

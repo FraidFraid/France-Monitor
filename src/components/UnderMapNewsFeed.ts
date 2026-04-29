@@ -73,6 +73,7 @@ const DEFAULT_LAYERS: MapLayers = {
   news: false,
   alerts: false,
   energySystems: false,
+  dromEnergy: false,
   powerGrid: false,
   hydroBackbone: false,
   windMonitor: false,

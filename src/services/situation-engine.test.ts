@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { runFrenchMaritimeTerritoryTests } from '../config/frenchMaritimeTerritories.test.ts';
 import { detectSituations } from './situation-engine.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 
@@ -228,6 +229,10 @@ function assertHasSituation(raw: FranceRawData, type: string): void {
 
 export async function runSituationEngineTests(): Promise<void> {
   const cases: Array<{ name: string; run: () => void }> = [
+    {
+      name: 'French maritime territories geofence DROM and metro waters',
+      run: () => runFrenchMaritimeTerritoryTests(),
+    },
     {
       name: 'nominal data does not emit situations',
       run: () => {

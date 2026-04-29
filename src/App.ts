@@ -31,6 +31,7 @@ import { GasPanel } from './components/GasPanel.ts';
 import { HydraulicPanel } from './components/HydraulicPanel.ts';
 import { EolienPanel } from './components/EolienPanel.ts';
 import { OilPanel } from './components/OilPanel.ts';
+import { DromEnergyPanel } from './components/DromEnergyPanel.ts';
 import { DayNightPanel } from './components/DayNightPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
 import { DefensePanel } from './components/DefensePanel.ts';
@@ -108,6 +109,7 @@ import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingCon
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
+import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -340,6 +342,7 @@ const DEFAULT_LAYERS: MapLayers = {
   news: false,
   alerts: true,
   energySystems: false,
+  dromEnergy: false,
   powerGrid: false,
   hydroBackbone: false,
   windMonitor: false,
@@ -374,6 +377,7 @@ const DEFAULT_LAYERS: MapLayers = {
 };
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
+  'dromEnergy' |
   'powerGrid' |
   'hydroBackbone' |
   'gasNetwork' |
@@ -382,6 +386,7 @@ const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'metroLoad' |
   'nuclearFleet'
 > = [
+  'dromEnergy',
   'powerGrid',
   'hydroBackbone',
   'gasNetwork',
@@ -1010,6 +1015,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'Systèmes énergétiques',
   },
   {
+    id: 'dromEnergy',
+    groupId: 'energySystems',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Énergie DROM / SEI',
+  },
+  {
     id: 'powerGrid',
     groupId: 'energySystems',
     role: 'child',
@@ -1225,6 +1237,7 @@ export class App {
   private statusPanel: StatusPanel | null = null;
   private environmentPanel: EnvironmentPanel | null = null;
   private energyPanel: EnergyPanel | null = null;
+  private dromEnergyPanel: DromEnergyPanel | null = null;
   private hydraulicPanel: HydraulicPanel | null = null;
   private eolienPanel: EolienPanel | null = null;
   private transportPanel: TransportPanel | null = null;
@@ -1250,6 +1263,8 @@ export class App {
   private currentCyberData: CyberState | null = null;
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
+  private currentDromEnergyDashboard: DromEnergyDashboard | null = null;
+  private currentDromEnergyError: string | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
   private currentFuelTensionData: FuelTensionDashboard | null = null;
@@ -1376,6 +1391,7 @@ export class App {
   private layoutEnergyFloatingPanels(): void {
     requestAnimationFrame(() => {
       const panels = [
+        this.container.querySelector<HTMLElement>('.drom-energy-panel-modal'),
         this.container.querySelector<HTMLElement>('.energy-panel-modal'),
         this.container.querySelector<HTMLElement>('.hydraulic-panel-modal'),
         this.container.querySelector<HTMLElement>('.eolien-panel-modal'),
@@ -2155,6 +2171,13 @@ export class App {
     this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
     this.energyPanel.mount();
 
+    this.dromEnergyPanel = new DromEnergyPanel(floatContainer);
+    this.dromEnergyPanel.setOnClose(() => this.closeEnergyLayer('dromEnergy'));
+    this.dromEnergyPanel.setOnHoverAsset((asset) => {
+      this.mapContainer?.highlightDromEnergyAsset(asset);
+    });
+    this.dromEnergyPanel.mount();
+
     this.hydraulicPanel = new HydraulicPanel(floatContainer);
     this.hydraulicPanel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
     this.hydraulicPanel.setOnSelectAsset((asset) => {
@@ -2834,6 +2857,20 @@ export class App {
     } else if (key === 'powerGrid') {
       if (this.activeLayers.powerGrid) this.energyPanel?.show(this.currentEcowattResponse);
       else this.energyPanel?.hide();
+      this.layoutEnergyFloatingPanels();
+    } else if (key === 'dromEnergy') {
+      if (this.activeLayers.dromEnergy) {
+        if (!this.currentDromEnergyDashboard && !this.currentDromEnergyError) {
+          this.dromEnergyPanel?.showLoadingState();
+          void this.loadDromEnergy();
+        } else if (this.currentDromEnergyDashboard) {
+          this.dromEnergyPanel?.show(this.currentDromEnergyDashboard);
+        } else if (this.currentDromEnergyError) {
+          this.dromEnergyPanel?.showErrorState(this.currentDromEnergyError);
+        }
+      } else {
+        this.dromEnergyPanel?.hide();
+      }
       this.layoutEnergyFloatingPanels();
     } else if (key === 'hydroBackbone') {
       if (this.activeLayers.hydroBackbone) {
@@ -4177,6 +4214,39 @@ export class App {
       console.error('[App/loadGas] Failed:', err);
       this.statusPanel?.updateSource('Gaz', { status: 'error', lastUpdate: new Date() });
       this.refreshEnergyDataLegends();
+    }
+  }
+
+  private async loadDromEnergy(): Promise<void> {
+    this.statusPanel?.updateSource('Énergie DROM / SEI', { status: 'loading', lastUpdate: null });
+
+    try {
+      const dashboard = await this.mapContainer?.ensureDromEnergyLoaded();
+      if (!dashboard) {
+        throw new Error('Aucune donnée DROM énergie disponible');
+      }
+      this.currentDromEnergyDashboard = dashboard;
+      this.currentDromEnergyError = null;
+
+      const hasAssets = dashboard.assets.length > 0;
+      this.statusPanel?.updateSource('Énergie DROM / SEI', {
+        status: hasAssets ? 'ok' : 'stale',
+        lastUpdate: new Date(dashboard.updatedAt),
+      });
+
+      if (this.activeLayers.dromEnergy) {
+        this.dromEnergyPanel?.show(dashboard);
+        this.layoutEnergyFloatingPanels();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erreur inconnue';
+      this.currentDromEnergyError = message;
+      this.currentDromEnergyDashboard = null;
+      this.statusPanel?.updateSource('Énergie DROM / SEI', { status: 'error', lastUpdate: new Date(), detail: message });
+      if (this.activeLayers.dromEnergy) {
+        this.dromEnergyPanel?.showErrorState(message);
+        this.layoutEnergyFloatingPanels();
+      }
     }
   }
 

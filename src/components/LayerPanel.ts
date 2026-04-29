@@ -18,6 +18,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: '&#128240;', sublayerOf: 'newsGroup' },
   { key: 'stability', label: 'INDICE STABILITÉ', icon: '&#128202;', sublayerOf: 'newsGroup' },
   { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: '&#9889;' },
+  { key: 'dromEnergy', label: 'ÉNERGIE DROM / SEI', icon: '&#127965;', sublayerOf: 'energySystems' },
   { key: 'powerGrid', label: 'RÉSEAU ÉLECTRIQUE / ÉCOWATT', icon: '&#9889;', sublayerOf: 'energySystems' },
   { key: 'nuclearFleet', label: 'PARC NUCLÉAIRE', icon: '&#9883;', sublayerOf: 'energySystems' },
   { key: 'gasNetwork', label: 'RÉSEAU GAZ', icon: '&#128293;', sublayerOf: 'energySystems' },

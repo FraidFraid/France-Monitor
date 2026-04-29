@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [55.512, -20.912]
+      },
+      "properties": {
+        "id": "RE_PYL_001",
+        "nom": "Pylone HTB Test Sainte-Marie",
+        "commune": "Sainte-Marie",
+        "code_commune": "97418",
+        "territoire": "RE",
+        "operateur": "EDF SEI"
+      }
+    }
+  ]
+}

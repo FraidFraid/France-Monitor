@@ -64,7 +64,7 @@ France Monitor is **not a media outlet and not a press publication**. It does no
 | Electricity grid (Ecowatt) | RTE stress levels by department | 5 min |
 | Nuclear fleet | RTE real-time unavailabilities + REMIT notices | 15 min |
 | Gas network | GRTgaz / Teréga flows + vital-organ facilities | 10 min |
-| Oil & fuel | Refinery stocks, pipeline flows, departmental fuel tension | 10 min |
+| Oil & fuel | Refinery stocks, pipeline flows, departmental fuel tension, daily official fuel price history | 10 min |
 | Wind energy | RTE real-time éolien production by park | 5 min |
 | Hydraulic backbone | Dam levels, barrage signals, hydrometry (Hub'Eau) | 10 min |
 
@@ -286,6 +286,7 @@ Copy `.env.example` to `.env.local` for local development. On Vercel, configure 
 | Rail disruptions | [SNCF Open Data](https://numerique.sncf.com/startup/api) | REST |
 | Road traffic | [TomTom](https://developer.tomtom.com) | REST + tiles |
 | Health metrics | [Santé Publique France / ISS](https://www.santepubliquefrance.fr) | REST |
+| Fuel prices | [data.economie.gouv.fr](https://data.economie.gouv.fr) official daily + instant fuel datasets | REST |
 | Internet outages | [IODA](https://ioda.inetintel.cc.gatech.edu) + [Cloudflare Radar](https://radar.cloudflare.com) | REST |
 | Finance | Boursorama (server-side proxy) | HTML scrape |
 | Commodities | Public aggregated feed | REST |
@@ -430,6 +431,14 @@ npm run lint        # no new ESLint warnings
 - Do not introduce React, Vue, Svelte, or any virtual DOM framework
 - Do not send user data or news content to cloud LLMs without going through the server-side proxy
 - Do not add npm dependencies without an issue discussion — bundle size is actively managed
+
+## Recent Updates
+
+### 2026-04-29
+
+- The oil and fuel block now exposes a dedicated **official daily fuel price history** feed via `/api/fuel-price-series`, backed by `api/_lib/fuel-price-series.js`, a refresh endpoint, and a static fallback dataset in [`public/data/fuel-price-series.json`](/Users/fraid/Desktop/FranceMonitor/public/data/fuel-price-series.json).
+- `src/services/fuel-prices.ts` now prefers a **direct browser fetch** to the Ministry of Economy instant dataset, with automatic fallback to the existing proxy route when direct access fails.
+- `OilPanel` now includes a **hover tooltip on the fuel price chart**, making the daily series readable enough for actual comparison rather than just trend-shape inspection.
 
 ---
 

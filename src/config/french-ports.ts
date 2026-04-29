@@ -4,6 +4,14 @@
  * Source : Grand Ports Maritimes (GPM) + ports régionaux
  */
 
+import {
+  FRENCH_MARITIME_TERRITORIES,
+  getFrenchMaritimeTerritory,
+  isInFrenchMaritimeArea,
+  type FrenchMaritimeTerritory,
+  type FrenchMaritimeTerritoryCode,
+} from './frenchMaritimeTerritories.ts';
+
 export interface FrenchPort {
   id: string;
   name: string;
@@ -39,28 +47,18 @@ export const FRENCH_PORTS: FrenchPort[] = [
   { id: 'ftd', name: 'Fort-de-France',    locode: 'MQFDF', lat: 14.609,  lon: -61.079,  radiusKm: 20, type: 'mixed',     region: 'Martinique' },
   { id: 'ptp', name: 'Pointe-à-Pitre',   locode: 'GPPTP', lat: 16.242,  lon: -61.534,  radiusKm: 20, type: 'mixed',     region: 'Guadeloupe' },
   { id: 'reu', name: 'La Réunion',        locode: 'RERNU', lat: -20.930, lon: 55.467,   radiusKm: 20, type: 'commercial',region: 'Réunion' },
+  { id: 'dza', name: 'Dzaoudzi',           locode: 'YTDZA', lat: -12.783, lon: 45.283,   radiusKm: 18, type: 'mixed',     region: 'Mayotte' },
+  { id: 'ddc', name: 'Dégrad des Cannes',  locode: 'GFCAY', lat: 4.850,   lon: -52.270,  radiusKm: 30, type: 'commercial',region: 'Guyane' },
+  { id: 'sxm', name: 'Marigot',            locode: 'MFMAR', lat: 18.067,  lon: -63.083,  radiusKm: 12, type: 'mixed',     region: 'Saint-Martin' },
+  { id: 'sbh', name: 'Gustavia',           locode: 'BLGUS', lat: 17.897,  lon: -62.852,  radiusKm: 10, type: 'mixed',     region: 'Saint-Barthélemy' },
+  { id: 'spm', name: 'Saint-Pierre',       locode: 'PMSPI', lat: 46.780,  lon: -56.173,  radiusKm: 15, type: 'fishing',   region: 'Saint-Pierre-et-Miquelon' },
 ];
 
-// Zone France métropolitaine + ZEE proche-côtière (boîte englobante élargie)
-export const FRANCE_BBOX = {
-  minLat: 41.0, maxLat: 51.5,
-  minLon: -6.0, maxLon: 10.0,
-};
+export { FRENCH_MARITIME_TERRITORIES, getFrenchMaritimeTerritory, isInFrenchMaritimeArea };
+export type { FrenchMaritimeTerritory, FrenchMaritimeTerritoryCode };
 
-// Bboxes DROM
-export const DROM_BBOXES = [
-  { name: 'Martinique',   minLat: 14.3, maxLat: 14.9, minLon: -61.3, maxLon: -60.7 },
-  { name: 'Guadeloupe',   minLat: 15.8, maxLat: 16.6, minLon: -61.9, maxLon: -60.9 },
-  { name: 'Guyane',       minLat: 2.0,  maxLat: 6.0,  minLon: -55.0, maxLon: -51.0 },
-  { name: 'Réunion',      minLat: -21.5,maxLat: -20.5,minLon: 55.0,  maxLon: 56.0  },
-  { name: 'Mayotte',      minLat: -13.1,maxLat: -12.5,minLon: 44.9,  maxLon: 45.4  },
-];
-
-export function isInFranceZone(lat: number, lon: number): boolean {
-  const inMetro = lat >= FRANCE_BBOX.minLat && lat <= FRANCE_BBOX.maxLat &&
-                  lon >= FRANCE_BBOX.minLon && lon <= FRANCE_BBOX.maxLon;
-  if (inMetro) return true;
-  return DROM_BBOXES.some(b => lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon);
+export function isInFranceZone(lat: number, lon: number, territoryCode?: FrenchMaritimeTerritoryCode): boolean {
+  return isInFrenchMaritimeArea(lat, lon, territoryCode, 'strict');
 }
 
 export function getNearestPort(lat: number, lon: number): { port: FrenchPort; distanceKm: number } | null {

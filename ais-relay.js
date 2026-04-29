@@ -9,6 +9,7 @@ const DEFAULT_RELAY_PORT = 8090;
 const DEFAULT_AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60_000;
+const MAX_BOUNDING_BOXES_PER_SUBSCRIPTION = 5;
 const SUBSCRIPTION = {
   APIKey: '',
   BoundingBoxes: [
@@ -22,9 +23,31 @@ const SUBSCRIPTION = {
     [[41.0, 7.8], [43.8, 10.2]],
     // Antilles françaises
     [[14.0, -62.5], [19.5, -58.0]],
+    // Guyane française
+    [[2.0, -54.8], [6.0, -51.4]],
+    // La Réunion
+    [[-21.6, 55.0], [-20.6, 56.1]],
+    // Mayotte
+    [[-13.2, 44.7], [-12.4, 45.6]],
+    // Saint-Pierre-et-Miquelon
+    [[46.6, -56.8], [47.4, -55.8]],
+    // Wallis-et-Futuna
+    [[-14.6, -178.6], [-13.0, -175.8]],
+    // Polynésie française — zone large autour des principaux archipels
+    [[-28.5, -155.5], [-7.0, -133.0]],
+    // Nouvelle-Calédonie
+    [[-23.8, 157.5], [-17.6, 173.0]],
   ],
   FilterMessageTypes: ['PositionReport', 'ShipStaticData', 'StandardClassBPositionReport'],
 };
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
 
 // Utilisation de global pour survivre aux rechargements HMR de Vite
 let relayInstance = global.__aisRelayInstance || null;
@@ -63,6 +86,8 @@ export function startRelayServer(options = {}) {
     ...SUBSCRIPTION,
     APIKey: aisApiKey,
   };
+  const subscriptionChunks = chunkArray(subscription.BoundingBoxes, MAX_BOUNDING_BOXES_PER_SUBSCRIPTION)
+    .map((boxes) => ({ ...subscription, BoundingBoxes: boxes }));
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -96,13 +121,19 @@ export function startRelayServer(options = {}) {
   });
 
   const wsServer = new WebSocketServer({ server });
-  let upstream = null;
-  let reconnectTimer = null;
-  let reconnectDelayMs = 2000;
+  const upstreamStates = subscriptionChunks.map((chunk, index) => ({
+    index,
+    subscription: chunk,
+    upstream: null,
+    reconnectTimer: null,
+    reconnectDelayMs: 2000,
+    consecutiveFailures: 0,
+    circuitBreakerUntil: 0,
+    lastUpstreamError: null,
+    pingInterval: null,
+    msgCount: 0,
+  }));
   let usingExternalRelay = false;
-  let consecutiveFailures = 0;
-  let circuitBreakerUntil = 0;
-  let lastUpstreamError = null;
 
   const hasDownstreamClients = () => {
     for (const client of wsServer.clients) {
@@ -113,18 +144,26 @@ export function startRelayServer(options = {}) {
     return false;
   };
 
-  const clearReconnectTimer = () => {
-    if (!reconnectTimer) return;
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+  const clearReconnectTimer = (state) => {
+    if (!state.reconnectTimer) return;
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  };
+
+  const clearAllReconnectTimers = () => {
+    upstreamStates.forEach(clearReconnectTimer);
   };
 
   const closeLocalRelay = () => {
-    clearReconnectTimer();
-    try {
-      upstream?.close();
-    } catch {}
-    upstream = null;
+    clearAllReconnectTimers();
+    for (const state of upstreamStates) {
+      if (state.pingInterval) clearInterval(state.pingInterval);
+      state.pingInterval = null;
+      try {
+        state.upstream?.close();
+      } catch {}
+      state.upstream = null;
+    }
     try {
       wsServer.close();
     } catch {}
@@ -161,26 +200,26 @@ export function startRelayServer(options = {}) {
     throw err;
   };
 
-  const scheduleReconnect = () => {
-    if (reconnectTimer || !aisApiKey) return;
+  const scheduleReconnect = (state) => {
+    if (state.reconnectTimer || !aisApiKey) return;
     if (!hasDownstreamClients()) return;
 
     const now = Date.now();
-    if (circuitBreakerUntil > now) {
-      const waitMs = circuitBreakerUntil - now;
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connectUpstream();
+    if (state.circuitBreakerUntil > now) {
+      const waitMs = state.circuitBreakerUntil - now;
+      state.reconnectTimer = setTimeout(() => {
+        state.reconnectTimer = null;
+        connectUpstream(state);
       }, waitMs);
-      console.warn(`[AIS Relay] ⏸️ Circuit breaker actif — nouvelle tentative dans ${waitMs}ms`);
+      console.warn(`[AIS Relay] ⏸️ Circuit breaker actif flux #${state.index + 1} — nouvelle tentative dans ${waitMs}ms`);
       return;
     }
 
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connectUpstream();
-    }, reconnectDelayMs);
-    reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30_000);
+    state.reconnectTimer = setTimeout(() => {
+      state.reconnectTimer = null;
+      connectUpstream(state);
+    }, state.reconnectDelayMs);
+    state.reconnectDelayMs = Math.min(state.reconnectDelayMs * 2, 30_000);
   };
 
   const broadcast = (payload) => {
@@ -191,75 +230,73 @@ export function startRelayServer(options = {}) {
     });
   };
 
-  const connectUpstream = () => {
+  const connectUpstream = (state) => {
     if (!aisApiKey) return;
     if (!hasDownstreamClients()) return;
-    if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
+    if (state.upstream && (state.upstream.readyState === WebSocket.OPEN || state.upstream.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    upstream = new WebSocket(upstreamUrl);
+    state.upstream = new WebSocket(upstreamUrl);
 
-    let pingInterval = null;
-
-    upstream.on('open', () => {
-      reconnectDelayMs = 2000;
-      consecutiveFailures = 0;
-      circuitBreakerUntil = 0;
-      lastUpstreamError = null;
-      console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} — souscription envoyée`);
-      upstream?.send(JSON.stringify(subscription));
+    state.upstream.on('open', () => {
+      state.reconnectDelayMs = 2000;
+      state.consecutiveFailures = 0;
+      state.circuitBreakerUntil = 0;
+      state.lastUpstreamError = null;
+      console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} — souscription #${state.index + 1}/${upstreamStates.length} envoyée (${state.subscription.BoundingBoxes.length} bbox)`);
+      state.upstream?.send(JSON.stringify(state.subscription));
 
       // Keep connection alive
-      pingInterval = setInterval(() => {
-        if (upstream?.readyState === WebSocket.OPEN) {
-          upstream.ping();
+      state.pingInterval = setInterval(() => {
+        if (state.upstream?.readyState === WebSocket.OPEN) {
+          state.upstream.ping();
         }
       }, 30000); // 30s ping
     });
 
-    let msgCount = 0;
-    upstream.on('message', (data) => {
-      msgCount++;
-      if (msgCount === 1 || msgCount % 500 === 0) {
-        console.log(`[AIS Relay] 📡 Message #${msgCount} reçu, ${wsServer.clients.size} client(s) connecté(s)`);
+    state.upstream.on('message', (data) => {
+      state.msgCount++;
+      if (state.msgCount === 1 || state.msgCount % 500 === 0) {
+        console.log(`[AIS Relay] 📡 Flux #${state.index + 1} message #${state.msgCount} reçu, ${wsServer.clients.size} client(s) connecté(s)`);
       }
       broadcast(data.toString());
     });
 
-    upstream.on('error', (err) => {
-      lastUpstreamError = err instanceof Error ? err.message : String(err);
-      console.error('[AIS Relay] ❌ Erreur upstream:', lastUpstreamError);
-      upstream?.close();
+    state.upstream.on('error', (err) => {
+      state.lastUpstreamError = err instanceof Error ? err.message : String(err);
+      console.error(`[AIS Relay] ❌ Erreur upstream flux #${state.index + 1}:`, state.lastUpstreamError);
+      state.upstream?.close();
     });
 
-    upstream.on('close', (code, reason) => {
-      if (pingInterval) clearInterval(pingInterval);
-      upstream = null;
+    state.upstream.on('close', (code, reason) => {
+      if (state.pingInterval) clearInterval(state.pingInterval);
+      state.pingInterval = null;
+      state.upstream = null;
 
       const reasonText = Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason || '');
       if (code !== 1000) {
-        consecutiveFailures++;
+        state.consecutiveFailures++;
       }
-      if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
-        circuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+      if (state.consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        state.circuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
       }
 
       if (!hasDownstreamClients()) {
-        console.warn(`[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — aucun client local, pause des reconnexions`);
+        console.warn(`[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) — aucun client local, pause des reconnexions`);
         return;
       }
 
       const extra = [
-        lastUpstreamError ? `erreur=${lastUpstreamError}` : '',
+        state.lastUpstreamError ? `erreur=${state.lastUpstreamError}` : '',
         reasonText ? `reason=${reasonText}` : '',
-        consecutiveFailures > 1 ? `échecs=${consecutiveFailures}` : '',
+        state.consecutiveFailures > 1 ? `échecs=${state.consecutiveFailures}` : '',
       ].filter(Boolean).join(' · ');
 
       console.warn(
-        `[AIS Relay] ⚠️ Upstream déconnecté (code ${code}) — reconnexion dans ${reconnectDelayMs}ms${extra ? ` · ${extra}` : ''}`,
+        `[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) — reconnexion dans ${state.reconnectDelayMs}ms${extra ? ` · ${extra}` : ''}`,
       );
-      scheduleReconnect();
+      scheduleReconnect(state);
     });
   };
 
@@ -280,13 +317,15 @@ export function startRelayServer(options = {}) {
 
     client.on('close', () => {
       if (hasDownstreamClients()) return;
-      clearReconnectTimer();
-      if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
-        upstream.close(1000, 'No downstream clients');
+      clearAllReconnectTimers();
+      for (const state of upstreamStates) {
+        if (state.upstream && (state.upstream.readyState === WebSocket.OPEN || state.upstream.readyState === WebSocket.CONNECTING)) {
+          state.upstream.close(1000, 'No downstream clients');
+        }
       }
     });
 
-    connectUpstream();
+    upstreamStates.forEach(connectUpstream);
   });
 
   server.on('error', handleListenError);
@@ -302,7 +341,9 @@ export function startRelayServer(options = {}) {
     server,
     wsServer,
     close() {
-      upstream?.close();
+      for (const state of upstreamStates) {
+        state.upstream?.close();
+      }
       wsServer.close();
       server.close();
       relayInstance = null;

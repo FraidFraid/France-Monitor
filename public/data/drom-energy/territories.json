@@ -1,0 +1,77 @@
+[
+  {
+    "code": "GP",
+    "name": "Guadeloupe",
+    "bounds": [
+      -61.95,
+      15.75,
+      -60.95,
+      16.55
+    ],
+    "center": [
+      -61.53,
+      16.25
+    ],
+    "inseeRegionCode": "01"
+  },
+  {
+    "code": "MQ",
+    "name": "Martinique",
+    "bounds": [
+      -61.35,
+      14.35,
+      -60.8,
+      14.92
+    ],
+    "center": [
+      -61.02,
+      14.64
+    ],
+    "inseeRegionCode": "02"
+  },
+  {
+    "code": "GF",
+    "name": "Guyane",
+    "bounds": [
+      -54.7,
+      2.05,
+      -51.5,
+      5.95
+    ],
+    "center": [
+      -53.23,
+      4
+    ],
+    "inseeRegionCode": "03"
+  },
+  {
+    "code": "RE",
+    "name": "La Réunion",
+    "bounds": [
+      55.15,
+      -21.45,
+      55.9,
+      -20.85
+    ],
+    "center": [
+      55.53,
+      -21.12
+    ],
+    "inseeRegionCode": "04"
+  },
+  {
+    "code": "YT",
+    "name": "Mayotte",
+    "bounds": [
+      44.9,
+      -13.05,
+      45.35,
+      -12.6
+    ],
+    "center": [
+      45.15,
+      -12.83
+    ],
+    "inseeRegionCode": "06"
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          55.4481,
+          -20.8789
+        ]
+      },
+      "properties": {
+        "id": "RE_SUB_001",
+        "territoryCode": "RE",
+        "type": "source_substation",
+        "name": "Poste Source Test Saint-Denis",
+        "sourceDatasetId": "postes_sources_reunion",
+        "operator": "EDF SEI",
+        "communeCode": "97411",
+        "communeName": "Saint-Denis",
+        "voltageKv": 63,
+        "rawProperties": {
+          "id": "RE_SUB_001",
+          "nom": "Poste Source Test Saint-Denis",
+          "tension_kv": 63,
+          "commune": "Saint-Denis",
+          "code_commune": "97411",
+          "operateur": "EDF SEI"
+        }
+      }
+    }
+  ]
+}

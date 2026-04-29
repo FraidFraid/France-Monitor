@@ -5,6 +5,7 @@
  */
 
 import { getAllLiveTraffic, getMilitaryShips, getAisConnectionState, NAVY_MMSI_SET, type MilitaryShip, type RiskLevel } from '../services/military-ships.ts';
+import { FRENCH_MARITIME_TERRITORIES, type FrenchMaritimeTerritoryCode } from '../config/french-ports.ts';
 import { BLACK_LIST_FLAGS, GREY_LIST_FLAGS, SANCTIONED_FLAGS } from '../config/risk-flags.ts';
 import {
   applyPremiumCloseButtonHover,
@@ -49,6 +50,7 @@ export class MaritimePanel {
   private readonly trafficBatchSize = 20;
   private _searchQuery = '';
   private _activeFilter: 'all' | 'military' | 'high-risk' | 'suspect-flag' = 'all';
+  private _activeTerritory: FrenchMaritimeTerritoryCode | 'all' = 'all';
   private _searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _staleBannerEl: HTMLElement | null = null;
   private _headerEl: HTMLElement | null = null;
@@ -179,6 +181,19 @@ export class MaritimePanel {
     searchWrap.appendChild(clearBtn);
     searchRow.appendChild(searchWrap);
 
+    const territorySelect = document.createElement('select');
+    territorySelect.style.cssText = 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:var(--text-primary);font-size:10px;border-radius:6px;padding:5px 7px;outline:none;';
+    territorySelect.innerHTML = [
+      '<option value="all">Tous les territoires français</option>',
+      ...FRENCH_MARITIME_TERRITORIES.map((territory) => `<option value="${territory.code}">${territory.name}</option>`),
+    ].join('');
+    territorySelect.addEventListener('change', () => {
+      this._activeTerritory = territorySelect.value as FrenchMaritimeTerritoryCode | 'all';
+      this.trafficVisibleCount = this.trafficBatchSize;
+      this._renderCurrentTab();
+    });
+    searchRow.appendChild(territorySelect);
+
     // Filter chips
     const chipsRow = document.createElement('div');
     chipsRow.style.cssText = 'display:flex;gap:4px;';
@@ -290,13 +305,13 @@ export class MaritimePanel {
   private _renderTraffic(): void {
     const isStale = ['stale', 'disconnected'].includes(getAisConnectionState().status);
     const ships = this._applyFilters(
-      getAllLiveTraffic(10 * 60 * 1000, true)
+      getAllLiveTraffic(10 * 60 * 1000, true, this._territoryCodeFilter())
         .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))
     );
     const homonymCounts = this._getHomonymCounts(ships);
 
     if (ships.length === 0) {
-      this.bodyEl.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:24px;">Aucun navire civil détecté en zone France</div>';
+      this.bodyEl.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:24px;">Aucun navire civil détecté sur le territoire sélectionné</div>';
       return;
     }
 
@@ -360,7 +375,7 @@ export class MaritimePanel {
 
   private _renderAlerts(): void {
     const isStale = ['stale', 'disconnected'].includes(getAisConnectionState().status);
-    const all = this._applyFilters(getAllLiveTraffic(10 * 60 * 1000, true));
+    const all = this._applyFilters(getAllLiveTraffic(10 * 60 * 1000, true, this._territoryCodeFilter()));
     const alerts = all.filter(s => s.riskLevel && ['medium', 'high', 'critical'].includes(s.riskLevel));
     const homonymCounts = this._getHomonymCounts(alerts);
 
@@ -454,6 +469,7 @@ export class MaritimePanel {
         <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${ship.type} · ${flagEmoji} ${countryName || 'Inconnu'}</div>
         <div style="color:var(--text-muted);font-size:10px;">
           ${ship.isLive === false ? 'position de référence' : ship.speed != null ? `${ship.speed.toFixed(1)} kn` : '—'}
+          ${ship.maritimeTerritory ? ` · ${ship.maritimeTerritory.name}` : ''}
           ${ship.nearestPort ? ` → ${ship.nearestPort.name} (${ship.nearestPort.distanceKm}km)` : ''}
           ${hasHomonym && ship.mmsi ? ` · MMSI ${ship.mmsi}` : ''}
           ${elapsed != null ? ` · vu il y a ${elapsed}min` : ''}
@@ -542,6 +558,7 @@ export class MaritimePanel {
             <span style="color:var(--text-muted);">Destination</span><span style="color:var(--text-primary);">${destStr}</span>
             <span style="color:var(--text-muted);">ETA</span><span style="color:var(--text-primary);">${etaStr}</span>
             <span style="color:var(--text-muted);">Port proche</span><span style="color:var(--text-primary);">${ship.nearestPort ? `${ship.nearestPort.name} (${ship.nearestPort.distanceKm} km)` : '—'}</span>
+            <span style="color:var(--text-muted);">Territoire maritime</span><span style="color:var(--text-primary);">${ship.maritimeTerritory?.name ?? '—'}</span>
             <span style="color:var(--text-muted);">Coord.</span><span style="color:var(--text-primary);font-family:monospace;">${ship.lat.toFixed(4)}, ${ship.lon.toFixed(4)}</span>
           </div>
           ${ship.trail && ship.trail.length > 2 ? this._renderTrailSvg(ship.trail) : '<div style="color:var(--text-muted);font-size:10px;">Trail insuffisant</div>'}`;
@@ -635,6 +652,10 @@ export class MaritimePanel {
     }
 
     return result;
+  }
+
+  private _territoryCodeFilter(): FrenchMaritimeTerritoryCode | undefined {
+    return this._activeTerritory === 'all' ? undefined : this._activeTerritory;
   }
 
   private _updateAisBadge(): void {

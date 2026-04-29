@@ -19,6 +19,7 @@ const DEFAULT_FILTER: FilterState = {
         news: false,
         alerts: false,
         energySystems: false,
+        dromEnergy: false,
         powerGrid: false,
         hydroBackbone: false,
         windMonitor: false,

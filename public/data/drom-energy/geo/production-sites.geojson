@@ -1,0 +1,39 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          55.538,
+          -21.021
+        ]
+      },
+      "properties": {
+        "id": "RE_PROD_001",
+        "territoryCode": "RE",
+        "type": "production_site",
+        "name": "Site Production Test Sainte-Suzanne",
+        "sourceDatasetId": "production_sites_reunion",
+        "operator": "EDF SEI",
+        "communeCode": "97420",
+        "communeName": "Sainte-Suzanne",
+        "productionType": "Solaire",
+        "capacityMw": 5.2,
+        "rawProperties": {
+          "id": "RE_PROD_001",
+          "nom": "Site Production Test Sainte-Suzanne",
+          "filiere": "Solaire",
+          "puissance_mw": 5.2,
+          "commune": "Sainte-Suzanne",
+          "code_commune": "97420",
+          "territoire": "RE",
+          "operateur": "EDF SEI",
+          "longitude": 55.538,
+          "latitude": -21.021
+        }
+      }
+    }
+  ]
+}

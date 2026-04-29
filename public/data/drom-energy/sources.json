@@ -1,0 +1,404 @@
+[
+  {
+    "id": "postes_sources_reunion",
+    "label": "Postes sources",
+    "family": "grid_assets",
+    "geometry": "point",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "RE"
+    ],
+    "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/postes-sources-reunion/compat-ods/exports/geojson",
+    "urls": [
+      "https://opendata-reunion.edf.fr/api/explore/v2.1/catalog/datasets/postes-sources-reunion/exports/geojson",
+      "https://opendata-reunion.edf.fr/api/explore/v2.1/catalog/datasets/postes-sources-reunion/exports/csv?use_labels=true",
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/postes-sources-reunion/compat-ods/exports/geojson",
+      "https://www.data.gouv.fr/api/1/datasets/r/e29232fb-28c6-483e-9de0-3b00ccdd5034",
+      "https://www.data.gouv.fr/api/1/datasets/r/7ec9ecec-6605-4e5f-8340-b5aae9f3568e",
+      "https://opendata-corse-outremer.edf.fr/explore/dataset/postes-sources-reunion/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/postes-sources-reunion/exports/geojson",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/postes-sources-reunion/exports/json",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/postes-sources-reunion/exports/geojson"
+    ],
+    "localFallbackPath": "public/data/drom-energy/raw/postes-sources-reunion.geojson",
+    "expectedFormat": "geojson",
+    "dataGouvDatasetSlug": "postes-sources",
+    "dataGouvResourceId": "e29232fb-28c6-483e-9de0-3b00ccdd5034",
+    "dataFairDatasetSlug": "postes-sources-reunion",
+    "ingestion": {
+      "status": "success",
+      "lastRun": "2026-04-29T16:11:52.728Z",
+      "testedAt": "2026-04-29T16:11:52.728Z",
+      "source": "local_fallback_forced",
+      "selectedUrl": "public/data/drom-energy/raw/postes-sources-reunion.geojson",
+      "contentType": "application/geo+json",
+      "featureCount": 1,
+      "attempts": []
+    },
+    "fetchedAt": "2026-04-29T16:11:52.730Z"
+  },
+  {
+    "id": "postes_sources_guyane",
+    "label": "Postes sources - Guyane",
+    "family": "grid_assets",
+    "geometry": "point",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "GF"
+    ],
+    "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/postes-sources-guyane/compat-ods/exports/geojson",
+    "urls": [
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/postes-sources-guyane/compat-ods/exports/geojson",
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/poste-source-guy/compat-ods/exports/geojson",
+      "https://www.data.gouv.fr/api/1/datasets/r/f66800ee-8a70-4a9b-a6d5-fd344bd0a4c5",
+      "https://www.data.gouv.fr/api/1/datasets/r/19f9d319-fe1e-4c00-a18b-d70b37f867db",
+      "https://opendata-corse-outremer.edf.fr/explore/dataset/poste-source-guy/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/json",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson"
+    ],
+    "expectedFormat": "geojson",
+    "dataGouvDatasetSlug": "postes-sources-guyane",
+    "dataGouvResourceId": "f66800ee-8a70-4a9b-a6d5-fd344bd0a4c5",
+    "dataFairDatasetSlug": "postes-sources-guyane",
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.730Z",
+      "testedAt": "2026-04-29T16:11:52.730Z",
+      "source": "none",
+      "reason": "all_remote_failed_and_no_local_fallback",
+      "lastAttemptedUrl": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson",
+      "error": "all_remote_failed_and_no_local_fallback",
+      "attempts": [
+        {
+          "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/postes-sources-guyane/compat-ods/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/poste-source-guy/compat-ods/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/f66800ee-8a70-4a9b-a6d5-fd344bd0a4c5",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/19f9d319-fe1e-4c00-a18b-d70b37f867db",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/explore/dataset/poste-source-guy/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/json",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson",
+          "error": "fetch failed"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pylones_htb_martinique",
+    "label": "Pylones HTB - Martinique",
+    "family": "grid_assets",
+    "geometry": "point",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "MQ"
+    ],
+    "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-martinique/compat-ods/exports/geojson",
+    "urls": [
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-martinique/compat-ods/exports/geojson",
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-mar/compat-ods/exports/geojson",
+      "https://www.data.gouv.fr/api/1/datasets/r/4ac0c1ec-8fe9-4726-bfac-f7057a01cf74",
+      "https://www.data.gouv.fr/api/1/datasets/r/4fa7ca2c-47e9-4eb1-999d-86585fa75c71",
+      "https://opendata-corse-outremer.edf.fr/explore/dataset/pylones-htb-mar/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/json",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson"
+    ],
+    "expectedFormat": "geojson",
+    "dataGouvDatasetSlug": "pylones-htb-martinique",
+    "dataGouvResourceId": "4ac0c1ec-8fe9-4726-bfac-f7057a01cf74",
+    "dataFairDatasetSlug": "pylones-htb-martinique",
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.821Z",
+      "testedAt": "2026-04-29T16:11:52.821Z",
+      "source": "none",
+      "reason": "all_remote_failed_and_no_local_fallback",
+      "lastAttemptedUrl": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson",
+      "error": "all_remote_failed_and_no_local_fallback",
+      "attempts": [
+        {
+          "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-martinique/compat-ods/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-mar/compat-ods/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/4ac0c1ec-8fe9-4726-bfac-f7057a01cf74",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/4fa7ca2c-47e9-4eb1-999d-86585fa75c71",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/explore/dataset/pylones-htb-mar/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/json",
+          "error": "fetch failed"
+        },
+        {
+          "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson",
+          "error": "fetch failed"
+        }
+      ]
+    }
+  },
+  {
+    "id": "pylones_htb_reunion",
+    "label": "Pylones HTB - Réunion",
+    "family": "grid_assets",
+    "geometry": "line",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "RE"
+    ],
+    "url": "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-reunion/compat-ods/exports/geojson",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-run/exports/geojson",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-run/exports/csv?use_labels=true",
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-reunion/compat-ods/exports/geojson",
+      "https://opendata.edf.fr/data-fair/api/v1/datasets/pylones-htb-run/compat-ods/exports/geojson",
+      "https://www.data.gouv.fr/api/1/datasets/r/bf6785bf-4c72-4c9f-89c5-057109fee1ba",
+      "https://www.data.gouv.fr/api/1/datasets/r/1c1220af-0729-4caf-8a78-1835121b78c0",
+      "https://opendata-corse-outremer.edf.fr/explore/dataset/pylones-htb-run/download?format=geojson&timezone=Europe/Paris&use_labels_for_header=false",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-run/exports/geojson",
+      "https://opendata-corse-outremer.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-run/exports/json",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-run/exports/geojson"
+    ],
+    "localFallbackPath": "public/data/drom-energy/raw/pylones-htb-reunion.geojson",
+    "expectedFormat": "geojson",
+    "dataGouvDatasetSlug": "pylones-htb-reunion",
+    "dataGouvResourceId": "bf6785bf-4c72-4c9f-89c5-057109fee1ba",
+    "dataFairDatasetSlug": "pylones-htb-reunion",
+    "ingestion": {
+      "status": "success",
+      "lastRun": "2026-04-29T16:11:52.828Z",
+      "testedAt": "2026-04-29T16:11:52.828Z",
+      "source": "local_fallback_forced",
+      "selectedUrl": "public/data/drom-energy/raw/pylones-htb-reunion.geojson",
+      "contentType": "application/geo+json",
+      "featureCount": 1,
+      "attempts": []
+    },
+    "fetchedAt": "2026-04-29T16:11:52.829Z"
+  },
+  {
+    "id": "production_sites_reunion",
+    "label": "Sites de production - Réunion",
+    "family": "production_registry",
+    "geometry": "point",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "RE"
+    ],
+    "url": "",
+    "urls": [],
+    "localFallbackPath": "public/data/drom-energy/raw/production-sites-reunion.geojson",
+    "expectedFormat": "geojson",
+    "ingestion": {
+      "status": "success",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "local_fallback_forced",
+      "selectedUrl": "public/data/drom-energy/raw/production-sites-reunion.geojson",
+      "contentType": "application/geo+json",
+      "featureCount": 1,
+      "attempts": []
+    },
+    "fetchedAt": "2026-04-29T16:11:52.829Z"
+  },
+  {
+    "id": "capacites_accueil",
+    "label": "Capacités d'accueil du réseau",
+    "family": "hosting_capacity",
+    "geometry": "point",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/capacites-reseau/records?limit=2000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/capacites-reseau/records?limit=2000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "consommation_commune",
+    "label": "Consommation annuelle par commune",
+    "family": "consumption",
+    "geometry": "none",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-par-commune/records?limit=5000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-par-commune/records?limit=5000",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/consommation-annuelle-par-commune-corse-outremer/records?limit=5000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "production_stockage_registry",
+    "label": "Registre national des installations de production et de stockage d'électricité",
+    "family": "production_registry",
+    "geometry": "point",
+    "source": "national_registry",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/registre-des-installations-de-production-et-de-stockage-d-electricite/records?limit=10000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/registre-des-installations-de-production-et-de-stockage-d-electricite/records?limit=10000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "production_limitations",
+    "label": "Limitations de production au titre de la sûreté système",
+    "family": "production_limitations",
+    "geometry": "none",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/deconnexions-des-installations-photovoltaiques/records?limit=5000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/deconnexions-des-installations-photovoltaiques/records?limit=5000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "emissions_co2",
+    "label": "Emissions annuelles de CO2",
+    "family": "co2",
+    "geometry": "none",
+    "source": "EDF_SEI",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/emissions-c02/records?limit=2000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/emissions-c02/records?limit=2000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.829Z",
+      "testedAt": "2026-04-29T16:11:52.829Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "efficiency_actions",
+    "label": "Actions d'Efficacité Énergétique",
+    "family": "efficiency",
+    "geometry": "none",
+    "source": "territorial_reference",
+    "territoryCodes": [
+      "GP",
+      "MQ",
+      "GF",
+      "RE",
+      "YT"
+    ],
+    "url": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/actions-d-efficacite-energetique/records?limit=5000",
+    "urls": [
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/actions-d-efficacite-energetique/records?limit=5000",
+      "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/actions-efficacite-energetique/records?limit=5000"
+    ],
+    "ingestion": {
+      "status": "failure",
+      "lastRun": "2026-04-29T16:11:52.830Z",
+      "testedAt": "2026-04-29T16:11:52.830Z",
+      "source": "none",
+      "reason": "forced_local_fallback_not_configured",
+      "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  }
+]
