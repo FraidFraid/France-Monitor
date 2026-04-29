@@ -6,6 +6,7 @@ const PAGE_SIZE = 100;
 const PAGE_BATCH_SIZE = 6;
 const REQUEST_TIMEOUT_MS = 15_000;
 const RETRY_DELAYS_MS = [350, 900];
+const USE_DIRECT_BROWSER_FETCH = true;
 
 const MONITORED_FUELS: FuelType[] = ['gazole', 'sp95', 'sp98', 'e10'];
 
@@ -59,6 +60,7 @@ interface FuelApiResponse {
 
 const cache = new Map<string, FuelPricesCacheEntry>();
 const inflightRequests = new Map<string, Promise<FuelStation[]>>();
+const reportedFetchFailures = new Set<string>();
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
@@ -245,27 +247,60 @@ function normalizeStation(record: FuelApiRecord, fetchedAt: string): FuelStation
 }
 
 async function fetchFuelApiPage(url: string, attempt = 0): Promise<FuelApiResponse> {
-  const response = await fetch(`${FUEL_PRICES_PROXY_ENDPOINT}?url=${encodeURIComponent(url)}`, {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  const directFirst = USE_DIRECT_BROWSER_FETCH && typeof window !== 'undefined';
+  const candidates = directFirst
+    ? [
+      { label: 'MEF direct', url },
+      { label: 'Vercel proxy', url: `${FUEL_PRICES_PROXY_ENDPOINT}?url=${encodeURIComponent(url)}` },
+    ]
+    : [
+      { label: 'Vercel proxy', url: `${FUEL_PRICES_PROXY_ENDPOINT}?url=${encodeURIComponent(url)}` },
+      { label: 'MEF direct', url },
+    ];
 
-  if (!response.ok) {
-    if (attempt < RETRY_DELAYS_MS.length && response.status >= 500) {
-      await delay(RETRY_DELAYS_MS[attempt]);
-      return fetchFuelApiPage(url, attempt + 1);
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate.url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`${candidate.label} returned HTTP ${response.status}`);
+        if (candidate.label === 'MEF direct' && !reportedFetchFailures.has(`${candidate.label}:${response.status}`)) {
+          reportedFetchFailures.add(`${candidate.label}:${response.status}`);
+          console.warn(`[FuelPrices] ${candidate.label} failed with HTTP ${response.status}; trying fallback.`);
+        }
+        continue;
+      }
+
+      try {
+        return await response.json() as FuelApiResponse;
+      } catch (error) {
+        lastError = error;
+        if (candidate.label === 'MEF direct' && !reportedFetchFailures.has(`${candidate.label}:json`)) {
+          reportedFetchFailures.add(`${candidate.label}:json`);
+          console.warn('[FuelPrices] MEF direct returned an invalid JSON payload; trying fallback.', error);
+        }
+      }
+    } catch (error) {
+      lastError = error;
+      if (candidate.label === 'MEF direct' && !reportedFetchFailures.has(`${candidate.label}:network`)) {
+        reportedFetchFailures.add(`${candidate.label}:network`);
+        console.warn('[FuelPrices] MEF direct fetch failed; trying fallback proxy.', error);
+      }
     }
-    throw new Error(`Fuel prices upstream returned HTTP ${response.status}`);
   }
 
-  try {
-    return await response.json() as FuelApiResponse;
-  } catch (error) {
-    if (attempt < RETRY_DELAYS_MS.length) {
-      await delay(RETRY_DELAYS_MS[attempt]);
-      return fetchFuelApiPage(url, attempt + 1);
-    }
-    throw error instanceof Error ? error : new Error('Invalid fuel prices payload');
+  if (attempt < RETRY_DELAYS_MS.length) {
+    await delay(RETRY_DELAYS_MS[attempt]);
+    return fetchFuelApiPage(url, attempt + 1);
   }
+
+  const message = lastError instanceof Error ? lastError.message : String(lastError ?? 'unknown error');
+  throw new Error(`Fuel prices upstream unavailable: ${message}`);
 }
 
 async function fetchAllFuelPages(departmentCodes?: string[]): Promise<FuelApiRecord[]> {
