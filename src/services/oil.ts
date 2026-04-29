@@ -229,8 +229,7 @@ async function resolveCarbuApiConfig(): Promise<{ apiUrl: string; apiKey: string
   try {
     const pageHtml = await fetchProxyText(CARBU_PRIX_MOYENS_URL);
     return extractCarbuApiConfig(pageHtml);
-  } catch (error) {
-    console.warn('[Oil] Falling back to baked CARBU API config:', error);
+  } catch {
     return {
       apiUrl: CARBU_API_URL_FALLBACK,
       apiKey: CARBU_API_KEY_FALLBACK,
@@ -309,23 +308,58 @@ async function fetchFuelPriceHistory(): Promise<FuelPriceHistorySnapshot> {
     };
   }));
 
-  const series = seriesResults.flatMap((result, index) => {
-    if (result.status === 'fulfilled') return [result.value];
-    console.warn(`[Oil] Fuel price series fetch failed for ${CARBU_FUEL_SERIES[index]?.fuelType ?? 'unknown'}:`, result.reason);
-    return [];
+  const series: FuelPriceSeries[] = [];
+  const missingFuelTypes = new Set<Extract<FuelPriceSeriesKey, 'gazole' | 'sp95' | 'sp98'>>();
+
+  seriesResults.forEach((result, index) => {
+    const fuel = CARBU_FUEL_SERIES[index];
+    if (!fuel) return;
+
+    if (result.status === 'fulfilled' && result.value.points.length > 0) {
+      series.push(result.value);
+      return;
+    }
+
+    if (fuel.fuelType === 'gazole' || fuel.fuelType === 'sp95' || fuel.fuelType === 'sp98') {
+      missingFuelTypes.add(fuel.fuelType);
+    }
   });
 
-  if (series.length === 0 || series.every((entry) => entry.points.length === 0)) {
+  if (series.length === 0) {
     return fetchFuelPriceHistoryFromOfficialDataset();
   }
 
+  if (missingFuelTypes.size > 0) {
+    const supplementalResults = await Promise.allSettled(
+      OFFICIAL_FUEL_SERIES
+        .filter((config) => missingFuelTypes.has(config.fuelType))
+        .map((config) => fetchOfficialFuelHistorySeries(config)),
+    );
+
+    supplementalResults.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.points.length > 0) {
+        series.push(result.value);
+      }
+    });
+  }
+
+  const hydratedSeries = [...series].sort(
+    (left, right) => CARBU_FUEL_SERIES.findIndex((fuel) => fuel.fuelType === left.fuelType)
+      - CARBU_FUEL_SERIES.findIndex((fuel) => fuel.fuelType === right.fuelType),
+  );
+
+  const supplementedByOfficial = hydratedSeries.some((entry) => entry.fuelType !== 'gpl')
+    && missingFuelTypes.size > 0;
+
   return {
-    provider: 'carbu',
+    provider: supplementedByOfficial ? 'data-economie' : 'carbu',
     generatedAt: new Date().toISOString(),
-    sourceLabel: 'Prix moyens France via CARBU.COM (API utilisée par la page prixmoyens)',
+    sourceLabel: supplementedByOfficial
+      ? 'Prix carburants France — CARBU.COM complété par l’API officielle prix des carburants'
+      : 'Prix moyens France via CARBU.COM (API utilisée par la page prixmoyens)',
     rangeStart: dateStart,
     rangeEnd: dateEnd,
-    series,
+    series: hydratedSeries,
   };
 }
 
