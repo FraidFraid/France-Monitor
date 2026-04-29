@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       payload,
     });
   } catch (error) {
+    console.error('[fuel-price-series-refresh] refresh failed; keeping previous cache', error);
     res.setHeader('Cache-Control', 'no-store');
     res.status(502).json({
       ok: false,

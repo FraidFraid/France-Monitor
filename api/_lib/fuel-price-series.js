@@ -6,11 +6,12 @@ export const FUEL_PRICE_SERIES_CACHE_KEY = 'francemonitor:fuel-price-series:v1';
 export const FUEL_PRICE_SERIES_MAX_DAYS = 365;
 
 const STATIC_CACHE_PATH = path.join(process.cwd(), 'public', 'data', 'fuel-price-series.json');
-const DAILY_DATASET_PATH = '/api/explore/v2.1/catalog/datasets/prix-carburants-quotidien/records';
+const DAILY_DATASET_EXPORT_PATH = '/api/explore/v2.1/catalog/datasets/prix-carburants-quotidien/exports/csv';
 const DAILY_DATASET_HOSTS = [
   'https://data.economie.gouv.fr',
   'https://opendatamef.opendatasoft.com',
 ];
+const HISTORY_DAYS = 90;
 
 const FUEL_CONFIG = {
   gazole: { dailyName: 'Gazole' },
@@ -47,6 +48,49 @@ function normalizePoint(point) {
     date: point.date.slice(0, 10),
     avg: avg === null ? null : Math.round(avg * 1000) / 1000,
   };
+}
+
+function formatDateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getHistoryStartDate(days = HISTORY_DAYS) {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - days);
+  start.setUTCHours(0, 0, 0, 0);
+  return formatDateKey(start);
+}
+
+function parseCsvLine(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ';' && !inQuotes) {
+      fields.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  fields.push(current);
+  return fields.map((field) => field.trim());
 }
 
 export function normalizeFuelPriceSeriesCache(raw) {
@@ -90,29 +134,26 @@ export async function writeFuelPriceSeriesCache(payload) {
   return true;
 }
 
-function buildDailyAggregateUrl(host) {
+function buildDailyExportUrl(host, startDate = getHistoryStartDate()) {
   const params = new URLSearchParams({
-    select: [
-      'prix_nom',
-      'avg(prix_valeur) as avg_price',
-      'max(prix_maj) as latest_update',
-    ].join(','),
-    where: 'prix_nom in ("Gazole","SP95","SP98","E10","GPLc") and prix_valeur is not null',
-    group_by: 'prix_nom',
-    limit: '20',
+    select: 'prix_nom,prix_maj,prix_valeur',
+    where: `prix_nom in ("Gazole","SP95","SP98","E10","GPLc") and prix_valeur is not null and prix_maj is not null and prix_maj >= "${startDate}"`,
+    timezone: 'UTC',
+    use_labels: 'false',
+    delimiter: ';',
   });
 
-  return `${host}${DAILY_DATASET_PATH}?${params.toString()}`;
+  return `${host}${DAILY_DATASET_EXPORT_PATH}?${params.toString()}`;
 }
 
-async function fetchJsonWithFallback(urls) {
+async function fetchTextWithFallback(urls) {
   let lastError = null;
 
   for (const url of urls) {
     try {
       const response = await fetch(url, {
         method: 'GET',
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
@@ -120,60 +161,79 @@ async function fetchJsonWithFallback(urls) {
         continue;
       }
 
-      return response.json();
+      return response.text();
     } catch (error) {
       lastError = error;
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('Fuel daily dataset unavailable');
+  throw lastError instanceof Error ? lastError : new Error('Fuel daily CSV export unavailable');
 }
 
-export async function fetchDailyFuelPriceSnapshot() {
-  const payload = await fetchJsonWithFallback(DAILY_DATASET_HOSTS.map(buildDailyAggregateUrl));
-  const rows = Array.isArray(payload?.results) ? payload.results : [];
-  const byDailyName = new Map(rows.map((row) => [row.prix_nom, row]));
-  const points = {};
+function aggregateFuelPriceCsv(csvText) {
+  const lines = csvText
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter(Boolean);
+  if (lines.length < 2) throw new Error('Fuel daily CSV export is empty');
+
+  const headers = parseCsvLine(lines[0]);
+  const prixNomIndex = headers.indexOf('prix_nom');
+  const prixMajIndex = headers.indexOf('prix_maj');
+  const prixValeurIndex = headers.indexOf('prix_valeur');
+  if (prixNomIndex < 0 || prixMajIndex < 0 || prixValeurIndex < 0) {
+    throw new Error('Fuel daily CSV export schema changed');
+  }
+
+  const fuelByDailyName = new Map(Object.entries(FUEL_CONFIG).map(([key, config]) => [config.dailyName, key]));
+  const buckets = new Map();
   const updateCandidates = [];
 
-  for (const [key, config] of Object.entries(FUEL_CONFIG)) {
-    const row = byDailyName.get(config.dailyName);
-    const avg = Number(row?.avg_price);
-    points[key] = Number.isFinite(avg) ? Math.round(avg * 1000) / 1000 : null;
-    if (typeof row?.latest_update === 'string') updateCandidates.push(row.latest_update);
+  for (const line of lines.slice(1)) {
+    const fields = parseCsvLine(line);
+    const fuelKey = fuelByDailyName.get(fields[prixNomIndex]);
+    if (!fuelKey) continue;
+
+    const timestamp = fields[prixMajIndex];
+    const date = timestamp.slice(0, 10);
+    const price = Number.parseFloat(fields[prixValeurIndex]?.replace(',', '.') ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(price)) continue;
+
+    const bucketKey = `${fuelKey}:${date}`;
+    const bucket = buckets.get(bucketKey) ?? { fuelKey, date, sum: 0, count: 0 };
+    bucket.sum += price;
+    bucket.count += 1;
+    buckets.set(bucketKey, bucket);
+    updateCandidates.push(timestamp);
   }
 
-  const latestUpdate = updateCandidates.sort().at(-1) ?? new Date().toISOString();
-  return {
-    date: latestUpdate.slice(0, 10),
-    updatedAt: latestUpdate,
-    points,
-  };
-}
+  const payload = createEmptyFuelPriceSeriesCache();
+  payload.updatedAt = updateCandidates.sort().at(-1) ?? new Date().toISOString();
 
-export function mergeFuelPriceSeriesCache(existingCache, snapshot) {
-  const merged = normalizeFuelPriceSeriesCache(existingCache ?? createEmptyFuelPriceSeriesCache());
-  merged.updatedAt = new Date().toISOString();
-  merged.source = 'prix-carburants-quotidien (MEF) + cache FranceMonitor';
+  for (const bucket of buckets.values()) {
+    payload.series[bucket.fuelKey].push({
+      date: bucket.date,
+      avg: Math.round((bucket.sum / bucket.count) * 1000) / 1000,
+    });
+  }
 
   for (const key of Object.keys(FUEL_CONFIG)) {
-    const withoutSameDate = merged.series[key].filter((point) => point.date !== snapshot.date);
-    withoutSameDate.push({
-      date: snapshot.date,
-      avg: snapshot.points[key],
-    });
-    merged.series[key] = withoutSameDate
-      .sort((left, right) => left.date.localeCompare(right.date))
-      .slice(-FUEL_PRICE_SERIES_MAX_DAYS);
+    payload.series[key].sort((left, right) => left.date.localeCompare(right.date));
   }
 
-  return merged;
+  return normalizeFuelPriceSeriesCache(payload);
+}
+
+export async function fetchHistoricalFuelPriceSeries(days = HISTORY_DAYS) {
+  const startDate = getHistoryStartDate(days);
+  const csvText = await fetchTextWithFallback(DAILY_DATASET_HOSTS.map((host) => buildDailyExportUrl(host, startDate)));
+  return aggregateFuelPriceCsv(csvText);
 }
 
 export async function refreshFuelPriceSeriesCache() {
-  const existing = await readFuelPriceSeriesCache();
-  const snapshot = await fetchDailyFuelPriceSnapshot();
-  const merged = mergeFuelPriceSeriesCache(existing, snapshot);
-  const persisted = await writeFuelPriceSeriesCache(merged);
-  return { payload: merged, persisted };
+  // Cron path: refresh every few hours, but public reads stay cache-only.
+  // If MEF/OpenDataSoft fails, this function throws before writing and the previous cache remains active.
+  const payload = await fetchHistoricalFuelPriceSeries(HISTORY_DAYS);
+  const persisted = await writeFuelPriceSeriesCache(payload);
+  return { payload, persisted };
 }
