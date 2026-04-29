@@ -1,5 +1,9 @@
 {
+  "crons": [
+    { "path": "/api/fuel-price-series-refresh", "schedule": "0 */3 * * *" }
+  ],
   "functions": {
+    "api/fuel-price-series-refresh.js": { "maxDuration": 30 },
     "api/outages/citizen.js": { "maxDuration": 60 },
     "api/finance/*.js":       { "maxDuration": 30 },
     "api/transport/*.js":     { "maxDuration": 30 }
@@ -10,6 +14,8 @@
     { "source": "/api/json-proxy", "destination": "/api/json-proxy" },
     { "source": "/api/oil-proxy", "destination": "/api/oil-proxy" },
     { "source": "/api/fuel-prices-proxy", "destination": "/api/fuel-prices-proxy" },
+    { "source": "/api/fuel-price-series", "destination": "/api/fuel-price-series" },
+    { "source": "/api/fuel-price-series-refresh", "destination": "/api/fuel-price-series-refresh" },
     { "source": "/api/arcep", "destination": "/api/arcep" },
     { "source": "/api/copernicus", "destination": "/api/copernicus" },
     { "source": "/api/fires", "destination": "/api/fires" },

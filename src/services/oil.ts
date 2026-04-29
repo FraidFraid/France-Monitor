@@ -57,15 +57,13 @@ interface MonthlyOilConsumptionRow {
 
 const CACHE_TTL = 30 * 60_000;
 const OIL_PROXY_ENDPOINT = '/api/oil-proxy';
-const FUEL_PRICES_PROXY_ENDPOINT = '/api/fuel-prices-proxy';
+const FUEL_PRICE_SERIES_ENDPOINT = '/api/fuel-price-series';
 
 const SDES_PETROLE_URL = 'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/fr/12-petrole';
 const INSEE_PETROLE_URL = 'https://www.insee.fr/fr/statistiques/2119697';
 const UFIP_COMMUNIQUES_URL = 'https://www.energiesetmobilites.fr/presse/communiques';
 const DATA_GOUV_LOCAL_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-locales-de-consommation-de-produits-petroliers-departement-a-partir-de-2005/';
 const DATA_GOUV_MONTHLY_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-mensuelles-de-consommation-de-produits-petroliers-a-partir-de-2017/';
-const OFFICIAL_FUEL_DAILY_DATASET_URL = 'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-carburants-quotidien/records';
-const OFFICIAL_FUEL_HISTORY_LIMIT = 400;
 const JODI_OIL_BASE_URL = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv';
 const JODI_GAS_ZIP_URL = 'https://www.jodidata.org/jodi-publisher/gas/17/GAS_world_NewFormat.zip';
 const JODI_GAS_ZIP_ENTRY = 'STAGING_world_NewFormat.csv';
@@ -126,13 +124,19 @@ const OFFICIAL_FUEL_SERIES: Array<{
   fuelType: FuelPriceSeriesKey;
   label: string;
   color: string;
-  dailyFuelName: 'Gazole' | 'SP95' | 'SP98' | 'GPLc';
 }> = [
-  { fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B', dailyFuelName: 'Gazole' },
-  { fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8', dailyFuelName: 'SP95' },
-  { fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E', dailyFuelName: 'SP98' },
-  { fuelType: 'gpl', label: 'GPL', color: '#A78BFA', dailyFuelName: 'GPLc' },
+  { fuelType: 'gazole', label: 'Gazole (B7)', color: '#F59E0B' },
+  { fuelType: 'sp95', label: 'Super 95 (E5)', color: '#38BDF8' },
+  { fuelType: 'sp98', label: 'Super 98 (E5)', color: '#F43F5E' },
+  { fuelType: 'e10', label: 'E10', color: '#22C55E' },
+  { fuelType: 'gpl', label: 'GPL', color: '#A78BFA' },
 ] as const;
+
+type CachedFuelPriceSeriesPayload = {
+  updatedAt?: string;
+  source?: string;
+  series?: Partial<Record<FuelPriceSeriesKey, Array<{ date?: string; avg?: number | null }>>>;
+};
 
 export function isOilPanelEnabled(): boolean {
   const flag = import.meta.env.VITE_ENABLE_OIL_LAYER;
@@ -174,18 +178,6 @@ async function fetchProxyArrayBuffer(targetUrl: string): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
-async function fetchFuelPricesProxyJson<T>(targetUrl: string): Promise<T> {
-  const response = await fetch(`${FUEL_PRICES_PROXY_ENDPOINT}?url=${encodeURIComponent(targetUrl)}`, {
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} on ${targetUrl}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
 function findPointAtOrBefore(
   points: Array<{ timestamp: string; price: number }>,
   targetTime: number,
@@ -214,93 +206,49 @@ function computeDeltaCents(
 }
 
 async function fetchFuelPriceHistory(): Promise<FuelPriceHistorySnapshot> {
-  return fetchFuelPriceHistoryFromOfficialDataset();
-}
-
-type OfficialFuelHistoryRow = {
-  avg_price?: number | null;
-  y?: number | null;
-  m?: number | null;
-  d?: number | null;
-};
-
-function toOfficialHistoryTimestamp(year: number | null | undefined, month: number | null | undefined, day: number | null | undefined): string | null {
-  if (!year || !month || !day) return null;
-  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).toISOString();
-}
-
-async function fetchOfficialFuelHistorySeries(config: typeof OFFICIAL_FUEL_SERIES[number]): Promise<FuelPriceSeries> {
-  const params = new URLSearchParams({
-    select: [
-      'year(prix_maj) as y',
-      'month(prix_maj) as m',
-      'day(prix_maj) as d',
-      'avg(prix_valeur) as avg_price',
-    ].join(','),
-    where: `prix_nom = "${config.dailyFuelName}" and prix_valeur is not null and prix_maj is not null`,
-    group_by: [
-      'year(prix_maj)',
-      'month(prix_maj)',
-      'day(prix_maj)',
-    ].join(','),
-    order_by: 'y,m,d',
-    limit: String(OFFICIAL_FUEL_HISTORY_LIMIT),
+  const response = await fetch(FUEL_PRICE_SERIES_ENDPOINT, {
+    signal: AbortSignal.timeout(10_000),
   });
 
-  const payload = await fetchFuelPricesProxyJson<{
-    results?: OfficialFuelHistoryRow[];
-  }>(`${OFFICIAL_FUEL_DAILY_DATASET_URL}?${params.toString()}`);
-
-  const points = (payload.results ?? [])
-    .map((row) => {
-      const timestamp = toOfficialHistoryTimestamp(
-        row.y,
-        row.m,
-        row.d,
-      );
-      const price = typeof row.avg_price === 'number' ? row.avg_price : Number.NaN;
-      if (!timestamp || !Number.isFinite(price)) return null;
-      return { timestamp, price: Math.round(price * 1000) / 1000 };
-    })
-    .filter((point): point is { timestamp: string; price: number } => point !== null)
-    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-
-  const latestPrice = points.at(-1)?.price ?? null;
-
-  return {
-    fuelType: config.fuelType,
-    label: config.label,
-    color: config.color,
-    latestPrice,
-    delta7dCents: computeDeltaCents(points, latestPrice, 7),
-    delta30dCents: computeDeltaCents(points, latestPrice, 30),
-    points,
-  };
-}
-
-async function fetchFuelPriceHistoryFromOfficialDataset(): Promise<FuelPriceHistorySnapshot> {
-  const seriesResults = await Promise.allSettled(
-    OFFICIAL_FUEL_SERIES.map((config) => fetchOfficialFuelHistorySeries(config)),
-  );
-
-  const series = seriesResults.flatMap((result, index) => {
-    if (result.status === 'fulfilled' && result.value.points.length > 0) return [result.value];
-    if (result.status === 'rejected') {
-      console.warn(`[Oil] Official fuel history fetch failed for ${OFFICIAL_FUEL_SERIES[index]?.fuelType ?? 'unknown'}:`, result.reason);
-    }
-    return [];
-  });
-
-  if (series.length === 0) {
-    throw new Error('No official fuel price history series available');
+  if (!response.ok) {
+    throw new Error(`Fuel price series cache returned HTTP ${response.status}`);
   }
+
+  const payload = await response.json() as CachedFuelPriceSeriesPayload;
+  const series = OFFICIAL_FUEL_SERIES.map((config): FuelPriceSeries => {
+    const points = (payload.series?.[config.fuelType] ?? [])
+      .map((point) => {
+        if (typeof point.date !== 'string') return null;
+        const price = point.avg === null ? Number.NaN : Number(point.avg);
+        if (!Number.isFinite(price)) return null;
+        return {
+          timestamp: new Date(`${point.date.slice(0, 10)}T12:00:00.000Z`).toISOString(),
+          price: Math.round(price * 1000) / 1000,
+        };
+      })
+      .filter((point): point is { timestamp: string; price: number } => point !== null)
+      .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+    const latestPrice = points.at(-1)?.price ?? null;
+
+    return {
+      fuelType: config.fuelType,
+      label: config.label,
+      color: config.color,
+      latestPrice,
+      delta7dCents: computeDeltaCents(points, latestPrice, 7),
+      delta30dCents: computeDeltaCents(points, latestPrice, 30),
+      points,
+    };
+  }).filter((entry) => entry.points.length > 0);
+
+  if (series.length === 0) throw new Error('Fuel price series cache is empty');
 
   const timestamps = series.flatMap((entry) => entry.points.map((point) => point.timestamp)).sort();
 
   return {
     provider: 'data-economie',
-    generatedAt: new Date().toISOString(),
-    sourceLabel: 'API prix des carburants en France – flux quotidien (agrégation journalière nationale, J-1)',
+    generatedAt: payload.updatedAt ?? new Date().toISOString(),
+    sourceLabel: payload.source ?? 'prix-carburants-quotidien (MEF) + cache FranceMonitor',
     rangeStart: timestamps[0]?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     rangeEnd: timestamps.at(-1)?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
     series,

@@ -1748,7 +1748,7 @@ export interface OilMonthlyDelivery {
   gasolineYoYPct: number | null;
 }
 
-export type FuelPriceSeriesKey = 'gazole' | 'sp95' | 'sp98' | 'gpl';
+export type FuelPriceSeriesKey = 'gazole' | 'sp95' | 'sp98' | 'e10' | 'gpl';
 
 export interface FuelPricePoint {
   timestamp: string;

@@ -1,0 +1,36 @@
+{
+  "updatedAt": "2026-04-29T06:42:03.396Z",
+  "source": "prix-carburants-quotidien (MEF) + cache FranceMonitor",
+  "series": {
+    "gazole": [
+      {
+        "date": "2026-04-28",
+        "avg": 2.213
+      }
+    ],
+    "sp95": [
+      {
+        "date": "2026-04-28",
+        "avg": 2.042
+      }
+    ],
+    "sp98": [
+      {
+        "date": "2026-04-28",
+        "avg": 2.087
+      }
+    ],
+    "e10": [
+      {
+        "date": "2026-04-28",
+        "avg": 2.004
+      }
+    ],
+    "gpl": [
+      {
+        "date": "2026-04-28",
+        "avg": 1.075
+      }
+    ]
+  }
+}
