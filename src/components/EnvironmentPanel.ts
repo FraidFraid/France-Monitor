@@ -7,6 +7,7 @@ import {
 } from './panelHeader.ts';
 import { RISK_LABELS } from '../types/index.ts';
 import type { FloodSegment, MeteoAlert, MeteoVigilanceLevel } from '../types/index.ts';
+import type { VigilanceTimeline } from '../services/vigilance-meteo.ts';
 
 const METEO_COLORS: Record<MeteoVigilanceLevel, string> = {
   violet: 'var(--threat-critical)',
@@ -48,9 +49,13 @@ export class EnvironmentPanel extends Panel {
   private closeBtn: HTMLElement | null = null;
   private onClose?: () => void;
   private onHoverDepartment?: (code: string | null) => void;
+  private onShowWeatherAlerts?: (alerts: MeteoAlert[]) => void;
   private onHoverSegment?: (id: string | null) => void;
   private onSelectSegment?: (id: string) => void;
   private weatherAlerts: MeteoAlert[] = [];
+  private weatherTimeline: VigilanceTimeline | null = null;
+  private selectedDepartmentCode: string | null = null;
+  private selectedWeatherPeriod: 'current' | 'next' = 'current';
   private floodSegments: FloodSegment[] = [];
   private isDragging = false;
   private dragOffsetX = 0;
@@ -66,6 +71,10 @@ export class EnvironmentPanel extends Panel {
 
   setOnHoverDepartment(handler: (code: string | null) => void): void {
     this.onHoverDepartment = handler;
+  }
+
+  setOnShowWeatherAlerts(handler: (alerts: MeteoAlert[]) => void): void {
+    this.onShowWeatherAlerts = handler;
   }
 
   setOnHoverSegment(handler: (id: string | null) => void): void {
@@ -131,8 +140,9 @@ export class EnvironmentPanel extends Panel {
 
   protected render(): void {}
 
-  show(weatherAlerts: MeteoAlert[], floodSegments: FloodSegment[], _timeline?: unknown): void {
+  show(weatherAlerts: MeteoAlert[], floodSegments: FloodSegment[], timeline?: VigilanceTimeline): void {
     this.weatherAlerts = weatherAlerts;
+    this.weatherTimeline = timeline ?? null;
     this.floodSegments = floodSegments;
 
     if (!this.contentEl) return;
@@ -141,6 +151,7 @@ export class EnvironmentPanel extends Panel {
   }
 
   hide(): void {
+    this.selectedDepartmentCode = null;
     this.onHoverDepartment?.(null);
     this.onHoverSegment?.(null);
     if (this.modalEl) this.modalEl.style.display = 'none';
@@ -185,7 +196,9 @@ export class EnvironmentPanel extends Panel {
   private renderContent(): void {
     if (!this.contentEl) return;
 
-    const weatherAlerts = this.weatherAlerts;
+    const weatherAlerts = this.weatherTimeline?.currentDayAlerts.length
+      ? this.weatherTimeline.currentDayAlerts
+      : this.weatherAlerts;
     const activeFloods = this.floodSegments.filter((segment) => segment.level !== 'green');
 
     this.contentEl.innerHTML = `
@@ -194,32 +207,99 @@ export class EnvironmentPanel extends Panel {
     `;
 
     this.bindWeatherHoverEvents();
+    this.bindWeatherMapButtons();
     this.bindFloodHoverEvents();
   }
 
   private renderWeatherSection(alerts: MeteoAlert[]): string {
+    const nextDayAlerts = this.weatherTimeline?.nextDayAlerts ?? [];
+    const currentDayDate = this.weatherTimeline?.currentDayDate ?? new Date();
+    const currentDayLabel = currentDayDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const nextDayLabel = this.weatherTimeline?.nextDayDate
+      ? this.weatherTimeline.nextDayDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+      : 'demain';
     const weatherSummary = alerts.length > 0
       ? `${alerts.length} départements en vigilance`
       : 'Aucune vigilance départementale en cours';
+    const nextDaySummary = nextDayAlerts.length > 0
+      ? `${nextDayAlerts.length} départements surveillés demain`
+      : 'Aucune vigilance J+1 notable dans le flux.';
 
     return `
       <section style="display:flex; flex-direction:column; gap:12px;">
-        <div>
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-            <span style="font-size:18px;">🌩️</span>
-            <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Météo-France</div>
+        <div style="display:flex; flex-direction:column; gap:10px; padding: 12px; border:1px solid rgba(56,189,248,0.12); border-radius:8px; background:rgba(56,189,248,0.045);">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                <span style="font-size:18px;">🌩️</span>
+                <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Météo-France</div>
+              </div>
+              <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
+                Vigilance courante et prévision J+1. Cliquer une carte fixe le département sur la carte.
+              </div>
+            </div>
+            <div style="padding:3px 8px; border-radius:999px; border:1px solid rgba(56,189,248,0.22); color:#7dd3fc; background:rgba(56,189,248,0.08); font-size:9px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;">LIVE</div>
           </div>
-          <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
-            Vigilance départementale en cours.
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div style="padding: 9px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 7px; background: rgba(0,0,0,0.18);">
+              <div style="color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:0.04em;">Maintenant</div>
+              <div style="color:var(--text-primary); font-size:12px; font-weight:700; margin-top:3px;">${weatherSummary}</div>
+            </div>
+            <div style="padding: 9px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 7px; background: rgba(0,0,0,0.18);">
+              <div style="color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:0.04em;">Demain</div>
+              <div style="color:var(--text-primary); font-size:12px; font-weight:700; margin-top:3px;">${nextDaySummary}</div>
+            </div>
           </div>
         </div>
 
-        <div style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.03); color: var(--text-muted); font-size: 11px;">
-          ${weatherSummary}
-        </div>
-
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <div style="color:#fff; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em;">Aujourd'hui</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="color:#fff; font-size:10px;">${currentDayLabel}</div>
+              ${this.renderWeatherMapButton('current')}
+            </div>
+          </div>
         ${this.renderWeatherAlertsList(alerts)}
+        </div>
+        ${this.renderNextDayWeatherSection(nextDayAlerts, nextDaySummary, nextDayLabel)}
       </section>
+    `;
+  }
+
+  private renderWeatherMapButton(period: 'current' | 'next'): string {
+    const active = this.selectedWeatherPeriod === period;
+    const label = active ? 'Carte affichée' : period === 'current' ? 'Afficher J' : 'Afficher J+1';
+    return `
+      <button type="button" class="environment-weather-map-button" data-period="${period}" style="appearance:none; border:1px solid ${active ? 'rgba(250,204,21,0.85)' : 'rgba(125,211,252,0.26)'}; background:${active ? 'rgba(250,204,21,0.18)' : 'rgba(125,211,252,0.08)'}; color:${active ? '#facc15' : '#7dd3fc'}; border-radius:999px; padding:4px 9px; font-size:9px; font-weight:900; text-transform:uppercase; cursor:pointer; white-space:nowrap; box-shadow:${active ? '0 0 14px rgba(250,204,21,0.16)' : 'none'};">${label}</button>
+    `;
+  }
+
+  private renderNextDayWeatherSection(alerts: MeteoAlert[], summary: string, dateLabel: string): string {
+    if (alerts.length === 0) {
+      return `
+        <div style="margin-top:2px; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--text-muted); font-size: 11px; line-height:1.5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+            <span style="color: var(--text-primary); font-size: 12px; font-weight: 700;">J+1 · ${dateLabel}</span>
+            <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.4px;">prévision</span>
+          </div>
+          ${summary}
+        </div>
+      `;
+    }
+
+    return `
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:2px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div>
+            <div style="color: #fff; font-size: 12px; font-weight: 800;">J+1 · ${dateLabel}</div>
+            <div style="color: var(--text-muted); font-size: 11px; margin-top:2px;">${summary}</div>
+          </div>
+          ${this.renderWeatherMapButton('next')}
+        </div>
+        <div style="color:var(--text-muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;">Prévision J+1</div>
+        ${this.renderWeatherAlertsList(alerts)}
+      </div>
     `;
   }
 
@@ -246,40 +326,42 @@ export class EnvironmentPanel extends Panel {
       .map(([level, items]) => {
         const color = METEO_COLORS[level as MeteoVigilanceLevel];
         const label = level === 'violet' ? 'Crise' : level === 'red' ? 'Rouge' : level === 'orange' ? 'Orange' : 'Jaune';
+        const riskSummary = [...new Set(items.flatMap((item) => item.risks))]
+          .map((risk) => `${RISK_EMOJIS[risk] ?? '⚠️'} ${RISK_LABELS[risk] ?? risk}`)
+          .join(' · ');
 
         const cards = items
           .sort((a, b) => a.department.localeCompare(b.department, 'fr'))
           .map((item) => {
-          const risks = item.risks.map((risk) => `
-            <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:999px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); font-size:10px; color:var(--text-muted);">
-              ${RISK_EMOJIS[risk] ?? '⚠️'} ${RISK_LABELS[risk] ?? risk}
-            </span>
-          `).join('');
+          const riskIcons = item.risks.map((risk) => RISK_EMOJIS[risk] ?? '⚠️').join(' ');
+          const riskText = item.risks.map((risk) => RISK_LABELS[risk] ?? risk).join(', ');
 
           return `
-            <div class="environment-weather-item" data-code="${item.departmentCode}" style="background: rgba(0,0,0,0.2); border-left: 3px solid ${color}; padding: 10px 12px; border-radius: 0 6px 6px 0; cursor:pointer; transition: all 0.2s;">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <div style="color: var(--text-primary); font-size: 13px; font-weight: 600;">${item.department}</div>
-                <div style="color: var(--text-muted); font-size: 11px;">${item.departmentCode}</div>
+            <button type="button" class="environment-weather-item" data-code="${item.departmentCode}" title="${item.department} · ${riskText}" style="width:100%; min-width:0; text-align:left; appearance:none; background: rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-left: 3px solid ${color}; padding: 8px 9px; border-radius: 6px; cursor:pointer; transition: all 0.2s;">
+              <div style="display:flex; align-items:center; gap:7px; min-width:0;">
+                <span style="font-size:12px; flex-shrink:0;">${riskIcons || '⚠️'}</span>
+                <span style="color: var(--text-primary); font-size: 12px; font-weight: 650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.department}</span>
+                <span style="margin-left:auto; color: var(--text-muted); font-size: 10px; flex-shrink:0;">${item.departmentCode}</span>
+                <span class="environment-weather-selected-dot" style="display:none; width:6px; height:6px; border-radius:999px; background:#7dd3fc; box-shadow:0 0 8px rgba(125,211,252,0.8); flex-shrink:0;"></span>
               </div>
-              <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;">${risks}</div>
-            </div>
+            </button>
           `;
         }).join('');
 
         return `
-          <details style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0 10px;">
-            <summary style="display:flex; align-items:center; gap:8px; padding: 10px 0; cursor:pointer; list-style:none;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
               <div style="width:10px; height:10px; border-radius:999px; background:${color}; flex-shrink:0;"></div>
               <div style="color:${color}; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;">
                 ${label.toUpperCase()}
               </div>
               <div style="margin-left:auto; color: var(--text-muted); font-size: 11px;">${items.length} dept.</div>
-            </summary>
-            <div style="display:flex; flex-direction:column; gap:8px; padding: 0 0 10px;">
+            </div>
+            ${riskSummary ? `<div style="color:var(--text-muted); font-size:11px; margin-top:6px; line-height:1.4;">${riskSummary}</div>` : ''}
+            <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:6px; margin-top:9px; max-height:170px; overflow-y:auto; padding-right:2px;">
               ${cards}
             </div>
-          </details>
+          </div>
         `;
       })
       .join('');
@@ -288,7 +370,7 @@ export class EnvironmentPanel extends Panel {
   private renderFloodSection(segments: FloodSegment[]): string {
     if (segments.length === 0) {
       return `
-        <section style="display:flex; flex-direction:column; gap:10px; padding-top:8px; border-top:1px solid var(--border-color);">
+        <section style="display:flex; flex-direction:column; gap:10px; padding-top:12px; border-top:1px solid var(--border-color);">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:18px;">🌊</span>
             <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Vigicrues</div>
@@ -338,18 +420,20 @@ export class EnvironmentPanel extends Panel {
       .join('');
 
     return `
-      <section style="display:flex; flex-direction:column; gap:12px; padding-top:8px; border-top:1px solid var(--border-color);">
-        <div>
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-            <span style="font-size:18px;">🌊</span>
-            <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Vigicrues</div>
+      <section style="display:flex; flex-direction:column; gap:12px; padding-top:12px; border-top:1px solid var(--border-color);">
+        <div style="display:flex; flex-direction:column; gap:10px; padding: 12px; border:1px solid rgba(34,197,94,0.12); border-radius:8px; background:rgba(34,197,94,0.04);">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span style="font-size:18px;">🌊</span>
+              <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Vigicrues</div>
+            </div>
+            <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
+              Lecture par tronçon de rivière. Cliquer un tronçon centre la carte dessus.
+            </div>
           </div>
-          <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
-            Ici, la lecture se fait par tronçon de rivière et non par département.
+          <div style="padding: 9px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 7px; background: rgba(0,0,0,0.18); color: var(--text-muted); font-size: 11px;">
+            ${segments.length} tronçons actifs · affichables ${matchedCount + corridorCount}/${segments.length} · recalés ${matchedCount} · corridors ${corridorCount}${reconstructedCount > 0 ? ` · reconstruits ${reconstructedCount}` : ''}
           </div>
-        </div>
-        <div style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.03); color: var(--text-muted); font-size: 11px;">
-          Tracés affichables: ${matchedCount + corridorCount}/${segments.length} · recalés: ${matchedCount} · corridors: ${corridorCount}${reconstructedCount > 0 ? ` · reconstruits: ${reconstructedCount}` : ''}
         </div>
         ${groupsHtml}
       </section>
@@ -360,17 +444,70 @@ export class EnvironmentPanel extends Panel {
     if (!this.contentEl) return;
 
     this.contentEl.querySelectorAll<HTMLElement>('.environment-weather-item').forEach((card) => {
+      this.applyWeatherCardState(card);
+
       card.onmouseenter = () => {
-        card.style.background = 'rgba(255,255,255,0.08)';
-        card.style.transform = 'translateX(2px)';
+        if (card.dataset.code !== this.selectedDepartmentCode) {
+          card.style.background = 'rgba(255,255,255,0.08)';
+          card.style.transform = 'translateX(2px)';
+        }
         this.onHoverDepartment?.(card.dataset.code ?? null);
       };
       card.onmouseleave = () => {
-        card.style.background = 'rgba(0,0,0,0.2)';
-        card.style.transform = 'translateX(0)';
-        this.onHoverDepartment?.(null);
+        this.applyWeatherCardState(card);
+        this.onHoverDepartment?.(this.selectedDepartmentCode);
+      };
+      card.onclick = () => {
+        const code = card.dataset.code ?? null;
+        this.selectedDepartmentCode = this.selectedDepartmentCode === code ? null : code;
+        this.onHoverDepartment?.(this.selectedDepartmentCode);
+        this.refreshWeatherCardStates();
+      };
+      card.onkeydown = (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        card.click();
       };
     });
+  }
+
+  private bindWeatherMapButtons(): void {
+    if (!this.contentEl) return;
+
+    this.contentEl.querySelectorAll<HTMLButtonElement>('.environment-weather-map-button').forEach((button) => {
+      button.onclick = (event) => {
+        event.stopPropagation();
+        const period = button.dataset.period === 'next' ? 'next' : 'current';
+        const alerts = period === 'next'
+          ? this.weatherTimeline?.nextDayAlerts ?? []
+          : this.weatherTimeline?.currentDayAlerts.length
+            ? this.weatherTimeline.currentDayAlerts
+            : this.weatherAlerts;
+        this.selectedWeatherPeriod = period;
+        this.selectedDepartmentCode = null;
+        this.onHoverDepartment?.(null);
+        this.onShowWeatherAlerts?.(alerts);
+        this.renderContent();
+      };
+    });
+  }
+
+  private refreshWeatherCardStates(): void {
+    if (!this.contentEl) return;
+    this.contentEl.querySelectorAll<HTMLElement>('.environment-weather-item').forEach((card) => {
+      this.applyWeatherCardState(card);
+    });
+  }
+
+  private applyWeatherCardState(card: HTMLElement): void {
+    const isSelected = card.dataset.code === this.selectedDepartmentCode;
+    const dot = card.querySelector<HTMLElement>('.environment-weather-selected-dot');
+    card.style.background = isSelected ? 'rgba(56,189,248,0.13)' : 'rgba(0,0,0,0.2)';
+    card.style.borderTopColor = isSelected ? 'rgba(125,211,252,0.35)' : 'rgba(255,255,255,0.06)';
+    card.style.borderRightColor = isSelected ? 'rgba(125,211,252,0.35)' : 'rgba(255,255,255,0.06)';
+    card.style.borderBottomColor = isSelected ? 'rgba(125,211,252,0.35)' : 'rgba(255,255,255,0.06)';
+    card.style.transform = isSelected ? 'translateX(2px)' : 'translateX(0)';
+    if (dot) dot.style.display = isSelected ? 'inline-block' : 'none';
   }
 
   private bindFloodHoverEvents(): void {

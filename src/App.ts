@@ -2153,6 +2153,10 @@ export class App {
     this.environmentPanel.setOnHoverDepartment((code) => {
       this.mapContainer?.highlightWeatherDepartment(code);
     });
+    this.environmentPanel.setOnShowWeatherAlerts((alerts) => {
+      this.mapContainer?.highlightWeatherDepartment(null);
+      void this.mapContainer?.updateWeather(alerts);
+    });
     this.environmentPanel.setOnHoverSegment((segmentId) => {
       this.mapContainer?.highlightFloodSegment(segmentId);
     });

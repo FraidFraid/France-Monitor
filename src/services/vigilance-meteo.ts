@@ -39,6 +39,10 @@ export interface VigilanceTimeSlot {
 export interface VigilanceTimeline {
   currentSlotIndex: number;
   slots: VigilanceTimeSlot[];
+  currentDayAlerts: MeteoAlert[];
+  currentDayDate: Date;
+  nextDayAlerts: MeteoAlert[];
+  nextDayDate: Date | null;
   fetchedAt: Date;
 }
 
@@ -197,6 +201,68 @@ function getSlotTimes(slotIndex: number, baseDate: Date = new Date()): { start: 
     const end = new Date(start);
     end.setHours(start.getHours() + 3);
     return { start, end };
+}
+
+function getStartOfDay(date: Date): Date {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    return start;
+}
+
+function getNextDayDate(baseDate: Date = new Date()): Date {
+    const nextDay = getStartOfDay(baseDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return nextDay;
+}
+
+function isCurrentDayEcheance(value: string | undefined): boolean {
+    if (!value) return false;
+    const normalized = value.trim().toUpperCase();
+    return normalized === 'J' || normalized === 'J0' || normalized === 'J+0' || normalized === 'D' || normalized === 'D0' || normalized === 'D+0';
+}
+
+function getDayOffset(date: Date, baseDate: Date = new Date()): number {
+    const current = getStartOfDay(baseDate).getTime();
+    const target = getStartOfDay(date).getTime();
+    return Math.round((target - current) / 86_400_000);
+}
+
+function parsePeriodDate(period: PeriodItem): Date | null {
+    const rawDate = period.begin_validity_time
+        ?? period.echeance?.split('/')[0]
+        ?? null;
+    if (!rawDate) return null;
+
+    const parsed = new Date(rawDate);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isNextDayEcheance(value: string | undefined): boolean {
+    if (!value) return false;
+    const normalized = value.trim().toUpperCase();
+    return normalized === 'J1' || normalized === 'J+1' || normalized === 'D1' || normalized === 'D+1';
+}
+
+function getPeriodDayOffset(period: PeriodItem, baseDate: Date = new Date()): number | null {
+    if (isCurrentDayEcheance(period.echeance)) return 0;
+    if (isNextDayEcheance(period.echeance)) return 1;
+
+    const periodDate = parsePeriodDate(period);
+    return periodDate ? getDayOffset(periodDate, baseDate) : null;
+}
+
+function mergeAlerts(target: MeteoAlert[], alerts: MeteoAlert[]): void {
+    for (const alert of alerts) {
+        const existing = target.find((item) => item.departmentCode === alert.departmentCode);
+        if (!existing) {
+            target.push({ ...alert, risks: [...alert.risks] });
+        } else if (levelToNumber(alert.level) > levelToNumber(existing.level)) {
+            existing.level = alert.level;
+            existing.risks = [...new Set([...existing.risks, ...alert.risks])];
+        } else {
+            existing.risks = [...new Set([...existing.risks, ...alert.risks])];
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -372,6 +438,10 @@ function createEmptyTimeline(): VigilanceTimeline {
     const now = new Date();
     return {
         currentSlotIndex: getCurrentSlotIndex(),
+        currentDayAlerts: [],
+        currentDayDate: getStartOfDay(now),
+        nextDayAlerts: [],
+        nextDayDate: getNextDayDate(now),
         slots: labels.map((label, index) => {
             const { start, end } = getSlotTimes(index, now);
             return { index, startTime: start, endTime: end, label, alerts: [] };
@@ -407,6 +477,19 @@ function extractDomains(timelaps: TimelapsItem | TimelapsItem[] | undefined): Do
         return timelaps[0]?.domain_ids ?? [];
     }
     return timelaps.domain_ids ?? [];
+}
+
+function getPeriodTimelaps(period: PeriodItem | undefined): TimelapsItem[] {
+    if (!period?.timelaps) return [];
+    return Array.isArray(period.timelaps) ? period.timelaps : [period.timelaps];
+}
+
+function getPeriodAlerts(period: PeriodItem | undefined): MeteoAlert[] {
+    const alerts: MeteoAlert[] = [];
+    for (const tl of getPeriodTimelaps(period)) {
+        mergeAlerts(alerts, parseDomainsToAlerts(tl.domain_ids ?? []));
+    }
+    return alerts;
 }
 
 /**
@@ -449,8 +532,11 @@ function parseDomainsToAlerts(domains: DomainItem[]): MeteoAlert[] {
  * Parse la réponse JSON de l'API cartevigilance/encours.
  */
 function parseVigilanceResponse(json: VigilanceApiResponse): MeteoAlert[] {
-    const period = json.product?.periods?.[0];
-    const domains = extractDomains(period?.timelaps);
+    const periods = json.product?.periods ?? [];
+    const currentPeriod = periods.find((period) => isCurrentDayEcheance(period.echeance))
+        ?? periods.find((period) => getPeriodDayOffset(period) === 0)
+        ?? periods[0];
+    const domains = extractDomains(currentPeriod?.timelaps);
     return parseDomainsToAlerts(domains);
 }
 
@@ -472,6 +558,10 @@ function parseVigilanceTimeline(json: VigilanceApiResponse): VigilanceTimeline {
             alerts: [],
         };
     });
+    const currentDayAlerts: MeteoAlert[] = [];
+    const currentDayDate = getStartOfDay(now);
+    const nextDayAlerts: MeteoAlert[] = [];
+    const nextDayDate = getNextDayDate(now);
 
     // L'API peut retourner plusieurs périodes avec différentes échéances
     const periods = json.product?.periods ?? [];
@@ -481,11 +571,23 @@ function parseVigilanceTimeline(json: VigilanceApiResponse): VigilanceTimeline {
         if (!timelaps) continue;
 
         // Gérer le cas où timelaps est un tableau
-        const timelapsArray = Array.isArray(timelaps) ? timelaps : [timelaps];
+        const timelapsArray = getPeriodTimelaps(period);
+        const periodDayOffset = getPeriodDayOffset(period, now);
 
         for (const tl of timelapsArray) {
             const domains = tl.domain_ids ?? [];
             const alerts = parseDomainsToAlerts(domains);
+            const tlIsCurrentDay = isCurrentDayEcheance(tl.echeance) || periodDayOffset === 0;
+            const tlIsNextDay = isNextDayEcheance(tl.echeance) || periodDayOffset === 1;
+
+            if (tlIsNextDay) {
+                mergeAlerts(nextDayAlerts, alerts);
+                continue;
+            }
+
+            if (tlIsCurrentDay) {
+                mergeAlerts(currentDayAlerts, alerts);
+            }
 
             // Déterminer à quelle tranche appartient cette période
             // Par défaut, on utilise la période actuelle
@@ -498,32 +600,26 @@ function parseVigilanceTimeline(json: VigilanceApiResponse): VigilanceTimeline {
 
             // Ajouter les alertes à la tranche correspondante
             if (targetSlotIndex >= 0 && targetSlotIndex < slots.length) {
-                // Fusionner les alertes en évitant les doublons
-                for (const alert of alerts) {
-                    const existing = slots[targetSlotIndex].alerts.find(
-                        a => a.departmentCode === alert.departmentCode
-                    );
-                    if (!existing) {
-                        slots[targetSlotIndex].alerts.push(alert);
-                    } else if (levelToNumber(alert.level) > levelToNumber(existing.level)) {
-                        // Garder le niveau le plus élevé
-                        existing.level = alert.level;
-                        existing.risks = [...new Set([...existing.risks, ...alert.risks])];
-                    }
-                }
+                // Fusionner les alertes en évitant les doublons.
+                mergeAlerts(slots[targetSlotIndex].alerts, alerts);
             }
         }
     }
 
     // Si aucune période spécifique, mettre toutes les alertes dans la tranche actuelle
     if (periods.length === 1 && slots[currentSlotIndex].alerts.length === 0) {
-        const domains = extractDomains(periods[0]?.timelaps);
-        slots[currentSlotIndex].alerts = parseDomainsToAlerts(domains);
+        const alerts = getPeriodAlerts(periods[0]);
+        slots[currentSlotIndex].alerts = alerts;
+        mergeAlerts(currentDayAlerts, alerts);
     }
 
     return {
         currentSlotIndex,
         slots,
+        currentDayAlerts,
+        currentDayDate,
+        nextDayAlerts,
+        nextDayDate,
         fetchedAt: new Date(),
     };
 }

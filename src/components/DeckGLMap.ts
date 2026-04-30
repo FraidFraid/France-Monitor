@@ -1504,6 +1504,7 @@ export class DeckGLMap {
   private _lastHoveredFuelDeptId: string | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
+  private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
 
   public getHealthFeatures(): HealthFeatures | null {
     return this.latestHealthFeatures;
@@ -2062,7 +2063,9 @@ export class DeckGLMap {
           'case',
           ['boolean', ['feature-state', 'hover'], false],
           0.8,
-          0.6
+          ['boolean', ['get', 'hasAlert'], false],
+          0.6,
+          0
         ],
       },
     });
@@ -2076,13 +2079,17 @@ export class DeckGLMap {
           'case',
           ['boolean', ['feature-state', 'hover'], false],
           3,
-          1
+          ['boolean', ['get', 'hasAlert'], false],
+          1,
+          0
         ],
         'line-opacity': [
           'case',
           ['boolean', ['feature-state', 'hover'], false],
           1.0,
-          0.5
+          ['boolean', ['get', 'hasAlert'], false],
+          0.5,
+          0
         ],
       },
     });
@@ -5906,12 +5913,7 @@ export class DeckGLMap {
       this.weatherHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
 
       // Update feature state for border highlight
-      const featureId = code;
-      if (this._lastHoveredDeptId !== null && this._lastHoveredDeptId !== featureId) {
-        this.map.setFeatureState({ source: SRC_WEATHER, id: this._lastHoveredDeptId }, { hover: false });
-      }
-      this.map.setFeatureState({ source: SRC_WEATHER, id: featureId }, { hover: true });
-      this._lastHoveredDeptId = featureId;
+      this.highlightWeatherDepartments([code]);
     });
 
     // ─── Fuel tension department interactions ───
@@ -9673,25 +9675,44 @@ export class DeckGLMap {
 
   // ─── Weather Layer ───
 
+  private async getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
+    this.departmentsGeojsonPromise ??= fetch('/data/departements.geojson')
+      .then((resp) => resp.ok ? resp.json() as Promise<GeoJSON.FeatureCollection> : null)
+      .catch((error) => {
+        this.departmentsGeojsonPromise = null;
+        console.warn('[DeckGLMap] Failed to cache departments GeoJSON', error);
+        return null;
+      });
+
+    return this.departmentsGeojsonPromise;
+  }
+
+  private cloneDepartmentsGeojson(base: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
+    return {
+      type: 'FeatureCollection',
+      features: base.features.map((feature) => ({
+        ...feature,
+        id: feature.id,
+        properties: { ...(feature.properties ?? {}) },
+      })),
+    };
+  }
+
   async updateWeather(alerts: MeteoAlert[]): Promise<void> {
     if (!this.map) return;
     const alertsByCode = new Map<string, MeteoAlert>();
     for (const a of alerts) alertsByCode.set(a.departmentCode, a);
 
     try {
-      const resp = await fetch('/data/departements.geojson');
-      if (!resp.ok) return;
-      const geojson = await resp.json() as GeoJSON.FeatureCollection;
-      // Only keep departments with alerts
-      geojson.features = geojson.features.filter((f) => {
-        const code = (f.properties?.code as string) ?? '';
-        return alertsByCode.has(code);
-      });
+      const baseGeojson = await this.getDepartmentsGeojson();
+      if (!baseGeojson) return;
+      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
       for (let i = 0; i < geojson.features.length; i++) {
         const feat = geojson.features[i];
         const code = (feat.properties?.code as string) ?? '';
         feat.id = deptCodeToId(code); // Strict numeric ID for MapLibre feature-state
         const alert = alertsByCode.get(code);
+        const hasAlert = alert != null;
         const level = alert?.level ?? 'green';
         feat.properties = {
           ...feat.properties,
@@ -9700,6 +9721,7 @@ export class DeckGLMap {
             level === 'orange' ? 'rgba(255,149,0,0.7)' :
               level === 'yellow' ? 'rgba(255,204,0,0.8)' :
                 'rgba(52,199,89,0.5)',
+          hasAlert,
           level,
           risks: alert?.risks?.join(', ') ?? '',
         };
@@ -9759,27 +9781,30 @@ export class DeckGLMap {
   }
 
   highlightWeatherDepartment(departmentCode: string | null): void {
+    this.highlightWeatherDepartments(departmentCode ? [departmentCode] : []);
+  }
+
+  highlightWeatherDepartments(departmentCodes: string[]): void {
     if (!this.map) return;
 
-    // Reset previous hovered state if any
-    if (this._lastHoveredDeptId !== null) {
+    for (const id of this._highlightedWeatherDeptIds) {
       this.map.setFeatureState(
-        { source: SRC_WEATHER, id: this._lastHoveredDeptId },
+        { source: SRC_WEATHER, id },
         { hover: false }
       );
     }
+    this._highlightedWeatherDeptIds.clear();
 
-    if (departmentCode !== null) {
+    for (const departmentCode of departmentCodes) {
+      const numericId = deptCodeToId(departmentCode);
       this.map.setFeatureState(
-        { source: SRC_WEATHER, id: departmentCode },
+        { source: SRC_WEATHER, id: numericId },
         { hover: true }
       );
-      this._lastHoveredDeptId = departmentCode;
-    } else {
-      this._lastHoveredDeptId = null;
+      this._highlightedWeatherDeptIds.add(numericId);
     }
   }
-  private _lastHoveredDeptId: string | null = null;
+  private _highlightedWeatherDeptIds: Set<number> = new Set();
 
   private clearFuelTensionHoverState(): void {
     if (!this.map) return;
