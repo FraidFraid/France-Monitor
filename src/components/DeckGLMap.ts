@@ -11140,7 +11140,10 @@ export class DeckGLMap {
     src?.setData(fc);
 
     const linesSrc = this.map.getSource(SRC_DROM_ENERGY_HTA_LINES) as maplibregl.GeoJSONSource | undefined;
-    linesSrc?.setData(dashboard.gridLines?.reunionHta ?? emptyFC());
+    const reunionHtaLines = (dashboard as DromEnergyDashboard & {
+      gridLines?: { reunionHta?: ReturnType<typeof emptyFC> };
+    }).gridLines?.reunionHta;
+    linesSrc?.setData(reunionHtaLines ?? emptyFC());
 
     const visibility = this.currentLayers?.dromEnergy ? 'visible' : 'none';
     this.setVis(LYR_DROM_ENERGY_HTA_LINES, visibility);
