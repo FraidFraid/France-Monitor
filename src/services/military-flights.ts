@@ -423,6 +423,10 @@ interface ProxyResponse {
     isStale?: boolean;
 }
 
+const CLIENT_MIN_TTL_MS = 30_000;
+let snapshotCache: { snapshot: MilitaryFlightsSnapshot; fetchedAt: number; ttlMs: number } | null = null;
+let inFlightSnapshotPromise: Promise<MilitaryFlightsSnapshot> | null = null;
+
 /**
  * Parse aircraft from proxy response into MilitaryFlight
  */
@@ -522,6 +526,13 @@ function buildSnapshot(
 }
 
 export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
+    const now = Date.now();
+    if (snapshotCache && now - snapshotCache.fetchedAt < snapshotCache.ttlMs) {
+        return snapshotCache.snapshot;
+    }
+    if (inFlightSnapshotPromise) return inFlightSnapshotPromise;
+
+    inFlightSnapshotPromise = (async () => {
     Watchdog.report('military-flights', { type: 'loading' });
     const _t0 = Date.now();
     const upstreamErrors: Array<{ source: string; message: string }> = [];
@@ -564,6 +575,11 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
                     sourceCounts: data.sourceCounts ?? {},
                     errors: data.errors ?? [],
                 });
+                snapshotCache = {
+                    snapshot: snap,
+                    fetchedAt: Date.now(),
+                    ttlMs: Math.max(CLIENT_MIN_TTL_MS, data.ttlMs ?? 0),
+                };
                 Watchdog.report('military-flights', {
                     type: 'success',
                     responseTimeMs: Date.now() - _t0,
@@ -593,10 +609,12 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
             detail: `${adsbResult.flights.length} vols · ${adsbResult.source} (fallback)`,
         });
         if (upstreamErrors.length > 0) Watchdog.report('military-flights', { type: 'fallback', reason: 'proxy KO → direct ADS-B' });
-        return buildSnapshot(adsbResult.flights, adsbResult.source, 'live', {
+        const snap = buildSnapshot(adsbResult.flights, adsbResult.source, 'live', {
             sourceCounts: { [adsbResult.source]: adsbResult.flights.length },
             errors: upstreamErrors,
         });
+        snapshotCache = { snapshot: snap, fetchedAt: Date.now(), ttlMs: CLIENT_MIN_TTL_MS };
+        return snap;
     }
 
     const oskyFlights = await fetchFromOpenSky();
@@ -609,10 +627,12 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
             detail: `${oskyFlights.length} vols · opensky (fallback)`,
         });
         Watchdog.report('military-flights', { type: 'fallback', reason: 'proxy + adsb.fi KO → OpenSky' });
-        return buildSnapshot(oskyFlights, 'opensky', 'live', {
+        const snap = buildSnapshot(oskyFlights, 'opensky', 'live', {
             sourceCounts: { opensky: oskyFlights.length },
             errors: upstreamErrors,
         });
+        snapshotCache = { snapshot: snap, fetchedAt: Date.now(), ttlMs: CLIENT_MIN_TTL_MS };
+        return snap;
     }
 
     // Empty data as last resort
@@ -621,10 +641,19 @@ export async function fetchMilitaryFlights(): Promise<MilitaryFlightsSnapshot> {
         emptyFallbackLogged = true;
     }
     Watchdog.report('military-flights', { type: 'failure', error: 'Toutes les sources ADS-B indisponibles' });
-    return buildSnapshot([], 'none', 'empty', {
+    const emptySnapshot = buildSnapshot([], 'none', 'empty', {
         sourceCounts: {},
         errors: upstreamErrors,
     });
+    snapshotCache = { snapshot: emptySnapshot, fetchedAt: Date.now(), ttlMs: CLIENT_MIN_TTL_MS };
+    return emptySnapshot;
+  })();
+
+  try {
+    return await inFlightSnapshotPromise;
+  } finally {
+    inFlightSnapshotPromise = null;
+  }
 }
 
 /**

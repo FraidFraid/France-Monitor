@@ -134,6 +134,10 @@ export class MapContainer {
     await this.deckMap?.updateWeather(alerts);
   }
 
+  async refreshWeatherRadar(force = true): Promise<void> {
+    await this.deckMap?.refreshWeatherRadar(force);
+  }
+
   // ─── Floods ───
   updateFloods(segments: FloodSegment[]): void {
     this.deckMap?.updateFloods(segments);

@@ -124,6 +124,8 @@ const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed lat
 const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
+const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
+const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
@@ -1341,6 +1343,8 @@ export class App {
   private _intervalAirTraffic: ReturnType<typeof setInterval> | null = null;
   private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
+  private _intervalWeather: ReturnType<typeof setInterval> | null = null;
+  private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
@@ -1360,6 +1364,8 @@ export class App {
     if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
     if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
+    if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
+    if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
     if (this._intervalNetworkBarometer !== null) {
@@ -1759,6 +1765,7 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startHydraulicPolling();
+    this.startWeatherPolling();
     this.startEolienPolling();
 
     // ── Static data — sync, instant
@@ -4714,6 +4721,35 @@ export class App {
     this._intervalHydraulic = setInterval(() => {
       poll().catch((err) => console.error('[App] Hydraulic poll error', err));
     }, POLL_HYDRAULIC_MS);
+  }
+
+  private startWeatherPolling(): void {
+    if (this._intervalWeather !== null) clearInterval(this._intervalWeather);
+    if (this._intervalWeatherRadar !== null) clearInterval(this._intervalWeatherRadar);
+
+    let weatherInFlight = false;
+    let radarInFlight = false;
+
+    this._intervalWeather = setInterval(() => {
+      if (weatherInFlight) return;
+      weatherInFlight = true;
+      this.loadWeather()
+        .catch((err) => console.error('[App] Weather poll error', err))
+        .finally(() => {
+          weatherInFlight = false;
+        });
+    }, POLL_WEATHER_VIGILANCE_MS);
+
+    this._intervalWeatherRadar = setInterval(() => {
+      if (!this.activeLayers.weatherRadar) return;
+      if (radarInFlight) return;
+      radarInFlight = true;
+      this.mapContainer?.refreshWeatherRadar(true)
+        .catch((err) => console.error('[App] Weather radar poll error', err))
+        .finally(() => {
+          radarInFlight = false;
+        });
+    }, POLL_WEATHER_RADAR_MS);
   }
 
   private startEolienPolling(): void {

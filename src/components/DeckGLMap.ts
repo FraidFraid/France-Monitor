@@ -109,6 +109,7 @@ const SRC_FIRES = 'fires-points-src';
 const SRC_INFRA = 'infra-src';
 const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
 const SRC_DROM_ENERGY = 'drom-energy-src';
+const SRC_DROM_ENERGY_HTA_LINES = 'drom-energy-hta-lines-src';
 const SRC_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight-src';
 const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
 const SRC_WIND_TURBINES = 'wind-turbines-src';
@@ -164,6 +165,7 @@ const LYR_ENERGY_INFRA_HIGHLIGHT_GLOW = 'energy-infra-highlight-glow';
 const LYR_ENERGY_INFRA_HIGHLIGHT_RING = 'energy-infra-highlight-ring';
 const LYR_ENERGY_INFRA_CIRCLE = 'energy-infra-circles';
 const LYR_ENERGY_INFRA_LABEL = 'energy-infra-labels';
+const LYR_DROM_ENERGY_HTA_LINES = 'drom-energy-hta-lines-line';
 const LYR_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight';
 const LYR_DROM_ENERGY_POINTS = 'drom-energy-points';
 const LYR_HYDRO_BACKBONE_HALO = 'hydro-backbone-halo';
@@ -1768,6 +1770,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_DROM_ENERGY_HTA_LINES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_HYDRO_BACKBONE, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_WIND_TURBINES, {
@@ -3336,15 +3339,50 @@ export class DeckGLMap {
     });
 
     this.map.addLayer({
+      id: LYR_DROM_ENERGY_HTA_LINES,
+      type: 'line',
+      source: SRC_DROM_ENERGY_HTA_LINES,
+      paint: {
+        'line-color': '#7DD3FC',
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.42, 11, 0.72],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1.1, 11, 2.1, 14, 3],
+      },
+    });
+
+    this.map.addLayer({
       id: LYR_DROM_ENERGY_POINTS,
       type: 'circle',
       source: SRC_DROM_ENERGY,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4.5, 8, 6, 12, 7.5],
-        'circle-color': '#38BDF8',
-        'circle-opacity': 0.9,
+        'circle-radius': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          ['match', ['get', 'assetType'], 'source_substation', 5.2, 'htb_pylon', 4.4, 'production_site', 4.8, 4.6],
+          8,
+          ['match', ['get', 'assetType'], 'source_substation', 7.2, 'htb_pylon', 5.8, 'production_site', 6.5, 6],
+          12,
+          ['match', ['get', 'assetType'], 'source_substation', 8.8, 'htb_pylon', 7, 'production_site', 7.8, 7.2],
+        ],
+        'circle-color': [
+          'match',
+          ['get', 'assetType'],
+          'source_substation', '#4FD1FF',
+          'htb_pylon', '#3B82F6',
+          'production_site', '#2DD4BF',
+          '#60A5FA',
+        ],
+        'circle-opacity': 0.92,
         'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#E0F2FE',
+        'circle-stroke-color': [
+          'match',
+          ['get', 'assetType'],
+          'source_substation', '#E0F2FE',
+          'htb_pylon', '#BFDBFE',
+          'production_site', '#CCFBF1',
+          '#DBEAFE',
+        ],
       },
     });
 
@@ -11100,6 +11138,14 @@ export class DeckGLMap {
 
     const src = this.map.getSource(SRC_DROM_ENERGY) as maplibregl.GeoJSONSource | undefined;
     src?.setData(fc);
+
+    const linesSrc = this.map.getSource(SRC_DROM_ENERGY_HTA_LINES) as maplibregl.GeoJSONSource | undefined;
+    linesSrc?.setData(dashboard.gridLines?.reunionHta ?? emptyFC());
+
+    const visibility = this.currentLayers?.dromEnergy ? 'visible' : 'none';
+    this.setVis(LYR_DROM_ENERGY_HTA_LINES, visibility);
+    this.setVis(LYR_DROM_ENERGY_POINTS, visibility);
+    this.setVis(LYR_DROM_ENERGY_HIGHLIGHT, visibility);
   }
 
   highlightDromEnergyAsset(asset: DromEnergyAsset | null): void {
@@ -11932,6 +11978,7 @@ export class DeckGLMap {
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_LABEL, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_DROM_ENERGY_HTA_LINES, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_DROM_ENERGY_POINTS, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_DROM_ENERGY_HIGHLIGHT, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_HALO, vis(layers.hydroBackbone ?? false));
@@ -12067,6 +12114,10 @@ export class DeckGLMap {
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
     // LYR_TERMINATOR masqué : le Deck.gl DayNightLayer gère toute la visualisation jour/nuit
     this.setVis(LYR_TERMINATOR, 'none');
+  }
+
+  async refreshWeatherRadar(force = true): Promise<void> {
+    await this.ensureWeatherRadarLayer(force);
   }
 
   // ═══════════════════════════════════════════════════════════════
