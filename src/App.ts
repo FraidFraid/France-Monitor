@@ -378,6 +378,8 @@ const DEFAULT_LAYERS: MapLayers = {
   dayNight: false,
 };
 
+const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
+
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
   'powerGrid' |
@@ -1332,6 +1334,7 @@ export class App {
   private trafficDataLoaded = false;
   private trafficLoadPromise: Promise<void> | null = null;
   private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
+  private hasRestoredActiveLayerPanels = false;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
@@ -1707,22 +1710,47 @@ export class App {
     }
   }
 
+  private readStoredActiveLayers(): Partial<MapLayers> | null {
+    try {
+      const raw = localStorage.getItem(ACTIVE_LAYERS_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== 'object') return null;
+
+      const allowedKeys = new Set(Object.keys(DEFAULT_LAYERS));
+      const layers: Partial<MapLayers> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (allowedKeys.has(key) && typeof value === 'boolean') {
+          (layers as Record<string, boolean>)[key] = value;
+        }
+      }
+      return Object.keys(layers).length > 0 ? layers : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeLayerState(layers: MapLayers): MapLayers {
+    const normalized = { ...layers };
+    normalized.newsGroup = normalized.news || normalized.stability;
+    if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
+      normalized.trafficRoad = true;
+    }
+    normalized.traffic = normalized.trafficRoad || normalized.trafficMaritime || normalized.trafficAir || (normalized.trafficRail ?? false);
+    normalized.energySystems = hasActiveEnergySystems(normalized);
+    normalized.environmentGroup = normalized.environmental || normalized.weatherRadar || normalized.fires || (normalized.dayNight ?? false);
+    normalized.sovereignty = normalized.military || normalized.subseaCables || normalized.cyber;
+    normalized.outages = normalized.outagesElec || normalized.outagesTelecom || normalized.outagesInternet || normalized.outagesCloud || normalized.outages;
+    return normalized;
+  }
+
   async init(): Promise<void> {
     // ── Phase 0: Layer state ─────────────────────────────────────────────────
-    // All layers start OFF by default. Only URL params (shared links) can override.
-    localStorage.removeItem('fm-active-layers'); // Clear persisted layers
+    // All layers start OFF by default. URL params win; localStorage restores Ctrl+R.
     const urlState = readUrlState();
-    if (urlState.layers) {
-      const merged = { ...DEFAULT_LAYERS, ...urlState.layers };
-      merged.newsGroup = merged.news || merged.stability;
-      // Back-compat: old shared links used `traffic` for road incidents.
-      if (merged.traffic && !merged.trafficRoad) merged.trafficRoad = true;
-      merged.traffic = merged.trafficRoad || merged.trafficMaritime || merged.trafficAir || (merged.trafficRail ?? false);
-      merged.energySystems = hasActiveEnergySystems(merged);
-      merged.environmentGroup = merged.environmental || merged.weatherRadar || merged.fires || (merged.dayNight ?? false);
-      merged.sovereignty = merged.military || merged.subseaCables || merged.cyber;
-      merged.outages = merged.outagesElec || merged.outagesTelecom || merged.outagesInternet || merged.outagesCloud || merged.outages;
-      this.activeLayers = merged;
+    const persistedLayers = urlState.layers ?? this.readStoredActiveLayers();
+    if (persistedLayers) {
+      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
     }
 
     this.renderShell();
@@ -1774,10 +1802,14 @@ export class App {
     // ── CRITICAL layers — await: map becomes useful
     await this.loadCriticalLayers();
     this.updateISNR();
+    this.restoreActiveLayerPanelsAfterRefresh();
 
     // ── SECONDARY layers — background
     this.loadSecondaryLayers()
-      .then(() => this.updateISNR())
+      .then(() => {
+        this.updateISNR();
+        this.restoreActiveLayerPanelsAfterRefresh();
+      })
       .catch((err) => console.error('[Init] Secondary layers error:', err));
 
     // ── OPTIONAL layers — background
@@ -2628,6 +2660,44 @@ export class App {
     }
   }
 
+  private restoreActiveLayerPanelsAfterRefresh(): void {
+    if (this.hasRestoredActiveLayerPanels) return;
+    this.hasRestoredActiveLayerPanels = true;
+
+    const restoreOrder: (keyof MapLayers)[] = [
+      'environmental',
+      'fires',
+      'dayNight',
+      'powerGrid',
+      'dromEnergy',
+      'nuclearFleet',
+      'gasNetwork',
+      'hydroBackbone',
+      'oilNetwork',
+      'windMonitor',
+      'health',
+      'healthOscour',
+      'healthApl',
+      'hospitals',
+      'trafficRoad',
+      'trafficMaritime',
+      'trafficRail',
+      'cyber',
+      'military',
+      'stability',
+      'outagesElec',
+      'outagesTelecom',
+      'outagesInternet',
+      'outagesCloud',
+    ];
+
+    for (const key of restoreOrder) {
+      if (this.activeLayers[key]) {
+        this._handlePanelVisibility(key, true);
+      }
+    }
+  }
+
   private getEffectiveLayers(): MapLayers {
     const effective: MapLayers = { ...this.activeLayers };
     effective.traffic =
@@ -2699,7 +2769,7 @@ export class App {
 
     // Persist layer state across sessions
     try {
-      localStorage.setItem('fm-active-layers', JSON.stringify(this.activeLayers));
+      localStorage.setItem(ACTIVE_LAYERS_STORAGE_KEY, JSON.stringify(this.activeLayers));
     } catch (err) {
       console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
     }
@@ -2794,6 +2864,16 @@ export class App {
     if (key === 'trafficMaritime') {
       if (enabled) this.maritimePanel?.show();
       else this.maritimePanel?.hide();
+    }
+    if (key === 'trafficRoad') {
+      if (enabled) {
+        void this.ensureTrafficLoaded().catch((error) => {
+          console.error('[App] Failed to load road traffic on restore', error);
+        });
+        this.trafficPanel?.show(this.currentTrafficIncidents);
+      } else {
+        this.trafficPanel?.hide();
+      }
     }
     if (key === 'trafficRail') {
       if (enabled) this.transportPanel?.show(this.currentSncfDisruptions);
