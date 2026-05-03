@@ -492,7 +492,7 @@ export class LayerPanel {
         this.helpItem('&#128663;', 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
         this.helpItem('&#128674;', 'Trafic maritime', 'Navires civils AIS — militaires dans la couche Défense.', 'live'),
         this.helpItem('&#9992;', 'Trafic aérien', 'Vols civils airplanes.live — militaires dans la couche Défense.', 'live'),
-        this.helpItem('&#128641;', 'Réseau ferroviaire', 'Perturbations actives SNCF — arcs de lignes et gares impactées.', 'live'),
+        this.helpItem('&#128641;', 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
       ]),
       this.helpSection('&#127793;', 'Environnement', [
         this.helpItem('&#127793;', 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),

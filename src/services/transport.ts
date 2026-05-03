@@ -6,7 +6,6 @@
 
 import type { TransportDisruption, ThreatLevel, TrainStop, RailNetworkData } from '../types/index.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
-import type { FeatureCollection, LineString } from 'geojson';
 import { Watchdog } from './watchdog.ts';
 
 // ── Watchdog registration ──
@@ -16,9 +15,6 @@ Watchdog.register('sncf', {
     detail: 'API SNCF Disruptions · /api/transport/disruptions',
 });
 import { geocode } from './geocoder.ts';
-import { distance, point } from '@turf/turf';
-import type { OsmRailwayFeature } from './osm-rail-graph.ts';
-import { buildOsmRailGraph, dijkstraRailPath, projectToNearestRailNode, reconstructRailLineString } from './osm-rail-graph.ts';
 
 // ─── Types SNCF API ───
 
@@ -81,21 +77,18 @@ interface SncfDisruption {
 
 interface SncfApiResponse {
     disruptions?: SncfDisruption[];
+    pagination?: {
+        total_result?: number;
+        items_on_page?: number;
+        items_per_page?: number;
+        start_page?: number;
+    };
     error?: { message: string };
 }
 
 // ─── Cache ───
 
-let disruptionCache: { data: TransportDisruption[]; fetchedAt: number } | null = null;
-const osmRailCache = new Map<string, Promise<OsmRailwayFeature[]>>();
-
-// Overpass rate-limit guard: max 1 concurrent request
-let overpassQueue: Promise<unknown> = Promise.resolve();
-function enqueueOverpass<T>(fn: () => Promise<T>): Promise<T> {
-  const next = overpassQueue.then(fn, fn);
-  overpassQueue = next.then(() => undefined, () => undefined);
-  return next;
-}
+const disruptionCache = new Map<string, { data: TransportDisruption[]; fetchedAt: number }>();
 const CACHE_TTL = 5 * 60_000; // 5 min
 
 // ─── Severity Mapping ───
@@ -126,6 +119,63 @@ function mapEffectToType(effect?: string): TransportDisruption['type'] {
         default:
             return 'other';
     }
+}
+
+function mapEffectToLabel(effect?: string): string {
+    switch (effect) {
+        case 'NO_SERVICE':
+            return 'Train supprimé / service interrompu';
+        case 'SIGNIFICANT_DELAYS':
+            return 'Retards significatifs';
+        case 'MINOR_DELAYS':
+            return 'Retards limités';
+        case 'DETOUR':
+            return 'Itinéraire modifié';
+        case 'REDUCED_SERVICE':
+            return 'Service réduit';
+        case 'MODIFIED_SERVICE':
+            return 'Service modifié';
+        case 'ADDITIONAL_SERVICE':
+            return 'Train ajouté';
+        case 'STOP_MOVED':
+            return 'Arrêt déplacé';
+        default:
+            return 'Impact non qualifié par SNCF';
+    }
+}
+
+function normalizeSncfCause(cause: string | undefined, messages: string[]): string {
+    const raw = (cause || messages[0] || '').trim();
+    if (!raw) return 'Cause non précisée';
+
+    const lower = raw.toLocaleLowerCase('fr-FR');
+    if (lower.includes('personnes sur les voies')) return 'Présence de personnes sur les voies';
+    if (lower.includes('bagage abandonné')) return 'Présence d’un bagage abandonné';
+    if (lower.includes('condition') && lower.includes('météo')) return 'Conditions météorologiques';
+    if (lower.includes('matériel')) return 'Indisponibilité ou incident matériel';
+    if (lower.includes('travaux')) return 'Travaux sur l’infrastructure';
+    if (lower.includes('préparation du train')) return 'Incident lors de la préparation du train';
+    if (lower.includes('départ non réunies')) return 'Conditions de départ non réunies';
+    if (lower.includes('réutilisation')) return 'Réutilisation / rotation matériel';
+    if (lower.includes('gestion du trafic')) return 'Difficulté de gestion du trafic';
+
+    return raw;
+}
+
+function buildScheduleImpactLabel(stops: TrainStop[], totalDelayMinutes: number | undefined): string {
+    const changedStops = stops.filter((stop) => (
+        !!stop.plannedTime && !!stop.updatedTime && stop.plannedTime !== stop.updatedTime
+    ));
+
+    if (typeof totalDelayMinutes === 'number' && totalDelayMinutes > 0) {
+        return `Retard estimé +${totalDelayMinutes} min · ${changedStops.length} arrêt${changedStops.length > 1 ? 's' : ''} recalé${changedStops.length > 1 ? 's' : ''}`;
+    }
+
+    if (changedStops.length > 0) {
+        return `${changedStops.length} horaire${changedStops.length > 1 ? 's' : ''} modifié${changedStops.length > 1 ? 's' : ''}`;
+    }
+
+    return 'Aucun écart horaire chiffré dans le flux SNCF';
 }
 
 // ─── Date Parsing ───
@@ -198,6 +248,55 @@ function computeDelayMinutes(baseTime: string | undefined, amendedTime: string |
     return delta >= 0 ? delta : undefined;
 }
 
+function getSncfApplicationPeriods(disruption: SncfDisruption): Array<{ begin?: Date; end?: Date }> {
+    return (disruption.application_periods ?? []).map((period) => ({
+        begin: parseSncfDate(period.begin),
+        end: parseSncfDate(period.end),
+    }));
+}
+
+function getSncfDisruptionTimeWindow(disruption: SncfDisruption): { startDate: Date; endDate?: Date } {
+    const periods = getSncfApplicationPeriods(disruption);
+    const startCandidates = periods
+        .map((period) => period.begin)
+        .filter((date): date is Date => !!date)
+        .sort((a, b) => a.getTime() - b.getTime());
+    const endCandidates = periods
+        .map((period) => period.end)
+        .filter((date): date is Date => !!date)
+        .sort((a, b) => b.getTime() - a.getTime());
+
+    return {
+        startDate: startCandidates[0] ?? new Date(),
+        endDate: endCandidates[0],
+    };
+}
+
+function isSncfDisruptionStillRelevant(disruption: SncfDisruption, now = new Date()): boolean {
+    if (disruption.status === 'past') return false;
+
+    const periods = getSncfApplicationPeriods(disruption);
+    if (periods.length === 0) return true;
+
+    return periods.some(({ end }) => !end || end.getTime() >= now.getTime());
+}
+
+function intersectsCurrentDay(disruption: SncfDisruption, now = new Date()): boolean {
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(now);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const periods = getSncfApplicationPeriods(disruption);
+    if (periods.length === 0) return true;
+
+    return periods.some(({ begin, end }) => {
+        const effectiveStart = begin?.getTime() ?? Number.NEGATIVE_INFINITY;
+        const effectiveEnd = end?.getTime() ?? Number.POSITIVE_INFINITY;
+        return effectiveEnd >= dayStart.getTime() && effectiveStart <= dayEnd.getTime();
+    });
+}
+
 /**
  * Parse SNCF coordinates: { lon: "2.35", lat: "48.85" } → [lon, lat]
  */
@@ -211,7 +310,7 @@ function parseSncfCoords(coord: { lon: string; lat: string } | undefined): [numb
     return [lon, lat];
 }
 
-async function geocodeStation(stopName: string | undefined): Promise<[number, number] | undefined> {
+export async function geocodeSncfStation(stopName: string | undefined): Promise<[number, number] | undefined> {
     if (!stopName) return undefined;
 
     const normalized = stopName.trim();
@@ -236,252 +335,25 @@ async function geocodeStation(stopName: string | undefined): Promise<[number, nu
     return undefined;
 }
 
-function bboxKey(bbox: [number, number, number, number]): string {
-    return bbox.map((value) => value.toFixed(4)).join(',');
-}
-
-function computeRailBBox(
-    departure: [number, number],
-    arrival: [number, number],
-): [number, number, number, number] {
-    const directGapKm = distance(point(departure), point(arrival), { units: 'kilometers' });
-    const dynamicPadding = Math.min(1.25, Math.max(0.25, directGapKm / 180));
-    const padding = dynamicPadding;
-    return [
-        Math.min(departure[0], arrival[0]) - padding,
-        Math.min(departure[1], arrival[1]) - padding,
-        Math.max(departure[0], arrival[0]) + padding,
-        Math.max(departure[1], arrival[1]) + padding,
-    ];
-}
-
-function computeRailBBoxFromAnchors(
-    anchors: [number, number][],
-): [number, number, number, number] {
-    const lngs = anchors.map((coord) => coord[0]);
-    const lats = anchors.map((coord) => coord[1]);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const spanLng = Math.max(0.25, maxLng - minLng);
-    const spanLat = Math.max(0.25, maxLat - minLat);
-    const padding = Math.min(1.5, Math.max(0.25, Math.max(spanLng, spanLat) * 0.35));
-    return [minLng - padding, minLat - padding, maxLng + padding, maxLat + padding];
-}
-
-function dedupeAnchorCoords(coords: [number, number][]): [number, number][] {
-    const deduped: [number, number][] = [];
-    for (const coord of coords) {
-        const tooClose = deduped.some((existing) => distance(point(existing), point(coord), { units: 'kilometers' }) < 1.2);
-        if (!tooClose) deduped.push(coord);
-    }
-    return deduped;
-}
-
-function generateCurvedLine(start: [number, number], end: [number, number], numPoints: number = 50): [number, number][] {
-    const coords: [number, number][] = [];
-    const [x1, y1] = start;
-    const [x2, y2] = end;
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist === 0) return [start, end];
-
-    const curveHeight = dist * 0.15;
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
-    const px = -dy / dist;
-    const py = dx / dist;
-    
-    // Control point for quadratic bezier
-    const cx = mx + px * curveHeight;
-    const cy = my + py * curveHeight;
-
-    for (let i = 0; i <= numPoints; i++) {
-        const t = i / numPoints;
-        const u = 1 - t;
-        const x = u * u * x1 + 2 * u * t * cx + t * t * x2;
-        const y = u * u * y1 + 2 * u * t * cy + t * t * y2;
-        coords.push([x, y]);
-    }
-    return coords;
-}
-
-function sampleRawGeometryAnchors(rawRouteGeometry: LineString | undefined): [number, number][] {
-    const coords = rawRouteGeometry?.coordinates as [number, number][] | undefined;
-    if (!coords || coords.length < 2) return [];
-
-    if (coords.length <= 6) return dedupeAnchorCoords(coords);
-
-    const samples: [number, number][] = [];
-    const sampleCount = 6;
-    for (let index = 0; index < sampleCount; index += 1) {
-        const ratio = index / (sampleCount - 1);
-        const coordIndex = Math.min(coords.length - 1, Math.round(ratio * (coords.length - 1)));
-        samples.push(coords[coordIndex]);
-    }
-
-    return dedupeAnchorCoords(samples);
-}
-
-async function resolveIntermediateStopAnchors(disruption: TransportDisruption): Promise<[number, number][]> {
-    const candidateNames = Array.from(new Set(
-        (disruption.affectedStops ?? [])
-            .filter(Boolean)
-            .filter((name) => name !== disruption.departure?.name && name !== disruption.arrival?.name)
-            .slice(0, 8)
-    ));
-
-    const anchors = await Promise.all(candidateNames.map((name) => geocodeStation(name)));
-    return anchors.filter((coord): coord is [number, number] => Array.isArray(coord));
-}
-
-function stitchRailPathBetweenAnchors(
-    graph: ReturnType<typeof buildOsmRailGraph>,
-    features: OsmRailwayFeature[],
-    anchors: [number, number][],
-): [number, number][] | null {
-    if (anchors.length < 2) return null;
-
-    const projected = anchors.map((coord) => ({
-        coord,
-        match: projectToNearestRailNode(coord, features),
-    })).filter((entry) => entry.match && entry.match.distanceKm <= 15) as Array<{
-        coord: [number, number];
-        match: NonNullable<ReturnType<typeof projectToNearestRailNode>>;
-    }>;
-
-    if (projected.length < 2) return null;
-
-    const stitched: [number, number][] = [];
-    let cursor = 0;
-
-    while (cursor < projected.length - 1) {
-        let resolved = false;
-        for (let nextIndex = projected.length - 1; nextIndex > cursor; nextIndex -= 1) {
-            const segmentPath = dijkstraRailPath(
-                graph,
-                projected[cursor].match.node.key,
-                projected[nextIndex].match.node.key,
-            );
-            if (!segmentPath) continue;
-
-            const coords = reconstructRailLineString(segmentPath);
-            if (coords.length < 2) continue;
-
-            if (stitched.length === 0) stitched.push(...coords);
-            else {
-                const [lastLng, lastLat] = stitched[stitched.length - 1];
-                const [nextLng, nextLat] = coords[0];
-                if (lastLng === nextLng && lastLat === nextLat) stitched.push(...coords.slice(1));
-                else stitched.push(...coords);
-            }
-
-            cursor = nextIndex;
-            resolved = true;
-            break;
-        }
-
-        if (!resolved) return null;
-    }
-
-    return stitched.length >= 2 ? stitched : null;
-}
-
-async function fetchOsmRailFeaturesForBBox(
-    bbox: [number, number, number, number],
-): Promise<OsmRailwayFeature[]> {
-    const key = bboxKey(bbox);
-    const cached = osmRailCache.get(key);
-    if (cached) return cached;
-
-    const pending = enqueueOverpass(async () => {
-        const params = new URLSearchParams({
-            bbox: `${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}`,
-        });
-
-        const response = await fetch(`/api/transport/osm-railways?${params.toString()}`, {
-            headers: { Accept: 'application/json' },
-            signal: AbortSignal.timeout(20_000),
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const geojson = await response.json() as FeatureCollection<LineString>;
-        return geojson.features.filter((feature): feature is OsmRailwayFeature => (
-            !!feature.geometry &&
-            feature.geometry.type === 'LineString' &&
-            (feature.geometry.coordinates?.length ?? 0) >= 2
-        ));
-    });
-
-    osmRailCache.set(key, pending);
-    try {
-        return await pending;
-    } catch (error) {
-        osmRailCache.delete(key);
-        throw error;
-    }
-}
-
-async function matchDisruptionRouteToOsmRail(disruption: TransportDisruption): Promise<void> {
-    const rawAnchors = sampleRawGeometryAnchors(disruption.rawRouteGeometry);
-    const departure = disruption.departure?.coordinates ?? rawAnchors[0];
-    const arrival = disruption.arrival?.coordinates ?? rawAnchors[rawAnchors.length - 1];
-    if (!departure || !arrival) return;
-
-    try {
-        const intermediateAnchors = await resolveIntermediateStopAnchors(disruption);
-        const anchorCoords = dedupeAnchorCoords([departure, ...rawAnchors, ...intermediateAnchors, arrival]);
-        const bbox = anchorCoords.length >= 2
-            ? computeRailBBoxFromAnchors(anchorCoords)
-            : computeRailBBox(departure, arrival);
-        const features = await fetchOsmRailFeaturesForBBox(bbox);
-        if (features.length === 0) return;
-
-        const graph = buildOsmRailGraph(features);
-        const coords = stitchRailPathBetweenAnchors(graph, features, anchorCoords);
-        if (!coords) return;
-        if (coords.length < 2) return;
-
-        const directGapKm = distance(point(departure), point(arrival), { units: 'kilometers' });
-        const pathLengthKm = coords.reduce((sum, coord, index) => {
-            if (index === 0) return sum;
-            return sum + distance(point(coords[index - 1]), point(coord), { units: 'kilometers' });
-        }, 0);
-        const pathRatio = directGapKm > 1 ? pathLengthKm / directGapKm : 1;
-        if (pathRatio > 5) return;
-
-        disruption.routeGeometry = {
-            type: 'LineString',
-            coordinates: coords,
-        };
-        disruption.geometryFidelity = 'matched';
-    } catch (error) {
-        console.warn('[SNCF/OSM] Rail matching failed:', error);
-    }
-}
-
 // ─── API Fetch ───
 
 /**
  * Fetch les perturbations SNCF depuis l'API.
  */
 export async function fetchSncfDisruptions(
-    onEnriched?: (disruptions: TransportDisruption[]) => void
+    onEnriched?: (disruptions: TransportDisruption[]) => void,
+    mode: 'active' | 'all' = 'active',
 ): Promise<TransportDisruption[]> {
-    if (disruptionCache && Date.now() - disruptionCache.fetchedAt < CACHE_TTL) {
-        return disruptionCache.data;
+    const cached = disruptionCache.get(mode);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+        return cached.data;
     }
 
     Watchdog.report('sncf', { type: 'loading' });
     const t0 = Date.now();
 
     try {
-        const resp = await fetch('/api/transport/disruptions', {
+        const resp = await fetch(`/api/transport/disruptions?mode=${mode}`, {
             signal: AbortSignal.timeout(15000),
         });
 
@@ -498,9 +370,11 @@ export async function fetchSncfDisruptions(
         }
 
         // Filter out past disruptions and map to our format
-        const activeDisruptions = (json.disruptions ?? []).filter(
-            (d) => d.status !== 'past'
-        );
+        const activeDisruptions = (json.disruptions ?? []).filter((d) => {
+            if (!isSncfDisruptionStillRelevant(d)) return false;
+            if (mode === 'active' && !intersectsCurrentDay(d)) return false;
+            return true;
+        });
 
         const disruptions = activeDisruptions.map((d): TransportDisruption => {
             // Extract line/trip info from impacted objects
@@ -543,16 +417,73 @@ export async function fetchSncfDisruptions(
 
             // Extract message
             const message = d.messages?.[0]?.text ?? d.cause ?? 'Perturbation en cours';
+            const sourceMessages = Array.from(new Set(
+                (d.messages ?? [])
+                    .map((entry) => entry.text?.trim())
+                    .filter((entry): entry is string => !!entry)
+                    .filter((entry) => entry.length > 0)
+            ));
 
             // Extract all impacted stops
             const allStops = d.impacted_objects
                 ?.flatMap((o) => o.impacted_stops ?? [])
                 .filter((s) => s.stop_point?.name) ?? [];
 
+            const impactedStopPoints = allStops
+                .map((s): TrainStop | null => {
+                    const name = s.stop_point.name;
+                    if (!name) return null;
+                    const arrivalDelay = computeDelayMinutes(s.base_arrival_time, s.amended_arrival_time);
+                    const departureDelay = computeDelayMinutes(s.base_departure_time, s.amended_departure_time);
+                    return {
+                        name,
+                        time: formatSncfTime(
+                            s.amended_departure_time ??
+                            s.amended_arrival_time ??
+                            s.base_departure_time ??
+                            s.base_arrival_time
+                        ),
+                        plannedTime: formatSncfTime(s.base_departure_time ?? s.base_arrival_time),
+                        updatedTime: formatSncfTime(
+                            s.amended_departure_time ??
+                            s.amended_arrival_time ??
+                            s.base_departure_time ??
+                            s.base_arrival_time
+                        ),
+                        delayMinutes: departureDelay ?? arrivalDelay,
+                        coordinates: parseSncfCoords(s.stop_point.coord),
+                    };
+                })
+                .filter((stop): stop is TrainStop => !!stop);
+
+            const objectStopPoints = (d.impacted_objects ?? [])
+                .map((o): TrainStop | null => {
+                    const objectType = o.pt_object?.embedded_type;
+                    const stopAreaName = o.pt_object?.stop_area?.name;
+                    const objectName = o.pt_object?.name;
+                    const name = stopAreaName || (
+                        objectType === 'stop_area' || objectType === 'stop_point'
+                            ? objectName
+                            : undefined
+                    );
+                    if (!name) return null;
+                    return {
+                        name: name.includes(':') ? (name.split(':').pop() || name) : name,
+                        coordinates: parseSncfCoords(o.pt_object?.stop_area?.coord) ?? parseSncfCoords(o.pt_object?.coord),
+                    };
+                })
+                .filter((stop): stop is TrainStop => !!stop);
+
+            for (const stop of objectStopPoints) {
+                if (!impactedStopPoints.some((existing) => existing.name === stop.name)) {
+                    impactedStopPoints.push(stop);
+                }
+            }
+
             // Extract affected stop names
-            const affectedStops = allStops
-                .map((s) => s.stop_point.name)
-                .slice(0, 10);
+            const affectedStops = impactedStopPoints
+                .map((s) => s.name)
+                .slice(0, 20);
 
             // Extract departure (first stop) and arrival (last stop) with times and coords
             let departure: TrainStop | undefined;
@@ -593,6 +524,16 @@ export async function fetchSncfDisruptions(
                 } else if (arrival?.coordinates) {
                     coordinates = arrival.coordinates;
                 }
+            }
+
+            if (!departure && impactedStopPoints.length > 0) {
+                departure = impactedStopPoints[0];
+            }
+            if (!arrival && impactedStopPoints.length > 1) {
+                arrival = impactedStopPoints[impactedStopPoints.length - 1];
+            }
+            if (!coordinates) {
+                coordinates = departure?.coordinates ?? arrival?.coordinates;
             }
 
             // Fallback: if we still don't have coordinates, try pt_object sources
@@ -658,9 +599,11 @@ export async function fetchSncfDisruptions(
             }
 
             // Parse dates (SNCF format: 20260225T183900)
-            const period = d.application_periods?.[0];
-            const startDate = parseSncfDate(period?.begin) ?? new Date();
-            const endDate = parseSncfDate(period?.end);
+            const { startDate, endDate } = getSncfDisruptionTimeWindow(d);
+            const totalDelayMinutes = arrival?.delayMinutes ?? departure?.delayMinutes;
+            const causeLabel = normalizeSncfCause(d.cause, sourceMessages);
+            const effectLabel = mapEffectToLabel(d.severity?.effect);
+            const impactLabel = buildScheduleImpactLabel(impactedStopPoints, totalDelayMinutes);
 
             // Debug: log if we couldn't find coordinates for a disruption
             if (!coordinates) {
@@ -687,13 +630,18 @@ export async function fetchSncfDisruptions(
                 trainNumber,
                 line: lineName,
                 description: message,
+                causeLabel,
+                effectLabel,
+                impactLabel,
+                sourceMessages,
                 severity: mapSeverityToThreatLevel(d.severity),
                 startDate,
                 endDate,
                 departure,
                 arrival,
+                impactedStopPoints,
                 affectedStops,
-                totalDelayMinutes: arrival?.delayMinutes ?? departure?.delayMinutes,
+                totalDelayMinutes,
                 coordinates,
                 rawRouteGeometry: rawRouteCoords ? { type: 'LineString', coordinates: rawRouteCoords } : undefined,
                 geometryFidelity: rawRouteCoords ? 'raw' : undefined,
@@ -710,17 +658,20 @@ export async function fetchSncfDisruptions(
         };
         disruptions.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
-        disruptionCache = { data: disruptions, fetchedAt: Date.now() };
+        disruptionCache.set(mode, { data: disruptions, fetchedAt: Date.now() });
         Watchdog.report('sncf', { type: 'success', responseTimeMs: Date.now() - t0 });
-        console.log(`[SNCF] ${disruptions.length} perturbations chargées — enrichissement en cours…`);
+        console.log(`[SNCF] ${disruptions.length}/${json.pagination?.total_result ?? disruptions.length} perturbations chargées — enrichissement en cours…`);
 
         if (onEnriched) {
             (async () => {
                 const missingStops: Array<Promise<void>> = [];
-                for (const disruption of disruptions) {
+                const geocodingCandidates = disruptions
+                    .filter((d) => d.severity === 'critical' || d.severity === 'high' || d.type === 'cancellation');
+
+                for (const disruption of geocodingCandidates) {
                     if (disruption.departure && !disruption.departure.coordinates) {
                         missingStops.push(
-                            geocodeStation(disruption.departure.name).then((coords) => {
+                            geocodeSncfStation(disruption.departure.name).then((coords) => {
                                 if (coords) disruption.departure!.coordinates = coords;
                             })
                         );
@@ -728,7 +679,7 @@ export async function fetchSncfDisruptions(
 
                     if (disruption.arrival && !disruption.arrival.coordinates) {
                         missingStops.push(
-                            geocodeStation(disruption.arrival.name).then((coords) => {
+                            geocodeSncfStation(disruption.arrival.name).then((coords) => {
                                 if (coords) disruption.arrival!.coordinates = coords;
                             })
                         );
@@ -742,7 +693,7 @@ export async function fetchSncfDisruptions(
 
                         if (fallbackName) {
                             missingStops.push(
-                                geocodeStation(fallbackName).then((coords) => {
+                                geocodeSncfStation(fallbackName).then((coords) => {
                                     if (coords) disruption.coordinates = coords;
                                 })
                             );
@@ -760,21 +711,12 @@ export async function fetchSncfDisruptions(
                     }
                 }
 
-                const routeMatchingTasks = disruptions
-                    .filter((d) => d.departure?.coordinates && d.arrival?.coordinates)
-                    .map((d) => matchDisruptionRouteToOsmRail(d));
-
-                if (routeMatchingTasks.length > 0) {
-                    await Promise.allSettled(routeMatchingTasks);
-                }
-
-                disruptionCache = { data: disruptions, fetchedAt: Date.now() };
+                disruptionCache.set(mode, { data: disruptions, fetchedAt: Date.now() });
 
                 const mappedDisruptions = disruptions.filter(
                     (d) => d.coordinates || d.departure?.coordinates || d.arrival?.coordinates
                 ).length;
-                const matchedRoutes = disruptions.filter((d) => d.routeGeometry?.coordinates?.length).length;
-                console.log(`[SNCF] Enrichissement terminé — ${mappedDisruptions}/${disruptions.length} géocodées, ${matchedRoutes} tracés OSM`);
+                console.log(`[SNCF] Enrichissement terminé — ${mappedDisruptions}/${disruptions.length} géocodées, rendu endpoints`);
 
                 onEnriched(disruptions);
             })().catch((err) => console.warn('[SNCF] Enrichissement échoué:', err));
@@ -784,8 +726,8 @@ export async function fetchSncfDisruptions(
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn('[SNCF] Fetch failed, using cache or empty:', err);
-        Watchdog.report('sncf', { type: 'failure', error: msg, isFallback: !!disruptionCache });
-        return disruptionCache?.data ?? [];
+        Watchdog.report('sncf', { type: 'failure', error: msg, isFallback: !!cached });
+        return cached?.data ?? [];
     }
 }
 
@@ -822,88 +764,15 @@ export function countDisruptionsBySeverity(
 /**
  * Builds two GeoJSON FeatureCollections from disruption data for map rendering.
  *
- * Arcs: one LineString per disruption that has both departure AND arrival coordinates.
- * Stations: deduplicated stop points across all disruptions — worst severity per station.
+ * Arcs: intentionally empty for the operational layer.
+ * Stations: deduplicated departure/arrival points across disruptions — worst severity per station.
  *
  * Fallback strategy (documented for OSINT clarity):
- * - Disruption with only departure coord → station point emitted, no arc
+ * - Disruption with departure/arrival coords → two endpoint points emitted, no intermediate stop clutter
  * - Disruption with no coords → skipped entirely (no geo context available)
  */
 export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNetworkData {
-    // ─── Arcs ───
     const arcFeatures: RailNetworkData['arcs']['features'] = [];
-
-    for (const d of disruptions) {
-        const dep = d.departure?.coordinates;
-        const arr = d.arrival?.coordinates;
-
-        let fallbackGeometry: [number, number][] = [];
-        if (dep && arr) {
-            try {
-                // OSINT Dashboard: Generate a curved arc for the fallback to look professional instead of a rigid straight line
-                fallbackGeometry = generateCurvedLine(dep as [number, number], arr as [number, number]);
-            } catch (err) {
-                fallbackGeometry = [dep, arr]; // Safety ultimate fallback to straight line
-            }
-        }
-
-        let effectiveGeometry = d.routeGeometry?.coordinates
-            ?? d.rawRouteGeometry?.coordinates
-            ?? fallbackGeometry;
-
-        // Force curvature if the resulting geometry is just a 2-point straight line
-        if (effectiveGeometry && effectiveGeometry.length === 2) {
-            try {
-                effectiveGeometry = generateCurvedLine(
-                    effectiveGeometry[0] as [number, number], 
-                    effectiveGeometry[1] as [number, number]
-                );
-            } catch (err) {
-                // Ignore, keep straight
-            }
-        }
-        const effectiveFidelity = d.routeGeometry
-            ? (d.geometryFidelity ?? 'matched')
-            : d.rawRouteGeometry
-                ? 'raw'
-                : 'fallback';
-        const firstGeometryCoord = effectiveGeometry[0] as [number, number] | undefined;
-        const lastGeometryCoord = effectiveGeometry[effectiveGeometry.length - 1] as [number, number] | undefined;
-        const departureCoord = dep ?? firstGeometryCoord;
-        const arrivalCoord = arr ?? lastGeometryCoord;
-        const hasRenderableLine = effectiveGeometry.length >= 2;
-
-        if (hasRenderableLine) {
-            arcFeatures.push({
-                type: 'Feature',
-                geometry: {
-                    type: 'LineString',
-                    coordinates: effectiveGeometry,
-                },
-                properties: {
-                    id: d.id,
-                    severity: d.severity,
-                    type: d.type,
-                    line: d.line,
-                    trainNumber: d.trainNumber,
-                    description: d.description,
-                    departureName: d.departure?.name,
-                    arrivalName: d.arrival?.name,
-                    departurePlannedTime: d.departure?.plannedTime,
-                    departureUpdatedTime: d.departure?.updatedTime,
-                    arrivalPlannedTime: d.arrival?.plannedTime,
-                    arrivalUpdatedTime: d.arrival?.updatedTime,
-                    totalDelayMinutes: d.totalDelayMinutes,
-                    affectedStopsCount: d.affectedStops?.length ?? 0,
-                    affectedStopsJson: JSON.stringify((d.affectedStops ?? []).slice(0, 12)),
-                    geometryFidelity: effectiveFidelity,
-                },
-            });
-        }
-
-        // Keep single-anchor disruptions visible through the station layer below.
-        if (!departureCoord && !arrivalCoord && !d.coordinates) continue;
-    }
 
     // ─── Stations: deduplicate by name, keep worst severity ───
     const SEVERITY_ORDER: Record<ThreatLevel, number> = {
@@ -917,7 +786,64 @@ export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNe
         lines: Set<string>;
         trainNumbers: Set<string>;
         affectedStops: Set<string>;
+        disruptions: Array<{
+            id: string;
+            severity: ThreatLevel;
+            type: TransportDisruption['type'];
+            line: string;
+            trainNumber?: string;
+            description: string;
+            causeLabel?: string;
+            effectLabel?: string;
+            impactLabel?: string;
+            sourceMessages: string[];
+            totalDelayMinutes?: number;
+            departureName?: string;
+            arrivalName?: string;
+            departurePlannedTime?: string;
+            departureUpdatedTime?: string;
+            arrivalPlannedTime?: string;
+            arrivalUpdatedTime?: string;
+            startDate: string;
+            endDate?: string;
+            affectedStops: string[];
+            stopDetails: Array<{
+                name: string;
+                plannedTime?: string;
+                updatedTime?: string;
+                delayMinutes?: number;
+            }>;
+        }>;
     }>();
+
+    const buildDisruptionSummary = (disruption: TransportDisruption) => ({
+        id: disruption.id,
+        severity: disruption.severity,
+        type: disruption.type,
+        line: disruption.line,
+        trainNumber: disruption.trainNumber,
+        description: disruption.description,
+        causeLabel: disruption.causeLabel,
+        effectLabel: disruption.effectLabel,
+        impactLabel: disruption.impactLabel,
+        sourceMessages: (disruption.sourceMessages ?? []).slice(0, 4),
+        totalDelayMinutes: disruption.totalDelayMinutes,
+        departureName: disruption.departure?.name,
+        arrivalName: disruption.arrival?.name,
+        departurePlannedTime: disruption.departure?.plannedTime,
+        departureUpdatedTime: disruption.departure?.updatedTime,
+        arrivalPlannedTime: disruption.arrival?.plannedTime,
+        arrivalUpdatedTime: disruption.arrival?.updatedTime,
+        startDate: disruption.startDate.toISOString(),
+        endDate: disruption.endDate?.toISOString(),
+        affectedStops: (disruption.affectedStops ?? []).slice(0, 12),
+        stopDetails: (disruption.impactedStopPoints ?? []).slice(0, 18).map((stop) => ({
+            name: stop.name,
+            plannedTime: stop.plannedTime,
+            updatedTime: stop.updatedTime,
+            delayMinutes: stop.delayMinutes,
+        })),
+    });
 
     const recordStop = (stop: TrainStop | undefined, disruption: TransportDisruption): void => {
         if (!stop?.coordinates || !stop.name) return;
@@ -930,15 +856,19 @@ export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNe
                 lines: new Set(disruption.line ? [disruption.line] : []),
                 trainNumbers: new Set(disruption.trainNumber ? [disruption.trainNumber] : []),
                 affectedStops: new Set(disruption.affectedStops ?? []),
+                disruptions: [buildDisruptionSummary(disruption)],
             });
         } else {
-            existing.count++;
             if (SEVERITY_ORDER[disruption.severity] < SEVERITY_ORDER[existing.severity]) {
                 existing.severity = disruption.severity;
             }
             if (disruption.line) existing.lines.add(disruption.line);
             if (disruption.trainNumber) existing.trainNumbers.add(disruption.trainNumber);
             for (const stopName of disruption.affectedStops ?? []) existing.affectedStops.add(stopName);
+            if (!existing.disruptions.some((entry) => entry.id === disruption.id)) {
+                existing.count++;
+                existing.disruptions.push(buildDisruptionSummary(disruption));
+            }
         }
     };
 
@@ -960,6 +890,7 @@ export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNe
                 lines: new Set(d.line ? [d.line] : []),
                 trainNumbers: new Set(d.trainNumber ? [d.trainNumber] : []),
                 affectedStops: new Set(d.affectedStops ?? []),
+                disruptions: [buildDisruptionSummary(d)],
             });
             return;
         }
@@ -971,33 +902,69 @@ export function buildRailNetworkData(disruptions: TransportDisruption[]): RailNe
         if (d.line) existing.lines.add(d.line);
         if (d.trainNumber) existing.trainNumbers.add(d.trainNumber);
         for (const stopName of d.affectedStops ?? []) existing.affectedStops.add(stopName);
+        if (!existing.disruptions.some((entry) => entry.id === d.id)) {
+            existing.disruptions.push(buildDisruptionSummary(d));
+        }
     };
 
     for (const d of disruptions) {
-        recordStop(d.departure, d);
-        recordStop(d.arrival, d);
+        const rawRouteCoords = d.rawRouteGeometry?.coordinates;
+        const rawDepartureCoord = rawRouteCoords?.[0];
+        const rawArrivalCoord = rawRouteCoords && rawRouteCoords.length > 1
+            ? rawRouteCoords[rawRouteCoords.length - 1]
+            : undefined;
+        const rawDeparture: TrainStop | undefined = rawDepartureCoord
+            ? {
+                name: d.departure?.name || d.affectedStops?.[0] || d.line || 'Départ SNCF',
+                coordinates: rawDepartureCoord as [number, number],
+            }
+            : undefined;
+        const rawArrival: TrainStop | undefined = rawArrivalCoord
+            ? {
+                name: d.arrival?.name || d.affectedStops?.[d.affectedStops.length - 1] || d.line || 'Arrivée SNCF',
+                coordinates: rawArrivalCoord as [number, number],
+            }
+            : undefined;
 
-        // SNCF returns some disruptions with only one usable anchor point.
-        // Keep them visible on the map instead of dropping them silently.
-        if (!d.departure?.coordinates && !d.arrival?.coordinates) {
+        const departureForMap = d.departure?.coordinates ? d.departure : rawDeparture;
+        const arrivalForMap = d.arrival?.coordinates ? d.arrival : rawArrival;
+
+        recordStop(departureForMap, d);
+        recordStop(arrivalForMap, d);
+
+        // SNCF returns some cancellations with no station coords in impacted stops,
+        // but with route geometry. Keep those critical items visible on the map.
+        if (!departureForMap?.coordinates && !arrivalForMap?.coordinates) {
             recordFallbackPoint(d);
         }
     }
 
     const stationFeatures: RailNetworkData['stations']['features'] = Array.from(
         stationMap.entries()
-    ).map(([name, { coords, severity, count, lines, trainNumbers, affectedStops }]) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: coords },
-        properties: {
-            name,
-            severity,
-            count,
-            linesJson: JSON.stringify(Array.from(lines).slice(0, 6)),
-            trainNumbersJson: JSON.stringify(Array.from(trainNumbers).slice(0, 6)),
-            affectedStopsJson: JSON.stringify(Array.from(affectedStops).slice(0, 12)),
-        },
-    }));
+    ).map(([name, { coords, severity, count, lines, trainNumbers, affectedStops, disruptions }]) => {
+        const disruptionSummaries = disruptions
+            .sort((a, b) => {
+                const severityDelta = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+                if (severityDelta !== 0) return severityDelta;
+                return (b.totalDelayMinutes ?? 0) - (a.totalDelayMinutes ?? 0);
+            })
+            .slice(0, 8);
+
+        return {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: coords },
+            properties: {
+                name,
+                severity,
+                count,
+                linesJson: JSON.stringify(Array.from(lines).slice(0, 8)),
+                trainNumbersJson: JSON.stringify(Array.from(trainNumbers).slice(0, 8)),
+                affectedStopsJson: JSON.stringify(Array.from(affectedStops).slice(0, 16)),
+                disruptionIdsJson: JSON.stringify(disruptions.map((entry) => entry.id)),
+                disruptionSummariesJson: JSON.stringify(disruptionSummaries),
+            },
+        };
+    });
 
     return {
         arcs: { type: 'FeatureCollection', features: arcFeatures },

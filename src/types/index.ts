@@ -371,11 +371,16 @@ export interface TransportDisruption {
   trainNumber?: string;
   line: string;
   description: string;
+  causeLabel?: string;
+  effectLabel?: string;
+  impactLabel?: string;
+  sourceMessages?: string[];
   severity: ThreatLevel;
   startDate: Date;
   endDate?: Date;
   departure?: TrainStop;
   arrival?: TrainStop;
+  impactedStopPoints?: TrainStop[];
   affectedStops?: string[];
   totalDelayMinutes?: number;
   coordinates?: [number, number]; // Center point for map highlight [lon, lat]
@@ -393,6 +398,9 @@ export interface RailNetworkData {
     line: string;
     trainNumber?: string;
     description: string;
+    causeLabel?: string;
+    effectLabel?: string;
+    impactLabel?: string;
     departureName?: string;
     arrivalName?: string;
     departurePlannedTime?: string;
@@ -404,7 +412,7 @@ export interface RailNetworkData {
     affectedStopsJson?: string;
     geometryFidelity?: string;
   }>;
-  /** Point features: unique impacted stations, worst severity wins */
+  /** Point features: unique departure/arrival stations, worst severity wins */
   stations: GeoJSON.FeatureCollection<GeoJSON.Point, {
     name: string;
     severity: string;
@@ -412,6 +420,8 @@ export interface RailNetworkData {
     linesJson?: string;
     trainNumbersJson?: string;
     affectedStopsJson?: string;
+    disruptionIdsJson?: string;
+    disruptionSummariesJson?: string;
   }>;
 }
 

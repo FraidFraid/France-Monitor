@@ -12,7 +12,7 @@ const SEVERITY_COLORS: Record<ThreatLevel, string> = {
     high: 'var(--threat-high)',
     medium: 'var(--threat-medium)',
     low: 'var(--threat-low)',
-    info: 'var(--text-muted)',
+    info: 'var(--threat-info)',
 };
 
 const SEVERITY_LABELS: Record<ThreatLevel, string> = {
@@ -22,6 +22,8 @@ const SEVERITY_LABELS: Record<ThreatLevel, string> = {
     low: 'Faible',
     info: 'Info',
 };
+
+const SEVERITY_ORDER: ThreatLevel[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 const TYPE_ICONS: Record<TransportDisruption['type'], string> = {
     cancellation: '❌',
@@ -43,7 +45,12 @@ export class TransportPanel extends Panel {
     private onClose?: () => void;
     private onHover?: (disruption: TransportDisruption | null) => void;
     private onSelect?: (disruption: TransportDisruption | null) => void;
+    private onLoadFullCoverage?: () => void;
     private activeDisruptions: TransportDisruption[] = [];
+    private fullCoverageLoaded = false;
+    private fullCoverageLoading = false;
+    private dataLoaded = false;
+    private mapCoverageReady = false;
 
     constructor(container: HTMLElement) {
         super(container, { title: 'SNCF', icon: '🚆', collapsible: false });
@@ -111,21 +118,75 @@ export class TransportPanel extends Panel {
         this.onSelect = h;
     }
 
-    show(disruptions: TransportDisruption[]): void {
+    setOnLoadFullCoverage(h: () => void): void {
+        this.onLoadFullCoverage = h;
+    }
+
+    setFullCoverageLoading(loading: boolean): void {
+        this.fullCoverageLoading = loading;
+        if (this.contentEl && this.modalEl?.style.display !== 'none') {
+            this.show(this.activeDisruptions, {
+                fullCoverageLoaded: this.fullCoverageLoaded,
+                dataLoaded: this.dataLoaded,
+                mapCoverageReady: this.mapCoverageReady,
+            });
+        }
+    }
+
+    show(disruptions: TransportDisruption[], options?: { fullCoverageLoaded?: boolean; dataLoaded?: boolean; mapCoverageReady?: boolean }): void {
         this.activeDisruptions = disruptions;
+        this.fullCoverageLoaded = options?.fullCoverageLoaded ?? this.fullCoverageLoaded;
+        this.dataLoaded = options?.dataLoaded ?? true;
+        this.mapCoverageReady = options?.mapCoverageReady ?? this.mapCoverageReady;
         if (!this.contentEl) return;
         this.modalEl.style.display = 'flex';
 
         if (this.activeDisruptions.length === 0) {
+            const showSyncState = this.mapCoverageReady && !this.dataLoaded;
             this.contentEl.innerHTML = `
-        <div style="text-align:center; color: var(--threat-low); padding: 20px 0;">
-          <div style="font-size: 32px; margin-bottom: 12px;">✅</div>
-          <div>Aucune perturbation signalée.</div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
-            Le trafic ferroviaire est normal.
+        <div style="padding: 18px 16px;">
+          <div style="border:1px solid rgba(96,165,250,0.18);background:rgba(96,165,250,0.08);border-radius:8px;padding:14px 14px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <div style="width:10px;height:10px;border-radius:50%;background:${this.dataLoaded ? 'var(--threat-info)' : showSyncState ? 'var(--threat-info)' : 'var(--threat-medium)'};box-shadow:0 0 14px ${this.dataLoaded ? 'rgba(90,200,250,0.55)' : showSyncState ? 'rgba(90,200,250,0.45)' : 'rgba(255,204,0,0.45)'};"></div>
+              <div style="font-size:11px;font-weight:750;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.05em;">
+                ${this.dataLoaded ? 'Aucun signal dans la liste' : showSyncState ? 'Synchronisation panneau SNCF' : 'Chargement SNCF'}
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
+              ${this.dataLoaded
+                ? 'La carte peut deja afficher des gares issues du dernier jeu de donnees. Les details apparaissent au clic sur un point.'
+                : showSyncState
+                  ? 'Les points sont deja affiches sur la carte. Le panneau finalise la liste detaillee des perturbations.'
+                  : 'Recuperation des perturbations recentes et geolocalisation des gares impactees.'}
+            </div>
+            <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div style="background:rgba(0,0,0,0.18);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:8px;">
+                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Mode</div>
+                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${this.fullCoverageLoaded ? 'Couverture complete' : 'Couverture legere'}</div>
+              </div>
+              <div style="background:rgba(0,0,0,0.18);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:8px;">
+                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Etat</div>
+                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${showSyncState ? 'Carte prete' : 'Cliquer une gare'}</div>
+              </div>
+            </div>
+            ${this.fullCoverageLoaded ? '' : `
+              <button type="button" class="sncf-full-load-btn" ${this.fullCoverageLoading || !this.dataLoaded ? 'disabled' : ''} style="margin-top:12px;width:100%;border:1px solid rgba(96,165,250,0.28);background:rgba(96,165,250,0.10);color:#BFDBFE;border-radius:6px;padding:8px 9px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:${this.fullCoverageLoading || !this.dataLoaded ? 'wait' : 'pointer'};">
+                ${this.fullCoverageLoading ? 'Chargement complet SNCF...' : this.dataLoaded ? 'Charger la couverture complete SNCF' : 'Chargement en cours'}
+              </button>
+            `}
           </div>
         </div>
       `;
+            this.contentEl.querySelector('.sncf-full-load-btn')?.addEventListener('click', () => {
+                if (this.fullCoverageLoading || !this.dataLoaded) return;
+                this.fullCoverageLoading = true;
+                this.onLoadFullCoverage?.();
+                this.show(this.activeDisruptions, {
+                    fullCoverageLoaded: this.fullCoverageLoaded,
+                    dataLoaded: this.dataLoaded,
+                    mapCoverageReady: this.mapCoverageReady,
+                });
+            });
             return;
         }
 
@@ -143,39 +204,47 @@ export class TransportPanel extends Panel {
         }
 
         // Compact severity legend strip
+        const legendItems = SEVERITY_ORDER.map((severity) => `
+          <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${SEVERITY_COLORS[severity]};flex-shrink:0;"></span>
+            ${SEVERITY_LABELS[severity]}
+          </div>
+        `).join('');
+
         const legend = `
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-        <div style="width:100%;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Sévérité</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-critical);flex-shrink:0;"></span>Supprimé</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-high);flex-shrink:0;"></span>Retards</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-medium);flex-shrink:0;"></span>Réduit</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#c0c0cc;"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--threat-low);flex-shrink:0;"></span>Mineur</div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;padding:10px 12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+        <div style="width:100%;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Sévérité SNCF</div>
+        ${legendItems}
       </div>
     `;
 
         let html = `
       ${legend}
-      <div style="margin-bottom: 16px; padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
-          <span>${this.activeDisruptions.length} perturbation${this.activeDisruptions.length > 1 ? 's' : ''}</span>
-          <span>Mise à jour: ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+      <div style="margin-bottom: 16px; padding: 10px 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-muted);">
+          <span>${this.activeDisruptions.length} perturbation${this.activeDisruptions.length > 1 ? 's' : ''} · ${this.fullCoverageLoaded ? 'couverture complète' : 'couverture légère'}</span>
+          <span>${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
+        ${this.fullCoverageLoaded ? '' : `
+          <button type="button" class="sncf-full-load-btn" ${this.fullCoverageLoading ? 'disabled' : ''} style="margin-top:10px;width:100%;border:1px solid rgba(96,165,250,0.28);background:rgba(96,165,250,0.10);color:#BFDBFE;border-radius:6px;padding:7px 9px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:${this.fullCoverageLoading ? 'wait' : 'pointer'};">
+            ${this.fullCoverageLoading ? 'Chargement complet SNCF...' : 'Charger la couverture complète SNCF'}
+          </button>
+        `}
       </div>
     `;
 
         const mappedStations = this.activeDisruptions.filter((d) => !!d.departure?.coordinates || !!d.arrival?.coordinates || !!d.coordinates).length;
-        const mappedRoutes = this.activeDisruptions.filter((d) => !!d.departure?.coordinates && !!d.arrival?.coordinates).length;
 
         html += `
       <div style="margin-bottom: 16px; padding: 10px 12px; background: rgba(74,158,255,0.08); border: 1px solid rgba(74,158,255,0.18); border-radius: 8px;">
         <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px;">Couverture cartographique</div>
         <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
-          ${mappedRoutes} trajet${mappedRoutes > 1 ? 's' : ''} traçable${mappedRoutes > 1 ? 's' : ''} sur la carte · ${mappedStations} perturbation${mappedStations > 1 ? 's' : ''} géolocalisée${mappedStations > 1 ? 's' : ''}
+          ${mappedStations} perturbation${mappedStations > 1 ? 's' : ''} géolocalisée${mappedStations > 1 ? 's' : ''} · affichage carte limité aux gares départ/arrivée
         </div>
       </div>
     `;
 
-        for (const severity of ['critical', 'high', 'medium', 'low', 'info'] as ThreatLevel[]) {
+        for (const severity of SEVERITY_ORDER) {
             const items = bySeverity[severity];
             if (items.length === 0) continue;
 
@@ -239,20 +308,31 @@ export class TransportPanel extends Panel {
 
         this.contentEl.innerHTML = html;
 
+        this.contentEl.querySelector('.sncf-full-load-btn')?.addEventListener('click', () => {
+            if (this.fullCoverageLoading) return;
+            this.fullCoverageLoading = true;
+            this.onLoadFullCoverage?.();
+            this.show(this.activeDisruptions, {
+                fullCoverageLoaded: this.fullCoverageLoaded,
+                dataLoaded: this.dataLoaded,
+                mapCoverageReady: this.mapCoverageReady,
+            });
+        });
+
         // Attach hover listeners for map highlighting
         this.contentEl.querySelectorAll('[data-disruption-id]').forEach((el) => {
             const disruptionId = el.getAttribute('data-disruption-id');
-            const depLon = el.getAttribute('data-dep-lon');
-            const depLat = el.getAttribute('data-dep-lat');
             const disruption = this.activeDisruptions.find((item) => item.id === disruptionId) ?? null;
 
-            if (disruption && (depLon && depLat || disruption.coordinates)) {
+            if (disruption) {
                 el.addEventListener('mouseenter', () => {
                     (el as HTMLElement).style.outline = '1px solid var(--accent-blue)';
+                    (el as HTMLElement).style.boxShadow = '0 0 0 1px rgba(90,200,250,0.28), 0 0 22px rgba(90,200,250,0.10)';
                     this.onHover?.(disruption);
                 });
                 el.addEventListener('mouseleave', () => {
                     (el as HTMLElement).style.outline = 'none';
+                    (el as HTMLElement).style.boxShadow = 'none';
                     this.onHover?.(null);
                 });
                 el.addEventListener('click', () => {
@@ -267,15 +347,23 @@ export class TransportPanel extends Panel {
         this.onClose?.();
     }
 
+    private getTemporalStatus(d: TransportDisruption): string {
+        const now = Date.now();
+        if (d.startDate && d.startDate.getTime() > now) return 'À venir';
+        if (d.endDate && d.endDate.getTime() < now) return 'Terminée';
+        return 'En cours';
+    }
+
     private formatTimeInfo(d: TransportDisruption): string {
         const parts: string[] = [];
+        parts.push(`Statut: ${this.getTemporalStatus(d)}`);
 
         if (d.startDate) {
-            parts.push(`Début: ${d.startDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+            parts.push(`Début: ${d.startDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
         }
 
         if (d.endDate) {
-            parts.push(`Fin prévue: ${d.endDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.endDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+            parts.push(`Fin prévue: ${d.endDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.endDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
         }
 
         return parts.join(' — ');

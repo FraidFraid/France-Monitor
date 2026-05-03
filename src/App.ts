@@ -68,7 +68,7 @@ import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
-import { fetchSncfDisruptions, buildRailNetworkData } from './services/transport.ts';
+import { fetchSncfDisruptions, buildRailNetworkData, geocodeSncfStation } from './services/transport.ts';
 import { buildHydraulicBackboneAssets } from './services/hydraulic-backbone.ts';
 import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
@@ -127,6 +127,7 @@ const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien te
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
 const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
+const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
 const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
@@ -1245,6 +1246,7 @@ export class App {
   private hydraulicPanel: HydraulicPanel | null = null;
   private eolienPanel: EolienPanel | null = null;
   private transportPanel: TransportPanel | null = null;
+  private sncfFullCoverageLoaded = false;
   private firesPanel: FiresPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
@@ -1349,6 +1351,7 @@ export class App {
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
   private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
+  private _intervalSncf: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -1370,6 +1373,7 @@ export class App {
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
     if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
+    if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
     if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -1795,6 +1799,7 @@ export class App {
     this.startHydraulicPolling();
     this.startWeatherPolling();
     this.startEolienPolling();
+    this.startSncfPolling();
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -2320,7 +2325,7 @@ export class App {
 
     this.transportPanel = new TransportPanel(floatContainer);
     this.transportPanel.setOnHover((disruption) => {
-      this.mapContainer?.highlightTrainRoute(this.resolveRailFocusDisruption(disruption));
+      void this.highlightRailDisruptionFromPanel(disruption);
     });
     this.transportPanel.setOnSelect((disruption) => {
       const focusDisruption = this.resolveRailFocusDisruption(disruption);
@@ -2336,6 +2341,12 @@ export class App {
       } else {
         this.mapContainer?.flyTo(departure[0], departure[1], 10);
       }
+    });
+    this.transportPanel.setOnLoadFullCoverage(() => {
+      this.loadSncfFullCoverage().catch((error) => {
+        console.error('[App] Failed to load full SNCF coverage', error);
+        this.transportPanel?.setFullCoverageLoading(false);
+      });
     });
     this.transportPanel.mount();
 
@@ -2621,7 +2632,11 @@ export class App {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       this.layoutEnergyFloatingPanels();
     } else if (name === 'SNCF') {
-      this.transportPanel?.show(this.currentSncfDisruptions);
+      this.transportPanel?.show(this.currentSncfDisruptions, {
+        fullCoverageLoaded: this.sncfFullCoverageLoaded,
+        dataLoaded: this.currentSncfDisruptions.length > 0,
+        mapCoverageReady: this.hasRailMapCoverage(),
+      });
     } else if (name === 'NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
       this.layoutEnvironmentFloatingPanels();
@@ -2876,7 +2891,11 @@ export class App {
       }
     }
     if (key === 'trafficRail') {
-      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions);
+      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions, {
+        fullCoverageLoaded: this.sncfFullCoverageLoaded,
+        dataLoaded: this.currentSncfDisruptions.length > 0,
+        mapCoverageReady: this.hasRailMapCoverage(),
+      });
       else this.transportPanel?.hide();
     }
 
@@ -4574,10 +4593,15 @@ export class App {
       this.currentRailNetworkData = enrichedRail;
       this.mapContainer?.updateRailNetwork(enrichedRail);
       if (this.activeLayers.trafficRail) {
-        this.transportPanel?.show(enriched);
+        this.transportPanel?.show(enriched, {
+          fullCoverageLoaded: this.sncfFullCoverageLoaded,
+          dataLoaded: true,
+          mapCoverageReady: this.hasRailMapCoverage(),
+        });
       }
       this.refreshFranceIntelPanel();
-    });
+    }, 'active');
+    this.sncfFullCoverageLoaded = false;
     this.currentSncfDisruptions = disruptions;
     if (disruptions.length > 0) {
       this.statusPanel?.updateSource('SNCF', { status: 'ok', lastUpdate: new Date() });
@@ -4588,11 +4612,111 @@ export class App {
     const railData = buildRailNetworkData(disruptions);
     this.currentRailNetworkData = railData;
     this.mapContainer?.updateRailNetwork(railData);
+    if (this.activeLayers.trafficRail) {
+      this.transportPanel?.show(disruptions, {
+        fullCoverageLoaded: this.sncfFullCoverageLoaded,
+        dataLoaded: disruptions.length > 0,
+        mapCoverageReady: this.hasRailMapCoverage(),
+      });
+    }
     this.refreshFranceIntelPanel();
+  }
+
+  private async loadSncfFullCoverage(): Promise<void> {
+    this.transportPanel?.setFullCoverageLoading(true);
+    this.statusPanel?.updateSource('SNCF', {
+      status: 'loading',
+      lastUpdate: null,
+      detail: 'Chargement couverture complète SNCF',
+    });
+
+    const disruptions = await fetchSncfDisruptions((enriched) => {
+      this.currentSncfDisruptions = enriched;
+      const enrichedRail = buildRailNetworkData(enriched);
+      this.currentRailNetworkData = enrichedRail;
+      this.mapContainer?.updateRailNetwork(enrichedRail);
+      if (this.activeLayers.trafficRail) {
+        this.transportPanel?.show(enriched, {
+          fullCoverageLoaded: true,
+          dataLoaded: true,
+          mapCoverageReady: this.hasRailMapCoverage(),
+        });
+      }
+      this.refreshFranceIntelPanel();
+    }, 'all');
+
+    this.sncfFullCoverageLoaded = true;
+    this.currentSncfDisruptions = disruptions;
+    this.statusPanel?.updateSource('SNCF', { status: disruptions.length > 0 ? 'ok' : 'stale', lastUpdate: new Date() });
+
+    const railData = buildRailNetworkData(disruptions);
+    this.currentRailNetworkData = railData;
+    this.mapContainer?.updateRailNetwork(railData);
+    this.transportPanel?.setFullCoverageLoading(false);
+    if (this.activeLayers.trafficRail) {
+      this.transportPanel?.show(disruptions, {
+        fullCoverageLoaded: true,
+        dataLoaded: true,
+        mapCoverageReady: this.hasRailMapCoverage(),
+      });
+    }
+    this.refreshFranceIntelPanel();
+  }
+
+  private startSncfPolling(): void {
+    this._intervalSncf = setInterval(() => {
+      if (!this.activeLayers.trafficRail || this.sncfFullCoverageLoaded) return;
+      this.loadSncf().catch((error) => {
+        console.warn('[App] SNCF poll error', error);
+        this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
+      });
+    }, POLL_SNCF_MS);
   }
 
   private resolveRailFocusDisruption(disruption: TransportDisruption | null): TransportDisruption | null {
     if (!disruption || !this.currentRailNetworkData) return disruption;
+
+    const stationMatches = this.currentRailNetworkData.stations.features
+      .filter((feature) => {
+        try {
+          const ids = JSON.parse(String(feature.properties.disruptionIdsJson ?? '[]'));
+          if (Array.isArray(ids) && ids.includes(disruption.id)) return true;
+          const summaries = JSON.parse(String(feature.properties.disruptionSummariesJson ?? '[]'));
+          return Array.isArray(summaries) && summaries.some((summary) => summary?.id === disruption.id);
+        } catch {
+          return false;
+        }
+      });
+
+    if (stationMatches.length > 0) {
+      const byName = new Map(stationMatches.map((feature) => [
+        String(feature.properties.name ?? ''),
+        feature.geometry.coordinates as [number, number],
+      ]));
+      const fallbackCoords = stationMatches.map((feature) => feature.geometry.coordinates as [number, number]);
+      const departureName = disruption.departure?.name ?? 'Départ';
+      const arrivalName = disruption.arrival?.name ?? 'Arrivée';
+      const departureCoords = disruption.departure?.coordinates
+        ?? (disruption.departure?.name ? byName.get(disruption.departure.name) : undefined)
+        ?? disruption.coordinates
+        ?? fallbackCoords[0];
+      const arrivalCoords = disruption.arrival?.coordinates
+        ?? (disruption.arrival?.name ? byName.get(disruption.arrival.name) : undefined)
+        ?? fallbackCoords.find((coords) => coords !== departureCoords);
+
+      if (departureCoords || arrivalCoords) {
+        return {
+          ...disruption,
+          departure: disruption.departure
+            ? { ...disruption.departure, coordinates: disruption.departure.coordinates ?? departureCoords }
+            : departureCoords ? { name: departureName, coordinates: departureCoords } : undefined,
+          arrival: disruption.arrival
+            ? { ...disruption.arrival, coordinates: disruption.arrival.coordinates ?? arrivalCoords }
+            : arrivalCoords ? { name: arrivalName, coordinates: arrivalCoords } : undefined,
+          coordinates: disruption.coordinates ?? departureCoords ?? arrivalCoords,
+        };
+      }
+    }
 
     const arcFeature = this.currentRailNetworkData.arcs.features.find(
       (feature) => feature.properties.id === disruption.id
@@ -4610,6 +4734,42 @@ export class App {
       },
       geometryFidelity: (arcFeature.properties.geometryFidelity as TransportDisruption['geometryFidelity'] | undefined) ?? disruption.geometryFidelity,
     };
+  }
+
+  private async highlightRailDisruptionFromPanel(disruption: TransportDisruption | null): Promise<void> {
+    if (!disruption) {
+      this.mapContainer?.highlightTrainRoute(null);
+      return;
+    }
+
+    let focus = this.resolveRailFocusDisruption(disruption);
+    const hasDeparture = !!focus?.departure?.coordinates || !!focus?.coordinates;
+    const hasArrival = !!focus?.arrival?.coordinates;
+
+    if (focus && (!hasDeparture || !hasArrival)) {
+      const [departureCoords, arrivalCoords] = await Promise.all([
+        hasDeparture ? Promise.resolve(focus.departure?.coordinates ?? focus.coordinates) : geocodeSncfStation(focus.departure?.name),
+        hasArrival ? Promise.resolve(focus.arrival?.coordinates) : geocodeSncfStation(focus.arrival?.name),
+      ]);
+
+      focus = {
+        ...focus,
+        departure: focus.departure
+          ? { ...focus.departure, coordinates: focus.departure.coordinates ?? departureCoords }
+          : departureCoords ? { name: 'Départ', coordinates: departureCoords } : focus.departure,
+        arrival: focus.arrival
+          ? { ...focus.arrival, coordinates: focus.arrival.coordinates ?? arrivalCoords }
+          : arrivalCoords ? { name: 'Arrivée', coordinates: arrivalCoords } : focus.arrival,
+        coordinates: focus.coordinates ?? departureCoords ?? arrivalCoords,
+      };
+    }
+
+    this.mapContainer?.highlightTrainRoute(focus);
+  }
+
+  private hasRailMapCoverage(): boolean {
+    return (this.currentRailNetworkData?.stations.features.length ?? 0) > 0
+      || (this.currentRailNetworkData?.arcs.features.length ?? 0) > 0;
   }
 
   private async loadMetropoles(): Promise<void> {

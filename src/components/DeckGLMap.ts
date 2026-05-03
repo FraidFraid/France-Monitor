@@ -256,6 +256,7 @@ const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
 const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
 const LYR_TRAIN_ROUTE = 'train-route-line';
 const LYR_TRAIN_STATIONS = 'train-stations';
+const LYR_TRAIN_STATION_LABELS = 'train-station-labels';
 const SRC_METRO_LOAD = 'metro-load-src';
 const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
 const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
@@ -344,12 +345,28 @@ const LYR_RAIL_STATION_LABEL = 'rail-station-label';
 /** MapLibre match expression: ThreatLevel → hex color */
 const RAIL_SEVERITY_COLOR: maplibregl.ExpressionSpecification = [
   'match', ['get', 'severity'],
-  'critical', '#ff3b30',
-  'high',     '#ff9500',
+  'critical', '#ff2d55',
+  'high',     '#ff6b35',
   'medium',   '#ffcc00',
-  'low',      '#8e8e93',
-  /* info default */ '#636366',
+  'low',      '#34c759',
+  /* info default */ '#5ac8fa',
 ];
+
+const RAIL_SEVERITY_HEX: Record<string, string> = {
+  critical: '#ff2d55',
+  high: '#ff6b35',
+  medium: '#ffcc00',
+  low: '#34c759',
+  info: '#5ac8fa',
+};
+
+const RAIL_SEVERITY_TINT: Record<string, string> = {
+  critical: 'rgba(255,45,85,0.14)',
+  high: 'rgba(255,107,53,0.14)',
+  medium: 'rgba(255,204,0,0.12)',
+  low: 'rgba(52,199,89,0.12)',
+  info: 'rgba(90,200,250,0.12)',
+};
 
 // ─── Ecowatt signal → color ───
 const ECOWATT_COLORS: Record<EcowattSignal, string> = {
@@ -1501,6 +1518,7 @@ export class DeckGLMap {
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
+  private railStationPanel: HTMLElement | null = null;
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastHoveredHealthId: number | null = null;
   private _lastHoveredFuelDeptId: string | null = null;
@@ -2540,14 +2558,34 @@ export class DeckGLMap {
       source: SRC_TRAIN_ROUTE,
       filter: ['==', ['geometry-type'], 'Point'],
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 16],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 15, 12, 20],
         'circle-color': RAIL_SEVERITY_COLOR,
-        'circle-stroke-width': 3,
+        'circle-stroke-width': 4,
         'circle-stroke-color': '#ffffff',
         'circle-opacity': 1,
       },
       layout: {
         visibility: 'none',
+      },
+    });
+    this.map.addLayer({
+      id: LYR_TRAIN_STATION_LABELS,
+      type: 'symbol',
+      source: SRC_TRAIN_ROUTE,
+      filter: ['==', ['geometry-type'], 'Point'],
+      layout: {
+        'text-field': ['concat', ['case', ['==', ['get', 'role'], 'departure'], 'Départ · ', 'Arrivée · '], ['get', 'name']],
+        'text-size': 11,
+        'text-offset': [0, 1.7],
+        'text-anchor': 'top',
+        'text-font': ['Noto Sans Bold'],
+        visibility: 'none',
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#07111f',
+        'text-halo-width': 2,
+        'text-opacity': 0.95,
       },
     });
 
@@ -6290,6 +6328,10 @@ export class DeckGLMap {
     };
     const showRailHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!this.map || !e.features || e.features.length === 0) return;
+      if (this.railStationPanel) {
+        this.hideEnrichedHoverPopup();
+        return;
+      }
       const feat = e.features[0];
       const props = (feat.properties ?? {}) as Record<string, unknown>;
       const layerId = feat.layer?.id;
@@ -6320,13 +6362,14 @@ export class DeckGLMap {
       const feat = e.features[0];
       const props = (feat.properties ?? {}) as Record<string, unknown>;
       const layerId = feat.layer?.id;
-      const html = layerId === LYR_RAIL_STATION
-        ? this.buildRailStationHoverHtml(props)
-        : this.buildRailArcHoverHtml(props);
       this.hideEnrichedHoverPopup();
+      if (layerId === LYR_RAIL_STATION) {
+        this.openRailStationPopup(e.lngLat, props);
+        return;
+      }
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
         .setLngLat(e.lngLat)
-        .setHTML(html)
+        .setHTML(this.buildRailArcHoverHtml(props))
         .addTo(this.map);
     };
 
@@ -7068,6 +7111,299 @@ export class DeckGLMap {
     this.enrichedHoverPopup?.remove();
   }
 
+  private openRailStationPopup(_lngLat: maplibregl.LngLatLike, properties: Record<string, unknown>): void {
+    if (!this.map) return;
+    this.hideEnrichedHoverPopup();
+    if (!this.railStationPanel) {
+      this.railStationPanel = document.createElement('div');
+      this.railStationPanel.className = 'rail-station-detail-panel';
+      this.container.appendChild(this.railStationPanel);
+    }
+    this.renderRailStationPopupPage(this.railStationPanel, properties, 0);
+  }
+
+  private parseRailStationDisruptionSummaries(properties: Record<string, unknown>): Array<{
+    id: string;
+    severity: string;
+    type: string;
+    line: string;
+    trainNumber?: string;
+    description: string;
+    causeLabel?: string;
+    effectLabel?: string;
+    impactLabel?: string;
+    sourceMessages?: string[];
+    totalDelayMinutes?: number;
+    departureName?: string;
+    arrivalName?: string;
+    departurePlannedTime?: string;
+    departureUpdatedTime?: string;
+    arrivalPlannedTime?: string;
+    arrivalUpdatedTime?: string;
+    startDate: string;
+    endDate?: string;
+    affectedStops?: string[];
+    stopDetails?: Array<{
+      name: string;
+      plannedTime?: string;
+      updatedTime?: string;
+      delayMinutes?: number;
+    }>;
+  }> {
+    try {
+      const parsed = JSON.parse(String(properties.disruptionSummariesJson ?? '[]'));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private getRailDisruptionTemporalState(startDate?: string, endDate?: string): { label: string; color: string; bg: string } {
+    const now = Date.now();
+    const start = startDate ? new Date(startDate).getTime() : Number.NaN;
+    const end = endDate ? new Date(endDate).getTime() : Number.NaN;
+
+    if (Number.isFinite(start) && start > now) {
+      return { label: 'À venir', color: '#7DD3FC', bg: 'rgba(125,211,252,0.14)' };
+    }
+    if (Number.isFinite(end) && end < now) {
+      return { label: 'Terminée', color: '#94A3B8', bg: 'rgba(148,163,184,0.14)' };
+    }
+    return { label: 'En cours', color: '#34D399', bg: 'rgba(52,211,153,0.14)' };
+  }
+
+  private formatRailDateTime(value?: string): string {
+    if (!value) return 'n/d';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'n/d';
+    return date.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private renderRailStationPopupPage(
+    root: HTMLElement,
+    properties: Record<string, unknown>,
+    requestedIndex: number,
+  ): void {
+    const severity = String(properties.severity ?? 'info');
+    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
+    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
+    const name = String(properties.name ?? 'Gare');
+    const count = Number(properties.count ?? 0);
+    const disruptions = this.parseRailStationDisruptionSummaries(properties);
+    const lines = (() => {
+      try {
+        const parsed = JSON.parse(String(properties.linesJson ?? '[]'));
+        return Array.isArray(parsed) ? parsed as string[] : [];
+      } catch {
+        return [];
+      }
+    })();
+
+    const safeIndex = Math.max(0, Math.min(requestedIndex, Math.max(0, disruptions.length - 1)));
+    const selected = disruptions[safeIndex];
+    const headerStats = `
+      <div class="rail-detail-stats">
+        <div class="rail-detail-stat">
+          <div class="rail-detail-stat-value">${count}</div>
+          <div class="rail-detail-stat-label">perturbation${count > 1 ? 's' : ''}</div>
+        </div>
+        <div class="rail-detail-stat">
+          <div class="rail-detail-stat-value">${lines.length}</div>
+          <div class="rail-detail-stat-label">ligne${lines.length > 1 ? 's' : ''}</div>
+        </div>
+      </div>
+    `;
+
+    if (!selected) {
+      root.innerHTML = `
+        <div class="rail-station-detail-shell">
+          <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
+            <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">🚉</div>
+            <div class="rail-detail-title-wrap">
+              <div class="rail-detail-title">${this.escapeHtml(name)}</div>
+              <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
+            </div>
+            <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
+          </div>
+          ${headerStats}
+          <div class="rail-detail-empty">Aucun detail de perturbation disponible.</div>
+        </div>
+      `;
+      root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
+        this.railStationPanel?.remove();
+        this.railStationPanel = null;
+      });
+      return;
+    }
+
+    const cardColor = RAIL_SEVERITY_HEX[selected.severity] ?? RAIL_SEVERITY_HEX.info;
+    const cardBg = RAIL_SEVERITY_TINT[selected.severity] ?? RAIL_SEVERITY_TINT.info;
+    const routeLabel = selected.departureName && selected.arrivalName
+      ? `${this.escapeHtml(selected.departureName)} → ${this.escapeHtml(selected.arrivalName)}`
+      : selected.departureName
+        ? this.escapeHtml(selected.departureName)
+        : selected.arrivalName
+          ? this.escapeHtml(selected.arrivalName)
+          : 'Trajet non precise';
+    const sourceMessages = (selected.sourceMessages ?? []).slice(0, 4);
+    const affectedStops = (selected.affectedStops ?? []).slice(0, 12);
+    const stopDetails = (selected.stopDetails ?? []).slice(0, 18);
+    const causeLabel = selected.causeLabel || selected.description || 'Cause non précisée';
+    const effectLabel = selected.effectLabel || 'Impact non qualifié par SNCF';
+    const impactLabel = selected.impactLabel || 'Impact horaire à confirmer dans le flux SNCF';
+    const severityLabel =
+      selected.severity === 'critical' ? 'Critique'
+        : selected.severity === 'high' ? 'Important'
+          : selected.severity === 'medium' ? 'Modere'
+            : selected.severity === 'low' ? 'Faible'
+              : 'Info';
+    const typeLabel =
+      selected.type === 'cancellation' ? 'Suppression'
+        : selected.type === 'delay' ? 'Retard'
+          : selected.type === 'works' ? 'Travaux'
+            : 'Perturbation';
+    const formatTimeCell = (planned?: string, updated?: string): string => {
+      if (updated && planned && updated !== planned) {
+        return `${this.escapeHtml(planned)} → <span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
+      }
+      if (updated) return `<span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
+      if (planned) return this.escapeHtml(planned);
+      return 'n/d';
+    };
+    const temporalState = this.getRailDisruptionTemporalState(selected.startDate, selected.endDate);
+    const itineraryHtml = stopDetails.length > 0
+      ? stopDetails.map((stop, index) => {
+        const isFirst = index === 0;
+        const isLast = index === stopDetails.length - 1;
+        const planned = stop.plannedTime ? this.escapeHtml(stop.plannedTime) : '';
+        const updated = stop.updatedTime ? this.escapeHtml(stop.updatedTime) : '';
+        const hasChange = planned && updated && planned !== updated;
+        const timeHtml = hasChange
+          ? `<span style="color:#7c8aa5;text-decoration:line-through;">${planned}</span><span style="color:${cardColor};font-weight:750;margin-left:4px;">${updated}</span>`
+          : updated
+            ? `<span style="color:#dce4f4;font-weight:650;">${updated}</span>`
+            : planned
+              ? `<span style="color:#c9d3e6;">${planned}</span>`
+              : '<span style="color:#5f6c82;">n/d</span>';
+        return `
+          <div style="display:grid;grid-template-columns:14px 1fr auto;gap:7px;align-items:center;padding:4px 0;border-bottom:${index < stopDetails.length - 1 ? '1px solid rgba(255,255,255,0.045)' : '0'};">
+            <span style="width:7px;height:7px;border-radius:50%;background:${isFirst || isLast ? cardColor : 'rgba(156,172,199,0.55)'};justify-self:center;"></span>
+            <span style="font-size:10px;color:${isFirst || isLast ? '#fff' : '#c9d3e6'};font-weight:${isFirst || isLast ? '700' : '500'};line-height:1.3;">${this.escapeHtml(stop.name)}</span>
+            <span style="font-size:10px;white-space:nowrap;">${timeHtml}</span>
+          </div>
+        `;
+      }).join('')
+      : '';
+
+    const trainButtons = disruptions.map((entry, index) => {
+      const active = index === safeIndex;
+      const label = entry.trainNumber ? `Train ${this.escapeHtml(entry.trainNumber)}` : this.escapeHtml(entry.line);
+      return `
+        <button type="button" class="rail-train-chip ${active ? 'active' : ''}" data-rail-index="${index}" style="border-color:${active ? `${cardColor}66` : 'rgba(255,255,255,0.12)'};background:${active ? cardBg : 'rgba(255,255,255,0.06)'};color:${active ? '#fff' : '#c9d3e6'};">
+          ${label}
+        </button>
+      `;
+    }).join('');
+
+    root.innerHTML = `
+      <div class="rail-station-detail-shell">
+        <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
+          <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">🚉</div>
+          <div class="rail-detail-title-wrap">
+            <div class="rail-detail-title">${this.escapeHtml(name)}</div>
+            <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
+          </div>
+          <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
+        </div>
+        ${headerStats}
+        <div class="rail-detail-trains">
+          <div class="rail-detail-section-label">Train impacte</div>
+          <div class="rail-detail-train-list">${trainButtons}</div>
+        </div>
+        <div class="rail-detail-nav">
+          <button type="button" data-rail-nav="prev" ${safeIndex === 0 ? 'disabled' : ''}>Précédente</button>
+          <div class="rail-detail-page">${safeIndex + 1} / ${disruptions.length}</div>
+          <button type="button" data-rail-nav="next" ${safeIndex >= disruptions.length - 1 ? 'disabled' : ''}>Suivante</button>
+        </div>
+        <div class="rail-station-detail-body">
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${cardColor};margin-top:5px;flex-shrink:0;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                <div style="font-size:12px;font-weight:700;color:#fff;">${selected.trainNumber ? `${this.escapeHtml(selected.trainNumber)} — ` : ''}${this.escapeHtml(selected.line)}</div>
+                <div style="font-size:9px;color:${cardColor};font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">${severityLabel}</div>
+              </div>
+              <div style="margin-top:3px;font-size:10px;color:#c9d3e6;">${typeLabel} · ${routeLabel}</div>
+              <div style="margin-top:6px;display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:${temporalState.bg};color:${temporalState.color};font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${temporalState.label}</div>
+              <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Depart</div>
+                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.departurePlannedTime, selected.departureUpdatedTime)}</div>
+                </div>
+                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Arrivee</div>
+                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.arrivalPlannedTime, selected.arrivalUpdatedTime)}</div>
+                </div>
+              </div>
+              <div style="margin-top:6px;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#9aa7bf;">
+                <span>Debut: ${this.formatRailDateTime(selected.startDate)}</span>
+                <span>${selected.endDate ? `Fin: ${this.formatRailDateTime(selected.endDate)}` : ''}</span>
+              </div>
+              <div style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:5px;">
+                <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Origine / cause</div>
+                  <div style="margin-top:2px;font-size:10px;color:#eef4ff;line-height:1.4;font-weight:650;">${this.escapeHtml(causeLabel)}</div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
+                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact train</div>
+                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(effectLabel)}</div>
+                  </div>
+                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
+                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact horaires</div>
+                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(impactLabel)}</div>
+                  </div>
+                </div>
+              </div>
+              ${typeof selected.totalDelayMinutes === 'number' && selected.totalDelayMinutes > 0 ? `<div style="margin-top:6px;font-size:10px;color:${cardColor};font-weight:700;">Retard estime: +${selected.totalDelayMinutes} min</div>` : ''}
+              <div style="margin-top:6px;font-size:10px;color:#b4bfd4;line-height:1.45;">${this.escapeHtml(selected.description)}</div>
+              ${itineraryHtml ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Itineraire horaire</div><div style="background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:5px 7px;">${itineraryHtml}</div></div>` : ''}
+              ${sourceMessages.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Messages SNCF</div>${sourceMessages.map((message) => `<div style="font-size:10px;color:#dce4f4;line-height:1.45;margin-bottom:3px;">• ${this.escapeHtml(message)}</div>`).join('')}</div>` : ''}
+              ${affectedStops.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Arrets impactes</div><div style="font-size:10px;color:#c9d3e6;line-height:1.5;">${this.escapeHtml(affectedStops.join(' • '))}</div></div>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    root.querySelectorAll<HTMLElement>('[data-rail-index]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const nextIndex = Number(button.dataset.railIndex ?? safeIndex);
+        this.renderRailStationPopupPage(root, properties, nextIndex);
+      });
+    });
+    root.querySelectorAll<HTMLElement>('[data-rail-nav]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (button.getAttribute('disabled') !== null) return;
+        const direction = button.dataset.railNav;
+        const nextIndex = direction === 'prev' ? safeIndex - 1 : safeIndex + 1;
+        this.renderRailStationPopupPage(root, properties, nextIndex);
+      });
+    });
+    root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
+      this.railStationPanel?.remove();
+      this.railStationPanel = null;
+    });
+  }
+
   private buildRailArcHoverHtml(properties: Record<string, unknown>): string {
     const severity = String(properties.severity ?? 'info');
     const severityLabel =
@@ -7076,17 +7412,8 @@ export class DeckGLMap {
           : severity === 'medium' ? 'Service réduit'
             : severity === 'low' ? 'Perturbation mineure'
               : 'Info';
-    const severityColor =
-      severity === 'critical' ? '#ff453a'
-        : severity === 'high' ? '#ff9f0a'
-          : severity === 'medium' ? '#ffd60a'
-            : severity === 'low' ? '#8e8e93'
-              : '#636366';
-    const severityBg =
-      severity === 'critical' ? 'rgba(255,67,58,0.12)'
-        : severity === 'high' ? 'rgba(255,159,10,0.12)'
-          : severity === 'medium' ? 'rgba(255,214,10,0.10)'
-            : 'rgba(142,142,147,0.10)';
+    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
+    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
 
     const type = String(properties.type ?? 'other');
     const typeIcon =
@@ -7129,7 +7456,7 @@ export class DeckGLMap {
       const arrTime = isLast && arrivalUpdatedTime ? arrivalUpdatedTime
         : isLast && arrivalPlannedTime ? arrivalPlannedTime : '';
       const time = depTime || arrTime;
-      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? '#ff9f0a' : '#636366';
+      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? severityColor : '#636366';
       return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
         <span style="font-size:11px;color:${color};font-weight:${weight};">${this.escapeHtml(stop)}</span>
         ${time ? `<span style="font-size:10px;color:${timeColor};flex-shrink:0;margin-left:8px;">${this.escapeHtml(time)}</span>` : ''}
@@ -7137,9 +7464,9 @@ export class DeckGLMap {
     }).join('');
 
     return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:260px;max-width:340px;">
+      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:260px;max-width:340px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
         <!-- Header -->
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${severityBg};border-bottom:2px solid ${severityColor};border-radius:8px 8px 0 0;margin:-1px -1px 0;">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${severityBg};border-bottom:2px solid ${severityColor};">
           <div style="font-size:16px;line-height:1;">${typeIcon}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
@@ -7147,12 +7474,12 @@ export class DeckGLMap {
             </div>
             <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">${severityLabel} · ${typeLabel}</div>
           </div>
-          ${totalDelayMinutes > 0 ? `<div style="background:rgba(255,159,10,0.2);border:1px solid rgba(255,159,10,0.4);border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:#ff9f0a;white-space:nowrap;">+${totalDelayMinutes} min</div>` : ''}
+          ${totalDelayMinutes > 0 ? `<div style="background:${severityBg};border:1px solid ${severityColor}66;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:${severityColor};white-space:nowrap;">+${totalDelayMinutes} min</div>` : ''}
         </div>
         <!-- Station list -->
         ${stationRows ? `
           <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
-            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
               Gares concernées${affectedStopsCount > 0 ? ` (${affectedStopsCount})` : ''}
             </div>
             ${stationRows}
@@ -7166,29 +7493,162 @@ export class DeckGLMap {
 
   private buildRailStationHoverHtml(properties: Record<string, unknown>): string {
     const severity = String(properties.severity ?? 'info');
-    const severityColor =
-      severity === 'critical' ? '#ff453a'
-        : severity === 'high' ? '#ff9f0a'
-          : severity === 'medium' ? '#ffd60a'
-            : severity === 'low' ? '#8e8e93'
-              : '#636366';
+    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
+    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
 
     const name = String(properties.name ?? 'Gare');
     const count = Number(properties.count ?? 0);
     let lines: string[] = [];
     let trains: string[] = [];
+    let disruptionSummaries: Array<{
+      id: string;
+      severity: string;
+      type: string;
+      line: string;
+      trainNumber?: string;
+      description: string;
+      sourceMessages?: string[];
+      totalDelayMinutes?: number;
+      departureName?: string;
+      arrivalName?: string;
+      departurePlannedTime?: string;
+      departureUpdatedTime?: string;
+      arrivalPlannedTime?: string;
+      arrivalUpdatedTime?: string;
+      startDate: string;
+      endDate?: string;
+      affectedStops?: string[];
+    }> = [];
     try { lines = JSON.parse(String(properties.linesJson ?? '[]')); } catch { lines = []; }
     try { trains = JSON.parse(String(properties.trainNumbersJson ?? '[]')); } catch { trains = []; }
+    try { disruptionSummaries = JSON.parse(String(properties.disruptionSummariesJson ?? '[]')); } catch { disruptionSummaries = []; }
 
     const lineChips = lines.slice(0, 6).map((l: string) =>
-      `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);font-size:10px;color:#d8d8df;white-space:nowrap;">${this.escapeHtml(l)}</span>`
+      `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid ${severityColor}33;font-size:10px;color:#d8d8df;white-space:nowrap;">${this.escapeHtml(l)}</span>`
     ).join('');
+    const trainPreview = trains.slice(0, 5).join(', ');
+    const hiddenTrainCount = Math.max(0, trains.length - 5);
 
     return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:220px;max-width:290px;">
+      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;width:260px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:${severityBg};">
+          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🚉</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
+            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,0.07);">
+          <div style="padding:9px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.07);">
+            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${count}</div>
+            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Perturbation${count > 1 ? 's' : ''}</div>
+          </div>
+          <div style="padding:9px 12px;text-align:center;">
+            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${lines.length}</div>
+            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Ligne${lines.length > 1 ? 's' : ''}</div>
+          </div>
+        </div>
+        <div style="padding:10px 12px;">
+          ${lineChips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${lineChips}</div>` : ''}
+          ${trains.length ? `<div style="font-size:10px;color:#7c8aa5;line-height:1.45;">Trains: <span style="color:#c9d3e6;">${this.escapeHtml(trainPreview)}${hiddenTrainCount > 0 ? ` +${hiddenTrainCount}` : ''}</span></div>` : ''}
+        </div>
+      </div>
+    `;
+
+    const severityLabel = (value: string): string => (
+      value === 'critical' ? 'Critique'
+        : value === 'high' ? 'Important'
+          : value === 'medium' ? 'Modere'
+            : value === 'low' ? 'Faible'
+              : 'Info'
+    );
+
+    const typeLabel = (value: string): string => (
+      value === 'cancellation' ? 'Suppression'
+        : value === 'delay' ? 'Retard'
+          : value === 'works' ? 'Travaux'
+            : 'Perturbation'
+    );
+
+    const formatTimeCell = (planned?: string, updated?: string): string => {
+      if (updated && planned && updated !== planned) {
+        return `${this.escapeHtml(planned)} → <span style="color:${severityColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
+      }
+      if (updated) return `<span style="color:${severityColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
+      if (planned) return this.escapeHtml(planned);
+      return 'n/d';
+    };
+
+    const disruptionCards = disruptionSummaries.slice(0, 6).map((entry) => {
+      const cardColor = RAIL_SEVERITY_HEX[entry.severity] ?? RAIL_SEVERITY_HEX.info;
+      const cardBg = RAIL_SEVERITY_TINT[entry.severity] ?? RAIL_SEVERITY_TINT.info;
+      const temporalState = this.getRailDisruptionTemporalState(entry.startDate, entry.endDate);
+      const routeLabel = entry.departureName && entry.arrivalName
+        ? `${this.escapeHtml(entry.departureName)} → ${this.escapeHtml(entry.arrivalName)}`
+        : entry.departureName
+          ? this.escapeHtml(entry.departureName)
+          : entry.arrivalName
+            ? this.escapeHtml(entry.arrivalName)
+            : 'Trajet non precise';
+      const affectedStops = (entry.affectedStops ?? []).slice(0, 8);
+      const sourceMessages = (entry.sourceMessages ?? []).slice(0, 3);
+
+      return `
+        <div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.015);">
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${cardColor};margin-top:5px;flex-shrink:0;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                <div style="font-size:11px;font-weight:700;color:#fff;">
+                  ${entry.trainNumber ? `${this.escapeHtml(entry.trainNumber)} — ` : ''}${this.escapeHtml(entry.line)}
+                </div>
+                <div style="font-size:9px;color:${cardColor};font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">
+                  ${severityLabel(entry.severity)}
+                </div>
+              </div>
+              <div style="margin-top:3px;font-size:10px;color:#c9d3e6;">${typeLabel(entry.type)} · ${routeLabel}</div>
+              <div style="margin-top:6px;display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:${temporalState.bg};color:${temporalState.color};font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${temporalState.label}</div>
+              <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Depart</div>
+                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(entry.departurePlannedTime, entry.departureUpdatedTime)}</div>
+                </div>
+                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Arrivee</div>
+                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(entry.arrivalPlannedTime, entry.arrivalUpdatedTime)}</div>
+                </div>
+              </div>
+              <div style="margin-top:6px;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#9aa7bf;">
+                <span>Debut: ${this.formatRailDateTime(entry.startDate)}</span>
+                <span>${entry.endDate ? `Fin: ${this.formatRailDateTime(entry.endDate)}` : ''}</span>
+              </div>
+              ${typeof entry.totalDelayMinutes === 'number' && entry.totalDelayMinutes > 0 ? `
+                <div style="margin-top:6px;font-size:10px;color:${cardColor};font-weight:700;">Retard estime: +${entry.totalDelayMinutes} min</div>
+              ` : ''}
+              <div style="margin-top:6px;font-size:10px;color:#b4bfd4;line-height:1.45;">${this.escapeHtml(entry.description)}</div>
+              ${sourceMessages.length > 0 ? `
+                <div style="margin-top:7px;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Messages SNCF</div>
+                  ${sourceMessages.map((message) => `<div style="font-size:10px;color:#dce4f4;line-height:1.45;margin-bottom:3px;">• ${this.escapeHtml(message)}</div>`).join('')}
+                </div>
+              ` : ''}
+              ${affectedStops.length > 0 ? `
+                <div style="margin-top:7px;">
+                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Arrets impactes</div>
+                  <div style="font-size:10px;color:#c9d3e6;line-height:1.45;">${this.escapeHtml(affectedStops.join(' • '))}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:220px;max-width:380px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
         <!-- Station header -->
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:rgba(255,255,255,0.03);border-radius:8px 8px 0 0;margin:-1px -1px 0;">
-          <div style="width:32px;height:32px;border-radius:8px;background:${severityColor}22;border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🚉</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:${severityBg};">
+          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🚉</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
             <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
@@ -7198,11 +7658,11 @@ export class DeckGLMap {
         <div style="display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,0.07);">
           <div style="flex:1;padding:8px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.07);">
             <div style="font-size:18px;font-weight:700;color:#fff;line-height:1;">${count}</div>
-            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">perturbation${count > 1 ? 's' : ''}</div>
+            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">perturbation${count > 1 ? 's' : ''}</div>
           </div>
           <div style="flex:1;padding:8px 12px;text-align:center;">
             <div style="font-size:18px;font-weight:700;color:#fff;line-height:1;">${lines.length}</div>
-            <div style="font-size:9px;color:#636366;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">ligne${lines.length > 1 ? 's' : ''}</div>
+            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.4px;margin-top:2px;">ligne${lines.length > 1 ? 's' : ''}</div>
           </div>
         </div>
         <!-- Lines chips -->
@@ -7211,6 +7671,12 @@ export class DeckGLMap {
         ${trains.length > 0 ? `
           <div style="padding:6px 12px;font-size:10px;color:#636366;">
             Trains: <span style="color:#9898a8;">${this.escapeHtml(trains.slice(0, 5).join(', '))}${trains.length > 5 ? '…' : ''}</span>
+          </div>
+        ` : ''}
+        ${disruptionCards ? `
+          <div style="border-top:1px solid rgba(255,255,255,0.07);">
+            <div style="padding:8px 12px 6px;font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.05em;">Perturbations detaillees</div>
+            ${disruptionCards}
           </div>
         ` : ''}
       </div>
@@ -10245,22 +10711,24 @@ export class DeckGLMap {
     const fallbackArrival = routeCoords?.[routeCoords.length - 1] as [number, number] | undefined;
     const departure = disruption.departure?.coordinates ?? disruption.coordinates ?? fallbackDeparture ?? null;
     const arrival = disruption.arrival?.coordinates ?? fallbackArrival ?? null;
+    const primaryPoint = departure ?? arrival;
 
-    if (!departure) {
+    if (!primaryPoint) {
       src.setData(emptyFC());
       return;
     }
 
     const features: GeoJSON.Feature[] = [];
+    const departurePoint = departure ?? primaryPoint;
 
     // Add departure station point
     features.push({
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: departure },
+      geometry: { type: 'Point', coordinates: departurePoint },
       properties: {
-        role: 'departure',
+        role: departure ? 'departure' : 'localized',
         severity: severity ?? 'medium',
-        name: disruption.departure?.name ?? 'Départ',
+        name: departure ? (disruption.departure?.name ?? 'Départ') : (disruption.arrival?.name ?? 'Point localisé'),
         line: disruption.line,
         trainNumber: disruption.trainNumber,
         departureName: disruption.departure?.name,
@@ -10277,7 +10745,7 @@ export class DeckGLMap {
       },
     });
 
-    if (arrival) {
+    if (arrival && (!departure || arrival[0] !== departure[0] || arrival[1] !== departure[1])) {
       // Add arrival station point
       features.push({
         type: 'Feature',
@@ -10302,6 +10770,9 @@ export class DeckGLMap {
         },
       });
 
+    }
+
+    if (departure && arrival) {
       const useFocusGeometry = !!disruption.routeGeometry?.coordinates?.length;
       const lineCoords = useFocusGeometry
         ? disruption.routeGeometry!.coordinates
@@ -12061,6 +12532,7 @@ export class DeckGLMap {
     this.setVis(LYR_RAIL_STATION_LABEL, railVis);
     this.setVis(LYR_TRAIN_ROUTE,        railVis);
     this.setVis(LYR_TRAIN_STATIONS,     railVis);
+    this.setVis(LYR_TRAIN_STATION_LABELS, railVis);
     this.setVis(LYR_METRO_LOAD_GLOW, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_CIRCLE, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
