@@ -11,6 +11,7 @@ import type { Plugin } from 'vite';
 // Whitelist des domaines autorisés (sécurité)
 const ALLOWED_DOMAINS = [
   'api.ransomware.live',
+  'data.ransomware.live',
   'ransomware.live',
   'services.nvd.nist.gov',
   'nvd.nist.gov',

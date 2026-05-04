@@ -15,8 +15,20 @@ import {
   getPremiumCloseButtonStyle,
   getPremiumModalStyle,
 } from './panelHeader.ts';
-import type { CyberState, CyberAlert, CyberCVE, CyberSeverity } from '../types/index.ts';
+import type { CyberState, CyberAlert, CyberCVE, CyberSeverity, ThreatEvent } from '../types/index.ts';
 import { getCyberScoreColor, formatCyberDate, getSeverityColor, isCyberPanelEnabled } from '../services/cyber.ts';
+import {
+  DEFAULT_THREAT_EVENT_FILTERS,
+  filterThreatEvents,
+  type ThreatEventFilters,
+  type ThreatSeverityFilter,
+  type ThreatTimeFilter,
+  type ThreatTypeFilter,
+} from '../services/threat-map.ts';
+
+type ActiveTab = 'alertes' | 'ransomware' | 'incidents';
+type ThreatFilterChangeHandler = (filters: ThreatEventFilters) => void;
+type ThreatEventSelectHandler = (event: ThreatEvent) => void;
 
 // ═══ Constantes UI ═══
 
@@ -41,6 +53,12 @@ export class CyberPanel extends Panel {
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private activeTab: ActiveTab = 'incidents';
+  private threatEvents: ThreatEvent[] = [];
+  private currentData: CyberState | null = null;
+  private threatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
+  private onThreatFiltersChange: ThreatFilterChangeHandler | null = null;
+  private onThreatEventSelect: ThreatEventSelectHandler | null = null;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'Vigilance Cyber', icon: '🛡️', collapsible: false });
@@ -57,6 +75,7 @@ export class CyberPanel extends Panel {
         backgroundEnd: 'rgba(16, 12, 24, 0.96)',
         borderColor: 'rgba(16, 185, 129, 0.18)',
       })}
+      height: calc(100vh - var(--right-panel-top) - 20px);
       cursor: grab;
     `;
 
@@ -93,6 +112,9 @@ export class CyberPanel extends Panel {
       padding: 12px;
       overflow-y: auto;
       flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     `;
     this.modalEl.appendChild(this.contentEl);
 
@@ -148,8 +170,17 @@ export class CyberPanel extends Panel {
     this.onClose = handler;
   }
 
+  setOnThreatFiltersChange(handler: ThreatFilterChangeHandler): void {
+    this.onThreatFiltersChange = handler;
+  }
+
+  setOnThreatEventSelect(handler: ThreatEventSelectHandler): void {
+    this.onThreatEventSelect = handler;
+  }
+
   show(data: CyberState | null): void {
     if (!this.contentEl) return;
+    const wasVisible = this.isVisible();
 
     // Check feature flag
     if (!isCyberPanelEnabled()) {
@@ -158,6 +189,9 @@ export class CyberPanel extends Panel {
       return;
     }
 
+    if (!wasVisible) {
+      this.activeTab = 'incidents';
+    }
     this.modalEl.style.display = 'flex';
 
     if (!data) {
@@ -287,49 +321,76 @@ export class CyberPanel extends Panel {
     }
   }
 
+  updateThreatEvents(events: ThreatEvent[]): void {
+    this.threatEvents = events;
+    if (this.activeTab === 'incidents' && this.isVisible()) {
+      this.renderTabContent();
+    }
+  }
+
+  getFilteredThreatEvents(): ThreatEvent[] {
+    return filterThreatEvents(this.threatEvents, this.threatFilters);
+  }
+
+  selectTab(tab: ActiveTab): void {
+    this.activeTab = tab;
+    if (this.isVisible() && this.currentData) {
+      this.renderContent(this.currentData);
+    }
+  }
+
+  private renderTabBar(): string {
+    const tab = (id: ActiveTab, label: string) => {
+      const active = this.activeTab === id;
+      return `<button data-tab="${id}" style="
+        flex:1; padding:7px 4px; background:${active ? 'rgba(16,185,129,0.15)' : 'transparent'};
+        border:none; border-bottom:2px solid ${active ? '#10B981' : 'transparent'};
+        color:${active ? '#10B981' : 'rgba(255,255,255,0.45)'};
+        font-size:10px; font-weight:700; letter-spacing:0.5px; cursor:pointer;
+        text-transform:uppercase; transition:all 0.15s;">${label}</button>`;
+    };
+    return `<div style="display:flex; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:10px;">
+      ${tab('alertes','CERT-FR')}
+      ${tab('ransomware','Ransomware')}
+      ${tab('incidents','Incidents')}
+    </div>`;
+  }
+
   private renderContent(data: CyberState): void {
     if (!this.contentEl) return;
+    this.currentData = data;
 
-    // Check for partial data warning
     const failedSources = data.meta.sources.filter(s => !s.isUp);
     let warningHtml = '';
-
     if (failedSources.length > 0) {
-      const sourceNames = failedSources.map(s => s.source).join(', ');
-      warningHtml = `
-        <div class="cyber-warning" style="
-          background: rgba(245, 158, 11, 0.15);
-          border: 1px solid rgba(245, 158, 11, 0.3);
-          border-radius: 6px;
-          padding: 8px 10px;
-          margin-bottom: 10px;
-          font-size: 10px;
-          color: #F59E0B;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        ">
-          <span style="font-size: 12px;">⚠️</span>
-          <span>Source ${sourceNames} indisponible, score basé sur données partielles</span>
-        </div>
-      `;
+      const names = failedSources.map(s => s.source).join(', ');
+      warningHtml = `<div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:#F59E0B;display:flex;align-items:center;gap:6px;"><span>⚠️</span><span>Source ${names} indisponible</span></div>`;
     }
 
-    this.contentEl.innerHTML = `
-      ${warningHtml}
-      <div class="cyber-bento-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-        ${this.renderCertFrCard(data)}
-        ${this.renderRansomwareCard(data)}
-        ${this.renderCveCard(data)}
-      </div>
-    `;
+    this.contentEl.innerHTML = `${warningHtml}${this.renderTabBar()}<div id="cyber-tab-content" style="flex:1;min-height:0;display:flex;flex-direction:column;"></div>`;
+    this.renderTabContent();
 
-    // Add click handlers for external links
-    this.contentEl.querySelectorAll('a[data-external]').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.stopPropagation();
+    this.contentEl.querySelectorAll<HTMLElement>('[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.activeTab = btn.dataset.tab as ActiveTab;
+        this.renderContent(data);
       });
     });
+    this.contentEl.querySelectorAll('a[data-external]').forEach(l => l.addEventListener('click', e => e.stopPropagation()));
+  }
+
+  private renderTabContent(): void {
+    const el = this.contentEl?.querySelector<HTMLElement>('#cyber-tab-content');
+    if (!el) return;
+    el.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;';
+    if (this.activeTab === 'alertes' && this.currentData) {
+      el.innerHTML = `<div style="display:grid;grid-template-columns:1fr;gap:10px;">${this.renderCertFrCard(this.currentData)}</div>`;
+    } else if (this.activeTab === 'ransomware' && this.currentData) {
+      el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">${this.renderRansomwareCard(this.currentData)}${this.renderCveCard(this.currentData)}</div>`;
+    } else if (this.activeTab === 'incidents') {
+      el.innerHTML = this.renderIncidentsTab();
+      this.bindIncidentFilters();
+    }
   }
 
   private renderCertFrCard(data: CyberState): string {
@@ -516,6 +577,149 @@ export class CyberPanel extends Panel {
         <span style="color: var(--text-muted); font-size: 9px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(cve.target)}</span>
       </a>
     `;
+  }
+
+  private renderIncidentsTab(): string {
+    const SEV_COLORS: Record<string,string> = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#3b82f6' };
+    const SEV_LABELS: Record<string,string> = { critical:'CRITIQUE', high:'ÉLEVÉ', medium:'MOYEN', low:'FAIBLE' };
+    const TYPE_ICONS: Record<string,string> = { ransomware:'🏴‍☠️', leak:'💧', exposure:'🔓', vulnerability:'⚠️' };
+    const TYPE_LABELS: Record<string,string> = { ransomware:'Ransomware', leak:'Fuite', exposure:'Exposition', vulnerability:'Vulnérabilité' };
+    const fmt = (n: number) => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(0)+'K' : String(n);
+    const formatDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    const sourceLabel = (e: ThreatEvent) => e.ransomwareGroup || e.sourceLabel || e.sources[0]?.name || 'source';
+    const precisionLabel = (e: ThreatEvent) => {
+      const labels: Record<ThreatEvent['location']['precision'], string> = {
+        hq: 'HQ',
+        city: 'Ville',
+        region: 'Région',
+        country: 'Pays',
+        unknown: 'N/A',
+      };
+      return `${e.location.label} · ${labels[e.location.precision]}`;
+    };
+    const subLabel = (e: ThreatEvent) => {
+      if (e.type === 'ransomware') return `${sourceLabel(e)} · ransomware`;
+      if (e.metrics?.records) return `${sourceLabel(e)} · ${fmt(e.metrics.records)} records`;
+      if (e.metrics?.affectedAssets) return `${sourceLabel(e)} · ${fmt(e.metrics.affectedAssets)} assets`;
+      return sourceLabel(e);
+    };
+
+    const filteredEvents = filterThreatEvents(this.threatEvents, this.threatFilters);
+
+    if (this.threatEvents.length === 0) {
+      return `<div style="text-align:center;padding:32px 16px;color:rgba(255,255,255,0.3);font-size:12px;">Aucun incident — couche <strong style="color:rgba(255,255,255,0.5);">Carte Menaces</strong> activée ?</div>`;
+    }
+
+    const totalRecords = filteredEvents.reduce((s,e) => s+(e.metrics?.records||0), 0);
+    const ransomCount = filteredEvents.filter(e => e.type==='ransomware').length;
+    const countryCount = new Set(filteredEvents.map(e => e.countryCode || 'FR')).size;
+
+    const statsHtml = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px;">
+      ${[['🎯',String(filteredEvents.length),'INCIDENTS'],['📊',fmt(totalRecords),'RECORDS'],['🏴‍☠️',String(ransomCount),'RANSOMWARE'],['🇫🇷',String(countryCount),'PAYS']]
+        .map(([ic,val,lab]) => `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:6px;text-align:center;"><div style="font-size:13px;">${ic}</div><div style="font-size:13px;font-weight:700;color:#fff;">${val}</div><div style="font-size:8px;color:rgba(255,255,255,0.35);text-transform:uppercase;">${lab}</div></div>`).join('')}
+    </div>`;
+
+    const controlsHtml = this.renderIncidentFilters();
+    const emptyHtml = `<div style="text-align:center;padding:24px 12px;color:rgba(255,255,255,0.32);font-size:12px;">Aucun incident dans ce filtre</div>`;
+
+    const listHtml = [...filteredEvents]
+      .sort((a,b) => new Date(b.date).getTime()-new Date(a.date).getTime())
+      .map(e => {
+        const color = SEV_COLORS[e.severity] || '#6b7280';
+        const initials = e.organizationName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('') || 'FR';
+        return `<button data-threat-event-id="${this.escapeHtml(e.id)}" style="width:100%;text-align:left;padding:10px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(9,16,32,0.55);margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <div style="width:34px;height:34px;border-radius:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.7);font-size:10px;font-weight:800;flex-shrink:0;">${this.escapeHtml(initials)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+              <div style="font-size:12px;font-weight:700;color:#e5e7eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.flagEmoji || '🇫🇷'} ${this.escapeHtml(e.organizationName)}</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.75);white-space:nowrap;">${formatDate(e.date)}</div>
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.72);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(sourceLabel(e))}</div>
+            <div style="font-size:10px;color:rgba(125,211,252,0.78);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${this.escapeHtml(precisionLabel(e))}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;gap:8px;">
+              <span style="font-size:10px;color:rgba(255,255,255,0.42);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${TYPE_ICONS[e.type]||''} ${TYPE_LABELS[e.type]||e.type} · ${this.escapeHtml(subLabel(e))}</span>
+              <span style="font-size:9px;font-weight:700;color:${color};">${SEV_LABELS[e.severity]||e.severity.toUpperCase()}</span>
+            </div>
+          </div>
+          <div style="width:8px;height:8px;border-radius:50%;background:${color};box-shadow:0 0 8px ${color};flex-shrink:0;"></div>
+        </button>`;
+      }).join('');
+
+    return `${statsHtml}${controlsHtml}<div style="flex:1;min-height:0;overflow-y:auto;">${listHtml || emptyHtml}</div>`;
+  }
+
+  private renderIncidentFilters(): string {
+    const chip = (attr: string, value: string, label: string, active: boolean) => `<button ${attr}="${value}" style="
+      border:1px solid ${active ? 'rgba(34,211,238,0.65)' : 'rgba(255,255,255,0.16)'};
+      background:${active ? 'rgba(8,145,178,0.34)' : 'rgba(255,255,255,0.04)'};
+      color:${active ? '#e0faff' : 'rgba(255,255,255,0.72)'};
+      border-radius:999px;padding:5px 10px;font-size:9px;font-weight:800;letter-spacing:.04em;
+      text-transform:uppercase;cursor:pointer;">${label}</button>`;
+    const section = (label: string, inner: string) => `<div style="margin-bottom:9px;">
+      <div style="font-size:9px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,0.72);text-transform:uppercase;margin:0 0 6px;">${label}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${inner}</div>
+    </div>`;
+
+    return `<div style="border-top:1px solid rgba(255,255,255,0.07);border-bottom:1px solid rgba(255,255,255,0.07);padding:10px 0;margin-bottom:10px;">
+      <div style="position:relative;margin-bottom:10px;">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.45);font-size:12px;">🔍</span>
+        <input data-threat-search type="text" placeholder="Rechercher entreprise, domaine, secteur..." value="${this.escapeHtml(this.threatFilters.query)}" style="
+          width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.14);border-radius:8px;
+          background:rgba(255,255,255,0.055);color:#fff;font-size:11px;padding:8px 10px 8px 29px;outline:none;">
+      </div>
+      ${section('Sévérité', [
+        chip('data-threat-severity','all','Tous',this.threatFilters.severity === 'all'),
+        chip('data-threat-severity','low','Faible',this.threatFilters.severity === 'low'),
+        chip('data-threat-severity','medium','Moyen',this.threatFilters.severity === 'medium'),
+        chip('data-threat-severity','high','Élevé',this.threatFilters.severity === 'high'),
+        chip('data-threat-severity','critical','Critique',this.threatFilters.severity === 'critical'),
+      ].join(''))}
+      ${section('Plus récent', [
+        chip('data-threat-time','7d','7J',this.threatFilters.time === '7d'),
+        chip('data-threat-time','30d','30J',this.threatFilters.time === '30d'),
+        chip('data-threat-time','90d','90J',this.threatFilters.time === '90d'),
+        chip('data-threat-time','1y','1 AN',this.threatFilters.time === '1y'),
+        chip('data-threat-time','2y','2 ANS',this.threatFilters.time === '2y'),
+        chip('data-threat-time','all','Tout',this.threatFilters.time === 'all'),
+      ].join(''))}
+      ${section('Type', [
+        chip('data-threat-type','all','Tous',this.threatFilters.type === 'all'),
+        chip('data-threat-type','leak','Fuites',this.threatFilters.type === 'leak'),
+        chip('data-threat-type','ransomware','Ransomware',this.threatFilters.type === 'ransomware'),
+        chip('data-threat-type','exposure','Expositions',this.threatFilters.type === 'exposure'),
+        chip('data-threat-type','vulnerability','CERT-FR',this.threatFilters.type === 'vulnerability'),
+      ].join(''))}
+    </div>`;
+  }
+
+  private bindIncidentFilters(): void {
+    const update = (filters: Partial<ThreatEventFilters>) => {
+      this.threatFilters = { ...this.threatFilters, ...filters };
+      this.onThreatFiltersChange?.(this.threatFilters);
+      this.renderTabContent();
+    };
+
+    this.contentEl?.querySelectorAll<HTMLElement>('[data-threat-severity]').forEach(btn => {
+      btn.addEventListener('click', () => update({ severity: btn.dataset.threatSeverity as ThreatSeverityFilter }));
+    });
+    this.contentEl?.querySelectorAll<HTMLElement>('[data-threat-time]').forEach(btn => {
+      btn.addEventListener('click', () => update({ time: btn.dataset.threatTime as ThreatTimeFilter }));
+    });
+    this.contentEl?.querySelectorAll<HTMLElement>('[data-threat-type]').forEach(btn => {
+      btn.addEventListener('click', () => update({ type: btn.dataset.threatType as ThreatTypeFilter }));
+    });
+
+    const input = this.contentEl?.querySelector<HTMLInputElement>('[data-threat-search]');
+    input?.addEventListener('input', () => update({ query: input.value.trim() }));
+
+    this.contentEl?.querySelectorAll<HTMLElement>('[data-threat-event-id]').forEach(card => {
+      card.addEventListener('mouseenter', () => { card.style.background = 'rgba(15,23,42,0.86)'; });
+      card.addEventListener('mouseleave', () => { card.style.background = 'rgba(9,16,32,0.55)'; });
+      card.addEventListener('click', () => {
+        const event = this.threatEvents.find(e => e.id === card.dataset.threatEventId);
+        if (event) this.onThreatEventSelect?.(event);
+      });
+    });
   }
 
   private escapeHtml(text: string): string {

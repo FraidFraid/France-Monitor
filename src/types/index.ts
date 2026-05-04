@@ -25,6 +25,54 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
+export interface ThreatEvent {
+  id: string;
+  type: 'leak' | 'ransomware' | 'exposure' | 'vulnerability';
+  organizationName: string;
+  domain?: string;
+  logoUrl?: string;
+  countryCode?: string;
+  countryName?: string;
+  flagEmoji?: string;
+  ransomwareGroup?: string;
+  sourceLabel?: string;
+  location: {
+    label: string;
+    coordinates: [number, number];
+    precision: 'hq' | 'city' | 'region' | 'country' | 'unknown';
+    address?: string;
+    source?: string;
+  };
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  confidence: 'high' | 'medium' | 'low';
+  sector?: string;
+  organizationProfile?: {
+    legalName?: string;
+    siren?: string;
+    siret?: string;
+    category?: string;
+    employeeRange?: string;
+    activityCode?: string;
+    activitySection?: string;
+    createdAt?: string;
+    openEstablishments?: number;
+  };
+  date: string;
+  summary: string;
+  compromisedData?: string[];
+  metrics?: {
+    records?: number;
+    sources?: number;
+    affectedAssets?: number;
+  };
+  dataClasses?: string[];
+  sources: {
+    name: string;
+    url?: string;
+    observedAt: string;
+  }[];
+}
+
 // ═══ Feeds & News ═══
 
 export interface Feed {
@@ -92,6 +140,7 @@ export interface MapLayers {
   outagesCloud: boolean;
   stability: boolean;
   cyber: boolean;
+  threatMap: boolean;  // Flag interne synchronisé avec cyber pour la cartographie des incidents.
   gasNetwork: boolean;
   oilNetwork: boolean;
   nuclearFleet: boolean;

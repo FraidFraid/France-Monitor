@@ -12,7 +12,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard, DromTerritoryCode } from '../services/drom-energy/index.ts';
@@ -31,6 +31,22 @@ import { computeFloodSegmentBbox, buildEoBrowserUrl } from '../services/copernic
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
+
+type ThreatMapDatum =
+  | {
+      kind: 'cluster';
+      id: number;
+      coordinates: [number, number];
+      count: number;
+      severity: ThreatEvent['severity'];
+      expansionZoom: number;
+    }
+  | {
+      kind: 'event';
+      event: ThreatEvent;
+      coordinates: [number, number];
+      severity: ThreatEvent['severity'];
+    };
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
@@ -1488,6 +1504,7 @@ export class DeckGLMap {
   private onMilitaryShipClick: ((ship: ReturnType<typeof import('../services/military-ships.ts').getMilitaryShips>[0], x: number, y: number) => void) | null = null;
   private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
+  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private _highlightedMmsi: string | null = null;
   private _selectedShipMmsi: string | null = null;
   private _satelliteMode = false;
@@ -1533,6 +1550,10 @@ export class DeckGLMap {
   // Cluster hover state
   private hoveredClusterId: number | null = null;
   private lastClusterItems: NewsItem[] = [];
+  
+  private threatEvents: ThreatEvent[] = [];
+  private threatEventsVisible: boolean = true;
+  private threatClusterIndex: Supercluster<any, any> | null = null;
   private lastClusterCount: number = 0;
   private clusterHideTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -6528,6 +6549,10 @@ export class DeckGLMap {
         zoom: this.map.getZoom(), pitch: this.map.getPitch(), bearing: this.map.getBearing(),
       };
       this.syncTrafficIncidentSource();
+      if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
+        this.deckOverlay.setProps({ layers: this.buildAisLayers() });
+        this.map.triggerRepaint();
+      }
       this.onViewChange?.(this.viewState);
     });
 
@@ -6806,6 +6831,86 @@ export class DeckGLMap {
           getIcon: this.civilAirTrafficFlights,
         },
       }),
+      new ScatterplotLayer<ThreatMapDatum>({
+        id: 'deck-threat-clusters',
+        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
+        visible: this.threatEventsVisible,
+        opacity: 1,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: ThreatMapDatum) => d.coordinates,
+        getRadius: (d: ThreatMapDatum) => d.kind === 'cluster' ? 15000 + Math.min(d.count, 80) * 950 : 10000,
+        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, d.kind === 'cluster' ? 210 : 200),
+        radiusMinPixels: 18,
+        radiusMaxPixels: 42,
+        stroked: true,
+        getLineColor: [186, 230, 253, 230],
+        lineWidthMinPixels: 2.5,
+        pickable: true,
+        onClick: (info) => {
+          if (!this.map || !info.object || info.object.kind !== 'cluster') return;
+          this.map.flyTo({
+            center: info.object.coordinates,
+            zoom: Math.min(info.object.expansionZoom + 0.35, 14),
+            duration: 850,
+            essential: true,
+          });
+        },
+        updateTriggers: {
+          getPosition: [this.threatEvents, this.viewState.zoom],
+          getFillColor: [this.threatEvents, this.viewState.zoom],
+          getRadius: [this.threatEvents, this.viewState.zoom],
+        },
+      }),
+      new TextLayer<ThreatMapDatum>({
+        id: 'deck-threat-cluster-count',
+        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
+        visible: this.threatEventsVisible,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: ThreatMapDatum) => d.coordinates,
+        getText: (d: ThreatMapDatum) => d.kind === 'cluster' ? String(d.count) : '',
+        getSize: 14,
+        getColor: [255, 255, 255, 255],
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'center',
+        fontWeight: 800,
+        pickable: false,
+        updateTriggers: {
+          getPosition: [this.threatEvents, this.viewState.zoom],
+          getText: [this.threatEvents, this.viewState.zoom],
+        },
+      }),
+      new ScatterplotLayer<ThreatMapDatum>({
+        id: 'deck-threat-events',
+        data: this.getThreatMapData().filter((d) => d.kind === 'event'),
+        visible: this.threatEventsVisible,
+        opacity: 1,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: ThreatMapDatum) => d.coordinates,
+        getRadius: (d: ThreatMapDatum) => {
+          if (d.severity === 'critical') return 30000;
+          if (d.severity === 'high') return 20000;
+          if (d.severity === 'medium') return 12000;
+          return 8000;
+        },
+        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, 205),
+        radiusMinPixels: 8,
+        radiusMaxPixels: 24,
+        stroked: true,
+        getLineColor: [255, 255, 255, 190],
+        lineWidthMinPixels: 2,
+        pickable: true,
+        onClick: (info) => {
+          if (!this.map || !info.object || info.object.kind !== 'event') return;
+          const evt = info.object.event;
+          const pt = this.map.project(evt.location.coordinates);
+          this.onThreatEventClick?.(evt, pt.x, pt.y);
+        },
+        updateTriggers: {
+          getPosition: [this.threatEvents, this.viewState.zoom],
+          getFillColor: [this.threatEvents, this.viewState.zoom],
+          getRadius: [this.threatEvents, this.viewState.zoom],
+        },
+      }),
     ];
   }
 
@@ -6818,6 +6923,96 @@ export class DeckGLMap {
     // CRITICAL: Deck.gl MapboxOverlay only renders when MapLibre repaints.
     // Forces map to draw incoming WebSocket maritime ships immediately.
     this.map?.triggerRepaint();
+  }
+
+  private getThreatSeverityRank(severity: ThreatEvent['severity']): number {
+    if (severity === 'critical') return 4;
+    if (severity === 'high') return 3;
+    if (severity === 'medium') return 2;
+    return 1;
+  }
+
+  private getThreatSeverityFromRank(rank: number): ThreatEvent['severity'] {
+    if (rank >= 4) return 'critical';
+    if (rank >= 3) return 'high';
+    if (rank >= 2) return 'medium';
+    return 'low';
+  }
+
+  private getThreatColor(severity: ThreatEvent['severity'], alpha: number): [number, number, number, number] {
+    if (severity === 'critical') return [239, 68, 68, alpha];
+    if (severity === 'high') return [249, 115, 22, alpha];
+    if (severity === 'medium') return [245, 158, 11, alpha];
+    return [59, 130, 246, alpha];
+  }
+
+  private rebuildThreatClusterIndex(): void {
+    const features = this.threatEvents.map((event) => ({
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: event.location.coordinates,
+      },
+      properties: {
+        event,
+        severityRank: this.getThreatSeverityRank(event.severity),
+      },
+    }));
+
+    this.threatClusterIndex = new Supercluster({
+      radius: 58,
+      maxZoom: 11,
+      minZoom: 0,
+      map: (props) => ({ maxSeverityRank: props.severityRank }),
+      reduce: (accumulated, props) => {
+        accumulated.maxSeverityRank = Math.max(
+          accumulated.maxSeverityRank || 0,
+          props.maxSeverityRank || 0,
+        );
+      },
+    });
+    this.threatClusterIndex.load(features);
+  }
+
+  private getThreatMapData(): ThreatMapDatum[] {
+    if (!this.map || !this.threatClusterIndex) {
+      return this.threatEvents.map((event) => ({
+        kind: 'event',
+        event,
+        coordinates: event.location.coordinates,
+        severity: event.severity,
+      }));
+    }
+
+    const bounds = this.map.getBounds();
+    const zoom = Math.floor(this.map.getZoom());
+    const clusters = this.threatClusterIndex.getClusters(
+      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+      zoom,
+    );
+
+    return clusters.map((feature: any): ThreatMapDatum => {
+      const coordinates = feature.geometry.coordinates as [number, number];
+      if (feature.properties?.cluster) {
+        const clusterId = Number(feature.properties.cluster_id);
+        return {
+          kind: 'cluster',
+          id: clusterId,
+          coordinates,
+          count: Number(feature.properties.point_count || 0),
+          severity: this.getThreatSeverityFromRank(Number(feature.properties.maxSeverityRank || 1)),
+          expansionZoom: this.threatClusterIndex?.getClusterExpansionZoom(clusterId) ?? 12,
+        };
+      }
+
+      const event = feature.properties.event as ThreatEvent;
+      return {
+        kind: 'event',
+        event,
+        coordinates: event.location.coordinates,
+        severity: event.severity,
+      };
+    });
   }
 
   private getAirTrafficColorHex(flight: AirTrafficFlight): string {
@@ -9141,6 +9336,26 @@ export class DeckGLMap {
 
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
+  }
+
+  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
+    this.onThreatEventClick = handler;
+  }
+
+  /** Update the threat events data and trigger a map re-render. */
+  updateThreatEvents(events: ThreatEvent[]): void {
+    this.threatEvents = events;
+    this.rebuildThreatClusterIndex();
+    if (this.deckOverlay) {
+      this.deckOverlay.setProps({ layers: this.buildAisLayers() });
+      this.map?.triggerRepaint();
+    }
+  }
+
+  project(longitude: number, latitude: number): { x: number; y: number } | null {
+    if (!this.map) return null;
+    const point = this.map.project([longitude, latitude]);
+    return { x: point.x, y: point.y };
   }
 
   /**
@@ -12589,6 +12804,15 @@ export class DeckGLMap {
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
     // LYR_TERMINATOR masqué : le Deck.gl DayNightLayer gère toute la visualisation jour/nuit
     this.setVis(LYR_TERMINATOR, 'none');
+
+    // Threat map — couche Deck.gl ScatterplotLayer
+    const threatMapEnabled = layers.threatMap ?? false;
+    if (this.threatEventsVisible !== threatMapEnabled) {
+      this.threatEventsVisible = threatMapEnabled;
+      if (this.deckOverlay) {
+        this.deckOverlay.setProps({ layers: this.buildAisLayers() });
+      }
+    }
   }
 
   async refreshWeatherRadar(force = true): Promise<void> {

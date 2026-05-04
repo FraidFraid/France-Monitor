@@ -42,7 +42,7 @@ const JSON_PROXY_URL = import.meta.env.PROD
   : 'http://localhost:3001/api/json-proxy';
 
 // RansomwareLive API (via proxy pour éviter CORS)
-const RANSOMWARE_API_URL = 'https://api.ransomware.live/recentvictims';
+const RANSOMWARE_API_URL = 'https://data.ransomware.live/posts.json';
 
 // NVD API (via proxy pour éviter rate limiting et CORS)
 const NVD_API_URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0';
@@ -141,7 +141,7 @@ async function fetchCertFrAlerts(): Promise<{ alerts: CyberAlert[]; status: Cybe
 // ═══ Fetch Ransomware Victims (RansomwareLive) ═══
 
 interface RansomwareRawVictim {
-  victim_name: string;
+  post_title: string;
   country: string;
   activity?: string;
   discovered: string;

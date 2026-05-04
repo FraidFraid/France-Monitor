@@ -96,6 +96,12 @@ import { fetchHealthData } from './services/health.ts';
 import { computeHealthBarometer } from './services/health-barometer.ts';
 import type { HealthBarometerMetrics } from './services/health-barometer.ts';
 import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
+import {
+  DEFAULT_THREAT_EVENT_FILTERS,
+  fetchThreatMapEvents,
+  filterThreatEvents,
+  type ThreatEventFilters,
+} from './services/threat-map.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
@@ -103,7 +109,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -373,6 +379,7 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   stability: false,
   cyber: false,
+  threatMap: false,
   gasNetwork: false,
   oilNetwork: false,
   nuclearFleet: false,
@@ -670,21 +677,24 @@ const SUBSEA_CABLES_LEGEND: LegendCategory = {
 
 const CYBER_LEGEND: LegendCategory = {
   id: 'cyber',
-  title: 'Vigilance Cyber — CERT-FR',
+  title: 'Vigilance cyber & incidents',
   type: 'categorical',
+  columns: 2,
+  splitIndex: 2,
   items: [
-    { id: 'critical', label: 'Critique', color: '#EF4444', shape: 'circle' },
+    { id: 'critical', label: 'Critique / crise', color: '#EF4444', shape: 'circle' },
     { id: 'high', label: 'Élevée', color: '#F97316', shape: 'circle' },
-    { id: 'medium', label: 'Moyenne', color: '#EAB308', shape: 'circle' },
-    { id: 'low', label: 'Faible', color: '#22C55E', shape: 'circle' },
+    { id: 'medium', label: 'Modérée', color: '#F59E0B', shape: 'circle' },
+    { id: 'low', label: 'Faible / veille', color: '#3B82F6', shape: 'circle' },
   ],
   source: {
-    label: 'CERT-FR / ANSSI',
+    label: 'CERT-FR / ANSSI / RansomwareLive / FrenchBreaches / Shodan / Censys',
     year: new Date().getFullYear(),
   },
   refresh: {
     label: '~5 min'
-  }
+  },
+  notes: ['Couleur = sévérité maximale affichée sur la carte ; les clusters héritent du signal le plus fort.'],
 };
 
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
@@ -1267,6 +1277,9 @@ export class App {
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private currentCyberData: CyberState | null = null;
+  private currentThreatEvents: ThreatEvent[] = [];
+  private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
+
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
   private currentDromEnergyDashboard: DromEnergyDashboard | null = null;
@@ -1736,6 +1749,8 @@ export class App {
 
   private normalizeLayerState(layers: MapLayers): MapLayers {
     const normalized = { ...layers };
+    normalized.cyber = normalized.cyber || normalized.threatMap;
+    normalized.threatMap = normalized.cyber;
     normalized.newsGroup = normalized.news || normalized.stability;
     if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
       normalized.trafficRoad = true;
@@ -2397,6 +2412,11 @@ export class App {
     this.cyberPanel.setOnClose(() => {
       // Optional: could update StatusPanel state here
     });
+    this.cyberPanel.setOnThreatFiltersChange((filters) => {
+      this.currentThreatFilters = filters;
+      this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
+    });
+    this.cyberPanel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
     this.cyberPanel.mount();
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
@@ -2731,6 +2751,7 @@ export class App {
         effective[config.id] = groupsOn.has(config.groupId);
       }
     }
+    effective.threatMap = effective.cyber;
     return effective;
   }
 
@@ -2776,6 +2797,11 @@ export class App {
 
   private onLayerToggle(key: keyof MapLayers, enabled: boolean): void {
     this.activeLayers[key] = enabled;
+    if (key === 'cyber') {
+      this.activeLayers.threatMap = enabled;
+    } else if (key === 'threatMap') {
+      this.activeLayers.cyber = enabled;
+    }
     this._syncGroupFlags(key, enabled);
 
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
@@ -2834,7 +2860,7 @@ export class App {
       }
     }
 
-    if (key === 'military' || key === 'subseaCables' || key === 'cyber') {
+    if (key === 'military' || key === 'subseaCables' || key === 'cyber' || key === 'threatMap') {
       this.activeLayers.sovereignty =
         this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
     }
@@ -2952,9 +2978,19 @@ export class App {
     } else if (key === 'cyber') {
       if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
         if (!this.currentCyberData) this.loadCyber(); // lazy-load on first enable
+        void this.loadThreatMapEvents();
         this.cyberPanel?.show(this.currentCyberData);
       } else {
         this.cyberPanel?.hide();
+      }
+    } else if (key === 'threatMap') {
+      if (this.activeLayers.threatMap) {
+        void this.loadThreatMapEvents();
+        if (!this.currentCyberData) void this.loadCyber();
+        this.cyberPanel?.selectTab('incidents');
+        if (this.cyberPanel && !this.cyberPanel.isVisible() && this.activeLayers.sovereignty) {
+          this.cyberPanel.show(this.currentCyberData);
+        }
       }
     } else if (key === 'military') {
       if (this.activeLayers.military && this.activeLayers.sovereignty) {
@@ -3144,6 +3180,13 @@ export class App {
     this.mapContainer.setOnMilitaryShipClick((ship, x, y) => {
       if (this.mapPopup) {
         this.mapPopup.showMilitaryShip(ship, x, y);
+      }
+    });
+
+    // Handle threat event clicks → show detailed popup
+    this.mapContainer.setOnThreatEventClick((event, x, y) => {
+      if (this.mapPopup) {
+        this.mapPopup.showThreatEvent(event, x, y);
       }
     });
 
@@ -4276,11 +4319,47 @@ export class App {
       console.log('[App/loadCyber] cyberPanel.isVisible():', this.cyberPanel?.isVisible());
       this.cyberPanel?.update(cyberData);
 
+      // Also update the threat map layer with live data
+      void this.loadThreatMapEvents();
+
       console.log(`[App/loadCyber] ========== COMPLETE: Score=${cyberData.meta.globalScore}, Sources=${cyberData.meta.sources.filter(s => s.isUp).length}/3 ==========`);
     } catch (err) {
       console.error('[App/loadCyber] ========== FAILED ==========', err);
       this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
     }
+  }
+
+  /** Fetch threat map events → DeckGL layer + CyberPanel incidents tab. */
+  private async loadThreatMapEvents(): Promise<void> {
+    try {
+      const state = await fetchThreatMapEvents();
+      this.currentThreatEvents = state.events;
+      const visibleEvents = filterThreatEvents(state.events, this.currentThreatFilters);
+      this.mapContainer?.updateThreatEvents(visibleEvents);
+      this.cyberPanel?.updateThreatEvents(state.events);
+      console.log(`[ThreatMap] ${visibleEvents.length}/${state.events.length} events visible after filters`);
+    } catch (err) {
+      console.error('[ThreatMap] Failed to load events:', err);
+    }
+  }
+
+  private focusThreatEvent(event: ThreatEvent): void {
+    const [lng, lat] = event.location.coordinates;
+    const zoomByPrecision: Record<ThreatEvent['location']['precision'], number> = {
+      hq: 13.5,
+      city: 12,
+      region: 8,
+      country: 6.2,
+      unknown: 6.2,
+    };
+    this.mapContainer?.flyTo(lng, lat, zoomByPrecision[event.location.precision] ?? 10);
+
+    window.setTimeout(() => {
+      const projected = this.mapContainer?.project(lng, lat);
+      if (projected && this.mapPopup) {
+        this.mapPopup.showThreatEvent(event, projected.x, projected.y);
+      }
+    }, 900);
   }
 
   private async loadGas(): Promise<void> {

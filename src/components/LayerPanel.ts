@@ -104,7 +104,7 @@ export class LayerPanel {
   private render(): void {
     if (!this.element) return;
 
-    const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energySystems', 'traffic', 'sovereignty', 'outages', 'environmentGroup']);
+    const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energySystems', 'traffic', 'sovereignty', 'outages', 'environmentGroup', 'health']);
     const enabledCount = LAYER_DEFS.filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
 
     let listHtml = '';
@@ -503,7 +503,7 @@ export class LayerPanel {
       this.helpSection('&#128737;', 'Souveraineté', [
         this.helpItem('&#128737;', 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
         this.helpItem('&#127754;', 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
-        this.helpItem('&#128274;', 'Vigilance cyber', 'Alertes CERT-FR, ransomware actifs et CVE critiques récentes.', 'live'),
+        this.helpItem('&#128274;', 'Vigilance cyber', 'Alertes CERT-FR, fuites françaises, ransomware actifs, CVE critiques, exposition passive et incidents géolocalisés. Sources : CERT-FR, ANSSI, FrenchBreaches, RansomwareLive, Shodan, Censys.', 'live'),
       ]),
       this.helpSection('&#128225;', 'Pannes réseau', [
         this.helpItem('&#9889;', 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),

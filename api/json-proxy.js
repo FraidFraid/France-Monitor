@@ -5,14 +5,14 @@
  *
  * Endpoint: GET /api/json-proxy?url=<api_url>
  * Response: Le JSON de l'API externe tel quel.
- *
- * Domaines whitelistés : api.ransomware.live, services.nvd.nist.gov
+ * Domaines whitelistés : api.ransomware.live, data.ransomware.live, services.nvd.nist.gov
  */
 
 export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
   'api.ransomware.live',
+  'data.ransomware.live',
   'ransomware.live',
   'services.nvd.nist.gov',
   'nvd.nist.gov',

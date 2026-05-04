@@ -36,6 +36,8 @@ import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
 import gieProxyPlugin from './src/plugins/gie-proxy';
 import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
+import { threatsProxyPlugin } from './src/plugins/threats-proxy';
+import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 // Brotli precompression — creates .br companion files for all JS/CSS/HTML assets.
@@ -153,6 +155,8 @@ export default defineConfig(({ mode }) => {
         clientSecret: env.RTE_CLIENT_SECRET ?? '',
       }),
       situationHistoryProxyPlugin(),
+      threatsProxyPlugin(),
+      exposureProxyPlugin(),
       aisRelayPlugin(aisApiKey),
       appVersionPlugin(),
       brotliPrecompressPlugin(),

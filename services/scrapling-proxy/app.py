@@ -110,6 +110,9 @@ ALLOWED_DOMAINS = {
     'www.enedis.fr',  # Info-coupure
     'www.elysee.fr',
     'www.info.gouv.fr',
+    'frenchbreaches.com',
+    'www.frenchbreaches.com',
+    'map.frenchbreaches.com',
 }
 
 # Cache simple en mémoire (TTL 5 min)

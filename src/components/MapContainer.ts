@@ -6,7 +6,7 @@
 import type { DeckGLMap } from './DeckGLMap.ts';
 import { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
@@ -48,6 +48,7 @@ export class MapContainer {
   private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
+  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private dromEnergyData: DromEnergyDashboard | null = null;
   private dromEnergyLoadPromise: Promise<void> | null = null;
 
@@ -79,6 +80,7 @@ export class MapContainer {
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
+    if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
@@ -452,6 +454,19 @@ export class MapContainer {
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
     this.deckMap?.setOnSatelliteView(handler);
+  }
+
+  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
+    this.onThreatEventClick = handler;
+    this.deckMap?.setOnThreatEventClick(handler);
+  }
+
+  updateThreatEvents(events: ThreatEvent[]): void {
+    this.deckMap?.updateThreatEvents(events);
+  }
+
+  project(longitude: number, latitude: number): { x: number; y: number } | null {
+    return this.deckMap?.project(longitude, latitude) ?? null;
   }
 
   setBasemapSatellite(enabled: boolean): void {
