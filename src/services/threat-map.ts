@@ -50,7 +50,7 @@ export interface ThreatEventFilters {
 export const DEFAULT_THREAT_EVENT_FILTERS: ThreatEventFilters = {
   severity: 'all',
   type: 'all',
-  time: 'all',
+  time: '30d',
   query: '',
 };
 
