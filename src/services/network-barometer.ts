@@ -10,7 +10,7 @@
  *  - Tension cyber            5%
  */
 
-import type { EcowattResponse, TelecomOutage } from '../types/index.ts';
+import type { EcowattResponse, TelecomOutage, ThreatEvent } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
 import type { CyberState } from '../types/index.ts';
 import type { InfraNetworkState } from '../types/index.ts';
@@ -21,6 +21,8 @@ import { fetchTelecomOutages } from './outages.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
 import { fetchCyberDashboard } from './cyber.ts';
 import { fetchInfraNetwork } from './infra-network.ts';
+import { fetchThreatMapEvents } from './threat-map.ts';
+import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 
 // ── Types exportés ────────────────────────────────────────────────────────────
 
@@ -94,9 +96,9 @@ function normalizeCloud(state: InfraNetworkState): number {
   return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
 
-function normalizeCyber(state: CyberState): number {
-  // globalScore : 0=calme, 100=crise → inverser pour obtenir un score de santé
-  return 100 - state.meta.globalScore;
+function normalizeCyber(state: CyberState, threatEvents: ThreatEvent[]): number {
+  // Consolidated pressure: 0=calme, 100=crise → inverser pour obtenir un score de santé.
+  return 100 - computeCyberPressureAssessment(state, threatEvents).score;
 }
 
 function normalizeWind(live: EolienLive): number {
@@ -143,14 +145,17 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
   // Fetch toutes les sources en parallèle — échec partiel → null pour cette source
-  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes] = await Promise.allSettled([
+  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes, threatRes] = await Promise.allSettled([
     fetchEcowatt(),
     fetchNetworkOutages(),
     fetchTelecomOutages(),
     fetchSpaceWeather(),
     fetchCyberDashboard(),
     fetchInfraNetwork(),
+    fetchThreatMapEvents(),
   ]);
+
+  const threatEvents = threatRes.status === 'fulfilled' ? threatRes.value.events : [];
 
   const scores: Partial<Record<WeightKey, number | null>> = {
     elec:    ecowattRes.status  === 'fulfilled' ? normalizeElec(ecowattRes.value)       : null,
@@ -158,7 +163,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
     telecom: telecomRes.status  === 'fulfilled' ? normalizeTelecom(telecomRes.value)    : null,
     cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
-    cyber:   cyberRes.status    === 'fulfilled' ? normalizeCyber(cyberRes.value)        : null,
+    cyber:   cyberRes.status    === 'fulfilled' ? normalizeCyber(cyberRes.value, threatEvents) : null,
     wind:    _eolienLive !== null ? normalizeWind(_eolienLive) : null,
   };
 

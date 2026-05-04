@@ -17,6 +17,7 @@ import type {
   ISNRScore,
   TelecomOutage,
   PowerOutage,
+  ThreatEvent,
 } from '../types/index.ts';
 
 // ═══ Configuration ═══
@@ -322,6 +323,35 @@ function computeDimensionScore(
   return Math.min(maxScore, (total / 1200) * maxScore);
 }
 
+function threatSeverityWeight(severity: ThreatEvent['severity']): number {
+  if (severity === 'critical') return 80;
+  if (severity === 'high') return 45;
+  if (severity === 'medium') return 24;
+  return 10;
+}
+
+function computeSecurityFromThreatEvents(threatEvents: ThreatEvent[], deptCode: string, cutoff: number): number {
+  const events = threatEvents.filter((event) => {
+    const eventTime = new Date(event.date).getTime();
+    if (!Number.isFinite(eventTime) || eventTime < cutoff) return false;
+
+    const [lon, lat] = event.location.coordinates;
+    return findDepartmentByCoords(lon, lat) === deptCode;
+  });
+
+  if (events.length === 0) return 0;
+
+  const raw = events.reduce((sum, event) => {
+    const typeMultiplier = event.type === 'ransomware' ? 1.15
+      : event.type === 'exposure' ? 1.1
+      : event.type === 'leak' ? 0.85
+      : 1;
+    return sum + threatSeverityWeight(event.severity) * typeMultiplier;
+  }, 0);
+
+  return Math.min(85, Math.round(raw / Math.max(1, Math.sqrt(events.length + 1))));
+}
+
 function computeVelocityScore(items: NewsItem[], _timeRangeMs: number): number {
   const now = Date.now();
   const oneHourAgo = now - 60 * 60 * 1000;
@@ -451,6 +481,7 @@ export function computeISNR(
   timeRange: TimeRange,
   telecomOutages: TelecomOutage[],
   powerOutages: PowerOutage[],
+  threatEvents: ThreatEvent[] = [],
 ): ISNRData {
   const now = new Date();
   const timeRangeMs = TIME_RANGE_MS[timeRange];
@@ -471,7 +502,9 @@ export function computeISNR(
 
     // Calculer chaque dimension
     const social = Math.round(computeDimensionScore(items, SOCIAL_CATEGORIES));
-    const security = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
+    const securityFromEvents = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
+    const securityFromThreats = computeSecurityFromThreatEvents(threatEvents, code, cutoff);
+    const security = Math.round(Math.max(securityFromEvents, securityFromThreats));
 
     // Infra = max(météo, crues, ecowatt, pannes) + events infra
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
@@ -506,7 +539,9 @@ export function computeISNR(
         else if (infra === infraFromEvents) { source = 'Signal Réseau'; label = 'Incidents Infra'; }
         topDriver = { dimension: 'infra', label, score: infra, source };
       } else if (maxDimScore === security) {
-        topDriver = { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
+        topDriver = securityFromThreats >= securityFromEvents
+          ? { dimension: 'security', label: 'Pression cyber OSINT', score: security, source: 'FrenchBreaches / CERT-FR / Shodan' }
+          : { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
       } else if (maxDimScore === social) {
         topDriver = { dimension: 'social', label: 'Tension Sociale', score: social, source: 'Signal Réseau' };
       } else if (maxDimScore === velocity) {

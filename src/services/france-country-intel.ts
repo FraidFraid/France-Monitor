@@ -35,11 +35,13 @@ import type {
   GpsJammingSignal,
   OilDashboard,
   FuelTensionDashboard,
+  ThreatEvent,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
 import type { TrafficIncident } from '@/services/traffic.ts';
 import { detectSituations } from './situation-engine.ts';
+import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -49,6 +51,7 @@ export interface FranceRawData {
   newsItems: NewsItem[];
   isnrData: ISNRData | null;
   cyberData: CyberState | null;
+  threatEvents?: ThreatEvent[];
   meteoAlerts: MeteoAlert[];
   floodSegments: FloodSegment[];
   sncfDisruptions: TransportDisruption[];
@@ -233,7 +236,7 @@ function computeFranceRiskPillars(
   const scores = isnr?.scores ?? [];
   const isnrSocial = avgDim(scores, 'social');
   const isnrInfra = avgDim(scores, 'infra');
-  const cyberScore = raw.cyberData?.meta.globalScore ?? 0;
+  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []).score;
 
   // Continuité : énergie + transport + télécom + pannes + météo
   // (transport n'apparaît PLUS dans social pour éviter le double-comptage)
@@ -361,6 +364,8 @@ function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | nul
  * Each field counts relevant items at the appropriate severity threshold.
  */
 export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
+  const cyberPressure = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []);
+
   return {
     // News
     criticalNews: raw.newsItems.filter((i) => i.threat?.level === 'critical').length,
@@ -384,8 +389,8 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     powerOutages: raw.powerOutages.length,
     telecomOutages: raw.telecomOutages.length,
     // Cyber
-    cyberAlerts: raw.cyberData?.alerts.count30d ?? 0,
-    cyberCritical: raw.cyberData?.vulnerabilities.criticalCount ?? 0,
+    cyberAlerts: Math.max(raw.cyberData?.alerts.count30d ?? 0, cyberPressure.summary.france30d),
+    cyberCritical: Math.max(raw.cyberData?.vulnerabilities.criticalCount ?? 0, cyberPressure.summary.critical30d),
     // Defense / intelligence
     militaryFlights: raw.militaryFlightsCount,
     maritimeTrafficFrance: raw.maritimeCount,
@@ -436,7 +441,7 @@ export function buildFranceBriefContext(
     infra: avgDim(scores, 'infra'),
   };
 
-  const cyberScore = raw.cyberData?.meta.globalScore ?? 0;
+  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []).score;
 
   // Determine the max level among meteo alerts (violet > red > orange > yellow > green > null)
   const meteoLevelOrder = ['violet', 'red', 'orange', 'yellow', 'green'];

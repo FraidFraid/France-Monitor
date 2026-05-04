@@ -18,6 +18,7 @@ import type {
 } from '../types/index.ts';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
+import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
 
@@ -288,27 +289,32 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
   const cyber = raw.cyberData;
   if (!cyber) return null;
 
-  const score = cyber.meta.globalScore;
-  const criticalCVEs = cyber.vulnerabilities.criticalCount;
-  const ransomware30d = cyber.ransomware.total30d;
-  const certCritical  = cyber.alerts.latest.filter(a => a.severity === 'critical').length;
+  const pressure = computeCyberPressureAssessment(cyber, raw.threatEvents ?? []);
+  const score = pressure.score;
+  const criticalCVEs = pressure.criticalCVEs;
+  const ransomware30d = Math.max(cyber.ransomware.total30d, pressure.summary.ransomware30d);
+  const certCritical = pressure.certCritical;
+  const leaks30d = pressure.summary.leaks30d;
+  const exposure30d = pressure.summary.exposure30d;
   const trend = cyber.meta.trend;
 
-  if (score < 55 && criticalCVEs === 0) return null;
+  if (score < 55 && criticalCVEs === 0 && ransomware30d === 0 && leaks30d < 5) return null;
 
   const outageCorrelation = raw.powerOutages.length > 0 || raw.telecomOutages.length > 0;
 
-  const severity: SituationSeverity = (score >= 80 || certCritical >= 2) ? 'critical'
-    : (score >= 65 || criticalCVEs >= 3) ? 'high'
+  const severity: SituationSeverity = (score >= 85 || certCritical >= 2) ? 'critical'
+    : (score >= 65 || criticalCVEs >= 3 || ransomware30d >= 10) ? 'high'
     : 'medium';
 
   const confidence = Math.min(0.88, 0.50 + (score / 100) * 0.30 + (outageCorrelation ? 0.10 : 0) + (certCritical * 0.04));
 
   const drivers: string[] = [];
-  drivers.push(`Score cyber global : ${score}/100 (tendance ${trend === 'rising' ? '↗ haussière' : trend === 'falling' ? '↘ baissière' : '→ stable'})`);
+  drivers.push(`Score cyber consolidé : ${score}/100 (tendance ${trend === 'rising' ? '↗ haussière' : trend === 'falling' ? '↘ baissière' : '→ stable'})`);
   if (certCritical > 0) drivers.push(`${certCritical} alerte(s) critique(s) CERT-FR`);
   if (criticalCVEs > 0) drivers.push(`${criticalCVEs} CVE critique(s) actif(s) (CVSS ≥ 9)`);
   if (ransomware30d > 10) drivers.push(`${ransomware30d} victimes ransomware FR sur 30 jours`);
+  if (leaks30d > 0) drivers.push(`${leaks30d} fuite(s) de données FR sur 30 jours`);
+  if (exposure30d > 0) drivers.push(`${exposure30d} signal(aux) d’exposition passive Shodan/Censys`);
   if (outageCorrelation) drivers.push('Pannes réseau/telecom concomitantes (corrélation à surveiller)');
 
   return situation(
@@ -317,7 +323,7 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Pression cyber élevée',
-    `Baromètre cyber à ${score}/100${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
+    `Baromètre cyber consolidé à ${score}/100${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
     ['France'],
     drivers,
     [
@@ -325,7 +331,7 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
       action('Vérifier les secteurs OIV/ESS ciblés (santé, énergie, finance)', 'Analyste cyber', 'investigate'),
       ...(outageCorrelation ? [action('Croiser avec les pannes réseau pour écarter une attaque coordonnée', 'IA + analyste infra', 'cross-check', true)] : []),
     ],
-    ['CERT-FR', 'RansomwareLive', 'NVD CVE'],
+    ['CERT-FR', 'RansomwareLive', 'FrenchBreaches', 'Shodan/Censys', 'NVD CVE'],
   );
 }
 

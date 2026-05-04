@@ -5383,6 +5383,7 @@ export class App {
       newsItems:            this.newsItems,
       isnrData:             this.currentISNRData,
       cyberData:            this.currentCyberData,
+      threatEvents:         this.currentThreatEvents,
       meteoAlerts:          this.currentMeteoAlerts,
       floodSegments:        this.currentFloodSegments,
       sncfDisruptions:      this.currentSncfDisruptions,
@@ -5732,6 +5733,7 @@ export class App {
       '24h',
       this.currentTelecomOutages,
       this.currentPowerOutages,
+      this.currentThreatEvents,
     );
 
     // Update map layer
