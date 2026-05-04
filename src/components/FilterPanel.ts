@@ -46,6 +46,7 @@ const DEFAULT_FILTER: FilterState = {
         outagesCloud: false,
         stability: false,
         cyber: false,
+        threatMap: false,
         gasNetwork: false,
         oilNetwork: false,
         nuclearFleet: false,
