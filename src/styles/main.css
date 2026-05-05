@@ -2215,11 +2215,25 @@ body {
   padding: 12px;
   max-width: 320px;
   min-width: 240px;
-  z-index: var(--z-popup);
+  z-index: 1200;
   pointer-events: auto;
   backdrop-filter: blur(8px);
   animation: popupFadeIn 0.15s ease-out;
   cursor: pointer;
+}
+
+.map-popup--threat {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.45) rgba(15, 23, 42, 0.35);
+}
+
+.map-popup--threat::-webkit-scrollbar {
+  width: 8px;
+}
+
+.map-popup--threat::-webkit-scrollbar-thumb {
+  background: rgba(125, 211, 252, 0.45);
+  border-radius: 999px;
 }
 
 @keyframes popupFadeIn {

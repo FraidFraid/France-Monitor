@@ -428,7 +428,7 @@ export class BarometerWidget {
       ? (windScore >= 85 ? '#34c759' : windScore >= 60 ? '#ffcc00' : '#ff2d55')
       : 'var(--text-muted)';
 
-    const rows: [string, number | null][] = [
+    const rows: Array<[string, number | null, ('health' | 'cyber')?]> = [
       ['BGP / Internet',        details.bgp    ?? null],
       ['Électricité (Ecowatt)', details.elec   ?? null],
       ['Nucléaire (RTE)',       this.currentNuclear?.score ?? null],
@@ -436,12 +436,14 @@ export class BarometerWidget {
       ['Telecom ARCEP',         details.telecom ?? null],
       ['Cloud / Web',           details.cloud  ?? null],
       ['Météo Spatiale',        details.space  ?? null],
-      ['Cyber (CERT-FR)',       details.cyber  ?? null],
+      ['Résilience cyber infra', details.cyber  ?? null, 'cyber'],
     ];
 
-    const rowsHtml = rows.map(([label, val]) => {
+    const rowsHtml = rows.map(([label, val, kind = 'health']) => {
       const isNuclear = label === 'Nucléaire (RTE)';
       const isWind    = label === 'Éolien (éCO2mix)';
+      const isCyber   = kind === 'cyber';
+      const cyberNationalPressure = isCyber ? details.cyberNational ?? null : null;
       const display = isNuclear
         ? (this.currentNuclear?.label ?? '—')
         : val !== null ? `${val} / 100` : '—';
@@ -453,6 +455,19 @@ export class BarometerWidget {
           : val >= 85 ? '#34c759'
           : val >= 60 ? '#ffcc00'
           : '#ff2d55';
+      if (isCyber) {
+        return `
+          <div style="padding:4px 0 6px;border-top:1px solid rgba(255,255,255,0.045);margin-top:3px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
+              <span style="color:var(--text-secondary);">${label}</span>
+              <span style="font-weight:600;color:${color};font-family:monospace;font-size:10px;">${display}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:3px;">
+              <span style="color:var(--text-muted);font-size:9px;">Sous-score infra ajusté par corrélations réseau/cloud.</span>
+              ${cyberNationalPressure !== null ? `<button type="button" data-open-cyber-panel style="border:0;background:transparent;color:rgba(255,255,255,0.52);font-size:9px;font-family:monospace;cursor:pointer;padding:0;">National ${cyberNationalPressure}/100</button>` : ''}
+            </div>
+          </div>`;
+      }
       return `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:2px 0;">
           <span style="color:var(--text-secondary);">${label}</span>
@@ -462,7 +477,10 @@ export class BarometerWidget {
 
     return `
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.06);">
-        État Infrastructure France
+        Continuité Infrastructure France
+      </div>
+      <div style="font-size:9px;color:var(--text-muted);margin:-3px 0 8px;line-height:1.35;">
+        Score de continuité borné. La ligne cyber mesure la résilience infra, pas la pression cyber nationale.
       </div>
       ${rowsHtml}
     `;
@@ -474,6 +492,10 @@ export class BarometerWidget {
     }
 
     this.tooltipEl.innerHTML = this._renderTooltip(this.currentDetails);
+    this.tooltipEl.querySelector<HTMLElement>('[data-open-cyber-panel]')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      document.dispatchEvent(new CustomEvent('open-cyber-panel'));
+    });
   }
 
   destroy(): void {

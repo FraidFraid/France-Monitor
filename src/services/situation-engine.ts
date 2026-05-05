@@ -287,16 +287,21 @@ function detectWildfireEscalation(raw: FranceRawData): DetectedSituation | null 
 
 function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
   const cyber = raw.cyberData;
-  if (!cyber) return null;
+  const threatEvents = raw.threatEvents ?? [];
+  if (!cyber && threatEvents.length === 0) return null;
 
-  const pressure = computeCyberPressureAssessment(cyber, raw.threatEvents ?? []);
+  const pressure = computeCyberPressureAssessment(cyber, threatEvents, {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  });
   const score = pressure.score;
   const criticalCVEs = pressure.criticalCVEs;
-  const ransomware30d = Math.max(cyber.ransomware.total30d, pressure.summary.ransomware30d);
+  const ransomware30d = Math.max(cyber?.ransomware.total30d ?? 0, pressure.summary.ransomware30d);
   const certCritical = pressure.certCritical;
   const leaks30d = pressure.summary.leaks30d;
   const exposure30d = pressure.summary.exposure30d;
-  const trend = cyber.meta.trend;
+  const trend = cyber?.meta.trend ?? 'stable';
+  const dominantBreakdown = pressure.breakdown.filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
 
   if (score < 55 && criticalCVEs === 0 && ransomware30d === 0 && leaks30d < 5) return null;
 
@@ -310,6 +315,9 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
 
   const drivers: string[] = [];
   drivers.push(`Score cyber consolidé : ${score}/100 (tendance ${trend === 'rising' ? '↗ haussière' : trend === 'falling' ? '↘ baissière' : '→ stable'})`);
+  if (dominantBreakdown.length > 0) {
+    drivers.push(...dominantBreakdown.slice(0, 3).map((item) => `${item.label} : ${item.score}/${item.cap}`));
+  }
   if (certCritical > 0) drivers.push(`${certCritical} alerte(s) critique(s) CERT-FR`);
   if (criticalCVEs > 0) drivers.push(`${criticalCVEs} CVE critique(s) actif(s) (CVSS ≥ 9)`);
   if (ransomware30d > 10) drivers.push(`${ransomware30d} victimes ransomware FR sur 30 jours`);
@@ -322,8 +330,8 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
     'CYBER_PRESSURE',
     severity,
     confidence,
-    'Pression cyber élevée',
-    `Baromètre cyber consolidé à ${score}/100${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
+    'Pression cyber multi-source',
+    `Baromètre cyber consolidé à ${score}/100${pressure.dominantFamily ? `, dominé par ${dominantBreakdown[0]?.label.toLowerCase()}` : ''}${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
     ['France'],
     drivers,
     [

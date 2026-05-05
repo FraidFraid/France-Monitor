@@ -67,7 +67,10 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
 
     try {
         const resp = await fetch(ENDPOINT, {
-            signal: AbortSignal.timeout(15_000),
+            // 60s : le plugin dev scrape jusqu'à 10 depts × 15 villes + géocodage,
+            // ce qui peut dépasser largement les 15s initiaux.
+            // En prod (Vercel), la serverless function a son propre timeout.
+            signal: AbortSignal.timeout(60_000),
         });
 
         if (!resp.ok) {

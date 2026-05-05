@@ -516,6 +516,14 @@ export class MapContainer {
     this.deckMap?.highlightWeatherDepartment(departmentCode);
   }
 
+  previewWeatherDepartment(departmentCode: string | null): void {
+    this.deckMap?.previewWeatherDepartment(departmentCode);
+  }
+
+  selectWeatherDepartment(departmentCode: string | null): void {
+    this.deckMap?.selectWeatherDepartment(departmentCode);
+  }
+
   // ─── ISNR (Stability Index) ───
   async updateISNR(scores: ISNRScore[]): Promise<void> {
     await this.deckMap?.updateISNR(scores);

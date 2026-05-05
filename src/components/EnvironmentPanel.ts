@@ -49,6 +49,7 @@ export class EnvironmentPanel extends Panel {
   private closeBtn: HTMLElement | null = null;
   private onClose?: () => void;
   private onHoverDepartment?: (code: string | null) => void;
+  private onSelectDepartment?: (code: string | null) => void;
   private onShowWeatherAlerts?: (alerts: MeteoAlert[]) => void;
   private onHoverSegment?: (id: string | null) => void;
   private onSelectSegment?: (id: string) => void;
@@ -71,6 +72,10 @@ export class EnvironmentPanel extends Panel {
 
   setOnHoverDepartment(handler: (code: string | null) => void): void {
     this.onHoverDepartment = handler;
+  }
+
+  setOnSelectDepartment(handler: (code: string | null) => void): void {
+    this.onSelectDepartment = handler;
   }
 
   setOnShowWeatherAlerts(handler: (alerts: MeteoAlert[]) => void): void {
@@ -153,6 +158,7 @@ export class EnvironmentPanel extends Panel {
   hide(): void {
     this.selectedDepartmentCode = null;
     this.onHoverDepartment?.(null);
+    this.onSelectDepartment?.(null);
     this.onHoverSegment?.(null);
     if (this.modalEl) this.modalEl.style.display = 'none';
     this.onClose?.();
@@ -455,12 +461,13 @@ export class EnvironmentPanel extends Panel {
       };
       card.onmouseleave = () => {
         this.applyWeatherCardState(card);
-        this.onHoverDepartment?.(this.selectedDepartmentCode);
+        this.onHoverDepartment?.(null);
       };
       card.onclick = () => {
         const code = card.dataset.code ?? null;
         this.selectedDepartmentCode = this.selectedDepartmentCode === code ? null : code;
-        this.onHoverDepartment?.(this.selectedDepartmentCode);
+        this.onHoverDepartment?.(null);
+        this.onSelectDepartment?.(this.selectedDepartmentCode);
         this.refreshWeatherCardStates();
       };
       card.onkeydown = (event) => {
@@ -486,6 +493,7 @@ export class EnvironmentPanel extends Panel {
         this.selectedWeatherPeriod = period;
         this.selectedDepartmentCode = null;
         this.onHoverDepartment?.(null);
+        this.onSelectDepartment?.(null);
         this.onShowWeatherAlerts?.(alerts);
         this.renderContent();
       };

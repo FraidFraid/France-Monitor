@@ -60,7 +60,13 @@ export function buildNuclearState(
     remitSignals = [];
     remitAvailable = false;
     remitStatus = 'html';
+  } else if (!iipState.hasEverSucceeded) {
+    // Premier chargement : IIP n'a pas encore répondu — afficher "en cours" plutôt que "indisponible"
+    remitSignals = [];
+    remitAvailable = false;
+    remitStatus = 'loading';
   } else {
+    // IIP avait déjà fonctionné mais est maintenant en erreur — vraie indisponibilité
     remitSignals = [];
     remitAvailable = false;
     remitStatus = 'unavailable';

@@ -25,6 +25,7 @@ import {
   type ThreatTimeFilter,
   type ThreatTypeFilter,
 } from '../services/threat-map.ts';
+import { computeCyberPressureAssessment } from '../services/cyber-threat-scoring.ts';
 
 type ActiveTab = 'alertes' | 'ransomware' | 'incidents';
 type ThreatFilterChangeHandler = (filters: ThreatEventFilters) => void;
@@ -93,13 +94,13 @@ export class CyberPanel extends Panel {
       centerId: 'cyber-ring-score',
       centerText: '--',
       ringStroke: '#10B981',
-      title: 'Vigilance Cyber Nationale',
+      title: 'Pression Cyber Nationale',
       subtitle: 'Chargement...',
       statusId: 'cyber-status-label',
       badgeId: 'cyber-truth-badge',
       gradientStart: 'rgba(16, 185, 129, 0.16)',
       gradientEnd: 'rgba(99, 102, 241, 0.10)',
-      titlePrefix: 'Surveillance souveraine',
+      titlePrefix: 'Scoring multi-signaux',
       extraTopRowHtml: '<div id="cyber-trend" style="font-size:10px;margin-top:4px;color:var(--text-muted);"></div>',
     });
     header.className = 'cyber-panel-header';
@@ -222,16 +223,16 @@ export class CyberPanel extends Panel {
           Module Cyber désactivé
         </div>
         <div style="color: var(--text-muted); font-size: 12px; line-height: 1.6;">
-          Ce module agrège des données Open Data de cybersécurité :
+          Ce module agrège des signaux cyber publics multi-sources :
         </div>
         <div style="margin-top: 16px; text-align: left; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px;">
           <div style="color: var(--text-secondary); font-size: 11px; margin-bottom: 8px;">
             <strong>Sources disponibles :</strong>
           </div>
           <ul style="color: var(--text-muted); font-size: 11px; margin: 0; padding-left: 16px; line-height: 1.8;">
-            <li><a href="https://www.cert.ssi.gouv.fr/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">CERT-FR (ANSSI)</a> - Alertes officielles</li>
-            <li><a href="https://ransomware.live/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">Ransomware.live</a> - Victimes ransomware</li>
-            <li><a href="https://nvd.nist.gov/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">NVD (NIST)</a> - Base CVE</li>
+            <li><a href="https://www.cert.ssi.gouv.fr/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">CERT-FR (ANSSI)</a> - Avis et alertes techniques</li>
+            <li><a href="https://ransomware.live/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">Ransomware.live</a> - Victimes ransomware 30 jours</li>
+            <li><a href="https://nvd.nist.gov/" target="_blank" rel="noopener noreferrer" style="color: var(--text-accent);">NVD (NIST)</a> - Vulnérabilités critiques</li>
           </ul>
         </div>
         <div style="margin-top: 16px; color: var(--text-muted); font-size: 10px;">
@@ -277,7 +278,8 @@ export class CyberPanel extends Panel {
     const statusLabel = this.modalEl.querySelector('#cyber-status-label') as HTMLElement;
     const trendEl = this.modalEl.querySelector('#cyber-trend') as HTMLElement;
 
-    const score = data.meta.globalScore;
+    const assessment = computeCyberPressureAssessment(data, this.threatEvents);
+    const score = assessment.score;
     const { color, label } = getCyberScoreColor(score);
 
     // Update ring progress (circumference is ~100)
@@ -304,7 +306,7 @@ export class CyberPanel extends Panel {
       trendEl.innerHTML = `
         <span style="color: ${trendColor}; font-weight: 500;">${trendIcon} ${trendLabel}</span>
         <span style="color: var(--text-muted); margin-left: 8px;">
-          MàJ: ${data.meta.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          MàJ: ${data.meta.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} · ${assessment.dominantFamily ? assessment.breakdown.find((item) => item.family === assessment.dominantFamily)?.label ?? 'multi-source' : 'faible pression'}
         </span>
       `;
     }
@@ -323,6 +325,9 @@ export class CyberPanel extends Panel {
 
   updateThreatEvents(events: ThreatEvent[]): void {
     this.threatEvents = events;
+    if (this.currentData && this.isVisible()) {
+      this.updateHeader(this.currentData);
+    }
     if (this.activeTab === 'incidents' && this.isVisible()) {
       this.renderTabContent();
     }
@@ -350,9 +355,9 @@ export class CyberPanel extends Panel {
         text-transform:uppercase; transition:all 0.15s;">${label}</button>`;
     };
     return `<div style="display:flex; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:10px;">
-      ${tab('alertes','CERT-FR')}
-      ${tab('ransomware','Ransomware')}
-      ${tab('incidents','Incidents')}
+      ${tab('alertes','CERT/NVD')}
+      ${tab('ransomware','Leaks & Ransom')}
+      ${tab('incidents','Carte incidents')}
     </div>`;
   }
 
@@ -367,7 +372,8 @@ export class CyberPanel extends Panel {
       warningHtml = `<div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:#F59E0B;display:flex;align-items:center;gap:6px;"><span>⚠️</span><span>Source ${names} indisponible</span></div>`;
     }
 
-    this.contentEl.innerHTML = `${warningHtml}${this.renderTabBar()}<div id="cyber-tab-content" style="flex:1;min-height:0;display:flex;flex-direction:column;"></div>`;
+    const assessment = computeCyberPressureAssessment(data, this.threatEvents);
+    this.contentEl.innerHTML = `${warningHtml}${this.renderScoreExplanation(assessment)}${this.renderTabBar()}<div id="cyber-tab-content" style="flex:1;min-height:0;display:flex;flex-direction:column;"></div>`;
     this.renderTabContent();
 
     this.contentEl.querySelectorAll<HTMLElement>('[data-tab]').forEach(btn => {
@@ -377,6 +383,44 @@ export class CyberPanel extends Panel {
       });
     });
     this.contentEl.querySelectorAll('a[data-external]').forEach(l => l.addEventListener('click', e => e.stopPropagation()));
+  }
+
+  private renderScoreExplanation(assessment: ReturnType<typeof computeCyberPressureAssessment>): string {
+    const activeBreakdown = assessment.breakdown.filter((item) => item.score > 0);
+    const rows = activeBreakdown.length > 0
+      ? activeBreakdown.map((item) => {
+        const pct = Math.max(4, Math.round((item.score / item.cap) * 100));
+        const color = item.family === 'ransomware' ? '#ef4444'
+          : item.family === 'vulnerabilities' ? '#f97316'
+          : item.family === 'exposure' ? '#3b82f6'
+          : item.family === 'leaks' ? '#06b6d4'
+          : '#8b5cf6';
+        return `
+          <div style="display:grid;grid-template-columns:88px 1fr 44px;gap:8px;align-items:center;">
+            <span style="font-size:10px;color:var(--text-secondary);">${item.label}</span>
+            <div style="height:6px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;">
+              <div style="width:${pct}%;height:100%;background:${color};box-shadow:0 0 10px ${color}55;"></div>
+            </div>
+            <span style="font-size:10px;color:${color};font-family:monospace;text-align:right;">${item.score}/${item.cap}</span>
+          </div>
+        `;
+      }).join('')
+      : `<div style="font-size:10px;color:var(--text-muted);">Aucun signal cyber dominant à cette minute.</div>`;
+
+    const explanation = activeBreakdown[0]?.explanation ?? 'Scoring borné par famille avec décroissance temporelle.';
+
+    return `
+      <div style="margin-bottom:10px;padding:9px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">Composition de la pression</div>
+          <div style="font-size:10px;color:var(--text-secondary);">${assessment.summary.france30d} signaux FR / 30j</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">${rows}</div>
+        <div style="margin-top:8px;font-size:9px;color:var(--text-muted);line-height:1.45;">
+          ${explanation} Une famille seule ne peut pas saturer le score.
+        </div>
+      </div>
+    `;
   }
 
   private renderTabContent(): void {
@@ -413,7 +457,7 @@ export class CyberPanel extends Panel {
       ">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
           <div style="color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-            CERT-FR
+            CERT-FR / NVD
           </div>
           <div style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 10px; font-size: 10px; color: var(--text-secondary);">
             ${count} / 30j
@@ -471,7 +515,7 @@ export class CyberPanel extends Panel {
         border: 1px solid rgba(255,255,255,0.05);
       ">
         <div style="color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
-          Ransomware FR
+          Leaks & Ransomware FR
         </div>
 
         <div class="cyber-odometer" style="display: flex; justify-content: center; gap: 4px; margin: 12px 0;">
@@ -494,7 +538,7 @@ export class CyberPanel extends Panel {
         </div>
 
         <div style="text-align: center; color: var(--text-muted); font-size: 10px; margin-bottom: 8px;">
-          victimes / 30 jours
+          incidents organisationnels / 30 jours
         </div>
 
         ${topSector ? `
@@ -539,7 +583,7 @@ export class CyberPanel extends Panel {
       ">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
           <div style="color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-            CVE Radar (7j)
+            Vulnérabilités critiques
           </div>
           <div style="background: rgba(239, 68, 68, 0.2); padding: 2px 8px; border-radius: 10px; font-size: 10px; color: #EF4444; font-weight: 600;">
             ${criticalCount} critiques
@@ -687,7 +731,7 @@ export class CyberPanel extends Panel {
         chip('data-threat-type','leak','Fuites',this.threatFilters.type === 'leak'),
         chip('data-threat-type','ransomware','Ransomware',this.threatFilters.type === 'ransomware'),
         chip('data-threat-type','exposure','Expositions',this.threatFilters.type === 'exposure'),
-        chip('data-threat-type','vulnerability','CERT-FR',this.threatFilters.type === 'vulnerability'),
+        chip('data-threat-type','vulnerability','CERT/NVD',this.threatFilters.type === 'vulnerability'),
       ].join(''))}
     </div>`;
   }

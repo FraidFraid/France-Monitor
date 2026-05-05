@@ -236,7 +236,10 @@ function computeFranceRiskPillars(
   const scores = isnr?.scores ?? [];
   const isnrSocial = avgDim(scores, 'social');
   const isnrInfra = avgDim(scores, 'infra');
-  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []).score;
+  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  }).score;
 
   // Continuité : énergie + transport + télécom + pannes + météo
   // (transport n'apparaît PLUS dans social pour éviter le double-comptage)
@@ -364,7 +367,10 @@ function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | nul
  * Each field counts relevant items at the appropriate severity threshold.
  */
 export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
-  const cyberPressure = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []);
+  const cyberPressure = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  });
 
   return {
     // News
@@ -441,7 +447,10 @@ export function buildFranceBriefContext(
     infra: avgDim(scores, 'infra'),
   };
 
-  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? []).score;
+  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  }).score;
 
   // Determine the max level among meteo alerts (violet > red > orange > yellow > green > null)
   const meteoLevelOrder = ['violet', 'red', 'orange', 'yellow', 'green'];

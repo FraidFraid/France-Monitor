@@ -71,6 +71,45 @@ function renderSparkline(history: number[]): string {
     `${bars}</div>`;
 }
 
+function summarizeNationalDrivers(data: ISNRData): string[] {
+  const active = data.scores.filter((score) => score.score > 0);
+  if (active.length === 0) return ['Aucune pression dominante à cette minute.'];
+
+  const totals = active.reduce((acc, score) => {
+    acc.social += score.dimensions.social;
+    acc.security += score.dimensions.security;
+    acc.infra += score.dimensions.infra;
+    acc.velocity += score.dimensions.velocity;
+    return acc;
+  }, { social: 0, security: 0, infra: 0, velocity: 0 });
+
+  const avg = {
+    social: Math.round(totals.social / active.length),
+    security: Math.round(totals.security / active.length),
+    infra: Math.round(totals.infra / active.length),
+    velocity: Math.round(totals.velocity / active.length),
+  };
+
+  const ordered = [
+    { key: 'security', label: 'Sécurité / cyber', value: avg.security },
+    { key: 'infra', label: 'Infrastructure', value: avg.infra },
+    { key: 'social', label: 'Social', value: avg.social },
+    { key: 'velocity', label: 'Vélocité', value: avg.velocity },
+  ].sort((a, b) => b.value - a.value);
+
+  const topDepartments = [...active]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((score) => `${score.name} ${score.score}`)
+    .join(' · ');
+
+  const lines = [`Pression moyenne: ${ordered[0].label} ${ordered[0].value}/100, puis ${ordered[1].label} ${ordered[1].value}/100.`];
+  if (topDepartments) {
+    lines.push(`Départements en tête: ${topDepartments}.`);
+  }
+  return lines;
+}
+
 export class ISNRPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
@@ -189,6 +228,7 @@ export class ISNRPanel extends Panel {
     const offset = circumference - (data.nationalScore / 100) * circumference;
 
     // Header with national score (Circular UI style)
+    const nationalSummary = summarizeNationalDrivers(data);
     let html = `
       <div class="isnr-drag-handle" style="padding: 18px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; cursor: grab; background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(14, 165, 233, 0.10));">
         <div style="display: flex; align-items: center; gap: 14px; pointer-events: none;">
@@ -205,7 +245,7 @@ export class ISNRPanel extends Panel {
           <!-- Title & Status -->
           <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0; min-width:0;">
             <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Stabilité nationale</div>
-            <div style="color: var(--text-primary); font-weight: 700; font-size: 14px;">ISNR France</div>
+            <div style="color: var(--text-primary); font-weight: 700; font-size: 14px;">Indice de stabilité France</div>
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 11px; font-weight: 600; color: ${nationalColor}; text-transform: uppercase; letter-spacing: 0.05em;">${nationalStatusText}</span>
             </div>
@@ -259,7 +299,10 @@ export class ISNRPanel extends Panel {
         </div>
         <!-- Caption -->
         <div style="margin-top:7px; font-size:9px; color:var(--text-muted); opacity:0.65; line-height:1.5; letter-spacing:0.01em;">
-          <b>Interprétation :</b> Score hybride 0-100 en temps réel. Fonctionne par moyenne pondérée, mais <u>bascule automatiquement sur la valeur maximale</u> d'une dimension dès qu'elle atteint 60 (Règle d'escalade OSINT) pour ne jamais lisser une urgence. Pannes réseau (IODA/ARCEP) intégrées à l'Infra.
+          <b>Interprétation :</b> Score hybride 0-100 en temps réel. Il combine social, sécurité/cyber, infrastructure et vélocité, puis <u>bascule sur la dimension dominante</u> dès qu’un signal fort dépasse le seuil d’escalade. Pannes réseau (IODA/ARCEP) intégrées à l’infrastructure.
+        </div>
+        <div style="margin-top:8px; padding:7px 8px; background:rgba(255,255,255,0.03); border-radius:6px; border-left:2px solid ${nationalColor};">
+          ${nationalSummary.map((line) => `<div style="font-size:9px; color:var(--text-secondary); line-height:1.45;">${line}</div>`).join('')}
         </div>
       </div>
     `;
@@ -278,7 +321,7 @@ export class ISNRPanel extends Panel {
       html += `
         <div style="padding: 12px 16px 8px 16px; flex-shrink: 0;">
           <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
-            Départements les plus instables
+            Départements sous plus forte pression
           </div>
         </div>
         <div style="overflow-y: auto; flex: 1; min-height: 0; padding: 0 16px 16px 16px;">
@@ -322,9 +365,16 @@ export class ISNRPanel extends Panel {
             </div>
             ${dept.history != null && dept.history.length >= 2 ? renderSparkline(dept.history) : ''}
             ${dept.topDriver ? `
-              <div style="font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.03); padding: 4px 6px; border-radius: 4px; border-left: 2px solid ${scoreToColor(dept.topDriver.score)}">
-                <span style="color: var(--text-primary); font-weight: 500;">⚠️ ${dept.topDriver.label}</span>
-                <span style="color: var(--text-muted); font-size: 9px; margin-left: auto;">${dept.topDriver.source}</span>
+              <div style="font-size: 11px; margin-top: 6px; background: rgba(255,255,255,0.03); padding: 5px 6px; border-radius: 4px; border-left: 2px solid ${scoreToColor(dept.topDriver.score)}">
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <span style="color: var(--text-primary); font-weight: 500;">⚠️ ${dept.topDriver.label}</span>
+                  <span style="color: var(--text-muted); font-size: 9px; margin-left: auto;">${dept.topDriver.source}</span>
+                </div>
+                ${dept.topDriver.detail ? `
+                  <div style="margin-top:3px; font-size:9px; color:var(--text-muted); line-height:1.35;">
+                    ${dept.topDriver.detail}
+                  </div>
+                ` : ''}
               </div>
             ` : ''}
           </div>

@@ -471,7 +471,7 @@ export class LayerPanel {
     return [
       this.helpSection('&#128240;', 'Actualités', [
         this.helpItem('&#128240;', 'Actualités géolocalisées', 'Articles PQR localisés sur la carte par département ou commune.', 'live'),
-        this.helpItem('&#128202;', 'Indice de stabilité', 'Score composite ISNR par département : sécurité, énergie, social, cyber.', 'live'),
+        this.helpItem('&#128202;', 'Indice de stabilité', 'Score composite ISNR par département : social, sécurité/cyber, infrastructure et vélocité. Escalade visible si une dimension domine.', 'live'),
       ]),
       this.helpSection('&#9889;', 'Énergie', [
         this.helpItem('&#9889;', 'Réseau électrique / Écowatt', 'Signal national Écowatt (RTE) : vert / orange / rouge.', 'live'),
@@ -503,7 +503,7 @@ export class LayerPanel {
       this.helpSection('&#128737;', 'Souveraineté', [
         this.helpItem('&#128737;', 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
         this.helpItem('&#127754;', 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
-        this.helpItem('&#128274;', 'Vigilance cyber', 'Alertes CERT-FR, fuites françaises, ransomware actifs, CVE critiques, exposition passive et incidents géolocalisés. Sources : CERT-FR, ANSSI, FrenchBreaches, RansomwareLive, Shodan, Censys.', 'live'),
+        this.helpItem('&#128274;', 'Vigilance cyber', 'Baromètre multi-signaux : leaks FR, ransomware 30j, CERT/NVD critiques, exposition passive Shodan/Censys et incidents géolocalisés. Chaque famille est plafonnée pour éviter la saturation.', 'live'),
       ]),
       this.helpSection('&#128225;', 'Pannes réseau', [
         this.helpItem('&#9889;', 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),

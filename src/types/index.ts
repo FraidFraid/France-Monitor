@@ -682,7 +682,7 @@ export interface NuclearState {
   stress: NuclearStressScore | null;
   rteAvailable: boolean;
   remitAvailable: boolean;
-  remitStatus: 'ok' | 'empty' | 'html' | 'unavailable';
+  remitStatus: 'ok' | 'empty' | 'html' | 'loading' | 'unavailable';
   fetchedAt: Date;
 }
 
@@ -1208,6 +1208,7 @@ export interface ISNRScore {
     label: string;
     score: number;
     source: string;
+    detail?: string;
   };
   eventCount: number;     // Nombre d'événements dans la fenêtre
   lastUpdate: Date;

@@ -448,8 +448,11 @@ export class NuclearPanel extends Panel {
     if (state.remitStatus === 'html') {
       return this._renderUnavailable('Flux IIP joignable mais non exploitable : HTML / SPA reçu au lieu du RSS.');
     }
+    if (state.remitStatus === 'loading') {
+      return this._renderLoading('Récupération IIP RTE… (peut prendre jusqu’à 50 s)');
+    }
     if (state.remitStatus === 'unavailable') {
-      return this._renderUnavailable('Flux IIP RTE indisponible.');
+      return this._renderUnavailable('Flux IIP RTE indisponible après tentatives.');
     }
 
     const freshnessBadge = this._freshnessBadge('quasi-realtime');
@@ -582,6 +585,23 @@ export class NuclearPanel extends Panel {
         <span style="font-size:12px;color:var(--text-muted);text-align:center;">${msg}</span>
         <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#EF444422;border:1px solid #EF444433;color:#EF4444;font-size:9px;font-weight:700;letter-spacing:0.06em;">INDISPONIBLE</span>
       </div>`;
+  }
+
+  private _renderLoading(msg: string): string {
+    return `
+      <div style="
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        min-height:80px;gap:8px;
+      ">
+        <span style="
+          font-size:22px;opacity:0.55;
+          animation:nuclear-spin 1.4s linear infinite;
+          display:inline-block;
+        ">⚛</span>
+        <span style="font-size:12px;color:var(--text-muted);text-align:center;">${msg}</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#F9731622;border:1px solid #F9731633;color:#F97316;font-size:9px;font-weight:700;letter-spacing:0.06em;">EN COURS</span>
+      </div>
+      <style>@keyframes nuclear-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>`;
   }
 
   private _freshnessBadge(freshness: string): string {

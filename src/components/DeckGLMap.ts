@@ -152,6 +152,10 @@ const LYR_INTERCONN_HITAREA = 'interconn-arc-hitarea';
 const LYR_INTERCONN_CHEVRONS = 'interconn-chevrons';  // Animated chevrons for flow direction
 const LYR_WEATHER_FILL = 'weather-fill';
 const LYR_WEATHER_LINE = 'weather-line';
+const LYR_WEATHER_LINE_YELLOW = 'weather-line-yellow';
+const LYR_WEATHER_LINE_ORANGE = 'weather-line-orange';
+const LYR_WEATHER_LINE_RED = 'weather-line-red';
+const LYR_WEATHER_LINE_VIOLET = 'weather-line-violet';
 const SRC_WEATHER_ICONS = 'weather-icons-src';
 const LYR_WEATHER_ICONS = 'weather-icons';
 const LYR_HEALTH_FILL = 'health-fill';
@@ -399,6 +403,12 @@ const METEO_COLORS: Record<string, string> = {
   red: 'rgba(255,59,48,0.35)',
   violet: 'rgba(175,82,222,0.35)',
 };
+
+const WEATHER_HIGHLIGHT_STATE: maplibregl.ExpressionSpecification = [
+  'any',
+  ['boolean', ['feature-state', 'preview'], false],
+  ['boolean', ['feature-state', 'selected'], false],
+];
 
 // ─── Météo risk pictograms ───
 const WEATHER_RISK_EMOJIS: Record<string, string> = {
@@ -1539,6 +1549,8 @@ export class DeckGLMap {
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastHoveredHealthId: number | null = null;
   private _lastHoveredFuelDeptId: string | null = null;
+  private _previewedWeatherDeptId: number | null = null;
+  private _selectedWeatherDeptId: number | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
   private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
@@ -2103,10 +2115,21 @@ export class DeckGLMap {
         'fill-color': ['get', 'fillColor'],
         'fill-opacity': [
           'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.8,
           ['boolean', ['get', 'hasAlert'], false],
-          0.6,
+          [
+            'case',
+            WEATHER_HIGHLIGHT_STATE,
+            0.74,
+            [
+              'match',
+              ['get', 'level'],
+              'violet', 0.42,
+              'red', 0.38,
+              'orange', 0.30,
+              'yellow', 0.16,
+              0,
+            ],
+          ],
           0
         ],
       },
@@ -2115,24 +2138,60 @@ export class DeckGLMap {
       id: LYR_WEATHER_LINE,
       type: 'line',
       source: SRC_WEATHER,
+      filter: ['boolean', ['get', 'hasAlert'], false],
       paint: {
-        'line-color': ['get', 'lineColor'],
+        'line-color': 'rgba(255,255,255,0.18)',
         'line-width': [
           'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          3,
-          ['boolean', ['get', 'hasAlert'], false],
-          1,
-          0
+          WEATHER_HIGHLIGHT_STATE,
+          1.1,
+          0.8,
         ],
-        'line-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          1.0,
-          ['boolean', ['get', 'hasAlert'], false],
-          0.5,
-          0
-        ],
+        'line-opacity': 0.55,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_WEATHER_LINE_YELLOW,
+      type: 'line',
+      source: SRC_WEATHER,
+      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'yellow']],
+      paint: {
+        'line-color': ['get', 'lineColor'],
+        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 2.3, 1.2],
+        'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.9],
+      },
+    });
+    this.map.addLayer({
+      id: LYR_WEATHER_LINE_ORANGE,
+      type: 'line',
+      source: SRC_WEATHER,
+      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'orange']],
+      paint: {
+        'line-color': ['get', 'lineColor'],
+        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.2, 2.4],
+        'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.98],
+      },
+    });
+    this.map.addLayer({
+      id: LYR_WEATHER_LINE_RED,
+      type: 'line',
+      source: SRC_WEATHER,
+      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'red']],
+      paint: {
+        'line-color': ['get', 'lineColor'],
+        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.6, 2.8],
+        'line-opacity': 1,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_WEATHER_LINE_VIOLET,
+      type: 'line',
+      source: SRC_WEATHER,
+      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'violet']],
+      paint: {
+        'line-color': ['get', 'lineColor'],
+        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.8, 3],
+        'line-opacity': 1,
       },
     });
 
@@ -5788,9 +5847,13 @@ export class DeckGLMap {
     // ─── Vigicrues Interactions ───
     this.map.on('mouseenter', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+      this.weatherHoverPopup?.remove();
+      this.previewWeatherDepartment(null);
     });
     this.map.on('mousemove', LYR_FLOODS, (e) => {
       if (!this.map || !e.features?.length) return;
+      this.weatherHoverPopup?.remove();
+      this.previewWeatherDepartment(null);
       const feature = e.features[0];
       const featureId = feature.id;
       this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
@@ -5943,11 +6006,29 @@ export class DeckGLMap {
     this.map.on('mouseleave', LYR_WEATHER_FILL, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
       this.weatherHoverPopup?.remove();
+      this.previewWeatherDepartment(null);
     });
     this.map.on('mousemove', LYR_WEATHER_FILL, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
+
+      const floodFeaturesAtCursor = this.map.queryRenderedFeatures(e.point, {
+        layers: [LYR_FLOODS, LYR_FLOODS_HIGHLIGHT, LYR_FLOODS_RAW],
+      });
+      if (floodFeaturesAtCursor.length > 0) {
+        this.weatherHoverPopup?.remove();
+        this.previewWeatherDepartment(null);
+        return;
+      }
+
       const feat = e.features[0];
       const p = feat.properties || {};
+      if (!p.hasAlert) {
+        this.map.getCanvas().style.cursor = '';
+        this.weatherHoverPopup?.remove();
+        this.previewWeatherDepartment(null);
+        return;
+      }
+      this.map.getCanvas().style.cursor = 'pointer';
       const code = String(p.code ?? '');
       const nom = String(p.nom ?? p.name ?? 'Département');
       const level = String(p.level ?? 'green');
@@ -6009,8 +6090,7 @@ export class DeckGLMap {
       }
       this.weatherHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
 
-      // Update feature state for border highlight
-      this.highlightWeatherDepartments([code]);
+      this.previewWeatherDepartment(code);
     });
 
     // ─── Fuel tension department interactions ───
@@ -10436,10 +10516,11 @@ export class DeckGLMap {
         feat.properties = {
           ...feat.properties,
           fillColor: METEO_COLORS[level] ?? METEO_COLORS.green,
-          lineColor: level === 'red' ? 'rgba(255,59,48,0.8)' :
-            level === 'orange' ? 'rgba(255,149,0,0.7)' :
-              level === 'yellow' ? 'rgba(255,204,0,0.8)' :
-                'rgba(52,199,89,0.5)',
+          lineColor: level === 'violet' ? 'rgba(196,121,255,0.98)' :
+            level === 'red' ? 'rgba(255,82,82,0.98)' :
+              level === 'orange' ? 'rgba(255,150,36,0.99)' :
+                level === 'yellow' ? 'rgba(255,214,10,0.92)' :
+                  'rgba(52,199,89,0.5)',
           hasAlert,
           level,
           risks: alert?.risks?.join(', ') ?? '',
@@ -10500,30 +10581,44 @@ export class DeckGLMap {
   }
 
   highlightWeatherDepartment(departmentCode: string | null): void {
-    this.highlightWeatherDepartments(departmentCode ? [departmentCode] : []);
+    this.selectWeatherDepartment(departmentCode);
   }
 
-  highlightWeatherDepartments(departmentCodes: string[]): void {
+  previewWeatherDepartment(departmentCode: string | null): void {
     if (!this.map) return;
-
-    for (const id of this._highlightedWeatherDeptIds) {
+    if (this._previewedWeatherDeptId !== null) {
       this.map.setFeatureState(
-        { source: SRC_WEATHER, id },
-        { hover: false }
+        { source: SRC_WEATHER, id: this._previewedWeatherDeptId },
+        { preview: false },
       );
     }
-    this._highlightedWeatherDeptIds.clear();
 
-    for (const departmentCode of departmentCodes) {
-      const numericId = deptCodeToId(departmentCode);
+    this._previewedWeatherDeptId = departmentCode ? deptCodeToId(departmentCode) : null;
+    if (this._previewedWeatherDeptId !== null) {
       this.map.setFeatureState(
-        { source: SRC_WEATHER, id: numericId },
-        { hover: true }
+        { source: SRC_WEATHER, id: this._previewedWeatherDeptId },
+        { preview: true },
       );
-      this._highlightedWeatherDeptIds.add(numericId);
     }
   }
-  private _highlightedWeatherDeptIds: Set<number> = new Set();
+
+  selectWeatherDepartment(departmentCode: string | null): void {
+    if (!this.map) return;
+    if (this._selectedWeatherDeptId !== null) {
+      this.map.setFeatureState(
+        { source: SRC_WEATHER, id: this._selectedWeatherDeptId },
+        { selected: false },
+      );
+    }
+
+    this._selectedWeatherDeptId = departmentCode ? deptCodeToId(departmentCode) : null;
+    if (this._selectedWeatherDeptId !== null) {
+      this.map.setFeatureState(
+        { source: SRC_WEATHER, id: this._selectedWeatherDeptId },
+        { selected: true },
+      );
+    }
+  }
 
   private clearFuelTensionHoverState(): void {
     if (!this.map) return;
@@ -12640,6 +12735,10 @@ export class DeckGLMap {
     }
     this.setVis(LYR_WEATHER_FILL, vis(layers.environmental));
     this.setVis(LYR_WEATHER_LINE, vis(layers.environmental));
+    this.setVis(LYR_WEATHER_LINE_YELLOW, vis(layers.environmental));
+    this.setVis(LYR_WEATHER_LINE_ORANGE, vis(layers.environmental));
+    this.setVis(LYR_WEATHER_LINE_RED, vis(layers.environmental));
+    this.setVis(LYR_WEATHER_LINE_VIOLET, vis(layers.environmental));
     this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
     // Core health uses ISS fill, shown when health is enabled
     this.setVis(LYR_HEALTH_FILL, vis(layers.health ?? false));

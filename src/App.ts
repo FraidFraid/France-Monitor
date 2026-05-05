@@ -677,7 +677,7 @@ const SUBSEA_CABLES_LEGEND: LegendCategory = {
 
 const CYBER_LEGEND: LegendCategory = {
   id: 'cyber',
-  title: 'Vigilance cyber & incidents',
+  title: 'Pression cyber & incidents',
   type: 'categorical',
   columns: 2,
   splitIndex: 2,
@@ -688,7 +688,7 @@ const CYBER_LEGEND: LegendCategory = {
     { id: 'low', label: 'Faible / veille', color: '#3B82F6', shape: 'circle' },
   ],
   source: {
-    label: 'CERT-FR / ANSSI / RansomwareLive / FrenchBreaches / Shodan / Censys',
+    label: 'Leaks FR / CERT-NVD / ransomware / Shodan / Censys',
     year: new Date().getFullYear(),
   },
   refresh: {
@@ -2210,10 +2210,14 @@ export class App {
 
     this.environmentPanel = new EnvironmentPanel(floatContainer);
     this.environmentPanel.setOnHoverDepartment((code) => {
-      this.mapContainer?.highlightWeatherDepartment(code);
+      this.mapContainer?.previewWeatherDepartment(code);
+    });
+    this.environmentPanel.setOnSelectDepartment((code) => {
+      this.mapContainer?.selectWeatherDepartment(code);
     });
     this.environmentPanel.setOnShowWeatherAlerts((alerts) => {
-      this.mapContainer?.highlightWeatherDepartment(null);
+      this.mapContainer?.previewWeatherDepartment(null);
+      this.mapContainer?.selectWeatherDepartment(null);
       void this.mapContainer?.updateWeather(alerts);
     });
     this.environmentPanel.setOnHoverSegment((segmentId) => {
@@ -2418,6 +2422,11 @@ export class App {
     });
     this.cyberPanel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
     this.cyberPanel.mount();
+
+    document.addEventListener('open-cyber-panel', () => {
+      if (!this.currentCyberData) void this.loadCyber();
+      this.cyberPanel?.show(this.currentCyberData);
+    });
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
