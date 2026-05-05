@@ -96,6 +96,7 @@ function toDatasetSource(source: string): DromEnergyDatasetSource {
   switch (source) {
     case 'EDF_SEI':
     case 'national_registry':
+    case 'regional_reference':
     case 'territorial_reference':
       return source;
     default:

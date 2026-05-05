@@ -147,6 +147,7 @@ function mergeDashboardMeta(
     communeMetrics: base.communeMetrics.map(cloneCommuneMetric),
     productionLimitations: base.productionLimitations.map(cloneLimitation),
     datasets: datasets.map(cloneDataset),
+    gridLines: base.gridLines,
     updatedAt,
   };
 }
@@ -178,6 +179,9 @@ export function createEmptyDromEnergyDashboard(): DromEnergyDashboard {
     communeMetrics: [],
     productionLimitations: [],
     datasets: [],
+    gridLines: {
+      reunionHta: emptyFeatureCollection() as FeatureCollection<Geometry, Record<string, unknown>>,
+    },
     updatedAt: new Date(0).toISOString(),
   };
 }
@@ -266,6 +270,7 @@ export async function loadDromEnergyDashboard(fetchImpl: FetchLike = fetch): Pro
     substations,
     pylons,
     productionSites,
+    reunionHtaLines,
     communeConsumption,
     co2Emissions,
     productionLimitations,
@@ -276,6 +281,7 @@ export async function loadDromEnergyDashboard(fetchImpl: FetchLike = fetch): Pro
     fetchStaticJson<unknown>(`${DROM_ENERGY_DATA_BASE_PATH}/${DROM_ENERGY_STATIC_FILES.geo.substations}`, fetchImpl, emptyFeatureCollection()),
     fetchStaticJson<unknown>(`${DROM_ENERGY_DATA_BASE_PATH}/${DROM_ENERGY_STATIC_FILES.geo.pylons}`, fetchImpl, emptyFeatureCollection()),
     fetchStaticJson<unknown>(`${DROM_ENERGY_DATA_BASE_PATH}/${DROM_ENERGY_STATIC_FILES.geo.productionSites}`, fetchImpl, emptyFeatureCollection()),
+    fetchStaticJson<unknown>(`${DROM_ENERGY_DATA_BASE_PATH}/${DROM_ENERGY_STATIC_FILES.geo.reunionHtaLines}`, fetchImpl, emptyFeatureCollection()),
     fetchStaticJson<DromEnergyCommuneMetric[]>(
       `${DROM_ENERGY_DATA_BASE_PATH}/${DROM_ENERGY_STATIC_FILES.tables.communeConsumption}`,
       fetchImpl,
@@ -304,6 +310,7 @@ export async function loadDromEnergyDashboard(fetchImpl: FetchLike = fetch): Pro
     substations,
     pylons,
     productionSites,
+    reunionHtaLines,
     communeConsumption,
     co2Emissions,
     productionLimitations,

@@ -10,12 +10,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com)
-[![Version](https://img.shields.io/badge/version-1.0-brightgreen)](https://github.com)
+[![Version](https://img.shields.io/badge/version-2.0-brightgreen)](https://github.com)
 [![Status](https://img.shields.io/badge/status-active%20development-orange)](https://github.com)
 
-*v1.0 is the first public release — the feature set will expand rapidly.*
-
-[Live App](https://www.francemonitor.com) · [About](https://www.francemonitor.com/about) · [Methodology](https://www.francemonitor.com/methodology) · [Legal](https://www.francemonitor.com/legal)
+[Live App](https://www.francemonitor.com) · [About](https://www.francemonitor.com/about) · [Legal](https://www.francemonitor.com/legal)
 
 [Features](#-features) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [Data Sources](#-data-sources) · [Contributing](#-contributing)
 
@@ -25,26 +23,11 @@
 
 ## What is France Monitor?
 
-France Monitor is an open-source OSINT monitoring platform focused exclusively on France. It aggregates real-time signals from public APIs, open data, technical feeds, and RSS sources into a single interactive map dashboard covering infrastructure, environment, transport, health, markets, and public information flows.
+France Monitor is an open-source OSINT monitoring platform focused exclusively on France. It aggregates real-time signals from public APIs, open data, technical feeds, and RSS sources into a single interactive map dashboard covering infrastructure, environment, transport, health, cyber threats, markets, and public information flows.
 
 The goal is not to replace primary sources, official alerts, or newsroom verification. The project is designed as a public-facing monitoring and correlation tool for analysts, journalists, researchers, and technically curious users who want a unified view of weak signals and public data across France.
 
-France Monitor is **not a media outlet and not a press publication**. It does not publish original reporting as a newsroom would. Items shown in the app should be treated as monitoring signals that may require confirmation from primary sources.
-
-## What It Does
-
-- Aggregates public and open signals relevant to France into one monitoring interface
-- Maps infrastructure, environmental, transport, health, market, and news-related signals
-- Correlates heterogeneous sources to surface anomalies, weak signals, and situational context
-- Exposes a technical, inspectable stack built around Vanilla TypeScript, Vite, Vercel Functions, and local-first AI fallbacks
-
-## What It Is Not
-
-- Not a newsroom and not a press title
-- Not an official government alerting system
-- Not a substitute for source verification, editorial confirmation, or operational decision support
-
-> **v1.0 note:** This first public release covers the core monitoring surface. Many data sources, panels, and AI features are already in place but will be significantly extended, stabilised, and documented in the coming months.
+France Monitor is **not a media outlet and not a press publication**. Items shown in the app should be treated as monitoring signals that may require confirmation from primary sources.
 
 ---
 
@@ -56,106 +39,129 @@ France Monitor is **not a media outlet and not a press publication**. It does no
 - Day/night terminator with real-time solar position
 - Satellite basemap toggle (Copernicus Sentinel-2 NDWI overlays)
 - Supercluster-based news marker clustering
-- Military flight trails, ship tracks, and AIS live positions
+- Military flight trails, ship tracks, AIS live positions, GPS jamming heatmap
 
 ### ⚡ Energy & Infrastructure
 | Panel | Data | Cadence |
 |-------|------|---------|
 | Electricity grid (Ecowatt) | RTE stress levels by department | 5 min |
-| Nuclear fleet | RTE real-time unavailabilities + REMIT notices | 15 min |
+| Nuclear fleet | RTE unavailabilities + REMIT/IIP RSS notices | 15 min |
 | Gas network | GRTgaz / Teréga flows + vital-organ facilities | 10 min |
-| Oil & fuel | Refinery stocks, pipeline flows, departmental fuel tension, daily official fuel price history | 10 min |
+| Oil & fuel | Refinery stocks, fuel tension, daily official price history | 10 min |
 | Wind energy | RTE real-time éolien production by park | 5 min |
-| Hydraulic backbone | Dam levels, barrage signals, hydrometry (Hub'Eau) | 10 min |
+| Hydraulic backbone | Dam levels, barrage signals, Hub'Eau hydrometry | 10 min |
+| DROM energy | Overseas territories grid data (Réunion, Martinique…) | 15 min |
+| Citizen outages | infocoupure.fr scraping — real electricity outage reports | 10 min |
+
+### 🛡️ Cyber & Digital Sovereignty
+- **CyberBreachPanel** — live breach & ransomware incident map (RansomwareLive feed)
+- **Exposure scoring** — Shodan + Censys OSINT aggregation of exposed French infrastructure
+- **Threat scoring engine** — composite cyber pressure index per source/domain
+- **Network barometer** — Cloudflare Radar + IODA internet anomaly detection
+- **Internet outages** — ISP-level connectivity monitoring (ARCEP / IODA)
+- Cyber incident feed with severity classification
 
 ### 🌦️ Environment
 - **Météo-France** vigilance alerts (levels 1–4, all hazard types)
 - **Vigicrues** flood segments with matched OSM waterway geometry
-- Active wildfire hotspots (NASA FIRMS MODIS + VIIRS)
+- Active wildfire hotspots (NASA FIRMS MODIS + VIIRS, DBSCAN clustered)
 - Space weather (NOAA Kp index, geomagnetic storm alerts)
+- EnvironmentPanel — unified view of weather, floods, fires, and space weather
 
 ### 🚂 Transport
-- **SNCF** real-time disruptions with affected rail segments highlighted on map
+- **SNCF** real-time disruptions with affected rail segments on map
 - **Air traffic** (OpenSky ADS-B) — civil + military flight separation
-- **Maritime AIS** live ship positions (AISstream.io or self-hosted relay)
-- **Road traffic** incidents on-demand (TomTom)
+- **Maritime AIS** live ship positions + anomaly detection (holding patterns, GPS drift)
+- **Road traffic** incidents on-demand (TomTom / Bison Futé)
 
 ### 📰 News Intelligence
-- RSS aggregation from 40+ French national and regional (PQR) sources
-- Two-stage classification pipeline: keyword-based (instant) then LLM override (async)
-- AI summarisation: Ollama (local) → Groq (cloud fallback) → Transformers.js (browser fallback)
+- RSS aggregation from **60+ French national and regional (PQR)** sources
+- Two-stage classification: keyword-based (instant) then LLM override (async)
+- AI summarisation: Ollama (local) → Groq (cloud) → Transformers.js (browser)
 - Geocoding of news items to map locations
 - Stale-article protection and deduplication across polling cycles
 
-### 🛡️ Defence & Sovereignty
+### 🔭 Defence & Sovereignty
 - Military flight tracking with callsign-to-mission classification
 - GPS jamming signal detection (anomalous position clustering)
 - Subsea cable proximity threat analysis (AIS-based)
-- Cyber incident feed
-- Restricted airspace zones
+- Restricted airspace zones (ZIT/ZRT/ZIA)
+- Military ship tracking (Marine Nationale + allied fleets)
 
 ### 🏥 Health
 - **SPF / ISS** sanitary stress indicators by department
 - SOS Médecins and OSCOUR emergency call indicators
+- APL (medical access score — déserts médicaux) by department
 - Hospital density overlay (FINESS)
-- APL (medical access score) by department
+- Health Barometer with département-level drill-down
+
+### 🧠 Situation Intelligence (ISNR)
+- **ISNR** — France National Stability Index (composite score, 0–100)
+- AI-generated situational briefs (FR/EN switchable)
+- **SituationMonitor** — automatic alert detection with severity scoring
+- **SituationHistoryPanel** — IndexedDB-backed timeline of past snapshots
+- **BarometerWidget** — multi-domain real-time health indicators
+- France Country Intel — structured country-level intelligence digest
 
 ### 📊 Finance & Markets
 - CAC 40 + major European indices
-- Key commodity prices (Brent, natural gas, wheat, metals)
+- Key commodity prices (Brent, gas, wheat, metals)
 - Euro/USD and strategic currency pairs
+- Dedicated commodity strip and market strip UI widgets
 
-### 🧠 France Intel Panel
-- AI-generated situational brief (language-switchable FR/EN)
-- Detected situation alerts with severity scoring
-- Sparkline timeline of stability index (ISNR) by department
-- Exportable history snapshots (IndexedDB)
+### 🗳️ Governance Panels
+- **ÉlusPanel** — elected officials by commune with political affiliation
+- **MinistresPanel** — current government composition with portfolio tracking
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser                                                     │
-│                                                              │
-│  App.ts (orchestrator)                                       │
-│  ├── MapContainer → DeckGLMap (WebGL) / Map (D3/SVG)        │
-│  ├── 23 floating panels (energy, news, health, intel…)      │
-│  ├── RSS Pipeline (stage 1: keywords · stage 2: AI async)   │
-│  ├── 9 polling loops (military, AIS, finance, health…)      │
-│  └── ISNR engine (stability index, situation detection)     │
-│                                                              │
-│  State: in-memory + localStorage + IndexedDB (history)      │
-└────────────────────┬────────────────────────────────────────┘
-                     │ fetch /api/*
-┌────────────────────▼────────────────────────────────────────┐
-│  Vercel Serverless Functions  (api/)                         │
-│                                                              │
-│  Proxy + cache layer (Upstash Redis, TTL per route)          │
-│  ├── energy/     RTE Ecowatt, Eco2mix, nuclear REMIT        │
-│  ├── transport/  SNCF disruptions, air traffic, AIS relay   │
-│  ├── health/     SPF / ISS, SOS Médecins, OSCOUR            │
-│  ├── finance/    Boursorama scrape, commodities             │
-│  ├── fires/      NASA FIRMS MODIS + VIIRS                   │
-│  ├── outages/    ORE Enedis, Cloudflare Radar, IODA         │
-│  ├── intelligence/v1/  LLM summarisation (Groq)             │
-│  └── rss-proxy   CORS-bypass + Scrapling bypass             │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Browser                                                         │
+│                                                                  │
+│  App.ts (orchestrator ~2500 lines)                               │
+│  ├── MapContainer → DeckGLMap (WebGL) / Map (D3/SVG)            │
+│  ├── 50 components (energy, news, health, cyber, intel…)        │
+│  ├── RSS Pipeline (stage 1: keywords · stage 2: AI async)       │
+│  ├── 12 polling loops (military, AIS, finance, cyber, health…)  │
+│  ├── ISNR engine (stability index, situation detection)          │
+│  └── Watchdog — centralised observability registry               │
+│                                                                  │
+│  State: in-memory + localStorage + IndexedDB (history)           │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ fetch /api/*
+┌──────────────────────────▼──────────────────────────────────────┐
+│  Vercel Serverless Functions  (api/)                             │
+│                                                                  │
+│  Proxy + cache layer (Upstash Redis, TTL per route)              │
+│  ├── energy/        RTE Ecowatt, Eco2mix, nuclear REMIT         │
+│  ├── transport/     SNCF disruptions, air traffic, AIS relay    │
+│  ├── health/        SPF / ISS, SOS Médecins, OSCOUR             │
+│  ├── finance/       Boursorama scrape, commodities              │
+│  ├── fires/         NASA FIRMS MODIS + VIIRS                    │
+│  ├── outages/       citizen scraping, ORE, Cloudflare, IODA     │
+│  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
+│  ├── exposure.js    Technical exposure scoring                  │
+│  ├── intelligence/  LLM summarisation (Groq, server-side)       │
+│  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key design decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| **Vanilla TypeScript, no framework** | Zero virtual DOM overhead; direct DOM control for 60fps map interactions |
-| **Vercel Functions as API proxy** | CORS bypass, Redis caching, and secret isolation without a dedicated backend |
+| **Vanilla TypeScript, no framework** | Zero virtual DOM overhead; direct DOM for 60fps map interactions |
+| **Vercel Functions as API proxy** | CORS bypass, Redis caching, secret isolation without dedicated backend |
 | **Ollama-first AI** | No PII leaves the machine; cloud LLM only as fallback |
-| **Non-blocking init** | Critical layers (energy, weather, floods) load first; secondary and optional layers load in background |
-| **Shallow-clone RSS items before background enrichment** | Prevents WebGL animation loop from reading mid-geocoding state (flicker elimination) |
+| **Watchdog registry** | Centralised observability — all services self-report; StatusPanel auto-updates |
+| **Non-blocking init** | Critical layers (energy, weather, floods) load first; optional layers in background |
 | **DeckGLMap lazy-loaded** | Mobile users never download the 1 MB WebGL stack |
-| **Service Worker (Workbox)** | API routes use NetworkFirst (4s timeout); map tiles CacheFirst 30d; PWA installable |
+| **Service Worker (Workbox)** | API routes NetworkFirst (4s timeout); map tiles CacheFirst 30d; PWA installable |
+| **`hasEverSucceeded` flag** | Distinguishes "first load in progress" from "persistent failure" in IIP/REMIT |
 
 ---
 
@@ -165,33 +171,29 @@ France Monitor is **not a media outlet and not a press publication**. It does no
 
 - **Node.js** 20+
 - **npm** 10+
-- A [Vercel](https://vercel.com) account (free tier works for deployment)
-- An [Upstash](https://upstash.com) Redis database (free tier, ~10k req/day)
-- An [RTE Open Data](https://data.rte-france.com) application (free, for energy data)
+- A [Vercel](https://vercel.com) account (free tier works)
+- An [Upstash](https://upstash.com) Redis database (free tier)
+- An [RTE Open Data](https://data.rte-france.com) application (free, for energy + nuclear data)
 
 Optional for full feature coverage:
 
-- [Météo-France API](https://portail-api.meteofrance.fr) key — weather alerts
-- [AISstream.io](https://aisstream.io) key — live maritime traffic
-- [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/api) key — wildfire hotspots
-- [TomTom](https://developer.tomtom.com) key — road traffic
-- [OpenSky](https://opensky-network.org) credentials — civil air traffic
-- [Groq](https://console.groq.com) key — cloud LLM fallback for AI summaries
+- [Météo-France API](https://portail-api.meteofrance.fr) — weather alerts
+- [AISstream.io](https://aisstream.io) — live maritime traffic
+- [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/api) — wildfire hotspots
+- [TomTom](https://developer.tomtom.com) — road traffic
+- [OpenSky](https://opensky-network.org) — civil air traffic
+- [Groq](https://console.groq.com) — cloud LLM fallback
 - [Ollama](https://ollama.com) running locally — preferred local LLM
+- [Shodan](https://shodan.io) + [Censys](https://censys.io) — cyber exposure OSINT
 
 ### Installation
 
 ```bash
-# Clone the repo
 git clone https://github.com/FraidFraid/France-Monitor.git
-cd france-monitor
-
-# Install dependencies
+cd France-Monitor
 npm install
-
-# Copy environment template
 cp .env.example .env.local
-# → Edit .env.local and fill in your keys (see Environment Variables below)
+# Edit .env.local and fill in your keys
 ```
 
 ### Development
@@ -200,74 +202,67 @@ cp .env.example .env.local
 # Vite dev server only (port 3001)
 npm run dev
 
-# Vite + Scrapling proxy (for Cloudflare-protected RSS feeds, port 8080)
+# Vite + Scrapling proxy (Cloudflare-protected RSS, port 8080)
 npm run dev:full
 
-# Install Python dependencies for Scrapling (first time only)
+# Install Python deps for Scrapling (first time only)
 npm run scrapling:install
 ```
 
 The app will be available at **http://localhost:3001**.
 
-> Without any API keys, the app still starts — energy, weather, and news panels will show errors or fallback states, but the map, UI, and classification engine are fully functional.
+> Without any API keys the app still starts — energy, weather, and news panels show errors or fallback states, but the map, UI, and classification engine are fully functional.
 
 ### Build & Type Check
 
 ```bash
-# Type check (strict, no any)
-npm run typecheck
-
-# Production build (outputs to dist/)
-npm run build
-
-# Preview production build locally
-npm run preview
+npm run typecheck   # strict, 0 errors required
+npm run build       # outputs to dist/ with Brotli pre-compression
+npm run preview     # preview production build locally
 ```
-
-The build applies Brotli pre-compression (quality 11) on all JS/CSS assets. Vercel edge serves `.br` files automatically, reducing transfer size by 60–70% compared to gzip.
 
 ### Deployment
 
 ```bash
-# Deploy to Vercel (first time: follow the CLI prompts)
 vercel
-
-# Set environment variables
 vercel env add UPSTASH_REDIS_REST_URL
 vercel env add UPSTASH_REDIS_REST_TOKEN
-# … repeat for each required variable (see .env.example for the full list)
+# … repeat for each required variable (see .env.example)
 ```
 
 ---
 
 ## ⚙️ Environment Variables
 
-Copy `.env.example` to `.env.local` for local development. On Vercel, configure them in **Settings → Environment Variables**.
+Copy `.env.example` to `.env.local` for local dev. On Vercel, configure in **Settings → Environment Variables**.
 
 ### Required
 
 | Variable | Description |
 |----------|-------------|
-| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint — server-side API cache |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token |
 | `RTE_CLIENT_ID` | RTE Open Data OAuth client ID (Ecowatt, nuclear) |
 | `RTE_CLIENT_SECRET` | RTE Open Data OAuth client secret |
-| `VITE_METEOFRANCE_API_KEY` | Météo-France vigilance bulletin API key |
+| `VITE_METEOFRANCE_API_KEY` | Météo-France vigilance API key |
 
 ### Optional (graceful fallback if absent)
 
 | Variable | Description | Fallback |
 |----------|-------------|----------|
-| `VITE_AISSTREAM_KEY` | AISstream.io maritime AIS key | Layer silently disabled |
-| `VITE_TOMTOM_API_KEY` | TomTom road traffic tile key | Layer disabled |
-| `OPENSKY_CLIENT_ID / SECRET` | OpenSky Network credentials | Anonymous quota (400 req/day) |
-| `SNCF_API_KEY` | SNCF real-time disruptions API | Layer disabled |
-| `NASA_FIRMS_API_KEY` | NASA FIRMS wildfire hotspots | Layer disabled |
-| `GROQ_API_KEY` | Groq cloud LLM (AI summaries, server-side only) | Browser model via Transformers.js |
-| `CLOUDFLARE_RADAR_TOKEN` | Cloudflare Radar internet anomalies | Layer disabled |
-| `CDSE_CLIENT_ID / SECRET` | Copernicus Data Space (Sentinel-2 imagery) | Satellite overlay disabled |
+| `VITE_AISSTREAM_KEY` | AISstream.io maritime AIS | Layer disabled |
+| `VITE_TOMTOM_API_KEY` | TomTom road traffic tiles | Layer disabled |
+| `OPENSKY_CLIENT_ID / SECRET` | OpenSky Network | Anonymous quota |
+| `SNCF_API_KEY` | SNCF real-time disruptions | Layer disabled |
+| `NASA_FIRMS_API_KEY` | NASA FIRMS wildfires | Layer disabled |
+| `GROQ_API_KEY` | Groq cloud LLM (server-side only) | Browser Transformers.js |
+| `SHODAN_API_KEY` | Shodan OSINT (cyber exposure) | Cyber panel degraded |
+| `CENSYS_API_ID / SECRET` | Censys OSINT | Cyber panel degraded |
+| `CLOUDFLARE_RADAR_TOKEN` | Cloudflare Radar anomalies | Layer disabled |
+| `CDSE_CLIENT_ID / SECRET` | Copernicus Sentinel-2 imagery | Satellite overlay disabled |
+| `SCRAPLING_PROXY_URL` | Python Scrapling sidecar URL | Direct fetch (may hit CF) |
 
-> ⚠️ **Security:** Never prefix server-only secrets with `VITE_` — they would be embedded in the client bundle. The Groq key in particular is server-only and accessed exclusively via `/api/intelligence/v1/*`.
+> ⚠️ **Security:** Never prefix server-only secrets with `VITE_` — they would be embedded in the client bundle.
 
 ---
 
@@ -276,6 +271,7 @@ Copy `.env.example` to `.env.local` for local development. On Vercel, configure 
 | Domain | Source | Type |
 |--------|--------|------|
 | Electricity grid | [RTE Open Data](https://data.rte-france.com) | REST OAuth |
+| Nuclear REMIT | [IIP RTE](https://iip.cloud-rte-france.com) | RSS (public) |
 | Gas network | [GRTgaz / GIE](https://www.gie.eu) | REST |
 | Weather alerts | [Météo-France](https://portail-api.meteofrance.fr) | REST |
 | Flood levels | [Vigicrues / Hub'Eau](https://hubeau.eaufrance.fr) | REST |
@@ -285,14 +281,17 @@ Copy `.env.example` to `.env.local` for local development. On Vercel, configure 
 | Wildfires | [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov) | REST |
 | Rail disruptions | [SNCF Open Data](https://numerique.sncf.com/startup/api) | REST |
 | Road traffic | [TomTom](https://developer.tomtom.com) | REST + tiles |
-| Health metrics | [Santé Publique France / ISS](https://www.santepubliquefrance.fr) | REST |
-| Fuel prices | [data.economie.gouv.fr](https://data.economie.gouv.fr) official daily + instant fuel datasets | REST |
+| Health metrics | [Santé Publique France](https://www.santepubliquefrance.fr) | REST |
+| Citizen outages | [infocoupure.fr](https://infocoupure.fr) | HTML scrape |
+| Fuel prices | [data.economie.gouv.fr](https://data.economie.gouv.fr) | REST |
 | Internet outages | [IODA](https://ioda.inetintel.cc.gatech.edu) + [Cloudflare Radar](https://radar.cloudflare.com) | REST |
+| Cyber exposure | [Shodan](https://shodan.io) + [Censys](https://censys.io) | REST |
+| Ransomware breaches | [RansomwareLive](https://data.ransomware.live/posts.json) | REST (public) |
 | Finance | Boursorama (server-side proxy) | HTML scrape |
-| Commodities | Public aggregated feed | REST |
-| News | 40+ RSS feeds (national + PQR) | RSS (CORS-proxied) |
+| News | 60+ RSS feeds (national + PQR) | RSS (CORS-proxied) |
 | Satellite imagery | [Copernicus CDSE](https://dataspace.copernicus.eu) | OData |
 | Space weather | [NOAA SWPC](https://www.swpc.noaa.gov) | REST |
+| Élus / communes | [data.gouv.fr](https://data.gouv.fr) | REST |
 
 All external API calls are **server-side only** (Vercel Functions + Upstash cache). No API key is ever exposed to the browser.
 
@@ -302,46 +301,63 @@ All external API calls are **server-side only** (Vercel Functions + Upstash cach
 
 ```
 france-monitor/
-├── api/                        # Vercel Serverless Functions (/api/* routes in prod)
-│   ├── rss-proxy.js            # RSS CORS bypass
-│   ├── energy/                 # Ecowatt, Eco2mix, nuclear REMIT
-│   ├── health/                 # ISS, SOS Médecins, OSCOUR
-│   ├── finance/                # Market data, commodities
-│   ├── transport/              # SNCF, air traffic, AIS relay
-│   ├── outages/                # ORE Enedis, Cloudflare Radar, IODA
-│   └── intelligence/v1/        # LLM summarisation (Groq, server-side)
+├── api/                         # Vercel Serverless Functions
+│   ├── rss.js / rss-proxy.js    # RSS CORS bypass + JSON conversion
+│   ├── threats.js               # Cyber OSINT aggregation (Shodan/Censys/breaches)
+│   ├── exposure.js              # Technical exposure scoring
+│   ├── json-proxy.js            # Generic JSON proxy (Ransomware Live, etc.)
+│   ├── energy/                  # Ecowatt, Eco2mix, nuclear REMIT
+│   ├── health/                  # ISS, SOS Médecins, OSCOUR
+│   ├── finance/                 # Market data, commodities
+│   ├── transport/               # SNCF, air traffic, AIS relay
+│   ├── outages/                 # Citizen outages, ORE, IODA
+│   └── intelligence/v1/         # LLM summarisation (Groq)
 │
 ├── services/
-│   └── scrapling-proxy/        # FastAPI + Scrapling — Cloudflare bypass for PQR RSS
+│   └── scrapling-proxy/         # FastAPI + Scrapling — Cloudflare bypass for PQR RSS
 │
 ├── src/
-│   ├── main.ts                 # Entry point — stale-chunk guard + SW registration
-│   ├── App.ts                  # Main orchestrator
+│   ├── main.ts                  # Entry point — SW registration + stale chunk guard
+│   ├── App.ts                   # Main orchestrator (~2500 lines)
 │   │
-│   ├── components/             # UI panels and map wrappers (40+ files)
-│   │   ├── DeckGLMap.ts        # WebGL map (MapLibre + Deck.gl) — lazy-loaded
-│   │   ├── Map.ts              # D3/SVG mobile fallback
-│   │   ├── MapContainer.ts     # Selects implementation at runtime
-│   │   ├── FranceIntelPanel.ts # AI brief — lazy-loaded
+│   ├── components/              # 50 UI panels and map wrappers
+│   │   ├── DeckGLMap.ts         # WebGL map (MapLibre + Deck.gl) — lazy-loaded
+│   │   ├── Map.ts               # D3/SVG mobile fallback
+│   │   ├── CyberPanel.ts        # Cyber threat monitoring panel
+│   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel (NEW)
+│   │   ├── NuclearPanel.ts      # Nuclear fleet status (4 tabs)
+│   │   ├── OutagesPanel.ts      # Power + telecom outages
+│   │   ├── FranceIntelPanel.ts  # AI situational brief — lazy-loaded
+│   │   ├── ISNRPanel.ts         # Stability index dashboard
+│   │   ├── BarometerWidget.ts   # Multi-domain health barometer
 │   │   └── …
 │   │
-│   ├── services/               # Data fetching and processing (60+ files)
-│   │   ├── rss.ts              # RSS feed aggregation
-│   │   ├── classifier.ts       # Keyword-based news classification
-│   │   ├── ai-classifier.ts    # LLM classification override
-│   │   ├── situation-engine.ts # Alert detection and severity scoring
-│   │   ├── stability-index.ts  # ISNR — France national stability index
-│   │   ├── geocoder.ts         # News geocoding (cached, throttled)
+│   ├── services/                # 70 data fetching and processing modules
+│   │   ├── rss.ts               # RSS feed aggregation
+│   │   ├── classifier.ts        # Keyword-based news classification
+│   │   ├── ai-classifier.ts     # LLM classification override
+│   │   ├── situation-engine.ts  # Alert detection + severity scoring
+│   │   ├── stability-index.ts   # ISNR composite index
+│   │   ├── cyber.ts             # Cyber threat feed aggregation
+│   │   ├── cyber-threat-scoring.ts  # Composite cyber pressure scoring (NEW)
+│   │   ├── exposure.ts          # Technical exposure (Shodan/Censys)
+│   │   ├── threat-map.ts        # Geo-located threat cartography
+│   │   ├── network-barometer.ts # Internet health signals
+│   │   ├── rte-iip.ts           # RTE IIP RSS (REMIT nuclear notices)
+│   │   ├── nuclear-correlation.ts   # REMIT × RTE correlation
+│   │   ├── outages-scraper.ts   # infocoupure.fr citizen outage scraper
+│   │   ├── watchdog.ts          # Centralised observability registry
 │   │   └── …
 │   │
-│   ├── config/                 # Static datasets (feeds, military callsigns, geo presets)
-│   ├── utils/                  # URL state, caches, spatial helpers
-│   ├── types/index.ts          # All shared TypeScript types
-│   └── styles/main.css         # Global styles — dark mode via CSS custom properties
+│   ├── plugins/                 # Vite dev proxy plugins (mirror api/ for local dev)
+│   ├── config/                  # Static datasets (feeds, military callsigns, geo)
+│   ├── utils/                   # URL state, caches, spatial helpers
+│   ├── types/index.ts           # All shared TypeScript types
+│   └── styles/main.css          # Global styles — dark mode via CSS custom properties
 │
-├── vite.config.ts              # Dev proxies, PWA config, Brotli plugin, chunk splitting
-├── tsconfig.json               # Strict TS config
-└── .env.example                # Environment variable reference
+├── vite.config.ts               # Dev proxies, PWA, Brotli, chunk splitting
+├── tsconfig.json                # Strict TS config
+└── .env.example                 # Environment variable reference
 ```
 
 ---
@@ -361,9 +377,9 @@ france-monitor/
 | AI — browser fallback | Transformers.js + ONNX Runtime Web |
 | Client persistence | IndexedDB (idb), localStorage |
 | Server cache | Upstash Redis |
-| Deployment | Vercel (Serverless Functions + Edge Network) |
+| Deployment | Vercel (Serverless Functions + Edge) |
 | PWA | Vite Plugin PWA (Workbox 7) |
-| Compression | Brotli quality 11 (pre-compressed at build time) |
+| Compression | Brotli quality 11 (pre-compressed at build) |
 
 ---
 
@@ -371,42 +387,45 @@ france-monitor/
 
 ### Scrapling and Cloudflare-protected RSS
 
-Some French regional newspapers serve RSS behind Cloudflare. A lightweight Python sidecar (`services/scrapling-proxy/`) using [Scrapling](https://github.com/D4Vinci/Scrapling) handles these during development, running on port 8080 alongside Vite.
-
-In production (Vercel), `api/rss-proxy.js` handles all RSS. The Scrapling service is not deployed to Vercel — only a strict domain whitelist of PQR sources is proxied.
+Some French regional newspapers serve RSS behind Cloudflare. A lightweight Python sidecar (`services/scrapling-proxy/`) using [Scrapling](https://github.com/D4Vinci/Scrapling) handles these in dev on port 8080.
 
 ```bash
-npm run scrapling:install   # create venv + install Python deps (first time only)
+npm run scrapling:install   # create venv + install deps (first time only)
 npm run dev:full            # Vite (3001) + Scrapling (8080) together
 ```
 
 ### Two-stage RSS Pipeline
 
-News items go through two stages per polling cycle:
+1. **Stage 1 — immediate:** Keyword classifier assigns category + severity in < 1ms per item. Map and news panel update instantly.
+2. **Stage 2 — background:** Low-confidence items go to the LLM chain (Ollama → Groq → browser). Geocoding and AI summarisation run in parallel. UI republishes enriched items progressively.
 
-1. **Stage 1 — immediate:** Keyword classifier assigns category and severity in < 1ms per item. The map and news panel update instantly with the full fresh batch.
-2. **Stage 2 — background:** Items with low-confidence classification are sent to the LLM chain (Ollama → Groq → browser model). Geocoding and AI summarisation run in parallel. The UI republishes enriched items progressively while guarding against stale poll results.
+Items are shallow-cloned before background enrichment to prevent WebGL marker flicker during geocoding.
 
-Items are shallow-cloned before background enrichment. This prevents the WebGL animation loop from reading partially-geocoded coordinates — which would cause cluster markers to visibly jump during the geocoding pass.
+### Nuclear REMIT / IIP RTE
 
-### Shareable Layer State
+The IIP feed (`iip.cloud-rte-france.com`) is fetched via the `/api/rss` proxy with:
+- **25s timeout** (server is slow on first call)
+- **1 automatic retry** on timeout/network error (2s delay)
+- **`hasEverSucceeded` flag** in `RTEIIPState`: the UI shows a spinner badge "EN COURS" during the first load, and only "INDISPONIBLE" after a confirmed persistent failure.
 
-The active layer set is persisted to `localStorage` and mirrored to the URL (`?layers=…`). Dashboard configurations are shareable: paste the URL and the recipient sees the same layers active.
+### Watchdog Observability
+
+Every data service registers with `Watchdog` and emits `loading` / `success` / `failure` events. `StatusPanel` subscribes and auto-updates. Sources automatically transition to `stale` state when their cache exceeds the configured `staleAfterMs` threshold — no manual polling needed.
 
 ### Coding Conventions
 
-- **Strict TypeScript** — `noUnusedLocals`, `noUnusedParameters`, no `any`, no unjustified `!`
+- **Strict TypeScript** — `noUnusedLocals`, `noUnusedParameters`, no `any`
 - **Vanilla DOM** — no JSX, no virtual DOM, no framework
 - **Classes** for UI components; **pure functions** for services
-- **`PascalCase`** → components · **`kebab-case`** → services · **`camelCase`** → variables/functions · **`UPPER_SNAKE_CASE`** → module-level constants
-- **`@/*`** path alias resolves to `./src/*`
+- `PascalCase` → components · `kebab-case` → services · `camelCase` → variables · `UPPER_SNAKE_CASE` → constants
+- `@/*` path alias resolves to `./src/*`
 - Commit prefixes: `feat:` `fix:` `refactor:` `docs:` `test:`
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome. France Monitor v1.0 is actively developed — expect rapid iteration.
+Contributions are welcome.
 
 ### Before opening a PR
 
@@ -421,42 +440,51 @@ npm run lint        # no new ESLint warnings
 | Area | What to do |
 |------|------------|
 | **New data source** | `src/services/xxx.ts` + `src/plugins/xxx-proxy.ts` + `api/xxx.js` |
-| **New panel** | Extend `src/components/Panel.ts`, register in `App.ts`, wire service |
-| **New layer** | Add to `MapLayers` type → `DEFAULT_LAYERS` → `LAYER_CONFIGS` → `_handlePanelVisibility` |
-| **New RSS feed** | Add URL to `src/config/feeds.ts` — classifier handles categorisation |
-| **Bug report** | Include browser console output, network tab, and reproduction steps |
+| **New panel** | Extend `Panel.ts`, register in `App.ts`, wire service |
+| **New layer** | Add to `MapLayers` type → `DEFAULT_LAYERS` → `LAYER_CONFIGS` |
+| **New RSS feed** | Add URL to `src/config/feeds.ts` — classifier handles the rest |
+| **Bug report** | Include browser console, network tab, and reproduction steps |
 
 ### Hard constraints
 
 - Do not introduce React, Vue, Svelte, or any virtual DOM framework
 - Do not send user data or news content to cloud LLMs without going through the server-side proxy
-- Do not add npm dependencies without an issue discussion — bundle size is actively managed
-
-## Recent Updates
-
-### 2026-04-29
-
-- The oil and fuel block now exposes a dedicated **official daily fuel price history** feed via `/api/fuel-price-series`, backed by `api/_lib/fuel-price-series.js`, a refresh endpoint, and a static fallback dataset in [`public/data/fuel-price-series.json`](/Users/fraid/Desktop/FranceMonitor/public/data/fuel-price-series.json).
-- `src/services/fuel-prices.ts` now prefers a **direct browser fetch** to the Ministry of Economy instant dataset, with automatic fallback to the existing proxy route when direct access fails.
-- `OilPanel` now includes a **hover tooltip on the fuel price chart**, making the daily series readable enough for actual comparison rather than just trend-shape inspection.
+- Do not add npm dependencies without a discussion — bundle size is actively managed
 
 ---
 
 ## 📋 Roadmap
 
-Planned for upcoming releases. Contributions on any of these are especially welcome:
-
 - [ ] End-to-end tests (Playwright) for critical user flows
-- [ ] Unit tests for `situation-engine.ts` and `classifier.ts`
 - [ ] Sentry error tracking integration
-- [ ] Extended PQR coverage (more regional news sources)
-- [ ] Élus overlay — elected officials by commune with political affiliation
+- [ ] Extended PQR coverage (more regional sources)
 - [ ] Historical replay — scrub through past situational snapshots
 - [ ] Push notifications via Service Worker for critical alerts
 - [ ] Mobile map feature parity (D3/SVG fallback improvements)
-- [ ] TypeScript `noUncheckedIndexedAccess` upgrade
-- [ ] Panel lazy-loading (OilPanel, CyberPanel, DefensePanel)
 - [ ] Self-hostable backend alternative to Vercel Functions
+- [ ] TypeScript `noUncheckedIndexedAccess` upgrade
+- [ ] DROM panels — overseas territories full coverage
+
+---
+
+## 📋 Recent Updates
+
+### 2026-05-05
+- **Fix APIs bloquées** — IIP RTE timeout 15s → 25s avec retry automatique ; Pannes Citoyennes timeout 15s → 60s
+- **REMIT nucléaire** — nouvel état `loading` (spinner ⚛ animé) vs `unavailable` basé sur `hasEverSucceeded`
+- **CyberBreachPanel** — nouveau composant cartographie des incidents ransomware et fuites cyber
+- **Cyber threat scoring** — moteur de scoring composite des pressions cyber par domaine/source
+- **Watchdog** — observabilité centralisée de tous les services avec staleness automatique
+- **BarometerWidget** — indicateurs de santé multi-domaine en temps réel
+
+### 2026-05-04
+- Migration endpoint RansomwareLive vers `data.ransomware.live/posts.json` (ancien endpoint 301)
+- CyberPanel avec filtres avancés, recherche, et synchronisation carte
+- Intégration OSINT Shodan + Censys pour l'exposition technique des infrastructures françaises
+
+### 2026-04-29
+- OilPanel avec historique quotidien des prix officiels des carburants (fuel-price-series)
+- Tooltip interactif sur le graphique des prix carburant
 
 ---
 
@@ -464,12 +492,11 @@ Planned for upcoming releases. Contributions on any of these are especially welc
 
 France Monitor is released under the **GNU Affero General Public License v3.0** (AGPL-3.0).
 
-This means:
 - You can freely use, study, and modify the code
-- If you run a modified version as a network service, you must release your modifications under the same license
+- If you run a modified version as a network service, you must release your modifications under AGPL-3.0
 - Attribution to the original project is required
 
-Third-party data sources are subject to their own terms of service. Review each provider's documentation before using this software in a commercial context.
+Third-party data sources are subject to their own terms of service. Review each provider's documentation before commercial use.
 
 ---
 

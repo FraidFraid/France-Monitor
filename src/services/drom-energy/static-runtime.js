@@ -7,6 +7,7 @@ export const DROM_ENERGY_STATIC_FILES = {
     substations: 'geo/substations.geojson',
     pylons: 'geo/pylons.geojson',
     productionSites: 'geo/production-sites.geojson',
+    reunionHtaLines: 'geo/lines-hta-reunion.geojson',
   },
   tables: {
     communeConsumption: 'tables/commune-consumption.json',
@@ -80,6 +81,17 @@ export function normalizeDromEnergyAssets(payload) {
     .filter(Boolean);
 }
 
+export function normalizeDromEnergyLineFeatureCollection(payload) {
+  if (payload?.type !== 'FeatureCollection' || !Array.isArray(payload.features)) return emptyFeatureCollection();
+  return {
+    type: 'FeatureCollection',
+    features: payload.features.filter((feature) => (
+      feature?.type === 'Feature'
+      && (feature.geometry?.type === 'LineString' || feature.geometry?.type === 'MultiLineString')
+    )),
+  };
+}
+
 export function normalizeDromEnergyDatasets(payload, options = {}) {
   if (!Array.isArray(payload)) return [];
   const requireFetchedAt = options.requireFetchedAt === true;
@@ -107,25 +119,55 @@ export function getDromEnergyUpdatedAt(datasets) {
     .at(-1) ?? new Date(0).toISOString();
 }
 
+function buildDerivedCommuneMetrics(assets) {
+  const byKey = new Map();
+
+  for (const asset of assets) {
+    if (asset.territoryCode !== 'RE' || !asset.communeName) continue;
+    const key = `${asset.communeCode ?? ''}|${asset.communeName}`;
+    const metric = byKey.get(key) ?? {
+      territoryCode: 'RE',
+      communeCode: asset.communeCode,
+      communeName: asset.communeName,
+      sourceDatasetId: 'derived_assets_reunion',
+      assetsCount: 0,
+      substationsCount: 0,
+    };
+
+    metric.assetsCount += 1;
+    if (asset.type === 'source_substation') {
+      metric.substationsCount += 1;
+    }
+    byKey.set(key, metric);
+  }
+
+  return [...byKey.values()].sort((a, b) => a.communeName.localeCompare(b.communeName, 'fr'));
+}
+
 export function buildDromEnergyDashboardFromStaticPayloads(payloads, options = {}) {
   const datasets = normalizeDromEnergyDatasets(payloads.sources, {
     requireFetchedAt: options.requireFetchedAt === true,
   });
+  const assets = [
+    ...normalizeDromEnergyAssets(payloads.substations),
+    ...normalizeDromEnergyAssets(payloads.pylons),
+    ...normalizeDromEnergyAssets(payloads.productionSites),
+  ];
 
   return {
     territories: normalizeDromEnergyTerritories(payloads.territories),
-    assets: [
-      ...normalizeDromEnergyAssets(payloads.substations),
-      ...normalizeDromEnergyAssets(payloads.pylons),
-      ...normalizeDromEnergyAssets(payloads.productionSites),
-    ],
+    assets,
     communeMetrics: [
       ...(Array.isArray(payloads.communeConsumption) ? payloads.communeConsumption : []),
       ...(Array.isArray(payloads.co2Emissions) ? payloads.co2Emissions : []),
       ...(Array.isArray(payloads.efficiencyActions) ? payloads.efficiencyActions : []),
+      ...buildDerivedCommuneMetrics(assets),
     ],
     productionLimitations: Array.isArray(payloads.productionLimitations) ? payloads.productionLimitations : [],
     datasets,
+    gridLines: {
+      reunionHta: normalizeDromEnergyLineFeatureCollection(payloads.reunionHtaLines),
+    },
     updatedAt: getDromEnergyUpdatedAt(datasets),
   };
 }

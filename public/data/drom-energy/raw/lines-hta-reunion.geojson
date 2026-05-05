@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [55.4481, -20.8789],
+          [55.512, -20.912],
+          [55.538, -21.021]
+        ]
+      },
+      "properties": {
+        "id": "RE_HTA_001",
+        "nom": "Ligne HTA test Nord-Est",
+        "commune": "Saint-Denis",
+        "code_commune": "97411",
+        "territoire": "RE",
+        "tension_kv": 20,
+        "operateur": "EDF SEI",
+        "sourceDatasetId": "lines_hta_reunion"
+      }
+    }
+  ]
+}

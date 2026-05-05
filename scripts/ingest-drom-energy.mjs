@@ -14,6 +14,7 @@ const SOURCES_PATH = path.join(DATA_DIR, 'sources.json');
 const SUBSTATIONS_PATH = path.join(GEO_DIR, 'substations.geojson');
 const PYLONS_PATH = path.join(GEO_DIR, 'pylons.geojson');
 const PRODUCTION_SITES_PATH = path.join(GEO_DIR, 'production-sites.geojson');
+const LINES_HTA_REUNION_PATH = path.join(GEO_DIR, 'lines-hta-reunion.geojson');
 const COMMUNE_CONSUMPTION_PATH = path.join(TABLES_DIR, 'commune-consumption.json');
 const CO2_EMISSIONS_PATH = path.join(TABLES_DIR, 'co2-emissions.json');
 const PRODUCTION_LIMITATIONS_PATH = path.join(TABLES_DIR, 'production-limitations.json');
@@ -557,6 +558,10 @@ function normalizePylonFeature(feature, dataset, index) {
       name,
       sourceDatasetId: dataset.id,
       coordinates: geometryType === 'Point' ? feature.geometry.coordinates : undefined,
+      operator: pickString(properties, FIELD_MAPPINGS.operator) ?? undefined,
+      communeCode: pickString(properties, FIELD_MAPPINGS.communeCode) ?? undefined,
+      communeName: pickString(properties, FIELD_MAPPINGS.communeName) ?? undefined,
+      voltageKv: pickNumber(properties, FIELD_MAPPINGS.voltageKv) ?? undefined,
       rawProperties: { ...properties },
     },
   };
@@ -618,6 +623,35 @@ function normalizeProductionSiteFeature(feature, dataset, index) {
   };
 
   return normalizeProductionSiteRecord(row, dataset, index);
+}
+
+function isLineGeometry(geometry) {
+  return geometry?.type === 'LineString' || geometry?.type === 'MultiLineString';
+}
+
+function normalizeHtaLineFeature(feature, dataset, index) {
+  if (!isLineGeometry(feature?.geometry)) return null;
+
+  const properties = feature.properties ?? {};
+  const id = (typeof feature.id === 'string' || typeof feature.id === 'number')
+    ? String(feature.id)
+    : pickString(properties, FIELD_MAPPINGS.id) ?? `${dataset.id}-${index}`;
+  const name = pickString(properties, FIELD_MAPPINGS.name) ?? id;
+
+  return {
+    type: 'Feature',
+    geometry: feature.geometry,
+    properties: {
+      ...properties,
+      id,
+      name,
+      territoryCode: resolveTerritoryCode(properties, dataset.territoryCodes) ?? 'RE',
+      sourceDatasetId: dataset.id,
+      communeCode: pickString(properties, FIELD_MAPPINGS.communeCode) ?? undefined,
+      communeName: pickString(properties, FIELD_MAPPINGS.communeName) ?? undefined,
+      voltageKv: pickNumber(properties, FIELD_MAPPINGS.voltageKv) ?? undefined,
+    },
+  };
 }
 
 function normalizeCommuneMetricRecord(row, datasetId, territoryCodes) {
@@ -685,6 +719,7 @@ async function main() {
     substations: emptyFeatureCollection(),
     pylons: emptyFeatureCollection(),
     productionSites: emptyFeatureCollection(),
+    reunionHtaLines: emptyFeatureCollection(),
     communeConsumption: [],
     co2Emissions: [],
     productionLimitations: [],
@@ -795,6 +830,28 @@ async function main() {
         continue;
       }
 
+      if (source.id === 'lines_hta_reunion') {
+        if (!isFeatureCollection(payload)) throw new Error('invalid GeoJSON payload');
+        const features = payload.features
+          .map((feature, index) => normalizeHtaLineFeature(feature, source, index))
+          .filter(Boolean);
+        outputs.reunionHtaLines.features.push(...features);
+        normalizedCount = features.length;
+        if (normalizedCount === 0) throw new Error('no usable HTA line feature after normalization');
+        ingestionById.set(source.id, {
+          status: 'success',
+          lastRun,
+          testedAt: lastRun,
+          source: sourceType,
+          selectedUrl: url,
+          statusCode,
+          contentType,
+          featureCount: normalizedCount,
+          attempts,
+        });
+        continue;
+      }
+
       const rows = resolveRecords(payload);
       if (rows.length === 0) {
         throw new Error('empty records payload');
@@ -882,6 +939,7 @@ async function main() {
     writeJson(SUBSTATIONS_PATH, outputs.substations),
     writeJson(PYLONS_PATH, outputs.pylons),
     writeJson(PRODUCTION_SITES_PATH, outputs.productionSites),
+    writeJson(LINES_HTA_REUNION_PATH, outputs.reunionHtaLines),
     writeJson(COMMUNE_CONSUMPTION_PATH, outputs.communeConsumption),
     writeJson(CO2_EMISSIONS_PATH, outputs.co2Emissions),
     writeJson(PRODUCTION_LIMITATIONS_PATH, outputs.productionLimitations),
@@ -893,6 +951,7 @@ async function main() {
   log(`substations: ${outputs.substations.features.length}`);
   log(`pylons: ${outputs.pylons.features.length}`);
   log(`production-sites: ${outputs.productionSites.features.length}`);
+  log(`lines-hta-reunion: ${outputs.reunionHtaLines.features.length}`);
   log(`commune-consumption rows: ${outputs.communeConsumption.length}`);
   log(`co2-emissions rows: ${outputs.co2Emissions.length}`);
   log(`production-limitations rows: ${outputs.productionLimitations.length}`);

@@ -20,6 +20,9 @@
           55.512,
           -20.912
         ],
+        "operator": "EDF SEI",
+        "communeCode": "97418",
+        "communeName": "Sainte-Marie",
         "rawProperties": {
           "id": "RE_PYL_001",
           "nom": "Pylone HTB Test Sainte-Marie",

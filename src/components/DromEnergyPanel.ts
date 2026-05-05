@@ -51,6 +51,49 @@ function metricCard(label: string, value: string, detail: string, color: string,
   `;
 }
 
+function getAssetTypeColor(type: DromEnergyAsset['type']): string {
+  switch (type) {
+    case 'source_substation':
+      return '#4FD1FF';
+    case 'htb_pylon':
+      return '#3B82F6';
+    case 'production_site':
+      return '#2DD4BF';
+    default:
+      return '#60A5FA';
+  }
+}
+
+function getAssetTypeLabel(type: DromEnergyAsset['type']): string {
+  switch (type) {
+    case 'source_substation':
+      return 'Postes sources';
+    case 'htb_pylon':
+      return 'Pylônes HTB';
+    case 'production_site':
+      return 'Sites de production';
+    default:
+      return type;
+  }
+}
+
+function renderAssetLegend(): string {
+  const items: DromEnergyAsset['type'][] = ['source_substation', 'htb_pylon', 'production_site'];
+  return `
+    <div style="background:rgba(15,23,42,0.72);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:700;color:${PANEL_COLORS.text};margin-bottom:8px;">Légende actifs</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
+        ${items.map((type) => `
+          <div style="display:flex;align-items:center;gap:7px;min-width:0;font-size:11px;color:${PANEL_COLORS.muted};">
+            <span style="width:9px;height:9px;border-radius:50%;background:${getAssetTypeColor(type)};box-shadow:0 0 0 2px rgba(255,255,255,0.08);flex:0 0 auto;"></span>
+            <span title="${escapeHtml(getAssetTypeLabel(type))}" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(getAssetTypeLabel(type))}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
 export class DromEnergyPanel extends Panel {
   private modalEl!: HTMLElement;
   private contentEl: HTMLElement | null = null;
@@ -293,6 +336,9 @@ export class DromEnergyPanel extends Panel {
         </div>
       </div>
 
+      ${renderAssetLegend()}
+
+      <div style="margin-bottom:8px;font-size:12px;font-weight:700;color:${PANEL_COLORS.text};">Actifs</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         ${assetListHtml}
       </div>
@@ -381,13 +427,14 @@ export class DromEnergyPanel extends Panel {
     const territory = territoriesByCode.get(asset.territoryCode) ?? asset.territoryCode;
     const dataset = datasetsById.get(asset.sourceDatasetId) ?? asset.sourceDatasetId;
     const coords = asset.coordinates ? `${asset.coordinates[1].toFixed(4)}, ${asset.coordinates[0].toFixed(4)}` : null;
+    const assetTypeColor = getAssetTypeColor(asset.type);
 
     return `
       <div data-drom-energy-asset-id="${escapeHtml(asset.id)}" tabindex="0" style="background:rgba(15,23,42,0.72);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;cursor:default;transition:border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
           <div style="min-width:0;">
             <div style="font-size:13px;font-weight:700;color:${PANEL_COLORS.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(asset.name)}</div>
-            <div style="margin-top:2px;font-size:11px;color:${PANEL_COLORS.cyan};">${escapeHtml(asset.type)}</div>
+            <div style="margin-top:2px;font-size:11px;color:${assetTypeColor};">${escapeHtml(asset.type)}</div>
           </div>
           <div style="font-size:10px;color:${PANEL_COLORS.muted};white-space:nowrap;">${escapeHtml(asset.id)}</div>
         </div>
@@ -410,7 +457,10 @@ export class DromEnergyPanel extends Panel {
   ): string {
     const territory = territoriesByCode.get(metric.territoryCode) ?? metric.territoryCode;
     const dataset = datasetsById.get(metric.sourceDatasetId) ?? metric.sourceDatasetId;
+    const isAssetMetric = metric.assetsCount != null || metric.substationsCount != null;
     const values = [
+      metric.assetsCount != null ? `Assets: ${metric.assetsCount.toLocaleString('fr-FR')}` : null,
+      metric.substationsCount != null ? `Postes sources: ${metric.substationsCount.toLocaleString('fr-FR')}` : null,
       metric.consumptionMwh != null ? `Conso: ${metric.consumptionMwh.toLocaleString('fr-FR')} MWh` : null,
       metric.co2Tons != null ? `CO2: ${metric.co2Tons.toLocaleString('fr-FR')} t` : null,
       metric.efficiencyActionsCount != null ? `Actions: ${metric.efficiencyActionsCount.toLocaleString('fr-FR')}` : null,
@@ -418,9 +468,18 @@ export class DromEnergyPanel extends Panel {
 
     return `
       <div style="background:rgba(15,23,42,0.72);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:10px;">
-        <div style="font-size:12px;font-weight:700;color:${PANEL_COLORS.text};">${escapeHtml(metric.communeName)} (${escapeHtml(metric.communeCode)})</div>
-        <div style="margin-top:4px;font-size:11px;color:${PANEL_COLORS.cyan};">${escapeHtml(territory)} · ${escapeHtml(String(metric.year))}</div>
-        <div style="margin-top:6px;font-size:11px;color:${PANEL_COLORS.text};">${escapeHtml(values || 'Valeurs non renseignées')}</div>
+        <div style="font-size:12px;font-weight:700;color:${PANEL_COLORS.text};">${escapeHtml(metric.communeName)}${metric.communeCode ? ` (${escapeHtml(metric.communeCode)})` : ''}</div>
+        <div style="margin-top:4px;font-size:11px;color:${PANEL_COLORS.cyan};">${escapeHtml([territory, metric.year].filter(Boolean).join(' · '))}</div>
+        ${isAssetMetric ? `
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px 10px;align-items:center;margin-top:8px;font-size:11px;color:${PANEL_COLORS.text};">
+            <span style="color:${PANEL_COLORS.muted};">Commune</span>
+            <span style="color:${PANEL_COLORS.muted};text-align:right;">Assets énergie DROM</span>
+            <span style="color:${PANEL_COLORS.muted};text-align:right;">Postes sources</span>
+            <strong style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(metric.communeName)}</strong>
+            <strong style="text-align:right;">${escapeHtml((metric.assetsCount ?? 0).toLocaleString('fr-FR'))}</strong>
+            <strong style="text-align:right;">${escapeHtml((metric.substationsCount ?? 0).toLocaleString('fr-FR'))}</strong>
+          </div>
+        ` : `<div style="margin-top:6px;font-size:11px;color:${PANEL_COLORS.text};">${escapeHtml(values || 'Valeurs non renseignées')}</div>`}
         <div style="margin-top:4px;font-size:10px;color:${PANEL_COLORS.muted};">${escapeHtml(dataset)}</div>
       </div>
     `;

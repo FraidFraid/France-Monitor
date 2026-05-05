@@ -27,15 +27,15 @@
     "dataFairDatasetSlug": "postes-sources-reunion",
     "ingestion": {
       "status": "success",
-      "lastRun": "2026-04-29T16:11:52.728Z",
-      "testedAt": "2026-04-29T16:11:52.728Z",
+      "lastRun": "2026-04-29T16:38:45.327Z",
+      "testedAt": "2026-04-29T16:38:45.327Z",
       "source": "local_fallback_forced",
       "selectedUrl": "public/data/drom-energy/raw/postes-sources-reunion.geojson",
       "contentType": "application/geo+json",
       "featureCount": 1,
       "attempts": []
     },
-    "fetchedAt": "2026-04-29T16:11:52.730Z"
+    "fetchedAt": "2026-04-29T16:38:45.329Z"
   },
   {
     "id": "postes_sources_guyane",
@@ -63,8 +63,8 @@
     "dataFairDatasetSlug": "postes-sources-guyane",
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.730Z",
-      "testedAt": "2026-04-29T16:11:52.730Z",
+      "lastRun": "2026-04-29T16:38:45.329Z",
+      "testedAt": "2026-04-29T16:38:45.329Z",
       "source": "none",
       "reason": "all_remote_failed_and_no_local_fallback",
       "lastAttemptedUrl": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/poste-source-guy/exports/geojson",
@@ -131,8 +131,8 @@
     "dataFairDatasetSlug": "pylones-htb-martinique",
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.821Z",
-      "testedAt": "2026-04-29T16:11:52.821Z",
+      "lastRun": "2026-04-29T16:38:45.447Z",
+      "testedAt": "2026-04-29T16:38:45.447Z",
       "source": "none",
       "reason": "all_remote_failed_and_no_local_fallback",
       "lastAttemptedUrl": "https://opendata.edf.fr/api/explore/v2.1/catalog/datasets/pylones-htb-mar/exports/geojson",
@@ -202,15 +202,15 @@
     "dataFairDatasetSlug": "pylones-htb-reunion",
     "ingestion": {
       "status": "success",
-      "lastRun": "2026-04-29T16:11:52.828Z",
-      "testedAt": "2026-04-29T16:11:52.828Z",
+      "lastRun": "2026-04-29T16:38:45.457Z",
+      "testedAt": "2026-04-29T16:38:45.457Z",
       "source": "local_fallback_forced",
       "selectedUrl": "public/data/drom-energy/raw/pylones-htb-reunion.geojson",
       "contentType": "application/geo+json",
       "featureCount": 1,
       "attempts": []
     },
-    "fetchedAt": "2026-04-29T16:11:52.829Z"
+    "fetchedAt": "2026-04-29T16:38:45.458Z"
   },
   {
     "id": "production_sites_reunion",
@@ -227,15 +227,15 @@
     "expectedFormat": "geojson",
     "ingestion": {
       "status": "success",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.459Z",
+      "testedAt": "2026-04-29T16:38:45.459Z",
       "source": "local_fallback_forced",
       "selectedUrl": "public/data/drom-energy/raw/production-sites-reunion.geojson",
       "contentType": "application/geo+json",
       "featureCount": 1,
       "attempts": []
     },
-    "fetchedAt": "2026-04-29T16:11:52.829Z"
+    "fetchedAt": "2026-04-29T16:38:45.459Z"
   },
   {
     "id": "capacites_accueil",
@@ -256,11 +256,38 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.459Z",
+      "testedAt": "2026-04-29T16:38:45.459Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",
+      "attempts": []
+    }
+  },
+  {
+    "id": "lines_hta_reunion",
+    "label": "Lignes HTA - Réunion",
+    "family": "grid_assets",
+    "geometry": "line",
+    "source": "regional_reference",
+    "territoryCodes": [
+      "RE"
+    ],
+    "urls": [
+      "https://opendata-reunion.edf.fr/api/explore/v2.1/catalog/datasets/lignes-haute-tension-hta-aerien-run/exports/geojson",
+      "https://data.regionreunion.com/explore/dataset/lignes-haute-tension-hta-aerien/export/?format=geojson"
+    ],
+    "localFallbackPath": "public/data/drom-energy/raw/lines-hta-reunion.geojson",
+    "expectedFormat": "geojson",
+    "fetchedAt": "2026-04-29T16:38:45.460Z",
+    "ingestion": {
+      "status": "success",
+      "lastRun": "2026-04-29T16:38:45.459Z",
+      "testedAt": "2026-04-29T16:38:45.459Z",
+      "source": "local_fallback_forced",
+      "selectedUrl": "public/data/drom-energy/raw/lines-hta-reunion.geojson",
+      "contentType": "application/geo+json",
+      "featureCount": 1,
       "attempts": []
     }
   },
@@ -284,8 +311,8 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.460Z",
+      "testedAt": "2026-04-29T16:38:45.460Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",
@@ -311,8 +338,8 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.460Z",
+      "testedAt": "2026-04-29T16:38:45.460Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",
@@ -338,8 +365,8 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.460Z",
+      "testedAt": "2026-04-29T16:38:45.460Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",
@@ -365,8 +392,8 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.829Z",
-      "testedAt": "2026-04-29T16:11:52.829Z",
+      "lastRun": "2026-04-29T16:38:45.460Z",
+      "testedAt": "2026-04-29T16:38:45.460Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",
@@ -393,8 +420,8 @@
     ],
     "ingestion": {
       "status": "failure",
-      "lastRun": "2026-04-29T16:11:52.830Z",
-      "testedAt": "2026-04-29T16:11:52.830Z",
+      "lastRun": "2026-04-29T16:38:45.460Z",
+      "testedAt": "2026-04-29T16:38:45.460Z",
       "source": "none",
       "reason": "forced_local_fallback_not_configured",
       "error": "forced_local_fallback_missing_or_invalid",

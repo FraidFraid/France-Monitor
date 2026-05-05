@@ -1,3 +1,5 @@
+import type { FeatureCollection, Geometry } from 'geojson';
+
 export type DromTerritoryCode =
   | 'GP'
   | 'MQ'
@@ -23,7 +25,7 @@ export type DromEnergyDatasetFamily =
 
 export type DromEnergyDatasetGeometry = 'point' | 'line' | 'polygon' | 'none';
 
-export type DromEnergyDatasetSource = 'EDF_SEI' | 'national_registry' | 'territorial_reference';
+export type DromEnergyDatasetSource = 'EDF_SEI' | 'national_registry' | 'regional_reference' | 'territorial_reference';
 
 export type DromEnergyDatasetExpectedFormat = 'geojson' | 'json' | 'csv';
 
@@ -77,13 +79,15 @@ export interface DromEnergyAsset {
 
 export interface DromEnergyCommuneMetric {
   territoryCode: DromTerritoryCode;
-  communeCode: string;
+  communeCode?: string;
   communeName: string;
-  year: number;
+  year?: number;
   sourceDatasetId: string;
   consumptionMwh?: number;
   co2Tons?: number;
   efficiencyActionsCount?: number;
+  assetsCount?: number;
+  substationsCount?: number;
   rawProperties?: Record<string, unknown>;
 }
 
@@ -124,5 +128,8 @@ export interface DromEnergyDashboard {
   communeMetrics: DromEnergyCommuneMetric[];
   productionLimitations: DromEnergyProductionLimitation[];
   datasets: DromEnergyDatasetMeta[];
+  gridLines?: {
+    reunionHta?: FeatureCollection<Geometry, Record<string, unknown>>;
+  };
   updatedAt: string;
 }

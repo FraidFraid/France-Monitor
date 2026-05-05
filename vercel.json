@@ -6,7 +6,9 @@
     "api/fuel-price-series-refresh.js": { "maxDuration": 30 },
     "api/outages/citizen.js": { "maxDuration": 60 },
     "api/finance/*.js":       { "maxDuration": 30 },
-    "api/transport/*.js":     { "maxDuration": 30 }
+    "api/transport/*.js":     { "maxDuration": 30 },
+    "api/threats.js":         { "maxDuration": 30 },
+    "api/exposure.js":        { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
@@ -35,6 +37,8 @@
     { "source": "/api/transport/(.*)", "destination": "/api/transport/$1" },
     { "source": "/api/geocode", "destination": "/api/geocode" },
     { "source": "/api/situation-history", "destination": "/api/situation-history" },
+    { "source": "/api/threats", "destination": "/api/threats" },
+    { "source": "/api/exposure", "destination": "/api/exposure" },
     { "source": "/api/francemonitor/(.*)", "destination": "/api/francemonitor/$1" },
     { "source": "/about", "destination": "/about.html" },
     { "source": "/methodology", "destination": "/methodology.html" },
