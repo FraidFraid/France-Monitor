@@ -10,6 +10,8 @@
  * Output : { production: { items, sourceFormat }, transmission: { items, sourceFormat } }
  */
 
+export const config = { maxDuration: 30 };
+
 const IIP_FEEDS = [
   {
     url: 'https://iip.cloud-rte-france.com/data/rss/production_unavailability/production_unavailability.xml',
