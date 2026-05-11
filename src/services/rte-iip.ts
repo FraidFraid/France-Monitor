@@ -74,21 +74,11 @@ export interface RTEIIPState {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Flux RSS IIP — publics sans authentification (REMIT obligatoire)
-const IIP_FEEDS: Array<{ url: string; type: IIPUnavailabilityType }> = [
-    {
-        url: 'https://iip.cloud-rte-france.com/data/rss/production_unavailability/production_unavailability.xml',
-        type: 'production',
-    },
-    {
-        url: 'https://iip.cloud-rte-france.com/data/rss/transmission_unavailability/transmission_unavailability.xml',
-        type: 'transmission',
-    },
-];
+// Endpoint dédié IIP (Node.js runtime, pas Edge — contourne les restrictions IP CDN)
+const IIP_API_URL = '/api/rte-iip';
 
-const CACHE_TTL_MS = 12 * 60_000;   // 12 min (flux mis à jour au fil des déclarations)
-const FETCH_TIMEOUT_MS = 25_000;     // 25s — iip.cloud-rte-france.com peut être lent
-const FETCH_RETRY_DELAY_MS = 2_000; // délai avant retry
+const CACHE_TTL_MS = 12 * 60_000;   // 12 min
+const FETCH_TIMEOUT_MS = 28_000;     // 28s budget total (endpoint a 30s maxDuration)
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -96,17 +86,11 @@ let _cache: { state: RTEIIPState; fetchedAt: number } | null = null;
 /** true dès qu'un fetch IIP a réussi (persiste toute la session). */
 let _hasEverSucceeded = false;
 
-interface FeedFetchResult {
-    type: IIPUnavailabilityType;
-    status: IIPFeedStatus;
-    incidents: RTEIIPIncident[];
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Retourne l'état courant des incidents IIP RTE.
- * Utilise le proxy RSS existant (/api/rss-proxy ou plugin Vite en dev).
+ * Appelle /api/rte-iip (Node.js runtime) qui fetche les deux flux RSS IIP directement.
  */
 export async function fetchRTEIIPIncidents(): Promise<RTEIIPState> {
     const now = Date.now();
@@ -119,9 +103,19 @@ export async function fetchRTEIIPIncidents(): Promise<RTEIIPState> {
     const t0 = Date.now();
 
     try {
-        const results = await Promise.allSettled(
-            IIP_FEEDS.map(feed => fetchFeed(feed.url, feed.type))
-        );
+        const resp = await fetch(IIP_API_URL, {
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+
+        if (!resp.ok) {
+            throw new Error(`/api/rte-iip HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json() as Record<string, {
+            items?: Array<{ title?: string; description?: string; link?: string; pubDate?: string; isoDate?: string; guid?: string; id?: string }>;
+            sourceFormat?: string;
+            error?: string;
+        }>;
 
         const incidents: RTEIIPIncident[] = [];
         const feedStatuses: Record<'production' | 'transmission', IIPFeedStatus> = {
@@ -129,10 +123,18 @@ export async function fetchRTEIIPIncidents(): Promise<RTEIIPState> {
             transmission: 'error',
         };
 
-        for (const result of results) {
-            if (result.status === 'fulfilled') {
-                feedStatuses[result.value.type as 'production' | 'transmission'] = result.value.status;
-                incidents.push(...result.value.incidents);
+        for (const type of ['production', 'transmission'] as const) {
+            const feed = data[type];
+            if (!feed) continue;
+            if (feed.error || !Array.isArray(feed.items)) {
+                feedStatuses[type] = 'error';
+            } else if (feed.sourceFormat === 'html') {
+                feedStatuses[type] = 'html';
+            } else if (feed.items.length === 0) {
+                feedStatuses[type] = 'empty';
+            } else {
+                feedStatuses[type] = 'ok';
+                incidents.push(...feed.items.map(item => parseItem(item, type)));
             }
         }
 
@@ -165,84 +167,6 @@ export function invalidateRTEIIPCache(): void {
     _cache = null;
 }
 
-// ── Feed fetcher ──────────────────────────────────────────────────────────────
-
-/** Pause simple — utilisée pour le retry. */
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-/**
- * Fetch un flux IIP via le proxy RSS JSON, avec 1 retry automatique
- * sur erreur réseau / timeout (le serveur IIP peut être lent au premier appel).
- */
-async function fetchFeed(
-    feedUrl: string,
-    type: IIPUnavailabilityType
-): Promise<FeedFetchResult> {
-    // Utilisation du proxy RSS JSON. En dev : plugin Vite rss-json-proxy.ts (/api/rss).
-    // En prod : api/rss.js (Vercel). Retourne { items: [...] } JSON parsé depuis XML.
-    // ⚠ Ne PAS utiliser /api/rss-proxy : il retourne du XML brut, pas du JSON.
-    const proxyUrl = `/api/rss?url=${encodeURIComponent(feedUrl)}`;
-
-    for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-            const resp = await fetch(proxyUrl, {
-                signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-            });
-
-            if (!resp.ok) {
-                throw new Error(`IIP RSS proxy returned HTTP ${resp.status} for ${feedUrl}`);
-            }
-
-            const json = await resp.json() as {
-                items?: Array<{
-                    title?: string;
-                    description?: string;
-                    link?: string;
-                    pubDate?: string;
-                    isoDate?: string;
-                    guid?: string;
-                    id?: string;
-                }>;
-                error?: string;
-                sourceFormat?: 'xml' | 'html' | 'unknown';
-            };
-
-            if (json.error || !Array.isArray(json.items)) {
-                console.warn(`[rte-iip] No items from ${feedUrl}:`, json.error ?? 'no items array');
-                return { type, status: 'error', incidents: [] };
-            }
-
-            if (json.sourceFormat === 'html') {
-                console.warn(`[rte-iip] HTML received instead of RSS from ${feedUrl}`);
-                return { type, status: 'html', incidents: [] };
-            }
-
-            if (json.items.length === 0) {
-                return { type, status: 'empty', incidents: [] };
-            }
-
-            return {
-                type,
-                status: 'ok',
-                incidents: json.items.map(item => parseItem(item, type)),
-            };
-        } catch (err) {
-            const isRetryable =
-                err instanceof Error &&
-                (err.name === 'TimeoutError' || err.name === 'AbortError' || err.message.includes('fetch'));
-
-            if (attempt < 2 && isRetryable) {
-                console.warn(`[rte-iip] Attempt ${attempt} failed for ${type}, retrying in ${FETCH_RETRY_DELAY_MS}ms…`, err instanceof Error ? err.message : err);
-                await sleep(FETCH_RETRY_DELAY_MS);
-                continue;
-            }
-            throw err;
-        }
-    }
-
-    // Unreachable — satisfait le type-checker
-    return { type, status: 'error', incidents: [] };
-}
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 

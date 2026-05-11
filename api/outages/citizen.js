@@ -21,9 +21,11 @@
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête (< 1req/s par politesse)
+const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête scraping (< 1req/s par politesse)
+const GEOCODE_BATCH_DELAY_MS = 150; // délai entre batches de géocodage (API Adresse = pas de rate limit strict)
+const GEOCODE_BATCH_SIZE = 8; // géocodages en parallèle par batch
 const FETCH_TIMEOUT_MS = 8_000;
-const CITY_PAGE_TIMEOUT_MS = 2_500; // timeout court pour les pages villes (fetch parallèle)
+const CITY_PAGE_TIMEOUT_MS = 2_000; // timeout court pour les pages villes (fetch parallèle)
 const STALE_THRESHOLD_MS = 48 * 60 * 60_000; // 48h — ignorer villes sans signalement récent
 const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60_000; // 24h (les villes ne bougent pas)
 const DBSCAN_RADIUS_KM = 10;
@@ -202,8 +204,8 @@ const PRIORITY_DEPT_CODES = [
  *   - Géocodage via API Adresse data.gouv.fr (avec cache 24h)
  */
 async function scrapeInfoCoupure() {
-  // Réduire à 12 departments pour laisser de la marge au fetch des pages villes
-  const codesToFetch = PRIORITY_DEPT_CODES.filter(c => INFOCOUPURE_DEPTS[c]).slice(0, 12);
+  // 8 départements max — laisser du budget temps pour le géocodage parallèle
+  const codesToFetch = PRIORITY_DEPT_CODES.filter(c => INFOCOUPURE_DEPTS[c]).slice(0, 8);
   const allReports = [];
 
   for (let i = 0; i < codesToFetch.length; i += 4) {
@@ -261,7 +263,7 @@ async function fetchDeptCities(code) {
   // Chaque page ville = thread wpDiscuz avec N signalements datés.
   // On récupère : nombre de commentaires × nombre de pages = reportCount approximatif
   //               + date du commentaire le plus récent (filtre staleness)
-  const MAX_CITIES = 15;
+  const MAX_CITIES = 8;
   const entriesToProcess = cityEntries.slice(0, MAX_CITIES);
 
   const cityData = await Promise.all(
@@ -280,25 +282,24 @@ async function fetchDeptCities(code) {
     return now - reportData.mostRecentDate.getTime() < STALE_THRESHOLD_MS;
   });
 
-  // ── Géocodage séquentiel (rate-limited, cache 24h) ──
-  const reports = [];
-  for (const entry of freshEntries) {
-    const coords = await geocodeCity(entry.city, code);
-    const finalCoords = coords ?? dept.coords;
-    reports.push({
+  // ── Géocodage parallèle (API Adresse = pas de rate limit strict) ──
+  const coordsMap = await geocodeCitiesBatch(
+    freshEntries.map(e => ({ city: e.city, dept: code }))
+  );
+  const reports = freshEntries.map(entry => {
+    const coords = coordsMap.get(`${entry.city}|${code}`) ?? dept.coords;
+    return {
       id: `infocoupure-${code}-${slugify(entry.city)}-${Date.now()}`,
       source: 'infocoupure',
       city: entry.city,
       department: dept.name,
       departmentCode: code,
-      // Compte réel issu des commentaires wpDiscuz, fallback 1
       reportCount: entry.reportData?.count ?? 1,
-      // Date du signalement le plus récent
       timestamp: entry.reportData?.mostRecentDate ?? new Date(),
-      coordinates: finalCoords,
+      coordinates: coords,
       type: 'electricity',
-    });
-  }
+    };
+  });
   return reports;
 }
 
@@ -389,23 +390,26 @@ function parseDeptArticles(html, deptCode) {
  * Ex: "Coupures d'électricité Saint-Priest (69) aujourd'hui" → "Saint-Priest"
  */
 function extractCityFromTitle(title, deptCode) {
-  // Pattern principal : tout ce qui est entre le type d'incident et le code dépt
-  const patterns = [
-    // "Coupures d'électricité VILLE (69) ..."
-    new RegExp(`(?:coupures?|pannes?|électricité)[^(]*?([\\w][\\w\\s'\\-]+?)\\s*\\(${deptCode}\\)`, 'i'),
-    // "VILLE (69) : coupures" ou "VILLE (69) aujourd'hui"
-    new RegExp(`^([\\w][\\w\\s'\\-]+?)\\s*\\(${deptCode}\\)`, 'i'),
-  ];
+  // Extraire tout ce qui précède (deptCode)
+  const m = title.match(new RegExp(`^(.+?)\\s*\\(${deptCode}\\)`, 'i'));
+  if (!m) return '';
 
-  for (const pat of patterns) {
-    const m = title.match(pat);
-    if (m) {
-      return m[1].trim()
-        .replace(/^(?:à|de|d'|du|le|la|les)\s+/i, '')
-        .trim();
-    }
-  }
-  return '';
+  let candidate = m[1].trim();
+
+  // Supprimer les préfixes de bruit en cascade (ordre du plus spécifique au plus général)
+  candidate = candidate
+    .replace(/^coupures?\s+d[''e]\s*électricit[eé]\s*/i, '')
+    .replace(/^pannes?\s+(?:de\s+)?électricit[eé]\s*/i, '')
+    .replace(/^pannes?\s+électriques?\s*/i, '')
+    .replace(/^coupures?\s+électriques?\s*/i, '')
+    .replace(/^pannes?\s+de\s+courant\s*/i, '')
+    .replace(/^coupures?\s+de\s+courant\s*/i, '')
+    .replace(/^(?:pannes?|coupures?)\s*/i, '')
+    .replace(/^(?:électricit[eé]|électriques?|courants?)\s*/i, '')
+    .replace(/^(?:à|de|d[''e]|du|le|la|les)\s+/i, '')
+    .trim();
+
+  return candidate.length >= 2 ? candidate : '';
 }
 
 /**
@@ -572,22 +576,27 @@ async function scrapeCoupureElec() {
     return [];
   }
 
-  const reports = [];
-  for (const r of raw.slice(0, 100)) {
-    const coords = await geocodeCity(r.city, r.deptName);
-    if (!coords) continue;
-    reports.push({
-      id: `coupure-elec-${slugify(r.city)}-${Date.now()}`,
-      source: 'coupure-elec',
-      city: r.city,
-      department: r.deptName,
-      departmentCode: r.deptCode,
-      reportCount: r.count,
-      timestamp: new Date(),
-      coordinates: coords,
-      type: 'electricity',
-    });
-  }
+  const limited = raw.slice(0, 30);
+  const coordsMap = await geocodeCitiesBatch(
+    limited.map(r => ({ city: r.city, dept: r.deptCode }))
+  );
+  const reports = limited
+    .map(r => {
+      const coords = coordsMap.get(`${r.city}|${r.deptCode}`);
+      if (!coords) return null;
+      return {
+        id: `coupure-elec-${slugify(r.city)}-${Date.now()}`,
+        source: 'coupure-elec',
+        city: r.city,
+        department: r.deptName,
+        departmentCode: r.deptCode,
+        reportCount: r.count,
+        timestamp: new Date(),
+        coordinates: coords,
+        type: 'electricity',
+      };
+    })
+    .filter(Boolean);
   return reports;
 }
 
@@ -615,24 +624,34 @@ function parseCoupureElecDept(cheerio, html, dept) {
   let totalFound = 0;
   const seenStatuses = new Set();
 
-  // ── Validation de structure ──
-  // Vérifier la présence des sélecteurs attendus avant d'inter-préter
-  const hasVilleLinks = $('a[href^="/ville/"]').length > 0;
+  // Essayer plusieurs schémas d'URL ville (le site peut avoir changé /ville/ -> /commune/ etc.)
+  const CITY_LINK_SELECTORS = [
+    'a[href^="/ville/"]',
+    'a[href^="/commune/"]',
+    'a[href^="/pannes/"]',
+    'a[href*="/ville/"]',
+    'a[href*="/commune/"]',
+  ];
+  let cityLinkSelector = null;
+  for (const sel of CITY_LINK_SELECTORS) {
+    if ($(sel).length > 0) { cityLinkSelector = sel; break; }
+  }
+
   const hasPContainer = $('[class*="p-6"]').length > 0;
 
-  if (!hasVilleLinks && !hasPContainer) {
-    // Aucun marqueur de structure trouvé — la page a peut-être changé
+  if (!cityLinkSelector && !hasPContainer) {
     console.warn(
       `[coupure-elec] /departement/${dept.slug} : structure HTML inattendue — ` +
-      'aucun lien /ville/ ni conteneur .p-6 trouvé. Scraper peut-être cassé.'
+      'aucun lien ville ni conteneur .p-6 trouvé. Scraper peut-être cassé.'
     );
     return { results: [], stats: { total: 0, active: 0, statuses: [], structureValid: false } };
   }
 
-  $('a[href^="/ville/"]').each((_, el) => {
+  $(cityLinkSelector ?? 'a[href]').each((_, el) => {
     const $link = $(el);
-    const city = $link.text().replace(/^[\s\u2192\u2192]+/, '').trim();
-    if (!city) return;
+    const city = $link.text().replace(/^[\s\u2192]+/, '').trim();
+    if (!city || city.length < 2) return;
+    if (/^(voir|plus|retour|accueil|carte|liste)/i.test(city)) return;
 
     const $container = $link.closest('[class*="p-6"]');
     if (!$container.length) return;
@@ -872,13 +891,33 @@ function computeSeverity(totalReports, density) {
  *
  * @returns {Promise<[number, number] | null>} [lng, lat] ou null si non trouvé
  */
+/**
+ * Géocode plusieurs villes en parallèle (batches de GEOCODE_BATCH_SIZE).
+ * Retourne une Map cacheKey → [lng, lat] | null.
+ */
+async function geocodeCitiesBatch(cityDeptPairs) {
+  const resultMap = new Map();
+  for (let i = 0; i < cityDeptPairs.length; i += GEOCODE_BATCH_SIZE) {
+    const batch = cityDeptPairs.slice(i, i + GEOCODE_BATCH_SIZE);
+    await Promise.all(
+      batch.map(async ({ city, dept }) => {
+        const coords = await geocodeCity(city, dept);
+        resultMap.set(`${city}|${dept}`, coords);
+      })
+    );
+    if (i + GEOCODE_BATCH_SIZE < cityDeptPairs.length) await sleep(GEOCODE_BATCH_DELAY_MS);
+  }
+  return resultMap;
+}
+
 async function geocodeCity(city, dept) {
   const cacheKey = `${city}|${dept}`.toLowerCase();
   const cached = _geocodeCache.get(cacheKey);
   if (cached) return cached.coords;
   if (cached === null) return null; // marqueur "not found"
 
-  await rateLimitWait('geocode');
+  // Pas de rate limit — l'API Adresse data.gouv.fr est conçue pour du volume
+  // et le géocodage séquentiel avec 1.2s/ville provoquait des timeouts Vercel (>60s)
 
   try {
     const query = dept
