@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     }
 
     // ── Cluster reports into geographic zones ──
-    const zones = clusterZones(allReports);
+    const zones = await clusterZones(allReports);
     const criticalZones = zones.features.filter((f) => f.properties.severity === 'critical').length;
 
     const response = {
@@ -686,7 +686,7 @@ function parseCoupureElecDept(cheerio, html, dept) {
  *
  * @returns {import('geojson').FeatureCollection<import('geojson').Polygon>}
  */
-function clusterZones(reports) {
+async function clusterZones(reports) {
   // Dédupliquer par ville (somme des signalements)
   const deduped = deduplicateReports(reports);
 
@@ -708,18 +708,24 @@ function clusterZones(reports) {
 
   const fc = { type: 'FeatureCollection', features: pointFeatures };
 
-  // DBSCAN via Turf (inline — évite l'import dynamique)
-  // Note: @turf/turf doit être disponible dans l'env Node.js de Vercel
+  // Chargement dynamique de Turf (ESM-compatible — require() interdit avec "type":"module")
+  let turf;
+  try {
+    turf = await import('@turf/turf');
+  } catch (err) {
+    console.warn('[citizen-outages] Turf indisponible, fallback grille simple:', err.message);
+    return buildSimpleZones(deduped);
+  }
+
+  // DBSCAN clustering
   let clustered;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const turf = require('@turf/turf');
     clustered = turf.clustersDbscan(fc, DBSCAN_RADIUS_KM, {
       minPoints: DBSCAN_MIN_POINTS,
       units: 'kilometers',
     });
   } catch (err) {
-    console.warn('[citizen-outages] Turf DBSCAN unavailable, using simple grid:', err.message);
+    console.warn('[citizen-outages] Turf DBSCAN failed, fallback grille simple:', err.message);
     return buildSimpleZones(deduped);
   }
 
@@ -728,9 +734,9 @@ function clusterZones(reports) {
   for (const feature of clustered.features) {
     const clusterId = feature.properties.dbscan === 'core' || feature.properties.dbscan === 'edge'
       ? feature.properties.cluster
-      : -1; // -1 = bruit (outlier)
+      : -1;
 
-    if (clusterId < 0) continue; // ignorer les outliers
+    if (clusterId < 0) continue;
 
     if (!clusterGroups.has(clusterId)) {
       clusterGroups.set(clusterId, { points: [], totalReports: 0, sources: new Set() });
@@ -743,12 +749,6 @@ function clusterZones(reports) {
 
   // Construire un polygone par cluster
   const zoneFeatures = [];
-  let turf;
-  try {
-    turf = require('@turf/turf');
-  } catch {
-    return { type: 'FeatureCollection', features: [] };
-  }
 
   for (const [clusterId, group] of clusterGroups) {
     if (group.points.length === 0) continue;
