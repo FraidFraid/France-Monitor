@@ -4,7 +4,7 @@
   ],
   "functions": {
     "api/fuel-price-series-refresh.js": { "maxDuration": 30 },
-    "api/outages/citizen.js": { "maxDuration": 60 },
+    "api/outages/*.js":        { "maxDuration": 60 },
     "api/rte-iip.js":         { "maxDuration": 30 },
     "api/finance/*.js":       { "maxDuration": 30 },
     "api/transport/*.js":     { "maxDuration": 30 },
