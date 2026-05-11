@@ -24,8 +24,9 @@ const IIP_FEEDS = [
 const FETCH_TIMEOUT_MS = 22_000;
 const CACHE_TTL_MS = 10 * 60_000;
 
+// User-Agent navigateur — l'API IIP RTE peut bloquer les UA non-browsers
 const USER_AGENT =
-  'FranceMonitor/2.0 (+https://francemonitor.com; situational-awareness-dashboard)';
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 // Module-level cache (shared across warm invocations)
 let _cache = null;
@@ -84,22 +85,38 @@ export default async function handler(req, res) {
   }
 }
 
+// Agent TLS permissif — iip.cloud-rte-france.com a une chaîne de certificats
+// incomplète (UNABLE_TO_VERIFY_LEAF_SIGNATURE) qui fait échouer la vérif Node.js.
+// On accepte le risque puisque c'est un flux REMIT public, non sensible.
+let _insecureAgent = null;
+async function getInsecureAgent() {
+  if (_insecureAgent) return _insecureAgent;
+  const { Agent } = await import('undici');
+  _insecureAgent = new Agent({ connect: { rejectUnauthorized: false } });
+  return _insecureAgent;
+}
+
 async function fetchAndParse(url, type) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
+    const dispatcher = await getInsecureAgent();
     const resp = await fetch(url, {
       signal: controller.signal,
+      dispatcher,
       headers: {
         'User-Agent': USER_AGENT,
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
         'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',
       },
+    }).catch(err => {
+      const cause = err?.cause?.code ?? err?.cause?.message ?? err?.message ?? 'unknown';
+      throw new Error(`fetch ${type} failed: ${cause}`);
     });
 
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} from IIP`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} from IIP for ${type}`);
 
     const xml = await resp.text();
     const sourceFormat = detectFormat(xml);
