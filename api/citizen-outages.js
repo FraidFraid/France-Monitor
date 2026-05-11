@@ -19,10 +19,6 @@
  *         User-Agent poli, anonymisation ville/dept uniquement.
  */
 
-// Per-function config (remplace l'entrée dans vercel.json pour éviter
-// le bug "unmatched-function-pattern" du build cloud Vercel)
-export const config = { maxDuration: 60 };
-
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête scraping (< 1req/s par politesse)
