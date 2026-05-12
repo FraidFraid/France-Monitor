@@ -4238,20 +4238,20 @@ export class DeckGLMap {
     this.map.moveLayer(LYR_SUBMARINE_CABLES_HITAREA, undefined);
 
     // ─── Citizen Outage Zones (crowd-sourced clusters) ───
-    // Fill : rouge-orange translucide selon severity (data-driven via 'match')
+    // Toujours violet (matching légende) — l'intensité varie selon severity
     this.map.addLayer({
       id: LYR_CITIZEN_FILL,
       type: 'fill',
       source: SRC_CITIZEN_ZONES,
       paint: {
-        'fill-color': [
+        'fill-color': '#b400ff',
+        'fill-opacity': [
           'match', ['get', 'severity'],
-          'critical', 'rgba(180,0,255,0.25)',
-          'high', 'rgba(220,50,50,0.20)',
-          'medium', 'rgba(255,140,0,0.18)',
-          /* low */   'rgba(255,200,50,0.12)',
+          'critical', 0.40,
+          'high', 0.30,
+          'medium', 0.22,
+          /* low */ 0.15,
         ],
-        'fill-opacity': 1,
       },
     });
     this.map.addLayer({
@@ -4259,14 +4259,9 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_CITIZEN_ZONES,
       paint: {
-        'line-color': [
-          'match', ['get', 'severity'],
-          'critical', '#b400ff',
-          'high', '#dc3232',
-          'medium', '#ff8c00',
-          /* low */   '#ffc832',
-        ],
-        'line-width': 1.5,
+        'line-color': '#b400ff',
+        'line-width': 2,
+        'line-opacity': 0.9,
         'line-dasharray': [3, 2],
       },
     });
