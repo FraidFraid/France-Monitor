@@ -27,6 +27,49 @@ let _serverCache = null;
 let _geocodeCache = new Map(); // ville → [lng, lat]
 let _lastFetchTimes = {}; // source → timestamp (rate limiting)
 
+export async function fetchCitizenOutagesData() {
+  // ── Scrape sources (GeoBlackout retiré : pas d'API publique disponible) ──
+  const [infocoupureReports, coupureElecReports] = await Promise.allSettled([
+    scrapeInfoCoupure(),
+    scrapeCoupureElec(),
+  ]);
+
+  const sourcesStatus = {
+    infocoupure: infocoupureReports.status === 'fulfilled' ? 'ok' : 'error',
+    'coupure-elec': coupureElecReports.status === 'fulfilled' ? 'ok' : 'error',
+  };
+
+  // Flatten all reports, filtering out failures
+  const allReports = [
+    ...(infocoupureReports.status === 'fulfilled' ? infocoupureReports.value : []),
+    ...(coupureElecReports.status === 'fulfilled' ? coupureElecReports.value : []),
+  ];
+
+  // Log source errors for debugging
+  if (infocoupureReports.status === 'rejected') {
+    console.warn('[citizen-outages] InfoCoupure error:', infocoupureReports.reason?.message);
+  }
+  if (coupureElecReports.status === 'rejected') {
+    console.warn('[citizen-outages] Coupure-elec error:', coupureElecReports.reason?.message);
+  }
+
+  // ── Cluster reports into geographic zones ──
+  const zones = await clusterZones(allReports);
+  const criticalZones = zones.features.filter((f) => f.properties.severity === 'critical').length;
+
+  return {
+    zones,
+    reports: allReports,
+    stats: {
+      totalReports: allReports.reduce((s, r) => s + r.reportCount, 0),
+      totalZones: zones.features.length,
+      criticalZones,
+      sourcesStatus,
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -47,46 +90,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ── Scrape sources (GeoBlackout retiré : pas d'API publique disponible) ──
-    const [infocoupureReports, coupureElecReports] = await Promise.allSettled([
-      scrapeInfoCoupure(),
-      scrapeCoupureElec(),
-    ]);
-
-    const sourcesStatus = {
-      infocoupure: infocoupureReports.status === 'fulfilled' ? 'ok' : 'error',
-      'coupure-elec': coupureElecReports.status === 'fulfilled' ? 'ok' : 'error',
-    };
-
-    // Flatten all reports, filtering out failures
-    const allReports = [
-      ...(infocoupureReports.status === 'fulfilled' ? infocoupureReports.value : []),
-      ...(coupureElecReports.status === 'fulfilled' ? coupureElecReports.value : []),
-    ];
-
-    // Log source errors for debugging
-    if (infocoupureReports.status === 'rejected') {
-      console.warn('[citizen-outages] InfoCoupure error:', infocoupureReports.reason?.message);
-    }
-    if (coupureElecReports.status === 'rejected') {
-      console.warn('[citizen-outages] Coupure-elec error:', coupureElecReports.reason?.message);
-    }
-
-    // ── Cluster reports into geographic zones ──
-    const zones = await clusterZones(allReports);
-    const criticalZones = zones.features.filter((f) => f.properties.severity === 'critical').length;
-
-    const response = {
-      zones,
-      reports: allReports,
-      stats: {
-        totalReports: allReports.reduce((s, r) => s + r.reportCount, 0),
-        totalZones: zones.features.length,
-        criticalZones,
-        sourcesStatus,
-        fetchedAt: new Date().toISOString(),
-      },
-    };
+    const response = await fetchCitizenOutagesData();
 
     // Update server cache
     _serverCache = { data: response, fetchedAt: now };

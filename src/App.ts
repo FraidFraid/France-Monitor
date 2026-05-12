@@ -867,15 +867,21 @@ const OUTAGES_ELEC_LEGEND: LegendCategory = {
   id: 'outagesElec',
   title: 'Pannes Électricité',
   type: 'categorical',
+  columns: 2,
+  splitIndex: 6,
   items: [
-    { id: 'power-low',      label: '< 1 000 PDL hors réseau',      color: 'rgba(234,179,8,0.30)',  shape: 'zone', borderColor: '#EAB308' },
-    { id: 'power-medium',   label: '1 000 – 4 999 PDL hors réseau', color: 'rgba(245,158,11,0.45)', shape: 'zone', borderColor: '#F59E0B' },
-    { id: 'power-high',     label: '5 000 – 9 999 PDL hors réseau', color: 'rgba(249,115,22,0.58)', shape: 'zone', borderColor: '#F97316' },
-    { id: 'power-critical', label: '≥ 10 000 PDL hors réseau',      color: 'rgba(239,68,68,0.72)',  shape: 'zone', borderColor: '#EF4444' },
-    { id: 'zone-citizen',   label: 'Zone de coupure signalée',       color: 'rgba(180,0,255,0.20)',  shape: 'zone', borderColor: '#b400ff' },
+    { id: 'power-col-header', label: 'PDL hors réseau / tension réseau', color: '#9898A8', isHeader: true },
+    { id: 'power-low',      label: '< 1 000 PDL hors réseau',               color: 'rgba(234,179,8,0.30)',  shape: 'zone', borderColor: '#EAB308' },
+    { id: 'power-medium',   label: '1 000 – 4 999 PDL hors réseau',         color: 'rgba(245,158,11,0.45)', shape: 'zone', borderColor: '#F59E0B' },
+    { id: 'power-high',     label: '5 000 – 9 999 PDL hors réseau',         color: 'rgba(249,115,22,0.58)', shape: 'zone', borderColor: '#F97316' },
+    { id: 'power-critical', label: '≥ 10 000 PDL hors réseau',              color: 'rgba(239,68,68,0.72)',  shape: 'zone', borderColor: '#EF4444' },
+    { id: 'power-tension',  label: 'Tension réseau Ecowatt (0 PDL mesuré)', color: 'rgba(249,115,22,0.08)', shape: 'zone', borderColor: '#F97316' },
+    { id: 'power-col-header-2', label: 'Zone de coupure / incidents HTB', color: '#9898A8', isHeader: true },
+    { id: 'zone-citizen',   label: 'Zone de coupure signalée',              color: 'rgba(180,0,255,0.20)',  shape: 'zone', borderColor: '#B400FF', borderWidth: 2 },
+    { id: 'htb-incident',   label: 'Incident HTB RTE (IIP)',                color: '#818CF8', shape: 'circle', borderColor: '#1C1917', borderWidth: 1 },
   ],
-  source: { label: 'Enedis DataFair · Ecowatt RTE · Signalements citoyens' },
-  refresh: { label: '15 min (Enedis) · 5 min (Ecowatt) · 10 min (zones citoyennes)' },
+  source: { label: 'Enedis DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (incidents HTB)' },
+  refresh: { label: '15 min (Enedis) · 5 min (Ecowatt) · 10 min (zones citoyennes) · temps réel déclaratif (IIP RTE)' },
 };
 
 // ── Pannes Télécom 4G·5G (ARCEP) ─────────────────────────────────────────────
