@@ -29,7 +29,7 @@ Watchdog.register('scraping-citoyen', {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
-const ENDPOINT = '/api/citizen-outages';
+const ENDPOINT = '/api/outages/citizen';
 const CACHE_TTL_MS = 10 * 60_000; // 10 minutes
 const CIRCUIT_BREAKER_THRESHOLD = 2;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60_000; // 5 minutes
