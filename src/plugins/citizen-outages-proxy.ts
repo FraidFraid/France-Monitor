@@ -49,7 +49,7 @@ export function citizenOutagesProxyPlugin(): Plugin {
     return {
         name: 'citizen-outages-proxy',
         configureServer(server) {
-            server.middlewares.use('/api/outages/citizen', async (_req, res) => {
+            server.middlewares.use('/api/citizen-outages', async (_req, res) => {
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.setHeader('Content-Type', 'application/json');
 
