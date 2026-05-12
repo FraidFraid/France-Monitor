@@ -9,6 +9,7 @@
  * Fallback sur MOCK_ZONES si le scraping échoue totalement.
  */
 
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ export function citizenOutagesProxyPlugin(): Plugin {
     return {
         name: 'citizen-outages-proxy',
         configureServer(server) {
-            server.middlewares.use('/api/citizen-outages', async (_req, res) => {
+            const handler = async (_req: IncomingMessage, res: ServerResponse) => {
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 res.setHeader('Content-Type', 'application/json');
 
@@ -108,7 +109,10 @@ export function citizenOutagesProxyPlugin(): Plugin {
                 _devCache = { data: response, fetchedAt: now };
                 res.statusCode = 200;
                 res.end(JSON.stringify(response));
-            });
+            };
+
+            server.middlewares.use('/api/outages/citizen', handler);
+            server.middlewares.use('/api/citizen-outages', handler);
         },
     };
 }

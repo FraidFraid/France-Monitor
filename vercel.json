@@ -8,11 +8,10 @@
     "api/transport/*.js":     { "maxDuration": 30 },
     "api/threats.js":         { "maxDuration": 30 },
     "api/exposure.js":        { "maxDuration": 30 },
-    "api/citizen-outages.js": { "maxDuration": 60 }
+    "api/outages/citizen.js": { "maxDuration": 60 }
   },
   "rewrites": [
-    { "source": "/api/citizen-outages", "destination": "/api/citizen-outages" },
-    { "source": "/api/outages/citizen", "destination": "/api/citizen-outages" },
+    { "source": "/api/citizen-outages", "destination": "/api/outages/citizen" },
     { "source": "/api/rte-iip", "destination": "/api/rte-iip" },
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
     { "source": "/api/rss", "destination": "/api/rss" },

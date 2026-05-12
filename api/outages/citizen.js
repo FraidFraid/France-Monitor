@@ -349,7 +349,7 @@ function parseDeptArticles(html, deptCode) {
     if (!linkMatch) continue;
 
     const href = linkMatch[1];
-    const titleRaw = linkMatch[2].replace(/<[^>]+>/g, '').trim(); // strip HTML tags
+    const titleRaw = decodeHtmlText(linkMatch[2].replace(/<[^>]+>/g, '').trim()); // strip HTML tags
 
     // Extraire le nom de la ville depuis le titre
     // Pattern : "Coupures d'électricité Saint-Priest (69) aujourd'hui"
@@ -380,6 +380,8 @@ function extractCityFromTitle(title, deptCode) {
 
   // Supprimer les préfixes de bruit en cascade (ordre du plus spécifique au plus général)
   candidate = candidate
+    .replace(/^coupures?\s+d(?:[’'`]\s*)?électricit[eé]\s*/i, '')
+    .replace(/^pannes?\s+d(?:[’'`]\s*)?électricit[eé]\s*/i, '')
     .replace(/^coupures?\s+d[''e]\s*électricit[eé]\s*/i, '')
     .replace(/^pannes?\s+(?:de\s+)?électricit[eé]\s*/i, '')
     .replace(/^pannes?\s+électriques?\s*/i, '')
@@ -387,6 +389,7 @@ function extractCityFromTitle(title, deptCode) {
     .replace(/^pannes?\s+de\s+courant\s*/i, '')
     .replace(/^coupures?\s+de\s+courant\s*/i, '')
     .replace(/^(?:pannes?|coupures?)\s*/i, '')
+    .replace(/^d(?:[’'`]\s*)?électricit[eé]\s*/i, '')
     .replace(/^(?:électricit[eé]|électriques?|courants?)\s*/i, '')
     .replace(/^(?:à|de|d[''e]|du|le|la|les)\s+/i, '')
     .trim();
@@ -889,10 +892,12 @@ async function geocodeCity(city, dept) {
   // et le géocodage séquentiel avec 1.2s/ville provoquait des timeouts Vercel (>60s)
 
   try {
-    const query = dept
-      ? `${encodeURIComponent(city)}&postcode=${encodeURIComponent(dept)}`
-      : encodeURIComponent(city);
-    const url = `https://api-adresse.data.gouv.fr/search/?q=${query}&type=municipality&limit=1`;
+    const params = new URLSearchParams({
+      q: city,
+      type: 'municipality',
+      limit: '5',
+    });
+    const url = `https://api-adresse.data.gouv.fr/search/?${params.toString()}`;
 
     const resp = await fetchWithTimeout(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -901,7 +906,8 @@ async function geocodeCity(city, dept) {
     if (!resp.ok) throw new Error(`Geocode HTTP ${resp.status}`);
 
     const data = await resp.json();
-    const feature = data?.features?.[0];
+    const features = Array.isArray(data?.features) ? data.features : [];
+    const feature = pickMunicipalityFeature(features, dept);
 
     if (!feature) {
       _geocodeCache.set(cacheKey, null);
@@ -925,6 +931,30 @@ async function geocodeCity(city, dept) {
     _geocodeCache.set(cacheKey, null);
     return null;
   }
+}
+
+function pickMunicipalityFeature(features, dept) {
+  if (features.length === 0) return null;
+  if (!dept) return features[0];
+
+  const normalizedDept = String(dept).padStart(2, '0');
+  return features.find((feature) => {
+    const props = feature?.properties ?? {};
+    const citycode = String(props.citycode ?? '');
+    const postcode = String(props.postcode ?? '');
+    return citycode.startsWith(normalizedDept) || postcode.startsWith(normalizedDept);
+  }) ?? features[0];
+}
+
+function decodeHtmlText(value) {
+  return value
+    .replace(/&rsquo;|&#8217;|&#x2019;/gi, '’')
+    .replace(/&apos;|&#39;|&#x27;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────
@@ -966,4 +996,3 @@ function slugify(str) {
 
 /** Délai async. */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
