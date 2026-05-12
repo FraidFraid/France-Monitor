@@ -5255,9 +5255,9 @@ export class DeckGLMap {
 
     const severityMeta: Record<string, { label: string; color: string; icon: string }> = {
       critical: { label: 'Critique', color: '#b400ff', icon: '🟣' },
-      high: { label: 'Élevé', color: '#dc3232', icon: '🔴' },
-      medium: { label: 'Modéré', color: '#ff8c00', icon: '🟠' },
-      low: { label: 'Faible', color: '#ffc832', icon: '🟡' },
+      high: { label: 'Élevé', color: '#c060ff', icon: '🟣' },
+      medium: { label: 'Modéré', color: '#9b30e8', icon: '🟣' },
+      low: { label: 'Faible', color: '#7a22c8', icon: '🟣' },
     };
 
     this.map.on('mousemove', LYR_CITIZEN_FILL, (e) => {
