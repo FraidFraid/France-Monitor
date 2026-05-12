@@ -10,7 +10,7 @@
     "api/exposure.js":        { "maxDuration": 30 }
   },
   "rewrites": [
-    { "source": "/api/citizen-outages", "destination": "/api/outages/citizen" },
+    { "source": "/api/outages/citizen", "destination": "/api/citizen-outages" },
     { "source": "/api/rte-iip", "destination": "/api/rte-iip" },
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
     { "source": "/api/rss", "destination": "/api/rss" },
