@@ -4,10 +4,10 @@ import * as turfModule from '@turf/turf';
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête scraping (< 1req/s par politesse)
-const GEOCODE_BATCH_DELAY_MS = 150; // délai entre batches de géocodage (API Adresse = pas de rate limit strict)
-const GEOCODE_BATCH_SIZE = 8; // géocodages en parallèle par batch
-const FETCH_TIMEOUT_MS = 8_000;
-const CITY_PAGE_TIMEOUT_MS = 2_000; // timeout court pour les pages villes (fetch parallèle)
+const GEOCODE_BATCH_DELAY_MS = 75; // délai entre batches de géocodage (API Adresse = pas de rate limit strict)
+const GEOCODE_BATCH_SIZE = 24; // géocodages en parallèle par batch
+const FETCH_TIMEOUT_MS = 4_000;
+const CITY_PAGE_TIMEOUT_MS = 1_500; // timeout court pour rester sous le timeout Vercel par défaut
 const STALE_THRESHOLD_MS = 48 * 60 * 60_000; // 48h — ignorer villes sans signalement récent
 const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60_000; // 24h (les villes ne bougent pas)
 const DBSCAN_RADIUS_KM = 10;
@@ -186,8 +186,8 @@ const PRIORITY_DEPT_CODES = [
  *   - Géocodage via API Adresse data.gouv.fr (avec cache 24h)
  */
 async function scrapeInfoCoupure() {
-  // 8 départements max — laisser du budget temps pour le géocodage parallèle
-  const codesToFetch = PRIORITY_DEPT_CODES.filter(c => INFOCOUPURE_DEPTS[c]).slice(0, 8);
+  // 4 départements max — l'endpoint doit rester sous le timeout Vercel par défaut.
+  const codesToFetch = PRIORITY_DEPT_CODES.filter(c => INFOCOUPURE_DEPTS[c]).slice(0, 4);
   const allReports = [];
 
   for (let i = 0; i < codesToFetch.length; i += 4) {
@@ -245,7 +245,7 @@ async function fetchDeptCities(code) {
   // Chaque page ville = thread wpDiscuz avec N signalements datés.
   // On récupère : nombre de commentaires × nombre de pages = reportCount approximatif
   //               + date du commentaire le plus récent (filtre staleness)
-  const MAX_CITIES = 8;
+  const MAX_CITIES = 6;
   const entriesToProcess = cityEntries.slice(0, MAX_CITIES);
 
   const cityData = await Promise.all(
@@ -525,8 +525,9 @@ async function scrapeCoupureElec() {
 
   const raw = [];
 
-  // Fetch séquentiel pour respecter le rate limit inter-requêtes
-  for (const dept of COUPURE_ELEC_DEPTS) {
+  // Source secondaire plus lente/instable : on garde le département le plus actif
+  // pour rester sous le timeout Vercel par défaut.
+  for (const dept of COUPURE_ELEC_DEPTS.slice(0, 1)) {
     try {
       await rateLimitWait('coupure-elec');
       const resp = await fetchWithTimeout(
@@ -773,6 +774,10 @@ async function clusterZones(reports) {
         createdAt: new Date().toISOString(),
       },
     });
+  }
+
+  if (zoneFeatures.length === 0) {
+    return buildSimpleZones(deduped);
   }
 
   // Trier par severity puis totalReports
