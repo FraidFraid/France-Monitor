@@ -8,6 +8,7 @@ import { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
 import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
+import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
@@ -311,6 +312,10 @@ export class MapContainer {
 
   updateCitizenOutageZones(zones: GeoJSON.FeatureCollection): void {
     this.deckMap?.updateCitizenOutageZones(zones);
+  }
+
+  updateIIPIncidents(incidents: RTEIIPIncident[]): void {
+    this.deckMap?.updateIIPIncidents(incidents);
   }
 
   updateTerminator(geojson: GeoJSON.FeatureCollection): void {

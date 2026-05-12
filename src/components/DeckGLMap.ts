@@ -23,6 +23,8 @@ import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/milita
 import { interpolateFlightPosition } from '../services/military-flights.ts';
 import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
+import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
+import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
 import { formatUpdateTime } from '../utils/format-date.ts';
 import { buildSparklineSVG } from '../utils/sparkline.ts';
@@ -47,6 +49,93 @@ type ThreatMapDatum =
       coordinates: [number, number];
       severity: ThreatEvent['severity'];
     };
+
+// ─── IIP asset geocoding ───────────────────────────────────────────────────────
+
+// Static lookup for non-nuclear production assets (hydro, thermal, biomasse…)
+const IIP_ASSET_COORDS: Record<string, [number, number]> = {
+  'GRAND MAISON':       [6.086,  45.227],
+  'MONTEZIC':           [2.673,  44.767],
+  'SUPER BISSORTE':     [6.699,  45.272],
+  'REVIN':              [4.640,  49.942],
+  'VOUGLANS':           [5.685,  46.531],
+  'MAREGES':            [2.354,  45.366],
+  'MAREGE':             [2.354,  45.366],
+  'COMBE D AVRIEUX':    [6.736,  45.215],
+  'COMBE AVRIEUX':      [6.736,  45.215],
+  'PROVENCE':           [5.482,  43.500],
+  'SAINT AVOLD':        [6.708,  49.108],
+  'EMILE HUCHET':       [6.708,  49.108],
+  'MARTIGUES':          [5.030,  43.410],
+  'PONTEAU':            [5.030,  43.410],
+  'CORDEMAIS':          [-1.885, 47.275],
+  'PORCHEVILLE':        [1.893,  48.972],
+  'ARRIGHI':            [9.200,  42.100],
+  'TOUL ROSSIERES':     [5.883,  48.604],
+  'BRAUD':              [-0.678, 45.244],
+  'PREGUILLAC':         [-0.538, 45.042],
+  'BOUTRE':             [6.034,  43.714],
+  'MUHLBACH':           [7.230,  47.978],
+  'LONNY':              [4.545,  49.827],
+  'AVELIN':             [3.147,  50.527],
+  'BAIXAS':             [2.814,  42.743],
+  'ALBERTVILLE':        [6.394,  45.675],
+  'VALDONNE':           [5.597,  43.695],
+};
+
+// Build a flat lookup: normalized unit name → plant coords
+const _iipNuclearLookup: Map<string, [number, number]> = (() => {
+  const m = new Map<string, [number, number]>();
+  const plantById = new Map(NUCLEAR_PLANTS.map(p => [p.id, p.coordinates as [number, number]]));
+  for (const u of NUCLEAR_UNITS) {
+    const coords = plantById.get(u.plantId);
+    if (!coords) continue;
+    m.set(u.unitName.toUpperCase().replace(/[-_]/g, ' '), coords);
+    for (const alias of (u.aliases ?? [])) {
+      m.set(alias.toUpperCase().replace(/[-_]/g, ' '), coords);
+    }
+    // Also index by plant name alone
+    m.set(u.plantName.toUpperCase().replace(/[-_]/g, ' '), coords);
+  }
+  return m;
+})();
+
+function resolveIIPCoords(inc: RTEIIPIncident): [number, number] | null {
+  const label = (inc.assetLabel || inc.title).toUpperCase().replace(/[-_]/g, ' ').trim();
+
+  // 1. Direct nuclear unit match (e.g. "GOLFECH 2", "PALUEL 3")
+  if (_iipNuclearLookup.has(label)) return _iipNuclearLookup.get(label)!;
+
+  // 2. Prefix nuclear match (asset label starts with a unit name)
+  for (const [key, coords] of _iipNuclearLookup) {
+    if (label.startsWith(key) || key.startsWith(label.replace(/\s+\d+$/, '').trim())) {
+      return coords;
+    }
+  }
+
+  // 3. Static non-nuclear lookup
+  for (const [key, coords] of Object.entries(IIP_ASSET_COORDS)) {
+    if (label.includes(key) || key.includes(label.split(' ').slice(0, 2).join(' '))) {
+      return coords;
+    }
+  }
+
+  // 4. For transmission: extract place names from "Liaison NNN kV A – B"
+  if (inc.type === 'transmission') {
+    const m = label.match(/(\d{2,3}\s*KV)\s+([A-ZÀÉÈÊÎÔÙÛ][A-ZÀÉÈÊÎÔÙÛ\s]+?)\s*[-–]\s*([A-ZÀÉÈÊÎÔÙÛ][A-ZÀÉÈÊÎÔÙÛ\s\d]+)/);
+    if (m) {
+      const a = m[2].trim();
+      const b = m[3].trim().replace(/\s+\d+$/, '').trim();
+      const ca = IIP_ASSET_COORDS[a] ?? _iipNuclearLookup.get(a) ?? null;
+      const cb = IIP_ASSET_COORDS[b] ?? _iipNuclearLookup.get(b) ?? null;
+      if (ca && cb) return [(ca[0] + cb[0]) / 2, (ca[1] + cb[1]) / 2];
+      if (ca) return ca;
+      if (cb) return cb;
+    }
+  }
+
+  return null;
+}
 
 // ─── Base map style ───
 // Carto Dark Matter - French labels applied via setMapLanguage after style load
@@ -323,6 +412,9 @@ const LYR_POWER_TENSION_LINE = 'power-tension-line';
 const SRC_CITIZEN_ZONES = 'citizen-zones-src';
 const LYR_CITIZEN_FILL = 'citizen-zones-fill';
 const LYR_CITIZEN_LINE = 'citizen-zones-line';
+const SRC_IIP = 'iip-incidents-src';
+const LYR_IIP_GLOW = 'iip-incidents-glow';
+const LYR_IIP_CORE = 'iip-incidents-core';
 const SRC_TERMINATOR = 'terminator-src';
 const LYR_TERMINATOR = 'terminator-fill';
 const SRC_NET_ISP = 'net-isp-src';
@@ -1899,6 +1991,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_POWER, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_POWER_TENSION, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_IIP, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_TERMINATOR, { type: 'geojson', data: emptyFC() });
     // Internet/BGP outages (IODA + ISP BGP) — clustering activé pour éviter le chevauchement à faible zoom
     this.map.addSource(SRC_NET_ISP, {
@@ -4652,10 +4745,42 @@ export class DeckGLMap {
 
 
 
+    // ─── Incidents HTB RTE IIP ───
+    this.map.addLayer({
+      id: LYR_IIP_GLOW,
+      type: 'circle',
+      source: SRC_IIP,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 14, 10, 22],
+        'circle-color': '#6c8cff',
+        'circle-opacity': 0.18,
+        'circle-blur': 0.7,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_IIP_CORE,
+      type: 'circle',
+      source: SRC_IIP,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 6, 10, 10],
+        'circle-color': [
+          'match', ['get', 'incidentType'],
+          'transmission', '#a0b4ff',
+          /* production */ '#6c8cff',
+        ],
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-opacity': 0.6,
+      },
+    });
+
     // ─── Citizen zones au-dessus de tous les calques ───
     // moveLayer sans beforeId = déplace au sommet du stack MapLibre
     this.map.moveLayer(LYR_CITIZEN_FILL);
     this.map.moveLayer(LYR_CITIZEN_LINE);
+    this.map.moveLayer(LYR_IIP_GLOW);
+    this.map.moveLayer(LYR_IIP_CORE);
 
     // ═══════════════════════════════════════════════════════════════
     // EVENT HANDLERS
@@ -5320,6 +5445,57 @@ export class DeckGLMap {
       if (this.map) this.map.getCanvas().style.cursor = '';
       citizenHoverPopup?.remove();
       citizenHoverPopup = null;
+    });
+
+    // ─── IIP incidents — hover tooltip ───
+    let iipHoverPopup: maplibregl.Popup | null = null;
+    this.map.on('mousemove', LYR_IIP_CORE, (e) => {
+      if (!this.map || !e.features || e.features.length === 0) return;
+      this.map.getCanvas().style.cursor = 'crosshair';
+      const p = e.features[0].properties;
+      if (!p) return;
+
+      const typeLabel = p.incidentType === 'transmission' ? 'Réseau HTB' : 'Production';
+      const typeColor = p.incidentType === 'transmission' ? '#a0b4ff' : '#6c8cff';
+      const statusLabel = p.status === 'active' ? '● Actif' : p.status === 'inactive' ? '◯ Terminé' : '⊘ Retiré';
+      const statusColor = p.status === 'active' ? '#f97316' : p.status === 'inactive' ? '#6b7280' : '#6b7280';
+      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+
+      const html = `
+        <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:320px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <span style="font-size:13px;font-weight:700;color:#fff;line-height:1.3;">${p.assetLabel ?? p.title}</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:${typeColor}22;color:${typeColor};white-space:nowrap;">${typeLabel}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;">
+            <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>
+            ${p.cause ? `<span style="color:#9898a8;">· ${p.cause}</span>` : ''}
+            ${p.capacityMW ? `<span style="color:#9898a8;">· <strong style="color:#fff;">${p.capacityMW} MW</strong></span>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;color:#9898a8;margin-bottom:8px;">
+            <div>Début <strong style="color:#e8e8ec;">${startFmt}</strong></div>
+            <div>Fin prév. <strong style="color:#e8e8ec;">${endFmt}</strong></div>
+          </div>
+          <div style="font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px;">IIP RTE · REMIT · Temps réel</div>
+        </div>`;
+
+      if (!iipHoverPopup) {
+        iipHoverPopup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          maxWidth: '340px',
+          className: 'dark-popup',
+          offset: 14,
+        }).addTo(this.map);
+      }
+      iipHoverPopup.setLngLat(e.lngLat).setHTML(html);
+    });
+
+    this.map.on('mouseleave', LYR_IIP_CORE, () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+      iipHoverPopup?.remove();
+      iipHoverPopup = null;
     });
 
     [LYR_POWER_FILL, LYR_POWER_TENSION_FILL].forEach(lyr => {
@@ -11197,6 +11373,53 @@ export class DeckGLMap {
     (this.map?.getSource(SRC_CITIZEN_ZONES) as maplibregl.GeoJSONSource)?.setData(zones);
   }
 
+  /** Render IIP RTE HTB incidents as blue points on the map. */
+  updateIIPIncidents(incidents: RTEIIPIncident[]): void {
+    const features: GeoJSON.Feature[] = [];
+    for (const inc of incidents) {
+      const coords = resolveIIPCoords(inc);
+      if (!coords) continue;
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords },
+        properties: {
+          id: inc.id,
+          assetLabel: inc.assetLabel,
+          title: inc.title,
+          incidentType: inc.type,
+          status: inc.status,
+          cause: inc.cause,
+          capacityMW: inc.capacityMW,
+          startDate: inc.startDate?.toISOString() ?? null,
+          endDate: inc.endDate?.toISOString() ?? null,
+        },
+      });
+    }
+    (this.map?.getSource(SRC_IIP) as maplibregl.GeoJSONSource)?.setData({
+      type: 'FeatureCollection',
+      features,
+    });
+  }
+
+  /** Highlight/unhighlight an IIP incident point by id (no fly-to). */
+  highlightIIPIncident(id: string | null): void {
+    if (!this.map) return;
+    if (id !== null) {
+      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-color', [
+        'case', ['==', ['get', 'id'], id], '#ffffff', '#ffffff',
+      ]);
+      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-width', [
+        'case', ['==', ['get', 'id'], id], 3, 1.5,
+      ]);
+      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-opacity', [
+        'case', ['==', ['get', 'id'], id], 1, 0.6,
+      ]);
+    } else {
+      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-width', 1.5);
+      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-opacity', 0.6);
+    }
+  }
+
   /** Met à jour le polygone jour/nuit sur la carte. */
   updateTerminator(geojson: GeoJSON.FeatureCollection): void {
     (this.map?.getSource(SRC_TERMINATOR) as maplibregl.GeoJSONSource)?.setData(geojson);
@@ -12877,6 +13100,8 @@ export class DeckGLMap {
     this.setVis(LYR_POWER_TENSION_LINE, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_LINE, vis(layers.outagesElec));
+    this.setVis(LYR_IIP_GLOW, vis(layers.outagesElec));
+    this.setVis(LYR_IIP_CORE, vis(layers.outagesElec));
     this.setVis(LYR_TELECOM_PTS, vis(layers.outagesTelecom));
     this.setVis(LYR_NET_IODA_CLUSTER,       vis(layers.outagesInternet));
     this.setVis(LYR_NET_IODA_CLUSTER_COUNT, vis(layers.outagesInternet));

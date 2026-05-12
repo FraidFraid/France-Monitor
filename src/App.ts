@@ -4893,6 +4893,7 @@ export class App {
 
     if (iipResult) {
       this.outagesPanel?.setRTEIIP(iipResult);
+      this.mapContainer?.updateIIPIncidents(iipResult.incidents);
     }
 
     this.outagesPanel?.setArcepFetchedDate(lastArcepDataDate ?? new Date());
