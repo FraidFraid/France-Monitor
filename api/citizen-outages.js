@@ -1,23 +1,5 @@
-/**
- * api/outages/citizen.js — Vercel Serverless Function
- *
- * Agrège les signalements citoyens de pannes électriques depuis des sources
- * crowd-sourced françaises, puis calcule des zones géographiques par clustering
- * DBSCAN (Turf.js).
- *
- * Route  : GET /api/outages/citizen
- * Cache  : 10 minutes (s-maxage)
- * Output : CitizenOutageResponse (JSON)
- *
- * Sources :
- *  - InfoCoupure.fr   : API JSON interne + fallback HTML (cheerio)
- *  - GeoBlackout.com  : Endpoint JSON des markers
- *  - Coupure-elec.fr  : HTML statique (cheerio)
- *  - API Adresse      : Géocodage ville → [lng, lat]
- *
- * Légal : données publiques, pas de login/CAPTCHA, rate-limit 1req/5s,
- *         User-Agent poli, anonymisation ville/dept uniquement.
- */
+import * as cheerioModule from 'cheerio';
+import * as turfModule from '@turf/turf';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -536,13 +518,7 @@ const COUPURE_ELEC_DEPTS = [
 ];
 
 async function scrapeCoupureElec() {
-  let cheerio;
-  try {
-    cheerio = await import('cheerio');
-  } catch {
-    console.warn('[coupure-elec] cheerio indisponible — source ignorée');
-    return [];
-  }
+  const cheerio = cheerioModule;
 
   const raw = [];
 
@@ -708,14 +684,7 @@ async function clusterZones(reports) {
 
   const fc = { type: 'FeatureCollection', features: pointFeatures };
 
-  // Chargement dynamique de Turf (ESM-compatible — require() interdit avec "type":"module")
-  let turf;
-  try {
-    turf = await import('@turf/turf');
-  } catch (err) {
-    console.warn('[citizen-outages] Turf indisponible, fallback grille simple:', err.message);
-    return buildSimpleZones(deduped);
-  }
+  const turf = turfModule;
 
   // DBSCAN clustering
   let clustered;
