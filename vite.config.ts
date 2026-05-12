@@ -25,6 +25,7 @@ import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
 import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
 import { infraNetworkProxyPlugin } from './src/plugins/infra-network-proxy';
 import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
+import { rteIipProxyPlugin } from './src/plugins/rte-iip-proxy';
 import { firesProxyPlugin } from './src/plugins/fires-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
@@ -141,6 +142,7 @@ export default defineConfig(({ mode }) => {
       internetOutagesProxyPlugin(),
       infraNetworkProxyPlugin(),
       citizenOutagesProxyPlugin(),
+      rteIipProxyPlugin(),
       firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
