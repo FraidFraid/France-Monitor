@@ -7,7 +7,8 @@
     "api/finance/*.js":       { "maxDuration": 30 },
     "api/transport/*.js":     { "maxDuration": 30 },
     "api/threats.js":         { "maxDuration": 30 },
-    "api/exposure.js":        { "maxDuration": 30 }
+    "api/exposure.js":        { "maxDuration": 30 },
+    "api/citizen-outages.js": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/citizen-outages", "destination": "/api/citizen-outages" },
