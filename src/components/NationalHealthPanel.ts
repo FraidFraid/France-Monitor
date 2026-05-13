@@ -9,6 +9,7 @@ import type { HealthFeatures } from '../types/index.ts';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
+const ODISSE_RECENT_SIGNAL_WINDOW_DAYS = 90;
 
 const REGION_CODE_TO_NAME: Record<string, string> = {
   '01': 'Guadeloupe',
@@ -146,6 +147,83 @@ export class NationalHealthPanel extends Panel {
 
   protected render(): void { }
 
+  private escapeHtml(input: string): string {
+    return input
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  private hantavirusSeverityColor(severity: HealthFeatures['hantavirusEvents'][number]['severite']): string {
+    switch (severity) {
+      case 'crise':
+        return '#ff3b30';
+      case 'alerte':
+        return '#ff9500';
+      case 'surveillance':
+        return '#ffd60a';
+      case 'info':
+      default:
+        return '#64d2ff';
+    }
+  }
+
+  private hantavirusDisplayLabel(event: HealthFeatures['hantavirusEvents'][number]): string {
+    if (event.type === 'zone_historique') {
+      return `Zone historique SPF (circulation documentée 2005-2023) · ${event.label.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
+    }
+    return event.label;
+  }
+
+  private renderHantavirusEventCard(event: HealthFeatures['hantavirusEvents'][number]): string {
+    const severityColor = this.hantavirusSeverityColor(event.severite);
+    const sourceUrl = event.url_sources[0] ?? '';
+    const periodLabel = event.date_fin
+      ? `${event.date_debut} → ${event.date_fin}`
+      : event.date_debut;
+
+    return `
+      <div style="padding:9px 10px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid ${severityColor}44; border-left:3px solid ${severityColor}; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; align-items:flex-start;">
+          <strong style="color:#f3f4f6; font-size:12px; line-height:1.35;">${this.escapeHtml(this.hantavirusDisplayLabel(event))}</strong>
+          <span style="color:${severityColor}; font-size:10px; text-transform:uppercase; font-weight:700; white-space:nowrap;">${this.escapeHtml(event.severite)}</span>
+        </div>
+        <div style="color:#9898a8; font-size:10px; line-height:1.45; margin-bottom:4px;">${this.escapeHtml(event.type)} · ${this.escapeHtml(event.territoire_niveau)} · ${this.escapeHtml(event.territoire_code)}</div>
+        <div style="color:#c8c8d4; font-size:10px; line-height:1.45;">${this.escapeHtml(periodLabel)}</div>
+        ${event.commentaires ? `<div style="color:#aeb3c2; font-size:10px; line-height:1.45; margin-top:5px;">${this.escapeHtml(event.commentaires)}</div>` : ''}
+        ${sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none; font-size:10px;">Source ↗</a></div>` : ''}
+      </div>
+    `;
+  }
+
+  private isWithinDays(isoDate: string, days: number): boolean {
+    const ts = Date.parse(`${isoDate}T00:00:00Z`);
+    if (Number.isNaN(ts)) return false;
+    return Date.now() - ts <= days * 24 * 60 * 60 * 1000;
+  }
+
+  private epidemicSourceBadge(sourceLabel: string): { text: string; color: string; bg: string } {
+    const normalized = sourceLabel.toLowerCase();
+    if (normalized.includes('odiss')) {
+      return { text: 'Odissé', color: '#64d2ff', bg: 'rgba(100,210,255,0.12)' };
+    }
+    if (normalized.includes('guyane')) {
+      return { text: 'SPF Guyane', color: '#30d158', bg: 'rgba(48,209,88,0.12)' };
+    }
+    if (normalized.includes('antilles')) {
+      return { text: 'SPF Antilles', color: '#bf5af2', bg: 'rgba(191,90,242,0.12)' };
+    }
+    if (normalized.includes('ocean indien') || normalized.includes('océan indien')) {
+      return { text: 'SPF Océan Indien', color: '#ffd60a', bg: 'rgba(255,214,10,0.12)' };
+    }
+    if (normalized.includes('meningocoque') || normalized.includes('méningocoque')) {
+      return { text: 'SPF Méningocoque', color: '#ff9f0a', bg: 'rgba(255,159,10,0.12)' };
+    }
+    return { text: sourceLabel, color: '#aeb3c2', bg: 'rgba(174,179,194,0.12)' };
+  }
+
   private renderEpidemicAlerts(alerts: HealthFeatures['epidemicAlerts'], loading: boolean): string {
     const body = loading
       ? `<div style="background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; color:#9898a8; font-size:11px;">Chargement des alertes épidémiques officielles...</div>`
@@ -162,6 +240,53 @@ export class NationalHealthPanel extends Panel {
       </div>`;
   }
 
+  private renderHantavirusActiveAlertCards(data: HealthFeatures): string {
+    const activeClusters = (data.hantavirusEvents ?? [])
+      .filter((event) => event.type === 'cluster')
+      .sort((a, b) => {
+        const severityRank = { crise: 4, alerte: 3, surveillance: 2, info: 1 } as const;
+        return (
+          severityRank[b.severite] - severityRank[a.severite]
+          || String(b.date_debut).localeCompare(String(a.date_debut))
+        );
+      });
+
+    if (activeClusters.length === 0) return '';
+
+    const cards = activeClusters.map((event) => {
+      const severityColor = this.hantavirusSeverityColor(event.severite);
+      const sourceUrl = event.url_sources[0] ?? '';
+      const periodLabel = event.date_fin
+        ? `${event.date_debut} → ${event.date_fin}`
+        : event.date_debut;
+
+      return `
+        <div style="background:rgba(255,59,48,0.08); border:1px solid ${severityColor}55; border-left:3px solid ${severityColor}; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;">
+            <div style="display:flex; align-items:center; gap:7px;">
+              <span style="font-size:15px;">🧬</span>
+              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(this.hantavirusDisplayLabel(event))}</span>
+            </div>
+            <span style="background:${severityColor}22; border:1px solid ${severityColor}66; color:${severityColor}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${this.escapeHtml(event.severite.toUpperCase())}</span>
+          </div>
+          <div style="color:#9898a8; font-size:10px; font-weight:600; margin-bottom:4px;">Hantavirus · ${this.escapeHtml(periodLabel)}</div>
+          ${event.commentaires ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-bottom:6px;">${this.escapeHtml(event.commentaires)}</div>` : ''}
+          <div style="flex-wrap:wrap; color:#d8d8df; font-size:10px;">${this.escapeHtml(event.territoire_niveau)} · ${this.escapeHtml(event.territoire_code)}</div>
+          <div style="margin-top:6px; font-size:10px; color:#5a5a72;">${sourceUrl ? `<a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Source : ${this.escapeHtml(event.source)} ↗</a>` : `Source : ${this.escapeHtml(event.source)}`}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:12px;">
+        <div style="color:#ffb4a8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; margin-bottom:8px;">
+          Hantavirus
+        </div>
+        ${cards}
+      </div>
+    `;
+  }
+
   private renderEpidemicAlertCards(alerts: HealthFeatures['epidemicAlerts']): string {
     const severityColors: Record<HealthFeatures['epidemicAlerts'][number]['severity'], { border: string; bg: string; badge: string; text: string }> = {
       critical: { border: '#ff3b30', bg: 'rgba(255,59,48,0.10)', badge: '#ff3b30', text: 'CRITIQUE' },
@@ -171,6 +296,7 @@ export class NationalHealthPanel extends Panel {
 
     const cards = alerts.map(alert => {
       const c = severityColors[alert.severity];
+      const sourceBadge = this.epidemicSourceBadge(alert.sourceLabel);
       const locationBadges = alert.locations
         .map(loc => `<span style="display:inline-block; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:3px; padding:1px 6px; font-size:10px; color:#d8d8df; margin-right:4px; margin-top:3px;">${loc}</span>`)
         .join('');
@@ -184,7 +310,10 @@ export class NationalHealthPanel extends Panel {
               <span style="font-size:15px;">🦠</span>
               <span style="color:#fff; font-weight:700; font-size:12px;">${alert.title}</span>
             </div>
-            <span style="background:${c.badge}22; border:1px solid ${c.badge}66; color:${c.badge}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${c.text}</span>
+            <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+              <span style="background:${sourceBadge.bg}; border:1px solid ${sourceBadge.color}55; color:${sourceBadge.color}; font-size:9px; font-weight:700; letter-spacing:0.4px; padding:2px 6px; border-radius:999px; white-space:nowrap;">${this.escapeHtml(sourceBadge.text)}</span>
+              <span style="background:${c.badge}22; border:1px solid ${c.badge}66; color:${c.badge}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${c.text}</span>
+            </div>
           </div>
           <div style="color:#9898a8; font-size:10px; font-weight:600; margin-bottom:4px;">${alert.pathogen} · ${alert.date}</div>
           <div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-bottom:6px;">${alert.summary}</div>
@@ -193,6 +322,65 @@ export class NationalHealthPanel extends Panel {
         </div>`;
     }).join('');
     return cards;
+  }
+
+  private renderFreshnessSection(data: HealthFeatures): string {
+    const checkedAt = data.epidemiologyFreshness.checkedAt
+      ? new Date(data.epidemiologyFreshness.checkedAt).toLocaleString('fr-FR')
+      : 'n/d';
+    const staleBadge = data.epidemiologyFreshness.obsoleteCount > 0
+      ? `<span style="color:#ff453a; font-weight:700;">${data.epidemiologyFreshness.obsoleteCount} obsolète(s)</span>`
+      : `<span style="color:#34c759; font-weight:700;">à jour</span>`;
+
+    return `
+      <div style="margin-bottom: 18px;">
+        <h5 style="margin: 0 0 10px; color: #64d2ff; font-weight: 600; font-size: 13px;">Fraîcheur SPF / Odissé</h5>
+        <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:6px 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px;">
+          <span style="color:#9898a8;">Dernier contrôle</span><strong>${checkedAt}</strong>
+          <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness.staleAfterDays} j</strong>
+          <span style="color:#9898a8;">Seuil refetch</span><strong>${data.epidemiologyFreshness.refreshAfterHours} h</strong>
+          <span style="color:#9898a8;">État</span>${staleBadge}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderHantavirusSection(data: HealthFeatures): string {
+    const items = data.hantavirusEvents ?? [];
+    if (items.length === 0) return '';
+
+    const activeClusters = items.filter((event) => event.type === 'cluster');
+    const historicalZones = items.filter((event) => event.type === 'zone_historique');
+
+    const activeHtml = activeClusters.length > 0
+      ? activeClusters.map((event) => this.renderHantavirusEventCard(event)).join('')
+      : '<div style="color:#9898a8; font-size:11px;">Aucun cluster actif structuré.</div>';
+
+    const historicalPreview = historicalZones.slice(0, 14).map((event) => this.renderHantavirusEventCard(event)).join('');
+    const historicalMore = historicalZones.length > 14
+      ? `<div style="color:#9898a8; font-size:10px; margin-top:4px;">${historicalZones.length - 14} zone(s) supplémentaire(s) masquée(s) pour garder le panneau lisible.</div>`
+      : '';
+
+    return `
+      <div style="margin-bottom: 20px;">
+        <h5 style="margin: 0 0 10px; color: #ffd60a; font-weight: 600; font-size: 13px;">Hantavirus</h5>
+        <div style="color:#9898a8; font-size:11px; margin-bottom:8px;">
+          ${data.hantavirusEvents.length} événement(s) structuré(s), ${data.hantavirusHeatmap.length} point(s) heatmap.
+        </div>
+        <details style="margin-bottom:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
+          <summary style="cursor:pointer; color:#ffb4a8; font-size:12px; font-weight:700;">Clusters et signaux actifs (${activeClusters.length})</summary>
+          <div style="margin-top:10px;">${activeHtml}</div>
+        </details>
+        <details style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
+          <summary style="cursor:pointer; color:#b7ecff; font-size:12px; font-weight:700;">Zones historiques SPF (${historicalZones.length})</summary>
+          <div style="margin-top:10px;">
+            <div style="color:#9898a8; font-size:10px; line-height:1.45; margin-bottom:8px;">Circulation documentée par SPF sur la période 2005-2023. Ce ne sont pas des cas 2026.</div>
+            ${historicalPreview}
+            ${historicalMore}
+          </div>
+        </details>
+      </div>
+    `;
   }
 
   show(data: HealthFeatures): void {
@@ -219,108 +407,129 @@ export class NationalHealthPanel extends Panel {
     }
   }
 
+  private renderSectionHeader(label: string, color: string): string {
+    return `<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:${color}; margin:0 0 8px; padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.07);">${label}</div>`;
+  }
+
   private renderContent(): void {
     if (!this.contentEl || !this.currentData) return;
 
     const data = this.currentData;
 
-    const sentIndicatorsHtml = (data.sentinellesIndicators ?? []).length > 0
-      ? (data.sentinellesIndicators.map(ind => {
-        let trendHtml = '';
-        if (ind.trend !== undefined && Math.abs(ind.trend) > 0.1) {
-          if (ind.trend > 0) trendHtml = `<span style="color:#ff3b30; font-size:12px; margin-left:6px; font-weight:bold;">↑</span>`;
-          else trendHtml = `<span style="color:#34c759; font-size:12px; margin-left:6px; font-weight:bold;">↓</span>`;
-        } else if (ind.trend !== undefined) {
-          trendHtml = `<span style="color:#9898a8; font-size:12px; margin-left:6px; font-weight:bold;">→</span>`;
-        }
-        return `
-          <div style="display:flex; justify-content:space-between; margin-bottom:4px; align-items: center;">
-            <span style="color:#d8d8df;">${ind.label}</span>
-            <span><strong style="color:#bf5af2; font-size: 14px;">${ind.nationalIncidence.toFixed(1)}</strong><span style="color:#9898a8; font-size:11px; margin-left: 2px;">/100k</span>${trendHtml}</span>
-          </div>`;
-      }).join(''))
-      : '<div style="color:#9898a8; font-size: 11px;">Aucun indicateur disponible.</div>';
+    // ── 1. Signaux actifs ────────────────────────────────────────────────────
+    const hantavirusClusters = (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster');
+    const hasHanta = hantavirusClusters.length > 0;
+    const hasEpidemic = this.resolvedEpidemicAlerts.length > 0 || this.epidemicAlertsLoading;
 
+    const signauxActifsHtml = (hasHanta || hasEpidemic) ? `
+      <div style="margin-bottom:16px;">
+        ${this.renderSectionHeader('Signaux actifs', '#ff453a')}
+        ${hasHanta ? this.renderHantavirusActiveAlertCards(data) : ''}
+        ${this.renderEpidemicAlerts(this.resolvedEpidemicAlerts, this.epidemicAlertsLoading)}
+      </div>` : '';
+
+    // ── 2. Réseau Sentinelles ────────────────────────────────────────────────
+    const sentItems = data.sentinellesIndicators ?? [];
+    const sentIndicatorsHtml = sentItems.length > 0
+      ? sentItems.map(ind => {
+          let trendHtml = '';
+          if (ind.trend !== undefined && Math.abs(ind.trend) > 0.1) {
+            trendHtml = ind.trend > 0
+              ? `<span style="color:#ff3b30; font-size:12px; margin-left:6px; font-weight:bold;">↑</span>`
+              : `<span style="color:#34c759; font-size:12px; margin-left:6px; font-weight:bold;">↓</span>`;
+          } else if (ind.trend !== undefined) {
+            trendHtml = `<span style="color:#9898a8; font-size:12px; margin-left:6px; font-weight:bold;">→</span>`;
+          }
+          return `
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px; align-items:center;">
+              <span style="color:#d8d8df;">${ind.label}</span>
+              <span><strong style="color:#bf5af2; font-size:14px;">${ind.nationalIncidence.toFixed(1)}</strong><span style="color:#9898a8; font-size:11px; margin-left:2px;">/100k</span>${trendHtml}</span>
+            </div>`;
+        }).join('')
+      : '<div style="color:#9898a8; font-size:11px;">Aucun indicateur disponible.</div>';
+
+    const sentinellesHtml = `
+      <div style="margin-bottom:16px;">
+        ${this.renderSectionHeader('Réseau Sentinelles — Incidence', '#bf5af2')}
+        <div style="color:#9898a8; font-size:10px; margin-bottom:8px;">Semaine : ${data.sentinellesLastWeekAvailable ?? 'n/d'} · France entière</div>
+        ${sentIndicatorsHtml}
+      </div>`;
+
+    // ── 3. ANSM Pénuries ─────────────────────────────────────────────────────
     const ansmUrl = data.drugShortagesUrl ?? 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments';
     const ansmItems = data.drugShortagesItems ?? [];
-
-    let mixedItems: Array<{ drugName: string, status: string }> = [];
-    if (ansmItems.length > 0) {
-      const ruptures = ansmItems.filter(i => i.status === 'rupture').slice(0, 5);
-      const tensions = ansmItems.filter(i => i.status === 'tension').slice(0, 5);
-      const norms = ansmItems.filter(i => i.status === 'normalisation').slice(0, 5);
-      mixedItems = [...ruptures, ...tensions, ...norms];
-    }
-
-    const badgeColors: Record<string, string> = {
-      rupture: '#ff3b30',
-      tension: '#ff9500',
-      normalisation: '#34c759'
-    };
-
+    const badgeColors: Record<string, string> = { rupture: '#ff3b30', tension: '#ff9500', normalisation: '#34c759' };
+    const mixedItems = [
+      ...ansmItems.filter(i => i.status === 'rupture').slice(0, 4),
+      ...ansmItems.filter(i => i.status === 'tension').slice(0, 3),
+      ...ansmItems.filter(i => i.status === 'normalisation').slice(0, 2),
+    ];
     const ansmListHtml = mixedItems.length > 0
-      ? mixedItems.map((it) => `
-        <li style="margin:4px 0; display:flex; align-items:flex-start;">
-          <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${badgeColors[it.status] || '#9898a8'}; margin-right:6px; margin-top:5px; flex-shrink:0;"></span>
-          <span style="color:#d8d8df; line-height:1.4;">${it.drugName} <span style="color:${badgeColors[it.status] || '#9898a8'}; margin-left:4px;"> (${it.status})</span></span>
-        </li>`).join('')
-      : '<li style="margin:2px 0; color:#9898a8;">Liste non disponible dans ce cycle.</li>';
-
+      ? mixedItems.map(it => `
+          <li style="margin:3px 0; display:flex; align-items:flex-start;">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${badgeColors[it.status] || '#9898a8'}; margin-right:6px; margin-top:4px; flex-shrink:0;"></span>
+            <span style="color:#d8d8df; line-height:1.4; font-size:11px;">${this.escapeHtml(it.drugName)} <span style="color:${badgeColors[it.status] || '#9898a8'};"> (${it.status})</span></span>
+          </li>`).join('')
+      : '<li style="color:#9898a8; font-size:11px;">Liste non disponible dans ce cycle.</li>';
     const ansmLastUpdate = data.drugShortagesLastUpdate
-      ? new Date(data.drugShortagesLastUpdate).toLocaleDateString('fr-FR')
-      : 'n/d';
+      ? new Date(data.drugShortagesLastUpdate).toLocaleDateString('fr-FR') : 'n/d';
 
-    let html = `
-      <div style="padding: 16px; overflow-y: auto; flex: 1; font-size: 13px;">
-        ${this.renderEpidemicAlerts(this.resolvedEpidemicAlerts, this.epidemicAlertsLoading)}
-        <div style="background: rgba(255,255,255,0.05); border-left: 3px solid #3498db; padding: 10px; border-radius: 4px; margin-bottom: 20px; font-size: 11px; color: #d8d8df;">
-          <i>Ces indicateurs sont nationaux (France entière) et ne sont pas disponibles au niveau départemental.</i>
+    const ansmHtml = `
+      <div style="margin-bottom:16px;">
+        ${this.renderSectionHeader('ANSM — Pénuries médicaments', '#ff9f0a')}
+        <div style="display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:11px; margin-bottom:10px; padding:8px 10px; background:rgba(0,0,0,0.2); border-radius:6px;">
+          <span style="color:#9898a8;">Rupture</span><strong style="color:#ff3b30;">${data.drugShortagesByStatus?.rupture ?? 0}</strong>
+          <span style="color:#9898a8;">Tension</span><strong style="color:#ff9500;">${data.drugShortagesByStatus?.tension ?? 0}</strong>
+          <span style="color:#9898a8;">Normalisation</span><strong style="color:#34c759;">${data.drugShortagesByStatus?.normalisation ?? 0}</strong>
+          <span style="color:#9898a8;">Màj</span><strong style="color:#d8d8df;">${ansmLastUpdate}</strong>
         </div>
+        <ul style="margin:0 0 8px; padding:0; list-style:none; max-height:130px; overflow:auto;">${ansmListHtml}</ul>
+        <a href="${ansmUrl}" target="_blank" rel="noopener noreferrer" style="font-size:10px; color:#64d2ff; text-decoration:none;">Voir tout sur ansm.sante.fr →</a>
+      </div>`;
 
-        <div style="margin-bottom: 24px;">
-          <h5 style="margin: 0 0 10px; color: #bf5af2; font-weight: 600; font-size: 13px;">Réseau Sentinelles <span style="color:#9898a8; font-weight:normal; font-size:11px;">(Incidence)</span></h5>
-          ${sentIndicatorsHtml}
-        </div>
+    // ── 4. Données de référence (plié) ───────────────────────────────────────
+    const historicalZones = (data.hantavirusEvents ?? []).filter(e => e.type === 'zone_historique');
+    const historicalHtml = historicalZones.length > 0
+      ? historicalZones.slice(0, 12).map(e => this.renderHantavirusEventCard(e)).join('')
+        + (historicalZones.length > 12 ? `<div style="color:#9898a8; font-size:10px; margin-top:4px;">+ ${historicalZones.length - 12} zones supplémentaires.</div>` : '')
+      : '<div style="color:#9898a8; font-size:11px;">Aucune zone historique chargée.</div>';
 
-        <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:16px;">
-          <h5 style="margin: 0 0 12px; color: #ff9f0a; font-weight: 600; font-size: 13px;">ANSM Pharmacovigilance</h5>
-          
-          <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:6px 10px; margin-bottom:14px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px;">
-            <span style="color:#9898a8;">Total pénuries signalées</span><strong>${data.drugShortagesCount ?? 0}</strong>
-            <span style="color:#9898a8;">En rupture</span><strong style="color:#ff3b30;">${data.drugShortagesByStatus?.rupture ?? 0}</strong>
-            <span style="color:#9898a8;">En tension</span><strong style="color:#ff9500;">${data.drugShortagesByStatus?.tension ?? 0}</strong>
-            <span style="color:#9898a8;">En normalisation</span><strong style="color:#34c759;">${data.drugShortagesByStatus?.normalisation ?? 0}</strong>
-            <div style="grid-column: 1 / -1; margin-top:2px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; font-size: 11px;">
-              <span style="color:#9898a8;">Dernière mise à jour :</span><strong style="color:#d8d8df;">${ansmLastUpdate}</strong>
-            </div>
+    const checkedAt = data.epidemiologyFreshness?.checkedAt
+      ? new Date(data.epidemiologyFreshness.checkedAt).toLocaleString('fr-FR') : 'n/d';
+    const staleBadge = (data.epidemiologyFreshness?.obsoleteCount ?? 0) > 0
+      ? `<span style="color:#ff453a;">${data.epidemiologyFreshness.obsoleteCount} obsolète(s)</span>`
+      : `<span style="color:#34c759;">à jour</span>`;
+
+    const referenceHtml = `
+      <details style="margin-bottom:12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px;">
+        <summary style="cursor:pointer; padding:9px 12px; color:#9898a8; font-size:11px; font-weight:600; user-select:none;">
+          Données de référence &amp; fraîcheur
+        </summary>
+        <div style="padding:10px 12px; border-top:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#5a5a72; letter-spacing:0.6px; margin-bottom:6px;">Fraîcheur SPF / Odissé</div>
+          <div style="display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:11px; padding:8px; background:rgba(0,0,0,0.2); border-radius:6px; margin-bottom:12px;">
+            <span style="color:#9898a8;">Dernier contrôle</span><strong style="color:#d8d8df;">${checkedAt}</strong>
+            <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness?.staleAfterDays ?? '—'} j</strong>
+            <span style="color:#9898a8;">État</span>${staleBadge}
           </div>
-
-          <div style="font-size:11px; color:#9898a8; margin-bottom:6px;">Médicaments en tension / rupture (aperçu mixte)</div>
-          <ul style="margin:0 0 12px 0; padding-left:0; list-style-type:none; font-size:12px; max-height:160px; overflow:auto;">${ansmListHtml}</ul>
-          <a href="${ansmUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; font-size:11px; color:#64d2ff; text-decoration:none; background:rgba(100,210,255,0.1); padding: 4px 8px; border-radius:4px;">
-            Voir la liste complète sur ansm.sante.fr →
-          </a>
+          <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#5a5a72; letter-spacing:0.6px; margin-bottom:6px;">Zones historiques Hantavirus SPF 2005-2023</div>
+          <div style="color:#9898a8; font-size:10px; margin-bottom:8px;">Circulation documentée — ce ne sont pas des cas 2026.</div>
+          ${historicalHtml}
         </div>
+      </details>`;
 
-        <div style="margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); text-align:center;">
-          <button onclick="document.dispatchEvent(new CustomEvent('open-health-barometer'))" style="
-            width: 100%;
-            background: linear-gradient(135deg, rgba(46,204,113,0.15), rgba(231,76,60,0.15));
-            border: 1px solid rgba(255,255,255,0.15);
-            color: #fff;
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            letter-spacing: 0.3px;
-          ">🩺 Voir le Baromètre national Santé</button>
+    // ── Assemblage ───────────────────────────────────────────────────────────
+    this.contentEl.innerHTML = `
+      <div style="padding:14px 16px 16px; overflow-y:auto; flex:1; font-size:13px;">
+        ${signauxActifsHtml}
+        ${sentinellesHtml}
+        ${ansmHtml}
+        ${referenceHtml}
+        <div style="margin-top:10px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.07); text-align:center;">
+          <button onclick="document.dispatchEvent(new CustomEvent('open-health-barometer'))" style="width:100%; background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(231,76,60,0.15)); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:9px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; letter-spacing:0.3px;">🩺 Baromètre national Santé</button>
         </div>
       </div>
     `;
-
-    this.contentEl.innerHTML = html;
   }
 
   private async loadEpidemicAlertsFallback(): Promise<void> {
@@ -342,57 +551,80 @@ export class NationalHealthPanel extends Panel {
       };
 
       const rows = Array.isArray(payload.results) ? payload.results : [];
-      const latestDate = rows
-        .map((row) => String(row?.date ?? '').trim())
-        .filter(Boolean)
-        .sort()
-        .slice(-1)[0];
-
-      if (!latestDate) {
+      const recentRows = rows.filter((row) => this.isWithinDays(String(row?.date ?? '').trim(), ODISSE_RECENT_SIGNAL_WINDOW_DAYS));
+      if (recentRows.length === 0) {
         this.resolvedEpidemicAlerts = [];
         return;
       }
 
-      const grouped = new Map<string, {
+      const latestByRegionTheme = new Map<string, {
         theme: string;
+        regionCode: string;
+        regionName: string;
         date: string;
         dateLib: string;
-        maxLevel: number;
-        locations: string[];
+        level: number;
       }>();
 
-      for (const row of rows) {
+      for (const row of recentRows) {
         const date = String(row?.date ?? '').trim();
         const theme = String(row?.theme ?? '').trim();
         const regionCode = String(row?.reg ?? '').trim();
         const level = Number(row?.valeur);
         const dateLib = String(row?.date_lib ?? '').trim();
 
-        if (date !== latestDate || !theme || !regionCode || !Number.isFinite(level) || level < 3) continue;
+        if (!date || !theme || !regionCode || !Number.isFinite(level) || level < 3) continue;
 
-        const key = `${theme}::${dateLib}`;
-        const existing = grouped.get(key) ?? {
+        const key = `${theme}::${regionCode}`;
+        const prev = latestByRegionTheme.get(key);
+        if (prev && prev.date >= date) continue;
+
+        latestByRegionTheme.set(key, {
           theme,
+          regionCode,
+          regionName: REGION_CODE_TO_NAME[regionCode] ?? `Région ${regionCode}`,
           date,
           dateLib,
-          maxLevel: level,
+          level,
+        });
+      }
+
+      const grouped = new Map<string, {
+        theme: string;
+        latestDate: string;
+        latestDateLib: string;
+        maxLevel: number;
+        locations: string[];
+      }>();
+
+      for (const row of latestByRegionTheme.values()) {
+        const key = row.theme;
+        const existing = grouped.get(key) ?? {
+          theme: row.theme,
+          latestDate: row.date,
+          latestDateLib: row.dateLib,
+          maxLevel: row.level,
           locations: [],
         };
 
-        existing.maxLevel = Math.max(existing.maxLevel, level);
-        existing.locations.push(`${REGION_CODE_TO_NAME[regionCode] ?? `Région ${regionCode}`} (niveau ${level})`);
+        if (row.date > existing.latestDate) {
+          existing.latestDate = row.date;
+          existing.latestDateLib = row.dateLib;
+        }
+        existing.maxLevel = Math.max(existing.maxLevel, row.level);
+        existing.locations.push(`${row.regionName} (${row.dateLib}, niveau ${row.level})`);
         grouped.set(key, existing);
       }
 
       this.resolvedEpidemicAlerts = [...grouped.values()]
         .map((entry) => ({
-          id: `odisee-${this.slugify(`${entry.theme}-${entry.dateLib}`)}`,
+          id: `odisee-${this.slugify(`${entry.theme}-${entry.latestDateLib}`)}`,
           pathogen: entry.theme,
           severity: entry.maxLevel >= 4 ? 'high' as const : 'warning' as const,
-          title: `${entry.theme} · signal hivernal SPF`,
-          summary: `Niveaux d'alerte relevés dans le bulletin ${entry.dateLib}.`,
-          locations: entry.locations.slice(0, 4),
-          date: entry.date,
+          title: `${entry.theme} · signaux hivernaux SPF`,
+          summary: `Signaux de niveau 3 ou 4 relevés sur les ${ODISSE_RECENT_SIGNAL_WINDOW_DAYS} derniers jours. Dernier bulletin concerné : ${entry.latestDateLib}.`,
+          locations: entry.locations.slice(0, 6),
+          date: entry.latestDate,
           sourceLabel: 'Santé publique France / Odissé',
           sourceUrl: 'https://odisse.santepubliquefrance.fr/explore/dataset/ma_region_epidemies_hivernales_alertes/api/?flg=fr-fr',
         }))
