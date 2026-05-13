@@ -249,12 +249,12 @@ export class MapLegend {
         }
 
         return `
-            <div class="item" data-item="${item.id}" style="align-items:flex-start;">
-                <div class="shape ${shapeClass}" style="${style}; margin-top:2px; flex-shrink:0;"></div>
-                <div style="display:flex; flex-direction:column; gap:2px;">
+            <div data-item="${item.id}">
+                <div class="item">
+                    <div class="shape ${shapeClass}" style="${style}"></div>
                     <span>${item.label}</span>
-                    ${item.note ? `<span style="font-size:9px; color:#7f8c8d; line-height:1.3;">${item.note}</span>` : ''}
                 </div>
+                ${item.note ? `<div style="font-size:10.5px; color:#7f8c8d; line-height:1.35; margin-top:3px;">${item.note}</div>` : ''}
             </div>
         `;
     }
