@@ -10,7 +10,36 @@ const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
 
 const ACTIVE_ALERT_WINDOW_DAYS = 120;
+const ODISSE_RECENT_SIGNAL_WINDOW_DAYS = 90;
+const REGIONAL_BULLETIN_WINDOW_DAYS = 45;
+const REGIONAL_BULLETIN_MAX_PER_REGION = 2;
 const ALERTS_CACHE_TTL_MS = 60 * 60 * 1000;
+
+const SPF_REGIONAL_BULLETIN_SOURCES = [
+  {
+    regionSlug: 'ocean-indien',
+    label: 'Santé publique France / Océan Indien',
+    pageUrl: 'https://www.santepubliquefrance.fr/regions-et-territoires/ocean-indien',
+    defaultLocations: ['Mayotte', 'La Réunion'],
+  },
+  {
+    regionSlug: 'guyane',
+    label: 'Santé publique France / Guyane',
+    pageUrl: 'https://www.santepubliquefrance.fr/regions-et-territoires/guyane',
+    defaultLocations: ['Guyane'],
+  },
+  {
+    regionSlug: 'antilles',
+    label: 'Santé publique France / Antilles',
+    pageUrl: 'https://www.santepubliquefrance.fr/regions-et-territoires/antilles',
+    defaultLocations: ['Guadeloupe', 'Martinique', 'Antilles'],
+  },
+];
+
+const REGIONAL_BULLETIN_HEALTH_RE =
+  /surveillance sanitaire|grippe|bronchiolite|covid|chikungunya|dengue|cholera|choléra|paludisme|leptospirose|arboviro|gastro|gastro-enter|gastroent|rougeole|virus/i;
+const REGIONAL_BULLETIN_EXCLUDE_RE =
+  /conduites suicidaires|suicide|vaccination|couverture vaccinale|sant[eé] mentale|tabac|nutrition/i;
 
 let alertsCache = null;
 
@@ -113,6 +142,13 @@ function computeOdiseeSeverity(level) {
   return 'warning';
 }
 
+function isWithinDays(isoDate, days) {
+  if (!isoDate) return false;
+  const ts = Date.parse(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(ts)) return false;
+  return Date.now() - ts <= days * 24 * 60 * 60 * 1000;
+}
+
 function parseMeningocoqueCards(html) {
   const cards = [];
   const anchorRegex = /<a href="([^"]*infections-invasives-a-meningocoque[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -152,6 +188,139 @@ function extractArticleSummary(html) {
 
   const firstParagraphMatch = html.match(/<div id="block-[^"]+" class="content__wysiwyg edito[\s\S]*?<p>([\s\S]*?)<\/p>/i);
   return stripTags(firstParagraphMatch?.[1] ?? '');
+}
+
+function normalizeSpfBulletinUrl(url) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return null;
+  return normalized.replace('/index.php/', '/');
+}
+
+function extractRegionalBulletinLinks(html, regionSlug) {
+  const links = new Set();
+  const pathRe = new RegExp(`href="([^"]*\\/regions-et-territoires\\/${regionSlug}\\/bulletin-regional\\/[^"]*)"`, 'gi');
+  let match;
+
+  while ((match = pathRe.exec(html)) !== null) {
+    const normalized = normalizeSpfBulletinUrl(match[1]);
+    if (!normalized) continue;
+    if (/facebook\.com|twitter\.com|linkedin\.com|mailto:/i.test(normalized)) continue;
+    links.add(normalized);
+  }
+
+  return [...links];
+}
+
+function extractRegionalBulletinDate(html, url) {
+  const publishedMatch = html.match(/Publié le\s*([^<\n]+)/i);
+  const published = parseFrenchDate(publishedMatch?.[1] ?? '');
+  if (published) return published;
+
+  const titleDateMatch = decodeHtmlEntities(stripTags(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? ''))
+    .match(/(\d{1,2}\s+[a-zéûôîàèç]+\s+\d{4})/i);
+  const titleDate = parseFrenchDate(titleDateMatch?.[1] ?? '');
+  if (titleDate) return titleDate;
+
+  const urlDateMatch = url.match(/(\d{1,2})-(janvier|fevrier|février|mars|avril|mai|juin|juillet|aout|août|septembre|octobre|novembre|decembre|décembre)-(\d{4})/i);
+  if (!urlDateMatch) return null;
+  return parseFrenchDate(`${urlDateMatch[1]} ${urlDateMatch[2]} ${urlDateMatch[3]}`);
+}
+
+function extractRegionalBulletinSummary(html) {
+  const bulletsMatch = html.match(/<h2[^>]*>Points cl[ée]s<\/h2>[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
+  if (bulletsMatch?.[1]) {
+    const bullets = [...bulletsMatch[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)]
+      .map((match) => stripTags(match[1]))
+      .filter(Boolean)
+      .slice(0, 3);
+    if (bullets.length > 0) return bullets.join(' ');
+  }
+
+  const sections = [
+    /<h2[^>]*>Synth[èe]se [ée]pid[ée]miologique<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/i,
+    /<h2[^>]*>Analyse de la situation [ée]pid[ée]miologique<\/h2>[\s\S]*?<p>([\s\S]*?)<\/p>/i,
+  ];
+  for (const re of sections) {
+    const match = html.match(re);
+    const text = stripTags(match?.[1] ?? '');
+    if (text) return text;
+  }
+
+  return extractArticleSummary(html);
+}
+
+function inferPathogenFromTitle(title) {
+  const normalized = title.toLowerCase();
+  if (normalized.includes('bronchiolite') && normalized.includes('grippe') && normalized.includes('covid')) {
+    return 'Bronchiolite / Covid-19 / Grippe';
+  }
+  if (normalized.includes('chikungunya')) return 'Chikungunya';
+  if (normalized.includes('dengue')) return 'Dengue';
+  if (normalized.includes('paludisme')) return 'Paludisme';
+  if (normalized.includes('cholera') || normalized.includes('choléra')) return 'Choléra';
+  if (normalized.includes('leptospirose')) return 'Leptospirose';
+  if (normalized.includes('bronchiolite')) return 'Bronchiolite';
+  if (normalized.includes('grippe')) return 'Grippe';
+  if (normalized.includes('covid')) return 'Covid-19';
+  return 'Surveillance sanitaire';
+}
+
+function inferLocationsFromBulletin(title, defaults) {
+  const locations = new Set();
+  const haystack = title.toLowerCase();
+  if (haystack.includes('mayotte')) locations.add('Mayotte');
+  if (haystack.includes('la reunion') || haystack.includes('la réunion')) locations.add('La Réunion');
+  if (haystack.includes('guyane')) locations.add('Guyane');
+  if (haystack.includes('martinique')) locations.add('Martinique');
+  if (haystack.includes('guadeloupe')) locations.add('Guadeloupe');
+  if (haystack.includes('antilles')) {
+    locations.add('Guadeloupe');
+    locations.add('Martinique');
+  }
+  for (const item of defaults) locations.add(item);
+  return [...locations];
+}
+
+async function fetchRegionalBulletinAlerts() {
+  const regionAlerts = await Promise.all(SPF_REGIONAL_BULLETIN_SOURCES.map(async (source) => {
+    const regionHtml = await fetchText(source.pageUrl, { timeoutMs: 15000 });
+    const bulletinLinks = extractRegionalBulletinLinks(regionHtml, source.regionSlug).slice(0, 10);
+    const detailCandidates = await Promise.all(bulletinLinks.map(async (url) => {
+      try {
+        const html = await fetchText(url, { timeoutMs: 15000 });
+        const title = stripTags(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
+        if (!title) return null;
+        if (!REGIONAL_BULLETIN_HEALTH_RE.test(title) || REGIONAL_BULLETIN_EXCLUDE_RE.test(title)) return null;
+
+        const date = extractRegionalBulletinDate(html, url);
+        if (!date || !isWithinDays(date, REGIONAL_BULLETIN_WINDOW_DAYS)) return null;
+
+        const summary = extractRegionalBulletinSummary(html)
+          || 'Bulletin régional récent de Santé publique France. Ouvrir la source pour le détail sanitaire.';
+
+        return {
+          id: `spf-regional-${source.regionSlug}-${date}-${slugify(title)}`,
+          pathogen: inferPathogenFromTitle(title),
+          severity: computeSeverity(title, summary),
+          title,
+          summary,
+          locations: inferLocationsFromBulletin(title, source.defaultLocations),
+          date,
+          sourceLabel: source.label,
+          sourceUrl: url,
+        };
+      } catch {
+        return null;
+      }
+    }));
+
+    return detailCandidates
+      .filter((item) => item !== null)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, REGIONAL_BULLETIN_MAX_PER_REGION);
+  }));
+
+  return regionAlerts.flat();
 }
 
 async function fetchActiveMeningocoqueAlerts() {
@@ -198,55 +367,77 @@ async function fetchOdiseeWinterAlerts() {
   const rows = Array.isArray(parsed?.results) ? parsed.results : [];
   if (rows.length === 0) return [];
 
-  const latestDate = rows
-    .map((row) => String(row?.date ?? '').trim())
-    .filter(Boolean)
-    .sort()
-    .slice(-1)[0];
+  const recentRows = rows.filter((row) => {
+    const isoDate = String(row?.date ?? '').trim();
+    return isWithinDays(isoDate, ODISSE_RECENT_SIGNAL_WINDOW_DAYS);
+  });
 
-  if (!latestDate) return [];
-
-  const latestRows = rows.filter((row) => String(row?.date ?? '').trim() === latestDate);
-  const grouped = new Map();
-
-  for (const row of latestRows) {
+  const latestByRegionTheme = new Map();
+  for (const row of recentRows) {
     const theme = String(row?.theme ?? '').trim();
     const regionCode = String(row?.reg ?? '').trim();
     const regionName = REGION_CODE_TO_NAME[regionCode] ?? `Région ${regionCode}`;
     const level = Number(row?.valeur);
     const dateLib = String(row?.date_lib ?? '').trim();
+    const isoDate = String(row?.date ?? '').trim();
 
-    if (!theme || !regionCode || !Number.isFinite(level) || level < 3) continue;
+    if (!theme || !regionCode || !isoDate || !Number.isFinite(level) || level < 3) continue;
 
-    const key = `${theme}::${dateLib}`;
-    const existing = grouped.get(key) ?? {
+    const key = `${theme}::${regionCode}`;
+    const prev = latestByRegionTheme.get(key);
+    if (prev && String(prev.date ?? '') >= isoDate) continue;
+
+    latestByRegionTheme.set(key, {
       theme,
-      date: latestDate,
+      regionCode,
+      regionName,
+      level,
+      date: isoDate,
       dateLib,
-      maxLevel: level,
+    });
+  }
+
+  const grouped = new Map();
+  for (const row of latestByRegionTheme.values()) {
+    const key = row.theme;
+    const existing = grouped.get(key) ?? {
+      theme: row.theme,
+      latestDate: row.date,
+      latestDateLib: row.dateLib,
+      maxLevel: row.level,
       regions: [],
     };
 
-    existing.maxLevel = Math.max(existing.maxLevel, level);
-    existing.regions.push({ regionCode, regionName, level });
+    if (row.date > existing.latestDate) {
+      existing.latestDate = row.date;
+      existing.latestDateLib = row.dateLib;
+    }
+    existing.maxLevel = Math.max(existing.maxLevel, row.level);
+    existing.regions.push({
+      regionCode: row.regionCode,
+      regionName: row.regionName,
+      level: row.level,
+      date: row.date,
+      dateLib: row.dateLib,
+    });
     grouped.set(key, existing);
   }
 
   return [...grouped.values()].map((group) => {
     const sortedRegions = group.regions
-      .sort((a, b) => b.level - a.level || a.regionName.localeCompare(b.regionName));
-    const locations = sortedRegions.map((region) => `${region.regionName} (niveau ${region.level})`);
-    const topRegions = locations.slice(0, 4);
+      .sort((a, b) => b.date.localeCompare(a.date) || b.level - a.level || a.regionName.localeCompare(b.regionName));
+    const locations = sortedRegions.map((region) => `${region.regionName} (${region.dateLib}, niveau ${region.level})`);
+    const topRegions = locations.slice(0, 6);
     const extraCount = locations.length - topRegions.length;
 
     return {
-      id: `odisee-${slugify(group.theme)}-${group.dateLib}`,
+      id: `odisee-${slugify(group.theme)}-${group.latestDateLib}`,
       pathogen: group.theme,
       severity: computeOdiseeSeverity(group.maxLevel),
-      title: `${group.theme} · signal hivernal SPF`,
-      summary: `Niveaux d'alerte relevés dans le bulletin hivernal ${group.dateLib}${extraCount > 0 ? `, avec ${extraCount} région(s) supplémentaire(s)` : ''}.`,
+      title: `${group.theme} · signaux hivernaux SPF`,
+      summary: `Signaux de niveau 3 ou 4 relevés sur les ${ODISSE_RECENT_SIGNAL_WINDOW_DAYS} derniers jours. Dernier bulletin concerné : ${group.latestDateLib}${extraCount > 0 ? `, avec ${extraCount} territoire(s) supplémentaire(s)` : ''}.`,
       locations: topRegions,
-      date: group.date,
+      date: group.latestDate,
       sourceLabel: 'Santé publique France / Odissé',
       sourceUrl: 'https://odisse.santepubliquefrance.fr/explore/dataset/ma_region_epidemies_hivernales_alertes/api/?flg=fr-fr',
     };
@@ -271,11 +462,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    const [odiseeAlerts, meningocoqueAlerts] = await Promise.all([
+    const [odiseeAlerts, meningocoqueAlerts, regionalBulletinAlerts] = await Promise.all([
       fetchOdiseeWinterAlerts().catch(() => []),
       fetchActiveMeningocoqueAlerts().catch(() => []),
+      fetchRegionalBulletinAlerts().catch(() => []),
     ]);
-    const alerts = [...odiseeAlerts, ...meningocoqueAlerts]
+    const alerts = [...odiseeAlerts, ...meningocoqueAlerts, ...regionalBulletinAlerts]
       .sort((a, b) => b.date.localeCompare(a.date));
     alertsCache = { fetchedAt: Date.now(), alerts };
 

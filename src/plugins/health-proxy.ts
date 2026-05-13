@@ -505,6 +505,84 @@ export function healthProxyPlugin(): Plugin {
           res.end(JSON.stringify({ departements: [], metadata: { generated_at: new Date().toISOString() } }));
         }
       });
+
+      server.middlewares.use('/api/health/epidemiology-monitor', async (_req, res) => {
+        try {
+          const mod = await import('../../api/health/epidemiology-monitor.js');
+          const fakeReq = { method: 'GET' };
+          const fakeRes = {
+            statusCode: 200,
+            _headers: {} as Record<string, string>,
+            _body: '',
+            setHeader(k: string, v: string) { this._headers[k] = v; },
+            status(code: number) { this.statusCode = code; return this; },
+            json(data: unknown) { this._body = JSON.stringify(data); },
+            end() { },
+          };
+          await mod.default(fakeReq, fakeRes);
+          res.statusCode = fakeRes.statusCode;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=1800');
+          res.end(fakeRes._body);
+        } catch (err) {
+          console.error('[health-proxy/epidemiology-monitor]', err);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ alerts: [], logs: [], checked_at: new Date().toISOString() }));
+        }
+      });
+
+      server.middlewares.use('/api/health/sentinelles-ingestion', async (_req, res) => {
+        try {
+          const mod = await import('../../api/health/sentinelles-ingestion.js');
+          const fakeReq = { method: 'GET' };
+          const fakeRes = {
+            statusCode: 200,
+            _headers: {} as Record<string, string>,
+            _body: '',
+            setHeader(k: string, v: string) { this._headers[k] = v; },
+            status(code: number) { this.statusCode = code; return this; },
+            json(data: unknown) { this._body = JSON.stringify(data); },
+            end() { },
+          };
+          await mod.default(fakeReq, fakeRes);
+          res.statusCode = fakeRes.statusCode;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=1800');
+          res.end(fakeRes._body);
+        } catch (err) {
+          console.error('[health-proxy/sentinelles-ingestion]', err);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ sentinelles_last_week_available: null, rss_items: [], indicators: [] }));
+        }
+      });
+
+      server.middlewares.use('/api/health/hantavirus', async (_req, res) => {
+        try {
+          const mod = await import('../../api/health/hantavirus.js');
+          const fakeReq = { method: 'GET' };
+          const fakeRes = {
+            statusCode: 200,
+            _headers: {} as Record<string, string>,
+            _body: '',
+            setHeader(k: string, v: string) { this._headers[k] = v; },
+            status(code: number) { this.statusCode = code; return this; },
+            json(data: unknown) { this._body = JSON.stringify(data); },
+            end() { },
+          };
+          await mod.default(fakeReq, fakeRes);
+          res.statusCode = fakeRes.statusCode;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'public, max-age=1800');
+          res.end(fakeRes._body);
+        } catch (err) {
+          console.error('[health-proxy/hantavirus]', err);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.end(JSON.stringify({ events: [], heatmap: [], scan: {} }));
+        }
+      });
     },
   };
 }

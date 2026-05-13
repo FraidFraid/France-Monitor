@@ -27,6 +27,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'windMonitor', label: 'VEILLE ÉOLIENNE', icon: '&#127788;', sublayerOf: 'energySystems' },
   { key: 'metroLoad', label: 'CHARGE MÉTROPOLITAINE', icon: '&#127963;', sublayerOf: 'energySystems' },
   { key: 'health', label: 'SANTÉ / ÉPIDÉMIO', icon: '&#127973;' },
+  { key: 'healthHantavirus', label: 'HANTAVIRUS', icon: '&#129440;', sublayerOf: 'health' },
   { key: 'healthOscour', label: 'OSCOUR / SOS MÉDECINS', icon: '&#128657;', sublayerOf: 'health' },
   { key: 'healthApl', label: 'APL — DÉSERTS MÉDICAUX', icon: '&#127979;', sublayerOf: 'health' },
   { key: 'hospitals', label: 'HÔPITAUX (FINESS)', icon: '&#9702;', sublayerOf: 'health' },

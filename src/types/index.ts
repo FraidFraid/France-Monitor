@@ -117,6 +117,7 @@ export interface MapLayers {
   biomethaneSites?: boolean;
   mineGasSites?: boolean;
   health: boolean;
+  healthHantavirus?: boolean;
   healthOscour: boolean;
   healthApl: boolean;
   hospitals: boolean;
@@ -1094,6 +1095,18 @@ export interface HealthFeatures {
     drugName: string;
     status: 'tension' | 'rupture' | 'normalisation' | 'unknown';
   }>;
+
+  epidemiologyAlerts: AlerteEpidemique[];
+  epidemiologyFreshness: {
+    checkedAt: Date | null;
+    staleAfterDays: number;
+    refreshAfterHours: number;
+    obsoleteCount: number;
+  };
+  sentinellesLastWeekAvailable: string | null;
+  sentinellesNormalizedIndicators: SentinellesIndicator[];
+  hantavirusEvents: HantavirusEvent[];
+  hantavirusHeatmap: HeatmapPoint[];
 }
 
 // ═══ Data Freshness & Watchdog ═══
@@ -1275,6 +1288,88 @@ export interface CyberState {
     criticalCount: number;
     topCVEs: CyberCVE[];
   };
+}
+
+// ═══ OSINT Epidemio / Hantavirus ═══
+
+export type TerritoireNiveau =
+  | 'nation'
+  | 'region'
+  | 'departement'
+  | 'outre_mer';
+
+export type TerritoireNiveauEtendu =
+  | 'pays'
+  | 'region'
+  | 'departement'
+  | 'etablissement'
+  | 'navire';
+
+export type StatutEpidemique =
+  | 'niveau_de_base'
+  | 'pre-epidemie'
+  | 'epidemie'
+  | 'post-epidemie';
+
+export type PathologieEpidemique =
+  | 'grippe'
+  | 'bronchiolite'
+  | 'covid'
+  | 'ira'
+  | 'varicelle'
+  | 'diarrhee_aigue'
+  | 'hantavirus'
+  | string;
+
+export interface AlerteEpidemique {
+  source: 'SPF_Odisse' | 'SPF_DataGouv' | 'Sentinelles';
+  path: string;
+  dataset_id?: string | null;
+  territoire_niveau: TerritoireNiveau;
+  territoire_code: string;
+  semaine_epid: string;
+  date_maj_source: string;
+  last_checked_at: string;
+  statut: StatutEpidemique;
+  pathologie: PathologieEpidemique;
+  valeur: number;
+  unite: string;
+  obsolete: boolean;
+  meta?: Record<string, string | number | boolean | null>;
+}
+
+export interface SentinellesIndicator {
+  pathologie: 'IRA' | 'Grippe' | 'Varicelle' | 'Diarrhee aigue' | string;
+  semaine_epid: string;
+  territoire_niveau: 'nation' | 'region' | 'departement';
+  territoire_code: string;
+  incidence: number;
+  ic_low?: number;
+  ic_high?: number;
+  date_maj_source: string;
+}
+
+export interface HantavirusEvent {
+  id: string;
+  source: 'DGS-URGENT' | 'SPF' | 'ANRS' | 'MediaValidated';
+  type: 'cluster' | 'zone_historique';
+  souche?: 'Andes' | 'autre';
+  territoire_niveau: TerritoireNiveauEtendu;
+  territoire_code: string;
+  label: string;
+  date_debut: string;
+  date_fin?: string;
+  severite: 'info' | 'surveillance' | 'alerte' | 'crise';
+  commentaires?: string;
+  url_sources: string[];
+}
+
+export interface HeatmapPoint {
+  lat: number;
+  lon: number;
+  weight: number;
+  type: 'cluster' | 'zone_historique';
+  label: string;
 }
 
 // ═══ France Intelligence Card ═══
