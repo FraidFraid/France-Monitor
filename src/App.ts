@@ -450,10 +450,6 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
   refresh: {
     label: 'Scan horaire + fond historique stable'
   },
-  notes: [
-    'Heatmap (zoom < 8) : densité de risque — du jaune (faible) au violet (foyer actif).',
-    'Zones historiques SPF : circulation documentée 2005-2023.',
-  ],
 };
 
 
