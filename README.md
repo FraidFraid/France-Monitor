@@ -94,6 +94,7 @@ France Monitor is **not a media outlet and not a press publication**. Items show
 - APL (medical access score — déserts médicaux) by department
 - Hospital density overlay (FINESS)
 - Health Barometer with département-level drill-down
+- **Hantavirus layer** — active cluster map (MV Hondius, confirmed French cases) + historical SPF risk zones (2005–2023) as department polygons, auto-classified from DGS-Urgent and SPF live feeds
 
 ### 🧠 Situation Intelligence (ISNR)
 - **ISNR** — France National Stability Index (composite score, 0–100)
@@ -468,6 +469,13 @@ npm run lint        # no new ESLint warnings
 ---
 
 ## 📋 Recent Updates
+
+### 2026-05-13
+- **Hantavirus layer** — couche dédiée avec heatmap remplacée par polygones de départements bleus (zones historiques SPF 2005–2023), cercles colorés pour les clusters actifs (crise/alerte/surveillance), pulse halo sur les cas confirmés
+- **Classifieur DGS automatique** — scan DGS-Urgent + SPF à chaque requête, sévérité dérivée par mots-clés, règle `maxSeverity` (ne descend jamais sous le seed)
+- **Panneau Santé restructuré** — bloc "Alertes du moment" avec groupes pliants par sévérité (rouge ouvert, orange/jaune fermés), triés par date
+- **Tooltips zones historiques** — hover sur chaque département hantavirus : nom, période, souche Puumala, source SPF
+- **Légende améliorée** — colonnes clusters / fond historique avec note explicative inline
 
 ### 2026-05-05
 - **Fix APIs bloquées** — IIP RTE timeout 15s → 25s avec retry automatique ; Pannes Citoyennes timeout 15s → 60s
