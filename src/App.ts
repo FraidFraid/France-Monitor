@@ -434,14 +434,13 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
   id: 'healthHantavirus',
   title: 'Santé — Hantavirus',
   type: 'categorical',
-  columns: 2,
-  splitIndex: 4,
   items: [
     { id: 'hanta-section', label: 'Clusters actifs (cercles)', isHeader: true },
     { id: 'hanta-crise', label: 'Crise / cas confirmé', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-alerte', label: 'Alerte (suspicion forte)', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-surveillance', label: 'Surveillance', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
-    { id: 'hanta-zones', label: 'Zones historiques SPF 2005–2023 (fond bleu, zoom ≤ 9)', color: '#38BDF8', shape: 'zone' },
+    { id: 'hanta-zones-header', label: 'Fond historique (polygones)', isHeader: true, color: '#38BDF8' },
+    { id: 'hanta-zones', label: 'Zones SPF 2005–2023 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone' },
   ],
   source: {
     label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',
