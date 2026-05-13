@@ -7,6 +7,7 @@ import type {
 } from '../types/index.ts';
 import { ISS_LEVELS } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { buildSeedHondiusClusterEvents } from './hantavirus.ts';
 
 Watchdog.register('health', {
   label: 'Santé SPF / DREES',
@@ -57,6 +58,18 @@ const OSCOUR_SOS_URL = import.meta.env.PROD
 const APL_URL = import.meta.env.PROD
   ? '/api/health/apl'
   : 'http://localhost:3001/api/health/apl';
+
+const EPIDEMIOLOGY_MONITOR_URL = import.meta.env.PROD
+  ? '/api/health/epidemiology-monitor'
+  : 'http://localhost:3001/api/health/epidemiology-monitor';
+
+const SENTINELLES_INGESTION_URL = import.meta.env.PROD
+  ? '/api/health/sentinelles-ingestion'
+  : 'http://localhost:3001/api/health/sentinelles-ingestion';
+
+const HANTAVIRUS_URL = import.meta.env.PROD
+  ? '/api/health/hantavirus'
+  : 'http://localhost:3001/api/health/hantavirus';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
@@ -225,6 +238,25 @@ interface AplResponse {
   }>;
 }
 
+interface EpidemiologyMonitorResponse {
+  checked_at?: string;
+  policy?: {
+    stale_after_days?: number;
+    refresh_after_hours?: number;
+  };
+  alerts?: import('../types/index.ts').AlerteEpidemique[];
+}
+
+interface SentinellesIngestionResponse {
+  sentinelles_last_week_available?: string | null;
+  indicators?: import('../types/index.ts').SentinellesIndicator[];
+}
+
+interface HantavirusResponse {
+  events?: import('../types/index.ts').HantavirusEvent[];
+  heatmap?: import('../types/index.ts').HeatmapPoint[];
+}
+
 // ═══ ISS Computation ═══════════════════════════════════════════════════════
 
 /** Calcul de l'Indice de Stress Sanitaire (ISS) — score 0-100 */
@@ -324,7 +356,7 @@ export async function fetchHealthData(): Promise<HealthPayload> {
   };
 
   try {
-    const [epid, sent, epidemicAlertsResponse, drug, dept, oscourSos, apl] = await Promise.all([
+    const [epid, sent, epidemicAlertsResponse, drug, dept, oscourSos, apl, epidemiologyMonitor, sentinellesIngestion, hantavirus] = await Promise.all([
       fetchJson<EpidemiologyResponseV2 | EpidemiologyResponseLegacy>(EPIDEMIOLOGY_URL).catch(() => ({ covid_regional: [], rows: [] }) as EpidemiologyResponseV2 & EpidemiologyResponseLegacy),
       fetchJson<SentinellesResponse>(SENTINELLES_URL).catch(() => ({ indicators: [] }) as SentinellesResponse),
       fetchJson<EpidemicAlertsResponse>(EPIDEMIC_ALERTS_URL).catch(() => ({ alerts: [] }) as EpidemicAlertsResponse),
@@ -332,6 +364,9 @@ export async function fetchHealthData(): Promise<HealthPayload> {
       fetchJson<DepartmentalResponse>(DEPARTMENTAL_URL).catch(() => ({ departments: [] }) as DepartmentalResponse),
       fetchJson<OscourSosResponse>(OSCOUR_SOS_URL).catch(() => ({ departements: [] }) as OscourSosResponse),
       fetchJson<AplResponse>(APL_URL).catch(() => ({ departements: [] }) as AplResponse),
+      fetchJson<EpidemiologyMonitorResponse>(EPIDEMIOLOGY_MONITOR_URL).catch(() => ({ alerts: [] }) as EpidemiologyMonitorResponse),
+      fetchJson<SentinellesIngestionResponse>(SENTINELLES_INGESTION_URL).catch(() => ({ indicators: [], sentinelles_last_week_available: null }) as SentinellesIngestionResponse),
+      fetchJson<HantavirusResponse>(HANTAVIRUS_URL).catch(() => ({ events: [], heatmap: [] }) as HantavirusResponse),
     ]);
 
     const sentinellesByRegion = buildSentinellesByRegion(sent?.indicators ?? []);
@@ -414,7 +449,7 @@ export async function fetchHealthData(): Promise<HealthPayload> {
     const aplStatus: 'ok' | 'stale' | 'error' = (apl?.departements?.length ?? 0) > 0 ? 'ok' : 'error';
     const healthFeatures = buildHealthFeatures(
       effectiveDepartments, regions, sentIndicators, epidemicAlerts, shortages, shortagesLastUpdate, shortagesUrl, dreesStatus,
-      oscourSosStatus, aplStatus,
+      oscourSosStatus, aplStatus, epidemiologyMonitor, sentinellesIngestion, hantavirus,
     );
 
     const payload: HealthPayload = { departments: effectiveDepartments, regions, healthFeatures };
@@ -908,6 +943,17 @@ function buildEmptyHealthFeatures(): HealthFeatures {
     drugShortagesLastUpdate: null,
     drugShortagesUrl: 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments',
     drugShortagesItems: [],
+    epidemiologyAlerts: [],
+    epidemiologyFreshness: {
+      checkedAt: null,
+      staleAfterDays: 10,
+      refreshAfterHours: 12,
+      obsoleteCount: 0,
+    },
+    sentinellesLastWeekAvailable: null,
+    sentinellesNormalizedIndicators: [],
+    hantavirusEvents: [],
+    hantavirusHeatmap: [],
   };
 }
 
@@ -922,6 +968,9 @@ function buildHealthFeatures(
   dreesStatus: 'ok' | 'stale' | 'error',
   oscourSosStatus: 'ok' | 'stale' | 'error',
   aplStatus: 'ok' | 'stale' | 'error',
+  epidemiologyMonitor: EpidemiologyMonitorResponse,
+  sentinellesIngestion: SentinellesIngestionResponse,
+  hantavirus: HantavirusResponse,
 ): HealthFeatures {
   const nationalISS = regions.length > 0
     ? Math.round(regions.reduce((sum, r) => sum + r.iss, 0) / regions.length)
@@ -946,6 +995,30 @@ function buildHealthFeatures(
       drugName: String(s?.drug_name ?? '').trim(),
       status: (s?.status ?? 'unknown') as 'tension' | 'rupture' | 'normalisation' | 'unknown',
     }));
+
+  const epidemiologyAlerts = Array.isArray(epidemiologyMonitor?.alerts)
+    ? epidemiologyMonitor.alerts
+    : [];
+  const apiHantavirusEvents = Array.isArray(hantavirus?.events) ? hantavirus.events : [];
+  const seedClusters = buildSeedHondiusClusterEvents();
+  const SEVERITY_RANK: Record<string, number> = { info: 1, surveillance: 2, alerte: 3, crise: 4 };
+  const maxSev = (a: string, b: string) => (SEVERITY_RANK[a] ?? 1) >= (SEVERITY_RANK[b] ?? 1) ? a : b;
+  const seedById = new Map(seedClusters.map(s => [s.id, s]));
+  // Guarantee seed floors: API events cannot go below their seed severity
+  const mergedApiEvents = apiHantavirusEvents.map(ev => {
+    const seed = seedById.get(ev.id);
+    if (!seed) return ev;
+    return { ...ev, severite: maxSev(ev.severite, seed.severite) as typeof ev.severite };
+  });
+  const apiClusterIds = new Set(mergedApiEvents.filter(e => e.type === 'cluster').map(e => e.id));
+  const missingSeeds = seedClusters.filter(s => !apiClusterIds.has(s.id));
+  const hantavirusEvents = [...mergedApiEvents, ...missingSeeds];
+  const hantavirusHeatmap = Array.isArray(hantavirus?.heatmap)
+    ? hantavirus.heatmap
+    : [];
+  const sentinellesNormalizedIndicators = Array.isArray(sentinellesIngestion?.indicators)
+    ? sentinellesIngestion.indicators
+    : [];
 
   return {
     generatedAt: new Date(),
@@ -976,6 +1049,17 @@ function buildHealthFeatures(
     drugShortagesLastUpdate: shortagesLastUpdate,
     drugShortagesUrl: shortagesUrl,
     drugShortagesItems,
+    epidemiologyAlerts,
+    epidemiologyFreshness: {
+      checkedAt: epidemiologyMonitor?.checked_at ? new Date(epidemiologyMonitor.checked_at) : null,
+      staleAfterDays: Number(epidemiologyMonitor?.policy?.stale_after_days ?? 10),
+      refreshAfterHours: Number(epidemiologyMonitor?.policy?.refresh_after_hours ?? 12),
+      obsoleteCount: epidemiologyAlerts.filter((alert) => alert.obsolete).length,
+    },
+    sentinellesLastWeekAvailable: sentinellesIngestion?.sentinelles_last_week_available ?? null,
+    sentinellesNormalizedIndicators,
+    hantavirusEvents,
+    hantavirusHeatmap,
   };
 }
 
