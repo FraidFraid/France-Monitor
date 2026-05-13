@@ -440,10 +440,7 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
     { id: 'hanta-alerte', label: 'Alerte (suspicion forte)', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-surveillance', label: 'Surveillance', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-zones-header', label: 'Fond historique (polygones)', isHeader: true },
-    { id: 'hanta-zones', label: 'Zones SPF 2005–2023 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone' },
-  ],
-  notes: [
-    'Départements où des cas ont été documentés 2005–2023, sans foyer actif en 2026.',
+    { id: 'hanta-zones', label: 'Zones SPF 2005–2023 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone', note: 'Dép. où des cas ont été documentés 2005–2023, sans foyer actif en 2026.' },
   ],
   source: {
     label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',

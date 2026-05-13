@@ -15,6 +15,7 @@ export interface LegendItem {
     borderColor?: string;
     borderWidth?: number;
     gradient?: string;  // CSS gradient override (ex: radial-gradient pour "rond dans le rond")
+    note?: string;      // Texte explicatif sous le label (petit, gris)
     visible?: boolean;
     isHeader?: boolean; // Rend l'item comme un titre de section (pas de shape/couleur)
 }
@@ -248,9 +249,12 @@ export class MapLegend {
         }
 
         return `
-            <div class="item" data-item="${item.id}">
-                <div class="shape ${shapeClass}" style="${style}"></div>
-                <span>${item.label}</span>
+            <div class="item" data-item="${item.id}" style="align-items:flex-start;">
+                <div class="shape ${shapeClass}" style="${style}; margin-top:2px; flex-shrink:0;"></div>
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    <span>${item.label}</span>
+                    ${item.note ? `<span style="font-size:9px; color:#7f8c8d; line-height:1.3;">${item.note}</span>` : ''}
+                </div>
             </div>
         `;
     }
