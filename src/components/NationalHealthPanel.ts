@@ -245,14 +245,21 @@ export class NationalHealthPanel extends Panel {
     type AlertItem = { rank: number; html: string };
     const items: AlertItem[] = [];
 
+    const SEVERITY_BG: Record<string, string> = {
+      crise: 'rgba(255,59,48,0.10)', alerte: 'rgba(255,149,0,0.08)',
+      high: 'rgba(255,149,0,0.08)', warning: 'rgba(255,214,10,0.07)',
+      surveillance: 'rgba(255,214,10,0.05)', info: 'rgba(100,210,255,0.05)',
+    };
+
     // Hantavirus clusters
     for (const ev of (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster')) {
       const color = SEVERITY_COLOR[ev.severite] ?? '#9898a8';
       const label = SEVERITY_LABEL[ev.severite] ?? ev.severite.toUpperCase();
       const rank = SEVERITY_RANK[ev.severite as keyof typeof SEVERITY_RANK] ?? 1;
+      const bg = SEVERITY_BG[ev.severite] ?? 'rgba(255,255,255,0.04)';
       const sourceUrl = ev.url_sources[0] ?? '';
       items.push({ rank, html: `
-        <div style="background:rgba(255,255,255,0.04); border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
+        <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
           <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-size:14px;">🧬</span>
@@ -268,14 +275,16 @@ export class NationalHealthPanel extends Panel {
 
     // Alertes épidémiques Odissé
     const EPIDEMIC_COLOR: Record<string, string> = { critical: '#ff3b30', high: '#ff9500', warning: '#ffd60a' };
+    const EPIDEMIC_BG: Record<string, string> = { critical: 'rgba(255,59,48,0.10)', high: 'rgba(255,149,0,0.08)', warning: 'rgba(255,214,10,0.07)' };
     const EPIDEMIC_LABEL: Record<string, string> = { critical: 'CRITIQUE', high: 'ÉLEVÉ', warning: 'VIGILANCE' };
     for (const al of this.resolvedEpidemicAlerts) {
       const color = EPIDEMIC_COLOR[al.severity] ?? '#ffd60a';
+      const bg = EPIDEMIC_BG[al.severity] ?? 'rgba(255,214,10,0.07)';
       const label = EPIDEMIC_LABEL[al.severity] ?? 'VIGILANCE';
       const rank = SEVERITY_RANK[al.severity as keyof typeof SEVERITY_RANK] ?? 2;
       const locs = al.locations.slice(0, 3).join(', ') + (al.locations.length > 3 ? ` +${al.locations.length - 3}` : '');
       items.push({ rank, html: `
-        <div style="background:rgba(255,255,255,0.04); border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
+        <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
           <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-size:14px;">🦠</span>
