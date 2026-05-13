@@ -233,72 +233,67 @@ export class NationalHealthPanel extends Panel {
     return `<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:${color}; margin:0 0 8px; padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.07);">${label}</div>`;
   }
 
+  private renderAlertCard(color: string, bg: string, icon: string, title: string, sub: string, body: string, sourceUrl: string, sourceLabel: string): string {
+    return `
+      <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:14px;">${icon}</span>
+            <span style="color:#fff; font-weight:700; font-size:12px;">${title}</span>
+          </div>
+        </div>
+        <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">${sub}</div>
+        ${body ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${body}</div>` : ''}
+        ${sourceUrl ? `<div style="margin-top:6px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">${sourceLabel} ↗</a></div>` : ''}
+      </div>`;
+  }
+
   private renderAlertesDuMoment(data: HealthFeatures): string {
-    const SEVERITY_RANK = { crise: 4, alerte: 3, high: 3, warning: 2, surveillance: 2, info: 1 } as const;
-    const SEVERITY_COLOR: Record<string, string> = {
-      crise: '#ff3b30', alerte: '#ff9500', high: '#ff9500', warning: '#ffd60a', surveillance: '#ffd60a', info: '#64d2ff',
-    };
-    const SEVERITY_LABEL: Record<string, string> = {
-      crise: 'CRISE', alerte: 'ALERTE', high: 'ÉLEVÉ', warning: 'VIGILANCE', surveillance: 'SURVEILLANCE', info: 'INFO',
-    };
+    type Bucket = 'rouge' | 'orange' | 'jaune';
+    type AlertItem = { date: string; html: string };
+    const buckets: Record<Bucket, AlertItem[]> = { rouge: [], orange: [], jaune: [] };
 
-    type AlertItem = { rank: number; html: string };
-    const items: AlertItem[] = [];
+    const toBucket = (s: string): Bucket =>
+      (s === 'crise' || s === 'critical') ? 'rouge'
+      : (s === 'alerte' || s === 'high') ? 'orange'
+      : 'jaune';
 
-    const SEVERITY_BG: Record<string, string> = {
-      crise: 'rgba(255,59,48,0.10)', alerte: 'rgba(255,149,0,0.08)',
-      high: 'rgba(255,149,0,0.08)', warning: 'rgba(255,214,10,0.07)',
-      surveillance: 'rgba(255,214,10,0.05)', info: 'rgba(100,210,255,0.05)',
-    };
+    const COLOR: Record<Bucket, string> = { rouge: '#ff3b30', orange: '#ff9500', jaune: '#ffd60a' };
+    const BG:    Record<Bucket, string> = { rouge: 'rgba(255,59,48,0.10)', orange: 'rgba(255,149,0,0.08)', jaune: 'rgba(255,214,10,0.07)' };
 
     // Hantavirus clusters
     for (const ev of (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster')) {
-      const color = SEVERITY_COLOR[ev.severite] ?? '#9898a8';
-      const label = SEVERITY_LABEL[ev.severite] ?? ev.severite.toUpperCase();
-      const rank = SEVERITY_RANK[ev.severite as keyof typeof SEVERITY_RANK] ?? 1;
-      const bg = SEVERITY_BG[ev.severite] ?? 'rgba(255,255,255,0.04)';
-      const sourceUrl = ev.url_sources[0] ?? '';
-      items.push({ rank, html: `
-        <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
-          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:14px;">🧬</span>
-              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(ev.label)}</span>
-            </div>
-            <span style="flex-shrink:0; background:${color}22; border:1px solid ${color}66; color:${color}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; border-radius:3px;">${label}</span>
-          </div>
-          <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">Hantavirus · ${this.escapeHtml(ev.territoire_niveau)} · ${this.escapeHtml(ev.date_debut)}</div>
-          ${ev.commentaires ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${this.escapeHtml(ev.commentaires)}</div>` : ''}
-          ${sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">Source ↗</a></div>` : ''}
-        </div>` });
+      const b = toBucket(ev.severite);
+      buckets[b].push({
+        date: ev.date_debut ?? '',
+        html: this.renderAlertCard(
+          COLOR[b], BG[b], '🧬',
+          this.escapeHtml(ev.label),
+          `Hantavirus · ${this.escapeHtml(ev.territoire_niveau)} · ${this.escapeHtml(ev.date_debut)}`,
+          ev.commentaires ? this.escapeHtml(ev.commentaires) : '',
+          ev.url_sources[0] ? this.escapeHtml(ev.url_sources[0]) : '', 'Source',
+        ),
+      });
     }
 
     // Alertes épidémiques Odissé
-    const EPIDEMIC_COLOR: Record<string, string> = { critical: '#ff3b30', high: '#ff9500', warning: '#ffd60a' };
-    const EPIDEMIC_BG: Record<string, string> = { critical: 'rgba(255,59,48,0.10)', high: 'rgba(255,149,0,0.08)', warning: 'rgba(255,214,10,0.07)' };
-    const EPIDEMIC_LABEL: Record<string, string> = { critical: 'CRITIQUE', high: 'ÉLEVÉ', warning: 'VIGILANCE' };
+    const EPIC_LABEL: Record<string, string> = { critical: 'CRITIQUE', high: 'ÉLEVÉ', warning: 'VIGILANCE' };
     for (const al of this.resolvedEpidemicAlerts) {
-      const color = EPIDEMIC_COLOR[al.severity] ?? '#ffd60a';
-      const bg = EPIDEMIC_BG[al.severity] ?? 'rgba(255,214,10,0.07)';
-      const label = EPIDEMIC_LABEL[al.severity] ?? 'VIGILANCE';
-      const rank = SEVERITY_RANK[al.severity as keyof typeof SEVERITY_RANK] ?? 2;
-      const locs = al.locations.slice(0, 3).join(', ') + (al.locations.length > 3 ? ` +${al.locations.length - 3}` : '');
-      items.push({ rank, html: `
-        <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
-          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:14px;">🦠</span>
-              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(al.pathogen)}</span>
-            </div>
-            <span style="flex-shrink:0; background:${color}22; border:1px solid ${color}66; color:${color}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; border-radius:3px;">${label}</span>
-          </div>
-          <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">Épidémie saisonnière · ${this.escapeHtml(al.date)}</div>
-          <div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${this.escapeHtml(locs)}</div>
-          ${al.sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(al.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">SPF Odissé ↗</a></div>` : ''}
-        </div>` });
+      const b = toBucket(al.severity);
+      const locs = al.locations.slice(0, 4).join(', ') + (al.locations.length > 4 ? ` +${al.locations.length - 4}` : '');
+      buckets[b].push({
+        date: al.date ?? '',
+        html: this.renderAlertCard(
+          COLOR[b], BG[b], '🦠',
+          `${this.escapeHtml(al.pathogen)} <span style="color:${COLOR[b]}; font-size:9px; font-weight:700; margin-left:4px;">${EPIC_LABEL[al.severity] ?? ''}</span>`,
+          `Épidémie saisonnière · ${this.escapeHtml(al.date)}`,
+          this.escapeHtml(locs),
+          al.sourceUrl ? this.escapeHtml(al.sourceUrl) : '', 'SPF Odissé',
+        ),
+      });
     }
 
-    if (this.epidemicAlertsLoading && items.length === 0) {
+    if (this.epidemicAlertsLoading && Object.values(buckets).every(b => b.length === 0)) {
       return `
         <div style="margin-bottom:16px;">
           ${this.renderSectionHeader('Alertes du moment', '#ff453a')}
@@ -306,14 +301,39 @@ export class NationalHealthPanel extends Panel {
         </div>`;
     }
 
-    const cardsHtml = items.length > 0
-      ? items.sort((a, b) => b.rank - a.rank).map(i => i.html).join('')
-      : `<div style="padding:10px 12px; background:rgba(255,255,255,0.04); border-radius:7px; color:#9898a8; font-size:11px;">Aucune alerte active à ce stade.</div>`;
+    const total = buckets.rouge.length + buckets.orange.length + buckets.jaune.length;
+    if (total === 0) {
+      return `
+        <div style="margin-bottom:16px;">
+          ${this.renderSectionHeader('Alertes du moment', '#9898a8')}
+          <div style="padding:10px 12px; background:rgba(255,255,255,0.04); border-radius:7px; color:#9898a8; font-size:11px;">Aucune alerte active à ce stade.</div>
+        </div>`;
+    }
+
+    const byDate = (a: AlertItem, b: AlertItem) => b.date.localeCompare(a.date);
+
+    const renderGroup = (bucket: Bucket, label: string, openByDefault: boolean): string => {
+      const items = buckets[bucket];
+      if (items.length === 0) return '';
+      const color = COLOR[bucket];
+      const cards = items.sort(byDate).map(i => i.html).join('');
+      return `
+        <details${openByDefault ? ' open' : ''} style="margin-bottom:6px; border-radius:7px; overflow:hidden;">
+          <summary style="cursor:pointer; padding:7px 10px; background:${BG[bucket]}; border:1px solid ${color}44; border-radius:7px; display:flex; align-items:center; gap:7px; user-select:none; list-style:none;">
+            <span style="width:8px; height:8px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
+            <span style="color:${color}; font-size:11px; font-weight:700; flex:1;">${label} <span style="color:#9898a8; font-weight:400;">(${items.length})</span></span>
+            <span style="color:#9898a8; font-size:10px;">▾</span>
+          </summary>
+          <div style="padding:8px 0 2px;">${cards}</div>
+        </details>`;
+    };
 
     return `
       <div style="margin-bottom:16px;">
-        ${this.renderSectionHeader(`Alertes du moment${items.length > 0 ? ` (${items.length})` : ''}`, '#ff453a')}
-        ${cardsHtml}
+        ${this.renderSectionHeader(`Alertes du moment (${total})`, '#ff453a')}
+        ${renderGroup('rouge', 'Critique / Crise', true)}
+        ${renderGroup('orange', 'Alerte / Élevé', false)}
+        ${renderGroup('jaune', 'Vigilance / Surveillance', false)}
       </div>`;
   }
 

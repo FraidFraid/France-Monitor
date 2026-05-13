@@ -8,7 +8,7 @@
 export interface LegendItem {
     id: string;
     label: string;
-    color: string;
+    color?: string;
     icon?: string;      // Emoji ou caractère
     iconSize?: number;
     shape?: 'circle' | 'square' | 'triangle' | 'triangle-up' | 'triangle-down' | 'diamond' | 'zone' | 'vessel' | 'ring';
