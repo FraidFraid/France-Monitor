@@ -204,184 +204,6 @@ export class NationalHealthPanel extends Panel {
     return Date.now() - ts <= days * 24 * 60 * 60 * 1000;
   }
 
-  private epidemicSourceBadge(sourceLabel: string): { text: string; color: string; bg: string } {
-    const normalized = sourceLabel.toLowerCase();
-    if (normalized.includes('odiss')) {
-      return { text: 'Odissé', color: '#64d2ff', bg: 'rgba(100,210,255,0.12)' };
-    }
-    if (normalized.includes('guyane')) {
-      return { text: 'SPF Guyane', color: '#30d158', bg: 'rgba(48,209,88,0.12)' };
-    }
-    if (normalized.includes('antilles')) {
-      return { text: 'SPF Antilles', color: '#bf5af2', bg: 'rgba(191,90,242,0.12)' };
-    }
-    if (normalized.includes('ocean indien') || normalized.includes('océan indien')) {
-      return { text: 'SPF Océan Indien', color: '#ffd60a', bg: 'rgba(255,214,10,0.12)' };
-    }
-    if (normalized.includes('meningocoque') || normalized.includes('méningocoque')) {
-      return { text: 'SPF Méningocoque', color: '#ff9f0a', bg: 'rgba(255,159,10,0.12)' };
-    }
-    return { text: sourceLabel, color: '#aeb3c2', bg: 'rgba(174,179,194,0.12)' };
-  }
-
-  private renderEpidemicAlerts(alerts: HealthFeatures['epidemicAlerts'], loading: boolean): string {
-    const body = loading
-      ? `<div style="background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; color:#9898a8; font-size:11px;">Chargement des alertes épidémiques officielles...</div>`
-      : alerts.length === 0
-        ? `<div style="background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px 12px; color:#9898a8; font-size:11px;">Aucune alerte épidémique active en métropole au dernier bulletin officiel consulté.</div>`
-        : this.renderEpidemicAlertCards(alerts);
-
-    return `
-      <div style="margin-bottom:16px;">
-        <div style="color:#ff3b30; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; margin-bottom:8px; display:flex; align-items:center;">
-          Alertes épidémiques actives
-        </div>
-        ${body}
-      </div>`;
-  }
-
-  private renderHantavirusActiveAlertCards(data: HealthFeatures): string {
-    const activeClusters = (data.hantavirusEvents ?? [])
-      .filter((event) => event.type === 'cluster')
-      .sort((a, b) => {
-        const severityRank = { crise: 4, alerte: 3, surveillance: 2, info: 1 } as const;
-        return (
-          severityRank[b.severite] - severityRank[a.severite]
-          || String(b.date_debut).localeCompare(String(a.date_debut))
-        );
-      });
-
-    if (activeClusters.length === 0) return '';
-
-    const cards = activeClusters.map((event) => {
-      const severityColor = this.hantavirusSeverityColor(event.severite);
-      const sourceUrl = event.url_sources[0] ?? '';
-      const periodLabel = event.date_fin
-        ? `${event.date_debut} → ${event.date_fin}`
-        : event.date_debut;
-
-      return `
-        <div style="background:rgba(255,59,48,0.08); border:1px solid ${severityColor}55; border-left:3px solid ${severityColor}; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;">
-            <div style="display:flex; align-items:center; gap:7px;">
-              <span style="font-size:15px;">🧬</span>
-              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(this.hantavirusDisplayLabel(event))}</span>
-            </div>
-            <span style="background:${severityColor}22; border:1px solid ${severityColor}66; color:${severityColor}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${this.escapeHtml(event.severite.toUpperCase())}</span>
-          </div>
-          <div style="color:#9898a8; font-size:10px; font-weight:600; margin-bottom:4px;">Hantavirus · ${this.escapeHtml(periodLabel)}</div>
-          ${event.commentaires ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-bottom:6px;">${this.escapeHtml(event.commentaires)}</div>` : ''}
-          <div style="flex-wrap:wrap; color:#d8d8df; font-size:10px;">${this.escapeHtml(event.territoire_niveau)} · ${this.escapeHtml(event.territoire_code)}</div>
-          <div style="margin-top:6px; font-size:10px; color:#5a5a72;">${sourceUrl ? `<a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Source : ${this.escapeHtml(event.source)} ↗</a>` : `Source : ${this.escapeHtml(event.source)}`}</div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div style="margin-bottom:12px;">
-        <div style="color:#ffb4a8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; margin-bottom:8px;">
-          Hantavirus
-        </div>
-        ${cards}
-      </div>
-    `;
-  }
-
-  private renderEpidemicAlertCards(alerts: HealthFeatures['epidemicAlerts']): string {
-    const severityColors: Record<HealthFeatures['epidemicAlerts'][number]['severity'], { border: string; bg: string; badge: string; text: string }> = {
-      critical: { border: '#ff3b30', bg: 'rgba(255,59,48,0.10)', badge: '#ff3b30', text: 'CRITIQUE' },
-      high:     { border: '#ff9500', bg: 'rgba(255,149,0,0.10)',  badge: '#ff9500', text: 'ÉLEVÉ'    },
-      warning:  { border: '#ffd60a', bg: 'rgba(255,214,10,0.10)', badge: '#ffd60a', text: 'VIGILANCE' },
-    };
-
-    const cards = alerts.map(alert => {
-      const c = severityColors[alert.severity];
-      const sourceBadge = this.epidemicSourceBadge(alert.sourceLabel);
-      const locationBadges = alert.locations
-        .map(loc => `<span style="display:inline-block; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:3px; padding:1px 6px; font-size:10px; color:#d8d8df; margin-right:4px; margin-top:3px;">${loc}</span>`)
-        .join('');
-      const sourceHtml = alert.sourceUrl
-        ? `<a href="${alert.sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Source : ${alert.sourceLabel} ↗</a>`
-        : `Source : ${alert.sourceLabel}`;
-      return `
-        <div style="background:${c.bg}; border:1px solid ${c.border}55; border-left:3px solid ${c.border}; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
-            <div style="display:flex; align-items:center; gap:7px;">
-              <span style="font-size:15px;">🦠</span>
-              <span style="color:#fff; font-weight:700; font-size:12px;">${alert.title}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-left:8px;">
-              <span style="background:${sourceBadge.bg}; border:1px solid ${sourceBadge.color}55; color:${sourceBadge.color}; font-size:9px; font-weight:700; letter-spacing:0.4px; padding:2px 6px; border-radius:999px; white-space:nowrap;">${this.escapeHtml(sourceBadge.text)}</span>
-              <span style="background:${c.badge}22; border:1px solid ${c.badge}66; color:${c.badge}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 6px; border-radius:3px;">${c.text}</span>
-            </div>
-          </div>
-          <div style="color:#9898a8; font-size:10px; font-weight:600; margin-bottom:4px;">${alert.pathogen} · ${alert.date}</div>
-          <div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-bottom:6px;">${alert.summary}</div>
-          <div style="flex-wrap:wrap;">${locationBadges}</div>
-          <div style="margin-top:6px; font-size:10px; color:#5a5a72;">${sourceHtml}</div>
-        </div>`;
-    }).join('');
-    return cards;
-  }
-
-  private renderFreshnessSection(data: HealthFeatures): string {
-    const checkedAt = data.epidemiologyFreshness.checkedAt
-      ? new Date(data.epidemiologyFreshness.checkedAt).toLocaleString('fr-FR')
-      : 'n/d';
-    const staleBadge = data.epidemiologyFreshness.obsoleteCount > 0
-      ? `<span style="color:#ff453a; font-weight:700;">${data.epidemiologyFreshness.obsoleteCount} obsolète(s)</span>`
-      : `<span style="color:#34c759; font-weight:700;">à jour</span>`;
-
-    return `
-      <div style="margin-bottom: 18px;">
-        <h5 style="margin: 0 0 10px; color: #64d2ff; font-weight: 600; font-size: 13px;">Fraîcheur SPF / Odissé</h5>
-        <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:6px 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px;">
-          <span style="color:#9898a8;">Dernier contrôle</span><strong>${checkedAt}</strong>
-          <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness.staleAfterDays} j</strong>
-          <span style="color:#9898a8;">Seuil refetch</span><strong>${data.epidemiologyFreshness.refreshAfterHours} h</strong>
-          <span style="color:#9898a8;">État</span>${staleBadge}
-        </div>
-      </div>
-    `;
-  }
-
-  private renderHantavirusSection(data: HealthFeatures): string {
-    const items = data.hantavirusEvents ?? [];
-    if (items.length === 0) return '';
-
-    const activeClusters = items.filter((event) => event.type === 'cluster');
-    const historicalZones = items.filter((event) => event.type === 'zone_historique');
-
-    const activeHtml = activeClusters.length > 0
-      ? activeClusters.map((event) => this.renderHantavirusEventCard(event)).join('')
-      : '<div style="color:#9898a8; font-size:11px;">Aucun cluster actif structuré.</div>';
-
-    const historicalPreview = historicalZones.slice(0, 14).map((event) => this.renderHantavirusEventCard(event)).join('');
-    const historicalMore = historicalZones.length > 14
-      ? `<div style="color:#9898a8; font-size:10px; margin-top:4px;">${historicalZones.length - 14} zone(s) supplémentaire(s) masquée(s) pour garder le panneau lisible.</div>`
-      : '';
-
-    return `
-      <div style="margin-bottom: 20px;">
-        <h5 style="margin: 0 0 10px; color: #ffd60a; font-weight: 600; font-size: 13px;">Hantavirus</h5>
-        <div style="color:#9898a8; font-size:11px; margin-bottom:8px;">
-          ${data.hantavirusEvents.length} événement(s) structuré(s), ${data.hantavirusHeatmap.length} point(s) heatmap.
-        </div>
-        <details style="margin-bottom:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
-          <summary style="cursor:pointer; color:#ffb4a8; font-size:12px; font-weight:700;">Clusters et signaux actifs (${activeClusters.length})</summary>
-          <div style="margin-top:10px;">${activeHtml}</div>
-        </details>
-        <details style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 10px;">
-          <summary style="cursor:pointer; color:#b7ecff; font-size:12px; font-weight:700;">Zones historiques SPF (${historicalZones.length})</summary>
-          <div style="margin-top:10px;">
-            <div style="color:#9898a8; font-size:10px; line-height:1.45; margin-bottom:8px;">Circulation documentée par SPF sur la période 2005-2023. Ce ne sont pas des cas 2026.</div>
-            ${historicalPreview}
-            ${historicalMore}
-          </div>
-        </details>
-      </div>
-    `;
-  }
 
   show(data: HealthFeatures): void {
     this.currentData = data;
@@ -411,22 +233,85 @@ export class NationalHealthPanel extends Panel {
     return `<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:${color}; margin:0 0 8px; padding-bottom:5px; border-bottom:1px solid rgba(255,255,255,0.07);">${label}</div>`;
   }
 
+  private renderAlertesDuMoment(data: HealthFeatures): string {
+    const SEVERITY_RANK = { crise: 4, alerte: 3, high: 3, warning: 2, surveillance: 2, info: 1 } as const;
+    const SEVERITY_COLOR: Record<string, string> = {
+      crise: '#ff3b30', alerte: '#ff9500', high: '#ff9500', warning: '#ffd60a', surveillance: '#ffd60a', info: '#64d2ff',
+    };
+    const SEVERITY_LABEL: Record<string, string> = {
+      crise: 'CRISE', alerte: 'ALERTE', high: 'ÉLEVÉ', warning: 'VIGILANCE', surveillance: 'SURVEILLANCE', info: 'INFO',
+    };
+
+    type AlertItem = { rank: number; html: string };
+    const items: AlertItem[] = [];
+
+    // Hantavirus clusters
+    for (const ev of (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster')) {
+      const color = SEVERITY_COLOR[ev.severite] ?? '#9898a8';
+      const label = SEVERITY_LABEL[ev.severite] ?? ev.severite.toUpperCase();
+      const rank = SEVERITY_RANK[ev.severite as keyof typeof SEVERITY_RANK] ?? 1;
+      const sourceUrl = ev.url_sources[0] ?? '';
+      items.push({ rank, html: `
+        <div style="background:rgba(255,255,255,0.04); border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px;">🧬</span>
+              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(ev.label)}</span>
+            </div>
+            <span style="flex-shrink:0; background:${color}22; border:1px solid ${color}66; color:${color}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; border-radius:3px;">${label}</span>
+          </div>
+          <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">Hantavirus · ${this.escapeHtml(ev.territoire_niveau)} · ${this.escapeHtml(ev.date_debut)}</div>
+          ${ev.commentaires ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${this.escapeHtml(ev.commentaires)}</div>` : ''}
+          ${sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">Source ↗</a></div>` : ''}
+        </div>` });
+    }
+
+    // Alertes épidémiques Odissé
+    const EPIDEMIC_COLOR: Record<string, string> = { critical: '#ff3b30', high: '#ff9500', warning: '#ffd60a' };
+    const EPIDEMIC_LABEL: Record<string, string> = { critical: 'CRITIQUE', high: 'ÉLEVÉ', warning: 'VIGILANCE' };
+    for (const al of this.resolvedEpidemicAlerts) {
+      const color = EPIDEMIC_COLOR[al.severity] ?? '#ffd60a';
+      const label = EPIDEMIC_LABEL[al.severity] ?? 'VIGILANCE';
+      const rank = SEVERITY_RANK[al.severity as keyof typeof SEVERITY_RANK] ?? 2;
+      const locs = al.locations.slice(0, 3).join(', ') + (al.locations.length > 3 ? ` +${al.locations.length - 3}` : '');
+      items.push({ rank, html: `
+        <div style="background:rgba(255,255,255,0.04); border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px;">🦠</span>
+              <span style="color:#fff; font-weight:700; font-size:12px;">${this.escapeHtml(al.pathogen)}</span>
+            </div>
+            <span style="flex-shrink:0; background:${color}22; border:1px solid ${color}66; color:${color}; font-size:9px; font-weight:700; letter-spacing:0.5px; padding:2px 7px; border-radius:3px;">${label}</span>
+          </div>
+          <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">Épidémie saisonnière · ${this.escapeHtml(al.date)}</div>
+          <div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${this.escapeHtml(locs)}</div>
+          ${al.sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(al.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">SPF Odissé ↗</a></div>` : ''}
+        </div>` });
+    }
+
+    if (this.epidemicAlertsLoading && items.length === 0) {
+      return `
+        <div style="margin-bottom:16px;">
+          ${this.renderSectionHeader('Alertes du moment', '#ff453a')}
+          <div style="padding:10px 12px; background:rgba(255,255,255,0.04); border-radius:7px; color:#9898a8; font-size:11px;">Chargement des signaux épidémiques…</div>
+        </div>`;
+    }
+
+    const cardsHtml = items.length > 0
+      ? items.sort((a, b) => b.rank - a.rank).map(i => i.html).join('')
+      : `<div style="padding:10px 12px; background:rgba(255,255,255,0.04); border-radius:7px; color:#9898a8; font-size:11px;">Aucune alerte active à ce stade.</div>`;
+
+    return `
+      <div style="margin-bottom:16px;">
+        ${this.renderSectionHeader(`Alertes du moment${items.length > 0 ? ` (${items.length})` : ''}`, '#ff453a')}
+        ${cardsHtml}
+      </div>`;
+  }
+
   private renderContent(): void {
     if (!this.contentEl || !this.currentData) return;
 
     const data = this.currentData;
-
-    // ── 1. Signaux actifs ────────────────────────────────────────────────────
-    const hantavirusClusters = (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster');
-    const hasHanta = hantavirusClusters.length > 0;
-    const hasEpidemic = this.resolvedEpidemicAlerts.length > 0 || this.epidemicAlertsLoading;
-
-    const signauxActifsHtml = (hasHanta || hasEpidemic) ? `
-      <div style="margin-bottom:16px;">
-        ${this.renderSectionHeader('Signaux actifs', '#ff453a')}
-        ${hasHanta ? this.renderHantavirusActiveAlertCards(data) : ''}
-        ${this.renderEpidemicAlerts(this.resolvedEpidemicAlerts, this.epidemicAlertsLoading)}
-      </div>` : '';
 
     // ── 2. Réseau Sentinelles ────────────────────────────────────────────────
     const sentItems = data.sentinellesIndicators ?? [];
@@ -521,7 +406,7 @@ export class NationalHealthPanel extends Panel {
     // ── Assemblage ───────────────────────────────────────────────────────────
     this.contentEl.innerHTML = `
       <div style="padding:14px 16px 16px; overflow-y:auto; flex:1; font-size:13px;">
-        ${signauxActifsHtml}
+        ${this.renderAlertesDuMoment(data)}
         ${sentinellesHtml}
         ${ansmHtml}
         ${referenceHtml}
