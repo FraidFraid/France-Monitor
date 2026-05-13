@@ -3159,6 +3159,11 @@ body {
   line-height: 1.2;
 }
 
+.dark-popup a {
+  outline: none;
+  box-shadow: none;
+}
+
 /* Rail station detail panel: persistent click surface, not a map tooltip */
 .rail-station-detail-panel {
   position: fixed;
