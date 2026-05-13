@@ -114,11 +114,13 @@ export class MapLegend {
                     </div>
                 </div>
             `;
-        } else {
+        }
+
+        if (category.type !== 'gradient' || category.items?.length) {
             const visibleItems = category.items.filter(item => item.visible !== false);
+            let itemsBlockHtml = '';
 
             if (category.splitIndices && category.splitIndices.length >= 1) {
-                // N+1 explicit columns split at each index
                 const indices = [0, ...category.splitIndices, visibleItems.length];
                 const colCount = indices.length - 1;
                 const cols = indices.slice(0, -1).map((start, i) => {
@@ -126,11 +128,11 @@ export class MapLegend {
                     const colItems = visibleItems.slice(start, end).map(item => this.renderItem(item)).join('');
                     return `<div class="legend-items">${colItems}</div>`;
                 }).join('');
-                contentHtml = `<div class="legend-items legend-items-split" style="grid-template-columns: repeat(${colCount}, 1fr);">${cols}</div>`;
+                itemsBlockHtml = `<div class="legend-items legend-items-split" style="grid-template-columns: repeat(${colCount}, 1fr);">${cols}</div>`;
             } else if (category.columns === 2 && category.splitIndex != null) {
                 const leftItems = visibleItems.slice(0, category.splitIndex).map(item => this.renderItem(item)).join('');
                 const rightItems = visibleItems.slice(category.splitIndex).map(item => this.renderItem(item)).join('');
-                contentHtml = `
+                itemsBlockHtml = `
                     <div class="legend-items legend-items-split">
                         <div class="legend-items">${leftItems}</div>
                         <div class="legend-items">${rightItems}</div>
@@ -145,12 +147,13 @@ export class MapLegend {
                     ? `legend-items legend-cols-${category.columns}`
                     : 'legend-items';
 
-                contentHtml = `
+                itemsBlockHtml = `
                     <div class="${columnsClass}">
                         ${itemsHtml}
                     </div>
                 `;
             }
+            contentHtml += itemsBlockHtml;
         }
 
         let footerHtml = '';
