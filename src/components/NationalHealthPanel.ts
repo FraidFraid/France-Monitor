@@ -156,48 +156,6 @@ export class NationalHealthPanel extends Panel {
       .replaceAll("'", '&#39;');
   }
 
-  private hantavirusSeverityColor(severity: HealthFeatures['hantavirusEvents'][number]['severite']): string {
-    switch (severity) {
-      case 'crise':
-        return '#ff3b30';
-      case 'alerte':
-        return '#ff9500';
-      case 'surveillance':
-        return '#ffd60a';
-      case 'info':
-      default:
-        return '#64d2ff';
-    }
-  }
-
-  private hantavirusDisplayLabel(event: HealthFeatures['hantavirusEvents'][number]): string {
-    if (event.type === 'zone_historique') {
-      return `Zone historique SPF (circulation documentée 2005-2023) · ${event.label.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
-    }
-    return event.label;
-  }
-
-  private renderHantavirusEventCard(event: HealthFeatures['hantavirusEvents'][number]): string {
-    const severityColor = this.hantavirusSeverityColor(event.severite);
-    const sourceUrl = event.url_sources[0] ?? '';
-    const periodLabel = event.date_fin
-      ? `${event.date_debut} → ${event.date_fin}`
-      : event.date_debut;
-
-    return `
-      <div style="padding:9px 10px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid ${severityColor}44; border-left:3px solid ${severityColor}; margin-bottom:8px;">
-        <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; align-items:flex-start;">
-          <strong style="color:#f3f4f6; font-size:12px; line-height:1.35;">${this.escapeHtml(this.hantavirusDisplayLabel(event))}</strong>
-          <span style="color:${severityColor}; font-size:10px; text-transform:uppercase; font-weight:700; white-space:nowrap;">${this.escapeHtml(event.severite)}</span>
-        </div>
-        <div style="color:#9898a8; font-size:10px; line-height:1.45; margin-bottom:4px;">${this.escapeHtml(event.type)} · ${this.escapeHtml(event.territoire_niveau)} · ${this.escapeHtml(event.territoire_code)}</div>
-        <div style="color:#c8c8d4; font-size:10px; line-height:1.45;">${this.escapeHtml(periodLabel)}</div>
-        ${event.commentaires ? `<div style="color:#aeb3c2; font-size:10px; line-height:1.45; margin-top:5px;">${this.escapeHtml(event.commentaires)}</div>` : ''}
-        ${sourceUrl ? `<div style="margin-top:6px;"><a href="${this.escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none; font-size:10px;">Source ↗</a></div>` : ''}
-      </div>
-    `;
-  }
-
   private isWithinDays(isoDate: string, days: number): boolean {
     const ts = Date.parse(`${isoDate}T00:00:00Z`);
     if (Number.isNaN(ts)) return false;
@@ -402,12 +360,6 @@ export class NationalHealthPanel extends Panel {
       </div>`;
 
     // ── 4. Données de référence (plié) ───────────────────────────────────────
-    const historicalZones = (data.hantavirusEvents ?? []).filter(e => e.type === 'zone_historique');
-    const historicalHtml = historicalZones.length > 0
-      ? historicalZones.slice(0, 12).map(e => this.renderHantavirusEventCard(e)).join('')
-        + (historicalZones.length > 12 ? `<div style="color:#9898a8; font-size:10px; margin-top:4px;">+ ${historicalZones.length - 12} zones supplémentaires.</div>` : '')
-      : '<div style="color:#9898a8; font-size:11px;">Aucune zone historique chargée.</div>';
-
     const checkedAt = data.epidemiologyFreshness?.checkedAt
       ? new Date(data.epidemiologyFreshness.checkedAt).toLocaleString('fr-FR') : 'n/d';
     const staleBadge = (data.epidemiologyFreshness?.obsoleteCount ?? 0) > 0
@@ -426,9 +378,6 @@ export class NationalHealthPanel extends Panel {
             <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness?.staleAfterDays ?? '—'} j</strong>
             <span style="color:#9898a8;">État</span>${staleBadge}
           </div>
-          <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#5a5a72; letter-spacing:0.6px; margin-bottom:6px;">Zones historiques Hantavirus SPF 2005-2023</div>
-          <div style="color:#9898a8; font-size:10px; margin-bottom:8px;">Circulation documentée — ce ne sont pas des cas 2026.</div>
-          ${historicalHtml}
         </div>
       </details>`;
 

@@ -5550,6 +5550,43 @@ export class DeckGLMap {
         .addTo(this.map);
     });
 
+    this.map.on('mouseenter', LYR_HANTAVIRUS_ZONES_FILL, () => {
+      if (!this.map) return;
+      this.map.getCanvas().style.cursor = 'crosshair';
+    });
+    this.map.on('mousemove', LYR_HANTAVIRUS_ZONES_FILL, (e) => {
+      if (!this.map) return;
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const props = feature.properties ?? {};
+      const depName = String(props.nom ?? props.name ?? `Dép. ${props.code ?? ''}`);
+      const html = `
+        <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:2px;">
+          <div style="display:flex; align-items:center; gap:7px; margin-bottom:5px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#38BDF8; flex-shrink:0;"></span>
+            <strong style="font-size:12px; color:#fff;">${depName}</strong>
+          </div>
+          <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
+            <div>Zone de circulation documentée <strong style="color:#d8d8df;">2005 – 2023</strong></div>
+            <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
+            <div style="color:#7f8c8d; margin-top:4px;">Risque structurel — pas de foyer actif</div>
+          </div>
+          <div style="font-size:10px; color:#5a5a72; margin-top:6px;">Source : Santé Publique France</div>
+        </div>`;
+      if (!this.hantavirusHoverPopup) {
+        this.hantavirusHoverPopup = new maplibregl.Popup({
+          closeButton: false, closeOnClick: false, offset: 10, maxWidth: '280px', className: 'dark-popup',
+        });
+      }
+      this.hantavirusHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
+    });
+    this.map.on('mouseleave', LYR_HANTAVIRUS_ZONES_FILL, () => {
+      if (!this.map) return;
+      this.map.getCanvas().style.cursor = '';
+      this.hantavirusHoverPopup?.remove();
+      this.hantavirusHoverPopup = null;
+    });
+
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
       if (!this.map) return;
       this.map.getCanvas().style.cursor = 'pointer';
