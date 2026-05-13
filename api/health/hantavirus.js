@@ -179,22 +179,30 @@ function buildZoneHistoriqueEvents() {
   }));
 }
 
+const SEVERITY_RANK = { info: 1, surveillance: 2, alerte: 3, crise: 4 };
+function maxSeverity(a, b) {
+  return (SEVERITY_RANK[a] ?? 1) >= (SEVERITY_RANK[b] ?? 1) ? a : b;
+}
+
 // ─── Apply live signal to cluster templates ───────────────────────────────────
+// Règle : la classification live ne peut QUE monter la sévérité, jamais la descendre.
 function applySignalToCluster(cluster, signalLevel, mentions) {
   if (!signalLevel) return cluster; // DGS unreachable — garde le fallback
 
   const updated = { ...cluster };
 
   if (cluster.territoire_code === 'SHIP-MV-HONDIUS') {
-    // Hondius est toujours crise si signal Andes/navire détecté
-    updated.severite = (mentions?.andes || mentions?.hondius) ? 'crise' : signalLevel;
+    // Hondius = cluster OMS confirmé → toujours au moins crise
+    updated.severite = maxSeverity(cluster.severite, 'crise');
     updated.source = 'DGS-AUTO';
   } else if (cluster.territoire_code === 'HOP-IHU-MARSEILLE') {
-    // Marseille : cas confirmé en France → crise si signal >= alerte
-    updated.severite = (signalLevel === 'crise' || signalLevel === 'alerte') ? 'crise' : 'alerte';
+    // Marseille = premier cas France confirmé → au moins crise si signal >= alerte
+    const derived = (signalLevel === 'crise' || signalLevel === 'alerte') ? 'crise' : 'alerte';
+    updated.severite = maxSeverity(cluster.severite, derived);
     updated.source = 'DGS-AUTO';
   } else if (cluster.territoire_code === 'HOP-BICHAT') {
-    updated.severite = referenceHospitalSeverity(signalLevel, 'HOP-BICHAT', mentions);
+    const derived = referenceHospitalSeverity(signalLevel, 'HOP-BICHAT', mentions);
+    updated.severite = maxSeverity(cluster.severite, derived);
     updated.source = 'DGS-AUTO';
   } else if (cluster.territoire_code === 'HOP-PITIE-SALPETRIERE') {
     // Pitié reste toujours en surveillance (hôpital de repli)
