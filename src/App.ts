@@ -442,6 +442,9 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
     { id: 'hanta-zones-header', label: 'Fond historique (polygones)', isHeader: true },
     { id: 'hanta-zones', label: 'Zones SPF 2005–2023 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone' },
   ],
+  notes: [
+    'Départements où des cas ont été documentés 2005–2023, sans foyer actif en 2026.',
+  ],
   source: {
     label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',
     year: new Date().getFullYear(),
