@@ -433,13 +433,11 @@ const HEALTH_ISS_LEGEND: LegendCategory = {
 const HANTAVIRUS_LEGEND: LegendCategory = {
   id: 'healthHantavirus',
   title: 'Santé — Hantavirus',
-  type: 'gradient',
-  gradientColors: ['rgba(255,214,10,0.55)', 'rgba(255,149,0,0.72)', 'rgba(255,59,48,0.85)', 'rgba(123,77,255,1)'],
-  gradientMin: 'Présence faible',
-  gradientMax: 'Foyer actif',
+  type: 'categorical',
   items: [
-    { id: 'hanta-section', label: 'Clusters (cercles)', isHeader: true },
-    { id: 'hanta-crise', label: 'Cluster actif / cas confirmé', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-zones', label: 'Zones historiques SPF 2005–2023 (dép. bleus, zoom ≤ 9)', color: '#38BDF8', shape: 'zone' },
+    { id: 'hanta-section', label: 'Clusters actifs (cercles)', isHeader: true },
+    { id: 'hanta-crise', label: 'Crise / cas confirmé', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-alerte', label: 'Alerte (suspicion forte)', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-surveillance', label: 'Surveillance', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
   ],

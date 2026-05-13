@@ -254,9 +254,12 @@ const LYR_HEALTH_MARKERS = 'health-markers';
 const LYR_HEALTH_APL_FILL = 'health-apl-fill';
 const LYR_HEALTH_APL_LINE = 'health-apl-line';
 const LYR_HEALTH_OSCOUR_CIRCLES = 'health-oscour-circles';
-const LYR_HANTAVIRUS_HEATMAP = 'hantavirus-heatmap';
 const LYR_HANTAVIRUS_PULSE = 'hantavirus-pulse';
 const LYR_HANTAVIRUS_POINTS = 'hantavirus-points';
+const LYR_HANTAVIRUS_ZONES_FILL = 'hantavirus-zones-fill';
+const LYR_HANTAVIRUS_ZONES_STROKE = 'hantavirus-zones-stroke';
+const SRC_HANTA_ZONES = 'hanta-zones-src';
+const HANTA_HIST_DEP_CODES = ['08','39','54','55','57','67','68','70','88','69'];
 
 function getHantavirusSeverityColor(severity: string | null | undefined): string {
   switch (severity) {
@@ -1905,6 +1908,10 @@ export class DeckGLMap {
       type: 'geojson',
       data: emptyFC(),
     });
+    this.map.addSource(SRC_HANTA_ZONES, {
+      type: 'geojson',
+      data: '/data/departements.geojson',
+    });
 
     // ISNR stability departments
     this.map.addSource(SRC_ISNR, {
@@ -2447,27 +2454,28 @@ export class DeckGLMap {
       },
     });
 
+    // Zones historiques SPF 2005-2023 — polygones département bleus discrets
     this.map.addLayer({
-      id: LYR_HANTAVIRUS_HEATMAP,
-      type: 'heatmap',
-      source: SRC_HANTAVIRUS,
-      maxzoom: 8,
-      filter: ['==', ['get', 'type'], 'zone_historique'],
+      id: LYR_HANTAVIRUS_ZONES_FILL,
+      type: 'fill',
+      source: SRC_HANTA_ZONES,
+      maxzoom: 9,
+      filter: ['in', ['get', 'code'], ['literal', HANTA_HIST_DEP_CODES]],
       paint: {
-        'heatmap-weight': ['coalesce', ['get', 'weight'], 0],
-        'heatmap-intensity': 1,
-        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 4, 18, 8, 34],
-        'heatmap-opacity': 0.72,
-        'heatmap-color': [
-          'interpolate',
-          ['linear'],
-          ['heatmap-density'],
-          0, 'rgba(0,0,0,0)',
-          0.2, 'rgba(255,214,10,0.18)',
-          0.45, 'rgba(255,149,0,0.42)',
-          0.75, 'rgba(255,59,48,0.7)',
-          1, 'rgba(123,77,255,0.92)',
-        ],
+        'fill-color': '#38BDF8',
+        'fill-opacity': 0.13,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_HANTAVIRUS_ZONES_STROKE,
+      type: 'line',
+      source: SRC_HANTA_ZONES,
+      maxzoom: 9,
+      filter: ['in', ['get', 'code'], ['literal', HANTA_HIST_DEP_CODES]],
+      paint: {
+        'line-color': '#38BDF8',
+        'line-opacity': 0.45,
+        'line-width': 1,
       },
     });
 
@@ -9630,7 +9638,7 @@ export class DeckGLMap {
       LYR_HEALTH_FILL, LYR_HEALTH_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HEALTH_OSCOUR_CIRCLES,
-      LYR_HANTAVIRUS_HEATMAP, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS,
+      LYR_HANTAVIRUS_ZONES_FILL, LYR_HANTAVIRUS_ZONES_STROKE, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS,
       LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
       LYR_POWER_FILL, LYR_POWER_LINE,
       LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE,
@@ -9647,7 +9655,7 @@ export class DeckGLMap {
     if (categoryId === 'health') {
       activeLayers = [LYR_HEALTH_FILL, LYR_HEALTH_LINE];
     } else if (categoryId === 'healthHantavirus') {
-      activeLayers = [LYR_HANTAVIRUS_HEATMAP, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS];
+      activeLayers = [LYR_HANTAVIRUS_ZONES_FILL, LYR_HANTAVIRUS_ZONES_STROKE, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
     } else if (categoryId === 'healthOscour') {
@@ -11321,7 +11329,8 @@ export class DeckGLMap {
         this.map.moveLayer(LYR_HEALTH_LINE);
         this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
         this.map.moveLayer(LYR_HEALTH_MARKERS);
-        this.map.moveLayer(LYR_HANTAVIRUS_HEATMAP);
+        this.map.moveLayer(LYR_HANTAVIRUS_ZONES_FILL);
+        this.map.moveLayer(LYR_HANTAVIRUS_ZONES_STROKE);
         this.map.moveLayer(LYR_HANTAVIRUS_PULSE);
         this.map.moveLayer(LYR_HANTAVIRUS_POINTS);
       } catch {
@@ -13208,7 +13217,8 @@ export class DeckGLMap {
     this.setVis(LYR_HEALTH_LINE, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_OSCOUR_CIRCLES, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_MARKERS, vis(layers.health ?? false));
-    this.setVis(LYR_HANTAVIRUS_HEATMAP, vis(layers.healthHantavirus ?? false));
+    this.setVis(LYR_HANTAVIRUS_ZONES_FILL, vis(layers.healthHantavirus ?? false));
+    this.setVis(LYR_HANTAVIRUS_ZONES_STROKE, vis(layers.healthHantavirus ?? false));
     this.setVis(LYR_HANTAVIRUS_PULSE, vis(layers.healthHantavirus ?? false));
     this.setVis(LYR_HANTAVIRUS_POINTS, vis(layers.healthHantavirus ?? false));
     this.setVis(LYR_HOSPITALS_CHU, vis(layers.hospitals ?? false));
