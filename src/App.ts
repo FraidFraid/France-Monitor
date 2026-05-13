@@ -438,11 +438,10 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
   gradientMin: 'Présence faible',
   gradientMax: 'Foyer actif',
   items: [
-    { id: 'hanta-section', label: 'Sévérité des points (zoom ≥ 6)', isHeader: true },
-    { id: 'hanta-crise', label: 'Crise / cluster actif', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
-    { id: 'hanta-alerte', label: 'Alerte', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
-    { id: 'hanta-surveillance', label: 'Surveillance (zone hist. SPF)', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
-    { id: 'hanta-info', label: 'Zone élargie SPF (2005-2023)', color: '#64d2ff', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-section', label: 'Clusters (cercles)', isHeader: true },
+    { id: 'hanta-crise', label: 'Cluster actif / cas confirmé', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-alerte', label: 'Alerte (suspicion forte)', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-surveillance', label: 'Surveillance', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
   ],
   source: {
     label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',
