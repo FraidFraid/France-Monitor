@@ -194,7 +194,7 @@ export class MapLegend {
             <div class="legend-section-header" style="
                 font-size: 10px; font-weight: 700; text-transform: uppercase;
                 letter-spacing: .05em; color: ${item.color || '#9898a8'};
-                margin: 0 0 5px; padding-bottom: 4px;
+                margin: 10px 0 5px; padding-bottom: 4px;
                 border-bottom: 1px solid rgba(255,255,255,0.08);
                 line-height: 1.3;
             ">${item.label}</div>`;
