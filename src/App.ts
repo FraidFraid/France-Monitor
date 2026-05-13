@@ -356,6 +356,7 @@ const DEFAULT_LAYERS: MapLayers = {
   hydroBackbone: false,
   windMonitor: false,
   health: false,
+  healthHantavirus: true,
   healthOscour: false,
   healthApl: false,
   hospitals: false,
@@ -427,6 +428,33 @@ const HEALTH_ISS_LEGEND: LegendCategory = {
   refresh: {
     label: 'Mise à jour quotidienne'
   }
+};
+
+const HANTAVIRUS_LEGEND: LegendCategory = {
+  id: 'healthHantavirus',
+  title: 'Santé — Hantavirus',
+  type: 'gradient',
+  gradientColors: ['rgba(255,214,10,0.55)', 'rgba(255,149,0,0.72)', 'rgba(255,59,48,0.85)', 'rgba(123,77,255,1)'],
+  gradientMin: 'Présence faible',
+  gradientMax: 'Foyer actif',
+  items: [
+    { id: 'hanta-section', label: 'Sévérité des points (zoom ≥ 6)', isHeader: true },
+    { id: 'hanta-crise', label: 'Crise / cluster actif', color: '#ff3b30', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-alerte', label: 'Alerte', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-surveillance', label: 'Surveillance (zone hist. SPF)', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+    { id: 'hanta-info', label: 'Zone élargie SPF (2005-2023)', color: '#64d2ff', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
+  ],
+  source: {
+    label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',
+    year: new Date().getFullYear(),
+  },
+  refresh: {
+    label: 'Scan horaire + fond historique stable'
+  },
+  notes: [
+    'Heatmap (zoom < 8) : densité de risque — du jaune (faible) au violet (foyer actif).',
+    'Zones historiques SPF : circulation documentée 2005-2023.',
+  ],
 };
 
 
@@ -1107,6 +1135,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     dependsOnGroup: false,
     label: 'Santé / Épidémio',
     legend: HEALTH_ISS_LEGEND,
+  },
+  {
+    id: 'healthHantavirus',
+    groupId: 'health',
+    role: 'standalone',
+    dependsOnGroup: false,
+    label: 'Hantavirus',
+    legend: HANTAVIRUS_LEGEND,
   },
   {
     id: 'healthApl',
@@ -2288,6 +2324,7 @@ export class App {
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
+        this.activeLayers.healthHantavirus ||
         this.activeLayers.healthApl ||
         this.activeLayers.healthOscour ||
         this.activeLayers.hospitals;
@@ -2315,6 +2352,7 @@ export class App {
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
+        this.activeLayers.healthHantavirus ||
         this.activeLayers.healthApl ||
         this.activeLayers.healthOscour ||
         this.activeLayers.hospitals;
@@ -2726,6 +2764,7 @@ export class App {
       'oilNetwork',
       'windMonitor',
       'health',
+      'healthHantavirus',
       'healthOscour',
       'healthApl',
       'hospitals',
@@ -2775,6 +2814,7 @@ export class App {
 
     const isAnyHealthLayerActive =
       this.activeLayers.health ||
+      this.activeLayers.healthHantavirus ||
       this.activeLayers.healthApl ||
       this.activeLayers.healthOscour ||
       this.activeLayers.hospitals;
@@ -2962,9 +3002,9 @@ export class App {
       if (enabled) this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
       else this.environmentPanel?.hide();
       this.layoutEnvironmentFloatingPanels();
-    } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
+    } else if (key === 'health' || key === 'healthHantavirus' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
       const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
+        this.activeLayers.health || this.activeLayers.healthHantavirus || this.activeLayers.healthApl ||
         this.activeLayers.healthOscour || this.activeLayers.hospitals;
       // Lazy-load health data on first activation
       if (enabled && !this.hasHealthData) {
@@ -3259,6 +3299,7 @@ export class App {
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
     // Rail legend is embedded in TransportPanel — not in the bottom map legend
     this.mapLegend.addCategory(HEALTH_ISS_LEGEND);
+    this.mapLegend.addCategory(HANTAVIRUS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
     this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
     this.mapLegend.addCategory(HOSPITALS_LEGEND);
@@ -4978,11 +5019,13 @@ export class App {
       }
     }
     const hasData = payload.departments.length > 0 || payload.regions.length > 0;
+    const hasHantavirusData = payload.healthFeatures.hantavirusHeatmap.length > 0;
     // Show national health panel only if user manually enabled the health layer
-    if (hasData && this.activeLayers.health) {
+    if ((hasData && this.activeLayers.health) || (hasHantavirusData && this.activeLayers.healthHantavirus)) {
       document.dispatchEvent(new CustomEvent('open-national-health'));
     }
     this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);
+    this.mapLegend?.setCategoryVisibility('healthHantavirus', hasHantavirusData && !!this.activeLayers.healthHantavirus);
     const ss = payload.healthFeatures.sourceStatus;
     this.statusPanel?.updateSource('SPF / DREES', {
       status: ss.santePubliqueFrance === 'ok' || ss.drees === 'ok' ? 'ok' : 'stale',
@@ -5004,6 +5047,7 @@ export class App {
     this._intervalHealth = setInterval(() => {
       const isHealthContextActive =
         this.activeLayers.health ||
+        this.activeLayers.healthHantavirus ||
         this.activeLayers.healthApl ||
         this.activeLayers.healthOscour ||
         this.activeLayers.hospitals ||
