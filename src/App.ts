@@ -345,18 +345,18 @@ function buildNuclearBriefingContext(state: NuclearState | null): NuclearBriefin
   };
 }
 
-// Default layer visibility (alerts remain implicitly enabled)
+// Default layer visibility: all layers start disabled on first load.
 const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
   news: false,
-  alerts: true,
+  alerts: false,
   energySystems: false,
   dromEnergy: false,
   powerGrid: false,
   hydroBackbone: false,
   windMonitor: false,
   health: false,
-  healthHantavirus: true,
+  healthHantavirus: false,
   healthOscour: false,
   healthApl: false,
   hospitals: false,

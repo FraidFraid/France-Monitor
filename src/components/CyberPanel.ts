@@ -426,6 +426,14 @@ export class CyberPanel extends Panel {
   private renderTabContent(): void {
     const el = this.contentEl?.querySelector<HTMLElement>('#cyber-tab-content');
     if (!el) return;
+
+    const previousSearchInput = this.contentEl?.querySelector<HTMLInputElement>('[data-threat-search]');
+    const shouldRestoreSearchFocus = this.activeTab === 'incidents'
+      && previousSearchInput != null
+      && document.activeElement === previousSearchInput;
+    const selectionStart = previousSearchInput?.selectionStart ?? null;
+    const selectionEnd = previousSearchInput?.selectionEnd ?? null;
+
     el.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;';
     if (this.activeTab === 'alertes' && this.currentData) {
       el.innerHTML = `<div style="display:grid;grid-template-columns:1fr;gap:10px;">${this.renderCertFrCard(this.currentData)}</div>`;
@@ -434,6 +442,14 @@ export class CyberPanel extends Panel {
     } else if (this.activeTab === 'incidents') {
       el.innerHTML = this.renderIncidentsTab();
       this.bindIncidentFilters();
+
+      if (shouldRestoreSearchFocus) {
+        const nextSearchInput = this.contentEl?.querySelector<HTMLInputElement>('[data-threat-search]');
+        nextSearchInput?.focus();
+        if (nextSearchInput && selectionStart != null && selectionEnd != null) {
+          nextSearchInput.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
     }
   }
 

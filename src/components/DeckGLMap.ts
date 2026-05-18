@@ -7472,7 +7472,7 @@ export class DeckGLMap {
         onClick: (info) => {
           if (!this.map || !info.object || info.object.kind !== 'event') return;
           const evt = info.object.event;
-          const pt = this.map.project(evt.location.coordinates);
+          const pt = this.map.project(info.object.coordinates);
           this.onThreatEventClick?.(evt, pt.x, pt.y);
         },
         updateTriggers: {
@@ -7516,6 +7516,61 @@ export class DeckGLMap {
     return [59, 130, 246, alpha];
   }
 
+  private offsetThreatCoordinate(
+    coordinates: [number, number],
+    precision: ThreatEvent['location']['precision'],
+    index: number,
+    groupSize: number,
+  ): [number, number] {
+    if (groupSize <= 1) return coordinates;
+
+    const baseKmByPrecision: Record<ThreatEvent['location']['precision'], number> = {
+      hq: 0.45,
+      city: 0.65,
+      region: 1.4,
+      country: 2.2,
+      unknown: 1.8,
+    };
+    const ringIndex = Math.floor(index / 6);
+    const slotIndex = index % 6;
+    const ringSize = Math.min(6, groupSize - ringIndex * 6);
+    const angle = (Math.PI * 2 * slotIndex) / Math.max(1, ringSize);
+    const radiusKm = baseKmByPrecision[precision] * (1 + ringIndex * 0.9);
+    const latRad = coordinates[1] * (Math.PI / 180);
+    const deltaLat = (radiusKm / 111.32) * Math.sin(angle);
+    const deltaLng = (radiusKm / (111.32 * Math.max(0.25, Math.cos(latRad)))) * Math.cos(angle);
+    return [coordinates[0] + deltaLng, coordinates[1] + deltaLat];
+  }
+
+  private buildThreatDisplayCoordinates(): Map<string, [number, number]> {
+    const grouped = new Map<string, ThreatEvent[]>();
+    for (const event of this.threatEvents) {
+      const [lng, lat] = event.location.coordinates;
+      const key = `${lng.toFixed(6)},${lat.toFixed(6)}`;
+      const existing = grouped.get(key) ?? [];
+      existing.push(event);
+      grouped.set(key, existing);
+    }
+
+    const displayCoordinates = new Map<string, [number, number]>();
+    for (const group of grouped.values()) {
+      if (group.length === 1) {
+        displayCoordinates.set(group[0].id, group[0].location.coordinates);
+        continue;
+      }
+
+      const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
+      sorted.forEach((event, index) => {
+        displayCoordinates.set(
+          event.id,
+          this.offsetThreatCoordinate(event.location.coordinates, event.location.precision, index, sorted.length),
+        );
+      });
+    }
+
+    return displayCoordinates;
+  }
+
   private rebuildThreatClusterIndex(): void {
     const features = this.threatEvents.map((event) => ({
       type: 'Feature' as const,
@@ -7546,16 +7601,18 @@ export class DeckGLMap {
 
   private getThreatMapData(): ThreatMapDatum[] {
     if (!this.map || !this.threatClusterIndex) {
+      const displayCoordinates = this.buildThreatDisplayCoordinates();
       return this.threatEvents.map((event) => ({
         kind: 'event',
         event,
-        coordinates: event.location.coordinates,
+        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
         severity: event.severity,
       }));
     }
 
     const bounds = this.map.getBounds();
     const zoom = Math.floor(this.map.getZoom());
+    const displayCoordinates = this.buildThreatDisplayCoordinates();
     const clusters = this.threatClusterIndex.getClusters(
       [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
       zoom,
@@ -7579,7 +7636,7 @@ export class DeckGLMap {
       return {
         kind: 'event',
         event,
-        coordinates: event.location.coordinates,
+        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
         severity: event.severity,
       };
     });

@@ -9,6 +9,17 @@
 
 import type { ThreatClassification, EventCategory, ThreatLevel } from '../types/index.ts';
 
+function normalizeForMatch(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['’`]/g, ' ')
+        .replace(/[^a-z0-9]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
 // ─── Entités Nommées pour Mitigation Bruit PQR ───
 
 /**
@@ -81,14 +92,14 @@ export interface EntityDetectionResult {
  * Utilisé pour filtrer le bruit PQR.
  */
 export function detectEntities(text: string): EntityDetectionResult {
-    const normalizedText = text.toLowerCase();
+    const normalizedText = normalizeForMatch(text);
 
     const institutionsFound: string[] = [];
     const locationsFound: string[] = [];
 
     // Chercher les institutions avec word boundaries
     for (const inst of INSTITUTIONS) {
-        const regex = new RegExp(`\\b${inst}\\b`, 'i');
+        const regex = new RegExp(`\\b${normalizeForMatch(inst)}\\b`, 'i');
         if (regex.test(normalizedText)) {
             institutionsFound.push(inst);
         }
@@ -96,7 +107,7 @@ export function detectEntities(text: string): EntityDetectionResult {
 
     // Chercher les types de lieux
     for (const loc of LOCATION_TYPES) {
-        const regex = new RegExp(`\\b${loc}\\b`, 'i');
+        const regex = new RegExp(`\\b${normalizeForMatch(loc)}\\b`, 'i');
         if (regex.test(normalizedText)) {
             locationsFound.push(loc);
         }
@@ -121,12 +132,12 @@ export function detectEntities(text: string): EntityDetectionResult {
  * - Lieu + Institution → stratégique
  */
 export function isFaitDiversNoise(text: string): boolean {
-    const normalizedText = text.toLowerCase();
+    const normalizedText = normalizeForMatch(text);
 
     // Vérifie si le texte contient des mots-clés de fait divers
     let hasFaitDiversKeyword = false;
     for (const kw of FAITS_DIVERS_KEYWORDS) {
-        if (normalizedText.includes(kw)) {
+        if (normalizedText.includes(normalizeForMatch(kw))) {
             hasFaitDiversKeyword = true;
             break;
         }
@@ -212,8 +223,20 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
     },
     cyber: {
         high: ['cyberattaque majeure', 'ransomware hôpital', 'sabotage numérique', 'attaque état'],
-        medium: ['cyberattaque', 'piratage', 'ransomware', 'fuite données', 'ddos', 'cert-fr alerte'],
-        low: ['vulnérabilité', 'patch sécurité', 'phishing', 'arnaque', 'incident cyber'],
+        medium: [
+            'cyberattaque',
+            'cyber attaque',
+            'piratage',
+            'ransomware',
+            'fuite données',
+            'fuite de données',
+            'vol de données',
+            'exfiltration de données',
+            'violation de données',
+            'ddos',
+            'cert-fr alerte',
+        ],
+        low: ['vulnérabilité', 'patch sécurité', 'phishing', 'arnaque', 'incident cyber', 'compte compromis'],
     },
 };
 
@@ -249,8 +272,8 @@ const DOMESTIC_ACCIDENT_KEYWORDS: string[] = [
 ];
 
 export function isDomesticAccident(text: string): boolean {
-    const normalized = text.toLowerCase();
-    return DOMESTIC_ACCIDENT_KEYWORDS.some((kw) => normalized.includes(kw));
+    const normalized = normalizeForMatch(text);
+    return DOMESTIC_ACCIDENT_KEYWORDS.some((kw) => normalized.includes(normalizeForMatch(kw)));
 }
 
 /**
@@ -261,7 +284,7 @@ export function classifyByKeywords(
     title: string,
     summary?: string,
 ): ThreatClassification | undefined {
-    const text = `${title} ${summary ?? ''}`.toLowerCase();
+    const text = normalizeForMatch(`${title} ${summary ?? ''}`);
 
     let bestCategory: EventCategory = 'general';
     let bestLevel: ThreatLevel = 'info';
@@ -270,9 +293,9 @@ export function classifyByKeywords(
 
     // ── 1. Expressions composées critiques (priorité max, sans ambiguïté) ──
     for (const phrase of CRITICAL_COMPOUND_PHRASES) {
-        if (text.includes(phrase)) {
+        if (text.includes(normalizeForMatch(phrase))) {
             for (const [cat, levels] of Object.entries(KEYWORDS)) {
-                if (levels.high.some((kw) => phrase.includes(kw))) {
+                if (levels.high.some((kw) => normalizeForMatch(phrase).includes(normalizeForMatch(kw)))) {
                     return { level: 'critical', category: cat as EventCategory, confidence: 0.92, source: 'keyword' };
                 }
             }
@@ -282,9 +305,9 @@ export function classifyByKeywords(
 
     // ── 2. Mots-clés critiques sans ambiguïté (terme seul suffisant) ──
     for (const kw of CRITICAL_KEYWORDS) {
-        if (text.includes(kw)) {
+        if (text.includes(normalizeForMatch(kw))) {
             for (const [cat, levels] of Object.entries(KEYWORDS)) {
-                if (levels.high.includes(kw)) {
+                if (levels.high.some((candidate) => normalizeForMatch(candidate) === normalizeForMatch(kw))) {
                     return { level: 'critical', category: cat as EventCategory, confidence: 0.9, source: 'keyword' };
                 }
             }
@@ -326,7 +349,7 @@ export function classifyByKeywords(
         if (category === 'general') continue;
 
         for (const kw of levels.high) {
-            const regex = new RegExp(`\\b${kw}\\b`, 'i');
+            const regex = new RegExp(`\\b${normalizeForMatch(kw)}\\b`, 'i');
             if (regex.test(text)) {
                 matchCount++;
                 const conf = 0.8;
@@ -339,7 +362,7 @@ export function classifyByKeywords(
         }
 
         for (const kw of levels.medium) {
-            const regex = new RegExp(`\\b${kw}\\b`, 'i');
+            const regex = new RegExp(`\\b${normalizeForMatch(kw)}\\b`, 'i');
             if (regex.test(text)) {
                 matchCount++;
                 const conf = 0.65;
@@ -352,7 +375,7 @@ export function classifyByKeywords(
         }
 
         for (const kw of levels.low) {
-            const regex = new RegExp(`\\b${kw}\\b`, 'i');
+            const regex = new RegExp(`\\b${normalizeForMatch(kw)}\\b`, 'i');
             if (regex.test(text)) {
                 matchCount++;
                 const conf = 0.5;
