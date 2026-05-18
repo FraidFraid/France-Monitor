@@ -5540,7 +5540,10 @@ export class DeckGLMap {
         ? 'Localisation résidentielle masquée'
         : '';
       const historyNote = event?.activeContext === 'andes_active_cluster'
-        ? 'Historique : cluster Andes 2026 distinct des zones SPF 2005-2023.'
+        ? 'Contexte : cluster Andes 2026 distinct des zones historiques SPF 2005-2023.'
+        : '';
+      const pathwayNote = event?.kind === 'confirmed_case'
+        ? 'Parcours public : prise en charge officielle publiée en Île-de-France ; détails résidentiels non affichés.'
         : '';
       return `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px; padding:2px;">
@@ -5559,6 +5562,7 @@ export class DeckGLMap {
             <div>Validation : <strong style="color:#d8d8df;">${validationLabel}</strong></div>
             ${event?.sourceLabel ? `<div>Source : <strong style="color:#d8d8df;">${event.sourceLabel}</strong></div>` : ''}
             ${event?.commentaires ? `<div style="color:#c8c8d4; margin-top:5px; line-height:1.45;">${event.commentaires}</div>` : ''}
+            ${pathwayNote ? `<div style="color:#c8c8d4; margin-top:4px; line-height:1.4;">${pathwayNote}</div>` : ''}
             ${historyNote ? `<div style="color:#7f8c8d; margin-top:4px; line-height:1.4;">${historyNote}</div>` : ''}
             ${privacyNote ? `<div style="color:#7f8c8d; margin-top:4px;">${privacyNote}</div>` : ''}
           </div>
