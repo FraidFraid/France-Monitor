@@ -62,6 +62,7 @@ const FUEL_PRICE_SERIES_ENDPOINT = '/api/fuel-price-series';
 const SDES_PETROLE_URL = 'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/fr/12-petrole';
 const INSEE_PETROLE_URL = 'https://www.insee.fr/fr/statistiques/2119697';
 const UFIP_COMMUNIQUES_URL = 'https://www.energiesetmobilites.fr/presse/communiques';
+const UFIP_SITE_ORIGIN = 'https://www.energiesetmobilites.fr';
 const DATA_GOUV_LOCAL_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-locales-de-consommation-de-produits-petroliers-departement-a-partir-de-2005/';
 const DATA_GOUV_MONTHLY_DATASET_URL = 'https://www.data.gouv.fr/api/1/datasets/donnees-mensuelles-de-consommation-de-produits-petroliers-a-partir-de-2017/';
 const JODI_OIL_BASE_URL = 'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv';
@@ -275,12 +276,89 @@ function normalizeText(raw: string): string {
     .replace(/&agrave;/g, 'à')
     .replace(/&uuml;/g, 'ü')
     .replace(/&ccedil;/g, 'ç')
+    .replace(/m\s*<sup>\s*3(?:\s*&nbsp;)?\s*<\/sup>/gi, 'm3')
+    .replace(/m\s*\^\s*\{\s*3\s*\}/gi, 'm3')
+    .replace(/m\s+3\b/gi, 'm3')
     .replace(/<sup>3<\/sup>/gi, 'm3')
     .replace(/<sup>3 <\/sup>/gi, 'm3')
     .replace(/<sup>3<\/sup>/gi, 'm3')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeForMatch(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isUfipMonthlyConsumptionTitle(title: string): boolean {
+  const normalizedTitle = normalizeForMatch(title);
+  return normalizedTitle.startsWith('la consommation francaise de produits petroliers energetiques')
+    || normalizedTitle.startsWith('la consommation francaise de produits energetiques');
+}
+
+function stripUfipMonthlyConsumptionPrefix(title: string): string {
+  return title.replace(
+    /^La consommation française de produits (?:pétroliers )?énergétiques\s+/i,
+    '',
+  ).trim();
+}
+
+function parseFrenchPublicationDate(raw: string | undefined): number | null {
+  if (!raw) return null;
+
+  const normalized = normalizeForMatch(raw);
+  const match = normalized.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
+  if (!match) return null;
+
+  const monthByName: Record<string, number> = {
+    janvier: 0,
+    fevrier: 1,
+    mars: 2,
+    avril: 3,
+    mai: 4,
+    juin: 5,
+    juillet: 6,
+    aout: 7,
+    septembre: 8,
+    octobre: 9,
+    novembre: 10,
+    decembre: 11,
+  };
+
+  const day = Number.parseInt(match[1], 10);
+  const month = monthByName[match[2]];
+  const year = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(day) || month == null || !Number.isFinite(year)) return null;
+
+  return Date.UTC(year, month, day);
+}
+
+function resolveUfipUrl(href: string | undefined): string | null {
+  if (!href) return null;
+  try {
+    return new URL(href, UFIP_SITE_ORIGIN).toString();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchOptionalUfipArticleText(href: string | undefined): Promise<string> {
+  const resolvedUrl = resolveUfipUrl(href);
+  if (!resolvedUrl) return '';
+
+  try {
+    const html = await fetchProxyText(resolvedUrl);
+    return normalizeText(html);
+  } catch (error) {
+    console.warn('[Oil] UFIP detail fetch failed', resolvedUrl, error);
+    return '';
+  }
 }
 
 function parseCsvLine(line: string, delimiter = ';'): string[] {
@@ -798,33 +876,49 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
   const document = parseHtmlDocument(html);
   const articles = Array.from(document.querySelectorAll('article.article'));
 
-  const deliveries = articles
-    .map((article): OilMonthlyDelivery | null => {
-      const title = article.querySelector('h1.title a')?.textContent?.trim() ?? '';
-      if (!title.toLowerCase().startsWith('la consommation française de produits énergétiques')) {
+  const candidateArticles = articles
+    .map((article) => {
+      const titleLink = article.querySelector('h1.title a, h2.title a, h3.title a, .title a');
+      const title = titleLink?.textContent?.trim() ?? '';
+      if (!isUfipMonthlyConsumptionTitle(title)) {
         return null;
       }
 
-      const bodyText = normalizeText(article.innerHTML);
-      const periodLabel = title.replace(/^La consommation française de produits énergétiques\s+/i, '').trim();
-      const publicationDate = article.querySelector('.date')?.textContent?.replace(/\s+/g, ' ').trim() ?? undefined;
-
       return {
+        article,
         title,
-        periodLabel,
-        publicationDate,
-        sourceLabel: 'UFIP Énergies et Mobilités — communiqué mensuel',
-        roadFuelMillionM3: extractVolume(bodyText, /carburants routiers[^.]{0,220}?(?:volume de|s['’]établ(?:it|ies|is|issent) à)\s*([0-9]+,[0-9]+)\s*millions?\s+de(?:\s+de)?\s+m3/i),
-        roadFuelYoYPct: extractSignedPercent(bodyText, /carburants routiers[^.]{0,220}?(hausse|augmentation|progression|baisse|repli|recul|baiss[ée]s?|augmentent|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
-        totalProductsMillionTons: extractVolume(bodyText, /produits pétroliers énergétiques[^.]{0,260}?([0-9]+,[0-9]+)\s*millions?\s+de\s+tonnes/i),
-        totalProductsYoYPct: extractSignedPercent(bodyText, /produits pétroliers énergétiques[^.]{0,220}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
-        jetFuelMillionM3: extractVolume(bodyText, /carbur[ée]acteur[^.]{0,180}?à\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de\s+m3/i),
-        jetFuelYoYPct: extractSignedPercent(bodyText, /carbur[ée]acteur[^.]{0,180}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
-        gasoilYoYPct: extractSignedPercent(bodyText, /gazoles?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse|baiss[ée]s?)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
-        gasolineYoYPct: extractSignedPercent(bodyText, /supercarburants?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+        href: titleLink?.getAttribute('href') ?? undefined,
       };
     })
-    .filter((entry): entry is OilMonthlyDelivery => entry !== null)
+    .filter((entry): entry is { article: Element; title: string; href: string | undefined } => entry !== null);
+
+  const deliveries = (await Promise.all(candidateArticles.map(async ({ article, title, href }) => {
+    const bodyText = normalizeText(article.innerHTML);
+    const detailText = await fetchOptionalUfipArticleText(href);
+    const combinedText = `${bodyText} ${detailText}`.trim();
+    const periodLabel = stripUfipMonthlyConsumptionPrefix(title);
+    const publicationDate = article.querySelector('.date')?.textContent?.replace(/\s+/g, ' ').trim() ?? undefined;
+
+    return {
+      title,
+      periodLabel,
+      publicationDate,
+      sourceLabel: 'UFIP Énergies et Mobilités — communiqué mensuel',
+      roadFuelMillionM3: extractVolume(combinedText, /carburants routiers[^.]{0,220}?(?:volume de|pour atteindre|atteindre|atteignant|enregistr(?:ant|é) un volume de|s['’]établ(?:it|ies|is|issent) à)\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de(?:\s+de)?\s+m3/i),
+      roadFuelYoYPct: extractSignedPercent(combinedText, /carburants routiers[^.]{0,220}?(hausse|augmentation|progression|baisse|repli|recul|baiss[ée]s?|augmentent|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+      totalProductsMillionTons: extractVolume(combinedText, /produits pétroliers énergétiques[^.]{0,320}?(?:s['’]établ(?:it|ies|is|issent) à|atteign(?:ent|ant|ait)|pour atteindre|à)\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de\s+tonnes/i),
+      totalProductsYoYPct: extractSignedPercent(combinedText, /produits pétroliers énergétiques[^.]{0,220}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+      jetFuelMillionM3: extractVolume(combinedText, /carbur[ée]acteur[^.]{0,180}?à\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de\s+m3/i),
+      jetFuelYoYPct: extractSignedPercent(combinedText, /carbur[ée]acteur[^.]{0,180}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+      gasoilYoYPct: extractSignedPercent(combinedText, /gazoles?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse|baiss[ée]s?)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+      gasolineYoYPct: extractSignedPercent(combinedText, /supercarburants?[^.]{0,120}?(hausse|augmentation|repli|baisse|recul|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
+    } satisfies OilMonthlyDelivery;
+  })))
+    .sort((left, right) => {
+      const rightTime = parseFrenchPublicationDate(right.publicationDate) ?? 0;
+      const leftTime = parseFrenchPublicationDate(left.publicationDate) ?? 0;
+      return rightTime - leftTime;
+    })
     .slice(0, 6);
 
   if (deliveries.length === 0) {
