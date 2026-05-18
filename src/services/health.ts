@@ -7,7 +7,13 @@ import type {
 } from '../types/index.ts';
 import { ISS_LEVELS } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
-import { buildSeedHondiusClusterEvents } from './hantavirus.ts';
+import {
+  buildHantavirusDedupKey,
+  buildHantavirusHeatmapPoints,
+  buildHantavirusSituationSnapshot,
+  buildSeedHondiusClusterEvents,
+  mergeHantavirusEvents,
+} from './hantavirus.ts';
 
 Watchdog.register('health', {
   label: 'Santé SPF / DREES',
@@ -255,6 +261,7 @@ interface SentinellesIngestionResponse {
 interface HantavirusResponse {
   events?: import('../types/index.ts').HantavirusEvent[];
   heatmap?: import('../types/index.ts').HeatmapPoint[];
+  snapshot?: import('../types/index.ts').HantavirusSituationSnapshot | null;
 }
 
 // ═══ ISS Computation ═══════════════════════════════════════════════════════
@@ -954,6 +961,7 @@ function buildEmptyHealthFeatures(): HealthFeatures {
     sentinellesNormalizedIndicators: [],
     hantavirusEvents: [],
     hantavirusHeatmap: [],
+    hantavirusSnapshot: null,
   };
 }
 
@@ -1001,21 +1009,27 @@ function buildHealthFeatures(
     : [];
   const apiHantavirusEvents = Array.isArray(hantavirus?.events) ? hantavirus.events : [];
   const seedClusters = buildSeedHondiusClusterEvents();
-  const SEVERITY_RANK: Record<string, number> = { info: 1, surveillance: 2, alerte: 3, crise: 4 };
-  const maxSev = (a: string, b: string) => (SEVERITY_RANK[a] ?? 1) >= (SEVERITY_RANK[b] ?? 1) ? a : b;
-  const seedById = new Map(seedClusters.map(s => [s.id, s]));
-  // Guarantee seed floors: API events cannot go below their seed severity
-  const mergedApiEvents = apiHantavirusEvents.map(ev => {
-    const seed = seedById.get(ev.id);
-    if (!seed) return ev;
-    return { ...ev, severite: maxSev(ev.severite, seed.severite) as typeof ev.severite };
+  const dedupedHantavirusEvents = new Map<string, (typeof seedClusters)[number]>();
+
+  for (const event of [...apiHantavirusEvents, ...seedClusters]) {
+    const key = buildHantavirusDedupKey(event);
+    const existing = dedupedHantavirusEvents.get(key);
+    dedupedHantavirusEvents.set(key, existing ? mergeHantavirusEvents(existing, event) : event);
+  }
+
+  const hantavirusEvents = [...dedupedHantavirusEvents.values()].sort((a, b) => {
+    const dateCompare = String(b.date_debut ?? '').localeCompare(String(a.date_debut ?? ''));
+    if (dateCompare !== 0) return dateCompare;
+    return b.sourceRank - a.sourceRank;
+  }).filter((event) => {
+    if (event.kind !== 'confirmed_case') return true;
+    if (event.id === 'hanta-idf-confirmed-case') return true;
+    if (event.territoire_code === 'HOP-IHU-MARSEILLE') return false;
+    if (/marseille/i.test(event.label)) return false;
+    return true;
   });
-  const apiClusterIds = new Set(mergedApiEvents.filter(e => e.type === 'cluster').map(e => e.id));
-  const missingSeeds = seedClusters.filter(s => !apiClusterIds.has(s.id));
-  const hantavirusEvents = [...mergedApiEvents, ...missingSeeds];
-  const hantavirusHeatmap = Array.isArray(hantavirus?.heatmap)
-    ? hantavirus.heatmap
-    : [];
+  const hantavirusHeatmap = buildHantavirusHeatmapPoints(hantavirusEvents);
+  const hantavirusSnapshot = hantavirus?.snapshot ?? buildHantavirusSituationSnapshot();
   const sentinellesNormalizedIndicators = Array.isArray(sentinellesIngestion?.indicators)
     ? sentinellesIngestion.indicators
     : [];
@@ -1060,6 +1074,7 @@ function buildHealthFeatures(
     sentinellesNormalizedIndicators,
     hantavirusEvents,
     hantavirusHeatmap,
+    hantavirusSnapshot,
   };
 }
 

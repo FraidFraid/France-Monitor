@@ -89,6 +89,10 @@ export function resolveHantavirusTerritoryCenter(code: string): [number, number]
   if (code in HANTAVIRUS_HISTORICAL_REGIONS) {
     return HANTAVIRUS_HISTORICAL_REGIONS[code].center;
   }
+  if (code.startsWith('REG-')) {
+    const regionCode = code.slice(4);
+    if (regionCode in REGIONS) return REGIONS[regionCode].center;
+  }
   if (code in HANTAVIRUS_REFERENCE_FACILITIES) {
     return HANTAVIRUS_REFERENCE_FACILITIES[code].center;
   }

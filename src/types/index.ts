@@ -1107,6 +1107,7 @@ export interface HealthFeatures {
   sentinellesNormalizedIndicators: SentinellesIndicator[];
   hantavirusEvents: HantavirusEvent[];
   hantavirusHeatmap: HeatmapPoint[];
+  hantavirusSnapshot: HantavirusSituationSnapshot | null;
 }
 
 // ═══ Data Freshness & Watchdog ═══
@@ -1349,10 +1350,78 @@ export interface SentinellesIndicator {
   date_maj_source: string;
 }
 
+export type HantavirusEvidenceLevel =
+  | 'official_confirmed'
+  | 'official_monitoring'
+  | 'official_historical'
+  | 'media_confirmed'
+  | 'media_unverified'
+  | 'inferred'
+  | 'manual_seed';
+
+export type HantavirusSignalKind =
+  | 'confirmed_case'
+  | 'probable_case'
+  | 'contact_case'
+  | 'hospital_monitoring'
+  | 'historical_risk_zone'
+  | 'ship_cluster'
+  | 'policy_measure'
+  | 'research_response';
+
+export type HantavirusValidationStatus =
+  | 'auto_detected'
+  | 'needs_review'
+  | 'validated'
+  | 'rejected'
+  | 'superseded';
+
+export type HantavirusSource =
+  | 'DGS-URGENT'
+  | 'DGS-AUTO'
+  | 'SPF'
+  | 'ANRS'
+  | 'WHO'
+  | 'ECDC'
+  | 'INFO_GOUV'
+  | 'ARS'
+  | 'Reuters'
+  | 'AFP'
+  | 'MediaValidated'
+  | 'LocalMedia';
+
+export interface HantavirusContactGeo {
+  publicLocationLabel?: string;
+  locationType: 'residence' | 'hospital' | 'transit' | 'unknown';
+  precision: 'city' | 'department' | 'region' | 'country';
+  publicationStatus: 'official' | 'media' | 'not_public';
+  privacyMode: 'show_city' | 'aggregate_department' | 'hide';
+}
+
+export interface HantavirusSituationSnapshot {
+  asOf: string;
+  activeCluster: 'MV_HONDIUS' | 'none' | 'unknown';
+  franceConfirmedCases: number | null;
+  franceContactsMonitored: number | null;
+  globalConfirmed: number | null;
+  globalProbable: number | null;
+  globalInconclusive: number | null;
+  deaths: number | null;
+  riskGeneralPopulation: 'very_low' | 'low' | 'moderate' | 'high' | 'unknown';
+  sourceUrls: string[];
+  narrative: string[];
+}
+
 export interface HantavirusEvent {
   id: string;
-  source: 'DGS-URGENT' | 'SPF' | 'ANRS' | 'MediaValidated';
+  source: HantavirusSource;
+  sourceLabel?: string;
+  sourceRank: number;
   type: 'cluster' | 'zone_historique';
+  kind: HantavirusSignalKind;
+  evidenceLevel: HantavirusEvidenceLevel;
+  validationStatus: HantavirusValidationStatus;
+  activeContext: 'andes_active_cluster' | 'historical_france_context';
   souche?: 'Andes' | 'autre';
   territoire_niveau: TerritoireNiveauEtendu;
   territoire_code: string;
@@ -1361,10 +1430,21 @@ export interface HantavirusEvent {
   date_fin?: string;
   severite: 'info' | 'surveillance' | 'alerte' | 'crise';
   commentaires?: string;
+  contactGeo?: HantavirusContactGeo;
+  clusterId?: 'MV_HONDIUS' | 'none';
+  reportedCounts?: {
+    confirmed?: number | null;
+    probable?: number | null;
+    contacts?: number | null;
+    deaths?: number | null;
+  };
+  lastCheckedAt?: string;
+  supersededBy?: string;
   url_sources: string[];
 }
 
 export interface HeatmapPoint {
+  eventId: string;
   lat: number;
   lon: number;
   weight: number;

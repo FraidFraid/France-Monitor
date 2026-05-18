@@ -220,14 +220,14 @@ export class NationalHealthPanel extends Panel {
     const BG:    Record<Bucket, string> = { rouge: 'rgba(255,59,48,0.10)', orange: 'rgba(255,149,0,0.08)', jaune: 'rgba(255,214,10,0.07)' };
 
     // Hantavirus clusters
-    for (const ev of (data.hantavirusEvents ?? []).filter(e => e.type === 'cluster')) {
+    for (const ev of (data.hantavirusEvents ?? []).filter(e => e.activeContext === 'andes_active_cluster' && e.kind !== 'contact_case')) {
       const b = toBucket(ev.severite);
       buckets[b].push({
         date: ev.date_debut ?? '',
         html: this.renderAlertCard(
           COLOR[b], BG[b], '🧬',
           this.escapeHtml(ev.label),
-          `Hantavirus · ${this.escapeHtml(ev.territoire_niveau)} · ${this.escapeHtml(ev.date_debut)}`,
+          `Hantavirus · ${this.escapeHtml(ev.kind)} · ${this.escapeHtml(ev.date_debut)}`,
           ev.commentaires ? this.escapeHtml(ev.commentaires) : '',
           ev.url_sources[0] ? this.escapeHtml(ev.url_sources[0]) : '', 'Source',
         ),
@@ -292,6 +292,56 @@ export class NationalHealthPanel extends Panel {
         ${renderGroup('rouge', 'Critique / Crise', true)}
         ${renderGroup('orange', 'Alerte / Élevé', false)}
         ${renderGroup('jaune', 'Vigilance / Surveillance', false)}
+      </div>`;
+  }
+
+  private renderHantavirusSituation(data: HealthFeatures): string {
+    const snapshot = data.hantavirusSnapshot;
+    if (!snapshot) return '';
+
+    const franceConfirmed = snapshot.franceConfirmedCases ?? 'n/d';
+    const franceContacts = snapshot.franceContactsMonitored ?? 'n/d';
+    const globalConfirmed = snapshot.globalConfirmed ?? 'n/d';
+    const globalProbable = snapshot.globalProbable ?? 'n/d';
+    const globalInconclusive = snapshot.globalInconclusive ?? 'n/d';
+    const deaths = snapshot.deaths ?? 'n/d';
+    const riskLabel = snapshot.riskGeneralPopulation === 'very_low'
+      ? 'très faible'
+      : snapshot.riskGeneralPopulation === 'low'
+        ? 'faible'
+        : snapshot.riskGeneralPopulation === 'moderate'
+          ? 'modéré'
+          : snapshot.riskGeneralPopulation === 'high'
+            ? 'élevé'
+            : 'inconnu';
+
+    const sourceLinks = snapshot.sourceUrls
+      .slice(0, 3)
+      .map((url, index) => `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Source ${index + 1}</a>`)
+      .join(' · ');
+
+    const narrative = snapshot.narrative
+      .map((line) => `<li style="margin:4px 0; color:#c8c8d4; line-height:1.45;">${this.escapeHtml(line)}</li>`)
+      .join('');
+
+    return `
+      <div style="margin-bottom:16px;">
+        ${this.renderSectionHeader('Hantavirus — Situation', '#64d2ff')}
+        <div style="padding:10px 12px; background:rgba(100,210,255,0.08); border:1px solid rgba(100,210,255,0.18); border-radius:8px; margin-bottom:8px;">
+          <div style="display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:11px;">
+            <span style="color:#9898a8;">Cluster actif</span><strong style="color:#fff;">${snapshot.activeCluster === 'MV_HONDIUS' ? 'MV Hondius / Andes' : 'Aucun'}</strong>
+            <span style="color:#9898a8;">France</span><strong style="color:#fff;">${franceConfirmed} confirmé · ${franceContacts} contacts</strong>
+            <span style="color:#9898a8;">Monde</span><strong style="color:#fff;">${globalConfirmed} confirmés · ${globalProbable} probables · ${globalInconclusive} inconclusif(s)</strong>
+            <span style="color:#9898a8;">Décès</span><strong style="color:#fff;">${deaths}</strong>
+            <span style="color:#9898a8;">Risque population générale</span><strong style="color:#fff;">${riskLabel}</strong>
+            <span style="color:#9898a8;">Horodatage</span><strong style="color:#fff;">${new Date(snapshot.asOf).toLocaleString('fr-FR')}</strong>
+          </div>
+        </div>
+        <div style="padding:10px 12px; background:rgba(255,255,255,0.03); border-radius:8px;">
+          <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.6px; color:#5a5a72; margin-bottom:6px;">Ce que cela signifie</div>
+          <ul style="margin:0; padding-left:18px;">${narrative}</ul>
+        </div>
+        <div style="margin-top:8px; font-size:10px;">${sourceLinks}</div>
       </div>`;
   }
 
@@ -384,6 +434,7 @@ export class NationalHealthPanel extends Panel {
     // ── Assemblage ───────────────────────────────────────────────────────────
     this.contentEl.innerHTML = `
       <div style="padding:14px 16px 16px; overflow-y:auto; flex:1; font-size:13px;">
+        ${this.renderHantavirusSituation(data)}
         ${this.renderAlertesDuMoment(data)}
         ${sentinellesHtml}
         ${ansmHtml}

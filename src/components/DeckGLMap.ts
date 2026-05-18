@@ -284,10 +284,34 @@ function getHantavirusTerritoryLabel(event: Record<string, unknown> | null | und
 }
 
 function getHantavirusDisplayLabel(event: Record<string, unknown> | null | undefined, fallbackLabel: string): string {
-  if (event?.type === 'zone_historique') {
+  if (event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique') {
     return `Zone historique SPF (circulation documentée 2005-2023) · ${fallbackLabel.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
   }
   return fallbackLabel;
+}
+
+function getHantavirusEvidenceLabel(level: string | null | undefined): string {
+  switch (level) {
+    case 'official_confirmed': return 'Officiel confirmé';
+    case 'official_monitoring': return 'Officiel suivi';
+    case 'official_historical': return 'Historique officiel';
+    case 'media_confirmed': return 'Presse confirmée';
+    case 'media_unverified': return 'Presse à vérifier';
+    case 'manual_seed': return 'Seed manuel';
+    case 'inferred': return 'Inféré';
+    default: return 'n/d';
+  }
+}
+
+function getHantavirusValidationLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'validated': return 'Validé';
+    case 'needs_review': return 'À vérifier';
+    case 'auto_detected': return 'Auto-détecté';
+    case 'rejected': return 'Rejeté';
+    case 'superseded': return 'Supplanté';
+    default: return 'n/d';
+  }
 }
 const SRC_ISNR = 'isnr-depts-src';
 const LYR_ISNR_FILL = 'isnr-fill';
@@ -5449,12 +5473,23 @@ export class DeckGLMap {
       const props = (feature.properties ?? {}) as Record<string, unknown>;
       let event: {
         type?: string;
+        kind?: string;
+        evidenceLevel?: string;
+        validationStatus?: string;
+        activeContext?: string;
+        sourceLabel?: string;
         severite?: string;
         territoire_niveau?: string;
         territoire_code?: string;
         date_debut?: string;
         date_fin?: string;
         commentaires?: string;
+        contactGeo?: {
+          publicLocationLabel?: string;
+          privacyMode?: string;
+          publicationStatus?: string;
+          precision?: string;
+        };
         url_sources?: string[];
       } | null = null;
       try {
@@ -5470,12 +5505,15 @@ export class DeckGLMap {
         : '';
       const displayLabel = getHantavirusDisplayLabel(event, String(props.label ?? 'Hantavirus'));
       const territoryLabel = getHantavirusTerritoryLabel(event);
-      const isZoneHistorique = event?.type === 'zone_historique';
+      const isZoneHistorique = event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique';
 
       if (isZoneHistorique) {
         const dateRange = event?.date_debut && event?.date_fin
           ? `${event.date_debut.slice(0, 4)} – ${event.date_fin.slice(0, 4)}`
           : '2005 – 2023';
+        const historyText = event?.commentaires
+          ? String(event.commentaires)
+          : 'Contexte historique SPF, distinct du cluster Andes 2026.';
         return `
           <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:2px;">
             <div style="display:flex; align-items:center; gap:7px; margin-bottom:5px;">
@@ -5487,6 +5525,7 @@ export class DeckGLMap {
               <div>Circulation documentée <strong style="color:#d8d8df;">${dateRange}</strong></div>
               <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
             </div>
+            <div style="font-size:10px; color:#c8c8d4; margin-top:6px; line-height:1.45;">${historyText}</div>
             <div style="font-size:10px; color:#7f8c8d; margin-top:6px;">Source : Santé Publique France</div>
             ${sourceUrl ? `<div style="font-size:10px; margin-top:4px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Données SPF ↗</a></div>` : ''}
           </div>
@@ -5494,6 +5533,15 @@ export class DeckGLMap {
       }
 
       const severityIcon = severity === 'crise' ? '🔴' : severity === 'alerte' ? '🟠' : '🟡';
+      const evidenceLabel = getHantavirusEvidenceLabel(event?.evidenceLevel);
+      const validationLabel = getHantavirusValidationLabel(event?.validationStatus);
+      const publicLocation = event?.contactGeo?.publicLocationLabel;
+      const privacyNote = event?.contactGeo?.privacyMode === 'hide'
+        ? 'Localisation résidentielle masquée'
+        : '';
+      const historyNote = event?.activeContext === 'andes_active_cluster'
+        ? 'Historique : cluster Andes 2026 distinct des zones SPF 2005-2023.'
+        : '';
       return `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px; padding:2px;">
           <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:6px;">
@@ -5505,8 +5553,14 @@ export class DeckGLMap {
           </div>
           <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
             <div>Localisation : <strong style="color:#d8d8df;">${territoryLabel}</strong></div>
+            ${publicLocation ? `<div>Publication : <strong style="color:#d8d8df;">${publicLocation}</strong></div>` : ''}
             ${event?.date_debut ? `<div>Détecté le <strong style="color:#d8d8df;">${event.date_debut}</strong></div>` : ''}
+            <div>Preuve : <strong style="color:#d8d8df;">${evidenceLabel}</strong></div>
+            <div>Validation : <strong style="color:#d8d8df;">${validationLabel}</strong></div>
+            ${event?.sourceLabel ? `<div>Source : <strong style="color:#d8d8df;">${event.sourceLabel}</strong></div>` : ''}
             ${event?.commentaires ? `<div style="color:#c8c8d4; margin-top:5px; line-height:1.45;">${event.commentaires}</div>` : ''}
+            ${historyNote ? `<div style="color:#7f8c8d; margin-top:4px; line-height:1.4;">${historyNote}</div>` : ''}
+            ${privacyNote ? `<div style="color:#7f8c8d; margin-top:4px;">${privacyNote}</div>` : ''}
           </div>
           ${sourceUrl ? `<div style="font-size:10px; margin-top:8px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Voir la source ↗</a></div>` : ''}
         </div>
@@ -11216,17 +11270,17 @@ export class DeckGLMap {
     if (!this.map) return;
     this.latestHealthFeatures = healthFeatures ?? this.latestHealthFeatures;
     const hantavirusSrc = this.map.getSource(SRC_HANTAVIRUS) as maplibregl.GeoJSONSource | undefined;
+    const hantavirusEventById = new Map((healthFeatures?.hantavirusEvents ?? []).map((event) => [event.id, event]));
     const hantavirusFeatures: GeoJSON.Feature[] = (healthFeatures?.hantavirusHeatmap ?? []).map((point) => ({
       type: 'Feature',
       properties: {
+        eventId: point.eventId,
         weight: point.weight,
         type: point.type,
         label: point.label,
-        severity: (
-          (healthFeatures?.hantavirusEvents ?? []).find((event) => event.label === point.label)?.severite ?? 'surveillance'
-        ),
+        severity: hantavirusEventById.get(point.eventId)?.severite ?? 'surveillance',
         eventJson: JSON.stringify(
-          (healthFeatures?.hantavirusEvents ?? []).find((event) => event.label === point.label) ?? null
+          hantavirusEventById.get(point.eventId) ?? null
         ),
       },
       geometry: {
