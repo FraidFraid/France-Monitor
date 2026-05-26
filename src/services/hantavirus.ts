@@ -117,19 +117,22 @@ function getSourceLabel(source: HantavirusSource): string {
 
 export function buildHantavirusSituationSnapshot(): HantavirusSituationSnapshot {
   return {
-    asOf: '2026-05-18T00:00:00.000Z',
+    asOf: '2026-05-21T00:00:00.000Z',
     activeCluster: 'MV_HONDIUS',
     franceConfirmedCases: 1,
-    franceContactsMonitored: 22,
-    globalConfirmed: 8,
+    franceContactsMonitored: 25,
+    globalConfirmed: 11,
     globalProbable: 2,
     globalInconclusive: 1,
     deaths: 3,
     riskGeneralPopulation: 'low',
-    sourceUrls: HONDIUS_SNAPSHOT_URLS,
+    sourceUrls: [
+      'https://invs.santepubliquefrance.fr/index.php/hantavirus/donnees',
+      ...HONDIUS_SNAPSHOT_URLS,
+    ],
     narrative: [
       'Cluster actif : MV Hondius, souche Andes.',
-      'France : 1 cas confirmé et 22 cas contacts suivis.',
+      'France : 1 cas confirmé et 25 cas contacts suivis.',
       'Population générale : risque faible selon l’OMS et l’ECDC.',
       'Transmission interhumaine documentée uniquement dans des contextes de contact étroit et prolongé.',
       'Les zones historiques SPF relèvent d’un contexte métropolitain distinct et ne sont pas liées au cluster Andes.',
@@ -159,7 +162,7 @@ export function buildSeedHondiusClusterEvents(): HantavirusEvent[] {
       date_debut: '2026-05-03',
       severite: 'crise',
       commentaires: 'Cluster confirmé par l’OMS. À distinguer des zones historiques françaises.',
-      reportedCounts: { confirmed: 8, probable: 2, deaths: 3 },
+      reportedCounts: { confirmed: 11, probable: 2, deaths: 3 },
       lastCheckedAt,
       url_sources: [
         'https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON601',
@@ -246,7 +249,7 @@ export function buildSeedHondiusClusterEvents(): HantavirusEvent[] {
         publicationStatus: 'official',
         privacyMode: 'aggregate_department',
       }),
-      reportedCounts: { confirmed: 1, contacts: 22 },
+      reportedCounts: { confirmed: 1, contacts: 25 },
       lastCheckedAt,
       url_sources: [
         'https://peps.sante.gouv.fr/actu/2026/26_point-hantavirus-n08_11052026.pdf',
@@ -277,7 +280,7 @@ export function buildSeedHondiusClusterEvents(): HantavirusEvent[] {
         publicationStatus: 'official',
         privacyMode: 'hide',
       }),
-      reportedCounts: { contacts: 22 },
+      reportedCounts: { contacts: 25 },
       lastCheckedAt,
       url_sources: [
         'https://www.info.gouv.fr/actualite/hantavirus-le-point-sur-les-mesures-sanitaires-en-france',

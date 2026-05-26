@@ -1,7 +1,11 @@
+import * as cheerio from 'cheerio';
+
 import { fetchText, setCors } from '../_shared/health-utils.js';
 
 const DGS_URGENT_INDEX_URL = 'https://sante.gouv.fr/ministere/informations-pratiques/site/dgs-urgent';
 const SPF_HANTAVIRUS_URL = 'https://www.santepubliquefrance.fr/maladies-et-traumatismes/maladies-et-infections-respiratoires/hantavirus';
+const SPF_HANTAVIRUS_DATA_URL = 'https://invs.santepubliquefrance.fr/index.php/hantavirus/donnees';
+const PEPPS_HANTAVIRUS_INDEX_URL = 'https://peps.sante.gouv.fr/actu/actualites.html';
 
 const HISTORICAL_REFERENCE = {
   sourceUrl: 'https://www.santepubliquefrance.fr/hantavirus/donnees',
@@ -145,25 +149,201 @@ function sourceLabel(source) {
   return SOURCE_LABEL[source] || source;
 }
 
-function buildSnapshot() {
+function normalizeDateCandidate(raw) {
+  const match = String(raw || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!match) return null;
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+function toIsoTimestamp(dateOnly) {
+  return dateOnly ? `${dateOnly}T00:00:00.000Z` : null;
+}
+
+function maxDate(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return a >= b ? a : b;
+}
+
+function normalizeFrenchDate(raw) {
+  const months = {
+    janvier: '01',
+    fevrier: '02',
+    février: '02',
+    mars: '03',
+    avril: '04',
+    mai: '05',
+    juin: '06',
+    juillet: '07',
+    aout: '08',
+    août: '08',
+    septembre: '09',
+    octobre: '10',
+    novembre: '11',
+    decembre: '12',
+    décembre: '12',
+  };
+
+  const normalized = String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const match = normalized.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
+  if (!match) return null;
+
+  const month = months[match[2]];
+  if (!month) return null;
+  return `${match[3]}-${month}-${String(match[1]).padStart(2, '0')}`;
+}
+
+function inferFrenchDateWithFallbackYear(raw, fallbackYear) {
+  const full = normalizeFrenchDate(raw);
+  if (full) return full;
+
+  const normalized = String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const match = normalized.match(/(\d{1,2})\s+([a-z]+)/);
+  if (!match || !fallbackYear) return null;
+
+  return normalizeFrenchDate(`${match[1]} ${match[2]} ${fallbackYear}`);
+}
+
+function normalizePlainText(input) {
+  return String(input || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’']/g, "'")
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function absolutizePeppsUrl(href) {
+  return new URL(href, 'https://peps.sante.gouv.fr/actu/').toString();
+}
+
+export function extractPeppsHantavirusSources(html) {
+  const $ = cheerio.load(String(html || ''));
+  const anchors = [];
+  let capture = false;
+
+  for (const node of $('body').find('h3, h4, p, blockquote').toArray()) {
+    const tagName = node.tagName?.toLowerCase() || '';
+    const text = $(node).text().replace(/\s+/g, ' ').trim();
+
+    if (tagName === 'h3') {
+      if (/^hantavirus$/i.test(text)) {
+        capture = true;
+        continue;
+      }
+      if (capture) break;
+    }
+
+    if (!capture) continue;
+
+    $(node).find('a[href]').each((_idx, anchor) => {
+      const href = $(anchor).attr('href');
+      if (!href) return;
+
+      const label = $(anchor).text().replace(/\s+/g, ' ').trim();
+      if (!/hantavirus|minsante|mars|dgs-urgent|point de situation/i.test(label)) return;
+
+      anchors.push({
+        url: absolutizePeppsUrl(href),
+        label,
+        date: normalizeDateCandidate(label),
+      });
+    });
+  }
+
+  const uniqueEntries = [];
+  const seen = new Set();
+  for (const entry of anchors) {
+    if (seen.has(entry.url)) continue;
+    seen.add(entry.url);
+    uniqueEntries.push(entry);
+  }
+
+  const latestDate = uniqueEntries.reduce((latest, entry) => maxDate(latest, entry.date), null);
+  const pdfUrls = uniqueEntries
+    .filter((entry) => /\.pdf(?:$|[?#])/i.test(entry.url))
+    .map((entry) => entry.url);
+
   return {
-    asOf: '2026-05-18T00:00:00.000Z',
+    entries: uniqueEntries,
+    latestDate,
+    pdfUrls,
+    sectionText: uniqueEntries.map((entry) => entry.label).join(' '),
+  };
+}
+
+export function extractSpfSituationFromHtml(html) {
+  const $ = cheerio.load(String(html || ''));
+  const fullText = $('body').text().replace(/\s+/g, ' ').trim();
+
+  const updatedRaw = $('time').filter((_idx, el) => {
+    const text = $(el).text()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    return /mis a jour le|updated on/.test(text);
+  }).first().text();
+  const updatedDate = normalizeFrenchDate(updatedRaw) || normalizeDateCandidate(updatedRaw);
+
+  const clusterHeading = $('h2').filter((_idx, el) => /cas d['’]hantavirus andes|cases of andes hantavirus/i.test($(el).text())).first();
+  const clusterBlock = clusterHeading.length ? clusterHeading.parent().text().replace(/\s+/g, ' ').trim() : fullText;
+  const normalizedClusterBlock = normalizePlainText(clusterBlock);
+
+  const snapshotDateMatch = normalizedClusterBlock.match(/au\s+(\d{1,2}\s+[a-z]+)/i);
+  const snapshotDate = inferFrenchDateWithFallbackYear(snapshotDateMatch?.[1] || '', updatedDate?.slice(0, 4)) || null;
+
+  const globalConfirmedMatch = normalizedClusterBlock.match(/au\s+\d{1,2}\s+[a-z]+,?\s*(\d+)\s+cas d(?:e |')infection/i);
+  const franceConfirmedMatch = normalizedClusterBlock.match(/dont\s+(\d+)\s+cas\s+chez\s+une?\s+ressortissant/i);
+  const franceContactsMatch = normalizedClusterBlock.match(/en france,\s*(\d+)\s+personnes?\s+contacts/i);
+
+  return {
+    updatedDate,
+    snapshotDate,
+    globalConfirmed: globalConfirmedMatch ? Number.parseInt(globalConfirmedMatch[1], 10) : null,
+    franceConfirmedCases: franceConfirmedMatch ? Number.parseInt(franceConfirmedMatch[1], 10) : null,
+    franceContactsMonitored: franceContactsMatch ? Number.parseInt(franceContactsMatch[1], 10) : null,
+    sourceUrl: HISTORICAL_REFERENCE.sourceUrl,
+    text: clusterBlock,
+  };
+}
+
+export function buildSnapshot({ latestSourceDate = null, spfSituation = null } = {}) {
+  const asOf = toIsoTimestamp(maxDate('2026-05-18', latestSourceDate)) || '2026-05-18T00:00:00.000Z';
+  const franceConfirmedCases = spfSituation?.franceConfirmedCases ?? 1;
+  const franceContactsMonitored = spfSituation?.franceContactsMonitored ?? 22;
+  const globalConfirmed = spfSituation?.globalConfirmed ?? 8;
+  return {
+    asOf,
     activeCluster: 'MV_HONDIUS',
-    franceConfirmedCases: 1,
-    franceContactsMonitored: 22,
-    globalConfirmed: 8,
+    franceConfirmedCases,
+    franceContactsMonitored,
+    globalConfirmed,
     globalProbable: 2,
     globalInconclusive: 1,
     deaths: 3,
     riskGeneralPopulation: 'low',
     sourceUrls: [
+      'https://invs.santepubliquefrance.fr/index.php/hantavirus/donnees',
       'https://www.info.gouv.fr/actualite/hantavirus-le-point-sur-les-mesures-sanitaires-en-france',
       'https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON601',
-      'https://www.ecdc.europa.eu/en/infectious-disease-topics/hantavirus-infection/surveillance-and-updates/andes-hantavirus-outbreak',
+      'https://www.ecdc.europa.eu/en/infectious-disease-topics/hantavirus-infection/surveillance-and-updates/andes-hantavirus-outbreak'
     ],
     narrative: [
       'Cluster actif : MV Hondius, souche Andes.',
-      'France : 1 cas confirmé et 22 cas contacts suivis.',
+      `France : ${franceConfirmedCases} cas confirmé${franceConfirmedCases > 1 ? 's' : ''} et ${franceContactsMonitored} cas contacts suivis.`,
       'Population générale : risque faible selon l’OMS et l’ECDC.',
       'Transmission interhumaine limitée à des contacts étroits et prolongés.',
       'Les zones historiques SPF relèvent d’un contexte distinct, non lié au cluster Andes.',
@@ -171,8 +351,12 @@ function buildSnapshot() {
   };
 }
 
-function buildActiveClusterTemplates() {
+export function buildActiveClusterTemplates({ spfSituation = null } = {}) {
   const lastCheckedAt = nowIso();
+  const globalConfirmed = spfSituation?.globalConfirmed ?? 8;
+  const franceConfirmed = spfSituation?.franceConfirmedCases ?? 1;
+  const franceContacts = spfSituation?.franceContactsMonitored ?? 22;
+
   return [
     {
       id: 'hanta-cluster-hondius',
@@ -192,7 +376,7 @@ function buildActiveClusterTemplates() {
       date_debut: '2026-05-03',
       severite: 'crise',
       commentaires: 'Cluster confirmé par l’OMS. À distinguer des zones historiques françaises.',
-      reportedCounts: { confirmed: 8, probable: 2, deaths: 3 },
+      reportedCounts: { confirmed: globalConfirmed, probable: 2, deaths: 3 },
       lastCheckedAt,
       url_sources: ['https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON601'],
     },
@@ -277,7 +461,7 @@ function buildActiveClusterTemplates() {
         publicationStatus: 'official',
         privacyMode: 'aggregate_department',
       },
-      reportedCounts: { confirmed: 1, contacts: 22 },
+      reportedCounts: { confirmed: franceConfirmed, contacts: franceContacts },
       lastCheckedAt,
       url_sources: ['https://peps.sante.gouv.fr/actu/2026/26_point-hantavirus-n08_11052026.pdf'],
     },
@@ -306,7 +490,7 @@ function buildActiveClusterTemplates() {
         publicationStatus: 'official',
         privacyMode: 'hide',
       },
-      reportedCounts: { contacts: 22 },
+      reportedCounts: { contacts: franceContacts },
       lastCheckedAt,
       url_sources: ['https://www.info.gouv.fr/actualite/hantavirus-le-point-sur-les-mesures-sanitaires-en-france'],
     },
@@ -422,6 +606,8 @@ export default async function handler(req, res) {
   let dgsCandidatePdfs = [];
   let signalSources = [];
   const dgsAutoEvents = [];
+  let latestSourceDate = null;
+  let spfSituation = null;
 
   try {
     const html = await fetchText(DGS_URGENT_INDEX_URL, { timeoutMs: 10000 });
@@ -442,21 +628,47 @@ export default async function handler(req, res) {
     console.warn('[api/health/hantavirus] DGS scan failed:', err instanceof Error ? err.message : String(err));
   }
 
-  if (!signalLevel) {
+  if (dgsCandidatePdfs.length === 0) {
     try {
-      const spfHtml = await fetchText(SPF_HANTAVIRUS_URL, { timeoutMs: 8000 });
-      const derived = classifyDgsSignal(spfHtml);
+      const peppsHtml = await fetchText(PEPPS_HANTAVIRUS_INDEX_URL, { timeoutMs: 10000 });
+      const peppsSources = extractPeppsHantavirusSources(peppsHtml);
+      latestSourceDate = maxDate(latestSourceDate, peppsSources.latestDate);
+
+      if (peppsSources.pdfUrls.length > 0) {
+        dgsCandidatePdfs = peppsSources.pdfUrls;
+        signalSources.push('PEPPS hantavirus index');
+      }
+
+      if (!signalLevel) {
+        const derived = classifyDgsSignal(peppsSources.sectionText);
+        if (derived) {
+          signalLevel = derived.severity;
+          mentions = derived.mentions;
+        }
+      }
+    } catch (err) {
+      console.warn('[api/health/hantavirus] PEPPS scan failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  try {
+    const spfHtml = await fetchText(SPF_HANTAVIRUS_DATA_URL, { timeoutMs: 10000 });
+    spfSituation = extractSpfSituationFromHtml(spfHtml);
+    latestSourceDate = maxDate(latestSourceDate, spfSituation?.updatedDate);
+
+    if (!signalLevel) {
+      const derived = classifyDgsSignal(`${spfHtml}\n${spfSituation?.text || ''}`);
       if (derived) {
         signalLevel = derived.severity;
         mentions = derived.mentions;
         signalSources.push('SPF hantavirus page');
       }
-    } catch (err) {
-      console.warn('[api/health/hantavirus] SPF scan failed:', err instanceof Error ? err.message : String(err));
     }
+  } catch (err) {
+    console.warn('[api/health/hantavirus] SPF scan failed:', err instanceof Error ? err.message : String(err));
   }
 
-  const activeClusters = buildActiveClusterTemplates().map((cluster) => applySignalToCluster(cluster, signalLevel, mentions));
+  const activeClusters = buildActiveClusterTemplates({ spfSituation }).map((cluster) => applySignalToCluster(cluster, signalLevel, mentions));
   const zoneEvents = buildZoneHistoriqueEvents();
 
   const deduped = new Map();
@@ -481,9 +693,11 @@ export default async function handler(req, res) {
     },
     scan: {
       dgs_urgent_index_url: DGS_URGENT_INDEX_URL,
+      spf_hantavirus_data_url: SPF_HANTAVIRUS_DATA_URL,
+      pepps_hantavirus_index_url: PEPPS_HANTAVIRUS_INDEX_URL,
       candidate_pdf_urls: dgsCandidatePdfs,
     },
-    snapshot: buildSnapshot(),
+    snapshot: buildSnapshot({ latestSourceDate, spfSituation }),
     events: allEvents,
     heatmap,
   });

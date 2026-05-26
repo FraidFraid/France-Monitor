@@ -333,7 +333,7 @@ export class NationalHealthPanel extends Panel {
             <span style="color:#9898a8;">France</span><strong style="color:#fff;">${franceConfirmed} confirmé · ${franceContacts} contacts</strong>
             <span style="color:#9898a8;">Monde</span><strong style="color:#fff;">${globalConfirmed} confirmés · ${globalProbable} probables · ${globalInconclusive} inconclusif(s)</strong>
             <span style="color:#9898a8;">Décès</span><strong style="color:#fff;">${deaths}</strong>
-            <span style="color:#9898a8;">Risque population générale</span><strong style="color:#fff;">${riskLabel}</strong>
+            <span style="color:#9898a8;">Risque Global</span><strong style="color:#fff;">${riskLabel}</strong>
             <span style="color:#9898a8;">Horodatage</span><strong style="color:#fff;">${new Date(snapshot.asOf).toLocaleString('fr-FR')}</strong>
           </div>
         </div>

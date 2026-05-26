@@ -32,7 +32,6 @@ export interface HealthPayload {
 
 // ═══ Cache ═════════════════════════════════════════════════════════════════
 
-const HEALTH_CACHE_TTL_MS = 15 * 60_000;
 let cache: { fetchedAt: number; payload: HealthPayload } | null = null;
 
 // ═══ Endpoints ═════════════════════════════════════════════════════════════
@@ -349,10 +348,6 @@ function deriveTrend(incidenceRate: number, positivityRate: number, sentinellesI
 // ═══ Main fetch ════════════════════════════════════════════════════════════
 
 export async function fetchHealthData(): Promise<HealthPayload> {
-  if (cache && Date.now() - cache.fetchedAt < HEALTH_CACHE_TTL_MS) {
-    return cache.payload;
-  }
-
   Watchdog.report('health', { type: 'loading' });
   const _t0 = Date.now();
 
