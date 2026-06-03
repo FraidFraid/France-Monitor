@@ -1,0 +1,37 @@
+# Data Sources
+
+France Monitor uses public APIs, official open data, RSS feeds, and technical OSINT sources. Data is treated as monitoring signals, not final verified reporting.
+
+## Source Principles
+
+- Prefer official or primary public sources.
+- Keep source attribution visible in services and UI.
+- Cache and retry rather than over-polling public infrastructure.
+- Degrade gracefully when keys or upstream services are unavailable.
+- Avoid personal-data enrichment.
+
+## Main Source Families
+
+| Domain | Examples | Notes |
+|--------|----------|-------|
+| News | French national and regional RSS feeds | Classified and geocoded as weak signals |
+| Energy | RTE Ecowatt, Eco2mix, REMIT/IIP, GRTgaz/Teréga | Requires credentials for full production use |
+| Weather | Météo-France vigilance | Official alert source |
+| Floods | Vigicrues, Hub'Eau, OSM geometry | Matched or reconstructed segments |
+| Transport | SNCF, OpenSky, AIS relay, TomTom/Bison Futé | Optional keys for richer coverage |
+| Health | SPF/ISS, SOS Médecins, OSCOUR, FINESS | Public health stress indicators |
+| Cyber | Ransomware/breach feeds, Shodan/Censys, Cloudflare Radar/IODA | Technical exposure and incident signals |
+| Finance | Market and commodity proxies | Contextual economic indicators |
+
+## Reproducibility
+
+Each production source should document:
+
+- upstream URL or API
+- authentication requirement
+- update cadence
+- cache TTL
+- fallback behavior
+- output fields consumed by the UI
+
+This file is the public index. Source-specific notes can be added as dedicated docs as the project matures.

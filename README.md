@@ -4,9 +4,9 @@
 
 # 🇫🇷 France Monitor
 
-**Independent OSINT monitoring and situational awareness dashboard for France**
+**Open-source geospatial monitoring platform for public-interest infrastructure and territorial data**
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com)
@@ -15,7 +15,7 @@
 
 [Live App](https://www.francemonitor.com) · [About](https://www.francemonitor.com/about) · [Legal](https://www.francemonitor.com/legal)
 
-[Features](#-features) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [Data Sources](#-data-sources) · [Contributing](#-contributing)
+[Features](#-features) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [Documentation](#-documentation) · [Roadmap](#-roadmap) · [Contributing](#-contributing)
 
 </div>
 
@@ -23,11 +23,13 @@
 
 ## What is France Monitor?
 
-France Monitor is an open-source OSINT monitoring platform focused exclusively on France. It aggregates real-time signals from public APIs, open data, technical feeds, and RSS sources into a single interactive map dashboard covering infrastructure, environment, transport, health, cyber threats, markets, and public information flows.
+France Monitor is an open-source geospatial monitoring platform for public-interest infrastructure and territorial data. The current implementation is a France-focused reference deployment: it aggregates real-time signals from public APIs, open data, technical feeds, and RSS sources into a single interactive map dashboard covering infrastructure, environment, transport, health, cyber threats, markets, and public information flows.
 
 The goal is not to replace primary sources, official alerts, or newsroom verification. The project is designed as a public-facing monitoring and correlation tool for analysts, journalists, researchers, and technically curious users who want a unified view of weak signals and public data across France.
 
 France Monitor is **not a media outlet and not a press publication**. Items shown in the app should be treated as monitoring signals that may require confirmation from primary sources.
+
+The long-term goal is to turn the France prototype into a reusable European commons: documented ingestion patterns, auditable source attribution, deployable API proxies, and country-specific connectors that other civic-tech or research teams can adapt.
 
 ---
 
@@ -384,6 +386,19 @@ france-monitor/
 
 ---
 
+## 📚 Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [Architecture](docs/architecture.md) | Runtime layers, data flow, map architecture, reuse model |
+| [Deployment](docs/deployment.md) | Local development, Vercel deployment, self-hosting direction |
+| [Data Sources](docs/data-sources.md) | Source families, provenance principles, reproducibility checklist |
+| [Privacy and Safety](docs/privacy.md) | Privacy principles, AI processing boundaries, safety scope |
+| [Roadmap](docs/roadmap.md) | NLnet-aligned milestones for open-source release and European reuse |
+| [NLnet Context](docs/nlnet.md) | Public context for application `2026-06-104` |
+
+---
+
 ## 🛠️ Development Notes
 
 ### Scrapling and Cloudflare-protected RSS
@@ -456,15 +471,14 @@ npm run lint        # no new ESLint warnings
 
 ## 📋 Roadmap
 
-- [ ] End-to-end tests (Playwright) for critical user flows
-- [ ] Sentry error tracking integration
-- [ ] Extended PQR coverage (more regional sources)
-- [ ] Historical replay — scrub through past situational snapshots
-- [ ] Push notifications via Service Worker for critical alerts
-- [ ] Mobile map feature parity (D3/SVG fallback improvements)
-- [ ] Self-hostable backend alternative to Vercel Functions
-- [ ] TypeScript `noUncheckedIndexedAccess` upgrade
-- [ ] DROM panels — overseas territories full coverage
+See [docs/roadmap.md](docs/roadmap.md) for the public milestone plan.
+
+Current high-level milestones:
+
+- M1 — Open-source release and documentation
+- M2 — Stable data model and API contracts
+- M3 — Reproducible ingestion pipelines
+- M4 — European reusability and deployment guide
 
 ---
 
