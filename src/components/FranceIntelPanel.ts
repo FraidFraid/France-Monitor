@@ -119,7 +119,7 @@ function normalizeBriefLine(line: string): string {
 }
 
 function isBriefHeading(line: string): boolean {
-  return /^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’:/()\-]{4,}$/.test(line);
+  return /^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’:/()-]{4,}$/.test(line);
 }
 
 function formatBriefHeading(line: string): string {
@@ -146,7 +146,7 @@ function formatBriefHeading(line: string): string {
 }
 
 function splitBriefHeadingLine(line: string): { heading: string; body: string } | null {
-  const match = line.match(/^((?:\d+[.)]\s*)?[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’/()\-]{4,})\s*:\s+(.+)$/);
+  const match = line.match(/^((?:\d+[.)]\s*)?[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’/()-]{4,})\s*:\s+(.+)$/);
   if (!match) return null;
 
   const heading = match[1].replace(/^\d+[.)]\s*/, '').trim();

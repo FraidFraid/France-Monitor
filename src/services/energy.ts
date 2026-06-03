@@ -48,7 +48,7 @@ export async function fetchNuclearPlantsStatus(): Promise<NuclearPlantStatus[]> 
     const statuses: NuclearPlantStatus[] = [];
 
     for (const plant of NUCLEAR_PLANTS) {
-        let reactors = generateDefaultReactors(plant.name, plant.capacity || 0, plant.status === 'shutdown');
+        const reactors = generateDefaultReactors(plant.name, plant.capacity || 0, plant.status === 'shutdown');
 
         let totalPower = 0;
         let totalAvailable = 0;

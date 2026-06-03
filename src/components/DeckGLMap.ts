@@ -1834,7 +1834,7 @@ export class DeckGLMap {
       attributionControl: false,
     });
     // debug global
-    ; (window as any)._franceMonitorMap = this.map;
+    (window as any)._franceMonitorMap = this.map;
     this.map.addControl(
       new maplibregl.AttributionControl({ compact: true }),
       'bottom-right',
@@ -5293,7 +5293,9 @@ export class DeckGLMap {
         if (Array.isArray(parsed)) {
           topMotifs = parsed.slice(0, 4);
         }
-      } catch { }
+      } catch {
+        // Ignore malformed optional motif payloads.
+      }
 
       const motifsHtml = topMotifs.length > 0
         ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">

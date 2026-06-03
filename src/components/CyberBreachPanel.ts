@@ -101,7 +101,11 @@ export class CyberBreachPanel {
   }
 
   toggle(events: ThreatEvent[]): void {
-    this.visible ? this.hide() : this.show(events);
+    if (this.visible) {
+      this.hide();
+    } else {
+      this.show(events);
+    }
   }
 
   isVisible(): boolean { return this.visible; }

@@ -10,7 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com)
-[![Version](https://img.shields.io/badge/version-2.0-brightgreen)](https://github.com)
+[![Version](https://img.shields.io/badge/version-0.1.1-brightgreen)](https://github.com/FraidFraid/France-Monitor)
 [![Status](https://img.shields.io/badge/status-active%20development-orange)](https://github.com)
 
 [Live App](https://www.francemonitor.com) · [About](https://www.francemonitor.com/about) · [Legal](https://www.francemonitor.com/legal)

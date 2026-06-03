@@ -312,7 +312,7 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (id.includes('maplibre-gl')) return 'maplibre';
             if (id.includes('node_modules/d3')) return 'd3';
-            if (id.includes('@xenova/transformers')) return 'transformers';
+            if (id.includes('@huggingface/transformers')) return 'transformers';
             if (id.includes('onnxruntime-web')) return 'onnxruntime';
             // Deck.gl ecosystem — ~750 KB, cached independently from app code.
             // Covered by the SW CacheFirst rule on lazy-assets.

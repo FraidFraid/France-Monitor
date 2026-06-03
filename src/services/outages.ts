@@ -157,7 +157,7 @@ type CircuitState = 'closed' | 'open' | 'half-open';
 const CB_FAILURE_THRESHOLD = 3;
 const CB_COOLDOWN_MS = 30 * 60_000; // 30 min before half-open probe
 
-let _cb: { failures: number; lastFailureAt: number | null; state: CircuitState } = {
+const _cb: { failures: number; lastFailureAt: number | null; state: CircuitState } = {
     failures: 0,
     lastFailureAt: null,
     state: 'closed',

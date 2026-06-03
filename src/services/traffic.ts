@@ -36,7 +36,7 @@ export interface TrafficFlowSegment {
 }
 
 let cache: { data: TrafficIncident[]; fetchedAt: number } | null = null;
-let flowCache = new Map<string, { data: TrafficFlowSegment; fetchedAt: number }>();
+const flowCache = new Map<string, { data: TrafficFlowSegment; fetchedAt: number }>();
 let budgetStateMemory: TrafficBudgetState | null = null;
 let incidentFetchPromise: Promise<TrafficIncident[]> | null = null;
 const CACHE_TTL = 12 * 60_000; // 12 min => 120 refresh/jour max, laisse de la marge sous 2500

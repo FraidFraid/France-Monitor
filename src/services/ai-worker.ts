@@ -1,4 +1,4 @@
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 
 // Config: Eviter la recherche locale si ce n'est pas configuré
 env.allowLocalModels = false;
@@ -10,8 +10,7 @@ async function getClassifier() {
         console.log('[ML Worker] Loading zero-shot classifier model...');
         classifierPromise = pipeline(
             'zero-shot-classification',
-            'Xenova/mobilebert-uncased-mnli', // VERY small model (~100MB)
-            { quantized: true }
+            'Xenova/mobilebert-uncased-mnli' // VERY small model (~100MB)
         );
     }
     return classifierPromise!;

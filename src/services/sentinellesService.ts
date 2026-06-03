@@ -103,7 +103,7 @@ export function computeSentinellesBarometer(
 
     // Pondération (somme ≈ 1)
     // Grippe 40%, Diarrhées 25%, IRA 20%, Asthme 10%, Varicelle 5%
-    let score =
+    const score =
         normFlu * 0.4 +
         normDia * 0.25 +
         normIra * 0.2 +

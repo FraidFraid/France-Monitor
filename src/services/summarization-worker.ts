@@ -2,7 +2,7 @@
  * summarization-worker.ts — Web Worker pour générer un résumé via Transformers.js (fallback).
  */
 
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 
@@ -13,8 +13,7 @@ async function getSummarizer() {
         console.log('[ML Worker] Loading summarization model (T5)...');
         summarizerPromise = pipeline(
             'summarization',
-            'Xenova/t5-small',
-            { quantized: true }
+            'Xenova/t5-small'
         );
     }
     return summarizerPromise!;

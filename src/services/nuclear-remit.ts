@@ -106,7 +106,7 @@ function classifyText(text: string): NuclearRemitSignal['classifiedAs'] {
 
 function extractUnitName(title: string): string | null {
   // Ex: "GRAVELINES-3 unavailability" → "GRAVELINES-3"
-  const m = title.match(/([A-Z][A-Z0-9\-]{3,}(?:-\d+)?)\b/);
+  const m = title.match(/([A-Z][A-Z0-9-]{3,}(?:-\d+)?)\b/);
   return m ? m[1] : null;
 }
 

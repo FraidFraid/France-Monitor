@@ -531,7 +531,7 @@ function normalizeDepartmentName(s: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/['\-]/g, ' ')
+    .replace(/['-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

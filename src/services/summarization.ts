@@ -2,7 +2,7 @@
  * summarization.ts — The summarization fallback chain for FranceMonitor.
  * 1. Ollama local (mistral:instruct) -> max privacy, local
  * 2. Groq cloud (llama3) -> if Groq key exists and Ollama is down
- * 3. Browser T5 (@xenova/transformers) -> ultimate local fallback
+ * 3. Browser T5 (@huggingface/transformers) -> ultimate local fallback
  */
 
 const worker = new Worker(new URL('./summarization-worker.ts', import.meta.url), { type: 'module' });
