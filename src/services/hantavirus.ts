@@ -117,7 +117,7 @@ function getSourceLabel(source: HantavirusSource): string {
 
 export function buildHantavirusSituationSnapshot(): HantavirusSituationSnapshot {
   return {
-    asOf: '2026-05-21T00:00:00.000Z',
+    asOf: '2026-05-26T00:00:00.000Z',
     activeCluster: 'MV_HONDIUS',
     franceConfirmedCases: 1,
     franceContactsMonitored: 25,
@@ -127,7 +127,7 @@ export function buildHantavirusSituationSnapshot(): HantavirusSituationSnapshot 
     deaths: 3,
     riskGeneralPopulation: 'low',
     sourceUrls: [
-      'https://invs.santepubliquefrance.fr/index.php/hantavirus/donnees',
+      'https://www.santepubliquefrance.fr/hantavirus/donnees',
       ...HONDIUS_SNAPSHOT_URLS,
     ],
     narrative: [
@@ -135,7 +135,7 @@ export function buildHantavirusSituationSnapshot(): HantavirusSituationSnapshot 
       'France : 1 cas confirmé et 25 cas contacts suivis.',
       'Population générale : risque faible selon l’OMS et l’ECDC.',
       'Transmission interhumaine documentée uniquement dans des contextes de contact étroit et prolongé.',
-      'Les zones historiques SPF relèvent d’un contexte métropolitain distinct et ne sont pas liées au cluster Andes.',
+      'Les zones historiques SPF 2005-2024 relèvent d’un contexte métropolitain distinct et ne sont pas liées au cluster Andes.',
     ],
   };
 }

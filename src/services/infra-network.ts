@@ -11,6 +11,7 @@
 
 import type { InfraNetworkState, DatacenterStatus, IxpStatus, CloudflareRadarAnomaly } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { normalizeOperationalState } from '../utils/infra-network-visuals.js';
 
 Watchdog.register('infra-network', {
     label: 'Infra Réseau DC / IXP',
@@ -82,9 +83,16 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
         name:        String(dc.name ?? ''),
         provider:    String(dc.provider ?? ''),
         region:      String(dc.region ?? ''),
+        city:        dc.city ? String(dc.city) : undefined,
+        address:     dc.address ? String(dc.address) : undefined,
         coordinates: Array.isArray(dc.coordinates) ? dc.coordinates as [number, number] : [2.35, 48.86],
         status:      dc.status as DatacenterStatus['status'] ?? 'unknown',
         incidents:   Array.isArray(dc.incidents) ? dc.incidents : [],
+        operationalState: dc.operationalState ? String(dc.operationalState) : undefined,
+        operationalStateKey: dc.operationalState ? normalizeOperationalState(dc.operationalState) : undefined,
+        powerBand:   dc.powerBand ? String(dc.powerBand) : undefined,
+        source:      dc.source ? String(dc.source) : undefined,
+        sourceUpdatedAt: dc.sourceUpdatedAt ? String(dc.sourceUpdatedAt) : undefined,
         lastUpdated: String(dc.lastUpdated ?? ''),
     }));
 
@@ -136,14 +144,15 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
-export async function fetchInfraNetwork(): Promise<InfraNetworkState | null> {
+export async function fetchInfraNetwork(options: { force?: boolean } = {}): Promise<InfraNetworkState | null> {
+    const force = options.force === true;
     // Circuit breaker
     if (failureCount >= 2 && Date.now() < cooldownUntil) {
         return cache?.data ?? null;
     }
 
     // Cache hit
-    if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
+    if (!force && cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
         return cache.data;
     }
 

@@ -10,16 +10,7 @@
  */
 
 import type { Plugin } from 'vite';
-
-const DATACENTERS = [
-    { id: 'ovh-rbx', name: 'OVH Roubaix',           provider: 'OVH',        region: 'Roubaix',       coordinates: [3.170,  50.694] as [number, number] },
-    { id: 'ovh-gra', name: 'OVH Gravelines',         provider: 'OVH',        region: 'Gravelines',    coordinates: [2.128,  50.985] as [number, number] },
-    { id: 'ovh-sbg', name: 'OVH Strasbourg',         provider: 'OVH',        region: 'Strasbourg',    coordinates: [7.750,  48.574] as [number, number] },
-    { id: 'scw-par', name: 'Scaleway Paris',          provider: 'Scaleway',   region: 'Paris',         coordinates: [2.359,  48.863] as [number, number] },
-    { id: 'aws-cdg', name: 'AWS Paris (eu-west-3)',   provider: 'AWS',        region: 'eu-west-3',     coordinates: [2.3465, 48.8655] as [number, number] },
-    { id: 'gcp-par', name: 'GCP Paris (europe-west9)',provider: 'GCP',        region: 'europe-west9',  coordinates: [2.340,  48.870] as [number, number] },
-    { id: 'cf-par',  name: 'Cloudflare Paris',        provider: 'Cloudflare', region: 'Paris',         coordinates: [2.360,  48.860] as [number, number] },
-] as const;
+import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, mergeDatacenters } from '../../api/_shared/infra-network-datacenters.js';
 
 const IXPS_STATIC = [
     { id: 'fix-par', name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.3515, 48.8625] as [number, number], speedGbps: 400 },
@@ -161,7 +152,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                 try {
                     const radarToken = process.env.CLOUDFLARE_RADAR_TOKEN ?? '';
 
-                    const [ovhR, scwR, cfR, eqxR, awsR, gcpR, peeringR, radarR] = await Promise.allSettled([
+                    const [ovhR, scwR, cfR, eqxR, awsR, gcpR, peeringR, radarR, idfDcsR] = await Promise.allSettled([
                         fetchAtlassianStatus('https://status.ovhcloud.com'),
                         fetchAtlassianStatus('https://status.scaleway.com'),
                         fetchAtlassianStatus('https://www.cloudflarestatus.com'),
@@ -170,6 +161,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                         fetchGcpStatus(),
                         fetchPeeringDbIxps(),
                         fetchCloudflareRadar(radarToken),
+                        fetchOfficialIdfDatacenters(),
                     ]);
 
                     const unwrap = (r: PromiseSettledResult<any>) =>
@@ -183,6 +175,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                     const gcp     = unwrap(gcpR);
                     const peering = unwrap(peeringR);
                     const radar   = unwrap(radarR);
+                    const idfDatacenters: any[] = idfDcsR.status === 'fulfilled' ? idfDcsR.value : [];
 
                     // PeeringDB peer index
                     const peerIndex: Record<string, number> = {};
@@ -204,14 +197,15 @@ export function infraNetworkProxyPlugin(): Plugin {
                         AWS:       { status: aws.status,  incidents: aws.incidents  },
                         GCP:       { status: gcp.status,  incidents: gcp.incidents  },
                         Cloudflare:{ status: cf.status,   incidents: cf.incidents   },
+                        Equinix:   { status: eqx.status,  incidents: eqx.incidents  },
                     };
 
-                    const datacenters = DATACENTERS.map(dc => ({
-                        ...dc,
-                        status:      providerStatus[dc.provider]?.status ?? 'unknown',
-                        incidents:   providerStatus[dc.provider]?.incidents ?? [],
-                        lastUpdated: now,
-                    }));
+                    const datacenters = mergeDatacenters({
+                        staticDatacenters: STATIC_DATACENTERS,
+                        officialIdfDatacenters: idfDatacenters,
+                        providerStatus,
+                        now,
+                    });
 
                     const ixps = IXPS_STATIC.map(ixp => ({
                         ...ixp,

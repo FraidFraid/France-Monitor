@@ -12,17 +12,7 @@
  * Cache : 5 min CDN Vercel
  */
 
-// ── Définition statique des datacenters ──────────────────────────────────────
-
-const DATACENTERS = [
-    { id: 'ovh-rbx',  name: 'OVH Roubaix',      provider: 'OVH',       region: 'Roubaix',     coordinates: [3.170,  50.694] },
-    { id: 'ovh-gra',  name: 'OVH Gravelines',    provider: 'OVH',       region: 'Gravelines',  coordinates: [2.128,  50.985] },
-    { id: 'ovh-sbg',  name: 'OVH Strasbourg',    provider: 'OVH',       region: 'Strasbourg',  coordinates: [7.750,  48.574] },
-    { id: 'scw-par',  name: 'Scaleway Paris',     provider: 'Scaleway',  region: 'Paris',       coordinates: [2.359,  48.863] },
-    { id: 'aws-cdg',  name: 'AWS Paris (eu-west-3)', provider: 'AWS',   region: 'eu-west-3',   coordinates: [2.3465, 48.8655] },
-    { id: 'gcp-par',  name: 'GCP Paris (europe-west9)', provider: 'GCP', region: 'europe-west9', coordinates: [2.340, 48.870] },
-    { id: 'cf-par',   name: 'Cloudflare Paris',   provider: 'Cloudflare', region: 'Paris',      coordinates: [2.360,  48.860] },
-];
+import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, mergeDatacenters } from './_shared/infra-network-datacenters.js';
 
 const IXPS_STATIC = [
     { id: 'fix-par',  name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.3515, 48.8625], speedGbps: 400 },
@@ -205,6 +195,7 @@ export default async function handler(req, res) {
         gcpResult,
         peeringResult,
         radarResult,
+        idfDatacentersResult,
     ] = await Promise.allSettled([
         fetchAtlassianStatus('https://status.ovhcloud.com'),
         fetchAtlassianStatus('https://status.scaleway.com'),
@@ -214,6 +205,7 @@ export default async function handler(req, res) {
         fetchGcpStatus(),
         fetchPeeringDbIxps(),
         fetchCloudflareRadar(radarToken),
+        fetchOfficialIdfDatacenters(),
     ]);
 
     const unwrap = (r) => r.status === 'fulfilled' ? r.value : { status: 'unknown', incidents: [], ok: false, data: [] };
@@ -226,6 +218,7 @@ export default async function handler(req, res) {
     const gcp     = unwrap(gcpResult);
     const peering = unwrap(peeringResult);
     const radar   = unwrap(radarResult);
+    const idfDatacenters = idfDatacentersResult.status === 'fulfilled' ? idfDatacentersResult.value : [];
 
     // ── Build peer count index from PeeringDB ────────────────────────────────
     const peerIndex = {};
@@ -250,14 +243,15 @@ export default async function handler(req, res) {
         AWS:       { status: aws.status,  incidents: aws.incidents  },
         GCP:       { status: gcp.status,  incidents: gcp.incidents  },
         Cloudflare:{ status: cf.status,   incidents: cf.incidents   },
+        Equinix:   { status: eqx.status,  incidents: eqx.incidents  },
     };
 
-    const datacenters = DATACENTERS.map(dc => ({
-        ...dc,
-        status:      (providerStatus[dc.provider]?.status ?? 'unknown'),
-        incidents:   (providerStatus[dc.provider]?.incidents ?? []),
-        lastUpdated: now,
-    }));
+    const datacenters = mergeDatacenters({
+        staticDatacenters: STATIC_DATACENTERS,
+        officialIdfDatacenters: idfDatacenters,
+        providerStatus,
+        now,
+    });
 
     // ── Build IXP list ────────────────────────────────────────────────────────
     const ixps = IXPS_STATIC.map(ixp => {

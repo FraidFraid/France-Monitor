@@ -1687,9 +1687,16 @@ export interface DatacenterStatus {
   name: string;
   provider: string;               // 'OVH' | 'Scaleway' | 'AWS' | 'Google' | 'Cloudflare'
   region: string;                 // 'Roubaix' | 'Paris' | 'eu-west-3' | …
+  city?: string;
+  address?: string;
   coordinates: [number, number];  // [lng, lat]
   status: InfraStatusLevel;
   incidents: InfraIncident[];
+  operationalState?: string;
+  operationalStateKey?: string;
+  powerBand?: string;
+  source?: string;
+  sourceUpdatedAt?: string;
   lastUpdated: string;            // ISO
 }
 

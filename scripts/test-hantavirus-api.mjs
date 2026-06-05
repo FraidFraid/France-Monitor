@@ -36,11 +36,11 @@ const SAMPLE_PEPPS_HTML = `
 const SAMPLE_SPF_HTML = `
   <html>
     <body>
-      <time datetime="2026-05-21T00:00:00+0200">Mis à jour le 21 mai 2026</time>
+      <time datetime="2026-05-26T00:00:00+0200">Mis à jour le 26 mai 2026</time>
       <div class="field__item">
         <h2>Cas d'hantavirus andes à bord du navire MV HONDIUS</h2>
-        <p>Au 20 mai, 11 cas d’infection à l’hantavirus andes ont été diagnostiqués parmi les passagers du navire de croisière dont 1 cas chez une ressortissante française.</p>
-        <p>En France, 25 personnes contacts (dont 4 croisiéristes) ont été identifiées, isolées et prises en charge en milieu hospitalier spécialisé, pour une durée pouvant aller jusqu’à 42 jours. Au 20 mai, aucune de ces personnes ne présentaient de symptômes et toutes ont été testées négatives.</p>
+        <p>Au 26 mai, 13 cas d’infection à l’hantavirus andes ont été diagnostiqués parmi les passagers du navire de croisière dont 1 cas chez une ressortissante française.</p>
+        <p>En France, 25 personnes contacts (dont 4 croisiéristes) ont été identifiées, isolées et prises en charge en milieu hospitalier spécialisé, pour une durée pouvant aller jusqu’à 42 jours. Au 26 mai, aucune de ces personnes ne présentaient de symptômes et toutes ont été testées négatives.</p>
       </div>
     </body>
   </html>
@@ -70,9 +70,9 @@ test('buildSnapshot overrides hard-coded asOf when fresher source date is availa
 test('extractSpfSituationFromHtml returns updated date and live counts', () => {
   const result = extractSpfSituationFromHtml(SAMPLE_SPF_HTML);
 
-  assert.equal(result.updatedDate, '2026-05-21');
-  assert.equal(result.snapshotDate, '2026-05-20');
-  assert.equal(result.globalConfirmed, 11);
+  assert.equal(result.updatedDate, '2026-05-26');
+  assert.equal(result.snapshotDate, '2026-05-26');
+  assert.equal(result.globalConfirmed, 13);
   assert.equal(result.franceConfirmedCases, 1);
   assert.equal(result.franceContactsMonitored, 25);
 });
@@ -82,8 +82,8 @@ test('buildSnapshot and cluster templates use SPF live situation when available'
   const snapshot = buildSnapshot({ latestSourceDate: spfSituation.updatedDate, spfSituation });
   const events = buildActiveClusterTemplates({ spfSituation });
 
-  assert.equal(snapshot.asOf, '2026-05-21T00:00:00.000Z');
-  assert.equal(snapshot.globalConfirmed, 11);
+  assert.equal(snapshot.asOf, '2026-05-26T00:00:00.000Z');
+  assert.equal(snapshot.globalConfirmed, 13);
   assert.equal(snapshot.franceContactsMonitored, 25);
   assert.match(snapshot.narrative[1], /25 cas contacts/i);
 
@@ -91,7 +91,7 @@ test('buildSnapshot and cluster templates use SPF live situation when available'
   const contactMonitoring = events.find((event) => event.id === 'hanta-france-contact-monitoring');
   const shipCluster = events.find((event) => event.id === 'hanta-cluster-hondius');
 
-  assert.equal(shipCluster.reportedCounts.confirmed, 11);
+  assert.equal(shipCluster.reportedCounts.confirmed, 13);
   assert.equal(confirmedCase.reportedCounts.contacts, 25);
   assert.equal(contactMonitoring.reportedCounts.contacts, 25);
 });

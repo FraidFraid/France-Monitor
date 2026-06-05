@@ -22,7 +22,7 @@ export interface HantavirusNavireDefinition {
 export const HANTAVIRUS_HISTORICAL_REFERENCE = {
   sourceUrl: 'https://www.santepubliquefrance.fr/hantavirus/donnees',
   circulationPeriodStart: '2005-01-01',
-  circulationPeriodEnd: '2023-12-31',
+  circulationPeriodEnd: '2024-12-31',
   latestCaseDataYear: 2024,
 } as const;
 

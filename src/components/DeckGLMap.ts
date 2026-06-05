@@ -33,6 +33,7 @@ import { computeFloodSegmentBbox, buildEoBrowserUrl } from '../services/copernic
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
+import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 
 type ThreatMapDatum =
   | {
@@ -285,7 +286,7 @@ function getHantavirusTerritoryLabel(event: Record<string, unknown> | null | und
 
 function getHantavirusDisplayLabel(event: Record<string, unknown> | null | undefined, fallbackLabel: string): string {
   if (event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique') {
-    return `Zone historique SPF (circulation documentée 2005-2023) · ${fallbackLabel.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
+    return `Zone historique SPF (circulation documentée 2005-2024) · ${fallbackLabel.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
   }
   return fallbackLabel;
 }
@@ -489,14 +490,18 @@ const LYR_NET_IODA_CORE = 'net-ioda-core';
 const LYR_NET_IODA_CLUSTER = 'net-ioda-cluster';
 const LYR_NET_IODA_CLUSTER_COUNT = 'net-ioda-cluster-count';
 const SRC_DC = 'infra-dc-src';
+const SRC_DC_HIGHLIGHT = 'infra-dc-highlight-src';
 const SRC_IXP = 'infra-ixp-src';
+const SRC_IXP_HIGHLIGHT = 'infra-ixp-highlight-src';
 const LYR_DC_GLOW = 'infra-dc-glow';
 const LYR_DC_CORE = 'infra-dc-core';
+const LYR_DC_HIGHLIGHT = 'infra-dc-highlight';
 const LYR_DC_CLUSTER = 'infra-dc-cluster';
 const LYR_DC_CLUSTER_COUNT = 'infra-dc-cluster-count';
 const LYR_IXP_CLUSTER = 'infra-ixp-cluster';
 const LYR_IXP_CLUSTER_COUNT = 'infra-ixp-cluster-count';
 const LYR_IXP_CIRCLE = 'infra-ixp-circle';
+const LYR_IXP_HIGHLIGHT = 'infra-ixp-highlight';
 const LYR_HOSPITALS_CHU = 'hospitals-chu';
 const LYR_HOSPITALS_CH = 'hospitals-ch';
 const LYR_HOSPITALS_LABEL = 'hospitals-label';
@@ -2076,10 +2081,12 @@ export class DeckGLMap {
       type: 'geojson', data: emptyFC(),
       cluster: true, clusterRadius: 50, clusterMaxZoom: 8,
     });
+    this.map.addSource(SRC_DC_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_IXP, {
       type: 'geojson', data: emptyFC(),
       cluster: true, clusterRadius: 50, clusterMaxZoom: 8,
     });
+    this.map.addSource(SRC_IXP_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
     // Military
     this.map.addSource(SRC_MILITARY_ZONES, { type: 'geojson', data: emptyFC() });
@@ -2478,7 +2485,7 @@ export class DeckGLMap {
       },
     });
 
-    // Zones historiques SPF 2005-2023 — polygones département bleus discrets
+    // Zones historiques SPF 2005-2024 — polygones département bleus discrets
     this.map.addLayer({
       id: LYR_HANTAVIRUS_ZONES_FILL,
       type: 'fill',
@@ -4763,18 +4770,39 @@ export class DeckGLMap {
       },
       paint: {
         'icon-color': [
-          'match', ['get', 'status'],
-          'operational', '#60A5FA',
-          'degraded', '#3B82F6',
-          'partial', '#2563EB',
-          'outage', '#1D4ED8',
-          'maintenance', '#93C5FD',
-          'unknown', '#60A5FA',
-          '#60A5FA',
+          'case',
+          ['==', ['get', 'operationalStateKey'], 'en construction'], '#F97316',
+          ['==', ['get', 'operationalStateKey'], 'en projet'], '#EAB308',
+          ['match', ['get', 'status'],
+            'operational', '#60A5FA',
+            'degraded', '#3B82F6',
+            'partial', '#2563EB',
+            'outage', '#1D4ED8',
+            'maintenance', '#93C5FD',
+            'unknown', '#60A5FA',
+            '#60A5FA',
+          ],
         ],
         'icon-opacity': 0.98,
         'icon-halo-color': '#111827',
         'icon-halo-width': 0.8,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_DC_HIGHLIGHT,
+      type: 'symbol',
+      source: SRC_DC_HIGHLIGHT,
+      layout: {
+        'icon-image': 'triangle-dc',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.28, 10, 0.50],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-color': '#FFFFFF',
+        'icon-opacity': 1,
+        'icon-halo-color': '#60A5FA',
+        'icon-halo-width': 2.2,
       },
     });
 
@@ -4826,6 +4854,23 @@ export class DeckGLMap {
         'icon-opacity': 0.96,
         'icon-halo-color': '#0F172A',
         'icon-halo-width': 0.6,
+      },
+    });
+    this.map.addLayer({
+      id: LYR_IXP_HIGHLIGHT,
+      type: 'symbol',
+      source: SRC_IXP_HIGHLIGHT,
+      layout: {
+        'icon-image': 'square-ixp',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.18, 10, 0.34],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-color': '#FFFFFF',
+        'icon-opacity': 1,
+        'icon-halo-color': '#BFDBFE',
+        'icon-halo-width': 2,
       },
     });
 
@@ -5485,6 +5530,7 @@ export class DeckGLMap {
         territoire_code?: string;
         date_debut?: string;
         date_fin?: string;
+        lastCheckedAt?: string;
         commentaires?: string;
         contactGeo?: {
           publicLocationLabel?: string;
@@ -5512,7 +5558,10 @@ export class DeckGLMap {
       if (isZoneHistorique) {
         const dateRange = event?.date_debut && event?.date_fin
           ? `${event.date_debut.slice(0, 4)} – ${event.date_fin.slice(0, 4)}`
-          : '2005 – 2023';
+          : '2005 – 2024';
+        const checkedLabel = event?.lastCheckedAt
+          ? new Date(event.lastCheckedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+          : '';
         const historyText = event?.commentaires
           ? String(event.commentaires)
           : 'Contexte historique SPF, distinct du cluster Andes 2026.';
@@ -5526,6 +5575,7 @@ export class DeckGLMap {
               <div>${territoryLabel}</div>
               <div>Circulation documentée <strong style="color:#d8d8df;">${dateRange}</strong></div>
               <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
+              ${checkedLabel ? `<div>Vérifié le <strong style="color:#d8d8df;">${checkedLabel}</strong></div>` : ''}
             </div>
             <div style="font-size:10px; color:#c8c8d4; margin-top:6px; line-height:1.45;">${historyText}</div>
             <div style="font-size:10px; color:#7f8c8d; margin-top:6px;">Source : Santé Publique France</div>
@@ -5537,12 +5587,15 @@ export class DeckGLMap {
       const severityIcon = severity === 'crise' ? '🔴' : severity === 'alerte' ? '🟠' : '🟡';
       const evidenceLabel = getHantavirusEvidenceLabel(event?.evidenceLevel);
       const validationLabel = getHantavirusValidationLabel(event?.validationStatus);
+      const checkedLabel = event?.lastCheckedAt
+        ? new Date(event.lastCheckedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        : '';
       const publicLocation = event?.contactGeo?.publicLocationLabel;
       const privacyNote = event?.contactGeo?.privacyMode === 'hide'
         ? 'Localisation résidentielle masquée'
         : '';
       const historyNote = event?.activeContext === 'andes_active_cluster'
-        ? 'Contexte : cluster Andes 2026 distinct des zones historiques SPF 2005-2023.'
+        ? 'Contexte : cluster Andes 2026 distinct des zones historiques SPF 2005-2024.'
         : '';
       const pathwayNote = event?.kind === 'confirmed_case'
         ? 'Parcours public : prise en charge officielle publiée en Île-de-France ; détails résidentiels non affichés.'
@@ -5560,6 +5613,7 @@ export class DeckGLMap {
             <div>Localisation : <strong style="color:#d8d8df;">${territoryLabel}</strong></div>
             ${publicLocation ? `<div>Publication : <strong style="color:#d8d8df;">${publicLocation}</strong></div>` : ''}
             ${event?.date_debut ? `<div>Détecté le <strong style="color:#d8d8df;">${event.date_debut}</strong></div>` : ''}
+            ${checkedLabel ? `<div>Vérifié le <strong style="color:#d8d8df;">${checkedLabel}</strong></div>` : ''}
             <div>Preuve : <strong style="color:#d8d8df;">${evidenceLabel}</strong></div>
             <div>Validation : <strong style="color:#d8d8df;">${validationLabel}</strong></div>
             ${event?.sourceLabel ? `<div>Source : <strong style="color:#d8d8df;">${event.sourceLabel}</strong></div>` : ''}
@@ -5627,7 +5681,7 @@ export class DeckGLMap {
             <strong style="font-size:12px; color:#fff;">${depName}</strong>
           </div>
           <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
-            <div>Zone de circulation documentée <strong style="color:#d8d8df;">2005 – 2023</strong></div>
+            <div>Zone de circulation documentée <strong style="color:#d8d8df;">2005 – 2024</strong></div>
             <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
             <div style="color:#7f8c8d; margin-top:4px;">Risque structurel — pas de foyer actif</div>
           </div>
@@ -5930,36 +5984,23 @@ export class DeckGLMap {
     this.map.on('click', LYR_DC_CORE, (e) => {
       if (!this.map || !e.features?.length) return;
       const p = e.features[0].properties ?? {};
-      const stCol = p.status === 'operational' ? '#38BDF8' : p.status === 'outage' ? '#1D4ED8' : p.status === 'maintenance' ? '#2563EB' : p.status === 'partial' ? '#0284C7' : '#0EA5E9';
-      const stLbl = p.status === 'operational' ? 'Opérationnel' : p.status === 'degraded' ? 'Dégradé' : p.status === 'partial' ? 'Partiel' : p.status === 'outage' ? 'En panne' : p.status === 'maintenance' ? 'Maintenance' : 'Inconnu';
       const incidents: Array<{ title: string; severity: string }> = (() => { try { return JSON.parse(p.incidents ?? '[]'); } catch { return []; } })();
-      const offsetMeters = Number(p.offsetMeters ?? 0);
-      const realLng = Number(p.realLng ?? e.lngLat.lng);
-      const realLat = Number(p.realLat ?? e.lngLat.lat);
-      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-      const incHtml = incidents.length
-        ? incidents.map(i => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">⚠ ${escapeHtml(i.title)}</div>`).join('')
-        : `<div style="font-size:11px;color:var(--text-muted);">Aucun incident actif</div>`;
-      const html = `
-        <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;">
-          <h4 style="margin:0 0 2px;font-weight:700;font-size:14px;color:#fff;">${p.name ?? 'Datacenter'}</h4>
-          <div style="font-size:11px;color:#6366f1;margin-bottom:10px;">${p.provider ?? ''} · ${p.region ?? ''}</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;">
-            <span style="color:#9898a8">Statut :</span>
-            <span style="font-weight:700;color:${stCol}">${stLbl}</span>
-          </div>
-          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Incidents</div>
-          ${incHtml}
-          <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
-            <span style="color:#9898a8">Coord. réelle</span>
-            <span>${realLat.toFixed(4)}, ${realLng.toFixed(4)}</span>
-            <span style="color:#9898a8">Décalage affichage</span>
-            <span>${offsetMeters > 0 ? `${Math.round(offsetMeters)} m` : 'Aucun'}</span>
-            <span style="color:#9898a8">Mis à jour</span>
-            <span>${updatedLabel}</span>
-          </div>
-          <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Source : Statuspage officielle</div>
-        </div>`;
+      const html = buildDatacenterPopupHtml({
+        name: String(p.name ?? 'Datacenter'),
+        provider: String(p.provider ?? ''),
+        region: String(p.region ?? ''),
+        city: String(p.city ?? ''),
+        address: String(p.address ?? ''),
+        status: String(p.status ?? 'unknown'),
+        incidents,
+        operationalState: String(p.operationalState ?? ''),
+        powerBand: String(p.powerBand ?? ''),
+        source: String(p.source ?? ''),
+        lastUpdated: String(p.lastUpdated ?? ''),
+        realLng: Number(p.realLng ?? e.lngLat.lng),
+        realLat: Number(p.realLat ?? e.lngLat.lat),
+        offsetMeters: Number(p.offsetMeters ?? 0),
+      });
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
         .setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
@@ -11939,41 +11980,36 @@ export class DeckGLMap {
   /** Highlight a specific datacenter triangle and fly to it. */
   highlightDc(data: { id: string; coordinates: [number, number] } | null): void {
     if (!this.map) return;
-    const defaultColor = [
-      'match', ['get', 'status'],
-      'operational', '#38BDF8', 'degraded', '#0EA5E9', 'partial', '#0284C7',
-      'outage', '#1D4ED8', 'maintenance', '#2563EB', 'unknown', '#38BDF8', '#38BDF8',
-    ] as maplibregl.ExpressionSpecification;
+    const highlightSrc = this.map.getSource(SRC_DC_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
     if (data) {
-      this.map.setPaintProperty(LYR_DC_CORE, 'icon-color', [
-        'case', ['==', ['get', 'id'], data.id], '#FFFFFF', defaultColor,
-      ]);
-      this.map.setPaintProperty(LYR_DC_CORE, 'icon-opacity', [
-        'case', ['==', ['get', 'id'], data.id], 1, 0.6,
-      ]);
+      highlightSrc?.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: data.coordinates },
+          properties: { id: data.id },
+        }],
+      });
     } else {
-      this.map.setPaintProperty(LYR_DC_CORE, 'icon-color', defaultColor);
-      this.map.setPaintProperty(LYR_DC_CORE, 'icon-opacity', 0.95);
+      highlightSrc?.setData(emptyFC());
     }
   }
 
   /** Highlight a specific IXP diamond and fly to it. */
   highlightIxp(data: { id: string; coordinates: [number, number] } | null): void {
     if (!this.map) return;
-    const defaultColor = [
-      'match', ['get', 'status'],
-      'outage', '#0F766E', 'degraded', '#14B8A6', '#2DD4BF',
-    ] as maplibregl.ExpressionSpecification;
+    const highlightSrc = this.map.getSource(SRC_IXP_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
     if (data) {
-      this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-color', [
-        'case', ['==', ['get', 'id'], data.id], '#FFFFFF', defaultColor,
-      ]);
-      this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-opacity', [
-        'case', ['==', ['get', 'id'], data.id], 1, 0.55,
-      ]);
+      highlightSrc?.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: data.coordinates },
+          properties: { id: data.id },
+        }],
+      });
     } else {
-      this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-color', defaultColor);
-      this.map.setPaintProperty(LYR_IXP_CIRCLE, 'icon-opacity', 0.90);
+      highlightSrc?.setData(emptyFC());
     }
   }
 
@@ -12042,8 +12078,14 @@ export class DeckGLMap {
         name: dc.name,
         provider: dc.provider,
         region: dc.region,
+        city: dc.city ?? '',
+        address: dc.address ?? '',
         status: dc.status,
         incidents: JSON.stringify(dc.incidents),
+        operationalState: dc.operationalState ?? '',
+        operationalStateKey: dc.operationalStateKey ?? '',
+        powerBand: dc.powerBand ?? '',
+        source: dc.source ?? '',
         lastUpdated: dc.lastUpdated,
         realLng: dc.coordinates[0],
         realLat: dc.coordinates[1],
@@ -13530,7 +13572,9 @@ export class DeckGLMap {
     // Cloud/IXP individual markers (hidden by cluster filter when zoomed out)
     this.setVis(LYR_DC_GLOW, vis(layers.outagesCloud));
     this.setVis(LYR_DC_CORE, vis(layers.outagesCloud));
+    this.setVis(LYR_DC_HIGHLIGHT, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
+    this.setVis(LYR_IXP_HIGHLIGHT, vis(layers.outagesCloud));
     // LYR_TERMINATOR masqué : le Deck.gl DayNightLayer gère toute la visualisation jour/nuit
     this.setVis(LYR_TERMINATOR, 'none');
 

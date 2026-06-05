@@ -132,6 +132,7 @@ const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics +
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
 const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
+const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
@@ -440,7 +441,7 @@ const HANTAVIRUS_LEGEND: LegendCategory = {
     { id: 'hanta-alerte', label: 'Alerte (suspicion forte)', color: '#ff9500', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-surveillance', label: 'Surveillance', color: '#ffd60a', shape: 'circle', borderColor: '#120b0b', borderWidth: 1 },
     { id: 'hanta-zones-header', label: 'Fond historique (polygones)', isHeader: true },
-    { id: 'hanta-zones', label: 'Zones SPF 2005–2023 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone', note: 'Dép. où des cas ont été documentés 2005–2023, sans foyer actif en 2026.' },
+    { id: 'hanta-zones', label: 'Zones SPF 2005–2024 (zoom ≤ 9)', color: '#38BDF8', shape: 'zone', note: 'Dép. où des cas ont été documentés 2005–2024, sans foyer actif en 2026.' },
   ],
   source: {
     label: 'SPF hantavirus · DGS-Urgent · veille OSINT validée',
@@ -942,19 +943,21 @@ const OUTAGES_INTERNET_LEGEND: LegendCategory = {
   refresh: { label: '5 min' },
 };
 
-// ── Pannes Cloud & IXP (datacenters + points d'échange) ─────────────────────
+// ── Datacenters & IXP (infrastructure numerique) ────────────────────────────
 const OUTAGES_CLOUD_LEGEND: LegendCategory = {
   id: 'outagesCloud',
-  title: 'Pannes Cloud / IXP',
+  title: 'Datacenters / IXP',
   type: 'categorical',
   items: [
+    { id: 'dc-project', label: 'Datacenter en projet', color: '#EAB308', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-build',   label: 'Datacenter en construction', color: '#F97316', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-ok',   label: 'Datacenter opérationnel', color: '#60A5FA', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-deg',  label: 'Datacenter dégradé',      color: '#3B82F6', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-out',  label: 'Datacenter en panne',     color: '#1D4ED8', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'ixp-ok',  label: 'Point d\'échange (IXP)',  color: '#BFDBFE', shape: 'square',     borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'ixp-out', label: 'IXP dégradé / hors service', color: '#64748B', shape: 'square', borderColor: '#0a0a0f', borderWidth: 1 },
   ],
-  source: { label: 'OVH · Scaleway · AWS · GCP · Cloudflare Radar · PeeringDB' },
+  source: { label: 'OVH · Scaleway · AWS · GCP · Cloudflare Radar · PeeringDB · DRIEAT IDF' },
   refresh: { label: '5 min' },
 };
 
@@ -1399,6 +1402,7 @@ export class App {
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
   private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
+  private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalSncf: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: ReturnType<typeof setInterval> | null = null;
@@ -1421,6 +1425,7 @@ export class App {
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
     if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
+    if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
     if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
@@ -1849,6 +1854,7 @@ export class App {
     this.startHealthPolling();
     this.startHydraulicPolling();
     this.startWeatherPolling();
+    this.startInfraNetworkPolling();
     this.startEolienPolling();
     this.startSncfPolling();
 
@@ -5123,6 +5129,34 @@ export class App {
           radarInFlight = false;
         });
     }, POLL_WEATHER_RADAR_MS);
+  }
+
+  private async refreshInfraNetworkLive(force = false): Promise<void> {
+    const infra = await fetchInfraNetwork({ force });
+    if (!infra) return;
+
+    this.currentInfraState = infra;
+    this.mapContainer?.updateInfraNetwork(infra);
+
+    if (this.outagesPanel?.isVisible()) {
+      this.outagesPanel.show(
+        this.currentPowerOutages,
+        this.currentTelecomOutages,
+        this.currentNetworkState,
+        this.currentInfraState,
+        this.currentCitizenZones ?? undefined,
+      );
+    }
+
+    this.refreshFranceIntelPanel();
+  }
+
+  private startInfraNetworkPolling(): void {
+    if (this._intervalInfraNetwork !== null) clearInterval(this._intervalInfraNetwork);
+
+    this._intervalInfraNetwork = setInterval(() => {
+      this.refreshInfraNetworkLive(true).catch((err) => console.error('[App] Infra network poll error', err));
+    }, POLL_INFRA_NETWORK_MS);
   }
 
   private startEolienPolling(): void {

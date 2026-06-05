@@ -1003,10 +1003,11 @@ function buildHealthFeatures(
     ? epidemiologyMonitor.alerts
     : [];
   const apiHantavirusEvents = Array.isArray(hantavirus?.events) ? hantavirus.events : [];
-  const seedClusters = buildSeedHondiusClusterEvents();
-  const dedupedHantavirusEvents = new Map<string, (typeof seedClusters)[number]>();
+  const seedClusters = apiHantavirusEvents.length === 0 ? buildSeedHondiusClusterEvents() : [];
+  const sourceHantavirusEvents = apiHantavirusEvents.length > 0 ? apiHantavirusEvents : seedClusters;
+  const dedupedHantavirusEvents = new Map<string, (typeof sourceHantavirusEvents)[number]>();
 
-  for (const event of [...apiHantavirusEvents, ...seedClusters]) {
+  for (const event of sourceHantavirusEvents) {
     const key = buildHantavirusDedupKey(event);
     const existing = dedupedHantavirusEvents.get(key);
     dedupedHantavirusEvents.set(key, existing ? mergeHantavirusEvents(existing, event) : event);

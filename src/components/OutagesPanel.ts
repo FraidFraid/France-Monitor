@@ -12,6 +12,7 @@ import type { OutagesMeta } from '../services/outages.ts';
 import { getFreshnessState } from '../services/outages.ts';
 import { iodaScoreColor, iodaScoreLabel, ispStatusColor, ispStatusLabel } from '../services/internet-outages.ts';
 import { dcStatusColor, dcStatusLabel, ixpStatusColor } from '../services/infra-network.ts';
+import { getDatacenterVisualMeta } from '../utils/infra-network-visuals.js';
 
 function formatDurationSec(seconds: number): string {
   if (seconds <= 0) return 'En cours';
@@ -126,6 +127,15 @@ export class OutagesPanel extends Panel {
 
   setOnTabChange(cb: (tab: ActiveTab | null) => void): void {
     this.onTabChangeCallback = cb;
+  }
+
+  private elevateHoveredCard(el: HTMLElement): void {
+    el.style.position = 'relative';
+    el.style.zIndex = '3';
+  }
+
+  private resetHoveredCard(el: HTMLElement): void {
+    el.style.zIndex = '0';
   }
 
   mount(): void {
@@ -521,10 +531,12 @@ export class OutagesPanel extends Panel {
         </div>
       `;
       row.addEventListener('mouseenter', () => {
+        this.elevateHoveredCard(row);
         row.style.background = `rgba(255,255,255,0.08)`;
         this.onDeptHoverCb?.(p.departmentCode);
       });
       row.addEventListener('mouseleave', () => {
+        this.resetHoveredCard(row);
         row.style.background = `rgba(255,255,255,0.04)`;
         this.onDeptHoverCb?.(null);
       });
@@ -589,8 +601,16 @@ export class OutagesPanel extends Panel {
         </div>
         <div style="font-size:10px;color:var(--text-muted);">Signal Ecowatt · pas de PDL mesurés</div>
       `;
-      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(249,115,22,0.12)'; this.onDeptHoverCb?.(p.departmentCode); });
-      row.addEventListener('mouseleave', () => { row.style.background = 'rgba(249,115,22,0.06)';  this.onDeptHoverCb?.(null); });
+      row.addEventListener('mouseenter', () => {
+        this.elevateHoveredCard(row);
+        row.style.background = 'rgba(249,115,22,0.12)';
+        this.onDeptHoverCb?.(p.departmentCode);
+      });
+      row.addEventListener('mouseleave', () => {
+        this.resetHoveredCard(row);
+        row.style.background = 'rgba(249,115,22,0.06)';
+        this.onDeptHoverCb?.(null);
+      });
       inner.appendChild(row);
     }
     body.appendChild(inner);
@@ -700,10 +720,12 @@ export class OutagesPanel extends Panel {
         });
 
       row.addEventListener('mouseenter', () => {
+        this.elevateHoveredCard(row);
         row.style.background = `rgba(168,85,247,0.12)`;
         this.onZoneHoverCb?.(p.clusterId);
       });
       row.addEventListener('mouseleave', () => {
+        this.resetHoveredCard(row);
         row.style.background = `rgba(168,85,247,0.06)`;
         this.onZoneHoverCb?.(null);
       });
@@ -924,10 +946,12 @@ export class OutagesPanel extends Panel {
         cursor:pointer;transition:background 0.15s;
       `;
       row.addEventListener('mouseenter', () => {
+        this.elevateHoveredCard(row);
         row.style.background = 'rgba(16,185,129,0.08)';
         this.onIspHoverCb?.({ asn: isp.asn, coordinates: isp.coordinates });
       });
       row.addEventListener('mouseleave', () => {
+        this.resetHoveredCard(row);
         row.style.background = 'rgba(255,255,255,0.04)';
         this.onIspHoverCb?.(null);
       });
@@ -986,10 +1010,12 @@ export class OutagesPanel extends Panel {
           cursor:pointer;transition:background 0.15s;
         `;
         card.addEventListener('mouseenter', () => {
+          this.elevateHoveredCard(card);
           card.style.background = `rgba(${col === '#EF4444' ? '239,68,68' : col === '#F59E0B' ? '245,158,11' : '16,185,129'},0.08)`;
           this.onIodaHoverCb?.({ id: ev.id, coordinates: ev.coordinates });
         });
         card.addEventListener('mouseleave', () => {
+          this.resetHoveredCard(card);
           card.style.background = 'rgba(255,255,255,0.04)';
           this.onIodaHoverCb?.(null);
         });
@@ -1071,13 +1097,18 @@ export class OutagesPanel extends Panel {
     }
 
     for (const [provider, dcs] of Object.entries(byProvider)) {
-      const providerWorstStatus = dcs.reduce((worst, dc) => {
-        const order: Record<string, number> = { outage: 4, partial: 3, degraded: 2, maintenance: 1, operational: 0, unknown: -1 };
-        return (order[dc.status] ?? -1) > (order[worst] ?? -1) ? dc.status : worst;
-      }, 'unknown' as string);
+      const visualRank = (dc: typeof dcs[number]): number => {
+        const state = String(dc.operationalStateKey ?? dc.operationalState ?? '').trim().toLowerCase();
+        if (state === 'en construction') return 2;
+        if (state === 'en projet') return 1;
+        const order: Record<string, number> = { outage: 8, partial: 7, degraded: 6, maintenance: 5, operational: 4, unknown: 3 };
+        return order[dc.status] ?? 0;
+      };
 
-      const col = dcStatusColor(providerWorstStatus as any);
-      const lbl = dcStatusLabel(providerWorstStatus as any);
+      const representative = dcs.reduce((best, dc) => (visualRank(dc) > visualRank(best) ? dc : best), dcs[0]!);
+      const meta = getDatacenterVisualMeta(representative);
+      const col = meta.color ?? dcStatusColor(representative.status as any);
+      const lbl = meta.label ?? dcStatusLabel(representative.status as any);
 
       const row = document.createElement('div');
       row.style.cssText = `
@@ -1086,14 +1117,19 @@ export class OutagesPanel extends Panel {
       `;
 
       const incidentCount = dcs.reduce((sum, dc) => sum + dc.incidents.length, 0);
-      const siteList = dcs.map(dc => dc.name.replace(`${provider} `, '')).join(', ');
+      const previewNames = dcs
+        .slice(0, 4)
+        .map(dc => dc.name.replace(`${provider} `, ''))
+        .join(', ');
+      const remainingCount = Math.max(0, dcs.length - 4);
+      const siteSummary = `${dcs.length} site${dcs.length > 1 ? 's' : ''}${previewNames ? ` · ${previewNames}` : ''}${remainingCount > 0 ? ` +${remainingCount}` : ''}`;
 
       row.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
           <div style="font-size:12px;font-weight:700;color:var(--text-primary);">${provider}</div>
           <div style="font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;">${lbl}</div>
         </div>
-        <div style="font-size:10px;color:var(--text-muted);">${siteList}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${siteSummary}</div>
         ${incidentCount > 0 ? `<div style="font-size:10px;color:#0EA5E9;margin-top:3px;">⚠ ${incidentCount} incident${incidentCount > 1 ? 's' : ''} actif${incidentCount > 1 ? 's' : ''}</div>` : ''}
       `;
       // Hover → highlight first DC of provider on map
@@ -1101,10 +1137,12 @@ export class OutagesPanel extends Panel {
       if (firstDc) {
         row.style.cursor = 'pointer';
         row.addEventListener('mouseenter', () => {
+          this.elevateHoveredCard(row);
           row.style.background = `${col}14`;
           this.onDcHoverCb?.({ id: firstDc.id, coordinates: firstDc.coordinates });
         });
         row.addEventListener('mouseleave', () => {
+          this.resetHoveredCard(row);
           row.style.background = 'rgba(255,255,255,0.04)';
           this.onDcHoverCb?.(null);
         });
@@ -1145,10 +1183,12 @@ export class OutagesPanel extends Panel {
       `;
       row.style.cursor = 'pointer';
       row.addEventListener('mouseenter', () => {
+        this.elevateHoveredCard(row);
         row.style.background = `${col}14`;
         this.onIxpHoverCb?.({ id: ixp.id, coordinates: ixp.coordinates });
       });
       row.addEventListener('mouseleave', () => {
+        this.resetHoveredCard(row);
         row.style.background = 'rgba(255,255,255,0.04)';
         this.onIxpHoverCb?.(null);
       });

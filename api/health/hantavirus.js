@@ -321,10 +321,10 @@ export function extractSpfSituationFromHtml(html) {
 }
 
 export function buildSnapshot({ latestSourceDate = null, spfSituation = null } = {}) {
-  const asOf = toIsoTimestamp(maxDate('2026-05-18', latestSourceDate)) || '2026-05-18T00:00:00.000Z';
+  const asOf = toIsoTimestamp(maxDate('2026-05-26', latestSourceDate)) || '2026-05-26T00:00:00.000Z';
   const franceConfirmedCases = spfSituation?.franceConfirmedCases ?? 1;
-  const franceContactsMonitored = spfSituation?.franceContactsMonitored ?? 22;
-  const globalConfirmed = spfSituation?.globalConfirmed ?? 8;
+  const franceContactsMonitored = spfSituation?.franceContactsMonitored ?? 25;
+  const globalConfirmed = spfSituation?.globalConfirmed ?? 11;
   return {
     asOf,
     activeCluster: 'MV_HONDIUS',
@@ -336,7 +336,7 @@ export function buildSnapshot({ latestSourceDate = null, spfSituation = null } =
     deaths: 3,
     riskGeneralPopulation: 'low',
     sourceUrls: [
-      'https://invs.santepubliquefrance.fr/index.php/hantavirus/donnees',
+      'https://www.santepubliquefrance.fr/hantavirus/donnees',
       'https://www.info.gouv.fr/actualite/hantavirus-le-point-sur-les-mesures-sanitaires-en-france',
       'https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON601',
       'https://www.ecdc.europa.eu/en/infectious-disease-topics/hantavirus-infection/surveillance-and-updates/andes-hantavirus-outbreak'
@@ -353,9 +353,9 @@ export function buildSnapshot({ latestSourceDate = null, spfSituation = null } =
 
 export function buildActiveClusterTemplates({ spfSituation = null } = {}) {
   const lastCheckedAt = nowIso();
-  const globalConfirmed = spfSituation?.globalConfirmed ?? 8;
+  const globalConfirmed = spfSituation?.globalConfirmed ?? 11;
   const franceConfirmed = spfSituation?.franceConfirmedCases ?? 1;
-  const franceContacts = spfSituation?.franceContactsMonitored ?? 22;
+  const franceContacts = spfSituation?.franceContactsMonitored ?? 25;
 
   return [
     {
@@ -517,7 +517,7 @@ function buildZoneHistoriqueEvents() {
     date_debut: HISTORICAL_REFERENCE.circulationPeriodStart,
     date_fin: HISTORICAL_REFERENCE.circulationPeriodEnd,
     severite: zone.severity,
-    commentaires: `Contexte historique SPF 2005-2023. Non lié au cluster Andes 2026.`,
+    commentaires: `Contexte historique SPF 2005-2024. Non lié au cluster Andes 2026.`,
     lastCheckedAt,
     url_sources: [HISTORICAL_REFERENCE.sourceUrl],
   }));
