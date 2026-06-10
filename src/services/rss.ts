@@ -53,27 +53,43 @@ async function fetchViaScrapling(feedUrl: string): Promise<string> {
 interface CBState {
     failures: number;
     cooldownUntil: number;
+    /** Nombre d'ouvertures successives du breaker (pilote le backoff exponentiel) */
+    openCount: number;
+    /** true = cooldown expiré, une tentative unique est en cours (half-open) */
+    halfOpen: boolean;
 }
 
 const breakers = new Map<string, CBState>();
 const CB_MAX_FAILURES = 2;
-const CB_COOLDOWN_MS = 5 * 60_000; // 5 min
+// Backoff exponentiel : 2 min → 5 min → 10 min (plafond)
+const CB_BACKOFF_MS = [2 * 60_000, 5 * 60_000, 10 * 60_000];
+
+function backoffFor(openCount: number): number {
+    const idx = Math.min(Math.max(openCount - 1, 0), CB_BACKOFF_MS.length - 1);
+    return CB_BACKOFF_MS[idx];
+}
 
 function isOpen(feedUrl: string): boolean {
     const cb = breakers.get(feedUrl);
     if (!cb || cb.failures < CB_MAX_FAILURES) return false;
+    if (cb.halfOpen) return false; // tentative half-open déjà autorisée
     if (Date.now() > cb.cooldownUntil) {
-        // Half-open: reset
-        breakers.delete(feedUrl);
+        // Half-open : autoriser UNE tentative. Succès → reset, échec → réouverture avec backoff supérieur.
+        cb.halfOpen = true;
         return false;
     }
     return true;
 }
 
 function recordFailure(feedUrl: string): void {
-    const cb = breakers.get(feedUrl) ?? { failures: 0, cooldownUntil: 0 };
+    const cb = breakers.get(feedUrl) ?? { failures: 0, cooldownUntil: 0, openCount: 0, halfOpen: false };
     cb.failures++;
-    cb.cooldownUntil = Date.now() + CB_COOLDOWN_MS;
+    if (cb.failures >= CB_MAX_FAILURES) {
+        // Ouverture (ou réouverture après échec en half-open) → backoff exponentiel
+        cb.openCount++;
+        cb.cooldownUntil = Date.now() + backoffFor(cb.openCount);
+    }
+    cb.halfOpen = false;
     breakers.set(feedUrl, cb);
 }
 
@@ -356,11 +372,48 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     }
 }
 
+// ─── Concurrency pool ───
+
+const MAX_CONCURRENT_FEEDS = 8;
+
 /**
- * Fetch all feeds in parallel, return merged + deduped items sorted by date.
+ * Exécute des tâches async avec une limite de concurrence.
+ * Équivalent de Promise.allSettled(tasks.map((t) => t())) mais max `limit` simultanées.
+ */
+async function runWithConcurrency<T>(
+    tasks: Array<() => Promise<T>>,
+    limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+    const results = new Array<PromiseSettledResult<T>>(tasks.length);
+    let nextIndex = 0;
+
+    async function workerLoop(): Promise<void> {
+        while (nextIndex < tasks.length) {
+            const index = nextIndex++;
+            try {
+                results[index] = { status: 'fulfilled', value: await tasks[index]() };
+            } catch (err) {
+                results[index] = { status: 'rejected', reason: err };
+            }
+        }
+    }
+
+    const workers = Array.from(
+        { length: Math.min(limit, tasks.length) },
+        () => workerLoop(),
+    );
+    await Promise.all(workers);
+    return results;
+}
+
+/**
+ * Fetch all feeds (max 8 en parallèle), return merged + deduped items sorted by date.
  */
 export async function fetchAllFeeds(feeds: Feed[]): Promise<NewsItem[]> {
-    const results = await Promise.allSettled(feeds.map(fetchFeed));
+    const results = await runWithConcurrency(
+        feeds.map((feed) => () => fetchFeed(feed)),
+        MAX_CONCURRENT_FEEDS,
+    );
     const allItems: NewsItem[] = [];
     const seenUrls = new Set<string>();
     for (const result of results) {

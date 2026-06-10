@@ -140,6 +140,26 @@ const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator dri
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
 const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
 
+// Cap on news items kept in memory / pushed to map & panels (after date sort).
+const MAX_NEWS_ITEMS = 500;
+// GPS jamming + military surge analyses are throttled (positions stay at 5 s).
+const MILITARY_DETECTION_THROTTLE_MS = 30_000;
+// Inter-batch delays for background RSS augmentation pipelines.
+const GEOCODE_BATCH_DELAY_MS = 50;
+const SUMMARIZE_BATCH_DELAY_MS = 50;
+// AI classification fallback: items processed in parallel batches of this size.
+const AI_CLASSIFY_BATCH_SIZE = 5;
+
+/** Interval pausable quand l'onglet est caché (visibilitychange). */
+interface PausableTimer {
+  fn: () => void;
+  ms: number;
+  id: ReturnType<typeof setInterval> | null;
+}
+
+// Session-level geocoding memo: never geocode the same title+region twice per session.
+const geocodeSessionCache = new Map<string, Awaited<ReturnType<typeof geocodeNewsItem>>>();
+
 const ALERT_MONITOR_LIMIT = 2;
 const ALERT_MONITOR_TTLS_MS = {
   NEWS_ALERT: 20 * 60_000,
@@ -1396,12 +1416,12 @@ export class App {
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
-  private _intervalMilitaryFlights: ReturnType<typeof setInterval> | null = null;
-  private _intervalShips: ReturnType<typeof setInterval> | null = null;
+  private _intervalMilitaryFlights: PausableTimer | null = null;
+  private _intervalShips: PausableTimer | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
   private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
   private _intervalOil: ReturnType<typeof setInterval> | null = null;
-  private _intervalAirTraffic: ReturnType<typeof setInterval> | null = null;
+  private _intervalAirTraffic: PausableTimer | null = null;
   private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
@@ -1409,12 +1429,22 @@ export class App {
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalSncf: ReturnType<typeof setInterval> | null = null;
-  private _intervalClock: ReturnType<typeof setInterval> | null = null;
+  private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
-  private _intervalSpaceWeatherTerminator: ReturnType<typeof setInterval> | null = null;
+  private _intervalSpaceWeatherTerminator: PausableTimer | null = null;
   private _intervalSpaceWeatherRefresh: ReturnType<typeof setInterval> | null = null;
-  private _intervalVersion: ReturnType<typeof setInterval> | null = null;
+  private _intervalVersion: PausableTimer | null = null;
+  // Timers agressifs suspendus quand l'onglet est caché (visibilitychange)
+  private pausableTimers: PausableTimer[] = [];
+  private visibilityHandlerInstalled = false;
+  // Listeners globaux (document/window) à retirer dans destroy()
+  private globalListeners: Array<{
+    target: EventTarget;
+    type: string;
+    handler: EventListener;
+    options?: AddEventListenerOptions | boolean;
+  }> = [];
   private aboutTriggerEl: HTMLButtonElement | null = null;
   private headerLiveDotEl: HTMLElement | null = null;
   private mapLoadingTextEl: HTMLElement | null = null;
@@ -1425,13 +1455,13 @@ export class App {
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
-    if (this._intervalMilitaryFlights !== null) { clearInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null; }
-    if (this._intervalShips !== null) { clearInterval(this._intervalShips); this._intervalShips = null; }
+    this.removePausableInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null;
+    this.removePausableInterval(this._intervalShips); this._intervalShips = null;
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
     if (this._intervalNuclear !== null) { clearInterval(this._intervalNuclear); this._intervalNuclear = null; }
     if (this._intervalOil !== null) { clearInterval(this._intervalOil); this._intervalOil = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
-    if (this._intervalAirTraffic !== null) { clearInterval(this._intervalAirTraffic); this._intervalAirTraffic = null; }
+    this.removePausableInterval(this._intervalAirTraffic); this._intervalAirTraffic = null;
     if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
@@ -1439,27 +1469,105 @@ export class App {
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
-    if (this._intervalClock !== null) { clearInterval(this._intervalClock); this._intervalClock = null; }
+    this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
       this._intervalNetworkBarometer = null;
     }
-    if (this._intervalSpaceWeatherTerminator !== null) {
-      clearInterval(this._intervalSpaceWeatherTerminator);
-      this._intervalSpaceWeatherTerminator = null;
-    }
+    this.removePausableInterval(this._intervalSpaceWeatherTerminator);
+    this._intervalSpaceWeatherTerminator = null;
     if (this._intervalSpaceWeatherRefresh !== null) {
       clearInterval(this._intervalSpaceWeatherRefresh);
       this._intervalSpaceWeatherRefresh = null;
     }
-    if (this._intervalVersion !== null) {
-      clearInterval(this._intervalVersion);
-      this._intervalVersion = null;
-    }
+    this.removePausableInterval(this._intervalVersion);
+    this._intervalVersion = null;
+    this.clearFranceIntelBriefRefresh();
+    this.clearPausableIntervals();
+    this.removeGlobalListeners();
+    this.visibilityHandlerInstalled = false;
     this.updateNotification?.destroy();
     this.updateNotification = null;
     this.networkBarometerWidget?.destroy();
     this.networkBarometerWidget = null;
+  }
+
+  // ─── Background tab suspension & global listener bookkeeping ───────────────
+
+  /** addEventListener sur document/window avec retrait automatique dans destroy(). */
+  private addGlobalListener(
+    target: EventTarget,
+    type: string,
+    handler: EventListener,
+    options?: AddEventListenerOptions | boolean,
+  ): void {
+    target.addEventListener(type, handler, options);
+    this.globalListeners.push({ target, type, handler, options });
+  }
+
+  private removeGlobalListeners(): void {
+    for (const { target, type, handler, options } of this.globalListeners) {
+      target.removeEventListener(type, handler, options);
+    }
+    this.globalListeners = [];
+  }
+
+  /**
+   * setInterval qui se met en pause quand l'onglet est caché et reprend
+   * (avec un tick immédiat) quand il redevient visible. Réservé aux pollings
+   * agressifs (< 1 min) : vols militaires, AIS, trafic aérien, horloge,
+   * terminateur, check version.
+   */
+  private registerPausableInterval(fn: () => void, ms: number): PausableTimer {
+    this.ensureVisibilityHandler();
+    const timer: PausableTimer = { fn, ms, id: null };
+    if (!document.hidden) {
+      timer.id = setInterval(fn, ms);
+    }
+    this.pausableTimers.push(timer);
+    return timer;
+  }
+
+  private removePausableInterval(timer: PausableTimer | null): void {
+    if (!timer) return;
+    if (timer.id !== null) {
+      clearInterval(timer.id);
+      timer.id = null;
+    }
+    const index = this.pausableTimers.indexOf(timer);
+    if (index !== -1) this.pausableTimers.splice(index, 1);
+  }
+
+  private clearPausableIntervals(): void {
+    for (const timer of this.pausableTimers) {
+      if (timer.id !== null) {
+        clearInterval(timer.id);
+        timer.id = null;
+      }
+    }
+    this.pausableTimers = [];
+  }
+
+  private ensureVisibilityHandler(): void {
+    if (this.visibilityHandlerInstalled) return;
+    this.visibilityHandlerInstalled = true;
+    this.addGlobalListener(document, 'visibilitychange', () => {
+      if (document.hidden) {
+        for (const timer of this.pausableTimers) {
+          if (timer.id !== null) {
+            clearInterval(timer.id);
+            timer.id = null;
+          }
+        }
+      } else {
+        for (const timer of this.pausableTimers) {
+          if (timer.id === null) {
+            timer.fn(); // refresh immédiat au retour au premier plan
+            timer.id = setInterval(timer.fn, timer.ms);
+          }
+        }
+      }
+    });
   }
 
   private isPanelVisible(element: HTMLElement | null): boolean {
@@ -2057,7 +2165,8 @@ export class App {
       const target = event.target as HTMLElement;
       if (target.dataset['close'] === 'true') setAboutModalOpen(false);
     });
-    document.addEventListener('keydown', (event) => {
+    this.addGlobalListener(document, 'keydown', (event) => {
+      if (!(event instanceof KeyboardEvent)) return;
       if (event.key === 'Escape' && aboutModal.getAttribute('aria-hidden') === 'false') {
         setAboutModalOpen(false);
       }
@@ -2164,12 +2273,20 @@ export class App {
         mapArea.scrollTo({ top: underMapArea.offsetTop, behavior: 'smooth' });
       }
     };
-    mapArea.addEventListener('scroll', () => {
+    const handleMapAreaScroll = (): void => {
       if (Date.now() < this.underMapScrollLockUntil) return;
       const mapTop = mapArea.scrollTop;
       const revealThreshold = Math.max(32, underMapArea.offsetTop - mapContainerEl.clientHeight / 2);
       const isUnderMapVisible = mapTop >= revealThreshold;
       syncUnderMapToggle(isUnderMapVisible);
+    };
+    let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+    mapArea.addEventListener('scroll', () => {
+      if (scrollThrottleTimer !== null) return; // throttle ~150 ms (trailing)
+      scrollThrottleTimer = setTimeout(() => {
+        scrollThrottleTimer = null;
+        handleMapAreaScroll();
+      }, 150);
     }, { passive: true });
     mapArea.appendChild(underMapJumpBtn);
 
@@ -2399,12 +2516,12 @@ export class App {
     this.healthBarometerPanel.mount();
 
     void this.refreshNetworkBarometerWidget();
-    this._intervalNetworkBarometer = setInterval(
-      () => this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err)),
-      POLL_NETWORK_BAROMETER_MS
-    );
+    this._intervalNetworkBarometer = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
+      this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err));
+    }, POLL_NETWORK_BAROMETER_MS);
 
-    document.addEventListener('open-national-health', () => {
+    this.addGlobalListener(document, 'open-national-health', () => {
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
@@ -2432,7 +2549,7 @@ export class App {
       }
     });
 
-    document.addEventListener('open-health-barometer', () => {
+    this.addGlobalListener(document, 'open-health-barometer', () => {
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
@@ -2458,12 +2575,12 @@ export class App {
     });
 
     // France Intelligence Panel — open on sidebar button click or map click
-    document.addEventListener('open-france-intel', () => {
+    this.addGlobalListener(document, 'open-france-intel', () => {
       void this.openFranceIntelPanel();
     });
 
     // Handle lang toggle from panel header button
-    document.addEventListener('france-intel-lang-toggle', (e: Event) => {
+    this.addGlobalListener(document, 'france-intel-lang-toggle', (e: Event) => {
       const { lang } = (e as CustomEvent<{ lang: 'fr' | 'en' }>).detail;
       const snapshot = this.buildFranceSnapshot(lang);
       this.franceIntelPanel?.show(snapshot);
@@ -2551,7 +2668,7 @@ export class App {
     this.cyberPanel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
     this.cyberPanel.mount();
 
-    document.addEventListener('open-cyber-panel', () => {
+    this.addGlobalListener(document, 'open-cyber-panel', () => {
       if (!this.currentCyberData) void this.loadCyber();
       this.cyberPanel?.show(this.currentCyberData);
     });
@@ -2657,7 +2774,8 @@ export class App {
     // Layer toggles now in header (UnifiedSettings modal)
 
     // ── Search Modal ──
-    document.addEventListener('keydown', (event) => {
+    this.addGlobalListener(document, 'keydown', (event) => {
+      if (!(event instanceof KeyboardEvent)) return;
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
         void this.ensureSearchModal().then((modal) => modal.show());
@@ -2686,7 +2804,7 @@ export class App {
     };
 
     void checkVersion();
-    this._intervalVersion = setInterval(() => {
+    this._intervalVersion = this.registerPausableInterval(() => {
       void checkVersion();
     }, VERSION_POLL_INTERVAL_MS);
   }
@@ -2762,7 +2880,14 @@ export class App {
     };
 
     requestAnimationFrame(syncCompactMode);
-    window.addEventListener('resize', syncCompactMode);
+    let resizeThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+    this.addGlobalListener(window, 'resize', () => {
+      if (resizeThrottleTimer !== null) return; // throttle ~200 ms (trailing)
+      resizeThrottleTimer = setTimeout(() => {
+        resizeThrottleTimer = null;
+        syncCompactMode();
+      }, 200);
+    });
 
     if (typeof ResizeObserver !== 'undefined') {
       const observer = new ResizeObserver(() => syncCompactMode());
@@ -3444,11 +3569,16 @@ export class App {
     // First fetch immediately
     this.fetchAndProcessRSS();
     // Poll every 5 min
-    this._intervalRSS = setInterval(() => this.fetchAndProcessRSS().catch(err => console.error('[App] RSS poll error', err)), RSS_POLL_INTERVAL_MS);
+    this._intervalRSS = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
+      this.fetchAndProcessRSS().catch(err => console.error('[App] RSS poll error', err));
+    }, RSS_POLL_INTERVAL_MS);
   }
 
   private startMilitaryPolling(): void {
     connectAis();
+    // Heavy analyses (surges + GPS jamming) run at most every 30 s; positions stay at 5 s.
+    let lastDetectionRun = 0;
     const fetchFlights = async () => {
       try {
         this.statusPanel?.updateSource('Vols militaires', {
@@ -3483,33 +3613,39 @@ export class App {
           error: undefined,
         });
 
-        // Detect and display military surges (WorldMonitor pattern)
-        const surges = detectMilitarySurges(
-          flights.map((f) => ({
-            latitude: f.latitude,
-            longitude: f.longitude,
-            aircraftType: f.aircraftType,
-            squawkAlert: f.squawkAlert,
-          }))
-        );
-        this.currentMilitarySurges = surges;
-        if (surges.length > 0) {
-          const emergencies = surges.filter((s) => s.type === 'emergency');
-          if (emergencies.length > 0) {
-            this.statusPanel?.updateSource('Vols militaires', {
-              status: 'error',
-              lastUpdate: new Date(),
-              detail,
-              error: emergencies[0].description,
-            });
-          }
-        }
+        // Heavy detections throttled to once per 30 s (positions refresh stays at 5 s)
+        const nowMs = Date.now();
+        if (nowMs - lastDetectionRun >= MILITARY_DETECTION_THROTTLE_MS) {
+          lastDetectionRun = nowMs;
 
-        // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
-        const jammingSignals = detectGpsJammingSignals(flights);
-        this.currentJammingSignals = jammingSignals;
-        this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
-        this.refreshFranceIntelPanel();
+          // Detect and display military surges (WorldMonitor pattern)
+          const surges = detectMilitarySurges(
+            flights.map((f) => ({
+              latitude: f.latitude,
+              longitude: f.longitude,
+              aircraftType: f.aircraftType,
+              squawkAlert: f.squawkAlert,
+            }))
+          );
+          this.currentMilitarySurges = surges;
+          if (surges.length > 0) {
+            const emergencies = surges.filter((s) => s.type === 'emergency');
+            if (emergencies.length > 0) {
+              this.statusPanel?.updateSource('Vols militaires', {
+                status: 'error',
+                lastUpdate: new Date(),
+                detail,
+                error: emergencies[0].description,
+              });
+            }
+          }
+
+          // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
+          const jammingSignals = detectGpsJammingSignals(flights);
+          this.currentJammingSignals = jammingSignals;
+          this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
+          this.refreshFranceIntelPanel();
+        }
       } catch (err) {
         console.error('[Military] Failed to fetch flights', err);
         this.currentMilitarySurges = [];
@@ -3525,7 +3661,11 @@ export class App {
     };
     fetchFlights();
     // ADS-B: refresh frequently enough to feel live without hammering sources.
-    this._intervalMilitaryFlights = setInterval(() => fetchFlights().catch(err => console.error('[App] Military flights poll error', err)), 5_000);
+    // Pausable: suspended while the tab is hidden, resumed with an immediate tick.
+    this._intervalMilitaryFlights = this.registerPausableInterval(
+      () => { fetchFlights().catch(err => console.error('[App] Military flights poll error', err)); },
+      5_000,
+    );
 
     // Ships: refresh map frequently; heavier cable analysis stays throttled below.
     const AIS_UI_REFRESH_MS = 5_000;
@@ -3662,7 +3802,10 @@ export class App {
     });
 
     updateShips();
-    this._intervalShips = setInterval(() => updateShips().catch(err => console.error('[App] Ships poll error', err)), AIS_UI_REFRESH_MS);
+    this._intervalShips = this.registerPausableInterval(
+      () => { updateShips().catch(err => console.error('[App] Ships poll error', err)); },
+      AIS_UI_REFRESH_MS,
+    );
   }
 
   /**
@@ -3731,8 +3874,12 @@ export class App {
       }
     };
     fetchFinance();
-    this._intervalFinance = setInterval(() => fetchFinance().catch(err => console.error('[App] Finance poll error', err)), POLL_FINANCE_MS);
+    this._intervalFinance = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
+      fetchFinance().catch(err => console.error('[App] Finance poll error', err));
+    }, POLL_FINANCE_MS);
     this._intervalNuclear = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       void this.loadNuclear();
     }, POLL_NUCLEAR_MS);
   }
@@ -3741,6 +3888,7 @@ export class App {
     if (this._intervalOil !== null) clearInterval(this._intervalOil);
 
     this._intervalOil = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       if (!this.activeLayers.oilNetwork) return;
       void this.loadOil();
     }, POLL_OIL_MS);
@@ -3756,10 +3904,10 @@ export class App {
       }
     };
     fetchCommodities();
-    this._intervalCommodities = setInterval(
-      () => fetchCommodities().catch(err => console.error('[App] Commodities poll error', err)),
-      POLL_COMMODITIES_MS,
-    );
+    this._intervalCommodities = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
+      fetchCommodities().catch(err => console.error('[App] Commodities poll error', err));
+    }, POLL_COMMODITIES_MS);
   }
 
   private startAirTrafficPolling(): void {
@@ -3784,7 +3932,7 @@ export class App {
     };
 
     void poll();
-    this._intervalAirTraffic = setInterval(() => {
+    this._intervalAirTraffic = this.registerPausableInterval(() => {
       poll().catch(err => console.error('[App] AirTraffic poll error', err));
     }, POLL_AIR_TRAFFIC_MS);
   }
@@ -3833,7 +3981,9 @@ export class App {
   }
 
   private applyNewsItems(items: NewsItem[]): void {
-    this.newsItems = [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    this.newsItems = [...items]
+      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .slice(0, MAX_NEWS_ITEMS);
     this.mapContainer?.updateNews(this.newsItems);
     this.newsPanel?.updateItems(this.newsItems);
     this.searchModal?.updateNewsItems(this.newsItems);
@@ -3872,12 +4022,19 @@ export class App {
     try {
       let updated = false;
       const itemsToAI = items.filter(it => !it.threat);
-      for (const item of itemsToAI) {
-        const aiFallback = await classifyWithAI(item.title, item.summary);
-        if (aiFallback) {
-          item.threat = aiFallback;
-          updated = true;
-        }
+      for (let i = 0; i < itemsToAI.length; i += AI_CLASSIFY_BATCH_SIZE) {
+        // Abort if a newer RSS request superseded this one
+        if (requestId !== this.rssRequestSeq) return;
+        const batch = itemsToAI.slice(i, i + AI_CLASSIFY_BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (item) => {
+            const aiFallback = await classifyWithAI(item.title, item.summary);
+            if (aiFallback) {
+              item.threat = aiFallback;
+              updated = true;
+            }
+          }),
+        );
       }
       if (updated) {
         this.publishAugmentedItemsIfCurrent(items, requestId);
@@ -3899,7 +4056,15 @@ export class App {
         let batchUpdated = false;
         await Promise.all(
           batch.map(async (item) => {
-            const geo = await geocodeNewsItem(item.title, item.feedRegion);
+            // Session-level dedup: identical title+region pairs are geocoded once
+            const cacheKey = `${item.title}|${item.feedRegion ?? ''}`;
+            let geo: Awaited<ReturnType<typeof geocodeNewsItem>>;
+            if (geocodeSessionCache.has(cacheKey)) {
+              geo = geocodeSessionCache.get(cacheKey) ?? null;
+            } else {
+              geo = await geocodeNewsItem(item.title, item.feedRegion);
+              geocodeSessionCache.set(cacheKey, geo);
+            }
             if (geo) {
               item.lat = geo.lat;
               item.lon = geo.lon;
@@ -3915,7 +4080,7 @@ export class App {
 
         // Small delay between batches
         if (i + BATCH_SIZE < toGeocode.length) {
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, GEOCODE_BATCH_DELAY_MS));
         }
       }
     } catch (err) {
@@ -3971,7 +4136,7 @@ export class App {
         }
 
         if (i + BATCH_SIZE < toSummarize.length) {
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, SUMMARIZE_BATCH_DELAY_MS));
         }
       }
     } catch (err) {
@@ -4884,6 +5049,7 @@ export class App {
 
   private startSncfPolling(): void {
     this._intervalSncf = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       if (!this.activeLayers.trafficRail || this.sncfFullCoverageLoaded) return;
       this.loadSncf().catch((error) => {
         console.warn('[App] SNCF poll error', error);
@@ -5129,6 +5295,7 @@ export class App {
     if (this._intervalHealth !== null) clearInterval(this._intervalHealth);
 
     this._intervalHealth = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       const isHealthContextActive =
         this.activeLayers.health ||
         this.activeLayers.healthHantavirus ||
@@ -5182,6 +5349,7 @@ export class App {
     };
 
     this._intervalHydraulic = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       poll().catch((err) => console.error('[App] Hydraulic poll error', err));
     }, POLL_HYDRAULIC_MS);
   }
@@ -5194,6 +5362,7 @@ export class App {
     let radarInFlight = false;
 
     this._intervalWeather = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       if (weatherInFlight) return;
       weatherInFlight = true;
       this.loadWeather()
@@ -5204,6 +5373,7 @@ export class App {
     }, POLL_WEATHER_VIGILANCE_MS);
 
     this._intervalWeatherRadar = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       if (!this.activeLayers.weatherRadar) return;
       if (radarInFlight) return;
       radarInFlight = true;
@@ -5239,6 +5409,7 @@ export class App {
     if (this._intervalInfraNetwork !== null) clearInterval(this._intervalInfraNetwork);
 
     this._intervalInfraNetwork = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       this.refreshInfraNetworkLive(true).catch((err) => console.error('[App] Infra network poll error', err));
     }, POLL_INFRA_NETWORK_MS);
   }
@@ -5267,6 +5438,7 @@ export class App {
     };
 
     this._intervalEolien = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       poll().catch((err) => console.error('[App] Eolien poll error', err));
     }, POLL_EOLIEN_MS);
   }
@@ -5473,10 +5645,8 @@ export class App {
 
     // Terminator jour/nuit — calcul astronomique pur, instantané
     this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
-    if (this._intervalSpaceWeatherTerminator !== null) {
-      clearInterval(this._intervalSpaceWeatherTerminator);
-    }
-    this._intervalSpaceWeatherTerminator = setInterval(() => {
+    this.removePausableInterval(this._intervalSpaceWeatherTerminator);
+    this._intervalSpaceWeatherTerminator = this.registerPausableInterval(() => {
       this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
     }, POLL_SPACE_WEATHER_TERMINATOR_MS);
 
@@ -5490,6 +5660,7 @@ export class App {
       clearInterval(this._intervalSpaceWeatherRefresh);
     }
     this._intervalSpaceWeatherRefresh = setInterval(async () => {
+      if (document.hidden) return; // skip tick while tab is hidden
       const fresh = await fetchSpaceWeather().catch(() => null);
       if (fresh) this.energyPanel?.updateSpaceWeather(fresh);
     }, POLL_SPACE_WEATHER_REFRESH_MS);
@@ -5869,6 +6040,7 @@ export class App {
   private scheduleFranceIntelBriefRefresh(): void {
     this.clearFranceIntelBriefRefresh();
     this.franceIntelBriefRefreshTimer = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
       if (!this.franceIntelPanel?.isVisible()) return;
       const lang = this.franceIntelPanel.getCurrentLang();
       const snapshot = this.buildFranceSnapshot(lang);
@@ -5954,6 +6126,6 @@ export class App {
       });
     };
     update();
-    this._intervalClock = setInterval(update, 1000);
+    this._intervalClock = this.registerPausableInterval(update, 1000);
   }
 }

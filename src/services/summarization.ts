@@ -5,32 +5,42 @@
  * 3. Browser T5 (@huggingface/transformers) -> ultimate local fallback
  */
 
-const worker = new Worker(new URL('./summarization-worker.ts', import.meta.url), { type: 'module' });
-
 let messageId = 0;
 type SummarizationPending = { resolve: (val: string) => void; reject: (err: Error) => void };
 const pendingRequests = new Map<number, SummarizationPending>();
 const inFlightSummaries = new Map<string, Promise<string | undefined>>();
 
-worker.addEventListener('message', (event) => {
-    const { id, result, error } = event.data;
-    const pending = pendingRequests.get(id);
-    if (!pending) return;
-    pendingRequests.delete(id);
+// TTL de sécurité : si une promesse ne se résout jamais, l'entrée est purgée après 60s.
+const IN_FLIGHT_TTL_MS = 60_000;
 
-    if (error) {
-        pending.reject(new Error(error));
-    } else {
-        pending.resolve(result);
-    }
-});
+// Worker lazy : créé uniquement au premier fallback T5 pour éviter de charger
+// Transformers.js (+ WASM onnxruntime) au boot de l'application.
+let worker: Worker | null = null;
+
+function getWorker(): Worker {
+    if (worker) return worker;
+    worker = new Worker(new URL('./summarization-worker.ts', import.meta.url), { type: 'module' });
+    worker.addEventListener('message', (event) => {
+        const { id, result, error } = event.data;
+        const pending = pendingRequests.get(id);
+        if (!pending) return;
+        pendingRequests.delete(id);
+
+        if (error) {
+            pending.reject(new Error(error));
+        } else {
+            pending.resolve(result);
+        }
+    });
+    return worker;
+}
 
 function summarizeT5(text: string): Promise<string> {
     const id = messageId++;
     const promise = new Promise<string>((resolve, reject) => {
         pendingRequests.set(id, { resolve, reject });
     });
-    worker.postMessage({ id, text });
+    getWorker().postMessage({ id, text });
     return promise;
 }
 
@@ -48,11 +58,23 @@ export async function summarizeWithFallback(text: string): Promise<string | unde
     const existing = inFlightSummaries.get(cacheKey);
     if (existing) return existing;
 
-    const promise = summarizeWithFallbackUncached(cleanText)
+    let ttlTimer: ReturnType<typeof setTimeout> | undefined;
+    const promise: Promise<string | undefined> = summarizeWithFallbackUncached(cleanText)
         .finally(() => {
-            inFlightSummaries.delete(cacheKey);
+            if (ttlTimer !== undefined) clearTimeout(ttlTimer);
+            if (inFlightSummaries.get(cacheKey) === promise) {
+                inFlightSummaries.delete(cacheKey);
+            }
         });
     inFlightSummaries.set(cacheKey, promise);
+
+    // TTL de sécurité : purge l'entrée même si la promesse ne se résout jamais.
+    ttlTimer = setTimeout(() => {
+        if (inFlightSummaries.get(cacheKey) === promise) {
+            inFlightSummaries.delete(cacheKey);
+        }
+    }, IN_FLIGHT_TTL_MS);
+
     return promise;
 }
 

@@ -1726,6 +1726,17 @@ export class DeckGLMap {
   private threatClusterIndex: Supercluster<any, any> | null = null;
   private lastClusterCount: number = 0;
   private clusterHideTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Memoization of getThreatMapData() (invalidated on events change / zoom / bounds change)
+  private threatMapDataCache: ThreatMapDatum[] | null = null;
+  private threatMapDataCacheKey: string | null = null;
+  // Hash of the last threat events set — skips Supercluster rebuild when unchanged
+  private threatEventsHash: string | null = null;
+  // Batching of deckOverlay.setProps + triggerRepaint via requestAnimationFrame
+  private pendingOverlayUpdate = false;
+  // Throttle for cluster hover leaves fetching (~100ms)
+  private clusterLeavesHoverTimeout: ReturnType<typeof setTimeout> | null = null;
+  // Hash of the last news items pushed to the news sources — skips redundant setData
+  private lastNewsSourceHash: string | null = null;
 
   // Pulse overlay for critical/high alerts
   private pulseOverlay: HTMLElement | null = null;
@@ -5034,27 +5045,38 @@ export class DeckGLMap {
           const clusterId = clusterFeats[0].properties?.cluster_id as number | undefined;
           const pointCount = clusterFeats[0].properties?.point_count as number | undefined;
 
-          // Fetch leaves if cluster changed
+          // Fetch leaves if cluster changed — throttled (~100ms) so rapid
+          // mousemove across clusters doesn't spam getClusterLeaves().
           if (clusterId != null && clusterId !== this.hoveredClusterId) {
             this.hoveredClusterId = clusterId;
-            const src = this.map.getSource(SRC) as maplibregl.GeoJSONSource;
+            if (this.clusterLeavesHoverTimeout) {
+              clearTimeout(this.clusterLeavesHoverTimeout);
+            }
+            const hoverX = e.point.x;
+            const hoverY = e.point.y;
+            this.clusterLeavesHoverTimeout = setTimeout(() => {
+              this.clusterLeavesHoverTimeout = null;
+              // Only fetch if this cluster is still the hovered one
+              if (!this.map || this.hoveredClusterId !== clusterId) return;
+              const src = this.map.getSource(SRC) as maplibregl.GeoJSONSource;
 
-            // Get cluster leaves (up to 20 items for preview)
-            src.getClusterLeaves(clusterId, 20, 0).then((leaves) => {
-              if (!this.onClusterHover) return;
-              const items: NewsItem[] = [];
-              for (const leaf of leaves) {
-                const leafItemId = leaf.properties?.itemId as string | undefined;
-                if (leafItemId) {
-                  const item = this.itemsById.get(leafItemId);
-                  if (item) items.push(item);
+              // Get cluster leaves (up to 20 items for preview)
+              src.getClusterLeaves(clusterId, 20, 0).then((leaves) => {
+                if (!this.onClusterHover || this.hoveredClusterId !== clusterId) return;
+                const items: NewsItem[] = [];
+                for (const leaf of leaves) {
+                  const leafItemId = leaf.properties?.itemId as string | undefined;
+                  if (leafItemId) {
+                    const item = this.itemsById.get(leafItemId);
+                    if (item) items.push(item);
+                  }
                 }
-              }
-              // Cache items for re-use when same cluster
-              this.lastClusterItems = items;
-              this.lastClusterCount = pointCount ?? items.length;
-              this.onClusterHover(items, e.point.x, e.point.y, this.lastClusterCount);
-            }).catch(() => { /* ignore */ });
+                // Cache items for re-use when same cluster
+                this.lastClusterItems = items;
+                this.lastClusterCount = pointCount ?? items.length;
+                this.onClusterHover(items, hoverX, hoverY, this.lastClusterCount);
+              }).catch(() => { /* ignore */ });
+            }, 100);
           } else if (this.lastClusterItems.length > 0 && this.onClusterHover) {
             // Same cluster - update position only with cached items
             this.onClusterHover(this.lastClusterItems, e.point.x, e.point.y, this.lastClusterCount);
@@ -7165,8 +7187,7 @@ export class DeckGLMap {
       };
       this.syncTrafficIncidentSource();
       if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
-        this.deckOverlay.setProps({ layers: this.buildAisLayers() });
-        this.map.triggerRepaint();
+        this.scheduleOverlayUpdate();
       }
       this.onViewChange?.(this.viewState);
     });
@@ -7540,6 +7561,24 @@ export class DeckGLMap {
     this.map?.triggerRepaint();
   }
 
+  /**
+   * Batched variant of refreshAisLayers(): coalesces multiple overlay updates
+   * within the same frame into a single setProps + triggerRepaint via
+   * requestAnimationFrame. Use this for high-frequency callers (moveend,
+   * data refreshes, layer toggles); use refreshAisLayers() when an immediate
+   * synchronous render is required (e.g. first render).
+   */
+  private scheduleOverlayUpdate(): void {
+    if (!this.deckOverlay || this.pendingOverlayUpdate) return;
+    this.pendingOverlayUpdate = true;
+    requestAnimationFrame(() => {
+      this.pendingOverlayUpdate = false;
+      if (!this.deckOverlay) return;
+      this.deckOverlay.setProps({ layers: this.buildAisLayers() });
+      this.map?.triggerRepaint();
+    });
+  }
+
   private getThreatSeverityRank(severity: ThreatEvent['severity']): number {
     if (severity === 'critical') return 4;
     if (severity === 'high') return 3;
@@ -7644,6 +7683,12 @@ export class DeckGLMap {
     this.threatClusterIndex.load(features);
   }
 
+  /** Invalidate the memoized threat map data (call whenever threat events change). */
+  private invalidateThreatMapDataCache(): void {
+    this.threatMapDataCache = null;
+    this.threatMapDataCacheKey = null;
+  }
+
   private getThreatMapData(): ThreatMapDatum[] {
     if (!this.map || !this.threatClusterIndex) {
       const displayCoordinates = this.buildThreatDisplayCoordinates();
@@ -7657,13 +7702,27 @@ export class DeckGLMap {
 
     const bounds = this.map.getBounds();
     const zoom = Math.floor(this.map.getZoom());
+
+    // Memoization: the result only depends on the threat events (cache invalidated in
+    // updateThreatEvents), the integer zoom level and the visible bounds.
+    const cacheKey = [
+      zoom,
+      bounds.getWest().toFixed(3),
+      bounds.getSouth().toFixed(3),
+      bounds.getEast().toFixed(3),
+      bounds.getNorth().toFixed(3),
+    ].join('|');
+    if (this.threatMapDataCache && this.threatMapDataCacheKey === cacheKey) {
+      return this.threatMapDataCache;
+    }
+
     const displayCoordinates = this.buildThreatDisplayCoordinates();
     const clusters = this.threatClusterIndex.getClusters(
       [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
       zoom,
     );
 
-    return clusters.map((feature: any): ThreatMapDatum => {
+    const data = clusters.map((feature: any): ThreatMapDatum => {
       const coordinates = feature.geometry.coordinates as [number, number];
       if (feature.properties?.cluster) {
         const clusterId = Number(feature.properties.cluster_id);
@@ -7685,6 +7744,10 @@ export class DeckGLMap {
         severity: event.severity,
       };
     });
+
+    this.threatMapDataCache = data;
+    this.threatMapDataCacheKey = cacheKey;
+    return data;
   }
 
   private getAirTrafficColorHex(flight: AirTrafficFlight): string {
@@ -9762,16 +9825,21 @@ export class DeckGLMap {
     if (!this.map) return;
 
     const zoom = this.map.getZoom();
+    const bounds = this.map.getBounds();
+    const layerVisible = (this.currentLayers?.news ?? true) && zoom >= 10;
 
     for (const [id, marker] of this.pulseMarkers) {
       const item = this.itemsById.get(id);
       if (item && item.lon != null && item.lat != null) {
+        // Skip projecting markers that are hidden or outside the viewport
+        if (!layerVisible || !bounds.contains([item.lon, item.lat])) {
+          marker.style.display = 'none';
+          continue;
+        }
         const pos = this.map.project([item.lon, item.lat]);
         marker.style.left = `${pos.x}px`;
         marker.style.top = `${pos.y}px`;
-        // Hide when zoomed out (clustered area)
-        const isVisible = (this.currentLayers?.news ?? true) && zoom >= 10;
-        marker.style.display = isVisible ? 'block' : 'none';
+        marker.style.display = 'block';
       }
     }
   }
@@ -10020,12 +10088,22 @@ export class DeckGLMap {
 
   /** Update the threat events data and trigger a map re-render. */
   updateThreatEvents(events: ThreatEvent[]): void {
-    this.threatEvents = events;
-    this.rebuildThreatClusterIndex();
-    if (this.deckOverlay) {
-      this.deckOverlay.setProps({ layers: this.buildAisLayers() });
-      this.map?.triggerRepaint();
+    // Cheap diff: skip the Supercluster rebuild + overlay update when the
+    // event set is identical (same ids / severities / dates / coordinates).
+    const hash = events
+      .map((e) => `${e.id}:${e.date}:${e.severity}:${e.location.coordinates[0]},${e.location.coordinates[1]}`)
+      .sort()
+      .join('|');
+    if (hash === this.threatEventsHash) {
+      this.threatEvents = events;
+      return;
     }
+    this.threatEventsHash = hash;
+
+    this.threatEvents = events;
+    this.invalidateThreatMapDataCache();
+    this.rebuildThreatClusterIndex();
+    this.scheduleOverlayUpdate();
   }
 
   project(longitude: number, latitude: number): { x: number; y: number } | null {
@@ -11243,9 +11321,9 @@ export class DeckGLMap {
     const summariesByCode = new Map(dashboard.summaries.map((summary) => [summary.departmentCode, summary]));
 
     try {
-      const resp = await fetch('/data/departements.geojson');
-      if (!resp.ok) return;
-      const geojson = await resp.json() as GeoJSON.FeatureCollection;
+      const baseGeojson = await this.getDepartmentsGeojson();
+      if (!baseGeojson) return;
+      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
       geojson.features = geojson.features.filter((feature) => {
         const code = String(feature.properties?.code ?? '');
         return summariesByCode.has(code);
@@ -11413,9 +11491,9 @@ export class DeckGLMap {
         const deptMap = new Map<string, HealthDepartmentMetric>();
         for (const d of departments!) deptMap.set(d.depCode, d);
 
-        const resp = await fetch('/data/departements.geojson');
-        if (!resp.ok) return;
-        const geojson = await resp.json() as GeoJSON.FeatureCollection;
+        const baseGeojson = await this.getDepartmentsGeojson();
+        if (!baseGeojson) return;
+        const geojson = this.cloneDepartmentsGeojson(baseGeojson);
 
         for (const feature of geojson.features) {
           const code = String(feature.properties?.code ?? '');
@@ -11546,9 +11624,9 @@ export class DeckGLMap {
     for (const s of scores) scoresByCode.set(s.code, s);
 
     try {
-      const resp = await fetch('/data/departements.geojson');
-      if (!resp.ok) return;
-      const geojson = await resp.json() as GeoJSON.FeatureCollection;
+      const baseGeojson = await this.getDepartmentsGeojson();
+      if (!baseGeojson) return;
+      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
 
       // Include all departments, color by score (default stable if no score)
       for (let i = 0; i < geojson.features.length; i++) {
@@ -11761,9 +11839,9 @@ export class DeckGLMap {
     for (const p of powers) powersByCode.set(p.departmentCode, p);
 
     try {
-      const resp = await fetch('/data/departements.geojson');
-      if (!resp.ok) return;
-      const geojson = await resp.json() as GeoJSON.FeatureCollection;
+      const baseGeojson = await this.getDepartmentsGeojson();
+      if (!baseGeojson) return;
+      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
 
       // Filter to departments with actual measured outages only (map layer)
       // Departments with only Ecowatt risk signal (offGridCount=0) are shown in the panel but NOT on the map
@@ -11798,7 +11876,7 @@ export class DeckGLMap {
       powerSrc?.setData(geojson);
 
       // Tension departments (Ecowatt signal, 0 PDL) — outline only, no fill
-      const tensionGeojson = await fetch('/data/departements.geojson').then(r => r.json()) as GeoJSON.FeatureCollection;
+      const tensionGeojson = this.cloneDepartmentsGeojson(baseGeojson);
       tensionGeojson.features = tensionGeojson.features
         .filter(f => {
           const code = (f.properties?.code as string) ?? '';
@@ -13588,9 +13666,7 @@ export class DeckGLMap {
     const threatMapEnabled = layers.threatMap ?? false;
     if (this.threatEventsVisible !== threatMapEnabled) {
       this.threatEventsVisible = threatMapEnabled;
-      if (this.deckOverlay) {
-        this.deckOverlay.setProps({ layers: this.buildAisLayers() });
-      }
+      this.scheduleOverlayUpdate();
     }
   }
 
@@ -13712,6 +13788,20 @@ export class DeckGLMap {
   private syncNewsSource(): void {
     if (!this.map) return;
 
+    // Cheap diff: skip the feature rebuild + setData when the news set is
+    // unchanged (same ids / levels / categories / flags / coordinates).
+    const hash = this.newsItems
+      .map((item) =>
+        `${item.id}:${item.threat?.level ?? ''}:${item.threat?.category ?? ''}:${item.isAlert ? 1 : 0}:${item.lon},${item.lat}`)
+      .join('|');
+
+    const src = this.map.getSource(SRC) as maplibregl.GeoJSONSource | undefined;
+    const criticalSrc = this.map.getSource(SRC_CRITICAL) as maplibregl.GeoJSONSource | undefined;
+
+    // Only honour the cached hash when both sources exist; otherwise the data
+    // was never applied and must be retried on the next call.
+    if (src && criticalSrc && hash === this.lastNewsSourceHash) return;
+
     // Separate critical items (never clustered) from others
     const criticalItems = this.newsItems.filter(
       (item) => item.threat?.level === 'critical'
@@ -13733,7 +13823,6 @@ export class DeckGLMap {
     });
 
     // Update main source (clusterable, excludes critical)
-    const src = this.map.getSource(SRC) as maplibregl.GeoJSONSource | undefined;
     if (src) {
       src.setData({
         type: 'FeatureCollection',
@@ -13742,12 +13831,16 @@ export class DeckGLMap {
     }
 
     // Update critical source (never clustered)
-    const criticalSrc = this.map.getSource(SRC_CRITICAL) as maplibregl.GeoJSONSource | undefined;
     if (criticalSrc) {
       criticalSrc.setData({
         type: 'FeatureCollection',
         features: criticalItems.map(toFeature),
       });
+    }
+
+    // Record the hash only once both sources actually received the data
+    if (src && criticalSrc) {
+      this.lastNewsSourceHash = hash;
     }
   }
 
@@ -13756,6 +13849,10 @@ export class DeckGLMap {
     if (this.clusterHideTimeout) {
       clearTimeout(this.clusterHideTimeout);
       this.clusterHideTimeout = null;
+    }
+    if (this.clusterLeavesHoverTimeout) {
+      clearTimeout(this.clusterLeavesHoverTimeout);
+      this.clusterLeavesHoverTimeout = null;
     }
 
     // Cleanup pulse overlay

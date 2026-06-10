@@ -6,9 +6,9 @@
 
 import type { NewsItem } from '../types/index.ts';
 
-const CACHE_KEY = 'fm_news_cache_v2';
-const LEGACY_CACHE_KEYS = ['fm_news_cache'];
-const CACHE_MAX_AGE = 60 * 60_000; // 1 heure max
+const CACHE_KEY = 'fm_news_cache_v3';
+const LEGACY_CACHE_KEYS = ['fm_news_cache', 'fm_news_cache_v2'];
+const CACHE_MAX_AGE = 30 * 60_000; // 30 min max (harmonisé avec le cache mémoire rss.ts)
 
 interface CachedNews {
     items: Array<{

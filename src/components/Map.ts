@@ -4,9 +4,11 @@
  * SVG avec contours départements + points homogènes colorés par niveau.
  */
 
-import * as d3 from 'd3';
+import { geoMercator, geoPath } from 'd3-geo';
+import type { GeoPath, GeoPermissibleObjects, GeoProjection } from 'd3-geo';
+import { select } from 'd3-selection';
+import type { Selection } from 'd3-selection';
 import type { FuelTensionDashboard, NewsItem } from '../types/index.ts';
-import type { GeoPermissibleObjects } from 'd3';
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 
 // Couleurs par niveau de menace (identiques à DeckGLMap)
@@ -20,8 +22,8 @@ const LEVEL_COLORS: Record<string, string> = {
 
 export class Map {
     private container: HTMLElement;
-    private svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
-    private projection: d3.GeoProjection | null = null;
+    private svg: Selection<SVGSVGElement, unknown, null, undefined> | null = null;
+    private projection: GeoProjection | null = null;
     private newsItems: NewsItem[] = [];
     private selectedId: string | null = null;
     private currentFuelTension: FuelTensionDashboard | null = null;
@@ -39,17 +41,15 @@ export class Map {
         const height = this.container.clientHeight || 600;
 
         // ─── Projection centrée France ───
-        this.projection = d3
-            .geoMercator()
+        this.projection = geoMercator()
             .center([2.2, 46.6])
             .scale(Math.min(width, height) * 2.8)
             .translate([width / 2, height / 2]);
 
-        const pathGen = d3.geoPath().projection(this.projection);
+        const pathGen = geoPath().projection(this.projection);
 
         // ─── SVG ───
-        this.svg = d3
-            .select(this.container)
+        this.svg = select(this.container)
             .append('svg')
             .attr('width', width)
             .attr('height', height)
@@ -192,7 +192,7 @@ export class Map {
         // Pulse animation for critical/high
         all.filter((d) => d.threat?.level === 'critical' || d.threat?.level === 'high')
             .each(function (this: SVGCircleElement) {
-                d3.select(this).raise();
+                select(this).raise();
             });
 
         // Exit
@@ -230,8 +230,8 @@ export class Map {
 
     /** Placeholder quand GeoJSON absent — rectangle bleu pour la France */
     private drawFrancePlaceholder(
-        g: d3.Selection<SVGGElement, unknown, null, undefined>,
-        _pathGen: d3.GeoPath,
+        g: Selection<SVGGElement, unknown, null, undefined>,
+        _pathGen: GeoPath,
         width: number,
         height: number,
     ): void {

@@ -7,9 +7,6 @@
 import type { ThreatClassification, EventCategory, ThreatLevel } from '../types/index.ts';
 import { isFaitDiversNoise } from './classifier.ts';
 
-// Initialisation du Worker via Vite
-const worker = new Worker(new URL('./ai-worker.ts', import.meta.url), { type: 'module' });
-
 let messageId = 0;
 interface AiClassifierResult {
     labels: string[];
@@ -18,18 +15,27 @@ interface AiClassifierResult {
 type AiClassifierPending = { resolve: (val: AiClassifierResult) => void; reject: (err: Error) => void };
 const pendingRequests = new Map<number, AiClassifierPending>();
 
-worker.addEventListener('message', (event) => {
-    const { id, result, error } = event.data;
-    const pending = pendingRequests.get(id);
-    if (!pending) return;
-    pendingRequests.delete(id);
+// Worker lazy : créé uniquement au premier appel de classifyWithAI pour éviter
+// de télécharger Transformers.js (+ WASM onnxruntime) au boot de l'application.
+let worker: Worker | null = null;
 
-    if (error) {
-        pending.reject(new Error(error));
-    } else {
-        pending.resolve(result);
-    }
-});
+function getWorker(): Worker {
+    if (worker) return worker;
+    worker = new Worker(new URL('./ai-worker.ts', import.meta.url), { type: 'module' });
+    worker.addEventListener('message', (event) => {
+        const { id, result, error } = event.data;
+        const pending = pendingRequests.get(id);
+        if (!pending) return;
+        pendingRequests.delete(id);
+
+        if (error) {
+            pending.reject(new Error(error));
+        } else {
+            pending.resolve(result);
+        }
+    });
+    return worker;
+}
 
 // Categories for zero-shot classification (in French for better results)
 const CANDIDATE_LABELS = [
@@ -57,10 +63,31 @@ const LABEL_TO_CATEGORY: Record<string, EventCategory> = {
     'général': 'general',
 };
 
+// ─── Cache mémoire de classification (déduplication) ───
+const CLASSIFY_CACHE_MAX = 300;
+const classifyCache = new Map<string, Promise<ThreatClassification | undefined>>();
+
 /**
  * Classify a news item using Transformers.js via Web Worker.
+ * Les classifications identiques (title|summary) sont dédupliquées via un cache mémoire.
  */
-export async function classifyWithAI(title: string, summary?: string): Promise<ThreatClassification | undefined> {
+export function classifyWithAI(title: string, summary?: string): Promise<ThreatClassification | undefined> {
+    const cacheKey = `${title}|${summary ?? ''}`.slice(0, 200);
+    const cached = classifyCache.get(cacheKey);
+    if (cached) return cached;
+
+    const promise = classifyWithAIUncached(title, summary);
+
+    if (classifyCache.size >= CLASSIFY_CACHE_MAX) {
+        // Éviction simple : supprimer l'entrée la plus ancienne
+        const oldestKey = classifyCache.keys().next().value;
+        if (oldestKey !== undefined) classifyCache.delete(oldestKey);
+    }
+    classifyCache.set(cacheKey, promise);
+    return promise;
+}
+
+async function classifyWithAIUncached(title: string, summary?: string): Promise<ThreatClassification | undefined> {
     try {
         const text = summary ? `${title}. ${summary}` : title;
 
@@ -69,7 +96,7 @@ export async function classifyWithAI(title: string, summary?: string): Promise<T
             pendingRequests.set(id, { resolve, reject: (err: unknown) => reject(err instanceof Error ? err : new Error(String(err))) });
         });
 
-        worker.postMessage({ id, text, labels: CANDIDATE_LABELS });
+        getWorker().postMessage({ id, text, labels: CANDIDATE_LABELS });
 
         const result = await promise;
 
