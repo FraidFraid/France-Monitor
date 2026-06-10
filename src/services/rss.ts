@@ -9,7 +9,7 @@
  * via `VITE_USE_LOCAL_RSS_PROXY=true`.
  */
 
-import type { NewsItem, Feed } from '../types/index.ts';
+import type { NewsItem, Feed, ThreatClassification, ThreatLevel, EventCategory } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 
 // ── Watchdog registration ──
@@ -282,6 +282,116 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
     return { items, sourceFormat };
 }
 
+// ─── Ingestion API consolidée (/api/news) ───
+
+interface IngestApiItem {
+    id?: number;
+    feedId?: string;
+    feedName?: string | null;
+    feedRegion?: string | null;
+    tier?: number | null;
+    title?: string;
+    link?: string;
+    description?: string | null;
+    publishedAt?: string | null;
+    collectedAt?: string;
+    category?: string | null;
+    severity?: string | null;
+    confidence?: number | null;
+    lat?: number | null;
+    lon?: number | null;
+}
+
+interface IngestApiResponse {
+    items?: IngestApiItem[];
+    count?: number;
+    generatedAt?: string;
+}
+
+const THREAT_LEVELS: ReadonlySet<string> = new Set<ThreatLevel>(['critical', 'high', 'medium', 'low', 'info']);
+const EVENT_CATEGORIES: ReadonlySet<string> = new Set<EventCategory>([
+    'social', 'security', 'energy', 'weather', 'transport', 'infrastructure',
+    'health', 'general', 'finance', 'floods', 'fires', 'cyber',
+]);
+
+function isThreatLevel(value: string): value is ThreatLevel {
+    return THREAT_LEVELS.has(value);
+}
+
+function isEventCategory(value: string): value is EventCategory {
+    return EVENT_CATEGORIES.has(value);
+}
+
+/**
+ * Construit la classification d'un item serveur déjà classifié.
+ * Retourne undefined si category/severity manquants ou hors vocabulaire
+ * (→ App.ts re-classifiera via le pipeline keyword habituel).
+ */
+function buildServerClassification(item: IngestApiItem): ThreatClassification | undefined {
+    const category = typeof item.category === 'string' ? item.category : '';
+    const severity = typeof item.severity === 'string' ? item.severity : '';
+    if (!isEventCategory(category) || !isThreatLevel(severity)) return undefined;
+    return {
+        level: severity,
+        category,
+        confidence: typeof item.confidence === 'number' ? item.confidence : 0.8,
+        source: 'keyword', // classification produite côté serveur (pipeline keyword)
+    };
+}
+
+function mapIngestItem(raw: IngestApiItem): NewsItem | null {
+    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    const link = typeof raw.link === 'string' ? raw.link.trim() : '';
+    if (!title || !link) return null;
+
+    const dateStr = raw.publishedAt ?? raw.collectedAt ?? '';
+    const pubDate = dateStr ? new Date(dateStr) : new Date();
+    if (isNaN(pubDate.getTime())) return null;
+
+    const hasCoords = typeof raw.lat === 'number' && typeof raw.lon === 'number';
+
+    return {
+        id: `rss-${hashString(link)}`,
+        source: raw.feedName ?? raw.feedId ?? 'Ingest',
+        title,
+        link,
+        pubDate,
+        isAlert: false,
+        tier: typeof raw.tier === 'number' ? raw.tier : undefined,
+        feedRegion: raw.feedRegion ?? undefined,
+        summary: typeof raw.description === 'string' ? raw.description.slice(0, 200) || undefined : undefined,
+        threat: buildServerClassification(raw),
+        lat: hasCoords && typeof raw.lat === 'number' ? raw.lat : undefined,
+        lon: hasCoords && typeof raw.lon === 'number' ? raw.lon : undefined,
+    };
+}
+
+/**
+ * Tente le chemin consolidé /api/news (items déjà classifiés + géocodés serveur).
+ * Retourne null (sans jeter) si l'API est indisponible (503, 404 dev sans plugin,
+ * timeout, payload invalide ou vide) → fallback vers le fetch direct des flux.
+ */
+export async function fetchFromIngestApi(): Promise<NewsItem[] | null> {
+    try {
+        const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+        const url = `/api/news?since=${encodeURIComponent(since)}&limit=1000`;
+        const resp = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+        if (resp.status !== 200) return null;
+
+        const payload = await resp.json() as IngestApiResponse;
+        if (!Array.isArray(payload.items) || payload.items.length === 0) return null;
+
+        const items: NewsItem[] = [];
+        for (const raw of payload.items) {
+            const item = mapIngestItem(raw);
+            if (item) items.push(item);
+        }
+        return items.length > 0 ? items : null;
+    } catch {
+        return null;
+    }
+}
+
 // ─── Public API ───
 
 /**
@@ -439,6 +549,25 @@ async function runWithConcurrency<T>(
  * Fetch all feeds (max 8 en parallèle), return merged + deduped items sorted by date.
  */
 export async function fetchAllFeeds(feeds: Feed[]): Promise<NewsItem[]> {
+    // ── Chemin principal : API d'ingestion consolidée (items classifiés + géocodés serveur) ──
+    const ingestT0 = Date.now();
+    const ingestItems = await fetchFromIngestApi();
+    if (ingestItems !== null) {
+        console.info('[rss] source: ingest-api');
+        const deduped: NewsItem[] = [];
+        const seen = new Set<string>();
+        for (const item of ingestItems) {
+            if (seen.has(item.link)) continue;
+            seen.add(item.link);
+            deduped.push(item);
+        }
+        deduped.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+        Watchdog.report('rss-pqr', { type: 'success', responseTimeMs: Date.now() - ingestT0 });
+        return deduped;
+    }
+
+    // ── Mode dégradé : fetch direct des flux individuels (comportement historique) ──
+    console.info('[rss] source: direct-feeds');
     const results = await runWithConcurrency(
         feeds.map((feed) => () => fetchFeed(feed)),
         MAX_CONCURRENT_FEEDS,

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Fixture RSS FranceMonitor</title>
+    <link>https://example.fr</link>
+    <item>
+      <title><![CDATA[Attentat déjoué à Paris : trois interpellations]]></title>
+      <link>https://example.fr/articles/attentat-dejoue-paris</link>
+      <pubDate>Tue, 09 Jun 2026 08:15:00 +0200</pubDate>
+      <description><![CDATA[<p>La DGSI a annoncé l&amp;apos;arrestation de trois suspects &amp; la saisie de matériel.</p>]]></description>
+    </item>
+    <item>
+      <title>Grève SNCF : trafic perturbé en gare de Lyon</title>
+      <guid>https://example.fr/articles/greve-sncf-lyon</guid>
+      <dc:date>2026-06-09T10:30:00Z</dc:date>
+      <description>Le trafic TGV est fortement perturbé ce mardi &amp; mercredi.</description>
+    </item>
+    <item>
+      <title>Sans lien — doit être ignoré</title>
+      <description>Item invalide sans link ni guid.</description>
+    </item>
+  </channel>
+</rss>

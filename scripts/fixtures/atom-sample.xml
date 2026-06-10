@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Fixture Atom FranceMonitor</title>
+  <entry>
+    <title>Vigilance rouge orages dans le Gard</title>
+    <link href="https://example.fr/atom/vigilance-rouge-gard" rel="alternate"/>
+    <published>2026-06-09T06:00:00Z</published>
+    <summary>Météo-France place le Gard en vigilance rouge orages.</summary>
+  </entry>
+  <entry>
+    <title>Cyberattaque contre un CHU : données exfiltrées</title>
+    <id>https://example.fr/atom/cyberattaque-chu</id>
+    <updated>2026-06-09T07:45:00Z</updated>
+    <content type="html">&lt;p&gt;Une fuite de données touche un CHU.&lt;/p&gt;</content>
+  </entry>
+</feed>

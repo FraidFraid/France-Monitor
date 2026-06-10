@@ -1,9 +1,11 @@
 {
   "crons": [
-    { "path": "/api/fuel-price-series-refresh", "schedule": "0 */3 * * *" }
+    { "path": "/api/fuel-price-series-refresh", "schedule": "0 */3 * * *" },
+    { "path": "/api/ingest/news", "schedule": "*/5 * * * *" }
   ],
   "functions": {
     "api/fuel-price-series-refresh.js": { "maxDuration": 30 },
+    "api/ingest/news.ts": { "maxDuration": 300 },
     "api/finance/*.js":       { "maxDuration": 30 },
     "api/transport/*.js":     { "maxDuration": 30 },
     "api/threats.js":         { "maxDuration": 30 },
@@ -15,6 +17,9 @@
     { "source": "/api/rte-iip", "destination": "/api/rte-iip" },
     { "source": "/api/rss-proxy", "destination": "/api/rss-proxy" },
     { "source": "/api/rss", "destination": "/api/rss" },
+    { "source": "/api/ingest/news", "destination": "/api/ingest/news" },
+    { "source": "/api/news", "destination": "/api/news" },
+    { "source": "/api/news/(.*)", "destination": "/api/news/$1" },
     { "source": "/api/json-proxy", "destination": "/api/json-proxy" },
     { "source": "/api/oil-proxy", "destination": "/api/oil-proxy" },
     { "source": "/api/fuel-prices-proxy", "destination": "/api/fuel-prices-proxy" },
