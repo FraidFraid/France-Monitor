@@ -1,4 +1,5 @@
 import type { NewsItem, FilterState, EventCategory, ThreatLevel, TimeRange, MapLayers } from '../types/index.ts';
+import { t } from '../services/i18n.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -8,13 +9,13 @@ function escapeHtml(str: string): string {
 
 function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "à l'instant";
+  if (seconds < 60) return t('newsFeed.timeAgo.justNow');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `il y a ${minutes}min`;
+  if (minutes < 60) return t('newsFeed.timeAgo.minutes', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `il y a ${hours}h`;
+  if (hours < 24) return t('newsFeed.timeAgo.hours', { count: hours });
   const days = Math.floor(hours / 24);
-  return `il y a ${days}j`;
+  return t('newsFeed.timeAgo.days', { count: days });
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -26,29 +27,6 @@ const CATEGORY_ICONS: Record<string, string> = {
   infrastructure: '🏗️',
   health: '🏥',
   general: '📰',
-};
-
-const CATEGORY_LABELS: Record<EventCategory, string> = {
-  social: 'Social',
-  security: 'Sécurité',
-  energy: 'Énergie',
-  weather: 'Météo',
-  transport: 'Transport',
-  infrastructure: 'Infrastructure',
-  health: 'Santé',
-  general: 'Général',
-  finance: 'Finance',
-  floods: 'Crues',
-  fires: 'Feux',
-  cyber: 'Cyber',
-};
-
-const LEVEL_LABELS: Record<ThreatLevel, string> = {
-  critical: 'Critique',
-  high: 'Élevé',
-  medium: 'Modéré',
-  low: 'Faible',
-  info: 'Info',
 };
 
 const LEVEL_PRIORITY: Record<ThreatLevel, number> = {
@@ -165,7 +143,7 @@ function truncateText(text: string, maxLength: number): string {
 
 function getSummaryText(item: NewsItem): string | null {
   if (item.aiSummary) return item.aiSummary;
-  if (item.aiSummaryStatus === 'pending') return 'Résumé IA en cours…';
+  if (item.aiSummaryStatus === 'pending') return t('newsFeed.pendingSummary');
   if (item.summary) return truncateText(item.summary, 180);
   return null;
 }
@@ -194,9 +172,9 @@ export class UnderMapNewsFeed {
     root.innerHTML = `
       <div class="under-map-card__header">
         <div class="under-map-card__header-copy">
-          <div class="under-map-card__title">Flux actualités</div>
+          <div class="under-map-card__title">${t('newsFeed.title')}</div>
         </div>
-        <div class="under-map-card__meta" id="under-map-news-count">Chargement...</div>
+        <div class="under-map-card__meta" id="under-map-news-count">${t('newsFeed.loadingCount')}</div>
       </div>
       <div class="under-map-news__controls">
         <div class="under-map-news__timebar">
@@ -205,32 +183,32 @@ export class UnderMapNewsFeed {
               type="button"
               class="under-map-news__time-btn ${this.filter.timeRange === option.value ? 'active' : ''}"
               data-time-range="${option.value}"
-            >${option.label}</button>
+            >${option.value === 'all' ? t('newsFeed.allTime') : option.label}</button>
           `).join('')}
         </div>
         <div class="under-map-news__search">
           <input
             type="text"
             class="under-map-news__search-input"
-            placeholder="Rechercher une actu, une source, un lieu..."
+            placeholder="${t('newsFeed.searchPlaceholder')}"
           />
         </div>
         <div class="under-map-news__pulse" id="under-map-news-pulse"></div>
         <div class="under-map-news__active-filters" id="under-map-news-active-filters"></div>
         <div class="under-map-news__filter-group">
-          <div class="under-map-news__filter-label">Catégories</div>
+          <div class="under-map-news__filter-label">${t('newsFeed.categories')}</div>
           <div class="under-map-news__filter-row">
             ${CATEGORY_OPTIONS.map((option) => `
               <button
                 type="button"
                 class="filter-chip ${this.filter.categories.includes(option.value) ? 'filter-chip--active' : ''}"
                 data-category-value="${option.value}"
-              >${option.icon} ${option.label}</button>
+              >${option.icon} ${t(`newsFeed.categoryLabels.${option.value}`)}</button>
             `).join('')}
           </div>
         </div>
         <div class="under-map-news__filter-group">
-          <div class="under-map-news__filter-label">Niveaux</div>
+          <div class="under-map-news__filter-label">${t('newsFeed.levels')}</div>
           <div class="under-map-news__filter-row">
             ${LEVEL_OPTIONS.map((option) => `
               <button
@@ -238,7 +216,7 @@ export class UnderMapNewsFeed {
                 class="filter-chip ${this.filter.threatLevels.includes(option.value) ? 'filter-chip--active' : ''}"
                 data-level-value="${option.value}"
                 style="border-left:3px solid ${option.color};"
-              >${option.label}</button>
+              >${t(`newsFeed.levelLabels.${option.value}`)}</button>
             `).join('')}
           </div>
         </div>
@@ -265,6 +243,19 @@ export class UnderMapNewsFeed {
 
   setOnFilterChange(handler: NewsFilterChangeHandler): void {
     this.onFilterChange = handler;
+  }
+
+  refreshTranslations(): void {
+    if (!this.rootEl) return;
+    this.rootEl.remove();
+    this.rootEl = null;
+    this.mount();
+    this.applyFilter();
+    if (this.items.length > 0) {
+      this.renderList();
+    } else {
+      this.renderLoading();
+    }
   }
 
   setFilter(filter: Partial<FilterState>): void {
@@ -328,10 +319,10 @@ export class UnderMapNewsFeed {
 
   private renderLoading(): void {
     if (!this.listEl || !this.countEl) return;
-    this.countEl.textContent = 'Chargement...';
+    this.countEl.textContent = t('newsFeed.loadingCount');
     if (this.pulseEl) {
       this.pulseEl.innerHTML = `
-        <span class="under-map-news__pulse-pill">Analyse du flux…</span>
+        <span class="under-map-news__pulse-pill">${t('newsFeed.loadingPulse')}</span>
       `;
     }
     if (this.activeFiltersEl) {
@@ -340,8 +331,8 @@ export class UnderMapNewsFeed {
     }
     this.listEl.innerHTML = `
       <div class="under-map-card__empty">
-        <div class="under-map-card__empty-title">Chargement du flux</div>
-        <div class="under-map-card__empty-text">Le flux des actualités sera affiché ici, à côté du marché.</div>
+        <div class="under-map-card__empty-title">${t('newsFeed.loadingTitle')}</div>
+        <div class="under-map-card__empty-text">${t('newsFeed.loadingBody')}</div>
       </div>
     `;
   }
@@ -393,13 +384,17 @@ export class UnderMapNewsFeed {
       this.filter.categories.length > 0 ||
       this.filter.threatLevels.length > 0 ||
       this.filter.timeRange !== '24h';
-    this.countEl.textContent = `${this.filteredItems.length} actus · ${sourceCount} sources${alertCount > 0 ? ` · ${alertCount} alertes` : ''}${hasActiveFilters ? ' · filtres actifs' : ''}`;
+    this.countEl.textContent = [
+      t('newsFeed.countSummary', { count: this.filteredItems.length, sources: sourceCount }),
+      ...(alertCount > 0 ? [t('newsFeed.countAlerts', { count: alertCount })] : []),
+      ...(hasActiveFilters ? [t('newsFeed.countFilters')] : []),
+    ].join(' · ');
     if (this.pulseEl) {
       this.pulseEl.innerHTML = [
-        `<span class="under-map-news__pulse-pill"><strong>${criticalCount}</strong> critiques</span>`,
-        `<span class="under-map-news__pulse-pill"><strong>${highCount}</strong> élevées</span>`,
-        `<span class="under-map-news__pulse-pill"><strong>${freshCount}</strong> < 6h</span>`,
-        `<span class="under-map-news__pulse-pill"><strong>${localizedCount}</strong> localisées</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${criticalCount}</strong> ${t('newsFeed.pulseCritical')}</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${highCount}</strong> ${t('newsFeed.pulseHigh')}</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${freshCount}</strong> ${t('newsFeed.pulseFresh')}</span>`,
+        `<span class="under-map-news__pulse-pill"><strong>${localizedCount}</strong> ${t('newsFeed.pulseLocalized')}</span>`,
       ].join('');
     }
     this.renderActiveFilterPills();
@@ -408,8 +403,8 @@ export class UnderMapNewsFeed {
     if (this.filteredItems.length === 0) {
       this.listEl.innerHTML = `
         <div class="under-map-card__empty">
-          <div class="under-map-card__empty-title">Aucune actualité</div>
-          <div class="under-map-card__empty-text">Aucun article ne correspond aux filtres actifs.</div>
+          <div class="under-map-card__empty-title">${t('newsFeed.emptyTitle')}</div>
+          <div class="under-map-card__empty-text">${t('newsFeed.emptyBody')}</div>
         </div>
       `;
       return;
@@ -425,7 +420,7 @@ export class UnderMapNewsFeed {
       const level = item.threat?.level ?? 'info';
       const category = item.threat?.category ?? 'general';
       const icon = CATEGORY_ICONS[category] ?? '📰';
-      const categoryLabel = CATEGORY_LABELS[category] ?? category;
+      const categoryLabel = t(`newsFeed.categoryLabels.${category}`);
       const isNew = now - item.pubDate.getTime() < ONE_HOUR_MS;
       const summaryText = getSummaryText(item);
       const locationLabel = item.locationName ?? item.feedRegion ?? null;
@@ -433,21 +428,21 @@ export class UnderMapNewsFeed {
         ? `${Math.round(item.threat.confidence * 100)}%`
         : null;
       const sourceLabel = item.threat?.source === 'llm'
-        ? 'LLM'
+        ? t('newsFeed.sourceLabels.llm')
         : item.threat?.source === 'ml'
-          ? 'IA'
+          ? t('newsFeed.sourceLabels.ml')
           : item.threat?.source === 'keyword'
-            ? 'Règles'
+            ? t('newsFeed.sourceLabels.keyword')
             : null;
 
       el.dataset.itemId = item.id;
       el.innerHTML = `
         <div class="under-map-news__item-head">
           <div class="under-map-news__badges">
-            <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(LEVEL_LABELS[level])}</span>
+            <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(t(`newsFeed.levelLabels.${level}`))}</span>
             <span class="category-badge">${icon} ${escapeHtml(categoryLabel)}</span>
-            ${item.isAlert ? '<span class="under-map-news__signal-pill under-map-news__signal-pill--alert">Alerte</span>' : ''}
-            ${isNew ? '<span class="under-map-news__signal-pill">Nouveau</span>' : ''}
+            ${item.isAlert ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--alert">${escapeHtml(t('newsFeed.alert'))}</span>` : ''}
+            ${isNew ? `<span class="under-map-news__signal-pill">${escapeHtml(t('newsFeed.new'))}</span>` : ''}
           </div>
           <span class="news-item-time">${escapeHtml(timeAgo(item.pubDate))}</span>
         </div>
@@ -475,7 +470,7 @@ export class UnderMapNewsFeed {
 
         const btn = document.createElement('a');
         btn.className = 'under-map-news__read-btn read-article-btn';
-        btn.textContent = 'Ouvrir l’article ↗';
+        btn.textContent = t('newsFeed.readArticle');
         btn.href = item.link;
         btn.target = '_blank';
         btn.rel = 'noopener';
@@ -611,18 +606,19 @@ export class UnderMapNewsFeed {
     const pills: ActiveFilterPill[] = [];
 
     if (this.filter.timeRange !== '24h') {
-      const timeLabel = TIME_OPTIONS.find((option) => option.value === this.filter.timeRange)?.label ?? this.filter.timeRange;
-      pills.push({ kind: 'time', label: `Période ${timeLabel}`, value: this.filter.timeRange });
+      const rawLabel = TIME_OPTIONS.find((option) => option.value === this.filter.timeRange)?.label ?? this.filter.timeRange;
+      const timeLabel = this.filter.timeRange === 'all' ? t('newsFeed.allTime') : rawLabel;
+      pills.push({ kind: 'time', label: t('newsFeed.activeRange', { value: timeLabel }), value: this.filter.timeRange });
     }
 
     if (this.filter.searchQuery) {
-      pills.push({ kind: 'search', label: `Recherche "${truncateText(this.filter.searchQuery, 24)}"` });
+      pills.push({ kind: 'search', label: t('newsFeed.activeSearch', { value: truncateText(this.filter.searchQuery, 24) }) });
     }
 
     for (const category of this.filter.categories) {
       pills.push({
         kind: 'category',
-        label: CATEGORY_LABELS[category] ?? category,
+        label: t(`newsFeed.categoryLabels.${category}`),
         value: category,
       });
     }
@@ -630,7 +626,7 @@ export class UnderMapNewsFeed {
     for (const level of this.filter.threatLevels) {
       pills.push({
         kind: 'level',
-        label: LEVEL_LABELS[level],
+        label: t(`newsFeed.levelLabels.${level}`),
         value: level,
       });
     }
@@ -649,7 +645,7 @@ export class UnderMapNewsFeed {
           type="button"
           class="under-map-news__active-pill"
           data-filter-kind="${pill.kind}"${valueAttr}
-          title="Retirer ce filtre"
+          title="${t('newsFeed.removeFilter')}"
         >${escapeHtml(pill.label)} <span aria-hidden="true">×</span></button>
       `;
     }).join('');

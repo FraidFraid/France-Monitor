@@ -3,6 +3,7 @@ import './styles/landing.css';
 import { App } from './App';
 import { renderLandingPage } from './LandingPage';
 import { registerSW } from 'virtual:pwa-register';
+import { initI18n } from './services/i18n.ts';
 
 // Stale-chunk guard: after a new deploy, old hashed JS chunks are gone.
 // Dynamic imports fail with "Failed to fetch dynamically imported module".
@@ -46,14 +47,16 @@ function shouldRenderLanding(): boolean {
   return pathname === '/' && hash === '';
 }
 
-const container = document.getElementById('app');
-if (container) {
-  if (shouldRenderLanding()) {
-    renderLandingPage(container);
-  } else {
-    document.documentElement.classList.remove('fm-landing-mode');
-    document.body.classList.remove('fm-landing-mode');
-    const app = new App(container);
-    app.init();
+void initI18n().then(() => {
+  const container = document.getElementById('app');
+  if (container) {
+    if (shouldRenderLanding()) {
+      renderLandingPage(container);
+    } else {
+      document.documentElement.classList.remove('fm-landing-mode');
+      document.body.classList.remove('fm-landing-mode');
+      const app = new App(container);
+      void app.init();
+    }
   }
-}
+});
