@@ -1099,6 +1099,7 @@ export class OutagesPanel extends Panel {
     for (const [provider, dcs] of Object.entries(byProvider)) {
       const visualRank = (dc: typeof dcs[number]): number => {
         const state = String(dc.operationalStateKey ?? dc.operationalState ?? '').trim().toLowerCase();
+        if (state === 'fast-track') return 3;
         if (state === 'en construction') return 2;
         if (state === 'en projet') return 1;
         const order: Record<string, number> = { outage: 8, partial: 7, degraded: 6, maintenance: 5, operational: 4, unknown: 3 };

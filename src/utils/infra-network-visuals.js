@@ -9,12 +9,20 @@ export function getDatacenterStatusMeta(status) {
         case 'partial': return { color: '#2563EB', popupColor: '#0284C7', label: 'Partiel' };
         case 'outage': return { color: '#1D4ED8', popupColor: '#1D4ED8', label: 'En panne' };
         case 'maintenance': return { color: '#93C5FD', popupColor: '#2563EB', label: 'Maintenance' };
-        default: return { color: '#60A5FA', popupColor: '#94A3B8', label: 'Inconnu' };
+        default: return { color: '#94A3B8', popupColor: '#94A3B8', label: 'Non qualifié' };
     }
 }
 
 export function getDatacenterVisualMeta(input = {}) {
     const operationalState = normalizeOperationalState(input.operationalState);
+    if (operationalState === 'fast-track') {
+        return {
+            color: '#9C27B0',
+            popupColor: '#9C27B0',
+            label: 'Fast-track',
+            kind: 'fast-track',
+        };
+    }
     if (operationalState === 'en construction') {
         return {
             color: '#F97316',
@@ -29,6 +37,14 @@ export function getDatacenterVisualMeta(input = {}) {
             popupColor: '#EAB308',
             label: 'En projet',
             kind: 'project',
+        };
+    }
+    if (operationalState === 'site existant') {
+        return {
+            color: '#60A5FA',
+            popupColor: '#38BDF8',
+            label: 'Site existant',
+            kind: 'existing-site',
         };
     }
 

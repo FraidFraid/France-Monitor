@@ -10,7 +10,7 @@
  */
 
 import type { Plugin } from 'vite';
-import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, mergeDatacenters } from '../../api/_shared/infra-network-datacenters.js';
+import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, fetchUmapProjectDatacenters, mergeDatacenters } from '../../api/_shared/infra-network-datacenters.js';
 
 const IXPS_STATIC = [
     { id: 'fix-par', name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.3515, 48.8625] as [number, number], speedGbps: 400 },
@@ -152,7 +152,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                 try {
                     const radarToken = process.env.CLOUDFLARE_RADAR_TOKEN ?? '';
 
-                    const [ovhR, scwR, cfR, eqxR, awsR, gcpR, peeringR, radarR, idfDcsR] = await Promise.allSettled([
+                    const [ovhR, scwR, cfR, eqxR, awsR, gcpR, peeringR, radarR, idfDcsR, umapProjectsR] = await Promise.allSettled([
                         fetchAtlassianStatus('https://status.ovhcloud.com'),
                         fetchAtlassianStatus('https://status.scaleway.com'),
                         fetchAtlassianStatus('https://www.cloudflarestatus.com'),
@@ -162,6 +162,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                         fetchPeeringDbIxps(),
                         fetchCloudflareRadar(radarToken),
                         fetchOfficialIdfDatacenters(),
+                        fetchUmapProjectDatacenters(),
                     ]);
 
                     const unwrap = (r: PromiseSettledResult<any>) =>
@@ -176,6 +177,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                     const peering = unwrap(peeringR);
                     const radar   = unwrap(radarR);
                     const idfDatacenters: any[] = idfDcsR.status === 'fulfilled' ? idfDcsR.value : [];
+                    const umapProjects = umapProjectsR.status === 'fulfilled' ? umapProjectsR.value : null;
 
                     // PeeringDB peer index
                     const peerIndex: Record<string, number> = {};
@@ -203,6 +205,7 @@ export function infraNetworkProxyPlugin(): Plugin {
                     const datacenters = mergeDatacenters({
                         staticDatacenters: STATIC_DATACENTERS,
                         officialIdfDatacenters: idfDatacenters,
+                        umapProjectDatacenters: umapProjects,
                         providerStatus,
                         now,
                     });

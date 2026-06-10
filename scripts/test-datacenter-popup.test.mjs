@@ -32,5 +32,32 @@ test('buildDatacenterPopupHtml renders enriched OSINT fields for official datace
   assert.match(html, /Source terrain/);
   assert.match(html, /data\.gouv\.fr DRIEAT IDF WFS/);
   assert.match(html, /Statut opérateur/);
-  assert.match(html, /Inconnu/);
+  assert.match(html, /Non qualifié/);
+});
+
+test('buildDatacenterPopupHtml renders project source, exact power and source link', () => {
+  const html = buildDatacenterPopupHtml({
+    name: 'Port of Dunkirk Data Centre',
+    provider: 'Unknown Company',
+    region: 'Dunkerque',
+    city: 'Bourbourg',
+    address: 'Route de Gravelines 59630 Bourbourg',
+    status: 'unknown',
+    incidents: [],
+    operationalState: 'en projet',
+    powerBand: 'plus de 500 MW',
+    powerDetail: '700 MW',
+    detailSummary: 'Projet IA de 700 MW sur 21 hectares.',
+    rawSource: 'DataCenterMap',
+    source: 'DataCenterMap live browser snapshot',
+    sourceUrl: 'https://www.datacentermap.com/france/lille/',
+    lastUpdated: '2026-06-10T07:00:00.000Z',
+  });
+
+  assert.match(html, /Puissance exacte/);
+  assert.match(html, /700 MW/);
+  assert.match(html, /Source projet/);
+  assert.match(html, /DataCenterMap/);
+  assert.match(html, /Projet IA de 700 MW/);
+  assert.match(html, /Fiche source/);
 });

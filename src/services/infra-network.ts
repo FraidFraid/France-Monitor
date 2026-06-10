@@ -16,7 +16,7 @@ import { normalizeOperationalState } from '../utils/infra-network-visuals.js';
 Watchdog.register('infra-network', {
     label: 'Infra Réseau DC / IXP',
     staleAfterMs: 15 * 60_000,
-    detail: 'OVH · Scaleway · AWS · GCP · Cloudflare · PeeringDB IXP',
+    detail: 'OVH · Scaleway · AWS · GCP · Cloudflare · DRIEAT IDF · OSM · DataCenterMap · uMap projets · PeeringDB IXP',
     freshness: 'TEMPS_REEL',
 });
 
@@ -41,8 +41,8 @@ export function dcStatusColor(status: DatacenterStatus['status']): string {
         case 'partial':      return '#2563EB';
         case 'outage':       return '#1D4ED8';
         case 'maintenance':  return '#93C5FD';
-        case 'unknown':      return '#60A5FA';
-        default:             return '#60A5FA';
+        case 'unknown':      return '#94A3B8';
+        default:             return '#94A3B8';
     }
 }
 
@@ -53,8 +53,8 @@ export function dcStatusLabel(status: DatacenterStatus['status']): string {
         case 'partial':      return 'Partiel';
         case 'outage':       return 'En panne';
         case 'maintenance':  return 'Maintenance';
-        case 'unknown':      return 'Opérationnel';  // pas d'incident signalé
-        default:             return 'Opérationnel';
+        case 'unknown':      return 'Non qualifié';
+        default:             return 'Non qualifié';
     }
 }
 
@@ -91,6 +91,10 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
         operationalState: dc.operationalState ? String(dc.operationalState) : undefined,
         operationalStateKey: dc.operationalState ? normalizeOperationalState(dc.operationalState) : undefined,
         powerBand:   dc.powerBand ? String(dc.powerBand) : undefined,
+        powerDetail: dc.powerDetail ? String(dc.powerDetail) : undefined,
+        detailSummary: dc.detailSummary ? String(dc.detailSummary) : undefined,
+        rawSource:   dc.rawSource ? String(dc.rawSource) : undefined,
+        sourceUrl:   dc.sourceUrl ? String(dc.sourceUrl) : undefined,
         source:      dc.source ? String(dc.source) : undefined,
         sourceUpdatedAt: dc.sourceUpdatedAt ? String(dc.sourceUpdatedAt) : undefined,
         lastUpdated: String(dc.lastUpdated ?? ''),

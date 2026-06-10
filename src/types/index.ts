@@ -1695,6 +1695,10 @@ export interface DatacenterStatus {
   operationalState?: string;
   operationalStateKey?: string;
   powerBand?: string;
+  powerDetail?: string;
+  detailSummary?: string;
+  rawSource?: string;
+  sourceUrl?: string;
   source?: string;
   sourceUpdatedAt?: string;
   lastUpdated: string;            // ISO

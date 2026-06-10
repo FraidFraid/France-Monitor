@@ -12,7 +12,7 @@
  * Cache : 5 min CDN Vercel
  */
 
-import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, mergeDatacenters } from './_shared/infra-network-datacenters.js';
+import { STATIC_DATACENTERS, fetchOfficialIdfDatacenters, fetchUmapProjectDatacenters, mergeDatacenters } from './_shared/infra-network-datacenters.js';
 
 const IXPS_STATIC = [
     { id: 'fix-par',  name: 'France-IX Paris',    city: 'Paris',     coordinates: [2.3515, 48.8625], speedGbps: 400 },
@@ -196,6 +196,7 @@ export default async function handler(req, res) {
         peeringResult,
         radarResult,
         idfDatacentersResult,
+        umapProjectsResult,
     ] = await Promise.allSettled([
         fetchAtlassianStatus('https://status.ovhcloud.com'),
         fetchAtlassianStatus('https://status.scaleway.com'),
@@ -206,6 +207,7 @@ export default async function handler(req, res) {
         fetchPeeringDbIxps(),
         fetchCloudflareRadar(radarToken),
         fetchOfficialIdfDatacenters(),
+        fetchUmapProjectDatacenters(),
     ]);
 
     const unwrap = (r) => r.status === 'fulfilled' ? r.value : { status: 'unknown', incidents: [], ok: false, data: [] };
@@ -219,6 +221,7 @@ export default async function handler(req, res) {
     const peering = unwrap(peeringResult);
     const radar   = unwrap(radarResult);
     const idfDatacenters = idfDatacentersResult.status === 'fulfilled' ? idfDatacentersResult.value : [];
+    const umapProjects = umapProjectsResult.status === 'fulfilled' ? umapProjectsResult.value : null;
 
     // ── Build peer count index from PeeringDB ────────────────────────────────
     const peerIndex = {};
@@ -249,6 +252,7 @@ export default async function handler(req, res) {
     const datacenters = mergeDatacenters({
         staticDatacenters: STATIC_DATACENTERS,
         officialIdfDatacenters: idfDatacenters,
+        umapProjectDatacenters: umapProjects,
         providerStatus,
         now,
     });

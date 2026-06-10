@@ -10,14 +10,20 @@ test('normalizeOperationalState standardizes official lifecycle labels', () => {
 });
 
 test('getDatacenterVisualMeta prioritizes project lifecycle colors over provider status', () => {
+  const fastTrackMeta = getDatacenterVisualMeta({ status: 'operational', operationalState: 'fast-track' });
   const projectMeta = getDatacenterVisualMeta({ status: 'operational', operationalState: 'en projet' });
   const buildMeta = getDatacenterVisualMeta({ status: 'outage', operationalState: 'en construction' });
+  const existingMeta = getDatacenterVisualMeta({ status: 'unknown', operationalState: 'site existant' });
   const liveMeta = getDatacenterVisualMeta({ status: 'degraded', operationalState: 'en exploitation' });
 
+  assert.equal(fastTrackMeta.color, '#9C27B0');
+  assert.equal(fastTrackMeta.label, 'Fast-track');
   assert.equal(projectMeta.color, '#EAB308');
   assert.equal(projectMeta.label, 'En projet');
   assert.equal(buildMeta.color, '#F97316');
   assert.equal(buildMeta.label, 'En construction');
+  assert.equal(existingMeta.color, '#60A5FA');
+  assert.equal(existingMeta.label, 'Site existant');
   assert.equal(liveMeta.color, '#3B82F6');
   assert.equal(liveMeta.label, 'Dégradé');
 });

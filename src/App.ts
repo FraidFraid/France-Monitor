@@ -116,6 +116,7 @@ import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
+import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -949,15 +950,18 @@ const OUTAGES_CLOUD_LEGEND: LegendCategory = {
   title: 'Datacenters / IXP',
   type: 'categorical',
   items: [
+    { id: 'dc-fast-track', label: 'Datacenter fast-track', color: '#9C27B0', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-project', label: 'Datacenter en projet', color: '#EAB308', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-build',   label: 'Datacenter en construction', color: '#F97316', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-existing-site', label: 'Datacenter existant', color: '#60A5FA', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-ok',   label: 'Datacenter opérationnel', color: '#60A5FA', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-deg',  label: 'Datacenter dégradé',      color: '#3B82F6', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'dc-out',  label: 'Datacenter en panne',     color: '#1D4ED8', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
+    { id: 'dc-unqualified', label: 'Datacenter non qualifié', color: '#94A3B8', shape: 'triangle-up', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'ixp-ok',  label: 'Point d\'échange (IXP)',  color: '#BFDBFE', shape: 'square',     borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'ixp-out', label: 'IXP dégradé / hors service', color: '#64748B', shape: 'square', borderColor: '#0a0a0f', borderWidth: 1 },
   ],
-  source: { label: 'OVH · Scaleway · AWS · GCP · Cloudflare Radar · PeeringDB · DRIEAT IDF' },
+  source: { label: 'OVH · Scaleway · AWS · GCP · Cloudflare Radar · DRIEAT IDF · OpenStreetMap · DataCenterMap · uMap projets' },
   refresh: { label: '5 min' },
 };
 
@@ -1232,7 +1236,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'outages',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Cloud / IXP',
+    label: 'Datacenters / IXP',
     legend: OUTAGES_CLOUD_LEGEND,
   },
   {
@@ -1411,6 +1415,13 @@ export class App {
   private _intervalSpaceWeatherTerminator: ReturnType<typeof setInterval> | null = null;
   private _intervalSpaceWeatherRefresh: ReturnType<typeof setInterval> | null = null;
   private _intervalVersion: ReturnType<typeof setInterval> | null = null;
+  private aboutTriggerEl: HTMLButtonElement | null = null;
+  private headerLiveDotEl: HTMLElement | null = null;
+  private mapLoadingTextEl: HTMLElement | null = null;
+  private bottomLinksEl: HTMLElement | null = null;
+  private underMapLabelEl: HTMLElement | null = null;
+  private underMapExpanded = false;
+  private underMapScrollLockUntil = 0;
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
@@ -1634,6 +1645,70 @@ export class App {
 
   constructor(container: HTMLElement) {
     this.container = container;
+    onLanguageChange(() => {
+      this.updateShellTranslations();
+      this.newsPanel?.refreshTranslations();
+      this.statusPanel?.refreshTranslations();
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  private bindLanguageToggle(root: ParentNode): void {
+    root.querySelectorAll<HTMLButtonElement>('[data-language-toggle]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const nextLanguage = button.dataset.languageToggle;
+        if (nextLanguage === 'fr' || nextLanguage === 'en') {
+          void setLanguage(nextLanguage);
+        }
+      });
+    });
+  }
+
+  private updateShellTranslations(): void {
+    const language = getCurrentLanguage();
+    this.aboutTriggerEl?.setAttribute('aria-label', t('app.aboutAria'));
+    this.headerLiveDotEl?.setAttribute('title', t('app.live'));
+    if (this.mapLoadingTextEl) this.mapLoadingTextEl.textContent = t('app.loadingMap');
+    this.bottomLinksEl?.setAttribute('aria-label', t('app.infoPagesAria'));
+    if (this.bottomLinksEl) {
+      const links = this.bottomLinksEl.querySelectorAll<HTMLAnchorElement>('a');
+      if (links[0]) links[0].textContent = t('app.bottomLinks.about');
+      if (links[1]) links[1].textContent = t('app.bottomLinks.methodology');
+      if (links[2]) links[2].textContent = t('app.bottomLinks.documentation');
+      if (links[3]) links[3].textContent = t('app.bottomLinks.legal');
+      if (links[4]) links[4].textContent = t('app.bottomLinks.contact');
+    }
+    if (this.underMapLabelEl) {
+      this.underMapLabelEl.textContent = this.underMapExpanded ? t('app.backToMap') : t('app.openModules');
+    }
+    this.container.querySelectorAll<HTMLElement>('.header-language-toggle').forEach((toggle) => {
+      toggle.setAttribute('aria-label', t('app.languageSwitcher'));
+    });
+    const aboutModal = this.container.querySelector('.about-modal');
+    if (aboutModal) {
+      aboutModal.querySelector<HTMLButtonElement>('.about-modal__close')?.setAttribute('aria-label', t('app.closeAbout'));
+      const subtitle = aboutModal.querySelector<HTMLElement>('.about-modal__subtitle');
+      if (subtitle) subtitle.textContent = t('app.aboutSubtitle');
+      const body = aboutModal.querySelector<HTMLElement>('.about-modal__text');
+      if (body) body.textContent = t('app.aboutBody');
+      const chips = aboutModal.querySelectorAll<HTMLAnchorElement>('.about-modal__links:first-of-type .about-modal__chip');
+      if (chips[0]) chips[0].textContent = t('app.aboutLinks.about');
+      if (chips[1]) chips[1].textContent = t('app.aboutLinks.methodology');
+      if (chips[2]) chips[2].textContent = t('app.aboutLinks.documentation');
+      if (chips[3]) chips[3].textContent = t('app.aboutLinks.contact');
+      if (chips[4]) chips[4].textContent = t('app.aboutLinks.legal');
+      const externalLinks = aboutModal.querySelectorAll<HTMLAnchorElement>('.about-modal__links:nth-of-type(2) .about-modal__chip');
+      externalLinks[0]?.setAttribute('aria-label', t('app.githubAria'));
+      externalLinks[1]?.setAttribute('aria-label', t('app.linkedinAria'));
+      const legalLines = aboutModal.querySelectorAll<HTMLElement>('.about-modal__legal div');
+      if (legalLines[0]) legalLines[0].textContent = t('app.copyright');
+      if (legalLines[1]) legalLines[1].textContent = t('app.independentProject');
+    }
+    this.container.querySelectorAll<HTMLButtonElement>('[data-language-toggle]').forEach((button) => {
+      const active = button.dataset.languageToggle === language;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
   }
 
   private syncRightSidebarTriggers(isOpen: boolean): void {
@@ -1883,24 +1958,33 @@ export class App {
   // ─── Shell Layout ───────────────────────────────────────────────────────────
 
   private renderShell(): void {
+    const language = getCurrentLanguage();
+
     // ── Header ──
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
-      <button class="header-title header-about-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="À propos de France Monitor">
-        <img class="header-logo" src="/icon.svg" alt="Logo France Monitor" />
+      <button class="header-title header-about-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="${t('app.aboutAria')}">
+        <img class="header-logo" src="/icon.svg" alt="France Monitor logo" />
         <span class="header-title-text">
           <span class="header-title-word header-title-word--france">France</span><span class="header-title-word header-title-word--monitor">Monitor</span>
         </span>
       </button>
       <div class="header-center" id="region-presets"></div>
       <div class="header-status">
+        <div class="header-language-toggle" role="group" aria-label="${t('app.languageSwitcher')}">
+          <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language-toggle="fr" aria-pressed="${language === 'fr'}">FR</button>
+          <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
+        </div>
         <div id="header-data-sources"></div>
         <span class="header-clock" id="clock"></span>
-        <span class="header-live-dot" title="En direct"></span>
+        <span class="header-live-dot" title="${t('app.live')}"></span>
       </div>
     `;
     this.container.appendChild(header);
+    this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
+    this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
+    this.bindLanguageToggle(header);
 
     const aboutModal = document.createElement('div');
     aboutModal.className = 'about-modal';
@@ -1908,29 +1992,29 @@ export class App {
     aboutModal.innerHTML = `
       <div class="about-modal__backdrop" data-close="true"></div>
       <div class="about-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
-        <button class="about-modal__close" type="button" aria-label="Fermer la fenêtre À propos">✕</button>
+        <button class="about-modal__close" type="button" aria-label="${t('app.closeAbout')}">✕</button>
         <div class="about-modal__hero">
           <div class="about-modal__brand">
-            <img class="about-modal__logo" src="/icon.svg" alt="Logo France Monitor" />
+            <img class="about-modal__logo" src="/icon.svg" alt="France Monitor logo" />
             <div class="about-modal__brand-copy">
               <div class="about-modal__title-row">
                 <div id="about-modal-title" class="about-modal__title">France Monitor</div>
                 <div class="about-modal__version">v1.0</div>
               </div>
-              <div class="about-modal__subtitle">Tableau de bord situationnel pour la France</div>
+              <div class="about-modal__subtitle">${t('app.aboutSubtitle')}</div>
             </div>
           </div>
         </div>
         <div class="about-modal__body">
           <p class="about-modal__text">
-            France Monitor est un tableau de bord OSINT expérimental de veille nationale, qui agrège des signaux publics (open data, flux RSS, APIs) sur l'énergie, les transports, la santé, l'environnement et les réseaux. Il ne s'agit ni d'un média ni d'un service officiel, mais d'un outil d'exploration et de détection de signaux faibles.
+            ${t('app.aboutBody')}
           </p>
           <div class="about-modal__links">
-            <a class="about-modal__chip" href="/about">À propos</a>
-            <a class="about-modal__chip" href="/methodology">Méthodologie</a>
-            <a class="about-modal__chip" href="/docs">Documentation</a>
-            <a class="about-modal__chip" href="/contact">Contact</a>
-            <a class="about-modal__chip" href="/legal">Légal</a>
+            <a class="about-modal__chip" href="/about">${t('app.aboutLinks.about')}</a>
+            <a class="about-modal__chip" href="/methodology">${t('app.aboutLinks.methodology')}</a>
+            <a class="about-modal__chip" href="/docs">${t('app.aboutLinks.documentation')}</a>
+            <a class="about-modal__chip" href="/contact">${t('app.aboutLinks.contact')}</a>
+            <a class="about-modal__chip" href="/legal">${t('app.aboutLinks.legal')}</a>
           </div>
           <div class="about-modal__links" style="margin-top: 10px;">
             <a
@@ -1938,7 +2022,7 @@ export class App {
               href="https://github.com/FraidFraid/France-Monitor"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Dépôt GitHub de France Monitor"
+              aria-label="${t('app.githubAria')}"
             >
               GitHub
             </a>
@@ -1947,28 +2031,27 @@ export class App {
               href="https://www.linkedin.com/in/fredaubourg/"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Profil LinkedIn de Fraid"
+              aria-label="${t('app.linkedinAria')}"
             >
               LinkedIn
             </a>
             <span class="about-modal__chip about-modal__chip--static">AGPL-3.0</span>
           </div>
           <div class="about-modal__legal">
-            <div>Copyright © 2026 Fraid</div>
-            <div>Projet OSINT indépendant.</div>
+            <div>${t('app.copyright')}</div>
+            <div>${t('app.independentProject')}</div>
           </div>
         </div>
       </div>
     `;
     this.container.appendChild(aboutModal);
 
-    const aboutTrigger = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     const setAboutModalOpen = (open: boolean) => {
       aboutModal.setAttribute('aria-hidden', open ? 'false' : 'true');
-      aboutTrigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+      this.aboutTriggerEl?.setAttribute('aria-expanded', open ? 'true' : 'false');
       document.body.style.overflow = open ? 'hidden' : '';
     };
-    aboutTrigger?.addEventListener('click', () => setAboutModalOpen(true));
+    this.aboutTriggerEl?.addEventListener('click', () => setAboutModalOpen(true));
     aboutModal.querySelector('.about-modal__close')?.addEventListener('click', () => setAboutModalOpen(false));
     aboutModal.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
@@ -2025,11 +2108,12 @@ export class App {
       <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);">
         <div style="text-align:center;">
           <div class="loading-spinner" style="margin:0 auto 12px;"></div>
-          <p>Chargement de la carte…</p>
+          <p data-map-loading-text>${t('app.loadingMap')}</p>
         </div>
       </div>
     `;
     mapArea.appendChild(mapContainerEl);
+    this.mapLoadingTextEl = mapContainerEl.querySelector<HTMLElement>('[data-map-loading-text]');
 
     const underMapArea = document.createElement('section');
     underMapArea.className = 'under-map-area';
@@ -2039,40 +2123,40 @@ export class App {
 
     const bottomLinks = document.createElement('nav');
     bottomLinks.className = 'app-bottom-links';
-    bottomLinks.setAttribute('aria-label', 'Pages d’information France Monitor');
+    bottomLinks.setAttribute('aria-label', t('app.infoPagesAria'));
     bottomLinks.innerHTML = `
-      <a href="/about">À propos</a>
+      <a href="/about">${t('app.bottomLinks.about')}</a>
       <span aria-hidden="true">·</span>
-      <a href="/methodology">Méthodologie</a>
+      <a href="/methodology">${t('app.bottomLinks.methodology')}</a>
       <span aria-hidden="true">·</span>
-      <a href="/docs">Documentation</a>
+      <a href="/docs">${t('app.bottomLinks.documentation')}</a>
       <span aria-hidden="true">·</span>
-      <a href="/legal">Mentions légales</a>
+      <a href="/legal">${t('app.bottomLinks.legal')}</a>
       <span aria-hidden="true">·</span>
-      <a href="/contact">Contact</a>
+      <a href="/contact">${t('app.bottomLinks.contact')}</a>
     `;
+    this.bottomLinksEl = bottomLinks;
 
     const underMapJumpBtn = document.createElement('button');
     underMapJumpBtn.className = 'map-underfold-btn';
     underMapJumpBtn.type = 'button';
     underMapJumpBtn.setAttribute('aria-expanded', 'false');
     underMapJumpBtn.innerHTML = `
-      <span class="map-underfold-btn__label">Voir les modules</span>
+      <span class="map-underfold-btn__label">${t('app.openModules')}</span>
       <span class="map-underfold-btn__chevron">⌄</span>
     `;
     const underMapLabelEl = underMapJumpBtn.querySelector('.map-underfold-btn__label') as HTMLElement | null;
     const underMapChevronEl = underMapJumpBtn.querySelector('.map-underfold-btn__chevron') as HTMLElement | null;
-    let underMapExpanded = false;
-    let underMapScrollLockUntil = 0;
+    this.underMapLabelEl = underMapLabelEl;
     const syncUnderMapToggle = (expanded: boolean) => {
-      underMapExpanded = expanded;
+      this.underMapExpanded = expanded;
       underMapJumpBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      if (underMapLabelEl) underMapLabelEl.textContent = expanded ? 'Revenir à la carte' : 'Voir les modules';
+      if (underMapLabelEl) underMapLabelEl.textContent = expanded ? t('app.backToMap') : t('app.openModules');
       if (underMapChevronEl) underMapChevronEl.textContent = expanded ? '⌃' : '⌄';
     };
     underMapJumpBtn.onclick = () => {
-      underMapScrollLockUntil = Date.now() + 700;
-      if (underMapExpanded) {
+      this.underMapScrollLockUntil = Date.now() + 700;
+      if (this.underMapExpanded) {
         syncUnderMapToggle(false);
         mapArea.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
@@ -2081,7 +2165,7 @@ export class App {
       }
     };
     mapArea.addEventListener('scroll', () => {
-      if (Date.now() < underMapScrollLockUntil) return;
+      if (Date.now() < this.underMapScrollLockUntil) return;
       const mapTop = mapArea.scrollTop;
       const revealThreshold = Math.max(32, underMapArea.offsetTop - mapContainerEl.clientHeight / 2);
       const isUnderMapVisible = mapTop >= revealThreshold;
@@ -5498,6 +5582,8 @@ export class App {
   }
 
   private buildAlertMonitorSituations(): DetectedSituation[] {
+    const language = getCurrentLanguage();
+    const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
 
@@ -5514,17 +5600,17 @@ export class App {
         summary: item.aiSummary ?? item.summary ?? item.title,
         affectedZones: [item.locationName ?? item.feedRegion ?? item.source].filter(Boolean),
         drivers: [
-          `Source ${item.source}`,
-          `Catégorie ${item.threat?.category ?? 'générale'}`,
-          `Publication ${item.pubDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+          t('alerts.source', { value: item.source }),
+          t('alerts.category', { value: t(`newsFeed.categoryLabels.${item.threat?.category ?? 'general'}`) }),
+          t('alerts.publication', { value: item.pubDate.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }),
         ],
         recommendedActions: [
-          { label: 'Vérifier l’article et ses suites locales', ownerHint: 'Veille OSINT', actionType: 'investigate' as const },
-          { label: 'Suivre les mises à jour terrain', ownerHint: 'Cellule de suivi', actionType: 'monitor' as const, automatable: true },
+          { label: t('alerts.verifyArticle'), ownerHint: t('alerts.osintWatch'), actionType: 'investigate' as const },
+          { label: t('alerts.followField'), ownerHint: t('alerts.trackingCell'), actionType: 'monitor' as const, automatable: true },
         ],
-        sourceRefs: [item.source, 'RSS PQR'],
+        sourceRefs: [item.source, t('alerts.sourceRefs.rss')],
         linkUrl: item.link,
-        linkLabel: 'Ouvrir l’article',
+        linkLabel: t('alerts.openArticle'),
         updatedAt: item.pubDate,
       }));
 
@@ -5539,17 +5625,17 @@ export class App {
         summary: surge.location
           ? `${surge.description} autour de [${surge.location.lat.toFixed(2)}, ${surge.location.lon.toFixed(2)}].`
           : surge.description,
-        affectedZones: [surge.location ? 'Zone aérienne concernée' : 'France'],
+        affectedZones: [surge.location ? t('alerts.affectedAirZone') : t('alerts.zoneFrance')],
         drivers: [
-          `${surge.flightCount} aéronef(s) impliqués`,
-          ...(surge.flightTypes?.length ? [`Types ${surge.flightTypes.join(', ')}`] : []),
-          ...(surge.radius ? [`Rayon estimé ${Math.round(surge.radius)} km`] : []),
+          t('alerts.flightCount', { count: surge.flightCount }),
+          ...(surge.flightTypes?.length ? [t('alerts.flightTypes', { value: surge.flightTypes.join(', ') })] : []),
+          ...(surge.radius ? [t('alerts.estimatedRadiusKm', { value: Math.round(surge.radius) })] : []),
         ],
         recommendedActions: [
-          { label: 'Confirmer la nature du surge', ownerHint: 'Veille défense', actionType: 'cross-check' as const },
-          { label: 'Surveiller la persistance du trafic', ownerHint: 'Cellule air', actionType: 'monitor' as const, automatable: true },
+          { label: t('alerts.confirmSurge'), ownerHint: t('alerts.defenseWatch'), actionType: 'cross-check' as const },
+          { label: t('alerts.watchTraffic'), ownerHint: t('alerts.airCell'), actionType: 'monitor' as const, automatable: true },
         ],
-        sourceRefs: ['Vols militaires', 'ADS-B agrégé'],
+        sourceRefs: [t('alerts.sourceRefs.militaryFlights'), t('alerts.sourceRefs.adsb')],
         updatedAt: now,
       }));
 
@@ -5558,27 +5644,29 @@ export class App {
       .sort((a, b) => (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1))
       .slice(0, ALERT_MONITOR_LIMIT)
       .map((alert) => {
-        const risks = alert.risks.map((risk) => METEO_RISK_LABELS[risk] ?? risk);
+        const risks = alert.risks.map((risk) =>
+          t(`alerts.meteoRiskLabels.${risk}`, { defaultValue: METEO_RISK_LABELS[risk] ?? risk }),
+        );
         return {
           id: `weather-alert-${alert.departmentCode}-${alert.level}-${alert.risks.join('-')}`,
           type: 'WEATHER_ALERT' as const,
           severity: alert.level === 'red' ? 'critical' : 'high',
           confidence: alert.level === 'red' ? 0.95 : 0.84,
-          title: `Vigilance ${alert.level} · ${alert.department}`,
+          title: t('alerts.weatherAlertTitle', { level: alert.level, department: alert.department }),
           summary: risks.length > 0
-            ? `Risque principal: ${risks.slice(0, 2).join(', ')}.`
-            : `Alerte météo ${alert.level} en cours.`,
+            ? t('alerts.mainRisk', { value: risks.slice(0, 2).join(', ') })
+            : t('alerts.weatherAlertOngoing', { level: alert.level }),
           affectedZones: [alert.department],
           drivers: [
-            ...(risks.length > 0 ? [`Risques ${risks.join(', ')}`] : []),
-            ...(alert.startDate ? [`Début ${alert.startDate.toLocaleString('fr-FR')}`] : []),
-            ...(alert.endDate ? [`Fin ${alert.endDate.toLocaleString('fr-FR')}`] : []),
+            ...(risks.length > 0 ? [t('alerts.risks', { value: risks.join(', ') })] : []),
+            ...(alert.startDate ? [t('alerts.start', { value: alert.startDate.toLocaleString(locale) })] : []),
+            ...(alert.endDate ? [t('alerts.end', { value: alert.endDate.toLocaleString(locale) })] : []),
           ],
           recommendedActions: [
-            { label: 'Suivre la vigilance départementale', ownerHint: 'Cellule météo', actionType: 'monitor' as const, automatable: true },
-            { label: 'Recouper avec les impacts terrain', ownerHint: 'Coordination locale', actionType: 'cross-check' as const },
+            { label: t('alerts.monitorWeather'), ownerHint: t('alerts.weatherCell'), actionType: 'monitor' as const, automatable: true },
+            { label: t('alerts.crossCheckField'), ownerHint: t('alerts.localCoordination'), actionType: 'cross-check' as const },
           ],
-          sourceRefs: ['Météo-France'],
+          sourceRefs: [t('alerts.sourceRefs.meteo')],
           updatedAt: now,
         };
       });
@@ -5591,19 +5679,19 @@ export class App {
         type: 'DEFENSE_ALERT' as const,
         severity: defenseSeverityToSituationSeverity(alert.severity),
         confidence: alert.severity === 'high' ? 0.93 : 0.81,
-        title: truncateLabel(`${alert.shipName} près du câble ${alert.cableName}`, 88),
-        summary: `${alert.message} Distance ${Math.round(alert.distanceMeters)} m, vitesse ${alert.speedKnots.toFixed(1)} nd.`,
+        title: truncateLabel(t('alerts.nearCable', { ship: alert.shipName, cable: alert.cableName }), 88),
+        summary: `${alert.message} ${t('alerts.distanceSpeed', { distance: Math.round(alert.distanceMeters), speed: alert.speedKnots.toFixed(1) })}`,
         affectedZones: [alert.cableName],
         drivers: [
-          `Navire ${alert.shipName}`,
-          `Distance ${Math.round(alert.distanceMeters)} m`,
-          `Vitesse ${alert.speedKnots.toFixed(1)} nd`,
+          t('alerts.ship', { value: alert.shipName }),
+          t('alerts.distance', { value: Math.round(alert.distanceMeters) }),
+          t('alerts.speed', { value: alert.speedKnots.toFixed(1) }),
         ],
         recommendedActions: [
-          { label: 'Vérifier le comportement du navire', ownerHint: 'Veille maritime', actionType: 'investigate' as const },
-          { label: 'Suivre la zone câble en continu', ownerHint: 'Sûreté infrastructures', actionType: 'monitor' as const, automatable: true },
+          { label: t('alerts.verifyShip'), ownerHint: t('alerts.maritimeWatch'), actionType: 'investigate' as const },
+          { label: t('alerts.monitorCableZone'), ownerHint: t('alerts.infraSafety'), actionType: 'monitor' as const, automatable: true },
         ],
-        sourceRefs: ['AIS maritime', 'Câbles sous-marins'],
+        sourceRefs: [t('alerts.sourceRefs.ais'), t('alerts.sourceRefs.subsea')],
         updatedAt: new Date(alert.createdAt),
         lon: alert.coordinates[0],
         lat: alert.coordinates[1],
@@ -5623,19 +5711,19 @@ export class App {
         type: 'GPS_JAMMING_ALERT' as const,
         severity: signal.severity === 'high' ? 'critical' : 'high',
         confidence: signal.confidence,
-        title: `Suspicion de brouillage GPS (${Math.round(signal.confidence * 100)}%)`,
-        summary: signal.reasons[0] ?? 'Signal heuristique ADS-B à confirmer.',
-        affectedZones: ['Zone aérienne'],
+        title: t('alerts.gpsJammingTitle', { value: Math.round(signal.confidence * 100) }),
+        summary: signal.reasons[0] ?? t('alerts.heuristicSignal'),
+        affectedZones: [t('alerts.airZone')],
         drivers: [
-          `${signal.affectedIcao24s.length} aéronef(s) affecté(s)`,
-          ...(signal.clusterRadius ? [`Rayon estimé ${Math.round(signal.clusterRadius)} km`] : []),
+          t('alerts.affectedAircraft', { count: signal.affectedIcao24s.length }),
+          ...(signal.clusterRadius ? [t('alerts.estimatedRadiusKm', { value: Math.round(signal.clusterRadius) })] : []),
           ...signal.reasons.slice(0, 2),
         ],
         recommendedActions: [
-          { label: 'Recouper avec d’autres capteurs', ownerHint: 'Veille guerre électronique', actionType: 'cross-check' as const },
-          { label: 'Surveiller l’extension du signal', ownerHint: 'Cellule air', actionType: 'monitor' as const, automatable: true },
+          { label: t('alerts.crossCheckSensors'), ownerHint: t('alerts.ewWatch'), actionType: 'cross-check' as const },
+          { label: t('alerts.monitorSignal'), ownerHint: t('alerts.airCell'), actionType: 'monitor' as const, automatable: true },
         ],
-        sourceRefs: ['Vols militaires', 'Détection GPS jamming'],
+        sourceRefs: [t('alerts.sourceRefs.militaryFlights'), t('alerts.sourceRefs.gps')],
         updatedAt: new Date(signal.timestamp * 1000),
       }));
 
@@ -5649,16 +5737,18 @@ export class App {
         confidence: anomaly.severity === 'high' ? 0.82 : 0.7,
         title: truncateLabel(anomaly.description, 88),
         summary: anomaly.description,
-        affectedZones: ['Zone maritime'],
+        affectedZones: [t('alerts.maritimeZone')],
         drivers: [
-          `Type ${anomaly.type === 'radio_silence' ? 'silence radio' : 'rendez-vous suspect'}`,
-          `${anomaly.mmsis.length} MMSI impliqué(s)`,
+          t('alerts.anomalyType', {
+            value: anomaly.type === 'radio_silence' ? t('alerts.radioSilence') : t('alerts.suspectRendezvous'),
+          }),
+          t('alerts.mmsiCount', { count: anomaly.mmsis.length }),
         ],
         recommendedActions: [
-          { label: 'Vérifier la persistance de l’anomalie', ownerHint: 'Veille maritime', actionType: 'monitor' as const, automatable: true },
-          { label: 'Recouper avec le contexte local', ownerHint: 'Sûreté maritime', actionType: 'cross-check' as const },
+          { label: t('alerts.verifyAnomaly'), ownerHint: t('alerts.maritimeWatch'), actionType: 'monitor' as const, automatable: true },
+          { label: t('alerts.crossCheckLocal'), ownerHint: t('alerts.maritimeSafety'), actionType: 'cross-check' as const },
         ],
-        sourceRefs: ['AIS maritime'],
+        sourceRefs: [t('alerts.sourceRefs.ais')],
         updatedAt: new Date(anomaly.timestamp),
       }));
 

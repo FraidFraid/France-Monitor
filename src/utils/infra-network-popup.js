@@ -28,6 +28,10 @@ function row(label, value) {
  *   incidents?: Array<{ title?: string }>,
  *   operationalState?: string,
  *   powerBand?: string,
+ *   powerDetail?: string,
+ *   detailSummary?: string,
+ *   rawSource?: string,
+ *   sourceUrl?: string,
  *   source?: string,
  *   lastUpdated?: string,
  *   realLng?: number,
@@ -50,17 +54,23 @@ export function buildDatacenterPopupHtml(input = {}) {
     const siteState = input.operationalState || '';
     const address = input.address || '';
     const powerBand = input.powerBand || '';
+    const powerDetail = input.powerDetail || '';
     const city = input.city || '';
+    const detailSummary = input.detailSummary || '';
+    const rawSource = input.rawSource || '';
+    const sourceUrl = input.sourceUrl || '';
 
     const detailRows = [
         row('Ville', city),
         row('Adresse', address),
         row('État du site', siteState),
+        row('Puissance exacte', powerDetail),
         row('Puissance', powerBand),
         row('Coord. réelle', coordsLabel),
         row('Décalage affichage', offsetLabel),
         row('Mis à jour', updatedLabel),
         row('Source terrain', sourceLabel),
+        row('Source projet', rawSource),
     ].filter(Boolean).join('');
 
     const incidentsHtml = incidents.length
@@ -85,5 +95,7 @@ export function buildDatacenterPopupHtml(input = {}) {
         <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
           ${detailRows}
         </div>
+        ${detailSummary ? `<div style="margin-top:10px;font-size:11px;line-height:1.45;color:#c8c8d4;">${escapeHtml(detailSummary)}</div>` : ''}
+        ${sourceUrl ? `<div style="margin-top:8px;"><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff;font-size:10px;text-decoration:none;">Fiche source ↗</a></div>` : ''}
       </div>`;
 }
