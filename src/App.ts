@@ -12,14 +12,14 @@ import type { SearchModal } from './components/SearchModal.ts';
 import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
-import { FiresPanel } from './components/FiresPanel.ts';
-import { TrafficPanel } from './components/TrafficPanel.ts';
+import type { FiresPanel } from './components/FiresPanel.ts';
+import type { TrafficPanel } from './components/TrafficPanel.ts';
 import { FinancePanel } from './components/FinancePanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
 import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
-import { CyberPanel } from './components/CyberPanel.ts';
+import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
 import {
@@ -28,16 +28,16 @@ import {
 } from './services/france-country-intel.ts';
 import type { FranceCountrySnapshot, FranceIntelTimelineLane } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
-import { HydraulicPanel } from './components/HydraulicPanel.ts';
-import { EolienPanel } from './components/EolienPanel.ts';
+import type { HydraulicPanel } from './components/HydraulicPanel.ts';
+import type { EolienPanel } from './components/EolienPanel.ts';
 import { OilPanel } from './components/OilPanel.ts';
-import { DromEnergyPanel } from './components/DromEnergyPanel.ts';
+import type { DromEnergyPanel } from './components/DromEnergyPanel.ts';
 import { DayNightPanel } from './components/DayNightPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
-import { DefensePanel } from './components/DefensePanel.ts';
-import { NationalHealthPanel } from './components/NationalHealthPanel.ts';
-import { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
-import { MaritimePanel } from './components/MaritimePanel.ts';
+import type { DefensePanel } from './components/DefensePanel.ts';
+import type { NationalHealthPanel } from './components/NationalHealthPanel.ts';
+import type { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
+import type { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
 import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
@@ -82,9 +82,9 @@ import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
-import { NuclearPanel } from './components/NuclearPanel.ts';
+import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
-import { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
+import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { pushHistorySnapshot } from './services/situation-history.ts';
 import { AlertMonitor } from './components/AlertMonitor.ts';
 import { UpdateNotification } from './components/UpdateNotification.ts';
@@ -1323,6 +1323,7 @@ export class App {
   private firesPanel: FiresPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
+  private currentFiresSources: { sources: string[]; apiKeyUsed: boolean } | null = null;
   private trafficPanel: TrafficPanel | null = null;
   private financePanel: FinancePanel | null = null;
   private marketStrip: MarketStrip | null = null;
@@ -2481,26 +2482,50 @@ export class App {
     this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
     this.energyPanel.mount();
 
-    this.dromEnergyPanel = new DromEnergyPanel(floatContainer);
-    this.dromEnergyPanel.setOnClose(() => this.closeEnergyLayer('dromEnergy'));
-    this.dromEnergyPanel.setOnHoverAsset((asset) => {
-      this.mapContainer?.highlightDromEnergyAsset(asset);
+    void import('./components/DromEnergyPanel.ts').then(({ DromEnergyPanel }) => {
+      const panel = new DromEnergyPanel(floatContainer);
+      panel.setOnClose(() => this.closeEnergyLayer('dromEnergy'));
+      panel.setOnHoverAsset((asset) => {
+        this.mapContainer?.highlightDromEnergyAsset(asset);
+      });
+      panel.mount();
+      this.dromEnergyPanel = panel;
+      // Catch-up: layer restored before the lazy chunk arrived → re-apply visibility
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.dromEnergy) {
+        if (this.currentDromEnergyDashboard) panel.show(this.currentDromEnergyDashboard);
+        else if (this.currentDromEnergyError) panel.showErrorState(this.currentDromEnergyError);
+        else panel.showLoadingState();
+        this.layoutEnergyFloatingPanels();
+      }
     });
-    this.dromEnergyPanel.mount();
 
-    this.hydraulicPanel = new HydraulicPanel(floatContainer);
-    this.hydraulicPanel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
-    this.hydraulicPanel.setOnSelectAsset((asset) => {
-      this.mapContainer?.flyTo(asset.location.lon, asset.location.lat, 10.5);
+    void import('./components/HydraulicPanel.ts').then(({ HydraulicPanel }) => {
+      const panel = new HydraulicPanel(floatContainer);
+      panel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
+      panel.setOnSelectAsset((asset) => {
+        this.mapContainer?.flyTo(asset.location.lon, asset.location.lat, 10.5);
+      });
+      panel.mount();
+      this.hydraulicPanel = panel;
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.hydroBackbone) {
+        panel.show(this.currentHydraulicAssets, this.currentEcowattResponse);
+        this.layoutEnergyFloatingPanels();
+      }
     });
-    this.hydraulicPanel.mount();
 
-    this.eolienPanel = new EolienPanel(floatContainer);
-    this.eolienPanel.setOnClose(() => this.closeEnergyLayer('windMonitor'));
-    this.eolienPanel.setOnSelectPark((park) => {
-      this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
+    void import('./components/EolienPanel.ts').then(({ EolienPanel }) => {
+      const panel = new EolienPanel(floatContainer);
+      panel.setOnClose(() => this.closeEnergyLayer('windMonitor'));
+      panel.setOnSelectPark((park) => {
+        this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
+      });
+      panel.mount();
+      this.eolienPanel = panel;
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.windMonitor) {
+        panel.show(this.currentEolienLive, this.currentEolienParks);
+        this.layoutEnergyFloatingPanels();
+      }
     });
-    this.eolienPanel.mount();
 
     this.isnrPanel = new ISNRPanel(floatContainer);
     this.isnrPanel.setOnHoverDepartment((code) => {
@@ -2509,11 +2534,24 @@ export class App {
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
 
-    this.nationalHealthPanel = new NationalHealthPanel(floatContainer);
-    this.nationalHealthPanel.mount();
+    void import('./components/NationalHealthPanel.ts').then(({ NationalHealthPanel }) => {
+      const panel = new NationalHealthPanel(floatContainer);
+      panel.mount();
+      this.nationalHealthPanel = panel;
+      // Catch-up: health layers restored before the lazy chunk arrived
+      const anyHealthActive =
+        this.activeLayers.health || this.activeLayers.healthHantavirus || this.activeLayers.healthApl ||
+        this.activeLayers.healthOscour || this.activeLayers.hospitals;
+      if (this.hasRestoredActiveLayerPanels && anyHealthActive) {
+        document.dispatchEvent(new CustomEvent('open-national-health'));
+      }
+    });
 
-    this.healthBarometerPanel = new HealthBarometerPanel(floatContainer);
-    this.healthBarometerPanel.mount();
+    void import('./components/HealthBarometerPanel.ts').then(({ HealthBarometerPanel }) => {
+      const panel = new HealthBarometerPanel(floatContainer);
+      panel.mount();
+      this.healthBarometerPanel = panel;
+    });
 
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
@@ -2614,59 +2652,92 @@ export class App {
     });
     this.transportPanel.mount();
 
-    this.firesPanel = new FiresPanel(floatContainer);
-    this.firesPanel.mount();
-    this.firesPanel.setOnFilteredFires((filtered) => {
-      this.mapContainer?.updateFires(filtered);
-    });
-    this.firesPanel.setOnHoverFire((lat, lon) => {
-      if (lat !== null && lon !== null) {
-        this.mapContainer?.highlightFire(lat, lon);
-      } else {
-        this.mapContainer?.clearFireHighlight();
+    void import('./components/FiresPanel.ts').then(({ FiresPanel }) => {
+      const panel = new FiresPanel(floatContainer);
+      panel.mount();
+      panel.setOnFilteredFires((filtered) => {
+        this.mapContainer?.updateFires(filtered);
+      });
+      panel.setOnHoverFire((lat, lon) => {
+        if (lat !== null && lon !== null) {
+          this.mapContainer?.highlightFire(lat, lon);
+        } else {
+          this.mapContainer?.clearFireHighlight();
+        }
+      });
+      panel.setOnHoverIncident((points) => {
+        if (points) {
+          this.mapContainer?.highlightFireCluster(points);
+        } else {
+          this.mapContainer?.clearFireHighlight();
+        }
+      });
+      panel.setOnModisToggle((enabled) => {
+        this.mapContainer?.setModisOverlayVisible(enabled);
+      });
+      panel.setOnClose(() => {
+        this.layoutEnvironmentFloatingPanels();
+      });
+      this.firesPanel = panel;
+      // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
+      // setRawFires re-triggers the filter + map update through onFilteredFires.
+      if (this.currentFiresSources) {
+        panel.setSourcesInfo(this.currentFiresSources.sources, this.currentFiresSources.apiKeyUsed);
+      }
+      if (this.currentActiveFires.length > 0) {
+        panel.setRawFires(this.currentActiveFires);
+      }
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.fires) {
+        panel.show(this.currentActiveFires);
+        this.layoutEnvironmentFloatingPanels();
       }
     });
-    this.firesPanel.setOnHoverIncident((points) => {
-      if (points) {
-        this.mapContainer?.highlightFireCluster(points);
-      } else {
-        this.mapContainer?.clearFireHighlight();
+
+    void import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
+      const panel = new TrafficPanel(floatContainer);
+      panel.setOnClickIncident((lng, lat) => {
+        this.mapContainer?.flyTo(lng, lat, 14);
+      });
+      panel.mount();
+      this.trafficPanel = panel;
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.trafficRoad) {
+        panel.show(this.currentTrafficIncidents);
       }
     });
-    this.firesPanel.setOnModisToggle((enabled) => {
-      this.mapContainer?.setModisOverlayVisible(enabled);
-    });
-    this.firesPanel.setOnClose(() => {
-      this.layoutEnvironmentFloatingPanels();
-    });
 
-    this.trafficPanel = new TrafficPanel(floatContainer);
-    this.trafficPanel.setOnClickIncident((lng, lat) => {
-      this.mapContainer?.flyTo(lng, lat, 14);
+    void import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
+      const panel = new MaritimePanel(floatContainer);
+      panel.setOnHighlightShip((mmsi) => {
+        this.mapContainer?.setHighlightedShip(mmsi);
+      });
+      this.maritimePanel = panel;
+      if (this.activeLayers.trafficMaritime) {
+        panel.show();
+      }
     });
-    this.trafficPanel.mount();
-
-    this.maritimePanel = new MaritimePanel(floatContainer);
-    this.maritimePanel.setOnHighlightShip((mmsi) => {
-      this.mapContainer?.setHighlightedShip(mmsi);
-    });
-    if (this.activeLayers.trafficMaritime) {
-      this.maritimePanel.show();
-    }
 
     // ElusPanel disabled
 
     // Cyber Panel (Cybersecurity Dashboard)
-    this.cyberPanel = new CyberPanel(floatContainer);
-    this.cyberPanel.setOnClose(() => {
-      // Optional: could update StatusPanel state here
+    void import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
+      const panel = new CyberPanel(floatContainer);
+      panel.setOnClose(() => {
+        // Optional: could update StatusPanel state here
+      });
+      panel.setOnThreatFiltersChange((filters) => {
+        this.currentThreatFilters = filters;
+        this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
+      });
+      panel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
+      panel.mount();
+      this.cyberPanel = panel;
+      // Replay buffered data pushed while the chunk was loading
+      if (this.currentCyberData) panel.update(this.currentCyberData);
+      if (this.currentThreatEvents.length > 0) panel.updateThreatEvents(this.currentThreatEvents);
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.cyber && this.activeLayers.sovereignty) {
+        panel.show(this.currentCyberData);
+      }
     });
-    this.cyberPanel.setOnThreatFiltersChange((filters) => {
-      this.currentThreatFilters = filters;
-      this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
-    });
-    this.cyberPanel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
-    this.cyberPanel.mount();
 
     this.addGlobalListener(document, 'open-cyber-panel', () => {
       if (!this.currentCyberData) void this.loadCyber();
@@ -2691,20 +2762,27 @@ export class App {
     this.oilPanel.mount();
 
     // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
-    this.nuclearPanel = new NuclearPanel(floatContainer);
-    this.nuclearPanel.mount();
-    this.nuclearPanel.setOnPlantHover((plantName) => {
-      if (!plantName) {
+    void import('./components/NuclearPanel.ts').then(({ NuclearPanel }) => {
+      const panel = new NuclearPanel(floatContainer);
+      panel.mount();
+      panel.setOnPlantHover((plantName) => {
+        if (!plantName) {
+          this.mapContainer?.setHighlightedInfrastructurePoint(null);
+          return;
+        }
+        const plant = NUCLEAR_PLANTS.find((item) => item.name === plantName);
+        this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
+      });
+      panel.setOnClose(() => {
+        // Clear any highlighted plant before deactivating the layer
         this.mapContainer?.setHighlightedInfrastructurePoint(null);
-        return;
+        this.closeEnergyLayer('nuclearFleet');
+      });
+      this.nuclearPanel = panel;
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.nuclearFleet) {
+        panel.show(this.currentNuclearState, this.currentEcowattResponse);
+        this.layoutEnergyFloatingPanels();
       }
-      const plant = NUCLEAR_PLANTS.find((item) => item.name === plantName);
-      this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
-    });
-    this.nuclearPanel.setOnClose(() => {
-      // Clear any highlighted plant before deactivating the layer
-      this.mapContainer?.setHighlightedInfrastructurePoint(null);
-      this.closeEnergyLayer('nuclearFleet');
     });
 
     // Outages Panel (Pannes Réseau — incidents ORE Enedis)
@@ -2735,29 +2813,35 @@ export class App {
     this.outagesPanel.mount();
 
     // Defense Panel (Cable threats) - positioned below CyberPanel
-    this.defensePanel = new DefensePanel(floatContainer);
-    this.defensePanel.setOnClose(() => {
-      // Optional: could update StatusPanel state here
-    });
-    this.defensePanel.setOnAlertClick((alert) => {
-      if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
-        this.onLayerToggle('trafficMaritime', true);
-        this.layerPanel?.updateLayers(this.activeLayers);
+    void import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
+      const panel = new DefensePanel(floatContainer);
+      panel.setOnClose(() => {
+        // Optional: could update StatusPanel state here
+      });
+      panel.setOnAlertClick((alert) => {
+        if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
+          this.onLayerToggle('trafficMaritime', true);
+          this.layerPanel?.updateLayers(this.activeLayers);
+        }
+        if (!this.activeLayers.subseaCables) {
+          this.onLayerToggle('subseaCables', true);
+          this.layerPanel?.updateLayers(this.activeLayers);
+        }
+        // Fly to the threat location when clicking on an alert item
+        this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
+      });
+      panel.setOnJammingClick((signal) => {
+        const zoom = signal.clusterRadius != null
+          ? (signal.clusterRadius > 50 ? 8 : 9)
+          : 11;
+        this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
+      });
+      panel.mount();
+      this.defensePanel = panel;
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.military && this.activeLayers.sovereignty) {
+        panel.show(this.currentDefenseAlerts, this.currentJammingSignals);
       }
-      if (!this.activeLayers.subseaCables) {
-        this.onLayerToggle('subseaCables', true);
-        this.layerPanel?.updateLayers(this.activeLayers);
-      }
-      // Fly to the threat location when clicking on an alert item
-      this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
     });
-    this.defensePanel.setOnJammingClick((signal) => {
-      const zoom = signal.clusterRadius != null
-        ? (signal.clusterRadius > 50 ? 8 : 9)
-        : 11;
-      this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
-    });
-    this.defensePanel.mount();
 
     // Day/Night Panel (panneau latéral droit — contrôle terminateur)
     this.dayNightPanel = new DayNightPanel(this.container);
@@ -3485,12 +3569,15 @@ export class App {
     this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
       this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
     });
-    this.situationHistoryPanel?.destroy();
-    this.situationHistoryPanel = new SituationHistoryPanel(mapEl);
-    const historyWrap = document.querySelector<HTMLElement>('.sit-hist-wrap');
-    if (historyWrap) {
-      this.situationHistoryPanel.mount(historyWrap);
-    }
+    void import('./components/SituationHistoryPanel.ts').then(({ SituationHistoryPanel }) => {
+      this.situationHistoryPanel?.destroy();
+      const panel = new SituationHistoryPanel(mapEl);
+      const historyWrap = document.querySelector<HTMLElement>('.sit-hist-wrap');
+      if (historyWrap) {
+        panel.mount(historyWrap);
+      }
+      this.situationHistoryPanel = panel;
+    });
     this.mapPopup = new MapPopup(mapEl);
 
     // Initialize map legend
@@ -4303,6 +4390,7 @@ export class App {
     this.statusPanel?.updateSource('NASA FIRMS', { status: 'loading', lastUpdate: null });
     const data = await fetchFiresData();
     this.currentActiveFires = data.detections;
+    this.currentFiresSources = { sources: data.sources, apiKeyUsed: data.apiKeyUsed };
     // Transmet les métadonnées sources au panel (header + footer adaptatifs)
     this.firesPanel?.setSourcesInfo(data.sources, data.apiKeyUsed);
     // setRawFires triggers applyFiresFilter + onFilteredFiresCb (updates map) + re-renders panel if open

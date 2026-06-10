@@ -65,6 +65,8 @@ export class AlertMonitor {
   private dragging = false;
   private suppressNextHeaderClick = false;
   private hasCustomPosition = false;
+  /** Re-render guard: signature of the last rendered content. */
+  private lastRenderKey: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -97,6 +99,18 @@ export class AlertMonitor {
     }
 
     this.el.style.display = '';
+
+    // Skip the full innerHTML rebuild (and listener re-binding) when neither
+    // the data nor the UI state (lang, collapsed, expanded) changed.
+    const renderKey = [
+      this.lang,
+      String(this.collapsed),
+      String(this.expandedAll),
+      JSON.stringify(this.allAlerts),
+    ].join('\u2225');
+    if (renderKey === this.lastRenderKey) return;
+    this.lastRenderKey = renderKey;
+
     const visibleAlerts = this.expandedAll
       ? this.allAlerts
       : this.allAlerts.slice(0, AlertMonitor.COMPACT_LIMIT);

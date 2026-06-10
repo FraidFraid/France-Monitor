@@ -97,6 +97,8 @@ export class StatusPanel {
     private readonly title: string;
     private readonly icon: string;
     private isOpen = false;
+    /** Re-render guard: signature of the last rendered list content. */
+    private lastRenderKey: string | null = null;
 
     private onSourceClick: ((name: string) => void) | null = null;
 
@@ -230,6 +232,8 @@ export class StatusPanel {
         this.container.querySelectorAll<HTMLElement>('.status-menu-trigger__label, .status-menu-dropdown__title, .panel-title')
             .forEach((el) => { el.textContent = t('status.title'); });
         this.updateTriggerSummary();
+        // Translated labels are not part of the render key — force a re-render.
+        this.lastRenderKey = null;
         this.renderList();
     }
 
@@ -276,8 +280,41 @@ export class StatusPanel {
         this.triggerEl.setAttribute('data-state', errors > 0 ? 'error' : stale > 0 ? 'stale' : loading > 0 ? 'loading' : 'ok');
     }
 
+    /**
+     * Lightweight signature of everything renderList() displays.
+     * Mirrors the formatted strings so any visible change busts the guard
+     * (including relative-time transitions like "à l'instant" → "il y a 1min").
+     */
+    private buildListRenderKey(): string {
+        const now = Date.now();
+        return this.sources.map((src) => {
+            const errorAgeMs = src.lastError ? now - src.lastError.getTime() : null;
+            const recentErrorStr = errorAgeMs !== null && errorAgeMs < 30 * 60_000
+                ? (formatCacheAge(errorAgeMs) ?? '')
+                : '';
+            return [
+                src.name,
+                src.status,
+                src.detail ?? '',
+                src.error ?? '',
+                formatLastUpdate(src.lastUpdate),
+                formatCacheAge(src.cacheAgeMs) ?? '',
+                String((src.cacheAgeMs ?? 0) > 8 * 60_000),
+                String(src.fallbackCount ?? 0),
+                formatResponseTime(src.responseTimeMs) ?? '',
+                recentErrorStr,
+            ].join('|');
+        }).join('\u00b6');
+    }
+
     private renderList(): void {
         if (!this.listEl) return;
+
+        // Skip the full DOM rebuild when nothing visible changed.
+        const renderKey = this.buildListRenderKey();
+        if (renderKey === this.lastRenderKey) return;
+        this.lastRenderKey = renderKey;
+
         this.listEl.innerHTML = '';
 
         for (const src of this.sources) {

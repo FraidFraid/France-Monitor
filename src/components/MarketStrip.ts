@@ -36,6 +36,8 @@ export class MarketStrip {
   private stampEl: HTMLElement | null = null;
   private barometerDotEl: HTMLElement | null = null;
   private barometerTextEl: HTMLElement | null = null;
+  /** Re-render guard: serialized snapshot of the last rendered dataset. */
+  private lastRenderKey: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -68,6 +70,12 @@ export class MarketStrip {
 
   update(items: MarketData[]): void {
     if (!this.bodyEl || !this.stampEl) return;
+
+    // Skip the full DOM rebuild when the dataset is byte-identical
+    // (barometer, stamp and cards are all derived from `items`).
+    const renderKey = JSON.stringify(items);
+    if (renderKey === this.lastRenderKey) return;
+    this.lastRenderKey = renderKey;
 
     if (!items.length) {
       this.renderEmpty();

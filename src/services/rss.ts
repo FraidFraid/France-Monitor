@@ -1,7 +1,9 @@
 /**
  * rss.ts — Service RSS frontend.
- * Fetch les flux via le proxy, parse le XML, retourne des NewsItem[].
- * Circuit breaker par flux (cooldown 5min après 2 échecs).
+ * Chemin principal : /api/rss (JSON pré-parsé côté serveur) → AUCUN parsing XML
+ * sur le main thread. Fallback : /api/rss-proxy (XML brut) + DOMParser, conservé
+ * pour la robustesse (transition, parser serveur en échec, flux exotiques).
+ * Circuit breaker par flux (cooldown avec backoff exponentiel après 2 échecs).
  * Cache en mémoire (TTL 10min).
  * Fallback Scrapling : pour certains flux Cloudflare, activable explicitement
  * via `VITE_USE_LOCAL_RSS_PROXY=true`.
@@ -14,7 +16,7 @@ import { Watchdog } from './watchdog.ts';
 Watchdog.register('rss-pqr', {
     label: 'RSS PQR',
     staleAfterMs: 10 * 60_000,
-    detail: 'Flux RSS PQR via proxy /api/rss-proxy + Scrapling (Cloudflare)',
+    detail: 'Flux RSS PQR via /api/rss (JSON serveur) + fallback /api/rss-proxy + Scrapling (Cloudflare)',
 });
 
 // ─── Scrapling Proxy (Cloudflare bypass) ───
@@ -283,6 +285,65 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
 // ─── Public API ───
 
 /**
+ * Fetch les items d'un flux SANS parsing XML sur le main thread.
+ *
+ * Ordre :
+ * 1. /api/rss (JSON pré-parsé côté serverless) — chemin principal.
+ * 2. /api/rss-proxy (XML brut) + DOMParser — fallback de robustesse si le
+ *    parser serveur échoue ou renvoie 0 items sur un flux pourtant XML.
+ *
+ * Retourne null si les deux chemins échouent (→ circuit breaker).
+ */
+async function fetchItemsOffMainThread(feed: Feed, cachedExists: boolean): Promise<NewsItem[] | null> {
+    let jsonError: string | null = null;
+
+    // ── 1. Chemin principal : JSON pré-parsé côté serveur ──
+    try {
+        const json = await fetchViaJsonProxy(feed);
+        if (json.items.length > 0) {
+            return json.items;
+        }
+        if (json.sourceFormat === 'html') {
+            // Réponse HTML (bot-detection / paywall) — le DOMParser n'y arrivera pas mieux.
+            Watchdog.report('rss-pqr', { type: 'failure', error: 'HTML response (bot-detection?)', isFallback: cachedExists });
+            return null;
+        }
+        // 0 items mais XML/unknown : le parser regex serveur a pu rater un format
+        // exotique — laisser le fallback DOMParser tenter sa chance.
+        jsonError = 'JSON proxy returned 0 items';
+    } catch (err) {
+        jsonError = err instanceof Error ? err.message : String(err);
+    }
+
+    // ── 2. Fallback : XML brut + DOMParser (main thread, rare) ──
+    try {
+        const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feed.url)}`;
+        const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10_000) });
+        if (!resp.ok) {
+            console.warn(`[RSS] ${feed.name} returned ${resp.status} (after JSON path: ${jsonError})`);
+            Watchdog.report('rss-pqr', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: cachedExists });
+            return null;
+        }
+
+        const xml = await resp.text();
+        const items = parseRSSItems(xml, feed);
+        if (items === null) {
+            Watchdog.report('rss-pqr', { type: 'failure', error: 'XML parse failure', isFallback: cachedExists });
+            return null;
+        }
+        if (items.length > 0) {
+            console.warn(`[RSS] ${feed.name}: recovered ${items.length} items via DOMParser fallback`);
+        }
+        // Flux XML valide mais vide des deux côtés : succès avec 0 items.
+        return items;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        Watchdog.report('rss-pqr', { type: 'failure', error: msg, isFallback: cachedExists });
+        return null;
+    }
+}
+
+/**
  * Fetch un flux RSS via le proxy et retourne les items parsés.
  * Uses circuit breaker and in-memory cache.
  */
@@ -304,65 +365,33 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const t0 = Date.now();
 
     try {
-        let xml: string;
+        let items: NewsItem[] | null;
 
         if (needsScrapling(feed.url)) {
+            // Scrapling (dev opt-in, Cloudflare bypass) renvoie du XML brut :
+            // le DOMParser main-thread reste nécessaire sur ce chemin marginal.
             console.log(`[RSS] ${feed.name}: using Scrapling proxy`);
             Watchdog.report('rss-pqr', { type: 'fallback', reason: 'Scrapling (Cloudflare bypass)' });
-            xml = await fetchViaScrapling(feed.url);
-        } else {
-            const proxyUrl = `/api/rss-proxy?url=${encodeURIComponent(feed.url)}`;
-            const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10_000) });
-
-            if (!resp.ok) {
-                recordFailure(feed.url);
-                console.warn(`[RSS] ${feed.name} returned ${resp.status}`);
-                Watchdog.report('rss-pqr', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!cached });
-                return cached?.items ?? [];
+            const xml = await fetchViaScrapling(feed.url);
+            items = parseRSSItems(xml, feed);
+            if (items === null) {
+                Watchdog.report('rss-pqr', { type: 'failure', error: 'XML parse failure (Scrapling)', isFallback: !!cached });
             }
-
-            xml = await resp.text();
+        } else {
+            items = await fetchItemsOffMainThread(feed, !!cached);
         }
 
-        const strictItems = parseRSSItems(xml, feed);
-        let items = strictItems;
-
-        // Some publishers return XML that is valid enough for a tolerant parser but rejected
-        // by DOMParser in the browser. Recover these feeds through the existing server-side
-        // JSON parser before declaring the source failed.
-        if (strictItems === null || strictItems.length === 0) {
-            try {
-                const fallback = await fetchViaJsonProxy(feed);
-                if (fallback.items.length > 0) {
-                    items = fallback.items;
-                    console.warn(`[RSS] ${feed.name}: recovered ${fallback.items.length} items via JSON fallback`);
-                } else if (strictItems === null) {
-                    const reason = fallback.sourceFormat === 'html'
-                        ? 'HTML response (bot-detection?)'
-                        : 'XML parse failure';
-                    recordFailure(feed.url);
-                    Watchdog.report('rss-pqr', { type: 'failure', error: reason, isFallback: !!cached });
-                    return cached?.items ?? [];
-                } else {
-                    items = [];
-                }
-            } catch (fallbackErr) {
-                if (strictItems === null) {
-                    recordFailure(feed.url);
-                    const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-                    Watchdog.report('rss-pqr', { type: 'failure', error: fallbackMsg, isFallback: !!cached });
-                    return cached?.items ?? [];
-                }
-                items = [];
-            }
+        if (items === null) {
+            recordFailure(feed.url);
+            return cached?.items ?? [];
         }
 
         recordSuccess(feed.url);
-        cache.set(feed.url, { items: items ?? [], fetchedAt: Date.now() });
+        cache.set(feed.url, { items, fetchedAt: Date.now() });
         Watchdog.report('rss-pqr', { type: 'success', responseTimeMs: Date.now() - t0 });
 
-        console.log(`[RSS] ${feed.name}: ${(items ?? []).length} items`);
-        return items ?? [];
+        console.log(`[RSS] ${feed.name}: ${items.length} items`);
+        return items;
     } catch (err) {
         recordFailure(feed.url);
         const msg = err instanceof Error ? err.message : String(err);

@@ -50,6 +50,8 @@ export class NewsPanel extends Panel {
     private onItemClick: NewsItemClickHandler | null = null;
     private listEl: HTMLElement | null = null;
     private _badgeEl: HTMLElement | null = null;
+    /** Re-render guard: signature of the last rendered list content. */
+    private lastRenderKey: string | null = null;
 
     constructor(container: HTMLElement) {
         super(container, {
@@ -147,6 +149,8 @@ export class NewsPanel extends Panel {
         this._badgeEl.style.cssText = 'padding:4px 8px 0;';
         this.bodyEl.appendChild(this._badgeEl);
 
+        this.lastRenderKey = null; // fresh DOM → force next render
+
         this.listEl = document.createElement('div');
         this.listEl.className = 'news-list';
         this.listEl.style.cssText =
@@ -197,11 +201,37 @@ export class NewsPanel extends Panel {
         });
     }
 
+    /**
+     * Lightweight signature of everything renderList() displays. When it matches
+     * the previous render, the DOM rebuild (and listener re-attachment) is skipped.
+     */
+    private buildRenderKey(): string {
+        return this.filteredItems.map((item) => [
+            item.id,
+            item.title,
+            item.aiSummary ?? '',
+            item.source,
+            item.link ?? '',
+            String(item.lat ?? ''),
+            String(item.lon ?? ''),
+            item.threat?.level ?? 'info',
+            item.threat?.category ?? 'general',
+            item.threat?.source ?? '',
+            String(item.isAlert ?? false),
+            timeAgo(item.pubDate),
+        ].join('|')).join('\u00b6');
+    }
+
     private renderList(): void {
         if (!this.listEl) return;
 
         const alertCount = this.filteredItems.filter((i) => i.isAlert).length;
         this.setBadge(this.filteredItems.length, alertCount > 0);
+
+        // Skip the full DOM rebuild when nothing visible changed.
+        const renderKey = this.buildRenderKey();
+        if (renderKey === this.lastRenderKey) return;
+        this.lastRenderKey = renderKey;
 
         this.listEl.innerHTML = '';
 

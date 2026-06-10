@@ -12,6 +12,8 @@ function renderTruthBadge(label: string, color: string): string {
 export class FinancePanel extends Panel {
     private contentContainer: HTMLElement;
     private _badgeEl: HTMLElement | null = null;
+    /** Re-render guard: badge state + serialized snapshot of the last rendered dataset. */
+    private lastRenderKey: string | null = null;
 
     constructor(container: HTMLElement) {
         super(container, {
@@ -50,6 +52,10 @@ export class FinancePanel extends Panel {
             );
             const isMarketClosed = isWeekend || parisHour < 9 || parisHour >= 18;
             const reason = isMarketClosed ? 'Marché fermé · données indisponibles hors séance.' : 'Source Marketstack inaccessible · réessai au prochain cycle.';
+            // Skip the rebuild when the empty state is unchanged.
+            const emptyKey = `empty|${isMarketClosed}`;
+            if (emptyKey === this.lastRenderKey) return;
+            this.lastRenderKey = emptyKey;
             this.contentContainer.innerHTML = `
         <div style="font-size: 11px; color: var(--text-muted); padding: 8px;">
           ${reason}
@@ -63,8 +69,15 @@ export class FinancePanel extends Panel {
 
         const mostRecentMs = Math.max(...data.map(d => d.lastUpdated.getTime()));
         const ageMin = (Date.now() - mostRecentMs) / 60000;
+        const badgeState = ageMin > 15 ? 'stale' : 'live';
+
+        // Skip the full DOM rebuild when neither the dataset nor the badge changed.
+        const renderKey = `${badgeState}|${JSON.stringify(data)}`;
+        if (renderKey === this.lastRenderKey) return;
+        this.lastRenderKey = renderKey;
+
         if (this._badgeEl) {
-            this._badgeEl.innerHTML = ageMin > 15
+            this._badgeEl.innerHTML = badgeState === 'stale'
                 ? renderTruthBadge('CACHE FIGÉ', '#F59E0B')
                 : renderTruthBadge('TEMPS RÉEL', '#10B981');
         }

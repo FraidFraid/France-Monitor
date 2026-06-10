@@ -12,18 +12,16 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, ISSLevel, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
-import { ISS_LEVELS, APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
-import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard, DromTerritoryCode } from '../services/drom-energy/index.ts';
-import { buildDromEnergyTooltipContent } from '../services/drom-energy/tooltip.ts';
+import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
 import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
-import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
 import { formatUpdateTime } from '../utils/format-date.ts';
@@ -35,1560 +33,296 @@ import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../serv
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 
-type ThreatMapDatum =
-  | {
-      kind: 'cluster';
-      id: number;
-      coordinates: [number, number];
-      count: number;
-      severity: ThreatEvent['severity'];
-      expansionZoom: number;
-    }
-  | {
-      kind: 'event';
-      event: ThreatEvent;
-      coordinates: [number, number];
-      severity: ThreatEvent['severity'];
-    };
 
-// ─── IIP asset geocoding ───────────────────────────────────────────────────────
-
-// Static lookup for non-nuclear production assets (hydro, thermal, biomasse…)
-const IIP_ASSET_COORDS: Record<string, [number, number]> = {
-  'GRAND MAISON':       [6.086,  45.227],
-  'MONTEZIC':           [2.673,  44.767],
-  'SUPER BISSORTE':     [6.699,  45.272],
-  'REVIN':              [4.640,  49.942],
-  'VOUGLANS':           [5.685,  46.531],
-  'MAREGES':            [2.354,  45.366],
-  'MAREGE':             [2.354,  45.366],
-  'COMBE D AVRIEUX':    [6.736,  45.215],
-  'COMBE AVRIEUX':      [6.736,  45.215],
-  'PROVENCE':           [5.482,  43.500],
-  'SAINT AVOLD':        [6.708,  49.108],
-  'EMILE HUCHET':       [6.708,  49.108],
-  'MARTIGUES':          [5.030,  43.410],
-  'PONTEAU':            [5.030,  43.410],
-  'CORDEMAIS':          [-1.885, 47.275],
-  'PORCHEVILLE':        [1.893,  48.972],
-  'ARRIGHI':            [9.200,  42.100],
-  'TOUL ROSSIERES':     [5.883,  48.604],
-  'BRAUD':              [-0.678, 45.244],
-  'PREGUILLAC':         [-0.538, 45.042],
-  'BOUTRE':             [6.034,  43.714],
-  'MUHLBACH':           [7.230,  47.978],
-  'LONNY':              [4.545,  49.827],
-  'AVELIN':             [3.147,  50.527],
-  'BAIXAS':             [2.814,  42.743],
-  'ALBERTVILLE':        [6.394,  45.675],
-  'VALDONNE':           [5.597,  43.695],
-};
-
-// Build a flat lookup: normalized unit name → plant coords
-const _iipNuclearLookup: Map<string, [number, number]> = (() => {
-  const m = new Map<string, [number, number]>();
-  const plantById = new Map(NUCLEAR_PLANTS.map(p => [p.id, p.coordinates as [number, number]]));
-  for (const u of NUCLEAR_UNITS) {
-    const coords = plantById.get(u.plantId);
-    if (!coords) continue;
-    m.set(u.unitName.toUpperCase().replace(/[-_]/g, ' '), coords);
-    for (const alias of (u.aliases ?? [])) {
-      m.set(alias.toUpperCase().replace(/[-_]/g, ' '), coords);
-    }
-    // Also index by plant name alone
-    m.set(u.plantName.toUpperCase().replace(/[-_]/g, ' '), coords);
-  }
-  return m;
-})();
-
-function resolveIIPCoords(inc: RTEIIPIncident): [number, number] | null {
-  const label = (inc.assetLabel || inc.title).toUpperCase().replace(/[-_]/g, ' ').trim();
-
-  // 1. Direct nuclear unit match (e.g. "GOLFECH 2", "PALUEL 3")
-  if (_iipNuclearLookup.has(label)) return _iipNuclearLookup.get(label)!;
-
-  // 2. Prefix nuclear match (asset label starts with a unit name)
-  for (const [key, coords] of _iipNuclearLookup) {
-    if (label.startsWith(key) || key.startsWith(label.replace(/\s+\d+$/, '').trim())) {
-      return coords;
-    }
-  }
-
-  // 3. Static non-nuclear lookup
-  for (const [key, coords] of Object.entries(IIP_ASSET_COORDS)) {
-    if (label.includes(key) || key.includes(label.split(' ').slice(0, 2).join(' '))) {
-      return coords;
-    }
-  }
-
-  // 4. For transmission: extract place names from "Liaison NNN kV A – B"
-  if (inc.type === 'transmission') {
-    const m = label.match(/(\d{2,3}\s*KV)\s+([A-ZÀÉÈÊÎÔÙÛ][A-ZÀÉÈÊÎÔÙÛ\s]+?)\s*[-–]\s*([A-ZÀÉÈÊÎÔÙÛ][A-ZÀÉÈÊÎÔÙÛ\s\d]+)/);
-    if (m) {
-      const a = m[2].trim();
-      const b = m[3].trim().replace(/\s+\d+$/, '').trim();
-      const ca = IIP_ASSET_COORDS[a] ?? _iipNuclearLookup.get(a) ?? null;
-      const cb = IIP_ASSET_COORDS[b] ?? _iipNuclearLookup.get(b) ?? null;
-      if (ca && cb) return [(ca[0] + cb[0]) / 2, (ca[1] + cb[1]) / 2];
-      if (ca) return ca;
-      if (cb) return cb;
-    }
-  }
-
-  return null;
-}
-
-// ─── Base map style ───
-// Carto Dark Matter - French labels applied via setMapLanguage after style load
-const BASE_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-
-// Satellite basemap layer ID — injected into Carto style at init, toggled by setBasemapSatellite()
-const LYR_SATELLITE = 'wm-basemap-satellite';
-
-/**
- * Fetch and modify style to use French labels before applying to map.
- * This is more reliable than post-hoc modification.
- */
-async function getFrenchStyle(): Promise<maplibregl.StyleSpecification> {
-  const response = await fetch(BASE_STYLE_URL);
-  const style = await response.json() as maplibregl.StyleSpecification;
-
-  // Modify all symbol layers to use French names
-  for (const layer of style.layers || []) {
-    if (layer.type !== 'symbol') continue;
-    const layout = (layer as maplibregl.SymbolLayerSpecification).layout;
-    if (!layout || !('text-field' in layout)) continue;
-
-    const textField = layout['text-field'];
-    const textFieldStr = JSON.stringify(textField);
-
-    // Skip layers that don't reference 'name'
-    if (!textFieldStr.includes('name')) continue;
-
-    // Replace with French-first coalesce expression
-    layout['text-field'] = ['coalesce',
-      ['get', 'name:fr'],
-      ['get', 'name_fr'],
-      ['get', 'name']
-    ] as maplibregl.ExpressionSpecification;
-  }
-
-  // ─── Inject Esri World Imagery satellite source ───
-  // MVP: Esri tiles are free for display use, no API key needed.
-  // Upgrade path: swap the tile URL for a self-hosted raster tile service.
-  (style.sources as Record<string, maplibregl.SourceSpecification>)['esri-satellite'] = {
-    type: 'raster',
-    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-    tileSize: 256,
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-    maxzoom: 19,
-  };
-
-  // Insert satellite raster layer right after 'background' — below all Carto fills but above
-  // the map background.  setBasemapSatellite() hides the opaque Carto fill layers when active
-  // so the satellite imagery is fully visible with roads/labels rendered on top.
-  const bgIdx = (style.layers || []).findIndex((l) => l.id === 'background');
-  const insertAt = bgIdx >= 0 ? bgIdx + 1 : 0;
-  (style.layers as maplibregl.LayerSpecification[]).splice(insertAt, 0, {
-    id: LYR_SATELLITE,
-    type: 'raster',
-    source: 'esri-satellite',
-    layout: { visibility: 'none' },
-  } as maplibregl.RasterLayerSpecification);
-
-  return style;
-}
-
-// ─── Source & Layer IDs ───
-const SRC = 'news-src';              // Clusterable news (excludes critical)
-const SRC_CRITICAL = 'news-critical-src';  // Critical alerts (never clustered)
-const SRC_SEL = 'news-sel-src';
-const SRC_POWER_REGIONS = 'power-regions-src';
-const SRC_INTERCONN = 'interconn-src';
-const SRC_WEATHER = 'weather-depts-src';
-const SRC_HEALTH = 'health-regions-src';
-const SRC_HEALTH_MARKERS = 'health-markers-src';
-const SRC_HANTAVIRUS = 'hantavirus-src';
-const SRC_FLOODS = 'flood-segments-src';
-const SRC_FLOODS_HIGHLIGHT = 'flood-segments-highlight-src';
-const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fond)
-const SRC_FIRES = 'fires-points-src';
-const SRC_INFRA = 'infra-src';
-const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
-const SRC_DROM_ENERGY = 'drom-energy-src';
-const SRC_DROM_ENERGY_HTA_LINES = 'drom-energy-hta-lines-src';
-const SRC_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight-src';
-const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
-const SRC_WIND_TURBINES = 'wind-turbines-src';
-const SRC_WIND_PARKS = 'wind-parks-src';
-const SRC_TRAFFIC = 'traffic-flow-src';
-const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
-const SRC_TRAIN_ROUTE = 'train-route-src';
-
-const LYR_GLOW = 'news-glow';
-const LYR_POINTS = 'news-pts';
-const LYR_CLUSTER_CIRCLE = 'news-cluster-circle';
-const LYR_CLUSTER_COUNT = 'news-cluster-count';
-const LYR_SEL_GLOW = 'news-sel-glow';
-const LYR_SEL_RING = 'news-sel-ring';
-const LYR_POWER_REGION_FILL = 'power-region-fill';
-const LYR_POWER_REGION_LINE = 'power-region-line';
-const LYR_INTERCONN_LINE = 'interconn-line';
-const LYR_INTERCONN_LABEL = 'interconn-label';
-const SRC_INTERCONN_ARCS = 'interconn-arcs-src';
-const SRC_INTERCONN_CHEVRON_PTS = 'interconn-chevron-pts-src';  // Animated chevron points
-const LYR_INTERCONN_ARC = 'interconn-arc';
-const LYR_INTERCONN_ARC_GLOW = 'interconn-arc-glow';
-const LYR_INTERCONN_HITAREA = 'interconn-arc-hitarea';
-const LYR_INTERCONN_CHEVRONS = 'interconn-chevrons';  // Animated chevrons for flow direction
-const LYR_WEATHER_FILL = 'weather-fill';
-const LYR_WEATHER_LINE = 'weather-line';
-const LYR_WEATHER_LINE_YELLOW = 'weather-line-yellow';
-const LYR_WEATHER_LINE_ORANGE = 'weather-line-orange';
-const LYR_WEATHER_LINE_RED = 'weather-line-red';
-const LYR_WEATHER_LINE_VIOLET = 'weather-line-violet';
-const SRC_WEATHER_ICONS = 'weather-icons-src';
-const LYR_WEATHER_ICONS = 'weather-icons';
-const LYR_HEALTH_FILL = 'health-fill';
-const LYR_HEALTH_LINE = 'health-line';
-const LYR_HEALTH_MARKERS = 'health-markers';
-const LYR_HEALTH_APL_FILL = 'health-apl-fill';
-const LYR_HEALTH_APL_LINE = 'health-apl-line';
-const LYR_HEALTH_OSCOUR_CIRCLES = 'health-oscour-circles';
-const LYR_HANTAVIRUS_PULSE = 'hantavirus-pulse';
-const LYR_HANTAVIRUS_POINTS = 'hantavirus-points';
-const LYR_HANTAVIRUS_ZONES_FILL = 'hantavirus-zones-fill';
-const LYR_HANTAVIRUS_ZONES_STROKE = 'hantavirus-zones-stroke';
-const SRC_HANTA_ZONES = 'hanta-zones-src';
-const HANTA_HIST_DEP_CODES = ['08','39','54','55','57','67','68','70','88','69'];
-
-function getHantavirusSeverityColor(severity: string | null | undefined): string {
-  switch (severity) {
-    case 'crise':
-      return '#ff3b30';
-    case 'alerte':
-      return '#ff9500';
-    case 'surveillance':
-      return '#ffd60a';
-    case 'info':
-    default:
-      return '#64d2ff';
-  }
-}
-
-function getHantavirusTerritoryLabel(event: Record<string, unknown> | null | undefined): string {
-  const level = String(event?.territoire_niveau ?? '').trim();
-  const code = String(event?.territoire_code ?? '').trim();
-  if (!level && !code) return 'n/d';
-  const prefix = level ? `${level} · ` : '';
-  return `${prefix}${code}`;
-}
-
-function getHantavirusDisplayLabel(event: Record<string, unknown> | null | undefined, fallbackLabel: string): string {
-  if (event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique') {
-    return `Zone historique SPF (circulation documentée 2005-2024) · ${fallbackLabel.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
-  }
-  return fallbackLabel;
-}
-
-function getHantavirusEvidenceLabel(level: string | null | undefined): string {
-  switch (level) {
-    case 'official_confirmed': return 'Officiel confirmé';
-    case 'official_monitoring': return 'Officiel suivi';
-    case 'official_historical': return 'Historique officiel';
-    case 'media_confirmed': return 'Presse confirmée';
-    case 'media_unverified': return 'Presse à vérifier';
-    case 'manual_seed': return 'Seed manuel';
-    case 'inferred': return 'Inféré';
-    default: return 'n/d';
-  }
-}
-
-function getHantavirusValidationLabel(status: string | null | undefined): string {
-  switch (status) {
-    case 'validated': return 'Validé';
-    case 'needs_review': return 'À vérifier';
-    case 'auto_detected': return 'Auto-détecté';
-    case 'rejected': return 'Rejeté';
-    case 'superseded': return 'Supplanté';
-    default: return 'n/d';
-  }
-}
-const SRC_ISNR = 'isnr-depts-src';
-const LYR_ISNR_FILL = 'isnr-fill';
-const LYR_ISNR_LINE = 'isnr-line';
-const LYR_TOPAGE_VIS = 'topage-visual-line';    // réseau hydro décoratif (fond)
-const LYR_FLOODS_RAW = 'flood-lines-raw';       // tronçons sans Topage, pointillés
-const LYR_FLOODS = 'flood-lines';
-const LYR_FLOODS_HIGHLIGHT = 'flood-lines-highlight';
-const LYR_FIRES_GLOW = 'fires-glow';
-const LYR_FIRES_POINTS = 'fires-pts';
-const SRC_FIRES_HIGHLIGHT = 'fires-highlight-src';
-const LYR_FIRES_HIGHLIGHT = 'fires-highlight';
-const SRC_MODIS = 'modis-overlay-src';
-const LYR_MODIS = 'modis-overlay';
-const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
-const LYR_SENTINEL_SCENE = 'sentinel-scene-overlay';
-const LYR_ENERGY_INFRA_VITAL_HALO = 'energy-infra-vital-halo';
-const LYR_ENERGY_INFRA_NUCLEAR_RING = 'energy-infra-nuclear-ring';
-const LYR_ENERGY_INFRA_HIGHLIGHT_GLOW = 'energy-infra-highlight-glow';
-const LYR_ENERGY_INFRA_HIGHLIGHT_RING = 'energy-infra-highlight-ring';
-const LYR_ENERGY_INFRA_CIRCLE = 'energy-infra-circles';
-const LYR_ENERGY_INFRA_LABEL = 'energy-infra-labels';
-const LYR_DROM_ENERGY_HTA_LINES = 'drom-energy-hta-lines-line';
-const LYR_DROM_ENERGY_HIGHLIGHT = 'drom-energy-highlight';
-const LYR_DROM_ENERGY_POINTS = 'drom-energy-points';
-const LYR_HYDRO_BACKBONE_HALO = 'hydro-backbone-halo';
-const LYR_HYDRO_BACKBONE_SIGNAL_RING = 'hydro-backbone-signal-ring';
-const LYR_HYDRO_BACKBONE_CIRCLE = 'hydro-backbone-circles';
-const LYR_HYDRO_BACKBONE_LABEL = 'hydro-backbone-labels';
-const LYR_WIND_CLUSTER       = 'wind-cluster';
-const LYR_WIND_CLUSTER_COUNT = 'wind-cluster-count';
-const LYR_WIND_TURBINE_HALO          = 'wind-turbine-halo';
-const LYR_WIND_TURBINE_CIRCLE        = 'wind-turbine-circles';
-const LYR_WIND_TURBINE_LABEL         = 'wind-turbine-labels';
-const LYR_WIND_PARK_HALO     = 'wind-park-halo';
-const LYR_WIND_PARK_CIRCLE   = 'wind-park-circles';
-const LYR_WIND_PARK_LABEL    = 'wind-park-labels';
-
-const WEATHER_RADAR_REGIONS = [
-  // RainViewer is global, but we clip the raster to keep the overlay focused.
-  // Extend the main window from France to a Europe-wide footprint so the radar
-  // remains visible when the user pans eastward.
-  { id: 'metro', bounds: [-12.0, 34.0, 45.0, 72.0] as [number, number, number, number] },
-  { id: 'guadeloupe', bounds: [-61.95, 15.75, -60.95, 16.7] as [number, number, number, number] },
-  { id: 'martinique', bounds: [-61.35, 14.2, -60.75, 15.0] as [number, number, number, number] },
-  { id: 'guyane', bounds: [-54.8, 1.8, -51.5, 6.0] as [number, number, number, number] },
-  { id: 'reunion', bounds: [55.0, -21.5, 55.95, -20.8] as [number, number, number, number] },
-  { id: 'mayotte', bounds: [44.9, -13.1, 45.4, -12.5] as [number, number, number, number] },
-] as const;
-const WEATHER_RADAR_MAX_ZOOM = 9;
-
-function getWeatherRadarSourceId(regionId: string): string {
-  return `weather-radar-src-${regionId}`;
-}
-
-function getWeatherRadarLayerId(regionId: string): string {
-  return `weather-radar-${regionId}`;
-}
-const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
-const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
-const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
-const LYR_GAS_NETWORK_TEREGA = 'gas-network-terega-line';
-// Gas Vital Organs (terminals, storage, PIR flows)
-const SRC_GAS_VITALS = 'gas-vitals-src';
-const SRC_GAS_PIR_ARCS = 'gas-pir-arcs-src';
-const SRC_GAS_PIR_MARKERS = 'gas-pir-markers-src';
-const LYR_GAS_TERMINALS = 'gas-terminals';
-const LYR_GAS_STORAGES_GLOW = 'gas-storages-glow';
-const LYR_GAS_STORAGES = 'gas-storages';
-const LYR_GAS_STORAGES_LABEL = 'gas-storages-label';
-const LYR_GAS_PIR_ARC_GLOW = 'gas-pir-arc-glow';
-const LYR_GAS_PIR_ARC = 'gas-pir-arc';
-const SRC_GAS_PIR_CHEVRON_PTS = 'gas-pir-chevron-pts-src';
-const LYR_GAS_PIR_CHEVRONS = 'gas-pir-chevrons';
-const LYR_GAS_PIR_MARKER = 'gas-pir-marker';
-const LYR_GAS_PIR_LABEL = 'gas-pir-label';
-// Oil/Petroleum flows (refineries, pipelines, imports)
-const SRC_OIL_FLOW_ARCS = 'oil-flow-arcs-src';
-const SRC_OIL_FLOW_MARKERS = 'oil-flow-markers-src';
-const SRC_OIL_FLOW_DIRECTION = 'oil-flow-direction-src';
-const SRC_OIL_FLOW_CHEVRON_PTS = 'oil-flow-chevron-pts-src';
-const SRC_FUEL_TENSION = 'fuel-tension-depts-src';
-const LYR_OIL_FLOW_ARC_GLOW = 'oil-flow-arc-glow';
-const LYR_OIL_FLOW_ARC = 'oil-flow-arc';
-const LYR_OIL_FLOW_CHEVRONS = 'oil-flow-chevrons';
-const LYR_OIL_FLOW_MARKER = 'oil-flow-marker';
-const LYR_OIL_FLOW_LABEL = 'oil-flow-label';
-const LYR_FUEL_TENSION_FILL = 'fuel-tension-fill';
-const LYR_FUEL_TENSION_LINE = 'fuel-tension-line';
-// Oil infrastructure (pipelines, refineries, depots)
-const SRC_OIL_PIPELINES = 'oil-pipelines-src';
-const SRC_OIL_REFINERIES = 'oil-refineries-src';
-const SRC_OIL_DEPOTS = 'oil-depots-src';
-const LYR_OIL_PIPELINES_GLOW = 'oil-pipelines-glow';
-const LYR_OIL_PIPELINES = 'oil-pipelines';
-const LYR_OIL_REFINERIES_GLOW = 'oil-refineries-glow';
-const LYR_OIL_REFINERIES = 'oil-refineries';
-const LYR_OIL_REFINERIES_LABEL = 'oil-refineries-label';
-const LYR_OIL_DEPOTS = 'oil-depots';
-const LYR_OIL_DEPOTS_TERMINAL_CENTER = 'oil-depots-terminal-center';
-const LYR_OIL_DEPOTS_LABEL = 'oil-depots-label';
-// Couches hit invisibles — zone de hover élargie
-const LYR_OIL_REFINERIES_HIT = 'oil-refineries-hit';
-const LYR_OIL_DEPOTS_HIT = 'oil-depots-hit';
-const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
-const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
-const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
-const LYR_TRAFFIC = 'traffic-flow';
-const LYR_TRAFFIC_CLUSTER = 'traffic-incidents-cluster';
-const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
-const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
-const LYR_TRAIN_ROUTE = 'train-route-line';
-const LYR_TRAIN_STATIONS = 'train-stations';
-const LYR_TRAIN_STATION_LABELS = 'train-station-labels';
-const SRC_METRO_LOAD = 'metro-load-src';
-const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
-const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
-const LYR_METRO_LOAD_LABEL = 'metro-load-labels';
-
-const SRC_MILITARY_ZONES = 'military-zones-src';
-const SRC_MILITARY_BASES = 'military-bases-src';
-const SRC_MILITARY_FLIGHTS = 'military-flights-src';
-const SRC_MILITARY_FLIGHT_TRAILS = 'military-flight-trails-src';
-const SRC_AIR_TRAFFIC = 'air-traffic-src';
-const SRC_MILITARY_SHIPS = 'military-ships-src';
-const SRC_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight-src';
-const SRC_MILITARY_SHIPS_SELECTED = 'military-ships-selected-src';
-const SRC_GLOBAL_TRAFFIC = 'global-traffic-src';    // Trafic AIS mondial (civils/étrangers)
-const SRC_SUBMARINE_CABLES = 'submarine-cables-src';
-const SRC_SUBMARINE_CABLES_LANDINGS = 'submarine-cables-landings-src';
-const SRC_TELECOM = 'telecom-src';
-const SRC_POWER = 'power-src';
-const SRC_HOSPITALS = 'hospitals-src';
-
-const LYR_MILITARY_ZONES_FILL = 'military-zones-fill';
-const LYR_MILITARY_ZONES_LINE = 'military-zones-line';
-const LYR_MILITARY_BASES_CIRCLE = 'military-bases-circle';
-const LYR_MILITARY_BASES_LABEL = 'military-bases-label';
-const LYR_MILITARY_FLIGHT_TRAILS = 'military-flight-trails';
-const LYR_MILITARY_FLIGHTS = 'military-flights';
-const LYR_MILITARY_FLIGHTS_LABEL = 'military-flights-label';
-const LYR_AIR_TRAFFIC_LABEL = 'air-traffic-label';
-const LYR_MILITARY_SHIPS = 'military-ships';
-const LYR_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight';
-const LYR_MILITARY_SHIPS_SELECTED = 'military-ships-selected';
-// const LYR_GLOBAL_TRAFFIC = 'global-traffic-pts'; // Now rendered via Deck.gl TextLayer
-const LYR_SUBMARINE_CABLES = 'submarine-cables-line';
-const LYR_SUBMARINE_CABLES_GLOW = 'submarine-cables-glow';
-const LYR_SUBMARINE_CABLES_CORE = 'submarine-cables-core';
-const LYR_SUBMARINE_CABLES_HITAREA = 'submarine-cables-hitarea';
-const LYR_SUBMARINE_CABLES_LANDING = 'submarine-cables-landing';
-const LYR_TELECOM_PTS = 'telecom-pts';
-const LYR_POWER_FILL = 'power-fill';
-const LYR_POWER_LINE = 'power-line';
-const SRC_POWER_TENSION = 'power-tension-src';
-const LYR_POWER_TENSION_FILL = 'power-tension-fill';
-const LYR_POWER_TENSION_LINE = 'power-tension-line';
-const SRC_CITIZEN_ZONES = 'citizen-zones-src';
-const LYR_CITIZEN_FILL = 'citizen-zones-fill';
-const LYR_CITIZEN_LINE = 'citizen-zones-line';
-const SRC_IIP = 'iip-incidents-src';
-const LYR_IIP_GLOW = 'iip-incidents-glow';
-const LYR_IIP_CORE = 'iip-incidents-core';
-const SRC_TERMINATOR = 'terminator-src';
-const LYR_TERMINATOR = 'terminator-fill';
-const SRC_NET_ISP = 'net-isp-src';
-const SRC_NET_IODA = 'net-ioda-src';
-const LYR_NET_ISP_GLOW = 'net-isp-glow';           // halo ambiant
-const LYR_NET_ISP_RING = 'net-isp-ring';           // anneau creux
-const LYR_NET_ISP = 'net-isp-pts';                 // point central
-const LYR_NET_ISP_CLUSTER = 'net-isp-cluster';     // cercle de cluster
-const LYR_NET_ISP_CLUSTER_COUNT = 'net-isp-cluster-count'; // compteur de cluster
-const LYR_NET_IODA_GLOW = 'net-ioda-glow';
-const LYR_NET_IODA_CORE = 'net-ioda-core';
-const LYR_NET_IODA_CLUSTER = 'net-ioda-cluster';
-const LYR_NET_IODA_CLUSTER_COUNT = 'net-ioda-cluster-count';
-const SRC_DC = 'infra-dc-src';
-const SRC_DC_HIGHLIGHT = 'infra-dc-highlight-src';
-const SRC_IXP = 'infra-ixp-src';
-const SRC_IXP_HIGHLIGHT = 'infra-ixp-highlight-src';
-const LYR_DC_GLOW = 'infra-dc-glow';
-const LYR_DC_CORE = 'infra-dc-core';
-const LYR_DC_HIGHLIGHT = 'infra-dc-highlight';
-const LYR_DC_CLUSTER = 'infra-dc-cluster';
-const LYR_DC_CLUSTER_COUNT = 'infra-dc-cluster-count';
-const LYR_IXP_CLUSTER = 'infra-ixp-cluster';
-const LYR_IXP_CLUSTER_COUNT = 'infra-ixp-cluster-count';
-const LYR_IXP_CIRCLE = 'infra-ixp-circle';
-const LYR_IXP_HIGHLIGHT = 'infra-ixp-highlight';
-const LYR_HOSPITALS_CHU = 'hospitals-chu';
-const LYR_HOSPITALS_CH = 'hospitals-ch';
-const LYR_HOSPITALS_LABEL = 'hospitals-label';
-const SRC_MAIRES_POL = 'maires-pol-src';
-const LYR_MAIRES_POL = 'maires-pol';
-const LYR_MAIRES_POL_LABEL = 'maires-pol-label';
-
-// ─── Rail disruptions (SNCF) ───
-const SRC_RAIL_ARCS = 'rail-disruptions-arcs-src';
-const SRC_RAIL_STATIONS = 'rail-disruptions-stations-src';
-const LYR_RAIL_ARC_GLOW = 'rail-arc-glow';
-const LYR_RAIL_ARC = 'rail-arc';
-const LYR_RAIL_ARC_HIT = 'rail-arc-hit';
-const LYR_RAIL_STATION_GLOW = 'rail-station-glow';
-const LYR_RAIL_STATION = 'rail-stations-disrupted';
-const LYR_RAIL_STATION_LABEL = 'rail-station-label';
-
-/** MapLibre match expression: ThreatLevel → hex color */
-const RAIL_SEVERITY_COLOR: maplibregl.ExpressionSpecification = [
-  'match', ['get', 'severity'],
-  'critical', '#ff2d55',
-  'high',     '#ff6b35',
-  'medium',   '#ffcc00',
-  'low',      '#34c759',
-  /* info default */ '#5ac8fa',
-];
-
-const RAIL_SEVERITY_HEX: Record<string, string> = {
-  critical: '#ff2d55',
-  high: '#ff6b35',
-  medium: '#ffcc00',
-  low: '#34c759',
-  info: '#5ac8fa',
-};
-
-const RAIL_SEVERITY_TINT: Record<string, string> = {
-  critical: 'rgba(255,45,85,0.14)',
-  high: 'rgba(255,107,53,0.14)',
-  medium: 'rgba(255,204,0,0.12)',
-  low: 'rgba(52,199,89,0.12)',
-  info: 'rgba(90,200,250,0.12)',
-};
-
-// ─── Ecowatt signal → color ───
-const ECOWATT_COLORS: Record<EcowattSignal, string> = {
-  green: 'rgba(52,199,89,0.15)',
-  orange: 'rgba(255,149,0,0.25)',
-  red: 'rgba(255,59,48,0.30)',
-};
-
-// ─── Météo vigilance → color ───
-const METEO_COLORS: Record<string, string> = {
-  green: 'rgba(52,199,89,0.08)',
-  yellow: 'rgba(255,204,0,0.20)',
-  orange: 'rgba(255,149,0,0.28)',
-  red: 'rgba(255,59,48,0.35)',
-  violet: 'rgba(175,82,222,0.35)',
-};
-
-const WEATHER_HIGHLIGHT_STATE: maplibregl.ExpressionSpecification = [
-  'any',
-  ['boolean', ['feature-state', 'preview'], false],
-  ['boolean', ['feature-state', 'selected'], false],
-];
-
-// ─── Météo risk pictograms ───
-const WEATHER_RISK_EMOJIS: Record<string, string> = {
-  'wind': '💨',
-  'rain-flood': '🌧️',
-  'thunderstorm': '⛈️',
-  'flood': '🌊',
-  'snow-ice': '❄️',
-  'heat': '🌡️',
-  'cold': '🥶',
-  'avalanche': '🏔️',
-  'wave-surge': '🌊',
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ENERGY FLOW STYLES — Distinct visual styles for electricity, gas, and oil
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Electric flow style: Red/green neon with pronounced glow effect
- * Continuous plasma-like appearance, bright and energetic
- */
-export const ELECTRIC_FLOW_STYLE = {
-  // Colors: OSINT style — red/orange import, green export
-  importColor: '#FF4B4B',      // Rouge-orange for import (into France)
-  exportColor: '#16A34A',      // Vert un peu plus fonce pour export (out of France)
-  glowImportColor: '#FF6B6B',  // Softer red glow
-  glowExportColor: '#15803D',  // Deeper green glow
-  // Line properties
-  minLineWidth: 3,
-  maxLineWidth: 10,
-  lineWidthDivisor: 600,       // flowMW / 600 for width scaling
-  glowIntensity: 3.0,          // Glow width multiplier (configurable)
-  glowOpacity: 0.4,
-  glowBlur: 10,
-  lineOpacity: 0.95,
-  // Chevron animation
-  chevronSpacing: 50,          // Distance between chevrons (px)
-  chevronSpeed: 0.5,           // Animation speed (0.1 = slow, 1.0 = fast)
-  chevronSize: 1.2,            // Base chevron size multiplier (bigger)
-  // Arc geometry
-  curvature: 0.25,
-  steps: 50,
-};
-
-// Mutable config for runtime updates
-let electricFlowConfig = { ...ELECTRIC_FLOW_STYLE };
-
-/** Update electric flow config at runtime */
-export function setElectricFlowConfig(config: Partial<typeof ELECTRIC_FLOW_STYLE>): void {
-  electricFlowConfig = { ...electricFlowConfig, ...config };
-}
-
-/** Get current electric flow config */
-export function getElectricFlowConfig(): typeof ELECTRIC_FLOW_STYLE {
-  return electricFlowConfig;
-}
-
-/**
- * Gas flow style: Cyan/turquoise with softer glow
- * Thinner arcs, rapid dash animation to suggest pipeline flow
- */
-export const GAS_FLOW_STYLE = {
-  // Colors: import = violet électrique, export = cyan électrique
-  importColor: '#A855F7',      // Purple-500 : import (FR reçoit)
-  exportColor: '#06B6D4',      // Cyan-500   : export (FR envoie)
-  glowImportColor: '#7C3AED',  // Violet-600 : halo import
-  glowExportColor: '#0891B2',  // Cyan-600   : halo export
-  // Line properties: Thinner than electricity
-  minLineWidth: 4,
-  maxLineWidth: 10,
-  lineWidthDivisor: 80,        // flowGWhDay / 80 for width scaling
-  glowMultiplier: 2.0,         // Softer glow (2x line width)
-  glowOpacity: 0.25,
-  glowBlur: 6,
-  lineOpacity: 0.85,
-  // Animation: chevron points (no dasharray)
-  animationSpeed: 0.8,         // Faster than electricity
-  animationCycle: 16,
-  // Arc geometry
-  curvature: 0.22,
-  steps: 45,
-} as const;
-
-/**
- * Oil flow style: Brown/anthracite with amber glow
- * Thick arcs, slow dash animation to suggest viscous flow
- */
-export const OIL_FLOW_STYLE = {
-  // Colors: Amber lumineux (export) / Rouille sombre (import) — palette pétrole
-  exportColor: '#F59E0B',      // Amber-500 — ambre chaud lumineux
-  importColor: '#C2410C',      // Orange-700 — rouille sombre (distinct de l'élec rouge)
-  glowExportColor: '#FCD34D',  // Amber-300 — glow doré léger
-  glowImportColor: '#EA580C',  // Orange-600 — glow rouille
-  // Line properties: Thicker than others (viscous feel)
-  minLineWidth: 4,
-  maxLineWidth: 12,
-  lineWidthDivisor: 50,        // flowKbd / 50 for width scaling (thousands barrels/day)
-  glowMultiplier: 2.2,
-  glowOpacity: 0.3,
-  glowBlur: 6,
-  lineOpacity: 0.9,
-  // Animation: Slow chevrons to suggest heavy/viscous flow
-  animationSpeed: 0.45,        // Assez visible (arcs longs = peu de chevrons à l'écran)
-  // Arc geometry
-  curvature: 0.28,
-  steps: 50,
-} as const;
-
-type SubmarineCableProperties = {
-  id?: string;
-  name?: string;
-  landing_points?: string[] | string;
-  length_km?: number | string;
-  rfs_year?: number | string;
-  owner?: string;
-  capacity_tbps?: number | string;
-};
-
-function emptyFC(): GeoJSON.FeatureCollection {
-  return { type: 'FeatureCollection', features: [] };
-}
-
-function normalizeLandingPoints(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(v => String(v)).filter(Boolean);
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(v => String(v)).filter(Boolean) : [value];
-    } catch {
-      return value.split(/[,;]+/).map(v => v.trim()).filter(Boolean);
-    }
-  }
-  return [];
-}
-
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function buildSubmarineLandingPoints(
-  data: GeoJSON.FeatureCollection<GeoJSON.LineString>
-): GeoJSON.FeatureCollection<GeoJSON.Point, Record<string, unknown>> {
-  return {
-    type: 'FeatureCollection',
-    features: data.features.flatMap((feature) => {
-      const coordinates = feature.geometry?.coordinates ?? [];
-      if (coordinates.length < 2) return [];
-      const props = (feature.properties ?? {}) as SubmarineCableProperties;
-      const landingPoints = normalizeLandingPoints(props.landing_points);
-      const cableName = props.name ?? 'Câble';
-      const shared = {
-        cableId: props.id ?? cableName,
-        name: cableName,
-        owner: props.owner ?? '',
-        capacity_tbps: props.capacity_tbps ?? null,
-        rfs_year: props.rfs_year ?? null,
-        length_km: props.length_km ?? null,
-      };
-
-      return [
-        {
-          type: 'Feature' as const,
-          id: `${shared.cableId}-landing-a`,
-          geometry: { type: 'Point' as const, coordinates: coordinates[0] },
-          properties: { ...shared, landingLabel: landingPoints[0] ?? 'Atterrage 1', landingSide: 'A' },
-        },
-        {
-          type: 'Feature' as const,
-          id: `${shared.cableId}-landing-b`,
-          geometry: { type: 'Point' as const, coordinates: coordinates[coordinates.length - 1] },
-          properties: { ...shared, landingLabel: landingPoints[landingPoints.length - 1] ?? 'Atterrage 2', landingSide: 'B' },
-        },
-      ];
-    }),
-  };
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-const DROM_ENERGY_ASSET_TYPES = new Set<DromEnergyAssetType>([
-  'source_substation',
-  'htb_pylon',
-  'production_site',
-  'storage_site',
-  'hosting_capacity_point',
-]);
-
-const DROM_TERRITORY_CODES = new Set<DromTerritoryCode>(['GP', 'MQ', 'GF', 'RE', 'YT']);
-
-function cleanTooltipString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function finiteTooltipNumber(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value.replace(',', '.'));
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
-}
-
-function toDromEnergyAssetType(value: unknown): DromEnergyAssetType {
-  return typeof value === 'string' && DROM_ENERGY_ASSET_TYPES.has(value as DromEnergyAssetType)
-    ? value as DromEnergyAssetType
-    : 'source_substation';
-}
-
-function toDromTerritoryCode(value: unknown): DromTerritoryCode {
-  return typeof value === 'string' && DROM_TERRITORY_CODES.has(value as DromTerritoryCode)
-    ? value as DromTerritoryCode
-    : 'RE';
-}
-
-function dromEnergyAssetFromProperties(properties: Record<string, unknown>): DromEnergyAsset {
-  const id = cleanTooltipString(properties.id) ?? cleanTooltipString(properties.name) ?? 'drom-energy-asset';
-  const name = cleanTooltipString(properties.name) ?? id;
-  const asset: DromEnergyAsset = {
-    id,
-    territoryCode: toDromTerritoryCode(properties.territoryCode),
-    type: toDromEnergyAssetType(properties.assetType ?? properties.type),
-    name,
-    sourceDatasetId: cleanTooltipString(properties.sourceDatasetId) ?? 'drom-energy',
-  };
-
-  const communeName = cleanTooltipString(properties.communeName);
-  if (communeName) asset.communeName = communeName;
-  const operator = cleanTooltipString(properties.operator);
-  if (operator) asset.operator = operator;
-  const productionType = cleanTooltipString(properties.productionType);
-  if (productionType) asset.productionType = productionType;
-  const voltageKv = finiteTooltipNumber(properties.voltageKv);
-  if (voltageKv != null) asset.voltageKv = voltageKv;
-  const capacityMw = finiteTooltipNumber(properties.capacityMw);
-  if (capacityMw != null) asset.capacityMw = capacityMw;
-  const availableCapacityMw = finiteTooltipNumber(properties.availableCapacityMw);
-  if (availableCapacityMw != null) asset.availableCapacityMw = availableCapacityMw;
-
-  return asset;
-}
-
-function renderDromEnergyTooltipHtml(asset: DromEnergyAsset): string {
-  const content = buildDromEnergyTooltipContent(asset);
-  const rows = content.rows
-    .map((item) => `
-      <span style="color:#9898a8;">${escapeHtml(item.label)}</span>
-      <strong>${escapeHtml(item.value)}</strong>
-    `)
-    .join('');
-
-  return `
-    <div style="color:#e8e8ec; min-width:220px;">
-      <div style="font-size:14px; font-weight:700; color:#fff;">${escapeHtml(content.title)}</div>
-      <div style="margin-top:8px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; font-size:12px;">
-        ${rows}
-      </div>
-    </div>
-  `;
-}
-
-function buildSubseaCableTooltip(properties: Record<string, unknown>): string {
-  const p = properties as SubmarineCableProperties & { landingLabel?: string };
-  const name = p.name ?? p.landingLabel ?? 'Liaison sous-marine';
-  const landingPoints = normalizeLandingPoints(p.landing_points);
-  const lengthKm = toNumber(p.length_km);
-  const rfsYear = toNumber(p.rfs_year);
-  const capacityTbps = toNumber(p.capacity_tbps);
-  const owners = String(p.owner ?? '')
-    .split(',')
-    .map((owner) => owner.trim())
-    .filter(Boolean);
-
-  const meta: string[] = [];
-  if (lengthKm != null) meta.push(`${new Intl.NumberFormat('fr-FR').format(lengthKm)} km`);
-  if (capacityTbps != null) meta.push(`${capacityTbps} Tbps`);
-  if (rfsYear != null) meta.push(`RFS ${rfsYear}`);
-
-  const derived: string[] = [];
-  if (landingPoints.length > 0) derived.push(`${landingPoints.length} point${landingPoints.length > 1 ? 's' : ''} d’atterrage`);
-  if (owners.length > 0) derived.push(`${owners.length} opérateur${owners.length > 1 ? 's' : ''}`);
-  if (rfsYear != null) {
-    const age = new Date().getFullYear() - rfsYear;
-    if (age >= 0) derived.push(age === 0 ? 'mise en service cette année' : `${age} an${age > 1 ? 's' : ''} d’ancienneté`);
-  }
-
-  return `
-    <div style="display:flex; flex-direction:column; gap:6px;">
-      <div>
-        <strong style="color:#7dd3fc;">${escapeHtml(name)}</strong>
-        ${landingPoints.length > 0 ? `<div style="color:#cbd5e1; font-size:11px; margin-top:2px;">${escapeHtml(landingPoints.join(' ↔ '))}</div>` : ''}
-      </div>
-      ${meta.length > 0 ? `<div style="color:#94a3b8; font-size:10px;">${escapeHtml(meta.join(' · '))}</div>` : ''}
-      ${owners.length > 0 ? `<div style="color:#e2e8f0; font-size:10px;">Consortium: ${escapeHtml(owners.slice(0, 3).join(', '))}${owners.length > 3 ? ` +${owners.length - 3}` : ''}</div>` : ''}
-      ${derived.length > 0 ? `<div style="color:#67e8f9; font-size:10px;">${escapeHtml(derived.join(' · '))}</div>` : ''}
-    </div>
-  `;
-}
-
-const AIS_DESTINATION_ALIASES: Record<string, string> = {
-  // ─── France ───
-  'ST NAZAIRE': 'Saint-Nazaire',
-  'SAINT NAZAIRE': 'Saint-Nazaire',
-  'ST MALO': 'Saint-Malo',
-  'SAINT MALO': 'Saint-Malo',
-  'ST MALO FRANCE': 'Saint-Malo',
-  'LE HAVRE': 'Le Havre',
-  'LE HAVRE FRANCE': 'Le Havre',
-  'LEHAVRE': 'Le Havre',
-  'MARSEILLE': 'Marseille',
-  'MARSEILLE FR': 'Marseille',
-  'TOULON': 'Toulon',
-  'BREST': 'Brest',
-  'BREST FRANCE': 'Brest',
-  'ROUEN': 'Rouen',
-  'ROUEN FRANCE': 'Rouen',
-  'DUNKERQUE': 'Dunkerque',
-  'DUNKIRK': 'Dunkerque',
-  'CALAIS': 'Calais',
-  'BOULOGNE': 'Boulogne-sur-Mer',
-  'BOULOGNE SUR MER': 'Boulogne-sur-Mer',
-  'CHERBOURG': 'Cherbourg',
-  'DIEPPE': 'Dieppe',
-  'LA ROCHELLE': 'La Rochelle',
-  'LA ROCHELLE FR': 'La Rochelle',
-  'BORDEAUX': 'Bordeaux',
-  'LORIENT': 'Lorient',
-  'NANTES': 'Nantes',
-  'SETE': 'Sète',
-  'FOS SUR MER': 'Fos-sur-Mer',
-  'FOS': 'Fos-sur-Mer',
-  'NICE': 'Nice',
-  'CANNES': 'Cannes',
-  'AJACCIO': 'Ajaccio',
-  'BASTIA': 'Bastia',
-  'BAYONNE': 'Bayonne',
-  'PORT VENDRES': 'Port-Vendres',
-  'LA HAVRE': 'Le Havre',       // faute fréquente en AIS
-  // ─── Belgique / Pays-Bas ───
-  'ANTWERP': 'Anvers',
-  'ANTWERPEN': 'Anvers',
-  'ZEEBRUGGE': 'Zeebrugge',
-  'ROTTERDAM': 'Rotterdam',
-  'AMSTERDAM': 'Amsterdam',
-  'VLISSINGEN': 'Flessingue',
-  'FLUSHING': 'Flessingue',
-  'TERNEUZEN': 'Terneuzen',
-  'DEN HAAG': 'La Haye',
-  'DENHAAG': 'La Haye',
-  'DEN HAAG NL': 'La Haye',
-  'THE HAGUE': 'La Haye',
-  'IJMUIDEN': 'IJmuiden',
-  // ─── Allemagne ───
-  'HAMBURG': 'Hambourg',
-  'HAMBURG DE': 'Hambourg',
-  'BREMERHAVEN': 'Bremerhaven',
-  'BREMEN': 'Brême',
-  'KIEL': 'Kiel',
-  'ROSTOCK': 'Rostock',
-  'LUBECK': 'Lübeck',
-  // ─── Royaume-Uni ───
-  'SOUTHAMPTON': 'Southampton',
-  'SOUTHAMPTON UK': 'Southampton',
-  'FELIXSTOWE': 'Felixstowe',
-  'TILBURY': 'Tilbury',
-  'LONDON': 'Londres',
-  'LIVERPOOL': 'Liverpool',
-  'HULL': 'Hull',
-  'IMMINGHAM': 'Immingham',
-  'PORTSMOUTH': 'Portsmouth',
-  'DOVER': 'Douvres',
-  'NEWHAVEN': 'Newhaven',
-  'HARWICH': 'Harwich',
-  'ABERDEEN': 'Aberdeen',
-  'GLASGOW': 'Glasgow',
-  'BRISTOL': 'Bristol',
-  'FALMOUTH': 'Falmouth',
-  'PLYMOUTH': 'Plymouth',
-  // ─── Espagne ───
-  'BARCELONA': 'Barcelone',
-  'ALGECIRAS': 'Algésiras',
-  'VALENCIA': 'Valence',
-  'BILBAO': 'Bilbao',
-  'VIGO': 'Vigo',
-  'LAS PALMAS': 'Las Palmas',
-  'CADIZ': 'Cadix',
-  // ─── Portugal ───
-  'LISBON': 'Lisbonne',
-  'LISBOA': 'Lisbonne',
-  'PORTO': 'Porto',
-  'LEIXOES': 'Leixões',
-  'SETUBAL': 'Setúbal',
-  // ─── Italie ───
-  'GENOA': 'Gênes',
-  'GENES': 'Gênes',
-  'LIVORNO': 'Livourne',
-  'NAPLES': 'Naples',
-  'NAPOLI': 'Naples',
-  'VENICE': 'Venise',
-  'VENEZIA': 'Venise',
-  'TRIESTE': 'Trieste',
-  'ANCONA': 'Ancône',
-  'PALERMO': 'Palerme',
-  'CIVITAVECCHIA': 'Civitavecchia',
-  'TARANTO': 'Tarente',
-  // ─── Grèce / Turquie ───
-  'PIRAEUS': 'Pirée',
-  'PIREUS': 'Pirée',
-  'THESSALONIKI': 'Thessalonique',
-  'ISTANBUL': 'Istanbul',
-  'MERSIN': 'Mersin',
-  'IZMIR': 'Izmir',
-  // ─── Mer du Nord / Baltique ───
-  'GOTHENBURG': 'Göteborg',
-  'GOTEBORG': 'Göteborg',
-  'STOCKHOLM': 'Stockholm',
-  'OSLO': 'Oslo',
-  'BERGEN': 'Bergen',
-  'COPENHAGEN': 'Copenhague',
-  'KOBENHAVN': 'Copenhague',
-  'HELSINKI': 'Helsinki',
-  'TALLINN': 'Tallinn',
-  'RIGA': 'Riga',
-  'KLAIPEDA': 'Klaipėda',
-  'GDANSK': 'Gdańsk',
-  'GDYNIA': 'Gdynia',
-  'ST PETERSBURG': 'Saint-Pétersbourg',
-  'SAINT PETERSBURG': 'Saint-Pétersbourg',
-  // ─── Méditerranée / Afrique du Nord ───
-  'TUNIS': 'Tunis',
-  'ALGIERS': 'Alger',
-  'ALGER': 'Alger',
-  'CASABLANCA': 'Casablanca',
-  'TANGER': 'Tanger',
-  'TANGIER': 'Tanger',
-  'TRIPOLI': 'Tripoli',
-  'ALEXANDRIA': 'Alexandrie',
-  'PORT SAID': 'Port-Saïd',
-  'SUEZ': 'Suez',
-  // ─── Moyen-Orient ───
-  'DUBAI': 'Dubaï',
-  'JEBEL ALI': 'Jebel Ali',
-  'ABU DHABI': 'Abu Dhabi',
-  'JEDDAH': 'Djeddah',
-  'DJEDDA': 'Djeddah',
-  'KUWAIT': 'Koweït',
-  'DOHA': 'Doha',
-  'BANDAR ABBAS': 'Bandar Abbas',
-  // ─── Asie ───
-  'SINGAPORE': 'Singapour',
-  'HONG KONG': 'Hong Kong',
-  'SHANGHAI': 'Shanghai',
-  'SHENZHEN': 'Shenzhen',
-  'NINGBO': 'Ningbo',
-  'TIANJIN': 'Tianjin',
-  'QINGDAO': 'Qingdao',
-  'GUANGZHOU': 'Guangzhou',
-  'TOKYO': 'Tokyo',
-  'OSAKA': 'Osaka',
-  'KOBE': 'Kobe',
-  'NAGOYA': 'Nagoya',
-  'BUSAN': 'Busan',
-  'INCHEON': 'Incheon',
-  'KAOHSIUNG': 'Kaohsiung',
-  'MUMBAI': 'Mumbai',
-  'BOMBAY': 'Mumbai',
-  'NHAVA SHEVA': 'Nhava Sheva',
-  'CHENNAI': 'Chennai',
-  'MADRAS': 'Chennai',
-  'BANGKOK': 'Bangkok',
-  'LAEM CHABANG': 'Laem Chabang',
-  'HO CHI MINH': 'Ho Chi Minh-Ville',
-  'HOCHIMINH': 'Ho Chi Minh-Ville',
-  'HAIPHONG': 'Haïphong',
-  'PORT KLANG': 'Port Klang',
-  'PENANG': 'Penang',
-  'MANILA': 'Manille',
-  // ─── Amériques ───
-  'NEW YORK': 'New York',
-  'LOS ANGELES': 'Los Angeles',
-  'HOUSTON': 'Houston',
-  'NEW ORLEANS': 'La Nouvelle-Orléans',
-  'MIAMI': 'Miami',
-  'SAVANNAH': 'Savannah',
-  'BALTIMORE': 'Baltimore',
-  'NORFOLK': 'Norfolk',
-  'BOSTON': 'Boston',
-  'CHARLESTON': 'Charleston',
-  'MONTREAL': 'Montréal',
-  'VANCOUVER': 'Vancouver',
-  'HALIFAX': 'Halifax',
-  'VERACRUZ': 'Veracruz',
-  'SANTOS': 'Santos',
-  'RIO DE JANEIRO': 'Rio de Janeiro',
-  'BUENOS AIRES': 'Buenos Aires',
-  'VALPARAISO': 'Valparaíso',
-  'CALLAO': 'Callao',
-  // ─── Afrique subsaharienne ───
-  'LAGOS': 'Lagos',
-  'CAPE TOWN': 'Le Cap',
-  'DURBAN': 'Durban',
-  'MOMBASA': 'Mombasa',
-  'DAR ES SALAAM': 'Dar Es Salaam',
-  'DJIBOUTI': 'Djibouti',
-  // ─── Océanie ───
-  'SYDNEY': 'Sydney',
-  'MELBOURNE': 'Melbourne',
-  'BRISBANE': 'Brisbane',
-  'FREMANTLE': 'Fremantle',
-  'AUCKLAND': 'Auckland',
-};
-
-const AIS_PORT_LOCODES: Record<string, { name: string; country: string }> = {
-  // ─── France métropolitaine ───
-  FRLEH: { name: 'Le Havre', country: 'FR' },
-  FRROU: { name: 'Rouen', country: 'FR' },
-  FRHON: { name: 'Honfleur', country: 'FR' },
-  FRCAL: { name: 'Calais', country: 'FR' },
-  FRDKK: { name: 'Dunkerque', country: 'FR' },
-  FRBLT: { name: 'Boulogne-sur-Mer', country: 'FR' },
-  FRDIE: { name: 'Dieppe', country: 'FR' },
-  FRCHB: { name: 'Cherbourg', country: 'FR' },
-  FRCBR: { name: 'Cherbourg-Octeville', country: 'FR' },
-  FRGRA: { name: 'Granville', country: 'FR' },
-  FRSML: { name: 'Saint-Malo', country: 'FR' },
-  FRQUI: { name: 'Quimper', country: 'FR' },
-  FRBRE: { name: 'Brest', country: 'FR' },
-  FRBES: { name: 'Brest', country: 'FR' },
-  FRULH: { name: 'Lorient', country: 'FR' },
-  FRLRT: { name: 'Lorient', country: 'FR' },
-  FRVAN: { name: 'Vannes', country: 'FR' },
-  FRSTN: { name: 'Saint-Nazaire', country: 'FR' },
-  FRSNI: { name: 'Saint-Nazaire', country: 'FR' },
-  FRNTS: { name: 'Nantes', country: 'FR' },
-  FRNTE: { name: 'Nantes', country: 'FR' },
-  FRLRH: { name: 'La Rochelle', country: 'FR' },
-  FRLRX: { name: 'La Rochelle', country: 'FR' },
-  FRROS: { name: 'Rochefort', country: 'FR' },
-  FRBAY: { name: 'Bayonne', country: 'FR' },
-  FRBOD: { name: 'Bordeaux', country: 'FR' },
-  FRLCR: { name: 'La Cotinière', country: 'FR' },
-  FRMRS: { name: 'Marseille', country: 'FR' },
-  FRFOS: { name: 'Fos-sur-Mer', country: 'FR' },
-  FRSET: { name: 'Sète', country: 'FR' },
-  FRAGO: { name: 'Agde', country: 'FR' },
-  FRPLN: { name: 'Port-la-Nouvelle', country: 'FR' },
-  FRTLN: { name: 'Toulon', country: 'FR' },
-  FRCRY: { name: 'Cannes', country: 'FR' },
-  FRANT: { name: 'Antibes', country: 'FR' },
-  FRNCL: { name: 'Nice', country: 'FR' },
-  FRNCE: { name: 'Nice', country: 'FR' },
-  FRMNC: { name: 'Monaco', country: 'MC' },
-  FRSRG: { name: 'Strasbourg', country: 'FR' },
-  FRSTR: { name: 'Strasbourg', country: 'FR' },
-  FRLIO: { name: 'Lyon', country: 'FR' },
-  FRTPE: { name: 'Port de Trompeloup', country: 'FR' },
-  // ─── France — Corse ───
-  FRAIS: { name: 'Ajaccio', country: 'FR' },
-  FRBST: { name: 'Bastia', country: 'FR' },
-  FRPRY: { name: 'Propriano', country: 'FR' },
-  FRBN: { name: 'Bonifacio', country: 'FR' },
-  FRILE: { name: 'Île-Rousse', country: 'FR' },
-  FRCAL2: { name: 'Calvi', country: 'FR' },
-  FRPVC: { name: 'Porto-Vecchio', country: 'FR' },
-  // ─── France — DROM ───
-  FRPTP: { name: 'Pointe-à-Pitre', country: 'FR' },
-  FRMAR: { name: 'Fort-de-France', country: 'FR' },
-  FRKYR: { name: 'Cayenne', country: 'FR' },
-  FRRUN: { name: 'La Réunion', country: 'FR' },
-  FRMAM: { name: 'Mamoudzou', country: 'FR' },
-  // ─── Belgique ───
-  BEANR: { name: 'Anvers', country: 'BE' },
-  BEZEE: { name: 'Zeebrugge', country: 'BE' },
-  BEGNE: { name: 'Gand', country: 'BE' },
-  BEOST: { name: 'Ostende', country: 'BE' },
-  // ─── Pays-Bas ───
-  NLRTM: { name: 'Rotterdam', country: 'NL' },
-  NLAMS: { name: 'Amsterdam', country: 'NL' },
-  NLTBU: { name: 'Terneuzen', country: 'NL' },
-  NLFLS: { name: 'Flessingue', country: 'NL' },
-  NLVLI: { name: 'Vlissingen', country: 'NL' },
-  // ─── Allemagne ───
-  DEHAM: { name: 'Hambourg', country: 'DE' },
-  DEBRE: { name: 'Brême', country: 'DE' },
-  DEBRV: { name: 'Bremerhaven', country: 'DE' },
-  DEKIL: { name: 'Kiel', country: 'DE' },
-  DELBC: { name: 'Lübeck', country: 'DE' },
-  DEROS: { name: 'Rostock', country: 'DE' },
-  // ─── Royaume-Uni ───
-  GBSOU: { name: 'Southampton', country: 'GB' },
-  GBFXT: { name: 'Felixstowe', country: 'GB' },
-  GBTIL: { name: 'Tilbury', country: 'GB' },
-  GBIMM: { name: 'Immingham', country: 'GB' },
-  GBHUL: { name: 'Hull', country: 'GB' },
-  GBGOO: { name: 'Goole', country: 'GB' },
-  GBLON: { name: 'Londres', country: 'GB' },
-  GBLIV: { name: 'Liverpool', country: 'GB' },
-  GBMAN: { name: 'Manchester', country: 'GB' },
-  GBABZ: { name: 'Aberdeen', country: 'GB' },
-  GBEDI: { name: 'Édimbourg', country: 'GB' },
-  GBBRS: { name: 'Bristol', country: 'GB' },
-  GBPLY: { name: 'Plymouth', country: 'GB' },
-  GBFAL: { name: 'Falmouth', country: 'GB' },
-  GBDVR: { name: 'Douvres', country: 'GB' },
-  GBHRW: { name: 'Harwich', country: 'GB' },
-  GBNHV: { name: 'Newhaven', country: 'GB' },
-  GBPME: { name: 'Portsmouth', country: 'GB' },
-  // ─── Espagne ───
-  ESBCN: { name: 'Barcelone', country: 'ES' },
-  ESALG: { name: 'Algésiras', country: 'ES' },
-  ESVLC: { name: 'Valence', country: 'ES' },
-  ESBIO: { name: 'Bilbao', country: 'ES' },
-  ESVGO: { name: 'Vigo', country: 'ES' },
-  ESCAD: { name: 'Cadix', country: 'ES' },
-  ESCAR: { name: 'Carthagène', country: 'ES' },
-  ESALC: { name: 'Alicante', country: 'ES' },
-  ESPAS: { name: 'Las Palmas', country: 'ES' },
-  ESSAG: { name: 'Sagunto', country: 'ES' },
-  // ─── Portugal ───
-  PTLIS: { name: 'Lisbonne', country: 'PT' },
-  PTOPB: { name: 'Porto', country: 'PT' },
-  PTSET: { name: 'Setúbal', country: 'PT' },
-  PTFNC: { name: 'Funchal', country: 'PT' },
-  // ─── Italie ───
-  ITGOA: { name: 'Gênes', country: 'IT' },
-  ITLIV: { name: 'Livourne', country: 'IT' },
-  ITNAP: { name: 'Naples', country: 'IT' },
-  ITTRS: { name: 'Trieste', country: 'IT' },
-  ITVCE: { name: 'Venise', country: 'IT' },
-  ITCVV: { name: 'Civitavecchia', country: 'IT' },
-  ITPAL: { name: 'Palerme', country: 'IT' },
-  ITAUG: { name: 'Augusta', country: 'IT' },
-  ITTSO: { name: 'Tarante', country: 'IT' },
-  ITANC: { name: 'Ancône', country: 'IT' },
-  // ─── Grèce ───
-  GRPIR: { name: 'Pirée', country: 'GR' },
-  GRTHE: { name: 'Thessalonique', country: 'GR' },
-  GRPAT: { name: 'Patras', country: 'GR' },
-  GRIRA: { name: 'Héraklion', country: 'GR' },
-  // ─── Turquie ───
-  TRIST: { name: 'Istanbul', country: 'TR' },
-  TRMER: { name: 'Mersin', country: 'TR' },
-  TRIZM: { name: 'Izmir', country: 'TR' },
-  // ─── Scandinavie ───
-  SESTO: { name: 'Stockholm', country: 'SE' },
-  SEGOT: { name: 'Göteborg', country: 'SE' },
-  SEMMA: { name: 'Malmö', country: 'SE' },
-  NOBGO: { name: 'Bergen', country: 'NO' },
-  NOOSL: { name: 'Oslo', country: 'NO' },
-  NOSVG: { name: 'Stavanger', country: 'NO' },
-  DKAAR: { name: 'Aarhus', country: 'DK' },
-  DKCPH: { name: 'Copenhague', country: 'DK' },
-  FIHEL: { name: 'Helsinki', country: 'FI' },
-  FITKU: { name: 'Turku', country: 'FI' },
-  // ─── Baltique ───
-  PLGDN: { name: 'Gdańsk', country: 'PL' },
-  PLSZZ: { name: 'Szczecin', country: 'PL' },
-  RULED: { name: 'Saint-Pétersbourg', country: 'RU' },
-  RUULU: { name: 'Ust-Luga', country: 'RU' },
-  EETAL: { name: 'Tallinn', country: 'EE' },
-  LVRIX: { name: 'Riga', country: 'LV' },
-  LTKLJ: { name: 'Klaipėda', country: 'LT' },
-  // ─── Mer Noire ───
-  UAODS: { name: 'Odessa', country: 'UA' },
-  BGSOF: { name: 'Varna', country: 'BG' },
-  ROBRA: { name: 'Constanţa', country: 'RO' },
-  // ─── Afrique du Nord ───
-  TNTUN: { name: 'Tunis', country: 'TN' },
-  TNSFA: { name: 'Sfax', country: 'TN' },
-  DZALG: { name: 'Alger', country: 'DZ' },
-  DZAAE: { name: 'Annaba', country: 'DZ' },
-  MACAS: { name: 'Casablanca', country: 'MA' },
-  MATNG: { name: 'Tanger', country: 'MA' },
-  LYTRP: { name: 'Tripoli', country: 'LY' },
-  EGPSD: { name: 'Port-Saïd', country: 'EG' },
-  EGALY: { name: 'Alexandrie', country: 'EG' },
-  EGSUZ: { name: 'Suez', country: 'EG' },
-  // ─── Moyen-Orient ───
-  AEDXB: { name: 'Dubaï', country: 'AE' },
-  AEJEA: { name: 'Jebel Ali', country: 'AE' },
-  AEAUH: { name: 'Abu Dhabi', country: 'AE' },
-  SAJUB: { name: 'Jubail', country: 'SA' },
-  SAJED: { name: 'Djeddah', country: 'SA' },
-  KWKWI: { name: 'Koweït', country: 'KW' },
-  IQBSR: { name: 'Bassora', country: 'IQ' },
-  IRBAN: { name: 'Bandar Abbas', country: 'IR' },
-  OMMSQ: { name: 'Mascate', country: 'OM' },
-  QADHB: { name: 'Doha', country: 'QA' },
-  // ─── Asie ───
-  CNSHA: { name: 'Shanghai', country: 'CN' },
-  CNNGB: { name: 'Ningbo', country: 'CN' },
-  CNQIN: { name: 'Qingdao', country: 'CN' },
-  CNSZN: { name: 'Shenzhen', country: 'CN' },
-  CNTSN: { name: 'Tianjin', country: 'CN' },
-  CNCAN: { name: 'Guangzhou', country: 'CN' },
-  CNGZH: { name: 'Guangzhou', country: 'CN' },
-  CNTAO: { name: 'Qingdao', country: 'CN' },
-  HKHKG: { name: 'Hong Kong', country: 'HK' },
-  SGSIN: { name: 'Singapour', country: 'SG' },
-  JPOSA: { name: 'Osaka', country: 'JP' },
-  JPTYO: { name: 'Tokyo', country: 'JP' },
-  JPNGO: { name: 'Nagoya', country: 'JP' },
-  JPKOB: { name: 'Kobe', country: 'JP' },
-  KRBSA: { name: 'Busan', country: 'KR' },
-  KRICN: { name: 'Incheon', country: 'KR' },
-  TWKHH: { name: 'Kaohsiung', country: 'TW' },
-  TWTPE: { name: 'Taipei', country: 'TW' },
-  INBOM: { name: 'Mumbai', country: 'IN' },
-  INNHV: { name: 'Nhava Sheva', country: 'IN' },
-  INMAA: { name: 'Chennai', country: 'IN' },
-  INNSA: { name: 'Nhava Sheva', country: 'IN' },
-  THBKK: { name: 'Bangkok', country: 'TH' },
-  THLCB: { name: 'Laem Chabang', country: 'TH' },
-  VNSGN: { name: 'Ho Chi Minh-Ville', country: 'VN' },
-  VNHPH: { name: 'Haiphong', country: 'VN' },
-  PHMNL: { name: 'Manille', country: 'PH' },
-  IDBTH: { name: 'Batam', country: 'ID' },
-  IDBLW: { name: 'Belawan', country: 'ID' },
-  MYPKG: { name: 'Port Klang', country: 'MY' },
-  MYPEN: { name: 'Penang', country: 'MY' },
-  MYSRB: { name: 'Kota Kinabalu', country: 'MY' },
-  // ─── Amériques ───
-  USNYC: { name: 'New York', country: 'US' },
-  USLAX: { name: 'Los Angeles', country: 'US' },
-  USHOU: { name: 'Houston', country: 'US' },
-  USNOR: { name: 'Norfolk', country: 'US' },
-  USSAV: { name: 'Savannah', country: 'US' },
-  USBOS: { name: 'Boston', country: 'US' },
-  USBAL: { name: 'Baltimore', country: 'US' },
-  USNOA: { name: 'La Nouvelle-Orléans', country: 'US' },
-  USMIA: { name: 'Miami', country: 'US' },
-  USCHA: { name: 'Charleston', country: 'US' },
-  CAHAL: { name: 'Halifax', country: 'CA' },
-  CAMTR: { name: 'Montréal', country: 'CA' },
-  CAVCR: { name: 'Vancouver', country: 'CA' },
-  MXVER: { name: 'Veracruz', country: 'MX' },
-  MXLZC: { name: 'Lázaro Cárdenas', country: 'MX' },
-  PABAQ: { name: 'Balboa (Panamá)', country: 'PA' },
-  BRSSZ: { name: 'Santos', country: 'BR' },
-  BRRIO: { name: 'Rio de Janeiro', country: 'BR' },
-  BRSFS: { name: 'São Luís', country: 'BR' },
-  ARBUE: { name: 'Buenos Aires', country: 'AR' },
-  ARROS: { name: 'Rosario', country: 'AR' },
-  CLVAL: { name: 'Valparaíso', country: 'CL' },
-  PECLL: { name: 'Callao (Lima)', country: 'PE' },
-  COBAQ: { name: 'Barranquilla', country: 'CO' },
-  // ─── Afrique subsaharienne ───
-  NGAPP: { name: 'Lagos (Apapa)', country: 'NG' },
-  ZACPT: { name: 'Le Cap', country: 'ZA' },
-  ZADUR: { name: 'Durban', country: 'ZA' },
-  TZDAR: { name: 'Dar Es Salaam', country: 'TZ' },
-  KEMBA: { name: 'Mombasa', country: 'KE' },
-  DJJIB: { name: 'Djibouti', country: 'DJ' },
-  // ─── Océanie ───
-  AUSYD: { name: 'Sydney', country: 'AU' },
-  AUMEL: { name: 'Melbourne', country: 'AU' },
-  AUBNE: { name: 'Brisbane', country: 'AU' },
-  AUFRM: { name: 'Fremantle', country: 'AU' },
-  AUDLP: { name: 'Darwin', country: 'AU' },
-  NZAKL: { name: 'Auckland', country: 'NZ' },
-  NZWLG: { name: 'Wellington', country: 'NZ' },
-  // ─── Pseudo-LOCODEs fréquents en AIS (abréviations non-standard) ───
-  DENHA: { name: 'La Haye', country: 'NL' },       // "DEN HAAG" tronqué dans l'AIS
-  NLIJD: { name: 'IJmuiden', country: 'NL' },
-  NLFJL: { name: 'Flessingue', country: 'NL' },
-  GBGRK: { name: 'Grangemouth', country: 'GB' },
-  GBLEI: { name: 'Leith (Édimbourg)', country: 'GB' },
-  GBDVS: { name: 'Douvres', country: 'GB' },
-  FRLTQ: { name: 'Le Touquet', country: 'FR' },
-  FRCHN: { name: 'Cherbourg', country: 'FR' },
-  FRLOR: { name: 'Lorient', country: 'FR' },
-};
-
-/** Get emoji for primary risk */
-function getWeatherRiskEmoji(risks: string[]): string {
-  if (risks.length === 0) return '⚠️';
-  return WEATHER_RISK_EMOJIS[risks[0]] ?? '⚠️';
-}
-
-// ─── Météo department centroids [lng, lat] ───
-const WEATHER_DEPT_CENTROIDS: Record<string, [number, number]> = {
-  '01': [5.22, 46.00], '02': [3.62, 49.47], '03': [3.19, 46.39], '04': [6.24, 44.08],
-  '05': [6.26, 44.66], '06': [7.12, 43.94], '07': [4.42, 44.75], '08': [4.62, 49.62],
-  '09': [1.60, 42.92], '10': [4.08, 48.30], '11': [2.42, 43.11], '12': [2.67, 44.28],
-  '13': [5.05, 43.54], '14': [-0.37, 49.09], '15': [2.67, 45.05], '16': [0.19, 45.72],
-  '17': [-0.83, 45.75], '18': [2.50, 47.07], '19': [1.87, 45.35], '21': [4.90, 47.42],
-  '22': [-2.97, 48.44], '23': [2.07, 46.08], '24': [0.75, 45.14], '25': [6.36, 47.17],
-  '26': [5.17, 44.68], '27': [0.97, 49.11], '28': [1.38, 48.31], '29': [-4.10, 48.26],
-  '2A': [8.92, 41.86], '2B': [9.29, 42.40], '30': [4.18, 43.99], '31': [1.18, 43.35],
-  '32': [0.45, 43.69], '33': [-0.58, 44.83], '34': [3.58, 43.59], '35': [-1.68, 48.11],
-  '36': [1.57, 46.78], '37': [0.69, 47.26], '38': [5.58, 45.26], '39': [5.69, 46.73],
-  '40': [-0.77, 43.89], '41': [1.41, 47.62], '42': [4.16, 45.73], '43': [3.85, 45.11],
-  '44': [-1.68, 47.36], '45': [2.10, 47.91], '46': [1.62, 44.62], '47': [0.46, 44.34],
-  '48': [3.50, 44.52], '49': [-0.56, 47.39], '50': [-1.32, 49.08], '51': [4.07, 48.96],
-  '52': [5.14, 48.11], '53': [-0.77, 48.07], '54': [6.17, 48.79], '55': [5.38, 49.00],
-  '56': [-2.82, 47.74], '57': [6.67, 49.04], '58': [3.50, 47.11], '59': [3.22, 50.45],
-  '60': [2.42, 49.42], '61': [0.11, 48.62], '62': [2.28, 50.51], '63': [3.13, 45.73],
-  '64': [-0.77, 43.26], '65': [0.15, 43.05], '66': [2.53, 42.60], '67': [7.55, 48.67],
-  '68': [7.21, 47.86], '69': [4.61, 45.87], '70': [6.08, 47.62], '71': [4.53, 46.64],
-  '72': [0.20, 47.93], '73': [6.39, 45.49], '74': [6.42, 46.04], '75': [2.35, 48.86],
-  '76': [0.97, 49.66], '77': [2.99, 48.62], '78': [1.83, 48.83], '79': [-0.33, 46.52],
-  '80': [2.28, 49.92], '81': [2.17, 43.79], '82': [1.29, 44.08], '83': [6.22, 43.47],
-  '84': [5.19, 44.05], '85': [-1.29, 46.68], '86': [0.46, 46.56], '87': [1.24, 45.89],
-  '88': [6.37, 48.17], '89': [3.56, 47.84], '90': [6.92, 47.63], '91': [2.24, 48.52],
-  '92': [2.24, 48.84], '93': [2.48, 48.91], '94': [2.47, 48.78], '95': [2.12, 49.08],
-  // DROM-COM
-  '971': [-61.55, 16.25], '972': [-61.02, 14.64], '973': [-53.13, 3.92],
-  '974': [55.54, -21.12], '976': [45.15, -12.84],
-};
-
-// ─── ISS (Indice de Stress Sanitaire) → color helpers ───
-
-function issToFillColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.fillColor;
-}
-
-function issToLineColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.lineColor;
-}
-
-function issToColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.color;
-}
-
-function getISSSemio(iss: number): { icon: string; name: string; label: string; color: string; level: ISSLevel } {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return { icon: lvl.icon, name: lvl.name, label: lvl.label, color: lvl.color, level: lvl.level };
-}
-
-function getHealthSourceLabel(source: string): string {
-  switch (source) {
-    case 'spf-epid': return 'Santé Publique France';
-    case 'drees': return 'DREES';
-    case 'sentinelles': return 'Sentinelles';
-    case 'composite': return 'Multi-sources';
-    case 'ansm': return 'ANSM';
-    case 'oscour': return 'OSCOUR';
-    case 'sos-medecins': return 'SOS Médecins';
-    default: return 'SPF / DREES';
-  }
-}
-
-// ─── Flood vigilance → color ───
-const FLOOD_COLORS: Record<string, string> = {
-  green: '#34c759',
-  yellow: '#ffcc00',
-  orange: '#ff9500',
-  red: '#ff3b30',
-};
-
-// ─── ISNR stability → color ───
-const ISNR_COLORS: Record<string, string> = {
-  critical: 'rgba(255,59,48,0.40)',   // Rouge : 81-100
-  high: 'rgba(255,149,0,0.35)',       // Orange : 61-80
-  medium: 'rgba(255,204,0,0.25)',     // Jaune : 41-60
-  low: 'rgba(52,199,89,0.20)',        // Vert : 21-40
-  stable: 'rgba(52,199,89,0.10)',     // Vert clair : 0-20
-};
-
-function scoreToISNRColor(score: number): string {
-  if (score >= 80) return ISNR_COLORS.critical;
-  if (score >= 60) return ISNR_COLORS.high;
-  if (score >= 40) return ISNR_COLORS.medium;
-  if (score >= 20) return ISNR_COLORS.low;
-  return ISNR_COLORS.stable;
-}
-
-function scoreToISNRLineColor(score: number): string {
-  if (score >= 80) return 'rgba(255,59,48,0.8)';
-  if (score >= 60) return 'rgba(255,149,0,0.7)';
-  if (score >= 40) return 'rgba(255,204,0,0.6)';
-  if (score >= 20) return 'rgba(52,199,89,0.5)';
-  return 'rgba(52,199,89,0.3)';
-}
-
-
-// ─── Infras vitales: palette pastel volontairement secondaire ───
-const INFRA_COLORS: Record<string, string> = {
-  nuclear: '#8FC8E8',
-  thermal: '#74B6DC',
-  hydro: '#B7DAEE',
-  substation: '#5EA6D6',
-  'gas-terminal': '#8EDFD8',
-  'gas-storage': '#C0F0E8',
-  refinery: '#E7BE98',
-  'oil-depot': '#F1D6BA',
-};
-
-const INFRA_VITAL_HALO_COLOR = 'rgba(242, 244, 247, 0.94)';
-const INFRA_NUCLEAR_RING_COLOR = 'rgba(232, 242, 250, 0.98)';
-const HYDRAULIC_COLORS: Record<string, string> = {
-  hydro_production: '#3B82F6',
-  step_storage: '#8B5CF6',
-  water_regulation: '#9CA3AF',
-};
-const HYDRAULIC_TREND_COLORS: Record<string, string> = {
-  low: '#60A5FA',
-  normal: '#BFDBFE',
-  high: '#2563EB',
-  stress: '#EF4444',
-};
-
-const DEFAULT_VIEW: MapViewState = {
-  longitude: 2.2,
-  latitude: 46.6,
-  zoom: 6,
-  pitch: 0,
-  bearing: 0,
-};
-
-function deptCodeToId(code: string): number {
-  if (code === '2A') return 200;
-  if (code === '2B') return 201;
-  const n = parseInt(code, 10);
-  return isNaN(n) ? 999 : n;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getFeatureCenter(feature: GeoJSON.Feature): [number, number] | null {
-  const geom = feature.geometry;
-  if (!geom) return null;
-  let minLng = Infinity;
-  let minLat = Infinity;
-  let maxLng = -Infinity;
-  let maxLat = -Infinity;
-  const push = (coord: number[]) => {
-    if (coord.length < 2) return;
-    const lng = coord[0];
-    const lat = coord[1];
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-    minLng = Math.min(minLng, lng);
-    minLat = Math.min(minLat, lat);
-    maxLng = Math.max(maxLng, lng);
-    maxLat = Math.max(maxLat, lat);
-  };
-  const walk = (node: any): void => {
-    if (!Array.isArray(node)) return;
-    if (typeof node[0] === 'number') {
-      push(node as number[]);
-      return;
-    }
-    for (const child of node) walk(child);
-  };
-  walk((geom as any).coordinates);
-  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) {
-    return null;
-  }
-  return [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
-}
-
-/**
- * Generate a curved arc between two points using a quadratic bezier.
- * The curve bows perpendicular to the line connecting the points.
- * @param from Starting coordinates [lng, lat]
- * @param to Ending coordinates [lng, lat]
- * @param curvature How much the curve bows (0.2-0.4 recommended)
- * @param steps Number of points to generate
- */
-function generateArc(
-  from: [number, number],
-  to: [number, number],
-  curvature = 0.3,
-  steps = 40
-): [number, number][] {
-  const [x1, y1] = from;
-  const [x2, y2] = to;
-
-  // Midpoint
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-
-  // Perpendicular direction (rotated 90 degrees)
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-
-  // Control point offset perpendicular to the line
-  const offsetX = -dy * curvature;
-  const offsetY = dx * curvature;
-
-  // Control point for quadratic bezier
-  const cx = mx + offsetX;
-  const cy = my + offsetY;
-
-  const points: [number, number][] = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const u = 1 - t;
-    // Quadratic bezier formula
-    const x = u * u * x1 + 2 * u * t * cx + t * t * x2;
-    const y = u * u * y1 + 2 * u * t * cy + t * t * y2;
-    points.push([x, y]);
-  }
-  return points;
-}
-
-function computeBearingDegrees(from: [number, number], to: [number, number]): number {
-  const dx = to[0] - from[0];
-  const dy = to[1] - from[1];
-  return (Math.atan2(dy, dx) * 180) / Math.PI;
-}
-
-// France center for interconnection arcs
-const FRANCE_CENTER: [number, number] = [2.5, 46.5];
+// ─── Extracted deckgl modules (constants & pure helpers) ───
+import type { ThreatMapDatum } from './deckgl/types.ts';
+import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
+import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
+import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
+export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
+import { emptyFC, getFeatureCenter, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
+import {
+  escapeHtml,
+  getHantavirusSeverityColor,
+  getHantavirusTerritoryLabel,
+  getHantavirusDisplayLabel,
+  getHantavirusEvidenceLabel,
+  getHantavirusValidationLabel,
+  getWeatherRadarSourceId,
+  getWeatherRadarLayerId,
+  getWeatherRiskEmoji,
+  issToFillColor,
+  issToLineColor,
+  issToColor,
+  getISSSemio,
+  getHealthSourceLabel,
+  scoreToISNRColor,
+  scoreToISNRLineColor,
+  deptCodeToId,
+  clamp,
+} from './deckgl/format-utils.ts';
+import {
+  buildSubmarineLandingPoints,
+  dromEnergyAssetFromProperties,
+  renderDromEnergyTooltipHtml,
+  buildSubseaCableTooltip,
+} from './deckgl/popup-templates.ts';
+import {
+  SRC,
+  SRC_CRITICAL,
+  SRC_SEL,
+  SRC_POWER_REGIONS,
+  SRC_INTERCONN,
+  SRC_WEATHER,
+  SRC_HEALTH,
+  SRC_HEALTH_MARKERS,
+  SRC_HANTAVIRUS,
+  SRC_FLOODS,
+  SRC_FLOODS_HIGHLIGHT,
+  SRC_TOPAGE_VIS,
+  SRC_FIRES,
+  SRC_INFRA,
+  SRC_INFRA_HIGHLIGHT,
+  SRC_DROM_ENERGY,
+  SRC_DROM_ENERGY_HTA_LINES,
+  SRC_DROM_ENERGY_HIGHLIGHT,
+  SRC_HYDRO_BACKBONE,
+  SRC_WIND_TURBINES,
+  SRC_WIND_PARKS,
+  SRC_TRAFFIC,
+  SRC_TRAFFIC_INCIDENTS,
+  SRC_TRAIN_ROUTE,
+  LYR_GLOW,
+  LYR_POINTS,
+  LYR_CLUSTER_CIRCLE,
+  LYR_CLUSTER_COUNT,
+  LYR_SEL_GLOW,
+  LYR_SEL_RING,
+  LYR_POWER_REGION_FILL,
+  LYR_POWER_REGION_LINE,
+  LYR_INTERCONN_LINE,
+  LYR_INTERCONN_LABEL,
+  SRC_INTERCONN_ARCS,
+  SRC_INTERCONN_CHEVRON_PTS,
+  LYR_INTERCONN_ARC,
+  LYR_INTERCONN_ARC_GLOW,
+  LYR_INTERCONN_HITAREA,
+  LYR_INTERCONN_CHEVRONS,
+  LYR_WEATHER_FILL,
+  LYR_WEATHER_LINE,
+  LYR_WEATHER_LINE_YELLOW,
+  LYR_WEATHER_LINE_ORANGE,
+  LYR_WEATHER_LINE_RED,
+  LYR_WEATHER_LINE_VIOLET,
+  SRC_WEATHER_ICONS,
+  LYR_WEATHER_ICONS,
+  LYR_HEALTH_FILL,
+  LYR_HEALTH_LINE,
+  LYR_HEALTH_MARKERS,
+  LYR_HEALTH_APL_FILL,
+  LYR_HEALTH_APL_LINE,
+  LYR_HEALTH_OSCOUR_CIRCLES,
+  LYR_HANTAVIRUS_PULSE,
+  LYR_HANTAVIRUS_POINTS,
+  LYR_HANTAVIRUS_ZONES_FILL,
+  LYR_HANTAVIRUS_ZONES_STROKE,
+  SRC_HANTA_ZONES,
+  HANTA_HIST_DEP_CODES,
+  SRC_ISNR,
+  LYR_ISNR_FILL,
+  LYR_ISNR_LINE,
+  LYR_TOPAGE_VIS,
+  LYR_FLOODS_RAW,
+  LYR_FLOODS,
+  LYR_FLOODS_HIGHLIGHT,
+  LYR_FIRES_GLOW,
+  LYR_FIRES_POINTS,
+  SRC_FIRES_HIGHLIGHT,
+  LYR_FIRES_HIGHLIGHT,
+  SRC_MODIS,
+  LYR_MODIS,
+  SRC_SENTINEL_SCENE,
+  LYR_SENTINEL_SCENE,
+  LYR_ENERGY_INFRA_VITAL_HALO,
+  LYR_ENERGY_INFRA_NUCLEAR_RING,
+  LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
+  LYR_ENERGY_INFRA_HIGHLIGHT_RING,
+  LYR_ENERGY_INFRA_CIRCLE,
+  LYR_ENERGY_INFRA_LABEL,
+  LYR_DROM_ENERGY_HTA_LINES,
+  LYR_DROM_ENERGY_HIGHLIGHT,
+  LYR_DROM_ENERGY_POINTS,
+  LYR_HYDRO_BACKBONE_HALO,
+  LYR_HYDRO_BACKBONE_SIGNAL_RING,
+  LYR_HYDRO_BACKBONE_CIRCLE,
+  LYR_HYDRO_BACKBONE_LABEL,
+  LYR_WIND_CLUSTER,
+  LYR_WIND_CLUSTER_COUNT,
+  LYR_WIND_TURBINE_HALO,
+  LYR_WIND_TURBINE_CIRCLE,
+  LYR_WIND_TURBINE_LABEL,
+  LYR_WIND_PARK_HALO,
+  LYR_WIND_PARK_CIRCLE,
+  LYR_WIND_PARK_LABEL,
+  WEATHER_RADAR_REGIONS,
+  WEATHER_RADAR_MAX_ZOOM,
+  SRC_GAS_NETWORK_GRT,
+  SRC_GAS_NETWORK_TEREGA,
+  LYR_GAS_NETWORK_GRT,
+  LYR_GAS_NETWORK_TEREGA,
+  SRC_GAS_VITALS,
+  SRC_GAS_PIR_ARCS,
+  SRC_GAS_PIR_MARKERS,
+  LYR_GAS_TERMINALS,
+  LYR_GAS_STORAGES_GLOW,
+  LYR_GAS_STORAGES,
+  LYR_GAS_STORAGES_LABEL,
+  LYR_GAS_PIR_ARC_GLOW,
+  LYR_GAS_PIR_ARC,
+  SRC_GAS_PIR_CHEVRON_PTS,
+  LYR_GAS_PIR_CHEVRONS,
+  LYR_GAS_PIR_MARKER,
+  LYR_GAS_PIR_LABEL,
+  SRC_OIL_FLOW_ARCS,
+  SRC_OIL_FLOW_MARKERS,
+  SRC_OIL_FLOW_DIRECTION,
+  SRC_OIL_FLOW_CHEVRON_PTS,
+  SRC_FUEL_TENSION,
+  LYR_OIL_FLOW_ARC_GLOW,
+  LYR_OIL_FLOW_ARC,
+  LYR_OIL_FLOW_CHEVRONS,
+  LYR_OIL_FLOW_MARKER,
+  LYR_OIL_FLOW_LABEL,
+  LYR_FUEL_TENSION_FILL,
+  LYR_FUEL_TENSION_LINE,
+  SRC_OIL_PIPELINES,
+  SRC_OIL_REFINERIES,
+  SRC_OIL_DEPOTS,
+  LYR_OIL_PIPELINES_GLOW,
+  LYR_OIL_PIPELINES,
+  LYR_OIL_REFINERIES_GLOW,
+  LYR_OIL_REFINERIES,
+  LYR_OIL_REFINERIES_LABEL,
+  LYR_OIL_DEPOTS,
+  LYR_OIL_DEPOTS_TERMINAL_CENTER,
+  LYR_OIL_DEPOTS_LABEL,
+  LYR_OIL_REFINERIES_HIT,
+  LYR_OIL_DEPOTS_HIT,
+  LYR_OIL_PIPELINES_HIT,
+  LYR_OIL_FLOW_ARC_HIT,
+  LYR_OIL_FLOW_MARKER_HIT,
+  LYR_TRAFFIC,
+  LYR_TRAFFIC_CLUSTER,
+  LYR_TRAFFIC_CLUSTER_COUNT,
+  LYR_TRAFFIC_INCIDENTS,
+  LYR_TRAIN_ROUTE,
+  LYR_TRAIN_STATIONS,
+  LYR_TRAIN_STATION_LABELS,
+  SRC_METRO_LOAD,
+  LYR_METRO_LOAD_GLOW,
+  LYR_METRO_LOAD_CIRCLE,
+  LYR_METRO_LOAD_LABEL,
+  SRC_MILITARY_ZONES,
+  SRC_MILITARY_BASES,
+  SRC_MILITARY_FLIGHTS,
+  SRC_MILITARY_FLIGHT_TRAILS,
+  SRC_AIR_TRAFFIC,
+  SRC_MILITARY_SHIPS,
+  SRC_MILITARY_SHIPS_HIGHLIGHT,
+  SRC_MILITARY_SHIPS_SELECTED,
+  SRC_GLOBAL_TRAFFIC,
+  SRC_SUBMARINE_CABLES,
+  SRC_SUBMARINE_CABLES_LANDINGS,
+  SRC_TELECOM,
+  SRC_POWER,
+  SRC_HOSPITALS,
+  LYR_MILITARY_ZONES_FILL,
+  LYR_MILITARY_ZONES_LINE,
+  LYR_MILITARY_BASES_CIRCLE,
+  LYR_MILITARY_BASES_LABEL,
+  LYR_MILITARY_FLIGHT_TRAILS,
+  LYR_MILITARY_FLIGHTS,
+  LYR_MILITARY_FLIGHTS_LABEL,
+  LYR_AIR_TRAFFIC_LABEL,
+  LYR_MILITARY_SHIPS,
+  LYR_MILITARY_SHIPS_HIGHLIGHT,
+  LYR_MILITARY_SHIPS_SELECTED,
+  LYR_SUBMARINE_CABLES,
+  LYR_SUBMARINE_CABLES_GLOW,
+  LYR_SUBMARINE_CABLES_CORE,
+  LYR_SUBMARINE_CABLES_HITAREA,
+  LYR_SUBMARINE_CABLES_LANDING,
+  LYR_TELECOM_PTS,
+  LYR_POWER_FILL,
+  LYR_POWER_LINE,
+  SRC_POWER_TENSION,
+  LYR_POWER_TENSION_FILL,
+  LYR_POWER_TENSION_LINE,
+  SRC_CITIZEN_ZONES,
+  LYR_CITIZEN_FILL,
+  LYR_CITIZEN_LINE,
+  SRC_IIP,
+  LYR_IIP_GLOW,
+  LYR_IIP_CORE,
+  SRC_TERMINATOR,
+  LYR_TERMINATOR,
+  SRC_NET_ISP,
+  SRC_NET_IODA,
+  LYR_NET_ISP_GLOW,
+  LYR_NET_ISP_RING,
+  LYR_NET_ISP,
+  LYR_NET_ISP_CLUSTER,
+  LYR_NET_ISP_CLUSTER_COUNT,
+  LYR_NET_IODA_GLOW,
+  LYR_NET_IODA_CORE,
+  LYR_NET_IODA_CLUSTER,
+  LYR_NET_IODA_CLUSTER_COUNT,
+  SRC_DC,
+  SRC_DC_HIGHLIGHT,
+  SRC_IXP,
+  SRC_IXP_HIGHLIGHT,
+  LYR_DC_GLOW,
+  LYR_DC_CORE,
+  LYR_DC_HIGHLIGHT,
+  LYR_DC_CLUSTER,
+  LYR_DC_CLUSTER_COUNT,
+  LYR_IXP_CLUSTER,
+  LYR_IXP_CLUSTER_COUNT,
+  LYR_IXP_CIRCLE,
+  LYR_IXP_HIGHLIGHT,
+  LYR_HOSPITALS_CHU,
+  LYR_HOSPITALS_CH,
+  LYR_HOSPITALS_LABEL,
+  SRC_MAIRES_POL,
+  LYR_MAIRES_POL,
+  LYR_MAIRES_POL_LABEL,
+  SRC_RAIL_ARCS,
+  SRC_RAIL_STATIONS,
+  LYR_RAIL_ARC_GLOW,
+  LYR_RAIL_ARC,
+  LYR_RAIL_ARC_HIT,
+  LYR_RAIL_STATION_GLOW,
+  LYR_RAIL_STATION,
+  LYR_RAIL_STATION_LABEL,
+  RAIL_SEVERITY_COLOR,
+  RAIL_SEVERITY_HEX,
+  RAIL_SEVERITY_TINT,
+  ECOWATT_COLORS,
+  METEO_COLORS,
+  WEATHER_HIGHLIGHT_STATE,
+  WEATHER_RISK_EMOJIS,
+  AIS_DESTINATION_ALIASES,
+  AIS_PORT_LOCODES,
+  WEATHER_DEPT_CENTROIDS,
+  FLOOD_COLORS,
+  INFRA_COLORS,
+  INFRA_VITAL_HALO_COLOR,
+  INFRA_NUCLEAR_RING_COLOR,
+  HYDRAULIC_COLORS,
+  HYDRAULIC_TREND_COLORS,
+  DEFAULT_VIEW,
+  FRANCE_CENTER,
+} from './deckgl/constants.ts';
 
 // ─── Satellite basemap toggle control ───
 class SatelliteBasemapControl {

@@ -94,6 +94,8 @@ export class SituationMonitor {
   private dragging = false;
   private suppressNextHeaderClick = false;
   private hasCustomPosition = false;
+  /** Re-render guard: signature of the last rendered content. */
+  private lastRenderKey: string | null = null;
 
   private onLayerActivate: ((layerKeys: string[]) => void) | null = null;
   private onFlyTo: ((lon: number, lat: number, zoom?: number) => void) | null = null;
@@ -135,6 +137,17 @@ export class SituationMonitor {
 
   private render(): void {
     this.el.style.display = '';
+
+    // Skip the full innerHTML rebuild (and listener re-binding) when neither
+    // the data nor the UI state (lang, collapsed, expanded) changed.
+    const renderKey = [
+      this.lang,
+      String(this.collapsed),
+      String(this.expandedAll),
+      JSON.stringify(this.allSituations),
+    ].join('\u2225');
+    if (renderKey === this.lastRenderKey) return;
+    this.lastRenderKey = renderKey;
 
     const visibleSituations = this.expandedAll
       ? this.allSituations

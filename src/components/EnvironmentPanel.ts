@@ -58,6 +58,8 @@ export class EnvironmentPanel extends Panel {
   private selectedDepartmentCode: string | null = null;
   private selectedWeatherPeriod: 'current' | 'next' = 'current';
   private floodSegments: FloodSegment[] = [];
+  /** Re-render guard: HTML string of the last rendered content. */
+  private lastRenderedHtml: string | null = null;
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
@@ -157,6 +159,8 @@ export class EnvironmentPanel extends Panel {
 
   hide(): void {
     this.selectedDepartmentCode = null;
+    // Selection was cleared while the DOM keeps its styles → force next render.
+    this.lastRenderedHtml = null;
     this.onHoverDepartment?.(null);
     this.onSelectDepartment?.(null);
     this.onHoverSegment?.(null);
@@ -207,10 +211,18 @@ export class EnvironmentPanel extends Panel {
       : this.weatherAlerts;
     const activeFloods = this.floodSegments.filter((segment) => segment.level !== 'green');
 
-    this.contentEl.innerHTML = `
+    const html = `
       ${this.renderWeatherSection(weatherAlerts)}
       ${this.renderFloodSection(activeFloods)}
     `;
+
+    // Skip the innerHTML rebuild (and listener re-binding) when the markup is
+    // identical — selection state is reapplied via applyWeatherCardState on the
+    // existing DOM, so skipping keeps it intact.
+    if (html === this.lastRenderedHtml) return;
+    this.lastRenderedHtml = html;
+
+    this.contentEl.innerHTML = html;
 
     this.bindWeatherHoverEvents();
     this.bindWeatherMapButtons();

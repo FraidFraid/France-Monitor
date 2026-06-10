@@ -30,6 +30,8 @@ export class CommodityStrip {
     agro: null,
   };
   private stampEl: HTMLElement | null = null;
+  /** Re-render guard: serialized snapshot of the last rendered dataset. */
+  private lastRenderKey: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -68,6 +70,12 @@ export class CommodityStrip {
   }
 
   update(items: CommodityData[]): void {
+    // Skip the full DOM rebuild when the dataset is byte-identical
+    // (cards and stamp are all derived from `items`).
+    const renderKey = JSON.stringify(items);
+    if (renderKey === this.lastRenderKey) return;
+    this.lastRenderKey = renderKey;
+
     if (!items.length) {
       this.renderEmpty();
       return;

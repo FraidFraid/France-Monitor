@@ -54,6 +54,8 @@ export class DefensePanel extends Panel {
   private onAlertClick?: DefenseAlertClickHandler;
   private onJammingClick?: DefenseJammingClickHandler;
   private currentJammingSignals: GpsJammingSignal[] = [];
+  /** Re-render guard: serialized snapshot of the last rendered dataset. */
+  private lastRenderKey: string | null = null;
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
@@ -253,8 +255,13 @@ export class DefensePanel extends Panel {
 
     this.currentJammingSignals = jammingSignals;
     this.modalEl.style.display = 'flex';
+    this.lastRenderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);
     this.updateHeader(alerts);
     this.renderContent(alerts, jammingSignals);
+  }
+
+  private static buildRenderKey(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[]): string {
+    return `${JSON.stringify(alerts)}\u2225${JSON.stringify(jammingSignals)}`;
   }
 
   private updateHeader(alerts: DefenseAlert[]): void {
@@ -642,6 +649,10 @@ export class DefensePanel extends Panel {
 
   update(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = this.currentJammingSignals): void {
     if (this.isVisible()) {
+      // Polling path (military feed) — skip the rebuild when data is unchanged.
+      const renderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);
+      if (renderKey === this.lastRenderKey) return;
+      this.lastRenderKey = renderKey;
       this.currentJammingSignals = jammingSignals;
       this.updateHeader(alerts);
       this.renderContent(alerts, jammingSignals);

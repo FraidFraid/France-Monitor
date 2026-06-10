@@ -161,6 +161,8 @@ export class UnderMapNewsFeed {
   private onItemClick: NewsItemClickHandler | null = null;
   private onFilterChange: NewsFilterChangeHandler | null = null;
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
+  /** Re-render guard: signature of the last rendered list content. */
+  private lastRenderKey: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -234,6 +236,7 @@ export class UnderMapNewsFeed {
     this.listEl = root.querySelector('#under-map-news-list');
     this.bindControls(root);
     this.syncControls();
+    this.lastRenderKey = null; // fresh DOM (mount / refreshTranslations) → force next render
     this.renderLoading();
   }
 
@@ -319,6 +322,7 @@ export class UnderMapNewsFeed {
 
   private renderLoading(): void {
     if (!this.listEl || !this.countEl) return;
+    this.lastRenderKey = null; // list replaced by loading state → force next render
     this.countEl.textContent = t('newsFeed.loadingCount');
     if (this.pulseEl) {
       this.pulseEl.innerHTML = `
@@ -369,8 +373,46 @@ export class UnderMapNewsFeed {
     this.filteredItems.sort(compareNewsPriority);
   }
 
+  /**
+   * Lightweight signature of everything renderList() displays (items, badges,
+   * relative times, active filter pills). When it matches the previous render,
+   * the DOM rebuild (and listener re-attachment) is skipped entirely.
+   */
+  private buildRenderKey(): string {
+    const filterSig = [
+      this.filter.timeRange,
+      this.filter.searchQuery,
+      this.filter.categories.join(','),
+      this.filter.threatLevels.join(','),
+    ].join('\u00a7');
+    const itemsSig = this.filteredItems.map((item) => [
+      item.id,
+      item.title,
+      item.aiSummary ?? '',
+      item.aiSummaryStatus ?? '',
+      item.summary ?? '',
+      item.source,
+      item.locationName ?? '',
+      item.feedRegion ?? '',
+      item.link ?? '',
+      String(item.lat ?? ''),
+      String(item.lon ?? ''),
+      item.threat?.level ?? 'info',
+      item.threat?.category ?? 'general',
+      String(item.threat?.confidence ?? ''),
+      item.threat?.source ?? '',
+      String(item.isAlert ?? false),
+      timeAgo(item.pubDate),
+    ].join('|')).join('\u00b6');
+    return `${filterSig}\u2225${itemsSig}`;
+  }
+
   private renderList(): void {
     if (!this.listEl || !this.countEl) return;
+
+    const renderKey = this.buildRenderKey();
+    if (renderKey === this.lastRenderKey) return;
+    this.lastRenderKey = renderKey;
 
     const now = Date.now();
     const alertCount = this.filteredItems.filter((i) => i.isAlert).length;
