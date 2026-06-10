@@ -35,6 +35,16 @@ Deliverables:
 - scheduled refresh guidance
 - reproducible France reference dataset where legally possible
 
+Status: server-side news ingestion is live (2026-06): a 5-minute cron collects ~40 RSS feeds into Postgres (Neon) with content-hash deduplication, keyword classification, geocoding, per-feed backoff scheduling, and 90-day retention. The client consumes `/api/news` and falls back to direct feed fetching if the API is unavailable. Test suite: `npm run test:ingest`.
+
+Next steps (validated):
+
+- history endpoint surfaced in the UI (`/api/news/history`)
+- optional server-side LLM classification (Groq) behind `GROQ_API_KEY`
+- periodic situation snapshots (energy, weather vigilance, floods) into `situation_snapshots`
+- active alerting, event replay/timeline
+- source reliability scoring (Admiralty scale)
+
 ## M4 — European Reusability
 
 Deliverables:
