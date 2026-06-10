@@ -1,4 +1,5 @@
 {
+  "regions": ["fra1"],
   "crons": [
     { "path": "/api/fuel-price-series-refresh", "schedule": "0 */3 * * *" },
     { "path": "/api/ingest/news", "schedule": "*/5 * * * *" }
