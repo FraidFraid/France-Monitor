@@ -58,10 +58,10 @@ export async function summarizeWithFallback(text: string): Promise<string | unde
     const existing = inFlightSummaries.get(cacheKey);
     if (existing) return existing;
 
-    let ttlTimer: ReturnType<typeof setTimeout> | undefined;
     const promise: Promise<string | undefined> = summarizeWithFallbackUncached(cleanText)
         .finally(() => {
-            if (ttlTimer !== undefined) clearTimeout(ttlTimer);
+            // ttlTimer est toujours affecté avant le premier microtask.
+            clearTimeout(ttlTimer);
             if (inFlightSummaries.get(cacheKey) === promise) {
                 inFlightSummaries.delete(cacheKey);
             }
@@ -69,7 +69,7 @@ export async function summarizeWithFallback(text: string): Promise<string | unde
     inFlightSummaries.set(cacheKey, promise);
 
     // TTL de sécurité : purge l'entrée même si la promesse ne se résout jamais.
-    ttlTimer = setTimeout(() => {
+    const ttlTimer = setTimeout(() => {
         if (inFlightSummaries.get(cacheKey) === promise) {
             inFlightSummaries.delete(cacheKey);
         }
