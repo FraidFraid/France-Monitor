@@ -1,4 +1,6 @@
-import type { NewsItem, FilterState, EventCategory, ThreatLevel, TimeRange, MapLayers } from '../types/index.ts';
+import type { NewsItem, FilterState, EventCategory, ThreatLevel, TimeRange, MapLayers, NewsHistoryResponse } from '../types/index.ts';
+import { NewsHeatmap } from './NewsHeatmap.ts';
+import type { HeatmapClickEvent } from './NewsHeatmap.ts';
 import { t } from '../services/i18n.ts';
 
 function escapeHtml(str: string): string {
@@ -169,6 +171,20 @@ export class UnderMapNewsFeed {
   /** Re-render guard: signature of the last rendered list content. */
   private lastRenderKey: string | null = null;
 
+  // History mode state
+  private heatmap: NewsHeatmap | null = null;
+  private heatmapContainerEl: HTMLElement | null = null;
+  private historyItems: NewsItem[] = [];
+  private historyCursor: string | null = null;
+  private historyHasMore = false;
+  private historyLoading = false;
+  private historyTotalCount = 0;
+  private historyFooterEl: HTMLElement | null = null;
+  private heatmapCache = new Map<string, { data: NewsHistoryResponse; fetchedAt: number }>();
+  // periodBarEl not needed — period buttons queried via [data-period]
+  private regionSelectEl: HTMLSelectElement | null = null;
+  private loadMoreEl: HTMLButtonElement | null = null;
+
   constructor(container: HTMLElement) {
     this.container = container;
   }
@@ -177,6 +193,10 @@ export class UnderMapNewsFeed {
     const root = document.createElement('section');
     root.className = 'under-map-card under-map-card--news';
     root.innerHTML = `
+      <div class="under-map-news__mode-toggle">
+        <button class="under-map-news__mode-btn active" data-mode="live">Live</button>
+        <button class="under-map-news__mode-btn" data-mode="history">Historique</button>
+      </div>
       <div class="under-map-card__header">
         <div class="under-map-card__header-copy">
           <div class="under-map-card__title">${t('newsFeed.title')}</div>
@@ -192,6 +212,30 @@ export class UnderMapNewsFeed {
               data-time-range="${option.value}"
             >${option.value === 'all' ? t('newsFeed.allTime') : option.label}</button>
           `).join('')}
+        </div>
+        <div class="under-map-news__history-controls" style="display:none;">
+          <div class="under-map-news__period-bar">
+            <span class="under-map-news__period-label">Période</span>
+            <button class="under-map-news__time-btn active" data-period="7d">7j</button>
+            <button class="under-map-news__time-btn" data-period="30d">30j</button>
+            <button class="under-map-news__time-btn" data-period="90d">90j</button>
+          </div>
+          <div id="under-map-news-heatmap"></div>
+          <select class="under-map-news__region-select">
+            <option value="">Toutes les régions</option>
+            <option value="Bretagne">Bretagne</option>
+            <option value="Nouvelle-Aquitaine">Nouvelle-Aquitaine</option>
+            <option value="Occitanie">Occitanie</option>
+            <option value="Auvergne-Rhône-Alpes">Auvergne-Rhône-Alpes</option>
+            <option value="PACA">PACA</option>
+            <option value="Grand Est">Grand Est</option>
+            <option value="Hauts-de-France">Hauts-de-France</option>
+            <option value="Normandie">Normandie</option>
+            <option value="Nouvelle-Calédonie">Nouvelle-Calédonie</option>
+            <option value="Guadeloupe">Guadeloupe</option>
+            <option value="La Réunion">La Réunion</option>
+            <option value="Mayotte">Mayotte</option>
+          </select>
         </div>
         <div class="under-map-news__search">
           <input
@@ -231,6 +275,8 @@ export class UnderMapNewsFeed {
       <div class="under-map-card__body under-map-news__body">
         <div class="under-map-news__list" id="under-map-news-list"></div>
       </div>
+      <button class="under-map-news__load-more" style="display:none;">Charger plus (50 suivants)</button>
+      <div class="under-map-news__history-footer" style="display:none;"></div>
     `;
 
     this.container.appendChild(root);
@@ -239,6 +285,17 @@ export class UnderMapNewsFeed {
     this.pulseEl = root.querySelector('#under-map-news-pulse');
     this.activeFiltersEl = root.querySelector('#under-map-news-active-filters');
     this.listEl = root.querySelector('#under-map-news-list');
+    this.heatmapContainerEl = root.querySelector('#under-map-news-heatmap');
+    this.regionSelectEl = root.querySelector('.under-map-news__region-select');
+    this.loadMoreEl = root.querySelector('.under-map-news__load-more');
+    this.historyFooterEl = root.querySelector<HTMLElement>('.under-map-news__history-footer');
+
+    // Mount heatmap component
+    if (this.heatmapContainerEl) {
+      this.heatmap = new NewsHeatmap(this.heatmapContainerEl);
+      this.heatmap.setOnCellClick((event) => this.onHeatmapCellClick(event));
+    }
+
     this.bindControls(root);
     this.syncControls();
     this.lastRenderKey = null; // fresh DOM (mount / refreshTranslations) → force next render
@@ -347,6 +404,11 @@ export class UnderMapNewsFeed {
   }
 
   private applyFilter(): void {
+    if (this.filter.mode === 'history') {
+      this.resetHistoryPagination();
+      this.loadHistoryArticles();
+      return;
+    }
     const now = Date.now();
     const rangeMs: Record<string, number> = {
       '1h': 3600 * 1000,
@@ -413,6 +475,9 @@ export class UnderMapNewsFeed {
   }
 
   private renderList(): void {
+    if (this.filter.mode === 'history') {
+      return;
+    }
     if (!this.listEl || !this.countEl) return;
 
     const renderKey = this.buildRenderKey();
@@ -457,78 +522,85 @@ export class UnderMapNewsFeed {
       return;
     }
 
-    const ONE_HOUR_MS = 60 * 60 * 1000;
-
     for (const item of this.filteredItems) {
-      const el = document.createElement('article');
-      el.className = 'news-item under-map-news__item';
-      if (item.isAlert) el.classList.add('news-item--alert');
-
-      const level = item.threat?.level ?? 'info';
-      const category = item.threat?.category ?? 'general';
-      const icon = CATEGORY_ICONS[category] ?? '📰';
-      const categoryLabel = t(`newsFeed.categoryLabels.${category}`);
-      const isNew = now - item.pubDate.getTime() < ONE_HOUR_MS;
-      const summaryText = getSummaryText(item);
-      const locationLabel = item.locationName ?? item.feedRegion ?? null;
-      const confidenceLabel = item.threat?.confidence != null
-        ? `${Math.round(item.threat.confidence * 100)}%`
-        : null;
-      const sourceLabel = item.threat?.source === 'llm'
-        ? t('newsFeed.sourceLabels.llm')
-        : item.threat?.source === 'ml'
-          ? t('newsFeed.sourceLabels.ml')
-          : item.threat?.source === 'keyword'
-            ? t('newsFeed.sourceLabels.keyword')
-            : null;
-
-      el.dataset.itemId = item.id;
-      el.innerHTML = `
-        <div class="under-map-news__item-head">
-          <div class="under-map-news__badges">
-            <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(t(`newsFeed.levelLabels.${level}`))}</span>
-            <span class="category-badge">${icon} ${escapeHtml(categoryLabel)}</span>
-            ${item.isAlert ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--alert">${escapeHtml(t('newsFeed.alert'))}</span>` : ''}
-            ${isNew ? `<span class="under-map-news__signal-pill">${escapeHtml(t('newsFeed.new'))}</span>` : ''}
-          </div>
-          <span class="news-item-time">${escapeHtml(timeAgo(item.pubDate))}</span>
-        </div>
-        <div class="news-item-title">${escapeHtml(item.title)}</div>
-        ${summaryText ? `<div class="news-item-summary under-map-news__summary${item.aiSummaryStatus === 'pending' && !item.aiSummary ? ' under-map-news__summary--pending' : ''}">${escapeHtml(summaryText)}</div>` : ''}
-        <div class="news-item-meta under-map-news__meta">
-          <span class="news-item-source">${escapeHtml(item.source)}</span>
-          ${locationLabel ? `<span class="under-map-news__location">📍 ${escapeHtml(locationLabel)}</span>` : ''}
-          ${confidenceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(confidenceLabel)}</span>` : ''}
-          ${sourceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(sourceLabel)}</span>` : ''}
-        </div>
-      `;
-
-      el.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.read-article-btn')) return;
-        this.selectItem(item.id);
-        if (item.lat != null && item.lon != null && this.onItemClick) {
-          this.onItemClick(item);
-        }
-      });
-
-      if (item.link && item.link !== '#') {
-        const btnRow = document.createElement('div');
-        btnRow.className = 'under-map-news__actions';
-
-        const btn = document.createElement('a');
-        btn.className = 'under-map-news__read-btn read-article-btn';
-        btn.textContent = t('newsFeed.readArticle');
-        btn.href = item.link;
-        btn.target = '_blank';
-        btn.rel = 'noopener';
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-        });
-        btnRow.appendChild(btn);
-        el.appendChild(btnRow);
-      }
+      const el = this.renderItem(item);
       this.listEl.appendChild(el);
     }
+  }
+
+  private renderItem(item: NewsItem): HTMLElement {
+    const now = Date.now();
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+
+    const el = document.createElement('article');
+    el.className = 'news-item under-map-news__item';
+    if (item.isAlert) el.classList.add('news-item--alert');
+
+    const level = item.threat?.level ?? 'info';
+    const category = item.threat?.category ?? 'general';
+    const icon = CATEGORY_ICONS[category] ?? '📰';
+    const categoryLabel = t(`newsFeed.categoryLabels.${category}`);
+    const isNew = now - item.pubDate.getTime() < ONE_HOUR_MS;
+    const summaryText = getSummaryText(item);
+    const locationLabel = item.locationName ?? item.feedRegion ?? null;
+    const confidenceLabel = item.threat?.confidence != null
+      ? `${Math.round(item.threat.confidence * 100)}%`
+      : null;
+    const sourceLabel = item.threat?.source === 'llm'
+      ? t('newsFeed.sourceLabels.llm')
+      : item.threat?.source === 'ml'
+        ? t('newsFeed.sourceLabels.ml')
+        : item.threat?.source === 'keyword'
+          ? t('newsFeed.sourceLabels.keyword')
+          : null;
+
+    el.dataset.itemId = item.id;
+    el.innerHTML = `
+      <div class="under-map-news__item-head">
+        <div class="under-map-news__badges">
+          <span class="threat-badge threat-badge--${escapeHtml(level)}">${escapeHtml(t(`newsFeed.levelLabels.${level}`))}</span>
+          <span class="category-badge">${icon} ${escapeHtml(categoryLabel)}</span>
+          ${item.isAlert ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--alert">${escapeHtml(t('newsFeed.alert'))}</span>` : ''}
+          ${isNew ? `<span class="under-map-news__signal-pill">${escapeHtml(t('newsFeed.new'))}</span>` : ''}
+        </div>
+        <span class="news-item-time">${escapeHtml(timeAgo(item.pubDate))}</span>
+      </div>
+      <div class="news-item-title">${escapeHtml(item.title)}</div>
+      ${summaryText ? `<div class="news-item-summary under-map-news__summary${item.aiSummaryStatus === 'pending' && !item.aiSummary ? ' under-map-news__summary--pending' : ''}">${escapeHtml(summaryText)}</div>` : ''}
+      <div class="news-item-meta under-map-news__meta">
+        <span class="news-item-source">${escapeHtml(item.source)}</span>
+        ${locationLabel ? `<span class="under-map-news__location">📍 ${escapeHtml(locationLabel)}</span>` : ''}
+        ${confidenceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(confidenceLabel)}</span>` : ''}
+        ${sourceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(sourceLabel)}</span>` : ''}
+      </div>
+    `;
+
+    el.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.read-article-btn')) return;
+      this.selectItem(item.id);
+      if (item.lat != null && item.lon != null && this.onItemClick) {
+        this.onItemClick(item);
+      }
+    });
+
+    if (item.link && item.link !== '#') {
+      const btnRow = document.createElement('div');
+      btnRow.className = 'under-map-news__actions';
+
+      const btn = document.createElement('a');
+      btn.className = 'under-map-news__read-btn read-article-btn';
+      btn.textContent = t('newsFeed.readArticle');
+      btn.href = item.link;
+      btn.target = '_blank';
+      btn.rel = 'noopener';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      btnRow.appendChild(btn);
+      el.appendChild(btnRow);
+    }
+
+    return el;
   }
 
   private bindControls(root: HTMLElement): void {
@@ -600,6 +672,43 @@ export class UnderMapNewsFeed {
         this.updateFilter({
           threatLevels: this.filter.threatLevels.filter((level) => level !== value),
         });
+      }
+    });
+
+    // Mode toggle
+    root.querySelectorAll<HTMLElement>('[data-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset['mode'] as 'live' | 'history';
+        if (mode === this.filter.mode) return;
+        this.updateFilter({ mode });
+        this.syncModeUI();
+        if (mode === 'history') this.loadHeatmap();
+      });
+    });
+
+    // Period buttons
+    root.querySelectorAll<HTMLElement>('[data-period]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const period = btn.dataset['period'] as '7d' | '30d' | '90d';
+        if (period === this.filter.historyPeriod) return;
+        this.updateFilter({ historyPeriod: period, historyCategory: null, historyDate: null });
+        this.heatmap?.clearSelection();
+        this.loadHeatmap();
+      });
+    });
+
+    // Region dropdown
+    this.regionSelectEl?.addEventListener('change', () => {
+      const region = this.regionSelectEl!.value || null;
+      this.updateFilter({ historyRegion: region });
+      this.resetHistoryPagination();
+      this.loadHistoryArticles();
+    });
+
+    // Load more button
+    this.loadMoreEl?.addEventListener('click', () => {
+      if (!this.historyLoading && this.historyHasMore) {
+        this.loadHistoryArticles(true);
       }
     });
   }
@@ -696,5 +805,192 @@ export class UnderMapNewsFeed {
         >${escapeHtml(pill.label)} <span aria-hidden="true">×</span></button>
       `;
     }).join('');
+  }
+
+  // ═══ History Mode ═══
+
+  private syncModeUI(): void {
+    const isHistory = this.filter.mode === 'history';
+    const root = this.rootEl;
+    if (!root) return;
+
+    root.querySelectorAll<HTMLElement>('[data-mode]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset['mode'] === this.filter.mode);
+    });
+
+    const timebar = root.querySelector<HTMLElement>('.under-map-news__timebar');
+    const historyControls = root.querySelector<HTMLElement>('.under-map-news__history-controls');
+    if (timebar) timebar.style.display = isHistory ? 'none' : '';
+    if (historyControls) historyControls.style.display = isHistory ? '' : 'none';
+
+    if (this.loadMoreEl) this.loadMoreEl.style.display = isHistory && this.historyHasMore ? '' : 'none';
+    if (this.historyFooterEl) this.historyFooterEl.style.display = isHistory ? '' : 'none';
+
+    root.querySelectorAll<HTMLElement>('[data-period]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset['period'] === this.filter.historyPeriod);
+    });
+  }
+
+  private async loadHeatmap(): Promise<void> {
+    const period = this.filter.historyPeriod ?? '7d';
+    const now = new Date();
+    const daysBack = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+    const from = new Date(now.getTime() - daysBack * 86_400_000);
+    const bucket = period === '90d' ? 'week' : 'day';
+
+    const cacheKey = period;
+    const cached = this.heatmapCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < 300_000) {
+      this.heatmap?.update(cached.data.buckets);
+      this.historyTotalCount = cached.data.buckets.reduce((sum, b) => sum + b.count, 0);
+      return;
+    }
+
+    try {
+      const url = `/api/news/history?from=${from.toISOString()}&to=${now.toISOString()}&bucket=${bucket}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data: NewsHistoryResponse = await res.json();
+      this.heatmapCache.set(cacheKey, { data, fetchedAt: Date.now() });
+      this.heatmap?.update(data.buckets);
+      this.historyTotalCount = data.buckets.reduce((sum, b) => sum + b.count, 0);
+    } catch {
+      // Silently fail — heatmap shows "Aucune donnée"
+    }
+  }
+
+  private onHeatmapCellClick(event: HeatmapClickEvent | null): void {
+    if (event) {
+      const category = event.category === 'other' ? null : event.category;
+      this.updateFilter({ historyCategory: category, historyDate: event.date });
+    } else {
+      this.updateFilter({ historyCategory: null, historyDate: null });
+    }
+    this.resetHistoryPagination();
+    this.loadHistoryArticles();
+  }
+
+  private resetHistoryPagination(): void {
+    this.historyItems = [];
+    this.historyCursor = null;
+    this.historyHasMore = false;
+  }
+
+  private async loadHistoryArticles(append = false): Promise<void> {
+    if (this.historyLoading) return;
+    this.historyLoading = true;
+    if (this.loadMoreEl) this.loadMoreEl.disabled = true;
+
+    const params = new URLSearchParams();
+    const PAGE_SIZE = 50;
+    params.set('limit', String(PAGE_SIZE));
+
+    if (this.filter.historyDate) {
+      params.set('since', new Date(this.filter.historyDate).toISOString());
+      const start = new Date(this.filter.historyDate);
+      const period = this.filter.historyPeriod ?? '7d';
+      const endOffset = period === '90d' ? 7 : 1;
+      const end = new Date(start.getTime() + endOffset * 86_400_000);
+      params.set('until', end.toISOString());
+    } else {
+      const daysBack = this.filter.historyPeriod === '30d' ? 30 : this.filter.historyPeriod === '90d' ? 90 : 7;
+      params.set('since', new Date(Date.now() - daysBack * 86_400_000).toISOString());
+    }
+
+    if (this.filter.historyCategory) params.set('category', this.filter.historyCategory);
+    if (this.filter.threatLevels.length > 0) {
+      params.set('severity', this.filter.threatLevels.join(','));
+    }
+    if (this.filter.historyRegion) params.set('region', this.filter.historyRegion);
+
+    if (append && this.historyCursor) {
+      params.set('before', this.historyCursor);
+    }
+
+    try {
+      const res = await fetch(`/api/news?${params.toString()}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+
+      const newItems: NewsItem[] = (data.items ?? []).map((row: Record<string, unknown>) => this.apiRowToNewsItem(row));
+
+      if (append) {
+        this.historyItems = [...this.historyItems, ...newItems];
+      } else {
+        this.historyItems = newItems;
+      }
+
+      this.historyHasMore = newItems.length >= PAGE_SIZE;
+      if (newItems.length > 0) {
+        const lastItem = newItems[newItems.length - 1];
+        this.historyCursor = lastItem.pubDate.toISOString();
+      }
+    } catch {
+      if (!append) this.historyItems = [];
+    } finally {
+      this.historyLoading = false;
+      if (this.loadMoreEl) {
+        this.loadMoreEl.disabled = false;
+        this.loadMoreEl.style.display = this.historyHasMore ? '' : 'none';
+      }
+    }
+
+    this.renderHistoryList();
+  }
+
+  private apiRowToNewsItem(row: Record<string, unknown>): NewsItem {
+    const severity = String(row['severity'] ?? 'info');
+    return {
+      id: String(row['id'] ?? ''),
+      source: String(row['feedName'] ?? ''),
+      title: String(row['title'] ?? ''),
+      link: String(row['link'] ?? ''),
+      pubDate: new Date(String(row['publishedAt'] ?? '')),
+      isAlert: severity === 'critical',
+      tier: typeof row['tier'] === 'number' ? row['tier'] : undefined,
+      feedRegion: row['feedRegion'] ? String(row['feedRegion']) : undefined,
+      threat: {
+        level: severity as ThreatLevel,
+        category: (row['category'] ?? 'general') as EventCategory,
+        confidence: typeof row['confidence'] === 'number' ? row['confidence'] : 0.5,
+        source: 'keyword',
+      },
+      lat: typeof row['lat'] === 'number' ? row['lat'] : undefined,
+      lon: typeof row['lon'] === 'number' ? row['lon'] : undefined,
+      summary: row['description'] ? String(row['description']).slice(0, 200) : undefined,
+    };
+  }
+
+  private renderHistoryList(): void {
+    if (!this.listEl) return;
+
+    let items = this.historyItems;
+    if (this.filter.searchQuery) {
+      const q = this.filter.searchQuery.toLowerCase();
+      items = items.filter(item =>
+        item.title.toLowerCase().includes(q) ||
+        (item.summary ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    this.listEl.innerHTML = '';
+    for (const item of items) {
+      const el = this.renderItem(item);
+      this.listEl.appendChild(el);
+    }
+
+    if (this.countEl) {
+      this.countEl.textContent = String(items.length);
+    }
+
+    this.renderActiveFilterPills();
+
+    if (this.historyFooterEl) {
+      const shown = this.historyItems.length;
+      const total = this.historyTotalCount;
+      this.historyFooterEl.textContent = total > 0
+        ? `${shown} article${shown !== 1 ? 's' : ''} affiché${shown !== 1 ? 's' : ''} sur ${total}`
+        : `${shown} article${shown !== 1 ? 's' : ''} affiché${shown !== 1 ? 's' : ''}`;
+    }
   }
 }
