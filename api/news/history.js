@@ -2,7 +2,7 @@
 // Vercel Node function — time-bucketed aggregation of ingested news items
 // for the timeline view.
 //
-// GET /api/news/history?from=ISO|epochMs&to=ISO|epochMs&bucket=hour|day
+// GET /api/news/history?from=ISO|epochMs&to=ISO|epochMs&bucket=hour|day|week
 //   Returns counts grouped by (bucket, category, severity):
 //   { buckets: [{ t: ISO, category, severity, count }], from, to, bucket }
 //
@@ -12,7 +12,7 @@ import { neon } from '@neondatabase/serverless';
 import { parseDateParam } from '../news.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const VALID_BUCKETS = new Set(['hour', 'day']);
+const VALID_BUCKETS = new Set(['hour', 'day', 'week']);
 
 /**
  * Core query logic, shared between the Vercel handler and the Vite dev proxy.
@@ -37,17 +37,17 @@ export async function queryNewsHistory(searchParams) {
 
   const bucket = (searchParams.get('bucket') ?? 'hour').trim().toLowerCase();
   if (!VALID_BUCKETS.has(bucket)) {
-    return { status: 400, body: { error: 'bucket must be "hour" or "day"' } };
+    return { status: 400, body: { error: 'bucket must be "hour", "day", or "week"' } };
   }
 
   const queryText = `
     SELECT
-      date_trunc($1, collected_at) AS t,
+      date_trunc($1, published_at) AS t,
       category,
       severity,
       COUNT(*)::int AS count
     FROM news_items
-    WHERE collected_at >= $2 AND collected_at <= $3
+    WHERE published_at >= $2 AND published_at <= $3
     GROUP BY 1, 2, 3
     ORDER BY 1 ASC
   `;

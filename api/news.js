@@ -1,7 +1,7 @@
 // api/news.js
 // Vercel Node function — read API for ingested news items (Neon Postgres).
 //
-// GET /api/news?since=ISO|epochMs&category=...&severity=a,b&region=...&limit=500
+// GET /api/news?since=ISO|epochMs&until=ISO|epochMs&before=ISO|epochMs&category=...&severity=a,b&region=...&limit=500
 //   Returns the most recent ingested news items, joined with their feed
 //   metadata (name/region/tier), ordered by published_at DESC NULLS LAST.
 //
@@ -78,7 +78,7 @@ export async function queryNews(searchParams) {
   if (!Number.isFinite(limit)) limit = DEFAULT_LIMIT;
   limit = Math.min(Math.max(limit, 1), MAX_LIMIT);
 
-  const conditions = ['n.collected_at >= $1'];
+  const conditions = ['n.published_at >= $1'];
   /** @type {unknown[]} */
   const params = [since.toISOString()];
 
@@ -106,6 +106,18 @@ export async function queryNews(searchParams) {
     conditions.push(`f.region = $${params.length}`);
   }
 
+  const until = parseDateParam(searchParams.get('until'), null);
+  if (until) {
+    params.push(until.toISOString());
+    conditions.push(`n.published_at < $${params.length}`);
+  }
+
+  const before = parseDateParam(searchParams.get('before'), null);
+  if (before) {
+    params.push(before.toISOString());
+    conditions.push(`n.published_at < $${params.length}`);
+  }
+
   params.push(limit);
   const limitPlaceholder = `$${params.length}`;
 
@@ -117,7 +129,7 @@ export async function queryNews(searchParams) {
     FROM news_items n
     LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE ${conditions.join(' AND ')}
-    ORDER BY n.published_at DESC NULLS LAST
+    ORDER BY n.published_at DESC NULLS LAST, n.id DESC
     LIMIT ${limitPlaceholder}
   `;
 
