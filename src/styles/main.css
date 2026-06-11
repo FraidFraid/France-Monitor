@@ -2502,6 +2502,21 @@ body {
   padding: 16px;
 }
 
+.under-map-news__history-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 14px 0;
+}
+
+.under-map-news__section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
 /* History period selector */
 
 .under-map-news__period-bar {

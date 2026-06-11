@@ -214,13 +214,15 @@ export class UnderMapNewsFeed {
           `).join('')}
         </div>
         <div class="under-map-news__history-controls" style="display:none;">
+          <div class="under-map-news__section-title">Couverture</div>
           <div class="under-map-news__period-bar">
-            <span class="under-map-news__period-label">Période</span>
             <button class="under-map-news__time-btn active" data-period="7d">7j</button>
             <button class="under-map-news__time-btn" data-period="30d">30j</button>
             <button class="under-map-news__time-btn" data-period="90d">90j</button>
           </div>
           <div id="under-map-news-heatmap"></div>
+          <div class="under-map-news__history-separator"></div>
+          <div class="under-map-news__section-title">Filtres</div>
           <select class="under-map-news__region-select">
             <option value="">Toutes les régions</option>
             <option value="Bretagne">Bretagne</option>
