@@ -54,6 +54,7 @@ const DEFAULT_FILTER: FilterState = {
         subseaCables: false,
     },
     searchQuery: '',
+    mode: 'live',
 };
 
 const CATEGORY_OPTIONS: { label: string; icon: string; value: EventCategory }[] = [

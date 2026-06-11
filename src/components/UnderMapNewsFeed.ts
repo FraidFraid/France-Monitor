@@ -94,6 +94,11 @@ const DEFAULT_FILTER: FilterState = {
   threatLevels: [],
   layers: { ...DEFAULT_LAYERS },
   searchQuery: '',
+  mode: 'live',
+  historyPeriod: '7d',
+  historyCategory: null,
+  historyDate: null,
+  historyRegion: null,
 };
 
 const TIME_OPTIONS: Array<{ label: string; value: TimeRange }> = [

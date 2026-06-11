@@ -166,6 +166,26 @@ export interface FilterState {
   threatLevels: ThreatLevel[];
   layers: MapLayers;
   searchQuery: string;
+  // History mode
+  mode: 'live' | 'history';
+  historyPeriod?: '7d' | '30d' | '90d';
+  historyCategory?: EventCategory | null;
+  historyDate?: string | null;
+  historyRegion?: string | null;
+}
+
+export interface HistoryBucket {
+  t: string;          // ISO timestamp (truncated to day/week)
+  category: string | null;
+  severity: string | null;
+  count: number;
+}
+
+export interface NewsHistoryResponse {
+  buckets: HistoryBucket[];
+  from: string;
+  to: string;
+  bucket: 'hour' | 'day' | 'week';
 }
 
 
