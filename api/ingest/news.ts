@@ -9,6 +9,8 @@
  *  4. Sélection des feeds dus (enabled, next_poll_at, cooldown) — max 40.
  *  5. Fetch (timeout 10 s) → parse (api/_lib/parse-rss.js) → hash sha256 →
  *     classification keyword (api/_lib/server-classifier.js) → INSERT déduped.
+ *  5.5 Si GROQ_API_KEY défini : classification LLM des articles ambigus
+ *     (confidence < 0.60, max 5/tick) — UPDATE category/severity in place.
  *  6. Géocodage best-effort des items réellement insérés (max 30/tick).
  *  7. Purge des items > 90 jours, libération du verrou, stats JSON.
  *
@@ -21,8 +23,12 @@ import { parseRssXml } from '../_lib/parse-rss.js';
 import { classify, CLASSIFIER_VERSION } from '../_lib/server-classifier.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
+import { classifyWithGroq } from '../_lib/groq-classifier.js';
 
 export const config = { maxDuration: 300 };
+
+const GROQ_BUDGET_PER_TICK = 5;
+const GROQ_CONFIDENCE = 0.75;
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -372,6 +378,53 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       if (result.error) errors.push({ feedId: result.feedId, error: result.error });
     }
 
+    // 3.5 Optional Groq LLM classification for ambiguous articles
+    let groqClassified = 0;
+    const groqApiKey = process.env['GROQ_API_KEY'];
+    if (groqApiKey && insertedItems.length > 0) {
+      try {
+        const ids = insertedItems.map(i => i.id);
+        const candidates = await sql`
+          SELECT id, title, description
+          FROM news_items
+          WHERE id = ANY(${ids}::bigint[])
+            AND confidence < 0.60
+            AND classifier_version = ${CLASSIFIER_VERSION}
+            AND NOT (category = 'general' AND confidence <= 0.20)
+          ORDER BY confidence ASC
+          LIMIT ${GROQ_BUDGET_PER_TICK}
+        `;
+
+        for (const row of candidates) {
+          if (Date.now() >= deadline) break;
+
+          try {
+            const result = await classifyWithGroq(
+              groqApiKey,
+              String(row.title),
+              row.description != null ? String(row.description) : null,
+            );
+            if (result) {
+              await sql`
+                UPDATE news_items
+                SET category = ${result.category},
+                    severity = ${result.severity},
+                    confidence = ${GROQ_CONFIDENCE},
+                    classifier_version = 'groq-1'
+                WHERE id = ${row.id}
+              `;
+              groqClassified++;
+            }
+          } catch (err) {
+            console.warn('[ingest] Groq pass stopped:', err instanceof Error ? err.message : err);
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn('[ingest] Groq candidate query failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
     // 4. Géocodage des items réellement insérés (max 30/tick)
     const geocoded = await geocodeInserted(sql, insertedItems, deadline);
 
@@ -381,6 +434,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     json(res, 200, {
       processedFeeds: results.length,
       newItems: insertedItems.length,
+      groqClassified,
       geocoded,
       durationMs: Date.now() - startedAt,
       errors,
