@@ -672,6 +672,31 @@ export class UnderMapNewsFeed {
         this.updateFilter({
           threatLevels: this.filter.threatLevels.filter((level) => level !== value),
         });
+        return;
+      }
+
+      if (kind === 'historyDate') {
+        this.updateFilter({ historyDate: null });
+        this.heatmap?.clearSelection();
+        this.resetHistoryPagination();
+        this.loadHistoryArticles();
+        return;
+      }
+
+      if (kind === 'historyCategory') {
+        this.updateFilter({ historyCategory: null });
+        this.heatmap?.clearSelection();
+        this.resetHistoryPagination();
+        this.loadHistoryArticles();
+        return;
+      }
+
+      if (kind === 'historyRegion') {
+        this.updateFilter({ historyRegion: null });
+        if (this.regionSelectEl) this.regionSelectEl.value = '';
+        this.resetHistoryPagination();
+        this.loadHistoryArticles();
+        return;
       }
     });
 
@@ -787,7 +812,44 @@ export class UnderMapNewsFeed {
       });
     }
 
-    if (pills.length === 0) {
+    // Build history-mode pills
+    const historyPillsHtml: string[] = [];
+    if (this.filter.mode === 'history') {
+      if (this.filter.historyDate) {
+        const [, m, d] = this.filter.historyDate.split('-');
+        const dateLabel = `${d}/${m}`;
+        historyPillsHtml.push(`
+          <button
+            type="button"
+            class="under-map-news__active-pill"
+            data-filter-kind="historyDate"
+            title="${t('newsFeed.removeFilter')}"
+          >${escapeHtml(dateLabel)} <span aria-hidden="true">×</span></button>
+        `);
+      }
+      if (this.filter.historyCategory) {
+        historyPillsHtml.push(`
+          <button
+            type="button"
+            class="under-map-news__active-pill"
+            data-filter-kind="historyCategory"
+            title="${t('newsFeed.removeFilter')}"
+          >${escapeHtml(this.filter.historyCategory)} <span aria-hidden="true">×</span></button>
+        `);
+      }
+      if (this.filter.historyRegion) {
+        historyPillsHtml.push(`
+          <button
+            type="button"
+            class="under-map-news__active-pill"
+            data-filter-kind="historyRegion"
+            title="${t('newsFeed.removeFilter')}"
+          >${escapeHtml(this.filter.historyRegion)} <span aria-hidden="true">×</span></button>
+        `);
+      }
+    }
+
+    if (pills.length === 0 && historyPillsHtml.length === 0) {
       this.activeFiltersEl.innerHTML = '';
       this.activeFiltersEl.hidden = true;
       return;
@@ -804,7 +866,7 @@ export class UnderMapNewsFeed {
           title="${t('newsFeed.removeFilter')}"
         >${escapeHtml(pill.label)} <span aria-hidden="true">×</span></button>
       `;
-    }).join('');
+    }).join('') + historyPillsHtml.join('');
   }
 
   // ═══ History Mode ═══
