@@ -78,8 +78,10 @@ The long-term goal is to turn the France prototype into a reusable European comm
 
 ### 📰 News Intelligence
 - RSS aggregation from **60+ French national and regional (PQR)** sources
-- Two-stage classification: keyword-based (instant) then LLM override (async)
+- **Server-side ingestion** — Neon Postgres + Vercel Cron (5 min), 90-day retention
+- Two-stage classification: keyword-based (instant) then optional **Groq LLM server-side** for ambiguous articles
 - AI summarisation: Ollama (local) → Groq (cloud) → Transformers.js (browser)
+- **History UI** — interactive heatmap (day × category), cursor-based pagination, filters (severity, region, search) across 90 days of articles
 - Geocoding of news items to map locations
 - Stale-article protection and deduplication across polling cycles
 
@@ -148,6 +150,8 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
 │  ├── intelligence/  LLM summarisation (Groq, server-side)       │
+│  ├── ingest/        Cron news ingestion (Neon Postgres, 5 min)  │
+│  ├── news/          News query + history timeline API            │
 │  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -258,7 +262,9 @@ Copy `.env.example` to `.env.local` for local dev. On Vercel, configure in **Set
 | `OPENSKY_CLIENT_ID / SECRET` | OpenSky Network | Anonymous quota |
 | `SNCF_API_KEY` | SNCF real-time disruptions | Layer disabled |
 | `NASA_FIRMS_API_KEY` | NASA FIRMS wildfires | Layer disabled |
-| `GROQ_API_KEY` | Groq cloud LLM (server-side only) | Browser Transformers.js |
+| `GROQ_API_KEY` | Groq cloud LLM (summarisation + cron classification) | Browser Transformers.js |
+| `DATABASE_URL` | Neon Postgres (news ingestion + history) | News history disabled |
+| `CRON_SECRET` | Vercel Cron auth token | Cron endpoint returns 401 |
 | `SHODAN_API_KEY` | Shodan OSINT (cyber exposure) | Cyber panel degraded |
 | `CENSYS_API_ID / SECRET` | Censys OSINT | Cyber panel degraded |
 | `CLOUDFLARE_RADAR_TOKEN` | Cloudflare Radar anomalies | Layer disabled |
@@ -314,6 +320,9 @@ france-monitor/
 │   ├── finance/                 # Market data, commodities
 │   ├── transport/               # SNCF, air traffic, AIS relay
 │   ├── outages/                 # Citizen outages, ORE, IODA
+│   ├── ingest/                  # Cron news ingestion (Neon Postgres + Groq LLM)
+│   ├── news.js / news/history   # News query API + history timeline
+│   ├── _lib/                    # Shared: classifier, geocoder, RSS parser, Groq classifier
 │   └── intelligence/v1/         # LLM summarisation (Groq)
 │
 ├── services/
@@ -327,7 +336,8 @@ france-monitor/
 │   │   ├── DeckGLMap.ts         # WebGL map (MapLibre + Deck.gl) — lazy-loaded
 │   │   ├── Map.ts               # D3/SVG mobile fallback
 │   │   ├── CyberPanel.ts        # Cyber threat monitoring panel
-│   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel (NEW)
+│   │   ├── NewsHeatmap.ts       # History heatmap grid (day × category)
+│   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel
 │   │   ├── NuclearPanel.ts      # Nuclear fleet status (4 tabs)
 │   │   ├── OutagesPanel.ts      # Power + telecom outages
 │   │   ├── FranceIntelPanel.ts  # AI situational brief — lazy-loaded
@@ -338,7 +348,7 @@ france-monitor/
 │   ├── services/                # 70 data fetching and processing modules
 │   │   ├── rss.ts               # RSS feed aggregation
 │   │   ├── classifier.ts        # Keyword-based news classification
-│   │   ├── ai-classifier.ts     # LLM classification override
+│   │   ├── ai-classifier.ts     # Browser LLM classification override
 │   │   ├── situation-engine.ts  # Alert detection + severity scoring
 │   │   ├── stability-index.ts   # ISNR composite index
 │   │   ├── cyber.ts             # Cyber threat feed aggregation
@@ -410,9 +420,23 @@ npm run scrapling:install   # create venv + install deps (first time only)
 npm run dev:full            # Vite (3001) + Scrapling (8080) together
 ```
 
-### Two-stage RSS Pipeline
+### News Ingestion Pipeline
 
-1. **Stage 1 — immediate:** Keyword classifier assigns category + severity in < 1ms per item. Map and news panel update instantly.
+Articles are ingested server-side via a **Vercel Cron** (every 5 min) into **Neon Postgres**:
+
+1. **Fetch & parse** — 60+ RSS feeds, concurrent (6 workers), exponential backoff on failure
+2. **Keyword classification** — instant category + severity assignment (< 1ms/item)
+3. **Groq LLM refinement** (optional) — if `GROQ_API_KEY` is set, ambiguous articles (confidence < 0.60) are sent to Groq for reclassification (max 5/tick, `llama-3.3-70b-versatile`)
+4. **Geocoding** — best-effort lat/lon assignment (max 30/tick)
+5. **Retention** — articles older than 90 days are purged automatically
+
+The **History UI** exposes this data via `/api/news` (paginated articles) and `/api/news/history` (time-bucketed aggregations for the heatmap).
+
+### Client-side RSS Pipeline
+
+In parallel, the browser runs its own RSS pipeline for real-time display:
+
+1. **Stage 1 — immediate:** Keyword classifier assigns category + severity. Map and news panel update instantly.
 2. **Stage 2 — background:** Low-confidence items go to the LLM chain (Ollama → Groq → browser). Geocoding and AI summarisation run in parallel. UI republishes enriched items progressively.
 
 Items are shallow-cloned before background enrichment to prevent WebGL marker flicker during geocoding.
@@ -483,6 +507,11 @@ Current high-level milestones:
 ---
 
 ## 📋 Recent Updates
+
+### 2026-06-11
+- **News History UI** — toggle Live/Historique in the news feed panel; interactive heatmap (day × category, 7j/30j/90j); cursor-based article pagination; filters by severity, region, and full-text search across 90 days of ingested articles
+- **Groq server-side classification** — optional LLM reclassification of ambiguous articles during cron ingestion (confidence < 0.60, max 5/tick); gated by `GROQ_API_KEY`; zero impact without the key
+- **API improvements** — `/api/news` migrated from `collected_at` to `published_at`; new `before`/`until` params for cursor pagination; `/api/news/history` supports `week` bucket for 90-day views
 
 ### 2026-05-13
 - **Hantavirus layer** — couche dédiée avec heatmap remplacée par polygones de départements bleus (zones historiques SPF 2005–2023), cercles colorés pour les clusters actifs (crise/alerte/surveillance), pulse halo sur les cas confirmés
