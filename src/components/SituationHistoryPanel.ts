@@ -217,7 +217,7 @@ export class SituationHistoryPanel {
       ['#f97316', 'Élevé'],
       ['#eab308', 'Moyen'],
       ['#3b82f6', 'Veille'],
-      ['rgba(255,255,255,0.18)', 'Calme'],
+      ['#22c55e', 'Calme'],
     ];
     return `
       <div class="sit-hist__legend">
