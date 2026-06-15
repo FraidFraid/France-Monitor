@@ -15,7 +15,7 @@ import {
   getPremiumCloseButtonStyle,
   getPremiumModalStyle,
 } from './panelHeader.ts';
-import type { GasNetworkState, EcoGazSignal } from '../types/index.ts';
+import type { GasNetworkState, EcoGazSignal, BiogasState } from '../types/index.ts';
 import { getEcoGazColor, isGasPanelEnabled, ECOGAZ_LABELS } from '../services/gas.ts';
 
 function renderTruthBadge(label: string, color: string): string {
@@ -51,6 +51,9 @@ export class GasPanel extends Panel {
   private showPipeline = false;
   private onPipelineToggle?: (show: boolean) => void;
   private lastGasData: GasNetworkState | null = null;
+  private activeTab: 'gas' | 'biogas' = 'gas';
+  private biogasState: BiogasState | null = null;
+  private _tabListenerAttached = false;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'EcoGaz - Réseau Gaz', icon: '🔥', collapsible: false });
@@ -155,8 +158,10 @@ export class GasPanel extends Panel {
     this.onPipelineToggle = cb;
   }
 
-  show(data: GasNetworkState | null): void {
+  show(data: GasNetworkState | null, biogasState?: BiogasState | null): void {
     if (!this.contentEl) return;
+
+    if (biogasState !== undefined) this.biogasState = biogasState ?? null;
 
     if (!isGasPanelEnabled()) {
       this.showLockedState();
@@ -273,6 +278,15 @@ export class GasPanel extends Panel {
   private renderContent(data: GasNetworkState): void {
     if (!this.contentEl) return;
     this.lastGasData = data;
+
+    const tabBar = this.renderTabBar();
+
+    if (this.activeTab === 'biogas') {
+      this.contentEl.innerHTML = tabBar + this.renderBiogasTab();
+      requestAnimationFrame(() => this.renderBiogasSparkline());
+      this.ensureTabListeners();
+      return;
+    }
 
     const stats = data.nationalStats;
     const fillColor = this.getFillColor(stats.averageFillLevel);
@@ -397,7 +411,7 @@ export class GasPanel extends Panel {
       </div>
     `;
 
-    this.contentEl.innerHTML = html;
+    this.contentEl.innerHTML = tabBar + html;
 
     const storagesToggle = this.contentEl.querySelector('#gas-storages-toggle') as HTMLElement | null;
     const storagesList = this.contentEl.querySelector('#gas-storages-list') as HTMLElement | null;
@@ -415,6 +429,117 @@ export class GasPanel extends Panel {
     pipelineBtn?.addEventListener('click', () => {
       this.showPipeline = !this.showPipeline;
       this.onPipelineToggle?.(this.showPipeline);
+      if (this.lastGasData) this.renderContent(this.lastGasData);
+    });
+
+    this.ensureTabListeners();
+  }
+
+  private renderTabBar(): string {
+    const mkTab = (id: 'gas' | 'biogas', label: string) => {
+      const active = this.activeTab === id;
+      return `<button data-tab="${id}" style="
+          flex:1; padding:6px 0; border:none; cursor:pointer;
+          background:${active ? 'rgba(255,255,255,0.1)' : 'transparent'};
+          color:${active ? '#fff' : 'rgba(255,255,255,0.5)'};
+          border-bottom:${active ? '2px solid #06B6D4' : '2px solid transparent'};
+          font-size:12px; font-weight:600; transition:all 0.2s;
+      ">${label}</button>`;
+    };
+    return `<div style="display:flex; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:8px;">
+        ${mkTab('gas', '🔥 Réseau Gaz')}
+        ${mkTab('biogas', '🌿 Biométhane')}
+    </div>`;
+  }
+
+  private renderBiogasTab(): string {
+    const s = this.biogasState;
+    if (!s || s.daily.length === 0) {
+      return '<div style="padding:16px;color:rgba(255,255,255,0.5);text-align:center;">Données biométhane indisponibles</div>';
+    }
+
+    const ratio = s.avg7dMWh > 0 ? s.latestMWh / s.avg7dMWh : 1;
+    const signalColor = ratio >= 0.9 ? '#22c55e' : ratio >= 0.7 ? '#f59e0b' : '#ef4444';
+    const signalLabel = ratio >= 0.9 ? 'Normal' : ratio >= 0.7 ? 'Baisse' : 'Alerte';
+
+    const deltaStr = s.deltaJ1Pct != null
+      ? `${s.deltaJ1Pct > 0 ? '↑' : '↓'} ${s.deltaJ1Pct > 0 ? '+' : ''}${s.deltaJ1Pct.toFixed(1)}% vs J-1`
+      : 'Delta J-1 indisponible';
+    const deltaColor = s.deltaJ1Pct != null
+      ? (s.deltaJ1Pct >= 0 ? '#22c55e' : '#ef4444')
+      : '#6b7280';
+
+    const latest = s.daily[0];
+    const sitesCount = latest?.sitesCount ?? 0;
+
+    const alertHtml = s.alert
+      ? `<div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:8px 12px;margin-bottom:8px;color:#fca5a5;font-size:12px;">
+              ⚠ Chute -${s.alert.severityPct.toFixed(1)}% production vs moyenne 7j
+             </div>`
+      : '';
+
+    return `
+        ${alertHtml}
+        <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="width:10px;height:10px;border-radius:50%;background:${signalColor};display:inline-block;"></span>
+                <span style="color:#fff;font-size:14px;font-weight:600;">${s.latestMWh.toLocaleString('fr-FR')} MWh</span>
+                <span style="color:${deltaColor};font-size:12px;margin-left:auto;">${deltaStr}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.5);">
+                <span>Production journalière · ${signalLabel}</span>
+                <span>Moy. 7j : ${s.avg7dMWh.toLocaleString('fr-FR')} MWh</span>
+            </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-bottom:8px;">
+            <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:6px;">Production 30 jours</div>
+            <canvas id="biogas-sparkline" width="340" height="50" style="width:100%;height:50px;"></canvas>
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.35);text-align:right;">
+            ${sitesCount} sites · ${latest?.date ?? '—'} · ${latest?.status ?? ''}
+        </div>
+    `;
+  }
+
+  private renderBiogasSparkline(): void {
+    const canvas = document.getElementById('biogas-sparkline') as HTMLCanvasElement | null;
+    if (!canvas || !this.biogasState) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const points = this.biogasState.daily
+      .filter(d => d.sitesCount > 100)
+      .map(d => d.productionMWh)
+      .reverse();
+
+    if (points.length < 3) return;
+
+    const w = canvas.width; const h = canvas.height;
+    const max = Math.max(...points); const min = Math.min(...points);
+    const range = max - min || 1;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    points.forEach((v, i) => {
+      const x = (i / (points.length - 1)) * w;
+      const y = h - ((v - min) / range) * (h - 4) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.1)'; ctx.fill();
+  }
+
+  private ensureTabListeners(): void {
+    if (this._tabListenerAttached || !this.contentEl) return;
+    this._tabListenerAttached = true;
+    this.contentEl.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('[data-tab]') as HTMLElement | null;
+      if (!btn) return;
+      const tab = btn.dataset.tab as 'gas' | 'biogas';
+      if (tab === this.activeTab) return;
+      this.activeTab = tab;
       if (this.lastGasData) this.renderContent(this.lastGasData);
     });
   }
@@ -453,7 +578,8 @@ export class GasPanel extends Panel {
     return this.modalEl?.style.display === 'flex';
   }
 
-  update(data: GasNetworkState): void {
+  update(data: GasNetworkState, biogasState?: BiogasState | null): void {
+    if (biogasState !== undefined) this.biogasState = biogasState ?? null;
     if (this.isVisible() && data) {
       this.updateHeader(data);
       this.renderContent(data);

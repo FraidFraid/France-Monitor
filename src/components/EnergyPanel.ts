@@ -57,7 +57,6 @@ export class EnergyPanel extends Panel {
   private isDragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
-
   constructor(container: HTMLElement) {
     super(container, { title: 'Écowatt RTE', icon: '⚡', collapsible: false });
   }

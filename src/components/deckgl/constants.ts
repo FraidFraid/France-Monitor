@@ -133,6 +133,12 @@ export const SRC_GAS_PIR_CHEVRON_PTS = 'gas-pir-chevron-pts-src';
 export const LYR_GAS_PIR_CHEVRONS = 'gas-pir-chevrons';
 export const LYR_GAS_PIR_MARKER = 'gas-pir-marker';
 export const LYR_GAS_PIR_LABEL = 'gas-pir-label';
+// Biomethane injection sites (GRDF OpenData — 833 sites)
+export const SRC_BIOMETHANE_SITES = 'biomethane-sites-src';
+export const LYR_BIOMETHANE_CLUSTERS = 'biomethane-clusters';
+export const LYR_BIOMETHANE_CLUSTER_COUNT = 'biomethane-cluster-count';
+export const LYR_BIOMETHANE_SITES = 'biomethane-sites';
+export const LYR_BIOMETHANE_SITES_LABEL = 'biomethane-sites-label';
 // Oil/Petroleum flows (refineries, pipelines, imports)
 export const SRC_OIL_FLOW_ARCS = 'oil-flow-arcs-src';
 export const SRC_OIL_FLOW_MARKERS = 'oil-flow-markers-src';

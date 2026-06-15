@@ -1895,6 +1895,29 @@ export interface BiomethaneSite {
   raw?: unknown;
 }
 
+/* ── Biogas daily production monitoring ─────────────────── */
+
+export interface BiogasDaily {
+  date: string;
+  productionMWh: number;
+  sitesCount: number;
+  status: 'Provisoire' | 'Consolidée';
+}
+
+export interface BiogasState {
+  daily: BiogasDaily[];
+  latestMWh: number;
+  deltaJ1Pct: number | null;
+  avg7dMWh: number;
+  alert: BiogasAlert | null;
+  updatedAt: Date;
+}
+
+export interface BiogasAlert {
+  type: 'production_drop';
+  severityPct: number;
+}
+
 export interface MineGasSite {
   id: string;
   name: string;

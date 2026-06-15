@@ -63,6 +63,8 @@ import { classifyWithAI } from './services/ai-classifier.ts';
 import { summarizeWithFallback } from './services/summarization.ts';
 import { geocodeNewsItem } from './services/geocoder.ts';
 import { fetchEcowatt } from './services/ecowatt.ts';
+import { fetchBiogasProduction } from './services/biogas.ts';
+import { fetchBiomethaneSites } from './services/biogas-sites.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
 import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
@@ -109,7 +111,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -404,6 +406,7 @@ const DEFAULT_LAYERS: MapLayers = {
   cyber: false,
   threatMap: false,
   gasNetwork: false,
+  biomethaneSites: false,
   oilNetwork: false,
   nuclearFleet: false,
   dayNight: false,
@@ -416,6 +419,7 @@ const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'powerGrid' |
   'hydroBackbone' |
   'gasNetwork' |
+  'biomethaneSites' |
   'oilNetwork' |
   'windMonitor' |
   'metroLoad' |
@@ -425,6 +429,7 @@ const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'powerGrid',
   'hydroBackbone',
   'gasNetwork',
+  'biomethaneSites',
   'oilNetwork',
   'windMonitor',
   'metroLoad',
@@ -860,6 +865,8 @@ const GAS_LEGEND: LegendCategory = {
     { id: 'storage-neutral', label: 'Contour gris = neutre/inconnu', color: '#6B7280', shape: 'ring' },
     { id: 'pir-import', label: 'Import gaz', color: '#A855F7', icon: '←', iconSize: 18 },
     { id: 'pir-export', label: 'Export gaz', color: '#06B6D4', icon: '→', iconSize: 18 },
+    { id: 'biomethane-site', label: 'Site biométhane', color: '#F59E0B', shape: 'circle' },
+    { id: 'biomethane-cluster', label: 'Cluster biométhane', color: 'rgba(245,158,11,0.7)', shape: 'circle' },
   ],
   source: {
     label: 'PEG NaTran / ODRE / Teréga',
@@ -1114,6 +1121,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     dependsOnGroup: true,
     label: 'Réseau Gaz',
     legend: GAS_LEGEND,
+  },
+  {
+    id: 'biomethaneSites',
+    groupId: 'energySystems',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'Sites Biométhane',
   },
   {
     id: 'hydroBackbone',
@@ -1396,6 +1410,8 @@ export class App {
   private _showAisLoaderFn: (() => void) | null = null; // Ref so onLayerToggle can trigger it
   private currentMeteoTimeline: VigilanceTimeline | null = null;
   private currentEcowattResponse: EcowattResponse | null = null;
+  private currentBiogasState: BiogasState | null = null;
+  private currentBiomethaneSites: BiomethaneSite[] | null = null;
   private currentEcowattUsesFallback = false;
   private currentHydraulicAssets: HydraulicBackboneAsset[] = [];
   private currentHydraulicHydrometry: HydraulicHydrometrySnapshot | null = null;
@@ -3026,7 +3042,7 @@ export class App {
         this.currentCitizenZones ?? undefined,
       );
     } else if (name === 'Réseau Gaz / EcoGaz') {
-      if (this.currentGasData) this.gasPanel?.show(this.currentGasData);
+      if (this.currentGasData) this.gasPanel?.show(this.currentGasData, this.currentBiogasState);
     } else if (name === 'Pétrole SDES / INSEE') {
       if (this.currentOilData) this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
     } else if (name === 'Vols Militaires ADS-B') {
@@ -3385,11 +3401,19 @@ export class App {
     } else if (key === 'gasNetwork') {
       if (this.activeLayers.gasNetwork) {
         if (!this.currentGasData) this.loadGas(); // lazy-load on first enable
-        this.gasPanel?.show(this.currentGasData);
+        this.gasPanel?.show(this.currentGasData, this.currentBiogasState);
         this.layoutEnergyFloatingPanels();
       } else {
         this.gasPanel?.hide();
         this.layoutEnergyFloatingPanels();
+      }
+    } else if (key === 'biomethaneSites') {
+      if (this.activeLayers.biomethaneSites) {
+        if (!this.currentBiomethaneSites) {
+          void this.loadGas(); // lazy-load biomethane alongside gas data
+        } else {
+          this.mapContainer?.updateBiomethaneSites(this.currentBiomethaneSites);
+        }
       }
     } else if (key === 'oilNetwork') {
       if (this.activeLayers.oilNetwork) {
@@ -4769,11 +4793,22 @@ export class App {
     this.statusPanel?.updateSource('Gaz', { status: 'loading', lastUpdate: null });
 
     try {
-      const gasData = await fetchGasNetwork();
+      const [gasData, biogasState, biomethaneSites] = await Promise.all([
+        fetchGasNetwork(),
+        fetchBiogasProduction().catch(() => null),
+        fetchBiomethaneSites().catch(() => [] as BiomethaneSite[]),
+      ]);
       this.currentGasData = gasData;
+      this.currentBiogasState = biogasState;
+      if (biomethaneSites.length > 0) {
+        this.currentBiomethaneSites = biomethaneSites;
+      }
 
       // Update map visualization
       await this.mapContainer?.updateGas(gasData);
+      if (this.currentBiomethaneSites?.length) {
+        this.mapContainer?.updateBiomethaneSites(this.currentBiomethaneSites);
+      }
 
       // Determine status
       const allOk = Object.values(gasData.sourceStatus).every(s => s === 'ok');
@@ -4788,7 +4823,7 @@ export class App {
       }
 
       // Update panel if visible
-      this.gasPanel?.update(gasData);
+      this.gasPanel?.update(gasData, biogasState);
       this.refreshEnergyDataLegends();
 
       console.log(`[App/loadGas] Complete: EcoGaz=${gasData.ecogaz.signal}, Fill=${gasData.nationalStats.averageFillLevel.toFixed(1)}%`);

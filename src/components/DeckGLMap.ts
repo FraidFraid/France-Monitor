@@ -183,6 +183,11 @@ import {
   LYR_GAS_PIR_CHEVRONS,
   LYR_GAS_PIR_MARKER,
   LYR_GAS_PIR_LABEL,
+  SRC_BIOMETHANE_SITES,
+  LYR_BIOMETHANE_CLUSTERS,
+  LYR_BIOMETHANE_CLUSTER_COUNT,
+  LYR_BIOMETHANE_SITES,
+  LYR_BIOMETHANE_SITES_LABEL,
   SRC_OIL_FLOW_ARCS,
   SRC_OIL_FLOW_MARKERS,
   SRC_OIL_FLOW_DIRECTION,
@@ -1998,6 +2003,92 @@ export class DeckGLMap {
       },
       paint: {
         'text-color': '#e8e8ec',
+        'text-halo-color': '#0a0a0f',
+        'text-halo-width': 1.5,
+      },
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    // BIOMETHANE INJECTION SITES — GRDF OpenData, 833 sites, amber dots
+    // ═══════════════════════════════════════════════════════════════
+    this.map.addSource(SRC_BIOMETHANE_SITES, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+      cluster: true,
+      clusterMaxZoom: 10,
+      clusterRadius: 45,
+    });
+
+    // Cluster circles — amber, sized by point count
+    this.map.addLayer({
+      id: LYR_BIOMETHANE_CLUSTERS,
+      type: 'circle',
+      source: SRC_BIOMETHANE_SITES,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
+        'circle-color': '#F59E0B',
+        'circle-opacity': 0.7,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(245, 158, 11, 0.4)',
+      },
+      layout: { visibility: 'none' },
+    });
+
+    // Cluster count labels
+    this.map.addLayer({
+      id: LYR_BIOMETHANE_CLUSTER_COUNT,
+      type: 'symbol',
+      source: SRC_BIOMETHANE_SITES,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': '{point_count_abbreviated}',
+        'text-size': 11,
+        'text-font': ['Noto Sans Bold'],
+        visibility: 'none',
+      },
+      paint: {
+        'text-color': '#000',
+      },
+    });
+
+    // Individual unclustered points — amber dots
+    this.map.addLayer({
+      id: LYR_BIOMETHANE_SITES,
+      type: 'circle',
+      source: SRC_BIOMETHANE_SITES,
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': [
+          'interpolate', ['linear'], ['get', 'capacityGwh'],
+          0, 3,
+          10, 4,
+          40, 6,
+        ],
+        'circle-color': '#F59E0B',
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': 'rgba(245, 158, 11, 0.3)',
+      },
+      layout: { visibility: 'none' },
+    });
+
+    // Labels for individual sites at high zoom
+    this.map.addLayer({
+      id: LYR_BIOMETHANE_SITES_LABEL,
+      type: 'symbol',
+      source: SRC_BIOMETHANE_SITES,
+      filter: ['!', ['has', 'point_count']],
+      minzoom: 11,
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 10,
+        'text-anchor': 'left',
+        'text-offset': [1, 0],
+        visibility: 'none',
+      },
+      paint: {
+        'text-color': '#F59E0B',
         'text-halo-color': '#0a0a0f',
         'text-halo-width': 1.5,
       },
@@ -4988,6 +5079,19 @@ export class DeckGLMap {
     });
     this.map.on('mouseleave', LYR_GAS_TERMINALS, hideEnrichedHover);
 
+    this.map.on('mouseenter', LYR_BIOMETHANE_SITES, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mousemove', LYR_BIOMETHANE_SITES, (e) => {
+      if (!this.map || !e.features?.length) return;
+      const p = e.features[0].properties || {};
+      this.showEnrichedHoverPopup(e.lngLat, this.buildBiomethaneHoverHtml(p));
+    });
+    this.map.on('mouseleave', LYR_BIOMETHANE_SITES, () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+      hideEnrichedHover();
+    });
+
     this.map.on('mouseenter', LYR_GAS_STORAGES, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
@@ -7584,6 +7688,27 @@ export class DeckGLMap {
   }
 
 
+  private buildBiomethaneHoverHtml(properties: Record<string, unknown>): string {
+    const name = String(properties.name ?? 'Site biométhane');
+    const commune = String(properties.commune ?? '');
+    const department = String(properties.department ?? '');
+    const operator = String(properties.operator ?? '');
+    const capacityGwh = Number(properties.capacityGwh ?? 0);
+    const location = [commune, department].filter(Boolean).join(', ');
+
+    return `
+      <div style="color:#e8e8ec; font-family:sans-serif; min-width:200px; padding:2px;">
+        <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(name)}</div>
+        <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:#F59E0B;">Site injection biométhane</div>
+        <div style="display:grid; grid-template-columns:1fr auto; gap:6px 12px; font-size:12px;">
+          ${location ? `<span style="color:#9898a8;">Localisation</span><strong>${this.escapeHtml(location)}</strong>` : ''}
+          ${operator ? `<span style="color:#9898a8;">Opérateur</span><strong>${this.escapeHtml(operator)}</strong>` : ''}
+          ${capacityGwh > 0 ? `<span style="color:#9898a8;">Production</span><strong>${capacityGwh.toLocaleString('fr-FR')} GWh/an</strong>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
   private buildGasPirHoverHtml(properties: Record<string, unknown>): string {
     // Enriched tooltip si les stats sont disponibles
     const borderCode = String(properties.borderCode ?? '');
@@ -9511,6 +9636,34 @@ export class DeckGLMap {
   }
 
   // ─── Oil/Petroleum Flow Layer ───
+
+  /**
+   * Update biomethane injection sites on the map.
+   * Renders 833 GRDF OpenData sites as amber dots sized by annual capacity (GWh/year).
+   */
+  updateBiomethaneSites(sites: import('../types/index.ts').BiomethaneSite[]): void {
+    const src = this.map?.getSource(SRC_BIOMETHANE_SITES) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+
+    const features: GeoJSON.Feature[] = sites.map(s => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [s.longitude, s.latitude],
+      },
+      properties: {
+        name: s.name,
+        commune: s.commune ?? '',
+        department: s.department ?? '',
+        region: s.region ?? '',
+        operator: s.operator ?? '',
+        capacityGwh: s.capacityGwhYear ?? 0,
+        status: s.status,
+      },
+    }));
+
+    src.setData({ type: 'FeatureCollection', features });
+  }
 
   /**
    * Update oil flow arcs on the map.
@@ -12296,6 +12449,12 @@ export class DeckGLMap {
     this.setVis(LYR_GAS_PIR_CHEVRONS, gasVis);
     this.setVis(LYR_GAS_PIR_MARKER, gasVis);
     this.setVis(LYR_GAS_PIR_LABEL, gasVis);
+    // Biomethane sites: visible when gasNetwork is active (always shown alongside gas infra)
+    const biomVis = vis(layers.gasNetwork ?? false);
+    this.setVis(LYR_BIOMETHANE_CLUSTERS, biomVis);
+    this.setVis(LYR_BIOMETHANE_CLUSTER_COUNT, biomVis);
+    this.setVis(LYR_BIOMETHANE_SITES, biomVis);
+    this.setVis(LYR_BIOMETHANE_SITES_LABEL, biomVis);
     // Oil layer (refineries, depots, pipelines, flows)
     const oilVis = vis(layers.oilNetwork ?? false);
     this.setVis(LYR_OIL_PIPELINES_GLOW, oilVis);
