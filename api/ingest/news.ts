@@ -27,7 +27,7 @@ import { classifyWithGroq } from '../_lib/groq-classifier.js';
 
 export const config = { maxDuration: 300 };
 
-const GROQ_BUDGET_PER_TICK = 5;
+const GROQ_BUDGET_PER_TICK = 15;
 const GROQ_CONFIDENCE = 0.75;
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
@@ -390,7 +390,6 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
           WHERE id = ANY(${ids}::bigint[])
             AND confidence < 0.60
             AND classifier_version = ${CLASSIFIER_VERSION}
-            AND NOT (category = 'general' AND confidence <= 0.20)
           ORDER BY confidence ASC
           LIMIT ${GROQ_BUDGET_PER_TICK}
         `;
