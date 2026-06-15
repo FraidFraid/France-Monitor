@@ -262,7 +262,7 @@ export class SituationHistoryPanel {
         return `<div class="sit-hist__missing" data-slot="${escapeHtml(agg.slotKey)}" data-idx="${gi}" style="flex:1;"><div class="sit-hist__missing-dot"></div></div>`;
       }
       const barH  = Math.max(3, Math.ceil((agg.avgScore / 100) * 76));
-      const color = agg.maxSeverity ? SEV_COLOR[agg.maxSeverity] : 'rgba(255,255,255,0.25)';
+      const color = agg.maxSeverity ? SEV_COLOR[agg.maxSeverity] : '#22c55e';
       const isSel = this.selectedSlotKey === agg.slotKey;
       const deg   = agg.captured < agg.total || agg.hasDegraded ? 'is-degraded' : '';
       return `
@@ -281,7 +281,7 @@ export class SituationHistoryPanel {
     }
     const snap  = slot as SituationSnapshot;
     const barH  = Math.max(3, Math.ceil((snap.score / 100) * 76));
-    const color = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'rgba(255,255,255,0.25)';
+    const color = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : '#22c55e';
     const isSel = this.selectedSlotKey === snap.slotKey;
     const isDeg = snap.dataStatus.overall === 'degraded';
     return `
@@ -393,7 +393,7 @@ export class SituationHistoryPanel {
     } else {
       const snap      = slot as SituationSnapshot;
       const sevLbl    = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : '—';
-      const sevColor  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : 'inherit';
+      const sevColor  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : '#22c55e';
       const situations = snap.situations.slice(0, 2).map(s =>
         `<div class="sit-hist__tooltip-situ">${TYPE_ICON[s.type] ?? '⚠️'} ${escapeHtml(s.title)}</div>`
       ).join('');

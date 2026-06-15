@@ -20,13 +20,15 @@ const HEATMAP_CATEGORIES: { key: EventCategory; label: string }[] = [
   { key: 'transport', label: 'Transport' },
   { key: 'health',    label: 'Santé' },
   { key: 'finance',   label: 'Finance' },
+  { key: 'cyber',     label: 'Cyber' },
+  { key: 'general',   label: 'Général' },
 ];
 
 const OTHER_CATEGORY_LABEL = 'Autre';
 
 /** Categories that map to the "Autre" row. */
 const OTHER_CATEGORIES = new Set<string>([
-  'infrastructure', 'floods', 'fires', 'cyber', 'general',
+  'infrastructure', 'floods', 'fires',
 ]);
 
 export interface HeatmapCell {
