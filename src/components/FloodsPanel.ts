@@ -6,6 +6,7 @@ import {
     getPremiumModalStyle,
 } from './panelHeader.ts';
 import type { FloodSegment } from '../types/index.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 const FLOOD_COLORS: Record<string, string> = {
     red: 'var(--threat-critical)',
@@ -81,6 +82,11 @@ export class FloodsPanel extends Panel {
         this.modalEl.appendChild(this.contentEl);
         this.container.appendChild(this.modalEl);
         this.render();
+    }
+
+    showLoading(): void {
+        if (!this.contentEl) return;
+        this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des tronçons en crue…' });
     }
 
     private modalEl!: HTMLElement;

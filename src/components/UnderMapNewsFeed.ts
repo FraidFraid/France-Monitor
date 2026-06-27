@@ -2,6 +2,7 @@ import type { NewsItem, FilterState, EventCategory, ThreatLevel, TimeRange, MapL
 import { NewsHeatmap } from './NewsHeatmap.ts';
 import type { HeatmapClickEvent } from './NewsHeatmap.ts';
 import { t } from '../services/i18n.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -397,12 +398,7 @@ export class UnderMapNewsFeed {
       this.activeFiltersEl.innerHTML = '';
       this.activeFiltersEl.hidden = true;
     }
-    this.listEl.innerHTML = `
-      <div class="under-map-card__empty">
-        <div class="under-map-card__empty-title">${t('newsFeed.loadingTitle')}</div>
-        <div class="under-map-card__empty-text">${t('newsFeed.loadingBody')}</div>
-      </div>
-    `;
+    this.listEl.innerHTML = fmLoaderHTML({ text: 'Chargement des actualités…', variant: 'inline' });
   }
 
   private applyFilter(): void {

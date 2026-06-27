@@ -1,5 +1,6 @@
 import type { MarketData } from '../types/index.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 function escapeHtml(value: string): string {
   const el = document.createElement('div');
@@ -155,11 +156,7 @@ export class MarketStrip {
 
   private renderLoading(): void {
     if (!this.bodyEl) return;
-    this.bodyEl.innerHTML = `
-      <div class="under-map-card__empty">
-        <div class="under-map-card__empty-title">Chargement des marchés</div>
-      </div>
-    `;
+    this.bodyEl.innerHTML = fmLoaderHTML({ text: 'Chargement des marchés…', variant: 'inline' });
   }
 
   private renderEmpty(): void {

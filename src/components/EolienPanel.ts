@@ -1,4 +1,5 @@
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 
@@ -160,12 +161,7 @@ export class EolienPanel extends Panel {
 
   private showLoadingState(): void {
     if (!this.contentEl) return;
-    this.contentEl.innerHTML = `
-      <div style="text-align:center;padding:24px 16px;">
-        <div style="font-size:24px;margin-bottom:10px;animation:pulse 1.5s ease-in-out infinite;">🌬️</div>
-        <div style="font-size:11px;color:${EOLIEN_PANEL_COLORS.muted};">Chargement du suivi éolien France...</div>
-      </div>
-    `;
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement du suivi éolien France…' });
   }
 
   showErrorState(message: string): void {

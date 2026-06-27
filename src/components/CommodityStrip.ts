@@ -1,5 +1,6 @@
 import type { CommodityData } from '../types/index.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 // ─── Utilitaires (identiques à MarketStrip) ───────────────────────────────────
 
@@ -127,7 +128,7 @@ export class CommodityStrip {
   private renderLoading(): void {
     for (const cat of ['energy', 'metals', 'agro'] as const) {
       const el = this.listEls[cat];
-      if (el) el.innerHTML = `<div class="under-map-card__empty"><div class="under-map-card__empty-title">Chargement...</div></div>`;
+      if (el) el.innerHTML = fmLoaderHTML({ text: 'Chargement des cours…', variant: 'inline' });
     }
   }
 

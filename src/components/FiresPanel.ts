@@ -9,6 +9,7 @@ import { applyFiresFilter, DEFAULT_FIRES_FILTER } from '../services/fires.ts';
 import type { FiresFilterState } from '../services/fires.ts';
 import { clusterFireDetections } from '../services/fire-clustering.ts';
 import { fetchNearbyCommuneLabel } from '../services/elus.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 function renderTruthBadge(label: string, color: string): string {
     return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
@@ -127,6 +128,12 @@ export class FiresPanel {
 
         document.body.appendChild(this.modalEl);
         this._setupDrag();
+    }
+
+    showLoading(): void {
+        if (!this.modalEl || !this.contentEl) return;
+        this.modalEl.style.display = 'flex';
+        this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des foyers actifs…' });
     }
 
     private _updateHeader(): void {

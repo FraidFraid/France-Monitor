@@ -1,4 +1,5 @@
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import type { EcowattResponse, HydraulicBackboneAsset } from '../types/index.ts';
 
 const HYDRAULIC_PANEL_COLORS = {
@@ -283,14 +284,7 @@ export class HydraulicPanel extends Panel {
 
   private showLoadingState(): void {
     if (!this.contentEl) return;
-    this.contentEl.innerHTML = `
-      <div style="text-align:center;padding:24px 16px;">
-        <div style="font-size:24px;margin-bottom:10px;animation:pulse 1.5s ease-in-out infinite;">💧</div>
-        <div style="font-size:11px;color:${HYDRAULIC_PANEL_COLORS.muted};">
-          Consolidation du backbone hydraulique critique...
-        </div>
-      </div>
-    `;
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Consolidation du backbone hydraulique critique…' });
   }
 
   private updateHeader(assets: HydraulicBackboneAsset[]): void {

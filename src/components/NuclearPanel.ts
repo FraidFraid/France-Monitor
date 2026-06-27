@@ -6,6 +6,7 @@
  */
 
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import {
   applyPremiumCloseButtonHover,
   createPremiumIconHeader,
@@ -588,20 +589,7 @@ export class NuclearPanel extends Panel {
   }
 
   private _renderLoading(msg: string): string {
-    return `
-      <div style="
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        min-height:80px;gap:8px;
-      ">
-        <span style="
-          font-size:22px;opacity:0.55;
-          animation:nuclear-spin 1.4s linear infinite;
-          display:inline-block;
-        ">⚛</span>
-        <span style="font-size:12px;color:var(--text-muted);text-align:center;">${msg}</span>
-        <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#F9731622;border:1px solid #F9731633;color:#F97316;font-size:9px;font-weight:700;letter-spacing:0.06em;">EN COURS</span>
-      </div>
-      <style>@keyframes nuclear-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>`;
+    return fmLoaderHTML({ text: msg });
   }
 
   private _freshnessBadge(freshness: string): string {

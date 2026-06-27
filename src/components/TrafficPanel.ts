@@ -11,6 +11,7 @@ import {
     getPremiumModalStyle,
 } from './panelHeader.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 function renderTruthBadge(label: string, color: string): string {
     return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
@@ -77,6 +78,12 @@ export class TrafficPanel extends Panel {
         this.modalEl.appendChild(this.contentEl);
         this.container.appendChild(this.modalEl);
         this.render();
+    }
+
+    showLoading(): void {
+        if (!this.contentEl || !this.modalEl) return;
+        this.modalEl.style.display = 'flex';
+        this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement du trafic routier…' });
     }
 
     private modalEl!: HTMLElement;

@@ -1,4 +1,5 @@
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import type {
   DromEnergyDashboard,
   DromEnergyAsset,
@@ -223,12 +224,7 @@ export class DromEnergyPanel extends Panel {
 
     if (this.loading) {
       this.updateHeader(0, 'Chargement...', '');
-      this.contentEl.innerHTML = `
-        <div style="text-align:center;padding:24px 16px;">
-          <div style="font-size:24px;margin-bottom:10px;animation:pulse 1.5s ease-in-out infinite;">🏝️</div>
-          <div style="font-size:11px;color:${PANEL_COLORS.muted};">Chargement de la couche DROM énergie...</div>
-        </div>
-      `;
+      this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement de la couche DROM énergie…' });
       return;
     }
 

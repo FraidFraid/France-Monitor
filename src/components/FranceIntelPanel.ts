@@ -1,4 +1,5 @@
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import type { BarometerWidget } from './BarometerWidget.ts';
 import type {
   FranceCountrySnapshot,
@@ -627,13 +628,7 @@ export class FranceIntelPanel extends Panel {
 
     if (this.briefState === null) {
       meta.textContent = t(lang, 'Génération…', 'Generating…');
-      body.innerHTML = `
-        <div class="frintel-loading">
-          <span class="frintel-loading-line"></span>
-          <span class="frintel-loading-line short"></span>
-          <span class="frintel-loading-text">${t(lang, 'Construction du brief national…', 'Building national brief…')}</span>
-        </div>
-      `;
+      body.innerHTML = fmLoaderHTML({ text: t(lang, 'Construction du brief national…', 'Building national brief…') });
       toggle.hidden = true;
       return;
     }

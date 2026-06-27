@@ -46,7 +46,7 @@ import { LayerPanel } from './components/LayerPanel.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
-import { ACTIVE_INSTALLATIONS } from './config/military-bases-db.ts';
+// ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadStaticData()
 import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
 
 import { fetchMilitaryFlights } from './services/military-flights.ts';
@@ -70,8 +70,9 @@ import { fetchMetropoles } from './services/metropoles.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
-import { fetchSncfDisruptions, buildRailNetworkData, geocodeSncfStation } from './services/transport.ts';
-import { buildHydraulicBackboneAssets } from './services/hydraulic-backbone.ts';
+// transport.ts (~970 l.) chargé dynamiquement dans loadSncf/loadSncfFullCoverage + handler focus rail
+// buildHydraulicBackboneAssets (+ config hydraulic-backbone-official ~1200 l.) chargé
+// dynamiquement dans refreshHydraulicLayer() — sort la grosse config du chunk critique.
 import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
@@ -94,7 +95,7 @@ import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from '.
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
-import { fetchHealthData } from './services/health.ts';
+// fetchHealthData chargé dynamiquement dans loadHealth() (sort le service ~1300 l. du chunk critique)
 import { computeHealthBarometer } from './services/health-barometer.ts';
 import type { HealthBarometerMetrics } from './services/health-barometer.ts';
 import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
@@ -105,7 +106,7 @@ import {
   type ThreatEventFilters,
 } from './services/threat-map.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
-import { fetchOilDashboard, isOilPanelEnabled } from './services/oil.ts';
+// oil.ts (~1250 l.) chargé dynamiquement dans loadOil() — sort du chunk critique
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
@@ -1427,6 +1428,11 @@ export class App {
   private currentFloodSegments: FloodSegment[] = [];
   private currentTrafficIncidents: TrafficIncident[] = [];
   private trafficDataLoaded = false;
+  // Flags « données chargées » → affichent le loader unifié tant que false (cf. render*Panel()).
+  private firesLoaded = false;
+  private environmentLoaded = false;
+  private maritimeHasData = false;
+  private outagesLoaded = false;
   private trafficLoadPromise: Promise<void> | null = null;
   private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
   private hasRestoredActiveLayerPanels = false;
@@ -2625,6 +2631,10 @@ export class App {
         this.franceIntelPanel?.hide();
         // Remove nationalHealthPanel?.hide() to allow both panels to be open simultaneously
         this.healthBarometerPanel?.show(metrics);
+      } else {
+        // Données santé pas encore calculées → loader unifié, remplacé par show(metrics)
+        // dès que loadHealth() termine (cf. branche isVisible() dans loadHealth).
+        this.healthBarometerPanel?.showLoading();
       }
     });
 
@@ -2704,7 +2714,7 @@ export class App {
         panel.setRawFires(this.currentActiveFires);
       }
       if (this.hasRestoredActiveLayerPanels && this.activeLayers.fires) {
-        panel.show(this.currentActiveFires);
+        this.renderFiresPanel();
         this.layoutEnvironmentFloatingPanels();
       }
     });
@@ -2717,7 +2727,7 @@ export class App {
       panel.mount();
       this.trafficPanel = panel;
       if (this.hasRestoredActiveLayerPanels && this.activeLayers.trafficRoad) {
-        panel.show(this.currentTrafficIncidents);
+        this.renderTrafficPanel();
       }
     });
 
@@ -2728,7 +2738,8 @@ export class App {
       });
       this.maritimePanel = panel;
       if (this.activeLayers.trafficMaritime) {
-        panel.show();
+        if (this.maritimeHasData) panel.show();
+        else panel.showLoading();
       }
     });
 
@@ -2768,14 +2779,22 @@ export class App {
     });
     this.gasPanel.mount();
 
-    // Oil Panel (Vigilance Pétrole - Raffineries, Stocks, Flux)
-    this.oilPanel = new OilPanel(floatContainer);
-    // skipLayout: oil panel doesn't use the energy floating stack
-    this.oilPanel.setOnClose(() => this.closeEnergyLayer('oilNetwork', { skipLayout: true }));
-    this.oilPanel.setOnFuelTensionMapVisibilityChange((visible) => {
-      void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
+    // Oil Panel (Vigilance Pétrole - Raffineries, Stocks, Flux) — lazy-loaded
+    void import('./components/OilPanel.ts').then(({ OilPanel }) => {
+      const panel = new OilPanel(floatContainer);
+      // skipLayout: oil panel doesn't use the energy floating stack
+      panel.setOnClose(() => this.closeEnergyLayer('oilNetwork', { skipLayout: true }));
+      panel.setOnFuelTensionMapVisibilityChange((visible) => {
+        void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
+      });
+      panel.mount();
+      this.oilPanel = panel;
+      // Restore: mirror _handlePanelVisibility('oilNetwork') — show even without data yet
+      // (loadOil was already triggered during restore and will update() the panel).
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.oilNetwork) {
+        panel.show(this.currentOilData, this.currentFuelTensionData);
+      }
     });
-    this.oilPanel.mount();
 
     // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
     void import('./components/NuclearPanel.ts').then(({ NuclearPanel }) => {
@@ -2802,31 +2821,44 @@ export class App {
     });
 
     // Outages Panel (Pannes Réseau — incidents ORE Enedis)
-    this.outagesPanel = new OutagesPanel(floatContainer);
-    this.outagesPanel.setOnClose(() => {
-      this.activeLayers.outages = false;
-      this.activeLayers.outagesElec = false;
-      this.activeLayers.outagesTelecom = false;
-      this.activeLayers.outagesInternet = false;
-      this.activeLayers.outagesCloud = false;
-      this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-      this.layerPanel?.updateLayers(this.activeLayers);
+    // Outages Panel (Pannes Réseau — incidents ORE Enedis) — lazy-loaded
+    void import('./components/OutagesPanel.ts').then(({ OutagesPanel }) => {
+      const panel = new OutagesPanel(floatContainer);
+      panel.setOnClose(() => {
+        this.activeLayers.outages = false;
+        this.activeLayers.outagesElec = false;
+        this.activeLayers.outagesTelecom = false;
+        this.activeLayers.outagesInternet = false;
+        this.activeLayers.outagesCloud = false;
+        this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+        this.layerPanel?.updateLayers(this.activeLayers);
+      });
+      panel.setOnDeptHover((code) => this.mapContainer?.highlightPowerDept(code));
+      panel.setOnZoneHover((id) => this.mapContainer?.highlightCitizenZone(id));
+      panel.setOnIspHover((data) => this.mapContainer?.highlightIsp(data));
+      panel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
+      panel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
+      panel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
+      panel.setOnTabChange((_tab) => {
+        // Tab changes drive panel content only — layer dimming is driven exclusively
+        // by legend card hover, not by which panel tab is active.
+      });
+      panel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
+      panel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
+      panel.setOnDcClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
+      panel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
+      panel.mount();
+      this.outagesPanel = panel;
+      // Restore: if the layer state was restored before this lazy chunk resolved,
+      // re-open the panel exactly as _handlePanelVisibility('outages…') would.
+      if (this.hasRestoredActiveLayerPanels && this.activeLayers.outages) {
+        if (this.outagesLoaded) {
+          panel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
+        } else {
+          panel.showLoading();
+        }
+      }
     });
-    this.outagesPanel.setOnDeptHover((code) => this.mapContainer?.highlightPowerDept(code));
-    this.outagesPanel.setOnZoneHover((id) => this.mapContainer?.highlightCitizenZone(id));
-    this.outagesPanel.setOnIspHover((data) => this.mapContainer?.highlightIsp(data));
-    this.outagesPanel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
-    this.outagesPanel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
-    this.outagesPanel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
-    this.outagesPanel.setOnTabChange((_tab) => {
-      // Tab changes drive panel content only — layer dimming is driven exclusively
-      // by legend card hover, not by which panel tab is active.
-    });
-    this.outagesPanel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
-    this.outagesPanel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
-    this.outagesPanel.setOnDcClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
-    this.outagesPanel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
-    this.outagesPanel.mount();
 
     // Defense Panel (Cable threats) - positioned below CyberPanel
     void import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
@@ -3263,11 +3295,33 @@ export class App {
    * Called at the end of onLayerToggle, after map visibility and state
    * have already been updated.
    */
+  // ─── Rendu panels overlay : loader unifié tant que les données ne sont pas arrivées ───
+  private renderFiresPanel(): void {
+    if (this.firesLoaded) this.firesPanel?.show(this.currentActiveFires);
+    else this.firesPanel?.showLoading();
+  }
+
+  private renderTrafficPanel(): void {
+    if (this.trafficDataLoaded) this.trafficPanel?.show(this.currentTrafficIncidents);
+    else this.trafficPanel?.showLoading();
+  }
+
+  private renderEnvironmentPanel(): void {
+    if (this.environmentLoaded) {
+      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+    } else {
+      this.environmentPanel?.showLoading();
+    }
+  }
+
   private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
     // Traffic panels — standalone ifs so both run if key matches both (impossible in
     // practice but safe: they guard on the specific key value).
     if (key === 'trafficMaritime') {
-      if (enabled) this.maritimePanel?.show();
+      if (enabled) {
+        if (this.maritimeHasData) this.maritimePanel?.show();
+        else this.maritimePanel?.showLoading();
+      }
       else this.maritimePanel?.hide();
     }
     if (key === 'trafficRoad') {
@@ -3275,7 +3329,7 @@ export class App {
         void this.ensureTrafficLoaded().catch((error) => {
           console.error('[App] Failed to load road traffic on restore', error);
         });
-        this.trafficPanel?.show(this.currentTrafficIncidents);
+        this.renderTrafficPanel();
       } else {
         this.trafficPanel?.hide();
       }
@@ -3308,7 +3362,7 @@ export class App {
         this.layoutEnvironmentFloatingPanels();
       }
     } else if (key === 'environmental') {
-      if (enabled) this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
+      if (enabled) this.renderEnvironmentPanel();
       else this.environmentPanel?.hide();
       this.layoutEnvironmentFloatingPanels();
     } else if (key === 'health' || key === 'healthHantavirus' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
@@ -3436,7 +3490,7 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'fires') {
-      if (this.activeLayers.fires) this.firesPanel?.show(this.currentActiveFires);
+      if (this.activeLayers.fires) this.renderFiresPanel();
       else this.firesPanel?.hide();
       this.layoutEnvironmentFloatingPanels();
     } else if (key === 'dayNight') {
@@ -3463,11 +3517,17 @@ export class App {
           else if (this.activeLayers.outagesInternet) autoTab = 'internet';
           else if (this.activeLayers.outagesCloud)    autoTab = 'cloud';
         }
-        this.outagesPanel?.show(
-          this.currentPowerOutages, this.currentTelecomOutages,
-          this.currentNetworkState, this.currentInfraState,
-          this.currentCitizenZones ?? undefined, autoTab
-        );
+        if (this.outagesLoaded) {
+          this.outagesPanel?.show(
+            this.currentPowerOutages, this.currentTelecomOutages,
+            this.currentNetworkState, this.currentInfraState,
+            this.currentCitizenZones ?? undefined, autoTab
+          );
+        } else {
+          // Données pas encore arrivées → loader (remplacé par show() quand loadOutages
+          // termine, via la branche isVisible() de loadOutages).
+          this.outagesPanel?.showLoading();
+        }
       } else {
         this.outagesPanel?.hide();
       }
@@ -3909,7 +3969,10 @@ export class App {
 
     // Register callback for first AIS data arrival (triggers immediate refresh)
     onFirstAisData(() => {
+      this.maritimeHasData = true;
       updateShips();
+      // Remplace le loader maritime par les données dès la 1re trame AIS.
+      if (this.activeLayers.trafficMaritime) this.maritimePanel?.show();
     });
 
     updateShips();
@@ -4326,6 +4389,8 @@ export class App {
       this.statusPanel?.updateSource('Météo-France', { status: 'stale', lastUpdate: new Date() });
     }
 
+    this.environmentLoaded = true;
+
     if (this.environmentPanel?.isVisible()) {
       this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
       this.layoutEnvironmentFloatingPanels();
@@ -4340,6 +4405,7 @@ export class App {
     try {
       const segments = await fetchVigicrues();
       this.currentFloodSegments = segments;
+      this.environmentLoaded = true;
       this.mapContainer?.updateFloods(segments);
       const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
       const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
@@ -4412,8 +4478,15 @@ export class App {
 
   private async loadFires(): Promise<void> {
     this.statusPanel?.updateSource('NASA FIRMS', { status: 'loading', lastUpdate: null });
-    const data = await fetchFiresData();
+    let data: Awaited<ReturnType<typeof fetchFiresData>>;
+    try {
+      data = await fetchFiresData();
+    } catch (err) {
+      this.firesLoaded = true; // settle même en erreur → le loader laisse place à l'état vide
+      throw err;
+    }
     this.currentActiveFires = data.detections;
+    this.firesLoaded = true;
     this.currentFiresSources = { sources: data.sources, apiKeyUsed: data.apiKeyUsed };
     // Transmet les métadonnées sources au panel (header + footer adaptatifs)
     this.firesPanel?.setSourcesInfo(data.sources, data.apiKeyUsed);
@@ -4436,6 +4509,7 @@ export class App {
   }
 
   private async refreshHydraulicLayer(): Promise<void> {
+    const { buildHydraulicBackboneAssets } = await import('./services/hydraulic-backbone.ts');
     this.currentHydraulicHydrometry = await fetchHydraulicHydrometrySnapshot(
       this.currentHydraulicAssets.length > 0 ? this.currentHydraulicAssets : buildHydraulicBackboneAssets(null, [], []),
     );
@@ -4607,6 +4681,8 @@ export class App {
       }
     })().finally(() => {
       this.trafficLoadPromise = null;
+      // Remplace le loader par les données (ou l'état vide) une fois le fetch settlé.
+      if (this.activeLayers.trafficRoad) this.renderTrafficPanel();
     });
 
     return this.trafficLoadPromise;
@@ -4871,6 +4947,7 @@ export class App {
     console.log('[App/loadOil] Entry');
     const oilStatusDetail = 'OilNetwork : réseau et stocks structurels + carburants quasi-live via API prix carburants';
 
+    const { fetchOilDashboard, isOilPanelEnabled } = await import('./services/oil.ts');
     if (!isOilPanelEnabled()) {
       console.log('[App/loadOil] Feature DISABLED, skipping...');
       this.statusPanel?.updateSource('Pétrole', {
@@ -5093,6 +5170,7 @@ export class App {
 
   private async loadSncf(): Promise<void> {
     this.statusPanel?.updateSource('SNCF', { status: 'loading', lastUpdate: null });
+    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
     const disruptions = await fetchSncfDisruptions((enriched) => {
       // Geocoding + OSM route matching completed in background — refresh map + panel
       this.currentSncfDisruptions = enriched;
@@ -5137,6 +5215,7 @@ export class App {
       detail: 'Chargement couverture complète SNCF',
     });
 
+    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
     const disruptions = await fetchSncfDisruptions((enriched) => {
       this.currentSncfDisruptions = enriched;
       const enrichedRail = buildRailNetworkData(enriched);
@@ -5255,6 +5334,7 @@ export class App {
     const hasArrival = !!focus?.arrival?.coordinates;
 
     if (focus && (!hasDeparture || !hasArrival)) {
+      const { geocodeSncfStation } = await import('./services/transport.ts');
       const [departureCoords, arrivalCoords] = await Promise.all([
         hasDeparture ? Promise.resolve(focus.departure?.coordinates ?? focus.coordinates) : geocodeSncfStation(focus.departure?.name),
         hasArrival ? Promise.resolve(focus.arrival?.coordinates) : geocodeSncfStation(focus.arrival?.name),
@@ -5302,7 +5382,11 @@ export class App {
       fetchNetworkOutages(),
       fetchInfraNetwork(),
       fetchRTEIIPIncidents().catch(() => null),
-    ]);
+    ]).catch((err) => {
+      this.outagesLoaded = true; // settle même en erreur → le loader laisse place au contenu
+      throw err;
+    });
+    this.outagesLoaded = true;
     this.currentTelecomOutages = telecoms;
     this.currentPowerOutages = powers;
     this.currentNetworkState = network;
@@ -5348,6 +5432,7 @@ export class App {
     this.statusPanel?.updateSource('SPF / DREES', { status: 'loading', lastUpdate: null });
     this.statusPanel?.updateSource('Sentinelles', { status: 'loading', lastUpdate: null });
     this.statusPanel?.updateSource('ANSM Médicaments', { status: 'loading', lastUpdate: null });
+    const { fetchHealthData } = await import('./services/health.ts');
     const payload = await fetchHealthData();
     this.hasHealthData = payload.departments.length > 0 || payload.regions.length > 0;
     this.currentHealthFeatures = payload.healthFeatures;
@@ -5590,19 +5675,23 @@ export class App {
   /** Sync — called first, no network, instant display */
   private loadStaticData(): void {
     // ─── STATIC DATA — Affichage immédiat (pas de fetch) ───────────────────
-    // Affiche d'abord notre DB statique enrichie (~160 sites)
-    this.mapContainer?.updateMilitaryBases(ACTIVE_INSTALLATIONS);
-    this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
+    // military-bases-db (~1100 l.) chargé en chunk dynamique → hors du bundle critique.
+    // La couche militaire étant masquée par défaut, ce léger différé est invisible.
+    void import('./config/military-bases-db.ts').then(({ ACTIVE_INSTALLATIONS }) => {
+      // Affiche d'abord notre DB statique enrichie (~160 sites)
+      this.mapContainer?.updateMilitaryBases(ACTIVE_INSTALLATIONS);
+      this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
 
-    // ─── OSM MILITARY DATA — Charge puis fusionne avec la DB statique ──────
-    loadStaticOsmFeatures().then((osmFeatures) => {
-      if (osmFeatures.length > 0) {
-        const merged = mergeWithStaticDb(osmFeatures, ACTIVE_INSTALLATIONS);
-        this.mapContainer?.updateMilitaryBases(merged);
-        console.log(`[App] Military bases: ${ACTIVE_INSTALLATIONS.length} static + ${osmFeatures.length} OSM = ${merged.length} total`);
-      }
-    }).catch((err) => {
-      console.warn('[App] Failed to load OSM military features:', err);
+      // ─── OSM MILITARY DATA — Charge puis fusionne avec la DB statique ──────
+      loadStaticOsmFeatures().then((osmFeatures) => {
+        if (osmFeatures.length > 0) {
+          const merged = mergeWithStaticDb(osmFeatures, ACTIVE_INSTALLATIONS);
+          this.mapContainer?.updateMilitaryBases(merged);
+          console.log(`[App] Military bases: ${ACTIVE_INSTALLATIONS.length} static + ${osmFeatures.length} OSM = ${merged.length} total`);
+        }
+      }).catch((err) => {
+        console.warn('[App] Failed to load OSM military features:', err);
+      });
     });
   }
   /** CRITICAL — awaited in init(). 4 layers that seed the ISNR (energy + weather + floods). */

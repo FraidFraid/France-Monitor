@@ -8,6 +8,7 @@ import {
 import type { MeteoAlert } from '../types/index.ts';
 import { RISK_LABELS } from '../types/index.ts';
 import type { VigilanceTimeline, VigilanceTimeSlot } from '../services/vigilance-meteo.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 function renderTruthBadge(label: string, color: string): string {
   return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
@@ -119,6 +120,11 @@ export class WeatherPanel extends Panel {
 
     // Required by base Panel, even if we don't use the standard panel structure
     this.render();
+  }
+
+  showLoading(): void {
+    if (!this.contentEl) return;
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement de la vigilance météo…' });
   }
 
   private modalEl!: HTMLElement;

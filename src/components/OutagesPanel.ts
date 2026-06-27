@@ -6,6 +6,7 @@
  */
 
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import type { PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
 import type { RTEIIPState } from '../services/rte-iip.ts';
 import type { OutagesMeta } from '../services/outages.ts';
@@ -276,6 +277,12 @@ export class OutagesPanel extends Panel {
     };
 
     this._applyTabs();
+  }
+
+  showLoading(): void {
+    if (!this.contentEl) return;
+    this.modalEl.style.display = 'flex';
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des incidents réseau…' });
   }
 
   protected render(): void {}

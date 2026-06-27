@@ -13,6 +13,7 @@ import {
   getPremiumCloseButtonStyle,
   getPremiumModalStyle,
 } from './panelHeader.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 const RISK_COLORS: Record<RiskLevel, string> = {
   none: '#34c759', low: '#ffcc00', medium: '#ff9500', high: '#ff3b30', critical: '#ff2d55',
@@ -242,6 +243,13 @@ export class MaritimePanel {
       this._renderCurrentTab();
       this._updateAisBadge();
     }, 10000);
+  }
+
+  showLoading(): void {
+    if (!this.containerEl) this.mount();
+    this.isVisible = true;
+    this.containerEl.style.display = '';
+    if (this.bodyEl) this.bodyEl.innerHTML = fmLoaderHTML({ text: 'Chargement du trafic maritime…' });
   }
 
   openShipModal(ship: MilitaryShip): void {

@@ -8,6 +8,7 @@ import {
 import { RISK_LABELS } from '../types/index.ts';
 import type { FloodSegment, MeteoAlert, MeteoVigilanceLevel } from '../types/index.ts';
 import type { VigilanceTimeline } from '../services/vigilance-meteo.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 const METEO_COLORS: Record<MeteoVigilanceLevel, string> = {
   violet: 'var(--threat-critical)',
@@ -143,6 +144,12 @@ export class EnvironmentPanel extends Panel {
     document.body.appendChild(this.modalEl);
     this.setupDrag(header);
     this.render();
+  }
+
+  showLoading(): void {
+    if (!this.contentEl) return;
+    this.modalEl.style.display = 'flex';
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement météo & crues…' });
   }
 
   protected render(): void {}

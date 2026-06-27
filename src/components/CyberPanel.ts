@@ -9,6 +9,7 @@
  */
 
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import {
   applyPremiumCloseButtonHover,
   createPremiumRingHeader,
@@ -245,31 +246,7 @@ export class CyberPanel extends Panel {
   private showLoadingState(): void {
     if (!this.contentEl) return;
 
-    this.contentEl.innerHTML = `
-      <div class="cyber-bento-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-        ${this.renderSkeletonCard('CERT-FR', true)}
-        ${this.renderSkeletonCard('Ransomware', true)}
-        ${this.renderSkeletonCard('CVE Radar', false)}
-      </div>
-    `;
-  }
-
-  private renderSkeletonCard(title: string, halfWidth: boolean): string {
-    return `
-      <div class="cyber-bento-card cyber-skeleton" style="
-        background: rgba(0,0,0,0.2);
-        border-radius: 8px;
-        padding: 12px;
-        border: 1px solid rgba(255,255,255,0.05);
-        ${halfWidth ? '' : 'grid-column: span 2;'}
-      ">
-        <div style="color: var(--text-muted); font-size: 11px; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
-          ${title}
-        </div>
-        <div class="skeleton-pulse" style="height: 16px; background: rgba(255,255,255,0.1); border-radius: 4px; margin-bottom: 8px; animation: pulse 1.5s ease-in-out infinite;"></div>
-        <div class="skeleton-pulse" style="height: 12px; width: 70%; background: rgba(255,255,255,0.08); border-radius: 4px; animation: pulse 1.5s ease-in-out infinite;"></div>
-      </div>
-    `;
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Analyse des alertes cyber…' });
   }
 
   private updateHeader(data: CyberState): void {

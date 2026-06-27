@@ -9,6 +9,7 @@
  */
 
 import { Panel } from './Panel.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 import {
   applyPremiumCloseButtonHover,
   createPremiumRingHeader,
@@ -218,12 +219,7 @@ export class OilPanel extends Panel {
 
   private showLoadingState(): void {
     if (!this.contentEl) return;
-    this.contentEl.innerHTML = `
-      <div style="text-align: center; padding: 20px;">
-        <div style="font-size: 24px; margin-bottom: 12px; animation: pulse 1.5s ease-in-out infinite;">🛢️</div>
-        <div style="color: ${OIL_PANEL_COLORS.title}; font-size: 11px;">Chargement des données pétrolières...</div>
-      </div>
-    `;
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des données pétrolières…' });
   }
 
   private updateHeader(data: OilDashboard, fuelTension: FuelTensionDashboard | null = null): void {

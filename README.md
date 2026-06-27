@@ -167,6 +167,8 @@ The long-term goal is to turn the France prototype into a reusable European comm
 | **Watchdog registry** | Centralised observability — all services self-report; StatusPanel auto-updates |
 | **Non-blocking init** | Critical layers (energy, weather, floods) load first; optional layers in background |
 | **DeckGLMap lazy-loaded** | Mobile users never download the 1 MB WebGL stack |
+| **Dynamic `import()` for default-hidden modules** | Heavy panels/services/configs for off-by-default layers (oil, outages, military bases, hydraulic backbone…) load on demand, keeping `index.js` ~21% smaller |
+| **Unified loader (`fmLoaderHTML`)** | One spinner everywhere; panels show a loader while data is in flight and swap to content/empty once settled (even on error) — no blank panels, no per-panel loader styles |
 | **Service Worker (Workbox)** | API routes NetworkFirst (4s timeout); map tiles CacheFirst 30d; PWA installable |
 | **`hasEverSucceeded` flag** | Distinguishes "first load in progress" from "persistent failure" in IIP/REMIT |
 
@@ -507,6 +509,10 @@ Current high-level milestones:
 ---
 
 ## 📋 Recent Updates
+
+### 2026-06-27
+- **Unified loader system** — single source of truth `src/components/shared/loader.ts` (`fmLoaderHTML({ text?, variant? })`) + CSS `.fm-loader` (spinner ring, `--text-accent`, `spin` 0.8s). 11 heterogeneous loaders (emoji+pulse, skeletons, custom spin, empty cards) migrated to it. 6 data panels now show the loader **while data is in flight** and swap to content (or empty state) once settled, **even on fetch error**: Fires, Traffic, Environment (weather+floods), Outages, Health barometer, Maritime (AIS). New panels must use `fmLoaderHTML` — never hand-roll a spinner.
+- **Critical-bundle slimming** — `index.js` reduced **1064 → 842 KB (−21%, gzip −17%)** by moving non-critical, default-hidden modules out of the main chunk via dynamic `import()`: services `health`/`oil`/`transport`, panels `OilPanel`/`OutagesPanel`, and large static configs `military-bases-db` (~1100 lines) + `hydraulic-backbone` (~1200 lines). Layers concerned are off by default, so the deferred load is invisible. Clean chunk-splitting is now exhausted (remaining heavy modules are shared with `DeckGLMap`/`MapContainer` or need risky async refactors).
 
 ### 2026-06-11
 - **News History UI** — toggle Live/Historique in the news feed panel; interactive heatmap (day × category, 7j/30j/90j); cursor-based article pagination; filters by severity, region, and full-text search across 90 days of ingested articles

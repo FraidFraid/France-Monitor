@@ -14,6 +14,7 @@ import {
   getPremiumCloseButtonStyle,
   getPremiumModalStyle,
 } from './panelHeader.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 export class HealthBarometerPanel {
   private container: HTMLElement;
@@ -135,6 +136,12 @@ export class HealthBarometerPanel {
     this.modalEl.appendChild(header);
     this.modalEl.appendChild(this.contentEl);
     this.container.appendChild(this.modalEl);
+  }
+
+  showLoading(): void {
+    if (!this.contentEl) return;
+    this.modalEl.style.display = 'flex';
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement du baromètre santé…' });
   }
 
   show(metrics: HealthBarometerMetrics): void {
