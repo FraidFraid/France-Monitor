@@ -61,7 +61,7 @@ export class OilPanel extends Panel {
   private latestFuelTensionData: FuelTensionDashboard | null = null;
   private fuelTensionSearch = '';
   private fuelTensionListVisible = false;
-  private fuelTensionMapVisible = true;
+  private fuelTensionMapVisible = false; // Carte départements masquée par défaut
   private fuelPriceHistoryRange: FuelPriceChartRange = '1m';
   private latestVisibleFuelPriceSeries: Array<{
     fuelType: string;
