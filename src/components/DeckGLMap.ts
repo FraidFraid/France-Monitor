@@ -449,6 +449,11 @@ export class DeckGLMap {
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
   private latestHealthFeatures: HealthFeatures | null = null;
+  // APL (déserts médicaux) vient de DEUX sources : le fichier statique
+  // /data/apl-departements.json (loadAplData) ET l'API santé /api/health/apl.
+  // En prod l'API peut renvoyer une liste vide → on PERSISTE les valeurs APL
+  // non-nulles pour qu'un refresh santé ultérieur n'efface jamais la couche.
+  private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
   private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
 
@@ -10378,6 +10383,13 @@ export class DeckGLMap {
         const deptMap = new Map<string, HealthDepartmentMetric>();
         for (const d of departments!) deptMap.set(d.depCode, d);
 
+        // Mémorise toute valeur APL non-nulle reçue (fichier statique ou API) ;
+        // un appel ultérieur sans APL ne pourra plus écraser la couche.
+        for (const d of departments!) {
+          const hasApl = d.aplIndex != null || (d.aplCategory != null && d.aplCategory !== 'indisponible');
+          if (hasApl) this.aplByDept.set(d.depCode, { aplIndex: d.aplIndex ?? null, aplCategory: d.aplCategory ?? 'indisponible' });
+        }
+
         const baseGeojson = await this.getDepartmentsGeojson();
         if (!baseGeojson) return;
         const geojson = this.cloneDepartmentsGeojson(baseGeojson);
@@ -10406,8 +10418,10 @@ export class DeckGLMap {
             hasOscourAlert: metric?.topMotifs && metric.topMotifs.length > 0 ? 1 : 0,
             oscourMaxTrend: metric?.topMotifs && metric.topMotifs.length > 0 ? Math.max(...metric.topMotifs.map(m => m.trendPct || (m as any).trend_pct || 0)) : 0,
             topMotifsJson: JSON.stringify(metric?.topMotifs ?? []),
-            aplIndex: metric?.aplIndex ?? null,
-            aplCategory: metric?.aplCategory ?? 'indisponible',
+            aplIndex: metric?.aplIndex ?? this.aplByDept.get(code)?.aplIndex ?? null,
+            aplCategory: (metric?.aplCategory && metric.aplCategory !== 'indisponible')
+              ? metric.aplCategory
+              : (this.aplByDept.get(code)?.aplCategory ?? 'indisponible'),
             trend: metric?.trend ?? 'stable',
             source: metric?.source ?? 'spf-epid',
             updatedAt: metric?.updatedAt?.toISOString() ?? new Date().toISOString(),
