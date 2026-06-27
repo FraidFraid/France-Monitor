@@ -25,7 +25,8 @@
     "build:maires": "node scripts/build-maires-politique.mjs",
     "build:fuel-price-series": "node scripts/generate-fuel-price-series.mjs",
     "ingest:drom-energy": "node scripts/ingest-drom-energy.mjs",
-    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs"
+    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs",
+    "test:sources-quality": "node scripts/test-sources-quality-dashboard.mjs"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
