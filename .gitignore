@@ -53,3 +53,7 @@ test_tv.js
 update_axes.js
 gemini-svg.svg
 worktrees/
+
+# Tooling scratch (superpowers skill sessions) & macOS Finder icon artifact
+.superpowers/
+Icon?
