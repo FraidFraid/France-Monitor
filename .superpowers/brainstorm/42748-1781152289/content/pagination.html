@@ -1,0 +1,42 @@
+<h2>Chargement des articles historiques</h2>
+<p class="subtitle">En mode historique, une requete filtree peut renvoyer des centaines d'articles. Comment les charger ?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Bouton "Charger plus" (cursor-based)</h3>
+      <p>Charge les 50 premiers articles. Un bouton en bas de liste charge les 50 suivants (append). L'API utilise un curseur (dernier <code>publishedAt</code>) pour la page suivante. Simple, previsible, pas de scroll piege.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>+</h4><ul><li>Controle utilisateur explicite</li><li>Leger en memoire</li><li>Trivial cote API (WHERE publishedAt &lt; cursor)</li></ul></div>
+        <div class="cons"><h4>-</h4><ul><li>Un clic de plus pour voir la suite</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Infinite scroll</h3>
+      <p>IntersectionObserver sur un sentinel en bas de liste. Charge automatiquement la page suivante quand l'utilisateur approche du bas.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>+</h4><ul><li>Fluide, zero friction</li></ul></div>
+        <div class="cons"><h4>-</h4><ul><li>Peut charger trop en arriere-plan</li><li>Perte de position au retour</li><li>Plus de code (observer + cleanup)</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Tout charger (limit 500)</h3>
+      <p>Comme le mode Live actuel : une seule requete avec <code>limit=500</code>, filtre cote client. Pas de pagination.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>+</h4><ul><li>Zero complexite pagination</li><li>Coherent avec le mode Live</li></ul></div>
+        <div class="cons"><h4>-</h4><ul><li>Peut rater des articles au-dela de 500</li><li>Requete initiale plus lourde</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px;"><strong>Recommandation :</strong> Option A — "Charger plus" avec curseur. C'est le bon compromis : leger, explicite, et extensible. Le mode Live peut rester sur limit=500 (articles recents), le mode Historique utilise la pagination.</p>
