@@ -3,58 +3,6 @@ import { ISS_LEVELS } from '../../types/index.ts';
 import type { ISSLevel } from '../../types/index.ts';
 import { WEATHER_RISK_EMOJIS, ISNR_COLORS } from './constants.ts';
 
-export function getHantavirusSeverityColor(severity: string | null | undefined): string {
-  switch (severity) {
-    case 'crise':
-      return '#ff3b30';
-    case 'alerte':
-      return '#ff9500';
-    case 'surveillance':
-      return '#ffd60a';
-    case 'info':
-    default:
-      return '#64d2ff';
-  }
-}
-
-export function getHantavirusTerritoryLabel(event: Record<string, unknown> | null | undefined): string {
-  const level = String(event?.territoire_niveau ?? '').trim();
-  const code = String(event?.territoire_code ?? '').trim();
-  if (!level && !code) return 'n/d';
-  const prefix = level ? `${level} · ` : '';
-  return `${prefix}${code}`;
-}
-
-export function getHantavirusDisplayLabel(event: Record<string, unknown> | null | undefined, fallbackLabel: string): string {
-  if (event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique') {
-    return `Zone historique SPF (circulation documentée 2005-2024) · ${fallbackLabel.replace(/^Zone historique hantavirus -\s*/i, '').replace(/^Zone historique elargie -\s*/i, '')}`;
-  }
-  return fallbackLabel;
-}
-
-export function getHantavirusEvidenceLabel(level: string | null | undefined): string {
-  switch (level) {
-    case 'official_confirmed': return 'Officiel confirmé';
-    case 'official_monitoring': return 'Officiel suivi';
-    case 'official_historical': return 'Historique officiel';
-    case 'media_confirmed': return 'Presse confirmée';
-    case 'media_unverified': return 'Presse à vérifier';
-    case 'manual_seed': return 'Seed manuel';
-    case 'inferred': return 'Inféré';
-    default: return 'n/d';
-  }
-}
-
-export function getHantavirusValidationLabel(status: string | null | undefined): string {
-  switch (status) {
-    case 'validated': return 'Validé';
-    case 'needs_review': return 'À vérifier';
-    case 'auto_detected': return 'Auto-détecté';
-    case 'rejected': return 'Rejeté';
-    case 'superseded': return 'Supplanté';
-    default: return 'n/d';
-  }
-}
 export function getWeatherRadarSourceId(regionId: string): string {
   return `weather-radar-src-${regionId}`;
 }

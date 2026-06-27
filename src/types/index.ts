@@ -117,7 +117,6 @@ export interface MapLayers {
   biomethaneSites?: boolean;
   mineGasSites?: boolean;
   health: boolean;
-  healthHantavirus?: boolean;
   healthOscour: boolean;
   healthApl: boolean;
   hospitals: boolean;
@@ -1126,8 +1125,6 @@ export interface HealthFeatures {
   sentinellesLastWeekAvailable: string | null;
   sentinellesNormalizedIndicators: SentinellesIndicator[];
   hantavirusEvents: HantavirusEvent[];
-  hantavirusHeatmap: HeatmapPoint[];
-  hantavirusSnapshot: HantavirusSituationSnapshot | null;
 }
 
 // ═══ Data Freshness & Watchdog ═══
@@ -1416,20 +1413,6 @@ export interface HantavirusContactGeo {
   precision: 'city' | 'department' | 'region' | 'country';
   publicationStatus: 'official' | 'media' | 'not_public';
   privacyMode: 'show_city' | 'aggregate_department' | 'hide';
-}
-
-export interface HantavirusSituationSnapshot {
-  asOf: string;
-  activeCluster: 'MV_HONDIUS' | 'none' | 'unknown';
-  franceConfirmedCases: number | null;
-  franceContactsMonitored: number | null;
-  globalConfirmed: number | null;
-  globalProbable: number | null;
-  globalInconclusive: number | null;
-  deaths: number | null;
-  riskGeneralPopulation: 'very_low' | 'low' | 'moderate' | 'high' | 'unknown';
-  sourceUrls: string[];
-  narrative: string[];
 }
 
 export interface HantavirusEvent {

@@ -59,7 +59,6 @@ const DEFAULT_LAYERS: MapLayers = {
   hydroBackbone: false,
   windMonitor: false,
   health: false,
-  healthHantavirus: false,
   healthOscour: false,
   healthApl: false,
   hospitals: false,

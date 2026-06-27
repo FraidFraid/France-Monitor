@@ -4,27 +4,17 @@ import {
   HANTAVIRUS_HISTORICAL_REGIONS,
   HANTAVIRUS_NAVIRES,
   HANTAVIRUS_REFERENCE_FACILITIES,
-  resolveHantavirusTerritoryCenter,
 } from '../config/hantavirus.ts';
 import type {
   HantavirusContactGeo,
   HantavirusEvent,
-  HantavirusSituationSnapshot,
   HantavirusSource,
-  HeatmapPoint,
 } from '../types/index.ts';
 
 export const DGS_URGENT_INDEX_URL =
   'https://sante.gouv.fr/ministere/informations-pratiques/site/dgs-urgent';
 
 const PDF_LINK_RE = /href="([^"]+\.pdf[^"]*)"/gi;
-
-const SEVERITY_WEIGHTS: Record<HantavirusEvent['severite'], number> = {
-  info: 0.8,
-  surveillance: 1.8,
-  alerte: 4,
-  crise: 8,
-};
 
 const SOURCE_RANK: Record<HantavirusSource, number> = {
   WHO: 100,
@@ -55,12 +45,6 @@ const OFFICIAL_SOURCE_LABELS: Partial<Record<HantavirusSource, string>> = {
   MediaValidated: 'Veille OSINT validée',
   LocalMedia: 'Presse locale',
 };
-
-const HONDIUS_SNAPSHOT_URLS = [
-  'https://www.info.gouv.fr/actualite/hantavirus-le-point-sur-les-mesures-sanitaires-en-france',
-  'https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON601',
-  'https://www.ecdc.europa.eu/en/infectious-disease-topics/hantavirus-infection/surveillance-and-updates/andes-hantavirus-outbreak',
-];
 
 function stableIdFragment(input: string): string {
   let hash = 0;
@@ -113,31 +97,6 @@ export function getSourceRank(source: HantavirusSource): number {
 
 function getSourceLabel(source: HantavirusSource): string {
   return OFFICIAL_SOURCE_LABELS[source] ?? source;
-}
-
-export function buildHantavirusSituationSnapshot(): HantavirusSituationSnapshot {
-  return {
-    asOf: '2026-05-26T00:00:00.000Z',
-    activeCluster: 'MV_HONDIUS',
-    franceConfirmedCases: 1,
-    franceContactsMonitored: 25,
-    globalConfirmed: 11,
-    globalProbable: 2,
-    globalInconclusive: 1,
-    deaths: 3,
-    riskGeneralPopulation: 'low',
-    sourceUrls: [
-      'https://www.santepubliquefrance.fr/hantavirus/donnees',
-      ...HONDIUS_SNAPSHOT_URLS,
-    ],
-    narrative: [
-      'Cluster actif : MV Hondius, souche Andes.',
-      'France : 1 cas confirmé et 25 cas contacts suivis.',
-      'Population générale : risque faible selon l’OMS et l’ECDC.',
-      'Transmission interhumaine documentée uniquement dans des contextes de contact étroit et prolongé.',
-      'Les zones historiques SPF 2005-2024 relèvent d’un contexte métropolitain distinct et ne sont pas liées au cluster Andes.',
-    ],
-  };
 }
 
 export function buildSeedHondiusClusterEvents(): HantavirusEvent[] {
@@ -346,40 +305,6 @@ export function buildHistoricalHantavirusRiskEvents(referenceDate: string): Hant
   return [...departmentEvents, ...regionEvents];
 }
 
-export function computeHantavirusWeight(event: HantavirusEvent): number {
-  const severityWeight = SEVERITY_WEIGHTS[event.severite];
-  if (event.kind === 'ship_cluster' || event.kind === 'confirmed_case' || event.kind === 'probable_case') {
-    return severityWeight * 2.8;
-  }
-  if (event.kind === 'contact_case' || event.kind === 'hospital_monitoring') {
-    return severityWeight * 1.35;
-  }
-  return severityWeight * 0.9;
-}
-
-export function buildHantavirusHeatmapPoints(events: HantavirusEvent[]): HeatmapPoint[] {
-  const points: HeatmapPoint[] = [];
-
-  for (const event of events) {
-    if (event.kind === 'contact_case' && event.territoire_niveau === 'pays') continue;
-    if (event.territoire_code === 'HOP-IHU-MARSEILLE') continue;
-    if (/marseille/i.test(event.label)) continue;
-    const center = resolveHantavirusTerritoryCenter(event.territoire_code);
-    if (!center) continue;
-
-    points.push({
-      eventId: event.id,
-      lon: center[0],
-      lat: center[1],
-      weight: computeHantavirusWeight(event),
-      type: event.type,
-      label: event.label,
-    });
-  }
-
-  return points;
-}
-
 export function extractPdfLinksFromDgsUrgentIndex(html: string): string[] {
   const links = new Set<string>();
   let match: RegExpExecArray | null;
@@ -477,40 +402,6 @@ function computeMergedSeverity(a: HantavirusEvent['severite'], b: HantavirusEven
     crise: 4,
   };
   return rank[a] >= rank[b] ? a : b;
-}
-
-export function buildDeckGlHeatmapLayerSnippet(sourceId = 'hantavirus-heatmap'): string {
-  return [
-    `new HeatmapLayer({`,
-    `  id: '${sourceId}',`,
-    `  data: heatmapPoints,`,
-    `  getPosition: (d) => [d.lon, d.lat],`,
-    `  getWeight: (d) => d.weight,`,
-    `  radiusPixels: 40,`,
-    `  intensity: 1,`,
-    `  threshold: 0.05,`,
-    `})`,
-  ].join('\n');
-}
-
-export function buildMapLibreHeatmapLayerSnippet(sourceId = 'hantavirus'): string {
-  return [
-    `map.addSource('${sourceId}', {`,
-    `  type: 'geojson',`,
-    `  data: geojson,`,
-    `});`,
-    `map.addLayer({`,
-    `  id: '${sourceId}-layer',`,
-    `  type: 'heatmap',`,
-    `  source: '${sourceId}',`,
-    `  paint: {`,
-    `    'heatmap-weight': ['get', 'weight'],`,
-    `    'heatmap-intensity': 1.1,`,
-    `    'heatmap-radius': 28,`,
-    `    'heatmap-opacity': 0.8,`,
-    `  },`,
-    `});`,
-  ].join('\n');
 }
 
 export const HANTAVIRUS_REFERENCE_INDEX = {

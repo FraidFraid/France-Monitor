@@ -43,11 +43,6 @@ export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_
 import { emptyFC, getFeatureCenter, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
 import {
   escapeHtml,
-  getHantavirusSeverityColor,
-  getHantavirusTerritoryLabel,
-  getHantavirusDisplayLabel,
-  getHantavirusEvidenceLabel,
-  getHantavirusValidationLabel,
   getWeatherRadarSourceId,
   getWeatherRadarLayerId,
   getWeatherRiskEmoji,
@@ -76,7 +71,6 @@ import {
   SRC_WEATHER,
   SRC_HEALTH,
   SRC_HEALTH_MARKERS,
-  SRC_HANTAVIRUS,
   SRC_FLOODS,
   SRC_FLOODS_HIGHLIGHT,
   SRC_TOPAGE_VIS,
@@ -122,12 +116,6 @@ import {
   LYR_HEALTH_APL_FILL,
   LYR_HEALTH_APL_LINE,
   LYR_HEALTH_OSCOUR_CIRCLES,
-  LYR_HANTAVIRUS_PULSE,
-  LYR_HANTAVIRUS_POINTS,
-  LYR_HANTAVIRUS_ZONES_FILL,
-  LYR_HANTAVIRUS_ZONES_STROKE,
-  SRC_HANTA_ZONES,
-  HANTA_HIST_DEP_CODES,
   SRC_ISNR,
   LYR_ISNR_FILL,
   LYR_ISNR_LINE,
@@ -429,7 +417,6 @@ export class DeckGLMap {
   private aisHoverTooltip: maplibregl.Popup | null = null;
   private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
-  private hantavirusHoverPopup: maplibregl.Popup | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
   private weatherRadarTileTemplate: string | null = null;
@@ -687,14 +674,6 @@ export class DeckGLMap {
     this.map.addSource(SRC_HEALTH_MARKERS, {
       type: 'geojson',
       data: emptyFC(),
-    });
-    this.map.addSource(SRC_HANTAVIRUS, {
-      type: 'geojson',
-      data: emptyFC(),
-    });
-    this.map.addSource(SRC_HANTA_ZONES, {
-      type: 'geojson',
-      data: '/data/departements.geojson',
     });
 
     // ISNR stability departments
@@ -1237,80 +1216,6 @@ export class DeckGLMap {
         'circle-opacity': 0.95,
         'circle-stroke-width': 0,
         'circle-stroke-opacity': 0,
-      },
-    });
-
-    // Zones historiques SPF 2005-2024 — polygones département bleus discrets
-    this.map.addLayer({
-      id: LYR_HANTAVIRUS_ZONES_FILL,
-      type: 'fill',
-      source: SRC_HANTA_ZONES,
-      maxzoom: 9,
-      filter: ['in', ['get', 'code'], ['literal', HANTA_HIST_DEP_CODES]],
-      paint: {
-        'fill-color': '#38BDF8',
-        'fill-opacity': 0.13,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_HANTAVIRUS_ZONES_STROKE,
-      type: 'line',
-      source: SRC_HANTA_ZONES,
-      maxzoom: 9,
-      filter: ['in', ['get', 'code'], ['literal', HANTA_HIST_DEP_CODES]],
-      paint: {
-        'line-color': '#38BDF8',
-        'line-opacity': 0.45,
-        'line-width': 1,
-      },
-    });
-
-    // Halo statique pour les clusters crise — cercle large semi-transparent
-    this.map.addLayer({
-      id: LYR_HANTAVIRUS_PULSE,
-      type: 'circle',
-      source: SRC_HANTAVIRUS,
-      minzoom: 4,
-      filter: ['all',
-        ['==', ['get', 'type'], 'cluster'],
-        ['==', ['get', 'severity'], 'crise'],
-      ],
-      paint: {
-        'circle-color': '#ff3b30',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 14, 8, 26, 12, 34],
-        'circle-opacity': 0.18,
-        'circle-stroke-color': '#ff3b30',
-        'circle-stroke-width': 1.2,
-        'circle-stroke-opacity': 0.45,
-        'circle-blur': 0.6,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_HANTAVIRUS_POINTS,
-      type: 'circle',
-      source: SRC_HANTAVIRUS,
-      minzoom: 4,
-      filter: ['!=', ['get', 'type'], 'zone_historique'],
-      paint: {
-        'circle-color': [
-          'match',
-          ['coalesce', ['get', 'severity'], 'surveillance'],
-          'crise', '#ff3b30',
-          'alerte', '#ff9500',
-          'surveillance', '#ffd60a',
-          '#64d2ff',
-        ],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 5, 8, 8, 12, 12],
-        'circle-opacity': 0.95,
-        'circle-stroke-color': '#120b0b',
-        'circle-stroke-width': [
-          'match',
-          ['coalesce', ['get', 'severity'], 'surveillance'],
-          'crise', 2,
-          'alerte', 1.5,
-          1.1,
-        ],
       },
     });
 
@@ -4370,190 +4275,6 @@ export class DeckGLMap {
     this.map.on('click', LYR_HEALTH_APL_FILL, handleHealthClick);
     this.map.on('click', LYR_HEALTH_APL_LINE, handleHealthClick);
 
-    const renderHantavirusTooltip = (feature: maplibregl.MapGeoJSONFeature): string => {
-      const props = (feature.properties ?? {}) as Record<string, unknown>;
-      let event: {
-        type?: string;
-        kind?: string;
-        evidenceLevel?: string;
-        validationStatus?: string;
-        activeContext?: string;
-        sourceLabel?: string;
-        severite?: string;
-        territoire_niveau?: string;
-        territoire_code?: string;
-        date_debut?: string;
-        date_fin?: string;
-        lastCheckedAt?: string;
-        commentaires?: string;
-        contactGeo?: {
-          publicLocationLabel?: string;
-          privacyMode?: string;
-          publicationStatus?: string;
-          precision?: string;
-        };
-        url_sources?: string[];
-      } | null = null;
-      try {
-        event = JSON.parse(String(props.eventJson ?? 'null'));
-      } catch {
-        event = null;
-      }
-
-      const severity = String(event?.severite ?? 'surveillance');
-      const color = getHantavirusSeverityColor(severity);
-      const sourceUrl = Array.isArray(event?.url_sources) && event.url_sources.length > 0
-        ? String(event.url_sources[0])
-        : '';
-      const displayLabel = getHantavirusDisplayLabel(event, String(props.label ?? 'Hantavirus'));
-      const territoryLabel = getHantavirusTerritoryLabel(event);
-      const isZoneHistorique = event?.kind === 'historical_risk_zone' || event?.type === 'zone_historique';
-
-      if (isZoneHistorique) {
-        const dateRange = event?.date_debut && event?.date_fin
-          ? `${event.date_debut.slice(0, 4)} – ${event.date_fin.slice(0, 4)}`
-          : '2005 – 2024';
-        const checkedLabel = event?.lastCheckedAt
-          ? new Date(event.lastCheckedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-          : '';
-        const historyText = event?.commentaires
-          ? String(event.commentaires)
-          : 'Contexte historique SPF, distinct du cluster Andes 2026.';
-        return `
-          <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:2px;">
-            <div style="display:flex; align-items:center; gap:7px; margin-bottom:5px;">
-              <span style="font-size:15px;">🟡</span>
-              <strong style="font-size:12px; color:#fff;">Zone de surveillance SPF</strong>
-            </div>
-            <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
-              <div>${territoryLabel}</div>
-              <div>Circulation documentée <strong style="color:#d8d8df;">${dateRange}</strong></div>
-              <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
-              ${checkedLabel ? `<div>Vérifié le <strong style="color:#d8d8df;">${checkedLabel}</strong></div>` : ''}
-            </div>
-            <div style="font-size:10px; color:#c8c8d4; margin-top:6px; line-height:1.45;">${historyText}</div>
-            <div style="font-size:10px; color:#7f8c8d; margin-top:6px;">Source : Santé Publique France</div>
-            ${sourceUrl ? `<div style="font-size:10px; margin-top:4px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Données SPF ↗</a></div>` : ''}
-          </div>
-        `;
-      }
-
-      const severityIcon = severity === 'crise' ? '🔴' : severity === 'alerte' ? '🟠' : '🟡';
-      const evidenceLabel = getHantavirusEvidenceLabel(event?.evidenceLevel);
-      const validationLabel = getHantavirusValidationLabel(event?.validationStatus);
-      const checkedLabel = event?.lastCheckedAt
-        ? new Date(event.lastCheckedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        : '';
-      const publicLocation = event?.contactGeo?.publicLocationLabel;
-      const privacyNote = event?.contactGeo?.privacyMode === 'hide'
-        ? 'Localisation résidentielle masquée'
-        : '';
-      const historyNote = event?.activeContext === 'andes_active_cluster'
-        ? 'Contexte : cluster Andes 2026 distinct des zones historiques SPF 2005-2024.'
-        : '';
-      const pathwayNote = event?.kind === 'confirmed_case'
-        ? 'Parcours public : prise en charge officielle publiée en Île-de-France ; détails résidentiels non affichés.'
-        : '';
-      return `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px; padding:2px;">
-          <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:6px;">
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:14px;">${severityIcon}</span>
-              <strong style="font-size:12px; color:#fff;">${displayLabel}</strong>
-            </div>
-            <span style="font-size:11px; font-weight:700; color:${color}; text-transform:uppercase; white-space:nowrap;">${severity}</span>
-          </div>
-          <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
-            <div>Localisation : <strong style="color:#d8d8df;">${territoryLabel}</strong></div>
-            ${publicLocation ? `<div>Publication : <strong style="color:#d8d8df;">${publicLocation}</strong></div>` : ''}
-            ${event?.date_debut ? `<div>Détecté le <strong style="color:#d8d8df;">${event.date_debut}</strong></div>` : ''}
-            ${checkedLabel ? `<div>Vérifié le <strong style="color:#d8d8df;">${checkedLabel}</strong></div>` : ''}
-            <div>Preuve : <strong style="color:#d8d8df;">${evidenceLabel}</strong></div>
-            <div>Validation : <strong style="color:#d8d8df;">${validationLabel}</strong></div>
-            ${event?.sourceLabel ? `<div>Source : <strong style="color:#d8d8df;">${event.sourceLabel}</strong></div>` : ''}
-            ${event?.commentaires ? `<div style="color:#c8c8d4; margin-top:5px; line-height:1.45;">${event.commentaires}</div>` : ''}
-            ${pathwayNote ? `<div style="color:#c8c8d4; margin-top:4px; line-height:1.4;">${pathwayNote}</div>` : ''}
-            ${historyNote ? `<div style="color:#7f8c8d; margin-top:4px; line-height:1.4;">${historyNote}</div>` : ''}
-            ${privacyNote ? `<div style="color:#7f8c8d; margin-top:4px;">${privacyNote}</div>` : ''}
-          </div>
-          ${sourceUrl ? `<div style="font-size:10px; margin-top:8px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; text-decoration:none;">Voir la source ↗</a></div>` : ''}
-        </div>
-      `;
-    };
-
-    this.map.on('mouseenter', LYR_HANTAVIRUS_POINTS, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_HANTAVIRUS_POINTS, (e) => {
-      if (!this.map) return;
-      const feature = e.features?.[0];
-      if (!feature) return;
-      if (!this.hantavirusHoverPopup) {
-        this.hantavirusHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 14,
-          maxWidth: '320px',
-          className: 'dark-popup',
-        });
-      }
-      this.hantavirusHoverPopup.setLngLat(e.lngLat).setHTML(renderHantavirusTooltip(feature)).addTo(this.map);
-    });
-    this.map.on('mouseleave', LYR_HANTAVIRUS_POINTS, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = '';
-      this.hantavirusHoverPopup?.remove();
-      this.hantavirusHoverPopup = null;
-    });
-    this.map.on('click', LYR_HANTAVIRUS_POINTS, (e) => {
-      if (!this.map) return;
-      const feature = e.features?.[0];
-      if (!feature) return;
-      this.hantavirusHoverPopup?.remove();
-      this.hantavirusHoverPopup = null;
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(renderHantavirusTooltip(feature))
-        .addTo(this.map);
-    });
-
-    this.map.on('mouseenter', LYR_HANTAVIRUS_ZONES_FILL, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'crosshair';
-    });
-    this.map.on('mousemove', LYR_HANTAVIRUS_ZONES_FILL, (e) => {
-      if (!this.map) return;
-      const feature = e.features?.[0];
-      if (!feature) return;
-      const props = feature.properties ?? {};
-      const depName = String(props.nom ?? props.name ?? `Dép. ${props.code ?? ''}`);
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:210px; padding:2px;">
-          <div style="display:flex; align-items:center; gap:7px; margin-bottom:5px;">
-            <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#38BDF8; flex-shrink:0;"></span>
-            <strong style="font-size:12px; color:#fff;">${depName}</strong>
-          </div>
-          <div style="font-size:11px; color:#9898a8; display:flex; flex-direction:column; gap:3px;">
-            <div>Zone de circulation documentée <strong style="color:#d8d8df;">2005 – 2024</strong></div>
-            <div>Souche : <strong style="color:#d8d8df;">Puumala</strong></div>
-            <div style="color:#7f8c8d; margin-top:4px;">Risque structurel — pas de foyer actif</div>
-          </div>
-          <div style="font-size:10px; color:#5a5a72; margin-top:6px;">Source : Santé Publique France</div>
-        </div>`;
-      if (!this.hantavirusHoverPopup) {
-        this.hantavirusHoverPopup = new maplibregl.Popup({
-          closeButton: false, closeOnClick: false, offset: 10, maxWidth: '280px', className: 'dark-popup',
-        });
-      }
-      this.hantavirusHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-    });
-    this.map.on('mouseleave', LYR_HANTAVIRUS_ZONES_FILL, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = '';
-      this.hantavirusHoverPopup?.remove();
-      this.hantavirusHoverPopup = null;
-    });
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
       if (!this.map) return;
@@ -6099,7 +5820,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficMaritime'
           ? 1
-          : ['trafficRoad', 'trafficAir', 'health', 'healthHantavirus', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
     const roadDeckOpacity =
@@ -6107,7 +5828,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficRoad'
           ? 1
-          : ['trafficMaritime', 'trafficAir', 'health', 'healthHantavirus', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficMaritime', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
     const airDeckOpacity =
@@ -6115,7 +5836,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficAir'
           ? 1
-          : ['trafficRoad', 'trafficMaritime', 'health', 'healthHantavirus', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficMaritime', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
 
@@ -8767,7 +8488,6 @@ export class DeckGLMap {
       LYR_HEALTH_FILL, LYR_HEALTH_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HEALTH_OSCOUR_CIRCLES,
-      LYR_HANTAVIRUS_ZONES_FILL, LYR_HANTAVIRUS_ZONES_STROKE, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS,
       LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
       LYR_POWER_FILL, LYR_POWER_LINE,
       LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE,
@@ -8783,8 +8503,6 @@ export class DeckGLMap {
     let activeLayers: string[] = [];
     if (categoryId === 'health') {
       activeLayers = [LYR_HEALTH_FILL, LYR_HEALTH_LINE];
-    } else if (categoryId === 'healthHantavirus') {
-      activeLayers = [LYR_HANTAVIRUS_ZONES_FILL, LYR_HANTAVIRUS_ZONES_STROKE, LYR_HANTAVIRUS_PULSE, LYR_HANTAVIRUS_POINTS];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
     } else if (categoryId === 'healthOscour') {
@@ -10345,26 +10063,6 @@ export class DeckGLMap {
   async updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): Promise<void> {
     if (!this.map) return;
     this.latestHealthFeatures = healthFeatures ?? this.latestHealthFeatures;
-    const hantavirusSrc = this.map.getSource(SRC_HANTAVIRUS) as maplibregl.GeoJSONSource | undefined;
-    const hantavirusEventById = new Map((healthFeatures?.hantavirusEvents ?? []).map((event) => [event.id, event]));
-    const hantavirusFeatures: GeoJSON.Feature[] = (healthFeatures?.hantavirusHeatmap ?? []).map((point) => ({
-      type: 'Feature',
-      properties: {
-        eventId: point.eventId,
-        weight: point.weight,
-        type: point.type,
-        label: point.label,
-        severity: hantavirusEventById.get(point.eventId)?.severite ?? 'surveillance',
-        eventJson: JSON.stringify(
-          hantavirusEventById.get(point.eventId) ?? null
-        ),
-      },
-      geometry: {
-        type: 'Point',
-        coordinates: [point.lon, point.lat],
-      },
-    }));
-    hantavirusSrc?.setData({ type: 'FeatureCollection', features: hantavirusFeatures });
 
     const hasDepts = Array.isArray(departments) && departments.length > 0;
     const hasRegions = regions.length > 0;
@@ -10505,10 +10203,6 @@ export class DeckGLMap {
         this.map.moveLayer(LYR_HEALTH_LINE);
         this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
         this.map.moveLayer(LYR_HEALTH_MARKERS);
-        this.map.moveLayer(LYR_HANTAVIRUS_ZONES_FILL);
-        this.map.moveLayer(LYR_HANTAVIRUS_ZONES_STROKE);
-        this.map.moveLayer(LYR_HANTAVIRUS_PULSE);
-        this.map.moveLayer(LYR_HANTAVIRUS_POINTS);
       } catch {
         // Ignore ordering errors.
       }
@@ -12398,10 +12092,6 @@ export class DeckGLMap {
     this.setVis(LYR_HEALTH_LINE, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_OSCOUR_CIRCLES, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_MARKERS, vis(layers.health ?? false));
-    this.setVis(LYR_HANTAVIRUS_ZONES_FILL, vis(layers.healthHantavirus ?? false));
-    this.setVis(LYR_HANTAVIRUS_ZONES_STROKE, vis(layers.healthHantavirus ?? false));
-    this.setVis(LYR_HANTAVIRUS_PULSE, vis(layers.healthHantavirus ?? false));
-    this.setVis(LYR_HANTAVIRUS_POINTS, vis(layers.healthHantavirus ?? false));
     this.setVis(LYR_HOSPITALS_CHU, vis(layers.hospitals ?? false));
     this.setVis(LYR_HOSPITALS_CH, vis(layers.hospitals ?? false));
     this.setVis(LYR_HOSPITALS_LABEL, vis(layers.hospitals ?? false));

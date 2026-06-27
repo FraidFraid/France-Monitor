@@ -24,7 +24,6 @@ const DEFAULT_FILTER: FilterState = {
         hydroBackbone: false,
         windMonitor: false,
         health: false,
-        healthHantavirus: false,
         healthOscour: false,
         healthApl: false,
         hospitals: false,

@@ -9,8 +9,6 @@ import { ISS_LEVELS } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 import {
   buildHantavirusDedupKey,
-  buildHantavirusHeatmapPoints,
-  buildHantavirusSituationSnapshot,
   buildSeedHondiusClusterEvents,
   mergeHantavirusEvents,
 } from './hantavirus.ts';
@@ -259,8 +257,6 @@ interface SentinellesIngestionResponse {
 
 interface HantavirusResponse {
   events?: import('../types/index.ts').HantavirusEvent[];
-  heatmap?: import('../types/index.ts').HeatmapPoint[];
-  snapshot?: import('../types/index.ts').HantavirusSituationSnapshot | null;
 }
 
 // ═══ ISS Computation ═══════════════════════════════════════════════════════
@@ -368,7 +364,7 @@ export async function fetchHealthData(): Promise<HealthPayload> {
       fetchJson<AplResponse>(APL_URL).catch(() => ({ departements: [] }) as AplResponse),
       fetchJson<EpidemiologyMonitorResponse>(EPIDEMIOLOGY_MONITOR_URL).catch(() => ({ alerts: [] }) as EpidemiologyMonitorResponse),
       fetchJson<SentinellesIngestionResponse>(SENTINELLES_INGESTION_URL).catch(() => ({ indicators: [], sentinelles_last_week_available: null }) as SentinellesIngestionResponse),
-      fetchJson<HantavirusResponse>(HANTAVIRUS_URL).catch(() => ({ events: [], heatmap: [] }) as HantavirusResponse),
+      fetchJson<HantavirusResponse>(HANTAVIRUS_URL).catch(() => ({ events: [] }) as HantavirusResponse),
     ]);
 
     const sentinellesByRegion = buildSentinellesByRegion(sent?.indicators ?? []);
@@ -955,8 +951,6 @@ function buildEmptyHealthFeatures(): HealthFeatures {
     sentinellesLastWeekAvailable: null,
     sentinellesNormalizedIndicators: [],
     hantavirusEvents: [],
-    hantavirusHeatmap: [],
-    hantavirusSnapshot: null,
   };
 }
 
@@ -1024,8 +1018,6 @@ function buildHealthFeatures(
     if (/marseille/i.test(event.label)) return false;
     return true;
   });
-  const hantavirusHeatmap = buildHantavirusHeatmapPoints(hantavirusEvents);
-  const hantavirusSnapshot = hantavirus?.snapshot ?? buildHantavirusSituationSnapshot();
   const sentinellesNormalizedIndicators = Array.isArray(sentinellesIngestion?.indicators)
     ? sentinellesIngestion.indicators
     : [];
@@ -1069,8 +1061,6 @@ function buildHealthFeatures(
     sentinellesLastWeekAvailable: sentinellesIngestion?.sentinelles_last_week_available ?? null,
     sentinellesNormalizedIndicators,
     hantavirusEvents,
-    hantavirusHeatmap,
-    hantavirusSnapshot,
   };
 }
 
