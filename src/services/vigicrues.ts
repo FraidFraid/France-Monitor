@@ -72,8 +72,11 @@ export async function fetchVigicrues(): Promise<FloodSegment[]> {
     const t0 = Date.now();
 
     try {
-        // API Vigicrues — vigilance en cours (GeoJSON)
-        const url = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
+        // API Vigicrues — vigilance en cours (GeoJSON). L'API ne renvoie pas de
+        // header CORS → on passe par /api/json-proxy (serveur) au lieu d'un fetch
+        // navigateur direct, qui échoue en prod (« Failed to fetch »).
+        const target = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
+        const url = `/api/json-proxy?url=${encodeURIComponent(target)}`;
         const resp = await fetch(url, {
             headers: { 'Accept': 'application/json' },
             signal: AbortSignal.timeout(10000),

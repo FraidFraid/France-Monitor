@@ -16,6 +16,9 @@ const ALLOWED_DOMAINS = [
   'ransomware.live',
   'services.nvd.nist.gov',
   'nvd.nist.gov',
+  // Vigicrues (crues) — l'API ne renvoie PAS de header CORS, le fetch navigateur
+  // direct est bloqué en prod → on passe par ce proxy serveur.
+  'vigicrues.gouv.fr',
 ];
 
 /** @param {string} url */

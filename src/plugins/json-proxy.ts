@@ -15,6 +15,8 @@ const ALLOWED_DOMAINS = [
   'ransomware.live',
   'services.nvd.nist.gov',
   'nvd.nist.gov',
+  // Vigicrues (crues) — pas de header CORS, fetch navigateur bloqué en prod.
+  'vigicrues.gouv.fr',
 ];
 
 function isAllowedDomain(url: string): boolean {
