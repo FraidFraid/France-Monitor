@@ -51,6 +51,7 @@ export function renderLandingPage(container: HTMLElement): void {
           <a href="#produit">${t('landing.nav.product')}</a>
           <a href="#modules">${t('landing.nav.modules')}</a>
           <a href="#captures">${t('landing.nav.captures')}</a>
+          <a href="/sources-quality">Sources & qualité</a>
         </nav>
         <div style="display:flex;align-items:center;gap:12px;">
           <div class="header-language-toggle" role="group" aria-label="${t('app.languageSwitcher')}">

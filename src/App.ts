@@ -2075,6 +2075,7 @@ export class App {
           <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language-toggle="fr" aria-pressed="${language === 'fr'}">FR</button>
           <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
         </div>
+        <a class="header-quality-link" href="/sources-quality">Sources & qualité</a>
         <div id="header-data-sources"></div>
         <span class="header-clock" id="clock"></span>
         <span class="header-live-dot" title="${t('app.live')}"></span>
@@ -2112,6 +2113,7 @@ export class App {
             <a class="about-modal__chip" href="/about">${t('app.aboutLinks.about')}</a>
             <a class="about-modal__chip" href="/methodology">${t('app.aboutLinks.methodology')}</a>
             <a class="about-modal__chip" href="/docs">${t('app.aboutLinks.documentation')}</a>
+            <a class="about-modal__chip" href="/sources-quality">Sources & qualité</a>
             <a class="about-modal__chip" href="/contact">${t('app.aboutLinks.contact')}</a>
             <a class="about-modal__chip" href="/legal">${t('app.aboutLinks.legal')}</a>
           </div>
@@ -2230,6 +2232,8 @@ export class App {
       <a href="/methodology">${t('app.bottomLinks.methodology')}</a>
       <span aria-hidden="true">·</span>
       <a href="/docs">${t('app.bottomLinks.documentation')}</a>
+      <span aria-hidden="true">·</span>
+      <a href="/sources-quality">Sources & qualité</a>
       <span aria-hidden="true">·</span>
       <a href="/legal">${t('app.bottomLinks.legal')}</a>
       <span aria-hidden="true">·</span>

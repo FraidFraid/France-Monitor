@@ -2,6 +2,7 @@ import './styles/main.css';
 import './styles/landing.css';
 import { App } from './App';
 import { renderLandingPage } from './LandingPage';
+import { renderSourcesQualityPage } from './SourcesQualityPage';
 import { registerSW } from 'virtual:pwa-register';
 import { initI18n } from './services/i18n.ts';
 
@@ -47,10 +48,16 @@ function shouldRenderLanding(): boolean {
   return pathname === '/' && hash === '';
 }
 
+function shouldRenderSourcesQuality(): boolean {
+  return new URL(window.location.href).pathname === '/sources-quality';
+}
+
 void initI18n().then(() => {
   const container = document.getElementById('app');
   if (container) {
-    if (shouldRenderLanding()) {
+    if (shouldRenderSourcesQuality()) {
+      renderSourcesQualityPage(container);
+    } else if (shouldRenderLanding()) {
       renderLandingPage(container);
     } else {
       document.documentElement.classList.remove('fm-landing-mode');
