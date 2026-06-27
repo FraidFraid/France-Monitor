@@ -1,5 +1,6 @@
 import { fetchJson, fetchText, setCors, parseCsv } from '../_shared/health-utils.js';
 import { allDepartmentCodes, normalizeDepartmentCode } from '../_shared/departments.js';
+import { APL_DEPARTEMENTS_SNAPSHOT, APL_SNAPSHOT_METADATA } from '../_shared/apl-departements-snapshot.js';
 
 /**
  * APL — Accessibilité Potentielle Localisée aux médecins généralistes
@@ -88,25 +89,6 @@ export default async function handler(req, res) {
   if (setCors(req, res)) return;
 
   try {
-    // Try to load the local JSON file first, exactly as requested
-    try {
-      const fs = await import('fs');
-      const path = await import('path');
-      const localPath = path.resolve(process.cwd(), 'public/data/apl-departements.json');
-      if (fs.existsSync(localPath)) {
-        const localData = JSON.parse(fs.readFileSync(localPath, 'utf8'));
-        if (Array.isArray(localData)) {
-          res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
-          return res.status(200).json({ departements: localData, metadata: { source: 'local file (public/data)', note: 'Generated randomly/offline for demo' } });
-        } else if (localData && localData.departements) {
-          res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
-          return res.status(200).json(localData);
-        }
-      }
-    } catch (e) {
-      console.warn('[api/health/apl] Failed to load local JSON fallback:', e.message);
-    }
-
     let rows = [];
     let usedSource = null;
 
@@ -137,15 +119,17 @@ export default async function handler(req, res) {
     let departements = aggregateAplByDepartment(rows);
 
     if (departements.length === 0) {
-      // No data available — return empty without synthetic fallback
+      // Sources DREES live indisponibles → snapshot curé bundlé (DREES 2023).
+      // Garantit que la couche « déserts médicaux » s'affiche toujours en prod.
       res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
       res.status(200).json({
-        departements: [],
+        departements: APL_DEPARTEMENTS_SNAPSHOT,
         metadata: {
+          ...(APL_SNAPSHOT_METADATA ?? {}),
           generated_at: new Date().toISOString(),
-          source: null,
-          rows: 0,
-          note: 'APL data unavailable. Check DREES open data portals.',
+          source: APL_SNAPSHOT_METADATA?.source ?? 'snapshot bundlé (DREES 2023)',
+          rows: APL_DEPARTEMENTS_SNAPSHOT.length,
+          fallback: true,
         },
       });
       return;
