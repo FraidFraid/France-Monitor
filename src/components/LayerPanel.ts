@@ -35,7 +35,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'trafficRoad', label: 'TRAFIC ROUTIER', icon: '&#128663;', sublayerOf: 'traffic' },
   { key: 'trafficMaritime', label: 'TRAFIC MARITIME', icon: '&#128674;', sublayerOf: 'traffic' },
   { key: 'trafficAir', label: 'TRAFIC AÉRIEN', icon: '&#9992;', sublayerOf: 'traffic' },
-  { key: 'trafficRail', label: 'RÉSEAU FERROVIAIRE', icon: '&#128641;', sublayerOf: 'traffic' },
+  { key: 'trafficRail', label: 'RÉSEAU FERROVIAIRE', icon: '&#128646;', sublayerOf: 'traffic' },
   { key: 'environmentGroup', label: 'ENVIRONNEMENT', icon: '&#127793;' },
   { key: 'environmental', label: 'MÉTÉO / CRUES', icon: '&#127793;', sublayerOf: 'environmentGroup' },
   { key: 'weatherRadar', label: 'RADAR MÉTÉO', icon: '&#127782;', sublayerOf: 'environmentGroup' },
@@ -493,7 +493,7 @@ export class LayerPanel {
         this.helpItem('&#128663;', 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
         this.helpItem('&#128674;', 'Trafic maritime', 'Navires civils AIS — militaires dans la couche Défense.', 'live'),
         this.helpItem('&#9992;', 'Trafic aérien', 'Vols civils airplanes.live — militaires dans la couche Défense.', 'live'),
-        this.helpItem('&#128641;', 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
+        this.helpItem('&#128646;', 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
       ]),
       this.helpSection('&#127793;', 'Environnement', [
         this.helpItem('&#127793;', 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),
