@@ -1359,7 +1359,6 @@ export class App {
   private sentinelModalPromise: Promise<SentinelModal> | null = null;
   private rightSidebarPromise: Promise<RightSidebar> | null = null;
   private lastBarometerMetrics: HealthBarometerMetrics | null = null;
-  private hasHealthData = false;
   private currentHealthFeatures: HealthFeatures | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
@@ -1938,8 +1937,8 @@ export class App {
       : [];
 
     if (aplDepartments.length > 0) {
-      this.hasHealthData = true;
-      this.mapContainer?.updateHealth([], {} as any, aplDepartments);
+      // undefined (pas {} as any) : ne pas écraser latestHealthFeatures du panneau santé.
+      this.mapContainer?.updateHealth([], undefined, aplDepartments);
     }
   }
 
@@ -2560,20 +2559,23 @@ export class App {
 
       if (!isAnyHealthLayerActive) return;
 
-      if (this.mapContainer?.getHealthFeatures) {
-        const features = this.mapContainer.getHealthFeatures();
-        if (features) {
-          // Hide other floating panels
-          this.environmentPanel?.hide();
-          this.energyPanel?.hide();
-          this.transportPanel?.hide();
-          this.firesPanel?.hide();
-          this.trafficPanel?.hide();
-          this.isnrPanel?.hide();
-          this.franceIntelPanel?.hide();
+      // Hide other floating panels (le panneau santé prend la place)
+      this.environmentPanel?.hide();
+      this.energyPanel?.hide();
+      this.transportPanel?.hide();
+      this.firesPanel?.hide();
+      this.trafficPanel?.hide();
+      this.isnrPanel?.hide();
+      this.franceIntelPanel?.hide();
 
-          this.nationalHealthPanel?.show(features);
-        }
+      // Utiliser les VRAIES features (currentHealthFeatures), pas getHealthFeatures()
+      // qui pouvait renvoyer l'objet vide posé par loadAplData → panneau non peuplé.
+      if (this.currentHealthFeatures) {
+        this.nationalHealthPanel?.show(this.currentHealthFeatures);
+      } else {
+        // Pas encore chargées : afficher le loader. loadHealth() (déclenché à
+        // l'activation) re-dispatch 'open-national-health' à la fin → peuplera.
+        this.nationalHealthPanel?.showLoading();
       }
     });
 
@@ -3334,8 +3336,10 @@ export class App {
       const anyHealthActive =
         this.activeLayers.health || this.activeLayers.healthApl ||
         this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      // Lazy-load health data on first activation
-      if (enabled && !this.hasHealthData) {
+      // Lazy-load les VRAIES features santé si pas encore chargées. On teste
+      // currentHealthFeatures (et non hasHealthData, que loadAplData force à true),
+      // sinon activer l'onglet APL n'aurait jamais peuplé le panneau santé.
+      if (enabled && !this.currentHealthFeatures) {
         this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
       }
       if (enabled && anyHealthActive) {
@@ -5398,7 +5402,6 @@ export class App {
     this.statusPanel?.updateSource('ANSM Médicaments', { status: 'loading', lastUpdate: null });
     const { fetchHealthData } = await import('./services/health.ts');
     const payload = await fetchHealthData();
-    this.hasHealthData = payload.departments.length > 0 || payload.regions.length > 0;
     this.currentHealthFeatures = payload.healthFeatures;
 
     let sentinellesScore = undefined;
@@ -5441,8 +5444,12 @@ export class App {
       }
     }
     const hasData = payload.departments.length > 0 || payload.regions.length > 0;
-    // Show national health panel only if user manually enabled the health layer
-    if (hasData && this.activeLayers.health) {
+    const anyHealthActive =
+      this.activeLayers.health || this.activeLayers.healthApl ||
+      this.activeLayers.healthOscour || this.activeLayers.hospitals;
+    // Ré-ouvre/peuple le panneau dès qu'UN sous-onglet santé (dont APL) est actif —
+    // sinon activer APL seul ouvrait un panneau jamais peuplé.
+    if (hasData && anyHealthActive) {
       document.dispatchEvent(new CustomEvent('open-national-health'));
     }
     this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);

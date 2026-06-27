@@ -6,6 +6,7 @@ import {
   getPremiumModalStyle,
 } from './panelHeader.ts';
 import type { HealthFeatures } from '../types/index.ts';
+import { fmLoaderHTML } from './shared/loader.ts';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
@@ -162,6 +163,12 @@ export class NationalHealthPanel extends Panel {
     return Date.now() - ts <= days * 24 * 60 * 60 * 1000;
   }
 
+
+  showLoading(): void {
+    if (!this.contentEl) return;
+    this.modalEl.style.display = 'flex';
+    this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des données santé…' });
+  }
 
   show(data: HealthFeatures): void {
     this.currentData = data;
