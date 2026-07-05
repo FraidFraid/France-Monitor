@@ -103,6 +103,24 @@ describe('buildDeterministicBrief', () => {
     assert.equal(brief.watch[0].horizon, '24h');
   });
 
+  it('trie les jugements par priorité croissante même si les situations sont désordonnées', () => {
+    const brief = buildDeterministicBrief(
+      {
+        score: 45,
+        scoreBreakdown: breakdown(),
+        situations: [
+          situation({ id: 'weak-signal', severity: 'watch', confidence: 0.5, title: 'Signal faible' }),
+          situation({ id: 'major-crisis', severity: 'critical', confidence: 0.9, title: 'Crise majeure' }),
+        ],
+      },
+      'fr',
+      null,
+    );
+    // watch → P4 fourni en premier, critical → P1 en second : le tri doit remettre P1 en tête
+    assert.equal(brief.judgments[0].priority, 1);
+    assert.equal(brief.judgments[brief.judgments.length - 1].priority, 4);
+  });
+
   it('sans situation : jugement P4 « pression diffuse » et watch par défaut', () => {
     const brief = buildDeterministicBrief(
       { score: 91, scoreBreakdown: { ...breakdown(), score: 91, situationCap: null }, situations: [] },

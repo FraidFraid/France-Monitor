@@ -259,6 +259,8 @@ export function buildDeterministicBrief(
       sources: [lang === 'fr' ? 'Moteur de situations' : 'Situation engine'],
     });
   }
+  // Tri par priorité croissante — contrat StructuredBrief (« triés par priorité »)
+  judgments.sort((a, b) => a.priority - b.priority);
 
   const watch: BriefWatchItem[] = situations
     .flatMap((s) => s.recommendedActions
