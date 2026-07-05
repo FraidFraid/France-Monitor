@@ -1631,6 +1631,209 @@ button.header-quality-link {
 
 /* ─── Situation Monitor overlay ──────────────────────────────────────────── */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SituationBrief — bandeau de synthèse d'ouverture (convergences 24 h)
+   Haut-centre de la carte, sous le header, au-dessus des monitors.
+   Voisins absolus vérifiés : .alert-monitor (haut-gauche : top:12 left:12 w:272 z:12),
+   .layer-toggles (haut-droite : top:12 right:12), .situation-monitor (bas-gauche).
+   Centré, max ~560px, z-index 13 (juste au-dessus des monitors). Dark mode par défaut.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.situation-brief {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(560px, calc(100% - 48px));
+  z-index: 13;
+  background: rgba(10, 12, 20, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  font-family: inherit;
+  color: var(--text-primary, #e8e8ec);
+}
+
+.situation-brief.sit-brief--nominal {
+  border-color: rgba(52, 199, 89, 0.24);
+}
+
+.sit-brief__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sit-brief__title {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #9898a8);
+}
+
+.sit-brief__badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-primary, #e8e8ec);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+/* Compteur "+N" — visible uniquement en version mobile réduite. */
+.sit-brief__more {
+  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted, #606070);
+}
+
+.sit-brief__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #606070);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
+}
+
+.sit-brief__close:hover {
+  color: var(--text-primary, #e8e8ec);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sit-brief__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sit-brief__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sit-brief__item:last-child {
+  border-bottom: none;
+}
+
+.sit-brief__item--clickable {
+  cursor: pointer;
+}
+
+.sit-brief__item--clickable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sit-brief__item--resolved {
+  opacity: 0.62;
+}
+
+.sit-brief__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sit-brief__item-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.sit-brief__item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e8ec);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.sit-brief__item-zone {
+  font-size: 11px;
+  color: var(--text-secondary, #9898a8);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sit-brief__item-zone::before {
+  content: '📍 ';
+}
+
+.sit-brief__item-resolved {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--threat-low, #34c759);
+  border: 1px solid rgba(52, 199, 89, 0.4);
+  border-radius: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.sit-brief__item-since {
+  font-size: 11px;
+  color: var(--text-muted, #606070);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* État nominal ultra-compact — une ligne verte discrète. */
+.sit-brief__nominal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+
+.sit-brief__nominal-check {
+  color: var(--threat-low, #34c759);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sit-brief__nominal-text {
+  flex: 1;
+  color: var(--text-secondary, #9898a8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Mobile : version réduite — 1 item + compteur "+N", pill compacte en haut. */
+@media (max-width: 768px) {
+  .situation-brief {
+    top: 8px;
+    max-width: calc(100% - 16px);
+  }
+
+  .sit-brief__item--secondary {
+    display: none;
+  }
+
+  .sit-brief__more {
+    display: inline-block;
+  }
+}
+
 .situation-monitor {
   position: absolute;
   bottom: 72px;

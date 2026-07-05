@@ -86,8 +86,10 @@ import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/n
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
+import { SituationBrief } from './components/SituationBrief.ts';
+import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
-import { pushHistorySnapshot } from './services/situation-history.ts';
+import { getHistory, pushHistorySnapshot } from './services/situation-history.ts';
 import { AlertMonitor } from './components/AlertMonitor.ts';
 import { UpdateNotification } from './components/UpdateNotification.ts';
 import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
@@ -1337,6 +1339,7 @@ export class App {
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
+  private situationBrief: SituationBrief | null = null;
   private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
   private updateNotification: UpdateNotification | null = null;
@@ -3657,6 +3660,24 @@ export class App {
     this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
       this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
     });
+
+    // Synthèse d'ouverture — même flux que SituationMonitor, aucun re-fetch du moteur.
+    this.situationBrief?.destroy();
+    this.situationBrief = new SituationBrief(mapEl);
+    this.situationBrief.setOnFlyTo((lon, lat, zoom) => {
+      this.mapContainer?.flyTo(lon, lat, zoom ?? 8);
+    });
+    // Historique 24 h (situations résolues) : fetch léger unique, tolérant aux erreurs.
+    void getHistory(7)
+      .then((result) => {
+        this.situationBrief?.setRecent24h(
+          resolvedSituationsFromHistory(result.data.slots, Date.now()),
+        );
+      })
+      .catch(() => {
+        // Le bandeau vit sans historique : il affichera les seules situations actives.
+      });
+
     void import('./components/SituationHistoryPanel.ts').then(({ SituationHistoryPanel }) => {
       this.situationHistoryPanel?.destroy();
       const panel = new SituationHistoryPanel(mapEl);
@@ -6167,6 +6188,7 @@ export class App {
     const snapshot = this.buildFranceSnapshot(lang);
     this.alertMonitor?.update(this.buildAlertMonitorSituations(), lang);
     this.situationMonitor?.update(snapshot.situations, lang);
+    this.situationBrief?.update(snapshot.situations);
     void pushHistorySnapshot(snapshot);
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
