@@ -10,6 +10,7 @@ import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, Flood
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
+import type { TrafficIncident } from '../services/traffic.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
@@ -227,7 +228,7 @@ export class MapContainer {
     this.deckMap?.updateTraffic();
   }
 
-  updateTrafficIncidents(incidents: any[]): void {
+  updateTrafficIncidents(incidents: TrafficIncident[]): void {
     this.deckMap?.updateTrafficIncidents(incidents);
   }
 

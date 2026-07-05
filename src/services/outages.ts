@@ -46,6 +46,18 @@ Watchdog.register('enedis-power', {
 
 // ═══ ARCEP Mobile Network Outages ═══
 
+// Forme minimale d'une feature GeoJSON ARCEP (champs réellement lus)
+interface ArcepFeature {
+    properties: {
+        voix2g?: string; voix3g?: string; voix4g?: string;
+        data3g?: string; data4g?: string; data5g?: string;
+        detail?: string; raison?: string;
+        station_anfr?: string | number;
+        operateur?: string; departement?: string; commune?: string;
+    };
+    geometry?: { coordinates?: number[] };
+}
+
 /**
  * Fetch the latest GeoJSON file containing sites without service (HS).
  * The file is named using the current date. Should it fail, tries to fetch D-1.
@@ -97,20 +109,18 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
         });
         if (usedFallback) Watchdog.report('arcep', { type: 'fallback', reason: 'fichier J indisponible → J-1' });
 
-        return json.features.map((f: any, index: number) => {
+        return json.features.map((f: ArcepFeature, index: number): TelecomOutage => {
             const props = f.properties;
             const coords = f.geometry?.coordinates;
-            let voice: 'OK' | 'HS' | 'Degraded' = 'OK';
-            let dataStatus: 'OK' | 'HS' | 'Degraded' = 'OK';
 
             // voix/data aggregate = 'HS' when ANY sub-tech is HS (not all).
             const allVoiceHS = props.voix2g === 'HS' && props.voix3g === 'HS' && props.voix4g === 'HS';
             const anyVoiceHS = props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS';
-            voice = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
+            const voice: 'OK' | 'HS' | 'Degraded' = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
 
             const allDataHS = props.data3g === 'HS' && props.data4g === 'HS' && props.data5g === 'HS';
             const anyDataHS = props.data3g === 'HS' || props.data4g === 'HS' || props.data5g === 'HS';
-            dataStatus = allDataHS ? 'HS' : anyDataHS ? 'Degraded' : 'OK';
+            const dataStatus: 'OK' | 'HS' | 'Degraded' = allDataHS ? 'HS' : anyDataHS ? 'Degraded' : 'OK';
 
             let reason = props.detail || 'Incident';
             if (props.raison === 'INT') reason = 'Intempéries';

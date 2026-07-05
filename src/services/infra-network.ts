@@ -77,8 +77,20 @@ export const INFRA_NETWORK_SOURCES = [
 
 // ── Parser ────────────────────────────────────────────────────────────────────
 
+// Forme minimale d'une anomalie brute (accès imbriqués côté payload proxy)
+interface RawRadarAnomaly {
+    id?: unknown;
+    type?: unknown;
+    startDate?: unknown;
+    endDate?: unknown;
+    status?: unknown;
+    locationDetails?: { code?: unknown; name?: unknown };
+    asnDetails?: { asn?: unknown; name?: unknown; locations?: { code?: unknown; name?: unknown } };
+    originDetails?: { name?: unknown; origin?: unknown };
+}
+
 function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
-    const datacenters = (Array.isArray(raw.datacenters) ? raw.datacenters : []).map((dc: any): DatacenterStatus => ({
+    const datacenters = (Array.isArray(raw.datacenters) ? raw.datacenters : []).map((dc: Record<string, unknown>): DatacenterStatus => ({
         id:          String(dc.id ?? ''),
         name:        String(dc.name ?? ''),
         provider:    String(dc.provider ?? ''),
@@ -100,7 +112,7 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
         lastUpdated: String(dc.lastUpdated ?? ''),
     }));
 
-    const ixps = (Array.isArray(raw.ixps) ? raw.ixps : []).map((ix: any): IxpStatus => ({
+    const ixps = (Array.isArray(raw.ixps) ? raw.ixps : []).map((ix: Record<string, unknown>): IxpStatus => ({
         id:          String(ix.id ?? ''),
         name:        String(ix.name ?? ''),
         city:        String(ix.city ?? ''),
@@ -111,7 +123,7 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
         lastUpdated: String(ix.lastUpdated ?? ''),
     }));
 
-    const cloudflareAnomalies = (Array.isArray(raw.cloudflareAnomalies) ? raw.cloudflareAnomalies : []).map((a: any): CloudflareRadarAnomaly => ({
+    const cloudflareAnomalies = (Array.isArray(raw.cloudflareAnomalies) ? raw.cloudflareAnomalies : []).map((a: RawRadarAnomaly): CloudflareRadarAnomaly => ({
         id:              String(a.id ?? ''),
         type:            String(a.type ?? ''),
         startDate:       String(a.startDate ?? ''),
@@ -126,7 +138,7 @@ function parseResponse(raw: Record<string, unknown>): InfraNetworkState {
         originDetails:   a.originDetails ? { name: String(a.originDetails.name ?? ''), origin: String(a.originDetails.origin ?? '') } : undefined,
     }));
 
-    const ss = (raw.sourcesStatus as any) ?? {};
+    const ss = (raw.sourcesStatus as Record<string, unknown> | undefined) ?? {};
     const asSourceStatus = (v: unknown) => v === 'ok' ? 'ok' : v === 'stale' ? 'stale' : 'error';
 
     return {

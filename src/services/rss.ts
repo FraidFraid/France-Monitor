@@ -405,7 +405,7 @@ export async function fetchFromIngestApi(): Promise<NewsItem[] | null> {
  * Retourne null si les deux chemins échouent (→ circuit breaker).
  */
 async function fetchItemsOffMainThread(feed: Feed, cachedExists: boolean): Promise<NewsItem[] | null> {
-    let jsonError: string | null = null;
+    let jsonError: string | null;
 
     // ── 1. Chemin principal : JSON pré-parsé côté serveur ──
     try {

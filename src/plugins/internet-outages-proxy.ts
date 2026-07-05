@@ -44,6 +44,19 @@ const ISP_ENRICHMENT: Record<string, {
 
 const FRANCE_CENTER: [number, number] = [2.2137, 46.2276];
 
+// Formes minimales des réponses IODA / BGPView (champs réellement lus)
+interface IodaEvent {
+    startTime?: number;
+    endTime?: number;
+    duration?: number;
+    score?: number;
+    datasources?: unknown;
+}
+interface BgpIx {
+    name_full?: string;
+    name?: string;
+}
+
 async function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -62,7 +75,7 @@ async function fetchIodaEvents(
     entityCode: string,
     fromTs: number,
     untilTs: number
-): Promise<{ data: any[]; ok: boolean }> {
+): Promise<{ data: IodaEvent[]; ok: boolean }> {
     try {
         const url = `${IODA_BASE}/outages/events?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 9000);
@@ -79,7 +92,7 @@ async function fetchIodaAlerts(
     entityCode: string,
     fromTs: number,
     untilTs: number
-): Promise<{ data: any[]; ok: boolean }> {
+): Promise<{ data: IodaEvent[]; ok: boolean }> {
     try {
         const url = `${IODA_BASE}/outages/alerts?entityType=${entityType}&entityCode=${entityCode}&from=${fromTs}&until=${untilTs}`;
         const res = await fetchWithTimeout(url, 7000);
@@ -108,9 +121,9 @@ async function fetchBgpIxs(asn: string): Promise<string[] | null> {
         if (!res.ok) return null;
         const json = await res.json();
         if (json?.status !== 'ok') return null;
-        const v4ixs: any[] = Array.isArray(json?.data?.ipv4_ixs) ? json.data.ipv4_ixs : [];
-        const v6ixs: any[] = Array.isArray(json?.data?.ipv6_ixs) ? json.data.ipv6_ixs : [];
-        const allNames = [...new Set([...v4ixs, ...v6ixs].map((ix: any) => ix.name_full || ix.name).filter(Boolean))];
+        const v4ixs: BgpIx[] = Array.isArray(json?.data?.ipv4_ixs) ? json.data.ipv4_ixs : [];
+        const v6ixs: BgpIx[] = Array.isArray(json?.data?.ipv6_ixs) ? json.data.ipv6_ixs : [];
+        const allNames = [...new Set([...v4ixs, ...v6ixs].map((ix) => ix.name_full || ix.name).filter(Boolean))];
         return (allNames as string[]).slice(0, 6);
     } catch { return null; }
 }
@@ -131,7 +144,7 @@ async function fetchBgpPrefixCount(asn: string): Promise<{ v4: number; v6: numbe
 }
 
 function normalizeIodaEvent(
-    ev: any,
+    ev: IodaEvent,
     entityType: string,
     entityCode: string,
     entityName: string,
@@ -265,7 +278,7 @@ export function internetOutagesProxyPlugin(): Plugin {
                             if (r.status !== 'fulfilled') return [];
                             const { asn, data } = r.value;
                             const isp = FRENCH_ISPS.find(i => i.asn === asn);
-                            return data.map((ev: any) =>
+                            return data.map((ev) =>
                                 normalizeIodaEvent(ev, 'asn', asn, isp?.name ?? `AS${asn}`, isp?.coordinates ?? FRANCE_CENTER, false)
                             );
                         }),

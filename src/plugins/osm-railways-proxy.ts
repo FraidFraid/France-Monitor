@@ -20,7 +20,20 @@ out body geom;
 `.trim();
 }
 
-function toFeatureCollection(elements: any[]) {
+interface OverpassElement {
+  type?: string;
+  id?: number;
+  geometry?: Array<{ lon: number; lat: number }>;
+  tags?: {
+    name?: string;
+    railway?: string;
+    service?: string;
+    usage?: string;
+    [key: string]: unknown;
+  };
+}
+
+function toFeatureCollection(elements: OverpassElement[]) {
   return {
     type: 'FeatureCollection',
     features: elements
@@ -30,9 +43,9 @@ function toFeatureCollection(elements: any[]) {
         id: element.id,
         geometry: {
           type: 'LineString',
-          coordinates: element.geometry
-            .map((coord: { lon: number; lat: number }) => [coord.lon, coord.lat])
-            .filter((coord: [number, number]) => Number.isFinite(coord[0]) && Number.isFinite(coord[1])),
+          coordinates: (element.geometry ?? [])
+            .map((coord) => [coord.lon, coord.lat])
+            .filter((coord) => Number.isFinite(coord[0]) && Number.isFinite(coord[1])),
         },
         properties: {
           id: element.id,

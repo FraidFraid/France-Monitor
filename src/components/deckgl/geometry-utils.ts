@@ -21,7 +21,7 @@ export function getFeatureCenter(feature: GeoJSON.Feature): [number, number] | n
     maxLng = Math.max(maxLng, lng);
     maxLat = Math.max(maxLat, lat);
   };
-  const walk = (node: any): void => {
+  const walk = (node: unknown): void => {
     if (!Array.isArray(node)) return;
     if (typeof node[0] === 'number') {
       push(node as number[]);
@@ -29,7 +29,7 @@ export function getFeatureCenter(feature: GeoJSON.Feature): [number, number] | n
     }
     for (const child of node) walk(child);
   };
-  walk((geom as any).coordinates);
+  walk((geom as { coordinates?: unknown }).coordinates);
   if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) {
     return null;
   }

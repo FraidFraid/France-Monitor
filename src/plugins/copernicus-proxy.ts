@@ -3,6 +3,26 @@ import type { Plugin } from 'vite';
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1';
 const ALLOWED_COLLECTIONS = ['sentinel-2-l2a', 'sentinel-1-grd'] as const;
 
+// Forme minimale d'une feature STAC (champs réellement lus)
+interface StacProperties {
+  datetime?: string;
+  'datetime:created'?: string;
+  'eo:cloud_cover'?: number | string;
+  [key: string]: unknown;
+}
+interface StacFeature {
+  id?: string;
+  bbox?: number[];
+  properties?: StacProperties;
+  links?: Array<{ rel?: string; href?: string }>;
+  assets?: {
+    thumbnail?: { href?: string };
+    overview?: { href?: string };
+    visual?: { href?: string };
+    TCI?: { href?: string };
+  };
+}
+
 function formatBrowserDayBounds(date: Date): { fromTime: string; toTime: string } {
   const day = date.toISOString().split('T')[0];
   return {
@@ -98,7 +118,7 @@ export function copernicusProxyPlugin(): Plugin {
             return;
           }
 
-          const data = await upstream.json() as { features?: Array<Record<string, any>> };
+          const data = await upstream.json() as { features?: StacFeature[] };
           let features = Array.isArray(data.features) ? data.features : [];
 
           if (collectionKey === 'sentinel-2-l2a') {
@@ -115,7 +135,7 @@ export function copernicusProxyPlugin(): Plugin {
           });
 
           const scenes = features.map((feature) => {
-            const props = feature.properties ?? {};
+            const props: StacProperties = feature.properties ?? {};
             const thumbnailLink = Array.isArray(feature.links)
               ? feature.links.find((link: { rel?: string; href?: string }) => link?.rel === 'thumbnail')?.href
               : undefined;

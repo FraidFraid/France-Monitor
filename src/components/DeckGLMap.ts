@@ -374,6 +374,14 @@ class SatelliteBasemapControl {
   }
 }
 
+// Point d'infrastructure enrichi des champs de production électrique (nucléaire RTE, etc.),
+// optionnels car absents des points génériques (gaz, dépôts…).
+type InfrastructureRenderPoint = InfrastructurePoint & {
+  globalAvailability?: number;
+  totalPower?: number;
+  totalAvailable?: number;
+};
+
 export class DeckGLMap {
   private container: HTMLElement;
   private map: maplibregl.Map | null = null;
@@ -451,10 +459,12 @@ export class DeckGLMap {
   // Cluster hover state
   private hoveredClusterId: number | null = null;
   private lastClusterItems: NewsItem[] = [];
+  // Département santé actuellement ouvert au clic (évite de ré-afficher le hover dessus)
+  private _activeHealthClickId: number | null = null;
   
   private threatEvents: ThreatEvent[] = [];
   private threatEventsVisible: boolean = true;
-  private threatClusterIndex: Supercluster<any, any> | null = null;
+  private threatClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private lastClusterCount: number = 0;
   private clusterHideTimeout: ReturnType<typeof setTimeout> | null = null;
   // Memoization of getThreatMapData() (invalidated on events change / zoom / bounds change)
@@ -527,7 +537,7 @@ export class DeckGLMap {
     timestamp: 0, // 0 = utilise Date.now() à chaque rendu
   };
   private roadTrafficIncidents: TrafficIncident[] = [];
-  private trafficClusterIndex: Supercluster<any, any> | null = null;
+  private trafficClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
 
@@ -539,7 +549,7 @@ export class DeckGLMap {
   private civilAirTweenProgress = 1;       // 0..1 — starts at 1 (settled) until first tween
 
   // Storing original opacities for legend highlighting
-  private originalOpacities: Map<string, { prop: string, orig: any }> = new Map();
+  private originalOpacities: Map<string, { prop: string, orig: unknown }> = new Map();
 
   // ─── Energy tooltip data ───
   private energyRegionStats = new Map<string, import('../types/index.ts').RegionEnergyStats>();
@@ -581,7 +591,7 @@ export class DeckGLMap {
       attributionControl: false,
     });
     // debug global
-    (window as any)._franceMonitorMap = this.map;
+    (window as Window & { _franceMonitorMap?: maplibregl.Map })._franceMonitorMap = this.map;
     this.map.addControl(
       new maplibregl.AttributionControl({ compact: true }),
       'bottom-right',
@@ -601,14 +611,16 @@ export class DeckGLMap {
     // to apply the saved state — so we never see a flash of wrong layers.
     // ═══════════════════════════════════════════════════════════════
     const _origAddLayer = this.map!.addLayer.bind(this.map!);
-    (this.map as any).addLayer = (layer: maplibregl.LayerSpecification | (maplibregl.LayerSpecification & { source: object }), beforeId?: string) => {
-      const l = layer as any;
+    const patchedAddLayer = (layer: maplibregl.AddLayerObject, beforeId?: string): maplibregl.Map => {
+      // Vue structurelle de la couche pour lire l'id et forcer visibility (layout varie selon le type).
+      const l = layer as { id?: string; layout?: Record<string, unknown> };
       // Force all our symbol/circle/line/fill layers except basemap labels to start hidden
       if (l.id && !l.id.startsWith('wm-basemap') && !l.id.startsWith('background') && !l.id.startsWith('country') && !l.id.startsWith('water') && !l.id.startsWith('road') && !l.id.startsWith('building') && !l.id.startsWith('landuse') && !l.id.startsWith('place') && !l.id.startsWith('boundary')) {
         l.layout = { ...(l.layout || {}), visibility: 'none' };
       }
-      return _origAddLayer(l, beforeId);
+      return _origAddLayer(layer, beforeId);
     };
+    (this.map! as { addLayer: (layer: maplibregl.AddLayerObject, beforeId?: string) => maplibregl.Map }).addLayer = patchedAddLayer;
 
 
     // ═══════════════════════════════════════════════════════════════
@@ -1130,7 +1142,7 @@ export class DeckGLMap {
           ['get', 'aplCategory'],
           ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
           'transparent'
-        ] as any,
+        ] as unknown as maplibregl.ExpressionSpecification,
         'fill-opacity': [
           'case',
           ['boolean', ['feature-state', 'hover'], false],
@@ -1150,7 +1162,7 @@ export class DeckGLMap {
           ['get', 'aplCategory'],
           ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
           'transparent'
-        ] as any,
+        ] as unknown as maplibregl.ExpressionSpecification,
         'line-width': 2,
         'line-opacity': 0.6
       },
@@ -1169,14 +1181,14 @@ export class DeckGLMap {
           OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].color,
           OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].color,
           OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].color
-        ] as any,
+        ] as unknown as maplibregl.ExpressionSpecification,
         'circle-radius': [
           'interpolate', ['linear'], ['get', 'oscourMaxTrend'],
           OSCOUR_LEVELS[0].threshold, OSCOUR_LEVELS[0].radius,
           OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].radius,
           OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].radius,
           OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].radius
-        ] as any,
+        ] as unknown as maplibregl.ExpressionSpecification,
         'circle-stroke-color': '#000000',
         'circle-stroke-width': 1.5,
       },
@@ -4068,7 +4080,7 @@ export class DeckGLMap {
       this.map.getCanvas().style.cursor = 'pointer';
 
       // -- Fix: Si on bouge la souris sur le département DÉJÀ cliqué, on ne ré-affiche pas le hover
-      if ((this as any)._activeHealthClickId === featureId) {
+      if (this._activeHealthClickId === featureId) {
         this.healthHoverPopup?.remove();
         return;
       }
@@ -4079,7 +4091,14 @@ export class DeckGLMap {
       const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
       const isOscourMarker = feat.layer.id === LYR_HEALTH_OSCOUR_CIRCLES;
 
-      let topMotifs: any[] = [];
+      let topMotifs: Array<{
+        code?: string;
+        label?: string;
+        trendPct?: number;
+        trend_pct?: number;
+        trendLabel?: string;
+        trend?: string;
+      }> = [];
       try {
         const topMotifsJson = String(p.topMotifsJson ?? '[]');
         const parsed = JSON.parse(topMotifsJson);
@@ -4228,7 +4247,7 @@ export class DeckGLMap {
       this.healthHoverPopup?.remove(); // Hide hover tooltip when clicking to avoid overlap
 
       const featureId = typeof feat.id === 'number' ? feat.id : Number.parseInt(String(p.code ?? ''), 10);
-      (this as any)._activeHealthClickId = featureId;
+      this._activeHealthClickId = featureId;
 
       const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '360px', className: 'dark-popup' })
         .setLngLat(e.lngLat)
@@ -4236,8 +4255,8 @@ export class DeckGLMap {
         .addTo(this.map);
 
       popup.on('close', () => {
-        if ((this as any)._activeHealthClickId === featureId) {
-          (this as any)._activeHealthClickId = null;
+        if (this._activeHealthClickId === featureId) {
+          this._activeHealthClickId = null;
         }
       });
     };
@@ -4332,7 +4351,7 @@ export class DeckGLMap {
       if (!p) return;
 
       const sev = severityMeta[p.severity] ?? { label: p.severity, color: '#888', icon: '⚪' };
-      let sources: string[] = [];
+      let sources: string[];
       try { sources = Array.isArray(p.sources) ? p.sources : JSON.parse(p.sources ?? '[]'); } catch { sources = []; }
 
       const radiusKm = Number(p.radiusKm ?? 0).toFixed(1);
@@ -6275,7 +6294,7 @@ export class DeckGLMap {
       zoom,
     );
 
-    const data = clusters.map((feature: any): ThreatMapDatum => {
+    const data = clusters.map((feature): ThreatMapDatum => {
       const coordinates = feature.geometry.coordinates as [number, number];
       if (feature.properties?.cluster) {
         const clusterId = Number(feature.properties.cluster_id);
@@ -6921,7 +6940,7 @@ export class DeckGLMap {
     const desc = String(properties.description ?? '').trim();
     const totalDelayMinutes = Number(properties.totalDelayMinutes ?? 0);
     const affectedStopsCount = Number(properties.affectedStopsCount ?? 0);
-    let affectedStops: string[] = [];
+    let affectedStops: string[];
     try { affectedStops = JSON.parse(String(properties.affectedStopsJson ?? '[]')); } catch { affectedStops = []; }
 
     // Full station list — use affectedStops if available, else fall back to dep/arr pair
@@ -6981,8 +7000,8 @@ export class DeckGLMap {
 
     const name = String(properties.name ?? 'Gare');
     const count = Number(properties.count ?? 0);
-    let lines: string[] = [];
-    let trains: string[] = [];
+    let lines: string[];
+    let trains: string[];
     let disruptionSummaries: Array<{
       id: string;
       severity: string;
@@ -7001,9 +7020,10 @@ export class DeckGLMap {
       startDate: string;
       endDate?: string;
       affectedStops?: string[];
-    }> = [];
+    }>;
     try { lines = JSON.parse(String(properties.linesJson ?? '[]')); } catch { lines = []; }
     try { trains = JSON.parse(String(properties.trainNumbersJson ?? '[]')); } catch { trains = []; }
+    // eslint-disable-next-line no-useless-assignment -- fallback jamais lu : le rendu disruptionCards en aval est du code mort (return prématuré ~l.7034). Bug signalé, comportement conservé tel quel.
     try { disruptionSummaries = JSON.parse(String(properties.disruptionSummariesJson ?? '[]')); } catch { disruptionSummaries = []; }
 
     const lineChips = lines.slice(0, 6).map((l: string) =>
@@ -7759,7 +7779,7 @@ export class DeckGLMap {
     incident: TrafficIncident,
   ): Promise<void> {
     if (!this.map) return;
-    let flow: TrafficFlowSegment | null = null;
+    let flow: TrafficFlowSegment | null;
     try {
       flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
     } catch {
@@ -8069,7 +8089,7 @@ export class DeckGLMap {
     if (!this.map) return;
     try {
       const respMapping = await fetch('/assets/dsfr-mapping.json');
-      const mapping = await respMapping.json() as Record<string, any>;
+      const mapping = await respMapping.json() as Record<string, { x: number; y: number; width: number; height: number }>;
 
       const { data: image } = await this.map.loadImage('/assets/dsfr-atlas.png');
 
@@ -8084,7 +8104,7 @@ export class DeckGLMap {
         ctx.clearRect(0, 0, rect.width, rect.height);
 
         // MapLibre's loadImage returns an ImageBitmap or HTMLImageElement
-        ctx.drawImage(image as any, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+        ctx.drawImage(image as CanvasImageSource, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
         const imgData = ctx.getImageData(0, 0, rect.width, rect.height);
 
         if (!this.map.hasImage(iconName)) {
@@ -10038,7 +10058,7 @@ export class DeckGLMap {
     for (const lyr of [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH]) {
       this.map.on('mouseenter', lyr, (e) => {
         if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-        showHospitalTooltip(e as any);
+        showHospitalTooltip(e);
       });
       this.map.on('mouseleave', lyr, () => {
         if (this.map) this.map.getCanvas().style.cursor = '';
@@ -10103,7 +10123,7 @@ export class DeckGLMap {
             emergencyVisits: metric?.emergencyVisits ?? 0,
             positivityRate: metric?.positivityRate ?? 0,
             hasOscourAlert: metric?.topMotifs && metric.topMotifs.length > 0 ? 1 : 0,
-            oscourMaxTrend: metric?.topMotifs && metric.topMotifs.length > 0 ? Math.max(...metric.topMotifs.map(m => m.trendPct || (m as any).trend_pct || 0)) : 0,
+            oscourMaxTrend: metric?.topMotifs && metric.topMotifs.length > 0 ? Math.max(...metric.topMotifs.map(m => m.trendPct || (m as { trend_pct?: number }).trend_pct || 0)) : 0,
             topMotifsJson: JSON.stringify(metric?.topMotifs ?? []),
             aplIndex: metric?.aplIndex ?? this.aplByDept.get(code)?.aplIndex ?? null,
             aplCategory: (metric?.aplCategory && metric.aplCategory !== 'indisponible')
@@ -11166,7 +11186,7 @@ export class DeckGLMap {
 
   // ─── Infrastructure Layer ───
 
-  updateInfrastructure(points: (InfrastructurePoint | any)[]): void {
+  updateInfrastructure(points: InfrastructureRenderPoint[]): void {
     if (!this.map) return;
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -11425,7 +11445,7 @@ export class DeckGLMap {
     if (!this.map) return;
   }
 
-  updateTrafficIncidents(incidents: any[]): void {
+  updateTrafficIncidents(incidents: TrafficIncident[]): void {
     if (!this.map) return;
     this.roadTrafficIncidents = incidents;
     const features = incidents.map((incident) => ({
@@ -11440,7 +11460,7 @@ export class DeckGLMap {
       },
     }));
 
-    this.trafficClusterIndex = new Supercluster<any, any>({
+    this.trafficClusterIndex = new Supercluster<Supercluster.AnyProps, Supercluster.AnyProps>({
       radius: 140,
       maxZoom: 14,
       minZoom: 3,
@@ -11449,7 +11469,7 @@ export class DeckGLMap {
         accumulated.maxSeverity = Math.max(accumulated.maxSeverity ?? 0, props.maxSeverity ?? 0);
       },
     });
-    this.trafficClusterIndex.load(features as any[]);
+    this.trafficClusterIndex.load(features);
     this.syncTrafficIncidentSource();
   }
 
@@ -11475,7 +11495,7 @@ export class DeckGLMap {
     const clusters = this.trafficClusterIndex.getClusters(bbox, zoom);
     src.setData({
       type: 'FeatureCollection',
-      features: clusters as any[],
+      features: clusters,
     });
 
     this.refreshAisLayers();
@@ -12343,7 +12363,7 @@ export class DeckGLMap {
             maxzoom: WEATHER_RADAR_MAX_ZOOM,
           });
         } else {
-          (existingSource as any).setTiles?.([tileTemplate]);
+          (existingSource as { setTiles?: (tiles: string[]) => void }).setTiles?.([tileTemplate]);
         }
 
         if (!this.map.getLayer(layerId)) {

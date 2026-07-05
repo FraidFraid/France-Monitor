@@ -128,7 +128,7 @@ export class MapLegend {
 
         if (category.type !== 'gradient' || category.items?.length) {
             const visibleItems = category.items.filter(item => item.visible !== false);
-            let itemsBlockHtml = '';
+            let itemsBlockHtml: string;
 
             if (category.splitIndices && category.splitIndices.length >= 1) {
                 const indices = [0, ...category.splitIndices, visibleItems.length];

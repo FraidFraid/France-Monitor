@@ -111,7 +111,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -119,6 +119,14 @@ import { Watchdog } from './services/watchdog.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
+
+// Cache global des dernières métriques du baromètre santé, partagé avec le handler
+// d'événement 'open-health-barometer' (évite un recalcul quand le panneau est rouvert).
+declare global {
+  interface Window {
+    __healthBarometerMetrics?: HealthBarometerMetrics;
+  }
+}
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -1908,17 +1916,21 @@ export class App {
 
   private async loadAplData(): Promise<void> {
     const response = await fetch('/data/apl-departements.json');
-    const data = await response.json();
+    const data = await response.json() as {
+      metadata?: { year?: number | string };
+      departements?: Array<{ code_insee?: unknown; apl_index?: unknown; category?: unknown }>;
+    };
 
     // Mise à jour de l'année réelle si présente dans le JSON
     if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
       HEALTH_APL_LEGEND.source.year = data.metadata.year;
-      // On utilise 'as any' pour forcer l'appel si la méthode n'est pas typée
-      (this.mapLegend as any)?.updateCategory?.(HEALTH_APL_LEGEND);
+      // Cast structurel : updateCategory n'existe pas (encore) sur MapLegend ; l'appel
+      // optionnel reste un no-op tant que la méthode n'est pas implémentée (cf. rapport).
+      (this.mapLegend as (MapLegend & { updateCategory?: (category: LegendCategory) => void }) | null)?.updateCategory?.(HEALTH_APL_LEGEND);
     }
 
     const aplDepartments = Array.isArray(data?.departements)
-      ? data.departements.map((item: any) => ({
+      ? data.departements.map((item): HealthDepartmentMetric => ({
         depCode: String(item?.code_insee ?? '').trim(),
         depName: '',
         regionCode: '',
@@ -1935,15 +1947,15 @@ export class App {
         sentinellesIncidence: null,
         topMotifs: [],
         aplIndex: Number.isFinite(Number(item?.apl_index)) ? Number(item.apl_index) : null,
-        aplCategory: ['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
+        aplCategory: (['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
           ? String(item.category).trim().toLowerCase()
-          : 'indisponible',
+          : 'indisponible') as APLCategory,
         iss: 0,
         issLevel: 1,
         trend: 'stable',
         source: 'drees',
         updatedAt: new Date(),
-      })).filter((item: any) => item.depCode)
+      })).filter((item) => item.depCode)
       : [];
 
     if (aplDepartments.length > 0) {
@@ -2606,7 +2618,7 @@ export class App {
 
       if (!isAnyHealthLayerActive) return;
 
-      const metrics = (window as any).__healthBarometerMetrics ?? this.lastBarometerMetrics;
+      const metrics = window.__healthBarometerMetrics ?? this.lastBarometerMetrics;
       if (metrics) {
         this.environmentPanel?.hide();
         this.energyPanel?.hide();
@@ -5445,7 +5457,7 @@ export class App {
       }
 
       // Store on window for 'open-health-barometer' event handler
-      (window as any).__healthBarometerMetrics = metrics;
+      window.__healthBarometerMetrics = metrics;
 
       // Update FAB button to show score + ready state
       const fab = document.getElementById('barometer-fab');

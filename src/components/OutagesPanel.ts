@@ -1115,8 +1115,8 @@ export class OutagesPanel extends Panel {
 
       const representative = dcs.reduce((best, dc) => (visualRank(dc) > visualRank(best) ? dc : best), dcs[0]!);
       const meta = getDatacenterVisualMeta(representative);
-      const col = meta.color ?? dcStatusColor(representative.status as any);
-      const lbl = meta.label ?? dcStatusLabel(representative.status as any);
+      const col = meta.color ?? dcStatusColor(representative.status);
+      const lbl = meta.label ?? dcStatusLabel(representative.status);
 
       const row = document.createElement('div');
       row.style.cssText = `

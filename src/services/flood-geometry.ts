@@ -413,7 +413,7 @@ function mergeOsmWaterwayFeatures(
     const coords = item.feature.geometry.coordinates as Coordinate[];
     if (coords.length < 2) continue;
 
-    let oriented = coords;
+    let oriented: Coordinate[];
     if (merged.length === 0) {
       const rawStart = rawCoords[0];
       const startGap = distance(point(rawStart), point(coords[0]), { units: 'kilometers' });

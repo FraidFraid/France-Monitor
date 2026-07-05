@@ -134,6 +134,50 @@ interface FrenchBreachesDetail {
 
 type UnknownRecord = Record<string, unknown>;
 
+// Formes minimales des réponses de recherche-entreprises.api.gouv.fr (champs réellement lus)
+interface CompanySiege {
+  siret?: string;
+  tranche_effectif_salarie?: string;
+  activite_principale?: string;
+  enseigne?: string;
+  nom_commercial?: string;
+  libelle_commune?: string;
+  adresse?: string;
+  latitude?: number | string;
+  longitude?: number | string;
+  coordonnees?: string;
+  [key: string]: unknown;
+}
+interface CompanyResult {
+  siege?: CompanySiege;
+  nombre_etablissements_ouverts?: number | string;
+  nom_complet?: string;
+  nom_raison_sociale?: string;
+  sigle?: string;
+  siren?: string;
+  categorie_entreprise?: string;
+  tranche_effectif_salarie?: string;
+  activite_principale?: string;
+  section_activite_principale?: string;
+  date_creation?: string;
+  [key: string]: unknown;
+}
+
+// Forme minimale d'une victime RansomwareLive (data.ransomware.live/posts.json)
+interface RansomwareVictim {
+  country?: string;
+  discovered: string;
+  city?: string;
+  region?: string;
+  website?: string;
+  post_title?: string;
+  post_url?: string;
+  activity?: string;
+  group_name?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
 // ─── Helpers ───
 
 function parseSeverity(title: string): string {
@@ -259,9 +303,9 @@ function formatEmployeeRange(code: unknown): string | undefined {
   return ranges[String(code || '')];
 }
 
-function buildCompanyProfile(result: Record<string, any>): OrganizationProfile | undefined {
+function buildCompanyProfile(result: CompanyResult | undefined): OrganizationProfile | undefined {
   if (!result) return undefined;
-  const siege = result.siege || {};
+  const siege: CompanySiege = result.siege ?? {};
   const openEstablishments = Number(result.nombre_etablissements_ouverts);
   return {
     legalName: stripHtml(result.nom_complet || result.nom_raison_sociale) || undefined,
@@ -276,7 +320,7 @@ function buildCompanyProfile(result: Record<string, any>): OrganizationProfile |
   };
 }
 
-function buildRansomwareSummary(victim: any): string {
+function buildRansomwareSummary(victim: RansomwareVictim): string {
   if (isInformativeRansomwareDescription(victim.description)) {
     return stripHtml(victim.description).slice(0, 260);
   }
@@ -384,9 +428,12 @@ function extractArrayPayload(payload: unknown): UnknownRecord[] {
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate.filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
   }
-  if (Array.isArray((obj as any).features)) {
-    return ((obj as any).features as unknown[])
-      .map((feature: any) => ({ ...(feature.properties || {}), geometry: feature.geometry }))
+  if (Array.isArray(obj.features)) {
+    return (obj.features as unknown[])
+      .map((feature): UnknownRecord => {
+        const f = feature as { properties?: UnknownRecord; geometry?: unknown };
+        return { ...(f.properties || {}), geometry: f.geometry };
+      })
       .filter((item): item is UnknownRecord => Boolean(item && typeof item === 'object'));
   }
   return [];
@@ -709,7 +756,7 @@ function parseSireneCoordinates(siege: Record<string, unknown> | undefined): [nu
   return null;
 }
 
-function scoreCompanyResult(result: Record<string, any>, query: string): number {
+function scoreCompanyResult(result: CompanyResult, query: string): number {
   const haystack = [
     result?.nom_complet,
     result?.nom_raison_sociale,
@@ -722,7 +769,7 @@ function scoreCompanyResult(result: Record<string, any>, query: string): number 
   return words.filter((word) => haystack.includes(word)).length / words.length;
 }
 
-async function resolveCompanyGeo(victim: Record<string, any>): Promise<GeoResolution | null> {
+async function resolveCompanyGeo(victim: Record<string, unknown>): Promise<GeoResolution | null> {
   const queries = buildCompanyQueries(victim);
   for (const query of queries) {
     const known = KNOWN_COMPANY_LOCATIONS[query.replace(/\s+/g, '')];
@@ -737,15 +784,15 @@ async function resolveCompanyGeo(victim: Record<string, any>): Promise<GeoResolu
       });
       if (!resp.ok) continue;
 
-      const data = await resp.json() as { results?: Record<string, any>[] };
+      const data = await resp.json() as { results?: CompanyResult[] };
       const results = Array.isArray(data.results) ? data.results : [];
       const match = results
         .map((result) => ({ result, coordinates: parseSireneCoordinates(result.siege), score: scoreCompanyResult(result, query) }))
-        .filter((item): item is { result: Record<string, any>; coordinates: [number, number]; score: number } => Boolean(item.coordinates) && item.score >= 0.5)
+        .filter((item): item is { result: CompanyResult; coordinates: [number, number]; score: number } => Boolean(item.coordinates) && item.score >= 0.5)
         .sort((a, b) => b.score - a.score)[0];
 
       if (match) {
-        const siege = match.result.siege || {};
+        const siege: CompanySiege = match.result.siege ?? {};
         const geo: GeoResolution = {
           coordinates: match.coordinates,
           label: String(siege.libelle_commune || match.result.nom_raison_sociale || victim.city || 'France'),
@@ -859,7 +906,7 @@ async function fetchRansomware(): Promise<unknown[]> {
   });
   if (!resp.ok) throw new Error(`RansomwareLive HTTP ${resp.status}`);
 
-  const raw: any[] = await resp.json();
+  const raw = await resp.json() as RansomwareVictim[];
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
   const victims = (Array.isArray(raw) ? raw : [])
@@ -988,8 +1035,9 @@ export function threatsProxyPlugin(): Plugin {
 
           // Dedup
           const seen = new Set<string>();
-          const events = [...frenchBreachesMap, ...frenchBreaches, ...hibp, ...ransomware, ...certFr].filter((e: any) => {
-            const key = `${(e.organizationName as string).toLowerCase()}-${e.type}`;
+          const events = [...frenchBreachesMap, ...frenchBreaches, ...hibp, ...ransomware, ...certFr].filter((e) => {
+            const ev = e as { organizationName: string; type: string };
+            const key = `${ev.organizationName.toLowerCase()}-${ev.type}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;

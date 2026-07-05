@@ -62,10 +62,11 @@ export function financeProxyPlugin(): Plugin {
                         return;
                     }
 
+                    // Colonnes demandées : ["name", "close", "change"] → d = [nom, clôture, variation%]
                     const raw = await resp.json() as {
                         data?: Array<{
                             s: string;
-                            d: any[];
+                            d: [string, number | null, number | null];
                         }>;
                     };
 

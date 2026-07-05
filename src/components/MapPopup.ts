@@ -15,7 +15,7 @@ import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/milita
 import type Hls from 'hls.js';
 
 /** Popup display mode */
-type PopupMode = 'none' | 'item' | 'cluster' | 'militaryFlight' | 'militaryBase' | 'nuclearSite' | 'threatEvent';
+type PopupMode = 'none' | 'item' | 'cluster' | 'militaryFlight' | 'militaryBase' | 'militaryShip' | 'nuclearSite' | 'threatEvent';
 
 /** Escape HTML to prevent XSS */
 function escapeHtml(str: string): string {
@@ -478,7 +478,7 @@ export class MapPopup {
     this.hideNow();
     this.cancelHideTimeout();
     this.ensureAttached();
-    this.mode = 'militaryShip' as any;
+    this.mode = 'militaryShip';
     this.element.innerHTML = this.renderMilitaryShipPopup(ship);
     this.element.classList.add('wm-style');
     this.element.style.cursor = 'default';
@@ -755,7 +755,7 @@ export class MapPopup {
    */
   hide(): void {
     // Don't hide cluster or military popups via this method
-    if (this.mode === 'cluster' || this.mode === 'militaryFlight' || this.mode === 'militaryBase' || (this.mode as string) === 'militaryShip' || this.mode === 'threatEvent') {
+    if (this.mode === 'cluster' || this.mode === 'militaryFlight' || this.mode === 'militaryBase' || this.mode === 'militaryShip' || this.mode === 'threatEvent') {
       return;
     }
 

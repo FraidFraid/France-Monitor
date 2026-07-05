@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import type { Polygon } from 'geojson';
+import type { IncomingMessage } from 'node:http';
 
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1/search';
 const CDSE_PROCESS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/process';
@@ -62,7 +63,7 @@ function buildCacheKey(aoi: Polygon, dateInput: unknown, maxCloudCoverage: numbe
   });
 }
 
-function readJsonBody(req: { on: (event: string, cb: (...args: any[]) => void) => void }): Promise<unknown> {
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk.toString(); });

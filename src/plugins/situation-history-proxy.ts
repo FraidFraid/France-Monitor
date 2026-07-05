@@ -9,7 +9,7 @@
 import type { Plugin } from 'vite';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import type { SituationSnapshot, HistoryResponse } from '../types/index.ts';
+import type { SituationSnapshot, HistoryResponse, HistorySlot } from '../types/index.ts';
 
 const HISTORY_FILE = resolve(process.cwd(), 'public/data/history-dev.json');
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
@@ -74,14 +74,14 @@ function buildHistoryResponse(days: 7 | 30): HistoryResponse {
   let captured = 0;
   let missing = 0;
 
-  const slots = grid.map((slotKey) => {
+  const slots = grid.map((slotKey): HistorySlot => {
     const match = stored.find(s => s.slotKey === slotKey);
     if (match) {
       captured++;
       return match;
     }
     missing++;
-    return { slotKey, status: 'missing' } as any;
+    return { slotKey, status: 'missing' };
   });
 
   return {

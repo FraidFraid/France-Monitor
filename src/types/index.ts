@@ -150,7 +150,7 @@ export interface MapLayers {
 
 export type LayerRole = 'groupMaster' | 'child' | 'standalone';
 
-export interface LayerConfig<L = any> {
+export interface LayerConfig<L = unknown> {
   id: keyof MapLayers;
   groupId?: string;           // Ex: 'health'
   role: LayerRole;
@@ -847,7 +847,7 @@ export interface RestrictedZone {
   id: string;
   name: string;
   type: 'ZIT' | 'ZRT' | 'ZIA';
-  geometry: any; // GeoJSON Polygon
+  geometry: GeoJSON.Polygon;
   active: boolean;
   minAltitude?: number;
   maxAltitude?: number;

@@ -213,7 +213,7 @@ export class ISNRPanel extends Panel {
 
     const nationalColor = scoreToColor(data.nationalScore);
 
-    let nationalStatusText = '';
+    let nationalStatusText: string;
     if (data.nationalScore >= 80) nationalStatusText = 'CRITIQUE';
     else if (data.nationalScore >= 60) nationalStatusText = 'ÉLEVÉ';
     else if (data.nationalScore >= 40) nationalStatusText = 'TENSION';

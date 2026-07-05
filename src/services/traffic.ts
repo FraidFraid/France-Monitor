@@ -3,6 +3,8 @@
  * Source : TomTom Traffic Incidents API (temps réel), agrégation sur 7 grandes zones métropolitaines.
  */
 
+import type { Geometry } from 'geojson';
+
 export interface TrafficIncident {
     id: string;
     lon: number;
@@ -330,7 +332,29 @@ export function filterOsintTrafficIncidents(incidents: TrafficIncident[]): Traff
         .slice(0, 90);
 }
 
-function transformTomTomIncident(inc: any): TrafficIncident {
+// Forme minimale d'un incident TomTom (champs réellement lus)
+interface TomTomIncident {
+    geometry?: Geometry;
+    properties?: {
+        id?: string;
+        iconCategory?: number;
+        delay?: number;
+        length?: number;
+        magnitudeOfDelay?: number;
+        events?: Array<{ description?: string }>;
+        roadNumbers?: unknown;
+        numberOfReports?: number | string | null;
+        startTime?: string;
+        endTime?: string;
+        from?: string;
+        to?: string;
+        timeValidity?: string;
+        probabilityOfOccurrence?: string;
+        lastReportTime?: string;
+    };
+}
+
+function transformTomTomIncident(inc: TomTomIncident): TrafficIncident {
     let coord = [0, 0];
     if (inc.geometry && inc.geometry.type === 'LineString' && inc.geometry.coordinates.length > 0) {
         coord = inc.geometry.coordinates[0];
@@ -340,7 +364,7 @@ function transformTomTomIncident(inc: any): TrafficIncident {
         coord = inc.geometry.coordinates;
     }
 
-    let type = 'Inconnu';
+    let type: string;
     switch (inc.properties?.iconCategory) {
         case 1: type = 'Accident'; break;
         case 6: type = 'Bouchon'; break;
@@ -377,14 +401,16 @@ function transformTomTomIncident(inc: any): TrafficIncident {
         severity = 'medium';
     }
 
-    const desc = inc.properties?.events?.map((e: any) => e.description).join(' - ') || type;
-    const roadNumbers = Array.isArray(inc.properties?.roadNumbers)
-        ? inc.properties.roadNumbers.filter((value: unknown) => typeof value === 'string' && value.trim() !== '')
+    const desc = inc.properties?.events?.map((e) => e.description).join(' - ') || type;
+    const rawRoadNumbers = inc.properties?.roadNumbers;
+    const roadNumbers = Array.isArray(rawRoadNumbers)
+        ? rawRoadNumbers.filter((value: unknown): value is string => typeof value === 'string' && value.trim() !== '')
         : [];
     const numberOfReportsRaw = inc.properties?.numberOfReports;
     const parsedReports = numberOfReportsRaw == null || numberOfReportsRaw === 'null'
         ? null
         : Number(numberOfReportsRaw);
+    const lastReport = inc.properties?.lastReportTime;
 
     return {
         id: inc.properties?.id || Math.random().toString(36),
@@ -403,8 +429,8 @@ function transformTomTomIncident(inc: any): TrafficIncident {
         timeValidity: inc.properties?.timeValidity || undefined,
         probabilityOfOccurrence: inc.properties?.probabilityOfOccurrence || undefined,
         numberOfReports: Number.isFinite(parsedReports) ? parsedReports : null,
-        lastReportTime: inc.properties?.lastReportTime && inc.properties.lastReportTime !== 'null'
-            ? inc.properties.lastReportTime
+        lastReportTime: lastReport && lastReport !== 'null'
+            ? lastReport
             : null,
     };
 }

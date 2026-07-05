@@ -431,7 +431,7 @@ export class CyberPanel extends Panel {
     const alerts = data.alerts.latest;
     const count = data.alerts.count30d;
 
-    let alertsHtml = '';
+    let alertsHtml: string;
     if (alerts.length === 0) {
       alertsHtml = `<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 0;">Aucune alerte récente</div>`;
     } else {
@@ -552,7 +552,7 @@ export class CyberPanel extends Panel {
     const cves = data.vulnerabilities.topCVEs;
     const criticalCount = data.vulnerabilities.criticalCount;
 
-    let cvesHtml = '';
+    let cvesHtml: string;
     if (cves.length === 0) {
       cvesHtml = `<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 8px 0;">Aucune CVE critique récente</div>`;
     } else {

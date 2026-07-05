@@ -21,6 +21,16 @@ import type {
 import { GAS_TERMINALS, GAS_STORAGES, GAS_INTERCONNECTIONS } from '../config/gas-infrastructure';
 import { Watchdog } from './watchdog.ts';
 
+// Forme minimale d'un terminal renvoyé par GIE ALSI (champs réellement lus)
+interface AlsiTerminal {
+  name?: string;
+  sendOut?: number | string;
+  inventory?: number | string;
+  workingGasVolume?: number | string;
+  inventoryFull?: number | string;
+  full?: number | string;
+}
+
 Watchdog.register('gas-network', {
   label: 'Réseau Gaz / EcoGaz',
   staleAfterMs: 15 * 60_000,
@@ -294,7 +304,7 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
     if (alsiResp.ok) {
       const alsiData = await alsiResp.json();
       for (const t of terminals) {
-        const alsiMatch = alsiData.data?.find((d: any) =>
+        const alsiMatch = alsiData.data?.find((d: AlsiTerminal) =>
            d.name?.toLowerCase().includes(t.name.split(' ')[0].toLowerCase())
         );
         if (alsiMatch) {

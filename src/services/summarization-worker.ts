@@ -6,15 +6,22 @@ import { pipeline, env } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 
-let summarizerPromise: Promise<any> | null = null;
+// Le pipeline summarization de transformers.js n'expose pas de signature d'appel précise :
+// on décrit uniquement la forme réellement utilisée ici.
+type Summarizer = (
+    text: string,
+    options?: { max_new_tokens?: number; min_length?: number }
+) => Promise<Array<{ summary_text: string }>>;
 
-async function getSummarizer() {
+let summarizerPromise: Promise<Summarizer> | null = null;
+
+async function getSummarizer(): Promise<Summarizer> {
     if (!summarizerPromise) {
         console.log('[ML Worker] Loading summarization model (T5)...');
         summarizerPromise = pipeline(
             'summarization',
             'Xenova/t5-small'
-        );
+        ) as unknown as Promise<Summarizer>;
     }
     return summarizerPromise!;
 }
@@ -30,7 +37,7 @@ self.addEventListener('message', async (event) => {
             min_length: 10
         });
         self.postMessage({ id, result: result[0].summary_text });
-    } catch (error: any) {
-        self.postMessage({ id, error: error.message });
+    } catch (error) {
+        self.postMessage({ id, error: (error as Error).message });
     }
 });
