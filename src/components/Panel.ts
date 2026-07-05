@@ -34,8 +34,20 @@ export abstract class Panel {
     const header = document.createElement('div');
     header.className = 'panel-header';
     if (this.options.collapsible !== false) {
+      // Opérabilité clavier (RGAA 7.1/7.3) : on enrichit le <div> existant
+      // en bouton accessible sans changer le rendu ni le comportement souris.
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', String(!this.collapsed));
       header.addEventListener('click', () => this.toggleCollapse());
+      header.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault(); // Espace : évite le scroll de page
+          this.toggleCollapse();
+        }
+      });
     }
+    this._headerEl = header;
 
     const titleRow = document.createElement('div');
     titleRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
@@ -59,6 +71,7 @@ export abstract class Panel {
     const chevron = document.createElement('span');
     chevron.className = 'panel-chevron';
     chevron.textContent = '›';
+    chevron.setAttribute('aria-hidden', 'true'); // décoratif : état porté par aria-expanded
     chevron.style.cssText =
       'color:var(--text-muted);font-size:16px;transition:transform 200ms ease;margin-left:auto;';
 
@@ -93,11 +106,13 @@ export abstract class Panel {
   }
 
   private _chevronEl: HTMLElement | null = null;
+  private _headerEl: HTMLElement | null = null;
 
   protected toggleCollapse(): void {
     if (!this.bodyEl) return;
     this.collapsed = !this.collapsed;
     this.bodyEl.style.display = this.collapsed ? 'none' : 'block';
+    this._headerEl?.setAttribute('aria-expanded', String(!this.collapsed));
     if (this._chevronEl) {
       this._chevronEl.style.transform = this.collapsed
         ? 'rotate(90deg)'

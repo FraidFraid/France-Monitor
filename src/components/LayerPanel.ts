@@ -132,7 +132,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.newsExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="news-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="news-accordion-toggle" aria-expanded="${this.newsExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#128240;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ACTUALITÉS</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.newsExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -144,7 +144,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.energyExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="energy-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="energy-accordion-toggle" aria-expanded="${this.energyExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#9889;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ÉNERGIE</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.energyExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -156,7 +156,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.healthExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="health-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="health-accordion-toggle" aria-expanded="${this.healthExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#127973;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">SANTÉ</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.healthExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -169,7 +169,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.trafficExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="traffic-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="traffic-accordion-toggle" aria-expanded="${this.trafficExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#128663;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">TRAFICS</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.trafficExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -181,7 +181,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.sovereigntyExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="sovereignty-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="sovereignty-accordion-toggle" aria-expanded="${this.sovereigntyExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#128737;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">SOUVERAINETÉ</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.sovereigntyExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -203,7 +203,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.outagesExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="outages-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="outages-accordion-toggle" aria-expanded="${this.outagesExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#128225;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">PANNES RÉSEAU</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.outagesExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -217,7 +217,7 @@ export class LayerPanel {
         closeGroups();
         listHtml += `
           <div class="layer-panel-accordion ${this.environmentExpanded ? 'expanded' : ''}">
-            <div class="layer-panel-accordion-header" id="environment-accordion-toggle" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
+            <div class="layer-panel-accordion-header" id="environment-accordion-toggle" aria-expanded="${this.environmentExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
               <span class="layer-panel-icon" style="margin-right: 8px;">&#127793;</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ENVIRONNEMENT</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.environmentExpanded ? '&#9650;' : '&#9664;'}</span>
@@ -256,6 +256,20 @@ export class LayerPanel {
         <span class="layer-panel-count" title="${enabledCount} couches affichées / ${LAYER_DEFS.length} disponibles">${enabledCount}/${LAYER_DEFS.length} actifs</span>
       </div>
     `;
+
+    // Opérabilité clavier des en-têtes d'accordéon (RGAA 7.1/7.3) :
+    // on enrichit chaque <div> en bouton focusable ; Entrée/Espace rejouent
+    // exactement le click souris déjà câblé plus bas (état géré par render()).
+    this.element.querySelectorAll<HTMLElement>('.layer-panel-accordion-header').forEach((header) => {
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault(); // Espace : évite le scroll de page
+          header.click();
+        }
+      });
+    });
 
     // Collapse toggle
     this.element.querySelector('.layer-panel-collapse')?.addEventListener('click', () => {

@@ -9,8 +9,8 @@ Socle sémantique solide (landmarks, lang dynamique, noscript, pages annexes bie
 | # | Non-conformité | Localisation | Critère RGAA |
 |---|---|---|---|
 | 1 | `--text-muted: #606070` → ratios 2,5-3,2:1 (seuil 4,5:1), utilisé partout en texte méta | `main.css` `:root` | 3.2 |
-| 2 | Headers de panels collapsables `<div click>` sans rôle/tabindex/aria-expanded/clavier — **classe de base** de la majorité des panels | `Panel.ts:38-40` | 7.1, 7.3 |
-| 3 | 7 accordéons de couches non opérables au clavier | `LayerPanel.ts:135-220` | 7.1, 7.3 |
+| 2 | ✅ corrigé (2026-07-05) — Headers de panels collapsables `<div click>` sans rôle/tabindex/aria-expanded/clavier — **classe de base** de la majorité des panels | `Panel.ts:34-38` | 7.1, 7.3 |
+| 3 | ✅ corrigé (2026-07-05) — 7 accordéons de couches non opérables au clavier | `LayerPanel.ts:135-225` | 7.1, 7.3 |
 | 4 | Items monitors `role="button" tabindex="0"` sans handler keydown (Entrée/Espace inopérants) | `SituationMonitor.ts:362`, `AlertMonitor.ts:310` | 7.3 |
 | 5 | Champs sans étiquette (select région, inputs recherche avec placeholder seul) | `UnderMapNewsFeed.ts:226,243`, `FilterPanel.ts:106` | 11.1 |
 | 6 | Aucun lien d'évitement "Aller au contenu" | `index.html` / `App.ts` renderShell | 12.7 |
@@ -31,7 +31,7 @@ Socle sémantique solide (landmarks, lang dynamique, noscript, pages annexes bie
 
 ## Chantiers lourds
 
-- Refonte clavier de `Panel.ts` + accordéons `LayerPanel.ts` (headers → `<button aria-expanded>`) — un fix de classe de base débloque des dizaines d'écrans
+- ✅ corrigé (2026-07-05) — Opérabilité clavier de `Panel.ts` (classe de base) + 7 accordéons `LayerPanel.ts`. Approche : **enrichissement ARIA** des `<div>` existants (`role="button"` + `tabindex="0"` + `aria-expanded` mis à jour au toggle + `keydown` Entrée/Espace), **pas de conversion en `<button>`** — zéro régression sur les styles hérités et le comportement souris. Un fix de classe de base débloque des dizaines d'écrans.
 - Utilitaire de modale accessible factorisé (piège de focus + restauration + inert arrière-plan) appliqué aux 4-5 modales
 - Audit des ~151 `cursor:pointer` sur éléments non-sémantiques (5 composants seulement ont un keydown)
 - Alternative texte à la carte : renforcer/documenter le rôle des panels (le canvas MapLibre/Deck.gl reste non navigable)
