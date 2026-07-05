@@ -3,6 +3,7 @@ import { fmLoaderHTML } from './shared/loader.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import { renderTruthBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const EOLIEN_PANEL_COLORS = {
   cyan: '#38BDF8',
@@ -54,7 +55,7 @@ export class EolienPanel extends Panel {
   private onSelectPark?: (park: EolienParkSummary) => void;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Veille Éolienne', icon: '🌬️', collapsible: false });
+    super(container, { title: 'Veille Éolienne', collapsible: false });
   }
 
   mount(): void {
@@ -78,11 +79,11 @@ export class EolienPanel extends Panel {
     `;
 
     this.modalEl.innerHTML = `
-      <button class="eolien-panel-close" style="
+      <button class="eolien-panel-close" aria-label="Fermer" style="
         position:absolute;top:12px;right:12px;background:rgba(255,255,255,0.08);
         border:none;color:${EOLIEN_PANEL_COLORS.muted};cursor:pointer;font-size:14px;width:28px;height:28px;
         border-radius:14px;display:flex;align-items:center;justify-content:center;z-index:10;
-      ">✕</button>
+      ">${fmIcon('x')}</button>
       <div style="
         padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.06);
         display:flex;align-items:center;gap:14px;
@@ -165,7 +166,7 @@ export class EolienPanel extends Panel {
     if (!this.contentEl) return;
     this.contentEl.innerHTML = `
       <div style="text-align:center;padding:24px 16px;">
-        <div style="font-size:24px;margin-bottom:10px;">⚠️</div>
+        <div style="margin-bottom:10px;">${fmIcon('triangle-alert', { size: 24 })}</div>
         <div style="font-size:12px;color:${EOLIEN_PANEL_COLORS.red};font-weight:700;">Échec du chargement éolien</div>
         <div style="margin-top:8px;font-size:11px;color:${EOLIEN_PANEL_COLORS.muted};">${message}</div>
       </div>

@@ -109,7 +109,7 @@ export class HydraulicPanel extends Panel {
   private currentEcowatt: EcowattResponse | null = null;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Backbone énergétique - Hydraulique', icon: '💧', collapsible: false });
+    super(container, { title: 'Backbone énergétique - Hydraulique', collapsible: false });
   }
 
   mount(): void {
@@ -133,9 +133,8 @@ export class HydraulicPanel extends Panel {
       overflow: hidden;
     `;
 
-    this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
-    this.closeBtn.className = 'hydraulic-panel-close';
+    this.closeBtn = this.createCloseButton(() => this.hide());
+    this.closeBtn.classList.add('hydraulic-panel-close');
     this.closeBtn.style.cssText = `
       position: absolute;
       top: 12px;
@@ -162,7 +161,6 @@ export class HydraulicPanel extends Panel {
       this.closeBtn!.style.background = 'rgba(255,255,255,0.08)';
       this.closeBtn!.style.color = HYDRAULIC_PANEL_COLORS.muted;
     };
-    this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
     const header = document.createElement('div');

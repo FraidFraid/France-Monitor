@@ -21,6 +21,7 @@ import type {
   ReactorAvailabilityStatus,
 } from '../types/index.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import { NUCLEAR_STATUS_COLORS, NUCLEAR_REMIT_UNCONFIRMED_COLOR } from '../services/nuclear-rte.ts';
 import {
   NUCLEAR_FLEET_INSTALLED_CAPACITY_MW,
@@ -50,7 +51,7 @@ export class NuclearPanel extends Panel {
   private hoveredPlantName: string | null = null;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Veille Nucléaire', icon: '⚛', collapsible: false });
+    super(container, { title: 'Veille Nucléaire', collapsible: false });
   }
 
   mount(): void {
@@ -67,15 +68,17 @@ export class NuclearPanel extends Panel {
       })}
     `;
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'nuclear-panel-close';
-    closeBtn.innerHTML = '✕';
+    const closeBtn = this.createCloseButton(() => {
+      this.hide();
+      this.onCloseCallback?.();
+    });
+    closeBtn.classList.add('nuclear-panel-close');
     closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(closeBtn);
     this.modalEl.appendChild(closeBtn);
 
     const header = createPremiumIconHeader({
-      icon: '⚛',
+      icon: fmIcon('atom', { size: 30 }),
       title: 'Veille Nucléaire',
       subtitle: 'Parc EDF · disponibilité · stress système',
       gradientStart: 'rgba(143, 200, 232, 0.16)',
@@ -101,7 +104,7 @@ export class NuclearPanel extends Panel {
             letter-spacing:0.06em;text-transform:uppercase;
             color:var(--text-muted);border-bottom:2px solid transparent;
             transition:color 0.15s,border-color 0.15s;
-          ">${tab === 'status' ? 'STATUS' : tab === 'timeline' ? 'TIMELINE' : tab === 'remit' ? 'REMIT ⚑' : 'STRESS'}</button>
+          ">${tab === 'status' ? 'STATUS' : tab === 'timeline' ? 'TIMELINE' : tab === 'remit' ? `REMIT ${fmIcon('flag', { size: 10 })}` : 'STRESS'}</button>
         `).join('')}
     `;
     this.modalEl.appendChild(tabs);
@@ -114,12 +117,6 @@ export class NuclearPanel extends Panel {
     this.modalEl.appendChild(content);
 
     this.contentEl = this.modalEl.querySelector('.nuclear-panel-content')!;
-
-    // Close button
-    this.modalEl.querySelector('.nuclear-panel-close')!.addEventListener('click', () => {
-      this.hide();
-      this.onCloseCallback?.();
-    });
 
     // Tab buttons
     this.modalEl.querySelectorAll<HTMLButtonElement>('.nuclear-tab-btn').forEach((btn) => {
@@ -492,7 +489,7 @@ export class NuclearPanel extends Panel {
         ">
           <div style="font-size:11px;color:var(--text-primary);">${s.title.slice(0, 80)}${s.title.length > 80 ? '…' : ''}</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
-            ${s.plantName} · ${s.classifiedAs.replace('_', ' ')} · <span style="color:#6EE7B7;">✓ confirmé RTE</span>
+            ${s.plantName} · ${s.classifiedAs.replace('_', ' ')} · <span style="color:#6EE7B7;">${fmStatusDot('stable')} confirmé RTE</span>
           </div>
         </div>`);
 
@@ -563,7 +560,7 @@ export class NuclearPanel extends Panel {
           margin-top:10px;padding:8px 12px;border-radius:8px;
           background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);
         ">
-          <div style="font-size:11px;font-weight:700;color:#EF4444;">⚡ GRID_TENSION_RISK</div>
+          <div style="font-size:11px;font-weight:700;color:#EF4444;">${fmIcon('zap', { size: 11 })} GRID_TENSION_RISK</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
             Production nucléaire &lt; 35% du mix national · heuristique produit v1
           </div>
@@ -582,7 +579,7 @@ export class NuclearPanel extends Panel {
         display:flex;flex-direction:column;align-items:center;justify-content:center;
         min-height:80px;gap:6px;
       ">
-        <span style="font-size:20px;opacity:0.4;">⚛</span>
+        <span style="opacity:0.4;">${fmIcon('atom', { size: 20 })}</span>
         <span style="font-size:12px;color:var(--text-muted);text-align:center;">${msg}</span>
         <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#EF444422;border:1px solid #EF444433;color:#EF4444;font-size:9px;font-weight:700;letter-spacing:0.06em;">INDISPONIBLE</span>
       </div>`;

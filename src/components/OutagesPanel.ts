@@ -7,6 +7,7 @@
 
 import { Panel } from './Panel.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import type { PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
 import type { RTEIIPState } from '../services/rte-iip.ts';
 import type { OutagesMeta } from '../services/outages.ts';
@@ -63,7 +64,7 @@ export class OutagesPanel extends Panel {
   private onIxpClickCb?: (data: { id: string; coordinates: [number, number] }) => void;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Pannes Réseau', icon: '⚡', collapsible: false });
+    super(container, { title: 'Pannes Réseau', collapsible: false });
   }
 
   setOnDeptHover(cb: (deptCode: string | null) => void): void {
@@ -158,8 +159,7 @@ export class OutagesPanel extends Panel {
     `;
 
     // ─── Bouton fermeture ───
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
+    const closeBtn = this.createCloseButton(() => this.hide());
     closeBtn.style.cssText = `
       position: absolute; top: 12px; right: 12px;
       background: rgba(255,255,255,0.1); border: none;
@@ -171,7 +171,6 @@ export class OutagesPanel extends Panel {
     `;
     closeBtn.onmouseover = () => { closeBtn.style.background = 'rgba(255,255,255,0.2)'; closeBtn.style.color = 'var(--text-primary)'; };
     closeBtn.onmouseout  = () => { closeBtn.style.background = 'rgba(255,255,255,0.1)'; closeBtn.style.color = 'var(--text-muted)'; };
-    closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(closeBtn);
 
     // ─── Header (aussi handle drag) ───
@@ -186,8 +185,8 @@ export class OutagesPanel extends Panel {
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
         <div style="width:44px;height:44px;flex-shrink:0;
           background:rgba(99,102,241,0.12);border-radius:12px;
-          display:flex;align-items:center;justify-content:center;font-size:20px;pointer-events:none;">
-          📡
+          display:flex;align-items:center;justify-content:center;pointer-events:none;">
+          ${fmIcon('satellite-dish', { size: 20 })}
         </div>
         <div style="flex:1;min-width:0;pointer-events:none;">
           <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Infrastructure numérique</div>
@@ -199,22 +198,22 @@ export class OutagesPanel extends Panel {
         <button id="tab-electric" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
-          ⚡ Élec.
+          ${fmIcon('zap', { size: 12 })} Élec.
         </button>
         <button id="tab-telecom" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
-          📡 Télécoms
+          ${fmIcon('satellite-dish', { size: 12 })} Télécoms
         </button>
         <button id="tab-internet" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
-          🌐 Internet
+          ${fmIcon('globe', { size: 12 })} Internet
         </button>
         <button id="tab-cloud" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
-          ☁️ Cloud
+          ${fmIcon('building-2', { size: 12 })} Cloud
         </button>
       </div>
     `;
@@ -362,12 +361,12 @@ export class OutagesPanel extends Panel {
     const freshness = this._outagesMeta ? getFreshnessState(this._outagesMeta) : null;
     const staleNote = (() => {
       if (!freshness || freshness === 'fresh') return '';
-      if (freshness === 'degraded') return ' · ⚠ Enedis indisponible';
+      if (freshness === 'degraded') return ' · Enedis indisponible';
       if (freshness === 'stale') {
         const ageMin = this._outagesMeta?.fetchedAt
           ? Math.round((Date.now() - this._outagesMeta.fetchedAt) / 60_000)
           : null;
-        return ageMin !== null ? ` · ⚠ données périmées (${ageMin}min)` : ' · ⚠ données périmées';
+        return ageMin !== null ? ` · données périmées (${ageMin}min)` : ' · données périmées';
       }
       return ' · données vieillissantes';
     })();
@@ -401,7 +400,7 @@ export class OutagesPanel extends Panel {
     if (powers.length === 0 && zones.length === 0) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="font-size:32px;margin-bottom:12px;opacity:0.4;">✅</div>
+          <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('check', { size: 32 })}</div>
           <div>Aucune panne électrique détectée.</div>
           <div style="font-size:11px;margin-top:8px;opacity:0.6;">Indicateurs Historiques DataFair · Ecowatt RTE</div>
         </div>`;
@@ -427,7 +426,7 @@ export class OutagesPanel extends Panel {
     // ── Accordion : PDL hors réseau (mesurés Enedis) ──
     frag.appendChild(this._buildDeptsAccordion(
       actualOutages,
-      '⚡ PDL hors réseau',
+      `${fmIcon('zap', { size: 12 })} PDL hors réseau`,
       '#F59E0B',
       actualOutages.length === 0 ? 'Aucune panne mesurée' : undefined,
     ));
@@ -450,7 +449,7 @@ export class OutagesPanel extends Panel {
     // ── Sources ──
     const footer = document.createElement('div');
     footer.style.cssText = `margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);`;
-    footer.textContent = '⚡ Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (HTB)';
+    footer.innerHTML = `${fmIcon('zap', { size: 10 })} Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (HTB)`;
     frag.appendChild(footer);
 
     this.contentEl!.innerHTML = '';
@@ -501,7 +500,7 @@ export class OutagesPanel extends Panel {
     if (title.includes('PDL hors réseau')) {
       const note = document.createElement('div');
       note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:4px;line-height:1.4;';
-      note.textContent = "⚠ Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
+      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
       inner.appendChild(note);
     }
 
@@ -516,7 +515,7 @@ export class OutagesPanel extends Panel {
       const count = p.offGridCount;
       const col = count >= 10000 ? '#EF4444' : count >= 5000 ? '#F97316' : count >= 1000 ? '#F59E0B' : '#EAB308';
       const sev = count >= 10000 ? 'Critique' : count >= 5000 ? 'Élevé' : count >= 1000 ? 'Modéré' : 'Faible';
-      const trendIcon = p.trend === 'worsening' ? '📈' : p.trend === 'improving' ? '📉' : '➡️';
+      const trendIcon = p.trend === 'worsening' ? fmIcon('trending-up', { size: 10 }) : p.trend === 'improving' ? fmIcon('trending-down', { size: 10 }) : '→';
 
       const row = document.createElement('div');
       row.style.cssText = `
@@ -533,7 +532,7 @@ export class OutagesPanel extends Panel {
           <span style="font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;">${sev}</span>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span style="font-size:10px;color:var(--text-muted);">⚡ ~${count.toLocaleString('fr-FR')} PDL hors réseau</span>
+          <span style="font-size:10px;color:var(--text-muted);">${fmIcon('zap', { size: 10 })} ~${count.toLocaleString('fr-FR')} PDL hors réseau</span>
           <span style="font-size:10px;color:var(--text-muted);">${trendIcon} ${p.trend === 'worsening' ? 'En hausse' : p.trend === 'improving' ? 'En baisse' : 'Stable'}</span>
         </div>
       `;
@@ -573,7 +572,7 @@ export class OutagesPanel extends Panel {
     chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:#F97316;">🟠 Tension réseau (Ecowatt)</span>
+        <span style="font-size:12px;font-weight:700;color:#F97316;">${fmStatusDot('high')} Tension réseau (Ecowatt)</span>
         <span style="font-size:10px;font-weight:700;color:#F97316;background:rgba(249,115,22,0.15);padding:1px 7px;border-radius:10px;">${powers.length}</span>
       </div>
     `;
@@ -650,7 +649,7 @@ export class OutagesPanel extends Panel {
     chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:13px;">📍</span>
+        <span style="font-size:13px;">${fmIcon('map-pin', { size: 13 })}</span>
         <span style="font-size:12px;font-weight:700;color:#A855F7;">Zones signalées</span>
         <span style="font-size:10px;font-weight:700;color:#A855F7;background:rgba(168,85,247,0.15);
           padding:1px 7px;border-radius:10px;">${zones.length}</span>
@@ -690,7 +689,7 @@ export class OutagesPanel extends Panel {
 
       const locationSpan = document.createElement('span');
       locationSpan.style.cssText = 'font-size:11px;font-weight:700;color:var(--text-primary);';
-      locationSpan.textContent = '📍 …';
+      locationSpan.textContent = '…';
 
       const topRow = document.createElement('div');
       topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;';
@@ -703,9 +702,9 @@ export class OutagesPanel extends Panel {
       const metaRow = document.createElement('div');
       metaRow.style.cssText = 'display:flex;gap:10px;font-size:10px;color:var(--text-muted);';
       metaRow.innerHTML = `
-        <span>📊 ${p.totalReports} signalement${p.totalReports > 1 ? 's' : ''}</span>
-        <span>📐 r=${p.radiusKm.toFixed(1)} km · ${areaKm2} km²</span>
-        <span>🕐 ${ts}</span>
+        <span>${fmIcon('bar-chart-3', { size: 10 })} ${p.totalReports} signalement${p.totalReports > 1 ? 's' : ''}</span>
+        <span>r=${p.radiusKm.toFixed(1)} km · ${areaKm2} km²</span>
+        <span>${fmIcon('timer', { size: 10 })} ${ts}</span>
       `;
 
       row.appendChild(topRow);
@@ -717,13 +716,13 @@ export class OutagesPanel extends Panel {
         .then((data: { features?: Array<{ properties?: { city?: string; postcode?: string } }> }) => {
           const props = data.features?.[0]?.properties;
           if (props?.city) {
-            locationSpan.textContent = `📍 ${props.city}${props.postcode ? ` (${props.postcode.slice(0, 2)})` : ''}`;
+            locationSpan.textContent = `${props.city}${props.postcode ? ` (${props.postcode.slice(0, 2)})` : ''}`;
           } else {
-            locationSpan.textContent = `📍 ${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
+            locationSpan.textContent = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
           }
         })
         .catch(() => {
-          locationSpan.textContent = `📍 ${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
+          locationSpan.textContent = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
         });
 
       row.addEventListener('mouseenter', () => {
@@ -756,7 +755,7 @@ export class OutagesPanel extends Panel {
     if (telecoms.length === 0) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="font-size:32px;margin-bottom:12px;opacity:0.4;">📡</div>
+          <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('satellite-dish', { size: 32 })}</div>
           <div>Aucune panne télécom signalée.</div>
           <div style="font-size:11px;margin-top:8px;opacity:0.6;">Source ARCEP — mise à jour quotidienne (J-1)</div>
         </div>`;
@@ -815,7 +814,7 @@ export class OutagesPanel extends Panel {
       const dgBadge = opDeg > 0 ? `<span style="font-size:10px;font-weight:700;color:#FF8C00;background:rgba(255,140,0,0.15);padding:1px 6px;border-radius:8px;">${opDeg} dég.</span>` : '';
       accHeader.innerHTML = `
         <div style="display:flex;align-items:center;gap:7px;">
-          <span style="font-size:12px;font-weight:700;color:${accentCol};">📡 ${operator}</span>
+          <span style="font-size:12px;font-weight:700;color:${accentCol};">${fmIcon('satellite-dish', { size: 12 })} ${operator}</span>
           ${hsBadge}${dgBadge}
         </div>
       `;
@@ -830,8 +829,9 @@ export class OutagesPanel extends Panel {
       for (const t of sites) {
         const isHS = t.voiceStatus === 'HS' || t.dataStatus === 'HS';
         const col  = isHS ? '#EF4444' : '#FF8C00';
-        const voiceIcon = t.voiceStatus === 'HS' ? '📵' : t.voiceStatus === 'Degraded' ? '📶' : '📞';
-        const dataIcon  = t.dataStatus  === 'HS' ? '❌' : t.dataStatus  === 'Degraded' ? '⚠️' : '✅';
+        const voiceIcon = t.voiceStatus === 'Degraded' ? fmIcon('signal', { size: 10 }) : fmIcon('phone', { size: 10 });
+        const dataLevel = t.dataStatus === 'HS' ? 'critical' : t.dataStatus === 'Degraded' ? 'medium' : 'stable';
+        const dataIcon  = fmStatusDot(dataLevel);
         const card = document.createElement('div');
         card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:8px 10px;`;
         card.innerHTML = `
@@ -877,7 +877,7 @@ export class OutagesPanel extends Panel {
       ? ` (${this.arcepFetchedDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`
       : '';
     footer.innerHTML = `
-      🟢 ARCEP — Observatoire qualité mobile
+      ${fmStatusDot('stable')} ARCEP — Observatoire qualité mobile
       <span style="display:inline-block;margin-left:4px;padding:1px 6px;background:rgba(59,130,246,0.15);
         border:1px solid rgba(59,130,246,0.3);border-radius:8px;font-size:9px;font-weight:700;
         color:#60A5FA;">${arcepDateLabel}${arcepDateStr}</span>
@@ -896,7 +896,7 @@ export class OutagesPanel extends Panel {
     if (!net) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="font-size:28px;margin-bottom:10px;opacity:0.4;">📡</div>
+          <div style="margin-bottom:10px;opacity:0.4;">${fmIcon('satellite-dish', { size: 28 })}</div>
           <div>Chargement des données BGP…</div>
         </div>`;
       return;
@@ -1001,7 +1001,7 @@ export class OutagesPanel extends Panel {
     if (events.length === 0) {
       const emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'text-align:center;color:var(--text-muted);padding:16px 0;font-size:12px;';
-      emptyEl.innerHTML = `<div style="font-size:24px;opacity:0.4;margin-bottom:8px;">✅</div>Aucune anomalie BGP détectée`;
+      emptyEl.innerHTML = `<div style="opacity:0.4;margin-bottom:8px;">${fmIcon('check', { size: 24 })}</div>Aucune anomalie BGP détectée`;
       frag.appendChild(emptyEl);
     } else {
       const evList = document.createElement('div');
@@ -1030,7 +1030,7 @@ export class OutagesPanel extends Panel {
           this.onIodaClickCb?.({ id: ev.id, coordinates: ev.coordinates });
         });
         const durationStr = ev.isOngoing
-          ? `⏳ En cours (début : ${ev.startTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`
+          ? `${fmIcon('hourglass', { size: 10 })} En cours (début : ${ev.startTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`
           : `Durée : ${formatDurationSec(ev.duration)}`;
         const sources = ev.datasources.join(', ') || 'BGP';
 
@@ -1059,7 +1059,7 @@ export class OutagesPanel extends Panel {
     `;
     const iodaSt  = net.sourcesStatus.ioda;
     const bgpSt   = net.sourcesStatus.bgpview;
-    const dot = (s: string) => s === 'ok' ? '🟢' : s === 'stale' ? '🟡' : '🔴';
+    const dot = (s: string) => fmStatusDot(s === 'ok' ? 'stable' : s === 'stale' ? 'medium' : 'critical');
     footer.innerHTML = `
       <span style="font-size:10px;color:var(--text-muted);">${dot(iodaSt)} IODA</span>
       <span style="font-size:10px;color:var(--text-muted);">${dot(bgpSt)} BGPView</span>
@@ -1079,7 +1079,7 @@ export class OutagesPanel extends Panel {
     if (!infra) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="font-size:28px;margin-bottom:10px;opacity:0.4;">☁️</div>
+          <div style="margin-bottom:10px;opacity:0.4;">${fmIcon('building-2', { size: 28 })}</div>
           <div>Chargement des données cloud…</div>
         </div>`;
       return;
@@ -1138,7 +1138,7 @@ export class OutagesPanel extends Panel {
           <div style="font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;">${lbl}</div>
         </div>
         <div style="font-size:10px;color:var(--text-muted);">${siteSummary}</div>
-        ${incidentCount > 0 ? `<div style="font-size:10px;color:#0EA5E9;margin-top:3px;">⚠ ${incidentCount} incident${incidentCount > 1 ? 's' : ''} actif${incidentCount > 1 ? 's' : ''}</div>` : ''}
+        ${incidentCount > 0 ? `<div style="font-size:10px;color:#0EA5E9;margin-top:3px;">${fmIcon('triangle-alert', { size: 10 })} ${incidentCount} incident${incidentCount > 1 ? 's' : ''} actif${incidentCount > 1 ? 's' : ''}</div>` : ''}
       `;
       // Hover → highlight first DC of provider on map
       const firstDc = dcs[0];
@@ -1228,7 +1228,7 @@ export class OutagesPanel extends Panel {
         const asnStr = a.asnDetails ? `${a.asnDetails.name || `AS${a.asnDetails.asn}`}` : '';
         const detailStr = locationStr || asnStr;
         card.innerHTML = `
-          <div style="font-size:12px;font-weight:700;color:#EF4444;margin-bottom:3px;">⚠ Anomalie trafic en cours</div>
+          <div style="font-size:12px;font-weight:700;color:#EF4444;margin-bottom:3px;">${fmIcon('triangle-alert', { size: 12 })} Anomalie trafic en cours</div>
           ${detailStr ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;">${detailStr}</div>` : ''}
           ${a.asnDetails?.asn ? `<div style="font-size:10px;color:var(--text-muted);">AS${a.asnDetails.asn}</div>` : ''}
         `;
@@ -1244,7 +1244,7 @@ export class OutagesPanel extends Panel {
       display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     `;
     const ss = infra.sourcesStatus;
-    const dot = (s: string) => s === 'ok' ? '🟢' : s === 'stale' ? '🟡' : '🔴';
+    const dot = (s: string) => fmStatusDot(s === 'ok' ? 'stable' : s === 'stale' ? 'medium' : 'critical');
     footer.innerHTML = `
       <span style="font-size:10px;color:var(--text-muted);">${dot(ss.ovh)} OVH</span>
       <span style="font-size:10px;color:var(--text-muted);">${dot(ss.scaleway)} Scaleway</span>
@@ -1280,7 +1280,7 @@ export class OutagesPanel extends Panel {
     const capacityStr = hasCapacity ? ` · ${iip.totalCapacityMW.toLocaleString('fr-FR')} MW` : '';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:#818CF8;">⚡ Incidents HTB RTE (IIP)</span>
+        <span style="font-size:12px;font-weight:700;color:#818CF8;">${fmIcon('zap', { size: 12 })} Incidents HTB RTE (IIP)</span>
         <span style="font-size:10px;font-weight:700;color:#818CF8;background:rgba(99,102,241,0.15);padding:1px 7px;border-radius:10px;">${total}${capacityStr}</span>
         <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span>
       </div>
@@ -1305,7 +1305,7 @@ export class OutagesPanel extends Panel {
     const buildCard = (inc: import('../services/rte-iip.ts').RTEIIPIncident): HTMLElement => {
       const isProduction = inc.type === 'production';
       const col = isProduction ? '#F59E0B' : '#818CF8';
-      const typeLabel = isProduction ? '🏭 Production' : '🔌 Transport HTB';
+      const typeLabel = isProduction ? `${fmIcon('building-2', { size: 10 })} Production` : `${fmIcon('plug-zap', { size: 10 })} Transport HTB`;
       const statusBg = inc.status === 'active' ? '#EF444420' : '#6B728020';
       const statusCol = inc.status === 'active' ? '#EF4444' : '#9CA3AF';
       const statusLabel = inc.status === 'active' ? 'Actif' : inc.status === 'inactive' ? 'Terminé' : 'Retiré';

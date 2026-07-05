@@ -6,6 +6,7 @@
 
 import type { DataSourceStatus } from '../types/index.ts';
 import { t } from '../services/i18n.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 interface StatusPanelOptions {
     variant?: 'panel' | 'dropdown';
@@ -13,12 +14,16 @@ interface StatusPanelOptions {
     icon?: string;
 }
 
-const STATUS_ICONS: Record<string, string> = {
-    ok: '🟢',
-    stale: '🟡',
-    error: '🔴',
-    loading: '⏳',
-};
+/** Rendu HTML du pictogramme de statut (pastille pour ok/stale/error, icône pour loading/inconnu). */
+function statusIconHtml(status: string): string {
+    switch (status) {
+        case 'ok': return fmStatusDot('stable');
+        case 'stale': return fmStatusDot('medium');
+        case 'error': return fmStatusDot('critical');
+        case 'loading': return fmIcon('hourglass', { size: 12 });
+        default: return fmIcon('circle-help', { size: 12 });
+    }
+}
 
 const STATUS_LABELS: Record<string, string> = {
     ok: 'status.realtime',
@@ -106,7 +111,7 @@ export class StatusPanel {
         this.container = container;
         this.variant = options.variant ?? 'panel';
         this.title = options.title ?? t('status.title');
-        this.icon = options.icon ?? '📡';
+        this.icon = options.icon ?? fmIcon('satellite-dish', { size: 14 });
     }
 
     setOnSourceClick(handler: (name: string) => void): void {
@@ -427,7 +432,7 @@ export class StatusPanel {
             }
 
             const statusEl = document.createElement('span');
-            statusEl.textContent = STATUS_ICONS[src.status] ?? '❓';
+            statusEl.innerHTML = statusIconHtml(src.status);
             statusEl.title = t(STATUS_LABELS[src.status] ?? src.status);
             right.appendChild(statusEl);
 

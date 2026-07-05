@@ -8,6 +8,7 @@ import {
 import type { EcowattSignal, EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
 import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 // ─── Palette signal Écowatt ───
 const SIG_COLOR: Record<EcowattSignal, string> = {
@@ -55,7 +56,7 @@ export class EnergyPanel extends Panel {
   private dragOffsetX = 0;
   private dragOffsetY = 0;
   constructor(container: HTMLElement) {
-    super(container, { title: 'Écowatt RTE', icon: '⚡', collapsible: false });
+    super(container, { title: 'Écowatt RTE', collapsible: false });
   }
 
   mount(): void {
@@ -73,18 +74,16 @@ export class EnergyPanel extends Panel {
     `;
 
     // ─── Bouton fermeture ───
-    this.closeBtnEl = document.createElement('button');
-    this.closeBtnEl.innerHTML = '✕';
-    this.closeBtnEl.className = 'energy-panel-close';
+    this.closeBtnEl = this.createCloseButton(() => this.hide());
+    this.closeBtnEl.classList.add('energy-panel-close');
     this.closeBtnEl.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtnEl);
-    this.closeBtnEl.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtnEl);
 
     const header = createPremiumRingHeader({
       ringId: 'elec-ring-progress',
       centerId: 'elec-ring-icon',
-      centerText: '⚡',
+      centerText: fmIcon('zap', { size: 20 }),
       centerFontSize: '20px',
       ringStroke: SIG_COLOR.green,
       title: 'Écowatt RTE - Réseau électrique',
@@ -157,7 +156,7 @@ export class EnergyPanel extends Panel {
     if (!data || Object.keys(data.signals).length === 0) {
       this.contentEl.innerHTML = `
         <div style="text-align: center; padding: 32px 16px;">
-          <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.6;">🔌</div>
+          <div style="margin-bottom: 16px; opacity: 0.6;">${fmIcon('plug-zap', { size: 48 })}</div>
           <div style="color: var(--text-muted);">Aucune donnée Écowatt disponible.</div>
         </div>`;
       const badgeEl = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
@@ -272,8 +271,8 @@ export class EnergyPanel extends Panel {
         const isExport = ic.flowMW < -200;
         const absMW = Math.abs(ic.flowMW);
         const color = isImport ? ELEC_IMPORT_COLOR : isExport ? ELEC_EXPORT_COLOR : '#8e8e93';
-        const arrow = isImport ? '↙ Import' : isExport ? '↗ Export' : '↔';
-        const flag = COUNTRY_FLAGS[ic.country] ?? '🏳';
+        const arrow = isImport ? `${fmIcon('trending-down', { size: 11 })} Import` : isExport ? `${fmIcon('trending-up', { size: 11 })} Export` : fmIcon('arrow-left-right', { size: 11 });
+        const flag = COUNTRY_FLAGS[ic.country] ?? fmIcon('flag', { size: 11 });
         return `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
             <span style="color: var(--text-secondary); font-size: 11px;">${flag} ${ic.country}</span>
@@ -307,7 +306,7 @@ export class EnergyPanel extends Panel {
     }
     this._kpCardEl.innerHTML = `
       <div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:12px;margin-bottom:12px;border:1px solid ${data.color}40;">
-        <div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">☀️ Météo spatiale · Kp index</div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">${fmIcon('sun', { size: 12 })} Météo spatiale · Kp index</div>
         <div style="display:flex;align-items:center;gap:12px;">
           <div style="font-size:28px;font-weight:700;color:${data.color};font-family:monospace;min-width:24px;text-align:center;">${data.kpIndex}</div>
           <div>

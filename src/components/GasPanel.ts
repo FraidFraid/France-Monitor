@@ -19,6 +19,7 @@ import {
 import type { GasNetworkState, EcoGazSignal, BiogasState } from '../types/index.ts';
 import { getEcoGazColor, isGasPanelEnabled, ECOGAZ_LABELS } from '../services/gas.ts';
 import { renderTruthBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const GAS_PANEL_COLORS = {
   terminal: '#A78BFA',
@@ -54,7 +55,7 @@ export class GasPanel extends Panel {
   private _tabListenerAttached = false;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'EcoGaz - Réseau Gaz', icon: '🔥', collapsible: false });
+    super(container, { title: 'EcoGaz - Réseau Gaz', collapsible: false });
   }
 
   mount(): void {
@@ -72,18 +73,16 @@ export class GasPanel extends Panel {
     `;
 
     // Close button
-    this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
-    this.closeBtn.className = 'gas-panel-close';
+    this.closeBtn = this.createCloseButton(() => this.hide());
+    this.closeBtn.classList.add('gas-panel-close');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
-    this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
     const header = createPremiumRingHeader({
       ringId: 'gas-ring-progress',
       centerId: 'gas-ring-icon',
-      centerText: '🔥',
+      centerText: fmIcon('flame', { size: 20 }),
       centerFontSize: '20px',
       ringStroke: '#06B6D4',
       title: 'Réseau Gaz National',
@@ -182,7 +181,7 @@ export class GasPanel extends Panel {
     if (!this.contentEl) return;
     this.contentEl.innerHTML = `
       <div style="text-align: center; padding: 32px 16px;">
-        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.6;">🔐</div>
+        <div style="margin-bottom: 16px; opacity: 0.6;">${fmIcon('lock-keyhole', { size: 48 })}</div>
         <div style="color: var(--text-primary); font-weight: 600; margin-bottom: 12px;">
           Module Gaz désactivé
         </div>
@@ -283,7 +282,7 @@ export class GasPanel extends Panel {
 
     const stats = data.nationalStats;
     const fillColor = this.getFillColor(stats.averageFillLevel);
-    const trendIcon = stats.storageTrend === 'filling' ? '↗' : stats.storageTrend === 'withdrawing' ? '↘' : '→';
+    const trendIcon = stats.storageTrend === 'filling' ? fmIcon('trending-up', { size: 11 }) : stats.storageTrend === 'withdrawing' ? fmIcon('trending-down', { size: 11 }) : '→';
     const trendLabel = stats.storageTrend === 'filling' ? 'Remplissage' : stats.storageTrend === 'withdrawing' ? 'Soutirage' : 'Stable';
 
     const html = `
@@ -440,8 +439,8 @@ export class GasPanel extends Panel {
       ">${label}</button>`;
     };
     return `<div style="display:flex; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:8px;">
-        ${mkTab('gas', '🔥 Réseau Gaz')}
-        ${mkTab('biogas', '🌿 Biométhane')}
+        ${mkTab('gas', `${fmIcon('flame', { size: 12 })} Réseau Gaz`)}
+        ${mkTab('biogas', `${fmIcon('leaf', { size: 12 })} Biométhane`)}
     </div>`;
   }
 
@@ -467,7 +466,7 @@ export class GasPanel extends Panel {
 
     const alertHtml = s.alert
       ? `<div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:8px 12px;margin-bottom:8px;color:#fca5a5;font-size:12px;">
-              ⚠ Chute -${s.alert.severityPct.toFixed(1)}% production vs moyenne 7j
+              ${fmIcon('triangle-alert', { size: 12 })} Chute -${s.alert.severityPct.toFixed(1)}% production vs moyenne 7j
              </div>`
       : '';
 

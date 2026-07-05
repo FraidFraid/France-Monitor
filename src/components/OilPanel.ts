@@ -26,6 +26,7 @@ import {
   renderFuelPriceChartSvg,
   type FuelPriceChartRange,
 } from '../utils/fuelPriceChart.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const OIL_PANEL_COLORS = {
   title: '#FCD34D',
@@ -75,7 +76,7 @@ export class OilPanel extends Panel {
   private dragOffsetY = 0;
 
   constructor(container: HTMLElement) {
-    super(container, { title: OIL_PANEL_TITLE, icon: '🛢️', collapsible: false });
+    super(container, { title: OIL_PANEL_TITLE, collapsible: false });
   }
 
   mount(): void {
@@ -94,12 +95,10 @@ export class OilPanel extends Panel {
     `;
 
     // Close button
-    this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
-    this.closeBtn.className = 'oil-panel-close';
+    this.closeBtn = this.createCloseButton(() => this.hide());
+    this.closeBtn.classList.add('oil-panel-close');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
-    this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
     const header = createPremiumRingHeader({
@@ -206,7 +205,7 @@ export class OilPanel extends Panel {
     if (!this.contentEl) return;
     this.contentEl.innerHTML = `
       <div style="text-align: center; padding: 32px 16px;">
-        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.6;">🔐</div>
+        <div style="margin-bottom: 16px; opacity: 0.6;">${fmIcon('lock-keyhole', { size: 48 })}</div>
         <div style="color: ${OIL_PANEL_COLORS.title}; font-weight: 600; margin-bottom: 12px;">
           Module Pétrole désactivé
         </div>
@@ -265,7 +264,7 @@ export class OilPanel extends Panel {
     // Warning banner if partial data
     const warningBanner = data.meta.partialData ? `
       <div style="background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.32); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 16px;">⚠️</span>
+        <span>${fmIcon('triangle-alert', { size: 16 })}</span>
         <span style="color: ${OIL_PANEL_COLORS.title}; font-size: 11px;">Une ou plusieurs sources OIL ont basculé en fallback consolidé.</span>
       </div>
     ` : '';
@@ -908,7 +907,7 @@ export class OilPanel extends Panel {
 
   private renderFlowsSection(data: OilDashboard): string {
     const flows = data.flows;
-    const trendIcon = flows.trend === 'up' ? '↗' : flows.trend === 'down' ? '↘' : '→';
+    const trendIcon = flows.trend === 'up' ? fmIcon('trending-up', { size: 11 }) : flows.trend === 'down' ? fmIcon('trending-down', { size: 11 }) : '→';
     const trendColor = flows.trend === 'up' ? OIL_PANEL_COLORS.export : flows.trend === 'down' ? OIL_PANEL_COLORS.importGlow : '#a8a29e';
     const trendLabel = flows.trend === 'up' ? 'En hausse' : flows.trend === 'down' ? 'En baisse' : 'Stable';
 
