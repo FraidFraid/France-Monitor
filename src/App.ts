@@ -1924,9 +1924,8 @@ export class App {
     // Mise à jour de l'année réelle si présente dans le JSON
     if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
       HEALTH_APL_LEGEND.source.year = data.metadata.year;
-      // Cast structurel : updateCategory n'existe pas (encore) sur MapLegend ; l'appel
-      // optionnel reste un no-op tant que la méthode n'est pas implémentée (cf. rapport).
-      (this.mapLegend as (MapLegend & { updateCategory?: (category: LegendCategory) => void }) | null)?.updateCategory?.(HEALTH_APL_LEGEND);
+      // addCategory remplace la catégorie existante (même id) en conservant sa visibilité.
+      this.mapLegend?.addCategory(HEALTH_APL_LEGEND);
     }
 
     const aplDepartments = Array.isArray(data?.departements)
