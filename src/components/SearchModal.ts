@@ -47,7 +47,7 @@ export class SearchModal {
         inputWrap.style.cssText = 'padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px;';
 
         const searchIcon = document.createElement('span');
-        searchIcon.textContent = '';
+        searchIcon.textContent = '🔍';
         searchIcon.style.opacity = '0.5';
 
         this.inputEl = document.createElement('input');
@@ -203,7 +203,7 @@ export class SearchModal {
 
         for (const hit of topHits) {
             const row = document.createElement('div');
-            row.className = 'search-result-item'; // CSS to be added if needed, or inline
+            row.className = 'search-result-item';
             row.style.cssText = `
                 padding: 10px 16px; display: flex; align-items: center; gap: 12px;
                 cursor: pointer; transition: background 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05);

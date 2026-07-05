@@ -14,7 +14,6 @@ import { EnergyPanel } from './components/EnergyPanel.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
 import type { FiresPanel } from './components/FiresPanel.ts';
 import type { TrafficPanel } from './components/TrafficPanel.ts';
-import { FinancePanel } from './components/FinancePanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
 import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
@@ -410,6 +409,18 @@ const DEFAULT_LAYERS: MapLayers = {
   oilNetwork: false,
   nuclearFleet: false,
   dayNight: false,
+};
+
+// Preset d'accueil affiché au TOUT PREMIER chargement uniquement (aucune couche
+// persistée : ni paramètre `layers` dans l'URL, ni localStorage). Évite une carte
+// vide à la première visite. N'affecte PAS les utilisateurs existants (leur état
+// vient de localStorage/URL) ni DEFAULT_LAYERS (qui reste le fallback de merge).
+// Seuls des enfants sont listés : normalizeLayerState() dérive les groupes parents
+// (newsGroup, energySystems, environmentGroup).
+const FIRST_LOAD_PRESET_LAYERS: Partial<MapLayers> = {
+  news: true,          // Actualités PQR
+  powerGrid: true,     // Écowatt / réseau électrique
+  environmental: true, // Vigilance Météo-France + Vigicrues
 };
 
 const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
@@ -1309,7 +1320,6 @@ export class App {
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   private currentFiresSources: { sources: string[]; apiKeyUsed: boolean } | null = null;
   private trafficPanel: TrafficPanel | null = null;
-  private financePanel: FinancePanel | null = null;
   private marketStrip: MarketStrip | null = null;
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
@@ -1985,6 +1995,11 @@ export class App {
     const persistedLayers = urlState.layers ?? this.readStoredActiveLayers();
     if (persistedLayers) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
+    } else {
+      // Premier chargement : rien de persisté → preset d'accueil pour ne pas
+      // présenter une carte vide. Même chemin (normalizeLayerState) que la
+      // restauration : les groupes parents sont recalculés automatiquement.
+      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...FIRST_LOAD_PRESET_LAYERS });
     }
 
     this.renderShell();
@@ -2050,8 +2065,6 @@ export class App {
 
     // ── OPTIONAL layers — background
     this.loadOptionalLayers().catch((err) => console.error('[Init] Optional layers error:', err));
-
-    console.log('[FranceMonitor] App initialized — map interactive, layers loading in background');
   }
 
   // ─── Shell Layout ───────────────────────────────────────────────────────────
@@ -3055,8 +3068,6 @@ export class App {
     } else if (name === 'Feux NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
       this.layoutEnvironmentFloatingPanels();
-    } else if (name === 'Marchés Financiers') {
-      if (this.currentMarketData.length > 0) this.financePanel?.show(this.currentMarketData);
     } else if (name === 'Santé SPF / DREES') {
       if (this.currentHealthFeatures) this.nationalHealthPanel?.show(this.currentHealthFeatures);
     }
@@ -4012,9 +4023,6 @@ export class App {
         const data = await fetchMarketData();
         this.currentMarketData = data;
         this.marketStrip?.update(data);
-        if (data.length > 0) {
-          this.financePanel?.show(data);
-        }
       } catch (err) {
         console.error('[Finance] Polling failed', err);
       }

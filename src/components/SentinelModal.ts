@@ -252,7 +252,6 @@ export class SentinelModal {
       this.metaEl.innerHTML = '';
       this.listEl.innerHTML = '';
       this.toggleBtn.disabled = true;
-      console.error('[SentinelModal] load failed', error);
     }
   }
 
@@ -294,7 +293,6 @@ export class SentinelModal {
       this.renderScene();
     } catch (error) {
       if (requestSeq !== this.ndwiRequestSeq || !this.isVisible) return;
-      console.error('[SentinelModal] NDWI load failed', error);
       this.ndwiImageUrl = null;
       this.ndwiLoading = false;
       this.ndwiError = error instanceof Error ? error.message : 'NDWI indisponible pour cette crue';
