@@ -10,6 +10,7 @@
 
 import type { HealthDepartmentMetric, HealthFeatures } from '../types/index.ts';
 import type { SentinellesBarometerScore } from './sentinellesService.ts';
+import type { IconName } from '../components/shared/icons.ts';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -54,8 +55,8 @@ export interface HealthBarometerSubIndex {
     value: number;
     /** Libellé display */
     label: string;
-    /** Icone emoji */
-    icon: string;
+    /** Icône Lucide (rendue via `fmIcon`) */
+    icon: IconName;
     /** Description courte du calcul */
     description: string;
     /** Variation par rapport à la valeur précédente (si connue) */
@@ -236,35 +237,35 @@ export function computeHealthBarometer(
             stressHospitalier: {
                 value: Math.round(sh * 10) / 10,
                 label: 'Stress hospitalier',
-                icon: '🏥',
+                icon: 'hospital',
                 description: 'Moyenne pondérée pop. des ISS départementaux',
                 delta: delta(prevSubs?.stressHospitalier, sh),
             },
             pressureUrgences: {
                 value: Math.round(pu * 10) / 10,
                 label: 'Pression urgences',
-                icon: '🚨',
+                icon: 'siren',
                 description: 'Hausse max des motifs OSCOUR / SOS Médecins, par pop.',
                 delta: delta(prevSubs?.pressureUrgences, pu),
             },
             fragiliteMedicale: {
                 value: Math.round(fm * 10) / 10,
                 label: 'Déserts médicaux',
-                icon: '🩺',
+                icon: 'stethoscope',
                 description: 'Part pop. en zones APL fragile ou désert',
                 delta: delta(prevSubs?.fragiliteMedicale, fm),
             },
             tensionMedicaments: {
                 value: Math.round(tm * 10) / 10,
                 label: 'Tension médicaments',
-                icon: '💊',
+                icon: 'pill',
                 description: 'Ratio ruptures+tensions / total ANSM',
                 delta: delta(prevSubs?.tensionMedicaments, tm),
             },
             reseauSentinelles: {
                 value: Math.round(rs * 10) / 10,
                 label: 'Réseau Sentinelles',
-                icon: '🦠',
+                icon: 'dna',
                 description: 'Incidences de grippe, diarrhées, varicelle',
                 delta: delta(prevSubs?.reseauSentinelles, rs),
             },

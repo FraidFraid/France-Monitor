@@ -232,14 +232,6 @@ export function scoreToLevel(score: number): 'critical' | 'high' | 'medium' | 'l
   return 'stable';
 }
 
-export function scoreToEmoji(score: number): string {
-  if (score >= 80) return '🔴';
-  if (score >= 60) return '🟠';
-  if (score >= 40) return '🟡';
-  if (score >= 20) return '🟢';
-  return '⚪';
-}
-
 function describeSecurityDriver(family: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation' | null): string | undefined {
   switch (family) {
     case 'leaks':
@@ -254,14 +246,6 @@ function describeSecurityDriver(family: 'leaks' | 'ransomware' | 'vulnerabilitie
       return 'Bonus borné pour zones et secteurs où plusieurs signaux convergent.';
     default:
       return undefined;
-  }
-}
-
-export function trendToArrow(trend: 'up' | 'down' | 'stable'): string {
-  switch (trend) {
-    case 'up': return '↗';
-    case 'down': return '↘';
-    default: return '→';
   }
 }
 
@@ -562,7 +546,7 @@ export function computeInfraFromOutages(
 
     if (poScore > bestScore) {
       bestScore = poScore;
-      bestLabel = '⚠️ Blackout Zone';
+      bestLabel = 'Blackout Zone';
       bestSource = 'Enedis';
     }
   }
@@ -593,7 +577,7 @@ export function computeInfraFromOutages(
 
   if (telecomScore > bestScore) {
     bestScore = telecomScore;
-    bestLabel = '⚠️ Panne Réseau';
+    bestLabel = 'Panne Réseau';
     bestSource = 'ARCEP';
   }
 

@@ -12,8 +12,9 @@ import {
   getPremiumModalStyle,
 } from './panelHeader.ts';
 import type { ISNRData } from '../types/index.ts';
-import { scoreToEmoji, trendToArrow } from '../services/stability-index.ts';
+import { scoreToLevel } from '../services/stability-index.ts';
 import { renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 const SCORE_COLORS: Record<string, string> = {
   critical: 'var(--threat-critical)',
@@ -325,9 +326,11 @@ export class ISNRPanel extends Panel {
       `;
 
       for (const dept of topDepts) {
-        const emoji = scoreToEmoji(dept.score);
+        const dotLevel = scoreToLevel(dept.score);
         const color = scoreToColor(dept.score);
-        const arrow = trendToArrow(dept.trend);
+        const trendIcon = dept.trend === 'up' ? fmIcon('trending-up')
+                         : dept.trend === 'down' ? fmIcon('trending-down')
+                         : '→';
         const trendColor = dept.trend === 'up' ? 'var(--threat-high)' :
                           dept.trend === 'down' ? 'var(--threat-low)' : 'var(--text-muted)';
 
@@ -343,7 +346,7 @@ export class ISNRPanel extends Panel {
           ">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 16px;">${emoji}</span>
+                <span style="font-size: 16px;">${fmStatusDot(dotLevel)}</span>
                 <div>
                   <span style="color: var(--text-muted); font-size: 11px;">${dept.code}</span>
                   <span style="color: var(--text-primary); font-size: 13px; font-weight: 500; margin-left: 6px;">${dept.name}</span>
@@ -351,7 +354,7 @@ export class ISNRPanel extends Panel {
               </div>
               <div style="display: flex; align-items: center; gap: 6px;">
                 <span style="font-size: 16px; font-weight: 700; color: ${color};">${dept.score}</span>
-                <span style="color: ${trendColor}; font-size: 14px;">${arrow}</span>
+                <span style="color: ${trendColor}; font-size: 14px;">${trendIcon}</span>
               </div>
             </div>
             <div style="display: flex; gap: 4px; flex-wrap: wrap;">

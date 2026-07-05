@@ -314,7 +314,7 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
   const confidence = Math.min(0.88, 0.50 + (score / 100) * 0.30 + (outageCorrelation ? 0.10 : 0) + (certCritical * 0.04));
 
   const drivers: string[] = [];
-  drivers.push(`Score cyber consolidé : ${score}/100 (tendance ${trend === 'rising' ? '↗ haussière' : trend === 'falling' ? '↘ baissière' : '→ stable'})`);
+  drivers.push(`Score cyber consolidé : ${score}/100 (tendance ${trend === 'rising' ? 'haussière' : trend === 'falling' ? 'baissière' : 'stable'})`);
   if (dominantBreakdown.length > 0) {
     drivers.push(...dominantBreakdown.slice(0, 3).map((item) => `${item.label} : ${item.score}/${item.cap}`));
   }

@@ -33,7 +33,7 @@ export type IconName =
   | 'external-link' | 'cloud-lightning' | 'siren' | 'moon' | 'wind' | 'sun'
   | 'search' | 'plug-zap' | 'newspaper' | 'train-front' | 'stethoscope'
   | 'hospital' | 'landmark' | 'hourglass' | 'atom' | 'cloud-rain' | 'satellite'
-  | 'droplet' | 'lock-keyhole' | 'snowflake' | 'thermometer' | 'mountain-snow'
+  | 'droplet' | 'lock-keyhole' | 'snowflake' | 'thermometer' | 'thermometer-snowflake' | 'mountain-snow'
   | 'fuel' | 'timer' | 'bar-chart-3' | 'skull' | 'construction' | 'fish'
   | 'car-front' | 'hard-hat' | 'megaphone' | 'ship' | 'ban' | 'package'
   | 'flag' | 'inbox' | 'triangle-alert' | 'circle-off'
@@ -88,6 +88,7 @@ const ICON_PATHS: Record<IconName, string> = {
   'lock-keyhole': '<circle cx="12" cy="16" r="1" /> <rect x="3" y="10" width="18" height="12" rx="2" /> <path d="M7 10V7a5 5 0 0 1 10 0v3" />',
   'snowflake': '<path d="m10 20-1.25-2.5L6 18" /> <path d="M10 4 8.75 6.5 6 6" /> <path d="m14 20 1.25-2.5L18 18" /> <path d="m14 4 1.25 2.5L18 6" /> <path d="m17 21-3-6h-4" /> <path d="m17 3-3 6 1.5 3" /> <path d="M2 12h6.5L10 9" /> <path d="m20 10-1.5 2 1.5 2" /> <path d="M22 12h-6.5L14 15" /> <path d="m4 10 1.5 2L4 14" /> <path d="m7 21 3-6-1.5-3" /> <path d="m7 3 3 6h4" />',
   'thermometer': '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />',
+  'thermometer-snowflake': '<path d="m10 20-1.25-2.5L6 18" /> <path d="M10 4 8.75 6.5 6 6" /> <path d="M10.585 15H10" /> <path d="M2 12h6.5L10 9" /> <path d="M20 14.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0z" /> <path d="m4 10 1.5 2L4 14" /> <path d="m7 21 3-6-1.5-3" /> <path d="m7 3 3 6h2" />',
   'mountain-snow': '<path d="m8 3 4 8 5-5 5 15H2L8 3z" /> <path d="M4.14 15.08c2.62-1.57 5.24-1.43 7.86.42 2.74 1.94 5.49 2 8.23.19" />',
   'fuel': '<path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0v-6.998a2 2 0 0 0-.59-1.42L18 5" /> <path d="M14 21V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16" /> <path d="M2 21h13" /> <path d="M3 9h11" />',
   'timer': '<line x1="10" x2="14" y1="2" y2="2" /> <line x1="12" x2="15" y1="14" y2="11" /> <circle cx="12" cy="14" r="8" />',

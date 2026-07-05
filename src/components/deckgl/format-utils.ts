@@ -1,7 +1,8 @@
 // Extracted from DeckGLMap.ts — pure formatting / labelling / conversion helpers.
 import { ISS_LEVELS } from '../../types/index.ts';
-import type { ISSLevel, ThreatLevel } from '../../types/index.ts';
-import { WEATHER_RISK_EMOJIS, ISNR_COLORS } from './constants.ts';
+import type { ISSLevel, MeteoRiskType, ThreatLevel } from '../../types/index.ts';
+import { WEATHER_RISK_ICONS, ISNR_COLORS } from './constants.ts';
+import type { IconName } from '../shared/icons.ts';
 
 export function getWeatherRadarSourceId(regionId: string): string {
   return `weather-radar-src-${regionId}`;
@@ -41,10 +42,10 @@ export function escapeHtml(value: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
-/** Get emoji for primary risk */
-export function getWeatherRiskEmoji(risks: string[]): string {
-  if (risks.length === 0) return '⚠️';
-  return WEATHER_RISK_EMOJIS[risks[0]] ?? '⚠️';
+/** Icône Lucide (nom) du risque météo principal */
+export function getWeatherRiskIcon(risks: MeteoRiskType[]): IconName {
+  if (risks.length === 0) return 'triangle-alert';
+  return WEATHER_RISK_ICONS[risks[0]] ?? 'triangle-alert';
 }
 
 // ─── ISS (Indice de Stress Sanitaire) → color helpers ───

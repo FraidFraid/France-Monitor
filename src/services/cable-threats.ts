@@ -70,20 +70,21 @@ function determineSeverity(distanceMeters: number, speedKnots: number): DefenseA
 }
 
 /**
- * Génère un message d'alerte lisible
+ * Génère un message d'alerte lisible.
+ * La sévérité est portée par `DefenseAlert.severity` (structuré) — le
+ * composant consommateur choisit le rendu (pastille `fmStatusDot`), le
+ * message ne contient plus de glyphe de sévérité.
  */
 function generateAlertMessage(
   ship: AISShip,
   cableName: string,
   distanceMeters: number,
   speedKnots: number,
-  severity: DefenseAlert['severity']
 ): string {
   const distStr = formatProximityDistance(distanceMeters);
   const speedStr = speedKnots.toFixed(1);
-  const prefix = severity === 'high' ? '🔴' : severity === 'medium' ? '🟠' : '🟡';
 
-  return `${prefix} ${ship.name} à ${distStr} du câble "${cableName}" (${speedStr} nœuds)`;
+  return `${ship.name} à ${distStr} du câble "${cableName}" (${speedStr} nœuds)`;
 }
 
 /**
@@ -138,7 +139,7 @@ export function detectCableThreats(
         id: `cable-threat-${ship.id}-${Date.now()}`,
         type: 'cable-threat',
         severity,
-        message: generateAlertMessage(ship, nearestCable.name, nearestCable.distanceMeters, ship.speed, severity),
+        message: generateAlertMessage(ship, nearestCable.name, nearestCable.distanceMeters, ship.speed),
         shipId: ship.id,
         shipName: ship.name,
         cableId: nearestCable.id,

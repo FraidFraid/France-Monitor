@@ -13,6 +13,7 @@
 
 import type { MeteoAlert, MeteoVigilanceLevel, MeteoRiskType } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import type { IconName } from '../components/shared/icons.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('meteo-france', {
@@ -45,11 +46,10 @@ export interface VigilanceTimeline {
   fetchedAt: Date;
 }
 
-/** Pictogramme de risque météo */
+/** Pictogramme de risque météo — icône Lucide (`fmIcon`), plus de glyphe emoji. */
 export interface RiskPictogram {
   type: MeteoRiskType;
-  emoji: string;
-  svgPath?: string;
+  icon: IconName;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -141,30 +141,32 @@ export const DEPT_CENTROIDS: Record<string, [number, number]> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PICTOGRAMMES RISQUES (emoji + description)
+// PICTOGRAMMES RISQUES (icône Lucide + description)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const RISK_PICTOGRAMS: Record<MeteoRiskType, RiskPictogram> = {
-    'wind': { type: 'wind', emoji: '💨' },
-    'rain-flood': { type: 'rain-flood', emoji: '🌧️' },
-    'thunderstorm': { type: 'thunderstorm', emoji: '⛈️' },
-    'flood': { type: 'flood', emoji: '🌊' },
-    'snow-ice': { type: 'snow-ice', emoji: '❄️' },
-    'heat': { type: 'heat', emoji: '🌡️' },
-    'cold': { type: 'cold', emoji: '🥶' },
-    'avalanche': { type: 'avalanche', emoji: '🏔️' },
-    'wave-surge': { type: 'wave-surge', emoji: '🌊' },
+    'wind': { type: 'wind', icon: 'wind' },
+    'rain-flood': { type: 'rain-flood', icon: 'cloud-rain' },
+    'thunderstorm': { type: 'thunderstorm', icon: 'cloud-lightning' },
+    'flood': { type: 'flood', icon: 'waves' },
+    'snow-ice': { type: 'snow-ice', icon: 'snowflake' },
+    'heat': { type: 'heat', icon: 'thermometer' },
+    'cold': { type: 'cold', icon: 'thermometer-snowflake' },
+    'avalanche': { type: 'avalanche', icon: 'mountain-snow' },
+    'wave-surge': { type: 'wave-surge', icon: 'waves' },
 };
 
-/** Retourne l'emoji du risque principal (le premier, généralement le plus grave) */
-export function getPrimaryRiskEmoji(risks: MeteoRiskType[]): string {
-    if (risks.length === 0) return '⚠️';
-    return RISK_PICTOGRAMS[risks[0]]?.emoji ?? '⚠️';
+/** Retourne l'icône du risque principal (le premier, généralement le plus grave) */
+export function getPrimaryRiskIcon(risks: MeteoRiskType[]): IconName {
+    if (risks.length === 0) return 'triangle-alert';
+    return RISK_PICTOGRAMS[risks[0]]?.icon ?? 'triangle-alert';
 }
 
-/** Retourne tous les emojis de risques concaténés */
-export function getAllRiskEmojis(risks: MeteoRiskType[]): string {
-    return risks.map(r => RISK_PICTOGRAMS[r]?.emoji ?? '').join(' ');
+/** Retourne toutes les icônes de risques (dédoublonnage laissé au consommateur) */
+export function getAllRiskIcons(risks: MeteoRiskType[]): IconName[] {
+    return risks
+        .map(r => RISK_PICTOGRAMS[r]?.icon)
+        .filter((icon): icon is IconName => icon !== undefined);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

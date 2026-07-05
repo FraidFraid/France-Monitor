@@ -15,6 +15,7 @@ import {
   getPremiumModalStyle,
 } from './panelHeader.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon } from './shared/icons.ts';
 
 export class HealthBarometerPanel {
   private container: HTMLElement;
@@ -255,7 +256,7 @@ export class HealthBarometerPanel {
         min-width: 0;
       ">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-          <span style="font-size:16px;">${sub.icon}</span>
+          <span style="font-size:16px;">${fmIcon(sub.icon, { size: 16 })}</span>
           <span style="color:#d8d8df; font-size:12px; font-weight:600; truncate; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${sub.label}</span>
         </div>
         <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:8px;">

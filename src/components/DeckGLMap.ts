@@ -45,7 +45,7 @@ import {
   escapeHtml,
   getWeatherRadarSourceId,
   getWeatherRadarLayerId,
-  getWeatherRiskEmoji,
+  getWeatherRiskIcon,
   issToFillColor,
   issToLineColor,
   issToColor,
@@ -56,7 +56,7 @@ import {
   deptCodeToId,
   clamp,
 } from './deckgl/format-utils.ts';
-import { fmStatusDot } from './shared/icons.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import {
   buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
@@ -304,7 +304,7 @@ import {
   ECOWATT_COLORS,
   METEO_COLORS,
   WEATHER_HIGHLIGHT_STATE,
-  WEATHER_RISK_EMOJIS,
+  WEATHER_RISK_ICONS,
   AIS_DESTINATION_ALIASES,
   AIS_PORT_LOCODES,
   WEATHER_DEPT_CENTROIDS,
@@ -5191,9 +5191,9 @@ export class DeckGLMap {
       const risksHtml = risks.length > 0
         ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
              ${risks.map(r => {
-          const emoji = WEATHER_RISK_EMOJIS[r] ?? '⚠️';
+          const icon = WEATHER_RISK_ICONS[r as import('../types/index.ts').MeteoRiskType] ?? 'triangle-alert';
           const label = riskLabels[r] ?? r;
-          return `<span style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px; font-size:11px;">${emoji} ${label}</span>`;
+          return `<span style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">${fmIcon(icon)} ${label}</span>`;
         }).join('')}
            </div>`
         : '';
@@ -9695,8 +9695,8 @@ export class DeckGLMap {
       const centroid = WEATHER_DEPT_CENTROIDS[alert.departmentCode];
       if (!centroid) continue;
 
-      // Get primary risk emoji
-      const emoji = getWeatherRiskEmoji(alert.risks);
+      // Get primary risk icon (nom d'icône Lucide)
+      const icon = getWeatherRiskIcon(alert.risks);
 
       // Priority for z-ordering (red = highest)
       const priority = alert.level === 'red' ? 4 :
@@ -9713,7 +9713,7 @@ export class DeckGLMap {
           code: alert.departmentCode,
           department: alert.department,
           level: alert.level,
-          emoji,
+          icon,
           priority,
           risks: alert.risks.join(', '),
         },

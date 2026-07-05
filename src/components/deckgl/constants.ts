@@ -1,6 +1,7 @@
 // Extracted from DeckGLMap.ts — source/layer IDs, color tables and static dictionaries.
 import maplibregl from 'maplibre-gl';
-import type { EcowattSignal, MapViewState } from '../../types/index.ts';
+import type { EcowattSignal, MapViewState, MeteoRiskType } from '../../types/index.ts';
+import type { IconName } from '../shared/icons.ts';
 
 // ─── Source & Layer IDs ───
 export const SRC = 'news-src';              // Clusterable news (excludes critical)
@@ -310,17 +311,17 @@ export const WEATHER_HIGHLIGHT_STATE: maplibregl.ExpressionSpecification = [
   ['boolean', ['feature-state', 'selected'], false],
 ];
 
-// ─── Météo risk pictograms ───
-export const WEATHER_RISK_EMOJIS: Record<string, string> = {
-  'wind': '💨',
-  'rain-flood': '🌧️',
-  'thunderstorm': '⛈️',
-  'flood': '🌊',
-  'snow-ice': '❄️',
-  'heat': '🌡️',
-  'cold': '🥶',
-  'avalanche': '🏔️',
-  'wave-surge': '🌊',
+// ─── Météo risk pictograms (icônes Lucide, rendues via fmIcon) ───
+export const WEATHER_RISK_ICONS: Record<MeteoRiskType, IconName> = {
+  'wind': 'wind',
+  'rain-flood': 'cloud-rain',
+  'thunderstorm': 'cloud-lightning',
+  'flood': 'waves',
+  'snow-ice': 'snowflake',
+  'heat': 'thermometer',
+  'cold': 'thermometer-snowflake',
+  'avalanche': 'mountain-snow',
+  'wave-surge': 'waves',
 };
 
 export const AIS_DESTINATION_ALIASES: Record<string, string> = {

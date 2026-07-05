@@ -262,7 +262,7 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
                 ? Math.round(Math.max(1, continuityPct * 120))
                 : 0;
 
-            const signalLabel = signal === 'red' ? '🔴 rouge' : signal === 'orange' ? '🟠 orange' : '🟢 vert';
+            const signalLabel = signal === 'red' ? 'rouge' : signal === 'orange' ? 'orange' : 'vert';
             const causePrefix = hasEnedisMetric
                 ? 'Indicateurs Historiques DataFair'
                 : 'Risque tension réseau';

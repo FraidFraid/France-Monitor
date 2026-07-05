@@ -19,6 +19,7 @@ import type {
     OutageZoneProperties,
 } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { fmStatusDot, type FmDotLevel } from '../components/shared/icons.ts';
 
 Watchdog.register('scraping-citoyen', {
     label: 'Pannes Citoyennes',
@@ -235,17 +236,18 @@ export function getZoneColor(
  */
 export function buildZonePopupHtml(zone: OutageZone): string {
     const p = zone.properties;
-    const severityLabel: Record<OutageZoneProperties['severity'], string> = {
-        low: '🟡 Faible',
-        medium: '🟠 Modéré',
-        high: '🔴 Élevé',
-        critical: '🟣 Critique',
+    const severityMeta: Record<OutageZoneProperties['severity'], { level: FmDotLevel; label: string }> = {
+        low: { level: 'low', label: 'Faible' },
+        medium: { level: 'medium', label: 'Modéré' },
+        high: { level: 'high', label: 'Élevé' },
+        critical: { level: 'critical', label: 'Critique' },
     };
+    const meta = severityMeta[p.severity];
     const sourcesStr = p.sources.join(', ');
 
     return `
         <div class="popup-outage-zone">
-            <div class="popup-header">${severityLabel[p.severity]} — Zone de pannes</div>
+            <div class="popup-header">${fmStatusDot(meta.level, meta.label)} — Zone de pannes</div>
             <div class="popup-body">
                 <p><strong>${p.totalReports}</strong> signalements · densité ${p.density.toFixed(1)}/km²</p>
                 <p>Rayon estimé : ~${p.radiusKm} km</p>

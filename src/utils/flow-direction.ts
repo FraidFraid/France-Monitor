@@ -22,8 +22,6 @@ export interface FlowDirectionInfo {
   arcTo:      [number, number];
   /** Ex : "Espagne → France" ou "France → Espagne" */
   title:      string;
-  /** Ex : "Import ↙" | "Export ↗" | "Équilibré ↔" */
-  badge:      string;
 }
 
 // Couleurs canoniques flux gaz (synchronisées avec GAS_FLOW_STYLE dans DeckGLMap.ts)
@@ -39,7 +37,6 @@ export interface GasFlowDirectionInfo {
   color:            string;
   glowColor:        string;
   title:            string; // 'Espagne → France'
-  badge:            string; // 'Import ↙' | 'Export ↗'
 }
 
 /**
@@ -68,7 +65,6 @@ export function resolveGasFlowDirection(
     color,
     glowColor,
     title: isImport ? `${neighborLabel} → France` : `France → ${neighborLabel}`,
-    badge: isImport ? 'Import ↙' : 'Export ↗',
   };
 }
 
@@ -110,8 +106,5 @@ export function resolveFlowDirection(
     title:   isImport  ? `${neighborLabel} → France`
            : isExport  ? `France → ${neighborLabel}`
            :             `France ↔ ${neighborLabel}`,
-    badge:   isImport  ? 'Import ↙'
-           : isExport  ? 'Export ↗'
-           :             'Équilibré ↔',
   };
 }
