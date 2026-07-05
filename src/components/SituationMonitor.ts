@@ -257,9 +257,16 @@ export class SituationMonitor {
     });
 
     this.el.querySelectorAll<HTMLElement>('.sit-mon__item').forEach((itemEl, i) => {
-      itemEl.addEventListener('click', (e) => {
+      const openDetail = (e: Event): void => {
         e.stopPropagation();
         this.showDetail(visibleSituations[i]);
+      };
+      itemEl.addEventListener('click', openDetail);
+      itemEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openDetail(e);
+        }
       });
     });
 

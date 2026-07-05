@@ -223,7 +223,7 @@ export class UnderMapNewsFeed {
           <div id="under-map-news-heatmap"></div>
           <div class="under-map-news__history-separator"></div>
           <div class="under-map-news__section-title">Filtres</div>
-          <select class="under-map-news__region-select">
+          <select class="under-map-news__region-select" aria-label="Filtrer par région">
             <option value="">Toutes les régions</option>
             <option value="Bretagne">Bretagne</option>
             <option value="Nouvelle-Aquitaine">Nouvelle-Aquitaine</option>
@@ -244,6 +244,7 @@ export class UnderMapNewsFeed {
             type="text"
             class="under-map-news__search-input"
             placeholder="${t('newsFeed.searchPlaceholder')}"
+            aria-label="Rechercher dans l'actualité"
           />
         </div>
         <div class="under-map-news__pulse" id="under-map-news-pulse"></div>

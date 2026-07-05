@@ -6958,7 +6958,7 @@ export class DeckGLMap {
       const arrTime = isLast && arrivalUpdatedTime ? arrivalUpdatedTime
         : isLast && arrivalPlannedTime ? arrivalPlannedTime : '';
       const time = depTime || arrTime;
-      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? severityColor : '#636366';
+      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? severityColor : '#8a8a9a';
       return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
         <span style="font-size:11px;color:${color};font-weight:${weight};">${this.escapeHtml(stop)}</span>
         ${time ? `<span style="font-size:10px;color:${timeColor};flex-shrink:0;margin-left:8px;">${this.escapeHtml(time)}</span>` : ''}

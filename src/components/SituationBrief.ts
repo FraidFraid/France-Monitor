@@ -212,8 +212,17 @@ export class SituationBrief {
       const canFly = item.lat != null && item.lon != null;
       if (!canFly) return;
       itemEl.classList.add('sit-brief__item--clickable');
-      itemEl.addEventListener('click', () => {
+      itemEl.setAttribute('role', 'button');
+      itemEl.setAttribute('tabindex', '0');
+      const flyToItem = (): void => {
         if (item.lon != null && item.lat != null) this.onFlyTo?.(item.lon, item.lat, 8);
+      };
+      itemEl.addEventListener('click', flyToItem);
+      itemEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          flyToItem();
+        }
       });
     });
   }

@@ -2088,6 +2088,13 @@ export class App {
   private renderShell(): void {
     const language = getCurrentLanguage();
 
+    // ── Lien d'évitement (accessibilité clavier — premier élément focusable) ──
+    const skipLink = document.createElement('a');
+    skipLink.className = 'skip-link';
+    skipLink.href = '#main-content';
+    skipLink.textContent = 'Aller au contenu';
+    this.container.appendChild(skipLink);
+
     // ── Header ──
     const header = document.createElement('header');
     header.className = 'header';
@@ -2223,6 +2230,8 @@ export class App {
     // ── Main layout ──
     const main = document.createElement('main');
     main.className = 'main-container';
+    main.id = 'main-content';
+    main.tabIndex = -1;
 
     // ── Sidebar ──
     const sidebar = document.createElement('aside');

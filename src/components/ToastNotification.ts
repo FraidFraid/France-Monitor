@@ -46,6 +46,9 @@ export class ToastNotification {
   constructor() {
     this.container = document.createElement('div');
     this.container.className = 'toast-container';
+    // Région live : les notifications sont annoncées par les lecteurs d'écran (RGAA 9.4)
+    this.container.setAttribute('role', 'status');
+    this.container.setAttribute('aria-live', 'polite');
     document.body.appendChild(this.container);
   }
 

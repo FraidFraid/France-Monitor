@@ -21,13 +21,13 @@ Socle sémantique solide (landmarks, lang dynamique, noscript, pages annexes bie
 
 ## Quick wins (< 1 h chacun)
 
-1. `--text-muted` → ≈ `#8a8a9a` (≈ 4,6:1) ; vérifier aussi `#636366`, `#7c8aa5` en hover, `--threat-critical` sur surface hover
-2. Lien d'évitement + style visible-au-focus
-3. `role="dialog"` + `aria-modal` + `aria-label` sur SentinelModal
-4. `aria-label` sur les champs (select région, inputs recherche)
-5. `role="status"` + `aria-live="polite"` sur ToastNotification
-6. Handlers keydown (Entrée/Espace) sur les items de monitors
-7. Règle globale `:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }`
+1. ✅ corrigé (2026-07-05) — `--text-muted` → ≈ `#8a8a9a` (≈ 4,6:1) ; vérifier aussi `#636366`, `#7c8aa5` en hover, `--threat-critical` sur surface hover
+2. ✅ corrigé (2026-07-05) — Lien d'évitement + style visible-au-focus
+3. ✅ corrigé (2026-07-05) — `role="dialog"` + `aria-modal` + `aria-label` sur SentinelModal
+4. ✅ corrigé (2026-07-05) — `aria-label` sur les champs (select région, inputs recherche)
+5. ✅ corrigé (2026-07-05) — `role="status"` + `aria-live="polite"` sur ToastNotification
+6. ✅ corrigé (2026-07-05) — Handlers keydown (Entrée/Espace) sur les items de monitors
+7. ✅ corrigé (2026-07-05) — Règle globale `:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }`
 
 ## Chantiers lourds
 

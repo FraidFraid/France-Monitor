@@ -10,11 +10,13 @@
   /* Text */
   --text-primary: #e8e8ec;
   --text-secondary: #9898a8;
-  --text-muted: #606070;
+  --text-muted: #8a8a9a;
   --text-accent: #6c8cff;
 
   /* Threat levels */
   --threat-critical: #ff2d55;
+  /* Variante éclaircie réservée au TEXTE critique sur surfaces (contraste ≥ 4,5:1), les fonds de badges gardent --threat-critical */
+  --threat-critical-text: #ff5c7a;
   --threat-high: #ff6b35;
   --threat-medium: #ffcc00;
   --threat-low: #34c759;
@@ -102,6 +104,40 @@ body {
   height: 100vh;
   width: 100%;
   overflow: hidden;
+}
+
+/* ═══ Accessibilité ═══ */
+/* Indicateur de focus global (RGAA 10.7) — n'affecte que la navigation clavier */
+:focus-visible {
+  outline: 2px solid var(--text-accent);
+  outline-offset: 2px;
+}
+
+/* Lien d'évitement (RGAA 12.7) — masqué visuellement, visible au focus clavier */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--text-accent);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+  opacity: 0;
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  opacity: 1;
+  outline: 2px solid var(--text-accent);
+  outline-offset: 2px;
 }
 
 /* ═══ Scrollbar ═══ */
@@ -370,7 +406,7 @@ button.header-quality-link {
 }
 
 .sources-quality-card--danger strong {
-  color: var(--threat-critical);
+  color: var(--threat-critical-text);
 }
 
 .sources-quality-section {
@@ -466,7 +502,7 @@ button.header-quality-link {
 }
 
 .sources-quality-badge--error {
-  color: var(--threat-critical);
+  color: var(--threat-critical-text);
   border-color: rgba(255, 45, 85, 0.42);
   background: rgba(255, 45, 85, 0.08);
 }
@@ -1533,7 +1569,7 @@ button.header-quality-link {
 
 .threat-badge--critical {
   background: rgba(255, 45, 85, 0.15);
-  color: var(--threat-critical);
+  color: var(--threat-critical-text);
   border: 1px solid rgba(255, 45, 85, 0.3);
 }
 
@@ -2718,7 +2754,7 @@ button.header-quality-link {
 }
 
 .under-map-news__signal-pill--alert {
-  color: var(--threat-critical);
+  color: var(--threat-critical-text);
   background: rgba(255, 45, 85, 0.1);
   border-color: rgba(255, 45, 85, 0.22);
 }

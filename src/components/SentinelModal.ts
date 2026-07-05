@@ -135,6 +135,9 @@ export class SentinelModal {
 
     this.panelEl = document.createElement('div');
     this.panelEl.className = 'sentinel-modal';
+    this.panelEl.setAttribute('role', 'dialog');
+    this.panelEl.setAttribute('aria-modal', 'true');
+    this.panelEl.setAttribute('aria-label', 'Imagerie satellite Sentinel');
 
     const headerEl = document.createElement('div');
     headerEl.className = 'sentinel-modal__header';

@@ -107,6 +107,7 @@ export class FilterPanel {
         searchInput.type = 'text';
         searchInput.placeholder = '🔍  Rechercher…';
         searchInput.id = 'filter-search-input';
+        searchInput.setAttribute('aria-label', 'Rechercher');
         searchInput.style.cssText = `
       width:100%;background:var(--bg-secondary);border:1px solid var(--border-color);
       border-radius:8px;padding:6px 10px;color:var(--text-primary);font-size:12px;outline:none;
