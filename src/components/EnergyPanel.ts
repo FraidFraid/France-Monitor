@@ -7,10 +7,7 @@ import {
 } from './panelHeader.ts';
 import type { EcowattSignal, EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
 
 // ─── Palette signal Écowatt ───
 const SIG_COLOR: Record<EcowattSignal, string> = {
@@ -215,7 +212,7 @@ export class EnergyPanel extends Panel {
     }
     if (lbl)   { lbl.textContent = SIG_LABEL[worstSig]; lbl.style.color = SIG_COLOR[worstSig]; }
     if (time)  time.textContent = `MàJ : ${nat.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-    if (badge) badge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+    if (badge) badge.innerHTML = renderFreshnessBadge(['ecowatt']);
   }
 
   private renderContent(data: EcowattResponse): void {

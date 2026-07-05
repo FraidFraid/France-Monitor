@@ -16,12 +16,9 @@ import {
 import type { DefenseAlert } from '../services/cable-threats.ts';
 import type { GpsJammingSignal } from '../types/index.ts';
 import { formatProximityDistance } from '../utils/cable-proximity.ts';
+import { renderFreshnessBadge } from './shared/truthBadge.ts';
 
 // ═══ Constantes UI ═══
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
 
 const SEVERITY_COLORS: Record<DefenseAlert['severity'], string> = {
   high: '#EF4444',
@@ -54,6 +51,8 @@ export class DefensePanel extends Panel {
   private onAlertClick?: DefenseAlertClickHandler;
   private onJammingClick?: DefenseJammingClickHandler;
   private currentJammingSignals: GpsJammingSignal[] = [];
+  /** Dernier instant (ms) où le panel a reçu des données, pour la pastille de fraîcheur. */
+  private lastDataAt: number | null = null;
   /** Re-render guard: serialized snapshot of the last rendered dataset. */
   private lastRenderKey: string | null = null;
   private isDragging = false;
@@ -254,6 +253,7 @@ export class DefensePanel extends Panel {
     if (!this.contentEl) return;
 
     this.currentJammingSignals = jammingSignals;
+    this.lastDataAt = Date.now();
     this.modalEl.style.display = 'flex';
     this.lastRenderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);
     this.updateHeader(alerts);
@@ -306,7 +306,9 @@ export class DefensePanel extends Panel {
 
     const truthBadge = this.modalEl.querySelector('#defense-truth-badge') as HTMLElement | null;
     if (truthBadge) {
-      truthBadge.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+      // Aucune source AIS navires enregistrée au Watchdog : on s'appuie sur
+      // l'instant du dernier jeu de données reçu par le panel.
+      truthBadge.innerHTML = renderFreshnessBadge([], { lastUpdated: this.lastDataAt });
     }
   }
 
@@ -621,7 +623,6 @@ export class DefensePanel extends Panel {
     itemEl.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      console.log('[DefensePanel] Click on alert:', alert.shipName, alert.coordinates);
       if (this.onAlertClick) {
         this.onAlertClick(alert);
       }
@@ -648,6 +649,7 @@ export class DefensePanel extends Panel {
   }
 
   update(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = this.currentJammingSignals): void {
+    this.lastDataAt = Date.now();
     if (this.isVisible()) {
       // Polling path (military feed) — skip the rebuild when data is unchanged.
       const renderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);

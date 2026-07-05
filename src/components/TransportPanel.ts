@@ -6,6 +6,7 @@ import {
     getPremiumModalStyle,
 } from './panelHeader.ts';
 import type { TransportDisruption, ThreatLevel } from '../types/index.ts';
+import { renderFreshnessBadge } from './shared/truthBadge.ts';
 
 const SEVERITY_COLORS: Record<ThreatLevel, string> = {
     critical: 'var(--threat-critical)',
@@ -85,7 +86,7 @@ export class TransportPanel extends Panel {
             iconGradientStart: 'rgba(59, 130, 246, 0.22)',
             iconGradientEnd: 'rgba(14, 165, 233, 0.14)',
             titlePrefix: 'Mobilité ferroviaire',
-            extraTopRowHtml: '<div style="margin-top:4px;"><span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span></div>',
+            extraTopRowHtml: `<div id="transport-truth-badge" style="margin-top:4px;">${renderFreshnessBadge(['sncf'])}</div>`,
         });
         this.modalEl.appendChild(header);
 
@@ -141,6 +142,9 @@ export class TransportPanel extends Panel {
         if (!this.contentEl) return;
         this.modalEl.style.display = 'flex';
 
+        const badgeEl = this.modalEl.querySelector('#transport-truth-badge');
+        if (badgeEl) badgeEl.innerHTML = renderFreshnessBadge(['sncf']);
+
         if (this.activeDisruptions.length === 0) {
             const showSyncState = this.mapCoverageReady && !this.dataLoaded;
             this.contentEl.innerHTML = `
@@ -154,24 +158,24 @@ export class TransportPanel extends Panel {
             </div>
             <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
               ${this.dataLoaded
-                ? 'La carte peut deja afficher des gares issues du dernier jeu de donnees. Les details apparaissent au clic sur un point.'
+                ? 'La carte peut déjà afficher des gares issues du dernier jeu de données. Les détails apparaissent au clic sur un point.'
                 : showSyncState
-                  ? 'Les points sont deja affiches sur la carte. Le panneau finalise la liste detaillee des perturbations.'
-                  : 'Recuperation des perturbations recentes et geolocalisation des gares impactees.'}
+                  ? 'Les points sont déjà affichés sur la carte. Le panneau finalise la liste détaillée des perturbations.'
+                  : 'Récupération des perturbations récentes et géolocalisation des gares impactées.'}
             </div>
             <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
               <div style="background:rgba(0,0,0,0.18);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:8px;">
                 <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Mode</div>
-                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${this.fullCoverageLoaded ? 'Couverture complete' : 'Couverture legere'}</div>
+                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${this.fullCoverageLoaded ? 'Couverture complète' : 'Couverture légère'}</div>
               </div>
               <div style="background:rgba(0,0,0,0.18);border:1px solid rgba(255,255,255,0.06);border-radius:7px;padding:8px;">
-                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">Etat</div>
-                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${showSyncState ? 'Carte prete' : 'Cliquer une gare'}</div>
+                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">État</div>
+                <div style="margin-top:3px;font-size:11px;color:#dce4f4;">${showSyncState ? 'Carte prête' : 'Cliquer une gare'}</div>
               </div>
             </div>
             ${this.fullCoverageLoaded ? '' : `
               <button type="button" class="sncf-full-load-btn" ${this.fullCoverageLoading || !this.dataLoaded ? 'disabled' : ''} style="margin-top:12px;width:100%;border:1px solid rgba(96,165,250,0.28);background:rgba(96,165,250,0.10);color:#BFDBFE;border-radius:6px;padding:8px 9px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;cursor:${this.fullCoverageLoading || !this.dataLoaded ? 'wait' : 'pointer'};">
-                ${this.fullCoverageLoading ? 'Chargement complet SNCF...' : this.dataLoaded ? 'Charger la couverture complete SNCF' : 'Chargement en cours'}
+                ${this.fullCoverageLoading ? 'Chargement complet SNCF...' : this.dataLoaded ? 'Charger la couverture complète SNCF' : 'Chargement en cours'}
               </button>
             `}
           </div>

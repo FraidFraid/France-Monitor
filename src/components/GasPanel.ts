@@ -18,10 +18,7 @@ import {
 } from './panelHeader.ts';
 import type { GasNetworkState, EcoGazSignal, BiogasState } from '../types/index.ts';
 import { getEcoGazColor, isGasPanelEnabled, ECOGAZ_LABELS } from '../services/gas.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import { renderTruthBadge } from './shared/truthBadge.ts';
 
 const GAS_PANEL_COLORS = {
   terminal: '#A78BFA',

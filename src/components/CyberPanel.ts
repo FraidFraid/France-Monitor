@@ -27,16 +27,13 @@ import {
   type ThreatTypeFilter,
 } from '../services/threat-map.ts';
 import { computeCyberPressureAssessment } from '../services/cyber-threat-scoring.ts';
+import { renderTruthBadge } from './shared/truthBadge.ts';
 
 type ActiveTab = 'alertes' | 'ransomware' | 'incidents';
 type ThreatFilterChangeHandler = (filters: ThreatEventFilters) => void;
 type ThreatEventSelectHandler = (event: ThreatEvent) => void;
 
 // ═══ Constantes UI ═══
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
 
 const SEVERITY_LABELS: Record<CyberSeverity, string> = {
   critical: 'Critique',

@@ -12,17 +12,22 @@ import {
 } from './panelHeader.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import { renderFreshnessBadge } from './shared/truthBadge.ts';
 
 export class TrafficPanel extends Panel {
     private contentEl: HTMLElement | null = null;
     private closeBtn: HTMLElement | null = null;
     private data: TrafficIncident[] = [];
+    /** Dernier instant (ms) où le panel a reçu des données (TomTom ne rapporte pas au Watchdog). */
+    private lastDataAt: number | null = null;
     private onHoverIncident: ((id: string | null) => void) | null = null;
     private onClickIncident: ((lng: number, lat: number) => void) | null = null;
+
+    private escapeHtml(value: string): string {
+        const div = document.createElement('div');
+        div.textContent = value;
+        return div.innerHTML;
+    }
 
     constructor(container: HTMLElement) {
         super(container, { title: 'Trafic', icon: '🚗', collapsible: false });
@@ -65,7 +70,7 @@ export class TrafficPanel extends Panel {
             iconGradientStart: 'rgba(245, 158, 11, 0.22)',
             iconGradientEnd: 'rgba(249, 115, 22, 0.14)',
             titlePrefix: 'Mobilité routière',
-            extraTopRowHtml: `<div style="margin-top:4px;">${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>`,
+            extraTopRowHtml: `<div id="traffic-truth-badge" style="margin-top:4px;">${renderFreshnessBadge([], { lastUpdated: this.lastDataAt })}</div>`,
         });
         this.modalEl.appendChild(header);
 
@@ -90,9 +95,12 @@ export class TrafficPanel extends Panel {
 
     show(incidents: TrafficIncident[]): void {
         this.data = incidents;
+        this.lastDataAt = Date.now();
         this.render();
         if (this.modalEl) {
             this.modalEl.style.display = 'flex';
+            const badgeEl = this.modalEl.querySelector('#traffic-truth-badge');
+            if (badgeEl) badgeEl.innerHTML = renderFreshnessBadge([], { lastUpdated: this.lastDataAt });
         }
     }
 
@@ -175,21 +183,21 @@ export class TrafficPanel extends Panel {
                 if (Number.isNaN(date.getTime())) return value;
                 return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
             };
-            const routeText = inc.roadNumbers && inc.roadNumbers.length > 0 ? inc.roadNumbers.join(', ') : '—';
+            const routeText = inc.roadNumbers && inc.roadNumbers.length > 0 ? this.escapeHtml(inc.roadNumbers.join(', ')) : '—';
             const validityText = inc.timeValidity === 'future' ? 'Planifié' : 'En cours';
 
             card.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}; box-shadow: 0 0 6px ${badgeColor}80;"></span>
-            <strong style="font-size:14px;color:var(--text-primary);">${inc.type}</strong>
+            <strong style="font-size:14px;color:var(--text-primary);">${this.escapeHtml(inc.type)}</strong>
           </div>
           <span style="font-size:12px;color:var(--text-secondary);font-weight:600;background:var(--bg-surface);padding:2px 6px;border-radius:4px;border:1px solid var(--border-color);">
             ${formatDelay(inc.delay)}
           </span>
         </div>
         <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;margin-bottom:8px;">
-          ${inc.description}
+          ${this.escapeHtml(inc.description)}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-muted);margin-bottom:8px;">
           <span>Route: <strong style="color:var(--text-primary)">${routeText}</strong></span>
@@ -197,7 +205,7 @@ export class TrafficPanel extends Panel {
         </div>
         ${(inc.from || inc.to) ? `
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-          <strong style="color:var(--text-primary)">Tronçon:</strong> ${inc.from ?? '—'} → ${inc.to ?? '—'}
+          <strong style="color:var(--text-primary)">Tronçon:</strong> ${inc.from ? this.escapeHtml(inc.from) : '—'} → ${inc.to ? this.escapeHtml(inc.to) : '—'}
         </div>` : ''}
         ${(inc.startTime || inc.endTime) ? `
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">

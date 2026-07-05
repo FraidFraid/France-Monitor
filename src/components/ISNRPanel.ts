@@ -13,6 +13,7 @@ import {
 } from './panelHeader.ts';
 import type { ISNRData } from '../types/index.ts';
 import { scoreToEmoji, trendToArrow } from '../services/stability-index.ts';
+import { renderFreshnessBadge } from './shared/truthBadge.ts';
 
 const SCORE_COLORS: Record<string, string> = {
   critical: 'var(--threat-critical)',
@@ -21,10 +22,6 @@ const SCORE_COLORS: Record<string, string> = {
   low: 'var(--threat-low)',
   stable: 'var(--text-muted)',
 };
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
 
 function scoreToColor(score: number): string {
   if (score >= 80) return SCORE_COLORS.critical;
@@ -249,7 +246,7 @@ export class ISNRPanel extends Panel {
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 11px; font-weight: 600; color: ${nationalColor}; text-transform: uppercase; letter-spacing: 0.05em;">${nationalStatusText}</span>
             </div>
-            <div style="margin-top: 5px;">${renderTruthBadge('TEMPS RÉEL', '#10B981')}</div>
+            <div style="margin-top: 5px;">${renderFreshnessBadge([], { lastUpdated: data.timestamp.getTime() })}</div>
           </div>
         </div>
       </div>

@@ -48,6 +48,15 @@ export interface LegendCategory {
 
 // ─── Définition des éléments de légende ───────────────────────────────────────
 
+/** Échappe les valeurs dynamiques injectées via innerHTML (anti-XSS). */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 export class MapLegend {
     private container: HTMLElement;
     private element: HTMLElement | null = null;
@@ -162,10 +171,10 @@ export class MapLegend {
             let innerHtml = '';
             if (category.source) {
                 const { label, url, year } = category.source;
-                const yearStr = year ? ` (${year})` : '';
-                const linkStart = url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">` : '';
+                const yearStr = year ? ` (${escapeHtml(String(year))})` : '';
+                const linkStart = url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">` : '';
                 const linkEnd = url ? `</a>` : '';
-                innerHtml += `<div>${linkStart}Source : ${label}${yearStr}${linkEnd}</div>`;
+                innerHtml += `<div>${linkStart}Source : ${escapeHtml(label)}${yearStr}${linkEnd}</div>`;
             }
             if (category.refresh) {
                 innerHtml += `<div class="legend-refresh" style="margin-top: 2px; font-size: 11px; color: #7f8c8d;">Fréquence : ${category.refresh.label}</div>`;
@@ -181,7 +190,7 @@ export class MapLegend {
 
         return `
             <div class="legend-card" data-category="${category.id}">
-                <h4>${category.title}</h4>
+                <h4>${escapeHtml(category.title)}</h4>
                 ${contentHtml}
                 ${footerHtml}
             </div>

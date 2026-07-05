@@ -2,10 +2,7 @@ import { Panel } from './Panel.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-  return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import { renderTruthBadge } from './shared/truthBadge.ts';
 
 const EOLIEN_PANEL_COLORS = {
   cyan: '#38BDF8',

@@ -10,10 +10,7 @@ import type { FiresFilterState } from '../services/fires.ts';
 import { clusterFireDetections } from '../services/fire-clustering.ts';
 import { fetchNearbyCommuneLabel } from '../services/elus.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
-
-function renderTruthBadge(label: string, color: string): string {
-    return `<span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:${color}22;border:1px solid ${color}33;color:${color};font-size:9px;font-weight:700;letter-spacing:0.06em;">${label}</span>`;
-}
+import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
 
 export class FiresPanel {
     private modalEl!: HTMLElement;
@@ -147,7 +144,8 @@ export class FiresPanel {
             if (this.sourcesInfo.length === 0) {
                 this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
             } else if (this.apiKeyUsed) {
-                this._badgeEl.innerHTML = renderTruthBadge('TEMPS RÉEL', '#10B981');
+                // La fraîcheur réelle du flux FIRMS est suivie par le Watchdog.
+                this._badgeEl.innerHTML = renderFreshnessBadge(['fires-nasa']);
             } else {
                 this._badgeEl.innerHTML = renderTruthBadge('HISTORIQUE', '#60A5FA');
             }
