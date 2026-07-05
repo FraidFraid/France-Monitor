@@ -5,6 +5,7 @@
 
 import type { NewsItem } from '../types/index.ts';
 import { CITIES, REGIONS } from '../config/geo.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 interface SearchModalOptions {
     bindKeyboardShortcut?: boolean;
@@ -47,7 +48,7 @@ export class SearchModal {
         inputWrap.style.cssText = 'padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px;';
 
         const searchIcon = document.createElement('span');
-        searchIcon.textContent = '🔍';
+        searchIcon.innerHTML = fmIcon('search');
         searchIcon.style.opacity = '0.5';
 
         this.inputEl = document.createElement('input');
@@ -159,7 +160,7 @@ export class SearchModal {
                 hits.push({
                     title: name,
                     subtitle: 'Ville',
-                    icon: '📍',
+                    icon: fmIcon('map-pin'),
                     action: () => this.flyAndClose(lon, lat, 12)
                 });
             }
@@ -171,7 +172,7 @@ export class SearchModal {
                 hits.push({
                     title: region.name,
                     subtitle: 'Région',
-                    icon: '🗺️',
+                    icon: fmIcon('map'),
                     action: () => this.flyAndClose(region.center[0], region.center[1], 8)
                 });
             }
@@ -184,7 +185,7 @@ export class SearchModal {
                 hits.push({
                     title: item.title,
                     subtitle: `${item.source} • ${item.locationName ?? 'France'}`,
-                    icon: item.threat?.level === 'critical' ? '🔴' : '📰',
+                    icon: item.threat?.level === 'critical' ? fmStatusDot('critical') : fmIcon('newspaper'),
                     action: () => this.flyAndClose(item.lon!, item.lat!, 12, item)
                 });
             }
@@ -213,7 +214,7 @@ export class SearchModal {
             row.addEventListener('click', hit.action);
 
             const iconWrap = document.createElement('div');
-            iconWrap.textContent = hit.icon;
+            iconWrap.innerHTML = hit.icon;
             iconWrap.style.fontSize = '18px';
 
             const textWrap = document.createElement('div');

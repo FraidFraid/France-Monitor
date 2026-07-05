@@ -122,7 +122,7 @@ const en = {
     metricCache: 'cache: {{value}}',
     metricFallback: '{{count}} fallback',
     metricFallback_plural: '{{count}} fallbacks',
-    metricError: '⚠ failed {{value}} ago',
+    metricError: 'failed {{value}} ago',
     initialSources: {
       rss: 'Regional news RSS',
       ecowatt: 'Ecowatt RTE',
@@ -164,7 +164,7 @@ const en = {
     pendingSummary: 'AI summary pending…',
     alert: 'Alert',
     new: 'New',
-    readArticle: 'Open article ↗',
+    readArticle: 'Open article',
     removeFilter: 'Remove this filter',
     allTime: 'All',
     categoryLabels: {

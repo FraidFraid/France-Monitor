@@ -5,6 +5,7 @@
  */
 import { type EventCategory } from '../types/index.ts';
 import { MinistresPanel } from './MinistresPanel.ts';
+import { fmIcon } from './shared/icons.ts';
 
 export class RightSidebar {
   private contentEl!: HTMLElement;
@@ -32,7 +33,7 @@ export class RightSidebar {
     closeBtn.type = 'button';
     closeBtn.className = 'right-sidebar-toolbar__close';
     closeBtn.setAttribute('aria-label', 'Fermer le panneau gouvernement');
-    closeBtn.textContent = '✕';
+    closeBtn.innerHTML = fmIcon('x');
     closeBtn.addEventListener('click', () => this.close());
 
     toolbarEl.appendChild(titleEl);
@@ -91,7 +92,7 @@ export class RightSidebar {
     ph.className = 'right-sidebar-placeholder';
     ph.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;gap:16px;text-align:center;color:var(--text-muted);';
     ph.innerHTML = `
-      <div style="font-size:40px;opacity:0.3;">🔍</div>
+      <div style="opacity:0.3;">${fmIcon('search', { size: 40 })}</div>
       <div style="font-size:12px;line-height:1.7;">
         Cliquez sur la carte<br>ou activez un layer<br>pour afficher les données OSINT
       </div>`;

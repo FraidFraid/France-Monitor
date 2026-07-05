@@ -8,6 +8,7 @@ function escapeHtml(value) {
 }
 
 import { getDatacenterStatusMeta, getDatacenterVisualMeta } from './infra-network-visuals.js';
+import { fmIcon } from '../components/shared/icons.ts';
 
 function row(label, value) {
     if (!value) return '';
@@ -74,7 +75,7 @@ export function buildDatacenterPopupHtml(input = {}) {
     ].filter(Boolean).join('');
 
     const incidentsHtml = incidents.length
-        ? incidents.map((incident) => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">⚠ ${escapeHtml(incident.title ?? 'Incident')}</div>`).join('')
+        ? incidents.map((incident) => `<div style="font-size:11px;color:#0EA5E9;margin-top:4px;">${fmIcon('triangle-alert')} ${escapeHtml(incident.title ?? 'Incident')}</div>`).join('')
         : `<div style="font-size:11px;color:var(--text-muted);">Aucun incident actif</div>`;
 
     return `
@@ -96,6 +97,6 @@ export function buildDatacenterPopupHtml(input = {}) {
           ${detailRows}
         </div>
         ${detailSummary ? `<div style="margin-top:10px;font-size:11px;line-height:1.45;color:#c8c8d4;">${escapeHtml(detailSummary)}</div>` : ''}
-        ${sourceUrl ? `<div style="margin-top:8px;"><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff;font-size:10px;text-decoration:none;">Fiche source ↗</a></div>` : ''}
+        ${sourceUrl ? `<div style="margin-top:8px;"><a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff;font-size:10px;text-decoration:none;">Fiche source ${fmIcon('external-link')}</a></div>` : ''}
       </div>`;
 }

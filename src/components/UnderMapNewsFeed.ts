@@ -3,6 +3,7 @@ import { NewsHeatmap } from './NewsHeatmap.ts';
 import type { HeatmapClickEvent } from './NewsHeatmap.ts';
 import { t } from '../services/i18n.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon, type IconName } from './shared/icons.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -22,14 +23,14 @@ function timeAgo(date: Date): string {
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
-  social: '✊',
-  security: '🚨',
-  energy: '⚡',
-  weather: '🌩️',
-  transport: '🚆',
-  infrastructure: '🏗️',
-  health: '🏥',
-  general: '📰',
+  social: fmIcon('hand-fist'),
+  security: fmIcon('siren'),
+  energy: fmIcon('zap'),
+  weather: fmIcon('cloud-lightning'),
+  transport: fmIcon('train-front'),
+  infrastructure: fmIcon('hard-hat'),
+  health: fmIcon('hospital'),
+  general: fmIcon('newspaper'),
 };
 
 const LEVEL_PRIORITY: Record<ThreatLevel, number> = {
@@ -112,14 +113,14 @@ const TIME_OPTIONS: Array<{ label: string; value: TimeRange }> = [
   { label: 'Tout', value: 'all' },
 ];
 
-const CATEGORY_OPTIONS: Array<{ label: string; icon: string; value: EventCategory }> = [
-  { label: 'Social', icon: '✊', value: 'social' },
-  { label: 'Sécurité', icon: '🚨', value: 'security' },
-  { label: 'Énergie', icon: '⚡', value: 'energy' },
-  { label: 'Météo', icon: '🌩️', value: 'weather' },
-  { label: 'Transport', icon: '🚆', value: 'transport' },
-  { label: 'Infra', icon: '🏗️', value: 'infrastructure' },
-  { label: 'Santé', icon: '🏥', value: 'health' },
+const CATEGORY_OPTIONS: Array<{ label: string; icon: IconName; value: EventCategory }> = [
+  { label: 'Social', icon: 'hand-fist', value: 'social' },
+  { label: 'Sécurité', icon: 'siren', value: 'security' },
+  { label: 'Énergie', icon: 'zap', value: 'energy' },
+  { label: 'Météo', icon: 'cloud-lightning', value: 'weather' },
+  { label: 'Transport', icon: 'train-front', value: 'transport' },
+  { label: 'Infra', icon: 'hard-hat', value: 'infrastructure' },
+  { label: 'Santé', icon: 'hospital', value: 'health' },
 ];
 
 const LEVEL_OPTIONS: Array<{ label: string; value: ThreatLevel; color: string }> = [
@@ -257,7 +258,7 @@ export class UnderMapNewsFeed {
                 type="button"
                 class="filter-chip ${this.filter.categories.includes(option.value) ? 'filter-chip--active' : ''}"
                 data-category-value="${option.value}"
-              >${option.icon} ${t(`newsFeed.categoryLabels.${option.value}`)}</button>
+              >${fmIcon(option.icon)} ${escapeHtml(t(`newsFeed.categoryLabels.${option.value}`))}</button>
             `).join('')}
           </div>
         </div>
@@ -536,7 +537,7 @@ export class UnderMapNewsFeed {
 
     const level = item.threat?.level ?? 'info';
     const category = item.threat?.category ?? 'general';
-    const icon = CATEGORY_ICONS[category] ?? '📰';
+    const icon = CATEGORY_ICONS[category] ?? fmIcon('newspaper');
     const categoryLabel = t(`newsFeed.categoryLabels.${category}`);
     const isNew = now - item.pubDate.getTime() < ONE_HOUR_MS;
     const summaryText = getSummaryText(item);
@@ -567,7 +568,7 @@ export class UnderMapNewsFeed {
       ${summaryText ? `<div class="news-item-summary under-map-news__summary${item.aiSummaryStatus === 'pending' && !item.aiSummary ? ' under-map-news__summary--pending' : ''}">${escapeHtml(summaryText)}</div>` : ''}
       <div class="news-item-meta under-map-news__meta">
         <span class="news-item-source">${escapeHtml(item.source)}</span>
-        ${locationLabel ? `<span class="under-map-news__location">📍 ${escapeHtml(locationLabel)}</span>` : ''}
+        ${locationLabel ? `<span class="under-map-news__location">${fmIcon('map-pin')} ${escapeHtml(locationLabel)}</span>` : ''}
         ${confidenceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(confidenceLabel)}</span>` : ''}
         ${sourceLabel ? `<span class="under-map-news__signal-pill under-map-news__signal-pill--muted">${escapeHtml(sourceLabel)}</span>` : ''}
       </div>
@@ -587,7 +588,7 @@ export class UnderMapNewsFeed {
 
       const btn = document.createElement('a');
       btn.className = 'under-map-news__read-btn read-article-btn';
-      btn.textContent = t('newsFeed.readArticle');
+      btn.innerHTML = `${escapeHtml(t('newsFeed.readArticle'))} ${fmIcon('external-link')}`;
       btn.href = item.link;
       btn.target = '_blank';
       btn.rel = 'noopener';

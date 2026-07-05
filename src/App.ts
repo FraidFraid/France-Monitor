@@ -6,6 +6,7 @@
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
+import { fmIcon } from './components/shared/icons.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
 import type { SearchModal } from './components/SearchModal.ts';
@@ -663,11 +664,11 @@ const AIR_TRAFFIC_LEGEND: LegendCategory = {
   title: 'Trafic aérien civil',
   columns: 2,
   items: [
-    { id: 'air-low', label: 'Très bas (< 5k ft)', color: '#ff7832', icon: '✈' },
-    { id: 'air-mid', label: 'Bas / montée (5–15k)', color: '#ffd232', icon: '✈' },
-    { id: 'air-upper-mid', label: 'Intermédiaire (15–25k)', color: '#82e650', icon: '✈' },
-    { id: 'air-cruise', label: 'Croisière (25–35k)', color: '#32c8ff', icon: '✈' },
-    { id: 'air-high', label: 'Très haut (> 35k)', color: '#8264ff', icon: '✈' },
+    { id: 'air-low', label: 'Très bas (< 5k ft)', color: '#ff7832', icon: fmIcon('plane') },
+    { id: 'air-mid', label: 'Bas / montée (5–15k)', color: '#ffd232', icon: fmIcon('plane') },
+    { id: 'air-upper-mid', label: 'Intermédiaire (15–25k)', color: '#82e650', icon: fmIcon('plane') },
+    { id: 'air-cruise', label: 'Croisière (25–35k)', color: '#32c8ff', icon: fmIcon('plane') },
+    { id: 'air-high', label: 'Très haut (> 35k)', color: '#8264ff', icon: fmIcon('plane') },
   ],
   source: {
     label: 'OpenSky / airplanes.live',
@@ -684,16 +685,16 @@ const MILITARY_LEGEND: LegendCategory = {
   title: 'Défense — Activité Militaire',
   columns: 2,
   items: [
-    // Types d'aéronefs (icône ✈)
-    { id: 'fighter', label: 'Chasseur', color: '#ff3b30', shape: 'circle', icon: '✈' },
-    { id: 'transport', label: 'Transport', color: '#4a9eff', shape: 'circle', icon: '✈' },
-    { id: 'tanker', label: 'Ravitailleur', color: '#ff9500', shape: 'circle', icon: '✈' },
-    { id: 'awacs', label: 'AWACS / ISR', color: '#a855f7', shape: 'circle', icon: '✈' },
-    { id: 'patrol', label: 'Patrouille maritime', color: '#00d4c8', shape: 'circle', icon: '✈' },
-    { id: 'helicopter', label: 'Hélicoptère', color: '#22c55e', shape: 'circle', icon: '✈' },
-    { id: 'drone', label: 'Drone / UAV', color: '#ff6b9d', shape: 'circle', icon: '✈' },
-    { id: 'trainer', label: 'Entraînement', color: '#ffcc00', shape: 'circle', icon: '✈' },
-    { id: 'liaison', label: 'Liaison', color: '#9898a8', shape: 'circle', icon: '✈' },
+    // Types d'aéronefs (icône avion)
+    { id: 'fighter', label: 'Chasseur', color: '#ff3b30', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'transport', label: 'Transport', color: '#4a9eff', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'tanker', label: 'Ravitailleur', color: '#ff9500', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'awacs', label: 'AWACS / ISR', color: '#a855f7', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'patrol', label: 'Patrouille maritime', color: '#00d4c8', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'helicopter', label: 'Hélicoptère', color: '#22c55e', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'drone', label: 'Drone / UAV', color: '#ff6b9d', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'trainer', label: 'Entraînement', color: '#ffcc00', shape: 'circle', icon: fmIcon('plane') },
+    { id: 'liaison', label: 'Liaison', color: '#9898a8', shape: 'circle', icon: fmIcon('plane') },
     // Bases (triangles ▲)
     { id: 'base-air', label: 'Base aérienne', color: '#4a9eff', shape: 'triangle' },
     { id: 'base-navy', label: 'Base navale', color: '#00d4c8', shape: 'triangle' },
@@ -702,7 +703,7 @@ const MILITARY_LEGEND: LegendCategory = {
     { id: 'base-fortification', label: 'Fortification', color: '#78716c', shape: 'triangle' },
     { id: 'base-other', label: 'Autre site militaire', color: '#f59e0b', shape: 'triangle' },
     // Navires & zones
-    { id: 'ship', label: 'Navire Marine Nationale', color: '#00d4c8', shape: 'square', icon: '⚓\uFE0E' },
+    { id: 'ship', label: 'Navire Marine Nationale', color: '#00d4c8', shape: 'square', icon: fmIcon('anchor') },
     { id: 'zone', label: 'Zone restreinte (RTF/P/D)', color: '#ff2d55', shape: 'zone' },
   ],
   source: {
@@ -1302,13 +1303,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
   {
     id: 'dayNight',
     role: 'standalone',
-    label: '🌙 Jour / Nuit',
+    label: 'Jour / Nuit',
   },
   // ─── Terminateur jour/nuit ───
   {
     id: 'dayNight',
     role: 'standalone',
-    label: '🌙 Jour / Nuit',
+    label: 'Jour / Nuit',
   },
 ];
 
@@ -1842,7 +1843,7 @@ export class App {
     const mobileToggle = this.rightSidebarMobileToggleEl;
     if (!mobileToggle) return;
     mobileToggle.setAttribute('aria-label', isOpen ? 'Fermer le panneau latéral' : 'Ouvrir le panneau latéral');
-    mobileToggle.textContent = isOpen ? '✕' : '☰';
+    mobileToggle.innerHTML = isOpen ? fmIcon('x') : fmIcon('menu');
   }
 
   private ensureRightSidebar(): Promise<RightSidebar> {
@@ -2116,8 +2117,8 @@ export class App {
           <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language-toggle="fr" aria-pressed="${language === 'fr'}">FR</button>
           <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
         </div>
-        <button class="header-quality-link header-note-btn" type="button" data-note-report>📄 Note de situation</button>
-        <button class="header-quality-link header-export-btn" type="button" data-export-menu aria-haspopup="menu" aria-expanded="false">⬇ Export</button>
+        <button class="header-quality-link header-note-btn" type="button" data-note-report>Note de situation</button>
+        <button class="header-quality-link header-export-btn" type="button" data-export-menu aria-haspopup="menu" aria-expanded="false">Export</button>
         <a class="header-quality-link" href="/sources-quality">Sources & qualité</a>
         <div id="header-data-sources"></div>
         <span class="header-clock" id="clock"></span>
@@ -2142,7 +2143,7 @@ export class App {
     aboutModal.innerHTML = `
       <div class="about-modal__backdrop" data-close="true"></div>
       <div class="about-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
-        <button class="about-modal__close" type="button" aria-label="${t('app.closeAbout')}">✕</button>
+        <button class="about-modal__close" type="button" aria-label="${t('app.closeAbout')}">${fmIcon('x')}</button>
         <div class="about-modal__hero">
           <div class="about-modal__brand">
             <img class="about-modal__logo" src="/icon.svg" alt="France Monitor logo" />
@@ -2302,7 +2303,7 @@ export class App {
     underMapJumpBtn.setAttribute('aria-expanded', 'false');
     underMapJumpBtn.innerHTML = `
       <span class="map-underfold-btn__label">${t('app.openModules')}</span>
-      <span class="map-underfold-btn__chevron">⌄</span>
+      <span class="map-underfold-btn__chevron">${fmIcon('chevron-down')}</span>
     `;
     const underMapLabelEl = underMapJumpBtn.querySelector('.map-underfold-btn__label') as HTMLElement | null;
     const underMapChevronEl = underMapJumpBtn.querySelector('.map-underfold-btn__chevron') as HTMLElement | null;
@@ -2311,7 +2312,7 @@ export class App {
       this.underMapExpanded = expanded;
       underMapJumpBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       if (underMapLabelEl) underMapLabelEl.textContent = expanded ? t('app.backToMap') : t('app.openModules');
-      if (underMapChevronEl) underMapChevronEl.textContent = expanded ? '⌃' : '⌄';
+      if (underMapChevronEl) underMapChevronEl.innerHTML = expanded ? fmIcon('chevron-up') : fmIcon('chevron-down');
     };
     underMapJumpBtn.onclick = () => {
       this.underMapScrollLockUntil = Date.now() + 700;
@@ -2343,7 +2344,7 @@ export class App {
     // ── Bouton flottant "Baromètre national Santé" ──
     const barometerBtn = document.createElement('button');
     barometerBtn.id = 'barometer-fab';
-    barometerBtn.innerHTML = '🩺 Baromètre Santé — <span style="color:#888; font-weight:600;">⏳ Chargement...</span>';
+    barometerBtn.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:#888; font-weight:600;">${fmIcon('hourglass')} Chargement...</span>`;
     barometerBtn.style.cssText = `
       position: absolute;
       top: 70px;
@@ -2391,7 +2392,7 @@ export class App {
     const mobileToggle = document.createElement('button');
     mobileToggle.className = 'right-sidebar-mobile-toggle';
     mobileToggle.setAttribute('aria-label', 'Ouvrir le panneau latéral');
-    mobileToggle.textContent = '☰';
+    mobileToggle.innerHTML = fmIcon('menu');
     mapArea.appendChild(mobileToggle);
     this.rightSidebarMobileToggleEl = mobileToggle;
 
@@ -5517,7 +5518,7 @@ export class App {
       const fab = document.getElementById('barometer-fab');
       if (fab) {
         const color = metrics.levelColor;
-        fab.innerHTML = `🩺 Baromètre Santé — <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
+        fab.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
         fab.style.borderColor = `${color}55`;
       }
     }

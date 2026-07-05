@@ -123,7 +123,7 @@ const fr = {
     metricCache: 'cache: {{value}}',
     metricFallback: '{{count}} fallback',
     metricFallback_plural: '{{count}} fallbacks',
-    metricError: '⚠ échec {{value}}',
+    metricError: 'échec {{value}}',
     initialSources: {
       rss: 'RSS PQR',
       ecowatt: 'Écowatt RTE',
@@ -164,7 +164,7 @@ const fr = {
     pendingSummary: 'Résumé IA en cours…',
     alert: 'Alerte',
     new: 'Nouveau',
-    readArticle: 'Ouvrir l’article ↗',
+    readArticle: 'Ouvrir l’article',
     removeFilter: 'Retirer ce filtre',
     allTime: 'Tout',
     categoryLabels: {

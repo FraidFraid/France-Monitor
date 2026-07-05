@@ -9,6 +9,16 @@ import type {
     EventCategory,
     ThreatLevel,
 } from '../types/index.ts';
+import { fmIcon, type IconName } from './shared/icons.ts';
+
+/** Échappement HTML minimal (texte) — même logique que `shared/icons.ts`. */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 const DEFAULT_FILTER: FilterState = {
     timeRange: '24h',
@@ -56,14 +66,14 @@ const DEFAULT_FILTER: FilterState = {
     mode: 'live',
 };
 
-const CATEGORY_OPTIONS: { label: string; icon: string; value: EventCategory }[] = [
-    { label: 'Social', icon: '✊', value: 'social' },
-    { label: 'Sécurité', icon: '🚨', value: 'security' },
-    { label: 'Énergie', icon: '⚡', value: 'energy' },
-    { label: 'Météo', icon: '🌩️', value: 'weather' },
-    { label: 'Transport', icon: '🚆', value: 'transport' },
-    { label: 'Infra', icon: '🏗️', value: 'infrastructure' },
-    { label: 'Santé', icon: '🏥', value: 'health' },
+const CATEGORY_OPTIONS: { label: string; icon: IconName; value: EventCategory }[] = [
+    { label: 'Social', icon: 'hand-fist', value: 'social' },
+    { label: 'Sécurité', icon: 'siren', value: 'security' },
+    { label: 'Énergie', icon: 'zap', value: 'energy' },
+    { label: 'Météo', icon: 'cloud-lightning', value: 'weather' },
+    { label: 'Transport', icon: 'train-front', value: 'transport' },
+    { label: 'Infra', icon: 'hard-hat', value: 'infrastructure' },
+    { label: 'Santé', icon: 'hospital', value: 'health' },
 ];
 
 const LEVEL_OPTIONS: { label: string; value: ThreatLevel; color: string }[] = [
@@ -105,7 +115,7 @@ export class FilterPanel {
         searchWrap.style.cssText = 'padding:10px 12px;border-bottom:1px solid var(--border-color);';
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
-        searchInput.placeholder = '🔍  Rechercher…';
+        searchInput.placeholder = 'Rechercher…';
         searchInput.id = 'filter-search-input';
         searchInput.setAttribute('aria-label', 'Rechercher');
         searchInput.style.cssText = `
@@ -135,7 +145,7 @@ export class FilterPanel {
         for (const opt of CATEGORY_OPTIONS) {
             const chip = document.createElement('button');
             chip.className = 'filter-chip';
-            chip.textContent = `${opt.icon} ${opt.label}`;
+            chip.innerHTML = `${fmIcon(opt.icon)} ${escapeHtml(opt.label)}`;
             chip.dataset.catValue = opt.value;
             chip.addEventListener('click', () => {
                 const idx = this.filter.categories.indexOf(opt.value);

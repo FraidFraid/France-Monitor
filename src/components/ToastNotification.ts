@@ -7,6 +7,7 @@
 import type { NewsItem, GpsJammingSignal, AisAnomaly, MeteoAlert } from '../types/index.ts';
 import type { MilitarySurge } from '../config/military.ts';
 import type { DefenseAlert } from '../services/cable-threats.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 /** Escape HTML to prevent XSS */
 function escapeHtml(str: string): string {
@@ -225,12 +226,7 @@ export class ToastNotification {
    * Create DOM element for a defense alert toast.
    */
   private createDefenseAlertToastElement(alert: DefenseAlert, alertKey: string): HTMLElement {
-    const icons: Record<DefenseAlert['severity'], string> = {
-      high: '🔴',
-      medium: '🟠',
-      low: '🟡',
-    };
-    const icon = icons[alert.severity];
+    const icon = fmStatusDot(alert.severity);
 
     // Map severity to toast class
     const levelClass = alert.severity === 'high' ? 'critical' : alert.severity === 'medium' ? 'high' : 'medium';
@@ -284,9 +280,9 @@ export class ToastNotification {
    */
   private createSurgeToastElement(surge: MilitarySurge, surgeKey: string): HTMLElement {
     const icons: Record<MilitarySurge['type'], string> = {
-      emergency: '🚨',
-      high_value: '⚠️',
-      concentration: '✈️',
+      emergency: fmIcon('siren'),
+      high_value: fmIcon('triangle-alert'),
+      concentration: fmIcon('plane'),
     };
     const icon = icons[surge.type];
 
@@ -355,7 +351,7 @@ export class ToastNotification {
    */
   private createToastElement(item: NewsItem): HTMLElement {
     const level = item.threat?.level ?? 'high';
-    const icon = level === 'critical' ? '🚨' : '⚠️';
+    const icon = fmStatusDot(level);
     const truncatedTitle =
       item.title.length > 80 ? item.title.slice(0, 77) + '...' : item.title;
 
@@ -493,7 +489,7 @@ export class ToastNotification {
 
   /** Create DOM element for an AIS anomaly toast. */
   private createAisAnomalyToastElement(anomaly: AisAnomaly): HTMLElement {
-    const icon = anomaly.type === 'radio_silence' ? '🔇' : '⚓';
+    const icon = anomaly.type === 'radio_silence' ? fmIcon('volume-x') : fmIcon('anchor');
     const borderColor = anomaly.type === 'radio_silence' ? '#EF4444' : '#F59E0B';
     const levelClass = anomaly.severity === 'high' ? 'high' : 'medium';
 
@@ -546,7 +542,7 @@ export class ToastNotification {
 
   private createWeatherAlertToastElement(alert: MeteoAlert, key: string): HTMLElement {
     const levelClass = alert.level === 'red' ? 'critical' : 'high';
-    const icon = alert.level === 'red' ? '🌩️' : '🌧️';
+    const icon = alert.level === 'red' ? fmIcon('cloud-lightning') : fmIcon('cloud-rain');
     const riskLabels: Record<string, string> = {
       wind: 'vent',
       'rain-flood': 'pluie-inondation',
@@ -610,7 +606,7 @@ export class ToastNotification {
     const toast = document.createElement('div');
     toast.className = `toast toast--${levelClass} toast--jamming`;
     toast.innerHTML = `
-      <span class="toast-icon">📡</span>
+      <span class="toast-icon">${fmIcon('satellite-dish')}</span>
       <span class="toast-title">${escapeHtml(truncated)}</span>
       <button class="toast-action">Voir</button>
       <button class="toast-close" title="Fermer">&times;</button>
