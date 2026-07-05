@@ -7,6 +7,7 @@
 import type { DataSourceStatus } from '../types/index.ts';
 import { t } from '../services/i18n.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
+import type { IconName } from './shared/icons.ts';
 
 interface StatusPanelOptions {
     variant?: 'panel' | 'dropdown';
@@ -361,7 +362,7 @@ export class StatusPanel {
             }
 
             // ── Ligne de métriques Watchdog (optionnelle) ──
-            const metricParts: Array<{ text: string; color?: string }> = [];
+            const metricParts: Array<{ text: string; color?: string; icon?: IconName }> = [];
 
             // Âge du cache
             const cacheStr = formatCacheAge(src.cacheAgeMs);
@@ -396,6 +397,7 @@ export class StatusPanel {
                     metricParts.push({
                         text: t('status.metricError', { value: errAge ?? '' }),
                         color: 'var(--threat-critical, #ef4444)',
+                        icon: 'triangle-alert',
                     });
                 }
             }
@@ -405,8 +407,15 @@ export class StatusPanel {
                 metricsEl.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:1px;';
                 for (const part of metricParts) {
                     const chip = document.createElement('span');
-                    chip.style.cssText = `font-size:9px;color:${part.color ?? 'var(--text-muted)'};`;
-                    chip.textContent = part.text;
+                    chip.style.cssText = `font-size:9px;color:${part.color ?? 'var(--text-muted)'};display:inline-flex;align-items:center;gap:2px;`;
+                    if (part.icon) {
+                        const iconWrap = document.createElement('span');
+                        iconWrap.innerHTML = fmIcon(part.icon, { size: 12 });
+                        chip.appendChild(iconWrap);
+                    }
+                    const textEl = document.createElement('span');
+                    textEl.textContent = part.text;
+                    chip.appendChild(textEl);
                     metricsEl.appendChild(chip);
                 }
                 textWrap.appendChild(metricsEl);
