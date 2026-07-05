@@ -6,6 +6,21 @@
 
 ---
 
+## Suivi de résolution (mis à jour le 5 juillet 2026)
+
+Ce document est l'état des lieux **au 4 juillet 2026**. Depuis, les chantiers suivants ont été livrés en production :
+
+| Chantier | État | Commits |
+|---|---|---|
+| §1 Quick wins crédibilité — preset d'accueil, badges de fraîcheur honnêtes (helper `truthBadge` branché Watchdog), étiquetage, finitions, code mort supprimé | ✅ Résolu (items 1, 2, 4, 5, 6 ; item 3 étiquetage partiel, item 7 feature flags à trancher) | `fbb18cd`, `d594aa6`, `fd1c70a`, `08722cc` |
+| §2 Sécurité — clés API rapatriées serveur (proxies TomTom/Météo-France), XSS échappés, SSRF redirections revalidées, rate-limit 60 req/min/IP, cap 5 Mo, scrapling `/clear-cache` sous token + debug off | ✅ Résolu (items 1-5 ; item 6 auth toujours ouvert) | `d3bec2d`, `b8dd02f` |
+| §3 Qualité — Vitest (1 → 92 tests en CI), ESLint 9 réarmé (zéro `any`, zéro `eslint-disable`), `fetchWithBreaker` partagé, tick d'ingestion persisté + `GET /api/health-check` | ✅ Résolu (items 1-4 ; item 5 npm audit/Dependabot/branch protection restant) | `e15adf3`, `cbaf4c3`, `1e21926` |
+| §4 Ministères — export **note de situation** A4 en 1 clic (synthèse corrélation + annexe sources auditables) | ✅ Item 1 livré ; scores sources-quality calculés en cours ; corrélation/RGAA/OpenAPI/KPI à venir | `93b80ac` |
+
+Les tableaux ci-dessous sont conservés tels quels comme référence de l'état initial.
+
+---
+
 ## 1. Quick wins crédibilité (semaines 1-2)
 
 | # | Problème | Localisation | Action |
