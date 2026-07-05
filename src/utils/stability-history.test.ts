@@ -8,6 +8,7 @@ import {
   findLastWithin,
   pruneEntries,
   selectSparkline,
+  MAX_ENTRIES,
   MIN_INTERVAL_MS,
   type StabilityHistoryEntry,
 } from './stability-history.ts';
@@ -41,6 +42,13 @@ describe('stability-history — appendEntry', () => {
     const out = appendEntry(base, entry(0, 88));
     assert.equal(out.length, 2);
   });
+
+  it('frontière : accepte une entrée à exactement MIN_INTERVAL_MS (comparaison <)', () => {
+    const base = [entry(MIN_INTERVAL_MS, 90)]; // écart exact de 30 min
+    const out = appendEntry(base, entry(0, 88));
+    assert.equal(out.length, 2);
+    assert.equal(out[1].score, 88);
+  });
 });
 
 describe('stability-history — pruneEntries', () => {
@@ -48,6 +56,24 @@ describe('stability-history — pruneEntries', () => {
     const out = pruneEntries([entry(8 * 24 * H, 90), entry(1 * H, 88)], NOW);
     assert.equal(out.length, 1);
     assert.equal(out[0].score, 88);
+  });
+
+  it('plafonne à MAX_ENTRIES (400) et conserve les plus récentes', () => {
+    // 450 entrées récentes (1 min d'écart, toutes < 7 jours), score = index d'origine
+    const entries: StabilityHistoryEntry[] = [];
+    for (let i = 0; i < 450; i++) {
+      entries.push({
+        ts: NOW - (450 - i) * 60 * 1000,
+        score: i,
+        pillars: { continuity: 10, security: 10, signal: 10, defense: 5 },
+      });
+    }
+    const out = pruneEntries(entries, NOW);
+    assert.equal(out.length, 400);
+    assert.equal(out.length, MAX_ENTRIES);
+    // les 50 plus anciennes sont éliminées : la première conservée = entrée #50 d'origine
+    assert.equal(out[0].score, 50);
+    assert.equal(out[out.length - 1].score, 449);
   });
 });
 
@@ -94,6 +120,8 @@ describe('stability-history — selectSparkline & findLastWithin', () => {
     const series = selectSparkline(pruneEntries(entries, NOW), NOW);
     assert.ok(series.length <= 28);
     assert.ok(series.length >= 2);
+    // le dernier point de la série = score de l'entrée la plus récente
+    assert.equal(series[series.length - 1], entries[entries.length - 1].score);
   });
 
   it('findLastWithin respecte la fenêtre', () => {

@@ -106,19 +106,34 @@ export function selectSparkline(entries: StabilityHistoryEntry[], now: number): 
   return series;
 }
 
+/**
+ * Retourne la dernière entrée si elle date de ≤ windowMs, sinon null.
+ * Précondition : entrées triées chronologiquement (invariant maintenu par
+ * appendEntry/loadEntries) — la dernière entrée est donc la plus récente.
+ */
 export function findLastWithin(
   entries: StabilityHistoryEntry[],
   now: number,
   windowMs: number,
 ): StabilityHistoryEntry | null {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    if (now - entries[i].ts <= windowMs) return entries[i];
-    break; // les entrées sont chronologiques : la dernière est la plus récente
-  }
+  const last = entries[entries.length - 1];
+  if (last && now - last.ts <= windowMs) return last;
   return null;
 }
 
 // ─── Wrapper localStorage ────────────────────────────────────────────────────
+
+/** Valide que chaque pilier est un number — évite des deltas NaN silencieux sur données corrompues. */
+function isPillarValues(value: unknown): value is StabilityPillarValues {
+  if (typeof value !== 'object' || value === null) return false;
+  const p = value as Record<string, unknown>;
+  return (
+    typeof p.continuity === 'number'
+    && typeof p.security === 'number'
+    && typeof p.signal === 'number'
+    && typeof p.defense === 'number'
+  );
+}
 
 function loadEntries(): StabilityHistoryEntry[] {
   try {
@@ -130,7 +145,7 @@ function loadEntries(): StabilityHistoryEntry[] {
       typeof e === 'object' && e !== null
       && typeof (e as StabilityHistoryEntry).ts === 'number'
       && typeof (e as StabilityHistoryEntry).score === 'number'
-      && typeof (e as StabilityHistoryEntry).pillars === 'object',
+      && isPillarValues((e as StabilityHistoryEntry).pillars),
     );
   } catch {
     return [];
