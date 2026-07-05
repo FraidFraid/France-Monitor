@@ -25,6 +25,7 @@ import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
+import { getPreviousScoreForSmoothing, recordStabilitySnapshot } from './utils/stability-history.ts';
 import type { FranceCountrySnapshot, FranceIntelTimelineLane, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
@@ -6006,7 +6007,7 @@ export class App {
       oilDashboard:         this.currentOilData ?? null,
       fuelTensionDashboard: this.currentFuelTensionData ?? null,
     };
-    return buildFranceEngine(raw, options);
+    return buildFranceEngine(raw, { ...options, previousScore: getPreviousScoreForSmoothing() });
   }
 
   private buildAlertMonitorSituations(): DetectedSituation[] {
@@ -6210,6 +6211,12 @@ export class App {
   private refreshFranceIntelPanel(): void {
     const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
     const snapshot = this.buildFranceSnapshot(lang);
+    recordStabilitySnapshot(snapshot.score, {
+      continuity: snapshot.axes.continuity,
+      security: snapshot.axes.security,
+      signal: snapshot.axes.signal,
+      defense: snapshot.axes.defense,
+    });
     this.alertMonitor?.update(this.buildAlertMonitorSituations(), lang);
     this.situationMonitor?.update(snapshot.situations, lang);
     this.situationBrief?.update(snapshot.situations);
