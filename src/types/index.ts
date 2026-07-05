@@ -1505,11 +1505,54 @@ export interface FranceBriefContext {
   energySummary: FranceIntelEnergySummary | null;
 }
 
+// ─── Brief structuré (refonte Country Intelligence) ─────────────────────────
+
+export type BriefConfidence = 'high' | 'moderate' | 'low';
+export type BriefHorizon = '6h' | '24h' | '48h';
+
+export interface BriefJudgment {
+  priority: 1 | 2 | 3 | 4;              // P1 = le plus important
+  text: string;                          // ≤ 280 caractères
+  confidence: BriefConfidence;
+  sources: string[];                     // ≤ 5 noms de sources
+}
+
+export interface BriefWatchItem {
+  text: string;
+  horizon: BriefHorizon;
+}
+
+export interface StructuredBrief {
+  bluf: string;                          // évaluation d'ensemble, ≤ 400 caractères
+  judgments: BriefJudgment[];            // ≤ 4, triés par priorité
+  watch: BriefWatchItem[];               // ≤ 4
+  origin: 'llm' | 'deterministic';
+}
+
+// ─── Explicabilité du score de stabilité ────────────────────────────────────
+
+export interface FranceScorePillarBreakdown {
+  key: 'continuity' | 'security' | 'signal' | 'defense';
+  value: number;                         // 0–100
+  deduction: number;                     // points retirés au score (poids × réponse)
+  components: Array<{ label: string; value: number }>; // top 3, triés décroissant
+}
+
+export interface FranceScoreBreakdown {
+  score: number;
+  baseline: number;                      // 95
+  pillars: FranceScorePillarBreakdown[]; // toujours les 4, ordre continuity/security/signal/defense
+  shockValue: number;
+  shockExtra: number;
+  situationCap: number | null;           // plafond appliqué (55/65/78) ou null
+}
+
 export interface FranceCountrySnapshot {
   // Computed by the engine
   signals: FranceCountrySignals;
   axes: FranceCountryAxes;
   score: number;                       // CII 0–100
+  scoreBreakdown: FranceScoreBreakdown;
   briefContext: FranceBriefContext;
   situations: DetectedSituation[];     // Situation engine output
   // Raw data for the renderer (mirrors old FranceIntelData fields)
@@ -1519,7 +1562,7 @@ export interface FranceCountrySnapshot {
   topNews: NewsItem[];
   energy: FranceIntelEnergySummary | null;
   timeline: { days: string[]; lanes: FranceIntelTimelineLane[] };
-  brief?: string | null;
+  brief?: StructuredBrief | null;
   briefLang: 'fr' | 'en';
   briefFreshness?: 'fresh' | 'cached';
 }

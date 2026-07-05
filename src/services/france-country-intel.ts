@@ -36,6 +36,7 @@ import type {
   OilDashboard,
   FuelTensionDashboard,
   ThreatEvent,
+  StructuredBrief,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -551,7 +552,7 @@ export function computeFranceRiskScore(
  */
 export function buildFranceCountrySnapshot(
   raw: FranceRawData,
-  options?: { brief?: string | null; briefFreshness?: 'fresh' | 'cached' },
+  options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
 ): FranceCountrySnapshot {
   const signals = buildFranceSignals(raw);
   const axes = computeFranceAxes(signals, raw.isnrData, raw);
@@ -579,6 +580,14 @@ export function buildFranceCountrySnapshot(
     signals,
     axes,
     score,
+    scoreBreakdown: {
+      score,
+      baseline: 95,
+      pillars: [],
+      shockValue: 0,
+      shockExtra: 0,
+      situationCap: null,
+    },
     briefContext,
     situations,
     stability,

@@ -25,7 +25,7 @@ import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
-import type { FranceCountrySnapshot, FranceIntelTimelineLane } from './types/index.ts';
+import type { FranceCountrySnapshot, FranceIntelTimelineLane, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
@@ -5977,7 +5977,7 @@ export class App {
 
   private buildFranceSnapshot(
     lang: 'fr' | 'en',
-    options?: { brief?: string | null; briefFreshness?: 'fresh' | 'cached' },
+    options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
   ): FranceCountrySnapshot {
     const raw: FranceRawData = {
       newsItems:            this.newsItems,
