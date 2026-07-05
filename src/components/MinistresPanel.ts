@@ -15,6 +15,7 @@ import {
   type OpenDataDataset,
 } from '../services/ministers.ts';
 import type { EventCategory } from '../types/index.ts';
+import { fmIcon } from './shared/icons.ts';
 
 export class MinistresPanel {
   private containerEl!: HTMLElement;
@@ -165,7 +166,7 @@ export class MinistresPanel {
     info.style.cssText = 'flex:1;min-width:0;';
     info.innerHTML = `
       <div style="color:var(--text-primary);font-weight:600;font-size:12px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">
-        ${this._formatPersonName(minister.prenom, minister.nom)}${minister.isPM ? ' \u{1F3DB}' : ''}
+        ${this._formatPersonName(minister.prenom, minister.nom)}${minister.isPM ? ` ${fmIcon('landmark', { label: 'Premier ministre' })}` : ''}
       </div>
       <div style="color:var(--text-muted);font-size:10px;margin-top:1px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">
         ${minister.titreShort}${minister.parti ? ` \u00B7 ${minister.parti}` : ''}
@@ -289,8 +290,8 @@ export class MinistresPanel {
               </div>
               ${dataset.description ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px;line-height:1.5;">${dataset.description}</div>` : ''}
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-                ${dataset.url ? `<a href="${dataset.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">Fiche dataset ↗</a>` : ''}
-                ${(dataset.resources ?? []).map(resource => resource.url ? `<a href="${resource.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">${resource.format ?? resource.type ?? 'Ressource'} ↗</a>` : '').join('')}
+                ${dataset.url ? `<a href="${dataset.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">Fiche dataset ${fmIcon('external-link')}</a>` : ''}
+                ${(dataset.resources ?? []).map(resource => resource.url ? `<a href="${resource.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">${resource.format ?? resource.type ?? 'Ressource'} ${fmIcon('external-link')}</a>` : '').join('')}
               </div>
             </div>`).join('');
     };
@@ -355,7 +356,7 @@ export class MinistresPanel {
         <div style="color:var(--text-primary);font-size:11px;line-height:1.5;">${item.title}</div>
         <div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${item.date}${item.location ? ` · ${item.location}` : ''}</div>
         ${item.sourceLabel ? `<div style="color:var(--text-muted);font-size:10px;margin-top:2px;">${item.sourceLabel}</div>` : ''}
-        ${item.url ? `<a href="${item.url}" target="_blank" style="color:var(--text-muted);font-size:10px;">Voir \u2197</a>` : ''}
+        ${item.url ? `<a href="${item.url}" target="_blank" style="color:var(--text-muted);font-size:10px;">Voir ${fmIcon('external-link')}</a>` : ''}
       </div>`).join('');
   }
 
@@ -370,7 +371,7 @@ export class MinistresPanel {
       link.target = '_blank';
       link.rel = 'noopener';
       link.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--text-muted);text-decoration:none;';
-      link.textContent = `${label} ↗`;
+      link.innerHTML = `${label} ${fmIcon('external-link')}`;
       linksEl.appendChild(link);
     };
 

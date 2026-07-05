@@ -51,7 +51,7 @@ export class HealthBarometerPanel {
 
     // Header
     const header = createPremiumIconHeader({
-      icon: '🩺',
+      icon: fmIcon('stethoscope', { size: 30 }),
       title: 'Baromètre national Santé',
       subtitle: 'ISS · OSCOUR · APL · ANSM — France entière',
       gradientStart: 'rgba(46, 204, 113, 0.16)',
@@ -66,7 +66,8 @@ export class HealthBarometerPanel {
     header.style.flexShrink = '0';
 
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
+    closeBtn.innerHTML = fmIcon('x');
+    closeBtn.setAttribute('aria-label', 'Fermer');
     closeBtn.style.cssText = `${getPremiumCloseButtonStyle('#9898a8')} position:absolute;top:12px;right:12px;`;
     applyPremiumCloseButtonHover(closeBtn, '#9898a8', '#fff');
     closeBtn.onclick = () => this.hide();
@@ -243,8 +244,11 @@ export class HealthBarometerPanel {
   private renderSubIndex(sub: HealthBarometerSubIndex): string {
     const pct = Math.round(sub.value);
     const color = sub.value < 25 ? '#2ECC71' : sub.value < 50 ? '#F1C40F' : sub.value < 75 ? '#E67E22' : '#E74C3C';
+    const deltaIcon = sub.delta != null
+      ? (sub.delta > 0 ? fmIcon('trending-up') : sub.delta < 0 ? fmIcon('trending-down') : '→')
+      : '';
     const deltaHtml = sub.delta != null
-      ? `<span style="color:${sub.delta > 0 ? '#E74C3C' : sub.delta < 0 ? '#2ECC71' : '#9898a8'}; margin-left:6px; font-size:11px;">${sub.delta > 0 ? '↑' : sub.delta < 0 ? '↓' : '→'} ${Math.abs(sub.delta).toFixed(1)}</span>`
+      ? `<span style="color:${sub.delta > 0 ? '#E74C3C' : sub.delta < 0 ? '#2ECC71' : '#9898a8'}; margin-left:6px; font-size:11px; display:inline-flex; align-items:center; gap:2px;">${deltaIcon} ${Math.abs(sub.delta).toFixed(1)}</span>`
       : '';
 
     return `

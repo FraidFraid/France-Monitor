@@ -10,6 +10,7 @@
 
 import { Panel } from './Panel.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon } from './shared/icons.ts';
 import {
   applyPremiumCloseButtonHover,
   createPremiumRingHeader,
@@ -60,7 +61,7 @@ export class CyberPanel extends Panel {
   private onThreatEventSelect: ThreatEventSelectHandler | null = null;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Vigilance Cyber', icon: '🛡️', collapsible: false });
+    super(container, { title: 'Vigilance Cyber', collapsible: false });
   }
 
   mount(): void {
@@ -80,7 +81,8 @@ export class CyberPanel extends Panel {
 
     // Close button
     this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
+    this.closeBtn.innerHTML = fmIcon('x');
+    this.closeBtn.setAttribute('aria-label', 'Fermer');
     this.closeBtn.className = 'cyber-panel-close';
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
@@ -210,13 +212,13 @@ export class CyberPanel extends Panel {
     const statusLabel = this.modalEl.querySelector('#cyber-status-label') as HTMLElement;
     const trendEl = this.modalEl.querySelector('#cyber-trend') as HTMLElement;
 
-    if (ringScore) ringScore.textContent = '🔒';
+    if (ringScore) ringScore.innerHTML = fmIcon('lock-keyhole', { label: 'Verrouillé' });
     if (statusLabel) statusLabel.textContent = 'Fonctionnalité verrouillée';
     if (trendEl) trendEl.innerHTML = '';
 
     this.contentEl.innerHTML = `
       <div class="cyber-locked-state" style="text-align: center; padding: 32px 16px;">
-        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.6;">🔐</div>
+        <div style="margin-bottom: 16px; opacity: 0.6; display: flex; justify-content: center;">${fmIcon('lock-keyhole', { size: 48 })}</div>
         <div style="color: var(--text-primary); font-weight: 600; margin-bottom: 12px;">
           Module Cyber désactivé
         </div>
@@ -273,7 +275,7 @@ export class CyberPanel extends Panel {
     }
 
     if (trendEl) {
-      const trendIcon = data.meta.trend === 'rising' ? '↗' : data.meta.trend === 'falling' ? '↘' : '→';
+      const trendIcon = data.meta.trend === 'rising' ? fmIcon('trending-up') : data.meta.trend === 'falling' ? fmIcon('trending-down') : '→';
       const trendColor = data.meta.trend === 'rising' ? '#EF4444' : data.meta.trend === 'falling' ? '#10B981' : 'var(--text-muted)';
       const trendLabel = data.meta.trend === 'rising' ? 'En hausse' : data.meta.trend === 'falling' ? 'En baisse' : 'Stable';
 
@@ -343,7 +345,7 @@ export class CyberPanel extends Panel {
     let warningHtml = '';
     if (failedSources.length > 0) {
       const names = failedSources.map(s => s.source).join(', ');
-      warningHtml = `<div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:#F59E0B;display:flex;align-items:center;gap:6px;"><span>⚠️</span><span>Source ${names} indisponible</span></div>`;
+      warningHtml = `<div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:#F59E0B;display:flex;align-items:center;gap:6px;"><span>${fmIcon('triangle-alert')}</span><span>Source ${names} indisponible</span></div>`;
     }
 
     const assessment = computeCyberPressureAssessment(data, this.threatEvents);
@@ -616,7 +618,12 @@ export class CyberPanel extends Panel {
   private renderIncidentsTab(): string {
     const SEV_COLORS: Record<string,string> = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#3b82f6' };
     const SEV_LABELS: Record<string,string> = { critical:'CRITIQUE', high:'ÉLEVÉ', medium:'MOYEN', low:'FAIBLE' };
-    const TYPE_ICONS: Record<string,string> = { ransomware:'🏴‍☠️', leak:'💧', exposure:'🔓', vulnerability:'⚠️' };
+    const TYPE_ICONS: Record<string,string> = {
+      ransomware: fmIcon('skull'),
+      leak: fmIcon('droplet'),
+      exposure: fmIcon('lock-keyhole'),
+      vulnerability: fmIcon('triangle-alert'),
+    };
     const TYPE_LABELS: Record<string,string> = { ransomware:'Ransomware', leak:'Fuite', exposure:'Exposition', vulnerability:'Vulnérabilité' };
     const fmt = (n: number) => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(0)+'K' : String(n);
     const formatDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
@@ -649,7 +656,7 @@ export class CyberPanel extends Panel {
     const countryCount = new Set(filteredEvents.map(e => e.countryCode || 'FR')).size;
 
     const statsHtml = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px;">
-      ${[['🎯',String(filteredEvents.length),'INCIDENTS'],['📊',fmt(totalRecords),'RECORDS'],['🏴‍☠️',String(ransomCount),'RANSOMWARE'],['🇫🇷',String(countryCount),'PAYS']]
+      ${[[fmIcon('target'),String(filteredEvents.length),'INCIDENTS'],[fmIcon('bar-chart-3'),fmt(totalRecords),'RECORDS'],[fmIcon('skull'),String(ransomCount),'RANSOMWARE'],['🇫🇷',String(countryCount),'PAYS']]
         .map(([ic,val,lab]) => `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:6px;padding:6px;text-align:center;"><div style="font-size:13px;">${ic}</div><div style="font-size:13px;font-weight:700;color:#fff;">${val}</div><div style="font-size:8px;color:rgba(255,255,255,0.35);text-transform:uppercase;">${lab}</div></div>`).join('')}
     </div>`;
 
@@ -669,7 +676,7 @@ export class CyberPanel extends Panel {
               <div style="font-size:10px;color:rgba(255,255,255,0.75);white-space:nowrap;">${formatDate(e.date)}</div>
             </div>
             <div style="font-size:11px;color:rgba(255,255,255,0.72);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(sourceLabel(e))}</div>
-            <div style="font-size:10px;color:rgba(125,211,252,0.78);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 ${this.escapeHtml(precisionLabel(e))}</div>
+            <div style="font-size:10px;color:rgba(125,211,252,0.78);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fmIcon('map-pin')} ${this.escapeHtml(precisionLabel(e))}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;gap:8px;">
               <span style="font-size:10px;color:rgba(255,255,255,0.42);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${TYPE_ICONS[e.type]||''} ${TYPE_LABELS[e.type]||e.type} · ${this.escapeHtml(subLabel(e))}</span>
               <span style="font-size:9px;font-weight:700;color:${color};">${SEV_LABELS[e.severity]||e.severity.toUpperCase()}</span>
@@ -696,7 +703,7 @@ export class CyberPanel extends Panel {
 
     return `<div style="border-top:1px solid rgba(255,255,255,0.07);border-bottom:1px solid rgba(255,255,255,0.07);padding:10px 0;margin-bottom:10px;">
       <div style="position:relative;margin-bottom:10px;">
-        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.45);font-size:12px;">🔍</span>
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.45);display:flex;">${fmIcon('search')}</span>
         <input data-threat-search type="text" placeholder="Rechercher entreprise, domaine, secteur..." value="${this.escapeHtml(this.threatFilters.query)}" style="
           width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.14);border-radius:8px;
           background:rgba(255,255,255,0.055);color:#fff;font-size:11px;padding:8px 10px 8px 29px;outline:none;">

@@ -7,6 +7,7 @@ import {
 } from './panelHeader.ts';
 import type { HealthFeatures } from '../types/index.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
@@ -65,7 +66,8 @@ export class NationalHealthPanel extends Panel {
 
     // Close button
     this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
+    this.closeBtn.innerHTML = fmIcon('x');
+    this.closeBtn.setAttribute('aria-label', 'Fermer');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
@@ -203,13 +205,13 @@ export class NationalHealthPanel extends Panel {
       <div style="background:${bg}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:7px; padding:10px 12px; margin-bottom:8px;">
         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px;">
           <div style="display:flex; align-items:center; gap:6px;">
-            <span style="font-size:14px;">${icon}</span>
+            ${icon ? `<span style="display:flex;">${icon}</span>` : ''}
             <span style="color:#fff; font-weight:700; font-size:12px;">${title}</span>
           </div>
         </div>
         <div style="color:#9898a8; font-size:10px; margin-bottom:3px;">${sub}</div>
         ${body ? `<div style="color:#c8c8d4; font-size:11px; line-height:1.5; margin-top:4px;">${body}</div>` : ''}
-        ${sourceUrl ? `<div style="margin-top:6px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none;">${sourceLabel} ↗</a></div>` : ''}
+        ${sourceUrl ? `<div style="margin-top:6px;"><a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:#64d2ff; font-size:10px; text-decoration:none; display:inline-flex; align-items:center; gap:3px;">${sourceLabel} ${fmIcon('external-link')}</a></div>` : ''}
       </div>`;
   }
 
@@ -232,7 +234,7 @@ export class NationalHealthPanel extends Panel {
       buckets[b].push({
         date: ev.date_debut ?? '',
         html: this.renderAlertCard(
-          COLOR[b], BG[b], '🧬',
+          COLOR[b], BG[b], fmIcon('dna'),
           this.escapeHtml(ev.label),
           `Hantavirus · ${this.escapeHtml(ev.kind)} · ${this.escapeHtml(ev.date_debut)}`,
           ev.commentaires ? this.escapeHtml(ev.commentaires) : '',
@@ -249,7 +251,7 @@ export class NationalHealthPanel extends Panel {
       buckets[b].push({
         date: al.date ?? '',
         html: this.renderAlertCard(
-          COLOR[b], BG[b], '🦠',
+          COLOR[b], BG[b], '',
           `${this.escapeHtml(al.pathogen)} <span style="color:${COLOR[b]}; font-size:9px; font-weight:700; margin-left:4px;">${EPIC_LABEL[al.severity] ?? ''}</span>`,
           `Épidémie saisonnière · ${this.escapeHtml(al.date)}`,
           this.escapeHtml(locs),
@@ -287,7 +289,7 @@ export class NationalHealthPanel extends Panel {
           <summary style="cursor:pointer; padding:7px 10px; background:${BG[bucket]}; border:1px solid ${color}44; border-radius:7px; display:flex; align-items:center; gap:7px; user-select:none; list-style:none;">
             <span style="width:8px; height:8px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
             <span style="color:${color}; font-size:11px; font-weight:700; flex:1;">${label} <span style="color:#9898a8; font-weight:400;">(${items.length})</span></span>
-            <span style="color:#9898a8; font-size:10px;">▾</span>
+            <span style="color:#9898a8; display:flex;">${fmIcon('chevron-down')}</span>
           </summary>
           <div style="padding:8px 0 2px;">${cards}</div>
         </details>`;
@@ -314,8 +316,8 @@ export class NationalHealthPanel extends Panel {
           let trendHtml = '';
           if (ind.trend !== undefined && Math.abs(ind.trend) > 0.1) {
             trendHtml = ind.trend > 0
-              ? `<span style="color:#ff3b30; font-size:12px; margin-left:6px; font-weight:bold;">↑</span>`
-              : `<span style="color:#34c759; font-size:12px; margin-left:6px; font-weight:bold;">↓</span>`;
+              ? `<span style="color:#ff3b30; margin-left:6px; display:inline-flex;">${fmIcon('trending-up')}</span>`
+              : `<span style="color:#34c759; margin-left:6px; display:inline-flex;">${fmIcon('trending-down')}</span>`;
           } else if (ind.trend !== undefined) {
             trendHtml = `<span style="color:#9898a8; font-size:12px; margin-left:6px; font-weight:bold;">→</span>`;
           }
@@ -396,7 +398,7 @@ export class NationalHealthPanel extends Panel {
         ${ansmHtml}
         ${referenceHtml}
         <div style="margin-top:10px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.07); text-align:center;">
-          <button onclick="document.dispatchEvent(new CustomEvent('open-health-barometer'))" style="width:100%; background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(231,76,60,0.15)); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:9px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; letter-spacing:0.3px;">🩺 Baromètre national Santé</button>
+          <button onclick="document.dispatchEvent(new CustomEvent('open-health-barometer'))" style="width:100%; background:linear-gradient(135deg,rgba(46,204,113,0.15),rgba(231,76,60,0.15)); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:9px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; letter-spacing:0.3px; display:flex; align-items:center; justify-content:center; gap:6px;">${fmIcon('stethoscope')} Baromètre national Santé</button>
         </div>
       </div>
     `;

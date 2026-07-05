@@ -9,6 +9,7 @@ import { getPartyColor, getPartyLabel } from '../config/party-colors.ts';
 import { GOUVERNEMENT, getMinistersForCategories, type Minister } from '../config/government.ts';
 import { fetchMinisterAgenda, getFullMinisterProfile, getMinistersForCategoriesLive } from '../services/ministers.ts';
 import type { EventCategory } from '../types/index.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 export class ElusPanel {
     private containerEl!: HTMLElement;
@@ -49,7 +50,8 @@ export class ElusPanel {
         ].join(';');
 
         const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '✕';
+        closeBtn.innerHTML = fmIcon('x');
+        closeBtn.setAttribute('aria-label', 'Fermer');
         closeBtn.style.cssText = [
             'position:absolute',
             'top:12px',
@@ -74,8 +76,8 @@ export class ElusPanel {
         this.headerEl = document.createElement('div');
         this.headerEl.style.cssText = 'padding:16px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:12px;flex-shrink:0;';
         const headerIcon = document.createElement('div');
-        headerIcon.style.cssText = 'font-size:24px;flex-shrink:0;';
-        headerIcon.textContent = '🏛️';
+        headerIcon.style.cssText = 'flex-shrink:0;display:flex;';
+        headerIcon.innerHTML = fmIcon('landmark', { size: 24 });
         const headerText = document.createElement('div');
         headerText.style.cssText = 'min-width:0;flex:1;';
         const headerTitle = document.createElement('div');
@@ -242,12 +244,12 @@ export class ElusPanel {
         this.headerSubtitleEl.textContent = `${commune.nom} · ${commune.nomDepartement}`;
         this.contentEl.innerHTML = '';
 
-        this.contentEl.appendChild(this._section('📍 LOCALISATION', '#6366f1', this._renderCommune(commune)));
-        this.contentEl.appendChild(this._section('🏛️ MAIRIE', '#3B82F6', this._renderMaire(data.maire)));
-        this.contentEl.appendChild(this._section('👤 ASSEMBLÉE NATIONALE', '#8B5CF6', this._renderDeputes(data.deputes)));
-        this.contentEl.appendChild(this._section('🏛️ SÉNAT', '#EF4444', this._renderSenateurs(data.senateurs)));
-        this.contentEl.appendChild(this._section('🏛 DÉPARTEMENT', '#f59e0b', this._renderPresidentDept(data.presidentDepartement, commune)));
-        this.contentEl.appendChild(this._section('🌍 RÉGION', '#10B981', this._renderRegion(data.presidentRegion, commune)));
+        this.contentEl.appendChild(this._section(`${fmIcon('map-pin')} LOCALISATION`, '#6366f1', this._renderCommune(commune)));
+        this.contentEl.appendChild(this._section(`${fmIcon('landmark')} MAIRIE`, '#3B82F6', this._renderMaire(data.maire)));
+        this.contentEl.appendChild(this._section(`${fmIcon('user')} ASSEMBLÉE NATIONALE`, '#8B5CF6', this._renderDeputes(data.deputes)));
+        this.contentEl.appendChild(this._section(`${fmIcon('landmark')} SÉNAT`, '#EF4444', this._renderSenateurs(data.senateurs)));
+        this.contentEl.appendChild(this._section(`${fmIcon('landmark')} DÉPARTEMENT`, '#f59e0b', this._renderPresidentDept(data.presidentDepartement, commune)));
+        this.contentEl.appendChild(this._section(`${fmIcon('globe')} RÉGION`, '#10B981', this._renderRegion(data.presidentRegion, commune)));
         this.contentEl.appendChild(this._governmentSection());
 
         const ts = document.createElement('div');
@@ -261,8 +263,8 @@ export class ElusPanel {
         const wrapper = document.createElement('div');
         wrapper.style.cssText = `background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:3px solid ${accentColor};border-radius:6px;padding:10px;margin-bottom:8px;`;
         const label = document.createElement('div');
-        label.style.cssText = `color:${accentColor};font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;`;
-        label.textContent = title;
+        label.style.cssText = `color:${accentColor};font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;display:flex;align-items:center;gap:5px;`;
+        label.innerHTML = title;
         wrapper.appendChild(label);
         wrapper.appendChild(innerEl);
         return wrapper;
@@ -428,7 +430,7 @@ export class ElusPanel {
         const info = document.createElement('div');
         info.style.cssText = 'flex:1;min-width:0;';
         info.innerHTML = `
-            <div style="color:var(--text-primary);font-weight:600;font-size:12px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">${this._formatPersonName(minister.prenom, minister.nom)}${minister.isPM ? ' 🏛' : ''}</div>
+            <div style="color:var(--text-primary);font-weight:600;font-size:12px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">${this._formatPersonName(minister.prenom, minister.nom)}${minister.isPM ? ` ${fmIcon('landmark', { label: 'Premier ministre' })}` : ''}</div>
             <div style="color:var(--text-muted);font-size:10px;margin-top:1px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">${minister.titreShort}${minister.parti ? ` · ${minister.parti}` : ''}</div>`;
 
         const chevron = document.createElement('span');
@@ -623,11 +625,10 @@ export class ElusPanel {
                     for (const v of votes) {
                         const row = document.createElement('div');
                         row.style.cssText = 'font-size:11px;border-bottom:1px solid var(--border-color);padding-bottom:5px;';
-                        const posIcon = v.position === 'pour' ? '✓' : v.position === 'contre' ? '✗' : '○';
-                        const posColor = v.position === 'pour' ? '#34c759' : v.position === 'contre' ? '#ff3b30' : '#8e8e93';
+                        const posLabel = v.position === 'pour' ? 'Pour' : v.position === 'contre' ? 'Contre' : 'Abstention';
                         row.innerHTML = `
                             <div style="display:flex;align-items:center;gap:6px;">
-                                <span style="color:${posColor};font-weight:700;font-size:13px;">${posIcon}</span>
+                                ${fmStatusDot(v.position === 'pour' ? 'low' : v.position === 'contre' ? 'critical' : 'info', posLabel)}
                                 <span style="color:var(--text-primary);flex:1;">${v.texte}</span>
                             </div>
                             <div style="color:var(--text-muted);margin-top:2px;">${v.date}</div>`;
@@ -644,8 +645,8 @@ export class ElusPanel {
                     link.href = `https://declarations.hatvp.fr/fiche/${elu.hatvpSlug}`;
                     link.target = '_blank';
                     link.rel = 'noopener';
-                    link.style.cssText = 'color:#6366f1;text-decoration:none;display:block;margin-bottom:8px;';
-                    link.textContent = 'Voir la déclaration d\'intérêts sur HATVP ↗';
+                    link.style.cssText = 'color:#6366f1;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;';
+                    link.innerHTML = `Voir la déclaration d'intérêts sur HATVP ${fmIcon('external-link')}`;
                     wrap.appendChild(link);
                 }
                 const note = document.createElement('p');
@@ -765,7 +766,7 @@ export class ElusPanel {
                     const items = await fetchMinisterAgenda(profile);
                     contentEl.innerHTML = items.length === 0
                         ? '<div style="color:var(--text-muted);font-size:11px;">Aucun agenda disponible</div>'
-                        : items.map((item) => `<div style="padding:8px 0;border-bottom:1px solid var(--border-color);"><div style="color:var(--text-primary);font-size:11px;line-height:1.5;">${item.title}</div><div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${item.date}${item.location ? ` · ${item.location}` : ''}</div>${item.sourceLabel ? `<div style="color:var(--text-muted);font-size:10px;margin-top:2px;">${item.sourceLabel}</div>` : ''}${item.url ? `<a href="${item.url}" target="_blank" style="color:var(--text-muted);font-size:10px;">Voir ↗</a>` : ''}</div>`).join('');
+                        : items.map((item) => `<div style="padding:8px 0;border-bottom:1px solid var(--border-color);"><div style="color:var(--text-primary);font-size:11px;line-height:1.5;">${item.title}</div><div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${item.date}${item.location ? ` · ${item.location}` : ''}</div>${item.sourceLabel ? `<div style="color:var(--text-muted);font-size:10px;margin-top:2px;">${item.sourceLabel}</div>` : ''}${item.url ? `<a href="${item.url}" target="_blank" style="color:var(--text-muted);font-size:10px;">Voir ${fmIcon('external-link')}</a>` : ''}</div>`).join('');
                 })();
             } else if (tabName === 'contact') {
                 const contactRows = [
@@ -795,8 +796,8 @@ export class ElusPanel {
                           </div>
                           ${dataset.description ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px;line-height:1.5;">${dataset.description}</div>` : ''}
                           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-                            ${dataset.url ? `<a href="${dataset.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">Fiche dataset ↗</a>` : ''}
-                            ${(dataset.resources ?? []).map((resource) => resource.url ? `<a href="${resource.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">${resource.format ?? resource.type ?? 'Ressource'} ↗</a>` : '').join('')}
+                            ${dataset.url ? `<a href="${dataset.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">Fiche dataset ${fmIcon('external-link')}</a>` : ''}
+                            ${(dataset.resources ?? []).map((resource) => resource.url ? `<a href="${resource.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">${resource.format ?? resource.type ?? 'Ressource'} ${fmIcon('external-link')}</a>` : '').join('')}
                           </div>
                         </div>`).join('');
             }
@@ -812,7 +813,7 @@ export class ElusPanel {
             link.target = '_blank';
             link.rel = 'noopener';
             link.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--text-muted);text-decoration:none;';
-            link.textContent = `${label} ↗`;
+            link.innerHTML = `${label} ${fmIcon('external-link')}`;
             linksEl.appendChild(link);
         };
 

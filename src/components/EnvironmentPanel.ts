@@ -8,7 +8,9 @@ import {
 import { RISK_LABELS } from '../types/index.ts';
 import type { FloodSegment, MeteoAlert, MeteoVigilanceLevel } from '../types/index.ts';
 import type { VigilanceTimeline } from '../services/vigilance-meteo.ts';
+import { RISK_PICTOGRAMS } from '../services/vigilance-meteo.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const METEO_COLORS: Record<MeteoVigilanceLevel, string> = {
   violet: 'var(--threat-critical)',
@@ -23,18 +25,6 @@ const FLOOD_COLORS: Record<string, string> = {
   orange: 'var(--threat-high)',
   yellow: 'var(--threat-medium)',
   green: 'var(--threat-low)',
-};
-
-const RISK_EMOJIS: Record<string, string> = {
-  wind: '💨',
-  'rain-flood': '🌧️',
-  thunderstorm: '⛈️',
-  flood: '🌊',
-  'snow-ice': '❄️',
-  heat: '🌡️',
-  cold: '🥶',
-  avalanche: '🏔️',
-  'wave-surge': '🌊',
 };
 
 function describeFloodTrace(item: FloodSegment): string {
@@ -66,7 +56,7 @@ export class EnvironmentPanel extends Panel {
   private dragOffsetY = 0;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Environnement', icon: '🌦️', collapsible: false });
+    super(container, { title: 'Environnement', collapsible: false });
   }
 
   setOnClose(handler: () => void): void {
@@ -109,14 +99,15 @@ export class EnvironmentPanel extends Panel {
     `;
 
     this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
+    this.closeBtn.innerHTML = fmIcon('x');
+    this.closeBtn.setAttribute('aria-label', 'Fermer');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
     const header = createPremiumIconHeader({
-      icon: '🌦️',
+      icon: fmIcon('cloud-rain', { size: 30 }),
       title: 'Environnement',
       subtitle: 'Météo-France + Vigicrues',
       gradientStart: 'rgba(56, 189, 248, 0.16)',
@@ -256,7 +247,7 @@ export class EnvironmentPanel extends Panel {
           <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
             <div>
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-                <span style="font-size:18px;">🌩️</span>
+                <span style="display:flex;">${fmIcon('cloud-lightning', { size: 18 })}</span>
                 <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Météo-France</div>
               </div>
               <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
@@ -332,7 +323,7 @@ export class EnvironmentPanel extends Panel {
     if (alerts.length === 0) {
       return `
         <div style="text-align:center; color: var(--text-muted); padding: 18px 0 6px;">
-          <div style="font-size: 30px; margin-bottom: 10px; opacity: 0.5;">☀️</div>
+          <div style="margin-bottom: 10px; opacity: 0.5; display:flex; justify-content:center;">${fmIcon('sun', { size: 30 })}</div>
           <div style="font-size: 12px;">Aucune vigilance météo notable sur cette tranche.</div>
         </div>
       `;
@@ -352,19 +343,19 @@ export class EnvironmentPanel extends Panel {
         const color = METEO_COLORS[level as MeteoVigilanceLevel];
         const label = level === 'violet' ? 'Crise' : level === 'red' ? 'Rouge' : level === 'orange' ? 'Orange' : 'Jaune';
         const riskSummary = [...new Set(items.flatMap((item) => item.risks))]
-          .map((risk) => `${RISK_EMOJIS[risk] ?? '⚠️'} ${RISK_LABELS[risk] ?? risk}`)
+          .map((risk) => `${fmIcon(RISK_PICTOGRAMS[risk]?.icon ?? 'triangle-alert')} ${RISK_LABELS[risk] ?? risk}`)
           .join(' · ');
 
         const cards = items
           .sort((a, b) => a.department.localeCompare(b.department, 'fr'))
           .map((item) => {
-          const riskIcons = item.risks.map((risk) => RISK_EMOJIS[risk] ?? '⚠️').join(' ');
+          const riskIcons = item.risks.map((risk) => fmIcon(RISK_PICTOGRAMS[risk]?.icon ?? 'triangle-alert')).join(' ');
           const riskText = item.risks.map((risk) => RISK_LABELS[risk] ?? risk).join(', ');
 
           return `
             <button type="button" class="environment-weather-item" data-code="${item.departmentCode}" title="${item.department} · ${riskText}" style="width:100%; min-width:0; text-align:left; appearance:none; background: rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.06); border-left: 3px solid ${color}; padding: 8px 9px; border-radius: 6px; cursor:pointer; transition: all 0.2s;">
               <div style="display:flex; align-items:center; gap:7px; min-width:0;">
-                <span style="font-size:12px; flex-shrink:0;">${riskIcons || '⚠️'}</span>
+                <span style="display:flex; gap:2px; flex-shrink:0;">${riskIcons || fmIcon('triangle-alert')}</span>
                 <span style="color: var(--text-primary); font-size: 12px; font-weight: 650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.department}</span>
                 <span style="margin-left:auto; color: var(--text-muted); font-size: 10px; flex-shrink:0;">${item.departmentCode}</span>
                 <span class="environment-weather-selected-dot" style="display:none; width:6px; height:6px; border-radius:999px; background:#7dd3fc; box-shadow:0 0 8px rgba(125,211,252,0.8); flex-shrink:0;"></span>
@@ -397,7 +388,7 @@ export class EnvironmentPanel extends Panel {
       return `
         <section style="display:flex; flex-direction:column; gap:10px; padding-top:12px; border-top:1px solid var(--border-color);">
           <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:18px;">🌊</span>
+            <span style="display:flex;">${fmIcon('waves', { size: 18 })}</span>
             <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Vigicrues</div>
           </div>
           <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">
@@ -449,7 +440,7 @@ export class EnvironmentPanel extends Panel {
         <div style="display:flex; flex-direction:column; gap:10px; padding: 12px; border:1px solid rgba(34,197,94,0.12); border-radius:8px; background:rgba(34,197,94,0.04);">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-              <span style="font-size:18px;">🌊</span>
+              <span style="display:flex;">${fmIcon('waves', { size: 18 })}</span>
               <div style="color: var(--text-primary); font-size: 14px; font-weight: 700;">Vigicrues</div>
             </div>
             <div style="color: var(--text-muted); font-size: 11px; line-height:1.5;">

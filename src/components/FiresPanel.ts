@@ -11,6 +11,7 @@ import { clusterFireDetections } from '../services/fire-clustering.ts';
 import { fetchNearbyCommuneLabel } from '../services/elus.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 export class FiresPanel {
     private modalEl!: HTMLElement;
@@ -92,7 +93,8 @@ export class FiresPanel {
 
         // Close button
         const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '✕';
+        closeBtn.innerHTML = fmIcon('x');
+        closeBtn.setAttribute('aria-label', 'Fermer');
         closeBtn.style.cssText = getPremiumCloseButtonStyle();
         applyPremiumCloseButtonHover(closeBtn);
         closeBtn.onclick = () => this.hide();
@@ -100,7 +102,7 @@ export class FiresPanel {
 
         // Header
         const header = createPremiumIconHeader({
-            icon: '🔥',
+            icon: fmIcon('flame', { size: 30 }),
             title: 'Feux de forêt actifs',
             subtitle: 'NASA FIRMS · VIIRS SNPP · latence ~3h',
             statusId: 'fires-status-label',
@@ -306,10 +308,10 @@ export class FiresPanel {
 
     // ─── Helpers de rendu ────────────────────────────────────────────────────
 
-    private _severityMeta(score: number): { color: string; bg: string; label: string; dot: string } {
-        if (score >= 60) return { color: '#ff3b30', bg: 'rgba(255,59,48,0.12)', label: 'CRITIQUE', dot: '🔴' };
-        if (score >= 30) return { color: '#ff9500', bg: 'rgba(255,149,0,0.10)', label: 'MODÉRÉ',   dot: '🟠' };
-        return              { color: '#ffd60a', bg: 'rgba(255,214,10,0.08)',  label: 'FAIBLE',   dot: '🟡' };
+    private _severityMeta(score: number): { color: string; bg: string; label: string } {
+        if (score >= 60) return { color: '#ff3b30', bg: 'rgba(255,59,48,0.12)', label: 'CRITIQUE' };
+        if (score >= 30) return { color: '#ff9500', bg: 'rgba(255,149,0,0.10)', label: 'MODÉRÉ' };
+        return              { color: '#ffd60a', bg: 'rgba(255,214,10,0.08)',  label: 'FAIBLE' };
     }
 
     private _confidenceColor(conf: string): string {
@@ -366,7 +368,7 @@ export class FiresPanel {
         if (filtered.length === 0) {
             const empty = document.createElement('div');
             empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:24px 0;';
-            empty.innerHTML = `<div style="font-size:36px;margin-bottom:12px;opacity:0.5;">✅</div><div style="font-size:13px;">Aucune détection avec ces filtres.</div><div style="font-size:11px;margin-top:8px;opacity:0.7;">${this.rawFires.length} brutes · 0 filtrées</div>`;
+            empty.innerHTML = `<div style="margin-bottom:12px;opacity:0.5;display:flex;justify-content:center;">${fmIcon('circle-off', { size: 36 })}</div><div style="font-size:13px;">Aucune détection avec ces filtres.</div><div style="font-size:11px;margin-top:8px;opacity:0.7;">${this.rawFires.length} brutes · 0 filtrées</div>`;
             this.contentEl.appendChild(empty);
         } else {
             this._renderStats(filtered, incidents, totalFrp);
@@ -388,14 +390,14 @@ export class FiresPanel {
         info.style.cssText = 'background:rgba(255,149,0,0.07);border:1px solid rgba(255,149,0,0.22);border-radius:8px;padding:10px 12px;margin-bottom:14px;cursor:pointer;';
         info.innerHTML = `
             <summary style="color:#ff9500;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-                <span>ℹ️</span> À savoir sur FIRMS <span style="margin-left:auto;font-size:10px;opacity:0.7;">▸</span>
+                À savoir sur FIRMS <span style="margin-left:auto;font-size:10px;opacity:0.7;">${fmIcon('chevron-right')}</span>
             </summary>
             <div style="margin-top:10px;color:var(--text-muted);font-size:11px;line-height:1.8;display:flex;flex-direction:column;gap:4px;">
-                <div>🛰️ <b style="color:var(--text-primary);">${satellites}</b> — revisite France toutes les <b style="color:var(--text-primary);">${revisit}</b>.</div>
-                ${multiSource ? '<div>🔗 Détections proches (&lt; 3 km) regroupées en <b style="color:var(--text-primary);">incidents DBSCAN</b> avec score de sévérité.</div>' : ''}
-                ${multiSource ? '<div>✅ Un incident vu par 2+ satellites reçoit le label <b style="color:#ff9500;">multi-satellite</b> (score impact ↑).</div>' : ''}
-                <div>⚠️ <b style="color:var(--text-primary);">Faux positifs</b> : torchères industrielles, aciéries, champs brûlés, réflexions solaires.</div>
-                <div>💡 Activez <b style="color:var(--text-primary);">Masquer zones urbaines</b> pour filtrer les sources industrielles permanentes.</div>
+                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> — revisite France toutes les <b style="color:var(--text-primary);">${revisit}</b>.</div>
+                ${multiSource ? `<div>${fmIcon('link')} Détections proches (&lt; 3 km) regroupées en <b style="color:var(--text-primary);">incidents DBSCAN</b> avec score de sévérité.</div>` : ''}
+                ${multiSource ? `<div>${fmIcon('check')} Un incident vu par 2+ satellites reçoit le label <b style="color:#ff9500;">multi-satellite</b> (score impact ↑).</div>` : ''}
+                <div>${fmIcon('triangle-alert')} <b style="color:var(--text-primary);">Faux positifs</b> : torchères industrielles, aciéries, champs brûlés, réflexions solaires.</div>
+                <div>${fmIcon('lightbulb')} Activez <b style="color:var(--text-primary);">Masquer zones urbaines</b> pour filtrer les sources industrielles permanentes.</div>
             </div>`;
         this.contentEl.appendChild(info);
     }
@@ -560,10 +562,10 @@ export class FiresPanel {
             const impactLabels = incident.score.labels
                 .filter(l => ['near_urban', 'night', 'multi_satellite', 'high_confidence'].includes(l))
                 .map(l => ({
-                    near_urban:       '🏙️ Zone urbaine',
-                    night:            '🌙 Détection nocturne',
-                    multi_satellite:  '🛰️ Multi-satellite',
-                    high_confidence:  '✅ Haute confiance',
+                    near_urban:       `${fmIcon('building-2')} Zone urbaine`,
+                    night:            `${fmIcon('moon')} Détection nocturne`,
+                    multi_satellite:  `${fmIcon('satellite')} Multi-satellite`,
+                    high_confidence:  `${fmIcon('check')} Haute confiance`,
                 }[l] ?? l));
 
             const section = document.createElement('details');
@@ -583,12 +585,12 @@ export class FiresPanel {
                 </div>
                 <div style="display:flex;gap:10px;align-items:center;padding-left:16px;">
                     <span style="color:var(--text-muted);font-size:10px;">
-                        📍 ${this._getIncidentPlaceLabel(incident)}
+                        ${fmIcon('map-pin')} ${this._getIncidentPlaceLabel(incident)}
                     </span>
                     <span style="color:var(--text-muted);font-size:10px;">·</span>
-                    <span style="color:var(--text-muted);font-size:10px;">⏱ ${this._formatDuration(incident.durationMinutes)}</span>
+                    <span style="color:var(--text-muted);font-size:10px;">${fmIcon('timer')} ${this._formatDuration(incident.durationMinutes)}</span>
                     ${incident.satellites.length >= 2
-                        ? `<span style="color:var(--text-muted);font-size:10px;">·</span><span style="color:#ffd60a;font-size:10px;">🛰️ ${incident.satellites.join('+')}</span>`
+                        ? `<span style="color:var(--text-muted);font-size:10px;">·</span><span style="color:#ffd60a;font-size:10px;">${fmIcon('satellite')} ${incident.satellites.join('+')}</span>`
                         : `<span style="color:var(--text-muted);font-size:10px;">·</span><span style="color:var(--text-muted);font-size:10px;">${incident.satellites[0] ?? 'SNPP'}</span>`}
                 </div>
                 ${impactLabels.length > 0
@@ -625,7 +627,7 @@ export class FiresPanel {
             for (const f of visibleFires) {
                 const confColor = this._confidenceColor(f.confidence);
                 const raw = String(f.acq_time).padStart(4, '0');
-                const period = f.daynight === 'D' ? '☀️' : '🌙';
+                const period = f.daynight === 'D' ? fmIcon('sun') : fmIcon('moon');
                 const item = document.createElement('div');
                 item.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;transition:background 0.15s;gap:8px;`;
                 item.innerHTML = `
@@ -701,7 +703,7 @@ export class FiresPanel {
             for (const f of visibleOrphans) {
                 const confColor = this._confidenceColor(f.confidence);
                 const raw = String(f.acq_time).padStart(4, '0');
-                const period = f.daynight === 'D' ? '☀️' : '🌙';
+                const period = f.daynight === 'D' ? fmIcon('sun') : fmIcon('moon');
                 const item = document.createElement('div');
                 item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;transition:background 0.15s;gap:8px;';
                 item.innerHTML = `
@@ -762,11 +764,11 @@ export class FiresPanel {
         const satLine = document.createElement('div');
         satLine.style.cssText = 'display:flex;align-items:center;gap:6px;';
         satLine.innerHTML = `
-            <span style="font-size:10px;">🛰️</span>
+            <span style="display:flex;">${fmIcon('satellite', { size: 10 })}</span>
             <span style="color:var(--text-muted);font-size:10px;">${satelliteStr}</span>
             <span style="color:var(--border-color);font-size:10px;">·</span>
             <span style="color:var(--text-muted);font-size:10px;">${revisitStr}</span>
-            ${multiSource ? '<span style="background:rgba(255,214,10,0.15);color:#ffd60a;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:2px;">API KEY ✓</span>' : ''}`;
+            ${multiSource ? `<span style="background:rgba(255,214,10,0.15);color:#ffd60a;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:2px;">API KEY ${fmIcon('check', { size: 10 })}</span>` : ''}`;
         footer.appendChild(satLine);
 
         // Ligne stats

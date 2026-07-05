@@ -14,7 +14,7 @@ import {
 import type { ISNRData } from '../types/index.ts';
 import { scoreToLevel } from '../services/stability-index.ts';
 import { renderFreshnessBadge } from './shared/truthBadge.ts';
-import { fmIcon, fmStatusDot } from './shared/icons.ts';
+import { fmIcon, fmStatusDot, fmEmptyStateHTML } from './shared/icons.ts';
 
 const SCORE_COLORS: Record<string, string> = {
   critical: 'var(--threat-critical)',
@@ -117,7 +117,7 @@ export class ISNRPanel extends Panel {
   private onClickDepartment?: (code: string) => void;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'ISNR', icon: '📊', collapsible: false });
+    super(container, { title: 'ISNR', icon: fmIcon('bar-chart-3'), collapsible: false });
   }
 
   setOnHoverDepartment(handler: (code: string | null) => void): void {
@@ -146,7 +146,8 @@ export class ISNRPanel extends Panel {
 
     // Close button
     this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
+    this.closeBtn.innerHTML = fmIcon('x');
+    this.closeBtn.setAttribute('aria-label', 'Fermer');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
     this.closeBtn.onclick = () => this.hide();
@@ -311,8 +312,7 @@ export class ISNRPanel extends Panel {
     if (topDepts.length === 0) {
       html += `
         <div style="padding: 30px 16px; text-align: center; color: var(--text-muted);">
-          <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.5;">⚪</div>
-          <div>Tous les départements sont stables.</div>
+          ${fmEmptyStateHTML({ icon: 'circle-off', text: 'Tous les départements sont stables.' })}
         </div>
       `;
     } else {
@@ -367,7 +367,7 @@ export class ISNRPanel extends Panel {
             ${dept.topDriver ? `
               <div style="font-size: 11px; margin-top: 6px; background: rgba(255,255,255,0.03); padding: 5px 6px; border-radius: 4px; border-left: 2px solid ${scoreToColor(dept.topDriver.score)}">
                 <div style="display:flex; align-items:center; gap:4px;">
-                  <span style="color: var(--text-primary); font-weight: 500;">⚠️ ${dept.topDriver.label}</span>
+                  <span style="color: var(--text-primary); font-weight: 500; display:inline-flex; align-items:center; gap:4px;">${fmIcon('triangle-alert')} ${dept.topDriver.label}</span>
                   <span style="color: var(--text-muted); font-size: 9px; margin-left: auto;">${dept.topDriver.source}</span>
                 </div>
                 ${dept.topDriver.detail ? `

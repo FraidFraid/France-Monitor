@@ -1,6 +1,7 @@
 import type { CopernicusScene, SatelliteCollection, SatelliteViewRequest } from '../types/index.ts';
 import { buildEoBrowserUrl, fetchSentinel1Scenes, fetchSentinel2Scenes } from '../services/copernicus.ts';
 import { bboxToPolygon, fetchSentinelNdwi, geometryToBufferedPolygon } from '../services/sentinel-ndwi.ts';
+import { fmIcon } from './shared/icons.ts';
 
 interface SceneBundle {
   collection: SatelliteCollection;
@@ -186,7 +187,7 @@ export class SentinelModal {
     this.eoBtn.className = 'sentinel-modal__link';
     this.eoBtn.target = '_blank';
     this.eoBtn.rel = 'noopener noreferrer';
-    this.eoBtn.textContent = 'Ouvrir dans EO Browser ↗';
+    this.eoBtn.innerHTML = `Ouvrir dans EO Browser ${fmIcon('external-link')}`;
 
     actionsEl.append(this.toggleBtn, this.eoBtn);
 
@@ -435,9 +436,9 @@ export class SentinelModal {
       this.currentCollection,
       new Date(scene.datetime),
     );
-    this.eoBtn.textContent = isAuthFallbackMessage(this.ndwiError)
-      ? 'Ouvrir EO Browser (fallback) ↗'
-      : 'Ouvrir dans EO Browser ↗';
+    this.eoBtn.innerHTML = isAuthFallbackMessage(this.ndwiError)
+      ? `Ouvrir EO Browser (fallback) ${fmIcon('external-link')}`
+      : `Ouvrir dans EO Browser ${fmIcon('external-link')}`;
 
     this.listEl.innerHTML = '';
     this.getDisplayScenes().forEach(({ scene: candidate, sceneIndex }) => {
