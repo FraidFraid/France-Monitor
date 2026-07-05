@@ -7,6 +7,7 @@ import {
 } from './panelHeader.ts';
 import type { TransportDisruption, ThreatLevel } from '../types/index.ts';
 import { renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const SEVERITY_COLORS: Record<ThreatLevel, string> = {
     critical: 'var(--threat-critical)',
@@ -27,10 +28,10 @@ const SEVERITY_LABELS: Record<ThreatLevel, string> = {
 const SEVERITY_ORDER: ThreatLevel[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 const TYPE_ICONS: Record<TransportDisruption['type'], string> = {
-    cancellation: '❌',
-    delay: '⏱️',
-    works: '🚧',
-    other: 'ℹ️',
+    cancellation: fmIcon('ban'),
+    delay: fmIcon('timer'),
+    works: fmIcon('construction'),
+    other: fmIcon('circle-help'),
 };
 
 const TYPE_LABELS: Record<TransportDisruption['type'], string> = {
@@ -54,7 +55,7 @@ export class TransportPanel extends Panel {
     private mapCoverageReady = false;
 
     constructor(container: HTMLElement) {
-        super(container, { title: 'SNCF', icon: '🚆', collapsible: false });
+        super(container, { title: 'SNCF', collapsible: false });
     }
 
     mount(): void {
@@ -69,16 +70,14 @@ export class TransportPanel extends Panel {
         })}
     `;
 
-        this.closeBtn = document.createElement('button');
-        this.closeBtn.innerHTML = '✕';
+        this.closeBtn = this.createCloseButton(() => this.hide());
         this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
         applyPremiumCloseButtonHover(this.closeBtn);
-        this.closeBtn.onclick = () => this.hide();
 
         this.modalEl.appendChild(this.closeBtn);
 
         const header = createPremiumIconHeader({
-            icon: '🚆',
+            icon: fmIcon('train-front', { size: 32 }),
             title: 'Perturbations SNCF',
             subtitle: 'Trafic ferroviaire',
             gradientStart: 'rgba(59, 130, 246, 0.16)',
@@ -280,7 +279,7 @@ export class TransportPanel extends Panel {
             <div style="padding: 10px 12px; border-left: 3px solid ${color};">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
                 <div style="color: var(--text-primary); font-size: 12px; font-weight: 600; flex: 1;">
-                  ${d.trainNumber ? `<span style="color: ${color};">🚄 ${this.escapeHtml(d.trainNumber)}</span> — ` : ''}${this.escapeHtml(d.line)}
+                  ${d.trainNumber ? `<span style="color: ${color};">${fmIcon('train-front')} ${this.escapeHtml(d.trainNumber)}</span> — ` : ''}${this.escapeHtml(d.line)}
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-muted);">
                   ${typeIcon} ${typeLabel}
@@ -383,7 +382,7 @@ export class TransportPanel extends Panel {
             // Single station
             return `
                 <div style="flex: 1; text-align: center;">
-                    <div style="font-size: 11px; color: var(--text-primary);">📍 ${depName}</div>
+                    <div style="font-size: 11px; color: var(--text-primary);">${fmIcon('map-pin')} ${depName}</div>
                     ${depTime ? `<div style="font-size: 10px; color: var(--text-muted);">${depTime}</div>` : ''}
                 </div>
             `;

@@ -8,6 +8,7 @@
  */
 
 import type { DetectedSituation, SituationAction, SituationSeverity } from '../types/index.ts';
+import { fmIcon } from './shared/icons.ts';
 
 // ─── i18n minimal ─────────────────────────────────────────────────────────────
 
@@ -55,22 +56,22 @@ const SEV_LABEL_EN: Record<SituationSeverity, string> = {
 };
 
 const TYPE_ICON: Record<string, string> = {
-  ENERGY_STRESS: '⚡',
-  IMPORT_DEPENDENCY_RISK: '🔌',
-  FLOOD_CRISIS: '🌊',
-  WILDFIRE_ESCALATION: '🔥',
-  CYBER_PRESSURE: '🛡️',
-  SOCIAL_ESCALATION: '📢',
-  TELECOM_DISRUPTION: '📡',
-  MARITIME_ANOMALY: '⚓',
-  DEFENSE_SIGNAL_ELEVATED: '✈️',
-  FUEL_SUPPLY_RISK: '⛽',
-  NEWS_ALERT: '📰',
-  MILITARY_SURGE_ALERT: '✈️',
-  WEATHER_ALERT: '🌩️',
-  AIS_ANOMALY_ALERT: '⚓',
-  DEFENSE_ALERT: '🛡️',
-  GPS_JAMMING_ALERT: '📡',
+  ENERGY_STRESS: fmIcon('zap'),
+  IMPORT_DEPENDENCY_RISK: fmIcon('plug-zap'),
+  FLOOD_CRISIS: fmIcon('waves'),
+  WILDFIRE_ESCALATION: fmIcon('flame'),
+  CYBER_PRESSURE: fmIcon('shield'),
+  SOCIAL_ESCALATION: fmIcon('megaphone'),
+  TELECOM_DISRUPTION: fmIcon('satellite-dish'),
+  MARITIME_ANOMALY: fmIcon('anchor'),
+  DEFENSE_SIGNAL_ELEVATED: fmIcon('plane'),
+  FUEL_SUPPLY_RISK: fmIcon('fuel'),
+  NEWS_ALERT: fmIcon('newspaper'),
+  MILITARY_SURGE_ALERT: fmIcon('plane'),
+  WEATHER_ALERT: fmIcon('cloud-lightning'),
+  AIS_ANOMALY_ALERT: fmIcon('anchor'),
+  DEFENSE_ALERT: fmIcon('shield'),
+  GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -408,7 +409,7 @@ export class SituationMonitor {
   private renderItem(s: DetectedSituation): string {
     const color = SEV_COLOR[s.severity];
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
-    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
     const pct = Math.round(s.confidence * 100);
     const zone = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
     const extraZones = s.affectedZones.length > 1 ? `+${s.affectedZones.length - 1}` : '';
@@ -423,7 +424,7 @@ export class SituationMonitor {
             <span class="sit-mon__item-badge" style="color:${color};">${sevLabel}</span>
             <span class="sit-mon__item-conf">${pct}%</span>
           </div>
-          ${zone ? `<div class="sit-mon__item-zone">📍 ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
+          ${zone ? `<div class="sit-mon__item-zone">${fmIcon('map-pin')} ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
         </div>
       </div>`;
   }
@@ -435,7 +436,7 @@ export class SituationMonitor {
     document.querySelector('.sit-mon__detail')?.remove();
 
     const color = SEV_COLOR[s.severity];
-    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
     const pct = Math.round(s.confidence * 100);
 
@@ -450,7 +451,7 @@ export class SituationMonitor {
     // Bouton "Voir sur la carte" — affiché uniquement si la situation a des layers à activer
     const hasMapAction = (s.activateLayers && s.activateLayers.length > 0) || (s.lon != null && s.lat != null);
     const mapActionHtml = hasMapAction
-      ? `<button type="button" class="sit-mon__detail-map-btn">Voir sur la carte \u2197</button>`
+      ? `<button type="button" class="sit-mon__detail-map-btn">Voir sur la carte ${fmIcon('map-pin')}</button>`
       : '';
 
     const detail = document.createElement('div');
@@ -461,10 +462,10 @@ export class SituationMonitor {
           <span>${icon}</span>
           <span class="sit-mon__detail-title">${escapeHtml(s.title)}</span>
           <span class="sit-mon__detail-badge" style="background:${color};">${sevLabel} · ${pct}%</span>
-          <button class="sit-mon__detail-close" type="button" aria-label="Fermer">&#x2715;</button>
+          <button class="sit-mon__detail-close" type="button" aria-label="Fermer">${fmIcon('x')}</button>
         </header>
         <p class="sit-mon__detail-summary">${escapeHtml(s.summary)}</p>
-        ${zones ? `<div class="sit-mon__detail-zones">\uD83D\uDCCD ${zones}</div>` : ''}
+        ${zones ? `<div class="sit-mon__detail-zones">${fmIcon('map-pin')} ${zones}</div>` : ''}
         <div class="sit-mon__detail-cols">
           <div>
             <div class="sit-mon__detail-col-title">${t(this.lang, 'Facteurs', 'Drivers')}</div>

@@ -14,6 +14,7 @@ import type {
   HistorySlot,
 } from '../types/index.ts';
 import { getHistory } from '../services/situation-history.ts';
+import { fmIcon } from './shared/icons.ts';
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -32,16 +33,16 @@ const SEV_LABEL: Record<SituationSeverity, string> = {
 };
 
 const TYPE_ICON: Record<string, string> = {
-  ENERGY_STRESS:           '⚡',
-  IMPORT_DEPENDENCY_RISK:  '🔌',
-  FLOOD_CRISIS:            '🌊',
-  WILDFIRE_ESCALATION:     '🔥',
-  CYBER_PRESSURE:          '🛡️',
-  SOCIAL_ESCALATION:       '📢',
-  TELECOM_DISRUPTION:      '📡',
-  MARITIME_ANOMALY:        '⚓',
-  DEFENSE_SIGNAL_ELEVATED: '✈️',
-  FUEL_SUPPLY_RISK:        '⛽',
+  ENERGY_STRESS:           fmIcon('zap'),
+  IMPORT_DEPENDENCY_RISK:  fmIcon('plug-zap'),
+  FLOOD_CRISIS:            fmIcon('waves'),
+  WILDFIRE_ESCALATION:     fmIcon('flame'),
+  CYBER_PRESSURE:          fmIcon('shield'),
+  SOCIAL_ESCALATION:       fmIcon('megaphone'),
+  TELECOM_DISRUPTION:      fmIcon('satellite-dish'),
+  MARITIME_ANOMALY:        fmIcon('anchor'),
+  DEFENSE_SIGNAL_ELEVATED: fmIcon('plane'),
+  FUEL_SUPPLY_RISK:        fmIcon('fuel'),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -318,7 +319,7 @@ export class SituationHistoryPanel {
 
     const items = snap.situations.map(s => {
       const color  = SEV_COLOR[s.severity];
-      const icon   = TYPE_ICON[s.type] ?? '⚠️';
+      const icon   = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
       const sevLbl = SEV_LABEL[s.severity];
       const zones  = s.affectedZones.join(', ');
       return `
@@ -343,7 +344,7 @@ export class SituationHistoryPanel {
               : r.source === 'cached' ? `Cache local · ${age} min`
               : `Réseau indisponible — données locales`;
     const warn = r.isDegraded
-      ? `<span class="sit-hist__footer-warn">⚠ ${r.data.slotCount.missing} slots non capturés</span>`
+      ? `<span class="sit-hist__footer-warn">${fmIcon('triangle-alert')} ${r.data.slotCount.missing} slots non capturés</span>`
       : '';
     return `
       <div class="sit-hist__footer">
@@ -395,7 +396,7 @@ export class SituationHistoryPanel {
       const sevLbl    = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : '—';
       const sevColor  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : '#22c55e';
       const situations = snap.situations.slice(0, 2).map(s =>
-        `<div class="sit-hist__tooltip-situ">${TYPE_ICON[s.type] ?? '⚠️'} ${escapeHtml(s.title)}</div>`
+        `<div class="sit-hist__tooltip-situ">${TYPE_ICON[s.type] ?? fmIcon('triangle-alert')} ${escapeHtml(s.title)}</div>`
       ).join('');
       const more = snap.situations.length > 2
         ? `<div style="color:var(--text-muted);margin-top:2px;">+${snap.situations.length - 2} autres</div>`

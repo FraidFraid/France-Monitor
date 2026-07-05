@@ -6,6 +6,7 @@
  */
 
 import type { DetectedSituation, SituationSeverity } from '../types/index.ts';
+import { fmIcon } from './shared/icons.ts';
 
 function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
@@ -39,12 +40,12 @@ const SEV_LABEL_EN: Record<SituationSeverity, string> = {
 };
 
 const TYPE_ICON: Record<string, string> = {
-  NEWS_ALERT: '📰',
-  MILITARY_SURGE_ALERT: '✈️',
-  WEATHER_ALERT: '🌩️',
-  AIS_ANOMALY_ALERT: '⚓',
-  DEFENSE_ALERT: '🛡️',
-  GPS_JAMMING_ALERT: '📡',
+  NEWS_ALERT: fmIcon('newspaper'),
+  MILITARY_SURGE_ALERT: fmIcon('plane'),
+  WEATHER_ALERT: fmIcon('cloud-lightning'),
+  AIS_ANOMALY_ALERT: fmIcon('anchor'),
+  DEFENSE_ALERT: fmIcon('shield'),
+  GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
 };
 
 export class AlertMonitor {
@@ -308,7 +309,7 @@ export class AlertMonitor {
   private renderItem(s: DetectedSituation): string {
     const color = SEV_COLOR[s.severity];
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
-    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
     const pct = Math.round(s.confidence * 100);
     const zone = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
     const extraZones = s.affectedZones.length > 1 ? `+${s.affectedZones.length - 1}` : '';
@@ -323,7 +324,7 @@ export class AlertMonitor {
             <span class="sit-mon__item-badge" style="color:${color};">${sevLabel}</span>
             <span class="sit-mon__item-conf">${pct}%</span>
           </div>
-          ${zone ? `<div class="sit-mon__item-zone">📍 ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
+          ${zone ? `<div class="sit-mon__item-zone">${fmIcon('map-pin')} ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
         </div>
       </div>`;
   }
@@ -332,7 +333,7 @@ export class AlertMonitor {
     document.querySelector('.sit-mon__detail')?.remove();
 
     const color = SEV_COLOR[s.severity];
-    const icon = TYPE_ICON[s.type] ?? '⚠️';
+    const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
     const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
     const pct = Math.round(s.confidence * 100);
     const zones = s.affectedZones.map((z) => escapeHtml(z)).join(' · ');
@@ -345,10 +346,10 @@ export class AlertMonitor {
           <span>${icon}</span>
           <span class="sit-mon__detail-title">${escapeHtml(s.title)}</span>
           <span class="sit-mon__detail-badge" style="background:${color};">${sevLabel} · ${pct}%</span>
-          <button class="sit-mon__detail-close" type="button" aria-label="Fermer">✕</button>
+          <button class="sit-mon__detail-close" type="button" aria-label="Fermer">${fmIcon('x')}</button>
         </header>
         <p class="sit-mon__detail-summary">${escapeHtml(s.summary)}</p>
-        ${zones ? `<div class="sit-mon__detail-zones">📍 ${zones}</div>` : ''}
+        ${zones ? `<div class="sit-mon__detail-zones">${fmIcon('map-pin')} ${zones}</div>` : ''}
         ${s.linkUrl ? `
           <div class="alert-mon__detail-actions">
             <a

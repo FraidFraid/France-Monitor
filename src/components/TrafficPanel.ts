@@ -13,6 +13,7 @@ import {
 import type { TrafficIncident } from '../services/traffic.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon } from './shared/icons.ts';
 
 export class TrafficPanel extends Panel {
     private contentEl: HTMLElement | null = null;
@@ -30,7 +31,7 @@ export class TrafficPanel extends Panel {
     }
 
     constructor(container: HTMLElement) {
-        super(container, { title: 'Trafic', icon: '🚗', collapsible: false });
+        super(container, { title: 'Trafic', collapsible: false });
     }
 
     setOnHoverIncident(handler: (id: string | null) => void): void {
@@ -53,16 +54,14 @@ export class TrafficPanel extends Panel {
         })}
     `;
 
-        this.closeBtn = document.createElement('button');
-        this.closeBtn.innerHTML = '✕';
+        this.closeBtn = this.createCloseButton(() => this.hide());
         this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
         applyPremiumCloseButtonHover(this.closeBtn);
-        this.closeBtn.onclick = () => this.hide();
 
         this.modalEl.appendChild(this.closeBtn);
 
         const header = createPremiumIconHeader({
-            icon: '🚗',
+            icon: fmIcon('car-front', { size: 32 }),
             title: 'Infos Trafic',
             subtitle: 'TomTom Traffic',
             gradientStart: 'rgba(245, 158, 11, 0.16)',

@@ -17,6 +17,7 @@ import type { DefenseAlert } from '../services/cable-threats.ts';
 import type { GpsJammingSignal } from '../types/index.ts';
 import { formatProximityDistance } from '../utils/cable-proximity.ts';
 import { renderFreshnessBadge } from './shared/truthBadge.ts';
+import { fmIcon, fmStatusDot } from './shared/icons.ts';
 
 // ═══ Constantes UI ═══
 
@@ -30,12 +31,6 @@ const SEVERITY_LABELS: Record<DefenseAlert['severity'], string> = {
   high: 'Critique',
   medium: 'Élevée',
   low: 'Attention',
-};
-
-const SEVERITY_ICONS: Record<DefenseAlert['severity'], string> = {
-  high: '🔴',
-  medium: '🟠',
-  low: '🟡',
 };
 
 // ═══ DefensePanel Class ═══
@@ -60,7 +55,7 @@ export class DefensePanel extends Panel {
   private dragOffsetY = 0;
 
   constructor(container: HTMLElement) {
-    super(container, { title: 'Alertes Défense', icon: '🛡️', collapsible: false });
+    super(container, { title: 'Alertes Défense', collapsible: false });
   }
 
   mount(): void {
@@ -78,16 +73,14 @@ export class DefensePanel extends Panel {
     `;
 
     // Close button
-    this.closeBtn = document.createElement('button');
-    this.closeBtn.innerHTML = '✕';
-    this.closeBtn.className = 'defense-panel-close';
+    this.closeBtn = this.createCloseButton(() => this.hide());
+    this.closeBtn.classList.add('defense-panel-close');
     this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(this.closeBtn);
-    this.closeBtn.onclick = () => this.hide();
     this.modalEl.appendChild(this.closeBtn);
 
     const header = createPremiumIconHeader({
-      icon: '🛡️',
+      icon: fmIcon('shield', { size: 32 }),
       title: 'Alertes Défense',
       subtitle: 'Surveillance câbles sous-marins',
       gradientStart: 'rgba(59, 130, 246, 0.18)',
@@ -126,7 +119,7 @@ export class DefensePanel extends Panel {
         Méthodologie
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <span style="font-size:12px;">🧭</span>
+        <span style="font-size:12px;">${fmIcon('compass')}</span>
         <span style="color: var(--text-primary); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
           Notes de lecture
         </span>
@@ -170,7 +163,7 @@ export class DefensePanel extends Panel {
           border-radius: 8px;
         ">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-            <span style="font-size:12px;">ℹ️</span>
+            <span style="font-size:12px;">${fmIcon('circle-help')}</span>
             <span style="color: var(--text-primary); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
               Couverture AIS
             </span>
@@ -329,7 +322,7 @@ export class DefensePanel extends Panel {
       const emptyEl = document.createElement('div');
       emptyEl.innerHTML = `
         <div style="text-align: center; padding: 24px 16px 32px;">
-          <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.4;">✓</div>
+          <div style="margin-bottom: 16px; opacity: 0.4;">${fmIcon('check', { size: 48 })}</div>
           <div style="color: #10B981; font-weight: 600; margin-bottom: 8px;">
             Situation normale
           </div>
@@ -396,7 +389,7 @@ export class DefensePanel extends Panel {
         gap: 8px;
       `;
       headerEl.innerHTML = `
-        <span style="font-size: 14px;">🔌</span>
+        <span style="font-size: 14px;">${fmIcon('plug-zap')}</span>
         <span style="color: var(--text-primary); font-size: 12px; font-weight: 600; flex: 1;">
           ${this.escapeHtml(cableName)}
         </span>
@@ -486,7 +479,7 @@ export class DefensePanel extends Panel {
       ? `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-            <span style="font-size:15px;">📡</span>
+            <span style="font-size:15px;">${fmIcon('satellite-dish')}</span>
             <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
               Brouillage radar / GPS
             </span>
@@ -508,7 +501,7 @@ export class DefensePanel extends Panel {
       `
       : `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-          <span style="font-size:15px;">📡</span>
+          <span style="font-size:15px;">${fmIcon('satellite-dish')}</span>
           <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
             Brouillage radar / GPS
           </span>
@@ -543,7 +536,6 @@ export class DefensePanel extends Panel {
   /** Create a clickable alert item element */
   private createAlertItemElement(alert: DefenseAlert): HTMLElement {
     const color = SEVERITY_COLORS[alert.severity];
-    const icon = SEVERITY_ICONS[alert.severity];
     const label = SEVERITY_LABELS[alert.severity];
     const isPulsing = alert.severity === 'high';
 
@@ -571,7 +563,7 @@ export class DefensePanel extends Panel {
       <div style="display: flex; justify-content: space-between; align-items: start; gap: 8px;">
         <div style="flex: 1;">
           <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <span style="font-size: 12px;">${icon}</span>
+            ${fmStatusDot(alert.severity)}
             <span style="color: var(--text-primary); font-size: 12px; font-weight: 600;">
               ${this.escapeHtml(alert.shipName)}
             </span>
@@ -604,7 +596,7 @@ export class DefensePanel extends Panel {
         color: var(--text-muted);
         font-size: 10px;
       ">
-        <span>📍</span>
+        <span>${fmIcon('map-pin')}</span>
         <span>Cliquer pour localiser</span>
       </div>
     `;

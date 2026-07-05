@@ -18,6 +18,7 @@ import {
   type BriefItem,
   type BriefSourceSituation,
 } from '../services/situation-brief.ts';
+import { fmIcon } from './shared/icons.ts';
 
 // ─── Affichage sévérité ──────────────────────────────────────────────────────────
 
@@ -30,22 +31,22 @@ const SEV_VAR: Record<SituationSeverity, string> = {
 };
 
 const TYPE_ICON: Record<SituationType, string> = {
-  ENERGY_STRESS: '⚡',
-  IMPORT_DEPENDENCY_RISK: '🔌',
-  FLOOD_CRISIS: '🌊',
-  WILDFIRE_ESCALATION: '🔥',
-  CYBER_PRESSURE: '🛡️',
-  SOCIAL_ESCALATION: '📢',
-  TELECOM_DISRUPTION: '📡',
-  MARITIME_ANOMALY: '⚓',
-  DEFENSE_SIGNAL_ELEVATED: '✈️',
-  FUEL_SUPPLY_RISK: '⛽',
-  NEWS_ALERT: '📰',
-  MILITARY_SURGE_ALERT: '✈️',
-  WEATHER_ALERT: '🌩️',
-  AIS_ANOMALY_ALERT: '⚓',
-  DEFENSE_ALERT: '🛡️',
-  GPS_JAMMING_ALERT: '📡',
+  ENERGY_STRESS: fmIcon('zap'),
+  IMPORT_DEPENDENCY_RISK: fmIcon('plug-zap'),
+  FLOOD_CRISIS: fmIcon('waves'),
+  WILDFIRE_ESCALATION: fmIcon('flame'),
+  CYBER_PRESSURE: fmIcon('shield'),
+  SOCIAL_ESCALATION: fmIcon('megaphone'),
+  TELECOM_DISRUPTION: fmIcon('satellite-dish'),
+  MARITIME_ANOMALY: fmIcon('anchor'),
+  DEFENSE_SIGNAL_ELEVATED: fmIcon('plane'),
+  FUEL_SUPPLY_RISK: fmIcon('fuel'),
+  NEWS_ALERT: fmIcon('newspaper'),
+  MILITARY_SURGE_ALERT: fmIcon('plane'),
+  WEATHER_ALERT: fmIcon('cloud-lightning'),
+  AIS_ANOMALY_ALERT: fmIcon('anchor'),
+  DEFENSE_ALERT: fmIcon('shield'),
+  GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
 };
 
 function escapeHtml(str: string): string {
@@ -168,7 +169,7 @@ export class SituationBrief {
     this.el.classList.remove('sit-brief--chip');
 
     const closeBtn =
-      '<button type="button" class="sit-brief__close" aria-label="Masquer la synthèse">✕</button>';
+      `<button type="button" class="sit-brief__close" aria-label="Masquer la synthèse">${fmIcon('x')}</button>`;
     // "Détails" ouvre le SituationMonitor (liste complète, actions couches) —
     // il ne s'affiche plus spontanément : le bandeau est sa porte d'entrée.
     const detailsBtn = this.onOpenDetails
@@ -180,7 +181,7 @@ export class SituationBrief {
       this.el.classList.add('sit-brief--nominal');
       this.el.innerHTML = `
         <div class="sit-brief__nominal">
-          <span class="sit-brief__nominal-check">✓</span>
+          <span class="sit-brief__nominal-check">${fmIcon('check')}</span>
           <span class="sit-brief__nominal-text">Aucune convergence critique — situation nominale</span>
           ${closeBtn}
         </div>`;
@@ -232,7 +233,9 @@ export class SituationBrief {
     const activeCount = items.filter((i) => !i.resolved).length;
     this.el.classList.add('sit-brief--chip');
     this.el.classList.remove('sit-brief--nominal');
-    const label = activeCount > 0 ? `⚠ ${activeCount} · Convergences` : '✓ Convergences';
+    const label = activeCount > 0
+      ? `${fmIcon('triangle-alert')} ${activeCount} · Convergences`
+      : `${fmIcon('check')} Convergences`;
     this.el.innerHTML = `
       <button type="button" class="sit-brief__chip" aria-label="Afficher la synthèse des convergences">${label}</button>`;
     this.el.querySelector<HTMLElement>('.sit-brief__chip')?.addEventListener('click', () => {
@@ -244,7 +247,7 @@ export class SituationBrief {
 
   private renderItem(item: BriefItem, index: number): string {
     const color = SEV_VAR[item.severity];
-    const icon = TYPE_ICON[item.type] ?? '⚠️';
+    const icon = TYPE_ICON[item.type] ?? fmIcon('triangle-alert');
     const zone = item.zone ? `<span class="sit-brief__item-zone">${escapeHtml(item.zone)}</span>` : '';
     const resolvedTag = item.resolved
       ? '<span class="sit-brief__item-resolved">résolu</span>'

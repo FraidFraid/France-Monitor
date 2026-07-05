@@ -14,21 +14,22 @@ import {
   getPremiumModalStyle,
 } from './panelHeader.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { fmIcon } from './shared/icons.ts';
 
 const RISK_COLORS: Record<RiskLevel, string> = {
   none: '#34c759', low: '#ffcc00', medium: '#ff9500', high: '#ff3b30', critical: '#ff2d55',
 };
 
 const SHIP_TYPE_ICONS: Record<string, string> = {
-  'Cargo': '📦', 'Tanker': '🛢', 'Passagers': '🚢', 'Pêche': '🎣',
-  'Militaire': '⚔️', 'Remorqueur/Spécial': '🔧', 'Plaisance': '⛵',
+  'Cargo': fmIcon('package'), 'Tanker': fmIcon('fuel'), 'Passagers': fmIcon('ship'), 'Pêche': fmIcon('fish'),
+  'Militaire': fmIcon('swords'), 'Remorqueur/Spécial': fmIcon('wrench'), 'Plaisance': fmIcon('ship'),
 };
 
 function shipIcon(type: string): string {
   for (const [k, v] of Object.entries(SHIP_TYPE_ICONS)) {
     if (type.includes(k)) return v;
   }
-  return '⚓';
+  return fmIcon('anchor');
 }
 
 const NAV_STATUS_LABELS: Record<number, string> = {
@@ -104,14 +105,15 @@ export class MaritimePanel {
     `;
 
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
+    closeBtn.innerHTML = fmIcon('x');
+    closeBtn.setAttribute('aria-label', 'Fermer');
     closeBtn.style.cssText = getPremiumCloseButtonStyle();
     applyPremiumCloseButtonHover(closeBtn);
     closeBtn.onclick = () => this.hide();
     this.containerEl.appendChild(closeBtn);
 
     const header = createPremiumIconHeader({
-      icon: '⚓',
+      icon: fmIcon('anchor', { size: 32 }),
       title: 'Maritime',
       subtitle: 'Trafic FR, Marine nationale et alertes',
       gradientStart: 'rgba(8, 145, 178, 0.18)',
@@ -154,13 +156,14 @@ export class MaritimePanel {
     // Search input
     const searchWrap = document.createElement('div');
     searchWrap.style.cssText = 'display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);border-radius:6px;padding:4px 8px;';
-    searchWrap.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">🔍</span>';
+    searchWrap.innerHTML = `<span style="color:var(--text-muted);font-size:12px;">${fmIcon('search')}</span>`;
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.placeholder = 'Nom, MMSI…';
     searchInput.style.cssText = 'background:transparent;border:none;color:var(--text-primary);font-size:11px;flex:1;outline:none;';
     const clearBtn = document.createElement('button');
-    clearBtn.textContent = '✕';
+    clearBtn.innerHTML = fmIcon('x');
+    clearBtn.setAttribute('aria-label', 'Effacer la recherche');
     clearBtn.style.cssText = 'background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:11px;display:none;padding:0;';
     clearBtn.onclick = () => {
       searchInput.value = '';
@@ -411,7 +414,7 @@ export class MaritimePanel {
         ship.riskReasons.forEach(r => {
           const tag = document.createElement('div');
           tag.style.cssText = 'color:#ff6b60;font-size:10px;padding:2px 0;';
-          tag.textContent = `⚠ ${r}`;
+          tag.innerHTML = `${fmIcon('triangle-alert')} ${r}`;
           reasons.appendChild(tag);
         });
         card.appendChild(reasons);
@@ -459,7 +462,7 @@ export class MaritimePanel {
 
     const countryIso = ship.country?.split('|')[0] ?? '';
     const countryName = ship.country?.split('|')[1] ?? '';
-    const flagEmoji = countryIso ? String.fromCodePoint(...countryIso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0))) : '🏳';
+    const flagEmoji = countryIso ? String.fromCodePoint(...countryIso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0))) : fmIcon('flag');
 
     const elapsed = ship.lastSeen ? Math.round((Date.now() - ship.lastSeen) / 60000) : null;
 
@@ -498,7 +501,7 @@ export class MaritimePanel {
 
     const countryIso = ship.country?.split('|')[0] ?? '';
     const countryName = ship.country?.split('|')[1] ?? '';
-    const flagEmoji = countryIso ? String.fromCodePoint(...countryIso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0))) : '🏳';
+    const flagEmoji = countryIso ? String.fromCodePoint(...countryIso.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0))) : fmIcon('flag');
     const riskColor = RISK_COLORS[ship.riskLevel ?? 'none'];
     const riskLabel = { none: 'Nominal', low: 'Faible', medium: 'Modéré', high: 'Élevé', critical: 'Critique' }[ship.riskLevel ?? 'none'];
 
@@ -576,7 +579,7 @@ export class MaritimePanel {
         contentEl.innerHTML = `
           <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;">
             <span style="color:var(--text-muted);">Type AIS</span><span style="color:var(--text-primary);">${ship.shipType != null ? `${ship.type} (code ${ship.shipType})` : ship.type}</span>
-            <span style="color:var(--text-muted);">Pavillon</span><span style="color:var(--text-primary);">${flagEmoji} ${ship.country?.split('|')[1] ?? '—'}${ship.flagRisk && ship.flagRisk !== 'none' ? ` ⚠ (${ship.flagRisk})` : ''}</span>
+            <span style="color:var(--text-muted);">Pavillon</span><span style="color:var(--text-primary);">${flagEmoji} ${ship.country?.split('|')[1] ?? '—'}${ship.flagRisk && ship.flagRisk !== 'none' ? ` ${fmIcon('triangle-alert')} (${ship.flagRisk})` : ''}</span>
             ${dims?.length ? `<span style="color:var(--text-muted);">Longueur</span><span style="color:var(--text-primary);">${dims.length} m</span>` : ''}
             ${dims?.width ? `<span style="color:var(--text-muted);">Largeur</span><span style="color:var(--text-primary);">${dims.width} m</span>` : ''}
             ${ship.draught ? `<span style="color:var(--text-muted);">Tirant d'eau</span><span style="color:var(--text-primary);">${ship.draught} m</span>` : ''}
@@ -599,11 +602,11 @@ export class MaritimePanel {
       } else if (tabName === 'liens') {
         contentEl.innerHTML = `
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ship.mmsi ? `<a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">MarineTraffic <span style="color:var(--text-muted);">↗</span></a>` : ''}
-            ${ship.mmsi ? `<a href="https://www.vesseltracker.com/en/Ships/mmsi/${ship.mmsi}.html" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">VesselTracker <span style="color:var(--text-muted);">↗</span></a>` : ''}
-            ${ship.mmsi ? `<a href="https://www.vesselfinderimage.com/?mmsi=${ship.mmsi}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">VesselFinder <span style="color:var(--text-muted);">↗</span></a>` : ''}
-            ${ship.imoNumber ? `<a href="https://www.equasis.org/EquasisWeb/public/HomePage" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">Equasis (IMO) <span style="color:var(--text-muted);">↗</span></a>` : ''}
-            ${ship.imoNumber ? `<a href="https://www.shipinfo.net/pages/default.aspx?shimsid=${ship.imoNumber}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">ShipInfo (propriétaire) <span style="color:var(--text-muted);">↗</span></a>` : ''}
+            ${ship.mmsi ? `<a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">MarineTraffic <span style="color:var(--text-muted);">${fmIcon('external-link')}</span></a>` : ''}
+            ${ship.mmsi ? `<a href="https://www.vesseltracker.com/en/Ships/mmsi/${ship.mmsi}.html" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">VesselTracker <span style="color:var(--text-muted);">${fmIcon('external-link')}</span></a>` : ''}
+            ${ship.mmsi ? `<a href="https://www.vesselfinderimage.com/?mmsi=${ship.mmsi}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">VesselFinder <span style="color:var(--text-muted);">${fmIcon('external-link')}</span></a>` : ''}
+            ${ship.imoNumber ? `<a href="https://www.equasis.org/EquasisWeb/public/HomePage" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">Equasis (IMO) <span style="color:var(--text-muted);">${fmIcon('external-link')}</span></a>` : ''}
+            ${ship.imoNumber ? `<a href="https://www.shipinfo.net/pages/default.aspx?shimsid=${ship.imoNumber}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:5px;text-decoration:none;color:var(--text-primary);font-size:11px;">ShipInfo (propriétaire) <span style="color:var(--text-muted);">${fmIcon('external-link')}</span></a>` : ''}
           </div>
           <div style="margin-top:10px;font-size:10px;color:var(--text-muted);">Equasis donne accès aux données IMO : propriétaire, classe, certifications, inspections PSC.</div>`;
       }
@@ -682,7 +685,7 @@ export class MaritimePanel {
         const lastMs = state.lastMessageAt;
         const elapsedMin = lastMs ? Math.round((Date.now() - lastMs) / 60000) : null;
         const elapsedStr = elapsedMin != null ? `dernier contact il y a ${elapsedMin} min` : 'aucun contact';
-        this._staleBannerEl.textContent = `⚠ AIS indisponible · ${elapsedStr}`;
+        this._staleBannerEl.innerHTML = `${fmIcon('triangle-alert')} AIS indisponible · ${elapsedStr}`;
         this._staleBannerEl.style.display = '';
       } else {
         this._staleBannerEl.style.display = 'none';
@@ -696,13 +699,13 @@ export class MaritimePanel {
       badge.textContent = `● ${state.franceShipCount} navires FR`;
     } else if (state.status === 'stale') {
       badge.style.cssText = 'color:#F59E0B;font-size:9px;';
-      badge.textContent = `⚠ CACHE FIGÉ`;
+      badge.innerHTML = `${fmIcon('triangle-alert')} CACHE FIGÉ`;
     } else if (state.status === 'connecting' || state.status === 'disconnected') {
       badge.style.cssText = 'color:#ff9500;font-size:9px;';
       badge.textContent = `○ reconnexion…`;
     } else {
       badge.style.cssText = 'color:#ff3b30;font-size:9px;';
-      badge.textContent = `✗ hors ligne`;
+      badge.innerHTML = `${fmIcon('circle-off')} hors ligne`;
     }
   }
 
