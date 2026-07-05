@@ -100,13 +100,15 @@ The long-term goal is to turn the France prototype into a reusable European comm
 - Health Barometer with département-level drill-down
 - **Hantavirus layer** — active cluster map (MV Hondius, confirmed French cases) + historical SPF risk zones (2005–2023) as department polygons, auto-classified from DGS-Urgent and SPF live feeds
 
-### 🧠 Situation Intelligence (ISNR)
-- **ISNR** — France National Stability Index (composite score, 0–100)
-- AI-generated situational briefs (FR/EN switchable)
+### 🧠 Situation Intelligence
+- **Stability Index v3** — explainable national score (0–100): baseline 95 minus progressive pressure deductions, situation-linked caps, EMA smoothing; per-pillar breakdown (continuity, security, signal, defense) with 24h deltas and a 7-day sparkline backed by local history
+- **Correlated Situations** — 10-rule deterministic engine: multi-source correlations with evidence chains, confidence, affected zones and recommended actions, surfaced in the France Intelligence drawer
+- **Structured intelligence brief** — BLUF + prioritised key judgments (P1–P4, confidence, sources) + watch items with horizon; validated JSON from Groq, with a deterministic engine-only fallback — the brief block never dies (FR/EN switchable)
+- **France Intelligence drawer** — 480px ops-console UI: monospace metrics, severity-only colours, zero emoji, keyboard-operable
+- **ISNR** — departmental stability index (composite score per département)
 - **SituationMonitor** — automatic alert detection with severity scoring
 - **SituationHistoryPanel** — IndexedDB-backed timeline of past snapshots
 - **BarometerWidget** — multi-domain real-time health indicators
-- France Country Intel — structured country-level intelligence digest
 
 ### 📊 Finance & Markets
 - CAC 40 + major European indices
@@ -131,7 +133,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── 50 components (energy, news, health, cyber, intel…)        │
 │  ├── RSS Pipeline (stage 1: keywords · stage 2: AI async)       │
 │  ├── 12 polling loops (military, AIS, finance, cyber, health…)  │
-│  ├── ISNR engine (stability index, situation detection)          │
+│  ├── Intel engine (score v3, situations corrélées, brief)        │
 │  └── Watchdog — centralised observability registry               │
 │                                                                  │
 │  State: in-memory + localStorage + IndexedDB (history)           │
@@ -149,7 +151,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── outages/       citizen scraping, ORE, Cloudflare, IODA     │
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
-│  ├── intelligence/  LLM summarisation (Groq, server-side)       │
+│  ├── intelligence/  LLM summarisation + brief v13 (Groq)        │
 │  ├── ingest/        Cron news ingestion (Neon Postgres, 5 min)  │
 │  ├── news/          News query + history timeline API            │
 │  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
@@ -350,7 +352,7 @@ france-monitor/
 │   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel
 │   │   ├── NuclearPanel.ts      # Nuclear fleet status (4 tabs)
 │   │   ├── OutagesPanel.ts      # Power + telecom outages
-│   │   ├── FranceIntelPanel.ts  # AI situational brief — lazy-loaded
+│   │   ├── FranceIntelPanel.ts  # Country Intelligence drawer (ops console) — lazy-loaded
 │   │   ├── ISNRPanel.ts         # Stability index dashboard
 │   │   ├── BarometerWidget.ts   # Multi-domain health barometer
 │   │   └── …
@@ -359,8 +361,10 @@ france-monitor/
 │   │   ├── rss.ts               # RSS feed aggregation
 │   │   ├── classifier.ts        # Keyword-based news classification
 │   │   ├── ai-classifier.ts     # Browser LLM classification override
-│   │   ├── situation-engine.ts  # Alert detection + severity scoring
-│   │   ├── stability-index.ts   # ISNR composite index
+│   │   ├── situation-engine.ts  # 10-rule multi-source situation correlation
+│   │   ├── stability-index.ts   # ISNR departmental composite index
+│   │   ├── france-country-intel.ts  # Country snapshot + stability score v3 (explainable breakdown)
+│   │   ├── france-intel-brief.ts    # Structured brief v13 — LLM JSON + deterministic fallback
 │   │   ├── cyber.ts             # Cyber threat feed aggregation
 │   │   ├── cyber-threat-scoring.ts  # Composite cyber pressure scoring (NEW)
 │   │   ├── exposure.ts          # Technical exposure (Shodan/Censys)
@@ -374,7 +378,7 @@ france-monitor/
 │   │
 │   ├── plugins/                 # Vite dev proxy plugins (mirror api/ for local dev)
 │   ├── config/                  # Static datasets (feeds, military callsigns, geo)
-│   ├── utils/                   # URL state, caches, spatial helpers
+│   ├── utils/                   # URL state, caches, spatial helpers, stability history
 │   ├── types/index.ts           # All shared TypeScript types
 │   └── styles/main.css          # Global styles — dark mode via CSS custom properties
 │
@@ -463,6 +467,13 @@ The IIP feed (`iip.cloud-rte-france.com`) is fetched via the `/api/rss` proxy wi
 
 Every data service registers with `Watchdog` and emits `loading` / `success` / `failure` events. `StatusPanel` subscribes and auto-updates. Sources automatically transition to `stale` state when their cache exceeds the configured `staleAfterMs` threshold — no manual polling needed.
 
+### Stability Score v3 & Intelligence Brief
+
+- The national score formula lives in `src/services/france-country-intel.ts` (`scoreFromPillars`). Its calibration is **locked by contract tests** in `france-country-intel.test.ts` (quiet day 88–94, loaded day 74–86, real tension 58–72, crisis 38–55, major crisis <40). Never adjust the test targets to make a formula change pass.
+- Score bands (85/70/55/40) are duplicated in four places that must move together: `FranceIntelPanel.ts`, `france-intel-brief.ts`, `api/intelligence/v1/france-intel-brief.js` and `src/plugins/france-intel-proxy.ts`.
+- The brief edge function and its Vite dev proxy are **mirrors** — any change to one must be applied to the other.
+- Δ24h and the sparkline come from a per-browser localStorage ring buffer (`src/utils/stability-history.ts`, 7-day retention, 30-min write throttle). A cold start shows "—" by design.
+
 ### Coding Conventions
 
 - **Strict TypeScript** — `noUnusedLocals`, `noUnusedParameters`, no `any`
@@ -518,6 +529,11 @@ Current high-level milestones:
 ---
 
 ## 📋 Recent Updates
+
+### 2026-07-05
+- **Country Intelligence refonte** — the France Intelligence drawer is now an ops console (480 px, monospace metrics, severity-only colours, zero emoji): explainable **Stability Index v3** (baseline 95 − progressive pillar deductions, situation-linked caps, EMA smoothing, calibration locked by contract tests), per-pillar Δ24h + 7-day sparkline backed by a new localStorage history (`stability-history.ts`), and a new **Correlated Situations** block surfacing the 10-rule engine (evidence chains, confidence, sources, recommended actions, keyboard-operable)
+- **Structured intelligence brief v13** — free-text LLM brief replaced by validated JSON (BLUF, prioritised judgments P1–P4 with confidence + sources, watch items with horizon); prompt anchored on engine-detected situations; strict validation on both server (edge + dev proxy mirrors) and client; deterministic engine-only fallback so the brief never shows "unavailable" (~130 lines of regex text-parsing deleted)
+- **Score scale change (intentional)** — quiet days now read ~88–94 instead of a constant 100; bands: STABLE ≥85 · VIGILANCE 70–84 · SOUS TENSION 55–69 · DÉGRADÉ 40–54 · CRITIQUE <40
 
 ### 2026-06-27
 - **Unified loader system** — single source of truth `src/components/shared/loader.ts` (`fmLoaderHTML({ text?, variant? })`) + CSS `.fm-loader` (spinner ring, `--text-accent`, `spin` 0.8s). 11 heterogeneous loaders (emoji+pulse, skeletons, custom spin, empty cards) migrated to it. 6 data panels now show the loader **while data is in flight** and swap to content (or empty state) once settled, **even on fetch error**: Fires, Traffic, Environment (weather+floods), Outages, Health barometer, Maritime (AIS). New panels must use `fmLoaderHTML` — never hand-roll a spinner.

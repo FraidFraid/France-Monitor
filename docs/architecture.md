@@ -37,6 +37,14 @@ France Monitor is a Vanilla TypeScript + Vite application with Vercel Serverless
 - Coordinates are always `[lng, lat]`.
 - Layers are built from typed domain objects rather than raw upstream payloads.
 
+## Intelligence Layer
+
+Raw domain signals converge into a country-level intelligence pipeline (`src/services/france-country-intel.ts`):
+
+1. `detectSituations` (10 deterministic rules) correlates multi-source signals into explainable situations — drivers, confidence, affected zones, recommended actions.
+2. The stability score v3 derives from pressure pillars (baseline 95 minus progressive deductions), is capped by active situations and smoothed against a local 7-day history; the full per-pillar breakdown ships with each snapshot for explainability.
+3. A structured intelligence brief (BLUF, prioritised judgments, watch items) is generated server-side as validated JSON (Groq), with a deterministic client-side fallback built from the same detected situations — outputs remain auditable even without any LLM.
+
 ## Reuse Model
 
 The intended European reuse model is country-specific connector modules feeding a common presentation and API-proxy architecture. A new country should be able to add:
