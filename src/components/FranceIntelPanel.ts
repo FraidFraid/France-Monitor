@@ -8,6 +8,7 @@ import type {
   FranceScoreBreakdown,
   SituationSeverity,
   DetectedSituation,
+  StructuredBrief,
 } from '../types/index.ts';
 import {
   filterFuelPriceSeries,
@@ -117,149 +118,6 @@ function deltaColor(delta: number | null | undefined, invert = false): string {
   return worse ? 'var(--threat-high)' : 'var(--threat-low)';
 }
 
-type BriefSection = {
-  heading: string | null;
-  body: string;
-};
-
-const BRIEF_COLLAPSED_LINES = 16;
-const BRIEF_COLLAPSED_MAX_HEIGHT_PX = 336;
-const INLINE_BRIEF_SECTION_TITLES = [
-  'ANALYSE',
-  'ANALYSIS',
-  'À SURVEILLER (6H)',
-  'NEXT 6 HOURS TO WATCH',
-  'SITUATION ACTUELLE',
-  'CURRENT SITUATION',
-  'POINTS DE PRESSION',
-  'PRESSURE POINTS',
-] as const;
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function normalizeBriefText(text: string): string {
-  let normalized = text.replace(/\r\n/g, '\n');
-
-  for (const title of INLINE_BRIEF_SECTION_TITLES) {
-    const escapedTitle = escapeRegExp(title);
-    normalized = normalized.replace(
-      new RegExp(`\\s*(${escapedTitle})(?=\\s+|\\n|$)`, 'g'),
-      '\n$1\n',
-    );
-  }
-
-  return normalized
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .trim();
-}
-
-function normalizeBriefLine(line: string): string {
-  return line
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/^[\s:•\-*]+/, '')
-    .trim();
-}
-
-function isBriefHeading(line: string): boolean {
-  return /^[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’:/()-]{4,}$/.test(line);
-}
-
-function formatBriefHeading(line: string): string {
-  const normalized = normalizeBriefLine(line).replace(/\s+/g, ' ').trim();
-  const headingMap: Record<string, string> = {
-    'situation actuelle': 'Situation actuelle',
-    'points de pression': 'Points de pression',
-    analyse: 'Analyse',
-    'à surveiller (6h)': 'À surveiller (6h)',
-    'current situation': 'Current situation',
-    'pressure points': 'Pressure points',
-    analysis: 'Analysis',
-    'next 6 hours to watch': 'Next 6 Hours To Watch',
-    'points de vigilance': 'Points de vigilance',
-    'ce que cela implique': 'Ce que cela implique',
-    'what this means': 'What this means',
-  };
-
-  const key = normalized.toLocaleLowerCase('fr-FR');
-  if (headingMap[key]) return headingMap[key];
-
-  const lower = normalized.toLocaleLowerCase('fr-FR');
-  return lower.charAt(0).toLocaleUpperCase('fr-FR') + lower.slice(1);
-}
-
-function splitBriefHeadingLine(line: string): { heading: string; body: string } | null {
-  const match = line.match(/^((?:\d+[.)]\s*)?[A-ZÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸ0-9\s'’/()-]{4,})\s*:\s+(.+)$/);
-  if (!match) return null;
-
-  const heading = match[1].replace(/^\d+[.)]\s*/, '').trim();
-  const body = match[2].trim();
-  if (!heading || !body || !isBriefHeading(heading)) return null;
-  return { heading, body };
-}
-
-function parseBriefSections(text: string): BriefSection[] {
-  const rawLines = normalizeBriefText(text).split('\n').map(normalizeBriefLine).filter(Boolean);
-  const sections: BriefSection[] = [];
-  let currentSection: { heading: string | null; lines: string[] } | null = null;
-
-  const pushCurrentSection = () => {
-    if (!currentSection) return;
-    const body = currentSection.lines.join(' ').replace(/\s+/g, ' ').trim();
-    if (!currentSection.heading && !body) return;
-    sections.push({
-      heading: currentSection.heading,
-      body,
-    });
-  };
-
-  for (const line of rawLines) {
-    const splitLine = splitBriefHeadingLine(line);
-    if (splitLine) {
-      pushCurrentSection();
-      currentSection = {
-        heading: formatBriefHeading(splitLine.heading),
-        lines: [splitLine.body],
-      };
-      continue;
-    }
-
-    if (isBriefHeading(line)) {
-      pushCurrentSection();
-      currentSection = {
-        heading: formatBriefHeading(line),
-        lines: [],
-      };
-      continue;
-    }
-
-    if (!currentSection) {
-      currentSection = { heading: null, lines: [line] };
-    } else {
-      currentSection.lines.push(line);
-    }
-  }
-
-  pushCurrentSection();
-  return sections;
-}
-
-function formatBriefHtml(sections: BriefSection[]): string {
-  return sections
-    .map((section) => {
-      const heading = section.heading
-        ? `<div class="frintel-brief-kicker">${escapeHtml(section.heading)}</div>`
-        : '';
-      const body = section.body
-        ? `<p class="frintel-brief-paragraph">${escapeHtml(section.body)}</p>`
-        : '';
-      return `<section class="frintel-brief-section">${heading}${body}</section>`;
-    })
-    .join('');
-}
-
 function intensity(count: number): number {
   if (count <= 0) return 0.08;
   if (count === 1) return 0.25;
@@ -291,8 +149,7 @@ export class FranceIntelPanel extends Panel {
   private onClose?: () => void;
   private isOpen = false;
   private currentLang: 'fr' | 'en' = 'fr';
-  private briefState: { text: string | null; freshness: 'fresh' | 'cached' } | null = null;
-  private briefExpanded = false;
+  private briefState: { brief: StructuredBrief; freshness: 'fresh' | 'cached' } | null = null;
   private infrastructureWidget: BarometerWidget | null = null;
   private lastSnapshot: FranceCountrySnapshot | null = null;
   private expandedSituations = new Set<string>();
@@ -381,19 +238,16 @@ export class FranceIntelPanel extends Panel {
 
   resetBrief(): void {
     this.briefState = null;
-    this.briefExpanded = false;
     this.renderBriefSection();
   }
 
   showBriefLoading(): void {
     this.briefState = null;
-    this.briefExpanded = false;
     this.renderBriefSection();
   }
 
-  updateBrief(brief: string | null, freshness: 'fresh' | 'cached'): void {
-    this.briefState = { text: brief, freshness };
-    this.briefExpanded = false;
+  updateBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached'): void {
+    this.briefState = { brief, freshness };
     this.renderBriefSection();
   }
 
@@ -429,7 +283,6 @@ export class FranceIntelPanel extends Panel {
           <div class="frintel-card-meta fi-brief-meta"></div>
         </div>
         <div class="frintel-brief-body fi-brief-body"></div>
-        <button type="button" class="frintel-inline-action fi-brief-toggle" hidden></button>
       </section>
       <div class="fi-infra-widget-slot"></div>
       ${this.renderDomainsBlock(snapshot, lang)}
@@ -817,47 +670,60 @@ export class FranceIntelPanel extends Panel {
   private renderBriefSection(): void {
     const body = this.modalEl.querySelector('.fi-brief-body');
     const meta = this.modalEl.querySelector('.fi-brief-meta');
-    const toggle = this.modalEl.querySelector('.fi-brief-toggle') as HTMLButtonElement | null;
-    if (!body || !meta || !toggle) return;
-
+    if (!body || !meta) return;
     const lang = this.currentLang;
 
     if (this.briefState === null) {
       meta.textContent = t(lang, 'Génération…', 'Generating…');
       body.innerHTML = fmLoaderHTML({ text: t(lang, 'Construction du brief national…', 'Building national brief…') });
-      toggle.hidden = true;
       return;
     }
 
-    meta.textContent = this.briefState.freshness === 'fresh'
-      ? t(lang, 'Fresh', 'Fresh')
-      : t(lang, 'Cached', 'Cached');
+    const { brief, freshness } = this.briefState;
+    const originLabel = brief.origin === 'llm'
+      ? t(lang, 'IA + MOTEUR', 'AI + ENGINE')
+      : t(lang, 'SYNTHÈSE MOTEUR', 'ENGINE SYNTHESIS');
+    meta.textContent = `${originLabel} · ${freshness === 'fresh' ? 'FRESH' : 'CACHED'}`;
 
-    if (!this.briefState.text) {
-      body.innerHTML = `<div class="frintel-empty">${t(lang, 'Brief indisponible pour le moment.', 'Brief currently unavailable.')}</div>`;
-      toggle.hidden = true;
-      return;
-    }
+    const confidenceLabel: Record<StructuredBrief['judgments'][number]['confidence'], string> = {
+      high: t(lang, 'ÉLEVÉE', 'HIGH'),
+      moderate: t(lang, 'MODÉRÉE', 'MODERATE'),
+      low: t(lang, 'FAIBLE', 'LOW'),
+    };
 
-    const sourceText = this.briefState.text.trim();
-    const sections = parseBriefSections(sourceText);
-    const lineCount = normalizeBriefText(sourceText).split('\n').map(normalizeBriefLine).filter(Boolean).length;
-    body.classList.toggle('is-collapsed', !this.briefExpanded);
-    body.innerHTML = `<div class="frintel-brief-copy">${formatBriefHtml(sections)}</div>`;
+    const judgments = brief.judgments.map((j) => `
+      <div class="frintel-judgment">
+        <span class="frintel-jd-badge frintel-jd-p${j.priority}">P${j.priority}</span>
+        <div class="frintel-jd-main">
+          <div class="frintel-jd-text">${escapeHtml(j.text)}</div>
+          <div class="frintel-jd-foot">
+            <span class="frintel-jd-sources">${escapeHtml(j.sources.join(' · '))}</span>
+            <span class="frintel-jd-conf frintel-jd-conf-${j.confidence}">${t(lang, 'CONFIANCE', 'CONFIDENCE')} ${confidenceLabel[j.confidence]}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
 
-    const canExpand = body.scrollHeight > BRIEF_COLLAPSED_MAX_HEIGHT_PX + 8 || lineCount > BRIEF_COLLAPSED_LINES;
-    toggle.hidden = !canExpand;
-    if (canExpand) {
-      toggle.textContent = this.briefExpanded
-        ? t(lang, 'Moins', 'Less')
-        : t(lang, 'Plus', 'More');
-      toggle.onclick = () => {
-        this.briefExpanded = !this.briefExpanded;
-        this.renderBriefSection();
-      };
-      body.classList.toggle('is-collapsed', !this.briefExpanded);
-    } else {
-      body.classList.remove('is-collapsed');
-    }
+    const watch = brief.watch.map((w) => `
+      <div class="frintel-watch-item">
+        <span class="frintel-chip frintel-watch-h">${escapeHtml(w.horizon.toUpperCase())}</span>
+        <span class="frintel-watch-text">${escapeHtml(w.text)}</span>
+      </div>
+    `).join('');
+
+    body.innerHTML = `
+      <div class="frintel-bluf">
+        <div class="frintel-bluf-kicker">${t(lang, "Évaluation d'ensemble", 'Overall assessment')}</div>
+        <div class="frintel-bluf-text">${escapeHtml(brief.bluf)}</div>
+      </div>
+      <div class="frintel-jd-kicker">${t(lang, 'Jugements clés', 'Key judgments')}</div>
+      ${judgments}
+      ${brief.watch.length > 0 ? `
+        <div class="frintel-watch">
+          <div class="frintel-jd-kicker">${t(lang, 'À surveiller', 'Watch items')}</div>
+          ${watch}
+        </div>
+      ` : ''}
+    `;
   }
 }

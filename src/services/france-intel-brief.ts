@@ -7,14 +7,14 @@ import type {
   FranceBriefContext,
   StructuredBrief,
 } from '../types/index.ts';
+import { getDelta24h } from '../utils/stability-history.ts';
 
 interface BriefCacheEntry {
-  brief: string | null;
-  freshness: 'fresh' | 'cached';
+  brief: StructuredBrief;
   expiresAt: number;
 }
 
-const PROMPT_VERSION = 'v11';
+const PROMPT_VERSION = 'v13';
 const _cache = new Map<string, BriefCacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
@@ -27,7 +27,7 @@ function hashCacheSeed(seed: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function buildClientCacheKey(ctx: FranceBriefContext, lang: 'fr' | 'en'): string {
+function buildClientCacheKey(ctx: FranceBriefContext, situations: DetectedSituation[], lang: 'fr' | 'en'): string {
   return `${PROMPT_VERSION}:${lang}:${hashCacheSeed(JSON.stringify({
     score: ctx.score,
     axes: ctx.axes,
@@ -36,20 +36,21 @@ function buildClientCacheKey(ctx: FranceBriefContext, lang: 'fr' | 'en'): string
     signals: ctx.signals,
     topHeadlines: ctx.topHeadlines,
     energySummary: ctx.energySummary,
+    situations: compactSituations(situations),
   }))}`;
 }
 
 export interface FranceBriefResult {
-  brief: string | null;
+  brief: StructuredBrief;
   freshness: 'fresh' | 'cached';
 }
 
 export async function fetchFranceIntelBrief(
-  ctx: FranceBriefContext,
+  snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations' | 'briefContext'>,
   lang: 'fr' | 'en' = 'fr',
 ): Promise<FranceBriefResult> {
-  const cacheKey = buildClientCacheKey(ctx, lang);
-  // Check client-side cache
+  const ctx = snapshot.briefContext;
+  const cacheKey = buildClientCacheKey(ctx, snapshot.situations, lang);
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return { brief: cached.brief, freshness: 'cached' };
@@ -114,26 +115,28 @@ export async function fetchFranceIntelBrief(
           marketStress:          ctx.signals.marketStress,
         },
         energy,
+        situations: compactSituations(snapshot.situations),
         lang,
       }),
     });
 
-    if (!res.ok) return { brief: null, freshness: 'fresh' };
-
-    const payload = await res.json() as { brief: string | null; fromCache: boolean };
-    const result: FranceBriefResult = {
-      brief: payload.brief ?? null,
-      freshness: payload.fromCache ? 'cached' : 'fresh',
-    };
-
-    // Only cache successful (non-null) briefs — a null result should not block for 2h
-    if (result.brief !== null) {
-      _cache.set(cacheKey, { brief: result.brief, freshness: result.freshness, expiresAt: Date.now() + CACHE_TTL_MS });
+    if (res.ok) {
+      const payload = await res.json() as { brief: unknown; fromCache: boolean };
+      const parsed = parseStructuredBrief(payload.brief, 'llm');
+      if (parsed) {
+        _cache.set(cacheKey, { brief: parsed, expiresAt: Date.now() + CACHE_TTL_MS });
+        return { brief: parsed, freshness: payload.fromCache ? 'cached' : 'fresh' };
+      }
     }
-    return result;
   } catch {
-    return { brief: null, freshness: 'fresh' };
+    // réseau indisponible → fallback ci-dessous
   }
+
+  // Fallback déterministe : le bloc brief ne meurt jamais.
+  return {
+    brief: buildDeterministicBrief(snapshot, lang, getDelta24h()),
+    freshness: 'fresh',
+  };
 }
 
 /** Clear client-side brief cache (e.g. on lang toggle to force refetch). */

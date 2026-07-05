@@ -6343,7 +6343,7 @@ export class App {
       this.franceIntelPanel?.showBriefLoading();
     }
 
-    void fetchFranceIntelBrief(snapshot.briefContext, lang).then(({ brief, freshness }) => {
+    void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
       if (requestId !== this.franceIntelBriefRequestId) return;
       if (!this.franceIntelPanel?.isVisible()) return;
       if (this.franceIntelPanel.getCurrentLang() !== lang) return;
