@@ -1,10 +1,12 @@
 // src/plugins/france-intel-proxy.ts
-// Dev proxy for /api/intelligence/v1/france-intel-brief (Vite dev server only).
-// Receives the same JSON payload shape as the Vercel handler (unchanged after migration):
-//   { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
-//     signalCounts, energy, lang }
-// Source of that payload is now FranceBriefContext (built by france-country-intel.ts).
-// No structural changes required here.
+// Dev proxy for /api/intelligence/v1/france-intel-brief (Vite dev server only) — contract v13.
+// Receives the same JSON payload shape as the Vercel handler: { countryScore, axes,
+//   isnrComponents, cyberScore, meteoAlertCount, topHeadlines, signalCounts, energy,
+//   situations, lang }, built from FranceBriefContext (france-country-intel.ts).
+// Responds { brief: StructuredBrief | null, fromCache: boolean } with the same
+// validateBriefShape() structural checks and no server-side fallback brief as the
+// edge function — this file is a dev-only mirror of api/intelligence/v1/france-intel-brief.js
+// and must be kept in sync with it.
 import type { Plugin } from 'vite';
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';

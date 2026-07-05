@@ -656,9 +656,10 @@ export function computeFranceScoreBreakdown(
  * Steps:
  * 1. buildFranceSignals
  * 2. computeFranceAxes
- * 3. buildFranceBriefContext
- * 4. computeFranceRiskScore
- * 5. Assemble FranceCountrySnapshot
+ * 3. detectSituations — calculées avant le score, elles alimentent son plafond
+ * 4. computeFranceScoreBreakdown — breakdown complet (piliers, déductions) embarqué dans le snapshot
+ * 5. buildFranceBriefContext
+ * 6. Assemble FranceCountrySnapshot
  */
 export function buildFranceCountrySnapshot(
   raw: FranceRawData,

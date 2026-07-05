@@ -45,7 +45,8 @@ function t(lang: 'fr' | 'en', fr: string, en: string): string {
 function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
-  return div.innerHTML;
+  // Le résultat est aussi injecté en contexte attribut (title="…", data-sit-id="…") : échapper guillemets/apostrophes.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 
@@ -452,6 +453,10 @@ export class FranceIntelPanel extends Panel {
         // Le re-render recrée un slot infra vide : re-monter le widget immédiatement.
         this.mountInfrastructureWidget();
         this.contentEl.scrollTop = scrollTop;
+        // Le re-render détruit le bouton qui portait le focus clavier : le restaurer
+        // sur son équivalent recréé pour ne pas renvoyer l'utilisateur clavier au body.
+        const head = this.contentEl.querySelector<HTMLButtonElement>(`[data-sit-id="${CSS.escape(id)}"] .frintel-sit-head`);
+        head?.focus();
       });
     });
   }
@@ -680,10 +685,15 @@ export class FranceIntelPanel extends Panel {
     }
 
     const { brief, freshness } = this.briefState;
-    const originLabel = brief.origin === 'llm'
-      ? t(lang, 'IA + MOTEUR', 'AI + ENGINE')
-      : t(lang, 'SYNTHÈSE MOTEUR', 'ENGINE SYNTHESIS');
-    meta.textContent = `${originLabel} · ${freshness === 'fresh' ? 'FRESH' : 'CACHED'}`;
+    // Horodatage au moment du rendu (spec §5) : un fallback déterministe n'est ni
+    // "fresh" ni "cached", donc seule l'origine LLM porte la mention fraîcheur.
+    const renderedAt = new Date().toLocaleTimeString(
+      lang === 'fr' ? 'fr-FR' : 'en-US',
+      { hour: '2-digit', minute: '2-digit' },
+    );
+    meta.textContent = brief.origin === 'llm'
+      ? `${t(lang, 'IA + MOTEUR', 'AI + ENGINE')} · ${freshness === 'fresh' ? 'FRESH' : 'CACHED'} ${renderedAt}`
+      : `${t(lang, 'SYNTHÈSE MOTEUR', 'ENGINE SYNTHESIS')} ${renderedAt}`;
 
     const confidenceLabel: Record<StructuredBrief['judgments'][number]['confidence'], string> = {
       high: t(lang, 'ÉLEVÉE', 'HIGH'),

@@ -1,10 +1,13 @@
 // api/intelligence/v1/france-intel-brief.js
-// Vercel Edge Function — generates a national intelligence brief via Groq.
-// Input payload (unchanged after client-side migration):
-//   { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, topHeadlines,
-//     signalCounts, energy, lang }
-// Payload is now built from FranceBriefContext by france-intel-brief.ts (client).
-// No changes required to parsing or prompt logic.
+// Vercel Edge Function — generates the national intelligence brief via Groq (contract v13).
+// Input payload: { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount,
+//   topHeadlines, signalCounts, energy, situations, lang }, built from
+// FranceBriefContext by france-intel-brief.ts (client).
+// Response: { brief: StructuredBrief | null, fromCache: boolean } — brief is
+// { bluf, judgments, watch } once validateBriefShape() has passed the LLM output
+// through JSON parsing + structural validation, or null if the LLM call failed,
+// returned malformed JSON, or GROQ_API_KEY is unset. There is no server-side
+// fallback brief: a null brief here is handled client-side (deterministic synthesis).
 export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../utils/redis.js';
@@ -20,13 +23,6 @@ function describeStability(score, lang) {
   if (score >= 55) return lang === 'fr' ? 'sous tension' : 'under pressure';
   if (score >= 40) return lang === 'fr' ? 'dégradée' : 'degraded';
   return lang === 'fr' ? 'critique' : 'critical';
-}
-
-function describeAxis(value, lang) {
-  if (value >= 75) return lang === 'fr' ? 'très élevée' : 'very high';
-  if (value >= 55) return lang === 'fr' ? 'élevée' : 'high';
-  if (value >= 35) return lang === 'fr' ? 'modérée' : 'moderate';
-  return lang === 'fr' ? 'faible' : 'low';
 }
 
 function describeCyber(score, lang) {
@@ -327,8 +323,6 @@ ${headlineList}
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
 8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.`;
 }
-
-const FALLBACK = { brief: null, fromCache: false };
 
 export default async function handler(request) {
   if (request.method !== 'POST') {
