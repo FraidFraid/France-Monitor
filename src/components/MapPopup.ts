@@ -12,6 +12,7 @@
 
 import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats, ThreatEvent } from '../types/index.ts';
 import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
+import { fmIcon } from './shared/icons.ts';
 import type Hls from 'hls.js';
 
 /** Popup display mode */
@@ -192,13 +193,13 @@ export class MapPopup {
             <span class="threat-badge threat-badge--${levelClass}">${escapeHtml(levelClass)}</span>
             <span class="category-badge">${escapeHtml(categoryLabel)}</span>
             ${confidence ? `<span class="map-popup-confidence">${escapeHtml(confidence)}</span>` : ''}
-            ${item.threat?.source === 'ml' ? '<span class="map-popup-ai" title="IA">🤖</span>' : ''}
+            ${item.threat?.source === 'ml' ? `<span class="map-popup-ai" title="IA">${fmIcon('bot')}</span>` : ''}
           </div>
           <div class="map-popup-source">
             <span>${escapeHtml(item.source)}</span>
             <span>${escapeHtml(timeAgo(item.pubDate))}</span>
           </div>
-          ${item.locationName ? `<div class="map-popup-location">📍 ${escapeHtml(item.locationName)}</div>` : ''}
+          ${item.locationName ? `<div class="map-popup-location">${fmIcon('map-pin')} ${escapeHtml(item.locationName)}</div>` : ''}
         </div>
         <div class="map-popup-action">
           Cliquez pour ouvrir
@@ -511,7 +512,7 @@ export class MapPopup {
       <div class="wm-popup-header">
         <div class="wm-popup-callsign">${esc(ship.name)}</div>
         <div class="wm-popup-badges">
-          <span class="wm-badge" style="background:#00d4c820;color:#00d4c8;border-color:#00d4c840">⚓ ${esc(ship.type)}</span>
+          <span class="wm-badge" style="background:#00d4c820;color:#00d4c8;border-color:#00d4c840">${fmIcon('anchor')} ${esc(ship.type)}</span>
           ${liveTag}
         </div>
         <button class="wm-popup-close">×</button>
@@ -642,12 +643,12 @@ export class MapPopup {
       : '';
 
     const asnHtml = stats.asnLink
-      ? `<div class="wm-popup-footer"><a href="${esc(stats.asnLink)}" target="_blank" rel="noopener noreferrer" class="wm-footer-link">Fiche sûreté ASN ↗</a></div>`
+      ? `<div class="wm-popup-footer"><a href="${esc(stats.asnLink)}" target="_blank" rel="noopener noreferrer" class="wm-footer-link">Fiche sûreté ASN ${fmIcon('external-link')}</a></div>`
       : '<div class="wm-popup-footer">RTE éCO2mix · ASN</div>';
 
     return `
       <div class="wm-popup-header">
-        <div class="wm-popup-callsign">⚛ ${esc(stats.name)}</div>
+        <div class="wm-popup-callsign">${fmIcon('atom')} ${esc(stats.name)}</div>
         <div class="wm-popup-badges">
           <span class="wm-badge" style="background:${statusColor}20;color:${statusColor};border-color:${statusColor}60">${statusLabel}</span>
           <span class="wm-badge" style="background:#ffffff10;color:#aaa;border-color:#ffffff25">${esc(stats.region)}</span>
@@ -912,10 +913,10 @@ export class MapPopup {
     const sLabel = severityLabels[event.severity];
 
     const typeIcons = {
-      leak: '💧 LEAK',
-      ransomware: '🏴‍☠️ RANSOMWARE',
-      exposure: '🔓 EXPOSITION',
-      vulnerability: '⚠️ VULNÉRABILITÉ'
+      leak: `${fmIcon('droplet')} LEAK`,
+      ransomware: `${fmIcon('skull')} RANSOMWARE`,
+      exposure: `${fmIcon('lock-keyhole')} EXPOSITION`,
+      vulnerability: `${fmIcon('triangle-alert')} VULNÉRABILITÉ`
     };
     const typeLabel = typeIcons[event.type] || event.type.toUpperCase();
     const precisionLabels: Record<ThreatEvent['location']['precision'], string> = {
@@ -933,7 +934,7 @@ export class MapPopup {
       <div style="background:rgba(14,165,233,0.08); border:1px solid rgba(14,165,233,0.22); border-radius:8px; padding:10px 12px; margin:12px 0; display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;">
         <div>
           <div style="font-size:9px;color:rgba(186,230,253,0.68);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;">Localisation</div>
-          <div style="font-size:12px;color:#e0f2fe;font-weight:700;">📍 ${esc(event.location.label)}</div>
+          <div style="font-size:12px;color:#e0f2fe;font-weight:700;">${fmIcon('map-pin')} ${esc(event.location.label)}</div>
           ${addressHtml}
           <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:2px;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
         </div>
@@ -1011,7 +1012,7 @@ export class MapPopup {
                 ${esc([event.ransomwareGroup, event.domain, event.sector].filter(Boolean).join(' · ') || 'Secteur inconnu')}
               </div>
               <div style="font-size:10px; color:#7dd3fc; margin-top:3px;">
-                📍 ${esc(event.location.label)} · ${esc(precisionLabels[event.location.precision])}
+                ${fmIcon('map-pin')} ${esc(event.location.label)} · ${esc(precisionLabels[event.location.precision])}
               </div>
             </div>
           </div>

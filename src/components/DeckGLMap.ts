@@ -56,7 +56,7 @@ import {
   deptCodeToId,
   clamp,
 } from './deckgl/format-utils.ts';
-import { fmIcon, fmStatusDot } from './shared/icons.ts';
+import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
 import {
   buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
@@ -3995,20 +3995,20 @@ export class DeckGLMap {
       const p = e.features[0].properties || {};
       const frp = Number(p.frp ?? 0).toFixed(1);
       const conf = String(p.confidence ?? '');
-      const confLabel = conf === 'high' ? '🔴 Haute' : conf === 'nominal' ? '🟠 Nominale' : '🟡 Basse';
+      const confLabel = conf === 'high' ? `${fmStatusDot('high')} Haute` : conf === 'nominal' ? `${fmStatusDot('medium')} Nominale` : `${fmStatusDot('low')} Basse`;
       const lat = Number(p.lat ?? 0).toFixed(4);
       const lon = Number(p.lon ?? 0).toFixed(4);
       const date = String(p.acq_date ?? '');
       const rawTime = String(p.acq_time ?? '').padStart(4, '0');
       const timeLabel = `${rawTime.slice(0, 2)}:${rawTime.slice(2)} UTC`;
-      const period = p.daynight === 'D' ? '☀️ Jour' : '🌙 Nuit';
+      const period = p.daynight === 'D' ? `${fmIcon('sun')} Jour` : `${fmIcon('moon')} Nuit`;
       const temp = Number(p.bright_ti4 ?? 0);
       const tempLabel = temp > 0 ? `${(temp - 273.15).toFixed(0)} °C` : '—';
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:2px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <strong style="font-size:13px; color:#ff9500;">🔥 Feu actif</strong>
+            <strong style="font-size:13px; color:#ff9500;">${fmIcon('flame')} Feu actif</strong>
             <span style="font-size:11px; color:#9898a8;">${period}</span>
           </div>
           <div style="font-size:11px; display:flex; flex-direction:column; gap:3px;">
@@ -4112,7 +4112,7 @@ export class DeckGLMap {
 
       const motifsHtml = topMotifs.length > 0
         ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-            <div style="color:#d8d8df; margin-bottom:4px; font-weight:600;">⚠️ Hausse des ${isOscourMarker ? 'passages' : 'Urgences/SOS'}:</div>
+            <div style="color:#d8d8df; margin-bottom:4px; font-weight:600;">${fmIcon('triangle-alert')} Hausse des ${isOscourMarker ? 'passages' : 'Urgences/SOS'}:</div>
             ${topMotifs.map((m) => {
           const code = m.label || m.code || '';
           const tp = Number(m.trendPct) || (m.trend_pct ? Number(m.trend_pct) : 0);
@@ -4133,7 +4133,7 @@ export class DeckGLMap {
           </div>
           <div style="font-size:11px; color:#9898a8; margin-top:4px;">ISS : <strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>/100</div>
           ${motifsHtml}
-          <div style="font-size:10px; color:#6b6b76; margin-top:6px;">🖱️ Cliquez pour plus de détails</div>
+          <div style="font-size:10px; color:#6b6b76; margin-top:6px;">${fmIcon('mouse-pointer-click')} Cliquez pour plus de détails</div>
         </div>
       `;
 
@@ -4195,7 +4195,7 @@ export class DeckGLMap {
         topMotifs = [];
       }
       const trend = String(p.trend ?? 'stable');
-      const trendLabel = trend === 'up' ? '↗ Hausse' : trend === 'down' ? '↘ Baisse' : '→ Stable';
+      const trendLabel = trend === 'up' ? `${fmIcon('trending-up')} Hausse` : trend === 'down' ? `${fmIcon('trending-down')} Baisse` : '→ Stable';
       const source = getHealthSourceLabel(String(p.source ?? 'spf-epid'));
       const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
       const granularityLabel = isDept ? 'Département' : 'Région';
@@ -4337,11 +4337,11 @@ export class DeckGLMap {
     // ─── Citizen outage zone — hover tooltip élargi ───
     let citizenHoverPopup: maplibregl.Popup | null = null;
 
-    const severityMeta: Record<string, { label: string; color: string; icon: string }> = {
-      critical: { label: 'Critique', color: '#b400ff', icon: '🟣' },
-      high: { label: 'Élevé', color: '#c060ff', icon: '🟣' },
-      medium: { label: 'Modéré', color: '#9b30e8', icon: '🟣' },
-      low: { label: 'Faible', color: '#7a22c8', icon: '🟣' },
+    const severityMeta: Record<string, { label: string; color: string }> = {
+      critical: { label: 'Critique', color: '#b400ff' },
+      high: { label: 'Élevé', color: '#c060ff' },
+      medium: { label: 'Modéré', color: '#9b30e8' },
+      low: { label: 'Faible', color: '#7a22c8' },
     };
 
     this.map.on('mousemove', LYR_CITIZEN_FILL, (e) => {
@@ -4351,7 +4351,8 @@ export class DeckGLMap {
       const p = e.features[0].properties;
       if (!p) return;
 
-      const sev = severityMeta[p.severity] ?? { label: p.severity, color: '#888', icon: '⚪' };
+      const sev = severityMeta[p.severity] ?? { label: p.severity, color: '#888' };
+      const sevLevel: FmDotLevel = (p.severity === 'critical' || p.severity === 'high' || p.severity === 'medium' || p.severity === 'low') ? p.severity : 'info';
       let sources: string[];
       try { sources = Array.isArray(p.sources) ? p.sources : JSON.parse(p.sources ?? '[]'); } catch { sources = []; }
 
@@ -4364,7 +4365,7 @@ export class DeckGLMap {
       const html = `
         <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:300px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
-            <span style="font-size:13px;font-weight:700;color:#fff;">${sev.icon} Zone de coupures — ${sev.label}</span>
+            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures — ${sev.label}</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;margin-bottom:10px;">
             <div>
@@ -4385,7 +4386,7 @@ export class DeckGLMap {
             </div>
           </div>
           ${sources.length > 0 ? `<div style="font-size:10px;color:#9898a8;margin-bottom:5px;">Sources : ${sources.map((s: string) => `<span style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">${s}</span>`).join(' ')}</div>` : ''}
-          <div style="font-size:10px;color:#9898a8;">🕒 Mis à jour ${updatedAt}</div>
+          <div style="font-size:10px;color:#9898a8;">${fmIcon('hourglass')} Mis à jour ${updatedAt}</div>
         </div>`;
 
       if (!citizenHoverPopup) {
@@ -4473,7 +4474,7 @@ export class DeckGLMap {
             ${name} <span style="font-size:12px; font-weight:normal; color:#9898a8;">(${code})</span>
           </h4>
           <div style="margin:0 0 10px; font-size:12px; font-weight:600; color:${tensionColor};">
-            ${tensionColor === '#EF4444' ? '🔴 Signal rouge' : '🟠 Signal orange'} — Tension réseau Ecowatt
+            ${tensionColor === '#EF4444' ? `${fmStatusDot('critical')} Signal rouge` : `${fmStatusDot('high')} Signal orange`} — Tension réseau Ecowatt
           </div>
           <div style="font-size:11px; color:#a1a1aa; line-height:1.5;">
             Aucune panne PDL mesurée par Enedis.<br/>
@@ -4503,14 +4504,14 @@ export class DeckGLMap {
       const deptColor = count >= 10000 ? '#EF4444' : count >= 5000 ? '#F97316' : count >= 1000 ? '#F59E0B' : '#EAB308';
       const pdlPct = Math.round((count / (p.totalPDL || 1)) * 100);
       const trendColor = p.trend === 'improving' ? '#34c759' : p.trend === 'worsening' ? '#ff3b30' : '#9898a8';
-      const trendLabel = p.trend === 'improving' ? '📉 Amélioration' : p.trend === 'worsening' ? '📈 Aggravation' : '➡️ Stable';
+      const trendLabel = p.trend === 'improving' ? `${fmIcon('trending-down')} Amélioration` : p.trend === 'worsening' ? `${fmIcon('trending-up')} Aggravation` : '→ Stable';
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
           <h4 style="margin:0 0 4px; font-weight:700; font-size:15px; color:#fff; display:flex; justify-content:space-between; align-items:center;">
             ${p.departmentName || 'Département'} <span style="font-size:12px; font-weight:normal; color:#9898a8;">(${p.departmentCode})</span>
           </h4>
-          <div style="margin:0 0 10px; font-size:12px; font-weight:600; color:${deptColor};">⚡ Tension réseau électrique</div>
+          <div style="margin:0 0 10px; font-size:12px; font-weight:600; color:${deptColor};">${fmIcon('zap')} Tension réseau électrique</div>
           <div style="font-size:13px; margin-bottom:8px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
               <span style="color:#9898a8">PDL hors réseau :</span>
@@ -4722,8 +4723,8 @@ export class DeckGLMap {
           </div>` : ''}
 
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">
-            ${p.lookingGlass ? `<a href="${p.lookingGlass}" target="_blank" rel="noopener" style="font-size:10px;color:#6366f1;text-decoration:none;">🔍 Looking Glass</a>` : ''}
-            ${p.noc ? `<a href="mailto:${p.noc}" style="font-size:10px;color:#6b7280;text-decoration:none;">📧 NOC</a>` : ''}
+            ${p.lookingGlass ? `<a href="${p.lookingGlass}" target="_blank" rel="noopener" style="font-size:10px;color:#6366f1;text-decoration:none;">${fmIcon('search')} Looking Glass</a>` : ''}
+            ${p.noc ? `<a href="mailto:${p.noc}" style="font-size:10px;color:#6b7280;text-decoration:none;">${fmIcon('mail')} NOC</a>` : ''}
             <span style="font-size:10px;color:#6b7280;margin-left:auto;">BGPView · ARCEP</span>
           </div>
         </div>`;
@@ -4749,7 +4750,7 @@ export class DeckGLMap {
           </div>
           <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
             <span style="color:#9898a8">Durée :</span>
-            <span style="font-weight:600">${p.isOngoing ? '⏳ En cours' : durStr}</span>
+            <span style="font-weight:600">${p.isOngoing ? `${fmIcon('hourglass')} En cours` : durStr}</span>
           </div>
           ${sources.length ? `<div style="font-size:11px;color:#9898a8;margin-bottom:4px;">Signaux : ${sources.join(', ')}</div>` : ''}
           <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">Source : IODA (Georgia Tech / CAIDA)</div>
@@ -5076,7 +5077,7 @@ export class DeckGLMap {
       const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-2-l2a');
       const ctaHtml = this.onSatelliteView
         ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / apres</button>`
-        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ↗</a>`;
+        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ${fmIcon('external-link')}</a>`;
 
       this.floodHoverPopup?.remove();
       this.fitBounds(aoBbox, 80);
@@ -5352,11 +5353,11 @@ export class DeckGLMap {
       const deltaColor = s.consumptionDeltaPct <= 0 ? '#34c759' : '#ff3b30';
 
       const prodRows: [string, number][] = [
-        ['☢ Nucléaire', p.nuclear],
-        ['💧 Hydraulique', p.hydro],
-        ['💨 Éolien', p.wind],
-        ['☀ Solaire', p.solar],
-        ['🔥 Thermique', p.gas],
+        [`${fmIcon('atom')} Nucléaire`, p.nuclear],
+        [`${fmIcon('droplet')} Hydraulique`, p.hydro],
+        [`${fmIcon('wind')} Éolien`, p.wind],
+        [`${fmIcon('sun')} Solaire`, p.solar],
+        [`${fmIcon('flame')} Thermique`, p.gas],
       ].filter(([, v]) => (v as number) > 0) as [string, number][];
 
       const prodRowsHTML = prodRows.map(([lbl, mw]) =>
@@ -5383,7 +5384,7 @@ export class DeckGLMap {
           ${prodRowsHTML}
           ${row('Bas-carbone', `${s.lowCarbonPct.toFixed(0)} %`, '#34c759')}
           ${sep}
-          ${row('⚡ Intensité CO₂', `${Math.round(s.carbonIntensity)} gCO₂/kWh`, co2Color(s.carbonIntensity))}
+          ${row(`${fmIcon('zap')} Intensité CO₂`, `${Math.round(s.carbonIntensity)} gCO₂/kWh`, co2Color(s.carbonIntensity))}
         </div>`;
 
       if (!this.energyRegionPopup) {
@@ -5397,7 +5398,7 @@ export class DeckGLMap {
 
     // ─── Energy Flow (Arc) Interactions ───
     const FLOW_COLORS: Record<string, string> = { export: '#34c759', import: '#ff3b30', balanced: '#8e8e93' };
-    const FLOW_LABELS: Record<string, string> = { export: 'Export ↗', import: 'Import ↙', balanced: 'Équilibré ↔' };
+    const FLOW_LABELS: Record<string, string> = { export: `Export ${fmIcon('trending-up')}`, import: `Import ${fmIcon('trending-down')}`, balanced: `Équilibré ${fmIcon('arrow-left-right')}` };
     const utilizationBar = (pct: number, color: string) =>
       `<div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;overflow:hidden;">` +
       `<div style="width:${Math.min(pct, 100).toFixed(0)}%;height:100%;background:${color};border-radius:2px;"></div></div>`;
@@ -5651,7 +5652,7 @@ export class DeckGLMap {
       const altFl = p.altitude > 0 ? `FL${Math.round(p.altitude / 100)}` : 'Au sol';
       const typeModel = p.aircraftModel
         ? `${p.aircraftModel}`
-        : (p.aircraftType && p.aircraftType !== 'unknown' ? p.aircraftType : '⚡ Militaire');
+        : (p.aircraftType && p.aircraftType !== 'unknown' ? p.aircraftType : 'MIL');
       this.showMilitaryTooltip(
         e.lngLat,
         `<strong>${p.callsign || 'N/A'}</strong> · ${typeModel}<br><span style="color:#ffcc00;font-size:11px">${altFl} · ${p.speed || 0} kts</span>`
@@ -5688,7 +5689,7 @@ export class DeckGLMap {
       const p = feat.properties || {};
       this.showMilitaryTooltip(
         e.lngLat,
-        `<strong>⚓ ${p.name || 'Navire'}</strong><br><span style="color:#00d4c8;font-size:11px">${p.type || 'Marine'}</span>${p.speed > 0 ? `<br><span style="color:#9898a8;font-size:10px">${p.speed} nœuds</span>` : ''}`
+        `<strong>${fmIcon('anchor')} ${p.name || 'Navire'}</strong><br><span style="color:#00d4c8;font-size:11px">${p.type || 'Marine'}</span>${p.speed > 0 ? `<br><span style="color:#9898a8;font-size:10px">${p.speed} nœuds</span>` : ''}`
       );
     });
     this.map.on('mouseleave', LYR_MILITARY_SHIPS, () => {
@@ -6727,7 +6728,7 @@ export class DeckGLMap {
       root.innerHTML = `
         <div class="rail-station-detail-shell">
           <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-            <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">🚉</div>
+            <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
             <div class="rail-detail-title-wrap">
               <div class="rail-detail-title">${this.escapeHtml(name)}</div>
               <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
@@ -6817,7 +6818,7 @@ export class DeckGLMap {
     root.innerHTML = `
       <div class="rail-station-detail-shell">
         <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-          <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">🚉</div>
+          <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
           <div class="rail-detail-title-wrap">
             <div class="rail-detail-title">${this.escapeHtml(name)}</div>
             <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
@@ -6920,10 +6921,10 @@ export class DeckGLMap {
 
     const type = String(properties.type ?? 'other');
     const typeIcon =
-      type === 'cancellation' ? '🚫'
-        : type === 'delay' ? '⏱'
-          : type === 'works' ? '🚧'
-            : 'ℹ️';
+      type === 'cancellation' ? fmIcon('ban', { size: 16 })
+        : type === 'delay' ? fmIcon('timer', { size: 16 })
+          : type === 'works' ? fmIcon('construction', { size: 16 })
+            : fmIcon('triangle-alert', { size: 16 });
     const typeLabel =
       type === 'cancellation' ? 'Suppression'
         : type === 'delay' ? 'Retard'
@@ -7015,7 +7016,7 @@ export class DeckGLMap {
     return `
       <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;width:260px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:${severityBg};">
-          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">🚉</div>
+          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${fmIcon('train-front', { size: 18 })}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
             <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
@@ -7313,7 +7314,7 @@ export class DeckGLMap {
       <div style="color:#e8e8ec;font-family:sans-serif;min-width:180px;padding:4px;">
         <div style="font-size:14px;font-weight:700;color:#fff;">${this.escapeHtml(country)}</div>
         <div style="margin:2px 0 8px;font-size:12px;font-weight:600;color:${isImp ? '#A855F7' : '#06B6D4'};">
-          ${isImp ? 'Import gaz ↙' : 'Export gaz ↗'}
+          ${isImp ? `Import gaz ${fmIcon('trending-down')}` : `Export gaz ${fmIcon('trending-up')}`}
         </div>
         ${flow ? `<div style="font-size:12px;color:#9898a8;">Flux <strong style="color:#fff;">${this.escapeHtml(flow)}</strong></div>` : ''}
       </div>`;
@@ -7345,7 +7346,7 @@ export class DeckGLMap {
     const fmtGWh = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(0)} GWh`;
 
     // Tendance stockage — cyan = remplissage (bonne nouvelle), violet = soutirage
-    const trendLabel: Record<string, string> = { filling: 'Remplissage ↑', withdrawing: 'Soutirage ↓', stable: 'Stable →' };
+    const trendLabel: Record<string, string> = { filling: `Remplissage ${fmIcon('trending-up')}`, withdrawing: `Soutirage ${fmIcon('trending-down')}`, stable: 'Stable →' };
     const trendColor: Record<string, string> = { filling: EXP_COLOR, withdrawing: IMP_COLOR, stable: '#8e8e93' };
 
     // Signal EcoGaz — cyan (vert→jaune) vers violet (orange→rouge)
@@ -7377,7 +7378,7 @@ export class DeckGLMap {
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
           <strong style="font-size:13px;color:#fff;">${this.escapeHtml(f.originLabel)} → ${this.escapeHtml(f.destinationLabel)}</strong>
           <span style="font-size:11px;padding:2px 7px;border-radius:4px;font-weight:700;color:#000;background:${color};">
-            ${f.direction === 'import' ? 'Import ↙' : 'Export ↗'}
+            ${f.direction === 'import' ? `Import ${fmIcon('trending-down')}` : `Export ${fmIcon('trending-up')}`}
           </span>
         </div>
 
@@ -7555,7 +7556,7 @@ export class DeckGLMap {
       <div style="color:#e8e8ec; font-family:sans-serif; min-width:190px; max-width:300px;">
         <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(country)}</div>
         <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${isImport ? '#C2410C' : '#F59E0B'};">
-          ${isImport ? 'Flux import ↙' : 'Flux export ↗'}
+          ${isImport ? `Flux import ${fmIcon('trending-down')}` : `Flux export ${fmIcon('trending-up')}`}
         </div>
         ${hubName ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Hub</span> <strong>${this.escapeHtml(hubName)}</strong></div>` : ''}
         ${hasOriginShare ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Part origine</span> <strong>${originSharePct.toFixed(1)}%</strong></div>` : ''}
@@ -7659,16 +7660,16 @@ export class DeckGLMap {
       : incident.severity === 'high' ? 'Fort'
         : incident.severity === 'medium' ? 'Modéré'
           : 'Faible';
-    const typeEmoji: Record<string, string> = {
-      Accident: '🚨',
-      Bouchon: '🚗',
-      Travaux: '🚧',
-      'Voie fermée': '🚫',
-      'Route barrée': '⛔',
-      'Vent fort': '💨',
-      Inondation: '🌊',
+    const typeIcons: Record<string, string> = {
+      Accident: fmIcon('siren', { size: 20 }),
+      Bouchon: fmIcon('car-front', { size: 20 }),
+      Travaux: fmIcon('construction', { size: 20 }),
+      'Voie fermée': fmIcon('ban', { size: 20 }),
+      'Route barrée': fmIcon('circle-off', { size: 20 }),
+      'Vent fort': fmIcon('wind', { size: 20 }),
+      Inondation: fmIcon('waves', { size: 20 }),
     };
-    const emoji = typeEmoji[incident.type] || '⚠️';
+    const emoji = typeIcons[incident.type] || fmIcon('triangle-alert', { size: 20 });
     const routeText = incident.roadNumbers && incident.roadNumbers.length > 0 ? incident.roadNumbers.join(', ') : null;
     const validityText = incident.timeValidity === 'future' ? 'Planifié' : 'En cours';
     const formatDate = (value?: string | null) => {
@@ -7727,18 +7728,18 @@ export class DeckGLMap {
 
     // Ship type icons based on AIS code
     const getTypeIcon = (t: number): string => {
-      if (t >= 80 && t <= 89) return '🛢️';  // Tanker
-      if (t >= 70 && t <= 79) return '📦';  // Cargo
-      if (t >= 60 && t <= 69) return '🚢';  // Passagers
-      if (t === 55) return '🚓';             // Police/SAR
-      if (t === 51) return '🆘';             // SAR
-      if (t === 52 || t === 53) return '🛥️'; // Remorqueur/pilote
-      if (t === 36 || t === 37 || (t >= 20 && t <= 29)) return '⛵'; // Voilier/plaisance
-      if (t >= 40 && t <= 49) return '💨';  // Grande vitesse
-      if (t >= 30 && t <= 34) return '🎣';  // Pêche
-      return '🚤';                           // Inconnu/divers
+      if (t >= 80 && t <= 89) return fmIcon('fuel');       // Tanker
+      if (t >= 70 && t <= 79) return fmIcon('package');    // Cargo
+      if (t >= 60 && t <= 69) return fmIcon('ship');       // Passagers
+      if (t === 55) return fmIcon('shield');               // Police/SAR
+      if (t === 51) return fmIcon('life-buoy');            // SAR
+      if (t === 52 || t === 53) return fmIcon('anchor');   // Remorqueur/pilote
+      if (t === 36 || t === 37 || (t >= 20 && t <= 29)) return fmIcon('waves'); // Voilier/plaisance
+      if (t >= 40 && t <= 49) return fmIcon('zap');        // Grande vitesse
+      if (t >= 30 && t <= 34) return fmIcon('fish');        // Pêche
+      return fmIcon('ship');                                // Inconnu/divers
     };
-    const typeIcon = fishingByStatus ? '🎣' : getTypeIcon(shipType);
+    const typeIcon = fishingByStatus ? fmIcon('fish') : getTypeIcon(shipType);
 
     const nameColor = '#fff';
     const typeColor = '#9898a8';
@@ -7767,7 +7768,7 @@ export class DeckGLMap {
         ? `${Math.round(dataAgeMs / 60_000)} min`
         : `${Math.round(dataAgeMs / 3_600_000)} h`;
     const stalenessHtml = stalenessLabel
-      ? `<span style="color:${isStale ? '#f59e0b' : '#6f7080'}; font-size:10px;">${isStale ? '⚠️ ' : ''}${stalenessLabel}</span>`
+      ? `<span style="color:${isStale ? '#f59e0b' : '#6f7080'}; font-size:10px;">${isStale ? fmStatusDot('medium') + ' ' : ''}${stalenessLabel}</span>`
       : '';
     const draught = ship.draught != null && ship.draught > 0 ? `${ship.draught.toFixed(1)} m` : '';
     const headingValue = this.normalizeAngle(ship.heading);
@@ -9876,7 +9877,7 @@ export class DeckGLMap {
       const color = type === 'CHU' ? '#ff3b30' : '#ff9500';
 
       const isChu = type === 'CHU';
-      const icon = isChu ? '🏥' : '🏨';
+      const icon = isChu ? fmIcon('hospital', { size: 18 }) : fmIcon('stethoscope', { size: 18 });
 
       this._hospitalsPopup?.remove();
       this._hospitalsPopup = new maplibregl.Popup({
@@ -9896,7 +9897,7 @@ export class DeckGLMap {
             <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
               <span style="background:${color}22;border:1px solid ${color}44;color:${color};padding:2px 8px;border-radius:4px;">${type}</span>
               <span style="background:#ffffff10;color:#ccc;padding:2px 8px;border-radius:4px;">${beds}</span>
-              ${isEmergency ? '<span style="background:#ff3b3022;border:1px solid #ff3b3055;color:#ff3b30;padding:2px 8px;border-radius:4px;">🚨 Urgences</span>' : ''}
+              ${isEmergency ? `<span style="background:#ff3b3022;border:1px solid #ff3b3055;color:#ff3b30;padding:2px 8px;border-radius:4px;">${fmIcon('siren')} Urgences</span>` : ''}
             </div>
           </div>
         `)
