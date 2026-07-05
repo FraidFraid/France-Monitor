@@ -43,7 +43,7 @@ export type IconName =
   | 'swords' | 'wrench' | 'mouse-pointer-click' | 'mail' | 'life-buoy' | 'map'
   | 'volume-x' | 'bot' | 'dna' | 'circle-help' | 'rotate-ccw' | 'user'
   | 'palmtree' | 'pill' | 'link' | 'lightbulb' | 'leaf' | 'check'
-  | 'hand-fist';
+  | 'hand-fist' | 'cloud' | 'factory';
 
 export interface FmIconOptions {
   /** Taille en px (largeur = hauteur). Défaut : 14. */
@@ -136,6 +136,8 @@ const ICON_PATHS: Record<IconName, string> = {
   'leaf': '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" /> <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />',
   'check': '<path d="M20 6 9 17l-5-5" />',
   'hand-fist': '<path d="M12.035 17.012a3 3 0 0 0-3-3l-.311-.002a.72.72 0 0 1-.505-1.229l1.195-1.195A2 2 0 0 1 10.828 11H12a2 2 0 0 0 0-4H9.243a3 3 0 0 0-2.122.879l-2.707 2.707A4.83 4.83 0 0 0 3 14a8 8 0 0 0 8 8h2a8 8 0 0 0 8-8V7a2 2 0 1 0-4 0v2a2 2 0 1 0 4 0" /> <path d="M13.888 9.662A2 2 0 0 0 17 8V5A2 2 0 1 0 13 5" /> <path d="M9 5A2 2 0 1 0 5 5V10" /> <path d="M9 7V4A2 2 0 1 1 13 4V7.268" />',
+  'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+  'factory': '<path d="M12 16h.01" /> <path d="M16 16h.01" /> <path d="M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z" /> <path d="M8 16h.01" />',
 };
 
 /** Échappement HTML minimal (attributs/texte) — même logique que `shared/loader.ts`. */

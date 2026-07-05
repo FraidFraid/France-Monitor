@@ -5,6 +5,7 @@
 
 import type { MapLayers } from '../types/index.ts';
 import { AIS_RELAY_URL } from '../services/ais-connection.ts';
+import { fmIcon } from './shared/icons.ts';
 
 interface LayerDef {
   key: keyof MapLayers;
@@ -14,42 +15,42 @@ interface LayerDef {
 }
 
 const LAYER_DEFS: LayerDef[] = [
-  { key: 'newsGroup', label: 'ACTUALITÉS', icon: '&#128240;' },
-  { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: '&#128240;', sublayerOf: 'newsGroup' },
-  { key: 'stability', label: 'INDICE STABILITÉ', icon: '&#128202;', sublayerOf: 'newsGroup' },
-  { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: '&#9889;' },
-  { key: 'dromEnergy', label: 'ÉNERGIE DROM / SEI', icon: '&#127965;', sublayerOf: 'energySystems' },
-  { key: 'powerGrid', label: 'RÉSEAU ÉLECTRIQUE / ÉCOWATT', icon: '&#9889;', sublayerOf: 'energySystems' },
-  { key: 'nuclearFleet', label: 'PARC NUCLÉAIRE', icon: '&#9883;', sublayerOf: 'energySystems' },
-  { key: 'gasNetwork', label: 'RÉSEAU GAZ', icon: '&#128293;', sublayerOf: 'energySystems' },
-  { key: 'hydroBackbone', label: 'HYDRO – STRESS HYDRO-ÉNERGÉTIQUE', icon: '&#128167;', sublayerOf: 'energySystems' },
-  { key: 'oilNetwork', label: 'PÉTROLE – RÉSEAU & STOCKS', icon: '&#128738;', sublayerOf: 'energySystems' },
-  { key: 'windMonitor', label: 'VEILLE ÉOLIENNE', icon: '&#127788;', sublayerOf: 'energySystems' },
-  { key: 'metroLoad', label: 'CHARGE MÉTROPOLITAINE', icon: '&#127963;', sublayerOf: 'energySystems' },
-  { key: 'health', label: 'SANTÉ / ÉPIDÉMIO', icon: '<span style="color:#22c55e;font-weight:900;">&#10010;</span>' },
-  { key: 'healthOscour', label: 'OSCOUR / SOS MÉDECINS', icon: '&#128657;', sublayerOf: 'health' },
-  { key: 'healthApl', label: 'APL — DÉSERTS MÉDICAUX', icon: '&#127979;', sublayerOf: 'health' },
-  { key: 'hospitals', label: 'HÔPITAUX (FINESS)', icon: '<span style="color:#e53935;font-weight:900;">&#10010;</span>', sublayerOf: 'health' },
-  { key: 'traffic', label: 'TRAFICS', icon: '&#128663;' },
-  { key: 'trafficRoad', label: 'TRAFIC ROUTIER', icon: '&#128663;', sublayerOf: 'traffic' },
-  { key: 'trafficMaritime', label: 'TRAFIC MARITIME', icon: '&#128674;', sublayerOf: 'traffic' },
-  { key: 'trafficAir', label: 'TRAFIC AÉRIEN', icon: '&#9992;', sublayerOf: 'traffic' },
-  { key: 'trafficRail', label: 'RÉSEAU FERROVIAIRE', icon: '&#128646;', sublayerOf: 'traffic' },
-  { key: 'environmentGroup', label: 'ENVIRONNEMENT', icon: '&#127793;' },
-  { key: 'environmental', label: 'MÉTÉO / CRUES', icon: '&#127793;', sublayerOf: 'environmentGroup' },
-  { key: 'weatherRadar', label: 'RADAR MÉTÉO', icon: '&#127782;', sublayerOf: 'environmentGroup' },
-  { key: 'fires', label: 'FEUX DE FORÊT (NASA FIRMS)', icon: '&#128293;', sublayerOf: 'environmentGroup' },
-  { key: 'dayNight', label: 'JOUR / NUIT', icon: '&#127761;', sublayerOf: 'environmentGroup' },
-  { key: 'sovereignty', label: 'SOUVERAINETÉ', icon: '&#128737;' },
-  { key: 'military', label: 'DÉFENSE', icon: '&#128737;', sublayerOf: 'sovereignty' },
-  { key: 'subseaCables', label: 'CONNECTIVITÉ SOUS-MARINE', icon: '&#127754;', sublayerOf: 'sovereignty' },
-  { key: 'cyber', label: 'VIGILANCE CYBER', icon: '&#128274;', sublayerOf: 'sovereignty' },
-  { key: 'outages', label: 'PANNES RÉSEAU', icon: '&#128225;' },
-  { key: 'outagesElec',     label: 'ÉLECTRICITÉ',   icon: '&#9889;',   sublayerOf: 'outages' },
-  { key: 'outagesTelecom',  label: 'TÉLÉCOM 4G·5G', icon: '&#128225;', sublayerOf: 'outages' },
-  { key: 'outagesInternet', label: 'INTERNET / BGP', icon: '&#127760;', sublayerOf: 'outages' },
-  { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: '&#9729;',   sublayerOf: 'outages' },
-  { key: 'elus', label: 'ÉLUS & REPRÉSENTANTS', icon: '&#127963;' },
+  { key: 'newsGroup', label: 'ACTUALITÉS', icon: fmIcon('newspaper') },
+  { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: fmIcon('newspaper'), sublayerOf: 'newsGroup' },
+  { key: 'stability', label: 'INDICE STABILITÉ', icon: fmIcon('bar-chart-3'), sublayerOf: 'newsGroup' },
+  { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: fmIcon('zap') },
+  { key: 'dromEnergy', label: 'ÉNERGIE DROM / SEI', icon: fmIcon('palmtree'), sublayerOf: 'energySystems' },
+  { key: 'powerGrid', label: 'RÉSEAU ÉLECTRIQUE / ÉCOWATT', icon: fmIcon('zap'), sublayerOf: 'energySystems' },
+  { key: 'nuclearFleet', label: 'PARC NUCLÉAIRE', icon: fmIcon('atom'), sublayerOf: 'energySystems' },
+  { key: 'gasNetwork', label: 'RÉSEAU GAZ', icon: fmIcon('flame'), sublayerOf: 'energySystems' },
+  { key: 'hydroBackbone', label: 'HYDRO – STRESS HYDRO-ÉNERGÉTIQUE', icon: fmIcon('droplet'), sublayerOf: 'energySystems' },
+  { key: 'oilNetwork', label: 'PÉTROLE – RÉSEAU & STOCKS', icon: fmIcon('fuel'), sublayerOf: 'energySystems' },
+  { key: 'windMonitor', label: 'VEILLE ÉOLIENNE', icon: fmIcon('wind'), sublayerOf: 'energySystems' },
+  { key: 'metroLoad', label: 'CHARGE MÉTROPOLITAINE', icon: fmIcon('building-2'), sublayerOf: 'energySystems' },
+  { key: 'health', label: 'SANTÉ / ÉPIDÉMIO', icon: `<span style="color:#22c55e;">${fmIcon('stethoscope')}</span>` },
+  { key: 'healthOscour', label: 'OSCOUR / SOS MÉDECINS', icon: fmIcon('siren'), sublayerOf: 'health' },
+  { key: 'healthApl', label: 'APL — DÉSERTS MÉDICAUX', icon: fmIcon('map-pin'), sublayerOf: 'health' },
+  { key: 'hospitals', label: 'HÔPITAUX (FINESS)', icon: `<span style="color:#e53935;">${fmIcon('hospital')}</span>`, sublayerOf: 'health' },
+  { key: 'traffic', label: 'TRAFICS', icon: fmIcon('car-front') },
+  { key: 'trafficRoad', label: 'TRAFIC ROUTIER', icon: fmIcon('car-front'), sublayerOf: 'traffic' },
+  { key: 'trafficMaritime', label: 'TRAFIC MARITIME', icon: fmIcon('ship'), sublayerOf: 'traffic' },
+  { key: 'trafficAir', label: 'TRAFIC AÉRIEN', icon: fmIcon('plane'), sublayerOf: 'traffic' },
+  { key: 'trafficRail', label: 'RÉSEAU FERROVIAIRE', icon: fmIcon('train-front'), sublayerOf: 'traffic' },
+  { key: 'environmentGroup', label: 'ENVIRONNEMENT', icon: fmIcon('leaf') },
+  { key: 'environmental', label: 'MÉTÉO / CRUES', icon: fmIcon('leaf'), sublayerOf: 'environmentGroup' },
+  { key: 'weatherRadar', label: 'RADAR MÉTÉO', icon: fmIcon('cloud-rain'), sublayerOf: 'environmentGroup' },
+  { key: 'fires', label: 'FEUX DE FORÊT (NASA FIRMS)', icon: fmIcon('flame'), sublayerOf: 'environmentGroup' },
+  { key: 'dayNight', label: 'JOUR / NUIT', icon: fmIcon('moon'), sublayerOf: 'environmentGroup' },
+  { key: 'sovereignty', label: 'SOUVERAINETÉ', icon: fmIcon('shield') },
+  { key: 'military', label: 'DÉFENSE', icon: fmIcon('shield'), sublayerOf: 'sovereignty' },
+  { key: 'subseaCables', label: 'CONNECTIVITÉ SOUS-MARINE', icon: fmIcon('waves'), sublayerOf: 'sovereignty' },
+  { key: 'cyber', label: 'VIGILANCE CYBER', icon: fmIcon('lock-keyhole'), sublayerOf: 'sovereignty' },
+  { key: 'outages', label: 'PANNES RÉSEAU', icon: fmIcon('satellite-dish') },
+  { key: 'outagesElec',     label: 'ÉLECTRICITÉ',   icon: fmIcon('zap'),   sublayerOf: 'outages' },
+  { key: 'outagesTelecom',  label: 'TÉLÉCOM 4G·5G', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
+  { key: 'outagesInternet', label: 'INTERNET / BGP', icon: fmIcon('globe'), sublayerOf: 'outages' },
+  { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: fmIcon('cloud'),   sublayerOf: 'outages' },
+  { key: 'elus', label: 'ÉLUS & REPRÉSENTANTS', icon: fmIcon('landmark') },
 ];
 
 export type LayerToggleHandler = (key: keyof MapLayers, enabled: boolean) => void;
@@ -133,7 +134,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.newsExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="news-accordion-toggle" aria-expanded="${this.newsExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#128240;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('newspaper')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ACTUALITÉS</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.newsExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -145,7 +146,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.energyExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="energy-accordion-toggle" aria-expanded="${this.energyExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#9889;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('zap')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ÉNERGIE</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.energyExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -157,7 +158,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.healthExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="health-accordion-toggle" aria-expanded="${this.healthExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#127973;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('stethoscope')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">SANTÉ</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.healthExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -170,7 +171,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.trafficExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="traffic-accordion-toggle" aria-expanded="${this.trafficExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#128663;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('car-front')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">TRAFICS</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.trafficExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -182,7 +183,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.sovereigntyExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="sovereignty-accordion-toggle" aria-expanded="${this.sovereigntyExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#128737;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('shield')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">SOUVERAINETÉ</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.sovereigntyExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -204,7 +205,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.outagesExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="outages-accordion-toggle" aria-expanded="${this.outagesExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#128225;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('satellite-dish')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">PANNES RÉSEAU</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.outagesExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -218,7 +219,7 @@ export class LayerPanel {
         listHtml += `
           <div class="layer-panel-accordion ${this.environmentExpanded ? 'expanded' : ''}">
             <div class="layer-panel-accordion-header" id="environment-accordion-toggle" aria-expanded="${this.environmentExpanded}" style="display:flex; align-items:center; padding: 8px 12px; cursor: pointer; background: rgba(255,255,255,0.05); margin-bottom: 2px; border-radius: 4px; transition: background 0.2s;">
-              <span class="layer-panel-icon" style="margin-right: 8px;">&#127793;</span>
+              <span class="layer-panel-icon" style="margin-right: 8px;">${fmIcon('leaf')}</span>
               <span class="layer-panel-label" style="flex: 1; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; color: #E0E0E0; text-transform: uppercase;">ENVIRONNEMENT</span>
               <span class="layer-accordion-icon" style="font-size: 10px; color: #888; transition: transform 0.2s;">${this.environmentExpanded ? '&#9650;' : '&#9664;'}</span>
             </div>
@@ -422,12 +423,12 @@ export class LayerPanel {
     popup.className = 'layer-help-popup';
     popup.innerHTML = `
       <div class="layer-help-header">
-        <span class="layer-help-header-icon">&#128506;</span>
+        <span class="layer-help-header-icon">${fmIcon('map')}</span>
         <div class="layer-help-header-text">
           <div class="layer-help-header-title">Guide des couches</div>
           <div class="layer-help-header-subtitle">Description et fraîcheur de chaque couche cartographique</div>
         </div>
-        <button class="layer-help-close">&times;</button>
+        <button class="layer-help-close" aria-label="Fermer">${fmIcon('x')}</button>
       </div>
       <div class="layer-help-content">
         ${this.renderHelpSections()}
@@ -483,47 +484,47 @@ export class LayerPanel {
 
   private renderHelpSections(): string {
     return [
-      this.helpSection('&#128240;', 'Actualités', [
-        this.helpItem('&#128240;', 'Actualités géolocalisées', 'Articles PQR localisés sur la carte par département ou commune.', 'live'),
-        this.helpItem('&#128202;', 'Indice de stabilité', 'Score composite ISNR par département : social, sécurité/cyber, infrastructure et vélocité. Escalade visible si une dimension domine.', 'live'),
+      this.helpSection(fmIcon('newspaper'), 'Actualités', [
+        this.helpItem(fmIcon('newspaper'), 'Actualités géolocalisées', 'Articles PQR localisés sur la carte par département ou commune.', 'live'),
+        this.helpItem(fmIcon('bar-chart-3'), 'Indice de stabilité', 'Score composite ISNR par département : social, sécurité/cyber, infrastructure et vélocité. Escalade visible si une dimension domine.', 'live'),
       ]),
-      this.helpSection('&#9889;', 'Énergie', [
-        this.helpItem('&#9889;', 'Réseau électrique / Écowatt', 'Signal national Écowatt (RTE) : vert / orange / rouge.', 'live'),
-        this.helpItem('&#9883;', 'Parc nucléaire', 'Disponibilité des réacteurs (RTE) et signaux REMIT — arrêts planifiés et fortuits.', 'live'),
-        this.helpItem('&#128293;', 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR en temps réel.', 'live'),
-        this.helpItem('&#128167;', 'Hydro – stress hydro-énergétique', 'Score de stress dérivé des mesures Hub’Eau. Indicateur de tension hydraulique.', 'derived'),
-        this.helpItem('&#128738;', 'Pétrole – réseau & stocks', 'Raffineries, dépôts, oléoducs + indicateurs SDES. Tension carburants quasi-live.', 'monthly'),
-        this.helpItem('&#127788;', 'Veille éolienne', 'Production éolienne live France — parcs terrestres et offshore.', 'live'),
-        this.helpItem('&#127963;', 'Charge métropolitaine', 'Consommation électrique temps réel des grandes métropoles françaises.', 'live'),
+      this.helpSection(fmIcon('zap'), 'Énergie', [
+        this.helpItem(fmIcon('zap'), 'Réseau électrique / Écowatt', 'Signal national Écowatt (RTE) : vert / orange / rouge.', 'live'),
+        this.helpItem(fmIcon('atom'), 'Parc nucléaire', 'Disponibilité des réacteurs (RTE) et signaux REMIT — arrêts planifiés et fortuits.', 'live'),
+        this.helpItem(fmIcon('flame'), 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR en temps réel.', 'live'),
+        this.helpItem(fmIcon('droplet'), 'Hydro – stress hydro-énergétique', 'Score de stress dérivé des mesures Hub’Eau. Indicateur de tension hydraulique.', 'derived'),
+        this.helpItem(fmIcon('fuel'), 'Pétrole – réseau & stocks', 'Raffineries, dépôts, oléoducs + indicateurs SDES. Tension carburants quasi-live.', 'monthly'),
+        this.helpItem(fmIcon('wind'), 'Veille éolienne', 'Production éolienne live France — parcs terrestres et offshore.', 'live'),
+        this.helpItem(fmIcon('building-2'), 'Charge métropolitaine', 'Consommation électrique temps réel des grandes métropoles françaises.', 'live'),
       ]),
-      this.helpSection('&#127973;', 'Santé', [
-        this.helpItem('&#127973;', 'Santé / Épidémio', 'Indicateurs épidémiologiques régionaux (SPF / data.gouv.fr).', 'live'),
-        this.helpItem('&#128657;', 'OSCOUR / SOS Médecins', 'Motifs pathologiques en hausse — passages urgences et actes SOS Médecins.', 'live'),
-        this.helpItem('&#127979;', 'APL — Déserts médicaux', 'Accessibilité Potentielle Localisée aux médecins généralistes (DREES 2023).', 'monthly'),
+      this.helpSection(fmIcon('stethoscope'), 'Santé', [
+        this.helpItem(fmIcon('stethoscope'), 'Santé / Épidémio', 'Indicateurs épidémiologiques régionaux (SPF / data.gouv.fr).', 'live'),
+        this.helpItem(fmIcon('siren'), 'OSCOUR / SOS Médecins', 'Motifs pathologiques en hausse — passages urgences et actes SOS Médecins.', 'live'),
+        this.helpItem(fmIcon('map-pin'), 'APL — Déserts médicaux', 'Accessibilité Potentielle Localisée aux médecins généralistes (DREES 2023).', 'monthly'),
         this.helpItem('&#9702;', 'Hôpitaux (FINESS)', 'Établissements de soins géolocalisés — base FINESS nationale.', 'monthly'),
       ]),
-      this.helpSection('&#128663;', 'Trafics', [
-        this.helpItem('&#128663;', 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
-        this.helpItem('&#128674;', 'Trafic maritime', 'Navires civils AIS — militaires dans la couche Défense.', 'live'),
-        this.helpItem('&#9992;', 'Trafic aérien', 'Vols civils airplanes.live — militaires dans la couche Défense.', 'live'),
-        this.helpItem('&#128646;', 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
+      this.helpSection(fmIcon('car-front'), 'Trafics', [
+        this.helpItem(fmIcon('car-front'), 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
+        this.helpItem(fmIcon('ship'), 'Trafic maritime', 'Navires civils AIS — militaires dans la couche Défense.', 'live'),
+        this.helpItem(fmIcon('plane'), 'Trafic aérien', 'Vols civils airplanes.live — militaires dans la couche Défense.', 'live'),
+        this.helpItem(fmIcon('train-front'), 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
       ]),
-      this.helpSection('&#127793;', 'Environnement', [
-        this.helpItem('&#127793;', 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),
-        this.helpItem('&#127782;', 'Radar météo', 'Overlay raster précipitations temps réel (Météo-France / RainViewer).', 'live'),
-        this.helpItem('&#128293;', 'Feux de forêt (NASA FIRMS)', 'Détections actives VIIRS satellite NASA. Latence ~3h.', 'derived'),
-        this.helpItem('&#127761;', 'Jour / Nuit', 'Terminateur jour/nuit calculé en temps réel (zone d’ombre).', 'live'),
+      this.helpSection(fmIcon('leaf'), 'Environnement', [
+        this.helpItem(fmIcon('leaf'), 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),
+        this.helpItem(fmIcon('cloud-rain'), 'Radar météo', 'Overlay raster précipitations temps réel (Météo-France / RainViewer).', 'live'),
+        this.helpItem(fmIcon('flame'), 'Feux de forêt (NASA FIRMS)', 'Détections actives VIIRS satellite NASA. Latence ~3h.', 'derived'),
+        this.helpItem(fmIcon('moon'), 'Jour / Nuit', 'Terminateur jour/nuit calculé en temps réel (zone d’ombre).', 'live'),
       ]),
-      this.helpSection('&#128737;', 'Souveraineté', [
-        this.helpItem('&#128737;', 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
-        this.helpItem('&#127754;', 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
-        this.helpItem('&#128274;', 'Vigilance cyber', 'Baromètre multi-signaux : leaks FR, ransomware 30j, CERT/NVD critiques, exposition passive Shodan/Censys et incidents géolocalisés. Chaque famille est plafonnée pour éviter la saturation.', 'live'),
+      this.helpSection(fmIcon('shield'), 'Souveraineté', [
+        this.helpItem(fmIcon('shield'), 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
+        this.helpItem(fmIcon('waves'), 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
+        this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Baromètre multi-signaux : leaks FR, ransomware 30j, CERT/NVD critiques, exposition passive Shodan/Censys et incidents géolocalisés. Chaque famille est plafonnée pour éviter la saturation.', 'live'),
       ]),
-      this.helpSection('&#128225;', 'Pannes réseau', [
-        this.helpItem('&#9889;', 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),
-        this.helpItem('&#128225;', 'Télécom 4G·5G', 'Antennes dégradées ou hors service (données ARCEP).', 'live'),
-        this.helpItem('&#127760;', 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
-        this.helpItem('&#9729;', 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),
+      this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau', [
+        this.helpItem(fmIcon('zap'), 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),
+        this.helpItem(fmIcon('satellite-dish'), 'Télécom 4G·5G', 'Antennes dégradées ou hors service (données ARCEP).', 'live'),
+        this.helpItem(fmIcon('globe'), 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
+        this.helpItem(fmIcon('cloud'), 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),
       ]),
     ].join('');
   }

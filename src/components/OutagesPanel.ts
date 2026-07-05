@@ -213,7 +213,7 @@ export class OutagesPanel extends Panel {
         <button id="tab-cloud" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
-          ${fmIcon('building-2', { size: 12 })} Cloud
+          ${fmIcon('cloud', { size: 12 })} Cloud
         </button>
       </div>
     `;
@@ -1079,7 +1079,7 @@ export class OutagesPanel extends Panel {
     if (!infra) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="margin-bottom:10px;opacity:0.4;">${fmIcon('building-2', { size: 28 })}</div>
+          <div style="margin-bottom:10px;opacity:0.4;">${fmIcon('cloud', { size: 28 })}</div>
           <div>Chargement des données cloud…</div>
         </div>`;
       return;
@@ -1305,7 +1305,7 @@ export class OutagesPanel extends Panel {
     const buildCard = (inc: import('../services/rte-iip.ts').RTEIIPIncident): HTMLElement => {
       const isProduction = inc.type === 'production';
       const col = isProduction ? '#F59E0B' : '#818CF8';
-      const typeLabel = isProduction ? `${fmIcon('building-2', { size: 10 })} Production` : `${fmIcon('plug-zap', { size: 10 })} Transport HTB`;
+      const typeLabel = isProduction ? `${fmIcon('factory', { size: 10 })} Production` : `${fmIcon('plug-zap', { size: 10 })} Transport HTB`;
       const statusBg = inc.status === 'active' ? '#EF444420' : '#6B728020';
       const statusCol = inc.status === 'active' ? '#EF4444' : '#9CA3AF';
       const statusLabel = inc.status === 'active' ? 'Actif' : inc.status === 'inactive' ? 'Terminé' : 'Retiré';
