@@ -116,6 +116,7 @@ import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
+import type { SituationReportContext } from './components/SituationReport.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
@@ -2099,6 +2100,7 @@ export class App {
           <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language-toggle="fr" aria-pressed="${language === 'fr'}">FR</button>
           <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
         </div>
+        <button class="header-quality-link header-note-btn" type="button" data-note-report>📄 Note de situation</button>
         <a class="header-quality-link" href="/sources-quality">Sources & qualité</a>
         <div id="header-data-sources"></div>
         <span class="header-clock" id="clock"></span>
@@ -2109,6 +2111,9 @@ export class App {
     this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
     this.bindLanguageToggle(header);
+    header.querySelector<HTMLButtonElement>('[data-note-report]')?.addEventListener('click', () => {
+      void this.openSituationReport();
+    });
 
     const aboutModal = document.createElement('div');
     aboutModal.className = 'about-modal';
@@ -6161,6 +6166,34 @@ export class App {
     void pushHistorySnapshot(snapshot);
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
+  }
+
+  /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
+  private buildSituationReportContext(): SituationReportContext {
+    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const snapshot = this.buildFranceSnapshot(lang);
+    return {
+      generatedAt: new Date(),
+      permalink: window.location.href,
+      situations: snapshot.situations,
+      stability: this.currentISNRData,
+      meteoAlerts: this.currentMeteoAlerts,
+      floodSegments: this.currentFloodSegments,
+      ecowatt: this.currentEcowattResponse,
+      sncfDisruptions: this.currentSncfDisruptions,
+      trafficIncidents: this.currentTrafficIncidents,
+      powerOutages: this.currentPowerOutages,
+      telecomOutages: this.currentTelecomOutages,
+      newsItems: this.newsItems,
+      sources: Watchdog.getSnapshot(),
+      version: null,
+    };
+  }
+
+  /** Ouvre la note de situation imprimable (module chargé à la demande). */
+  private async openSituationReport(): Promise<void> {
+    const { openSituationReport } = await import('./components/SituationReport.ts');
+    openSituationReport(this.buildSituationReportContext());
   }
 
   private async refreshNetworkBarometerWidget(): Promise<void> {

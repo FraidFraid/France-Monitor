@@ -166,6 +166,12 @@ body {
   border-color: var(--border-color-light);
 }
 
+button.header-quality-link {
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .sources-quality-header {
   position: sticky;
   top: 0;
