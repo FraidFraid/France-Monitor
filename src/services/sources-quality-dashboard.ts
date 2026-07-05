@@ -1,9 +1,11 @@
 import type { DataSourceStatus } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 import { buildReviewSignalFromSource, buildSourceQualityRow } from './qualityMappers.ts';
+import { getObservedMetrics } from './source-quality-history.ts';
 import type {
   MethodScaleRow,
   ModuleQualityRow,
+  ObservedMetrics,
   QualitySourceRow,
   QualitySummaryMetric,
   SignalToReview,
@@ -13,13 +15,17 @@ import type {
 } from './qualityMeta.ts';
 import { formatQualityDate } from './qualityMeta.ts';
 
+// natureBaseline : socle de confiance lié à la NATURE de la source, snappé sur la
+// grille {90 API officielle avec clé, 80 API publique, 65 RSS, 50 scraping/communautaire}
+// au plus proche de l'ancien score codé en dur. Le score final combine ce socle (40 %)
+// avec le comportement observé (60 %) — voir computeSourceQualityScore.
 const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'rss-pqr',
     name: 'Flux RSS actualités',
     domain: 'Actualités',
     sourceType: 'media',
-    reliabilityScore: 58,
+    natureBaseline: 65,
     watchdogNames: ['RSS PQR', 'Flux RSS actualités'],
     mappedIndicators: ['source', 'date de publication', 'classification'],
     limits: ['Qualité variable selon les médias', 'Certaines sources peuvent bloquer les proxys'],
@@ -29,7 +35,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Météo-France',
     domain: 'Météo',
     sourceType: 'official',
-    reliabilityScore: 92,
+    natureBaseline: 90,
     watchdogNames: ['Météo-France'],
     mappedIndicators: ['source', 'vigilance', 'date', 'criticité'],
     limits: ['Dépendance à la disponibilité API'],
@@ -39,7 +45,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Vigicrues',
     domain: 'Crues',
     sourceType: 'official',
-    reliabilityScore: 92,
+    natureBaseline: 90,
     watchdogNames: ['Vigicrues'],
     mappedIndicators: ['source', 'niveau', 'date'],
     limits: ['Granularité dépendante des tronçons publiés'],
@@ -49,7 +55,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Hub’Eau hydrométrie',
     domain: 'Hydrométrie',
     sourceType: 'open_data',
-    reliabilityScore: 86,
+    natureBaseline: 90,
     watchdogNames: ['Hub’Eau hydrométrie'],
     mappedIndicators: ['source', 'fraîcheur', 'âge observation', 'confiance', 'appui mesuré'],
     limits: ['Appui OSINT, pas télémesure EDF barrage par barrage'],
@@ -59,7 +65,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Écowatt RTE',
     domain: 'Énergie',
     sourceType: 'official',
-    reliabilityScore: 90,
+    natureBaseline: 90,
     watchdogNames: ['Écowatt RTE'],
     mappedIndicators: ['source', 'signal', 'statut', 'fraîcheur'],
     limits: ['Signal agrégé, pas diagnostic local exhaustif'],
@@ -69,7 +75,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Nucléaire RTE',
     domain: 'Énergie',
     sourceType: 'official',
-    reliabilityScore: 88,
+    natureBaseline: 90,
     watchdogNames: ['Nucléaire RTE'],
     mappedIndicators: ['source', 'indisponibilités', 'statut'],
     limits: ['Dépend de la disponibilité des flux RTE'],
@@ -79,7 +85,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'SNCF',
     domain: 'Transport',
     sourceType: 'official',
-    reliabilityScore: 82,
+    natureBaseline: 80,
     watchdogNames: ['SNCF'],
     mappedIndicators: ['source', 'statut', 'cache', 'date'],
     limits: ['Couverture et fraîcheur variables selon endpoint'],
@@ -89,7 +95,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Cyber',
     domain: 'Cyber',
     sourceType: 'technical',
-    reliabilityScore: 74,
+    natureBaseline: 80,
     watchdogNames: ['Cyber'],
     mappedIndicators: ['source', 'catégorie', 'criticité', 'score global'],
     limits: ['Sources hétérogènes, recoupement humain recommandé'],
@@ -99,7 +105,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Finance',
     domain: 'Finance',
     sourceType: 'technical',
-    reliabilityScore: 76,
+    natureBaseline: 80,
     watchdogNames: ['Finance'],
     mappedIndicators: ['source', 'date', 'valeurs marché'],
     limits: ['Données indicatives, pas conseil financier'],
@@ -109,7 +115,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'NASA FIRMS',
     domain: 'Environnement',
     sourceType: 'official',
-    reliabilityScore: 84,
+    natureBaseline: 80,
     watchdogNames: ['NASA FIRMS'],
     mappedIndicators: ['source', 'détection', 'confiance'],
     limits: ['Détections satellites à interpréter avec prudence'],
@@ -119,7 +125,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Vols militaires',
     domain: 'Défense',
     sourceType: 'technical',
-    reliabilityScore: 66,
+    natureBaseline: 65,
     watchdogNames: ['Vols militaires'],
     mappedIndicators: ['source', 'fallback', 'positions'],
     limits: ['ADS-B incomplet par nature'],
@@ -129,7 +135,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'AIS maritime',
     domain: 'Maritime',
     sourceType: 'technical',
-    reliabilityScore: 68,
+    natureBaseline: 65,
     watchdogNames: ['AIS maritime'],
     mappedIndicators: ['source', 'statut', 'positions'],
     limits: ['AIS incomplet ou volontairement désactivé'],
@@ -139,7 +145,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Trafic aérien',
     domain: 'Aviation',
     sourceType: 'technical',
-    reliabilityScore: 64,
+    natureBaseline: 65,
     watchdogNames: ['Trafic aérien'],
     mappedIndicators: ['source', 'statut', 'positions'],
     limits: ['Couverture publique limitée'],
@@ -149,7 +155,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Télécoms',
     domain: 'Infrastructures',
     sourceType: 'open_data',
-    reliabilityScore: 78,
+    natureBaseline: 80,
     watchdogNames: ['Télécoms'],
     mappedIndicators: ['source', 'statut', 'pannes'],
     limits: ['Dataset de panne, pas inventaire complet réseau'],
@@ -159,7 +165,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'IODA Internet',
     domain: 'Infrastructures',
     sourceType: 'technical',
-    reliabilityScore: 72,
+    natureBaseline: 65,
     watchdogNames: ['IODA Internet'],
     mappedIndicators: ['score', 'statut', 'fraîcheur'],
     limits: ['Signal réseau indirect'],
@@ -169,7 +175,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'SPF / DREES',
     domain: 'Santé',
     sourceType: 'official',
-    reliabilityScore: 86,
+    natureBaseline: 90,
     watchdogNames: ['SPF / DREES'],
     mappedIndicators: ['source', 'date', 'indicateurs santé'],
     limits: ['Données agrégées, pas diagnostic médical'],
@@ -179,7 +185,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Éolien France',
     domain: 'Énergie',
     sourceType: 'open_data',
-    reliabilityScore: 78,
+    natureBaseline: 80,
     watchdogNames: ['Éolien France'],
     mappedIndicators: ['production', 'facteur de charge', 'alerte'],
     limits: ['Production estimée selon sources disponibles'],
@@ -189,7 +195,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Gaz',
     domain: 'Énergie',
     sourceType: 'official',
-    reliabilityScore: 82,
+    natureBaseline: 80,
     watchdogNames: ['Gaz'],
     mappedIndicators: ['source', 'statut', 'stockage'],
     limits: ['Plusieurs opérateurs, disponibilité variable'],
@@ -199,7 +205,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     name: 'Pétrole',
     domain: 'Énergie',
     sourceType: 'open_data',
-    reliabilityScore: 74,
+    natureBaseline: 80,
     watchdogNames: ['Pétrole'],
     mappedIndicators: ['source', 'fraîcheur', 'tension carburant'],
     limits: ['Indicateur de tension, pas prévision'],
@@ -301,12 +307,13 @@ export function getSourceQualityRegistry(): SourceQualityRegistryEntry[] {
 export function getSourcesQualityDashboardData(options: SourcesQualityDashboardOptions = {}): SourcesQualityDashboardData {
   const now = options.now ?? new Date();
   const statuses = options.statuses ?? Watchdog.getSnapshot().map((snapshot) => snapshot.status);
+  const resolveObserved = options.getObserved ?? getObservedMetrics;
   const statusByName = new Map<string, DataSourceStatus>();
   for (const status of statuses) statusByName.set(status.name, status);
 
   const sources = SOURCE_REGISTRY.map((entry) => {
     const status = findStatus(entry, statusByName);
-    return buildSourceQualityRow(entry, status);
+    return buildSourceQualityRow(entry, status, findObserved(entry, resolveObserved));
   });
 
   const signalsToReview = SOURCE_REGISTRY
@@ -333,6 +340,17 @@ function findStatus(
   statusByName: Map<string, DataSourceStatus>,
 ): DataSourceStatus | undefined {
   return entry.watchdogNames.map((name) => statusByName.get(name)).find((status): status is DataSourceStatus => status !== undefined);
+}
+
+function findObserved(
+  entry: SourceQualityRegistryEntry,
+  resolve: (sourceName: string) => ObservedMetrics | null,
+): ObservedMetrics | null {
+  for (const name of entry.watchdogNames) {
+    const metrics = resolve(name);
+    if (metrics) return metrics;
+  }
+  return null;
 }
 
 function buildSummary(

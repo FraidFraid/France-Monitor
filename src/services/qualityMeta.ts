@@ -7,6 +7,20 @@ export type QualitySeverity = 'low' | 'medium' | 'high' | 'critical' | 'unknown'
 export type QualityStatus = 'active' | 'cached' | 'degraded' | 'error' | 'unknown';
 export type ModuleHarmonizationStatus = 'mappé' | 'partiel' | 'à harmoniser';
 
+/**
+ * Métriques observées d'une source, agrégées depuis le comportement réel
+ * (fetches, échecs, fallbacks, disponibilité) sur la fenêtre d'historique.
+ * Taux exprimés en fraction 0..1. Renseignées par source-quality-history.ts.
+ */
+export interface ObservedMetrics {
+  successRate: number;      // (fetches - échecs) / fetches
+  uptimeRate: number;       // part des mesures en statut « ok »
+  fallbackRate: number;     // fallbacks / fetches
+  avgResponseMs: number | null;
+  samples: number;          // nombre de mesures de statut prises
+  observationDays: number;  // nombre de jours distincts observés
+}
+
 export type QualityMeta = {
   sourceName?: string;
   sourceType?: QualitySourceType;
@@ -27,6 +41,11 @@ export type QualityMeta = {
   explanation?: string;
   limits?: string[];
   reasons?: string[];
+  // ── Score calculé (40 % nature / 60 % observé) ──
+  qualityScore?: number;        // score final 0-100 (aussi reflété dans reliabilityScore)
+  qualityProvisional?: boolean; // true tant que < 10 mesures ou aucun historique
+  natureBaseline?: number;      // socle de nature 0-100 (grille par type de source)
+  observed?: ObservedMetrics | null; // métriques réelles ayant servi au calcul
 };
 
 export interface SourceQualityRegistryEntry {
@@ -36,7 +55,8 @@ export interface SourceQualityRegistryEntry {
   sourceType: QualitySourceType;
   sourceUrl?: string;
   expectedFreshness?: string;
-  reliabilityScore?: number;
+  /** Socle de confiance lié à la nature de la source (grille : ~90 API officielle, ~80 API publique, ~65 RSS, ~50 scraping). */
+  natureBaseline?: number;
   mappedIndicators: string[];
   limits: string[];
   watchdogNames: string[];
@@ -104,6 +124,8 @@ export interface SourcesQualityDashboardData {
 export interface SourcesQualityDashboardOptions {
   now?: Date;
   statuses?: DataSourceStatus[];
+  /** Résolveur de métriques observées injectable (tests) ; par défaut lecture du store local. */
+  getObserved?: (sourceName: string) => ObservedMetrics | null;
 }
 
 export function formatQualityDate(date: Date | string | null | undefined): string {

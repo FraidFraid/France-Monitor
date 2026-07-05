@@ -1,7 +1,10 @@
 import { getSourcesQualityDashboardData } from './services/sources-quality-dashboard.ts';
-import type { QualitySourceRow, SourcesQualityDashboardData } from './services/qualityMeta.ts';
+import { startQualityHistoryTracking } from './services/source-quality-history.ts';
+import type { QualityMeta, QualitySourceRow, SourcesQualityDashboardData } from './services/qualityMeta.ts';
 
 export function renderSourcesQualityPage(container: HTMLElement): void {
+  // Démarre l'historisation (idempotent) : alimente les scores observés au fil des sessions.
+  startQualityHistoryTracking();
   const data = getSourcesQualityDashboardData();
   container.innerHTML = '';
   document.documentElement.classList.remove('fm-landing-mode');
@@ -113,11 +116,23 @@ function renderSourceRow(source: QualitySourceRow): string {
       <td>${escapeHtml(source.typeLabel)}</td>
       <td>${badge(statusLabel(quality.status), quality.status ?? 'unknown')}</td>
       <td>${escapeHtml(freshnessLabel(quality.freshnessLabel, quality.freshnessScore))}</td>
-      <td>${escapeHtml(scoreLabel(quality.confidenceScore ?? quality.reliabilityScore))}</td>
+      <td>${renderReliabilityCell(quality)}</td>
       <td>${escapeHtml(source.lastCollectionLabel)}</td>
       <td>${escapeHtml(source.limitsLabel)}</td>
     </tr>
   `;
+}
+
+function renderReliabilityCell(quality: QualityMeta): string {
+  const score = scoreLabel(quality.confidenceScore ?? quality.reliabilityScore);
+  const provisional = quality.qualityProvisional
+    ? ` ${badge('provisoire', 'provisional')}`
+    : '';
+  const observed = quality.observed;
+  const detail = observed && observed.samples > 0
+    ? `<small class="sources-quality-observed">observé sur ${observed.observationDays} j · ${observed.samples} mesures · dispo ${Math.round(observed.uptimeRate * 100)} %</small>`
+    : '';
+  return `<div class="sources-quality-score"><span>${escapeHtml(score)}</span>${provisional}</div>${detail}`;
 }
 
 function renderModuleMatrix(data: SourcesQualityDashboardData): string {
@@ -202,14 +217,20 @@ function renderMethod(data: SourcesQualityDashboardData): string {
   return `
     <section class="sources-quality-section sources-quality-method">
       <div class="sources-quality-section__header">
-        <h2>Comment lire les scores</h2>
-        <p>Les scores orientent la lecture et ne produisent pas une vérité automatique.</p>
+        <h2>Comment le score de fiabilité est calculé</h2>
+        <p>Le score n’est plus figé : il combine la nature de la source et son comportement réellement observé, et reste auditable.</p>
+      </div>
+      <div class="sources-quality-formula">
+        <p><strong>Score = 40 % socle de nature + 60 % comportement observé.</strong></p>
+        <p>Le socle de nature reflète le type de source (~90 API officielle avec clé, ~80 API publique, ~65 flux RSS, ~50 scraping ou communautaire).</p>
+        <p>Le comportement observé = 100 × (0,5 · taux de succès + 0,35 · disponibilité + 0,15 · (1 − taux de fallback)), mesuré sur une fenêtre glissante de 14 jours historisée localement.</p>
+        <p>Tant qu’une source compte moins de 10 mesures, son score reste égal au socle de nature et porte la mention <em>provisoire</em>.</p>
       </div>
       <div class="sources-quality-method-grid">
-        <article><strong>Fraîcheur</strong><span>Mesure l’âge ou la récence du signal.</span></article>
-        <article><strong>Fiabilité source</strong><span>Estime la confiance accordée à l’origine.</span></article>
-        <article><strong>Confiance signal</strong><span>Combine qualité, fraîcheur, localisation, classification ou score métier quand disponible.</span></article>
-        <article><strong>Criticité</strong><span>Indique l’importance métier ou opérationnelle.</span></article>
+        <article><strong>Socle de nature</strong><span>Confiance de base liée au type de source (officielle, publique, RSS, scraping).</span></article>
+        <article><strong>Taux de succès</strong><span>Part des collectes abouties sur la fenêtre observée.</span></article>
+        <article><strong>Disponibilité</strong><span>Part des mesures où la source répondait sans cache figé ni erreur.</span></article>
+        <article><strong>Taux de fallback</strong><span>Fréquence de recours à une source de secours ; le pénalise.</span></article>
         <article><strong>Statut</strong><span>Indique si la source est active, issue du cache, dégradée ou en erreur.</span></article>
       </div>
       <div class="sources-quality-scale">

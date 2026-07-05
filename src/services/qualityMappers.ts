@@ -1,5 +1,6 @@
 import type { DataSourceStatus } from '../types/index.ts';
 import type {
+  ObservedMetrics,
   QualityFreshnessLabel,
   QualityMeta,
   QualitySourceRow,
@@ -8,6 +9,43 @@ import type {
   SourceQualityRegistryEntry,
 } from './qualityMeta.ts';
 import { formatQualityDate, sourceTypeLabel } from './qualityMeta.ts';
+
+/** Socle de nature par défaut si l'entrée n'en déclare pas (proche d'un flux RSS). */
+const DEFAULT_NATURE_BASELINE = 65;
+/** Nombre minimal de mesures avant de considérer le score comme non provisoire. */
+const MIN_OBSERVED_SAMPLES = 10;
+
+export interface SourceQualityScore {
+  score: number;               // score final 0-100 arrondi
+  provisional: boolean;        // true si historique insuffisant (< 10 mesures)
+  natureBaseline: number;      // socle de nature retenu
+  observedScore: number | null; // composante observée 0-100 (null si provisoire)
+}
+
+/**
+ * Combine le socle de nature (40 %) et le comportement observé (60 %).
+ * Observé = 100 × (0.5·succès + 0.35·disponibilité + 0.15·(1 − fallback)).
+ * Sans métriques suffisantes (< 10 mesures) : score = socle, provisoire.
+ */
+export function computeSourceQualityScore(
+  natureBaseline: number,
+  observed: ObservedMetrics | null,
+  minSamples = MIN_OBSERVED_SAMPLES,
+): SourceQualityScore {
+  const baseline = clampScore(natureBaseline);
+  if (!observed || observed.samples < minSamples) {
+    return { score: baseline, provisional: true, natureBaseline: baseline, observedScore: null };
+  }
+  const observedScore = clampScore(
+    100 * (0.5 * observed.successRate + 0.35 * observed.uptimeRate + 0.15 * (1 - observed.fallbackRate)),
+  );
+  const score = clampScore(baseline * 0.4 + observedScore * 0.6);
+  return { score, provisional: false, natureBaseline: baseline, observedScore };
+}
+
+function clampScore(value: number): number {
+  return Math.round(Math.min(100, Math.max(0, value)));
+}
 
 type StatusQuality = Pick<
   QualityMeta,
@@ -41,9 +79,11 @@ export function mapDataSourceStatus(status: DataSourceStatus | undefined): Statu
 export function buildSourceQualityRow(
   entry: SourceQualityRegistryEntry,
   status: DataSourceStatus | undefined,
+  observed: ObservedMetrics | null = null,
 ): QualitySourceRow {
   const mapped = mapDataSourceStatus(status);
-  const reliabilityScore = entry.reliabilityScore;
+  const scored = computeSourceQualityScore(entry.natureBaseline ?? DEFAULT_NATURE_BASELINE, observed);
+  const reliabilityScore = scored.score;
   const quality: QualityMeta = {
     sourceName: entry.name,
     sourceType: entry.sourceType,
@@ -51,6 +91,10 @@ export function buildSourceQualityRow(
     reliabilityScore,
     confidenceScore: reliabilityScore,
     confidenceLabel: confidenceLabel(reliabilityScore),
+    qualityScore: scored.score,
+    qualityProvisional: scored.provisional,
+    natureBaseline: scored.natureBaseline,
+    observed,
     limits: entry.limits,
     explanation: buildExplanation(entry, mapped),
     ...mapped,

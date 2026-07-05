@@ -116,6 +116,7 @@ import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
+import { startQualityHistoryTracking } from './services/source-quality-history.ts';
 import type { SituationReportContext } from './components/SituationReport.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
@@ -2211,6 +2212,9 @@ export class App {
           this.statusPanel?.updateSource(snap.status.name, snap.status);
         }
       });
+
+      // Historisation locale de la qualité des sources (scores calculés, page Sources & qualité).
+      startQualityHistoryTracking();
     }
 
     // ── Main layout ──
