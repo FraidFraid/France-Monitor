@@ -13,9 +13,9 @@
     "scrapling:docker": "docker run -p 8080:8080 scrapling-proxy",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/test-situation-engine.mjs",
-    "test:cyber": "node scripts/test-cyber-threat-scoring.mjs",
-    "test:ingest": "node scripts/test-ingest.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ingest": "vitest run tests/ingest.test.ts",
     "db:init": "node scripts/init-db.mjs",
     "sync:feeds": "node scripts/sync-feeds.mjs",
     "generate:server-libs": "node scripts/generate-server-classifier.mjs",
@@ -25,8 +25,7 @@
     "build:maires": "node scripts/build-maires-politique.mjs",
     "build:fuel-price-series": "node scripts/generate-fuel-price-series.mjs",
     "ingest:drom-energy": "node scripts/ingest-drom-energy.mjs",
-    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs",
-    "test:sources-quality": "node scripts/test-sources-quality-dashboard.mjs"
+    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
@@ -39,7 +38,8 @@
     "prettier": "^3.8.1",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@deck.gl/core": "^9.2.11",

@@ -1,6 +1,6 @@
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { runFrenchMaritimeTerritoryTests } from '../config/frenchMaritimeTerritories.test.ts';
 import { detectSituations } from './situation-engine.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 
@@ -227,71 +227,55 @@ function assertHasSituation(raw: FranceRawData, type: string): void {
   );
 }
 
-export async function runSituationEngineTests(): Promise<void> {
-  const cases: Array<{ name: string; run: () => void }> = [
-    {
-      name: 'French maritime territories geofence DROM and metro waters',
-      run: () => runFrenchMaritimeTerritoryTests(),
-    },
-    {
-      name: 'nominal data does not emit situations',
-      run: () => {
-        assert.deepEqual(detectSituations(nominalFixture()), []);
-      },
-    },
-    {
-      name: 'energy stress fixture emits ENERGY_STRESS',
-      run: () => assertHasSituation(energyStressFixture(), 'ENERGY_STRESS'),
-    },
-    {
-      name: 'electric imports fixture emits IMPORT_DEPENDENCY_RISK',
-      run: () => assertHasSituation(importDependencyFixture(), 'IMPORT_DEPENDENCY_RISK'),
-    },
-    {
-      name: 'flood fixture emits FLOOD_CRISIS',
-      run: () => assertHasSituation(floodFixture(), 'FLOOD_CRISIS'),
-    },
-    {
-      name: 'wildfire fixture emits WILDFIRE_ESCALATION',
-      run: () => assertHasSituation(wildfireFixture(), 'WILDFIRE_ESCALATION'),
-    },
-    {
-      name: 'cyber fixture emits CYBER_PRESSURE',
-      run: () => assertHasSituation(cyberFixture(), 'CYBER_PRESSURE'),
-    },
-    {
-      name: 'social fixture emits SOCIAL_ESCALATION',
-      run: () => assertHasSituation(socialFixture(), 'SOCIAL_ESCALATION'),
-    },
-    {
-      name: 'telecom fixture emits TELECOM_DISRUPTION',
-      run: () => assertHasSituation(telecomFixture(), 'TELECOM_DISRUPTION'),
-    },
-    {
-      name: 'AIS anomaly fixture emits MARITIME_ANOMALY',
-      run: () => assertHasSituation(maritimeFixture(), 'MARITIME_ANOMALY'),
-    },
-    {
-      name: 'defense alerts alone do not emit MARITIME_ANOMALY',
-      run: () => {
-        const situations = detectSituations(baseRawData({
-          defenseAlerts: [typed<FranceRawData['defenseAlerts'][number]>({ severity: 'high', cableName: 'FLAG Europe' })],
-        }));
-        assert.ok(!situations.some((s) => s.type === 'MARITIME_ANOMALY'));
-      },
-    },
-    {
-      name: 'defense fixture emits DEFENSE_SIGNAL_ELEVATED',
-      run: () => assertHasSituation(defenseFixture(), 'DEFENSE_SIGNAL_ELEVATED'),
-    },
-    {
-      name: 'fuel fixture emits FUEL_SUPPLY_RISK',
-      run: () => assertHasSituation(fuelFixture(), 'FUEL_SUPPLY_RISK'),
-    },
-  ];
+describe('situation-engine · detectSituations', () => {
+  it('nominal data does not emit situations', () => {
+    assert.deepEqual(detectSituations(nominalFixture()), []);
+  });
 
-  for (const testCase of cases) {
-    testCase.run();
-    console.log(`ok - ${testCase.name}`);
-  }
-}
+  it('energy stress fixture emits ENERGY_STRESS', () => {
+    assertHasSituation(energyStressFixture(), 'ENERGY_STRESS');
+  });
+
+  it('electric imports fixture emits IMPORT_DEPENDENCY_RISK', () => {
+    assertHasSituation(importDependencyFixture(), 'IMPORT_DEPENDENCY_RISK');
+  });
+
+  it('flood fixture emits FLOOD_CRISIS', () => {
+    assertHasSituation(floodFixture(), 'FLOOD_CRISIS');
+  });
+
+  it('wildfire fixture emits WILDFIRE_ESCALATION', () => {
+    assertHasSituation(wildfireFixture(), 'WILDFIRE_ESCALATION');
+  });
+
+  it('cyber fixture emits CYBER_PRESSURE', () => {
+    assertHasSituation(cyberFixture(), 'CYBER_PRESSURE');
+  });
+
+  it('social fixture emits SOCIAL_ESCALATION', () => {
+    assertHasSituation(socialFixture(), 'SOCIAL_ESCALATION');
+  });
+
+  it('telecom fixture emits TELECOM_DISRUPTION', () => {
+    assertHasSituation(telecomFixture(), 'TELECOM_DISRUPTION');
+  });
+
+  it('AIS anomaly fixture emits MARITIME_ANOMALY', () => {
+    assertHasSituation(maritimeFixture(), 'MARITIME_ANOMALY');
+  });
+
+  it('defense alerts alone do not emit MARITIME_ANOMALY', () => {
+    const situations = detectSituations(baseRawData({
+      defenseAlerts: [typed<FranceRawData['defenseAlerts'][number]>({ severity: 'high', cableName: 'FLAG Europe' })],
+    }));
+    assert.ok(!situations.some((s) => s.type === 'MARITIME_ANOMALY'));
+  });
+
+  it('defense fixture emits DEFENSE_SIGNAL_ELEVATED', () => {
+    assertHasSituation(defenseFixture(), 'DEFENSE_SIGNAL_ELEVATED');
+  });
+
+  it('fuel fixture emits FUEL_SUPPLY_RISK', () => {
+    assertHasSituation(fuelFixture(), 'FUEL_SUPPLY_RISK');
+  });
+});
