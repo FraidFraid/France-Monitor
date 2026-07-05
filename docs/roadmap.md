@@ -63,3 +63,18 @@ Deliverables:
 - public source registry
 - exportable situation snapshots
 - accessibility and mobile map parity improvements
+
+## M5 — Restricted Access & Institutional Deployment (deferred, decision 2026-07)
+
+The public instance stays fully open. This milestone only applies to dedicated
+institutional deployments, and is intentionally deferred until a concrete
+demo/partnership requires it:
+
+- opt-in protected mode via environment variable (`DEMO_ACCESS_PASSWORD`-style
+  gate; unset = current public behavior, so the main deployment is unaffected)
+- separate demo deployment recipe (Vercel project + env) for
+  préfecture/ministry demos
+- session middleware reusable for the next step
+- ProConnect (AgentConnect) authentication for state agents
+- role-based access (RBAC) per layer/feature, aligned with the
+  "orientation ministères" positioning docs
