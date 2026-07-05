@@ -13,7 +13,9 @@ export function weatherVigilanceProxyPlugin(): Plugin {
     name: 'weather-vigilance-proxy',
     configureServer(server) {
       const env = loadEnv('development', process.cwd(), '');
-      const apiKey = env.METEO_FRANCE_API_KEY || env.VITE_METEOFRANCE_API_KEY || '';
+      // Miroir du nettoyage côté edge : une clé collée avec retours à la ligne
+      // rendrait le header invalide (TypeError Headers.append).
+      const apiKey = (env.METEO_FRANCE_API_KEY || env.VITE_METEOFRANCE_API_KEY || '').replace(/\s+/g, '');
 
       server.middlewares.use('/api/weather/vigilance', async (req, res) => {
         if (req.method !== 'GET') {

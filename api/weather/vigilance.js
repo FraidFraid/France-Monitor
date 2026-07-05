@@ -16,7 +16,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.METEO_FRANCE_API_KEY || process.env.VITE_METEOFRANCE_API_KEY || '';
+  // Une valeur d'env collée avec retours à la ligne rend le header invalide (TypeError
+  // Headers.append) → 502 systématique. Un JWT ne contient jamais d'espace : on nettoie.
+  const apiKey = (process.env.METEO_FRANCE_API_KEY || process.env.VITE_METEOFRANCE_API_KEY || '')
+    .replace(/\s+/g, '');
   if (!apiKey) {
     res.status(500).json({ error: 'Météo-France API key missing' });
     return;

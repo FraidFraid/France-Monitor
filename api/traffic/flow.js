@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const tomtomKey = process.env.TOMTOM_API_KEY || process.env.VITE_TOMTOM_API_KEY || '';
+  const tomtomKey = (process.env.TOMTOM_API_KEY || process.env.VITE_TOMTOM_API_KEY || '').replace(/\s+/g, ''); // env collée avec \n = URL/headers invalides
   if (!tomtomKey) {
     res.status(500).json({ error: 'TomTom API key missing' });
     return;

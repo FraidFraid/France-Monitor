@@ -13,6 +13,38 @@ const SUMMARY_CACHE_TTL = 24 * 60 * 60;
 const MAX_INPUT_CHARS = 4000;
 const MAX_FALLBACK_CHARS = 220;
 
+// Disjoncteur quota Groq : pendant un 429 TPD, chaque nouvel article re-frappait
+// l'upstream (spam logs + latence). On pose un cooldown partagé dans Redis et on
+// répond directement en mode dégradé tant qu'il court.
+const GROQ_COOLDOWN_KEY = 'fm:groq:tpd-cooldown';
+const GROQ_COOLDOWN_MIN_S = 60;
+const GROQ_COOLDOWN_MAX_S = 900;
+const GROQ_COOLDOWN_DEFAULT_S = 300;
+
+// Extrait « Please try again in 3m10.08s » du message d'erreur Groq.
+function parseRetrySeconds(upstream) {
+  const message = typeof upstream === 'object' && upstream !== null
+    ? upstream?.error?.message ?? ''
+    : String(upstream ?? '');
+  const match = message.match(/try again in (?:(\d+)m)?([\d.]+)s/);
+  if (!match) return GROQ_COOLDOWN_DEFAULT_S;
+  const seconds = (Number(match[1]) || 0) * 60 + (Number(match[2]) || 0);
+  return Math.min(GROQ_COOLDOWN_MAX_S, Math.max(GROQ_COOLDOWN_MIN_S, Math.ceil(seconds) + 5));
+}
+
+function degradedResponse(fallbackSummary, cooldown) {
+  return new Response(JSON.stringify({
+    error: 'groq_rate_limited',
+    message: 'Groq rate limit exceeded',
+    retryAfterSeconds: cooldown,
+    summary: fallbackSummary,
+    degraded: true,
+  }), {
+    status: 429,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
 function getEnv(name) {
   return (typeof process !== 'undefined' ? process.env[name] : undefined)
     ?? globalThis?.env?.[name];
@@ -102,6 +134,13 @@ export default async function handler(request) {
     });
   }
 
+  // Cooldown actif → réponse dégradée immédiate, zéro appel upstream, zéro log d'erreur.
+  const cooldownTtl = await redisGet(GROQ_COOLDOWN_KEY);
+  if (cooldownTtl) {
+    await redisSet(cacheKey, fallbackSummary, SUMMARY_CACHE_TTL);
+    return degradedResponse(fallbackSummary, Number(cooldownTtl) || GROQ_COOLDOWN_DEFAULT_S);
+  }
+
   const GROQ_API_KEY = getEnv('GROQ_API_KEY');
 
   if (!GROQ_API_KEY) {
@@ -135,24 +174,16 @@ export default async function handler(request) {
     const parsedBody = parseJsonMaybe(groqBody);
 
     if (groqRes.status === 429) {
-      console.error('[summarize] Groq rate limited', {
-        status: groqRes.status,
+      const cooldown = parseRetrySeconds(parsedBody);
+      // Un seul log par ouverture de disjoncteur (les requêtes suivantes court-circuitent).
+      console.warn('[summarize] Groq rate limited — cooldown', cooldown, 's', {
         model: GROQ_MODEL,
-        upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 500) : parsedBody,
+        upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 300) : parsedBody?.error?.message,
       });
 
+      await redisSet(GROQ_COOLDOWN_KEY, String(cooldown), cooldown);
       await redisSet(cacheKey, fallbackSummary, SUMMARY_CACHE_TTL);
-      return new Response(JSON.stringify({
-        error: 'groq_rate_limited',
-        message: 'Groq rate limit exceeded',
-        retryAfterSeconds: 2,
-        summary: fallbackSummary,
-        degraded: true,
-        upstream: parsedBody,
-      }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
+      return degradedResponse(fallbackSummary, cooldown);
     }
 
     if (!groqRes.ok) {
