@@ -56,6 +56,7 @@ import {
   deptCodeToId,
   clamp,
 } from './deckgl/format-utils.ts';
+import { fmStatusDot } from './shared/icons.ts';
 import {
   buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
@@ -4128,7 +4129,7 @@ export class DeckGLMap {
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:140px; padding:2px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <strong style="font-size:13px; color:#fff;">${geoName}</strong>
-            <span style="font-size:12px; font-weight:700; color:${semio.color};">${semio.icon} ${semio.name}</span>
+            <span style="font-size:12px; font-weight:700; color:${semio.color};">${fmStatusDot(semio.dotLevel)} ${semio.name}</span>
           </div>
           <div style="font-size:11px; color:#9898a8; margin-top:4px;">ISS : <strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>/100</div>
           ${motifsHtml}
@@ -4220,7 +4221,7 @@ export class DeckGLMap {
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:290px;">
           <h4 style="margin:0 0 2px; font-weight:700; font-size:15px; color:#ffffff;">${geoName}</h4>
           <div style="font-size:11px; color:#9898a8; margin-bottom:6px;">${granularityLabel} • ${source}</div>
-          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${semio.icon} Niv. ${semio.level} • ${semio.name} — ${semio.label}</div>
+          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${fmStatusDot(semio.dotLevel)} Niv. ${semio.level} • ${semio.name} — ${semio.label}</div>
 
           <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08);">
             <span style="color:#9898a8;">ISS (0-100)</span><strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>

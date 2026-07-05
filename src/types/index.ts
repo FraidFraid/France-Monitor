@@ -909,14 +909,14 @@ export interface ISSLevelDef {
   color: string;             // couleur primaire hex
   fillColor: string;         // couleur remplissage carte (avec alpha)
   lineColor: string;         // couleur contour carte
-  icon: string;              // emoji/icône
+  dotLevel: ThreatLevel;     // niveau de pastille (fmStatusDot) — remplace l'ancien champ `icon` (emoji)
 }
 
 export const ISS_LEVELS: readonly ISSLevelDef[] = [
-  { level: 1, range: [0, 24], name: 'Sérénité', label: 'Activité sanitaire normale', color: '#2ECC71', fillColor: 'rgba(46,204,113,0.25)', lineColor: '#2ECC71', icon: '🟢' },
-  { level: 2, range: [25, 49], name: 'Vigilance', label: 'Surveillance renforcée', color: '#F1C40F', fillColor: 'rgba(241,196,15,0.25)', lineColor: '#F1C40F', icon: '🟡' },
-  { level: 3, range: [50, 74], name: 'Alerte', label: 'Tension modérée (accès restreint)', color: '#E67E22', fillColor: 'rgba(230,126,34,0.30)', lineColor: '#E67E22', icon: '🟠' },
-  { level: 4, range: [75, 100], name: 'Crise', label: 'Pression élevée, plan blanc', color: '#E74C3C', fillColor: 'rgba(231,76,60,0.35)', lineColor: '#E74C3C', icon: '🔴' },
+  { level: 1, range: [0, 24], name: 'Sérénité', label: 'Activité sanitaire normale', color: '#2ECC71', fillColor: 'rgba(46,204,113,0.25)', lineColor: '#2ECC71', dotLevel: 'low' },
+  { level: 2, range: [25, 49], name: 'Vigilance', label: 'Surveillance renforcée', color: '#F1C40F', fillColor: 'rgba(241,196,15,0.25)', lineColor: '#F1C40F', dotLevel: 'medium' },
+  { level: 3, range: [50, 74], name: 'Alerte', label: 'Tension modérée (accès restreint)', color: '#E67E22', fillColor: 'rgba(230,126,34,0.30)', lineColor: '#E67E22', dotLevel: 'high' },
+  { level: 4, range: [75, 100], name: 'Crise', label: 'Pression élevée, plan blanc', color: '#E74C3C', fillColor: 'rgba(231,76,60,0.35)', lineColor: '#E74C3C', dotLevel: 'critical' },
 ] as const;
 
 export type APLCategory = 'desert' | 'fragile' | 'bon' | 'surdote' | 'indisponible';

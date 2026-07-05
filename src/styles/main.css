@@ -1958,7 +1958,17 @@ button.header-quality-link {
 }
 
 .sit-brief__item-zone::before {
-  content: '📍 ';
+  /* Icône Lucide map-pin inline (background-image — un pseudo-élément ne peut pas
+     contenir de SVG inline). Couleur figée sur --text-secondary (#9898a8). */
+  content: '';
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 3px;
+  vertical-align: -1px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239898a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0'/%3E%3Ccircle cx='12' cy='10' r='3'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
 }
 
 .sit-brief__item-resolved {
@@ -3319,6 +3329,94 @@ button.header-quality-link {
   }
 }
 
+/* ═══ Icônes Lucide inline (socle dé-émojification — src/components/shared/icons.ts) ═══ */
+.fm-icon {
+  display: inline-block;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
+/* ═══ Pastilles de statut (fmStatusDot) — remplace 🔴🟠🟡🟢⚪✅❌ ═══ */
+.fm-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fm-dot-critical {
+  background: var(--threat-critical);
+}
+
+.fm-dot-high {
+  background: var(--threat-high);
+}
+
+.fm-dot-medium {
+  background: var(--threat-medium);
+}
+
+.fm-dot-low {
+  background: var(--threat-low);
+}
+
+.fm-dot-stable {
+  background: var(--threat-low);
+}
+
+.fm-dot-info {
+  background: var(--threat-info);
+}
+
+.fm-dot-label {
+  margin-left: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ═══ État vide unifié (fmEmptyStateHTML) ═══ */
+.fm-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.fm-empty-state__text {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ═══ Bouton fermer centralisé (Panel.createCloseButton) ═══ */
+.panel-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.panel-close-btn:hover,
+.panel-close-btn:focus-visible {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
 /* ─── News History Mode ────────────────────────────────────────────────── */
 
 .under-map-news__mode-toggle {
@@ -4675,15 +4773,19 @@ button.header-quality-link {
 }
 
 .layer-panel-item input[type="checkbox"]:checked::after {
-  content: '✓';
+  /* Icône Lucide check inline (background-image — un pseudo-élément ne peut pas
+     contenir de SVG inline). Couleur figée sur --bg-primary (#0a0a0f), même
+     contraste que le texte de coche d'origine sur le fond vert --threat-low. */
+  content: '';
   position: absolute;
   top: 50%;
   left: 50%;
+  width: 10px;
+  height: 10px;
   transform: translate(-50%, -50%);
-  color: var(--bg-primary);
-  font-size: 10px;
-  font-weight: bold;
-  line-height: 1;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a0a0f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
 }
 
 .layer-panel-icon {

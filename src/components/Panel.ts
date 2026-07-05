@@ -4,6 +4,8 @@
  * un badge de compteur, et un body collapsable.
  */
 
+import { fmIcon } from './shared/icons.ts';
+
 export interface PanelOptions {
   title: string;
   icon?: string;
@@ -139,5 +141,20 @@ export abstract class Panel {
   /** Subclasses call this to re-render content */
   protected clearBody(): void {
     if (this.bodyEl) this.bodyEl.innerHTML = '';
+  }
+
+  /**
+   * Bouton fermer centralisé (icône `x` Lucide + `aria-label="Fermer"`).
+   * Remplace les duplications `closeBtn.innerHTML = '✕'` disséminées dans les
+   * sous-classes (modales/panneaux détachés). Le style visuel (position,
+   * couleurs, hover) reste à la charge de l'appelant via `className`/CSS.
+   */
+  protected createCloseButton(onClose: () => void): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = 'panel-close-btn';
+    btn.innerHTML = fmIcon('x');
+    btn.setAttribute('aria-label', 'Fermer');
+    btn.addEventListener('click', onClose);
+    return btn;
   }
 }

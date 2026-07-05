@@ -1,6 +1,6 @@
 // Extracted from DeckGLMap.ts — pure formatting / labelling / conversion helpers.
 import { ISS_LEVELS } from '../../types/index.ts';
-import type { ISSLevel } from '../../types/index.ts';
+import type { ISSLevel, ThreatLevel } from '../../types/index.ts';
 import { WEATHER_RISK_EMOJIS, ISNR_COLORS } from './constants.ts';
 
 export function getWeatherRadarSourceId(regionId: string): string {
@@ -64,9 +64,9 @@ export function issToColor(iss: number): string {
   return lvl.color;
 }
 
-export function getISSSemio(iss: number): { icon: string; name: string; label: string; color: string; level: ISSLevel } {
+export function getISSSemio(iss: number): { dotLevel: ThreatLevel; name: string; label: string; color: string; level: ISSLevel } {
   const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return { icon: lvl.icon, name: lvl.name, label: lvl.label, color: lvl.color, level: lvl.level };
+  return { dotLevel: lvl.dotLevel, name: lvl.name, label: lvl.label, color: lvl.color, level: lvl.level };
 }
 
 export function getHealthSourceLabel(source: string): string {
