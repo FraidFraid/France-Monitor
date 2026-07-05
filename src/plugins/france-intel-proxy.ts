@@ -733,7 +733,9 @@ export function franceIntelProxyPlugin(options: FranceIntelProxyPluginOptions = 
                 model: GROQ_MODEL,
                 messages: [{ role: 'user', content: buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, lang) }],
                 temperature: 0.3,
-                max_tokens: 420,
+                // 900 tokens : le schéma JSON v13 (bluf 400c + 4 jugements + 4 watch) peut
+                // atteindre ~3000 caractères — 420 tronquait le JSON en plein objet.
+                max_tokens: 900,
                 response_format: { type: 'json_object' },
               }),
               signal: AbortSignal.timeout(30_000),
