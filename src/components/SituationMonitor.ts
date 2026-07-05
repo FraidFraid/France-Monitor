@@ -79,6 +79,7 @@ const TYPE_ICON: Record<string, string> = {
 export class SituationMonitor {
   private static readonly COMPACT_LIMIT = 3;
   private static readonly STORAGE_KEY = 'france-monitor.situation-monitor-position';
+  private static readonly OPEN_KEY = 'france-monitor.situation-monitor-open';
   private static readonly DRAG_THRESHOLD_PX = 4;
   private readonly el: HTMLElement;
   private readonly container: HTMLElement;
@@ -96,6 +97,13 @@ export class SituationMonitor {
   private hasCustomPosition = false;
   /** Re-render guard: signature of the last rendered content. */
   private lastRenderKey: string | null = null;
+  /**
+   * Mode "détail à la demande" (modèle synthèse → détail) : le monitor ne
+   * s'affiche plus spontanément, il s'ouvre depuis le bandeau SituationBrief.
+   * L'état ouvert/fermé est mémorisé pour la session.
+   */
+  private manualMode = false;
+  private userOpen = false;
 
   private onLayerActivate: ((layerKeys: string[]) => void) | null = null;
   private onFlyTo: ((lon: number, lat: number, zoom?: number) => void) | null = null;
@@ -119,6 +127,20 @@ export class SituationMonitor {
     this.onFlyTo = handler;
   }
 
+  /** Active le mode "détail à la demande" et restaure l'état ouvert de la session. */
+  enableManualMode(): void {
+    this.manualMode = true;
+    this.userOpen = this.readOpenState();
+    this.applyVisibility();
+  }
+
+  /** Ouvre/ferme le monitor (clic "Détails" du bandeau de synthèse). */
+  toggleOpen(): void {
+    this.userOpen = !this.userOpen;
+    this.writeOpenState();
+    this.applyVisibility();
+  }
+
   update(situations: DetectedSituation[], lang: 'fr' | 'en' = 'fr'): void {
     this.allSituations = [...situations];
     if (this.allSituations.length <= SituationMonitor.COMPACT_LIMIT) {
@@ -133,10 +155,36 @@ export class SituationMonitor {
     this.el.remove();
   }
 
+  // ── Visibilité (mode détail à la demande) ────────────────────────────────────
+
+  private applyVisibility(): void {
+    this.el.style.display = this.manualMode && !this.userOpen ? 'none' : '';
+  }
+
+  private readOpenState(): boolean {
+    try {
+      return sessionStorage.getItem(SituationMonitor.OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private writeOpenState(): void {
+    try {
+      if (this.userOpen) {
+        sessionStorage.setItem(SituationMonitor.OPEN_KEY, '1');
+      } else {
+        sessionStorage.removeItem(SituationMonitor.OPEN_KEY);
+      }
+    } catch {
+      // sessionStorage indisponible — état limité au rendu courant.
+    }
+  }
+
   // ── Rendering ───────────────────────────────────────────────────────────────
 
   private render(): void {
-    this.el.style.display = '';
+    this.applyVisibility();
 
     // Skip the full innerHTML rebuild (and listener re-binding) when neither
     // the data nor the UI state (lang, collapsed, expanded) changed.

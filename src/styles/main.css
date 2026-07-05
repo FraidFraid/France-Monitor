@@ -1713,6 +1713,55 @@ button.header-quality-link {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Bouton "Détails" — porte d'entrée vers le SituationMonitor (synthèse → détail) */
+.sit-brief__details {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  color: var(--text-secondary, #9898a8);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
+}
+
+.sit-brief__details:hover {
+  color: var(--text-primary, #e8e8ec);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Pastille compacte affichée quand le bandeau est masqué (permet de le rouvrir) */
+.situation-brief.sit-brief--chip {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.sit-brief__chip {
+  background: var(--bg-surface, rgba(12, 16, 28, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  color: var(--text-secondary, #9898a8);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+  transition: color var(--transition-fast, 150ms ease), background var(--transition-fast, 150ms ease);
+}
+
+.sit-brief__chip:hover {
+  color: var(--text-primary, #e8e8ec);
+  background: var(--bg-surface-hover, rgba(20, 26, 42, 0.95));
+}
+
 .sit-brief__list {
   display: flex;
   flex-direction: column;

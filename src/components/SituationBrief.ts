@@ -76,6 +76,8 @@ export class SituationBrief {
   private lastRenderKey: string | null = null;
 
   private onFlyTo: ((lon: number, lat: number, zoom?: number) => void) | null = null;
+  /** Ouvre le détail (SituationMonitor) — modèle "synthèse → détail". */
+  private onOpenDetails: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -92,6 +94,11 @@ export class SituationBrief {
 
   setOnFlyTo(handler: (lon: number, lat: number, zoom?: number) => void): void {
     this.onFlyTo = handler;
+  }
+
+  /** Branché par App : clic "Détails" → ouvre/ferme le SituationMonitor. */
+  setOnOpenDetails(handler: () => void): void {
+    this.onOpenDetails = handler;
   }
 
   /** Injecte l'historique 24 h (situations résolues). Appelé une fois au montage. */
@@ -146,18 +153,27 @@ export class SituationBrief {
   // ── Rendu ────────────────────────────────────────────────────────────────────
 
   private render(items: BriefItem[]): void {
-    if (this.dismissed) {
-      this.el.style.display = 'none';
-      return;
-    }
     this.el.style.display = '';
 
-    const renderKey = JSON.stringify(items);
+    const renderKey = JSON.stringify([this.dismissed, items]);
     if (renderKey === this.lastRenderKey) return;
     this.lastRenderKey = renderKey;
 
+    // Bandeau masqué : une pastille compacte subsiste pour le rouvrir
+    // (sinon plus aucun accès à la synthèse ni au détail des situations).
+    if (this.dismissed) {
+      this.renderChip(items);
+      return;
+    }
+    this.el.classList.remove('sit-brief--chip');
+
     const closeBtn =
       '<button type="button" class="sit-brief__close" aria-label="Masquer la synthèse">✕</button>';
+    // "Détails" ouvre le SituationMonitor (liste complète, actions couches) —
+    // il ne s'affiche plus spontanément : le bandeau est sa porte d'entrée.
+    const detailsBtn = this.onOpenDetails
+      ? '<button type="button" class="sit-brief__details" aria-label="Afficher ou masquer le détail des situations">Détails</button>'
+      : '';
 
     if (items.length === 0) {
       // État nominal ultra-compact : une ligne verte discrète.
@@ -179,6 +195,7 @@ export class SituationBrief {
         <span class="sit-brief__title">Convergences — 24 h</span>
         <span class="sit-brief__badge">${items.length}</span>
         ${hiddenOnMobile > 0 ? `<span class="sit-brief__more">+${hiddenOnMobile}</span>` : ''}
+        ${detailsBtn}
         ${closeBtn}
       </header>
       <div class="sit-brief__list">
@@ -186,6 +203,10 @@ export class SituationBrief {
       </div>`;
 
     this.bindClose();
+    this.el.querySelector<HTMLElement>('.sit-brief__details')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onOpenDetails?.();
+    });
     this.el.querySelectorAll<HTMLElement>('.sit-brief__item').forEach((itemEl, i) => {
       const item = items[i];
       const canFly = item.lat != null && item.lon != null;
@@ -194,6 +215,21 @@ export class SituationBrief {
       itemEl.addEventListener('click', () => {
         if (item.lon != null && item.lat != null) this.onFlyTo?.(item.lon, item.lat, 8);
       });
+    });
+  }
+
+  /** Pastille compacte affichée quand le bandeau est masqué — permet de le rouvrir. */
+  private renderChip(items: BriefItem[]): void {
+    const activeCount = items.filter((i) => !i.resolved).length;
+    this.el.classList.add('sit-brief--chip');
+    this.el.classList.remove('sit-brief--nominal');
+    const label = activeCount > 0 ? `⚠ ${activeCount} · Convergences` : '✓ Convergences';
+    this.el.innerHTML = `
+      <button type="button" class="sit-brief__chip" aria-label="Afficher la synthèse des convergences">${label}</button>`;
+    this.el.querySelector<HTMLElement>('.sit-brief__chip')?.addEventListener('click', () => {
+      this.dismissed = false;
+      this.clearDismissed();
+      this.recompute();
     });
   }
 
@@ -224,7 +260,7 @@ export class SituationBrief {
       e.stopPropagation();
       this.dismissed = true;
       this.writeDismissed();
-      this.el.style.display = 'none';
+      this.recompute();
     });
   }
 
@@ -243,6 +279,14 @@ export class SituationBrief {
       sessionStorage.setItem(SituationBrief.DISMISS_KEY, '1');
     } catch {
       // sessionStorage indisponible — masquage limité au rendu courant.
+    }
+  }
+
+  private clearDismissed(): void {
+    try {
+      sessionStorage.removeItem(SituationBrief.DISMISS_KEY);
+    } catch {
+      // sessionStorage indisponible — réouverture limitée au rendu courant.
     }
   }
 }

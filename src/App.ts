@@ -3660,12 +3660,18 @@ export class App {
     this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
       this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
     });
+    // Modèle "synthèse → détail" : le monitor ne s'affiche plus spontanément,
+    // il s'ouvre via le bouton "Détails" du bandeau de synthèse.
+    this.situationMonitor.enableManualMode();
 
     // Synthèse d'ouverture — même flux que SituationMonitor, aucun re-fetch du moteur.
     this.situationBrief?.destroy();
     this.situationBrief = new SituationBrief(mapEl);
     this.situationBrief.setOnFlyTo((lon, lat, zoom) => {
       this.mapContainer?.flyTo(lon, lat, zoom ?? 8);
+    });
+    this.situationBrief.setOnOpenDetails(() => {
+      this.situationMonitor?.toggleOpen();
     });
     // Historique 24 h (situations résolues) : fetch léger unique, tolérant aux erreurs.
     void getHistory(7)
