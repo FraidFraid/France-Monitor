@@ -28,6 +28,7 @@
     { "source": "/api/fuel-price-series-refresh", "destination": "/api/fuel-price-series-refresh" },
     { "source": "/api/arcep", "destination": "/api/arcep" },
     { "source": "/api/copernicus", "destination": "/api/copernicus" },
+    { "source": "/api/health-check", "destination": "/api/health-check" },
     { "source": "/api/fires", "destination": "/api/fires" },
     { "source": "/api/infra-network", "destination": "/api/infra-network" },
     { "source": "/api/internet-outages", "destination": "/api/internet-outages" },

@@ -1,5 +1,24 @@
 import type { LineString, MultiLineString, Polygon } from 'geojson';
 import type { SentinelNdwiDateInput, SentinelNdwiRequest, SentinelNdwiResponse } from '../types/index.ts';
+import { fetchWithBreaker } from '../utils/fetch-with-breaker.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ─── Watchdog registration ───
+
+Watchdog.register('sentinel-ndwi', {
+  label: 'Sentinel NDWI (crues)',
+  staleAfterMs: 30 * 60_000,
+  detail: 'Sentinel-2 NDWI via /api/sentinel-ndwi',
+});
+
+/** Réponse NDWI vide (aucune image exploitable) du même type que le succès. */
+function buildEmptyNdwiResponse(): SentinelNdwiResponse {
+  return {
+    sceneId: '',
+    acquisitionDate: '',
+    cloudCoverage: null,
+  };
+}
 
 function normalizeDateInput(date: SentinelNdwiDateInput): SentinelNdwiDateInput {
   if (typeof date === 'string') {
@@ -64,21 +83,27 @@ export async function fetchSentinelNdwi(
     maxCloudCoverage,
   };
 
-  const response = await fetch('/api/sentinel-ndwi', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(25_000),
-  });
+  try {
+    const response = await fetchWithBreaker('/api/sentinel-ndwi', {
+      init: {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+      timeoutMs: 25_000,
+      breakerKey: 'sentinel-ndwi',
+      watchdogId: 'sentinel-ndwi',
+    });
 
-  const data = await response.json() as SentinelNdwiResponse & { error?: string };
+    if (!response.ok) {
+      return buildEmptyNdwiResponse();
+    }
 
-  if (!response.ok) {
-    throw new Error(data.error ?? `Sentinel NDWI HTTP ${response.status}`);
+    return await response.json() as SentinelNdwiResponse;
+  } catch {
+    return buildEmptyNdwiResponse();
   }
-
-  return data;
 }

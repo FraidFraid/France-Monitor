@@ -24,11 +24,24 @@ import { classify, CLASSIFIER_VERSION } from '../_lib/server-classifier.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
 import { classifyWithGroq } from '../_lib/groq-classifier.js';
+import { redisSet } from '../utils/redis.js';
 
 export const config = { maxDuration: 300 };
 
 const GROQ_BUDGET_PER_TICK = 15;
 const GROQ_CONFIDENCE = 0.75;
+
+// Dernier état d'ingestion exposé à /api/health-check (Redis, best-effort).
+const LAST_TICK_KEY = 'ingest:last-tick';
+const LAST_TICK_TTL_S = 24 * 60 * 60;
+
+interface IngestTickSummary {
+  timestamp: string;
+  feedsProcessed: number;
+  inserted: number;
+  errors: Array<{ feedId: string; error: string }>;
+  durationMs: number;
+}
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -349,6 +362,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
   }
 
   const errors: Array<{ feedId: string; error: string }> = [];
+  let tickSummary: IngestTickSummary | null = null;
 
   try {
     const sql = getDb() as unknown as NeonSql;
@@ -430,6 +444,14 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     // 5. Rétention 90 jours
     await sql`DELETE FROM news_items WHERE collected_at < now() - interval '90 days'`;
 
+    tickSummary = {
+      timestamp: new Date().toISOString(),
+      feedsProcessed: results.length,
+      inserted: insertedItems.length,
+      errors,
+      durationMs: Date.now() - startedAt,
+    };
+
     json(res, 200, {
       processedFeeds: results.length,
       newItems: insertedItems.length,
@@ -441,8 +463,19 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[api/ingest/news] tick failed:', message);
+    tickSummary = {
+      timestamp: new Date().toISOString(),
+      feedsProcessed: 0,
+      inserted: 0,
+      errors: [...errors, { feedId: '*', error: message }],
+      durationMs: Date.now() - startedAt,
+    };
     json(res, 500, { error: message, durationMs: Date.now() - startedAt, errors });
   } finally {
+    // Persiste le dernier tick pour /api/health-check (never-throws, TTL 24 h).
+    if (tickSummary) {
+      await redisSet(LAST_TICK_KEY, JSON.stringify(tickSummary), LAST_TICK_TTL_S);
+    }
     if (redis && lockAcquired) {
       try {
         await redis.del(LOCK_KEY);

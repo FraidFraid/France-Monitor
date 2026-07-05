@@ -5,6 +5,16 @@
 
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { LineString, MultiLineString } from 'geojson';
+import { fetchWithBreaker } from '../utils/fetch-with-breaker.ts';
+import { Watchdog } from './watchdog.ts';
+
+// ─── Watchdog registration ───
+
+Watchdog.register('copernicus', {
+  label: 'Copernicus / Sentinel',
+  staleAfterMs: 30 * 60_000,
+  detail: 'browser.dataspace.copernicus.eu · scènes STAC via /api/copernicus',
+});
 
 // ─── Constants ───
 
@@ -115,6 +125,20 @@ interface FetchCopernicusOptions {
   cloudMax?: number;
 }
 
+/** Réponse dégradée (aucune scène) conservant le fallback EO Browser utilisable. */
+function buildCopernicusFallback(
+  collection: SatelliteCollection,
+  bbox: [number, number, number, number],
+  reason: string,
+): CopernicusApiResponse {
+  return {
+    scenes: [],
+    eoBrowserUrl: buildEoBrowserUrl(bbox, collection),
+    mode: 'thumbnail',
+    fallbackReason: reason,
+  };
+}
+
 export async function fetchCopernicusScenes(
   collection: SatelliteCollection,
   bbox: [number, number, number, number],
@@ -130,26 +154,33 @@ export async function fetchCopernicusScenes(
     params.set('cloud_max', String(options.cloudMax ?? 30));
   }
 
-  const response = await fetch(`/api/copernicus?${params.toString()}`, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(10000),
-  });
+  try {
+    const response = await fetchWithBreaker(`/api/copernicus?${params.toString()}`, {
+      init: { headers: { Accept: 'application/json' } },
+      timeoutMs: 10_000,
+      breakerKey: 'copernicus',
+      watchdogId: 'copernicus',
+    });
 
-  if (!response.ok) {
-    throw new Error(`Copernicus API HTTP ${response.status}`);
+    if (!response.ok) {
+      return buildCopernicusFallback(collection, bbox, `Copernicus API HTTP ${response.status}`);
+    }
+
+    const payload = await response.json() as Partial<CopernicusApiResponse>;
+    return {
+      scenes: Array.isArray(payload.scenes) ? payload.scenes : [],
+      eoBrowserUrl: typeof payload.eoBrowserUrl === 'string'
+        ? payload.eoBrowserUrl
+        : buildEoBrowserUrl(bbox, collection),
+      mode: payload.mode === 'wms' ? 'wms' : 'thumbnail',
+      fallbackReason: typeof payload.fallbackReason === 'string' ? payload.fallbackReason : undefined,
+      upgradeAvailable: payload.upgradeAvailable === true,
+      wmsUrl: typeof payload.wmsUrl === 'string' ? payload.wmsUrl : undefined,
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Copernicus indisponible';
+    return buildCopernicusFallback(collection, bbox, reason);
   }
-
-  const payload = await response.json() as Partial<CopernicusApiResponse>;
-  return {
-    scenes: Array.isArray(payload.scenes) ? payload.scenes : [],
-    eoBrowserUrl: typeof payload.eoBrowserUrl === 'string'
-      ? payload.eoBrowserUrl
-      : buildEoBrowserUrl(bbox, collection),
-    mode: payload.mode === 'wms' ? 'wms' : 'thumbnail',
-    fallbackReason: typeof payload.fallbackReason === 'string' ? payload.fallbackReason : undefined,
-    upgradeAvailable: payload.upgradeAvailable === true,
-    wmsUrl: typeof payload.wmsUrl === 'string' ? payload.wmsUrl : undefined,
-  };
 }
 
 export async function fetchSentinel2Scenes(
