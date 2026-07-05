@@ -120,6 +120,8 @@ import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 import { startQualityHistoryTracking } from './services/source-quality-history.ts';
 import type { SituationReportContext } from './components/SituationReport.ts';
+import type { ExportContext } from './services/data-export.ts';
+import type { ExportMenu } from './components/ExportMenu.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
@@ -1419,6 +1421,8 @@ export class App {
   private currentFloodSegments: FloodSegment[] = [];
   private currentTrafficIncidents: TrafficIncident[] = [];
   private trafficDataLoaded = false;
+  /** Menu d'export CSV / GeoJSON, instancié à la demande au premier clic. */
+  private exportMenu: ExportMenu | null = null;
   // Flags « données chargées » → affichent le loader unifié tant que false (cf. render*Panel()).
   private firesLoaded = false;
   private environmentLoaded = false;
@@ -2112,6 +2116,7 @@ export class App {
           <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
         </div>
         <button class="header-quality-link header-note-btn" type="button" data-note-report>📄 Note de situation</button>
+        <button class="header-quality-link header-export-btn" type="button" data-export-menu aria-haspopup="menu" aria-expanded="false">⬇ Export</button>
         <a class="header-quality-link" href="/sources-quality">Sources & qualité</a>
         <div id="header-data-sources"></div>
         <span class="header-clock" id="clock"></span>
@@ -2124,6 +2129,10 @@ export class App {
     this.bindLanguageToggle(header);
     header.querySelector<HTMLButtonElement>('[data-note-report]')?.addEventListener('click', () => {
       void this.openSituationReport();
+    });
+    header.querySelector<HTMLButtonElement>('[data-export-menu]')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void this.toggleExportMenu(event.currentTarget as HTMLElement);
     });
 
     const aboutModal = document.createElement('div');
@@ -6235,6 +6244,34 @@ export class App {
   private async openSituationReport(): Promise<void> {
     const { openSituationReport } = await import('./components/SituationReport.ts');
     openSituationReport(this.buildSituationReportContext());
+  }
+
+  /** Instantané des caches courants pour l'export CSV / GeoJSON (aucun fetch). */
+  private buildExportContext(): ExportContext {
+    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const snapshot = this.buildFranceSnapshot(lang);
+    return {
+      news: this.newsItems,
+      situations: snapshot.situations,
+      meteoAlerts: this.currentMeteoAlerts,
+      floods: this.currentFloodSegments,
+      fires: this.currentActiveFires,
+      powerOutages: this.currentPowerOutages,
+      telecomOutages: this.currentTelecomOutages,
+      trafficIncidents: this.currentTrafficIncidents,
+    };
+  }
+
+  /** Ouvre/ferme le menu d'export (module chargé à la demande). */
+  private async toggleExportMenu(anchor: HTMLElement): Promise<void> {
+    if (!this.exportMenu) {
+      const { ExportMenu } = await import('./components/ExportMenu.ts');
+      this.exportMenu = new ExportMenu({
+        anchor,
+        getContext: () => this.buildExportContext(),
+      });
+    }
+    this.exportMenu.toggle();
   }
 
   private async refreshNetworkBarometerWidget(): Promise<void> {

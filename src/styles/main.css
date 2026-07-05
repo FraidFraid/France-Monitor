@@ -1016,6 +1016,106 @@ button.header-quality-link {
   background: rgba(255,255,255,0.24);
 }
 
+/* ─── Menu d'export CSV / GeoJSON (ancré sous le bouton « Export ») ─── */
+.export-menu {
+  position: fixed;
+  width: min(340px, calc(100vw - 16px));
+  background: rgba(18, 18, 26, 0.97);
+  border: 1px solid var(--border-color-light);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  z-index: calc(var(--z-header) + 2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 520px);
+}
+
+.export-menu__header {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.export-menu__empty {
+  padding: 16px 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.export-menu__list {
+  padding: 6px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.export-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.export-menu__row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.export-menu__label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.export-menu__count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.export-menu__actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.export-menu__action {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.export-menu__action:hover,
+.export-menu__action:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-color-light);
+  outline: none;
+}
+
 /* Category separator in sources dropdown */
 .status-menu-category {
   display: flex;
