@@ -1,0 +1,713 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "France Monitor — API publique",
+    "version": "0.1.0",
+    "summary": "Signaux de conscience situationnelle temps réel pour la France (énergie, feux, cyber, actualités, santé opérationnelle).",
+    "description": "API de lecture exposant les données agrégées par France Monitor, tableau de bord OSINT de conscience situationnelle pour la France.\n\n**Sources ouvertes.** Toutes les données proviennent de sources publiques et ouvertes (RTE/ODRE, NASA FIRMS, ENTSOG, ANSSI/CERT-FR, HaveIBeenPwned, RansomwareLive, presse RSS, etc.). Un signal remonté ici est un **indice**, pas un fait confirmé : les événements peuvent être approximatifs, retardés, dédoublonnés de façon imparfaite ou géolocalisés grossièrement. Ne pas utiliser ces données comme source unique pour une décision critique.\n\n**Stabilité.** Version 0.1.0, stade expérimental. Aucune garantie de stabilité formelle du contrat à ce stade : les schémas de réponse peuvent évoluer sans préavis. Les champs marqués nullables peuvent l'être en pratique.\n\n**Accès.** Endpoints en lecture seule, méthode GET, sans authentification. CORS ouvert en lecture (`Access-Control-Allow-Origin: *`). Réponses JSON en UTF-8.\n\n**Fraîcheur / cache.** Les fonctions positionnent des directives de cache CDN (`s-maxage`) indiquant la cadence de rafraîchissement en amont. En sortie de CDN, l'en-tête `Cache-Control` renvoyé au client peut être normalisé par l'hébergeur (par ex. `public` ou `public, max-age=0, must-revalidate`) : se fier à la cadence documentée par endpoint plutôt qu'à la valeur brute de l'en-tête.\n\n**Licence.** Code et spécification sous licence MIT. Les données restent soumises aux licences de leurs sources amont respectives.",
+    "contact": {
+      "name": "France Monitor",
+      "url": "https://www.francemonitor.com/contact"
+    },
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "security": [],
+  "servers": [
+    {
+      "url": "https://francemonitor.com",
+      "description": "Domaine racine. Redirige en 308 vers https://www.francemonitor.com — les clients qui ne suivent pas les redirections doivent viser directement le domaine www ci-dessous."
+    },
+    {
+      "url": "https://www.francemonitor.com",
+      "description": "Domaine canonique servant réellement les fonctions /api/*."
+    }
+  ],
+  "tags": [
+    { "name": "Actualités", "description": "Fil d'actualités ingéré (presse nationale + régionale) et son agrégation temporelle." },
+    { "name": "Santé", "description": "Santé opérationnelle de la plateforme et historique de la situation." },
+    { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
+    { "name": "Environnement", "description": "Détections de feux actifs (satellite)." },
+    { "name": "Cyber", "description": "Fuites de données et incidents cyber cartographiés." }
+  ],
+  "paths": {
+    "/api/news": {
+      "get": {
+        "tags": ["Actualités"],
+        "operationId": "getNews",
+        "summary": "Fil d'actualités ingéré, le plus récent d'abord",
+        "description": "Retourne les articles ingérés depuis les flux RSS surveillés (presse nationale et régionale), joints aux métadonnées de leur flux, triés par date de publication décroissante. Chaque article porte une catégorie, une sévérité et une confiance issues du classifieur interne, et éventuellement des coordonnées géographiques.\n\nCache CDN visé : `s-maxage=60, stale-while-revalidate=300` (rafraîchissement ~1 min).",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Borne basse (incluse) sur la date de publication. Format ISO 8601 (`2026-07-05T00:00:00Z`) ou millisecondes epoch. Défaut : il y a 24 h.",
+            "schema": { "type": "string" },
+            "example": "2026-07-05T00:00:00Z"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "Borne haute (stricte) sur la date de publication : `published_at < until`. ISO 8601 ou epoch ms. Optionnel.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "Alias de `until` (même effet `published_at < before`), pratique pour la pagination par curseur temporel. Si `until` et `before` sont fournis, les deux bornes s'appliquent.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "Filtre exact sur la catégorie. Valeurs courantes : `social`, `security`, `energy`, `weather`, `transport`, `finance`, `health`, `infrastructure`, `fires`, `general`.",
+            "schema": { "type": "string" },
+            "example": "energy"
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "description": "Filtre sur la sévérité, liste séparée par des virgules (union). Valeurs : `critical`, `high`, `medium`, `low`, `info`.",
+            "schema": { "type": "string" },
+            "example": "high,critical"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "description": "Filtre exact sur la région rattachée au flux source (peut être vide pour les flux nationaux).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Nombre maximum d'articles renvoyés. Borné entre 1 et 1000. Défaut : 500.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 500 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste d'articles.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Directive de cache (voir note de fraîcheur globale).",
+                "schema": { "type": "string" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NewsListResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètre `since` invalide (ni ISO 8601 ni epoch ms).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "invalid since parameter (expect ISO 8601 or epoch ms)" } } }
+          },
+          "405": {
+            "description": "Méthode non autorisée (seul GET est accepté).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "method not allowed" } } }
+          },
+          "503": {
+            "description": "Base d'ingestion non configurée ou indisponible.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "news database unavailable" } } }
+          }
+        }
+      }
+    },
+    "/api/news/history": {
+      "get": {
+        "tags": ["Actualités"],
+        "operationId": "getNewsHistory",
+        "summary": "Agrégation temporelle des actualités (compteurs par tranche)",
+        "description": "Retourne le nombre d'articles groupés par tranche temporelle, catégorie et sévérité, pour alimenter une frise chronologique. La granularité est configurable.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=300` (rafraîchissement ~5 min).",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Début de la fenêtre (inclus). ISO 8601 ou epoch ms. Défaut : il y a 7 jours.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Fin de la fenêtre (inclus). ISO 8601 ou epoch ms. Défaut : maintenant. Doit être strictement postérieur à `from`.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "required": false,
+            "description": "Granularité des tranches.",
+            "schema": { "type": "string", "enum": ["hour", "day", "week"], "default": "hour" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compteurs agrégés.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NewsHistoryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Paramètre invalide : `from`/`to` non parsable, `from >= to`, ou `bucket` hors { hour, day, week }.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "bucket must be \"hour\", \"day\", or \"week\"" } } }
+          },
+          "405": {
+            "description": "Méthode non autorisée (seul GET est accepté).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "503": {
+            "description": "Base d'ingestion non configurée ou indisponible.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/health-check": {
+      "get": {
+        "tags": ["Santé"],
+        "operationId": "getHealthCheck",
+        "summary": "Santé opérationnelle de la plateforme",
+        "description": "Cible pour sondes de monitoring. Agrège deux signaux : le dernier tick du cron d'ingestion et l'âge du dernier article inséré. Statut `ok` si tick < 15 min ET article < 60 min ; `degraded` si le tick est frais mais les articles sont vieux ; `down` sinon. Jamais mis en cache (`Cache-Control: no-store`).",
+        "responses": {
+          "200": {
+            "description": "Statut calculé (le corps est toujours renvoyé même en statut `degraded`/`down`).",
+            "headers": {
+              "Cache-Control": { "description": "Toujours `no-store`.", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthCheckResponse" },
+                "example": {
+                  "status": "ok",
+                  "checkedAt": "2026-07-05T13:06:54.232Z",
+                  "ingest": { "lastTick": { "timestamp": "2026-07-05T13:05:08.599Z", "feedsProcessed": 10, "inserted": 5, "errors": [], "durationMs": 1336 }, "lastTickAgeMs": 105633 },
+                  "articles": { "lastArticleAt": "2026-07-05T13:05:07.557Z", "lastArticleAgeMs": 106675, "error": null }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Méthode non autorisée (seul GET est accepté).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Method not allowed" } } }
+          },
+          "503": {
+            "description": "`DATABASE_URL` non configuré côté serveur. Le corps reprend la forme de la réponse avec `status: \"down\"` et des sous-objets nuls.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthCheckResponse" },
+                "example": { "status": "down", "error": "DATABASE_URL not configured", "ingest": null, "articles": null }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/situation-history": {
+      "get": {
+        "tags": ["Santé"],
+        "operationId": "getSituationHistory",
+        "summary": "Historique de l'indice de situation (grille de créneaux 6 h)",
+        "description": "Retourne les instantanés (\"snapshots\") de l'indice de situation nationale sur une grille canonique UTC de créneaux de 6 heures (00, 06, 12, 18). Les créneaux non capturés sont renvoyés explicitement comme `{ slotKey, status: \"missing\" }`. Jamais mis en cache (`Cache-Control: no-store`).\n\nNote : cet endpoint accepte aussi POST, réservé à l'écriture interne des snapshots par le client ; il n'est pas destiné à un usage tiers et n'est pas documenté ici.",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": true,
+            "description": "Profondeur de l'historique en jours. Doit valoir exactement 7 ou 30 (soit 28 ou 120 créneaux de 6 h).",
+            "schema": { "type": "integer", "enum": [7, 30] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grille de créneaux, capturés ou manquants.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SituationHistoryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "`days` absent ou différent de 7/30.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "days must be 7 or 30" } } }
+          },
+          "405": {
+            "description": "Méthode non autorisée.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
+    "/api/energy/ecowatt": {
+      "get": {
+        "tags": ["Énergie"],
+        "operationId": "getEnergyMix",
+        "summary": "Mix électrique temps réel (régional + échanges frontières)",
+        "description": "Proxy de l'API ODRE (Open Data Réseaux Énergies, dataset eco2mix). Renvoie les derniers relevés régionaux du mix de production/consommation électrique (une ligne par région) et le dernier relevé national des échanges commerciaux aux frontières. Toutes les valeurs de puissance sont en mégawatts (MW). Le nom historique \"ecowatt\" est conservé ; la charge utile porte le mix eco2mix, pas les signaux EcoWatt.\n\nCache CDN visé : `s-maxage=900, stale-while-revalidate` (rafraîchissement ~15 min).",
+        "responses": {
+          "200": {
+            "description": "Enveloppe { regional, national } reprenant telles quelles les réponses ODRE.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EcowattResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Échec du fetch amont (exception réseau/timeout).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Fetch failed" } } }
+          },
+          "502": {
+            "description": "Réponse non-OK d'ODRE (statuts amont repris dans le message).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Upstream error: 500 / 200" } } }
+          }
+        }
+      }
+    },
+    "/api/energy/gas-pir": {
+      "get": {
+        "tags": ["Énergie"],
+        "operationId": "getGasPir",
+        "summary": "Flux gaziers nets aux points d'interconnexion frontaliers (PIR)",
+        "description": "Proxy ENTSOG (Physical Flow journalier) pour les points d'interconnexion réseau (PIR) aux frontières françaises, opérateurs GRTgaz/NaTran (FR-TSO-0003) et TERÉGA (FR-TSO-0002). Renvoie le flux net par point en GWh/jour (positif = import net vers la France). En cas d'échec amont, l'endpoint renvoie tout de même 200 avec `status: \"error\"`, `points: []` et un champ `error`.\n\nCache CDN visé : `s-maxage=1800, stale-while-revalidate` (rafraîchissement ~30 min).",
+        "responses": {
+          "200": {
+            "description": "Flux nets par PIR. Voir `status` pour la complétude.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GasPirResponse" },
+                "example": {
+                  "points": [
+                    { "pointKey": "ITP-00304", "pointLabel": "VIP PIRINEOS", "flowGWhDay": -43.185297, "periodFrom": "2026-07-04T06:00:00+02:00" }
+                  ],
+                  "fetchedAt": "2026-07-05T13:08:22.898Z",
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fires": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getFires",
+        "summary": "Feux actifs détectés par satellite (NASA FIRMS VIIRS)",
+        "description": "Proxy NASA FIRMS (capteurs VIIRS SNPP, NOAA-20, NOAA-21) restreint à l'emprise France métropolitaine + Corse, sur les dernières 24 h. Contourne les restrictions CORS de FIRMS. Chaque détection est un point chaud (thermal anomaly) ; ce n'est pas nécessairement un incendie confirmé.\n\nCache CDN visé : `s-maxage=3600, stale-while-revalidate=600` (FIRMS se met à jour toutes les ~3 h).",
+        "responses": {
+          "200": {
+            "description": "Détections dédoublonnées.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FiresResponse" }
+              }
+            }
+          },
+          "502": {
+            "description": "Erreur du proxy amont FIRMS.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Proxy error", "message": "NASA FIRMS public CSV HTTP 503" } } }
+          }
+        }
+      }
+    },
+    "/api/threats": {
+      "get": {
+        "tags": ["Cyber"],
+        "operationId": "getThreats",
+        "summary": "Fuites de données et incidents cyber cartographiés en France",
+        "description": "Agrège des sources publiques et légales (FrenchBreaches, HaveIBeenPwned pour la France, RansomwareLive, CERT-FR) et normalise en une liste d'événements de menace géolocalisés, dédoublonnés par (organisation + type). Aucune adresse IP ni donnée personnelle n'est exposée. La réponse est un **tableau JSON** d'événements (pas une enveloppe).\n\nCache CDN visé : `s-maxage=600, stale-while-revalidate=120` (rafraîchissement ~10 min).",
+        "responses": {
+          "200": {
+            "description": "Tableau d'événements de menace.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ThreatsResponse" }
+              }
+            }
+          },
+          "502": {
+            "description": "Échec de l'agrégation (toutes les sources en erreur).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Aggregation failed" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Corps d'erreur standard.",
+        "properties": {
+          "error": { "type": "string", "description": "Message d'erreur lisible (en anglais côté serveur)." },
+          "message": { "type": "string", "description": "Détail complémentaire, présent sur certains proxies (ex. /api/fires)." }
+        },
+        "required": ["error"]
+      },
+      "NewsItem": {
+        "type": "object",
+        "description": "Un article ingéré, enrichi des métadonnées de son flux et de la classification interne.",
+        "properties": {
+          "id": { "type": ["integer", "null"], "description": "Identifiant interne de l'article." },
+          "feedId": { "type": ["string", "null"], "description": "Identifiant du flux source (slug), ex. `bfm-tv`." },
+          "feedName": { "type": ["string", "null"], "description": "Nom lisible du flux source, ex. `BFM TV`." },
+          "feedRegion": { "type": ["string", "null"], "description": "Région rattachée au flux (null pour un flux national)." },
+          "tier": { "type": ["integer", "null"], "description": "Niveau de priorité éditoriale du flux (1 = national de référence, valeurs croissantes = plus local/secondaire)." },
+          "title": { "type": ["string", "null"], "description": "Titre de l'article." },
+          "link": { "type": ["string", "null"], "description": "URL de l'article original." },
+          "description": { "type": ["string", "null"], "description": "Extrait / chapô de l'article (texte, éventuellement tronqué)." },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time", "description": "Date de publication déclarée par le flux (ISO 8601 UTC)." },
+          "collectedAt": { "type": ["string", "null"], "format": "date-time", "description": "Date d'ingestion côté serveur (ISO 8601 UTC)." },
+          "category": { "type": ["string", "null"], "description": "Catégorie attribuée par le classifieur : `social`, `security`, `energy`, `weather`, `transport`, `finance`, `health`, `infrastructure`, `fires`, `general`." },
+          "severity": { "type": ["string", "null"], "description": "Sévérité estimée : `critical`, `high`, `medium`, `low`, `info`." },
+          "confidence": { "type": ["number", "null"], "description": "Confiance de la classification, de 0 à 1." },
+          "lat": { "type": ["number", "null"], "description": "Latitude géolocalisée (WGS84), null si non localisé." },
+          "lon": { "type": ["number", "null"], "description": "Longitude géolocalisée (WGS84), null si non localisé." }
+        }
+      },
+      "NewsListResponse": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "description": "Articles, du plus récent au plus ancien.", "items": { "$ref": "#/components/schemas/NewsItem" } },
+          "count": { "type": "integer", "description": "Nombre d'articles dans `items`." },
+          "generatedAt": { "type": "string", "format": "date-time", "description": "Horodatage de génération de la réponse (ISO 8601 UTC)." }
+        },
+        "required": ["items", "count", "generatedAt"]
+      },
+      "NewsHistoryBucket": {
+        "type": "object",
+        "description": "Compteur d'articles pour une combinaison (tranche, catégorie, sévérité).",
+        "properties": {
+          "t": { "type": "string", "format": "date-time", "description": "Début de la tranche temporelle (ISO 8601 UTC, tronqué selon `bucket`)." },
+          "category": { "type": ["string", "null"], "description": "Catégorie (voir NewsItem.category), ou null." },
+          "severity": { "type": ["string", "null"], "description": "Sévérité (voir NewsItem.severity), ou null." },
+          "count": { "type": "integer", "description": "Nombre d'articles dans cette combinaison." }
+        },
+        "required": ["t", "count"]
+      },
+      "NewsHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "buckets": { "type": "array", "description": "Compteurs triés par tranche croissante.", "items": { "$ref": "#/components/schemas/NewsHistoryBucket" } },
+          "from": { "type": "string", "format": "date-time", "description": "Début effectif de la fenêtre (ISO 8601 UTC)." },
+          "to": { "type": "string", "format": "date-time", "description": "Fin effective de la fenêtre (ISO 8601 UTC)." },
+          "bucket": { "type": "string", "enum": ["hour", "day", "week"], "description": "Granularité appliquée." }
+        },
+        "required": ["buckets", "from", "to", "bucket"],
+        "example": {
+          "buckets": [
+            { "t": "2026-06-28T13:00:00.000Z", "category": "transport", "severity": "low", "count": 2 }
+          ],
+          "from": "2026-06-28T13:00:00.000Z",
+          "to": "2026-07-05T13:00:00.000Z",
+          "bucket": "hour"
+        }
+      },
+      "IngestTick": {
+        "type": "object",
+        "description": "Résumé du dernier passage du cron d'ingestion.",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time", "description": "Horodatage du tick (ISO 8601 UTC)." },
+          "feedsProcessed": { "type": "integer", "description": "Nombre de flux traités durant ce tick." },
+          "inserted": { "type": "integer", "description": "Nombre de nouveaux articles insérés." },
+          "errors": { "type": "array", "description": "Erreurs non bloquantes rencontrées (peut être vide).", "items": { "type": "string" } },
+          "durationMs": { "type": "integer", "description": "Durée du tick en millisecondes." }
+        }
+      },
+      "HealthCheckResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded", "down"], "description": "Statut agrégé : `ok` (tick < 15 min et article < 60 min), `degraded` (tick frais mais articles anciens), `down` (sinon)." },
+          "checkedAt": { "type": ["string", "null"], "format": "date-time", "description": "Horodatage du contrôle (ISO 8601 UTC). Absent en cas de 503 de configuration." },
+          "error": { "type": ["string", "null"], "description": "Message d'erreur global (par ex. base non configurée), null en fonctionnement normal." },
+          "ingest": {
+            "type": ["object", "null"],
+            "description": "Signal d'ingestion, ou null si la base n'est pas configurée.",
+            "properties": {
+              "lastTick": { "anyOf": [ { "$ref": "#/components/schemas/IngestTick" }, { "type": "null" } ], "description": "Dernier tick connu, ou null." },
+              "lastTickAgeMs": { "type": ["integer", "null"], "description": "Âge du dernier tick en millisecondes, ou null." }
+            }
+          },
+          "articles": {
+            "type": ["object", "null"],
+            "description": "Signal de fraîcheur des articles, ou null si la base n'est pas configurée.",
+            "properties": {
+              "lastArticleAt": { "type": ["string", "null"], "format": "date-time", "description": "Date d'insertion du dernier article (ISO 8601 UTC), ou null." },
+              "lastArticleAgeMs": { "type": ["integer", "null"], "description": "Âge du dernier article en millisecondes, ou null." },
+              "error": { "type": ["string", "null"], "description": "Erreur d'accès base pour ce signal, ou null." }
+            }
+          }
+        },
+        "required": ["status"]
+      },
+      "SituationSnapshot": {
+        "type": "object",
+        "description": "Instantané capturé de l'indice de situation pour un créneau de 6 h.",
+        "properties": {
+          "version": { "type": "integer", "description": "Version du schéma de snapshot (actuellement 1)." },
+          "slotKey": { "type": "string", "description": "Clé de créneau UTC au format `YYYY-MM-DDTHH:00` avec HH ∈ {00,06,12,18}.", "example": "2026-06-28T18:00" },
+          "capturedAt": { "type": "string", "format": "date-time", "description": "Horodatage réel de capture (ISO 8601 UTC)." },
+          "score": { "type": "number", "description": "Score de situation global (0–100, 100 = situation nominale)." },
+          "axes": {
+            "type": "object",
+            "description": "Sous-scores par axe de risque.",
+            "properties": {
+              "continuity": { "type": "number", "description": "Continuité des infrastructures." },
+              "defense": { "type": "number", "description": "Défense / activité militaire." },
+              "security": { "type": "number", "description": "Sécurité intérieure." },
+              "signal": { "type": "number", "description": "Signaux faibles agrégés." },
+              "cyber": { "type": "number", "description": "Menace cyber." },
+              "social": { "type": "number", "description": "Tensions sociales." }
+            }
+          },
+          "situations": { "type": "array", "description": "Situations notables retenues pour ce créneau (souvent vide).", "items": { "type": "object", "additionalProperties": true } },
+          "meta": {
+            "type": "object",
+            "description": "Métadonnées d'agrégation.",
+            "properties": {
+              "totalSituations": { "type": "integer", "description": "Nombre total de situations considérées." },
+              "maxSeverity": { "type": ["string", "null"], "description": "Sévérité maximale observée, ou null." },
+              "avgConfidence": { "type": "number", "description": "Confiance moyenne des situations." }
+            }
+          },
+          "dataStatus": {
+            "type": "object",
+            "description": "État des sources ayant alimenté le snapshot.",
+            "properties": {
+              "overall": { "type": "string", "enum": ["ok", "degraded"], "description": "État global des données pour ce créneau." },
+              "sources": { "type": "object", "additionalProperties": { "type": "string" }, "description": "État par source (ex. `countryAxes`, `cyber`, `social`)." }
+            }
+          }
+        },
+        "required": ["version", "slotKey", "score"]
+      },
+      "SituationMissingSlot": {
+        "type": "object",
+        "description": "Créneau attendu mais non capturé.",
+        "properties": {
+          "slotKey": { "type": "string", "description": "Clé de créneau manquant, format `YYYY-MM-DDTHH:00`." },
+          "status": { "type": "string", "const": "missing", "description": "Toujours `missing`." }
+        },
+        "required": ["slotKey", "status"]
+      },
+      "SituationHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "requestedRange": {
+            "type": "object",
+            "description": "Bornes de la grille demandée.",
+            "properties": {
+              "from": { "type": "string", "format": "date-time", "description": "Premier créneau (ISO 8601 UTC)." },
+              "to": { "type": "string", "format": "date-time", "description": "Dernier créneau (ISO 8601 UTC)." }
+            }
+          },
+          "slotCount": {
+            "type": "object",
+            "description": "Décompte de complétude de la grille.",
+            "properties": {
+              "expected": { "type": "integer", "description": "Nombre de créneaux attendus (days × 4)." },
+              "captured": { "type": "integer", "description": "Créneaux effectivement capturés." },
+              "missing": { "type": "integer", "description": "Créneaux manquants." },
+              "degraded": { "type": "integer", "description": "Créneaux capturés dont `dataStatus.overall` vaut `degraded`." }
+            }
+          },
+          "slots": {
+            "type": "array",
+            "description": "Grille complète, du plus ancien au plus récent. Chaque élément est soit un snapshot capturé, soit un marqueur de créneau manquant.",
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/SituationSnapshot" },
+                { "$ref": "#/components/schemas/SituationMissingSlot" }
+              ]
+            }
+          }
+        },
+        "required": ["requestedRange", "slotCount", "slots"]
+      },
+      "OdreRegionalRecord": {
+        "type": "object",
+        "description": "Relevé régional eco2mix (puissances en MW).",
+        "properties": {
+          "code_insee_region": { "type": ["string", "null"], "description": "Code INSEE de la région." },
+          "libelle_region": { "type": ["string", "null"], "description": "Nom de la région." },
+          "date_heure": { "type": ["string", "null"], "format": "date-time", "description": "Horodatage du relevé (ISO 8601 avec fuseau)." },
+          "consommation": { "type": ["number", "null"], "description": "Consommation électrique (MW)." },
+          "nucleaire": { "type": ["number", "null"], "description": "Production nucléaire (MW)." },
+          "eolien": { "type": ["number", "null"], "description": "Production éolienne (MW)." },
+          "solaire": { "type": ["number", "null"], "description": "Production solaire (MW)." },
+          "hydraulique": { "type": ["number", "null"], "description": "Production hydraulique (MW)." },
+          "thermique": { "type": ["number", "null"], "description": "Production thermique fossile (MW)." },
+          "bioenergies": { "type": ["number", "null"], "description": "Production bioénergies (MW)." },
+          "ech_physiques": { "type": ["number", "null"], "description": "Échanges physiques nets de la région (MW)." }
+        }
+      },
+      "OdreNationalRecord": {
+        "type": "object",
+        "description": "Relevé national des échanges commerciaux aux frontières (MW ; négatif = export net depuis la France).",
+        "properties": {
+          "ech_comm_angleterre": { "type": ["number", "null"], "description": "Échange commercial avec l'Angleterre (MW)." },
+          "ech_comm_espagne": { "type": ["number", "null"], "description": "Échange commercial avec l'Espagne (MW)." },
+          "ech_comm_italie": { "type": ["number", "null"], "description": "Échange commercial avec l'Italie (MW)." },
+          "ech_comm_suisse": { "type": ["number", "null"], "description": "Échange commercial avec la Suisse (MW)." },
+          "ech_comm_allemagne_belgique": { "type": ["number", "null"], "description": "Échange commercial avec l'Allemagne + Belgique (MW)." }
+        }
+      },
+      "EcowattResponse": {
+        "type": "object",
+        "properties": {
+          "regional": {
+            "type": "object",
+            "description": "Derniers relevés régionaux (jusqu'à 20 lignes, une par région), enveloppe ODRE brute (Opendatasoft Explore v2.1).",
+            "properties": {
+              "total_count": { "type": "integer", "description": "Nombre total d'enregistrements correspondant à la requête amont." },
+              "results": { "type": "array", "description": "Relevés régionaux.", "items": { "$ref": "#/components/schemas/OdreRegionalRecord" } }
+            }
+          },
+          "national": {
+            "type": "object",
+            "description": "Dernier relevé national des échanges aux frontières (1 ligne), enveloppe ODRE brute.",
+            "properties": {
+              "total_count": { "type": "integer", "description": "Nombre total d'enregistrements correspondant à la requête amont." },
+              "results": { "type": "array", "description": "Relevé national des échanges commerciaux.", "items": { "$ref": "#/components/schemas/OdreNationalRecord" } }
+            }
+          }
+        },
+        "required": ["regional", "national"],
+        "example": {
+          "regional": { "total_count": 12, "results": [ { "code_insee_region": "53", "libelle_region": "Bretagne", "date_heure": "2026-07-05T09:45:00+00:00", "consommation": 1647, "nucleaire": 0, "eolien": 18, "solaire": 514, "hydraulique": 0, "thermique": 0, "bioenergies": 45, "ech_physiques": 1097 } ] },
+          "national": { "total_count": 1, "results": [ { "ech_comm_angleterre": -3553, "ech_comm_espagne": -2350, "ech_comm_italie": -3437, "ech_comm_suisse": -2203, "ech_comm_allemagne_belgique": -3736 } ] }
+        }
+      },
+      "GasPirPoint": {
+        "type": "object",
+        "description": "Flux net journalier à un point d'interconnexion réseau (PIR).",
+        "properties": {
+          "pointKey": { "type": "string", "description": "Identifiant ENTSOG du point (ex. `ITP-00304`)." },
+          "pointLabel": { "type": "string", "description": "Libellé lisible du point (ex. `VIP PIRINEOS`)." },
+          "flowGWhDay": { "type": "number", "description": "Flux net en GWh/jour. Positif = import net vers la France, négatif = export net." },
+          "periodFrom": { "type": ["string", "null"], "format": "date-time", "description": "Début de la période gazière du relevé retenu (ISO 8601 avec fuseau), ou null." }
+        },
+        "required": ["pointKey", "pointLabel", "flowGWhDay"]
+      },
+      "GasPirResponse": {
+        "type": "object",
+        "properties": {
+          "points": { "type": "array", "description": "Flux nets par PIR (vide si `status: error`).", "items": { "$ref": "#/components/schemas/GasPirPoint" } },
+          "fetchedAt": { "type": "string", "format": "date-time", "description": "Horodatage de récupération (ISO 8601 UTC)." },
+          "status": { "type": "string", "enum": ["ok", "partial", "error"], "description": "`ok` = tous les PIR résolus, `partial` = certains, `error` = aucun (voir `error`)." },
+          "error": { "type": "string", "description": "Message d'erreur amont, présent uniquement si `status: error`." }
+        },
+        "required": ["points", "fetchedAt", "status"]
+      },
+      "FireDetection": {
+        "type": "object",
+        "description": "Point chaud VIIRS (anomalie thermique). Champs issus du CSV NASA FIRMS.",
+        "properties": {
+          "id": { "type": "string", "description": "Identifiant déterministe `lat_lon_date_time` (dédoublonnage)." },
+          "latitude": { "type": "number", "description": "Latitude du pixel (WGS84)." },
+          "longitude": { "type": "number", "description": "Longitude du pixel (WGS84)." },
+          "bright_ti4": { "type": "number", "description": "Température de brillance canal I-4 (Kelvin)." },
+          "bright_ti5": { "type": "number", "description": "Température de brillance canal I-5 (Kelvin)." },
+          "scan": { "type": "number", "description": "Taille du pixel dans l'axe de balayage (km)." },
+          "track": { "type": "number", "description": "Taille du pixel dans l'axe de déplacement (km)." },
+          "frp": { "type": "number", "description": "Fire Radiative Power (MW), intensité radiative du feu." },
+          "acq_date": { "type": "string", "description": "Date d'acquisition (YYYY-MM-DD, UTC)." },
+          "acq_time": { "type": "string", "description": "Heure d'acquisition UTC (HHMM, sans zéro de tête ; ex. `122` = 01:22)." },
+          "confidence": { "type": "string", "description": "Confiance de détection, normalisée en mots : `low`, `nominal`, `high`." },
+          "daynight": { "type": "string", "description": "Passage de jour (`D`) ou de nuit (`N`)." },
+          "instrument": { "type": "string", "description": "Instrument, `VIIRS`." },
+          "satellite": { "type": "string", "description": "Satellite/capteur source (ex. `N` pour NOAA-20 ou libellé injecté SNPP/NOAA-20/NOAA-21)." },
+          "version": { "type": "string", "description": "Version du produit FIRMS (ex. `2.0NRT`)." }
+        }
+      },
+      "FiresResponse": {
+        "type": "object",
+        "properties": {
+          "detections": { "type": "array", "description": "Points chauds dédoublonnés sur l'emprise France (24 h).", "items": { "$ref": "#/components/schemas/FireDetection" } },
+          "sources": { "type": "array", "description": "Capteurs ayant répondu (ex. `SNPP`, `NOAA-20`, `NOAA-21`, ou `SNPP (public CSV)` en mode sans clé).", "items": { "type": "string" } },
+          "fetchedAt": { "type": "integer", "description": "Horodatage de récupération en millisecondes epoch." },
+          "apiKeyUsed": { "type": "boolean", "description": "`true` si les 3 capteurs via l'API à clé ont été utilisés, `false` en fallback CSV public." }
+        },
+        "required": ["detections", "sources", "fetchedAt"]
+      },
+      "ThreatSource": {
+        "type": "object",
+        "description": "Référence à une source publique ayant documenté l'événement.",
+        "properties": {
+          "name": { "type": "string", "description": "Nom de la source (ex. `Have I Been Pwned`)." },
+          "url": { "type": "string", "description": "URL de référence publique." },
+          "observedAt": { "type": "string", "format": "date-time", "description": "Horodatage d'observation par France Monitor (ISO 8601 UTC)." }
+        }
+      },
+      "ThreatLocation": {
+        "type": "object",
+        "description": "Localisation cartographique de l'organisation touchée.",
+        "properties": {
+          "label": { "type": "string", "description": "Libellé du lieu (ville, pays, ou `Localisation OSINT`)." },
+          "coordinates": {
+            "type": "array",
+            "description": "Coordonnées [longitude, latitude] (WGS84).",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "precision": { "type": "string", "description": "Précision de la localisation : `city`, `region`, `hq`, `country`." },
+          "source": { "type": "string", "description": "Provenance de la géolocalisation." }
+        }
+      },
+      "ThreatEvent": {
+        "type": "object",
+        "description": "Événement de menace cyber normalisé (fuite, rançongiciel, incident). Les champs disponibles varient selon la source.",
+        "properties": {
+          "id": { "type": "string", "description": "Identifiant déterministe préfixé par la source (ex. `hibp-ANPS`)." },
+          "type": { "type": "string", "description": "Type d'événement : `leak`, `ransomware`, etc." },
+          "organizationName": { "type": "string", "description": "Nom de l'organisation concernée." },
+          "domain": { "type": "string", "description": "Domaine principal de l'organisation, si connu." },
+          "countryCode": { "type": "string", "description": "Code pays ISO (toujours `FR` pour le périmètre France)." },
+          "countryName": { "type": "string", "description": "Nom du pays." },
+          "flagEmoji": { "type": "string", "description": "Emoji drapeau, si applicable." },
+          "ransomwareGroup": { "type": "string", "description": "Groupe de rançongiciel revendiquant, pour `type: ransomware`." },
+          "sourceLabel": { "type": "string", "description": "Libellé court de la source d'origine (ex. `HIBP`, `FrenchBreaches Map`)." },
+          "logoUrl": { "type": "string", "description": "URL du logo de l'organisation, si disponible." },
+          "location": { "$ref": "#/components/schemas/ThreatLocation" },
+          "severity": { "type": "string", "description": "Sévérité estimée : `low`, `medium`, `high` (…)." },
+          "confidence": { "type": "string", "description": "Confiance de l'attribution/géolocalisation : `low`, `medium`, `high`." },
+          "sector": { "type": "string", "description": "Secteur d'activité ou nature de l'incident (ex. `Data breach`, `OSINT`)." },
+          "date": { "type": "string", "format": "date-time", "description": "Date de l'événement (ISO 8601)." },
+          "summary": { "type": "string", "description": "Résumé textuel de l'incident." },
+          "compromisedData": { "type": "array", "description": "Catégories de données compromises (libellés HIBP en anglais).", "items": { "type": "string" } },
+          "dataClasses": { "type": "array", "description": "Alias de `compromisedData`.", "items": { "type": "string" } },
+          "metrics": {
+            "type": "object",
+            "description": "Métriques quantitatives.",
+            "properties": {
+              "records": { "type": "integer", "description": "Nombre d'enregistrements/comptes touchés." },
+              "sources": { "type": "integer", "description": "Nombre de sources concordantes." }
+            }
+          },
+          "sources": { "type": "array", "description": "Sources publiques documentant l'événement.", "items": { "$ref": "#/components/schemas/ThreatSource" } }
+        },
+        "required": ["id", "type", "organizationName", "location", "severity", "date"]
+      },
+      "ThreatsResponse": {
+        "type": "array",
+        "description": "Liste d'événements de menace, dédoublonnés par (organisation + type).",
+        "items": { "$ref": "#/components/schemas/ThreatEvent" }
+      }
+    }
+  }
+}

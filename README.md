@@ -308,6 +308,14 @@ All external API calls are **server-side only** (Vercel Functions + Upstash cach
 
 ---
 
+## 🔌 Public API
+
+A subset of the `/api/*` endpoints is exposed as a read-only public API so third parties (public agencies, researchers, journalists) can consume the aggregated open-source signals — news feed, energy mix, wildfires, cyber incidents, operational health — without reading the code. Endpoints are `GET`, unauthenticated, and CORS-open for reads.
+
+The contract is published as a machine-readable **OpenAPI 3.1** document at [`/openapi.json`](https://www.francemonitor.com/openapi.json). See [`docs/api.md`](docs/api.md) for the base URL, curl examples, cache policy and the "signal ≠ confirmed fact" caveat.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -405,6 +413,7 @@ france-monitor/
 | [Architecture](docs/architecture.md) | Runtime layers, data flow, map architecture, reuse model |
 | [Deployment](docs/deployment.md) | Local development, Vercel deployment, self-hosting direction |
 | [Data Sources](docs/data-sources.md) | Source families, provenance principles, reproducibility checklist |
+| [Public API](docs/api.md) | Read-only `/api/*` endpoints for third parties, with the OpenAPI 3.1 spec at `/openapi.json` |
 | [Privacy and Safety](docs/privacy.md) | Privacy principles, AI processing boundaries, safety scope |
 | [Roadmap](docs/roadmap.md) | NLnet-aligned milestones for open-source release and European reuse |
 | [NLnet Context](docs/nlnet.md) | Public context for application `2026-06-104` |
