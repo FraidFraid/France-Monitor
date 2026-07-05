@@ -8,6 +8,9 @@
  * Domaines whitelistés : api.ransomware.live, data.ransomware.live, services.nvd.nist.gov
  */
 
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from './utils/safe-fetch.js';
+import { checkRateLimit, rateLimitResponse } from './utils/rate-limit.js';
+
 export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
@@ -43,6 +46,9 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', 'Access-Control-Allow
  * @returns {Promise<Response>}
  */
 export default async function handler(request) {
+  const rl = await checkRateLimit('json-proxy', request);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
 
@@ -62,14 +68,14 @@ export default async function handler(request) {
 
   try {
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const resp = await fetch(targetUrl, {
+    // safeFetch : redirections revalidées contre l'allowlist (anti-SSRF)
+    const { response: resp } = await safeFetch(targetUrl, ALLOWED_DOMAINS, {
       headers: {
         'User-Agent': ua,
         'Accept': 'application/json',
         'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
         'Cache-Control': 'no-cache',
       },
-      redirect: 'follow',
       signal: AbortSignal.timeout(20_000),
     });
 
@@ -80,7 +86,8 @@ export default async function handler(request) {
       });
     }
 
-    const data = await resp.json();
+    const bytes = await readCapped(resp, MAX_RESPONSE_BYTES);
+    const data = JSON.parse(new TextDecoder().decode(bytes));
     return new Response(JSON.stringify(data), {
       status: 200,
       headers: {
@@ -89,6 +96,13 @@ export default async function handler(request) {
       },
     });
   } catch (err) {
+    if (err instanceof SafeFetchError) {
+      const status = err.code === 'DOMAIN_NOT_ALLOWED' || err.code === 'INVALID_URL' ? 403 : 502;
+      return new Response(JSON.stringify({ error: 'Fetch refused', code: err.code, proxyError: true }), {
+        status,
+        headers: JSON_HEADERS,
+      });
+    }
     return new Response(JSON.stringify({ error: err.message || 'Fetch failed', proxyError: true }), {
       status: 502,
       headers: JSON_HEADERS,

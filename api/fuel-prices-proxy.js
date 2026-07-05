@@ -1,3 +1,6 @@
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from './utils/safe-fetch.js';
+import { checkRateLimit, rateLimitResponse } from './utils/rate-limit.js';
+
 export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
@@ -27,6 +30,9 @@ function buildOpendatasoftFallbackUrl(targetUrl) {
 }
 
 export default async function handler(request) {
+  const rl = await checkRateLimit('fuel-prices-proxy', request);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
 
@@ -58,23 +64,18 @@ export default async function handler(request) {
   }
 
   try {
-    let resp = await fetch(targetUrl, {
-      method: 'GET',
-      signal: AbortSignal.timeout(20_000),
-    });
+    // safeFetch : redirections revalidées contre l'allowlist (anti-SSRF).
+    // Le fetchOptions est réutilisé pour la requête primaire et le fallback.
+    const fetchOpts = { method: 'GET', signal: AbortSignal.timeout(20_000) };
+    let { response: resp } = await safeFetch(targetUrl, ALLOWED_DOMAINS, fetchOpts);
 
     if (resp.status === 403) {
       const fallbackUrls = [buildOpendatasoftFallbackUrl(targetUrl)].filter(Boolean);
       for (const fallbackUrl of fallbackUrls) {
-        const fallbackResp = await fetch(fallbackUrl, {
-          method: 'GET',
-          signal: AbortSignal.timeout(20_000),
-        });
-        if (fallbackResp.ok) {
-          resp = fallbackResp;
-          break;
-        }
+        // Le fallback (opendatasoft) est aussi validé par safeFetch.
+        const { response: fallbackResp } = await safeFetch(fallbackUrl, ALLOWED_DOMAINS, fetchOpts);
         resp = fallbackResp;
+        if (fallbackResp.ok) break;
       }
     }
 
@@ -85,7 +86,8 @@ export default async function handler(request) {
       });
     }
 
-    const body = await resp.text();
+    // Octets bruts (plafonnés) : passthrough fidèle avec le content-type upstream.
+    const body = await readCapped(resp, MAX_RESPONSE_BYTES);
     return new Response(body, {
       status: 200,
       headers: {
@@ -95,6 +97,13 @@ export default async function handler(request) {
       },
     });
   } catch (error) {
+    if (error instanceof SafeFetchError) {
+      const status = error.code === 'DOMAIN_NOT_ALLOWED' || error.code === 'INVALID_URL' ? 403 : 502;
+      return new Response(JSON.stringify({ error: 'Fetch refused', code: error.code, proxyError: true }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Fetch failed',
       proxyError: true,

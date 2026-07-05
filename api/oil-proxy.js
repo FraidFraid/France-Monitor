@@ -1,3 +1,6 @@
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from './utils/safe-fetch.js';
+import { checkRateLimit, rateLimitResponse } from './utils/rate-limit.js';
+
 export const config = { runtime: 'edge' };
 
 const ALLOWED_DOMAINS = [
@@ -27,6 +30,9 @@ function isAllowedDomain(url) {
 }
 
 export default async function handler(request) {
+  const rl = await checkRateLimit('oil-proxy', request);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
 
@@ -45,14 +51,14 @@ export default async function handler(request) {
   }
 
   try {
-    const resp = await fetch(targetUrl, {
+    // safeFetch : redirections revalidées contre l'allowlist (anti-SSRF)
+    const { response: resp } = await safeFetch(targetUrl, ALLOWED_DOMAINS, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/json,text/csv,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',
       },
-      redirect: 'follow',
       signal: AbortSignal.timeout(30_000),
     });
 
@@ -64,8 +70,8 @@ export default async function handler(request) {
     }
 
     const contentType = resp.headers.get('content-type') ?? 'text/plain; charset=utf-8';
-    const isBinary = /application\/(x-zip-compressed|zip|octet-stream)/i.test(contentType);
-    const body = isBinary ? await resp.arrayBuffer() : await resp.text();
+    // Octets bruts (plafonnés) : passthrough fidèle pour texte comme binaire (zip, csv…)
+    const body = await readCapped(resp, MAX_RESPONSE_BYTES);
     return new Response(body, {
       status: 200,
       headers: {
@@ -75,6 +81,13 @@ export default async function handler(request) {
       },
     });
   } catch (error) {
+    if (error instanceof SafeFetchError) {
+      const status = error.code === 'DOMAIN_NOT_ALLOWED' || error.code === 'INVALID_URL' ? 403 : 502;
+      return new Response(JSON.stringify({ error: 'Fetch refused', code: error.code, proxyError: true }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Fetch failed',
       proxyError: true,

@@ -4,6 +4,9 @@
  * Identique au plugin Vite mais en Edge Function.
  */
 
+import { safeFetch, readCapped, decodeBody, SafeFetchError, MAX_RESPONSE_BYTES } from './utils/safe-fetch.js';
+import { checkRateLimit, rateLimitResponse } from './utils/rate-limit.js';
+
 export const config = { runtime: 'edge' };
 
 // Domaines RSS autorisés (allowlist SSRF)
@@ -72,6 +75,10 @@ function isAllowedDomain(url) {
  * @returns {Promise<Response>}
  */
 export default async function handler(request) {
+    // Rate limiting fenêtre fixe par IP (fail-open si Redis indisponible)
+    const rl = await checkRateLimit('rss-proxy', request);
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
     const { searchParams } = new URL(request.url);
     const feedUrl = searchParams.get('url');
 
@@ -112,14 +119,14 @@ export default async function handler(request) {
         ];
         const ua = userAgents[Math.floor(Math.random() * userAgents.length)];
 
-        const resp = await fetch(feedUrl, {
+        // safeFetch : redirections suivies manuellement et revalidées contre l'allowlist (anti-SSRF)
+        const { response: resp } = await safeFetch(feedUrl, ALLOWED_RSS_DOMAINS, {
             headers: {
                 'User-Agent': ua,
                 'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
                 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
                 'Cache-Control': 'no-cache',
             },
-            redirect: 'follow', // Suivre les redirections 301/302
             signal: AbortSignal.timeout(8000),
         });
 
@@ -130,7 +137,8 @@ export default async function handler(request) {
             });
         }
 
-        const xml = await resp.text();
+        const bytes = await readCapped(resp, MAX_RESPONSE_BYTES);
+        const xml = decodeBody(bytes, resp.headers.get('content-type'));
         return new Response(xml, {
             status: 200,
             headers: {
@@ -140,6 +148,14 @@ export default async function handler(request) {
             },
         });
     } catch (err) {
+        if (err instanceof SafeFetchError) {
+            // Redirection vers un domaine non autorisé → 403 ; taille/redirections → 502
+            const status = err.code === 'DOMAIN_NOT_ALLOWED' || err.code === 'INVALID_URL' ? 403 : 502;
+            return new Response(JSON.stringify({ error: 'Fetch refused', code: err.code }), {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
         return new Response(JSON.stringify({ error: 'Fetch failed', message: err.message }), {
             status: 502,
             headers: { 'Content-Type': 'application/json' },

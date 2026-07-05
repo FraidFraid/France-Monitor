@@ -14,6 +14,7 @@ Flux ciblés (Cloudflare 403):
 import os
 import re
 import time
+import hmac
 import hashlib
 from itertools import islice
 from flask import Flask, request, Response, jsonify
@@ -414,11 +415,20 @@ def fetch_enedis_incidents():
 
 @app.route('/clear-cache', methods=['POST'])
 def clear_cache():
-    """Vide le cache (admin)."""
+    """Vide le cache (admin — protégé par X-Admin-Token)."""
+    admin_token = os.environ.get('SCRAPLING_ADMIN_TOKEN')
+    # Fermé par défaut : sans token configuré, l'endpoint est désactivé (403).
+    if not admin_token:
+        return jsonify({'error': 'Admin endpoint disabled'}), 403
+    provided = request.headers.get('X-Admin-Token', '')
+    # Comparaison à temps constant pour éviter les attaques temporelles.
+    if not hmac.compare_digest(provided, admin_token):
+        return jsonify({'error': 'Forbidden'}), 403
     _cache.clear()
     _incident_cache.clear()
     return jsonify({'status': 'ok', 'message': 'All caches cleared'})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('DEBUG', False))
+    # debug forcé à False : le débogueur Werkzeug exposé en prod = RCE.
+    app.run(host='0.0.0.0', port=port, debug=False)

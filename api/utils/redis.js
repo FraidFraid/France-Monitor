@@ -62,6 +62,28 @@ export async function redisSetNX(key, value, ttlSec) {
 }
 
 /**
+ * Fixed-window counter: INCR key, and set EXPIRE ttlSec on the first hit only.
+ * Returns the current count, or null if Redis is unavailable/errored (fail-open —
+ * callers should let the request through when null).
+ * @param {string} key
+ * @param {number} ttlSec
+ * @returns {Promise<number | null>}
+ */
+export async function redisIncrFixedWindow(key, ttlSec) {
+  if (!redis) return null;
+  try {
+    const count = await redis.incr(key);
+    // Pose le TTL uniquement au démarrage de la fenêtre (fenêtre fixe, pas glissante).
+    if (count === 1) {
+      await redis.expire(key, ttlSec);
+    }
+    return typeof count === 'number' ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * MGET — fetches multiple keys in one pipeline call.
  * Returns an array of the same length as keys; absent keys are null.
  * @param {string[]} keys

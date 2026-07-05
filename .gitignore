@@ -57,3 +57,4 @@ worktrees/
 # Tooling scratch (superpowers skill sessions) & macOS Finder icon artifact
 .superpowers/
 Icon?
+__pycache__/
