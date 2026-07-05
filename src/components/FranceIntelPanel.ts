@@ -547,17 +547,20 @@ export class FranceIntelPanel extends Panel {
         `<span class="frintel-chip">ACTION · ${escapeHtml(a.label)}</span>`).join('');
       const sourceChips = s.sourceRefs.slice(0, 5).map((r) =>
         `<span class="frintel-chip">${escapeHtml(r)}</span>`).join('');
+      // Lien bouton ↔ zone dépliée pour les lecteurs d'écran : le détail n'est
+      // rendu que déplié, donc aria-controls n'est posé que lorsqu'il existe.
+      const detailId = `frintel-sit-detail-${escapeHtml(s.id)}`;
       return `
         <article class="frintel-sit${expanded ? ' is-expanded' : ''}" data-sit-id="${escapeHtml(s.id)}">
           <span class="frintel-sit-rail" style="background:${color};"></span>
           <div class="frintel-sit-body">
-            <button type="button" class="frintel-sit-head" aria-expanded="${expanded ? 'true' : 'false'}">
+            <button type="button" class="frintel-sit-head" aria-expanded="${expanded ? 'true' : 'false'}"${expanded ? ` aria-controls="${detailId}"` : ''}>
               <span class="frintel-sit-code">${sitCode(s.id)} · ${escapeHtml(s.type)}</span>
               <span class="frintel-sit-sev" style="color:${color};">${s.severity.toUpperCase()} · CONF ${s.confidence.toFixed(2)}</span>
             </button>
             <div class="frintel-sit-title">${escapeHtml(s.title)}</div>
             ${expanded ? `
-              <div class="frintel-sit-detail">
+              <div class="frintel-sit-detail" id="${detailId}">
                 <p class="frintel-sit-summary">${escapeHtml(s.summary)}</p>
                 <div class="frintel-sit-drivers">${drivers}</div>
                 <div class="frintel-sit-tags">${zoneChips}${sourceChips}${actionChips}</div>
@@ -593,6 +596,8 @@ export class FranceIntelPanel extends Panel {
         else this.expandedSituations.add(id);
         const scrollTop = this.contentEl.scrollTop;
         this.renderContent(this.lastSnapshot);
+        // Le re-render recrée un slot infra vide : re-monter le widget immédiatement.
+        this.mountInfrastructureWidget();
         this.contentEl.scrollTop = scrollTop;
       });
     });
