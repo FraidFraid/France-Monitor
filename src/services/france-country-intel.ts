@@ -37,6 +37,10 @@ import type {
   FuelTensionDashboard,
   ThreatEvent,
   StructuredBrief,
+  SituationSeverity,
+  DetectedSituation,
+  FranceScoreBreakdown,
+  FranceScorePillarBreakdown,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -282,6 +286,71 @@ function computeFranceRiskPillars(
   return { continuity, defense, security, signal, shock };
 }
 
+// ─── Score v3 : baseline − déductions progressives (spec §4) ─────────────────
+
+const SCORE_BASELINE = 95;
+const SCORE_WEIGHTS = { continuity: 0.35, security: 0.30, signal: 0.20, defense: 0.15 } as const;
+const NOISE_CEILING = 15;        // sous ce niveau : bruit ambiant (×0,25)
+const ESCALATION_FLOOR = 40;     // au-delà : aggravation sur-linéaire (×1,2)
+const NOISE_FACTOR = 0.25;
+const ESCALATION_FACTOR = 1.2;
+const SHOCK_FLOOR = 50;
+const SHOCK_FACTOR = 0.25;
+const SMOOTHING_ALPHA = 0.5;
+const SMOOTHING_BREAK_DELTA = 15;
+const CAP_ONE_CRITICAL = 55;
+const CAP_TWO_HIGH = 65;
+const CAP_ONE_HIGH = 78;
+
+/** Réponse progressive par morceaux : le bruit pèse peu, la vraie pression pèse plein pot. */
+export function pillarResponse(value: number): number {
+  const v = Math.max(0, value);
+  const noise = Math.min(v, NOISE_CEILING) * NOISE_FACTOR;
+  const linear = Math.max(0, Math.min(v, ESCALATION_FLOOR) - NOISE_CEILING);
+  const escalation = Math.max(0, v - ESCALATION_FLOOR) * ESCALATION_FACTOR;
+  return noise + linear + escalation;
+}
+
+export interface FranceScoreResult {
+  score: number;
+  deductions: Record<'continuity' | 'security' | 'signal' | 'defense', number>;
+  shockExtra: number;
+  situationCap: number | null;
+}
+
+export function scoreFromPillars(
+  pillars: { continuity: number; security: number; signal: number; defense: number; shock: number },
+  situations: ReadonlyArray<{ severity: SituationSeverity }> = [],
+  previousScore: number | null = null,
+): FranceScoreResult {
+  const deductions = {
+    continuity: SCORE_WEIGHTS.continuity * pillarResponse(pillars.continuity),
+    security: SCORE_WEIGHTS.security * pillarResponse(pillars.security),
+    signal: SCORE_WEIGHTS.signal * pillarResponse(pillars.signal),
+    defense: SCORE_WEIGHTS.defense * pillarResponse(pillars.defense),
+  };
+  const shockExtra = Math.max(0, pillars.shock - SHOCK_FLOOR) * SHOCK_FACTOR;
+  const total = deductions.continuity + deductions.security + deductions.signal
+    + deductions.defense + shockExtra;
+  let score = clamp(Math.round(SCORE_BASELINE - total));
+
+  // Lissage EMA — débrayé sur vraie rupture pour ne jamais masquer un choc
+  if (previousScore != null && Math.abs(score - previousScore) <= SMOOTHING_BREAK_DELTA) {
+    score = Math.round(SMOOTHING_ALPHA * score + (1 - SMOOTHING_ALPHA) * previousScore);
+  }
+
+  // Cohérence inter-blocs : le score ne peut pas dire « stable » avec une situation grave affichée
+  const criticalCount = situations.filter((s) => s.severity === 'critical').length;
+  const highCount = situations.filter((s) => s.severity === 'high').length;
+  const situationCap = criticalCount >= 1 ? CAP_ONE_CRITICAL
+    : highCount >= 2 ? CAP_TWO_HIGH
+    : highCount >= 1 ? CAP_ONE_HIGH
+    : null;
+  if (situationCap != null && score > situationCap) score = situationCap;
+
+  return { score, deductions, shockExtra, situationCap };
+}
+
 function selectDiverseNews(items: NewsItem[], maxItems: number, maxPerSource = 2): NewsItem[] {
   if (maxItems <= 0) return [];
 
@@ -493,51 +562,92 @@ export function buildFranceBriefContext(
 }
 
 /**
- * Compute the top-level stability index (0–100).
- *
- * WorldMonitor-style approach:
- * - start from a country baseline (France is usually a high-stability country)
- * - subtract only the dynamic pressure that exceeds the ambient "normal" range
- * - apply extra deductions only for genuinely high / critical shocks
- *
- * Calibration target for France:
- * - stable                  => ~80–100
- * - under pressure          => ~65–79
- * - degraded                => ~50–64
- * - critical                => <50
+ * Indice de stabilité v3 (0–100). Baseline 95 − déductions progressives par pilier.
+ * Voir docs/superpowers/specs/2026-07-05-refonte-country-intelligence-design.md §4.
  */
 export function computeFranceRiskScore(
   axes: FranceCountryAxes,
   raw?: FranceRawData,
   signals?: FranceCountrySignals,
   isnr?: ISNRData | null,
+  situations: ReadonlyArray<{ severity: SituationSeverity }> = [],
+  previousScore: number | null = null,
 ): number {
-  if (!raw || !signals) {
-    const fallbackRisk = averageWeighted([
-      { value: axes.continuity, weight: 35 },
-      { value: axes.defense, weight: 15 },
-      { value: axes.security, weight: 30 },
-      { value: axes.signal, weight: 20 },
-    ]);
-    return clamp((100 - fallbackRisk) * 2);
-  }
+  const pillars = raw && signals
+    ? computeFranceRiskPillars(raw, signals, isnr ?? null)
+    : { continuity: axes.continuity, defense: axes.defense, security: axes.security, signal: axes.signal, shock: 0 };
+  return scoreFromPillars(pillars, situations, previousScore).score;
+}
 
-  const pillars = computeFranceRiskPillars(raw, signals, isnr ?? null);
-  const structuralRisk = averageWeighted([
-    { value: pillars.continuity, weight: 35 },
-    { value: pillars.security, weight: 30 },
-    { value: pillars.signal, weight: 20 },
-    { value: pillars.defense, weight: 15 },
-  ]);
-  // Shock poids réduit : 15% au lieu de 25% pour éviter les sauts sur un seul headline
-  const totalRisk = clamp(Math.round((structuralRisk * 0.85) + (pillars.shock * 0.15)));
+/** Détail explicable du score : déductions par pilier + composantes nommées (top 3). */
+export function computeFranceScoreBreakdown(
+  raw: FranceRawData,
+  signals: FranceCountrySignals,
+  isnr: ISNRData | null,
+  situations: ReadonlyArray<{ severity: SituationSeverity }> = [],
+  previousScore: number | null = null,
+): FranceScoreBreakdown {
+  const pillars = computeFranceRiskPillars(raw, signals, isnr);
+  const result = scoreFromPillars(pillars, situations, previousScore);
 
-  // Multi-pressure floor: si ≥3 piliers sont actifs (≥20), le score ne peut pas excéder 85
-  const activePillars = [pillars.continuity, pillars.defense, pillars.security, pillars.signal]
-    .filter((v) => v >= 20).length;
-  const rawScore = clamp((100 - totalRisk) * 2);
-  if (activePillars >= 3 && rawScore > 85) return 85;
-  return rawScore;
+  const scores = isnr?.scores ?? [];
+  const isnrSocial = avgDim(scores, 'social');
+  const isnrInfra = avgDim(scores, 'infra');
+  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  }).score;
+
+  const componentsByPillar: Record<FranceScorePillarBreakdown['key'], Array<{ label: string; value: number }>> = {
+    continuity: [
+      { label: 'Pression électrique', value: Math.max(powerPressure(signals), ecowattPressure(raw)) },
+      { label: 'Carburants & pétrole', value: fuelPressure(raw) },
+      { label: 'Transport', value: transportPressure(signals) },
+      { label: 'Télécom', value: telecomPressure(signals) },
+      { label: 'Météo / infra', value: Math.max(weatherPressure(signals), isnrInfra) },
+    ],
+    security: [
+      { label: 'Pression cyber', value: cyberScore },
+      { label: 'Report défense', value: pillars.defense },
+      { label: 'Titres critiques', value: headlinePressure(signals) },
+    ],
+    signal: [
+      { label: 'Tension sociale (ISNR)', value: isnrSocial },
+      { label: 'Pression informationnelle', value: signalPressure(signals) },
+      { label: 'Stress marchés', value: clamp(scaleCount(signals.marketStress, 5, 60)) },
+      { label: 'Feux actifs', value: clamp(scaleCount(signals.fireDetections, 15, 50)) },
+    ],
+    defense: [
+      {
+        label: 'Câbles sous-marins',
+        value: clamp(scaleCount(signals.defenseHigh, 4, 35)
+          + scaleCount(Math.max(0, signals.defenseAlerts - signals.defenseHigh), 6, 15)),
+      },
+      { label: 'Brouillage GPS', value: clamp(scaleCount(signals.jammingSignals, 4, 30)) },
+      { label: 'Vols militaires', value: clamp(scaleCount(Math.max(0, signals.militaryFlights - 10), 30, 20)) },
+    ],
+  };
+
+  const pillarBreakdowns: FranceScorePillarBreakdown[] = (
+    ['continuity', 'security', 'signal', 'defense'] as const
+  ).map((key) => ({
+    key,
+    value: pillars[key],
+    deduction: Math.round(result.deductions[key] * 10) / 10,
+    components: componentsByPillar[key]
+      .filter((c) => c.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 3),
+  }));
+
+  return {
+    score: result.score,
+    baseline: SCORE_BASELINE,
+    pillars: pillarBreakdowns,
+    shockValue: pillars.shock,
+    shockExtra: Math.round(result.shockExtra * 10) / 10,
+    situationCap: result.situationCap,
+  };
 }
 
 /**
@@ -552,12 +662,20 @@ export function computeFranceRiskScore(
  */
 export function buildFranceCountrySnapshot(
   raw: FranceRawData,
-  options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
+  options?: {
+    brief?: StructuredBrief | null;
+    briefFreshness?: 'fresh' | 'cached';
+    previousScore?: number | null;
+  },
 ): FranceCountrySnapshot {
   const signals = buildFranceSignals(raw);
   const axes = computeFranceAxes(signals, raw.isnrData, raw);
+  const situations: DetectedSituation[] = detectSituations(raw);
+  const scoreBreakdown = computeFranceScoreBreakdown(
+    raw, signals, raw.isnrData ?? null, situations, options?.previousScore ?? null,
+  );
+  const score = scoreBreakdown.score;
   const partialCtx = buildFranceBriefContext(signals, axes, raw);
-  const score = computeFranceRiskScore(axes, raw, signals, raw.isnrData);
   const briefContext: FranceBriefContext = { ...partialCtx, score };
 
   // Fallback stubs when raw data is unavailable
@@ -574,20 +692,11 @@ export function buildFranceCountrySnapshot(
     vulnerabilities: { criticalCount: 0, topCVEs: [] },
   };
 
-  const situations = detectSituations(raw);
-
   return {
     signals,
     axes,
     score,
-    scoreBreakdown: {
-      score,
-      baseline: 95,
-      pillars: [],
-      shockValue: 0,
-      shockExtra: 0,
-      situationCap: null,
-    },
+    scoreBreakdown,
     briefContext,
     situations,
     stability,
