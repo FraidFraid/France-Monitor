@@ -1,8 +1,7 @@
 /**
  * vigilance-meteo.ts — Service vigilance Météo-France.
  *
- * Appel direct à l'API publique (pas de proxy).
- * En local : utilise VITE_METEOFRANCE_API_KEY dans .env
+ * Passe par le proxy serveur /api/weather/vigilance (la clé API reste côté serveur).
  *
  * Doc API : https://portail-api.meteofrance.fr/web/fr/api/DPVigilance
  *
@@ -19,7 +18,7 @@ import { Watchdog } from './watchdog.ts';
 Watchdog.register('meteo-france', {
     label: 'Météo-France',
     staleAfterMs: 15 * 60_000,
-    detail: 'API DPVigilance publique · apikey VITE_METEOFRANCE_API_KEY',
+    detail: 'Proxy serveur /api/weather/vigilance (clé côté serveur)',
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -302,27 +301,19 @@ interface VigilanceApiResponse {
 // FETCH
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const API_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
+// Proxy serveur : la clé Météo-France (header apikey) est ajoutée côté serveur.
+const API_URL = '/api/weather/vigilance';
 
 /**
  * Fetch alertes de vigilance Météo-France.
  * Retourne uniquement les départements en alerte (jaune+).
  *
- * Authentification : header `apikey` avec la valeur de VITE_METEOFRANCE_API_KEY
- * Alternative possible : header `Authorization: Bearer <token>` (décommenter si besoin)
+ * Authentification gérée côté serveur (proxy /api/weather/vigilance).
  */
 export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
     // Retourner le cache s'il est valide
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
         return cache.data;
-    }
-
-    // Vérifier la présence de la clé API
-    const apiKey = import.meta.env.VITE_METEOFRANCE_API_KEY;
-    if (!apiKey) {
-        console.info('[MeteoFrance] API key missing (VITE_METEOFRANCE_API_KEY), skipping fetch');
-        Watchdog.report('meteo-france', { type: 'failure', error: 'VITE_METEOFRANCE_API_KEY manquante' });
-        return [];
     }
 
     Watchdog.report('meteo-france', { type: 'loading' });
@@ -332,10 +323,6 @@ export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
         const resp = await fetch(API_URL, {
             headers: {
                 'Accept': 'application/json',
-                // ══ Variante 1 : header apikey (standard Météo-France) ══
-                'apikey': apiKey,
-                // ══ Variante 2 : Bearer token ══
-                // 'Authorization': `Bearer ${apiKey}`,
             },
             signal: AbortSignal.timeout(8000),
         });
@@ -390,18 +377,10 @@ export async function fetchVigilanceTimeline(): Promise<VigilanceTimeline> {
         return timelineCache.data;
     }
 
-    // Vérifier la présence de la clé API
-    const apiKey = import.meta.env.VITE_METEOFRANCE_API_KEY;
-    if (!apiKey) {
-        console.info('[MeteoFrance] API key missing, returning empty timeline');
-        return createEmptyTimeline();
-    }
-
     try {
         const resp = await fetch(API_URL, {
             headers: {
                 'Accept': 'application/json',
-                'apikey': apiKey,
             },
             signal: AbortSignal.timeout(8000),
         });

@@ -768,18 +768,16 @@ export class DeckGLMap {
     this.map.addSource(SRC_OIL_REFINERIES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_OIL_DEPOTS, { type: 'geojson', data: emptyFC() });
 
-    // Traffic (TomTom API) - France only
-    const tomtomKey = import.meta.env.VITE_TOMTOM_API_KEY;
-    if (tomtomKey) {
-      this.map.addSource(SRC_TRAFFIC, {
-        type: 'raster',
-        tiles: [`https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?tileSize=256&key=${tomtomKey}`],
-        tileSize: 256,
-        bounds: [-5.2, 41.3, 9.6, 51.1] // Tighter bounding box for France métropolitaine
-      });
-    } else {
-      this.map.addSource(SRC_TRAFFIC, { type: 'geojson', data: emptyFC() });
-    }
+    // Traffic (TomTom) — France only.
+    // Les tuiles passent par le proxy serveur /api/traffic/tile : la clé TomTom reste
+    // côté serveur. Si le serveur n'a pas de clé, les tuiles échouent silencieusement
+    // (MapLibre gère). La couche reste masquée par défaut (contrôlée par setVis).
+    this.map.addSource(SRC_TRAFFIC, {
+      type: 'raster',
+      tiles: ['/api/traffic/tile?z={z}&x={x}&y={y}'],
+      tileSize: 256,
+      bounds: [-5.2, 41.3, 9.6, 51.1] // Tighter bounding box for France métropolitaine
+    });
 
     // Traffic Incidents (TomTom temps réel) — source alimentée par un index supercluster JS
     this.map.addSource(SRC_TRAFFIC_INCIDENTS, { type: 'geojson', data: emptyFC() });
@@ -1331,28 +1329,19 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Traffic: TomTom Raster ───
-    if (import.meta.env.VITE_TOMTOM_API_KEY) {
-      this.map.addLayer({
-        id: LYR_TRAFFIC,
-        type: 'raster',
-        source: SRC_TRAFFIC,
-        minzoom: 10,
-        paint: {
-          'raster-opacity': 0.8,
-          'raster-resampling': 'nearest'
-        }
-      });
-    } else {
-      // Fallback empty layer
-      this.map.addLayer({
-        id: LYR_TRAFFIC,
-        type: 'raster',
-        source: SRC_TRAFFIC,
-        minzoom: 10,
-        paint: { 'raster-opacity': 0 }
-      });
-    }
+    // ─── Traffic: TomTom Raster (via proxy /api/traffic/tile) ───
+    // Visibilité pilotée par setVis(LYR_TRAFFIC, …) selon l'état du layer trafficRoad ;
+    // si le serveur n'a pas de clé TomTom, les tuiles échouent silencieusement.
+    this.map.addLayer({
+      id: LYR_TRAFFIC,
+      type: 'raster',
+      source: SRC_TRAFFIC,
+      minzoom: 10,
+      paint: {
+        'raster-opacity': 0.8,
+        'raster-resampling': 'nearest'
+      }
+    });
 
     // ─── Traffic Incident Clusters (TomTom / Supercluster JS) ───
     this.map.addLayer({
@@ -11431,11 +11420,9 @@ export class DeckGLMap {
   // ─── Traffic Layer & Incidents ───
 
   updateTraffic(_trafficData?: Array<{ start: [number, number], end: [number, number], level: string }>): void {
-    // Traffic tiles are loaded automatically by MapLibre from TomTom source
+    // Les tuiles trafic sont chargées automatiquement par MapLibre via le proxy
+    // /api/traffic/tile (clé TomTom côté serveur). Rien à faire côté client ici.
     if (!this.map) return;
-    if (!import.meta.env.VITE_TOMTOM_API_KEY) {
-      console.warn('[DeckGLMap] TomTom API Key missing. Traffic layers will be empty.');
-    }
   }
 
   updateTrafficIncidents(incidents: any[]): void {

@@ -21,6 +21,9 @@ import { arcepProxyPlugin } from './src/plugins/arcep-proxy';
 import { healthProxyPlugin } from './src/plugins/health-proxy';
 import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
 import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
+import { trafficFlowProxyPlugin } from './src/plugins/traffic-flow-proxy';
+import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
+import { weatherVigilanceProxyPlugin } from './src/plugins/weather-vigilance-proxy';
 import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
@@ -141,6 +144,9 @@ export default defineConfig(({ mode }) => {
       healthProxyPlugin(),
       airTrafficProxyPlugin(),
       trafficRoadProxyPlugin(),
+      trafficFlowProxyPlugin(),
+      trafficTileProxyPlugin(),
+      weatherVigilanceProxyPlugin(),
       militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
       fuelPricesProxyPlugin(),

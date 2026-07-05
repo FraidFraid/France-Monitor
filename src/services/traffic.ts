@@ -415,12 +415,7 @@ export async function fetchTrafficIncidents(): Promise<TrafficIncident[]> {
         return cached.data;
     }
 
-    const tomtomKey = import.meta.env.VITE_TOMTOM_API_KEY;
-    if (!tomtomKey) {
-        console.warn('[traffic.ts] Clé API TomTom absente.');
-        return [];
-    }
-
+    // La clé TomTom reste côté serveur : les incidents passent par /api/traffic/road.
     if (incidentFetchPromise) {
         return incidentFetchPromise;
     }
@@ -505,9 +500,6 @@ export function clearTrafficIncidentCache(): void {
 }
 
 export async function fetchTrafficFlowSegment(lat: number, lon: number, zoom = 10): Promise<TrafficFlowSegment | null> {
-    const tomtomKey = import.meta.env.VITE_TOMTOM_API_KEY;
-    if (!tomtomKey) return null;
-
     const key = `${lat.toFixed(4)},${lon.toFixed(4)},${zoom}`;
     const cached = flowCache.get(key);
     if (cached && Date.now() - cached.fetchedAt < FLOW_CACHE_TTL) {
@@ -520,7 +512,8 @@ export async function fetchTrafficFlowSegment(lat: number, lon: number, zoom = 1
     }
 
     const safeZoom = Math.max(0, Math.min(22, Math.round(zoom)));
-    const url = `https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/${safeZoom}/json?key=${tomtomKey}&point=${lat},${lon}&unit=kmph&thickness=10`;
+    // La clé TomTom reste côté serveur : on passe par le proxy /api/traffic/flow.
+    const url = `/api/traffic/flow?point=${lat},${lon}&zoom=${safeZoom}`;
 
     try {
         const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -529,14 +522,17 @@ export async function fetchTrafficFlowSegment(lat: number, lon: number, zoom = 1
         const data = await response.json();
         if (data?.detailedError) return null;
 
+        // L'API TomTom v4 imbrique les valeurs sous `flowSegmentData`.
+        const payload = data?.flowSegmentData ?? data;
+
         const segment: TrafficFlowSegment = {
-            currentSpeed: Number(data.currentSpeed) || 0,
-            freeFlowSpeed: Number(data.freeFlowSpeed) || 0,
-            currentTravelTime: Number(data.currentTravelTime) || 0,
-            freeFlowTravelTime: Number(data.freeFlowTravelTime) || 0,
-            confidence: Number(data.confidence) || 0,
-            roadClosure: data.roadClosure === true,
-            frc: typeof data.frc === 'string' ? data.frc : undefined,
+            currentSpeed: Number(payload.currentSpeed) || 0,
+            freeFlowSpeed: Number(payload.freeFlowSpeed) || 0,
+            currentTravelTime: Number(payload.currentTravelTime) || 0,
+            freeFlowTravelTime: Number(payload.freeFlowTravelTime) || 0,
+            confidence: Number(payload.confidence) || 0,
+            roadClosure: payload.roadClosure === true,
+            frc: typeof payload.frc === 'string' ? payload.frc : undefined,
         };
 
         flowCache.set(key, { data: segment, fetchedAt: Date.now() });

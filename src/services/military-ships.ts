@@ -114,8 +114,12 @@ const FRENCH_NAVY_SHIPS: Array<Omit<MilitaryShip, 'lat' | 'lon'> & { homeLat: nu
     { id: 'a608', name: 'Somme', type: 'Ravitailleur', role: 'Soutien logistique', mmsi: '227202000', port: 'Brest', homeLat: 48.380, homeLon: -4.500 },
 ];
 
-// Clé API aisstream.io (optionnelle — en .env)
-const AISSTREAM_KEY = import.meta.env.VITE_AISSTREAM_KEY ?? '';
+// Clé API aisstream.io — DEV UNIQUEMENT.
+// En prod, le flux AIS passe exclusivement par le relais WebSocket (VITE_AIS_RELAY_URL),
+// jamais par une connexion directe. On ne lit donc VITE_AISSTREAM_KEY qu'en mode dev :
+// le ternaire `import.meta.env.DEV ? … : ''` est éliminé (dead code) au build de prod,
+// ce qui garantit que la clé n'est jamais inlinée dans le bundle public.
+const AISSTREAM_KEY = import.meta.env.DEV ? (import.meta.env.VITE_AISSTREAM_KEY ?? '') : '';
 
 // Cache des positions live AIS - stocke TOUS les navires reçus (pas seulement Marine Nationale)
 interface LivePosition {
