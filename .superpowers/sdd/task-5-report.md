@@ -150,3 +150,35 @@ La prévalidation `map.loadImage(imageUrl)` de la première correction ne rendai
 - `git diff --check` : succès.
 
 Les avertissements de build préexistants restent inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` sont toujours préservés hors périmètre.
+
+---
+
+## Troisième vague de review — cycle de vie et transaction MapLibre
+
+### RED → GREEN
+
+- RED : 3 scénarios importants échouaient : un décodage résolu après `destroy()` recréait l’état radar et fuyait sa Blob URL, un bitmap résolu après timeout n’était jamais fermé, et une exception de `removeLayer` précédant le `try` laissait la candidate non révoquée sans rollback.
+- GREEN : chaque opération radar reçoit une génération et capture l’instance MapLibre courante. Une nouvelle opération ou `destroy()` invalide la génération ; les contrôles après chaque attente empêchent tout commit obsolète et révoquent la candidate.
+- `destroy()` marque explicitement l’instance détruite, incrémente la génération, révoque l’URL active et remet manifeste/état enabled à zéro.
+- Le résultat de `loadImage()` ferme systématiquement son image lorsqu’elle expose `close()`, y compris s’il arrive après un timeout.
+- Toute la phase de mutation (`removeLayer`/`removeSource`/`addSource`/`addLayer`) est désormais incluse dans le `try/catch/finally`. La candidate est toujours révoquée hors commit et le rollback de l’ancien Blob/manifeste/enabled est tenté même si la suppression initiale lève.
+
+### Couverture renforcée
+
+- destroy pendant un `loadImage` différé, puis résolution tardive sans recréation d’état ;
+- fermeture d’un ImageBitmap arrivé après timeout ;
+- exception `removeLayer` avec restauration et révocation candidate ;
+- refus MIME invalide avant Blob URL ;
+- refus `Content-Length` supérieur à 16 MiB avant lecture/décodage.
+
+### Vérifications fraîches
+
+- tests transactionnels radar : 15/15 ;
+- tests ciblés MTG/radar : 4 fichiers, 60 tests réussis ;
+- `npm test` : 29 fichiers, 244 tests réussis ;
+- `npm run typecheck` : succès ;
+- `npm run lint` : succès ;
+- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée ;
+- `git diff --check` : succès.
+
+Les deux avertissements de build préexistants sont inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` restent hors périmètre et hors index.

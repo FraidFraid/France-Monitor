@@ -446,6 +446,8 @@ export class DeckGLMap {
   private _radar2dEnabled = false;
   private radar2dManifest: Radar2dManifest | null = null;
   private radar2dObjectUrl: string | null = null;
+  private radar2dOperationGeneration = 0;
+  private radar2dDestroyed = false;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
@@ -10988,10 +10990,13 @@ export class DeckGLMap {
   }
 
   async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
+    if (this.radar2dDestroyed) return;
+    const operationGeneration = ++this.radar2dOperationGeneration;
     if (!this.map) {
       this._radar2dEnabled = enabled;
       return;
     }
+    const operationMap = this.map;
     if (!manifest) {
       this.removeRadar2dLayer();
       this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);
@@ -11015,36 +11020,48 @@ export class DeckGLMap {
     // Fetch the remote asset exactly once, then validate and install the same
     // local Blob URL. The image source can no longer trigger a second network
     // request whose asynchronous failure would escape this transaction.
-    const candidateObjectUrl = await this.prepareRadar2dImage(manifest.imageUrl);
-    this.removeRadar2dLayer();
+    const candidateObjectUrl = await this.prepareRadar2dImage(
+      manifest.imageUrl,
+      operationMap,
+      operationGeneration,
+    );
+    let committed = false;
     try {
+      this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
+      this.removeRadar2dLayer();
       this._radar2dEnabled = enabled;
       this.addRadar2dLayer(manifest, candidateObjectUrl);
+      this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
       this.radar2dManifest = manifest;
       this.radar2dObjectUrl = candidateObjectUrl;
+      committed = true;
       this.revokeRadar2dObjectUrl(previousObjectUrl);
     } catch (error) {
-      this.removeRadar2dLayer();
-      this.revokeRadar2dObjectUrl(candidateObjectUrl);
       this._radar2dEnabled = previousEnabled;
-      if (previous && previousObjectUrl) {
-        try {
+      try {
+        this.removeRadar2dLayer();
+        if (previous && previousObjectUrl) {
           this.addRadar2dLayer(previous, previousObjectUrl);
           this.radar2dManifest = previous;
           this.radar2dObjectUrl = previousObjectUrl;
-        } catch (rollbackError) {
+        } else {
           this.radar2dManifest = null;
           this.radar2dObjectUrl = null;
-          this.revokeRadar2dObjectUrl(previousObjectUrl);
-          console.error('[DeckGLMap] Failed to restore previous radar 2D layer', rollbackError);
         }
+      } catch (rollbackError) {
+        console.error('[DeckGLMap] Failed to restore previous radar 2D layer', rollbackError);
       }
       throw error;
+    } finally {
+      if (!committed) this.revokeRadar2dObjectUrl(candidateObjectUrl);
     }
   }
 
-  private async prepareRadar2dImage(url: string): Promise<string> {
-    if (!this.map) throw new Error('MapLibre map is unavailable');
+  private async prepareRadar2dImage(
+    url: string,
+    operationMap: maplibregl.Map,
+    operationGeneration: number,
+  ): Promise<string> {
     const timeoutMs = 10_000;
     const maxBytes = 16 * 1024 * 1024;
     const controller = new AbortController();
@@ -11059,6 +11076,7 @@ export class DeckGLMap {
             redirect: 'error',
             signal: controller.signal,
           });
+          this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
           if (!response.ok) throw new Error(`Radar 2D image HTTP ${response.status}`);
           const contentType = (response.headers.get('Content-Type') ?? '').split(';', 1)[0]?.trim().toLowerCase();
           if (contentType !== 'image/webp' && contentType !== 'image/png') {
@@ -11075,6 +11093,7 @@ export class DeckGLMap {
           try {
             while (true) {
               const { done, value } = await reader.read();
+              this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
               if (done) break;
               receivedBytes += value.byteLength;
               if (receivedBytes > maxBytes) {
@@ -11103,10 +11122,14 @@ export class DeckGLMap {
         }),
       ]);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
+      this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
 
       objectUrl = URL.createObjectURL(blob);
-      const loaded = await Promise.race([
-        this.map.loadImage(objectUrl),
+      const decoded = operationMap.loadImage(objectUrl).then(({ data }) => {
+        this.closeRadar2dDecodedImage(data);
+      });
+      await Promise.race([
+        decoded,
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(
             () => reject(new Error(`Radar 2D image decode timed out after ${timeoutMs}ms`)),
@@ -11114,14 +11137,34 @@ export class DeckGLMap {
           );
         }),
       ]);
-      const image = loaded.data as { close?: () => void };
-      image.close?.();
+      this.assertRadar2dOperationCurrent(operationMap, operationGeneration);
       return objectUrl;
     } catch (error) {
       if (objectUrl) this.revokeRadar2dObjectUrl(objectUrl);
       throw error;
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+  }
+
+  private assertRadar2dOperationCurrent(
+    operationMap: maplibregl.Map,
+    operationGeneration: number,
+  ): void {
+    if (
+      this.radar2dDestroyed
+      || this.map !== operationMap
+      || this.radar2dOperationGeneration !== operationGeneration
+    ) {
+      throw new Error('Radar 2D operation cancelled or superseded');
+    }
+  }
+
+  private closeRadar2dDecodedImage(image: HTMLImageElement | ImageBitmap): void {
+    try {
+      (image as { close?: () => void }).close?.();
+    } catch {
+      // Decoding was only a validation probe; cleanup must not break the swap.
     }
   }
 
@@ -12563,6 +12606,8 @@ export class DeckGLMap {
   }
 
   destroy(): void {
+    this.radar2dDestroyed = true;
+    this.radar2dOperationGeneration += 1;
     // Cleanup timeouts
     if (this.clusterHideTimeout) {
       clearTimeout(this.clusterHideTimeout);
@@ -12600,6 +12645,8 @@ export class DeckGLMap {
 
     this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);
     this.radar2dObjectUrl = null;
+    this.radar2dManifest = null;
+    this._radar2dEnabled = false;
     this.map?.remove();
     this.map = null;
   }
