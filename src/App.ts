@@ -1351,6 +1351,8 @@ export class App {
   private radar2dEnabled = false;
   private latestRadar2dManifest: Radar2dManifest | null = null;
   private radar2dRequestInFlight = false;
+  private radar2dTransitionGeneration = 0;
+  private radar2dTransitionQueue: Promise<void> = Promise.resolve();
   private fireObservationRuntime: FireObservationRuntimeState = {
     mtgFrp: {
       status: 'loading',
@@ -2778,20 +2780,25 @@ export class App {
       });
       panel.setOnRadar2dToggle((enabled) => {
         this.radar2dEnabled = enabled;
-        void runRadar2dToggleTransition({
-          enabled,
-          loadManifest: () => this.loadRadar2dManifest(),
-          disableOverlay: async () => {
-            await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
-          },
-          syncEnabled: (next) => {
-            this.radar2dEnabled = next;
-            this.firesPanel?.setRadar2dEnabled(next);
-          },
-          onError: (error) => {
-            console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
-          },
-        });
+        const generation = ++this.radar2dTransitionGeneration;
+        const isCurrent = (): boolean => generation === this.radar2dTransitionGeneration;
+        this.radar2dTransitionQueue = this.radar2dTransitionQueue.then(() =>
+          runRadar2dToggleTransition({
+            enabled,
+            isCurrent,
+            loadManifest: () => this.loadRadar2dManifest(false, isCurrent),
+            disableOverlay: async () => {
+              await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
+            },
+            syncEnabled: (next) => {
+              this.radar2dEnabled = next;
+              this.firesPanel?.setRadar2dEnabled(next);
+            },
+            onError: (error) => {
+              console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
+            },
+          }),
+        );
       });
       panel.setOnClose(() => {
         this.layoutEnvironmentFloatingPanels();
@@ -5780,7 +5787,10 @@ export class App {
     this._intervalMtgFrp = setInterval(() => poll(true), POLL_MTG_FRP_MS);
   }
 
-  private async loadRadar2dManifest(force = false): Promise<void> {
+  private async loadRadar2dManifest(
+    force = false,
+    isCurrent: () => boolean = () => true,
+  ): Promise<void> {
     if (this.radar2dRequestInFlight) return;
     this.radar2dRequestInFlight = true;
     Watchdog.register('fire-radar-2d', {
@@ -5799,6 +5809,8 @@ export class App {
     try {
       const result = await fetchRadar2dManifest(force);
       if (!result.configured) {
+        await this.mapContainer?.setRadar2dOverlay(null, false);
+        if (!isCurrent()) return;
         this.latestRadar2dManifest = null;
         this.fireObservationRuntime = {
           ...this.fireObservationRuntime,
@@ -5810,7 +5822,6 @@ export class App {
             detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
           },
         };
-        await this.mapContainer?.setRadar2dOverlay(null, false);
         Watchdog.report('fire-radar-2d', {
           type: 'success',
           responseTimeMs: Math.round(performance.now() - startedAt),
@@ -5819,40 +5830,36 @@ export class App {
         return;
       }
 
-      const previousManifest = this.latestRadar2dManifest;
-      this.latestRadar2dManifest = result.manifest;
       const observedAt = Date.parse(result.manifest.observedAt);
       const stale = result.degraded || Date.now() - observedAt > RADAR_2D_FRESHNESS_MS;
-      this.fireObservationRuntime = {
-        ...this.fireObservationRuntime,
-        radar2d: {
-          status: stale ? 'stale' : 'ok',
-          observedAt,
-          fetchedAt: Date.now(),
-          source: result.manifest.source,
-          ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
+      await installRadar2dObservation({
+        manifest: result.manifest,
+        enabled: this.radar2dEnabled,
+        isCurrent,
+        installOverlay: async (manifest, enabled) => {
+          await this.mapContainer?.setRadar2dOverlay(manifest, enabled);
         },
-      };
-      try {
-        await installRadar2dObservation({
-          manifest: result.manifest,
-          enabled: this.radar2dEnabled,
-          installOverlay: async (manifest, enabled) => {
-            await this.mapContainer?.setRadar2dOverlay(manifest, enabled);
-          },
-          reportSuccess: () => {
-            Watchdog.report('fire-radar-2d', {
-              type: 'success',
-              responseTimeMs: Math.round(performance.now() - startedAt),
-              detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
-            });
-          },
-        });
-      } catch (error) {
-        this.latestRadar2dManifest = previousManifest;
-        throw error;
-      }
+        reportSuccess: () => {
+          this.latestRadar2dManifest = result.manifest;
+          this.fireObservationRuntime = {
+            ...this.fireObservationRuntime,
+            radar2d: {
+              status: stale ? 'stale' : 'ok',
+              observedAt,
+              fetchedAt: Date.now(),
+              source: result.manifest.source,
+              ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
+            },
+          };
+          Watchdog.report('fire-radar-2d', {
+            type: 'success',
+            responseTimeMs: Math.round(performance.now() - startedAt),
+            detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
+          });
+        },
+      });
     } catch (error) {
+      if (!isCurrent()) throw error;
       this.fireObservationRuntime = {
         ...this.fireObservationRuntime,
         radar2d: this.latestRadar2dManifest

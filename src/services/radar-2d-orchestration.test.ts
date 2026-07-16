@@ -41,6 +41,55 @@ describe('installRadar2dObservation', () => {
 });
 
 describe('runRadar2dToggleTransition', () => {
+  it('laisse la dernière désactivation gagner sur une activation différée', async () => {
+    let resolveInstall!: () => void;
+    const installGate = new Promise<void>((resolve) => { resolveInstall = resolve; });
+    let generation = 0;
+    let overlayVisible = false;
+    let buttonEnabled = false;
+    const reportSuccess = vi.fn();
+    const disableOverlay = vi.fn(async () => { overlayVisible = false; });
+
+    const activationGeneration = ++generation;
+    const activation = runRadar2dToggleTransition({
+      enabled: true,
+      isCurrent: () => activationGeneration === generation,
+      loadManifest: async () => {
+        await installRadar2dObservation({
+          manifest,
+          enabled: true,
+          isCurrent: () => activationGeneration === generation,
+          installOverlay: async (_manifest, enabled) => {
+            await installGate;
+            overlayVisible = enabled;
+          },
+          reportSuccess,
+        });
+      },
+      disableOverlay,
+      syncEnabled: (enabled) => { buttonEnabled = enabled; },
+      onError: vi.fn(),
+    });
+
+    const deactivationGeneration = ++generation;
+    await runRadar2dToggleTransition({
+      enabled: false,
+      isCurrent: () => deactivationGeneration === generation,
+      loadManifest: vi.fn(),
+      disableOverlay,
+      syncEnabled: (enabled) => { buttonEnabled = enabled; },
+      onError: vi.fn(),
+    });
+
+    resolveInstall();
+    await activation;
+
+    expect(buttonEnabled).toBe(false);
+    expect(overlayVisible).toBe(false);
+    expect(reportSuccess).not.toHaveBeenCalled();
+    expect(disableOverlay).toHaveBeenCalledTimes(2);
+  });
+
   it('restaure l’état actif quand la désactivation de la carte échoue', async () => {
     const syncEnabled = vi.fn();
     const onError = vi.fn();

@@ -120,3 +120,35 @@ Succès, aucune erreur d’espace.
 ```
 
 Les deux avertissements Vite non bloquants déjà documentés restent inchangés (`spawn` externalisé par `@loaders.gl`, import statique/dynamique de `oil.ts`).
+
+## Correctif review — dernière intention radar
+
+- Chaque clic radar incrémente maintenant une génération immédiatement ; toute transition capture sa génération et vérifie qu’elle est encore courante après chaque attente asynchrone.
+- Les transitions sont sérialisées dans `App` afin que la dernière intention puisse toujours réparer un effet de carte laissé par une opération plus ancienne.
+- Une activation devenue obsolète pendant l’installation ne synchronise plus le bouton, ne commite plus le manifeste/runtime et ne publie plus de succès Watchdog.
+- Après résolution d’une ancienne activation, un masquage compensatoire garantit que la désactivation la plus récente reste visible dans l’UI et sur la carte.
+
+### TDD course activation/désactivation
+
+```text
+RED — npx vitest run src/services/radar-2d-orchestration.test.ts
+1 échec attendu : l’activation différée remettait buttonEnabled à true après la désactivation.
+
+GREEN — npx vitest run src/services/radar-2d-orchestration.test.ts src/App.radar-2d.test.ts src/components/FiresPanel.test.ts
+3 fichiers, 10 tests réussis.
+
+npm test
+32 fichiers, 255 tests réussis.
+
+npm run typecheck
+Succès, exit 0.
+
+npm run build
+Succès, 1491 modules transformés, PWA générée.
+
+npx eslint src/App.ts src/services/radar-2d-orchestration.ts src/services/radar-2d-orchestration.test.ts
+Succès, exit 0.
+
+git diff --check
+Succès, aucune erreur d’espace.
+```
