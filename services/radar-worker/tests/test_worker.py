@@ -16,6 +16,7 @@ WORKER_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKER_DIR))
 
 import radar_api
+import app as radar_app
 from app import Settings, create_app
 from models import RadarMetadataError
 from radar_api import LatestProduct, RadarApiClient
@@ -226,7 +227,9 @@ def test_download_checks_bufr_signature_without_reading_whole_file(tmp_path, mon
         LatestProduct("https://example.invalid", "2026-07-16T12:50:00Z"), tmp_path
     )
 
-    assert result.name == "radar-20260716T1250Z.bufr"
+    assert result.name.startswith(".candidate-")
+    assert result.suffix == ".tmp"
+    result.unlink()
 
 
 def test_refreshes_are_serialized_and_publish_matching_manifest_image(tmp_path):
@@ -300,3 +303,145 @@ def test_refresh_failure_keeps_previous_manifest_and_raster(tmp_path):
     assert json.loads((tmp_path / "manifest.json").read_text()) == old_manifest
     assert old_image.read_bytes() == b"old-image"
     assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_invalid_payload_is_not_archived_and_same_timestamp_retry_can_succeed(
+    tmp_path, monkeypatch
+):
+    from fastapi.testclient import TestClient
+
+    payloads = iter(
+        [
+            b"IMFR27 LFPW 161250\r\r\nBUFR-invalid",
+            b"IMFR27 LFPW 161250\r\r\nBUFR-valid",
+        ]
+    )
+    monkeypatch.setattr(
+        radar_api.httpx,
+        "stream",
+        lambda *_a, **_k: _StreamResponse([next(payloads)]),
+    )
+    client = RadarApiClient("key")
+    product = LatestProduct("https://example.invalid", "2026-07-16T12:50:00Z")
+
+    class RetryApi:
+        def discover_latest(self):
+            return product
+
+        def download(self, selected, storage_dir):
+            return client.download(selected, storage_dir)
+
+    def decoder(path, observed_at):
+        if b"invalid" in path.read_bytes():
+            raise RadarMetadataError("invalid synthetic payload")
+        return _grid(observed_at)
+
+    application = create_app(
+        _settings(tmp_path),
+        api_factory=lambda _key: RetryApi(),
+        decoder=decoder,
+        renderer=_renderer,
+    )
+    http = TestClient(application)
+    headers = {"Authorization": "Bearer worker-token"}
+
+    assert http.post("/refresh", headers=headers).status_code == 502
+    assert not list((tmp_path / "raw").glob("radar-*.bufr"))
+    assert http.post("/refresh", headers=headers).status_code == 200
+    archives = list((tmp_path / "raw").glob("radar-*.bufr"))
+    assert len(archives) == 1
+    assert b"valid" in archives[0].read_bytes()
+    assert not list((tmp_path / "raw").glob(".*.tmp"))
+
+
+def test_pruning_bounds_raw_archives_to_newest_files(tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    archives = []
+    for index in range(4):
+        archive = raw_dir / f"radar-20260716T12{index}0Z-{index:012x}.bufr"
+        archive.write_bytes(str(index).encode())
+        archive.touch()
+        archives.append(archive)
+        time.sleep(0.01)
+
+    radar_app._prune_files(raw_dir, "radar-*.bufr", keep=2)
+
+    assert {path.name for path in raw_dir.glob("*.bufr")} == {
+        archives[2].name,
+        archives[3].name,
+    }
+
+
+def test_pruning_never_deletes_raster_referenced_by_current_manifest(tmp_path):
+    raster_dir = tmp_path / "rasters"
+    raster_dir.mkdir()
+    current = raster_dir / "radar-20260716T1200Z.webp"
+    current.write_bytes(b"current")
+    newer = []
+    for minute in (10, 20, 30):
+        path = raster_dir / f"radar-20260716T12{minute}Z.webp"
+        path.write_bytes(str(minute).encode())
+        path.touch()
+        newer.append(path)
+        time.sleep(0.01)
+
+    radar_app._prune_files(
+        raster_dir,
+        "radar-*.webp",
+        keep=2,
+        protected={current.resolve()},
+    )
+
+    assert {path.name for path in raster_dir.glob("*.webp")} == {
+        current.name,
+        newer[-1].name,
+    }
+
+
+def test_manifest_write_failure_rolls_back_raster_without_pruning_rasters(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raster_dir = tmp_path / "rasters"
+    raster_dir.mkdir()
+    old_files = []
+    for minute in (0, 10, 20):
+        path = raster_dir / f"radar-20260716T12{minute:02d}Z.webp"
+        path.write_bytes(b"old")
+        old_files.append(path)
+    old_manifest = {
+        "observedAt": "2026-07-16T12:00:00Z",
+        "imageUrl": f"https://radar.example.test/rasters/{old_files[0].name}",
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(old_manifest))
+    candidate = tmp_path / "candidate.bufr"
+    candidate.write_bytes(b"BUFR")
+
+    def fail_manifest(_path, _value):
+        raise OSError("manifest swap failed")
+
+    settings = Settings(
+        api_key="api-key",
+        worker_token="worker-token",
+        storage_dir=tmp_path,
+        public_base_url="https://radar.example.test",
+        raw_retention=1,
+        raster_retention=1,
+    )
+    application = create_app(
+        settings,
+        api_factory=lambda _key: _Api(candidate, "2026-07-16T12:50:00Z"),
+        decoder=lambda _path, observed_at: _grid(observed_at),
+        renderer=_renderer,
+        manifest_writer=fail_manifest,
+    )
+
+    response = TestClient(application).post(
+        "/refresh", headers={"Authorization": "Bearer worker-token"}
+    )
+
+    assert response.status_code == 502
+    assert json.loads((tmp_path / "manifest.json").read_text()) == old_manifest
+    assert {path.name for path in raster_dir.glob("*.webp")} == {
+        path.name for path in old_files
+    }

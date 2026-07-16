@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import gzip
+import hashlib
 import os
 from pathlib import Path
 import tempfile
@@ -28,6 +29,31 @@ MAX_DECOMPRESSED_BYTES = 32 * 1024 * 1024
 class LatestProduct:
     url: str
     observed_at: str
+
+
+def archive_validated_product(
+    candidate: Path,
+    product: LatestProduct,
+    data_dir: Path,
+) -> Path:
+    """Archive a successfully decoded candidate under an immutable content name."""
+
+    raw_dir = data_dir.resolve() / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    with candidate.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    observed = datetime.fromisoformat(product.observed_at.replace("Z", "+00:00"))
+    if observed.tzinfo is None:
+        raise RadarMetadataError("radar catalogue validity_time has no timezone")
+    version = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
+    destination = raw_dir / f"radar-{version}-{digest.hexdigest()}.bufr"
+    try:
+        os.link(candidate, destination)
+    except FileExistsError:
+        pass
+    return destination
 
 
 def _links(document: Any) -> Iterable[Mapping[str, Any]]:
@@ -100,6 +126,7 @@ class RadarApiClient:
         raw_dir.mkdir(parents=True, exist_ok=True)
         compressed_path: Path | None = None
         output_path: Path | None = None
+        completed = False
         try:
             with tempfile.NamedTemporaryFile(
                 dir=raw_dir, prefix=".download-", suffix=".tmp", delete=False
@@ -124,7 +151,7 @@ class RadarApiClient:
                 os.fsync(compressed_stream.fileno())
 
             with tempfile.NamedTemporaryFile(
-                dir=raw_dir, prefix=".decoded-", suffix=".tmp", delete=False
+                dir=raw_dir, prefix=".candidate-", suffix=".tmp", delete=False
             ) as output_stream:
                 output_path = Path(output_stream.name)
                 with compressed_path.open("rb") as source:
@@ -150,17 +177,12 @@ class RadarApiClient:
                 prefix = stream.read(1024)
             if b"BUFR" not in prefix:
                 raise RadarMetadataError("downloaded radar product contains no BUFR bulletin")
-            observed = datetime.fromisoformat(product.observed_at.replace("Z", "+00:00"))
-            version = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
-            destination = raw_dir / f"radar-{version}.bufr"
-            try:
-                os.link(output_path, destination)
-            except FileExistsError:
-                pass
-            return destination
+            completed = True
+            return output_path
         except (gzip.BadGzipFile, EOFError) as exc:
             raise RadarMetadataError("radar product is not a valid gzip stream") from exc
         finally:
-            for temporary in (compressed_path, output_path):
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+            if compressed_path is not None:
+                compressed_path.unlink(missing_ok=True)
+            if not completed and output_path is not None:
+                output_path.unlink(missing_ok=True)

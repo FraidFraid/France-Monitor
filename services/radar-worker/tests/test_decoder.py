@@ -80,6 +80,27 @@ def test_decode_bufr_uses_official_321193_pixel_reflectivity_structure(
     assert grid["height"] == 2
 
 
+def test_decode_bufr_reads_only_header_prefix_before_eccodes(
+    tmp_path, monkeypatch
+):
+    encoded = (
+        Path(__file__).parent / "fixtures" / "synthetic_imfr27.bufr.b64"
+    ).read_text(encoding="ascii")
+    fixture = tmp_path / "synthetic_imfr27.bufr"
+    fixture.write_bytes(base64.b64decode(encoded))
+    monkeypatch.setattr(bufr_decoder, "GRID_SIZE", 2)
+    monkeypatch.setattr(models, "GRID_SIZE", 2)
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda _path: (_ for _ in ()).throw(AssertionError("unbounded copy")),
+    )
+
+    grid = decode_bufr(fixture, observed_at="2026-07-16T12:50:00Z")
+
+    assert grid["values"] == [1, 2, 3, 4]
+
+
 def test_decode_bufr_rejects_product_identity_outside_structured_gts_header(
     tmp_path, monkeypatch
 ):

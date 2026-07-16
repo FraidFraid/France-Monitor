@@ -11,13 +11,14 @@ import secrets
 import tempfile
 import threading
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
 from bufr_decoder import decode_bufr
 from models import RadarMetadataError, build_manifest
-from radar_api import RadarApiClient
+from radar_api import RadarApiClient, archive_validated_product
 from render import render_reflectivity
 
 
@@ -27,6 +28,8 @@ class Settings:
     worker_token: str
     storage_dir: Path
     public_base_url: str
+    raw_retention: int = 24
+    raster_retention: int = 24
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -35,11 +38,26 @@ class Settings:
             worker_token=os.getenv("RADAR_WORKER_TOKEN", ""),
             storage_dir=Path(os.getenv("RADAR_STORAGE_DIR", "./data/radar")),
             public_base_url=os.getenv("RADAR_PUBLIC_BASE_URL", "http://localhost:8091"),
+            raw_retention=_positive_env("RADAR_RAW_RETENTION", 24),
+            raster_retention=_positive_env("RADAR_RASTER_RETENTION", 24),
         )
 
     @property
     def configured(self) -> bool:
         return bool(self.api_key and self.worker_token and self.public_base_url)
+
+
+def _positive_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer") from exc
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
 
 
 def _read_manifest(path: Path) -> dict[str, Any] | None:
@@ -89,12 +107,44 @@ def _storage_writable(path: Path) -> bool:
             probe.unlink(missing_ok=True)
 
 
+def _prune_files(
+    directory: Path,
+    pattern: str,
+    *,
+    keep: int,
+    protected: set[Path] | None = None,
+) -> None:
+    if keep < 1:
+        raise ValueError("retention must keep at least one file")
+    protected_paths = {path.resolve() for path in (protected or set())}
+    files = sorted(
+        (path for path in directory.glob(pattern) if path.is_file()),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
+    )
+    retained = {path for path in files if path.resolve() in protected_paths}
+    for path in files:
+        if len(retained) >= keep:
+            break
+        retained.add(path)
+    for path in files:
+        if path not in retained:
+            path.unlink(missing_ok=True)
+
+
+def _is_download_candidate(path: Path, storage_dir: Path) -> bool:
+    raw_dir = (storage_dir.resolve() / "raw").resolve()
+    return path.parent.resolve() == raw_dir and path.name.startswith(".candidate-")
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     api_factory: Callable[[str], Any] = RadarApiClient,
     decoder: Callable[..., dict[str, Any]] = decode_bufr,
     renderer: Callable[..., None] = render_reflectivity,
+    archiver: Callable[..., Path] = archive_validated_product,
+    manifest_writer: Callable[[Path, dict[str, Any]], None] = _write_json_atomic,
 ) -> FastAPI:
     configured = settings or Settings.from_env()
     application = FastAPI(title="France Monitor radar worker")
@@ -146,19 +196,30 @@ def create_app(
         with refresh_lock:
             temporary_image: Path | None = None
             published_image: Path | None = None
+            raw_candidate: Path | None = None
             created_image = False
             try:
                 api = api_factory(configured.api_key)
                 product = api.discover_latest()
-                raw_path = api.download(product, configured.storage_dir)
-                grid = decoder(raw_path, observed_at=product.observed_at)
+                raw_candidate = api.download(product, configured.storage_dir)
+                grid = decoder(raw_candidate, observed_at=product.observed_at)
+                archived_raw = archiver(raw_candidate, product, configured.storage_dir)
+                try:
+                    _prune_files(
+                        configured.storage_dir / "raw",
+                        "radar-*.bufr",
+                        keep=configured.raw_retention,
+                    )
+                except OSError:
+                    pass
                 observed = datetime.fromisoformat(
                     str(grid["observedAt"]).replace("Z", "+00:00")
                 )
                 if observed.tzinfo is None:
                     raise RadarMetadataError("radar timestamps must include a timezone")
                 version = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
-                image_name = f"radar-{version}.webp"
+                content_hash = archived_raw.stem.rsplit("-", 1)[-1]
+                image_name = f"radar-{version}-{content_hash}.webp"
                 published_image = raster_dir / image_name
                 with tempfile.NamedTemporaryFile(
                     dir=raster_dir,
@@ -185,7 +246,19 @@ def create_app(
                     public_base_url=configured.public_base_url,
                     image_name=image_name,
                 )
-                _write_json_atomic(manifest_path, public_manifest)
+                manifest_writer(manifest_path, public_manifest)
+                current_raster = raster_dir / Path(
+                    urlparse(public_manifest["imageUrl"]).path
+                ).name
+                try:
+                    _prune_files(
+                        raster_dir,
+                        "radar-*.webp",
+                        keep=configured.raster_retention,
+                        protected={current_raster.resolve()},
+                    )
+                except OSError:
+                    pass
                 return public_manifest
             except RadarMetadataError as exc:
                 if created_image and published_image is not None:
@@ -198,6 +271,10 @@ def create_app(
             finally:
                 if temporary_image is not None:
                     temporary_image.unlink(missing_ok=True)
+                if raw_candidate is not None and _is_download_candidate(
+                    raw_candidate, configured.storage_dir
+                ):
+                    raw_candidate.unlink(missing_ok=True)
 
     return application
 

@@ -128,7 +128,9 @@ def _base_key(key: str) -> str:
     return key.rsplit("#", 1)[-1]
 
 
-def _validate_gts_header(payload: bytes) -> None:
+def _validate_gts_header(path: Path) -> None:
+    with path.open("rb") as stream:
+        payload = stream.read(1024)
     bufr_offset = payload.find(b"BUFR")
     if bufr_offset < 0:
         raise RadarMetadataError("radar payload contains no BUFR message")
@@ -146,8 +148,7 @@ def _validate_gts_header(payload: bytes) -> None:
 def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
     """Decode a real DPRadar BUFR file, rejecting incomplete scientific metadata."""
 
-    payload = path.read_bytes()
-    _validate_gts_header(payload)
+    _validate_gts_header(path)
     try:
         import eccodes  # type: ignore[import-not-found]
     except ImportError as exc:
