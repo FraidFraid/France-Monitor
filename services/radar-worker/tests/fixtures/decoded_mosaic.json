@@ -1,0 +1,19 @@
+{
+  "productId": "IMFR27_C_LFPW",
+  "observedAt": "2026-07-16T12:50:00Z",
+  "width": 1536,
+  "height": 1536,
+  "resolutionMeters": 1000,
+  "projection": {
+    "type": "polar_stereographic",
+    "geodeticDatum": "WGS84",
+    "projectionCenter": "north_pole",
+    "latitudeOfOrigin": 90.0,
+    "latitudeOfTrueScale": 60.0,
+    "centralMeridian": 0.0,
+    "falseEasting": 0.0,
+    "falseNorthing": 0.0
+  },
+  "upperLeftProjected": [-768000.0, -3700000.0],
+  "values": [0, 2, 160, 161, 255]
+}

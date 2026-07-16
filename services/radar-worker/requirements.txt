@@ -1,0 +1,7 @@
+eccodes>=2.38,<3
+fastapi>=0.115,<1
+httpx>=0.27,<1
+pillow>=11,<13
+pyproj>=3.7,<4
+pytest>=8,<10
+uvicorn[standard]>=0.34,<1
