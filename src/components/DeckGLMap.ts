@@ -445,6 +445,7 @@ export class DeckGLMap {
   private mtgFrpObservedAt: string | null = null;
   private _radar2dEnabled = false;
   private radar2dManifest: Radar2dManifest | null = null;
+  private radar2dObjectUrl: string | null = null;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
@@ -10987,11 +10988,16 @@ export class DeckGLMap {
   }
 
   async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
-    this._radar2dEnabled = enabled;
-    if (!this.map) return;
+    if (!this.map) {
+      this._radar2dEnabled = enabled;
+      return;
+    }
     if (!manifest) {
       this.removeRadar2dLayer();
+      this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);
+      this.radar2dObjectUrl = null;
       this.radar2dManifest = null;
+      this._radar2dEnabled = enabled;
       return;
     }
 
@@ -10999,27 +11005,37 @@ export class DeckGLMap {
     const layerExists = this.map.getLayer(RADAR_2D_LAYER_ID) !== undefined;
     if (manifest.observedAt === this.radar2dManifest?.observedAt && sourceExists && layerExists) {
       this.setVis(RADAR_2D_LAYER_ID, enabled ? 'visible' : 'none');
+      this._radar2dEnabled = enabled;
       return;
     }
 
-    // MapLibre image sources report CORS/404/decode failures asynchronously.
-    // Validate through MapLibre's own loader before touching the live source so
-    // the previous radar remains available throughout a failed refresh.
-    await this.preloadRadar2dImage(manifest.imageUrl);
-
     const previous = this.radar2dManifest;
+    const previousObjectUrl = this.radar2dObjectUrl;
+    const previousEnabled = this._radar2dEnabled;
+    // Fetch the remote asset exactly once, then validate and install the same
+    // local Blob URL. The image source can no longer trigger a second network
+    // request whose asynchronous failure would escape this transaction.
+    const candidateObjectUrl = await this.prepareRadar2dImage(manifest.imageUrl);
     this.removeRadar2dLayer();
     try {
-      this.addRadar2dLayer(manifest);
+      this._radar2dEnabled = enabled;
+      this.addRadar2dLayer(manifest, candidateObjectUrl);
       this.radar2dManifest = manifest;
+      this.radar2dObjectUrl = candidateObjectUrl;
+      this.revokeRadar2dObjectUrl(previousObjectUrl);
     } catch (error) {
       this.removeRadar2dLayer();
-      if (previous) {
+      this.revokeRadar2dObjectUrl(candidateObjectUrl);
+      this._radar2dEnabled = previousEnabled;
+      if (previous && previousObjectUrl) {
         try {
-          this.addRadar2dLayer(previous);
+          this.addRadar2dLayer(previous, previousObjectUrl);
           this.radar2dManifest = previous;
+          this.radar2dObjectUrl = previousObjectUrl;
         } catch (rollbackError) {
           this.radar2dManifest = null;
+          this.radar2dObjectUrl = null;
+          this.revokeRadar2dObjectUrl(previousObjectUrl);
           console.error('[DeckGLMap] Failed to restore previous radar 2D layer', rollbackError);
         }
       }
@@ -11027,31 +11043,94 @@ export class DeckGLMap {
     }
   }
 
-  private async preloadRadar2dImage(url: string): Promise<void> {
-    if (!this.map) return;
+  private async prepareRadar2dImage(url: string): Promise<string> {
+    if (!this.map) throw new Error('MapLibre map is unavailable');
     const timeoutMs = 10_000;
+    const maxBytes = 16 * 1024 * 1024;
+    const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let objectUrl: string | null = null;
     try {
-      await Promise.race([
-        this.map.loadImage(url),
+      const blob = await Promise.race([
+        (async () => {
+          const response = await fetch(url, {
+            headers: { Accept: 'image/webp, image/png' },
+            mode: 'cors',
+            redirect: 'error',
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`Radar 2D image HTTP ${response.status}`);
+          const contentType = (response.headers.get('Content-Type') ?? '').split(';', 1)[0]?.trim().toLowerCase();
+          if (contentType !== 'image/webp' && contentType !== 'image/png') {
+            throw new Error(`Unsupported radar 2D image type: ${contentType || 'missing'}`);
+          }
+          const declaredLength = Number(response.headers.get('Content-Length'));
+          if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+            throw new Error('Radar 2D image exceeds 16 MiB');
+          }
+          const reader = response.body?.getReader();
+          if (!reader) throw new Error('Radar 2D image body is unavailable');
+          const parts: BlobPart[] = [];
+          let receivedBytes = 0;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              receivedBytes += value.byteLength;
+              if (receivedBytes > maxBytes) {
+                await reader.cancel();
+                throw new Error('Radar 2D image exceeds 16 MiB');
+              }
+              parts.push(value.buffer.slice(
+                value.byteOffset,
+                value.byteOffset + value.byteLength,
+              ) as ArrayBuffer);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+          return new Blob(parts, { type: contentType });
+        })(),
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(
-            () => reject(new Error(`Radar 2D image load timed out after ${timeoutMs}ms`)),
+            () => {
+              const error = new Error(`Radar 2D image fetch timed out after ${timeoutMs}ms`);
+              controller.abort(error);
+              reject(error);
+            },
             timeoutMs,
           );
         }),
       ]);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+
+      objectUrl = URL.createObjectURL(blob);
+      const loaded = await Promise.race([
+        this.map.loadImage(objectUrl),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error(`Radar 2D image decode timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+      const image = loaded.data as { close?: () => void };
+      image.close?.();
+      return objectUrl;
+    } catch (error) {
+      if (objectUrl) this.revokeRadar2dObjectUrl(objectUrl);
+      throw error;
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
   }
 
-  private addRadar2dLayer(manifest: Radar2dManifest): void {
+  private addRadar2dLayer(manifest: Radar2dManifest, imageUrl: string): void {
     if (!this.map) return;
     const [west, south, east, north] = manifest.bounds;
     const source = {
       type: 'image' as const,
-      url: manifest.imageUrl,
+      url: imageUrl,
       coordinates: [
         [west, north],
         [east, north],
@@ -11082,6 +11161,10 @@ export class DeckGLMap {
     if (!this.map) return;
     if (this.map.getLayer(RADAR_2D_LAYER_ID)) this.map.removeLayer(RADAR_2D_LAYER_ID);
     if (this.map.getSource(RADAR_2D_SOURCE_ID)) this.map.removeSource(RADAR_2D_SOURCE_ID);
+  }
+
+  private revokeRadar2dObjectUrl(url: string | null): void {
+    if (url) URL.revokeObjectURL(url);
   }
 
   setSentinelSceneOverlay(scene: { thumbnailUrl?: string; bbox: [number, number, number, number] } | null): void {
@@ -12515,6 +12598,8 @@ export class DeckGLMap {
     if (this._flightInterpolTick) { clearInterval(this._flightInterpolTick); this._flightInterpolTick = null; }
     this.stopSentinelSceneBlink();
 
+    this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);
+    this.radar2dObjectUrl = null;
     this.map?.remove();
     this.map = null;
   }

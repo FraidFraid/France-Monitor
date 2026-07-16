@@ -113,3 +113,40 @@ Le polling onglet masqué et le verrou anti-chevauchement restent vérifiés par
 - `git diff --check` : succès.
 
 Les deux avertissements de build préexistants (`spawn` externalisé par loaders.gl et import statique/dynamique de `oil.ts`) sont inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` restent hors périmètre et hors index.
+
+---
+
+## Seconde vague de review — suppression du second accès réseau
+
+### Cause racine
+
+La prévalidation `map.loadImage(imageUrl)` de la première correction ne rendait pas le swap totalement transactionnel : `addSource({ type: 'image', url: imageUrl })` pouvait effectuer un second accès distant et échouer après le retour de la méthode. Le mock initial ne simulait pas ce deuxième chargement.
+
+### RED → GREEN
+
+- RED : 7 scénarios sur 9 échouaient initialement : absence de fetch contrôlé, URL distante encore installée, aucune révocation de Blob, fetch/timeout sans effet sur la transaction et rollback incomplet de l’état enabled.
+- GREEN : l’image distante est téléchargée exactement une fois avec CORS, redirections interdites, `AbortController`, timeout 10 secondes, types `image/webp`/`image/png` uniquement et plafond 16 MiB déclaré/réel. Sans `Content-Length`, le flux est lu par chunks et annulé dès le premier octet excédentaire.
+- Le corps validé devient une Blob URL locale. Cette même URL est décodée par `map.loadImage()` puis donnée à la source MapLibre : le second accès est local et ne peut plus produire une panne réseau différée.
+- L’`ImageBitmap` de validation est fermé lorsqu’il expose `close()`.
+- L’ancienne Blob URL reste vivante jusqu’au succès complet du swap. Elle est révoquée après commit ; la candidate est révoquée sur erreur de fetch/décodage/addLayer/rollback ; l’URL active est révoquée au retrait et dans `destroy()`.
+- `_radar2dEnabled`, le manifeste et la Blob URL active forment désormais un état transactionnel restauré ensemble si l’installation échoue.
+
+### Tests ajoutés/renforcés
+
+- une seule requête distante et URL Blob effective dans `addSource` ;
+- erreurs fetch, décodage et timeout avant mutation ;
+- annulation d’un flux surdimensionné sans `Content-Length` avant création de Blob URL ;
+- fermeture de l’image décodée ;
+- révocation après remplacement, retrait, destroy et échec de swap ;
+- conservation de l’ancien Blob et de l’état enabled pendant le rollback.
+
+### Vérifications fraîches
+
+- tests ciblés MTG/radar : 4 fichiers, 55 tests réussis ;
+- `npm test` : 29 fichiers, 239 tests réussis ;
+- `npm run typecheck` : succès ;
+- `npm run lint` : succès ;
+- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée ;
+- `git diff --check` : succès.
+
+Les avertissements de build préexistants restent inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` sont toujours préservés hors périmètre.

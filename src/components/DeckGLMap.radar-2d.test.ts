@@ -1,5 +1,5 @@
 import type maplibregl from 'maplibre-gl';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { MapContainer } from './MapContainer.ts';
@@ -51,6 +51,7 @@ class RadarMap {
   readonly layers = new Map<string, LayerWithLayout>();
   readonly loadImage = vi.fn<(url: string) => Promise<{ data: ImageBitmap }>>();
   readonly beforeIds = new Map<string, string | undefined>();
+  failNextRadarLayerAdd = false;
 
   addSource(id: string, source: maplibregl.SourceSpecification): void {
     this.sources.set(id, source);
@@ -65,6 +66,10 @@ class RadarMap {
   }
 
   addLayer(layer: maplibregl.AddLayerObject, beforeId?: string): this {
+    if (layer.id === RADAR_2D_LAYER_ID && this.failNextRadarLayerAdd) {
+      this.failNextRadarLayerAdd = false;
+      throw new Error('simulated addLayer failure');
+    }
     this.layers.set(layer.id, layer as LayerWithLayout);
     this.beforeIds.set(layer.id, beforeId);
     return this;
@@ -77,6 +82,8 @@ class RadarMap {
   removeLayer(id: string): void {
     this.layers.delete(id);
   }
+
+  remove(): void {}
 
   setLayoutProperty(id: string, name: string, value: unknown): this {
     const layer = this.layers.get(id);
@@ -98,6 +105,32 @@ function createDeckMap(map: RadarMap): DeckGLMap {
 }
 
 describe('DeckGLMap radar 2D atomic replacement', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let createObjectUrl = vi.fn<(obj: Blob | MediaSource) => string>();
+  let revokeObjectUrl = vi.fn<(url: string) => void>();
+  let nextObjectUrl: number;
+
+  beforeEach(() => {
+    nextObjectUrl = 1;
+    fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { 'Content-Type': 'image/webp' },
+      }),
+    ));
+    createObjectUrl = vi.fn((_obj: Blob | MediaSource) => `blob:radar-${nextObjectUrl++}`);
+    revokeObjectUrl = vi.fn((_url: string) => undefined);
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectUrl);
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectUrl);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it('keeps the previous layer until the replacement image is loaded', async () => {
     const nextImage = deferred<{ data: ImageBitmap }>();
     const map = new RadarMap();
@@ -110,11 +143,29 @@ describe('DeckGLMap radar 2D atomic replacement', () => {
     const replacement = deckMap.setRadar2dOverlay(SECOND, true);
     await Promise.resolve();
 
-    expect(map.imageUrl()).toBe(FIRST.imageUrl);
+    expect(map.imageUrl()).toBe('blob:radar-1');
     nextImage.resolve({ data: {} as ImageBitmap });
     await replacement;
-    expect(map.imageUrl()).toBe(SECOND.imageUrl);
+    expect(map.imageUrl()).toBe('blob:radar-2');
     expect(map.getLayer(RADAR_2D_LAYER_ID)).toBeDefined();
+  });
+
+  it('fetches each remote image once and gives MapLibre only a local Blob URL', async () => {
+    const close = vi.fn();
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: { close } as unknown as ImageBitmap });
+    const deckMap = createDeckMap(map);
+
+    await deckMap.setRadar2dOverlay(FIRST, true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(FIRST.imageUrl, expect.objectContaining({
+      mode: 'cors',
+      redirect: 'error',
+    }));
+    expect(map.loadImage).toHaveBeenCalledWith('blob:radar-1');
+    expect(map.imageUrl()).toBe('blob:radar-1');
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it('keeps the previous layer when replacement image loading fails asynchronously', async () => {
@@ -127,11 +178,105 @@ describe('DeckGLMap radar 2D atomic replacement', () => {
 
     await deckMap.setRadar2dOverlay(FIRST, true);
     const replacement = deckMap.setRadar2dOverlay(SECOND, true);
+    await vi.waitFor(() => expect(map.loadImage).toHaveBeenCalledTimes(2));
     nextImage.reject(new Error('simulated CORS failure'));
 
     await expect(replacement).rejects.toThrow('simulated CORS failure');
-    expect(map.imageUrl()).toBe(FIRST.imageUrl);
+    expect(map.imageUrl()).toBe('blob:radar-1');
     expect(Reflect.get(deckMap, 'radar2dManifest')).toEqual(FIRST);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:radar-2');
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:radar-1');
+    expect(Reflect.get(deckMap, '_radar2dEnabled')).toBe(true);
+  });
+
+  it('does not mutate the layer or enabled state when the remote fetch fails', async () => {
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+    await deckMap.setRadar2dOverlay(FIRST, true);
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+
+    await expect(deckMap.setRadar2dOverlay(SECOND, false)).rejects.toThrow('offline');
+
+    expect(map.imageUrl()).toBe('blob:radar-1');
+    expect(Reflect.get(deckMap, '_radar2dEnabled')).toBe(true);
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:radar-1');
+  });
+
+  it('cancels an oversized streamed image without Content-Length before creating a Blob URL', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(16 * 1024 * 1024 + 1));
+      },
+      cancel,
+    });
+    fetchMock.mockResolvedValueOnce(new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'image/webp' },
+    }));
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+
+    await expect(deckMap.setRadar2dOverlay(FIRST, true)).rejects.toThrow(/16 MiB/);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(map.getSource(RADAR_2D_SOURCE_ID)).toBeUndefined();
+  });
+
+  it('aborts a timed-out fetch before mutating the active layer', async () => {
+    vi.useFakeTimers();
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+    await deckMap.setRadar2dOverlay(FIRST, true);
+    fetchMock.mockImplementationOnce((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+    }));
+
+    const replacement = deckMap.setRadar2dOverlay(SECOND, false);
+    const rejection = expect(replacement).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejection;
+    expect(map.imageUrl()).toBe('blob:radar-1');
+    expect(Reflect.get(deckMap, '_radar2dEnabled')).toBe(true);
+  });
+
+  it('revokes Blob URLs only after successful replacement, removal and destroy', async () => {
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+
+    await deckMap.setRadar2dOverlay(FIRST, true);
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
+    await deckMap.setRadar2dOverlay(SECOND, true);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:radar-1');
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:radar-2');
+
+    await deckMap.setRadar2dOverlay(null, false);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:radar-2');
+
+    await deckMap.setRadar2dOverlay(FIRST, true);
+    deckMap.destroy();
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:radar-3');
+  });
+
+  it('restores the old Blob and enabled state when the MapLibre swap throws', async () => {
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+    await deckMap.setRadar2dOverlay(FIRST, true);
+    map.failNextRadarLayerAdd = true;
+
+    await expect(deckMap.setRadar2dOverlay(SECOND, false)).rejects.toThrow('simulated addLayer failure');
+
+    expect(map.imageUrl()).toBe('blob:radar-1');
+    expect(Reflect.get(deckMap, '_radar2dEnabled')).toBe(true);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:radar-2');
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:radar-1');
   });
 
   it('starts hidden below FIRMS and leaves the RainViewer layer untouched', async () => {
