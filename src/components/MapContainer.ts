@@ -15,6 +15,7 @@ import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
+import type { Radar2dManifest } from '../services/radar-2d.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -53,6 +54,8 @@ export class MapContainer {
   private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private dromEnergyData: DromEnergyDashboard | null = null;
   private dromEnergyLoadPromise: Promise<void> | null = null;
+  private radar2dManifest: Radar2dManifest | null = null;
+  private radar2dEnabled = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -84,6 +87,7 @@ export class MapContainer {
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
+    this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
@@ -193,6 +197,12 @@ export class MapContainer {
 
   setMtgFrpEnabled(enabled: boolean): void {
     this.deckMap?.setMtgFrpEnabled(enabled);
+  }
+
+  setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    this.radar2dManifest = manifest;
+    this.radar2dEnabled = enabled;
+    this.deckMap?.setRadar2dOverlay(manifest, enabled);
   }
 
   async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {

@@ -34,6 +34,7 @@ import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 import { buildLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
 import { fetchMtgFrpMetadata, getMtgFrpTileTemplate } from '../services/mtg-frp.ts';
+import type { Radar2dManifest } from '../services/radar-2d.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
@@ -59,6 +60,8 @@ import {
   clamp,
   MTG_FRP_LAYER_ID,
   MTG_FRP_SOURCE_ID,
+  RADAR_2D_LAYER_ID,
+  RADAR_2D_SOURCE_ID,
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
 import {
@@ -440,6 +443,8 @@ export class DeckGLMap {
   private _modisOverlayEnabled = false;
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
+  private _radar2dEnabled = false;
+  private radar2dManifest: Radar2dManifest | null = null;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
@@ -10979,6 +10984,80 @@ export class DeckGLMap {
     if (!this.map) return;
     if (this.map.getLayer(MTG_FRP_LAYER_ID)) this.map.removeLayer(MTG_FRP_LAYER_ID);
     if (this.map.getSource(MTG_FRP_SOURCE_ID)) this.map.removeSource(MTG_FRP_SOURCE_ID);
+  }
+
+  setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    this._radar2dEnabled = enabled;
+    if (!this.map) return;
+    if (!manifest) {
+      this.removeRadar2dLayer();
+      this.radar2dManifest = null;
+      return;
+    }
+
+    const sourceExists = this.map.getSource(RADAR_2D_SOURCE_ID) !== undefined;
+    const layerExists = this.map.getLayer(RADAR_2D_LAYER_ID) !== undefined;
+    if (manifest.observedAt === this.radar2dManifest?.observedAt && sourceExists && layerExists) {
+      this.setVis(RADAR_2D_LAYER_ID, enabled ? 'visible' : 'none');
+      return;
+    }
+
+    const previous = this.radar2dManifest;
+    this.removeRadar2dLayer();
+    try {
+      this.addRadar2dLayer(manifest);
+      this.radar2dManifest = manifest;
+    } catch (error) {
+      this.removeRadar2dLayer();
+      if (previous) {
+        try {
+          this.addRadar2dLayer(previous);
+          this.radar2dManifest = previous;
+        } catch (rollbackError) {
+          this.radar2dManifest = null;
+          console.error('[DeckGLMap] Failed to restore previous radar 2D layer', rollbackError);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private addRadar2dLayer(manifest: Radar2dManifest): void {
+    if (!this.map) return;
+    const [west, south, east, north] = manifest.bounds;
+    const source = {
+      type: 'image' as const,
+      url: manifest.imageUrl,
+      coordinates: [
+        [west, north],
+        [east, north],
+        [east, south],
+        [west, south],
+      ] as [[number, number], [number, number], [number, number], [number, number]],
+      attribution: 'Météo-France · Licence Ouverte 2.0',
+    };
+    this.map.addSource(RADAR_2D_SOURCE_ID, source as maplibregl.SourceSpecification);
+    const liveSource = this.map.getSource(RADAR_2D_SOURCE_ID) as (maplibregl.Source & { attribution?: string }) | undefined;
+    if (liveSource) liveSource.attribution = source.attribution;
+    this.map.addLayer({
+      id: RADAR_2D_LAYER_ID,
+      type: 'raster',
+      source: RADAR_2D_SOURCE_ID,
+      layout: { visibility: this._radar2dEnabled ? 'visible' : 'none' },
+      paint: {
+        'raster-opacity': 0.58,
+        'raster-resampling': 'linear',
+        'raster-fade-duration': 0,
+      },
+    }, this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined);
+    // DeckGLMap's anti-flash wrapper hides newly added layers during startup.
+    this.setVis(RADAR_2D_LAYER_ID, this._radar2dEnabled ? 'visible' : 'none');
+  }
+
+  private removeRadar2dLayer(): void {
+    if (!this.map) return;
+    if (this.map.getLayer(RADAR_2D_LAYER_ID)) this.map.removeLayer(RADAR_2D_LAYER_ID);
+    if (this.map.getSource(RADAR_2D_SOURCE_ID)) this.map.removeSource(RADAR_2D_SOURCE_ID);
   }
 
   setSentinelSceneOverlay(scene: { thumbnailUrl?: string; bbox: [number, number, number, number] } | null): void {

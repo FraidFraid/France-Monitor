@@ -79,6 +79,7 @@ import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
 import { fetchFiresData } from './services/fires.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
+import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
 import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
@@ -116,7 +117,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -153,6 +154,9 @@ const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien te
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
 const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
 const POLL_MTG_FRP_MS                  = 10 * 60_000; // 10 min  (LSA SAF product cadence)
+const POLL_RADAR_2D_MS                 =  5 * 60_000; //  5 min  (Météo-France DPRadar cadence)
+const RADAR_2D_FRESHNESS_MS            = 20 * 60_000; // worker rejects data older than 20 h; UI is stricter
+const MTG_FRP_FRESHNESS_MS             = 45 * 60_000; // documented upper delivery latency
 const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
@@ -1340,6 +1344,23 @@ export class App {
   private mtgFrpEnabled = false;
   private latestMtgFrpMetadata: MtgFrpMetadata | null = null;
   private mtgFrpRequestInFlight = false;
+  private radar2dEnabled = false;
+  private latestRadar2dManifest: Radar2dManifest | null = null;
+  private radar2dRequestInFlight = false;
+  private fireObservationRuntime: FireObservationRuntimeState = {
+    mtgFrp: {
+      status: 'loading',
+      observedAt: null,
+      fetchedAt: null,
+      source: 'EUMETSAT LSA SAF',
+    },
+    radar2d: {
+      status: 'loading',
+      observedAt: null,
+      fetchedAt: null,
+      source: 'Météo-France DPRadar',
+    },
+  };
   private trafficPanel: TrafficPanel | null = null;
   private marketStrip: MarketStrip | null = null;
   private commodityStrip: CommodityStrip | null = null;
@@ -1452,6 +1473,7 @@ export class App {
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
   private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
   private _intervalMtgFrp: ReturnType<typeof setInterval> | null = null;
+  private _intervalRadar2d: ReturnType<typeof setInterval> | null = null;
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalSncf: ReturnType<typeof setInterval> | null = null;
@@ -1493,6 +1515,7 @@ export class App {
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
     if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
     if (this._intervalMtgFrp !== null) { clearInterval(this._intervalMtgFrp); this._intervalMtgFrp = null; }
+    if (this._intervalRadar2d !== null) { clearInterval(this._intervalRadar2d); this._intervalRadar2d = null; }
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
@@ -2073,6 +2096,7 @@ export class App {
     this.startHydraulicPolling();
     this.startWeatherPolling();
     this.startMtgFrpPolling();
+    this.startRadar2dPolling();
     this.startInfraNetworkPolling();
     this.startEolienPolling();
     this.startSncfPolling();
@@ -3279,6 +3303,9 @@ export class App {
     if (key === 'fires' && enabled) {
       void this.loadMtgFrpMetadata().catch((error) => {
         console.error('[App] MTG-FRP metadata load failed', error);
+      });
+      void this.loadRadar2dManifest().catch((error) => {
+        console.error('[App] Radar 2D manifest load failed', error);
       });
     }
     this._handlePanelVisibility(key, enabled);
@@ -5674,7 +5701,25 @@ export class App {
       ) {
         this.latestMtgFrpMetadata = metadata;
       }
+      const observedAt = Date.parse(metadata.observedAt);
+      this.fireObservationRuntime = {
+        ...this.fireObservationRuntime,
+        mtgFrp: {
+          status: Date.now() - observedAt > MTG_FRP_FRESHNESS_MS ? 'stale' : 'ok',
+          observedAt,
+          fetchedAt: Date.now(),
+          source: 'EUMETSAT LSA SAF',
+        },
+      };
       if (this.mtgFrpEnabled) this.mapContainer?.setMtgFrpEnabled(true);
+    } catch (error) {
+      this.fireObservationRuntime = {
+        ...this.fireObservationRuntime,
+        mtgFrp: this.latestMtgFrpMetadata
+          ? { ...this.fireObservationRuntime.mtgFrp, status: 'stale', detail: 'Dernière observation valide conservée' }
+          : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'EUMETSAT LSA SAF' },
+      };
+      throw error;
     } finally {
       this.mtgFrpRequestInFlight = false;
     }
@@ -5694,6 +5739,88 @@ export class App {
 
     poll(false);
     this._intervalMtgFrp = setInterval(() => poll(true), POLL_MTG_FRP_MS);
+  }
+
+  private async loadRadar2dManifest(force = false): Promise<void> {
+    if (this.radar2dRequestInFlight) return;
+    this.radar2dRequestInFlight = true;
+    if (!this.latestRadar2dManifest) {
+      this.fireObservationRuntime = {
+        ...this.fireObservationRuntime,
+        radar2d: { ...this.fireObservationRuntime.radar2d, status: 'loading' },
+      };
+    }
+    try {
+      const result = await fetchRadar2dManifest(force);
+      if (!result.configured) {
+        this.latestRadar2dManifest = null;
+        this.fireObservationRuntime = {
+          ...this.fireObservationRuntime,
+          radar2d: {
+            status: 'not-configured',
+            observedAt: null,
+            fetchedAt: Date.now(),
+            source: 'Météo-France DPRadar',
+            detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
+          },
+        };
+        this.mapContainer?.setRadar2dOverlay(null, false);
+        return;
+      }
+
+      const previousManifest = this.latestRadar2dManifest;
+      this.latestRadar2dManifest = result.manifest;
+      const observedAt = Date.parse(result.manifest.observedAt);
+      const stale = result.degraded || Date.now() - observedAt > RADAR_2D_FRESHNESS_MS;
+      this.fireObservationRuntime = {
+        ...this.fireObservationRuntime,
+        radar2d: {
+          status: stale ? 'stale' : 'ok',
+          observedAt,
+          fetchedAt: Date.now(),
+          source: result.manifest.source,
+          ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
+        },
+      };
+      try {
+        this.mapContainer?.setRadar2dOverlay(result.manifest, this.radar2dEnabled);
+      } catch (error) {
+        this.latestRadar2dManifest = previousManifest;
+        throw error;
+      }
+    } catch (error) {
+      this.fireObservationRuntime = {
+        ...this.fireObservationRuntime,
+        radar2d: this.latestRadar2dManifest
+          ? {
+              status: 'stale',
+              observedAt: Date.parse(this.latestRadar2dManifest.observedAt),
+              fetchedAt: this.fireObservationRuntime.radar2d.fetchedAt,
+              source: this.latestRadar2dManifest.source,
+              detail: 'Dernière observation valide conservée',
+            }
+          : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'Météo-France DPRadar' },
+      };
+      throw error;
+    } finally {
+      this.radar2dRequestInFlight = false;
+    }
+  }
+
+  private startRadar2dPolling(): void {
+    if (this._intervalRadar2d !== null) clearInterval(this._intervalRadar2d);
+
+    const poll = (force: boolean): void => {
+      if (document.hidden) return;
+      if (!this.activeLayers.fires && !this.radar2dEnabled) return;
+      void this.loadRadar2dManifest(force).catch((error) => {
+        // Keep the last valid image source visible on transient failures.
+        console.error('[App] Radar 2D poll error', error);
+      });
+    };
+
+    poll(false);
+    this._intervalRadar2d = setInterval(() => poll(true), POLL_RADAR_2D_MS);
   }
 
   private async refreshInfraNetworkLive(force = false): Promise<void> {

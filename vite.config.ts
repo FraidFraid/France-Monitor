@@ -46,6 +46,7 @@ import { threatsProxyPlugin } from './src/plugins/threats-proxy';
 import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { newsProxyPlugin } from './src/plugins/news-proxy';
 import { mtgFrpProxyPlugin } from './src/plugins/mtg-frp-proxy';
+import { radar2dProxyPlugin } from './src/plugins/radar-2d-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 // Brotli precompression — creates .br companion files for all JS/CSS/HTML assets.
@@ -175,6 +176,7 @@ export default defineConfig(({ mode }) => {
         databaseUrl: env.DATABASE_URL ?? '',
       }),
       mtgFrpProxyPlugin(),
+      radar2dProxyPlugin(env.METEO_FRANCE_RADAR_MANIFEST_URL ?? ''),
       aisRelayPlugin(aisApiKey),
       appVersionPlugin(),
       brotliPrecompressPlugin(),
