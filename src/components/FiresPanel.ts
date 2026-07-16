@@ -29,6 +29,7 @@ export class FiresPanel {
     private onHoverFireCb: ((lat: number | null, lon: number | null) => void) | null = null;
     private onHoverIncidentCb: ((points: { lat: number; lon: number }[] | null) => void) | null = null;
     private onModisToggleCb: ((enabled: boolean) => void) | null = null;
+    public onMtgFrpToggle: ((enabled: boolean) => void) | null = null;
     private onCloseCb: (() => void) | null = null;
     private modisEnabled = false;
     private isDragging = false;
@@ -67,6 +68,10 @@ export class FiresPanel {
 
     setOnModisToggle(cb: (enabled: boolean) => void): void {
         this.onModisToggleCb = cb;
+    }
+
+    setOnMtgFrpToggle(cb: (enabled: boolean) => void): void {
+        this.onMtgFrpToggle = cb;
     }
 
     setOnClose(cb: () => void): void {

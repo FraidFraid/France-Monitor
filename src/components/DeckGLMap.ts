@@ -33,6 +33,7 @@ import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../serv
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 import { buildLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
+import { fetchMtgFrpMetadata, getMtgFrpTileTemplate } from '../services/mtg-frp.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
@@ -56,6 +57,8 @@ import {
   scoreToISNRLineColor,
   deptCodeToId,
   clamp,
+  MTG_FRP_LAYER_ID,
+  MTG_FRP_SOURCE_ID,
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
 import {
@@ -435,6 +438,8 @@ export class DeckGLMap {
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
+  private _mtgFrpEnabled = false;
+  private mtgFrpObservedAt: string | null = null;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   private trafficIncidentPopup: maplibregl.Popup | null = null;
@@ -10899,6 +10904,80 @@ export class DeckGLMap {
   setModisOverlayVisible(enabled: boolean): void {
     this._modisOverlayEnabled = enabled;
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
+  }
+
+  setMtgFrpEnabled(enabled: boolean): void {
+    this._mtgFrpEnabled = enabled;
+    if (!enabled) {
+      this.setVis(MTG_FRP_LAYER_ID, 'none');
+      return;
+    }
+
+    void this.ensureMtgFrpLayer().catch((error) => {
+      console.error('[DeckGLMap] MTG-FRP layer unavailable', error);
+    });
+  }
+
+  async ensureMtgFrpLayer(force = false): Promise<void> {
+    if (!this.map) return;
+
+    // Fetch first so a metadata failure never removes the last valid raster.
+    const metadata = await fetchMtgFrpMetadata(force);
+    const sourceExists = this.map.getSource(MTG_FRP_SOURCE_ID) !== undefined;
+    const layerExists = this.map.getLayer(MTG_FRP_LAYER_ID) !== undefined;
+    if (metadata.observedAt === this.mtgFrpObservedAt && sourceExists && layerExists) {
+      this.setVis(MTG_FRP_LAYER_ID, this._mtgFrpEnabled ? 'visible' : 'none');
+      return;
+    }
+
+    const previousObservedAt = this.mtgFrpObservedAt;
+    this.removeMtgFrpLayer();
+    try {
+      this.addMtgFrpLayer(metadata.observedAt);
+      this.mtgFrpObservedAt = metadata.observedAt;
+    } catch (error) {
+      this.removeMtgFrpLayer();
+      if (previousObservedAt) {
+        try {
+          this.addMtgFrpLayer(previousObservedAt);
+          this.mtgFrpObservedAt = previousObservedAt;
+        } catch (rollbackError) {
+          this.mtgFrpObservedAt = null;
+          console.error('[DeckGLMap] Failed to restore previous MTG-FRP layer', rollbackError);
+        }
+      }
+      throw error;
+    }
+  }
+
+  private addMtgFrpLayer(observedAt: string): void {
+    if (!this.map) return;
+    const separator = getMtgFrpTileTemplate().includes('?') ? '&' : '?';
+    const tileUrl = `${getMtgFrpTileTemplate()}${separator}time=${encodeURIComponent(observedAt)}`;
+    this.map.addSource(MTG_FRP_SOURCE_ID, {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+      attribution: 'EUMETSAT LSA SAF · CC BY 4.0',
+    });
+    const layer: maplibregl.RasterLayerSpecification = {
+      id: MTG_FRP_LAYER_ID,
+      type: 'raster',
+      source: MTG_FRP_SOURCE_ID,
+      layout: { visibility: this._mtgFrpEnabled ? 'visible' : 'none' },
+      paint: {
+        'raster-opacity': 0.82,
+        'raster-fade-duration': 0,
+      },
+    };
+    const beforeId = this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined;
+    this.map.addLayer(layer, beforeId);
+  }
+
+  private removeMtgFrpLayer(): void {
+    if (!this.map) return;
+    if (this.map.getLayer(MTG_FRP_LAYER_ID)) this.map.removeLayer(MTG_FRP_LAYER_ID);
+    if (this.map.getSource(MTG_FRP_SOURCE_ID)) this.map.removeSource(MTG_FRP_SOURCE_ID);
   }
 
   setSentinelSceneOverlay(scene: { thumbnailUrl?: string; bbox: [number, number, number, number] } | null): void {

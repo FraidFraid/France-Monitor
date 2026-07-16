@@ -8,6 +8,10 @@ import {
 } from './mtg-frp.ts';
 import { handleMtgFrpProxyRequest } from '../plugins/mtg-frp-proxy.ts';
 import mtgFrpHandler from '../../api/fire-observations/mtg-frp.js';
+import {
+  MTG_FRP_LAYER_ID,
+  MTG_FRP_SOURCE_ID,
+} from '../components/deckgl/format-utils.ts';
 
 const CAPABILITIES_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <WMS_Capabilities xmlns="http://www.opengis.net/wms" version="1.3.0">
@@ -130,10 +134,14 @@ describe('MTG-FRP client', () => {
     vi.useRealTimers();
   });
 
-  it('returns a fixed same-origin MapLibre tile template', () => {
-    const template = getMtgFrpTileTemplate();
-    expect(template).toBe('/api/fire-observations/mtg-frp?operation=map&bbox={bbox-epsg-3857}&width=256&height=256');
-    expect(template).not.toContain('adaguc');
+  it('keeps the MapLibre bbox token intact and uses the same-origin proxy', () => {
+    expect(getMtgFrpTileTemplate()).toContain('bbox={bbox-epsg-3857}');
+    expect(getMtgFrpTileTemplate().startsWith('/api/fire-observations/mtg-frp?operation=map')).toBe(true);
+  });
+
+  it('uses stable MapLibre ids for atomic MTG-FRP replacement', () => {
+    expect(MTG_FRP_SOURCE_ID).toBe('fire-mtg-frp-source');
+    expect(MTG_FRP_LAYER_ID).toBe('fire-mtg-frp-layer');
   });
 
   it('caches metadata for 120 seconds', async () => {

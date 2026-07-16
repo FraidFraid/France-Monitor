@@ -191,6 +191,10 @@ export class MapContainer {
     this.deckMap?.setModisOverlayVisible(enabled);
   }
 
+  setMtgFrpEnabled(enabled: boolean): void {
+    this.deckMap?.setMtgFrpEnabled(enabled);
+  }
+
   async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {
     await this.deckMap?.setMairesPolitiqueVisible(enabled);
   }

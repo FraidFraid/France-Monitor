@@ -1,10 +1,6 @@
-export interface MtgFrpMetadata {
-  observedAt: string;
-  fetchedAt: number;
-  cadenceMinutes: 10;
-  attribution: 'EUMETSAT LSA SAF · CC BY 4.0';
-  demonstration: true;
-}
+import type { MtgFrpMetadata } from '../types/index.ts';
+
+export type { MtgFrpMetadata } from '../types/index.ts';
 
 export interface MtgMapRequestInput {
   bbox: string | null;

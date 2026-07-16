@@ -4,6 +4,9 @@ import type { ISSLevel, MeteoRiskType, ThreatLevel } from '../../types/index.ts'
 import { WEATHER_RISK_ICONS, ISNR_COLORS } from './constants.ts';
 import type { IconName } from '../shared/icons.ts';
 
+export const MTG_FRP_SOURCE_ID = 'fire-mtg-frp-source';
+export const MTG_FRP_LAYER_ID = 'fire-mtg-frp-layer';
+
 export function getWeatherRadarSourceId(regionId: string): string {
   return `weather-radar-src-${regionId}`;
 }

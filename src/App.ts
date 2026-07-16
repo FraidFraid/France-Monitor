@@ -78,6 +78,7 @@ import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } fr
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
 import { fetchFiresData } from './services/fires.ts';
+import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
 import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
@@ -151,6 +152,7 @@ const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics +
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
 const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
+const POLL_MTG_FRP_MS                  = 10 * 60_000; // 10 min  (LSA SAF product cadence)
 const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
@@ -1335,6 +1337,9 @@ export class App {
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   private currentFiresSources: { sources: string[]; apiKeyUsed: boolean } | null = null;
+  private mtgFrpEnabled = false;
+  private latestMtgFrpMetadata: MtgFrpMetadata | null = null;
+  private mtgFrpRequestInFlight = false;
   private trafficPanel: TrafficPanel | null = null;
   private marketStrip: MarketStrip | null = null;
   private commodityStrip: CommodityStrip | null = null;
@@ -1446,6 +1451,7 @@ export class App {
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
   private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
+  private _intervalMtgFrp: ReturnType<typeof setInterval> | null = null;
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalSncf: ReturnType<typeof setInterval> | null = null;
@@ -1486,6 +1492,7 @@ export class App {
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
     if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
+    if (this._intervalMtgFrp !== null) { clearInterval(this._intervalMtgFrp); this._intervalMtgFrp = null; }
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
@@ -2065,6 +2072,7 @@ export class App {
     this.startHealthPolling();
     this.startHydraulicPolling();
     this.startWeatherPolling();
+    this.startMtgFrpPolling();
     this.startInfraNetworkPolling();
     this.startEolienPolling();
     this.startSncfPolling();
@@ -2730,6 +2738,16 @@ export class App {
       panel.setOnModisToggle((enabled) => {
         this.mapContainer?.setModisOverlayVisible(enabled);
       });
+      panel.setOnMtgFrpToggle((enabled) => {
+        this.mtgFrpEnabled = enabled;
+        if (!enabled) {
+          this.mapContainer?.setMtgFrpEnabled(false);
+          return;
+        }
+        void this.loadMtgFrpMetadata().catch((error) => {
+          console.error('[App] MTG-FRP activation failed', error);
+        });
+      });
       panel.setOnClose(() => {
         this.layoutEnvironmentFloatingPanels();
       });
@@ -3257,6 +3275,11 @@ export class App {
       } else if (!this.activeLayers.trafficRoad) {
         this.mapContainer?.updateTrafficIncidents([]);
       }
+    }
+    if (key === 'fires' && enabled) {
+      void this.loadMtgFrpMetadata().catch((error) => {
+        console.error('[App] MTG-FRP metadata load failed', error);
+      });
     }
     this._handlePanelVisibility(key, enabled);
   }
@@ -5638,6 +5661,39 @@ export class App {
           radarInFlight = false;
         });
     }, POLL_WEATHER_RADAR_MS);
+  }
+
+  private async loadMtgFrpMetadata(force = false): Promise<void> {
+    if (this.mtgFrpRequestInFlight) return;
+    this.mtgFrpRequestInFlight = true;
+    try {
+      const metadata = await fetchMtgFrpMetadata(force);
+      if (
+        this.latestMtgFrpMetadata?.observedAt !== metadata.observedAt
+        || this.latestMtgFrpMetadata.fetchedAt !== metadata.fetchedAt
+      ) {
+        this.latestMtgFrpMetadata = metadata;
+      }
+      if (this.mtgFrpEnabled) this.mapContainer?.setMtgFrpEnabled(true);
+    } finally {
+      this.mtgFrpRequestInFlight = false;
+    }
+  }
+
+  private startMtgFrpPolling(): void {
+    if (this._intervalMtgFrp !== null) clearInterval(this._intervalMtgFrp);
+
+    const poll = (force: boolean): void => {
+      if (document.hidden) return;
+      if (!this.activeLayers.fires && !this.mtgFrpEnabled) return;
+      void this.loadMtgFrpMetadata(force).catch((error) => {
+        // Keep latestMtgFrpMetadata and the current raster on transient failure.
+        console.error('[App] MTG-FRP poll error', error);
+      });
+    };
+
+    poll(false);
+    this._intervalMtgFrp = setInterval(() => poll(true), POLL_MTG_FRP_MS);
   }
 
   private async refreshInfraNetworkLive(force = false): Promise<void> {

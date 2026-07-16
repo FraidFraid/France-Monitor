@@ -357,6 +357,14 @@ export interface SentinelNdwiRequest {
 
 // ═══ Fires (NASA FIRMS) ═══
 
+export interface MtgFrpMetadata {
+  readonly observedAt: string;
+  readonly fetchedAt: number;
+  readonly cadenceMinutes: 10;
+  readonly attribution: 'EUMETSAT LSA SAF · CC BY 4.0';
+  readonly demonstration: true;
+}
+
 export type FireObservationRuntimeStatus =
   | 'loading'
   | 'ok'
