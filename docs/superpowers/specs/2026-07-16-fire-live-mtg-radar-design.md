@@ -37,7 +37,7 @@ Une image MTG vide est une observation valide signifiant qu'aucun pixel-feu n'es
 - Dataset : `MTG-FRP`.
 - Couche : `FRP`.
 - Style : `pointdata/point`.
-- Projection de référence : `CRS:84`, ordre de bbox `[ouest, sud, est, nord]`.
+- Projections : `EPSG:3857` pour les tuiles MapLibre ; `CRS:84`, ordre de bbox `[ouest, sud, est, nord]`, pour les cartes fixes et requêtes ponctuelles.
 - Cadence : 10 minutes.
 - Latence attendue : typiquement 20 minutes, jusqu'à 45 minutes.
 - Licence et attribution : EUMETSAT LSA SAF, CC BY 4.0.
@@ -51,7 +51,7 @@ Le navigateur appelle uniquement `/api/fire-observations/mtg-frp`. Le proxy acce
 - `map` : relaie un `GetMap` PNG transparent avec bbox, largeur et hauteur validées ; cache CDN 10 minutes avec stale-while-revalidate.
 - `feature-info` : relaie un `GetFeatureInfo` JSON uniquement pour une bbox et un pixel validés ; aucune URL amont arbitraire n'est acceptée.
 
-Le proxy refuse les bbox hors couverture, dimensions supérieures à 1024 px, formats non PNG/JSON et toute valeur d'URL ou de couche fournie par le client. Une réponse HTTP 200 contenant une exception XML WMS est convertie en erreur structurée.
+Le proxy refuse les bbox invalides ou hors couverture pour le CRS choisi, les dimensions supérieures à 1024 px, les formats non PNG/JSON et toute valeur d'URL ou de couche fournie par le client. Une réponse HTTP 200 contenant une exception XML WMS est convertie en erreur structurée.
 
 ### Carte
 
@@ -73,7 +73,7 @@ MapLibre consomme la couche raster via le proxy, avec visibilité désactivée p
 Le BUFR n'est ni décodé dans le frontend ni relayé brut par Vercel. Un worker Python isolé utilise ecCodes et pyproj/GDAL pour :
 
 1. interroger le catalogue Radar et télécharger le dernier produit de réflectivité ;
-2. décoder les valeurs dBZ et la géoréférence ;
+2. décoder les valeurs dBZ et dériver la géoréférence des métadonnées BUFR ;
 3. produire un PNG/WebP géoréférencé ou des tuiles XYZ ainsi qu'un `metadata.json` normalisé ;
 4. conserver la dernière sortie valide si l'amont échoue ;
 5. publier le résultat sur un stockage/CDN configuré par `METEO_FRANCE_RADAR_TILES_URL`.
