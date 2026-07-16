@@ -45,6 +45,7 @@ import { situationHistoryProxyPlugin } from './src/plugins/situation-history-pro
 import { threatsProxyPlugin } from './src/plugins/threats-proxy';
 import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { newsProxyPlugin } from './src/plugins/news-proxy';
+import { mtgFrpProxyPlugin } from './src/plugins/mtg-frp-proxy';
 import { startRelayServer } from './ais-relay.js';
 
 // Brotli precompression — creates .br companion files for all JS/CSS/HTML assets.
@@ -173,6 +174,7 @@ export default defineConfig(({ mode }) => {
       newsProxyPlugin({
         databaseUrl: env.DATABASE_URL ?? '',
       }),
+      mtgFrpProxyPlugin(),
       aisRelayPlugin(aisApiKey),
       appVersionPlugin(),
       brotliPrecompressPlugin(),
