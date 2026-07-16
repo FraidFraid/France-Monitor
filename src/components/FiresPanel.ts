@@ -419,8 +419,9 @@ export class FiresPanel {
         details.style.cssText = 'background:rgba(59,130,246,0.06);border:1px solid rgba(96,165,250,0.20);border-radius:8px;padding:10px 12px;margin-bottom:14px;';
 
         const summary = document.createElement('summary');
+        summary.className = 'fires-multisensor__summary';
         summary.style.cssText = 'color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;';
-        summary.innerHTML = `${fmIcon('satellite-dish')} Observation multi-capteurs <span style="font-size:8px;padding:2px 5px;border:1px solid rgba(147,197,253,0.35);border-radius:4px;">EXPÉRIMENTAL</span><span style="margin-left:auto;">${fmIcon('chevron-down')}</span>`;
+        summary.innerHTML = `${fmIcon('satellite-dish')} Observation multi-capteurs <span class="fires-multisensor__badge">EXPÉRIMENTAL</span><span class="fires-multisensor__chevron">${fmIcon('chevron-down')}</span>`;
         details.appendChild(summary);
 
         const body = document.createElement('div');
@@ -439,7 +440,7 @@ export class FiresPanel {
             copy.append(label, meta);
             const status = document.createElement('span');
             status.textContent = source.status;
-            status.style.cssText = `align-self:start;white-space:nowrap;font-size:8px;font-weight:700;padding:2px 5px;border-radius:4px;color:${source.status === 'NON CONNECTÉ' ? 'var(--text-muted)' : '#86efac'};background:${source.status === 'NON CONNECTÉ' ? 'rgba(255,255,255,0.06)' : 'rgba(34,197,94,0.10)'};`;
+            status.className = `fires-multisensor__status${source.status === 'NON CONNECTÉ' ? ' fires-multisensor__status--disconnected' : ''}`;
             row.append(copy, status);
             body.appendChild(row);
         }
@@ -450,8 +451,8 @@ export class FiresPanel {
         body.appendChild(note);
 
         const links = document.createElement('div');
-        links.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:2px;font-size:9px;';
-        links.innerHTML = `<a href="${FIRE_OBSERVATION_LSA_SAF_URL}" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;">Produit MTG-FRP ${fmIcon('external-link', { size: 9 })}</a><a href="${FIRE_OBSERVATION_CNRS_URL}" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;">Expertise CNRS ${fmIcon('external-link', { size: 9 })}</a>`;
+        links.className = 'fires-multisensor__links';
+        links.innerHTML = `<a href="${FIRE_OBSERVATION_LSA_SAF_URL}" target="_blank" rel="noopener noreferrer">Produit MTG-FRP ${fmIcon('external-link', { size: 10 })}</a><a href="${FIRE_OBSERVATION_CNRS_URL}" target="_blank" rel="noopener noreferrer">Expertise CNRS ${fmIcon('external-link', { size: 10 })}</a>`;
         body.appendChild(links);
         details.appendChild(body);
         this.contentEl.appendChild(details);

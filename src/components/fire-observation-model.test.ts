@@ -11,7 +11,7 @@ describe('buildFireObservationSources', () => {
     expect(sources.map(source => source.id)).toEqual(['firms', 'gibs', 'mtg-frp', 'radar']);
     expect(sources.map(source => source.status)).toEqual([
       'ACTIF',
-      'À LA DEMANDE',
+      'ACTIF À LA DEMANDE',
       'NON CONNECTÉ',
       'NON CONNECTÉ',
     ]);

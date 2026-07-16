@@ -1,7 +1,7 @@
 import type { IconName } from './shared/icons.ts';
 
 export type FireObservationSourceId = 'firms' | 'gibs' | 'mtg-frp' | 'radar';
-export type FireObservationStatus = 'ACTIF' | 'À LA DEMANDE' | 'NON CONNECTÉ';
+export type FireObservationStatus = 'ACTIF' | 'ACTIF À LA DEMANDE' | 'NON CONNECTÉ';
 
 export interface FireObservationSource {
   id: FireObservationSourceId;
@@ -35,7 +35,7 @@ export function buildFireObservationSources(options: {
       label: 'NASA GIBS',
       role: 'Fumée et cicatrices visibles',
       timing: 'Dernière image publiée · délai variable',
-      status: 'À LA DEMANDE',
+      status: 'ACTIF À LA DEMANDE',
     },
     {
       id: 'mtg-frp',
