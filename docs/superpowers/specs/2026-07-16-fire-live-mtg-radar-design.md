@@ -66,7 +66,7 @@ MapLibre consomme la couche raster via le proxy, avec visibilité désactivée p
 - Cadence : 5 minutes ; rétention amont 20 heures.
 - Format source : BUFR compressé.
 - Licence : Licence Ouverte 2.0.
-- Authentification : `METEO_FRANCE_RADAR_API_KEY`, conservée exclusivement côté serveur. `METEO_FRANCE_API_KEY` peut servir de repli seulement si cette clé est effectivement abonnée à `DPRadar`.
+- Authentification : `METEO_FRANCE_RADAR_API_KEY`, transmise dans le header HTTP `apikey` et conservée exclusivement côté serveur. Aucun Bearer/OAuth n'est utilisé pour `DPRadar`. `METEO_FRANCE_API_KEY` peut servir de repli seulement si cette clé est effectivement abonnée à `DPRadar`.
 
 ### Worker de conversion
 

@@ -91,7 +91,7 @@ class RadarApiClient:
     def __init__(self, api_key: str) -> None:
         if not api_key:
             raise ValueError("METEO_FRANCE_RADAR_API_KEY is required")
-        self._headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+        self._headers = {"apikey": api_key, "Accept": "application/json"}
 
     def _get_json(self, path: str) -> Any:
         response = httpx.get(f"{BASE_URL}{path}", headers=self._headers, timeout=15.0)

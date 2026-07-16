@@ -161,6 +161,42 @@ class _StreamResponse:
         yield from self._chunks
 
 
+class _JsonResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"links": []}
+
+
+def test_dpradar_requests_use_apikey_without_authorization(tmp_path, monkeypatch):
+    request_headers = []
+
+    def fake_get(*_args, **kwargs):
+        request_headers.append(kwargs["headers"])
+        return _JsonResponse()
+
+    def fake_stream(*_args, **kwargs):
+        request_headers.append(kwargs["headers"])
+        return _StreamResponse([b"BUFRpayload"])
+
+    monkeypatch.setattr(radar_api.httpx, "get", fake_get)
+    monkeypatch.setattr(radar_api.httpx, "stream", fake_stream)
+    client = RadarApiClient("dpradar-key")
+
+    client._get_json("/mosaiques")
+    downloaded = client.download(
+        LatestProduct("https://example.invalid", "2026-07-16T12:50:00Z"), tmp_path
+    )
+
+    assert request_headers == [
+        {"apikey": "dpradar-key", "Accept": "application/json"},
+        {"apikey": "dpradar-key", "Accept": "application/octet-stream"},
+    ]
+    assert all("Authorization" not in headers for headers in request_headers)
+    downloaded.unlink()
+
+
 def test_download_streams_and_stops_at_compressed_limit(tmp_path, monkeypatch):
     yielded = 0
 
