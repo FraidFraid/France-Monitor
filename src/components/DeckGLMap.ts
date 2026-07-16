@@ -10972,6 +10972,7 @@ export class DeckGLMap {
     };
     const beforeId = this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined;
     this.map.addLayer(layer, beforeId);
+    this.setVis(MTG_FRP_LAYER_ID, this._mtgFrpEnabled ? 'visible' : 'none');
   }
 
   private removeMtgFrpLayer(): void {
