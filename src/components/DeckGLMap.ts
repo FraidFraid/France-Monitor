@@ -10986,7 +10986,7 @@ export class DeckGLMap {
     if (this.map.getSource(MTG_FRP_SOURCE_ID)) this.map.removeSource(MTG_FRP_SOURCE_ID);
   }
 
-  setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+  async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
     this._radar2dEnabled = enabled;
     if (!this.map) return;
     if (!manifest) {
@@ -11001,6 +11001,11 @@ export class DeckGLMap {
       this.setVis(RADAR_2D_LAYER_ID, enabled ? 'visible' : 'none');
       return;
     }
+
+    // MapLibre image sources report CORS/404/decode failures asynchronously.
+    // Validate through MapLibre's own loader before touching the live source so
+    // the previous radar remains available throughout a failed refresh.
+    await this.preloadRadar2dImage(manifest.imageUrl);
 
     const previous = this.radar2dManifest;
     this.removeRadar2dLayer();
@@ -11019,6 +11024,25 @@ export class DeckGLMap {
         }
       }
       throw error;
+    }
+  }
+
+  private async preloadRadar2dImage(url: string): Promise<void> {
+    if (!this.map) return;
+    const timeoutMs = 10_000;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.map.loadImage(url),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error(`Radar 2D image load timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
   }
 

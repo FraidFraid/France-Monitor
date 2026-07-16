@@ -87,7 +87,7 @@ export class MapContainer {
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
-    this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
+    await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
@@ -199,10 +199,10 @@ export class MapContainer {
     this.deckMap?.setMtgFrpEnabled(enabled);
   }
 
-  setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+  async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
+    if (this.deckMap) await this.deckMap.setRadar2dOverlay(manifest, enabled);
     this.radar2dManifest = manifest;
     this.radar2dEnabled = enabled;
-    this.deckMap?.setRadar2dOverlay(manifest, enabled);
   }
 
   async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {

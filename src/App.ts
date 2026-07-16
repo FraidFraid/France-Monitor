@@ -5764,7 +5764,7 @@ export class App {
             detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
           },
         };
-        this.mapContainer?.setRadar2dOverlay(null, false);
+        await this.mapContainer?.setRadar2dOverlay(null, false);
         return;
       }
 
@@ -5783,7 +5783,7 @@ export class App {
         },
       };
       try {
-        this.mapContainer?.setRadar2dOverlay(result.manifest, this.radar2dEnabled);
+        await this.mapContainer?.setRadar2dOverlay(result.manifest, this.radar2dEnabled);
       } catch (error) {
         this.latestRadar2dManifest = previousManifest;
         throw error;

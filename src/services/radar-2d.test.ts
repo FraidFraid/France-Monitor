@@ -156,6 +156,7 @@ describe('radar 2D development proxy', () => {
     expect(response.status).toBe(200);
     expect(upstreamFetch).toHaveBeenCalledWith(configuredUrl, expect.objectContaining({
       headers: { Accept: 'application/json' },
+      redirect: 'error',
     }));
     await expect(response.json()).resolves.toEqual(VALID);
   });
@@ -170,6 +171,34 @@ describe('radar 2D development proxy', () => {
     expect(response.status).toBe(503);
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
+
+  it('caps streamed bodies even when Content-Length is absent', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(64 * 1024 + 1), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    const response = await handleRadar2dProxyRequest(
+      'https://worker.example.test/manifest.json',
+      upstreamFetch,
+    );
+
+    expect(response.status).toBe(502);
+  });
+
+  it('rejects upstream redirect responses', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { Location: 'https://other.example.test/manifest.json' },
+    }));
+
+    const response = await handleRadar2dProxyRequest(
+      'https://worker.example.test/manifest.json',
+      upstreamFetch,
+    );
+
+    expect(response.status).toBe(502);
+  });
 });
 
 describe('radar 2D Vercel proxy', () => {
@@ -180,6 +209,29 @@ describe('radar 2D Vercel proxy', () => {
 
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(String(response.body))).toEqual({ configured: false });
+  });
+
+  it('proxies and validates a configured manifest', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(VALID), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+
+    const response = await invokeVercelHandler('https://worker.example.test/manifest.json');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('public, s-maxage=120');
+    expect(JSON.parse(String(response.body))).toEqual(VALID);
+  });
+
+  it('rejects an invalid configured URL before contacting upstream', async () => {
+    const upstreamFetch = vi.fn();
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const response = await invokeVercelHandler('http://worker.example.test/manifest.json');
+
+    expect(response.statusCode).toBe(503);
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   it('uses stable MapLibre ids distinct from RainViewer', () => {
