@@ -1,8 +1,11 @@
+import type { IconName } from './shared/icons.ts';
+
 export type FireObservationSourceId = 'firms' | 'gibs' | 'mtg-frp' | 'radar';
 export type FireObservationStatus = 'ACTIF' | 'À LA DEMANDE' | 'NON CONNECTÉ';
 
 export interface FireObservationSource {
   id: FireObservationSourceId;
+  icon: IconName;
   label: string;
   role: string;
   timing: string;
@@ -20,6 +23,7 @@ export function buildFireObservationSources(options: {
   return [
     {
       id: 'firms',
+      icon: 'flame',
       label: 'FIRMS · VIIRS',
       role: 'Activité thermique au sol',
       timing: options.multiSource ? 'Revisite France ~1 h' : 'Revisite France ~3 h',
@@ -27,6 +31,7 @@ export function buildFireObservationSources(options: {
     },
     {
       id: 'gibs',
+      icon: 'satellite',
       label: 'NASA GIBS',
       role: 'Fumée et cicatrices visibles',
       timing: 'Dernière image publiée · délai variable',
@@ -34,6 +39,7 @@ export function buildFireObservationSources(options: {
     },
     {
       id: 'mtg-frp',
+      icon: 'timer',
       label: 'MTG · Fire Radiative Power',
       role: 'Intensité thermique et évolution rapide',
       timing: 'Mesure 10 min · livraison ~20 min, jusqu’à 45 min',
@@ -41,6 +47,7 @@ export function buildFireObservationSources(options: {
     },
     {
       id: 'radar',
+      icon: 'wind',
       label: 'Radar Météo-France',
       role: 'Structure et hauteur du panache',
       timing: 'Mesures 5 min · analyse volumique requise',

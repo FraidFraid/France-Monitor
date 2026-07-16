@@ -12,6 +12,11 @@ import { fetchNearbyCommuneLabel } from '../services/elus.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
 import { fmIcon } from './shared/icons.ts';
+import {
+    buildFireObservationSources,
+    FIRE_OBSERVATION_CNRS_URL,
+    FIRE_OBSERVATION_LSA_SAF_URL,
+} from './fire-observation-model.ts';
 
 export class FiresPanel {
     private modalEl!: HTMLElement;
@@ -358,13 +363,16 @@ export class FiresPanel {
         // ── 1. À savoir FIRMS ────────────────────────────────────────────────
         this._renderInfoBlock();
 
-        // ── 2. Imagerie VIIRS (NASA GIBS) ────────────────────────────────────
+        // ── 2. Observation multi-capteurs ────────────────────────────────────
+        this._renderMultiSensorObservation();
+
+        // ── 3. Imagerie VIIRS (NASA GIBS) ────────────────────────────────────
         this._renderModisSection();
 
-        // ── 3. Filtres ────────────────────────────────────────────────────────
+        // ── 4. Filtres ────────────────────────────────────────────────────────
         this._renderFilters();
 
-        // ── 4. Stats globales ─────────────────────────────────────────────────
+        // ── 5. Stats globales ─────────────────────────────────────────────────
         if (filtered.length === 0) {
             const empty = document.createElement('div');
             empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:24px 0;';
@@ -375,7 +383,7 @@ export class FiresPanel {
             this._renderIncidentList(incidents, orphanFires, filtered);
         }
 
-        // ── 5. Footer ─────────────────────────────────────────────────────────
+        // ── 6. Footer ─────────────────────────────────────────────────────────
         this._renderFooter(filtered, incidents, latestLabel);
     }
 
@@ -400,6 +408,53 @@ export class FiresPanel {
                 <div>${fmIcon('lightbulb')} Activez <b style="color:var(--text-primary);">Masquer zones urbaines</b> pour filtrer les sources industrielles permanentes.</div>
             </div>`;
         this.contentEl.appendChild(info);
+    }
+
+    private _renderMultiSensorObservation(): void {
+        const sources = buildFireObservationSources({
+            multiSource: this.apiKeyUsed && this.sourcesInfo.length >= 2,
+        });
+        const details = document.createElement('details');
+        details.className = 'fires-multisensor';
+        details.style.cssText = 'background:rgba(59,130,246,0.06);border:1px solid rgba(96,165,250,0.20);border-radius:8px;padding:10px 12px;margin-bottom:14px;';
+
+        const summary = document.createElement('summary');
+        summary.style.cssText = 'color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;';
+        summary.innerHTML = `${fmIcon('satellite-dish')} Observation multi-capteurs <span style="font-size:8px;padding:2px 5px;border:1px solid rgba(147,197,253,0.35);border-radius:4px;">EXPÉRIMENTAL</span><span style="margin-left:auto;">${fmIcon('chevron-down')}</span>`;
+        details.appendChild(summary);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:7px;';
+        for (const source of sources) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,0.06);';
+            const copy = document.createElement('div');
+            const label = document.createElement('div');
+            label.innerHTML = `${fmIcon(source.icon, { size: 11 })} `;
+            label.append(document.createTextNode(source.label));
+            label.style.cssText = 'color:var(--text-primary);font-size:11px;font-weight:600;';
+            const meta = document.createElement('div');
+            meta.textContent = `${source.role} · ${source.timing}`;
+            meta.style.cssText = 'color:var(--text-muted);font-size:10px;line-height:1.45;margin-top:2px;';
+            copy.append(label, meta);
+            const status = document.createElement('span');
+            status.textContent = source.status;
+            status.style.cssText = `align-self:start;white-space:nowrap;font-size:8px;font-weight:700;padding:2px 5px;border-radius:4px;color:${source.status === 'NON CONNECTÉ' ? 'var(--text-muted)' : '#86efac'};background:${source.status === 'NON CONNECTÉ' ? 'rgba(255,255,255,0.06)' : 'rgba(34,197,94,0.10)'};`;
+            row.append(copy, status);
+            body.appendChild(row);
+        }
+
+        const note = document.createElement('div');
+        note.style.cssText = 'margin-top:3px;padding:8px;border-radius:6px;background:rgba(249,115,22,0.08);color:var(--text-muted);font-size:10px;line-height:1.5;';
+        note.innerHTML = `${fmIcon('wind')} <b style="color:var(--text-primary);">Pyroconvection</b> — un panache très développé peut signaler un feu intense et une propagation plus erratique. FranceMonitor ne produit pas encore ce diagnostic.`;
+        body.appendChild(note);
+
+        const links = document.createElement('div');
+        links.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:2px;font-size:9px;';
+        links.innerHTML = `<a href="${FIRE_OBSERVATION_LSA_SAF_URL}" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;">Produit MTG-FRP ${fmIcon('external-link', { size: 9 })}</a><a href="${FIRE_OBSERVATION_CNRS_URL}" target="_blank" rel="noopener noreferrer" style="color:#93c5fd;">Expertise CNRS ${fmIcon('external-link', { size: 9 })}</a>`;
+        body.appendChild(links);
+        details.appendChild(body);
+        this.contentEl.appendChild(details);
     }
 
     // ─── Section imagerie VIIRS ───────────────────────────────────────────────

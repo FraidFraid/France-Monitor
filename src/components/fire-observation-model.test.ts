@@ -29,4 +29,12 @@ describe('buildFireObservationSources', () => {
     expect(FIRE_OBSERVATION_CNRS_URL).toMatch(/^https:\/\/www\.cnrs\.fr\//);
     expect(FIRE_OBSERVATION_LSA_SAF_URL).toMatch(/^https:\/\/lsa-saf\.eumetsat\.int\//);
   });
+
+  it('provides icons while keeping experimental sources explicitly disconnected', () => {
+    const sources = buildFireObservationSources({ multiSource: true });
+    expect(sources.map(source => source.icon)).toEqual(['flame', 'satellite', 'timer', 'wind']);
+    expect(sources.filter(source => source.status === 'NON CONNECTÉ').map(source => source.id))
+      .toEqual(['mtg-frp', 'radar']);
+    expect(sources.find(source => source.id === 'radar')?.role).toContain('panache');
+  });
 });
