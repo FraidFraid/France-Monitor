@@ -357,6 +357,26 @@ export interface SentinelNdwiRequest {
 
 // ═══ Fires (NASA FIRMS) ═══
 
+export type FireObservationRuntimeStatus =
+  | 'loading'
+  | 'ok'
+  | 'stale'
+  | 'not-configured'
+  | 'error';
+
+export interface FireObservationFeedState {
+  readonly status: FireObservationRuntimeStatus;
+  readonly observedAt: number | null;
+  readonly fetchedAt: number | null;
+  readonly source: string;
+  readonly detail?: string;
+}
+
+export interface FireObservationRuntimeState {
+  readonly mtgFrp: FireObservationFeedState;
+  readonly radar2d: FireObservationFeedState;
+}
+
 export interface ActiveFire {
   id: string;
   latitude: number;
