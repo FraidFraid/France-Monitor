@@ -43,8 +43,24 @@ describe('sources-quality-dashboard', () => {
     assert.ok(registry.every((source) => source.name.length > 0));
   });
 
+  it('n’expose MTG-FRP et radar 2D que lorsque leur flux a été contacté', () => {
+    const withoutContact = getSourcesQualityDashboardData({ statuses: [] });
+    assert.equal(withoutContact.sources.some((source) => source.id === 'fire-mtg-frp'), false);
+    assert.equal(withoutContact.sources.some((source) => source.id === 'fire-radar-2d'), false);
+    assert.equal(withoutContact.sources.some((source) => source.id === 'fire-radar-3d'), false);
+
+    const afterContact = getSourcesQualityDashboardData({
+      statuses: [
+        status({ name: 'MTG-FRP LSA SAF', status: 'ok' }),
+        status({ name: 'Radar 2D Météo-France', status: 'ok', detail: 'Configuration requise' }),
+      ],
+    });
+    assert.equal(afterContact.sources.some((source) => source.id === 'fire-mtg-frp'), true);
+    assert.equal(afterContact.sources.some((source) => source.id === 'fire-radar-2d'), true);
+    assert.equal(afterContact.sources.some((source) => source.id === 'fire-radar-3d'), false);
+  });
+
   it('agrège statuts, dégradations et signaux à revoir', () => {
-    const registry = getSourceQualityRegistry();
     const data = getSourcesQualityDashboardData({
       now: new Date('2026-06-27T10:00:00.000Z'),
       statuses: [
@@ -71,7 +87,7 @@ describe('sources-quality-dashboard', () => {
       ],
     });
 
-    assert.equal(data.summary.sourcesTracked.value, String(registry.length));
+    assert.equal(data.summary.sourcesTracked.value, String(data.sources.length));
     assert.equal(data.summary.sourcesActive.value, '1');
     assert.equal(data.summary.sourcesDegraded.value, '2');
     assert.equal(data.sources.find((source) => source.name === 'Météo-France')?.quality.status, 'active');

@@ -2772,10 +2772,21 @@ export class App {
           console.error('[App] MTG-FRP activation failed', error);
         });
       });
+      panel.setOnRadar2dToggle((enabled) => {
+        this.radar2dEnabled = enabled;
+        if (!enabled) {
+          void this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
+          return;
+        }
+        void this.loadRadar2dManifest().catch((error) => {
+          console.error('[App] Radar 2D activation failed', error);
+        });
+      });
       panel.setOnClose(() => {
         this.layoutEnvironmentFloatingPanels();
       });
       this.firesPanel = panel;
+      panel.setObservationRuntimeState(this.fireObservationRuntime);
       // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
       // setRawFires re-triggers the filter + map update through onFilteredFires.
       if (this.currentFiresSources) {
@@ -5693,6 +5704,13 @@ export class App {
   private async loadMtgFrpMetadata(force = false): Promise<void> {
     if (this.mtgFrpRequestInFlight) return;
     this.mtgFrpRequestInFlight = true;
+    Watchdog.register('fire-mtg-frp', {
+      label: 'MTG-FRP LSA SAF',
+      staleAfterMs: MTG_FRP_FRESHNESS_MS,
+      detail: 'Produit de démonstration EUMETSAT LSA SAF',
+    });
+    Watchdog.report('fire-mtg-frp', { type: 'loading' });
+    const startedAt = performance.now();
     try {
       const metadata = await fetchMtgFrpMetadata(force);
       if (
@@ -5711,6 +5729,11 @@ export class App {
           source: 'EUMETSAT LSA SAF',
         },
       };
+      Watchdog.report('fire-mtg-frp', {
+        type: 'success',
+        responseTimeMs: Math.round(performance.now() - startedAt),
+        detail: `Observation ${metadata.observedAt} · DÉMONSTRATION`,
+      });
       if (this.mtgFrpEnabled) this.mapContainer?.setMtgFrpEnabled(true);
     } catch (error) {
       this.fireObservationRuntime = {
@@ -5719,9 +5742,14 @@ export class App {
           ? { ...this.fireObservationRuntime.mtgFrp, status: 'stale', detail: 'Dernière observation valide conservée' }
           : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'EUMETSAT LSA SAF' },
       };
+      Watchdog.report('fire-mtg-frp', {
+        type: 'failure',
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     } finally {
       this.mtgFrpRequestInFlight = false;
+      this.firesPanel?.setObservationRuntimeState(this.fireObservationRuntime);
     }
   }
 
@@ -5744,6 +5772,13 @@ export class App {
   private async loadRadar2dManifest(force = false): Promise<void> {
     if (this.radar2dRequestInFlight) return;
     this.radar2dRequestInFlight = true;
+    Watchdog.register('fire-radar-2d', {
+      label: 'Radar 2D Météo-France',
+      staleAfterMs: RADAR_2D_FRESHNESS_MS,
+      detail: 'Réflectivité atmosphérique 2D',
+    });
+    Watchdog.report('fire-radar-2d', { type: 'loading' });
+    const startedAt = performance.now();
     if (!this.latestRadar2dManifest) {
       this.fireObservationRuntime = {
         ...this.fireObservationRuntime,
@@ -5764,6 +5799,11 @@ export class App {
             detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
           },
         };
+        Watchdog.report('fire-radar-2d', {
+          type: 'success',
+          responseTimeMs: Math.round(performance.now() - startedAt),
+          detail: 'Configuration requise · worker radar non configuré',
+        });
         await this.mapContainer?.setRadar2dOverlay(null, false);
         return;
       }
@@ -5782,6 +5822,11 @@ export class App {
           ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
         },
       };
+      Watchdog.report('fire-radar-2d', {
+        type: 'success',
+        responseTimeMs: Math.round(performance.now() - startedAt),
+        detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
+      });
       try {
         await this.mapContainer?.setRadar2dOverlay(result.manifest, this.radar2dEnabled);
       } catch (error) {
@@ -5801,9 +5846,14 @@ export class App {
             }
           : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'Météo-France DPRadar' },
       };
+      Watchdog.report('fire-radar-2d', {
+        type: 'failure',
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     } finally {
       this.radar2dRequestInFlight = false;
+      this.firesPanel?.setObservationRuntimeState(this.fireObservationRuntime);
     }
   }
 

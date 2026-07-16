@@ -41,7 +41,11 @@ describe('buildFireObservationSources', () => {
     ]);
     expect(sources[2].timing).toContain('10 min');
     expect(sources[2].timing).toContain('45 min');
+    expect(sources[2].observation).toContain('Observation');
+    expect(sources[2].observation).toContain('10 min');
+    expect(sources[2].qualification).toBe('DÉMONSTRATION');
     expect(sources[3].timing).toContain('5 min');
+    expect(sources[3].observation).toBeUndefined();
   });
 
   it('adapts FIRMS revisit copy to available satellites', () => {

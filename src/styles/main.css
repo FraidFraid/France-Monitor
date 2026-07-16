@@ -7574,6 +7574,77 @@ button.header-quality-link {
   white-space: nowrap;
 }
 
+.fires-multisensor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fires-multisensor__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.fires-multisensor__qualification {
+  display: inline-flex;
+  padding: 1px 4px;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 3px;
+  color: #fcd34d;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+}
+
+.fires-multisensor__observation,
+.fires-multisensor__warning {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.fires-multisensor__observation { color: #bfdbfe; }
+.fires-multisensor__warning { color: #fdba74; }
+
+.fires-multisensor__toggle {
+  min-width: 52px;
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #bfdbfe;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.fires-multisensor__toggle[aria-pressed='true'] {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: #60a5fa;
+  color: #eff6ff;
+}
+
+.fires-multisensor__toggle:focus-visible,
+.fires-multisensor__links a:focus-visible,
+.fires-multisensor__summary:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .fires-multisensor__row { grid-template-columns: 1fr; }
+  .fires-multisensor__controls {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
 .fires-multisensor__status--disconnected {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-muted);

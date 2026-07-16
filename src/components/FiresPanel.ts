@@ -1,4 +1,4 @@
-import type { ActiveFire, FireIncident } from '../types/index.ts';
+import type { ActiveFire, FireIncident, FireObservationRuntimeState } from '../types/index.ts';
 import {
     applyPremiumCloseButtonHover,
     createPremiumIconHeader,
@@ -30,8 +30,14 @@ export class FiresPanel {
     private onHoverIncidentCb: ((points: { lat: number; lon: number }[] | null) => void) | null = null;
     private onModisToggleCb: ((enabled: boolean) => void) | null = null;
     private onMtgFrpToggleCb: ((enabled: boolean) => void) | null = null;
+    private onRadar2dToggleCb: ((enabled: boolean) => void) | null = null;
     private onCloseCb: (() => void) | null = null;
     private modisEnabled = false;
+    private mtgFrpEnabled = false;
+    private radar2dEnabled = false;
+    private observationRuntime?: FireObservationRuntimeState;
+    private observationEl?: HTMLDetailsElement;
+    private observationOpen = false;
     private isDragging = false;
     private dragOffsetX = 0;
     private dragOffsetY = 0;
@@ -73,6 +79,21 @@ export class FiresPanel {
     setOnMtgFrpToggle(cb: (enabled: boolean) => void): void {
         if (this.onMtgFrpToggleCb === cb) return;
         this.onMtgFrpToggleCb = cb;
+    }
+
+    setOnRadar2dToggle(cb: (enabled: boolean) => void): void {
+        if (this.onRadar2dToggleCb === cb) return;
+        this.onRadar2dToggleCb = cb;
+    }
+
+    setObservationRuntimeState(state: FireObservationRuntimeState): void {
+        this.observationRuntime = state;
+        if (!this.observationEl?.isConnected) return;
+        const wasOpen = this.observationEl.open;
+        this.observationOpen = wasOpen;
+        const next = this._createMultiSensorObservation();
+        this.observationEl.replaceWith(next);
+        this.observationEl = next;
     }
 
     setOnClose(cb: () => void): void {
@@ -417,37 +438,96 @@ export class FiresPanel {
     }
 
     private _renderMultiSensorObservation(): void {
+        this.observationEl = this._createMultiSensorObservation();
+        this.contentEl.appendChild(this.observationEl);
+    }
+
+    private _createMultiSensorObservation(): HTMLDetailsElement {
         const sources = buildFireObservationSources({
             multiSource: this.apiKeyUsed && this.sourcesInfo.length >= 2,
+            runtime: this.observationRuntime,
+            now: Date.now(),
         });
         const details = document.createElement('details');
         details.className = 'fires-multisensor';
+        if (this.observationOpen) details.open = true;
+        details.addEventListener('toggle', () => {
+            this.observationOpen = details.open;
+        });
         details.style.cssText = 'background:rgba(59,130,246,0.06);border:1px solid rgba(96,165,250,0.20);border-radius:8px;padding:10px 12px;margin-bottom:14px;';
 
         const summary = document.createElement('summary');
         summary.className = 'fires-multisensor__summary';
         summary.style.cssText = 'color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;';
         summary.innerHTML = `${fmIcon('satellite-dish')} Observation multi-capteurs <span class="fires-multisensor__badge">EXPÉRIMENTAL</span><span class="fires-multisensor__chevron">${fmIcon('chevron-down')}</span>`;
+        summary.addEventListener('click', () => {
+            // Capture the native <details> transition before async geocoding can rerender the panel.
+            this.observationOpen = !details.open;
+        });
         details.appendChild(summary);
 
         const body = document.createElement('div');
         body.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:7px;';
         for (const source of sources) {
             const row = document.createElement('div');
-            row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,0.06);';
+            row.className = 'fires-multisensor__row';
             const copy = document.createElement('div');
             const label = document.createElement('div');
             label.innerHTML = `${fmIcon(source.icon, { size: 11 })} `;
             label.append(document.createTextNode(source.label));
+            if (source.qualification) {
+                const qualification = document.createElement('span');
+                qualification.className = 'fires-multisensor__qualification';
+                qualification.textContent = source.qualification;
+                label.append(' ', qualification);
+            }
             label.style.cssText = 'color:var(--text-primary);font-size:11px;font-weight:600;';
             const meta = document.createElement('div');
             meta.textContent = `${source.role} · ${source.timing}`;
             meta.style.cssText = 'color:var(--text-muted);font-size:10px;line-height:1.45;margin-top:2px;';
             copy.append(label, meta);
+            if (source.observation) {
+                const observation = document.createElement('div');
+                observation.className = 'fires-multisensor__observation';
+                observation.textContent = source.observation;
+                copy.appendChild(observation);
+            }
+            if (source.warning) {
+                const warning = document.createElement('div');
+                warning.className = 'fires-multisensor__warning';
+                warning.textContent = source.warning;
+                copy.appendChild(warning);
+            }
+            const controls = document.createElement('div');
+            controls.className = 'fires-multisensor__controls';
             const status = document.createElement('span');
             status.textContent = source.status;
             status.className = `fires-multisensor__status${source.status === 'NON CONNECTÉ' ? ' fires-multisensor__status--disconnected' : ''}`;
-            row.append(copy, status);
+            controls.appendChild(status);
+            if (source.id === 'mtg-frp' || source.id === 'radar-2d') {
+                const enabled = source.id === 'mtg-frp' ? this.mtgFrpEnabled : this.radar2dEnabled;
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'fires-multisensor__toggle';
+                toggle.setAttribute('aria-pressed', String(enabled));
+                toggle.setAttribute('aria-label', `${enabled ? 'Masquer' : 'Afficher'} ${source.label}`);
+                toggle.textContent = enabled ? 'Masquer' : 'Afficher';
+                toggle.onclick = () => {
+                    if (source.id === 'mtg-frp') {
+                        this.mtgFrpEnabled = !this.mtgFrpEnabled;
+                        this.onMtgFrpToggleCb?.(this.mtgFrpEnabled);
+                    } else {
+                        this.radar2dEnabled = !this.radar2dEnabled;
+                        this.onRadar2dToggleCb?.(this.radar2dEnabled);
+                    }
+                    const next = source.id === 'mtg-frp' ? this.mtgFrpEnabled : this.radar2dEnabled;
+                    toggle.setAttribute('aria-pressed', String(next));
+                    toggle.setAttribute('aria-label', `${next ? 'Masquer' : 'Afficher'} ${source.label}`);
+                    toggle.textContent = next ? 'Masquer' : 'Afficher';
+                };
+                controls.appendChild(toggle);
+            }
+            row.append(copy, controls);
             body.appendChild(row);
         }
 
@@ -461,7 +541,7 @@ export class FiresPanel {
         links.innerHTML = `<a href="${FIRE_OBSERVATION_LSA_SAF_URL}" target="_blank" rel="noopener noreferrer">Produit MTG-FRP ${fmIcon('external-link', { size: 10 })}</a><a href="${FIRE_OBSERVATION_CNRS_URL}" target="_blank" rel="noopener noreferrer">Expertise CNRS ${fmIcon('external-link', { size: 10 })}</a>`;
         body.appendChild(links);
         details.appendChild(body);
-        this.contentEl.appendChild(details);
+        return details;
     }
 
     // ─── Section imagerie VIIRS ───────────────────────────────────────────────

@@ -121,6 +121,26 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     limits: ['Détections satellites à interpréter avec prudence'],
   },
   {
+    id: 'fire-mtg-frp',
+    name: 'MTG-FRP LSA SAF',
+    domain: 'Environnement',
+    sourceType: 'official',
+    natureBaseline: 80,
+    watchdogNames: ['MTG-FRP LSA SAF'],
+    mappedIndicators: ['source', 'heure d’observation', 'âge', 'fraîcheur'],
+    limits: ['Produit de démonstration EUMETSAT LSA SAF'],
+  },
+  {
+    id: 'fire-radar-2d',
+    name: 'Radar 2D Météo-France',
+    domain: 'Environnement',
+    sourceType: 'official',
+    natureBaseline: 90,
+    watchdogNames: ['Radar 2D Météo-France'],
+    mappedIndicators: ['source', 'heure d’observation', 'âge', 'fraîcheur'],
+    limits: ['Aide à l’interprétation 2D, sans diagnostic automatique'],
+  },
+  {
     id: 'military-flights',
     name: 'Vols militaires',
     domain: 'Défense',
@@ -311,12 +331,15 @@ export function getSourcesQualityDashboardData(options: SourcesQualityDashboardO
   const statusByName = new Map<string, DataSourceStatus>();
   for (const status of statuses) statusByName.set(status.name, status);
 
-  const sources = SOURCE_REGISTRY.map((entry) => {
+  const visibleRegistry = SOURCE_REGISTRY.filter((entry) =>
+    (entry.id !== 'fire-mtg-frp' && entry.id !== 'fire-radar-2d') || findStatus(entry, statusByName) !== undefined,
+  );
+  const sources = visibleRegistry.map((entry) => {
     const status = findStatus(entry, statusByName);
     return buildSourceQualityRow(entry, status, findObserved(entry, resolveObserved));
   });
 
-  const signalsToReview = SOURCE_REGISTRY
+  const signalsToReview = visibleRegistry
     .map((entry) => buildReviewSignalFromSource(entry, findStatus(entry, statusByName)))
     .filter((item): item is SignalToReview => item !== null);
 
