@@ -24,13 +24,27 @@ const API_PATH = '/api/fire-observations/mtg-frp';
 const CACHE_TTL_MS = 120_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const WEB_MERCATOR_LIMIT = 20_037_508.342789244;
-const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const ISO_INSTANT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 
 let metadataCache: MtgFrpMetadata | null = null;
 let metadataCachedAt = 0;
 
 function isIsoInstant(value: string): boolean {
-  return ISO_INSTANT_PATTERN.test(value) && Number.isFinite(Date.parse(value));
+  const match = ISO_INSTANT_PATTERN.exec(value);
+  if (!match) return false;
+
+  const [, year, month, day, hour, minute, second, fraction = ''] = match;
+  const instant = new Date(0);
+  instant.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+  instant.setUTCHours(Number(hour), Number(minute), Number(second), Number(fraction.padEnd(3, '0')));
+
+  return instant.getUTCFullYear() === Number(year)
+    && instant.getUTCMonth() === Number(month) - 1
+    && instant.getUTCDate() === Number(day)
+    && instant.getUTCHours() === Number(hour)
+    && instant.getUTCMinutes() === Number(minute)
+    && instant.getUTCSeconds() === Number(second)
+    && instant.getUTCMilliseconds() === Number(fraction.padEnd(3, '0'));
 }
 
 function escapeRegExp(value: string): string {

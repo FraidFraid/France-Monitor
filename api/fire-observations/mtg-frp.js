@@ -1,7 +1,7 @@
 const UPSTREAM_URL = 'https://adaguc.lsasvcs.ipma.pt/adagucserver';
 const FETCH_TIMEOUT_MS = 10_000;
 const WEB_MERCATOR_LIMIT = 20_037_508.342789244;
-const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const ISO_INSTANT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 
 function sendJson(res, status, payload, cacheControl = 'no-store') {
   res.statusCode = status;
@@ -11,7 +11,21 @@ function sendJson(res, status, payload, cacheControl = 'no-store') {
 }
 
 function isIsoInstant(value) {
-  return ISO_INSTANT_PATTERN.test(value) && Number.isFinite(Date.parse(value));
+  const match = ISO_INSTANT_PATTERN.exec(value);
+  if (!match) return false;
+
+  const [, year, month, day, hour, minute, second, fraction = ''] = match;
+  const instant = new Date(0);
+  instant.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
+  instant.setUTCHours(Number(hour), Number(minute), Number(second), Number(fraction.padEnd(3, '0')));
+
+  return instant.getUTCFullYear() === Number(year)
+    && instant.getUTCMonth() === Number(month) - 1
+    && instant.getUTCDate() === Number(day)
+    && instant.getUTCHours() === Number(hour)
+    && instant.getUTCMinutes() === Number(minute)
+    && instant.getUTCSeconds() === Number(second)
+    && instant.getUTCMilliseconds() === Number(fraction.padEnd(3, '0'));
 }
 
 function parseCapabilities(xml) {
