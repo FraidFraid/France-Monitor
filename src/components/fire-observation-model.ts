@@ -66,7 +66,7 @@ export function buildFireObservationSources(options: {
     {
       id: 'mtg-frp',
       icon: 'timer',
-      label: 'MTG · Fire Radiative Power',
+      label: 'MTG-FRP',
       role: 'Intensité thermique et évolution rapide',
       timing: 'Mesure 10 min · livraison ~20 min, jusqu’à 45 min',
       status: mtgFrpStatus,

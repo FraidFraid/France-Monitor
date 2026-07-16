@@ -80,6 +80,10 @@ import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 import { fetchFiresData } from './services/fires.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
 import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
+import {
+  installRadar2dObservation,
+  runRadar2dToggleTransition,
+} from './services/radar-2d-orchestration.ts';
 import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
@@ -2774,12 +2778,19 @@ export class App {
       });
       panel.setOnRadar2dToggle((enabled) => {
         this.radar2dEnabled = enabled;
-        if (!enabled) {
-          void this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
-          return;
-        }
-        void this.loadRadar2dManifest().catch((error) => {
-          console.error('[App] Radar 2D activation failed', error);
+        void runRadar2dToggleTransition({
+          enabled,
+          loadManifest: () => this.loadRadar2dManifest(),
+          disableOverlay: async () => {
+            await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
+          },
+          syncEnabled: (next) => {
+            this.radar2dEnabled = next;
+            this.firesPanel?.setRadar2dEnabled(next);
+          },
+          onError: (error) => {
+            console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
+          },
         });
       });
       panel.setOnClose(() => {
@@ -5799,12 +5810,12 @@ export class App {
             detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
           },
         };
+        await this.mapContainer?.setRadar2dOverlay(null, false);
         Watchdog.report('fire-radar-2d', {
           type: 'success',
           responseTimeMs: Math.round(performance.now() - startedAt),
           detail: 'Configuration requise · worker radar non configuré',
         });
-        await this.mapContainer?.setRadar2dOverlay(null, false);
         return;
       }
 
@@ -5822,13 +5833,21 @@ export class App {
           ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
         },
       };
-      Watchdog.report('fire-radar-2d', {
-        type: 'success',
-        responseTimeMs: Math.round(performance.now() - startedAt),
-        detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
-      });
       try {
-        await this.mapContainer?.setRadar2dOverlay(result.manifest, this.radar2dEnabled);
+        await installRadar2dObservation({
+          manifest: result.manifest,
+          enabled: this.radar2dEnabled,
+          installOverlay: async (manifest, enabled) => {
+            await this.mapContainer?.setRadar2dOverlay(manifest, enabled);
+          },
+          reportSuccess: () => {
+            Watchdog.report('fire-radar-2d', {
+              type: 'success',
+              responseTimeMs: Math.round(performance.now() - startedAt),
+              detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
+            });
+          },
+        });
       } catch (error) {
         this.latestRadar2dManifest = previousManifest;
         throw error;

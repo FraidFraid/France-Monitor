@@ -86,6 +86,15 @@ export class FiresPanel {
         this.onRadar2dToggleCb = cb;
     }
 
+    setRadar2dEnabled(enabled: boolean): void {
+        if (this.radar2dEnabled === enabled) return;
+        this.radar2dEnabled = enabled;
+        if (!this.observationEl?.isConnected) return;
+        const next = this._createMultiSensorObservation();
+        this.observationEl.replaceWith(next);
+        this.observationEl = next;
+    }
+
     setObservationRuntimeState(state: FireObservationRuntimeState): void {
         this.observationRuntime = state;
         if (!this.observationEl?.isConnected) return;

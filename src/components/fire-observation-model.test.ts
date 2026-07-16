@@ -40,6 +40,7 @@ describe('buildFireObservationSources', () => {
       'NON CONNECTÉ',
     ]);
     expect(sources[2].timing).toContain('10 min');
+    expect(sources[2].label).toBe('MTG-FRP');
     expect(sources[2].timing).toContain('45 min');
     expect(sources[2].observation).toContain('Observation');
     expect(sources[2].observation).toContain('10 min');

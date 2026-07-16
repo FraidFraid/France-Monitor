@@ -80,3 +80,43 @@ Vérifié dans l’application locale, en bureau puis avec une largeur étroite 
 - Responsive : aucune largeur débordante et commandes repliées sous le texte au breakpoint mobile.
 
 Conclusion : aucun défaut bloquant relevé. Le radar 2D restera légitimement `CONFIGURATION REQUISE` tant que le worker et son manifeste ne sont pas configurés.
+
+## Correctifs après review
+
+- Le succès Watchdog radar est maintenant publié uniquement après la résolution de `setRadar2dOverlay`, y compris pour l’état non configuré.
+- Une première installation radar en échec restaure le manifeste précédent, place le runtime en `error` en l’absence de cache, et publie uniquement un événement Watchdog `failure`.
+- La désactivation radar attend désormais la Promise de la carte. Un rejet est absorbé, journalisé et remet le bouton sur l’état actif conservé par l’overlay atomique.
+- Un échec d’activation remet le bouton à `off` et tente explicitement de désactiver l’overlay ; un éventuel rejet de nettoyage est lui aussi géré.
+- Le libellé produit visible est exactement `MTG-FRP`.
+- Des tests DOM couvrent les cinq lignes, la conservation de l’état `<details>`, les deux boutons initialement `aria-pressed="false"`, leurs callbacks et la resynchronisation radar.
+
+### TDD review — RED
+
+```text
+npx vitest run src/components/fire-observation-model.test.ts src/components/FiresPanel.test.ts src/services/radar-2d-orchestration.test.ts
+3 fichiers en échec : ancien libellé MTG, API de resynchronisation absente, orchestrateur radar absent.
+```
+
+### TDD review — GREEN et vérification
+
+```text
+npx vitest run src/App.radar-2d.test.ts src/components/FiresPanel.test.ts src/components/fire-observation-model.test.ts src/services/radar-2d-orchestration.test.ts
+4 fichiers, 13 tests réussis.
+
+npm test
+32 fichiers, 254 tests réussis.
+
+npm run typecheck
+Succès, exit 0.
+
+npm run build
+Succès, 1491 modules transformés.
+
+npx eslint src/App.ts src/App.radar-2d.test.ts src/components/FiresPanel.ts src/components/FiresPanel.test.ts src/components/fire-observation-model.ts src/components/fire-observation-model.test.ts src/services/radar-2d-orchestration.ts src/services/radar-2d-orchestration.test.ts
+Succès, exit 0.
+
+git diff --check
+Succès, aucune erreur d’espace.
+```
+
+Les deux avertissements Vite non bloquants déjà documentés restent inchangés (`spawn` externalisé par `@loaders.gl`, import statique/dynamique de `oil.ts`).
