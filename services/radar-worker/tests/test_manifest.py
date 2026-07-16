@@ -25,7 +25,7 @@ def test_manifest_contains_observation_and_bounds():
 
     assert manifest["source"] == "Météo-France DPRadar"
     assert manifest["observedAt"] == "2026-07-16T12:50:00Z"
-    assert manifest["imageUrl"].endswith("latest.webp?v=20260716T1250Z")
+    assert manifest["imageUrl"].endswith("/rasters/radar-20260716T1250Z.webp")
     west, south, east, north = manifest["bounds"]
     assert west < east and south < north
     assert -180 <= west <= 180 and -90 <= south <= 90
@@ -76,4 +76,6 @@ def test_health_reports_configuration_without_secrets(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["configured"] is True
+    assert response.json()["storageReady"] is True
+    assert not list(tmp_path.glob(".health-*.tmp"))
     assert "super-secret" not in response.text

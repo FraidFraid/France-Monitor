@@ -117,6 +117,7 @@ def build_manifest(
     grid: Mapping[str, Any],
     *,
     public_base_url: str,
+    image_name: str | None = None,
     generated_at: str | None = None,
 ) -> Radar2dManifest:
     observed_at = str(_required(grid, "observedAt"))
@@ -124,13 +125,14 @@ def build_manifest(
     generated = generated_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     _utc_timestamp(generated)
     version = observed.strftime("%Y%m%dT%H%MZ")
+    raster_name = image_name or f"radar-{version}.webp"
     return {
         "schemaVersion": 1,
         "source": SOURCE,
         "observedAt": observed.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "generatedAt": generated,
         "bounds": wgs84_bounds(grid),
-        "imageUrl": f"{public_base_url.rstrip('/')}/latest.webp?v={version}",
+        "imageUrl": f"{public_base_url.rstrip('/')}/rasters/{raster_name}",
         "resolutionMeters": int(grid["resolutionMeters"]),
         "license": LICENSE,
     }

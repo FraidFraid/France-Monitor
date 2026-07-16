@@ -5,11 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import gzip
-import io
 import os
 from pathlib import Path
+import tempfile
 from typing import Any, Iterable, Mapping
 from urllib.parse import parse_qs, urlparse
+
+import httpx
 
 from models import RadarMetadataError
 
@@ -66,8 +68,6 @@ class RadarApiClient:
         self._headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
 
     def _get_json(self, path: str) -> Any:
-        import httpx
-
         response = httpx.get(f"{BASE_URL}{path}", headers=self._headers, timeout=15.0)
         response.raise_for_status()
         return response.json()
@@ -95,38 +95,72 @@ class RadarApiClient:
         return product
 
     def download(self, product: LatestProduct, data_dir: Path) -> Path:
-        import httpx
-
         data_dir = data_dir.resolve()
         raw_dir = data_dir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
-        response = httpx.get(
-            product.url,
-            headers={**self._headers, "Accept": "application/octet-stream"},
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        compressed = response.content
-        if len(compressed) > MAX_COMPRESSED_BYTES:
-            raise RadarMetadataError("compressed radar product exceeds safety limit")
+        compressed_path: Path | None = None
+        output_path: Path | None = None
         try:
-            if compressed.startswith(b"\x1f\x8b"):
-                with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
-                    payload = stream.read(MAX_DECOMPRESSED_BYTES + 1)
-            else:
-                payload = compressed
-        except gzip.BadGzipFile as exc:
-            raise RadarMetadataError("radar product is not a valid gzip stream") from exc
-        if len(payload) > MAX_DECOMPRESSED_BYTES:
-            raise RadarMetadataError("decompressed radar product exceeds safety limit")
-        if b"BUFR" not in payload[:1024]:
-            raise RadarMetadataError("downloaded radar product contains no BUFR bulletin")
+            with tempfile.NamedTemporaryFile(
+                dir=raw_dir, prefix=".download-", suffix=".tmp", delete=False
+            ) as compressed_stream:
+                compressed_path = Path(compressed_stream.name)
+                size = 0
+                with httpx.stream(
+                    "GET",
+                    product.url,
+                    headers={**self._headers, "Accept": "application/octet-stream"},
+                    timeout=60.0,
+                ) as response:
+                    response.raise_for_status()
+                    for chunk in response.iter_bytes():
+                        if size + len(chunk) > MAX_COMPRESSED_BYTES:
+                            raise RadarMetadataError(
+                                "compressed radar product exceeds safety limit"
+                            )
+                        compressed_stream.write(chunk)
+                        size += len(chunk)
+                compressed_stream.flush()
+                os.fsync(compressed_stream.fileno())
 
-        temporary = raw_dir / ".latest.bufr.tmp"
-        destination = raw_dir / "latest.bufr"
-        with temporary.open("wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, destination)
-        return destination
+            with tempfile.NamedTemporaryFile(
+                dir=raw_dir, prefix=".decoded-", suffix=".tmp", delete=False
+            ) as output_stream:
+                output_path = Path(output_stream.name)
+                with compressed_path.open("rb") as source:
+                    magic = source.read(2)
+                    source.seek(0)
+                    reader = gzip.GzipFile(fileobj=source) if magic == b"\x1f\x8b" else source
+                    expanded = 0
+                    try:
+                        while chunk := reader.read(1024 * 1024):
+                            if expanded + len(chunk) > MAX_DECOMPRESSED_BYTES:
+                                raise RadarMetadataError(
+                                    "decompressed radar product exceeds safety limit"
+                                )
+                            output_stream.write(chunk)
+                            expanded += len(chunk)
+                    finally:
+                        if reader is not source:
+                            reader.close()
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+
+            with output_path.open("rb") as stream:
+                prefix = stream.read(1024)
+            if b"BUFR" not in prefix:
+                raise RadarMetadataError("downloaded radar product contains no BUFR bulletin")
+            observed = datetime.fromisoformat(product.observed_at.replace("Z", "+00:00"))
+            version = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
+            destination = raw_dir / f"radar-{version}.bufr"
+            try:
+                os.link(output_path, destination)
+            except FileExistsError:
+                pass
+            return destination
+        except (gzip.BadGzipFile, EOFError) as exc:
+            raise RadarMetadataError("radar product is not a valid gzip stream") from exc
+        finally:
+            for temporary in (compressed_path, output_path):
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)

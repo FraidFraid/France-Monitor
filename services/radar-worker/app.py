@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import secrets
-from typing import Any
+import tempfile
+import threading
+from typing import Any, Callable
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -48,20 +51,58 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
 
 
 def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, separators=(",", ":"))
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}-",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(value, stream, ensure_ascii=False, separators=(",", ":"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def _storage_writable(path: Path) -> bool:
+    probe: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path, prefix=".health-", suffix=".tmp", delete=False
+        ) as stream:
+            probe = Path(stream.name)
+            stream.write(b"ok")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return True
+    except OSError:
+        return False
+    finally:
+        if probe is not None:
+            probe.unlink(missing_ok=True)
+
+
+def create_app(
+    settings: Settings | None = None,
+    *,
+    api_factory: Callable[[str], Any] = RadarApiClient,
+    decoder: Callable[..., dict[str, Any]] = decode_bufr,
+    renderer: Callable[..., None] = render_reflectivity,
+) -> FastAPI:
     configured = settings or Settings.from_env()
     application = FastAPI(title="France Monitor radar worker")
     configured.storage_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = configured.storage_dir / "manifest.json"
-    image_path = configured.storage_dir / "latest.webp"
+    raster_dir = configured.storage_dir / "rasters"
+    raster_dir.mkdir(parents=True, exist_ok=True)
+    refresh_lock = threading.Lock()
 
     @application.get("/health")
     def health() -> dict[str, Any]:
@@ -69,7 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "ok",
             "configured": configured.configured,
-            "storageReady": configured.storage_dir.is_dir(),
+            "storageReady": _storage_writable(configured.storage_dir),
             "lastSuccessfulObservation": manifest.get("observedAt") if manifest else None,
         }
 
@@ -80,11 +121,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="radar manifest is not available yet")
         return JSONResponse(value, headers={"Cache-Control": "no-cache"})
 
-    @application.get("/latest.webp")
-    def latest_image() -> FileResponse:
+    @application.get("/rasters/{image_name}")
+    def raster_image(image_name: str) -> FileResponse:
+        if not image_name.startswith("radar-") or not image_name.endswith(".webp"):
+            raise HTTPException(status_code=404, detail="radar raster is not available")
+        image_path = raster_dir / image_name
         if not image_path.is_file():
             raise HTTPException(status_code=404, detail="radar raster is not available yet")
-        return FileResponse(image_path, media_type="image/webp", headers={"Cache-Control": "no-cache"})
+        return FileResponse(
+            image_path,
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     @application.post("/refresh")
     def refresh(authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -95,29 +143,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=401, detail="invalid worker token")
         if not configured.api_key:
             raise HTTPException(status_code=503, detail="radar API key is not configured")
-        try:
-            api = RadarApiClient(configured.api_key)
-            product = api.discover_latest()
-            raw_path = api.download(product, configured.storage_dir)
-            grid = decode_bufr(raw_path, observed_at=product.observed_at)
-            temporary_image = configured.storage_dir / ".latest.webp.tmp"
-            render_reflectivity(
-                grid["values"],
-                width=grid["width"],
-                height=grid["height"],
-                output=temporary_image,
-            )
-            os.replace(temporary_image, image_path)
-            public_manifest = build_manifest(
-                grid,
-                public_base_url=configured.public_base_url,
-            )
-            _write_json_atomic(manifest_path, public_manifest)
-            return public_manifest
-        except RadarMetadataError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="radar refresh failed") from exc
+        with refresh_lock:
+            temporary_image: Path | None = None
+            published_image: Path | None = None
+            created_image = False
+            try:
+                api = api_factory(configured.api_key)
+                product = api.discover_latest()
+                raw_path = api.download(product, configured.storage_dir)
+                grid = decoder(raw_path, observed_at=product.observed_at)
+                observed = datetime.fromisoformat(
+                    str(grid["observedAt"]).replace("Z", "+00:00")
+                )
+                if observed.tzinfo is None:
+                    raise RadarMetadataError("radar timestamps must include a timezone")
+                version = observed.astimezone(timezone.utc).strftime("%Y%m%dT%H%MZ")
+                image_name = f"radar-{version}.webp"
+                published_image = raster_dir / image_name
+                with tempfile.NamedTemporaryFile(
+                    dir=raster_dir,
+                    prefix=".render-",
+                    suffix=".tmp",
+                    delete=False,
+                ) as stream:
+                    temporary_image = Path(stream.name)
+                renderer(
+                    grid["values"],
+                    width=grid["width"],
+                    height=grid["height"],
+                    output=temporary_image,
+                )
+                with temporary_image.open("rb") as stream:
+                    os.fsync(stream.fileno())
+                try:
+                    os.link(temporary_image, published_image)
+                    created_image = True
+                except FileExistsError:
+                    pass
+                public_manifest = build_manifest(
+                    grid,
+                    public_base_url=configured.public_base_url,
+                    image_name=image_name,
+                )
+                _write_json_atomic(manifest_path, public_manifest)
+                return public_manifest
+            except RadarMetadataError as exc:
+                if created_image and published_image is not None:
+                    published_image.unlink(missing_ok=True)
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            except Exception as exc:
+                if created_image and published_image is not None:
+                    published_image.unlink(missing_ok=True)
+                raise HTTPException(status_code=502, detail="radar refresh failed") from exc
+            finally:
+                if temporary_image is not None:
+                    temporary_image.unlink(missing_ok=True)
 
     return application
 

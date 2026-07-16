@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 import os
 from pathlib import Path
+import re
 from typing import Any, Mapping, Sequence
 
 from models import GRID_SIZE, PRODUCT_ID, RadarMetadataError, validate_grid
@@ -31,6 +32,14 @@ REQUIRED_DESCRIPTORS = (
     "005195",  # reference latitude
     "006198",  # meridian parallel to y axis
 )
+GTS_HEADER = re.compile(
+    rb"(?:^|[\x01\r\n])(?P<ttaaii>[A-Z]{4}\d{2})[ \t]+"
+    rb"(?P<cccc>[A-Z]{4})[ \t]+(?P<yygggg>\d{6})"
+    rb"(?:[ \t]+[A-Z]{3})?[ \t]*(?:\r\r\n|\r\n|\n)$"
+)
+PRODUCT_TTAAII = b"IMFR27"
+PRODUCT_ORIGIN = b"LFPW"
+METEO_FRANCE_CENTRE = 85
 
 
 def decode_reflectivity_codes(codes: Iterable[int]) -> list[float | None]:
@@ -115,12 +124,30 @@ def _descriptor_code(eccodes: Any, handle: Any, key: str) -> str | None:
     return digits.zfill(6) if digits else None
 
 
+def _base_key(key: str) -> str:
+    return key.rsplit("#", 1)[-1]
+
+
+def _validate_gts_header(payload: bytes) -> None:
+    bufr_offset = payload.find(b"BUFR")
+    if bufr_offset < 0:
+        raise RadarMetadataError("radar payload contains no BUFR message")
+    header = GTS_HEADER.search(payload[max(0, bufr_offset - 256) : bufr_offset])
+    if (
+        header is None
+        or header.group("ttaaii") != PRODUCT_TTAAII
+        or header.group("cccc") != PRODUCT_ORIGIN
+    ):
+        raise RadarMetadataError(
+            "structured GTS header must identify the exact IMFR27 LFPW radar product"
+        )
+
+
 def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
     """Decode a real DPRadar BUFR file, rejecting incomplete scientific metadata."""
 
     payload = path.read_bytes()
-    if PRODUCT_ID.encode("ascii") not in payload[:512]:
-        raise RadarMetadataError(f"BUFR bulletin does not declare product {PRODUCT_ID}")
+    _validate_gts_header(payload)
     try:
         import eccodes  # type: ignore[import-not-found]
     except ImportError as exc:
@@ -136,30 +163,38 @@ def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
                     break
                 iterator = None
                 try:
+                    if int(eccodes.codes_get(handle, "bufrHeaderCentre")) != METEO_FRANCE_CENTRE:
+                        raise RadarMetadataError("BUFR centre must identify Météo-France (85)")
                     eccodes.codes_set(handle, "unpack", 1)
+                    unexpanded = {
+                        int(value)
+                        for value in eccodes.codes_get_array(handle, "unexpandedDescriptors")
+                    }
                     iterator = eccodes.codes_bufr_keys_iterator_new(handle)
                     message_codes: set[str] = set()
-                    message_pixels: list[Sequence[int]] = []
+                    keys_by_code: dict[str, str] = {}
                     while eccodes.codes_bufr_keys_iterator_next(iterator):
                         key = eccodes.codes_bufr_keys_iterator_get_name(iterator)
                         code = _descriptor_code(eccodes, handle, key)
                         if code is None:
                             continue
                         message_codes.add(code)
-                        if code == "030002":
-                            values = eccodes.codes_get_array(handle, key)
-                            if len(values) == GRID_SIZE * GRID_SIZE:
-                                message_pixels.append(values)
-                        elif code in REQUIRED_DESCRIPTORS:
+                        keys_by_code.setdefault(code, _base_key(key))
+                        if code in REQUIRED_DESCRIPTORS:
                             value = eccodes.codes_get(handle, key)
                             if code in descriptors and descriptors[code] != value:
                                 raise RadarMetadataError(
                                     f"conflicting values for BUFR descriptor {code}"
                                 )
                             descriptors[code] = value
-                    reflects = bool(message_codes & {"021001", "021216", "021219"})
-                    if reflects:
-                        candidates.extend(message_pixels)
+                    if 321193 in unexpanded and {"030001", "021216"} <= message_codes:
+                        pixels = eccodes.codes_get_array(handle, keys_by_code["030001"])
+                        reflectivity = eccodes.codes_get_array(handle, keys_by_code["021216"])
+                        if (
+                            len(pixels) == GRID_SIZE * GRID_SIZE
+                            and len(reflectivity) == len(pixels) * 2
+                        ):
+                            candidates.append([int(value) for value in pixels])
                 finally:
                     if iterator is not None:
                         eccodes.codes_bufr_keys_iterator_delete(iterator)
@@ -171,7 +206,7 @@ def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
 
     if len(candidates) != 1:
         raise RadarMetadataError(
-            "BUFR must contain exactly one 1536x1536 pixel field explicitly qualified as reflectivity"
+            "BUFR must contain exactly one 321193 pixel field with paired 021216 reflectivity values"
         )
     return grid_from_descriptors(
         descriptors,
