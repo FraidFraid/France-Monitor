@@ -410,7 +410,7 @@ export class FiresPanel {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
         const left = document.createElement('div');
-        left.innerHTML = '<div style="color:var(--text-primary);font-size:12px;font-weight:500;">Imagerie satellite (fumée / feux)</div><div style="color:var(--text-muted);font-size:10px;margin-top:2px;">NASA GIBS · VIIRS SNPP Corrected Reflectance · latence ~2 jours</div>';
+        left.innerHTML = '<div style="color:var(--text-primary);font-size:12px;font-weight:500;">Imagerie satellite (fumée / feux)</div><div style="color:var(--text-muted);font-size:10px;margin-top:2px;">NASA GIBS · VIIRS SNPP Corrected Reflectance · dernière image disponible</div>';
         row.appendChild(left);
 
         const sw = document.createElement('div');

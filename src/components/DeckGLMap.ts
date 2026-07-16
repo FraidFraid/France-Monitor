@@ -32,6 +32,7 @@ import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts'
 import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
+import { buildLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
@@ -707,12 +708,10 @@ export class DeckGLMap {
     this.map.addSource(SRC_FIRES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FIRES_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
-    // NASA GIBS — MODIS Terra Corrected Reflectance overlay (fumée / cicatrices)
+    // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
       type: 'raster',
-      tiles: [
-        `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${this._buildGibsDate()}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
-      ],
+      tiles: [buildLatestGibsViirsTileUrl()],
       tileSize: 256,
       bounds: [-5.5, 41.0, 10.0, 51.5],
       attribution: 'NASA GIBS · VIIRS SNPP Corrected Reflectance'
@@ -11031,12 +11030,6 @@ export class DeckGLMap {
     }
     this.setVis(LYR_MAIRES_POL, 'visible');
     this.setVis(LYR_MAIRES_POL_LABEL, 'visible');
-  }
-
-  private _buildGibsDate(): string {
-    const d = new Date();
-    d.setDate(d.getDate() - 2); // J-2 : latence de traitement VIIRS ~24-48h
-    return d.toISOString().slice(0, 10);
   }
 
   // ─── Infrastructure Layer ───
