@@ -193,10 +193,14 @@ W_048192 = 1     # bit de calage (local)
 ZH_CODE_WIDTH = 8          # 030001 base 4 bits + opérateur 201132 (+4)
 ZH_CODE_MISSING = (1 << ZH_CODE_WIDTH) - 1
 ZH_CODE_NO_ECHO = 0
-# Conversion code→dBZ : valeurs provisoires de la famille « pas 0,5 dBZ »,
-# VERROUILLÉES par tests/test_pam_calibration.py (Task 3) — ne modifier
-# qu'avec une nouvelle calibration croisée mosaïque.
-ZH_DBZ_GAIN = 0.5
+# Conversion code→dBZ VERROUILLÉE par la table code→dBZ embarquée dans le
+# message ZH (séquence locale 321193 / bornes 021216), relue via eccodes et
+# confirmée par tests/test_pam_calibration.py (Task 3) : rampe identité de
+# casiers larges de 1 dBZ (code k → [k−11, k−10], centre k−10,5), code 79 =
+# casier de saturation ≥68 dBZ. Le centre suit dbz = 1,0·code − 10,5. Table
+# invariante par station et par tour (vérifiée stations 41 et 63). Ne modifier
+# qu'avec une nouvelle calibration croisée (LUT embarquée ou mosaïque 2D).
+ZH_DBZ_GAIN = 1.0
 ZH_DBZ_OFFSET = -10.5
 
 

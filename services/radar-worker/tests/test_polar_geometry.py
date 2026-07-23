@@ -10,6 +10,7 @@ import pytest
 WORKER_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKER_DIR))
 
+from pam_bitstream import ZH_DBZ_GAIN, ZH_DBZ_OFFSET  # noqa: E402
 from polar_geometry import (  # noqa: E402
     beam_altitude_m,
     beam_ground_distance_m,
@@ -58,7 +59,8 @@ def _synthetic_scan(elevation_deg: float = 1.0):
     from pam_bitstream import PolarScanZh
 
     codes = np.full((720, 200), 255, dtype=np.uint8)
-    # Azimut 90° (index dépend du départ 0°), portes 10 km → code 40 (≈ 9,5 dBZ).
+    # Azimut 90° (index dépend du départ 0°), portes 10 km → code 40
+    # (= 40·1,0 − 10,5 = 29,5 dBZ avec la conversion verrouillée par la LUT).
     codes[180, :] = 40
     return PolarScanZh(
         observed_at_utc=(2026, 7, 23, 8, 30, 0),
@@ -82,7 +84,7 @@ def test_column_sample_hits_painted_azimuth():
     sample = column_sample(scan, lat, lon)
     assert sample is not None
     assert sample.elevation_deg == 1.0
-    assert sample.dbz == pytest.approx(40 * 0.5 - 10.5)
+    assert sample.dbz == pytest.approx(40 * ZH_DBZ_GAIN + ZH_DBZ_OFFSET)
     assert sample.altitude_m == pytest.approx(
         beam_altitude_m(20_000.0 / np.cos(np.radians(1.0)), 1.0, 50.0), rel=0.05
     )
