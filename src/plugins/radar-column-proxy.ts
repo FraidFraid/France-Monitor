@@ -22,7 +22,6 @@ function isLocalHostname(hostname: string): boolean {
 }
 
 function workerOrigin(configuredManifestUrl: string): string | null {
-  if (!configuredManifestUrl.trim()) return null;
   try {
     const url = new URL(configuredManifestUrl);
     if (url.username || url.password) return null;
@@ -70,8 +69,12 @@ export async function handleRadarColumnRequest(
   lon: number,
   fetchImplementation: FetchImplementation = fetch,
 ): Promise<Response> {
+  // Non configurée (variable absente/vide) : cas nominal en dev, 200.
+  // Configurée mais invalide/dangereuse (URL non sûre) : erreur de config, 503.
+  // Miroir de la distinction déjà faite par radar-2d-proxy.ts.
+  if (!configuredManifestUrl.trim()) return jsonResponse(200, { configured: false });
   const origin = workerOrigin(configuredManifestUrl);
-  if (!origin) return jsonResponse(200, { configured: false });
+  if (!origin) return jsonResponse(503, { error: 'Radar column upstream is not safely configured' });
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < 41 || lat > 52 || lon < -6 || lon > 10) {
     return jsonResponse(400, { error: 'lat/lon hors métropole' });
   }

@@ -89,11 +89,9 @@ function isLocalHostname(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
-function workerOrigin() {
-  const configured = process.env.METEO_FRANCE_RADAR_MANIFEST_URL ?? '';
-  if (!configured.trim()) return null;
+function workerOrigin(configuredValue) {
   try {
-    const url = new URL(configured);
+    const url = new URL(configuredValue);
     if (url.username || url.password) return null;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalHostname(url.hostname))) return null;
     return url.origin;
@@ -108,9 +106,17 @@ export default async function handler(req, res) {
     sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
-  const origin = workerOrigin();
-  if (!origin) {
+  // Non configurée (variable absente/vide) : cas nominal en dev, 200.
+  // Configurée mais invalide/dangereuse (URL non sûre) : erreur de config, 503.
+  // Miroir de la distinction déjà faite par radar-2d.js.
+  const configuredValue = process.env.METEO_FRANCE_RADAR_MANIFEST_URL ?? '';
+  if (!configuredValue.trim()) {
     sendJson(res, 200, { configured: false });
+    return;
+  }
+  const origin = workerOrigin(configuredValue);
+  if (!origin) {
+    sendJson(res, 503, { error: 'Radar column upstream is not safely configured' });
     return;
   }
   const requestUrl = new URL(req.url, 'http://localhost');
