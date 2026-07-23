@@ -2470,3 +2470,25 @@ export interface AisAnomaly {
     mmsis: string[];                     // 1 MMSI pour silence, 2 pour rendezvous
     description: string;                 // Texte FR pour toast, ex: "Silence radio · Dixmude · 14 min"
 }
+
+// ═══ Radar — profil vertical (colonne PAM) ═══
+
+export interface RadarColumnLevel {
+  readonly elevationDeg: number;
+  readonly altitudeM: number;
+  readonly dbz: number | null;
+}
+
+export interface RadarColumnProfile {
+  readonly schemaVersion: 1;
+  readonly source: 'Météo-France DPRadar';
+  readonly license: 'Licence Ouverte 2.0';
+  readonly station: { readonly id: number; readonly name: string; readonly lat: number; readonly lon: number };
+  readonly distanceKm: number;
+  readonly observedAt: string;
+  readonly levels: readonly RadarColumnLevel[];
+}
+
+export type RadarColumnResult =
+  | { readonly kind: 'profile'; readonly profile: RadarColumnProfile }
+  | { readonly kind: 'hors-couverture' };
