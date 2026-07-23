@@ -2,24 +2,96 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import secrets
 import tempfile
 import threading
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 
 from bufr_decoder import decode_bufr
-from models import RadarMetadataError, build_manifest
+from models import LICENSE, RadarMetadataError, SOURCE, build_manifest
 from radar_api import RadarApiClient, archive_validated_product
 from render import render_reflectivity
+
+
+MAX_PUBLISH_IMAGE_BYTES = 8 * 1024 * 1024
+PUBLISH_MANIFEST_KEYS = {
+    "schemaVersion",
+    "source",
+    "observedAt",
+    "generatedAt",
+    "bounds",
+    "resolutionMeters",
+    "license",
+}
+
+
+class PublishRequest(BaseModel):
+    manifest: dict[str, Any]
+    imageBase64: str
+
+
+def _parse_utc_instant(value: Any) -> datetime:
+    """Parse le format strict émis par build_manifest, sans tolérance."""
+    if not isinstance(value, str):
+        raise RadarMetadataError("manifest timestamps must be strings")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise RadarMetadataError(f"invalid manifest timestamp: {value}") from exc
+    return parsed.replace(tzinfo=timezone.utc)
+
+
+def validated_publish_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """Valide strictement un manifeste produit hors du worker (sans imageUrl)."""
+
+    if set(manifest.keys()) != PUBLISH_MANIFEST_KEYS:
+        raise RadarMetadataError("manifest must carry exactly the published fields")
+    if manifest["schemaVersion"] != 1:
+        raise RadarMetadataError("unsupported manifest schemaVersion")
+    if manifest["source"] != SOURCE:
+        raise RadarMetadataError("unexpected manifest source")
+    if manifest["license"] != LICENSE:
+        raise RadarMetadataError("unexpected manifest license")
+    resolution = manifest["resolutionMeters"]
+    if isinstance(resolution, bool) or not isinstance(resolution, int) or resolution <= 0:
+        raise RadarMetadataError("resolutionMeters must be a positive integer")
+    observed = _parse_utc_instant(manifest["observedAt"])
+    generated = _parse_utc_instant(manifest["generatedAt"])
+    if generated < observed:
+        raise RadarMetadataError("generatedAt cannot precede observedAt")
+    bounds = manifest["bounds"]
+    if not isinstance(bounds, list) or len(bounds) != 4:
+        raise RadarMetadataError("bounds must be [west, south, east, north]")
+    coerced: list[float] = []
+    for value in bounds:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise RadarMetadataError("bounds must contain finite numbers")
+        coerced.append(float(value))
+    west, south, east, north = coerced
+    if not (-180.0 <= west < east <= 180.0 and -90.0 <= south < north <= 90.0):
+        raise RadarMetadataError("bounds are not a valid WGS84 rectangle")
+    return {
+        "schemaVersion": 1,
+        "source": SOURCE,
+        "observedAt": manifest["observedAt"],
+        "generatedAt": manifest["generatedAt"],
+        "bounds": coerced,
+        "resolutionMeters": resolution,
+        "license": LICENSE,
+    }
 
 
 @dataclass(frozen=True)
@@ -278,6 +350,96 @@ def create_app(
                     raw_candidate, configured.storage_dir
                 ):
                     raw_candidate.unlink(missing_ok=True)
+
+    @application.post("/publish")
+    def publish(
+        request: PublishRequest,
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        expected = f"Bearer {configured.worker_token}"
+        if not configured.worker_token or authorization is None or not secrets.compare_digest(
+            authorization, expected
+        ):
+            raise HTTPException(status_code=401, detail="invalid worker token")
+
+        try:
+            image = base64.b64decode(request.imageBase64, validate=True)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail="imageBase64 is not valid base64") from exc
+        if len(image) > MAX_PUBLISH_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="radar raster exceeds the size cap")
+        if len(image) < 12 or image[:4] != b"RIFF" or image[8:12] != b"WEBP":
+            raise HTTPException(status_code=400, detail="radar raster must be a WebP image")
+        try:
+            manifest_fields = validated_publish_manifest(request.manifest)
+        except RadarMetadataError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        observed = _parse_utc_instant(manifest_fields["observedAt"])
+        with refresh_lock:
+            current = _read_manifest(manifest_path)
+            if current is not None:
+                try:
+                    current_observed = _parse_utc_instant(current.get("observedAt"))
+                except RadarMetadataError:
+                    current_observed = None
+                if current_observed is not None:
+                    if observed < current_observed:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="a newer radar observation is already published",
+                        )
+                    if observed == current_observed:
+                        return JSONResponse(current)
+
+            version = observed.strftime("%Y%m%dT%H%MZ")
+            content_hash = hashlib.sha256(image).hexdigest()
+            image_name = f"radar-{version}-{content_hash}.webp"
+            published_image = raster_dir / image_name
+            temporary_image: Path | None = None
+            created_image = False
+            try:
+                with tempfile.NamedTemporaryFile(
+                    dir=raster_dir,
+                    prefix=".publish-",
+                    suffix=".tmp",
+                    delete=False,
+                ) as stream:
+                    temporary_image = Path(stream.name)
+                    stream.write(image)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                try:
+                    os.link(temporary_image, published_image)
+                    created_image = True
+                except FileExistsError:
+                    pass
+                public_manifest = {
+                    **manifest_fields,
+                    "imageUrl": (
+                        f"{configured.public_base_url.rstrip('/')}/rasters/{image_name}"
+                    ),
+                }
+                manifest_writer(manifest_path, public_manifest)
+                try:
+                    _prune_files(
+                        raster_dir,
+                        "radar-*.webp",
+                        keep=configured.raster_retention,
+                        protected={published_image.resolve()},
+                    )
+                except OSError:
+                    pass
+                return JSONResponse(public_manifest)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                if created_image:
+                    published_image.unlink(missing_ok=True)
+                raise HTTPException(status_code=502, detail="radar publish failed") from exc
+            finally:
+                if temporary_image is not None:
+                    temporary_image.unlink(missing_ok=True)
 
     return application
 

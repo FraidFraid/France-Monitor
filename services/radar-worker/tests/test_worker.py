@@ -494,3 +494,166 @@ def test_manifest_write_failure_rolls_back_raster_without_pruning_rasters(tmp_pa
     assert {path.name for path in raster_dir.glob("*.webp")} == {
         path.name for path in old_files
     }
+
+
+# ─── POST /publish (production déportée : décodage sur runner externe) ────────
+
+import base64
+
+
+def _webp_bytes(payload: bytes = b"radar-pixels") -> bytes:
+    body = b"WEBP" + payload
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
+
+
+def _publish_payload(
+    observed_at: str = "2026-07-16T12:50:00Z",
+    image: bytes | None = None,
+    **overrides,
+) -> dict:
+    manifest = {
+        "schemaVersion": 1,
+        "source": "Météo-France DPRadar",
+        "observedAt": observed_at,
+        "generatedAt": "2026-07-16T12:52:00Z",
+        "bounds": [-9.965, 39.46785, 14.564708, 53.67],
+        "resolutionMeters": 1000,
+        "license": "Licence Ouverte 2.0",
+    }
+    manifest.update(overrides)
+    image_bytes = image if image is not None else _webp_bytes()
+    return {
+        "manifest": manifest,
+        "imageBase64": base64.b64encode(image_bytes).decode("ascii"),
+    }
+
+
+def _auth() -> dict:
+    return {"Authorization": "Bearer worker-token"}
+
+
+def test_publish_requires_bearer_token(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    assert client.post("/publish", json=_publish_payload()).status_code == 401
+    assert client.post(
+        "/publish", json=_publish_payload(), headers={"Authorization": "Bearer wrong"}
+    ).status_code == 401
+
+
+def test_publish_stores_manifest_and_serves_raster(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    response = client.post("/publish", json=_publish_payload(), headers=_auth())
+
+    assert response.status_code == 200
+    manifest = response.json()
+    assert manifest["observedAt"] == "2026-07-16T12:50:00Z"
+    assert manifest["imageUrl"].startswith(
+        "https://radar.example.test/rasters/radar-20260716T1250Z-"
+    )
+    assert manifest["imageUrl"].endswith(".webp")
+
+    assert client.get("/manifest.json").json() == manifest
+    image_name = manifest["imageUrl"].rsplit("/", 1)[-1]
+    raster = client.get(f"/rasters/{image_name}")
+    assert raster.status_code == 200
+    assert raster.content == _webp_bytes()
+    health = client.get("/health").json()
+    assert health["lastSuccessfulObservation"] == "2026-07-16T12:50:00Z"
+
+
+def test_publish_rejects_non_webp_image(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    payload = _publish_payload(image=b"GIF89a-not-a-webp-raster")
+    response = client.post("/publish", json=payload, headers=_auth())
+
+    assert response.status_code == 400
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_publish_rejects_invalid_manifest_fields(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    for bad in (
+        {"source": "autre"},
+        {"license": "WTFPL"},
+        {"schemaVersion": 2},
+        {"bounds": [14.5, 39.4, -9.9, 53.6]},
+        {"bounds": [-9.9, 39.4, 14.5]},
+        {"observedAt": "pas-une-date"},
+    ):
+        response = client.post(
+            "/publish", json=_publish_payload(**bad), headers=_auth()
+        )
+        assert response.status_code == 400, bad
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_publish_rejects_stale_observation_and_replays_idempotently(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    fresh = client.post(
+        "/publish", json=_publish_payload("2026-07-16T12:50:00Z"), headers=_auth()
+    )
+    assert fresh.status_code == 200
+
+    stale = client.post(
+        "/publish", json=_publish_payload("2026-07-16T12:45:00Z"), headers=_auth()
+    )
+    assert stale.status_code == 409
+    assert client.get("/manifest.json").json() == fresh.json()
+
+    replay = client.post(
+        "/publish", json=_publish_payload("2026-07-16T12:50:00Z"), headers=_auth()
+    )
+    assert replay.status_code == 200
+    assert replay.json() == fresh.json()
+
+
+def test_publish_rejects_oversized_image(tmp_path):
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    huge = _webp_bytes(b"x" * (8 * 1024 * 1024))
+    response = client.post(
+        "/publish", json=_publish_payload(image=huge), headers=_auth()
+    )
+
+    assert response.status_code == 413
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_publish_prunes_old_rasters_but_keeps_current(tmp_path):
+    from fastapi.testclient import TestClient
+
+    settings = Settings(
+        api_key="api-key",
+        worker_token="worker-token",
+        storage_dir=tmp_path,
+        public_base_url="https://radar.example.test",
+        raster_retention=1,
+    )
+    client = TestClient(create_app(settings))
+    first = client.post(
+        "/publish",
+        json=_publish_payload("2026-07-16T12:45:00Z", image=_webp_bytes(b"a")),
+        headers=_auth(),
+    )
+    assert first.status_code == 200
+    second = client.post(
+        "/publish",
+        json=_publish_payload("2026-07-16T12:50:00Z", image=_webp_bytes(b"b")),
+        headers=_auth(),
+    )
+    assert second.status_code == 200
+
+    current_name = second.json()["imageUrl"].rsplit("/", 1)[-1]
+    names = {path.name for path in (tmp_path / "rasters").glob("*.webp")}
+    assert names == {current_name}
