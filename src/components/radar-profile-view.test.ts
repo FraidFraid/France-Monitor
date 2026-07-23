@@ -54,4 +54,29 @@ describe('radarProfileHtml', () => {
     expect(radarProfileLoadingHtml()).toContain('Chargement');
     expect(radarProfileErrorHtml()).toContain('indisponible');
   });
+
+  it("adapte l'axe des altitudes au niveau le plus haut du profil", () => {
+    // Niveau max 7150 m → palier 2 km → plafond 8 km (plus de 12 km fixe).
+    const html = radarProfileHtml({ kind: 'profile', profile: PROFILE });
+    expect(html).toContain('>8 km<');
+    expect(html).not.toContain('12 km');
+
+    // Profil bas (620 m) → plafond 1 km, graduations 0,5 km.
+    const low = {
+      ...PROFILE,
+      levels: [{ elevationDeg: 0.4, altitudeM: 620, dbz: 12 }],
+    };
+    const lowHtml = radarProfileHtml({ kind: 'profile', profile: low });
+    expect(lowHtml).toContain('>1 km<');
+    expect(lowHtml).toContain('>0.5 km<');
+    expect(lowHtml).not.toContain('>8 km<');
+
+    // Niveau haut (29 km, filtré à 30 km côté worker) → plafond 30 km lisible.
+    const high = {
+      ...PROFILE,
+      levels: [{ elevationDeg: 45, altitudeM: 29_000, dbz: null }],
+    };
+    const highHtml = radarProfileHtml({ kind: 'profile', profile: high });
+    expect(highHtml).toContain('>30 km<');
+  });
 });

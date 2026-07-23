@@ -8,9 +8,31 @@ import type { RadarColumnResult, RadarColumnProfile } from '../types/index.ts';
 const WIDTH = 260;
 const HEIGHT = 150;
 const MARGIN = { top: 10, right: 12, bottom: 22, left: 34 };
-const MAX_ALTITUDE_M = 12_000;
 const DBZ_MIN = -10;
 const DBZ_MAX = 70;
+
+// Axe des altitudes dynamique : le plafond suit le niveau le plus haut du
+// profil, arrondi au palier lisible supérieur (≤ 5 graduations).
+const ALTITUDE_STEPS_M: readonly number[] = [500, 1_000, 2_000, 2_500, 5_000, 10_000];
+const FALLBACK_AXIS_MAX_M = 12_000;
+
+function altitudeAxis(profile: RadarColumnProfile): { maxM: number; ticksM: number[] } {
+  const highest = profile.levels.reduce((max, level) => Math.max(max, level.altitudeM), 0);
+  if (highest <= 0) {
+    return { maxM: FALLBACK_AXIS_MAX_M, ticksM: [0, 3_000, 6_000, 9_000, 12_000] };
+  }
+  const step = ALTITUDE_STEPS_M.find((s) => Math.ceil(highest / s) <= 5)
+    ?? Math.ceil(highest / (5 * 10_000)) * 10_000;
+  const maxM = step * Math.ceil(highest / step);
+  const ticksM: number[] = [];
+  for (let tick = 0; tick <= maxM; tick += step) ticksM.push(tick);
+  return { maxM, ticksM };
+}
+
+function formatKm(altitudeM: number): string {
+  const km = altitudeM / 1000;
+  return `${Number.isInteger(km) ? km : km.toFixed(km < 10 ? 1 : 0)} km`;
+}
 
 const DBZ_COLORS: readonly (readonly [number, string])[] = [
   [-9, '#5ed3ff'], [0, '#39abff'], [10, '#228be6'], [20, '#26c56a'],
@@ -40,18 +62,19 @@ function x(dbz: number): number {
   return MARGIN.left + ((clamped - DBZ_MIN) / (DBZ_MAX - DBZ_MIN)) * inner;
 }
 
-function y(altitudeM: number): number {
-  const clamped = Math.min(MAX_ALTITUDE_M, Math.max(0, altitudeM));
+function y(altitudeM: number, axisMaxM: number): number {
+  const clamped = Math.min(axisMaxM, Math.max(0, altitudeM));
   const inner = HEIGHT - MARGIN.top - MARGIN.bottom;
-  return HEIGHT - MARGIN.bottom - (clamped / MAX_ALTITUDE_M) * inner;
+  return HEIGHT - MARGIN.bottom - (clamped / axisMaxM) * inner;
 }
 
 function svg(profile: RadarColumnProfile): string {
-  const gridLines = [0, 3_000, 6_000, 9_000, 12_000]
+  const { maxM, ticksM } = altitudeAxis(profile);
+  const gridLines = ticksM
     .map((altitude) => {
-      const py = y(altitude).toFixed(1);
+      const py = y(altitude, maxM).toFixed(1);
       return `<line x1="${MARGIN.left}" y1="${py}" x2="${WIDTH - MARGIN.right}" y2="${py}" stroke="rgba(255,255,255,0.08)"/>`
-        + `<text x="${MARGIN.left - 4}" y="${py}" text-anchor="end" dominant-baseline="middle" fill="var(--text-muted)" font-size="8">${altitude / 1000} km</text>`;
+        + `<text x="${MARGIN.left - 4}" y="${py}" text-anchor="end" dominant-baseline="middle" fill="var(--text-muted)" font-size="8">${formatKm(altitude)}</text>`;
     })
     .join('');
   const axis = [0, 20, 40, 60]
@@ -59,7 +82,7 @@ function svg(profile: RadarColumnProfile): string {
     .join('');
   const marks = profile.levels
     .map((level) => {
-      const py = y(level.altitudeM).toFixed(1);
+      const py = y(level.altitudeM, maxM).toFixed(1);
       if (level.dbz === null) {
         return `<circle data-empty="1" cx="${MARGIN.left.toFixed(1)}" cy="${py}" r="2.5" fill="none" stroke="var(--text-muted)" stroke-width="1"/>`;
       }
