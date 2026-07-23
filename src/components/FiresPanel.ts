@@ -17,6 +17,8 @@ import {
     FIRE_OBSERVATION_CNRS_URL,
     FIRE_OBSERVATION_LSA_SAF_URL,
 } from './fire-observation-model.ts';
+import { fetchRadarColumn } from '../services/radar-column.ts';
+import { radarProfileErrorHtml, radarProfileHtml, radarProfileLoadingHtml } from './radar-profile-view.ts';
 
 export class FiresPanel {
     private modalEl!: HTMLElement;
@@ -46,6 +48,8 @@ export class FiresPanel {
     private dragOffsetY = 0;
     private readonly VISIBLE_BATCH_SIZE = 6;
     private visibleCountByIncident: Map<string, number> = new Map();
+    /** Incidents dont le profil radar est déplié (survit aux re-rendus). */
+    private radarProfileOpen = new Set<string>();
     private firePlaceLabels = new Map<string, string>();
     private firePlacePending = new Set<string>();
     /** Geocoding des centroïdes d'incidents : incidentId → commune */
@@ -804,6 +808,38 @@ export class FiresPanel {
             // Corps : liste des détections
             const body = document.createElement('div');
             body.style.cssText = 'border-top:1px solid rgba(255,255,255,0.06);';
+
+            // ── Profil vertical radar (phase 0 « radar 3D », DÉMONSTRATION) ──
+            const profileWrap = document.createElement('div');
+            profileWrap.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.04);';
+            const profileBtn = document.createElement('button');
+            profileBtn.textContent = this.radarProfileOpen.has(incident.id)
+                ? 'Masquer le profil radar'
+                : 'Profil radar (démonstration)';
+            profileBtn.style.cssText = 'margin:8px 14px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.04);color:var(--text-muted);font-size:10px;cursor:pointer;';
+            const profileContent = document.createElement('div');
+            const renderProfile = (): void => {
+                profileContent.innerHTML = radarProfileLoadingHtml();
+                void fetchRadarColumn(incident.centroidLat, incident.centroidLon).then((result) => {
+                    profileContent.innerHTML = result === null ? radarProfileErrorHtml() : radarProfileHtml(result);
+                });
+            };
+            profileBtn.onclick = (event) => {
+                event.stopPropagation();
+                if (this.radarProfileOpen.has(incident.id)) {
+                    this.radarProfileOpen.delete(incident.id);
+                    profileContent.innerHTML = '';
+                    profileBtn.textContent = 'Profil radar (démonstration)';
+                } else {
+                    this.radarProfileOpen.add(incident.id);
+                    profileBtn.textContent = 'Masquer le profil radar';
+                    renderProfile();
+                }
+            };
+            profileWrap.appendChild(profileBtn);
+            profileWrap.appendChild(profileContent);
+            body.appendChild(profileWrap);
+            if (this.radarProfileOpen.has(incident.id)) renderProfile();
 
             const visibleKey = incident.id;
             const visibleCount = this.visibleCountByIncident.get(visibleKey) ?? this.VISIBLE_BATCH_SIZE;
