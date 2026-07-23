@@ -1,0 +1,27 @@
+name: Radar refresh
+
+on:
+  schedule:
+    # Mosaïques DPRadar toutes les 5 min ; le cron GitHub est best-effort
+    # (dérive possible de quelques minutes, le panneau affiche l'âge réel).
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: radar-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /refresh
+        run: |
+          code=$(curl -s -o /tmp/refresh-body.json -w "%{http_code}" \
+            -X POST "https://radar-worker-production-0c93.up.railway.app/refresh" \
+            -H "Authorization: Bearer ${{ secrets.RADAR_WORKER_TOKEN }}" \
+            --max-time 240)
+          echo "HTTP $code"
+          cat /tmp/refresh-body.json
+          [ "$code" = "200" ]
