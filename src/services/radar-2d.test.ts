@@ -239,3 +239,28 @@ describe('radar 2D Vercel proxy', () => {
     expect(RADAR_2D_LAYER_ID).toBe('fire-radar-2d-layer');
   });
 });
+
+describe('parseRadar2dManifest — sommets d\'écho optionnels', () => {
+  it('propage une echoTopImageUrl valide', () => {
+    const manifest = parseRadar2dManifest({
+      ...VALID,
+      echoTopImageUrl: 'https://radar.example.test/rasters/radar-echotops-x.webp',
+    });
+    expect(manifest?.echoTopImageUrl).toBe(
+      'https://radar.example.test/rasters/radar-echotops-x.webp',
+    );
+  });
+
+  it('écarte une echoTopImageUrl invalide sans rejeter le manifeste', () => {
+    const manifest = parseRadar2dManifest({
+      ...VALID,
+      echoTopImageUrl: 'javascript:alert(1)',
+    });
+    expect(manifest).not.toBeNull();
+    expect(manifest?.echoTopImageUrl).toBeUndefined();
+  });
+
+  it('reste absent quand le worker ne publie pas de sommets d\'écho', () => {
+    expect(parseRadar2dManifest(VALID)?.echoTopImageUrl).toBeUndefined();
+  });
+});

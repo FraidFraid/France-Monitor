@@ -89,3 +89,28 @@ def test_health_reports_configuration_without_secrets(tmp_path):
     assert response.json()["storageReady"] is True
     assert not list(tmp_path.glob(".health-*.tmp"))
     assert "super-secret" not in response.text
+
+
+def test_build_manifest_includes_optional_echo_top_image():
+    grid = json.loads(
+        (Path(__file__).parent / "fixtures" / "decoded_mosaic.json").read_text()
+    )
+
+    manifest = build_manifest(
+        grid,
+        public_base_url="https://radar.example.test",
+        image_name="radar-x.webp",
+        echo_top_image_name="radar-echotops-x.webp",
+        generated_at="2026-07-16T12:52:00Z",
+    )
+
+    assert manifest["echoTopImageUrl"] == (
+        "https://radar.example.test/rasters/radar-echotops-x.webp"
+    )
+    without = build_manifest(
+        grid,
+        public_base_url="https://radar.example.test",
+        image_name="radar-x.webp",
+        generated_at="2026-07-16T12:52:00Z",
+    )
+    assert "echoTopImageUrl" not in without

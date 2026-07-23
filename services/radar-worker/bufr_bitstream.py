@@ -77,6 +77,8 @@ EXPECTED_REFLECTIVITY_REFERENCE = -400  # écrite par le bloc 203011
 REFLECTIVITY_WIDTH = W_021001_BASE + 4  # 201132
 REFLECTIVITY_SCALE = 1                  # 202129
 HEIGHT_WIDTH = W_010002_BASE - 4        # 201124
+HEIGHT_SCALE = -1                       # table WMO 010002
+HEIGHT_REFERENCE = -40
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ class Imfr27Message:
     origin_lat: float
     origin_lon: float
     reflectivity_codes: np.ndarray  # uint16, 2047 = manquant
+    echo_top_codes: np.ndarray      # uint16, 4095 = manquant
 
 
 class _BitReader:
@@ -239,7 +242,7 @@ def parse_imfr27(data: bytes) -> Imfr27Message:
     height_count = reader.read(W_031192)
     if height_count != pixel_count:
         raise RadarMetadataError("echo-top raster does not match the grid size")
-    reader.skip(height_count * HEIGHT_WIDTH)
+    height_codes = reader.read_array(height_count, HEIGHT_WIDTH)
 
     # Bloc 203011/203255 : nouvelle valeur de référence de 021001 sur 11 bits,
     # bit de poids fort = signe négatif.
@@ -280,7 +283,19 @@ def parse_imfr27(data: bytes) -> Imfr27Message:
         origin_lat=origin_lat,
         origin_lon=origin_lon,
         reflectivity_codes=codes.astype(np.uint16),
+        echo_top_codes=height_codes.astype(np.uint16),
     )
+
+
+def echo_top_heights(codes: np.ndarray) -> list[float | None]:
+    """Codes bruts 12 bits -> hauteur du sommet d'écho en mètres."""
+
+    missing = codes == (1 << HEIGHT_WIDTH) - 1
+    scaled = (codes.astype(np.float64) + HEIGHT_REFERENCE) / (10 ** HEIGHT_SCALE)
+    values: list[float | None] = scaled.tolist()
+    for index in np.flatnonzero(missing):
+        values[index] = None
+    return values
 
 
 def reflectivity_values(codes: np.ndarray) -> list[float | None]:

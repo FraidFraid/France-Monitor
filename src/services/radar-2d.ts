@@ -7,6 +7,8 @@ export interface Radar2dManifest {
   readonly imageUrl: string;
   readonly resolutionMeters: 1000;
   readonly license: 'Licence Ouverte 2.0';
+  /** Raster des sommets d'écho (aide pyroconvection), publié depuis schéma 1. */
+  readonly echoTopImageUrl?: string;
 }
 
 export type Radar2dResult =
@@ -80,6 +82,10 @@ export function parseRadar2dManifest(value: unknown): Radar2dManifest | null {
     || west >= east || south >= north
   ) return null;
 
+  const echoTopImageUrl =
+    typeof manifest.echoTopImageUrl === 'string' && isAllowedImageUrl(manifest.echoTopImageUrl)
+      ? manifest.echoTopImageUrl
+      : undefined;
   return {
     schemaVersion: 1,
     source: 'Météo-France DPRadar',
@@ -89,6 +95,7 @@ export function parseRadar2dManifest(value: unknown): Radar2dManifest | null {
     imageUrl: manifest.imageUrl,
     resolutionMeters: 1000,
     license: 'Licence Ouverte 2.0',
+    ...(echoTopImageUrl !== undefined ? { echoTopImageUrl } : {}),
   };
 }
 

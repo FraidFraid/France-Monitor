@@ -183,7 +183,7 @@ def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
     """
 
     _validate_bufr_prefix(path)
-    from bufr_bitstream import parse_imfr27, reflectivity_values
+    from bufr_bitstream import echo_top_heights, parse_imfr27, reflectivity_values
 
     message = parse_imfr27(path.read_bytes())
 
@@ -206,9 +206,12 @@ def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
     ):
         raise RadarMetadataError("unexpected IMFR27 north-west grid origin")
 
-    return grid_from_descriptors(
+    grid = grid_from_descriptors(
         message.descriptors,
         pixel_codes=reflectivity_values(message.reflectivity_codes),
         product_id=PRODUCT_ID,
         observed_at=observed_at,
     )
+    # Sommets d'écho (010002) : même grille, exposés pour l'aide pyroconvection.
+    grid["echoTops"] = echo_top_heights(message.echo_top_codes)
+    return grid

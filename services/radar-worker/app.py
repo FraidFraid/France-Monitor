@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from bufr_decoder import decode_bufr
 from models import LICENSE, RadarMetadataError, SOURCE, build_manifest
 from radar_api import RadarApiClient, archive_validated_product
-from render import render_reflectivity
+from render import render_echo_tops, render_reflectivity
 
 
 MAX_PUBLISH_IMAGE_BYTES = 8 * 1024 * 1024
@@ -235,6 +235,7 @@ def create_app(
     api_factory: Callable[[str], Any] = RadarApiClient,
     decoder: Callable[..., dict[str, Any]] = decode_bufr,
     renderer: Callable[..., None] = render_reflectivity,
+    echo_renderer: Callable[..., None] = render_echo_tops,
     archiver: Callable[..., Path] = archive_validated_product,
     manifest_writer: Callable[[Path, dict[str, Any]], None] = _write_json_atomic,
 ) -> FastAPI:
@@ -283,8 +284,11 @@ def create_app(
         with refresh_lock:
             temporary_image: Path | None = None
             published_image: Path | None = None
+            temporary_echo: Path | None = None
+            published_echo: Path | None = None
             raw_candidate: Path | None = None
             created_image = False
+            created_echo = False
             try:
                 api = api_factory(configured.api_key)
                 product = api.discover_latest()
@@ -328,21 +332,53 @@ def create_app(
                     created_image = True
                 except FileExistsError:
                     pass
+
+                # Sommets d'écho (010002) : second raster, même grille.
+                echo_tops = grid.get("echoTops")
+                echo_image_name: str | None = None
+                if echo_tops is not None:
+                    echo_image_name = f"radar-echotops-{version}-{content_hash}.webp"
+                    published_echo = raster_dir / echo_image_name
+                    with tempfile.NamedTemporaryFile(
+                        dir=raster_dir,
+                        prefix=".render-echo-",
+                        suffix=".tmp",
+                        delete=False,
+                    ) as stream:
+                        temporary_echo = Path(stream.name)
+                    echo_renderer(
+                        echo_tops,
+                        width=grid["width"],
+                        height=grid["height"],
+                        output=temporary_echo,
+                    )
+                    with temporary_echo.open("rb") as stream:
+                        os.fsync(stream.fileno())
+                    try:
+                        os.link(temporary_echo, published_echo)
+                        created_echo = True
+                    except FileExistsError:
+                        pass
+
                 public_manifest = build_manifest(
                     grid,
                     public_base_url=configured.public_base_url,
                     image_name=image_name,
+                    echo_top_image_name=echo_image_name,
                 )
                 manifest_writer(manifest_path, public_manifest)
                 current_raster = raster_dir / Path(
                     urlparse(public_manifest["imageUrl"]).path
                 ).name
+                protected = {current_raster.resolve()}
+                if published_echo is not None:
+                    protected.add(published_echo.resolve())
                 try:
                     _prune_files(
                         raster_dir,
                         "radar-*.webp",
                         keep=configured.raster_retention,
-                        protected={current_raster.resolve()},
+                        protected=protected,
                     )
                 except OSError:
                     pass
@@ -350,10 +386,14 @@ def create_app(
             except Exception:
                 if created_image and published_image is not None:
                     published_image.unlink(missing_ok=True)
+                if created_echo and published_echo is not None:
+                    published_echo.unlink(missing_ok=True)
                 raise
             finally:
                 if temporary_image is not None:
                     temporary_image.unlink(missing_ok=True)
+                if temporary_echo is not None:
+                    temporary_echo.unlink(missing_ok=True)
                 if raw_candidate is not None and _is_download_candidate(
                     raw_candidate, configured.storage_dir
                 ):

@@ -59,6 +59,10 @@ function parseManifest(value) {
   ) return null;
   const [west, south, east, north] = value.bounds;
   if (west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north) return null;
+  const echoTopImageUrl =
+    typeof value.echoTopImageUrl === 'string' && validateUrl(value.echoTopImageUrl)
+      ? value.echoTopImageUrl
+      : undefined;
   return {
     schemaVersion: 1,
     source: 'Météo-France DPRadar',
@@ -68,6 +72,7 @@ function parseManifest(value) {
     imageUrl: value.imageUrl,
     resolutionMeters: 1000,
     license: 'Licence Ouverte 2.0',
+    ...(echoTopImageUrl !== undefined ? { echoTopImageUrl } : {}),
   };
 }
 

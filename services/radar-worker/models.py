@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Mapping, TypedDict
+from typing import Any, Mapping, NotRequired, TypedDict
 
 from pyproj import CRS, Transformer
 
@@ -23,6 +23,7 @@ class Radar2dManifest(TypedDict):
     imageUrl: str
     resolutionMeters: int
     license: str
+    echoTopImageUrl: NotRequired[str]
 
 
 class RadarMetadataError(ValueError):
@@ -118,6 +119,7 @@ def build_manifest(
     *,
     public_base_url: str,
     image_name: str | None = None,
+    echo_top_image_name: str | None = None,
     generated_at: str | None = None,
 ) -> Radar2dManifest:
     observed_at = str(_required(grid, "observedAt"))
@@ -126,7 +128,7 @@ def build_manifest(
     generated_utc = _utc_timestamp(generated)
     version = observed.strftime("%Y%m%dT%H%MZ")
     raster_name = image_name or f"radar-{version}.webp"
-    return {
+    manifest: Radar2dManifest = {
         "schemaVersion": 1,
         "source": SOURCE,
         "observedAt": observed.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -136,3 +138,8 @@ def build_manifest(
         "resolutionMeters": int(grid["resolutionMeters"]),
         "license": LICENSE,
     }
+    if echo_top_image_name is not None:
+        manifest["echoTopImageUrl"] = (
+            f"{public_base_url.rstrip('/')}/rasters/{echo_top_image_name}"
+        )
+    return manifest

@@ -96,6 +96,7 @@ def _encode_imfr27(
     *,
     observed=(2026, 7, 16, 12, 50, 0),
     codes=(2047, 310, 525, 1100),
+    heights=None,
     rows=2,
     cols=2,
     reference=-400,
@@ -134,8 +135,8 @@ def _encode_imfr27(
     for _ in range(count):
         w.write(0, 10)                                      # probabilite pluie
     w.write(count, 32)
-    for _ in range(count):
-        w.write(0, 12)                                      # echo tops
+    for height_code in (heights if heights is not None else [0] * count):
+        w.write(height_code, 12)                            # echo tops
     ref_field = ((1 << 10) | abs(reference)) if reference < 0 else reference
     w.write(ref_field, 11)                                  # 203011
     w.write(count, 32)
@@ -223,3 +224,33 @@ def test_decode_bufr_rejects_out_of_range_reflectivity(tmp_path, monkeypatch):
 
     with pytest.raises(RadarMetadataError, match="unsupported horizontal reflectivity"):
         decode_bufr(fixture, observed_at="2026-07-16T12:50:00Z")
+
+
+def test_decode_bufr_exposes_echo_top_heights(tmp_path, monkeypatch):
+    monkeypatch.setattr(bufr_decoder, "GRID_SIZE", 2)
+    monkeypatch.setattr(models, "GRID_SIZE", 2)
+    # 010002 : largeur 12 (201124), échelle -1, référence -40 => (brut-40)×10 m
+    fixture = _write_fixture(tmp_path, heights=(4095, 40, 190, 1240))
+
+    grid = decode_bufr(fixture, observed_at="2026-07-16T12:50:00Z")
+
+    assert grid["echoTops"] == [None, 0.0, 1500.0, 12000.0]
+
+
+def test_render_echo_tops_altitude_ramp(tmp_path):
+    from render import render_echo_tops
+
+    output = tmp_path / "echotops.webp"
+
+    render_echo_tops([None, 500.0, 4500.0, 9500.0], width=2, height=2, output=output)
+
+    from PIL import Image
+
+    with Image.open(output) as image:
+        assert image.mode == "RGBA"
+        assert image.getpixel((0, 0))[3] == 0          # manquant -> transparent
+        low = image.getpixel((1, 0))
+        mid = image.getpixel((0, 1))
+        high = image.getpixel((1, 1))
+        assert low[3] > 0 and mid[3] > 0 and high[3] > 0
+        assert low[:3] != high[:3]                     # rampe: couleurs distinctes

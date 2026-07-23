@@ -714,3 +714,56 @@ def test_scheduler_disabled_when_interval_is_zero(tmp_path):
     with TestClient(application):
         time.sleep(0.3)
     assert not (tmp_path / "manifest.json").exists()
+
+
+# ─── Raster sommets d'écho (aide pyroconvection) ─────────────────────────────
+
+
+def test_refresh_publishes_echo_top_raster(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raw = tmp_path / "source.bufr"
+    raw.write_bytes(b"BUFR")
+
+    def decoder(_path, observed_at):
+        return {**_grid(observed_at), "echoTops": [None, 1500.0]}
+
+    def echo_renderer(values, *, width, height, output):
+        output.write_bytes(b"RIFF-echo-tops")
+
+    app = create_app(
+        _settings(tmp_path),
+        api_factory=lambda _key: _Api(raw),
+        decoder=decoder,
+        renderer=_renderer,
+        echo_renderer=echo_renderer,
+    )
+    client = TestClient(app)
+
+    response = client.post("/refresh", headers=_auth())
+
+    assert response.status_code == 200
+    manifest = response.json()
+    assert "radar-echotops-20260716T1250Z-" in manifest["echoTopImageUrl"]
+    name = manifest["echoTopImageUrl"].rsplit("/", 1)[-1]
+    raster = client.get(f"/rasters/{name}")
+    assert raster.status_code == 200
+    assert raster.content == b"RIFF-echo-tops"
+
+
+def test_refresh_omits_echo_top_field_without_heights(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raw = tmp_path / "source.bufr"
+    raw.write_bytes(b"BUFR")
+    app = create_app(
+        _settings(tmp_path),
+        api_factory=lambda _key: _Api(raw),
+        decoder=lambda _path, observed_at: _grid(observed_at),
+        renderer=_renderer,
+    )
+
+    response = TestClient(app).post("/refresh", headers=_auth())
+
+    assert response.status_code == 200
+    assert "echoTopImageUrl" not in response.json()
