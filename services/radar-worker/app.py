@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from bufr_decoder import decode_bufr
 from models import LICENSE, RadarMetadataError, SOURCE, build_manifest
+from pam_volume import OutOfRangeError, PamVolumeStore
 from radar_api import RadarApiClient, archive_validated_product
 from render import render_echo_tops, render_reflectivity
 
@@ -238,6 +239,7 @@ def create_app(
     echo_renderer: Callable[..., None] = render_echo_tops,
     archiver: Callable[..., Path] = archive_validated_product,
     manifest_writer: Callable[[Path, dict[str, Any]], None] = _write_json_atomic,
+    volume_store_factory: Callable[[str], Any] = PamVolumeStore,
 ) -> FastAPI:
     configured = settings or Settings.from_env()
     application = FastAPI(title="France Monitor radar worker")
@@ -278,6 +280,34 @@ def create_app(
                 "Cache-Control": "public, max-age=31536000, immutable",
                 "Access-Control-Allow-Origin": "*",
             },
+        )
+
+    volume_store = volume_store_factory(configured.api_key)
+
+    @application.get("/volume/column")
+    def volume_column(lat: float, lon: float) -> JSONResponse:
+        if not configured.api_key:
+            raise HTTPException(status_code=503, detail="radar API key is not configured")
+        if not (41.0 <= lat <= 52.0 and -6.0 <= lon <= 10.0):
+            raise HTTPException(status_code=422, detail="lat/lon outside métropole bounds")
+        try:
+            payload = volume_store.column(lat, lon)
+        except OutOfRangeError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "hors_couverture",
+                    "nearestStationId": exc.nearest_station_id,
+                    "nearestStationKm": exc.nearest_km,
+                },
+            ) from exc
+        except RadarMetadataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 — httpx et décodage confondus
+            raise HTTPException(status_code=502, detail="radar volume unavailable") from exc
+        return JSONResponse(
+            payload, headers={"Cache-Control": "public, max-age=120",
+                              "Access-Control-Allow-Origin": "*"}
         )
 
     def _perform_refresh() -> dict[str, Any]:
