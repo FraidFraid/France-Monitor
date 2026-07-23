@@ -32,10 +32,22 @@ jobs:
       - name: Installer les dépendances du worker
         run: pip install -r services/radar-worker/requirements.txt
 
+      - name: Étendre la mémoire du runner via swap
+        # L'expansion eccodes du BUFR dépasse la RAM du runner ; /mnt a
+        # ~60 Go libres sur les VM Azure. Le swap absorbe le pic.
+        run: |
+          df -h /mnt
+          free -h
+          sudo fallocate -l 32G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+
       - name: Décoder le BUFR et publier vers le worker
         working-directory: services/radar-worker
         env:
           METEO_FRANCE_RADAR_API_KEY: ${{ secrets.METEO_FRANCE_RADAR_API_KEY }}
           RADAR_WORKER_TOKEN: ${{ secrets.RADAR_WORKER_TOKEN }}
           RADAR_PUBLISH_BASE_URL: https://radar-worker-production-0c93.up.railway.app
-        run: python publish_job.py
+        run: /usr/bin/time -v python publish_job.py
