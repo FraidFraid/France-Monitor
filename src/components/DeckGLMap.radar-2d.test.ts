@@ -173,6 +173,25 @@ describe('DeckGLMap radar 2D atomic replacement', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('uses a MapLibre-valid image source without unsupported metadata', async () => {
+    const map = new RadarMap();
+    map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
+    const deckMap = createDeckMap(map);
+
+    await deckMap.setRadar2dOverlay(FIRST, true);
+
+    expect(map.sources.get(RADAR_2D_SOURCE_ID)).toEqual({
+      type: 'image',
+      url: 'blob:radar-1',
+      coordinates: [
+        [FIRST.bounds[0], FIRST.bounds[3]],
+        [FIRST.bounds[2], FIRST.bounds[3]],
+        [FIRST.bounds[2], FIRST.bounds[1]],
+        [FIRST.bounds[0], FIRST.bounds[1]],
+      ],
+    });
+  });
+
   it('keeps the previous layer when replacement image loading fails asynchronously', async () => {
     const nextImage = deferred<{ data: ImageBitmap }>();
     const map = new RadarMap();

@@ -123,14 +123,14 @@ def build_manifest(
     observed_at = str(_required(grid, "observedAt"))
     observed = _utc_timestamp(observed_at)
     generated = generated_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    _utc_timestamp(generated)
+    generated_utc = _utc_timestamp(generated)
     version = observed.strftime("%Y%m%dT%H%MZ")
     raster_name = image_name or f"radar-{version}.webp"
     return {
         "schemaVersion": 1,
         "source": SOURCE,
         "observedAt": observed.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "generatedAt": generated,
+        "generatedAt": generated_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "bounds": wgs84_bounds(grid),
         "imageUrl": f"{public_base_url.rstrip('/')}/rasters/{raster_name}",
         "resolutionMeters": int(grid["resolutionMeters"]),

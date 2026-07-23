@@ -181,7 +181,10 @@ def create_app(
         return FileResponse(
             image_path,
             media_type="image/webp",
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     @application.post("/refresh")

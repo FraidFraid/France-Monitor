@@ -11195,11 +11195,8 @@ export class DeckGLMap {
         [east, south],
         [west, south],
       ] as [[number, number], [number, number], [number, number], [number, number]],
-      attribution: 'Météo-France · Licence Ouverte 2.0',
     };
     this.map.addSource(RADAR_2D_SOURCE_ID, source as maplibregl.SourceSpecification);
-    const liveSource = this.map.getSource(RADAR_2D_SOURCE_ID) as (maplibregl.Source & { attribution?: string }) | undefined;
-    if (liveSource) liveSource.attribution = source.attribution;
     this.map.addLayer({
       id: RADAR_2D_LAYER_ID,
       type: 'raster',

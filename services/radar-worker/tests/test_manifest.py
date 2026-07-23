@@ -31,6 +31,16 @@ def test_manifest_contains_observation_and_bounds():
     assert -180 <= west <= 180 and -90 <= south <= 90
 
 
+def test_manifest_normalizes_generated_timestamp_to_frontend_contract():
+    manifest = build_manifest(
+        FIXTURE_GRID,
+        public_base_url="https://radar.example.test",
+        generated_at="2026-07-16T12:57:00.148950Z",
+    )
+
+    assert manifest["generatedAt"] == "2026-07-16T12:57:00Z"
+
+
 def test_catalogue_selects_only_the_1000m_reflectivity_product():
     catalogue = {
         "links": [

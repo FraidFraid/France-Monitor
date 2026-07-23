@@ -92,6 +92,19 @@ def test_refresh_auth_rejects_absent_and_bad_token_and_accepts_good_token(tmp_pa
     )
 
 
+def test_raster_response_allows_cross_origin_map_loading(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raster = tmp_path / "rasters" / "radar-test.webp"
+    raster.parent.mkdir(parents=True)
+    raster.write_bytes(b"RIFF-synthetic-webp")
+
+    response = TestClient(create_app(_settings(tmp_path))).get("/rasters/radar-test.webp")
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+
+
 def test_discovery_accepts_exactly_20_hours_and_rejects_older(monkeypatch):
     now = datetime(2026, 7, 16, 20, tzinfo=timezone.utc)
     client = RadarApiClient("key")

@@ -7,8 +7,6 @@ from typing import Sequence
 
 from PIL import Image
 
-from bufr_decoder import decode_reflectivity_code
-
 
 PALETTE = (
     (-9.0, (94, 211, 255, 75)),
@@ -35,18 +33,18 @@ def _color(value: float | None) -> tuple[int, int, int, int]:
 
 
 def render_reflectivity(
-    pixel_codes: Sequence[int],
+    reflectivity_values: Sequence[float | None],
     *,
     width: int,
     height: int,
     output: Path,
 ) -> None:
-    if len(pixel_codes) != width * height:
+    if len(reflectivity_values) != width * height:
         raise ValueError("pixel count does not match raster dimensions")
     rgba = bytearray(width * height * 4)
-    for index, code in enumerate(pixel_codes):
+    for index, value in enumerate(reflectivity_values):
         start = index * 4
-        rgba[start : start + 4] = bytes(_color(decode_reflectivity_code(int(code))))
+        rgba[start : start + 4] = bytes(_color(value))
     image = Image.frombytes("RGBA", (width, height), bytes(rgba))
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output, format="WEBP", lossless=True, method=4)

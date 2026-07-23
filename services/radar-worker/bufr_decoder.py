@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime, timezone
+import math
 import os
 from pathlib import Path
-import re
 from typing import Any, Mapping, Sequence
+
+from pyproj import CRS, Transformer
 
 from models import GRID_SIZE, PRODUCT_ID, RadarMetadataError, validate_grid
 
@@ -26,20 +29,31 @@ REQUIRED_DESCRIPTORS = (
     "030022",  # pixels per column
     "005033",  # horizontal pixel size 1
     "006033",  # horizontal pixel size 2
-    "005193",  # NW x on projection plane
-    "006197",  # NW y on projection plane
     "005194",  # projection centre indicator
     "005195",  # reference latitude
     "006198",  # meridian parallel to y axis
+    "030192",  # scanning mode
+    "005001",  # latitude of the north-west grid origin
+    "006001",  # longitude of the north-west grid origin
 )
-GTS_HEADER = re.compile(
-    rb"(?:^|[\x01\r\n])(?P<ttaaii>[A-Z]{4}\d{2})[ \t]+"
-    rb"(?P<cccc>[A-Z]{4})[ \t]+(?P<yygggg>\d{6})"
-    rb"(?:[ \t]+[A-Z]{3})?[ \t]*(?:\r\r\n|\r\n|\n)$"
-)
-PRODUCT_TTAAII = b"IMFR27"
-PRODUCT_ORIGIN = b"LFPW"
 METEO_FRANCE_CENTRE = 85
+EXPECTED_MASTER_TABLE = 16
+EXPECTED_LOCAL_TABLE = 14
+EXPECTED_DATA_CATEGORY = 6
+EXPECTED_DATA_SUBCATEGORY = 27
+EXPECTED_SCANNING_MODE = 224
+EXPECTED_NW_ORIGIN = (-9.965, 53.67)
+REQUIRED_UNEXPANDED_DESCRIPTORS = {
+    30021,  # pixels per row
+    30022,  # pixels per column
+    5033,   # horizontal pixel size 1
+    6033,   # horizontal pixel size 2
+    329192, # Météo-France projection definition
+    29192,  # Météo-France geodetic system
+    30032,  # projection type
+    21120,  # radar data field qualifier
+    21001,  # horizontal reflectivity
+}
 
 
 def decode_reflectivity_codes(codes: Iterable[int]) -> list[float | None]:
@@ -62,7 +76,7 @@ def decode_reflectivity_code(code: int) -> float | None:
 def grid_from_descriptors(
     descriptors: Mapping[str, Any],
     *,
-    pixel_codes: Sequence[int],
+    pixel_codes: Sequence[float | None],
     product_id: str,
     observed_at: str,
 ) -> dict[str, Any]:
@@ -78,11 +92,38 @@ def grid_from_descriptors(
         raise RadarMetadataError("BUFR 029192 must explicitly declare the WGS84 profile (code 0)")
     if int(descriptors["005194"]) != 0:
         raise RadarMetadataError("BUFR 005194 must explicitly declare the north projection centre")
+    if int(descriptors["030192"]) != EXPECTED_SCANNING_MODE:
+        raise RadarMetadataError(
+            f"unexpected BUFR scanning mode; expected {EXPECTED_SCANNING_MODE}"
+        )
 
     x_resolution = int(descriptors["005033"])
     y_resolution = int(descriptors["006033"])
     if x_resolution != y_resolution:
         raise RadarMetadataError("radar pixel resolutions differ between projected axes")
+
+    projection = {
+        "type": "polar_stereographic",
+        "geodeticDatum": "WGS84",
+        "projectionCenter": "north_pole",
+        "latitudeOfOrigin": 90.0,
+        "latitudeOfTrueScale": float(descriptors["005195"]),
+        "centralMeridian": float(descriptors["006198"]),
+        "falseEasting": 0.0,
+        "falseNorthing": 0.0,
+    }
+    crs = CRS.from_proj4(
+        "+proj=stere +lat_0=90 +lat_ts={lat_ts} +lon_0={lon_0} "
+        "+x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs".format(
+            lat_ts=projection["latitudeOfTrueScale"],
+            lon_0=projection["centralMeridian"],
+        )
+    )
+    transformer = Transformer.from_crs(CRS.from_epsg(4326), crs, always_xy=True)
+    upper_left = transformer.transform(
+        float(descriptors["006001"]),
+        float(descriptors["005001"]),
+    )
 
     grid: dict[str, Any] = {
         "productId": product_id,
@@ -90,20 +131,8 @@ def grid_from_descriptors(
         "width": int(descriptors["030021"]),
         "height": int(descriptors["030022"]),
         "resolutionMeters": x_resolution,
-        "projection": {
-            "type": "polar_stereographic",
-            "geodeticDatum": "WGS84",
-            "projectionCenter": "north_pole",
-            "latitudeOfOrigin": 90.0,
-            "latitudeOfTrueScale": float(descriptors["005195"]),
-            "centralMeridian": float(descriptors["006198"]),
-            "falseEasting": 0.0,
-            "falseNorthing": 0.0,
-        },
-        "upperLeftProjected": [
-            float(descriptors["005193"]),
-            float(descriptors["006197"]),
-        ],
+        "projection": projection,
+        "upperLeftProjected": [float(upper_left[0]), float(upper_left[1])],
         "values": pixel_codes,
     }
     validate_grid(grid)
@@ -115,103 +144,133 @@ def grid_from_descriptors(
     return grid
 
 
-def _descriptor_code(eccodes: Any, handle: Any, key: str) -> str | None:
-    try:
-        raw = str(eccodes.codes_get(handle, f"{key}->code"))
-    except Exception:
-        return None
-    digits = "".join(character for character in raw if character.isdigit())
-    return digits.zfill(6) if digits else None
-
-
-def _base_key(key: str) -> str:
-    return key.rsplit("#", 1)[-1]
-
-
-def _validate_gts_header(path: Path) -> None:
+def _validate_bufr_prefix(path: Path) -> None:
     with path.open("rb") as stream:
-        payload = stream.read(1024)
-    bufr_offset = payload.find(b"BUFR")
-    if bufr_offset < 0:
-        raise RadarMetadataError("radar payload contains no BUFR message")
-    header = GTS_HEADER.search(payload[max(0, bufr_offset - 256) : bufr_offset])
-    if (
-        header is None
-        or header.group("ttaaii") != PRODUCT_TTAAII
-        or header.group("cccc") != PRODUCT_ORIGIN
-    ):
-        raise RadarMetadataError(
-            "structured GTS header must identify the exact IMFR27 LFPW radar product"
-        )
+        prefix = stream.read(4)
+    if prefix != b"BUFR":
+        raise RadarMetadataError("radar payload must start with a raw BUFR message")
+
+
+def _utc_timestamp(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RadarMetadataError("catalogue radar timestamp is invalid") from exc
+    if parsed.tzinfo is None:
+        raise RadarMetadataError("catalogue radar timestamp must include a timezone")
+    return parsed.astimezone(timezone.utc).replace(microsecond=0)
+
+
+def _normalize_reflectivity(values: Sequence[float]) -> list[float | None]:
+    normalized: list[float | None] = []
+    for raw_value in values:
+        value = float(raw_value)
+        if not math.isfinite(value) or value <= -1e90 or value == 9999:
+            normalized.append(None)
+        elif value == -40.0 or -9.0 <= value <= 70.0:
+            normalized.append(value)
+        else:
+            raise RadarMetadataError(f"unsupported horizontal reflectivity value: {value}")
+    return normalized
 
 
 def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
     """Decode a real DPRadar BUFR file, rejecting incomplete scientific metadata."""
 
-    _validate_gts_header(path)
+    _validate_bufr_prefix(path)
     try:
         import eccodes  # type: ignore[import-not-found]
     except ImportError as exc:
         raise RadarMetadataError("ecCodes Python bindings are required to decode radar BUFR") from exc
 
-    descriptors: dict[str, Any] = {}
-    candidates: list[Sequence[int]] = []
+    handle = None
     try:
         with path.open("rb") as stream:
-            while True:
-                handle = eccodes.codes_bufr_new_from_file(stream)
-                if handle is None:
-                    break
-                iterator = None
-                try:
-                    if int(eccodes.codes_get(handle, "bufrHeaderCentre")) != METEO_FRANCE_CENTRE:
-                        raise RadarMetadataError("BUFR centre must identify Météo-France (85)")
-                    eccodes.codes_set(handle, "unpack", 1)
-                    unexpanded = {
-                        int(value)
-                        for value in eccodes.codes_get_array(handle, "unexpandedDescriptors")
-                    }
-                    iterator = eccodes.codes_bufr_keys_iterator_new(handle)
-                    message_codes: set[str] = set()
-                    keys_by_code: dict[str, str] = {}
-                    while eccodes.codes_bufr_keys_iterator_next(iterator):
-                        key = eccodes.codes_bufr_keys_iterator_get_name(iterator)
-                        code = _descriptor_code(eccodes, handle, key)
-                        if code is None:
-                            continue
-                        message_codes.add(code)
-                        keys_by_code.setdefault(code, _base_key(key))
-                        if code in REQUIRED_DESCRIPTORS:
-                            value = eccodes.codes_get(handle, key)
-                            if code in descriptors and descriptors[code] != value:
-                                raise RadarMetadataError(
-                                    f"conflicting values for BUFR descriptor {code}"
-                                )
-                            descriptors[code] = value
-                    if 321193 in unexpanded and {"030001", "021216"} <= message_codes:
-                        pixels = eccodes.codes_get_array(handle, keys_by_code["030001"])
-                        reflectivity = eccodes.codes_get_array(handle, keys_by_code["021216"])
-                        if (
-                            len(pixels) == GRID_SIZE * GRID_SIZE
-                            and len(reflectivity) == len(pixels) * 2
-                        ):
-                            candidates.append([int(value) for value in pixels])
-                finally:
-                    if iterator is not None:
-                        eccodes.codes_bufr_keys_iterator_delete(iterator)
-                    eccodes.codes_release(handle)
+            handle = eccodes.codes_bufr_new_from_file(stream)
+            if handle is None:
+                raise RadarMetadataError("radar payload contains no BUFR message")
+
+            header_expectations = {
+                "bufrHeaderCentre": METEO_FRANCE_CENTRE,
+                "masterTablesVersionNumber": EXPECTED_MASTER_TABLE,
+                "localTablesVersionNumber": EXPECTED_LOCAL_TABLE,
+                "dataCategory": EXPECTED_DATA_CATEGORY,
+                "dataSubCategory": EXPECTED_DATA_SUBCATEGORY,
+                "numberOfSubsets": 1,
+                "compressedData": 0,
+            }
+            for key, expected in header_expectations.items():
+                actual = int(eccodes.codes_get(handle, key))
+                if actual != expected:
+                    raise RadarMetadataError(
+                        f"unexpected BUFR {key}: {actual}; expected {expected}"
+                    )
+
+            eccodes.codes_set(handle, "unpack", 1)
+            unexpanded = {
+                int(value)
+                for value in eccodes.codes_get_array(handle, "unexpandedDescriptors")
+            }
+            if not REQUIRED_UNEXPANDED_DESCRIPTORS <= unexpanded:
+                raise RadarMetadataError("BUFR descriptor structure is not the IMFR27 mosaic")
+
+            observed_inside = datetime(
+                int(eccodes.codes_get(handle, "year")),
+                int(eccodes.codes_get(handle, "month")),
+                int(eccodes.codes_get(handle, "day")),
+                int(eccodes.codes_get(handle, "hour")),
+                int(eccodes.codes_get(handle, "minute")),
+                int(eccodes.codes_get(handle, "second")),
+                tzinfo=timezone.utc,
+            )
+            if observed_inside != _utc_timestamp(observed_at):
+                raise RadarMetadataError(
+                    "BUFR observation timestamp does not match the DPRadar catalogue"
+                )
+
+            latitudes = eccodes.codes_get_array(handle, "latitude")
+            longitudes = eccodes.codes_get_array(handle, "longitude")
+            if len(latitudes) == 0 or len(latitudes) != len(longitudes):
+                raise RadarMetadataError("BUFR grid origin coordinates are absent")
+            origin = (float(longitudes[0]), float(latitudes[0]))
+            if not (
+                math.isclose(origin[0], EXPECTED_NW_ORIGIN[0], abs_tol=1e-6)
+                and math.isclose(origin[1], EXPECTED_NW_ORIGIN[1], abs_tol=1e-6)
+            ):
+                raise RadarMetadataError("unexpected IMFR27 north-west grid origin")
+
+            descriptors = {
+                "029001": eccodes.codes_get(handle, "projectionType"),
+                "029192": eccodes.codes_get(handle, "meteoFranceLocal029192"),
+                "030021": eccodes.codes_get(handle, "numberOfPixelsPerRow"),
+                "030022": eccodes.codes_get(handle, "numberOfPixelsPerColumn"),
+                "005033": eccodes.codes_get(handle, "pixelSizeOnHorizontal1"),
+                "006033": eccodes.codes_get(handle, "pixelSizeOnHorizontal2"),
+                "005194": eccodes.codes_get(handle, "meteoFranceLocal005194"),
+                "005195": eccodes.codes_get(handle, "meteoFranceLocal005195"),
+                "006198": eccodes.codes_get(handle, "meteoFranceLocal006198"),
+                "030192": eccodes.codes_get(handle, "meteoFranceLocal030192"),
+                "005001": origin[1],
+                "006001": origin[0],
+            }
+            values = _normalize_reflectivity(
+                eccodes.codes_get_array(handle, "horizontalReflectivity")
+            )
+            extra_handle = eccodes.codes_bufr_new_from_file(stream)
+            if extra_handle is not None:
+                eccodes.codes_release(extra_handle)
+                raise RadarMetadataError("radar payload must contain exactly one BUFR message")
     except RadarMetadataError:
         raise
     except Exception as exc:
         raise RadarMetadataError(f"ecCodes could not decode radar BUFR: {exc}") from exc
+    finally:
+        if handle is not None:
+            eccodes.codes_release(handle)
 
-    if len(candidates) != 1:
-        raise RadarMetadataError(
-            "BUFR must contain exactly one 321193 pixel field with paired 021216 reflectivity values"
-        )
     return grid_from_descriptors(
         descriptors,
-        pixel_codes=candidates[0],
+        pixel_codes=values,
         product_id=PRODUCT_ID,
         observed_at=observed_at,
     )
