@@ -94,6 +94,7 @@ function workerOrigin() {
   if (!configured.trim()) return null;
   try {
     const url = new URL(configured);
+    if (url.username || url.password) return null;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalHostname(url.hostname))) return null;
     return url.origin;
   } catch {
