@@ -14,7 +14,8 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py radar_api.py bufr_decoder.py bufr_bitstream.py render.py models.py ./
+COPY app.py radar_api.py bufr_decoder.py bufr_bitstream.py render.py models.py \
+     pam_bitstream.py pam_volume.py polar_geometry.py station_catalog.py ./
 COPY eccodes-definitions ./eccodes-definitions
 COPY entrypoint.sh /entrypoint.sh
 
