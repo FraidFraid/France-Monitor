@@ -1,10 +1,5 @@
 name: Radar refresh
 
-# Le décodage eccodes du BUFR exige plusieurs Go de RAM : trop pour le
-# worker Railway (8 Go dépassés, OOM), assez pour les runners publics
-# GitHub (16 Go). Le runner décode et rend l'image, puis la pousse au
-# worker qui ne fait que servir manifest + raster.
-
 on:
   schedule:
     # Mosaïques DPRadar toutes les 5 min ; le cron GitHub est best-effort
@@ -19,35 +14,16 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: services/radar-worker/requirements.txt
-
-      - name: Installer les dépendances du worker
-        run: pip install -r services/radar-worker/requirements.txt
-
-      - name: Étendre la mémoire du runner via swap
-        # L'expansion eccodes du BUFR dépasse la RAM du runner ; /mnt a
-        # ~60 Go libres sur les VM Azure. Le swap absorbe le pic.
+      - name: POST /refresh
+        # Le worker décode lui-même via bufr_bitstream (~350 Mo) : le cron
+        # n'est qu'un déclencheur authentifié.
         run: |
-          df -h /mnt
-          free -h
-          sudo fallocate -l 32G /mnt/swapfile
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
-          free -h
-
-      - name: Décoder le BUFR et publier vers le worker
-        working-directory: services/radar-worker
-        env:
-          METEO_FRANCE_RADAR_API_KEY: ${{ secrets.METEO_FRANCE_RADAR_API_KEY }}
-          RADAR_WORKER_TOKEN: ${{ secrets.RADAR_WORKER_TOKEN }}
-          RADAR_PUBLISH_BASE_URL: https://radar-worker-production-0c93.up.railway.app
-        run: /usr/bin/time -v python publish_job.py
+          code=$(curl -s -o /tmp/refresh-body.json -w "%{http_code}" \
+            -X POST "https://radar-worker-production-0c93.up.railway.app/refresh" \
+            -H "Authorization: Bearer ${{ secrets.RADAR_WORKER_TOKEN }}" \
+            --max-time 240)
+          echo "HTTP $code"
+          cat /tmp/refresh-body.json
+          [ "$code" = "200" ]

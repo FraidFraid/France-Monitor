@@ -175,102 +175,40 @@ def _normalize_reflectivity(values: Sequence[float]) -> list[float | None]:
 
 
 def decode_bufr(path: Path, *, observed_at: str) -> dict[str, Any]:
-    """Decode a real DPRadar BUFR file, rejecting incomplete scientific metadata."""
+    """Decode a real DPRadar BUFR file, rejecting incomplete scientific metadata.
+
+    La lecture passe par bufr_bitstream (marche bit a bit de la section 4) :
+    eccodes exige plus de 16 Go pour expanser ce produit, le train de bits
+    se lit en quelques centaines de Mo. Memes validations, memes erreurs.
+    """
 
     _validate_bufr_prefix(path)
+    from bufr_bitstream import parse_imfr27, reflectivity_values
+
+    message = parse_imfr27(path.read_bytes())
+
+    year, month, day, hour, minute, second = message.observed_at_utc
     try:
-        import eccodes  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise RadarMetadataError("ecCodes Python bindings are required to decode radar BUFR") from exc
+        observed_inside = datetime(
+            year, month, day, hour, minute, second, tzinfo=timezone.utc
+        )
+    except ValueError as exc:
+        raise RadarMetadataError("BUFR observation timestamp is invalid") from exc
+    if observed_inside != _utc_timestamp(observed_at):
+        raise RadarMetadataError(
+            "BUFR observation timestamp does not match the DPRadar catalogue"
+        )
 
-    handle = None
-    try:
-        with path.open("rb") as stream:
-            handle = eccodes.codes_bufr_new_from_file(stream)
-            if handle is None:
-                raise RadarMetadataError("radar payload contains no BUFR message")
-
-            header_expectations = {
-                "bufrHeaderCentre": METEO_FRANCE_CENTRE,
-                "masterTablesVersionNumber": EXPECTED_MASTER_TABLE,
-                "localTablesVersionNumber": EXPECTED_LOCAL_TABLE,
-                "dataCategory": EXPECTED_DATA_CATEGORY,
-                "dataSubCategory": EXPECTED_DATA_SUBCATEGORY,
-                "numberOfSubsets": 1,
-                "compressedData": 0,
-            }
-            for key, expected in header_expectations.items():
-                actual = int(eccodes.codes_get(handle, key))
-                if actual != expected:
-                    raise RadarMetadataError(
-                        f"unexpected BUFR {key}: {actual}; expected {expected}"
-                    )
-
-            eccodes.codes_set(handle, "unpack", 1)
-            unexpanded = {
-                int(value)
-                for value in eccodes.codes_get_array(handle, "unexpandedDescriptors")
-            }
-            if not REQUIRED_UNEXPANDED_DESCRIPTORS <= unexpanded:
-                raise RadarMetadataError("BUFR descriptor structure is not the IMFR27 mosaic")
-
-            observed_inside = datetime(
-                int(eccodes.codes_get(handle, "year")),
-                int(eccodes.codes_get(handle, "month")),
-                int(eccodes.codes_get(handle, "day")),
-                int(eccodes.codes_get(handle, "hour")),
-                int(eccodes.codes_get(handle, "minute")),
-                int(eccodes.codes_get(handle, "second")),
-                tzinfo=timezone.utc,
-            )
-            if observed_inside != _utc_timestamp(observed_at):
-                raise RadarMetadataError(
-                    "BUFR observation timestamp does not match the DPRadar catalogue"
-                )
-
-            latitudes = eccodes.codes_get_array(handle, "latitude")
-            longitudes = eccodes.codes_get_array(handle, "longitude")
-            if len(latitudes) == 0 or len(latitudes) != len(longitudes):
-                raise RadarMetadataError("BUFR grid origin coordinates are absent")
-            origin = (float(longitudes[0]), float(latitudes[0]))
-            if not (
-                math.isclose(origin[0], EXPECTED_NW_ORIGIN[0], abs_tol=1e-6)
-                and math.isclose(origin[1], EXPECTED_NW_ORIGIN[1], abs_tol=1e-6)
-            ):
-                raise RadarMetadataError("unexpected IMFR27 north-west grid origin")
-
-            descriptors = {
-                "029001": eccodes.codes_get(handle, "projectionType"),
-                "029192": eccodes.codes_get(handle, "meteoFranceLocal029192"),
-                "030021": eccodes.codes_get(handle, "numberOfPixelsPerRow"),
-                "030022": eccodes.codes_get(handle, "numberOfPixelsPerColumn"),
-                "005033": eccodes.codes_get(handle, "pixelSizeOnHorizontal1"),
-                "006033": eccodes.codes_get(handle, "pixelSizeOnHorizontal2"),
-                "005194": eccodes.codes_get(handle, "meteoFranceLocal005194"),
-                "005195": eccodes.codes_get(handle, "meteoFranceLocal005195"),
-                "006198": eccodes.codes_get(handle, "meteoFranceLocal006198"),
-                "030192": eccodes.codes_get(handle, "meteoFranceLocal030192"),
-                "005001": origin[1],
-                "006001": origin[0],
-            }
-            values = _normalize_reflectivity(
-                eccodes.codes_get_array(handle, "horizontalReflectivity")
-            )
-            extra_handle = eccodes.codes_bufr_new_from_file(stream)
-            if extra_handle is not None:
-                eccodes.codes_release(extra_handle)
-                raise RadarMetadataError("radar payload must contain exactly one BUFR message")
-    except RadarMetadataError:
-        raise
-    except Exception as exc:
-        raise RadarMetadataError(f"ecCodes could not decode radar BUFR: {exc}") from exc
-    finally:
-        if handle is not None:
-            eccodes.codes_release(handle)
+    origin = (message.origin_lon, message.origin_lat)
+    if not (
+        math.isclose(origin[0], EXPECTED_NW_ORIGIN[0], abs_tol=1e-6)
+        and math.isclose(origin[1], EXPECTED_NW_ORIGIN[1], abs_tol=1e-6)
+    ):
+        raise RadarMetadataError("unexpected IMFR27 north-west grid origin")
 
     return grid_from_descriptors(
-        descriptors,
-        pixel_codes=values,
+        message.descriptors,
+        pixel_codes=reflectivity_values(message.reflectivity_codes),
         product_id=PRODUCT_ID,
         observed_at=observed_at,
     )
