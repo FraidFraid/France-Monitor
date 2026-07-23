@@ -10980,7 +10980,9 @@ export class DeckGLMap {
     this.map.addSource(MTG_FRP_SOURCE_ID, {
       type: 'raster',
       tiles: [tileUrl],
-      tileSize: 256,
+      // 256 px servis étirés sur 512 : symboles et étiquettes MW ×2,
+      // sinon les points ADAGUC se noient sous les marqueurs FIRMS.
+      tileSize: 512,
       attribution: 'EUMETSAT LSA SAF · CC BY 4.0',
     });
     const layer: maplibregl.RasterLayerSpecification = {
