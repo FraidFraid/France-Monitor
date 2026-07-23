@@ -93,7 +93,9 @@ class Imfr27Message:
     echo_top_codes: np.ndarray      # uint16, 4095 = manquant
 
 
-class _BitReader:
+class BitReader:
+    """Lecteur bit à bit de la section 4, partagé avec pam_bitstream."""
+
     def __init__(self, payload: bytes) -> None:
         self._bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
         self._pos = 0
@@ -129,6 +131,10 @@ class _BitReader:
         self._pos += total
         weights = (1 << np.arange(width - 1, -1, -1)).astype(np.int64)
         return chunk.reshape(count, width).astype(np.int64) @ weights
+
+
+# Alias rétrocompatible (ancien nom privé).
+_BitReader = BitReader
 
 
 def _descriptor_code(raw: int) -> str:
