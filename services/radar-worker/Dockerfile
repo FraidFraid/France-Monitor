@@ -16,9 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py radar_api.py bufr_decoder.py render.py models.py ./
 COPY eccodes-definitions ./eccodes-definitions
+COPY entrypoint.sh /entrypoint.sh
 
-RUN mkdir -p /data && chown -R 65532:65532 /data
-USER 65532:65532
+RUN mkdir -p /data && chown -R 65532:65532 /data && chmod +x /entrypoint.sh
 
 EXPOSE 8091
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8091"]
+# L'entrypoint démarre root pour approprier le volume monté, puis
+# bascule en 65532 via setpriv avant de lancer uvicorn.
+CMD ["/entrypoint.sh"]
