@@ -1349,6 +1349,7 @@ export class App {
   private latestMtgFrpMetadata: MtgFrpMetadata | null = null;
   private mtgFrpRequestInFlight = false;
   private radar2dEnabled = false;
+  private echoTopsEnabled = false;
   private latestRadar2dManifest: Radar2dManifest | null = null;
   private radar2dRequestInFlight = false;
   private radar2dTransitionGeneration = 0;
@@ -2800,10 +2801,15 @@ export class App {
           }),
         );
       });
+      panel.setOnEchoTopsToggle((enabled) => {
+        this.echoTopsEnabled = enabled;
+        this.mapContainer?.setEchoTopsOverlay(this.latestRadar2dManifest, enabled);
+      });
       panel.setOnClose(() => {
         this.layoutEnvironmentFloatingPanels();
       });
       this.firesPanel = panel;
+      panel.setEchoTopsAvailability(Boolean(this.latestRadar2dManifest?.echoTopImageUrl));
       panel.setObservationRuntimeState(this.fireObservationRuntime);
       // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
       // setRawFires re-triggers the filter + map update through onFilteredFires.
@@ -5841,6 +5847,8 @@ export class App {
         },
         reportSuccess: () => {
           this.latestRadar2dManifest = result.manifest;
+          this.firesPanel?.setEchoTopsAvailability(Boolean(result.manifest.echoTopImageUrl));
+          this.mapContainer?.setEchoTopsOverlay(result.manifest, this.echoTopsEnabled);
           this.fireObservationRuntime = {
             ...this.fireObservationRuntime,
             radar2d: {

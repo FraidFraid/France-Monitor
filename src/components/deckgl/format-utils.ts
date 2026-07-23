@@ -8,6 +8,8 @@ export const MTG_FRP_SOURCE_ID = 'fire-mtg-frp-source';
 export const MTG_FRP_LAYER_ID = 'fire-mtg-frp-layer';
 export const RADAR_2D_SOURCE_ID = 'fire-radar-2d-source';
 export const RADAR_2D_LAYER_ID = 'fire-radar-2d-layer';
+export const ECHO_TOPS_SOURCE_ID = 'fire-echo-tops-source';
+export const ECHO_TOPS_LAYER_ID = 'fire-echo-tops-layer';
 
 export function getWeatherRadarSourceId(regionId: string): string {
   return `weather-radar-src-${regionId}`;

@@ -31,10 +31,13 @@ export class FiresPanel {
     private onModisToggleCb: ((enabled: boolean) => void) | null = null;
     private onMtgFrpToggleCb: ((enabled: boolean) => void) | null = null;
     private onRadar2dToggleCb: ((enabled: boolean) => void) | null = null;
+    private onEchoTopsToggleCb: ((enabled: boolean) => void) | null = null;
     private onCloseCb: (() => void) | null = null;
     private modisEnabled = false;
     private mtgFrpEnabled = false;
     private radar2dEnabled = false;
+    private echoTopsEnabled = false;
+    private echoTopsAvailable = false;
     private observationRuntime?: FireObservationRuntimeState;
     private observationEl?: HTMLDetailsElement;
     private observationOpen = false;
@@ -89,6 +92,20 @@ export class FiresPanel {
     setRadar2dEnabled(enabled: boolean): void {
         if (this.radar2dEnabled === enabled) return;
         this.radar2dEnabled = enabled;
+        if (!this.observationEl?.isConnected) return;
+        const next = this._createMultiSensorObservation();
+        this.observationEl.replaceWith(next);
+        this.observationEl = next;
+    }
+
+    setOnEchoTopsToggle(cb: (enabled: boolean) => void): void {
+        if (this.onEchoTopsToggleCb === cb) return;
+        this.onEchoTopsToggleCb = cb;
+    }
+
+    setEchoTopsAvailability(available: boolean): void {
+        if (this.echoTopsAvailable === available) return;
+        this.echoTopsAvailable = available;
         if (!this.observationEl?.isConnected) return;
         const next = this._createMultiSensorObservation();
         this.observationEl.replaceWith(next);
@@ -535,6 +552,25 @@ export class FiresPanel {
                     toggle.textContent = next ? 'Masquer' : 'Afficher';
                 };
                 controls.appendChild(toggle);
+            }
+            if (source.id === 'radar-2d' && this.echoTopsAvailable) {
+                // Hauteur du sommet d'écho (mosaïque 2D) — aide pyroconvection,
+                // sans prétendre à l'analyse volumique 3D.
+                const echoToggle = document.createElement('button');
+                echoToggle.type = 'button';
+                echoToggle.className = 'fires-multisensor__toggle';
+                const echoLabel = (): string =>
+                    this.echoTopsEnabled ? 'Masquer sommets' : 'Sommets d’écho';
+                echoToggle.setAttribute('aria-pressed', String(this.echoTopsEnabled));
+                echoToggle.setAttribute('aria-label', 'Afficher la hauteur du sommet d’écho radar');
+                echoToggle.textContent = echoLabel();
+                echoToggle.onclick = () => {
+                    this.echoTopsEnabled = !this.echoTopsEnabled;
+                    this.onEchoTopsToggleCb?.(this.echoTopsEnabled);
+                    echoToggle.setAttribute('aria-pressed', String(this.echoTopsEnabled));
+                    echoToggle.textContent = echoLabel();
+                };
+                controls.appendChild(echoToggle);
             }
             row.append(copy, controls);
             body.appendChild(row);

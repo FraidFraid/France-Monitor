@@ -62,6 +62,8 @@ import {
   MTG_FRP_SOURCE_ID,
   RADAR_2D_LAYER_ID,
   RADAR_2D_SOURCE_ID,
+  ECHO_TOPS_LAYER_ID,
+  ECHO_TOPS_SOURCE_ID,
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
 import {
@@ -445,6 +447,7 @@ export class DeckGLMap {
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
   private _radar2dEnabled = false;
+  private _echoTopsUrl: string | null = null;
   private radar2dManifest: Radar2dManifest | null = null;
   private radar2dObjectUrl: string | null = null;
   private radar2dOperationGeneration = 0;
@@ -11007,6 +11010,46 @@ export class DeckGLMap {
     if (!this.map) return;
     if (this.map.getLayer(MTG_FRP_LAYER_ID)) this.map.removeLayer(MTG_FRP_LAYER_ID);
     if (this.map.getSource(MTG_FRP_SOURCE_ID)) this.map.removeSource(MTG_FRP_SOURCE_ID);
+  }
+
+  setEchoTopsOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    if (!this.map) return;
+    const url = manifest?.echoTopImageUrl;
+    if (!url) {
+      this.setVis(ECHO_TOPS_LAYER_ID, 'none');
+      return;
+    }
+    const [west, south, east, north] = manifest.bounds;
+    const coordinates = [
+      [west, north],
+      [east, north],
+      [east, south],
+      [west, south],
+    ] as [[number, number], [number, number], [number, number], [number, number]];
+    if (!this.map.getSource(ECHO_TOPS_SOURCE_ID)) {
+      this.map.addSource(ECHO_TOPS_SOURCE_ID, { type: 'image', url, coordinates });
+      this.map.addLayer(
+        {
+          id: ECHO_TOPS_LAYER_ID,
+          type: 'raster',
+          source: ECHO_TOPS_SOURCE_ID,
+          layout: { visibility: enabled ? 'visible' : 'none' },
+          paint: {
+            'raster-opacity': 0.62,
+            'raster-resampling': 'linear',
+            'raster-fade-duration': 0,
+          },
+        },
+        this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined,
+      );
+    } else if (this._echoTopsUrl !== url) {
+      const source = this.map.getSource(ECHO_TOPS_SOURCE_ID) as
+        | { updateImage?: (options: { url: string; coordinates: typeof coordinates }) => void }
+        | undefined;
+      source?.updateImage?.({ url, coordinates });
+    }
+    this._echoTopsUrl = url;
+    this.setVis(ECHO_TOPS_LAYER_ID, enabled ? 'visible' : 'none');
   }
 
   async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {

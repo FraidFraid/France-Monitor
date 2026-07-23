@@ -56,6 +56,7 @@ export class MapContainer {
   private dromEnergyLoadPromise: Promise<void> | null = null;
   private radar2dManifest: Radar2dManifest | null = null;
   private radar2dEnabled = false;
+  private echoTopsEnabled = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -88,6 +89,7 @@ export class MapContainer {
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
     await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
+    this.deckMap.setEchoTopsOverlay(this.radar2dManifest, this.echoTopsEnabled);
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
@@ -203,6 +205,12 @@ export class MapContainer {
     if (this.deckMap) await this.deckMap.setRadar2dOverlay(manifest, enabled);
     this.radar2dManifest = manifest;
     this.radar2dEnabled = enabled;
+  }
+
+  setEchoTopsOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    this.deckMap?.setEchoTopsOverlay(manifest, enabled);
+    if (manifest) this.radar2dManifest = manifest;
+    this.echoTopsEnabled = enabled;
   }
 
   async setMairesPolitiqueVisible(enabled: boolean): Promise<void> {
