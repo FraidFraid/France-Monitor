@@ -80,9 +80,10 @@ class AntiFlashMap {
     return source && 'tiles' in source ? source.tiles?.[0] : undefined;
   }
 
-  tileSize(): number | undefined {
-    const source = this.sources.get(MTG_FRP_SOURCE_ID);
-    return source && 'tileSize' in source ? source.tileSize : undefined;
+  sourceSpec(): maplibregl.RasterSourceSpecification | undefined {
+    return this.sources.get(MTG_FRP_SOURCE_ID) as
+      | maplibregl.RasterSourceSpecification
+      | undefined;
   }
 }
 
@@ -133,13 +134,15 @@ describe('DeckGLMap MTG-FRP lisibilité', () => {
     expect(map.beforeIds.get(MTG_FRP_LAYER_ID)).toBeUndefined();
   });
 
-  it('étire les tuiles WMS sur 512 px pour doubler la taille des symboles ADAGUC', async () => {
+  it('sert la résolution native en vue large et agrandit par sur-zoom au-delà de z10', async () => {
     mtgMocks.fetchMetadata.mockResolvedValueOnce({ observedAt: FIRST_OBSERVATION });
     const map = new AntiFlashMap();
     const deckMap = createDeckMap(map);
 
     await deckMap.ensureMtgFrpLayer();
 
-    expect(map.tileSize()).toBe(512);
+    const spec = map.sourceSpec();
+    expect(spec?.tileSize).toBe(256);
+    expect(spec?.maxzoom).toBe(10);
   });
 });
