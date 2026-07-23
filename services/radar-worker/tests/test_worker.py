@@ -28,6 +28,8 @@ def _settings(tmp_path: Path) -> Settings:
         worker_token="worker-token",
         storage_dir=tmp_path,
         public_base_url="https://radar.example.test",
+        # Boucle interne coupée : les tests d'endpoints pilotent leurs refreshes.
+        refresh_interval_seconds=0,
     )
 
 
@@ -657,3 +659,58 @@ def test_publish_prunes_old_rasters_but_keeps_current(tmp_path):
     current_name = second.json()["imageUrl"].rsplit("/", 1)[-1]
     names = {path.name for path in (tmp_path / "rasters").glob("*.webp")}
     assert names == {current_name}
+
+
+# ─── Boucle de rafraîchissement interne ──────────────────────────────────────
+
+
+def test_scheduler_refreshes_without_http_trigger(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raw = tmp_path / "source.bufr"
+    raw.write_bytes(b"BUFR")
+    settings = Settings(
+        api_key="api-key",
+        worker_token="worker-token",
+        storage_dir=tmp_path,
+        public_base_url="https://radar.example.test",
+        refresh_interval_seconds=1,
+    )
+    application = create_app(
+        settings,
+        api_factory=lambda _key: _Api(raw),
+        decoder=lambda _path, observed_at: _grid(observed_at),
+        renderer=_renderer,
+    )
+
+    with TestClient(application):
+        deadline = time.time() + 5.0
+        while time.time() < deadline and not (tmp_path / "manifest.json").exists():
+            time.sleep(0.05)
+        assert (tmp_path / "manifest.json").exists()
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["observedAt"] == "2026-07-16T12:50:00Z"
+
+
+def test_scheduler_disabled_when_interval_is_zero(tmp_path):
+    from fastapi.testclient import TestClient
+
+    raw = tmp_path / "source.bufr"
+    raw.write_bytes(b"BUFR")
+    settings = Settings(
+        api_key="api-key",
+        worker_token="worker-token",
+        storage_dir=tmp_path,
+        public_base_url="https://radar.example.test",
+        refresh_interval_seconds=0,
+    )
+    application = create_app(
+        settings,
+        api_factory=lambda _key: _Api(raw),
+        decoder=lambda _path, observed_at: _grid(observed_at),
+        renderer=_renderer,
+    )
+
+    with TestClient(application):
+        time.sleep(0.3)
+    assert not (tmp_path / "manifest.json").exists()

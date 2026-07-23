@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -102,6 +104,8 @@ class Settings:
     public_base_url: str
     raw_retention: int = 24
     raster_retention: int = 24
+    # Boucle interne de rafraîchissement ; 0 = désactivée (déclencheur externe).
+    refresh_interval_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -112,6 +116,9 @@ class Settings:
             public_base_url=os.getenv("RADAR_PUBLIC_BASE_URL", "http://localhost:8091"),
             raw_retention=_positive_env("RADAR_RAW_RETENTION", 24),
             raster_retention=_positive_env("RADAR_RASTER_RETENTION", 24),
+            refresh_interval_seconds=_non_negative_env(
+                "RADAR_REFRESH_INTERVAL_SECONDS", 300
+            ),
         )
 
     @property
@@ -129,6 +136,19 @@ def _positive_env(name: str, default: int) -> int:
         raise ValueError(f"{name} must be a positive integer") from exc
     if value < 1:
         raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _non_negative_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a non-negative integer") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
     return value
 
 
@@ -259,15 +279,7 @@ def create_app(
             },
         )
 
-    @application.post("/refresh")
-    def refresh(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        expected = f"Bearer {configured.worker_token}"
-        if not configured.worker_token or authorization is None or not secrets.compare_digest(
-            authorization, expected
-        ):
-            raise HTTPException(status_code=401, detail="invalid worker token")
-        if not configured.api_key:
-            raise HTTPException(status_code=503, detail="radar API key is not configured")
+    def _perform_refresh() -> dict[str, Any]:
         with refresh_lock:
             temporary_image: Path | None = None
             published_image: Path | None = None
@@ -335,14 +347,10 @@ def create_app(
                 except OSError:
                     pass
                 return public_manifest
-            except RadarMetadataError as exc:
+            except Exception:
                 if created_image and published_image is not None:
                     published_image.unlink(missing_ok=True)
-                raise HTTPException(status_code=502, detail=str(exc)) from exc
-            except Exception as exc:
-                if created_image and published_image is not None:
-                    published_image.unlink(missing_ok=True)
-                raise HTTPException(status_code=502, detail="radar refresh failed") from exc
+                raise
             finally:
                 if temporary_image is not None:
                     temporary_image.unlink(missing_ok=True)
@@ -350,6 +358,46 @@ def create_app(
                     raw_candidate, configured.storage_dir
                 ):
                     raw_candidate.unlink(missing_ok=True)
+
+    @application.post("/refresh")
+    def refresh(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        expected = f"Bearer {configured.worker_token}"
+        if not configured.worker_token or authorization is None or not secrets.compare_digest(
+            authorization, expected
+        ):
+            raise HTTPException(status_code=401, detail="invalid worker token")
+        if not configured.api_key:
+            raise HTTPException(status_code=503, detail="radar API key is not configured")
+        try:
+            return _perform_refresh()
+        except RadarMetadataError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="radar refresh failed") from exc
+
+    # ─── Boucle interne : le cron externe n'est qu'une ceinture de sécurité ──
+    scheduler_task: asyncio.Task[None] | None = None
+
+    async def _refresh_periodically() -> None:
+        while True:
+            try:
+                await asyncio.to_thread(_perform_refresh)
+            except Exception as exc:  # noqa: BLE001 — la boucle doit survivre
+                print(f"[radar-worker] rafraîchissement planifié en échec : {exc}", flush=True)
+            await asyncio.sleep(configured.refresh_interval_seconds)
+
+    @application.on_event("startup")
+    async def _start_scheduler() -> None:
+        nonlocal scheduler_task
+        if configured.refresh_interval_seconds > 0 and configured.configured:
+            scheduler_task = asyncio.create_task(_refresh_periodically())
+
+    @application.on_event("shutdown")
+    async def _stop_scheduler() -> None:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await scheduler_task
 
     @application.post("/publish")
     def publish(
