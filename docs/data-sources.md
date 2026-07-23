@@ -23,6 +23,13 @@ France Monitor uses public APIs, official open data, RSS feeds, and technical OS
 | Cyber | Ransomware/breach feeds, Shodan/Censys, Cloudflare Radar/IODA | Technical exposure and incident signals |
 | Finance | Market and commodity proxies | Contextual economic indicators |
 
+## Radar & Observation
+
+| Source | Product | Coverage | Update Cadence | Notes |
+|--------|---------|----------|----------------|-------|
+| **Radar 2D (IMFR27)** | Composite reflectivity mosaic | Métropole | 5 min | Worker (Railway) decodes BUFR, posts `/api/fire-observations/radar-2d`; mirrors IMFR27 reflectivity Z for fire detection context |
+| **Radar Column (PAM DPRadar)** | Vertical profile (tours A–H) | 27 metros (closest-pick, 160 km range) | 5 min | Demonstration use: vertical profile at FIRMS fire locations; raw ZH uncorrected for fixed echoes; dBZ scale (gain 1.0, offset −10.5) locked by embedded LUT; endpoint `/api/fire-observations/radar-column`; Licence Ouverte 2.0; **no automated volumetric analysis** |
+
 ## Reproducibility
 
 Each production source should document:
