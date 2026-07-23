@@ -32,7 +32,7 @@ import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts'
 import { buildEolienLayerFeatureCollection, buildEolienPopupHtml } from '../services/eolien/mapbox-eolien-layer.ts';
 import { getFuelTensionLevelColor } from '../services/fuel-tension.ts';
 import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
-import { buildLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
+import { buildDefaultGibsViirsTileUrl, resolveLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
 import { fetchMtgFrpMetadata, getMtgFrpTileTemplate } from '../services/mtg-frp.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
 
@@ -441,6 +441,7 @@ export class DeckGLMap {
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
+  private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
   private _radar2dEnabled = false;
@@ -724,7 +725,7 @@ export class DeckGLMap {
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
       type: 'raster',
-      tiles: [buildLatestGibsViirsTileUrl()],
+      tiles: [buildDefaultGibsViirsTileUrl()],
       tileSize: 256,
       bounds: [-5.5, 41.0, 10.0, 51.5],
       attribution: 'NASA GIBS · VIIRS SNPP Corrected Reflectance'
@@ -10912,6 +10913,20 @@ export class DeckGLMap {
   setModisOverlayVisible(enabled: boolean): void {
     this._modisOverlayEnabled = enabled;
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
+    if (enabled) this._modisTilesProbe ??= this.swapModisTilesToLatest();
+  }
+
+  private async swapModisTilesToLatest(): Promise<void> {
+    try {
+      const tileUrl = await resolveLatestGibsViirsTileUrl();
+      if (!this.map) return;
+      const source = this.map.getSource(SRC_MODIS) as
+        | { setTiles?: (tiles: string[]) => void }
+        | undefined;
+      source?.setTiles?.([tileUrl]);
+    } catch (error) {
+      console.warn('[DeckGLMap] sondage imagerie GIBS impossible', error);
+    }
   }
 
   setMtgFrpEnabled(enabled: boolean): void {
