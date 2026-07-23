@@ -125,4 +125,29 @@ describe('fetchRadarColumn', () => {
     );
     expect(await fetchRadarColumn(44.5, -0.9, implementation)).toBeNull();
   });
+
+  it('réouvre immédiatement le breaker après échec de la sonde demi-ouverte', async () => {
+    const failing = vi.fn().mockResolvedValue(jsonResponse(502, { error: 'x' }));
+    // 3 échecs ouvrent le breaker.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(await fetchRadarColumn(44.5, -0.9, failing)).toBeNull();
+      vi.advanceTimersByTime(121_000);
+    }
+    expect(failing).toHaveBeenCalledTimes(3);
+    // Breaker fermé, plus aucun appel réseau.
+    expect(await fetchRadarColumn(44.5, -0.9, failing)).toBeNull();
+    expect(failing).toHaveBeenCalledTimes(3);
+    // Avance au-delà du cooldown : sonde demi-ouverte échoue (4ᵉ appel).
+    vi.advanceTimersByTime(5 * 60_000 + 1_000);
+    expect(await fetchRadarColumn(44.5, -0.9, failing)).toBeNull();
+    expect(failing).toHaveBeenCalledTimes(4);
+    // Le breaker s'est immédiatement rouvert : pas d'appel réseau malgré l'avance du cache.
+    vi.advanceTimersByTime(121_000);
+    expect(await fetchRadarColumn(44.5, -0.9, failing)).toBeNull();
+    expect(failing).toHaveBeenCalledTimes(4);
+    // Après le NOUVEAU cooldown de 5 min, sonde demi-ouverte (5ᵉ appel).
+    vi.advanceTimersByTime(5 * 60_000 + 1_000);
+    await fetchRadarColumn(44.5, -0.9, failing);
+    expect(failing).toHaveBeenCalledTimes(5);
+  });
 });

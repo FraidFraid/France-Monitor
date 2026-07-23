@@ -57,6 +57,8 @@ export async function fetchRadarColumn(
   const key = cacheKey(lat, lon);
   const cached = cache.get(key);
   if (cached && now - cached.at < CACHE_TTL_MS) return cached.result;
+  // Détecte une sonde demi-ouverte (après expiration du cooldown).
+  const halfOpenProbe = consecutiveFailures >= BREAKER_THRESHOLD && now - breakerOpenedAt >= BREAKER_COOLDOWN_MS;
   if (consecutiveFailures >= BREAKER_THRESHOLD) {
     if (now - breakerOpenedAt < BREAKER_COOLDOWN_MS) return null;
     consecutiveFailures = 0; // demi-ouverture : une tentative
@@ -80,8 +82,14 @@ export async function fetchRadarColumn(
     consecutiveFailures = 0;
     return result;
   } catch {
-    consecutiveFailures += 1;
-    if (consecutiveFailures >= BREAKER_THRESHOLD) breakerOpenedAt = now;
+    if (halfOpenProbe) {
+      // La sonde demi-ouverte a échoué : réouverture immédiate du cooldown.
+      consecutiveFailures = BREAKER_THRESHOLD;
+      breakerOpenedAt = now;
+    } else {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= BREAKER_THRESHOLD) breakerOpenedAt = now;
+    }
     return null;
   }
 }
