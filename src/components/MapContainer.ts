@@ -193,6 +193,10 @@ export class MapContainer {
     this.deckMap?.highlightFireCluster(points);
   }
 
+  setFirePointsVisible(enabled: boolean): void {
+    this.deckMap?.setFirePointsVisible(enabled);
+  }
+
   setModisOverlayVisible(enabled: boolean): void {
     this.deckMap?.setModisOverlayVisible(enabled);
   }

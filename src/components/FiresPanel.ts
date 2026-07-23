@@ -33,11 +33,14 @@ export class FiresPanel {
     private onModisToggleCb: ((enabled: boolean) => void) | null = null;
     private onMtgFrpToggleCb: ((enabled: boolean) => void) | null = null;
     private onRadar2dToggleCb: ((enabled: boolean) => void) | null = null;
+    private onFirePointsToggleCb: ((enabled: boolean) => void) | null = null;
     private onEchoTopsToggleCb: ((enabled: boolean) => void) | null = null;
     private onCloseCb: (() => void) | null = null;
     private modisEnabled = false;
     private mtgFrpEnabled = false;
     private radar2dEnabled = false;
+    /** Marqueurs FIRMS affichés sur la carte (ON par défaut, non persisté). */
+    private firePointsEnabled = true;
     private echoTopsEnabled = false;
     private echoTopsAvailable = false;
     private observationRuntime?: FireObservationRuntimeState;
@@ -91,6 +94,11 @@ export class FiresPanel {
     setOnRadar2dToggle(cb: (enabled: boolean) => void): void {
         if (this.onRadar2dToggleCb === cb) return;
         this.onRadar2dToggleCb = cb;
+    }
+
+    setOnFirePointsToggle(cb: (enabled: boolean) => void): void {
+        if (this.onFirePointsToggleCb === cb) return;
+        this.onFirePointsToggleCb = cb;
     }
 
     setRadar2dEnabled(enabled: boolean): void {
@@ -660,6 +668,26 @@ export class FiresPanel {
         sw.onclick = () => { this.filterState = { ...this.filterState, hideUrban: !this.filterState.hideUrban }; this._applyAndNotify(); };
         urbanRow.appendChild(sw);
         section.appendChild(urbanRow);
+
+        // Affichage des marqueurs FIRMS sur la carte (n'affecte ni le panneau ni les surcouches)
+        const pointsRow = document.createElement('div');
+        pointsRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+        const pointsLeft = document.createElement('div');
+        pointsLeft.innerHTML = '<div style="color:var(--text-primary);font-size:12px;">Points de feu sur la carte</div><div style="color:var(--text-muted);font-size:10px;">Masque uniquement les marqueurs FIRMS · radar et imagerie inchangés</div>';
+        pointsRow.appendChild(pointsLeft);
+        const pointsSw = document.createElement('div');
+        pointsSw.style.cssText = `width:36px;height:20px;border-radius:10px;background:${this.firePointsEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)'};position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;`;
+        const pointsKnob = document.createElement('div');
+        pointsKnob.style.cssText = `width:16px;height:16px;border-radius:8px;background:white;position:absolute;top:2px;left:${this.firePointsEnabled ? '18px' : '2px'};transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);`;
+        pointsSw.appendChild(pointsKnob);
+        pointsSw.onclick = () => {
+            this.firePointsEnabled = !this.firePointsEnabled;
+            pointsSw.style.background = this.firePointsEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)';
+            pointsKnob.style.left = this.firePointsEnabled ? '18px' : '2px';
+            this.onFirePointsToggleCb?.(this.firePointsEnabled);
+        };
+        pointsRow.appendChild(pointsSw);
+        section.appendChild(pointsRow);
 
         // Persistence
         const persistWrap = document.createElement('div');

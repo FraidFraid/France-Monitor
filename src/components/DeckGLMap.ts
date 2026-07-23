@@ -443,6 +443,8 @@ export class DeckGLMap {
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
+  /** Marqueurs FIRMS visibles (toggle du panneau Feux, ANDé avec la couche fires). */
+  private _firePointsEnabled = true;
   private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
@@ -10919,6 +10921,14 @@ export class DeckGLMap {
     if (enabled) this._modisTilesProbe ??= this.swapModisTilesToLatest();
   }
 
+  setFirePointsVisible(enabled: boolean): void {
+    this._firePointsEnabled = enabled;
+    const visibility = enabled ? 'visible' : 'none';
+    this.setVis(LYR_FIRES_GLOW, visibility);
+    this.setVis(LYR_FIRES_POINTS, visibility);
+    this.setVis(LYR_FIRES_HIGHLIGHT, visibility);
+  }
+
   private async swapModisTilesToLatest(): Promise<void> {
     try {
       const tileUrl = await resolveLatestGibsViirsTileUrl();
@@ -12324,9 +12334,9 @@ export class DeckGLMap {
     this.setVis(LYR_FLOODS, vis(layers.environmental));
     this.setVis(LYR_FLOODS_HIGHLIGHT, vis(layers.environmental && this._highlightedFloodSegmentId !== null));
     this.setVis(LYR_MODIS, vis((layers.fires ?? false) && this._modisOverlayEnabled));
-    this.setVis(LYR_FIRES_GLOW, vis(layers.fires ?? false));
-    this.setVis(LYR_FIRES_POINTS, vis(layers.fires ?? false));
-    this.setVis(LYR_FIRES_HIGHLIGHT, vis(layers.fires ?? false));
+    this.setVis(LYR_FIRES_GLOW, vis((layers.fires ?? false) && this._firePointsEnabled));
+    this.setVis(LYR_FIRES_POINTS, vis((layers.fires ?? false) && this._firePointsEnabled));
+    this.setVis(LYR_FIRES_HIGHLIGHT, vis((layers.fires ?? false) && this._firePointsEnabled));
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');

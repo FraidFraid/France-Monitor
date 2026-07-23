@@ -2752,6 +2752,9 @@ export class App {
       panel.setOnFilteredFires((filtered) => {
         this.mapContainer?.updateFires(filtered);
       });
+      panel.setOnFirePointsToggle((enabled) => {
+        this.mapContainer?.setFirePointsVisible(enabled);
+      });
       panel.setOnHoverFire((lat, lon) => {
         if (lat !== null && lon !== null) {
           this.mapContainer?.highlightFire(lat, lon);
