@@ -10995,8 +10995,9 @@ export class DeckGLMap {
         'raster-fade-duration': 0,
       },
     };
-    const beforeId = this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined;
-    this.map.addLayer(layer, beforeId);
+    // Au sommet de la pile : les cellules FRP et leurs valeurs en MW doivent
+    // rester lisibles au-dessus des marqueurs FIRMS.
+    this.map.addLayer(layer);
     this.setVis(MTG_FRP_LAYER_ID, this._mtgFrpEnabled ? 'visible' : 'none');
   }
 

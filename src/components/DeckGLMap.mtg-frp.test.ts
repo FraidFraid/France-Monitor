@@ -12,6 +12,7 @@ vi.mock('../services/mtg-frp.ts', () => ({
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { MTG_FRP_LAYER_ID, MTG_FRP_SOURCE_ID } from './deckgl/format-utils.ts';
+import { LYR_FIRES_GLOW } from './deckgl/constants.ts';
 
 const FIRST_OBSERVATION = '2026-07-16T12:50:00Z';
 const SECOND_OBSERVATION = '2026-07-16T13:00:00Z';
@@ -23,6 +24,7 @@ type LayerWithLayout = maplibregl.AddLayerObject & {
 class AntiFlashMap {
   private readonly sources = new Map<string, maplibregl.SourceSpecification>();
   private readonly layers = new Map<string, LayerWithLayout>();
+  readonly beforeIds = new Map<string, string | undefined>();
   private failNextMtgLayerAdd = false;
 
   addSource(id: string, source: maplibregl.SourceSpecification): void {
@@ -37,12 +39,13 @@ class AntiFlashMap {
     this.sources.delete(id);
   }
 
-  addLayer(layer: maplibregl.AddLayerObject): this {
+  addLayer(layer: maplibregl.AddLayerObject, beforeId?: string): this {
     const layerWithLayout = layer as LayerWithLayout;
     if (layerWithLayout.id === MTG_FRP_LAYER_ID && this.failNextMtgLayerAdd) {
       this.failNextMtgLayerAdd = false;
       throw new Error('simulated MapLibre addLayer failure');
     }
+    this.beforeIds.set(layerWithLayout.id, beforeId);
 
     // Reproduit le wrapper anti-flash installé par DeckGLMap.init().
     layerWithLayout.layout = { ...layerWithLayout.layout, visibility: 'none' };
@@ -118,6 +121,18 @@ describe('DeckGLMap MTG-FRP lifecycle', () => {
 });
 
 describe('DeckGLMap MTG-FRP lisibilité', () => {
+  it('insère la couche au sommet de la pile, au-dessus des points FIRMS', async () => {
+    mtgMocks.fetchMetadata.mockResolvedValueOnce({ observedAt: FIRST_OBSERVATION });
+    const map = new AntiFlashMap();
+    map.addLayer({ id: LYR_FIRES_GLOW, type: 'circle' } as maplibregl.AddLayerObject);
+    const deckMap = createDeckMap(map);
+
+    await deckMap.ensureMtgFrpLayer();
+
+    expect(map.getLayer(MTG_FRP_LAYER_ID)).toBeDefined();
+    expect(map.beforeIds.get(MTG_FRP_LAYER_ID)).toBeUndefined();
+  });
+
   it('étire les tuiles WMS sur 512 px pour doubler la taille des symboles ADAGUC', async () => {
     mtgMocks.fetchMetadata.mockResolvedValueOnce({ observedAt: FIRST_OBSERVATION });
     const map = new AntiFlashMap();
