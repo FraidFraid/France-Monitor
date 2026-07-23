@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from bufr_decoder import decode_bufr
 from models import LICENSE, RadarMetadataError, SOURCE, build_manifest
-from pam_volume import OutOfRangeError, PamVolumeStore
+from pam_volume import OutOfRangeError, PamVolumeStore, VolumeWarmingUp
 from radar_api import RadarApiClient, archive_validated_product
 from render import render_echo_tops, render_reflectivity
 
@@ -300,6 +300,18 @@ def create_app(
                     "nearestStationId": exc.nearest_station_id,
                     "nearestStationKm": exc.nearest_km,
                 },
+            ) from exc
+        except VolumeWarmingUp as exc:
+            # Verrou station déjà pris par une autre requête : on ne fait pas
+            # attendre l'appelant sur le threadpool, on le renvoie tout de
+            # suite avec une consigne de nouvelle tentative.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "volume_en_prechargement",
+                    "stationId": exc.station_id,
+                },
+                headers={"Retry-After": "10"},
             ) from exc
         except RadarMetadataError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc

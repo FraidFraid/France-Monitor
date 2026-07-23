@@ -26,7 +26,17 @@ BASE_URL = "https://public-api.meteofrance.fr/public/DPRadar/v1"
 MAX_TOURS = 8
 # Le cycle antenne dure ~5 min ; revalider le catalogue au plus toutes les
 # 30 s détecte un nouveau cycle sans re-fetch à chaque requête /volume/column.
+# Même délai utilisé côté échec (cache négatif ci-dessous) : une station qui
+# ne décode jamais ne doit pas re-cogner catalogue + jusqu'à MAX_TOURS
+# produits sur une clé API partagée avec la chaîne 2D en prod à chaque appel.
 CATALOG_TTL_SECONDS = 30.0
+
+# Bornes stricte des validateurs avals (proxy + parseur) : un profil est
+# rejeté EN BLOC si un seul niveau dépasse cette altitude. Les tours à forte
+# élévation (>~10°) à 256 km de portée produisent de tels niveaux pour les
+# feux lointains, sans intérêt (le graphe du panneau Feux plafonne à 12 km) :
+# on les élimine ici plutôt que de perdre tout le profil en aval.
+MAX_LEVEL_ALTITUDE_M = 30_000
 
 
 class OutOfRangeError(Exception):
@@ -34,6 +44,23 @@ class OutOfRangeError(Exception):
         super().__init__("point outside radar coverage")
         self.nearest_station_id = nearest_station_id
         self.nearest_km = nearest_km
+
+
+class VolumeWarmingUp(Exception):
+    """Le volume de la station est déjà en cours de téléchargement.
+
+    Levée quand column() ne peut pas acquérir le verrou station sans
+    bloquer : mieux vaut répondre tout de suite (503 + Retry-After) que de
+    faire attendre la requête sur le threadpool AnyIO partagé avec
+    /rasters/* et /health.
+    """
+
+    def __init__(self, station_id: int, station_name: str) -> None:
+        super().__init__(
+            f"volume PAM en préchargement pour la station {station_name} ({station_id})"
+        )
+        self.station_id = station_id
+        self.station_name = station_name
 
 
 @dataclass(frozen=True)
@@ -51,6 +78,9 @@ class PamVolumeStore:
         self._catalog_ttl_seconds = catalog_ttl_seconds
         self._cache: dict[int, _CachedVolume] = {}
         self._checked_at: dict[int, float] = {}
+        # Cache négatif : horodatage du dernier échec par station (catalogue,
+        # produit ou décodage). Purgé dès qu'un cycle est décodé avec succès.
+        self._failed_at: dict[int, float] = {}
         self._locks: dict[int, threading.Lock] = {}
         self._registry_lock = threading.Lock()
 
@@ -82,8 +112,17 @@ class PamVolumeStore:
             return self._locks.setdefault(station_id, threading.Lock())
 
     def _volume(self, station_id: int) -> _CachedVolume:
-        cached = self._cache.get(station_id)
         now = time.monotonic()
+
+        # Cache négatif : un échec récent (< CATALOG_TTL_SECONDS) court-circuite
+        # tout appel réseau — sinon une station qui ne décode jamais re-fetch
+        # catalogue + jusqu'à MAX_TOURS produits à CHAQUE requête, ce qui épuise
+        # le quota de la clé Météo-France partagée avec la chaîne 2D en prod.
+        failed_at = self._failed_at.get(station_id)
+        if failed_at is not None and now - failed_at < self._catalog_ttl_seconds:
+            raise RadarMetadataError("station temporarily unavailable (cached failure)")
+
+        cached = self._cache.get(station_id)
         last_checked = self._checked_at.get(station_id)
         if (
             cached is not None
@@ -92,25 +131,35 @@ class PamVolumeStore:
         ):
             return cached
 
-        catalog = self._fetch_catalog(
-            f"{BASE_URL}/stations/{station_id}/observations/PAM"
-        )
-        self._checked_at[station_id] = now
-        links = [
-            (str(link["href"]), str(link.get("validity_time", "")))
-            for link in catalog.get("links", [])
-            if "tour_antenne=" in str(link.get("href", ""))
-        ][:MAX_TOURS]
-        if not links:
-            raise RadarMetadataError("PAM catalogue exposes no antenna tour")
-        cycle_key = tuple(validity for _, validity in links)
-        if cached is not None and cached.cycle_key == cycle_key:
-            return cached
-        scans = tuple(self._decode_zh(self._fetch_product(url)) for url, _ in links)
+        try:
+            catalog = self._fetch_catalog(
+                f"{BASE_URL}/stations/{station_id}/observations/PAM"
+            )
+            self._checked_at[station_id] = now
+            links = [
+                (str(link["href"]), str(link.get("validity_time", "")))
+                for link in catalog.get("links", [])
+                if "tour_antenne=" in str(link.get("href", ""))
+            ][:MAX_TOURS]
+            if not links:
+                raise RadarMetadataError("PAM catalogue exposes no antenna tour")
+            cycle_key = tuple(validity for _, validity in links)
+            if cached is not None and cached.cycle_key == cycle_key:
+                self._failed_at.pop(station_id, None)
+                return cached
+            scans = tuple(
+                self._decode_zh(self._fetch_product(url)) for url, _ in links
+            )
+        except Exception:
+            # Toute panne (catalogue, produit ou décodage) arme le cache négatif.
+            self._failed_at[station_id] = now
+            raise
+
         volume = _CachedVolume(
             cycle_key=cycle_key, scans=scans, observed_at=max(cycle_key)
         )
         self._cache[station_id] = volume
+        self._failed_at.pop(station_id, None)
         return volume
 
     def column(self, lat: float, lon: float) -> dict:
@@ -127,12 +176,25 @@ class PamVolumeStore:
             )
             raise OutOfRangeError(best_id, round(best_m / 1000.0, 1))
         station, distance_m = located
-        with self._station_lock(station.station_id):
+        lock = self._station_lock(station.station_id)
+        # Verrou NON bloquant : un téléchargement de volume en cours (jusqu'à
+        # MAX_TOURS produits) ne doit jamais mettre en file d'attente les
+        # requêtes concurrentes sur le threadpool AnyIO partagé avec
+        # /rasters/* et /health — on répond tout de suite (503 côté app.py).
+        if not lock.acquire(blocking=False):
+            raise VolumeWarmingUp(station.station_id, station.name)
+        try:
             volume = self._volume(station.station_id)
+        finally:
+            lock.release()
         levels = []
         for scan in volume.scans:
             sample = column_sample(scan, lat, lon)
             if sample is None:
+                continue
+            if sample.altitude_m > MAX_LEVEL_ALTITUDE_M:
+                # Cf. MAX_LEVEL_ALTITUDE_M : les validateurs avals rejettent
+                # tout le profil si un seul niveau dépasse cette borne.
                 continue
             levels.append(
                 {
