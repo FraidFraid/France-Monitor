@@ -767,3 +767,95 @@ def test_refresh_omits_echo_top_field_without_heights(tmp_path):
 
     assert response.status_code == 200
     assert "echoTopImageUrl" not in response.json()
+
+
+class _StatusResponse:
+    """Réponse JSON dont raise_for_status simule une erreur amont."""
+
+    def __init__(self, status_code: int, payload: dict | None = None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {"links": []}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise radar_api.httpx.HTTPStatusError(
+                f"HTTP {self.status_code}",
+                request=radar_api.httpx.Request("GET", "https://example.invalid"),
+                response=radar_api.httpx.Response(self.status_code),
+            )
+
+    def json(self):
+        return self._payload
+
+
+def test_discovery_retries_transient_upstream_status(monkeypatch):
+    # DPRadar renvoie sporadiquement 429/5xx : la découverte doit réessayer
+    # au lieu de faire échouer tout le rafraîchissement.
+    statuses = iter([429, 503, 200])
+    attempts = []
+
+    def fake_get(*_args, **_kwargs):
+        status = next(statuses)
+        attempts.append(status)
+        return _StatusResponse(status)
+
+    monkeypatch.setattr(radar_api.httpx, "get", fake_get)
+    monkeypatch.setattr(radar_api.time, "sleep", lambda _seconds: None)
+
+    assert RadarApiClient("key")._get_json("/mosaiques") == {"links": []}
+    assert attempts == [429, 503, 200]
+
+
+def test_discovery_gives_up_after_retry_budget(monkeypatch):
+    def fake_get(*_args, **_kwargs):
+        return _StatusResponse(502)
+
+    monkeypatch.setattr(radar_api.httpx, "get", fake_get)
+    monkeypatch.setattr(radar_api.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RadarMetadataError, match="502"):
+        RadarApiClient("key")._get_json("/mosaiques")
+
+
+def test_discovery_does_not_retry_client_errors(monkeypatch):
+    # 401/403 = clé invalide : réessayer ne sert à rien et brûle le quota.
+    attempts = []
+
+    def fake_get(*_args, **_kwargs):
+        attempts.append(401)
+        return _StatusResponse(401)
+
+    monkeypatch.setattr(radar_api.httpx, "get", fake_get)
+    monkeypatch.setattr(radar_api.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RadarMetadataError, match="401"):
+        RadarApiClient("key")._get_json("/mosaiques")
+    assert attempts == [401]
+
+
+def test_refresh_failure_detail_names_the_cause(tmp_path, capsys):
+    from fastapi.testclient import TestClient
+
+    raw = tmp_path / "source.bufr"
+    raw.write_bytes(b"BUFR")
+
+    def failing_renderer(*_args, **_kwargs):
+        raise RuntimeError("boom secret-free")
+
+    app = create_app(
+        _settings(tmp_path),
+        api_factory=lambda _key: _Api(raw),
+        decoder=lambda _path, observed_at: _grid(observed_at),
+        renderer=failing_renderer,
+    )
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/refresh", headers=_auth()
+    )
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "RuntimeError" in detail
+    assert "boom secret-free" in detail
+    # La trace complète part sur stdout pour être lisible dans les logs Railway.
+    assert "Traceback" in capsys.readouterr().out

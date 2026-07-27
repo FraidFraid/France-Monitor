@@ -11,19 +11,67 @@ concurrency:
   group: radar-refresh
   cancel-in-progress: false
 
+env:
+  WORKER_URL: https://radar-worker-production-0c93.up.railway.app
+  # Le worker se rafraîchit lui-même toutes les 5 min : on n'alerte que si
+  # l'observation publiée dépasse cet âge, pas sur un hoquet DPRadar isolé.
+  MAX_OBSERVATION_AGE_SECONDS: 1200
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: POST /refresh
+        id: refresh
         # Le worker décode lui-même via bufr_bitstream (~350 Mo) : le cron
-        # n'est qu'un déclencheur authentifié.
+        # n'est qu'un déclencheur authentifié. DPRadar renvoyant sporadiquement
+        # 429/5xx, on réessaie avant de conclure quoi que ce soit.
         run: |
-          code=$(curl -s -o /tmp/refresh-body.json -w "%{http_code}" \
-            -X POST "https://radar-worker-production-0c93.up.railway.app/refresh" \
-            -H "Authorization: Bearer ${{ secrets.RADAR_WORKER_TOKEN }}" \
-            --max-time 240)
+          set -u
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/refresh-body.json -w "%{http_code}" \
+              -X POST "$WORKER_URL/refresh" \
+              -H "Authorization: Bearer ${{ secrets.RADAR_WORKER_TOKEN }}" \
+              --max-time 240) || code=000
+            echo "tentative $attempt : HTTP $code"
+            cat /tmp/refresh-body.json 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ]; then
+              echo "refreshed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "refreshed=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::/refresh a échoué 3 fois (dernier code HTTP $code)"
+
+      - name: Vérifier la fraîcheur publiée
+        # Un /refresh en échec n'est un incident que si la donnée servie est
+        # périmée : la boucle interne du worker reste la source primaire.
+        if: steps.refresh.outputs.refreshed != 'true'
+        run: |
+          set -u
+          code=$(curl -s -o /tmp/health.json -w "%{http_code}" \
+            --max-time 60 "$WORKER_URL/health") || code=000
           echo "HTTP $code"
-          cat /tmp/refresh-body.json
-          [ "$code" = "200" ]
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::worker injoignable sur /health (HTTP $code)"
+            exit 1
+          fi
+          observed=$(jq -r '.lastSuccessfulObservation // empty' /tmp/health.json)
+          if [ -z "$observed" ]; then
+            echo "::error::aucune observation publiée par le worker"
+            exit 1
+          fi
+          age=$(( $(date -u +%s) - $(date -u -d "$observed" +%s) ))
+          echo "observation $observed — âge ${age}s (seuil ${MAX_OBSERVATION_AGE_SECONDS}s)"
+          if [ "$age" -gt "$MAX_OBSERVATION_AGE_SECONDS" ]; then
+            echo "::error::mosaïque radar périmée (${age}s) : la boucle interne ne compense plus"
+            exit 1
+          fi
+          echo "::warning::/refresh en échec mais la mosaïque reste fraîche (${age}s) — pas d'incident"

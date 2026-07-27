@@ -38,3 +38,28 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  radar-worker:
+    name: Radar worker (Python)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: services/radar-worker/requirements.txt
+
+      - name: Install dependencies
+        working-directory: services/radar-worker
+        run: pip install --no-cache-dir -r requirements.txt
+
+      # Les tests différentiels eccodes s'auto-skippent quand les fixtures
+      # (réservées au dev) sont absentes du dépôt.
+      - name: Test
+        working-directory: services/radar-worker
+        run: python -m pytest tests/ -q

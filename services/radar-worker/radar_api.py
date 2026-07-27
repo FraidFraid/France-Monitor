@@ -9,6 +9,7 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
+import time
 from typing import Any, Iterable, Mapping
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +24,11 @@ PRODUCT_PATH_LEGACY = "/public/DPRadar/mosaiques/METROPOLE/observations/REFLECTI
 MAX_PRODUCT_AGE = timedelta(hours=20)
 MAX_COMPRESSED_BYTES = 64 * 1024 * 1024
 MAX_DECOMPRESSED_BYTES = 32 * 1024 * 1024
+# DPRadar renvoie sporadiquement 429 (quota) ou 5xx (maintenance amont) sur les
+# appels de catalogue. Un seul hoquet ne doit pas condamner le rafraîchissement.
+DISCOVERY_ATTEMPTS = 3
+DISCOVERY_BACKOFF_SECONDS = 1.5
+RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 
 @dataclass(frozen=True)
@@ -94,9 +100,32 @@ class RadarApiClient:
         self._headers = {"apikey": api_key, "Accept": "application/json"}
 
     def _get_json(self, path: str) -> Any:
-        response = httpx.get(f"{BASE_URL}{path}", headers=self._headers, timeout=15.0)
-        response.raise_for_status()
-        return response.json()
+        last_error: Exception | None = None
+        for attempt in range(DISCOVERY_ATTEMPTS):
+            try:
+                response = httpx.get(
+                    f"{BASE_URL}{path}", headers=self._headers, timeout=15.0
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                # 401/403/404 : réessayer ne corrigera rien et brûle le quota.
+                if status not in RETRYABLE_STATUS:
+                    raise RadarMetadataError(
+                        f"radar catalogue rejected {path}: HTTP {status}"
+                    ) from exc
+                last_error = exc
+            except (httpx.TransportError, ValueError) as exc:
+                # TransportError couvre timeouts et coupures ; ValueError le JSON
+                # tronqué renvoyé par la passerelle amont sous charge.
+                last_error = exc
+            if attempt + 1 < DISCOVERY_ATTEMPTS:
+                time.sleep(DISCOVERY_BACKOFF_SECONDS * (attempt + 1))
+        raise RadarMetadataError(
+            f"radar catalogue unreachable for {path} after "
+            f"{DISCOVERY_ATTEMPTS} attempts: {last_error}"
+        ) from last_error
 
     @staticmethod
     def _requires_link(document: Any, suffix: str) -> None:

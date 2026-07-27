@@ -13,8 +13,10 @@ import math
 import os
 from pathlib import Path
 import secrets
+import sys
 import tempfile
 import threading
+import traceback
 from typing import Any, Callable, Mapping
 from urllib.parse import urlparse
 
@@ -455,7 +457,15 @@ def create_app(
         except RadarMetadataError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=502, detail="radar refresh failed") from exc
+            # Sans trace, un échec du cron n'est qu'un 502 muet : on journalise
+            # côté Railway et on nomme la cause dans la réponse (le message
+            # d'exception ne transporte ni clé API ni jeton).
+            traceback.print_exc(file=sys.stdout)
+            sys.stdout.flush()
+            raise HTTPException(
+                status_code=502,
+                detail=f"radar refresh failed: {type(exc).__name__}: {exc}",
+            ) from exc
 
     # ─── Boucle interne : le cron externe n'est qu'une ceinture de sécurité ──
     scheduler_task: asyncio.Task[None] | None = None
@@ -465,7 +475,13 @@ def create_app(
             try:
                 await asyncio.to_thread(_perform_refresh)
             except Exception as exc:  # noqa: BLE001 — la boucle doit survivre
-                print(f"[radar-worker] rafraîchissement planifié en échec : {exc}", flush=True)
+                print(
+                    "[radar-worker] rafraîchissement planifié en échec : "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                traceback.print_exc(file=sys.stdout)
+                sys.stdout.flush()
             await asyncio.sleep(configured.refresh_interval_seconds)
 
     @application.on_event("startup")
