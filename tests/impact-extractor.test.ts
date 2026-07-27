@@ -180,5 +180,41 @@ describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
     // paraîtrait plausible et contournerait le garde-fou anti-faux positif.
     expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 1234567 hectares de forêt." }))
       .toEqual([]);
+    // Groupement dot-séparé valide (contrôle de non-régression explicite).
+    expect(extractImpactFacts({ ...BASE, text: 'Incendie en Gironde : 42.000 hectares brûlés.' })[0].value)
+      .toBe(42000);
+  });
+
+  it('rejette un groupement de milliers mal formé — jamais un fragment (round 3, Finding 5 résiduel)', () => {
+    // Brèche résiduelle : l'alternation `\d{1,3}(?:[…]\d{3})+|\d+` a deux
+    // branches indépendantes. Quand la branche stricte échoue à ancrer sur
+    // un nombre mal groupé, le moteur regex retentait à des positions
+    // ultérieures et la branche `\d+` accrochait le dernier fragment bien
+    // formé juste avant le mot-clé ("1 2 3 hectares" → 3, "12 34" → 34,
+    // "1 23" → 23). Les gardes `(?<!\d)`/`(?!\d)` du round 2 empêchent un
+    // redémarrage au milieu de chiffres contigus, mais un espace ou un
+    // point n'est pas un chiffre : rien n'empêchait de reprendre juste
+    // après un groupe abandonné. Fix : gardes supplémentaires
+    // `(?<!\d[\s.])`/`(?![\s.]\d)` interdisant de démarrer juste après (ou
+    // de s'arrêter juste avant) un séparateur lui-même adjacent à un chiffre.
+    const malformed = [
+      'L\'incendie a détruit 1 2 3 hectares de forêt.',
+      "L'incendie a détruit 12 34 hectares de forêt.",
+      "L'incendie a détruit 1 23 hectares de forêt.",
+    ];
+    for (const text of malformed) {
+      expect(extractImpactFacts({ ...BASE, text })).toEqual([]);
+    }
+    // "1.2.3" était déjà correct avant ce fix (aucun groupe de 3 chiffres
+    // valide, et le run continu s'arrête au premier point) : doit le rester.
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 1.2.3 hectares de forêt." }))
+      .toEqual([]);
+    // Deux cas jugés sains en revue, qui doivent le rester : un nombre collé
+    // à une lettre (pas de séparateur adjacent, donc pas de faux "groupe
+    // abandonné") et un nombre précédé d'un point isolé (idem).
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit x1200 hectares de forêt." })[0].value)
+      .toBe(1200);
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit .500 hectares de forêt." })[0].value)
+      .toBe(500);
   });
 });

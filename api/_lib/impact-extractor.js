@@ -149,6 +149,22 @@ function sentenceAt(text, index) {
 // "123456" lu 456 (round 2, Finding 5). `(?<!\d)`/`(?!\d)` interdisent de
 // démarrer ou de s'arrêter au milieu d'un run de chiffres plus long : soit
 // tout le nombre est capturé, soit rien ne l'est — jamais un fragment.
+//
+// Brèche résiduelle (round 3) : ces deux gardes ne bloquent que les positions
+// contiguës à un chiffre (0 caractère d'écart). Sur un groupement mal formé
+// comme « 1 2 3 », la branche stricte échoue à ancrer (aucun groupe de 3
+// chiffres valide), et le moteur régex retentait quelques positions plus
+// loin où la branche `\d+` accrochait le dernier fragment bien formé juste
+// avant le mot-clé (« 1 2 3 hectares » → 3, « 12 34 » → 34, « 1 23 » → 23) —
+// un espace ou un point n'est pas un chiffre, donc `(?<!\d)`/`(?!\d)` ne s'y
+// opposaient pas. Fix : `(?<!\d[\s.])`/`(?![\s.]\d)` interdisent en plus de
+// démarrer juste après (ou de s'arrêter juste avant) un séparateur lui-même
+// adjacent à un chiffre — c'est-à-dire juste après/avant un groupe abandonné.
+// Vérifié empiriquement (cf. task-1-report.md round 3) que ça ne régresse
+// aucun des nombres valides (groupés, continus, décimale ambiguë) ni les cas
+// sains « x1200 » (chiffre collé à une lettre) et « .500 » (point isolé, pas
+// adjacent à un chiffre de l'autre côté).
+//
 // Volontairement sans `.*` ni classe autorisant les lettres dans la partie
 // groupée : un « . » non suivi de 3 chiffres n'est jamais consommé, donc le
 // motif ne peut pas enjamber une fin de phrase pour aller chercher un nombre
@@ -160,7 +176,7 @@ function sentenceAt(text, index) {
 // tout risque de double-échappement lors de l'interpolation dans les motifs
 // composites ci-dessous (piège déjà rencontré au round 1 avec `\d`/`\s`/`\b`
 // silencieusement avalés par le décodage d'échappement des template literals).
-const FRENCH_NUMBER = /(?<!\d)(?:\d{1,3}(?:[\s.]\d{3})+|\d+)(?:\.\d{1,2})?(?!\d)/.source;
+const FRENCH_NUMBER = /(?<!\d)(?<!\d[\s.])(?:\d{1,3}(?:[\s.]\d{3})+|\d+)(?:\.\d{1,2})?(?!\d)(?![\s.]\d)/.source;
 
 const NUMERIC_PATTERNS = [
   { kind: 'area_ha', unit: 'ha', re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:hectares?|ha)\\b`, 'gi') },
