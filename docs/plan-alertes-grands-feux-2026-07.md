@@ -1220,7 +1220,9 @@ export function wildfireSeverity(incident: FireIncident): SituationSeverity {
 }
 
 /** Retient les incidents franchissant la porte d'entrée. */
-export function selectMajorIncidents(incidents: FireIncident[]): FireIncident[] {
+// Générique : préserve le sous-type de l'appelant (LocatedFireIncident) sans
+// cast, puisque la fonction ne fait que filtrer et ne transforme jamais.
+export function selectMajorIncidents<T extends FireIncident>(incidents: T[]): T[] {
   return incidents.filter(
     incident =>
       incident.detectionsCount >= MAJOR_FIRE_GATE.minDetections &&
@@ -1472,7 +1474,11 @@ git commit -m "feat: assemblage du dossier avec corroboration et séries non ré
 
 **Interfaces:**
 - Consumes: `selectMajorIncidents`, `wildfireSeverity` (Task 5).
-- Produces: `detectWildfireIncidents(raw: FranceRawData): DetectedSituation[]` — remplace la règle mono-situation. `RULES` accepte désormais des règles renvoyant un tableau.
+- Produces: `detectWildfireIncidents(raw: FranceRawData): DetectedSituation[]` — remplace la règle
+  mono-situation. **`RULES` garde sa signature** `Array<(raw) => DetectedSituation | null>` : la
+  règle incendie est appelée **à part**, hors de la boucle `RULES`, dans son propre `try/catch`.
+- Produces: `selectMajorIncidents<T extends FireIncident>(incidents: T[]): T[]` — la fonction de la
+  Task 5 devient **générique** pour préserver le sous-type `LocatedFireIncident` sans cast.
 
 - [ ] **Step 1: Write the failing test**
 
