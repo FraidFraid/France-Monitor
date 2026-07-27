@@ -35,14 +35,24 @@ describe('deriveSourceLevel / deriveReliability', () => {
 
 describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
   it('extrait les hectares avec espace insécable, point et abréviation', () => {
-    for (const text of ['42 000 hectares de forêt ont été détruits',
-                        '42.000 hectares détruits',
-                        'le feu a parcouru 42 000 ha']) {
+    // "hectares…détruits" a été retiré de FIRE_LEXICON (round 2, Finding 6) :
+    // trop générique, il matchait aussi des hectares détruits par la grêle
+    // ou une tempête. Ces fixtures portent donc un contexte incendie propre.
+    const cases = [
+      { text: "L'incendie a détruit 42 000 hectares de forêt.", quote: "L'incendie a détruit 42 000 hectares de forêt." },
+      { text: 'Incendie en Gironde : 42.000 hectares brûlés.', quote: 'Incendie en Gironde : 42.000 hectares brûlés.' },
+      { text: 'le feu a parcouru 42 000 ha', quote: 'le feu a parcouru 42 000 ha' },
+    ];
+    for (const { text, quote } of cases) {
       const facts = extractImpactFacts({ ...BASE, text });
       const area = facts.filter(f => f.kind === 'area_ha');
       expect(area).toHaveLength(1);
       expect(area[0].value).toBe(42000);
-      expect(area[0].quote).toContain('42');
+      // Citation exacte (pas un simple `.toContain('42')`, qui masquait une
+      // citation amputée en plein milieu du nombre — Finding 7) : la
+      // citation EST la preuve de provenance, elle ne doit jamais être
+      // tronquée par un point qui est en réalité un séparateur de milliers.
+      expect(area[0].quote).toBe(quote);
     }
   });
 
@@ -132,5 +142,43 @@ describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
     for (const text of traps) {
       expect(extractImpactFacts({ ...BASE, text })).toEqual([]);
     }
+  });
+
+  it('ne produit RIEN sur des hectares détruits sans rapport avec un incendie (Finding 6)', () => {
+    // "hectares…détruits" a été retiré de FIRE_LEXICON : structurellement
+    // dangereux, il matchait mot pour mot ce que consomme le motif area_ha,
+    // sans second signal distinguant « détruit par le feu » d'une autre
+    // cause (grêle, inondation, tempête, gel).
+    const traps = [
+      '500 hectares de vignes ont été détruits par un orage de grêle.',
+      '1200 hectares de terres agricoles ont été détruits par les inondations.',
+      "300 hectares de forêt ont été détruits par la tempête Ciarán.",
+      '800 hectares de vignes ont été détruits par le gel tardif.',
+    ];
+    for (const text of traps) {
+      expect(extractImpactFacts({ ...BASE, text })).toEqual([]);
+    }
+  });
+
+  it('capture un nombre continu sans séparateur en entier, jamais tronqué (Finding 5)', () => {
+    // Bug introduit par le durcissement du round 1 : un groupement strict
+    // par milliers laissait la porte ouverte à un match partiel sur un
+    // nombre continu non séparé (ex. "1200" lu 200, "123456" lu 456) au
+    // lieu de capturer le nombre entier ou de ne rien capturer du tout.
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 1200 hectares de forêt." })[0].value)
+      .toBe(1200);
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 123456 hectares de forêt." })[0].value)
+      .toBe(123456);
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 1234 maisons dans le village." })[0].value)
+      .toBe(1234);
+    // Contrôle de non-régression : la forme groupée équivalente doit
+    // toujours donner la même valeur combinée.
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 123 456 hectares de forêt." })[0].value)
+      .toBe(123456);
+    // 1 234 567 dépasse le seuil de vraisemblance (1 000 000 ha) : doit être
+    // rejeté sur sa valeur réelle, pas sur un suffixe tronqué qui, lui,
+    // paraîtrait plausible et contournerait le garde-fou anti-faux positif.
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 1234567 hectares de forêt." }))
+      .toEqual([]);
   });
 });

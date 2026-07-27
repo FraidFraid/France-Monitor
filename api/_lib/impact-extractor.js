@@ -11,14 +11,17 @@
 
 /**
  * Vocabulaire incendie : porte d'entrée de l'extraction.
- * Inclut deux formulations journalistiques usuelles qui ne contiennent pas
- * le mot « incendie » lui-même : « le feu a parcouru X ha » et « X hectares
- * (de forêt) … détruits » (le motif hectares↔détruit reste borné à la
- * phrase courante via `[^.]` pour ne pas capter un « détruit » sans rapport
- * ailleurs dans le texte).
+ * Inclut une formulation journalistique usuelle qui ne contient pas le mot
+ * « incendie » lui-même : « le feu a parcouru X ha ».
+ *
+ * N'inclut PLUS « hectares…détruits » (round 2, Finding 6) : structurellement
+ * dangereux, cet indice est mot pour mot ce que consomme le motif area_ha,
+ * sans second signal distinguant « détruit par le feu » d'une autre cause
+ * (grêle, inondation, tempête, gel) — vérifié en revue sur 4 phrases réelles
+ * hors sujet qui produisaient toutes un area_ha fabriqué.
  */
 const FIRE_LEXICON =
-  /\b(incendies?|feux?\s+de\s+for[êe]t|feux?\s+de\s+v[ée]g[ée]tation|feux?\s+(?:a|ont)\s+parcouru|sinistr[ée]s?|br[ûu]l[ée]s?|flammes?|hectares?\s+br[ûu]l|hectares?[^.]{0,40}?d[ée]truits?)/i;
+  /\b(incendies?|feux?\s+de\s+for[êe]t|feux?\s+de\s+v[ée]g[ée]tation|feux?\s+(?:a|ont)\s+parcouru|sinistr[ée]s?|br[ûu]l[ée]s?|flammes?|hectares?\s+br[ûu]l)/i;
 
 /** Domaines officiels = source primaire (l'acteur lui-même). */
 const OFFICIAL_HOST = /(^|\.)gouv\.fr$|(^|\.)sdis\d*\.fr$|(^|\.)prefectures-regions\.gouv\.fr$/i;
@@ -106,11 +109,29 @@ function parseFrenchNumber(raw) {
   return Number.isSafeInteger(value) ? value : null;
 }
 
-/** Phrase englobant l'index donné, pour la citation verbatim. */
+/**
+ * Un « . » collé entre deux chiffres est un séparateur de milliers, pas une
+ * fin de phrase (« 42.000 » ne doit pas couper la citation en deux).
+ */
+function isThousandsSeparatorDot(text, i) {
+  return text[i] === '.' && /\d/.test(text[i - 1] ?? '') && /\d/.test(text[i + 1] ?? '');
+}
+
+/**
+ * Phrase englobant l'index donné, pour la citation verbatim. La citation EST
+ * la preuve de provenance (§7) : elle ne doit jamais être amputée en plein
+ * milieu d'un nombre à cause d'un point qui n'est en réalité qu'un
+ * séparateur de milliers.
+ */
 function sentenceAt(text, index) {
-  const start = Math.max(0, text.lastIndexOf('.', index - 1) + 1);
-  const dot = text.indexOf('.', index);
-  const end = dot === -1 ? text.length : dot + 1;
+  let start = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    if (text[i] === '.' && !isThousandsSeparatorDot(text, i)) { start = i + 1; break; }
+  }
+  let end = text.length;
+  for (let i = index; i < text.length; i++) {
+    if (text[i] === '.' && !isThousandsSeparatorDot(text, i)) { end = i + 1; break; }
+  }
   return text.slice(start, end).trim();
 }
 
@@ -118,16 +139,28 @@ function sentenceAt(text, index) {
  * Motifs chiffrés. `unit` null = compte de personnes/objets.
  * @type {Array<{kind: string, re: RegExp, unit: string|null}>}
  */
-// Grammaire d'un nombre français : 1 à 3 chiffres, puis des groupes de
-// SÉPARATEUR+3 chiffres (espace, insécable ou point — jamais 1 ou 2, cf.
-// AMBIGUOUS_DECIMAL_TAIL). Volontairement sans `.*` ni classe autorisant les
-// lettres : un « . » non suivi de 3 chiffres n'est jamais consommé, donc le
+// Grammaire d'un nombre français : soit un groupement strict par milliers
+// (1 à 3 chiffres puis AU MOINS un SÉPARATEUR+3 chiffres — espace, insécable
+// ou point), soit un simple run de chiffres continu de longueur quelconque.
+// Jamais de mélange tronqué des deux : round 1 utilisait `\d{1,3}(?:[…]\d{3})*`
+// (le `*` au lieu du `+`, sans alternative « run continu »), ce qui laissait
+// le moteur regex démarrer le match n'importe où dans un nombre non séparé
+// et n'en capturer qu'un préfixe/suffixe de 1 à 3 chiffres — "1200" lu 200,
+// "123456" lu 456 (round 2, Finding 5). `(?<!\d)`/`(?!\d)` interdisent de
+// démarrer ou de s'arrêter au milieu d'un run de chiffres plus long : soit
+// tout le nombre est capturé, soit rien ne l'est — jamais un fragment.
+// Volontairement sans `.*` ni classe autorisant les lettres dans la partie
+// groupée : un « . » non suivi de 3 chiffres n'est jamais consommé, donc le
 // motif ne peut pas enjamber une fin de phrase pour aller chercher un nombre
 // de la phrase suivante (cf. « Le score final était 42. Hectares … »). La
 // queue optionnelle `(?:\.\d{1,2})?` capte quand même une pseudo-décimale
 // ambiguë (« 42.5 ») entière plutôt que de la couper au milieu — c'est
 // `parseFrenchNumber` qui la rejette explicitement ensuite.
-const FRENCH_NUMBER = '\\d{1,3}(?:[\\s .]\\d{3})*(?:\\.\\d{1,2})?';
+// Définie comme un littéral regex (pas une chaîne) puis `.source` : ça évite
+// tout risque de double-échappement lors de l'interpolation dans les motifs
+// composites ci-dessous (piège déjà rencontré au round 1 avec `\d`/`\s`/`\b`
+// silencieusement avalés par le décodage d'échappement des template literals).
+const FRENCH_NUMBER = /(?<!\d)(?:\d{1,3}(?:[\s.]\d{3})+|\d+)(?:\.\d{1,2})?(?!\d)/.source;
 
 const NUMERIC_PATTERNS = [
   { kind: 'area_ha', unit: 'ha', re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:hectares?|ha)\\b`, 'gi') },
