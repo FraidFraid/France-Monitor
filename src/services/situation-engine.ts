@@ -11,7 +11,6 @@
 
 import type {
   DetectedSituation,
-  LocatedFireIncident,
   SituationAction,
   SituationActionType,
   SituationSeverity,
@@ -253,10 +252,9 @@ export function detectWildfireIncidents(raw: FranceRawData): DetectedSituation[]
   const incidents = raw.fireIncidents ?? [];
   if (incidents.length === 0) return [];
 
-  // selectMajorIncidents ne fait que filtrer (aucune transformation) : le
-  // résultat reste bien composé de LocatedFireIncident malgré la signature
-  // FireIncident[] de la fonction, d'où la réassertion ci-dessous.
-  const majorIncidents = selectMajorIncidents(incidents) as LocatedFireIncident[];
+  // selectMajorIncidents est générique : elle préserve LocatedFireIncident
+  // (aucun cast nécessaire, elle ne fait que filtrer).
+  const majorIncidents = selectMajorIncidents(incidents);
 
   return majorIncidents.map(incident => {
     const severity = wildfireSeverity(incident);

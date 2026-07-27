@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { LocatedFireIncident } from '../types/index.ts';
 import type { FranceRawData } from './france-country-intel.ts';
-import { detectWildfireIncidents } from './situation-engine.ts';
+import { detectSituations, detectWildfireIncidents } from './situation-engine.ts';
 
 function incident(over: Partial<LocatedFireIncident> & { id: string }): LocatedFireIncident {
   return {
@@ -62,13 +62,21 @@ describe('detectWildfireIncidents', () => {
     expect(situation.summary).not.toMatch(/[ée]vacu/i);
   });
 
-  it('ne tronque jamais un incendie critical en silence', () => {
+  it('n\'applique elle-même aucun plafond (le plafond vit dans detectSituations)', () => {
     const incidents = Array.from({ length: 14 }, (_, i) =>
       incident({ id: `front-${i}`, detectionsCount: 650, frpTotal: 7178 }));
     const situations = detectWildfireIncidents(raw(incidents));
-    // La règle elle-même n'applique aucun plafond : le tri de detectSituations
-    // place les critical en tête, et toute troncature est journalisée.
     expect(situations).toHaveLength(14);
     expect(situations.every(s => s.severity === 'critical')).toBe(true);
+  });
+
+  it('journalise la troncature du plafond de 10 au lieu de la taire', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const incidents = Array.from({ length: 14 }, (_, i) =>
+      incident({ id: `front-${i}`, detectionsCount: 650, frpTotal: 7178 }));
+    const situations = detectSituations(raw(incidents));
+    expect(situations).toHaveLength(10);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('tronqu'));
+    warn.mockRestore();
   });
 });

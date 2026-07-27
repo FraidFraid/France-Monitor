@@ -27,8 +27,12 @@ export function wildfireSeverity(incident: FireIncident): SituationSeverity {
   return 'medium';
 }
 
-/** Retient les incidents franchissant la porte d'entrée. */
-export function selectMajorIncidents(incidents: FireIncident[]): FireIncident[] {
+/**
+ * Retient les incidents franchissant la porte d'entrée.
+ * Générique pour préserver le sous-type de l'appelant (ex: LocatedFireIncident) :
+ * un filtre ne transforme rien, il n'y a donc aucune raison de perdre le type.
+ */
+export function selectMajorIncidents<T extends FireIncident>(incidents: T[]): T[] {
   return incidents.filter(
     incident =>
       incident.detectionsCount >= MAJOR_FIRE_GATE.minDetections &&
