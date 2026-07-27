@@ -49,13 +49,27 @@ export interface EnrichWithLlmDeps {
 type NumericFactKind = 'area_ha' | 'evacuated' | 'dwellings_destroyed' | 'injured' | 'road_closed';
 
 /**
- * Lexique par genre — mêmes mots-clés que `NUMERIC_PATTERNS` dans
- * api/_lib/impact-extractor.js (Task 1), pour rester cohérent avec la
- * classification « hybride keyword + override LLM » du projet (CLAUDE.md).
+ * Lexique par genre — DÉRIVÉ des motifs `NUMERIC_PATTERNS` d'
+ * api/_lib/impact-extractor.js (Task 1), pas une reprise à l'identique : on
+ * n'en garde que le noyau lexical (les mots), pas la structure complète —
+ * `evacuated` y exige la co-occurrence chiffre + « personnes/habitants » PUIS
+ * « évacu/déplac » ; `injured` exige « pompiers/personnes » immédiatement
+ * suivi de « blessé » ; `road_closed` exige la structure « coupée SUR X km ».
+ * Simplification VOLONTAIRE : les motifs de Task 1 EXTRAIENT un chiffre
+ * depuis du texte brut et doivent donc être précis dès la détection ; ce
+ * lexique ne fait que VALIDER la proximité d'un chiffre déjà extrait par
+ * ailleurs (le LLM) — un rôle plus simple qui n'a pas besoin de la même
+ * rigueur structurelle. Risque de dérive assumé : si Task 1 fait évoluer ses
+ * motifs (nouveaux synonymes, structure resserrée), ce lexique ne suit pas
+ * automatiquement — même limite déjà relevée pour `isSafeSourceUrl`
+ * (WildfireDossierModal.ts) vis-à-vis d'`escapeHtml` (Finding 5, round 2).
+ *
  * Sert de second verrou (voir `isGroundedInQuote`) : un chiffre présent dans
- * une citation ne suffit pas, il faut qu'un mot du bon genre soit à
- * proximité de CE chiffre précis (Finding 1, round 1 de revue) — sans quoi
- * n'importe quel nombre de la citation validerait n'importe quel genre.
+ * une citation ne suffit pas, il faut que le genre revendiqué GAGNE la
+ * compétition de proximité contre tous les autres genres chiffrés pour CE
+ * chiffre précis (Finding 1 puis Finding 4, round 2 de revue — un rayon fixe
+ * ne peut structurellement pas séparer une incise éloignée légitime d'une
+ * phrase à deux faits rapprochés, voir task-9-report.md).
  */
 const NUMERIC_FACT_LEXICON: Record<NumericFactKind, RegExp> = {
   area_ha: /hectares?|\bha\b/i,
@@ -101,39 +115,76 @@ function normalizeThousands(text: string): string {
 }
 
 /**
- * Rayon (en caractères) de la fenêtre de proximité autour d'un chiffre
- * ancré, dans laquelle on exige un mot du lexique du genre. Calibré sur la
- * citation de référence du 2026-07-26 : entre la fin de « 220000 » et le
- * début de « évacuer » dans « …contraint 220 000 personnes à évacuer. », il
- * y a 13 caractères (« personnes à » normalisé) — 30 laisse une marge
- * confortable. Il reste assez étroit pour rejeter un mot-clé du bon genre
- * mais rattaché à un AUTRE chiffre de la même citation : dans « Le feu a
- * détruit 42 000 hectares. Ailleurs, une décision d'évacuation a concerné
- * une commune voisine, où 175 maisons ont brûlé. », « évacuation » est à
- * ~41 caractères de « 175 » — hors fenêtre, donc `evacuated: 175` reste
- * rejeté malgré la présence du mot ailleurs dans la citation (test dédié).
+ * Distance en caractères entre l'occurrence d'un chiffre `[start, start+length)`
+ * et la plus proche occurrence d'un mot du lexique du genre `kind` dans
+ * `text`. `null` si ce lexique n'apparaît nulle part dans la citation — pas
+ * de preuve, pas de distance. Un mot-clé qui chevauche ou touche le chiffre
+ * compte comme distance 0.
+ *
+ * Round 2, Finding 4 : un rayon fixe ne peut PAS distinguer les deux cas
+ * mesurés sur des citations réelles — « 220 000 personnes, dont de nombreux
+ * vacanciers, ont dû être évacuées. » a 53 caractères entre le chiffre et
+ * « évacu » (incise légitime, à ACCEPTER), tandis que « 175 maisons
+ * détruites et 12 évacués. » n'a que 22 caractères entre `175` et `12` (à
+ * REJETER pour `evacuated: 175`). 53 > 22 : aucun seuil scalaire ne peut
+ * accepter le premier et rejeter le second. Cette fonction ne mesure donc
+ * plus une distance contre un seuil, mais sert à un CLASSEMENT relatif entre
+ * genres (voir `isGroundedInQuote`) : peu importe la distance absolue, seul
+ * compte qui, du genre revendiqué ou d'un concurrent, est le plus proche.
  */
-const PROXIMITY_RADIUS = 30;
+function nearestKeywordDistance(
+  text: string, start: number, length: number, kind: NumericFactKind,
+): number | null {
+  const lexicon = NUMERIC_FACT_LEXICON[kind];
+  const globalLexicon = new RegExp(lexicon.source, lexicon.flags.includes('g') ? lexicon.flags : `${lexicon.flags}g`);
+  const end = start + length;
+
+  let best: number | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = globalLexicon.exec(text)) !== null) {
+    const kwStart = match.index;
+    const kwEnd = kwStart + match[0].length;
+    const distance = kwStart >= end ? kwStart - end : kwEnd <= start ? start - kwEnd : 0;
+    if (best === null || distance < best) best = distance;
+    // Filet anti-boucle infinie si un mot-clé matchait un jour la chaîne
+    // vide — aucun des lexiques actuels ne le fait, mais `exec` sur un motif
+    // global qui matche `''` ne progresse jamais tout seul.
+    if (match[0].length === 0) globalLexicon.lastIndex += 1;
+  }
+  return best;
+}
 
 /**
  * Un candidat est retenu seulement si (a) sa valeur existe dans la citation
  * comme un nombre À PART ENTIÈRE — jamais un fragment d'un nombre plus long
- * (Finding 2 : `injured: 4` ne doit pas s'ancrer sur « 42000 ») — ET (b) un
- * mot du lexique de son genre apparaît à proximité de CETTE occurrence
- * précise (Finding 1). L'un sans l'autre ne suffit jamais : un chiffre juste
- * n'importe où dans la citation, ou un mot-clé juste n'importe où dans la
- * citation, ne prouvent rien sur ce que le chiffre désigne réellement.
+ * (Finding 2 : `injured: 4` ne doit pas s'ancrer sur « 42000 ») — ET (b) le
+ * genre revendiqué GAGNE la compétition de proximité : son mot-clé le plus
+ * proche de CETTE occurrence doit être strictement plus proche que celui de
+ * TOUS les autres genres chiffrés (Finding 1 puis Finding 4, round 2 de
+ * revue — remplace le rayon fixe du round 1, structurellement incapable de
+ * séparer une incise éloignée légitime d'une phrase à deux faits proches).
+ * Aucun mot-clé du genre revendiqué dans toute la citation → rejet immédiat,
+ * sans même chercher de concurrent. Égalité de distance avec un concurrent
+ * → rejet : l'ambiguïté n'est pas une preuve (§ principe du projet : rien
+ * plutôt qu'un fait douteux).
  */
 function isGroundedInQuote(quote: string, kind: NumericFactKind, value: number): boolean {
-  const lexicon = NUMERIC_FACT_LEXICON[kind];
   const text = normalizeThousands(quote);
   const numberPattern = new RegExp(`(?<!\\d)${escapeRegExp(String(value))}(?!\\d)`, 'g');
 
   let match: RegExpExecArray | null;
   while ((match = numberPattern.exec(text)) !== null) {
-    const windowStart = Math.max(0, match.index - PROXIMITY_RADIUS);
-    const windowEnd = Math.min(text.length, match.index + match[0].length + PROXIMITY_RADIUS);
-    if (lexicon.test(text.slice(windowStart, windowEnd))) return true;
+    const start = match.index;
+    const length = match[0].length;
+    const ownDistance = nearestKeywordDistance(text, start, length, kind);
+    if (ownDistance === null) continue;
+
+    const winsAgainstAllOthers = NUMERIC_KINDS.every(other => {
+      if (other === kind) return true;
+      const otherDistance = nearestKeywordDistance(text, start, length, other);
+      return otherDistance === null || ownDistance < otherDistance;
+    });
+    if (winsAgainstAllOthers) return true;
   }
   return false;
 }

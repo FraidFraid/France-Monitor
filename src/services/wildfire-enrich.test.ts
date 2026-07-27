@@ -276,16 +276,105 @@ describe('enrichWithLlm — ancrage genre + frontière de chiffre (round 1 de re
     )).toBe(true);
   });
 
-  it('rejette un genre valide trouvé ailleurs dans la citation, hors du rayon de proximité', async () => {
-    // Preuve que le mécanisme est une PROXIMITÉ, pas une simple présence :
-    // "évacuation" existe bien dans cette citation, mais à ~41 caractères de
-    // "175" — hors du rayon retenu (voir PROXIMITY_RADIUS dans
-    // wildfire-enrich.ts). Sans le rayon, "évacuation" présent n'importe où
-    // dans la citation suffirait à valider n'importe quel nombre du même texte.
+  it('rejette un genre valide trouvé ailleurs dans la citation, perdant la compétition sur ce chiffre', async () => {
+    // Preuve que le mécanisme est une COMPÉTITION relative entre genres, pas
+    // une simple présence : "évacuation" existe bien dans cette citation,
+    // mais "maisons" est bien plus proche de "175" — evacuated perd donc la
+    // compétition sur cette occurrence précise. Sans compétition, la simple
+    // présence d'"évacuation" n'importe où dans la citation validerait à
+    // tort n'importe quel nombre du même texte.
     expect(await isAccepted(
       "Le feu a détruit 42 000 hectares. Ailleurs, une décision d'évacuation a "
       + 'concerné une commune voisine, où 175 maisons ont brûlé.',
       { kind: 'evacuated', value: 175 },
     )).toBe(false);
+  });
+});
+
+// Round 2 de revue — Finding 4 : un rayon de proximité fixe (round 1) ne
+// peut PAS satisfaire à la fois une incise éloignée légitime (53 caractères
+// entre le chiffre et le mot-clé dans le cas ci-dessous) et le rejet d'une
+// contamination croisée dans une phrase à deux faits rapprochés (22
+// caractères seulement) : 53 > 22, donc aucun seuil scalaire ne peut accepter
+// le premier et rejeter le second. Remplacé par une compétition relative
+// (voir `nearestKeywordDistance`/`isGroundedInQuote`) : le genre revendiqué
+// doit avoir son mot-clé strictement plus proche que tout autre genre pour
+// cette occurrence précise du chiffre.
+describe('enrichWithLlm — compétition de proximité entre genres (round 2 de revue)', () => {
+  function sourceFact(quote: string): ImpactFact {
+    return fact({ quote, kind: 'injured', value: 999999, sourceName: 'Sud Ouest' });
+  }
+
+  async function isAccepted(quote: string, candidate: { kind: string; value: number }): Promise<boolean> {
+    const payload = JSON.stringify({ response: JSON.stringify([candidate]) });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(payload, { status: 200 }));
+    const dossier = buildDossier(INCIDENT, [sourceFact(quote)], ['33']);
+    const result = await enrichWithLlm(dossier, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    return result.facts.some(f => f.method === 'llm' && f.kind === candidate.kind && f.value === candidate.value);
+  }
+
+  // Phrase à deux faits rapprochés : preuve que la compétition fonctionne
+  // dans les DEUX sens, sur le même texte.
+  const TWO_FACTS_QUOTE = 'Le bilan fait état de 175 maisons détruites et 12 évacués.';
+
+  it('dwellings_destroyed: 175 → accepté ("maisons" adjacent au 175)', async () => {
+    expect(await isAccepted(TWO_FACTS_QUOTE, { kind: 'dwellings_destroyed', value: 175 })).toBe(true);
+  });
+
+  it('evacuated: 175 → rejeté ("maisons" gagne la compétition sur ce chiffre)', async () => {
+    expect(await isAccepted(TWO_FACTS_QUOTE, { kind: 'evacuated', value: 175 })).toBe(false);
+  });
+
+  it('evacuated: 12 → accepté ("évacués" adjacent au 12)', async () => {
+    expect(await isAccepted(TWO_FACTS_QUOTE, { kind: 'evacuated', value: 12 })).toBe(true);
+  });
+
+  it('dwellings_destroyed: 12 → rejeté ("évacués" gagne la compétition sur ce chiffre)', async () => {
+    expect(await isAccepted(TWO_FACTS_QUOTE, { kind: 'dwellings_destroyed', value: 12 })).toBe(false);
+  });
+
+  it('non-régression Finding 4 — evacuated: 220000 → accepté malgré une incise de 53 caractères', async () => {
+    // C'est le cas précis que le rayon fixe de 30 (round 1) rejetait à tort.
+    expect(await isAccepted(
+      '220 000 personnes, dont de nombreux vacanciers, ont dû être évacuées.',
+      { kind: 'evacuated', value: 220000 },
+    )).toBe(true);
+  });
+
+  it('non-régression — area_ha: 42000 sur "42 000 hectares" → toujours accepté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'area_ha', value: 42000 },
+    )).toBe(true);
+  });
+
+  it('non-régression Finding 2 — injured: 4 sur "42 000 hectares" → toujours rejeté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'injured', value: 4 },
+    )).toBe(false);
+  });
+
+  it('non-régression Finding 2 isolé — dwellings_destroyed: 75 sur "175 maisons" → toujours rejeté', async () => {
+    expect(await isAccepted(
+      '175 maisons ont brûlé.',
+      { kind: 'dwellings_destroyed', value: 75 },
+    )).toBe(false);
+  });
+
+  it('non-régression — insécable fine (U+2009) dans le nombre → toujours accepté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'area_ha', value: 42000 },
+    )).toBe(true);
+  });
+
+  it('égalité stricte de distance entre deux genres concurrents → rejeté (aucun ne l\'emporte)', async () => {
+    // "blessés" et "hectares" sont chacun à exactement 1 caractère de "50"
+    // (un espace de chaque côté) — distances vérifiées par calcul direct.
+    // L'ambiguïté n'est pas une preuve : ni area_ha ni injured ne l'emporte.
+    const quote = 'blessés 50 hectares.';
+    expect(await isAccepted(quote, { kind: 'area_ha', value: 50 })).toBe(false);
+    expect(await isAccepted(quote, { kind: 'injured', value: 50 })).toBe(false);
   });
 });
