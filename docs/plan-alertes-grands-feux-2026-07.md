@@ -507,12 +507,53 @@ Expected: PASS — 6 tests.
 
 - [ ] **Step 5: Appliquer la migration**
 
-```bash
-psql "$DATABASE_URL" -f api/_lib/migrations/002-fire-impact-facts.sql
-psql "$DATABASE_URL" -c "\d fire_impact_facts"
+**`psql` n'est pas installé sur la machine de développement.** Passer par le driver Neon déjà
+présent dans les dépendances (`@neondatabase/serverless`). Créer
+`scripts/apply-migration.mjs` :
+
+```js
+// Applique un fichier .sql via le driver Neon. Node lit .env.development.local
+// avec --env-file, donc aucun secret ne transite par la ligne de commande.
+import { readFileSync } from 'node:fs';
+import { neon } from '@neondatabase/serverless';
+
+const file = process.argv[2];
+if (!file) throw new Error('usage: node --env-file=.env.development.local scripts/apply-migration.mjs <fichier.sql>');
+const sql = neon(process.env.DATABASE_URL);
+// Découpage sur les ';' de fin d'instruction : suffisant pour du DDL sans
+// corps de fonction. Ne pas généraliser à du SQL contenant des blocs $$.
+for (const statement of readFileSync(file, 'utf8').split(/;\s*$/m).map(s => s.trim()).filter(Boolean)) {
+  await sql.query(statement);
+  console.log('OK :', statement.slice(0, 70).replace(/\s+/g, ' '), '…');
+}
 ```
 
-Attendu : les deux tables listées, `value` nullable, aucune colonne `credibility`.
+```bash
+node --env-file=.env.development.local scripts/apply-migration.mjs \
+  api/_lib/migrations/002-fire-impact-facts.sql
+```
+
+Puis vérifier le schéma réellement créé :
+
+```bash
+node --env-file=.env.development.local -e "
+import('@neondatabase/serverless').then(async ({ neon }) => {
+  const sql = neon(process.env.DATABASE_URL);
+  const cols = await sql\\`SELECT table_name, column_name, is_nullable, data_type
+    FROM information_schema.columns
+    WHERE table_name IN ('fire_impact_facts','fire_incident_history')
+    ORDER BY table_name, ordinal_position\\`;
+  console.table(cols);
+});"
+```
+
+Attendu : les deux tables présentes, `value` avec `is_nullable = YES`, **aucune** colonne
+`credibility`.
+
+**Pré-requis bloquant à vérifier avant de commencer :** la base doit répondre. Un
+`HTTP 402 — compute time quota exceeded` signifie que le projet Neon est suspendu ; dans ce cas
+la migration ne peut pas être appliquée et cette tâche est BLOQUÉE. Le fichier SQL et son test de
+contrat (Steps 1-4) restent livrables, seule l'application attend.
 
 - [ ] **Step 6: Commit**
 
