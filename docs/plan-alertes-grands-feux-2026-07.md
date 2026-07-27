@@ -33,6 +33,8 @@
 | `api/_lib/migrations/002-fire-impact-facts.sql` | **créer** — schéma `fire_impact_facts` + `fire_incident_history`. |
 | `api/ingest/news.ts` | **modifier** — brancher l'extraction après l'INSERT ; enrichir `InsertedItem`. |
 | `api/fires/impacts.js` | **créer** — `GET /api/fires/impacts` : séries de faits par département. |
+| `src/plugins/fires-dossier-proxy.ts` | **créer** — proxy Vite dev pour `/api/fires/impacts` et `/api/fires/incident-history`. Exigé par `CLAUDE.md` : tout `/api/*` a son miroir dev. |
+| `src/plugins/fires-proxy.ts` | **modifier** — rendre l'interception **exacte** sur `/api/fires` (voir Task 4, Step 0). |
 | `api/fires/incident-history.js` | **créer** — `POST` persistance des incidents, `GET` historique. |
 | `src/types/index.ts` | **modifier** — `ImpactFact`, `WildfireDossier`, `SourceLevel`, `Reliability`, `Credibility`. |
 | `src/services/wildfire-dossier.ts` | **créer** — `selectMajorIncidents`, `gradeCredibility`, `buildDossier` : **pures**. |
@@ -761,6 +763,33 @@ git commit -m "feat: extraction des faits d'impact dans le cron d'ingestion"
   `ImpactFactDTO = { id, kind, value, unit, quote, sourceUrl, sourceName, sourceLevel, reliability, hedged, provisional, observedAt, communes }`.
   Export testable : `buildImpactsQueryParams(query)`.
 
+- [ ] **Step 0: Corriger l'interception trop large de `fires-proxy` (BLOQUANT)**
+
+`src/plugins/fires-proxy.ts:129` fait `server.middlewares.use('/api/fires', …)`. Connect traite
+ce chemin comme un **préfixe** : le middleware capture donc aussi `/api/fires/impacts`. Et le
+handler ignore `_req` — il renvoie systématiquement le payload FIRMS.
+
+Sans ce correctif, `/api/fires/impacts` ne renvoie pas 404 en dev : il renvoie **les détections
+FIRMS déguisées en faits d'impact**. Une réponse fausse et silencieuse, pire qu'une erreur.
+
+Rendre l'interception exacte :
+
+```ts
+        configureServer(server) {
+            server.middlewares.use('/api/fires', async (req, res, next) => {
+                // Connect traite '/api/fires' comme un PRÉFIXE : sans ce garde,
+                // /api/fires/impacts serait servi avec le payload FIRMS.
+                const path = (req.url ?? '').split('?')[0];
+                if (path !== '/' && path !== '') return next();
+```
+
+`req.url` est relatif au point de montage : pour `/api/fires` il vaut `/` ou `''`, pour
+`/api/fires/impacts` il vaut `/impacts`. Passer la main à `next()` laisse le proxy suivant
+répondre.
+
+Vérifier ensuite que `/api/fires` fonctionne toujours en dev — c'est la source de tout le panneau
+incendies, une régression ici casse la carte.
+
 - [ ] **Step 1: Write the failing test**
 
 ```ts
@@ -910,11 +939,38 @@ export default async function handler(req, res) {
 Run: `npx vitest run tests/fires-impacts-endpoint.test.ts`
 Expected: PASS — 5 tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Créer le miroir dev**
+
+`CLAUDE.md` impose que toute route `/api/*` ait son miroir Vite dev. Créer
+`src/plugins/fires-dossier-proxy.ts` exportant `firesDossierProxyPlugin()`, sur le modèle
+structurel de `src/plugins/news-proxy.ts`, et l'enregistrer dans `vite.config.ts`
+**avant** `firesProxyPlugin()`.
+
+Il monte `/api/fires/impacts` et réutilise `buildImpactsQueryParams` / `toImpactDto` du handler
+— pas de logique dupliquée, sinon les deux implémentations divergent (piège connu du projet :
+les fichiers edge et proxy dev sont des **miroirs**). En dev sans `DATABASE_URL`, il répond
+`{ facts: [], deptCodes, generatedAt }` avec un code 200 : le dossier s'affiche alors avec la
+détection seule et la mention « impacts non renseignés », ce qu'exige le §7.
+
+- [ ] **Step 6: Vérifier le routage en dev**
+
+```bash
+npm run dev:vite &
+sleep 6
+curl -s -o /dev/null -w "/api/fires          -> %{http_code}\n" "http://localhost:3001/api/fires"
+curl -s -w "/api/fires/impacts  -> %{http_code}\n" "http://localhost:3001/api/fires/impacts?dept=33"
+kill %1
+```
+
+Attendu : `/api/fires` renvoie 200 avec ses détections (non régressé) ; `/api/fires/impacts`
+renvoie 200 avec `facts`, et **surtout pas** le payload FIRMS.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 npm run typecheck
-git add api/fires/impacts.js tests/fires-impacts-endpoint.test.ts
+git add api/fires/impacts.js tests/fires-impacts-endpoint.test.ts \
+        src/plugins/fires-dossier-proxy.ts src/plugins/fires-proxy.ts vite.config.ts
 git commit -m "feat: endpoint /api/fires/impacts exposant des séries de faits"
 ```
 
@@ -2141,11 +2197,38 @@ void fetch('/api/fires/incident-history', {
 }).catch(() => { /* historisation best-effort */ });
 ```
 
-- [ ] **Step 6: Vérification finale et commit**
+- [ ] **Step 6: Ajouter la route au miroir dev**
+
+Étendre `src/plugins/fires-dossier-proxy.ts` (créé en Task 4) pour monter aussi
+`/api/fires/incident-history`, en réutilisant `validateSnapshot` et `toHistoryRow` du handler —
+jamais de logique dupliquée entre l'edge et le proxy dev.
+
+En dev sans `DATABASE_URL` : le `POST` répond 200 avec `{ inserted: 0 }` et le `GET` renvoie
+`{ snapshots: [] }`. L'historisation est best-effort (§7) : elle ne doit jamais faire échouer
+l'affichage, ni en dev ni en production.
+
+Vérifier :
+
+```bash
+npm run dev:vite &
+sleep 6
+curl -s -o /dev/null -w "POST incident-history -> %{http_code}\n" \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"observedAt":"2026-07-26T12:55:00Z","incidents":[]}' \
+  "http://localhost:3001/api/fires/incident-history"
+curl -s -o /dev/null -w "GET  incident-history -> %{http_code}\n" \
+  "http://localhost:3001/api/fires/incident-history"
+curl -s -o /dev/null -w "GET  /api/fires (non régressé) -> %{http_code}\n" \
+  "http://localhost:3001/api/fires"
+kill %1
+```
+
+- [ ] **Step 7: Vérification finale et commit**
 
 ```bash
 npm run typecheck && npm test && npm run build
-git add api/fires/incident-history.js tests/fires-incident-history.test.ts src/App.ts
+git add api/fires/incident-history.js tests/fires-incident-history.test.ts \
+        src/plugins/fires-dossier-proxy.ts src/App.ts
 git commit -m "feat: historisation des incidents feux pour reconstituer un épisode"
 ```
 
