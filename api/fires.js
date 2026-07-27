@@ -16,7 +16,11 @@
  * Route : GET /api/fires
  */
 
+import { filterRecentDetections } from './_lib/firms-window.js';
+
 const FRANCE_BBOX   = '-6,41,10,52';      // west,south,east,north — France métropole + Corse
+/** Fenêtre glissante, alignée sur celle du CSV public de repli. */
+const WINDOW_HOURS  = 24;
 const PUBLIC_CSV_URL =
     'https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Europe_24h.csv';
 
@@ -95,7 +99,10 @@ async function fetchWithApiKey(apiKey) {
 
     const results = await Promise.allSettled(
         VIIRS_SOURCES.map(async ({ id: sourceId, label }) => {
-            const url = `${FIRMS_API_BASE}/${apiKey}/${sourceId}/${FRANCE_BBOX}/1`;
+            // 2 jours, pas 1 : `/1` signifie « depuis minuit UTC », donc à
+            // 11 h UTC on ne recevait que 11 h de données. Le surplus est
+            // ramené à une vraie fenêtre de 24 h par filterRecentDetections.
+            const url = `${FIRMS_API_BASE}/${apiKey}/${sourceId}/${FRANCE_BBOX}/2`;
             const res = await fetch(url, {
                 signal: AbortSignal.timeout(14_000),
                 headers: { 'User-Agent': 'FranceMonitor/1.0 (OSINT dashboard)' },
@@ -123,7 +130,12 @@ async function fetchWithApiKey(apiKey) {
         }
     }
 
-    return { detections, sources: okSources };
+    // Ramène les 2 jours demandés à FIRMS sur une fenêtre glissante de 24 h,
+    // identique à celle du repli public SUOMI_VIIRS_C2_Europe_24h.csv.
+    return {
+        detections: filterRecentDetections(detections, WINDOW_HOURS, Date.now()),
+        sources: okSources,
+    };
 }
 
 // ─── Fetch fallback (CSV public, pas de clé) ──────────────────────────────────

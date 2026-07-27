@@ -10,7 +10,12 @@
 
 import type { Plugin } from 'vite';
 
+// Même helper que api/fires.js : la fenêtre temporelle est définie une
+// seule fois, donc l'edge et ce miroir de dev ne peuvent pas diverger.
+import { filterRecentDetections } from '../../api/_lib/firms-window.js';
+
 const FRANCE_BBOX    = '-6,41,10,52';   // west,south,east,north
+const WINDOW_HOURS   = 24;              // aligné sur le CSV public de repli
 const PUBLIC_CSV_URL =
     'https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Europe_24h.csv';
 const FIRMS_API_BASE = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv';
@@ -82,7 +87,8 @@ async function fetchWithApiKey(apiKey: string): Promise<{ detections: FireRow[];
 
     const results = await Promise.allSettled(
         VIIRS_SOURCES.map(async ({ id: sourceId, label }) => {
-            const url = `${FIRMS_API_BASE}/${apiKey}/${sourceId}/${FRANCE_BBOX}/1`;
+            // 2 jours, pas 1 : `/1` signifie « depuis minuit UTC ».
+            const url = `${FIRMS_API_BASE}/${apiKey}/${sourceId}/${FRANCE_BBOX}/2`;
             const upstream = await fetch(url, {
                 signal: AbortSignal.timeout(14_000),
                 headers: { 'User-Agent': 'FranceMonitor/1.0 (dev)' },
@@ -107,7 +113,14 @@ async function fetchWithApiKey(apiKey: string): Promise<{ detections: FireRow[];
             console.warn('[fires-proxy] Source failed:', (r.reason as Error)?.message);
         }
     }
-    return { detections, sources: okSources };
+    return {
+        detections: filterRecentDetections(
+            detections as unknown as Array<Record<string, unknown>>,
+            WINDOW_HOURS,
+            Date.now(),
+        ) as unknown as typeof detections,
+        sources: okSources,
+    };
 }
 
 async function fetchPublicCsv(): Promise<{ detections: FireRow[]; sources: string[] }> {
