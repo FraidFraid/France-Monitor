@@ -2220,14 +2220,38 @@ Expected: PASS — 5 tests.
 
 - [ ] **Step 5: Câbler dans `App.ts`**
 
-Là où le clustering est déjà appelé, enchaîner la résolution puis alimenter `FranceRawData` :
+**Ne re-clusterise pas.** Le DBSCAN est déjà exécuté dans `src/services/fires.ts:211`, à
+l'intérieur de `fetchFiresData()`, et le résultat est renvoyé dans `FiresApiResponse.incidents`.
+`App.ts` le reçoit déjà mais n'en utilise aujourd'hui que la **longueur**, pour une ligne de
+statut (`App.ts:4632`) — les incidents eux-mêmes sont jetés.
+
+Ajouter le champ manquant, à côté de `currentActiveFires` (`App.ts:1346`) :
 
 ```ts
-const incidents = clusterFireDetections(detections);
-const located = await resolveIncidentGeography(incidents);
-this.fireIncidents = located;   // consommé par le hook du dossier (Task 8)
-// puis passer `located` dans FranceRawData.fireIncidents
+  private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
+  /** Incidents clusterisés ET géo-résolus — consommés par le dossier (Task 8). */
+  private currentFireIncidents: import('./types/index.ts').LocatedFireIncident[] = [];
 ```
+
+Puis, dans la même méthode que `this.currentActiveFires = data.detections;` (vers `App.ts:4623`),
+enchaîner la résolution géographique sur les incidents **déjà calculés** :
+
+```ts
+    this.currentActiveFires = data.detections;
+    // La géo-résolution est best-effort : un échec laisse deptCodes/communes
+    // vides et l'alerte retombe sur les coordonnées (§7). Ne jamais bloquer
+    // l'affichage des détections pour attendre le découpage administratif.
+    void resolveIncidentGeography(data.incidents)
+      .then(located => { this.currentFireIncidents = located; })
+      .catch(() => { /* deptCodes/communes restent vides */ });
+```
+
+Enfin, passer `this.currentFireIncidents` dans `FranceRawData.fireIncidents` là où `FranceRawData`
+est assemblé pour le moteur de situations.
+
+**Pourquoi `void` et non `await`** : `resolveIncidentGeography` fait des appels réseau par maille
+géographique. Bloquer dessus retarderait l'affichage de la carte pour un enrichissement qui n'est
+pas nécessaire au premier rendu.
 
 - [ ] **Step 6: Typecheck et commit**
 
