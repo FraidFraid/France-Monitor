@@ -1663,10 +1663,65 @@ it('ne tronque jamais un incendie critical en silence', () => {
 });
 ```
 
-- [ ] **Step 5: Run tests**
+- [ ] **Step 5: Migrer le test existant qui va casser (identifié, pas hypothétique)**
 
-Run: `npx vitest run src/services/situation-engine.wildfire.test.ts && npm test`
-Expected: PASS. Si un test existant attendait une situation `wildfire-escalation` nationale, le mettre à jour : le comportement national **était le défaut**.
+`src/services/situation-engine.test.ts:247` contient :
+
+```ts
+  it('wildfire fixture emits WILDFIRE_ESCALATION', () => {
+    assertHasSituation(wildfireFixture(), 'WILDFIRE_ESCALATION');
+  });
+```
+
+Sa fixture (`:108-129`) alimente **6 `activeFires`** et une vigilance météo orange. Le nouveau
+détecteur lit `raw.fireIncidents`, donc **ce test échouera** — c'est attendu : le déclenchement
+sur un compte national d'`activeFires` *était* le défaut (§1.3).
+
+Migrer `wildfireFixture()` pour qu'elle fournisse un `fireIncidents` franchissant la porte, en
+gardant la vigilance météo (inutilisée par la nouvelle règle mais inoffensive) :
+
+```ts
+function wildfireFixture(): FranceRawData {
+  return baseRawData({
+    // La règle ne compte plus les détections au national : elle lit les
+    // incidents clusterisés. Un incident au-dessus de la porte 40/300.
+    fireIncidents: [
+      typed<NonNullable<FranceRawData['fireIncidents']>[number]>({
+        id: 'incident-paca',
+        centroidLat: 43.5,
+        centroidLon: 5.1,
+        bboxMinLat: 43.4, bboxMaxLat: 43.6, bboxMinLon: 5.0, bboxMaxLon: 5.2,
+        detectionsCount: 120,
+        frpMean: 12, frpMax: 90, frpTotal: 1600,
+        confidenceMax: 'high',
+        startDatetime: '2026-07-26T01:00:00Z',
+        endDatetime: '2026-07-26T13:00:00Z',
+        durationMinutes: 720,
+        satellites: ['SNPP'],
+        hasNightDetection: true,
+        nearUrban: true,
+        clusterMethod: 'dbscan', epsKm: 3, minPoints: 2,
+        score: { severityScore: 70, impactScore: 60, labels: [] },
+        detectionIds: [],
+        deptCodes: ['13'],
+        communes: ['Aix-en-Provence'],
+      }),
+    ],
+    meteoAlerts: [ /* bloc existant conservé tel quel */ ],
+  });
+}
+```
+
+Ces valeurs (120 détections / 1 600 MW) donnent `high`, donc la situation est bien émise et
+`assertHasSituation` passe sans modification.
+
+- [ ] **Step 5b: Run tests**
+
+Run: `npx vitest run src/services/situation-engine.wildfire.test.ts src/services/situation-engine.test.ts`
+puis `npm test` en entier.
+
+Baseline avant ta modification : **313 tests passants sur 38 fichiers**. Tout écart à la baisse
+autre que celui que tu as délibérément migré est une régression à corriger, pas à accepter.
 
 - [ ] **Step 6: Typecheck et commit**
 
