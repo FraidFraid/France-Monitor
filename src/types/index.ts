@@ -443,6 +443,63 @@ export interface FireIncidentScore {
   labels: string[];        // ex: ['high_frp', 'persistent', 'near_urban', 'night', 'multi_satellite']
 }
 
+/** Niveau de source, indépendant de sa fiabilité (§12.2 du design). */
+export type SourceLevel = 'primary' | 'secondary' | 'tertiary';
+
+/** Fiabilité de la source, code Admiralty simplifié (§12.1). */
+export type Reliability = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+/** Crédibilité de l'information : DÉRIVÉE à l'assemblage, jamais stockée (§12.1). */
+export type Credibility = 1 | 2 | 3 | 4 | 5 | 6;
+
+export type ImpactFactKind =
+  | 'area_ha' | 'evacuated' | 'dwellings_destroyed' | 'injured'
+  | 'evacuation_order' | 'road_closed' | 'rail_disrupted';
+
+/**
+ * Un fait d'impact déclaré. L'unité est LE FAIT, pas le nombre :
+ * `value` est nul pour un ordre d'évacuation (§3.4).
+ */
+export interface ImpactFact {
+  id: number;
+  kind: ImpactFactKind;
+  value: number | null;
+  unit: string | null;
+  quote: string;              // phrase source verbatim — obligatoire (§3.3)
+  sourceUrl: string;
+  sourceName: string;
+  sourceLevel: SourceLevel;
+  reliability: Reliability;
+  hedged: boolean;
+  provisional: boolean;
+  observedAt: string;
+  communes: string[];
+  credibility?: Credibility;  // calculée par buildDossier
+  corroboration?: string[];   // sources indépendantes (§12.3)
+}
+
+/**
+ * Un incident dont la géographie administrative a été résolue.
+ * `FireIncident` ne porte QUE des coordonnées : le rattachement commune/département
+ * exige un appel réseau (geo.api.gouv.fr), donc il vit dans un type distinct
+ * produit par resolveIncidentGeography (Task 10).
+ */
+export interface LocatedFireIncident extends FireIncident {
+  deptCodes: string[];
+  communes: string[];
+}
+
+/** Dossier d'incident : observé et déclaré côte à côte, jamais fusionnés (§12.5). */
+export interface WildfireDossier {
+  incident: FireIncident;
+  severity: SituationSeverity;
+  deptCodes: string[];        // un incident peut en couvrir plusieurs (§3.5)
+  communes: string[];
+  facts: ImpactFact[];
+  /** Séries par genre, ordonnées dans le temps. Aucune valeur réconciliée (§12.4). */
+  series: Record<ImpactFactKind, ImpactFact[]>;
+}
+
 export interface WaterLevel {
   stationCode: string;
   stationName: string;

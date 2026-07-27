@@ -41,6 +41,7 @@ import type {
   DetectedSituation,
   FranceScoreBreakdown,
   FranceScorePillarBreakdown,
+  LocatedFireIncident,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -68,6 +69,8 @@ export interface FranceRawData {
   militaryFlightsCount: number;
   maritimeCount: number;
   activeFires: ActiveFire[];
+  /** Incidents clusterisés et géo-résolus, fournis par App.ts (Task 10). */
+  fireIncidents?: LocatedFireIncident[];
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;
