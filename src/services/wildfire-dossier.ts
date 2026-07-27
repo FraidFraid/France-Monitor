@@ -40,14 +40,20 @@ export function selectMajorIncidents<T extends FireIncident>(incidents: T[]): T[
   );
 }
 
-const FACT_KINDS: ImpactFactKind[] = [
+// Exporté : réutilisé par wildfire-enrich.ts pour reconstruire `series` après
+// avoir ajouté des faits issus d'Ollama, sans dupliquer l'énumération.
+export const FACT_KINDS: ImpactFactKind[] = [
   'area_ha', 'evacuated', 'dwellings_destroyed', 'injured',
   'evacuation_order', 'road_closed', 'rail_disrupted',
 ];
 
 /** Un fait sans provenance complète n'est pas affichable (§3.3). */
 function hasFullProvenance(fact: ImpactFact): boolean {
-  return Boolean(fact.quote && fact.sourceUrl && fact.sourceName && fact.observedAt);
+  if (!fact.quote || !fact.sourceUrl || !fact.sourceName || !fact.observedAt) return false;
+  // Un horodatage illisible n'est pas une provenance : il casserait
+  // silencieusement la chronologie des révisions (§12.4) — Date.parse(NaN)
+  // dans le comparateur de .sort() n'est pas garanti par la spec ECMAScript.
+  return !Number.isNaN(Date.parse(fact.observedAt));
 }
 
 /**

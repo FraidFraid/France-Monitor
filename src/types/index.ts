@@ -476,6 +476,13 @@ export interface ImpactFact {
   communes: string[];
   credibility?: Credibility;  // calculée par buildDossier
   corroboration?: string[];   // sources indépendantes (§12.3)
+  /**
+   * Traçabilité de l'extraction (§3.1) : `'pattern'` (motifs déterministes,
+   * Task 1) ou `'llm'` (relecture Ollama, Task 9). Optionnel car les faits
+   * produits avant l'ajout de ce champ n'en portent pas — absence à traiter
+   * comme `'pattern'`, jamais comme une valeur par défaut fabriquée.
+   */
+  method?: 'pattern' | 'llm';
 }
 
 /**

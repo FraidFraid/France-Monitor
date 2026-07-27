@@ -147,6 +147,15 @@ describe('buildDossier', () => {
     expect(dossier.facts.map(f => f.id)).toEqual([1]);
   });
 
+  it('rejette un fait dont l\'horodatage est illisible', () => {
+    const dossier = buildDossier(INCIDENT, [
+      fact({ id: 1 }),
+      fact({ id: 2, observedAt: 'hier' }),
+      fact({ id: 3, observedAt: '2026-13-45T99:99:99Z' }),
+    ], ['33']);
+    expect(dossier.facts.map(f => f.id)).toEqual([1]);
+  });
+
   it('porte plusieurs départements et agrège les communes sans doublon', () => {
     const dossier = buildDossier(INCIDENT, [
       fact({ id: 1, communes: ['Le Porge', 'Lanton'] }),

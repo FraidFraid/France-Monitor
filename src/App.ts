@@ -80,6 +80,7 @@ import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 import { fetchFiresData } from './services/fires.ts';
 import { resolveIncidentGeography } from './services/incident-geography.ts';
 import { buildDossier } from './services/wildfire-dossier.ts';
+import { enrichWithLlm } from './services/wildfire-enrich.ts';
 import type { WildfireDossierModal } from './components/WildfireDossierModal.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
 import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
@@ -1967,6 +1968,10 @@ export class App {
     const dossier = buildDossier(incident, facts, incident.deptCodes);
     const modal = await this.ensureWildfireModal();
     modal.show(dossier);
+
+    // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un
+    // dossier, pour un seul incident. Jamais dans une boucle de rafraîchissement.
+    void enrichWithLlm(dossier).then(enriched => this.wildfireModal?.show(enriched));
   }
 
   private ensureSearchModal(): Promise<SearchModal> {
