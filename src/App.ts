@@ -26,6 +26,7 @@ import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
+import { detectWildfireIncidents } from './services/situation-engine.ts';
 import { getPreviousScoreForSmoothing, recordStabilitySnapshot } from './utils/stability-history.ts';
 import type { FranceCountrySnapshot, FranceIntelTimelineLane, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
@@ -4690,7 +4691,10 @@ export class App {
     // vides et l'alerte retombe sur les coordonnées (§7). Ne jamais bloquer
     // l'affichage des détections pour attendre le découpage administratif.
     void resolveIncidentGeography(data.incidents)
-      .then(located => { this.currentFireIncidents = located; })
+      .then(located => {
+        this.currentFireIncidents = located;
+        this.refreshFranceIntelPanel();
+      })
       .catch(() => { /* deptCodes/communes restent vides */ });
     this.firesLoaded = true;
     this.currentFiresSources = { sources: data.sources, apiKeyUsed: data.apiKeyUsed };
@@ -6524,7 +6528,12 @@ export class App {
         updatedAt: new Date(anomaly.timestamp),
       }));
 
+    const wildfireSituations = detectWildfireIncidents({
+      fireIncidents: this.currentFireIncidents,
+    } as FranceRawData);
+
     const freshAlerts = [
+      ...wildfireSituations,
       ...newsSituations,
       ...surgeSituations,
       ...weatherSituations,

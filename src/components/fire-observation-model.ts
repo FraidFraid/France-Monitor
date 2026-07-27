@@ -52,7 +52,9 @@ export function buildFireObservationSources(options: {
       icon: 'flame',
       label: 'FIRMS · VIIRS',
       role: 'Activité thermique au sol',
-      timing: options.multiSource ? 'Revisite France ~1 h' : 'Revisite France ~3 h',
+      timing: options.multiSource
+        ? '~40 min entre passages d’une grappe · 2 grappes/jour'
+        : '~1 h entre passages d’une grappe · 2 grappes/jour',
       status: 'ACTIF',
     },
     {

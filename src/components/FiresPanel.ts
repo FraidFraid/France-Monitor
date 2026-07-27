@@ -1015,7 +1015,9 @@ export class FiresPanel {
     private _renderFooter(filtered: ActiveFire[], incidents: FireIncident[], latestLabel: string): void {
         const multiSource  = this.apiKeyUsed && this.sourcesInfo.length >= 2;
         const satelliteStr = this.sourcesInfo.length > 0 ? this.sourcesInfo.join(' · ') : 'SNPP (public)';
-        const revisitStr   = multiSource ? '~1 h de revisite' : '~3 h de revisite';
+        const revisitStr   = multiSource
+            ? '~40 min en grappe · 2 grappes/jour'
+            : '~1 h en grappe · 2 grappes/jour';
 
         const footer = document.createElement('div');
         footer.style.cssText = 'margin-top:16px;padding:12px 0 0;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:4px;';

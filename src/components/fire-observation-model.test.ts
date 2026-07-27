@@ -49,11 +49,20 @@ describe('buildFireObservationSources', () => {
     expect(sources[3].observation).toBeUndefined();
   });
 
-  it('adapts FIRMS revisit copy to available satellites', () => {
-    expect(buildFireObservationSources({ multiSource: false, runtime, now: NOW })[0].timing)
-      .toContain('~3 h');
-    expect(buildFireObservationSources({ multiSource: true, runtime, now: NOW })[0].timing)
-      .toContain('~1 h');
+  it('décrit les passages en grappes sans promettre une couverture horaire continue', () => {
+    const singleSource = buildFireObservationSources({
+      multiSource: false,
+      runtime,
+      now: NOW,
+    })[0].timing;
+    const multiSource = buildFireObservationSources({
+      multiSource: true,
+      runtime,
+      now: NOW,
+    })[0].timing;
+
+    expect(singleSource).toBe('~1 h entre passages d’une grappe · 2 grappes/jour');
+    expect(multiSource).toBe('~40 min entre passages d’une grappe · 2 grappes/jour');
   });
 
   it('uses direct institutional HTTPS documentation URLs', () => {

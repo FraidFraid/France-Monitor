@@ -84,4 +84,15 @@ describe('FiresPanel observation multi-capteurs', () => {
     expect(resetToggle?.getAttribute('aria-pressed')).toBe('false');
     expect(resetToggle?.textContent).toBe('Afficher');
   });
+
+  it('ne présente plus les passages groupés comme une revisite horaire continue', () => {
+    const panel = renderPanel();
+    panel.setSourcesInfo(['SNPP', 'NOAA-20', 'NOAA-21'], true);
+    panel.show([]);
+
+    const text = document.querySelector('.fires-panel-modal')?.textContent ?? '';
+    expect(text).toContain('2 grappes/jour');
+    expect(text).not.toContain('~1 h de revisite');
+    expect(text).not.toContain('Revisite France ~1 h');
+  });
 });
