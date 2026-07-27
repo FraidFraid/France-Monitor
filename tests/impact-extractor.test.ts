@@ -69,7 +69,7 @@ describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
       sourceUrl: 'https://www.gironde.gouv.fr/c',
       sourceName: 'Préfecture de la Gironde',
       tier: null,
-      text: "Le préfet a décidé de déclencher une alerte FR-Alert afin d'ordonner l'évacuation immédiate.",
+      text: "Face à la progression de l'incendie, le préfet a décidé de déclencher une alerte FR-Alert afin d'ordonner l'évacuation immédiate.",
     });
     const order = facts.find(f => f.kind === 'evacuation_order');
     expect(order).toBeDefined();
@@ -79,7 +79,10 @@ describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
   });
 
   it('extrait une coupure routière avec son kilométrage', () => {
-    const [fact] = extractImpactFacts({ ...BASE, text: "l'A63 est coupée sur 70 km" });
+    const [fact] = extractImpactFacts({
+      ...BASE,
+      text: "L'incendie a contraint à fermer l'A63 : la voie est coupée sur 70 km.",
+    });
     expect(fact.kind).toBe('road_closed');
     expect(fact.value).toBe(70);
     expect(fact.unit).toBe('km');
@@ -105,5 +108,29 @@ describe('extractImpactFacts — formulations réelles du cas Gironde', () => {
   it('ignore un nombre aberrant (garde-fou anti-faux positif)', () => {
     expect(extractImpactFacts({ ...BASE, text: "l'incendie a détruit 99 000 000 hectares" }))
       .toEqual([]);
+  });
+
+  it('rejette une pseudo-décimale ambiguë avec un séparateur de milliers', () => {
+    // "42.5" n'est ni "42.000" (groupe de 3) ni un entier propre : on refuse
+    // plutôt que de lire 425 (§7 — un blanc honnête vaut mieux qu'un chiffre
+    // plausible mais faux, potentiellement d'un facteur 10 sur une surface).
+    expect(extractImpactFacts({ ...BASE, text: "L'incendie a détruit 42.5 hectares de forêt." }))
+      .toEqual([]);
+  });
+
+  it('ne produit RIEN sur des textes hors sujet sans vocabulaire incendie, même truffés de motifs numériques piégeurs', () => {
+    // Contre-exemples de non-régression (revue qualité) : chacun contient un
+    // motif numérique qui matcherait un des kind ci-dessus si la garde
+    // mentionsFire n'était pas appliquée en amont.
+    const traps = [
+      '42 personnes blessées dans un accident de la route à Bordeaux.',
+      'Le programme immobilier comptera 175 maisons neuves à Bordeaux.',
+      "220 000 personnes ont assisté au concert, mais aucune n'a dû évacuer les lieux en urgence.",
+      "L'A63 est coupée sur 70 km pour travaux de reasphaltage.",
+      'Le score final était 42. Hectares de forêt ravagés dans le Var.',
+    ];
+    for (const text of traps) {
+      expect(extractImpactFacts({ ...BASE, text })).toEqual([]);
+    }
   });
 });

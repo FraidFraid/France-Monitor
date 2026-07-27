@@ -9,9 +9,16 @@
  * Un blanc honnête vaut mieux qu'un chiffre plausible (§7).
  */
 
-/** Vocabulaire incendie : porte d'entrée de l'extraction. */
+/**
+ * Vocabulaire incendie : porte d'entrée de l'extraction.
+ * Inclut deux formulations journalistiques usuelles qui ne contiennent pas
+ * le mot « incendie » lui-même : « le feu a parcouru X ha » et « X hectares
+ * (de forêt) … détruits » (le motif hectares↔détruit reste borné à la
+ * phrase courante via `[^.]` pour ne pas capter un « détruit » sans rapport
+ * ailleurs dans le texte).
+ */
 const FIRE_LEXICON =
-  /\b(incendies?|feux?\s+de\s+for[êe]t|feux?\s+de\s+v[ée]g[ée]tation|sinistr[ée]s?|br[ûu]l[ée]s?|flammes?|hectares?\s+br[ûu]l)/i;
+  /\b(incendies?|feux?\s+de\s+for[êe]t|feux?\s+de\s+v[ée]g[ée]tation|feux?\s+(?:a|ont)\s+parcouru|sinistr[ée]s?|br[ûu]l[ée]s?|flammes?|hectares?\s+br[ûu]l|hectares?[^.]{0,40}?d[ée]truits?)/i;
 
 /** Domaines officiels = source primaire (l'acteur lui-même). */
 const OFFICIAL_HOST = /(^|\.)gouv\.fr$|(^|\.)sdis\d*\.fr$|(^|\.)prefectures-regions\.gouv\.fr$/i;
@@ -77,12 +84,23 @@ export function deriveReliability(sourceUrl, tier) {
 }
 
 /**
+ * Un séparateur de milliers français va toujours par groupes de 3 chiffres
+ * (« 42.000 », jamais « 42.00 » ni « 42.5 »). Un point suivi d'1 ou 2
+ * chiffres en fin de nombre trahit donc une décimale, pas un millier — on
+ * refuse plutôt que de la lire comme telle (ex. « 42.5 » lu à tort 425,
+ * un facteur 10 sur une surface : incident relevé en revue).
+ */
+const AMBIGUOUS_DECIMAL_TAIL = /\.\d{1,2}$/;
+
+/**
  * Normalise « 42 000 », « 42.000 », « 42 000 » (insécable) → 42000.
  * @param {string} raw
  * @returns {number|null}
  */
 function parseFrenchNumber(raw) {
-  const cleaned = raw.replace(/[\s .]/g, '');
+  const trimmed = raw.trim();
+  if (AMBIGUOUS_DECIMAL_TAIL.test(trimmed)) return null;
+  const cleaned = trimmed.replace(/[\s .]/g, '');
   if (!/^\d+$/.test(cleaned)) return null;
   const value = Number.parseInt(cleaned, 10);
   return Number.isSafeInteger(value) ? value : null;
@@ -100,12 +118,27 @@ function sentenceAt(text, index) {
  * Motifs chiffrés. `unit` null = compte de personnes/objets.
  * @type {Array<{kind: string, re: RegExp, unit: string|null}>}
  */
+// Grammaire d'un nombre français : 1 à 3 chiffres, puis des groupes de
+// SÉPARATEUR+3 chiffres (espace, insécable ou point — jamais 1 ou 2, cf.
+// AMBIGUOUS_DECIMAL_TAIL). Volontairement sans `.*` ni classe autorisant les
+// lettres : un « . » non suivi de 3 chiffres n'est jamais consommé, donc le
+// motif ne peut pas enjamber une fin de phrase pour aller chercher un nombre
+// de la phrase suivante (cf. « Le score final était 42. Hectares … »). La
+// queue optionnelle `(?:\.\d{1,2})?` capte quand même une pseudo-décimale
+// ambiguë (« 42.5 ») entière plutôt que de la couper au milieu — c'est
+// `parseFrenchNumber` qui la rejette explicitement ensuite.
+const FRENCH_NUMBER = '\\d{1,3}(?:[\\s .]\\d{3})*(?:\\.\\d{1,2})?';
+
 const NUMERIC_PATTERNS = [
-  { kind: 'area_ha', unit: 'ha', re: /([\d\s .]+?)\s*(?:hectares?|ha)\b/gi },
-  { kind: 'evacuated', unit: null, re: /([\d\s .]+?)\s*(?:personnes?|habitants?|r[ée]sidents?)\b[^.]{0,60}?(?:[ée]vacu|d[ée]plac)/gi },
-  { kind: 'dwellings_destroyed', unit: null, re: /([\d\s .]+?)\s*(?:maisons?|habitations?|logements?|b[âa]timents?)\b/gi },
-  { kind: 'injured', unit: null, re: /([\d\s .]+?)\s*(?:sapeurs?-pompiers?|pompiers?|personnes?)\s+bless[ée]s?\b/gi },
-  { kind: 'road_closed', unit: 'km', re: /(?:coup[ée]e?|ferm[ée]e?|neutralis[ée]e?)\s+sur\s+([\d\s .]+?)\s*km\b/gi },
+  { kind: 'area_ha', unit: 'ha', re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:hectares?|ha)\\b`, 'gi') },
+  // Pas de `\b` avant `[ée]vacu`/`d[ée]plac` : en JS, `\b` ne traite pas les
+  // lettres accentuées comme des caractères de mot (\w = [A-Za-z0-9_] only),
+  // donc `\b` ne matche jamais entre un espace et un « é ». Un `\b` placé là
+  // empêcherait silencieusement tout match sur « … à évacuer ».
+  { kind: 'evacuated', unit: null, re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:personnes?|habitants?|r[ée]sidents?)\\b[^.]{0,60}?(?:[ée]vacu|d[ée]plac)`, 'gi') },
+  { kind: 'dwellings_destroyed', unit: null, re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:maisons?|habitations?|logements?|b[âa]timents?)\\b`, 'gi') },
+  { kind: 'injured', unit: null, re: new RegExp(`(${FRENCH_NUMBER})\\s*(?:sapeurs?-pompiers?|pompiers?|personnes?)\\s+bless[ée]s?\\b`, 'gi') },
+  { kind: 'road_closed', unit: 'km', re: new RegExp(`(?:coup[ée]e?|ferm[ée]e?|neutralis[ée]e?)\\s+sur\\s+(${FRENCH_NUMBER})\\s*km\\b`, 'gi') },
 ];
 
 /** Motifs qualitatifs : un fait sans chiffre reste un fait (§3.4). */
@@ -123,12 +156,13 @@ export function extractImpactFacts(input) {
   const { text, sourceUrl, sourceName, tier, observedAt } = input ?? {};
   // Provenance incomplète → aucun fait affichable (§3.3). On rejette, on ne dégrade pas.
   if (!text || !sourceUrl || !sourceName || !observedAt) return [];
-  // Pas de garde `mentionsFire` ici : un communiqué préfectoral (ordre
-  // d'évacuation via FR-Alert) ou une brève sur une coupure routière liée
-  // à l'incendie ne réemploient pas forcément le vocabulaire incendie dans
-  // la même phrase. La sûreté vient des motifs eux-mêmes (étroits) + des
-  // bornes de vraisemblance + de l'exigence de provenance complète.
-  // `mentionsFire`/`FIRE_LEXICON` restent exportés pour le tri amont (cron).
+  // Porte d'entrée : sans vocabulaire incendie, on ne tente même pas
+  // l'extraction — un motif numérique/qualitatif isolé (« 42 personnes
+  // blessées », « coupée sur 70 km ») matche tout autant un fait divers
+  // routier ou un article sportif qu'un incendie. FIRE_LEXICON a été élargi
+  // (cf. plus haut) pour couvrir les formulations réelles de presse qui ne
+  // disent jamais littéralement « incendie » dans la même phrase.
+  if (!mentionsFire(text)) return [];
 
   const sourceLevel = deriveSourceLevel(sourceUrl);
   const reliability = deriveReliability(sourceUrl, tier ?? null);
