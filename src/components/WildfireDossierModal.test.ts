@@ -232,4 +232,73 @@ describe('renderDeclaredBlock', () => {
     container.innerHTML = html;
     expect(container.querySelector('.wf-modal__notice')).toBeNull();
   });
+
+  // Finding 6 (round 4) : rendered.length === 0 fait un retour anticipé vers
+  // « Impacts non renseignés » AVANT le calcul de discardedCount — donc un
+  // lot entièrement invalide (silence côté source) et un lot reçu puis
+  // intégralement rejeté (chaîne défaillante, donnée corrompue) produisaient
+  // exactement le même texte. Les deux signifient des choses opposées pour
+  // l'analyste : distinguer les trois états (silence / corrompu / partiel).
+  it('affiche « Impacts non renseignés » sans aucun compte quand facts est vide (non régressé)', () => {
+    const html = renderDeclaredBlock([]);
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('.wf-modal__empty')?.textContent).toMatch(/Impacts non renseignés/);
+    expect(container.querySelector('.wf-modal__notice')).toBeNull();
+    expect(container.querySelector('.wf-modal__error')).toBeNull();
+  });
+
+  it('distingue un lot reçu mais intégralement invalide (1 fait) d\'un silence de la source', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [{ id: 1, kind: 'evacuated' } as unknown as ImpactFact];
+      const html = renderDeclaredBlock(facts);
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      expect(container.querySelector('.wf-modal__empty')).toBeNull();
+      const error = container.querySelector('.wf-modal__error');
+      expect(error).not.toBeNull();
+      expect(error?.textContent).toMatch(/1 fait/);
+      expect(error?.textContent).toMatch(/invalide|corrompu/i);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('accorde au pluriel le message de lot intégralement invalide (2 faits)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        { id: 1, kind: 'evacuated' } as unknown as ImpactFact,
+        { id: 2, kind: 'bogus_kind' } as unknown as ImpactFact,
+      ];
+      const html = renderDeclaredBlock(facts);
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      const error = container.querySelector('.wf-modal__error');
+      expect(error).not.toBeNull();
+      expect(error?.textContent).toMatch(/2 faits/);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('un lot mixte (un valide, un invalide) reste la liste + mention du round 3, jamais le message d\'erreur totale', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        fact({ id: 1, kind: 'area_ha' }),
+        { id: 2, kind: 'bogus_kind' } as unknown as ImpactFact,
+      ];
+      const html = renderDeclaredBlock(facts);
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      expect(container.querySelectorAll('li.wf-fact').length).toBe(1);
+      expect(container.querySelector('.wf-modal__notice')).not.toBeNull();
+      expect(container.querySelector('.wf-modal__error')).toBeNull();
+      expect(container.querySelector('.wf-modal__empty')).toBeNull();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });

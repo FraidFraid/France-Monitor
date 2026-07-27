@@ -241,23 +241,37 @@ function renderKnownFact(fact: ImpactFact): string | null {
 /**
  * Bloc « déclaré » — une ligne par ImpactFact, ou la mention explicite
  * d'absence (§7) : jamais un zéro, jamais un chiffre supposé. Export pur
- * pour test (round 1, Finding 2 ; round 2, Finding 4 ; round 3, Finding 5).
+ * pour test (round 1, Finding 2 ; round 2, Finding 4 ; round 3, Finding 5 ;
+ * round 4, Finding 6).
  *
  * Un fait écarté par `renderKnownFact` ne disparaît pas sans trace VISIBLE :
  * `console.warn` seul n'est vu que par qui ouvre les devtools. La mention
  * n'apparaît que s'il y a effectivement quelque chose à signaler (round 3).
+ *
+ * Trois états distincts, jamais confondus (round 4) :
+ *   - `facts.length === 0` → silence de la source : « Impacts non renseignés ».
+ *   - tous les faits reçus sont rejetés → chaîne défaillante, donnée reçue
+ *     mais corrompue : message dédié, classe CSS distincte de l'état vide.
+ *   - certains faits rejetés, d'autres valides → liste + mention (round 3).
+ * Le premier ne dit rien sur l'événement ; le second dit que l'INSTRUMENT
+ * est en panne — les confondre ferait croire à une absence de donnée là où
+ * la source a répondu avec du contenu corrompu.
  */
 export function renderDeclaredBlock(facts: ImpactFact[]): string {
   const rendered = facts
     .map(renderKnownFact)
     .filter((html): html is string => html !== null);
   const discardedCount = facts.length - rendered.length;
+  const title = `<h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>`;
 
   if (rendered.length === 0) {
-    return `
-      <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
-      <p class="wf-modal__empty">Impacts non renseignés.</p>
-    `;
+    if (facts.length === 0) {
+      return `${title}<p class="wf-modal__empty">Impacts non renseignés.</p>`;
+    }
+    const errorText = discardedCount === 1
+      ? '1 fait reçu mais invalide — donnée corrompue.'
+      : `${discardedCount} faits reçus mais invalides — donnée corrompue.`;
+    return `${title}<p class="wf-modal__error">${escapeHtml(errorText)}</p>`;
   }
 
   const noticeText = discardedCount === 1
@@ -268,7 +282,7 @@ export function renderDeclaredBlock(facts: ImpactFact[]): string {
     : '';
 
   return `
-    <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
+    ${title}
     <ul class="wf-facts">${rendered.join('')}</ul>
     ${notice}
   `;
