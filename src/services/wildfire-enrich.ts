@@ -36,7 +36,37 @@ export interface EnrichWithLlmDeps {
   model?: string;
 }
 
-const KNOWN_KINDS = new Set<string>(FACT_KINDS);
+/**
+ * Genres portant effectivement un chiffre — sous-ensemble de `FACT_KINDS`.
+ * `evacuation_order` et `rail_disrupted` sont volontairement exclus : ce
+ * sont des faits qualitatifs, toujours `value: null` (§3.4, cf.
+ * `QUALITATIVE_PATTERNS` dans api/_lib/impact-extractor.js) — `isLlmCandidate`
+ * exige `value: number`, donc un candidat de ce genre serait de toute façon
+ * silencieusement rejeté. Les motifs déterministes (Task 1) couvrent déjà
+ * très bien ces deux genres par mots-clés ; la valeur ajoutée du LLM porte
+ * sur les chiffres que ces motifs ont manqués (Finding 3, round 1 de revue).
+ */
+type NumericFactKind = 'area_ha' | 'evacuated' | 'dwellings_destroyed' | 'injured' | 'road_closed';
+
+/**
+ * Lexique par genre — mêmes mots-clés que `NUMERIC_PATTERNS` dans
+ * api/_lib/impact-extractor.js (Task 1), pour rester cohérent avec la
+ * classification « hybride keyword + override LLM » du projet (CLAUDE.md).
+ * Sert de second verrou (voir `isGroundedInQuote`) : un chiffre présent dans
+ * une citation ne suffit pas, il faut qu'un mot du bon genre soit à
+ * proximité de CE chiffre précis (Finding 1, round 1 de revue) — sans quoi
+ * n'importe quel nombre de la citation validerait n'importe quel genre.
+ */
+const NUMERIC_FACT_LEXICON: Record<NumericFactKind, RegExp> = {
+  area_ha: /hectares?|\bha\b/i,
+  evacuated: /[ée]vacu|d[ée]plac/i,
+  dwellings_destroyed: /maisons?|habitations?|logements?|b[âa]timents?/i,
+  injured: /bless[ée]s?/i,
+  road_closed: /coup[ée]e?|ferm[ée]e?|neutralis[ée]e?|\bkm\b/i,
+};
+
+const NUMERIC_KINDS = Object.keys(NUMERIC_FACT_LEXICON) as NumericFactKind[];
+const KNOWN_KINDS = new Set<string>(NUMERIC_KINDS);
 
 /**
  * Un genre + une valeur numérique candidats, tels que renvoyés par Ollama —
@@ -53,29 +83,73 @@ function isLlmCandidate(raw: unknown): raw is LlmCandidate {
   return typeof kind === 'string' && typeof value === 'number' && Number.isFinite(value);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Un nombre cité en français s'écrit souvent avec un espace de milliers
- * (« 220 000 »). On compacte tout blanc (espace, insécable, fine insécable)
- * avant de chercher la valeur en chiffres : ni la ponctuation ni les lettres
- * environnantes ne peuvent produire une fausse correspondance, seuls les
- * chiffres déjà contigus dans le texte source le peuvent.
+ * Colle UNIQUEMENT les séparateurs de milliers français (« 220 000 » →
+ * « 220000 »), sans toucher aux autres espaces : contrairement à un
+ * compactage total (round 1), on a besoin des frontières de mots pour que
+ * le lexique de genre (Finding 1) puisse chercher un mot à proximité d'un
+ * chiffre. `\s` couvre déjà l'espace insécable (U+00A0) et l'insécable fine
+ * (U+202F, U+2009 et le reste de la classe Unicode Space_Separator) — pas
+ * de classe de caractères manuelle nécessaire.
  */
-function quoteGrounds(quote: string, value: number): boolean {
-  const compact = quote.replace(/[\s\u00a0\u202f]/g, '');
-  return compact.includes(String(value));
+function normalizeThousands(text: string): string {
+  return text.replace(/(\d)\s(?=\d{3}(\D|$))/g, '$1');
+}
+
+/**
+ * Rayon (en caractères) de la fenêtre de proximité autour d'un chiffre
+ * ancré, dans laquelle on exige un mot du lexique du genre. Calibré sur la
+ * citation de référence du 2026-07-26 : entre la fin de « 220000 » et le
+ * début de « évacuer » dans « …contraint 220 000 personnes à évacuer. », il
+ * y a 13 caractères (« personnes à » normalisé) — 30 laisse une marge
+ * confortable. Il reste assez étroit pour rejeter un mot-clé du bon genre
+ * mais rattaché à un AUTRE chiffre de la même citation : dans « Le feu a
+ * détruit 42 000 hectares. Ailleurs, une décision d'évacuation a concerné
+ * une commune voisine, où 175 maisons ont brûlé. », « évacuation » est à
+ * ~41 caractères de « 175 » — hors fenêtre, donc `evacuated: 175` reste
+ * rejeté malgré la présence du mot ailleurs dans la citation (test dédié).
+ */
+const PROXIMITY_RADIUS = 30;
+
+/**
+ * Un candidat est retenu seulement si (a) sa valeur existe dans la citation
+ * comme un nombre À PART ENTIÈRE — jamais un fragment d'un nombre plus long
+ * (Finding 2 : `injured: 4` ne doit pas s'ancrer sur « 42000 ») — ET (b) un
+ * mot du lexique de son genre apparaît à proximité de CETTE occurrence
+ * précise (Finding 1). L'un sans l'autre ne suffit jamais : un chiffre juste
+ * n'importe où dans la citation, ou un mot-clé juste n'importe où dans la
+ * citation, ne prouvent rien sur ce que le chiffre désigne réellement.
+ */
+function isGroundedInQuote(quote: string, kind: NumericFactKind, value: number): boolean {
+  const lexicon = NUMERIC_FACT_LEXICON[kind];
+  const text = normalizeThousands(quote);
+  const numberPattern = new RegExp(`(?<!\\d)${escapeRegExp(String(value))}(?!\\d)`, 'g');
+
+  let match: RegExpExecArray | null;
+  while ((match = numberPattern.exec(text)) !== null) {
+    const windowStart = Math.max(0, match.index - PROXIMITY_RADIUS);
+    const windowEnd = Math.min(text.length, match.index + match[0].length + PROXIMITY_RADIUS);
+    if (lexicon.test(text.slice(windowStart, windowEnd))) return true;
+  }
+  return false;
 }
 
 /**
  * Prompt : demande explicitement un tableau JSON strict, et interdit toute
  * déduction — seuls les chiffres explicitement présents dans les citations
- * comptent. La citation reste la seule vérité ; le garde-fou `quoteGrounds`
- * ci-dessous ne fait pas confiance aveuglément à cette consigne.
+ * comptent. La citation reste la seule vérité ; le garde-fou
+ * `isGroundedInQuote` ci-dessous ne fait pas confiance aveuglément à cette
+ * consigne. Seuls les genres chiffrés sont listés (voir `NumericFactKind`).
  */
 function buildPrompt(facts: ImpactFact[]): string {
   const citations = facts.map((f, i) => `${i + 1}. "${f.quote}"`).join('\n');
   return [
     'Tu relis des citations de presse et de communiqués officiels sur un incendie en France.',
-    `Genres de faits connus : ${FACT_KINDS.join(', ')}.`,
+    `Genres de faits chiffrés connus : ${NUMERIC_KINDS.join(', ')}.`,
     'Pour chaque citation, identifie UNIQUEMENT les faits chiffrés qui y sont EXPLICITEMENT',
     'mentionnés. N\'invente et ne déduis aucun chiffre absent du texte.',
     'Réponds STRICTEMENT avec un tableau JSON, sans aucun texte autour, de la forme :',
@@ -87,10 +161,11 @@ function buildPrompt(facts: ImpactFact[]): string {
 
 /**
  * Valide chaque candidat et lui rattache la provenance du fait source dont
- * la citation contient effectivement sa valeur. Un candidat dont le genre
- * est inconnu, dont la valeur n'est numérique dans aucune citation relue, ou
- * qui double un fait déjà présent (même genre, même valeur) est écarté —
- * jamais complété par une valeur par défaut (§3.3).
+ * la citation grounde effectivement sa valeur (chiffre + genre, voir
+ * `isGroundedInQuote`). Un candidat dont le genre est inconnu ou non
+ * chiffré, dont la valeur n'est ancrée dans aucune citation relue, ou qui
+ * double un fait déjà présent (même genre, même valeur) est écarté — jamais
+ * complété par une valeur par défaut (§3.3).
  */
 function factsFromCandidates(candidates: unknown[], sourceFacts: ImpactFact[]): ImpactFact[] {
   const already = new Set(sourceFacts.map(f => `${f.kind}|${f.value ?? 'null'}`));
@@ -101,20 +176,21 @@ function factsFromCandidates(candidates: unknown[], sourceFacts: ImpactFact[]): 
     if (!isLlmCandidate(raw)) continue;
     const { kind, value } = raw;
     if (!KNOWN_KINDS.has(kind)) continue;
+    const numericKind = kind as NumericFactKind;
 
     const key = `${kind}|${value}`;
     if (already.has(key)) continue;
 
     // La provenance n'est jamais fabriquée : on cherche le fait dont la
-    // citation grounde réellement cette valeur.
-    const donor = sourceFacts.find(f => quoteGrounds(f.quote, value));
+    // citation grounde réellement cette valeur, pour ce genre précis.
+    const donor = sourceFacts.find(f => isGroundedInQuote(f.quote, numericKind, value));
     if (!donor) continue;
 
     const newFact: ImpactFact = {
       id: nextId++,
-      kind: kind as ImpactFactKind,
+      kind: numericKind,
       value,
-      unit: kind === 'area_ha' ? 'ha' : null,
+      unit: kind === 'area_ha' ? 'ha' : kind === 'road_closed' ? 'km' : null,
       quote: donor.quote,
       sourceUrl: donor.sourceUrl,
       sourceName: donor.sourceName,

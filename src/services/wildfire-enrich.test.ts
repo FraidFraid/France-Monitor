@@ -55,6 +55,22 @@ describe('enrichWithLlm', () => {
     expect(url).not.toMatch(/groq|openai|anthropic/i);
   });
 
+  it('Finding 3 (round 1) — le prompt ne promet pas les genres qualitatifs', async () => {
+    // evacuation_order et rail_disrupted n'ont jamais de valeur chiffrée
+    // (§3.4) : isLlmCandidate exigeant `value: number`, un candidat de ce
+    // genre serait de toute façon jeté. Les lister dans le prompt ferait
+    // travailler le LLM pour rien.
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ response: '[]' }), { status: 200 }),
+    );
+    const dossier = buildDossier(INCIDENT, [fact()], ['33']);
+    await enrichWithLlm(dossier, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as { prompt: string };
+    expect(body.prompt).not.toMatch(/evacuation_order|rail_disrupted/);
+    expect(body.prompt).toMatch(/area_ha/);
+  });
+
   it('hérite la provenance de la citation relue et marque method: llm', async () => {
     // Le fait source : c'est SA citation que le LLM relit, et c'est SA
     // provenance que le fait produit hérite. Rien n'est fabriqué (§3.3).
@@ -184,5 +200,92 @@ describe('enrichWithLlm', () => {
     const body = JSON.parse(String(init.body));
     expect(body.model).toBe('llama3');
     expect(body.stream).toBe(false);
+  });
+});
+
+// Round 1 de revue — Findings 1 et 2 : l'ancrage par sous-chaîne brute (a)
+// ignore le genre du fait (un nombre présent n'importe où dans la citation
+// valide n'importe quel kind) et (b) accepte un fragment d'un nombre plus
+// long ("4" dans "42000"). Le fait source porte volontairement un
+// kind/value (`injured`/999999) qui ne collisionne avec aucun candidat
+// testé ici, pour que le rejet ou l'acceptation viennent bien de l'ancrage
+// et jamais de la déduplication (already-known).
+describe('enrichWithLlm — ancrage genre + frontière de chiffre (round 1 de revue)', () => {
+  function sourceFact(quote: string): ImpactFact {
+    return fact({ quote, kind: 'injured', value: 999999, sourceName: 'Sud Ouest' });
+  }
+
+  async function isAccepted(quote: string, candidate: { kind: string; value: number }): Promise<boolean> {
+    const payload = JSON.stringify({ response: JSON.stringify([candidate]) });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(payload, { status: 200 }));
+    const dossier = buildDossier(INCIDENT, [sourceFact(quote)], ['33']);
+    const result = await enrichWithLlm(dossier, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    return result.facts.some(f => f.method === 'llm' && f.kind === candidate.kind && f.value === candidate.value);
+  }
+
+  it('area_ha: 42000 sur "42 000 hectares" → accepté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'area_ha', value: 42000 },
+    )).toBe(true);
+  });
+
+  it('evacuated: 220000 sur "220 000 personnes à évacuer" → accepté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares et contraint 220 000 personnes à évacuer.",
+      { kind: 'evacuated', value: 220000 },
+    )).toBe(true);
+  });
+
+  it('Finding 1 — evacuated: 175 sur "42 000 hectares et 175 maisons" → rejeté (mauvais genre)', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares et 175 maisons.",
+      { kind: 'evacuated', value: 175 },
+    )).toBe(false);
+  });
+
+  it('Finding 2 — injured: 4 sur "42 000 hectares" → rejeté (fragment d\'un nombre plus long)', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'injured', value: 4 },
+    )).toBe(false);
+  });
+
+  it('dwellings_destroyed: 175 sur "175 maisons ont brûlé" → accepté (bon genre, contraste avec Finding 1)', async () => {
+    expect(await isAccepted(
+      '175 maisons ont brûlé.',
+      { kind: 'dwellings_destroyed', value: 175 },
+    )).toBe(true);
+  });
+
+  it('Finding 2 (isolé du lexique) — dwellings_destroyed: 75 sur "175 maisons" → rejeté (fragment de 175, pas son propre nombre)', async () => {
+    // Contrairement au test Finding 2 ci-dessus, le mot-clé du bon genre EST
+    // présent juste à côté — seule la frontière de chiffre peut rejeter ce
+    // candidat. Sans elle, "75" matcherait comme sous-chaîne de "175", avec
+    // "maisons" à proximité immédiate, et serait accepté à tort.
+    expect(await isAccepted(
+      '175 maisons ont brûlé.',
+      { kind: 'dwellings_destroyed', value: 75 },
+    )).toBe(false);
+  });
+
+  it('non-régression : insécable fine (U+2009) dans le nombre → toujours accepté', async () => {
+    expect(await isAccepted(
+      "L'incendie a détruit 42 000 hectares.",
+      { kind: 'area_ha', value: 42000 },
+    )).toBe(true);
+  });
+
+  it('rejette un genre valide trouvé ailleurs dans la citation, hors du rayon de proximité', async () => {
+    // Preuve que le mécanisme est une PROXIMITÉ, pas une simple présence :
+    // "évacuation" existe bien dans cette citation, mais à ~41 caractères de
+    // "175" — hors du rayon retenu (voir PROXIMITY_RADIUS dans
+    // wildfire-enrich.ts). Sans le rayon, "évacuation" présent n'importe où
+    // dans la citation suffirait à valider n'importe quel nombre du même texte.
+    expect(await isAccepted(
+      "Le feu a détruit 42 000 hectares. Ailleurs, une décision d'évacuation a "
+      + 'concerné une commune voisine, où 175 maisons ont brûlé.',
+      { kind: 'evacuated', value: 175 },
+    )).toBe(false);
   });
 });
