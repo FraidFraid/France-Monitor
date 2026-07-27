@@ -79,6 +79,8 @@ import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
 import { fetchFiresData } from './services/fires.ts';
 import { resolveIncidentGeography } from './services/incident-geography.ts';
+import { buildDossier } from './services/wildfire-dossier.ts';
+import type { WildfireDossierModal } from './components/WildfireDossierModal.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
 import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
 import {
@@ -1420,6 +1422,9 @@ export class App {
   private sentinelModal: SentinelModal | null = null;
   private rightSidebar: RightSidebar | null = null;
   private sentinelModalPromise: Promise<SentinelModal> | null = null;
+  /** Modal du dossier « grand feu ». Nom référencé par la Task 9. */
+  private wildfireModal: WildfireDossierModal | null = null;
+  private wildfireModalPromise: Promise<WildfireDossierModal> | null = null;
   private rightSidebarPromise: Promise<RightSidebar> | null = null;
   private lastBarometerMetrics: HealthBarometerMetrics | null = null;
   private currentHealthFeatures: HealthFeatures | null = null;
@@ -1920,6 +1925,48 @@ export class App {
     });
 
     return this.sentinelModalPromise;
+  }
+
+  private ensureWildfireModal(): Promise<WildfireDossierModal> {
+    if (this.wildfireModal) return Promise.resolve(this.wildfireModal);
+    if (this.wildfireModalPromise) return this.wildfireModalPromise;
+    if (!this.floatContainerEl) {
+      return Promise.reject(new Error('Floating container not ready'));
+    }
+
+    this.wildfireModalPromise = import('./components/WildfireDossierModal.ts').then(({ WildfireDossierModal }) => {
+      const modal = new WildfireDossierModal(this.floatContainerEl!);
+      this.wildfireModal = modal;
+      return modal;
+    });
+
+    return this.wildfireModalPromise;
+  }
+
+  /**
+   * Ouvre le dossier « grand feu » d'un incident géo-résolu. `/api/fires/impacts`
+   * (Task 4) est différé — un échec réseau (404, timeout, JSON invalide) n'est
+   * jamais bloquant : le dossier s'affiche avec la seule détection FIRMS et la
+   * mention « impacts non renseignés » (§7). Jamais de zéro ni de chiffre supposé.
+   */
+  private async openWildfireDossier(incident: import('./types/index.ts').LocatedFireIncident): Promise<void> {
+    let facts: import('./types/index.ts').ImpactFact[] = [];
+    try {
+      const deptParam = incident.deptCodes.join(',');
+      const response = await fetch(`/api/fires/impacts?dept=${encodeURIComponent(deptParam)}`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (response.ok) {
+        const json = await response.json() as { facts?: unknown };
+        facts = Array.isArray(json.facts) ? json.facts as import('./types/index.ts').ImpactFact[] : [];
+      }
+    } catch (error) {
+      console.warn('[WildfireDossier] /api/fires/impacts indisponible — dossier détection seule', error);
+    }
+
+    const dossier = buildDossier(incident, facts, incident.deptCodes);
+    const modal = await this.ensureWildfireModal();
+    modal.show(dossier);
   }
 
   private ensureSearchModal(): Promise<SearchModal> {
@@ -3759,6 +3806,16 @@ export class App {
     await this.mapContainer.init();
     this.alertMonitor?.destroy();
     this.alertMonitor = new AlertMonitor(mapEl);
+    this.alertMonitor.setDossierHandler((situation) => {
+      if (situation.type !== 'WILDFIRE_ESCALATION') return false;
+      const incidentId = situation.id.replace(/^wildfire-/, '');
+      // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
+      // à côté de currentActiveFires.
+      const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
+      if (!incident) return false;
+      void this.openWildfireDossier(incident);
+      return true;
+    });
     this.situationMonitor?.destroy();
     this.situationMonitor = new SituationMonitor(mapEl);
     this.situationMonitor.setOnLayerActivate((layerKeys) => {

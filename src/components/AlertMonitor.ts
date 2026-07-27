@@ -68,6 +68,7 @@ export class AlertMonitor {
   private hasCustomPosition = false;
   /** Re-render guard: signature of the last rendered content. */
   private lastRenderKey: string | null = null;
+  private onOpenDossier?: (situation: DetectedSituation) => boolean;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -86,6 +87,15 @@ export class AlertMonitor {
     }
     this.lang = lang;
     this.render();
+  }
+
+  /**
+   * Permet à un consommateur de prendre en charge le détail d'une alerte
+   * (ex: dossier « grand feu »). Si le handler renvoie `true`, le détail
+   * intégré de showDetail est court-circuité pour ne pas le dupliquer.
+   */
+  setDossierHandler(handler: (situation: DetectedSituation) => boolean): void {
+    this.onOpenDossier = handler;
   }
 
   destroy(): void {
@@ -330,6 +340,11 @@ export class AlertMonitor {
   }
 
   private showDetail(s: DetectedSituation): void {
+    // Si un dossier dédié prend en charge cette alerte, on court-circuite le
+    // détail intégré plutôt que de le dupliquer. Placé ici et non dans
+    // openDetail : les chemins clic ET clavier passent tous deux par showDetail.
+    if (this.onOpenDossier?.(s) === true) return;
+
     document.querySelector('.sit-mon__detail')?.remove();
 
     const color = SEV_COLOR[s.severity];
