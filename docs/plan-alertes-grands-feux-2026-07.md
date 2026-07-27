@@ -1511,22 +1511,57 @@ ne pas le réimporter.
 
 - [ ] **Step 4: Adapter `RULES` aux règles multi-situations**
 
-À la l.568, retirer `detectWildfireEscalation` de `RULES` et l'appeler à part dans `detectSituations` :
+Retirer `detectWildfireEscalation` de `RULES` (l.568) et appeler la nouvelle règle à part dans
+`detectSituations` (l.585). **Ne pas réécrire la fonction** : elle porte trois propriétés à
+préserver, vérifiées dans le code réel.
+
+1. Un `try/catch` **par règle** — « une règle ne doit jamais faire crasher l'engine » (l.589-595).
+2. Un tri à **deux critères** : sévérité, puis confiance (l.599-603).
+3. Un `.slice(0, 10)` final (l.604).
+
+Insertion minimale, après la boucle `for (const rule of RULES)` et avant le `return results` :
 
 ```ts
-export function detectSituations(raw: FranceRawData): DetectedSituation[] {
-  const found = RULES.map(rule => rule(raw)).filter(
-    (value): value is DetectedSituation => value !== null,
-  );
-  // Règle multi-situations : une alerte par incident majeur.
-  found.push(...detectWildfireIncidents(raw));
-  return found.sort(
-    (a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity],
-  );
-}
+  // Règle multi-situations : une alerte par incident majeur (§5.3).
+  // Même isolation que les autres règles — un incident mal formé ne doit pas
+  // emporter tout le moteur.
+  try {
+    results.push(...detectWildfireIncidents(raw));
+  } catch (err) {
+    console.warn('[SituationEngine] Wildfire rule error:', err);
+  }
 ```
 
-Vérifier le corps réel de `detectSituations` (l.585) avant d'éditer et conserver son tri existant.
+**Le plafond de 10 demande une décision explicite.** `detectSituations` tronque à 10 situations.
+Une règle qui en émet désormais plusieurs peut faire dépasser ce plafond, et le `.slice()` est
+**silencieux** : un second front d'incendie en `medium` disparaîtrait sans trace, ce que le §7
+interdit (« une donnée manquante s'affiche comme manquante »).
+
+Ne pas relever le plafond — hors périmètre. Rendre la troncature **visible** :
+
+```ts
+  const ranked = results.sort(/* tri existant, inchangé */);
+  if (ranked.length > 10) {
+    console.warn(
+      `[SituationEngine] ${ranked.length - 10} situation(s) tronquée(s) par le plafond de 10`,
+    );
+  }
+  return ranked.slice(0, 10);
+```
+
+- [ ] **Step 4b: Test du plafond**
+
+```ts
+it('ne tronque jamais un incendie critical en silence', () => {
+  const incidents = Array.from({ length: 14 }, (_, i) =>
+    incident({ id: `front-${i}`, detectionsCount: 650, frpTotal: 7178 }));
+  const situations = detectWildfireIncidents(raw(incidents));
+  // La règle elle-même n'applique aucun plafond : le tri de detectSituations
+  // place les critical en tête, et toute troncature est journalisée.
+  expect(situations).toHaveLength(14);
+  expect(situations.every(s => s.severity === 'critical')).toBe(true);
+});
+```
 
 - [ ] **Step 5: Run tests**
 
