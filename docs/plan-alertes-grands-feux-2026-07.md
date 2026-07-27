@@ -1999,7 +1999,7 @@ git commit -m "feat: modal du dossier grand feu et hook AlertMonitor"
 de `.sort()`, dont la spec ECMAScript ne garantit pas le comportement.
 
 Inoffensif jusqu'ici — le seul producteur, l'extracteur de la Task 1, émet de l'ISO 8601 valide.
-Mais cette tâche introduit un **second producteur** dont l'horodatage vient d'un `sourceHint`,
+Mais cette tâche introduit un **second producteur** dont les faits sortent d'une réponse LLM,
 donc potentiellement d'une réponse LLM. C'est le moment de fermer la porte, avant qu'elle serve.
 
 Un horodatage illisible n'est de toute façon pas une provenance : c'est `observedAt` qui porte la
@@ -2061,23 +2061,44 @@ describe('enrichWithLlm', () => {
     expect(url).not.toMatch(/groq|openai|anthropic/i);
   });
 
-  it('marque method: llm sur les faits ajoutés et exige leur provenance', async () => {
+  it('hérite la provenance de la citation relue et marque method: llm', async () => {
+    // Le fait source : c'est SA citation que le LLM relit, et c'est SA
+    // provenance que le fait produit hérite. Rien n'est fabriqué (§3.3).
+    const source = fact({
+      id: 1, kind: 'area_ha', value: 42000,
+      quote: "L'incendie a détruit 42 000 hectares et contraint 220 000 personnes à évacuer.",
+      sourceUrl: 'https://www.sudouest.fr/a/1', sourceName: 'Sud Ouest',
+      sourceLevel: 'secondary', reliability: 'D', observedAt: '2026-07-26T08:00:00Z',
+    });
     const payload = JSON.stringify({
       response: JSON.stringify([
-        { kind: 'dwellings_destroyed', value: 175, quote: '175 maisons ont brûlé' },
-        { kind: 'area_ha', value: 999 }, // sans quote → doit être rejeté
+        { kind: 'evacuated', value: 220000 },   // genre manqué par les patterns
+        { kind: 'dwellings_destroyed', value: 175 }, // absent de la citation → à rejeter
       ]),
     });
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(payload, { status: 200 }));
+    const fetchImpl = vi.fn().mockImplementation(
+      () => Promise.resolve(new Response(payload, { status: 200 })),
+    );
     const result = await enrichWithLlm(
-      { ...DOSSIER, facts: [] },
-      { fetchImpl: fetchImpl as unknown as typeof fetch, sourceHint: {
-        sourceUrl: 'https://www.sudouest.fr/a/1', sourceName: 'Sud Ouest',
-        sourceLevel: 'secondary', reliability: 'D', observedAt: '2026-07-26T08:00:00Z' } },
+      buildDossier(INCIDENT, [source], ['33']),
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
     );
     const llmFacts = result.facts.filter(f => f.method === 'llm');
     expect(llmFacts).toHaveLength(1);
-    expect(llmFacts[0].value).toBe(175);
+    expect(llmFacts[0].kind).toBe('evacuated');
+    expect(llmFacts[0].value).toBe(220000);
+    // Provenance héritée à l'identique du fait source, jamais inventée.
+    expect(llmFacts[0].sourceUrl).toBe(source.sourceUrl);
+    expect(llmFacts[0].sourceName).toBe(source.sourceName);
+    expect(llmFacts[0].observedAt).toBe(source.observedAt);
+    expect(llmFacts[0].quote).toBe(source.quote);
+  });
+
+  it('ne relit rien et n\'appelle pas Ollama sur un dossier sans fait', async () => {
+    const fetchImpl = vi.fn();
+    const result = await enrichWithLlm(DOSSIER, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result.facts).toEqual([]);
   });
 
   it('ignore une réponse LLM non parsable sans casser le dossier', async () => {
