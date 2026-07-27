@@ -1852,12 +1852,22 @@ Modifier la signature (l.82) et le clic (l.165) :
   }
 ```
 
-Dans `openDetail`, en première ligne :
+Le garde va dans **`showDetail`** (`AlertMonitor.ts:332`), pas dans `openDetail`. Raison
+vérifiée : `openDetail` est recréé par item dans une boucle et n'a pas la situation en variable
+locale, et surtout **deux chemins** mènent à `showDetail` — le clic (`:164`) et le clavier
+Enter/Espace (`:165-170`). Poser le garde dans `openDetail` raterait le chemin clavier, donc
+l'accessibilité.
+
+Première ligne de `showDetail(s: DetectedSituation)` :
 
 ```ts
-      // Si un dossier dédié prend en charge cette alerte, on court-circuite
-      // le détail intégré plutôt que de le dupliquer.
-      if (this.onOpenDossier?.(s) === true) return;
+  private showDetail(s: DetectedSituation): void {
+    // Si un dossier dédié prend en charge cette alerte, on court-circuite le
+    // détail intégré plutôt que de le dupliquer. Placé ici et non dans
+    // openDetail : les chemins clic ET clavier passent tous deux par showDetail.
+    if (this.onOpenDossier?.(s) === true) return;
+
+    document.querySelector('.sit-mon__detail')?.remove();
 ```
 
 - [ ] **Step 6: Câbler dans `App.ts`**
