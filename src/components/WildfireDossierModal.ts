@@ -216,18 +216,39 @@ function renderObservedBlock(incident: FireIncident): string {
 }
 
 /**
+ * Rend un fait isolément, ou renvoie `null` s'il est malformé. `isKnownFactKind`
+ * reste un chemin rapide pour rejeter tôt le cas connu (kind hors énumération) ;
+ * le `try/catch` est le filet qui rend la garantie vraie pour toute AUTRE forme
+ * de malformation (champ requis absent/mal typé sur un JSON tronqué, etc.) —
+ * round 2, Finding 4 : couvrir `kind` seul laissait passer deux effondrements
+ * collectifs (`sourceName` undefined, objet quasi vide `{id, kind}`). Ce qui
+ * est écarté laisse une trace, comme pour la troncature du plafond de
+ * situations (§7 — une donnée manquante s'affiche comme manquante).
+ */
+function renderKnownFact(fact: ImpactFact): string | null {
+  try {
+    if (!isKnownFactKind(fact.kind)) {
+      console.warn(`[WildfireDossierModal] fait ignoré (kind inconnu) — id=${fact?.id ?? '?'}`);
+      return null;
+    }
+    return renderFactRow(fact);
+  } catch (error) {
+    console.warn(`[WildfireDossierModal] fait ignoré (rendu invalide) — id=${fact?.id ?? '?'}`, error);
+    return null;
+  }
+}
+
+/**
  * Bloc « déclaré » — une ligne par ImpactFact, ou la mention explicite
  * d'absence (§7) : jamais un zéro, jamais un chiffre supposé. Export pur
- * pour test (round 1, Finding 2).
- *
- * Un fait au `kind` inconnu (donnée non validée par l'API à venir) est
- * ignoré silencieusement plutôt que de faire tomber tout le bloc — cohérent
- * avec la règle du projet : une donnée manquante s'affiche comme manquante,
- * elle n'emporte jamais le reste.
+ * pour test (round 1, Finding 2 ; round 2, Finding 4).
  */
 export function renderDeclaredBlock(facts: ImpactFact[]): string {
-  const known = facts.filter(f => isKnownFactKind(f.kind));
-  if (known.length === 0) {
+  const rendered = facts
+    .map(renderKnownFact)
+    .filter((html): html is string => html !== null);
+
+  if (rendered.length === 0) {
     return `
       <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
       <p class="wf-modal__empty">Impacts non renseignés.</p>
@@ -235,7 +256,7 @@ export function renderDeclaredBlock(facts: ImpactFact[]): string {
   }
   return `
     <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
-    <ul class="wf-facts">${known.map(renderFactRow).join('')}</ul>
+    <ul class="wf-facts">${rendered.join('')}</ul>
   `;
 }
 

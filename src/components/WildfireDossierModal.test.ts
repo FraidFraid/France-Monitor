@@ -5,7 +5,7 @@
 // (aligné sur les tests métier purs) — ce fichier bascule donc sur happy-dom,
 // comme FiresPanel.test.ts et App.radar-2d.test.ts.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ImpactFact } from '../types/index.ts';
 import { renderDeclaredBlock, renderFactRow } from './WildfireDossierModal.ts';
 
@@ -123,5 +123,58 @@ describe('renderDeclaredBlock', () => {
     const html = renderDeclaredBlock(facts);
     expect(html).toContain('Surface brûlée');
     expect(html).toContain('Personnes évacuées');
+  });
+
+  // Finding 4 (round 2) : isKnownFactKind ne couvre que `kind`. Un fait au
+  // kind valide mais dont un AUTRE champ est absent/mal typé (JSON tronqué,
+  // donnée non validée à l'exécution) doit être isolé de la même façon —
+  // la propriété visée est « un fait malformé, quelle que soit sa forme, ne
+  // fait jamais tomber ses voisins », pas seulement « un kind inconnu ».
+  it('isole un fait dont sourceName est undefined sans faire tomber ses voisins', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts: ImpactFact[] = [
+        fact({ id: 1, kind: 'area_ha' }),
+        fact({ id: 2, sourceName: undefined as unknown as string }),
+        fact({ id: 3, kind: 'evacuated', value: 12, unit: 'personnes' }),
+      ];
+      const html = renderDeclaredBlock(facts);
+      expect(html).toContain('Surface brûlée');
+      expect(html).toContain('Personnes évacuées');
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('isole un fait quasi vide ({ id, kind } — JSON tronqué) sans faire tomber ses voisins', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        fact({ id: 1, kind: 'area_ha' }),
+        { id: 2, kind: 'evacuated' } as unknown as ImpactFact,
+        fact({ id: 3, kind: 'evacuated', value: 12, unit: 'personnes' }),
+      ];
+      const html = renderDeclaredBlock(facts);
+      expect(html).toContain('Surface brûlée');
+      expect(html).toContain('Personnes évacuées');
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('journalise chaque fait écarté, qu\'il le soit par kind inconnu ou par le filet try/catch', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        fact({ id: 1, kind: 'bogus_kind' as unknown as ImpactFact['kind'] }),
+        { id: 2, kind: 'evacuated' } as unknown as ImpactFact,
+      ];
+      renderDeclaredBlock(facts);
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
