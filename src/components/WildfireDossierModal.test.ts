@@ -177,4 +177,59 @@ describe('renderDeclaredBlock', () => {
       warnSpy.mockRestore();
     }
   });
+
+  // Finding 5 (round 3) : un fait écarté par le filet disparaissait sans
+  // trace VISIBLE (seul console.warn le savait) — contraire à « une donnée
+  // manquante s'affiche comme manquante ». Le décompte doit apparaître sous
+  // la liste, correctement accordé au singulier/pluriel, et seulement quand
+  // il y a effectivement quelque chose à signaler.
+  it('affiche une mention « 1 fait ignoré » quand un seul fait est écarté', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        fact({ id: 1, kind: 'area_ha' }),
+        { id: 2, kind: 'evacuated' } as unknown as ImpactFact,
+        fact({ id: 3, kind: 'evacuated', value: 12, unit: 'personnes' }),
+      ];
+      const html = renderDeclaredBlock(facts);
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      expect(container.querySelectorAll('li.wf-fact').length).toBe(2);
+      const notice = container.querySelector('.wf-modal__notice');
+      expect(notice).not.toBeNull();
+      expect(notice?.textContent).toMatch(/1 fait ignoré/);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('accorde au pluriel « 2 faits ignorés » quand deux faits sont écartés', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const facts = [
+        fact({ id: 1, kind: 'area_ha' }),
+        { id: 2, kind: 'evacuated' } as unknown as ImpactFact,
+        { id: 3, kind: 'bogus_kind' } as unknown as ImpactFact,
+      ];
+      const html = renderDeclaredBlock(facts);
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      const notice = container.querySelector('.wf-modal__notice');
+      expect(notice).not.toBeNull();
+      expect(notice?.textContent).toMatch(/2 faits ignorés/);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('n\'affiche aucune mention quand tous les faits sont valides', () => {
+    const facts: ImpactFact[] = [
+      fact({ id: 1, kind: 'area_ha' }),
+      fact({ id: 2, kind: 'evacuated', value: 12, unit: 'personnes' }),
+    ];
+    const html = renderDeclaredBlock(facts);
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('.wf-modal__notice')).toBeNull();
+  });
 });
