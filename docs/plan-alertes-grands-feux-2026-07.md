@@ -2157,7 +2157,11 @@ git commit -m "feat: enrichissement Ollama du dossier, à l'ouverture et en loca
 **Interfaces:**
 - Consumes: `FireIncident` (existant), `LocatedFireIncident` (Task 5).
 - Produces: `resolveIncidentGeography(incidents, deps?): Promise<LocatedFireIncident[]>` avec
-  `deps = { fetchImpl?: typeof fetch, cache?: Map<string, {deptCode: string, commune: string}> }`.
+  `deps = { fetchImpl?: typeof fetch, cache?: Map<string, Promise<CellGeo | null>> }`.
+  Le cache stocke la **promesse en cours**, pas le résultat résolu : c'est un cache
+  « single-flight ». Sans cela, les cinq échantillons d'un incident compact tombant dans la
+  même maille partent tous au réseau avant qu'aucun n'ait écrit — mesuré à 4 appels au lieu
+  de 1. Un cache de résultats ne dédoublonne que les recherches **séquentielles**.
 
 Sonde `geo.api.gouv.fr/communes?lat=&lon=` en point-dans-polygone. Vérifié le 2026-07-27 : la BAN
 (`api-adresse`) renvoie **zéro adresse** sur un foyer en forêt — c'est `geo.api.gouv.fr` qu'il
@@ -2191,7 +2195,9 @@ function ok(nom: string, dept: string) {
 
 describe('resolveIncidentGeography', () => {
   it('résout département et commune depuis geo.api.gouv.fr', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(ok('Lanton', '33'));
+    // mockImplementation, pas mockResolvedValue : un vrai fetch renvoie une
+    // Response NEUVE par appel, et Response.json() ne se consomme qu'une fois.
+    const fetchImpl = vi.fn().mockImplementation(() => ok('Lanton', '33'));
     const [located] = await resolveIncidentGeography(
       [incident('a', 44.7794, -0.9253)],
       { fetchImpl: fetchImpl as unknown as typeof fetch },
@@ -2225,7 +2231,9 @@ describe('resolveIncidentGeography', () => {
   });
 
   it('réutilise le cache : deux incidents de la même maille = un seul appel', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(ok('Lanton', '33'));
+    // mockImplementation, pas mockResolvedValue : un vrai fetch renvoie une
+    // Response NEUVE par appel, et Response.json() ne se consomme qu'une fois.
+    const fetchImpl = vi.fn().mockImplementation(() => ok('Lanton', '33'));
     const cache = new Map();
     await resolveIncidentGeography([incident('a', 44.7794, -0.9253)],
       { fetchImpl: fetchImpl as unknown as typeof fetch, cache });
@@ -2233,6 +2241,24 @@ describe('resolveIncidentGeography', () => {
     await resolveIncidentGeography([incident('b', 44.7794, -0.9253)],
       { fetchImpl: fetchImpl as unknown as typeof fetch, cache });
     expect(fetchImpl.mock.calls.length).toBe(before);
+  });
+
+  it('ne lance qu\'UN appel pour cinq échantillons dans la même maille', async () => {
+    // Le test séquentiel ci-dessus ne peut pas voir ce trou : il attend la fin
+    // du premier appel. Ici les 5 échantillons d'un bbox compact partent
+    // concurremment, et seul un cache single-flight les dédoublonne.
+    const fetchImpl = vi.fn().mockImplementation(() => ok('Lanton', '33'));
+    const tight = { ...incident('a', 44.7794, -0.9253),
+      bboxMinLat: 44.7784, bboxMaxLat: 44.7804,
+      bboxMinLon: -0.9263, bboxMaxLon: -0.9243 };
+    // Contrôle préalable : sans cela le test ne teste rien.
+    expect(new Set([
+      cellKey(tight.centroidLat, tight.centroidLon),
+      cellKey(tight.bboxMinLat, tight.bboxMinLon),
+      cellKey(tight.bboxMaxLat, tight.bboxMaxLon),
+    ]).size).toBe(1);
+    await resolveIncidentGeography([tight], { fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('arrondit la maille de cache à 0,05 degré', () => {
