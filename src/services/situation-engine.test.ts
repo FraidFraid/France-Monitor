@@ -107,16 +107,30 @@ function floodFixture(): FranceRawData {
 
 function wildfireFixture(): FranceRawData {
   return baseRawData({
-    activeFires: Array.from({ length: 6 }, (_, i) =>
-      typed<FranceRawData['activeFires'][number]>({
-        id: `fire-${i}`,
-        latitude: 43.5 + i * 0.01,
-        longitude: 5.1 + i * 0.01,
-        brightness: 320,
-        confidence: 'high',
-        timestamp: new Date(),
+    // La règle ne compte plus les détections au national : elle lit les
+    // incidents clusterisés. Un incident au-dessus de la porte 40/300.
+    fireIncidents: [
+      typed<NonNullable<FranceRawData['fireIncidents']>[number]>({
+        id: 'incident-paca',
+        centroidLat: 43.5,
+        centroidLon: 5.1,
+        bboxMinLat: 43.4, bboxMaxLat: 43.6, bboxMinLon: 5.0, bboxMaxLon: 5.2,
+        detectionsCount: 120,
+        frpMean: 12, frpMax: 90, frpTotal: 1600,
+        confidenceMax: 'high',
+        startDatetime: '2026-07-26T01:00:00Z',
+        endDatetime: '2026-07-26T13:00:00Z',
+        durationMinutes: 720,
+        satellites: ['SNPP'],
+        hasNightDetection: true,
+        nearUrban: true,
+        clusterMethod: 'dbscan', epsKm: 3, minPoints: 2,
+        score: { severityScore: 70, impactScore: 60, labels: [] },
+        detectionIds: [],
+        deptCodes: ['13'],
+        communes: ['Aix-en-Provence'],
       }),
-    ),
+    ],
     meteoAlerts: [
       typed<FranceRawData['meteoAlerts'][number]>({
         department: 'Bouches-du-Rhone',

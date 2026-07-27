@@ -11,6 +11,7 @@
 
 import type {
   DetectedSituation,
+  LocatedFireIncident,
   SituationAction,
   SituationActionType,
   SituationSeverity,
@@ -19,6 +20,7 @@ import type {
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
 
@@ -242,45 +244,53 @@ function detectFloodCrisis(raw: FranceRawData): DetectedSituation | null {
 
 // ─── Règle 4 : WILDFIRE_ESCALATION ───────────────────────────────────────────
 
-function detectWildfireEscalation(raw: FranceRawData): DetectedSituation | null {
-  const fireCount = raw.activeFires.length;
-  if (fireCount < 5) return null;
+// L'ancienne version comptait raw.activeFires.length au national avec un seuil
+// critical de 20. Mesuré le 2026-07-26 : 886 détections en France métropole,
+// donc le capteur restait épinglé sur critical tout l'été en indiquant
+// seulement « France ». Voir §1.3 du design.
 
-  const heatMeteo = raw.meteoAlerts.filter(a =>
-    (a.level === 'orange' || a.level === 'red') &&
-    (a.risks.includes('heat') || a.risks.includes('wind')),
-  );
-  const confirmedByMeteo = heatMeteo.length > 0;
-  if (fireCount < 10 && !confirmedByMeteo) return null;
+export function detectWildfireIncidents(raw: FranceRawData): DetectedSituation[] {
+  const incidents = raw.fireIncidents ?? [];
+  if (incidents.length === 0) return [];
 
-  const severity: SituationSeverity = fireCount >= 20 && confirmedByMeteo ? 'critical'
-    : fireCount >= 15 || (fireCount >= 5 && confirmedByMeteo) ? 'high'
-    : 'medium';
+  // selectMajorIncidents ne fait que filtrer (aucune transformation) : le
+  // résultat reste bien composé de LocatedFireIncident malgré la signature
+  // FireIncident[] de la fonction, d'où la réassertion ci-dessous.
+  const majorIncidents = selectMajorIncidents(incidents) as LocatedFireIncident[];
 
-  const confidence = Math.min(0.90, 0.55 + (fireCount / 40) * 0.25 + (confirmedByMeteo ? 0.15 : 0));
+  return majorIncidents.map(incident => {
+    const severity = wildfireSeverity(incident);
+    // deptCodes vient de LocatedFireIncident (Task 10). Si la résolution
+    // géographique n'a pas encore abouti, on affiche les coordonnées plutôt
+    // que « France » : une position vaut mieux qu'une zone qui ne dit rien.
+    const zone = incident.deptCodes.length > 0
+      ? incident.deptCodes.map(code => `Dépt ${code}`)
+      : [`${incident.centroidLat.toFixed(2)} N, ${incident.centroidLon.toFixed(2)} E`];
+    const extentKm = Math.round((incident.bboxMaxLat - incident.bboxMinLat) * 111);
 
-  const meteoRisks = [...new Set(heatMeteo.flatMap(a => a.risks))].join(', ');
-
-  return situation(
-    'wildfire-escalation',
-    'WILDFIRE_ESCALATION',
-    severity,
-    confidence,
-    'Escalade du risque incendie',
-    `${fireCount} foyers actifs détectés${confirmedByMeteo ? ', conditions météo aggravantes confirmées' : ''}.`,
-    ['France'],
-    [
-      `${fireCount} détections FIRMS/MODIS actives`,
-      ...(confirmedByMeteo ? [
-        `Vigilance météo ${heatMeteo[0].level} — ${meteoRisks}`,
-      ] : []),
-    ],
-    [
-      action('Surveiller les bulletins DFCI', 'Analyste risques naturels', 'monitor'),
-      action('Contrôler l\'indice de risque incendie Météo-France', 'Analyste météo', 'cross-check', true),
-    ],
-    ['NASA FIRMS', 'Vigilance Météo-France'],
-  );
+    return situation(
+      `wildfire-${incident.id}`,
+      'WILDFIRE_ESCALATION',
+      severity,
+      Math.min(0.9, 0.6 + Math.min(incident.detectionsCount, 600) / 600 * 0.3),
+      'Incendie majeur en cours',
+      // Uniquement de l'OBSERVÉ : les hectares et les évacuations sont des
+      // faits déclarés, ils vivent dans le dossier, pas dans l'alerte (§12.5).
+      `${incident.detectionsCount} détections VIIRS agrégées, ${Math.round(incident.frpTotal)} MW cumulés, emprise ~${extentKm} km.`,
+      zone,
+      [
+        `${incident.detectionsCount} détections sur ${incident.satellites.join(', ')}`,
+        `Puissance radiative cumulée ${Math.round(incident.frpTotal)} MW`,
+        ...(incident.nearUrban ? ['Foyer à moins de 15 km d\'une zone urbanisée'] : []),
+        ...(incident.hasNightDetection ? ['Activité nocturne confirmée'] : []),
+      ],
+      [
+        action('Ouvrir le dossier d\'incident', 'Analyste OSINT', 'investigate', true),
+        action('Croiser avec les communiqués préfectoraux', 'Analyste OSINT', 'cross-check'),
+      ],
+      ['NASA FIRMS'],
+    );
+  });
 }
 
 // ─── Règle 5 : CYBER_PRESSURE ────────────────────────────────────────────────
@@ -569,7 +579,6 @@ const RULES: Array<(raw: FranceRawData) => DetectedSituation | null> = [
   detectEnergyStress,
   detectImportDependency,
   detectFloodCrisis,
-  detectWildfireEscalation,
   detectCyberPressure,
   detectSocialEscalation,
   detectTelecomDisruption,
@@ -595,11 +604,24 @@ export function detectSituations(raw: FranceRawData): DetectedSituation[] {
     }
   }
 
-  return results
-    .sort((a, b) => {
-      const sevDiff = SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];
-      if (sevDiff !== 0) return sevDiff;
-      return b.confidence - a.confidence;
-    })
-    .slice(0, 10);
+  // Règle multi-situations : une alerte par incident majeur (§5.3).
+  // Même isolation que les autres règles — un incident mal formé ne doit pas
+  // emporter tout le moteur.
+  try {
+    results.push(...detectWildfireIncidents(raw));
+  } catch (err) {
+    console.warn('[SituationEngine] Wildfire rule error:', err);
+  }
+
+  const ranked = results.sort((a, b) => {
+    const sevDiff = SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];
+    if (sevDiff !== 0) return sevDiff;
+    return b.confidence - a.confidence;
+  });
+  if (ranked.length > 10) {
+    console.warn(
+      `[SituationEngine] ${ranked.length - 10} situation(s) tronquée(s) par le plafond de 10`,
+    );
+  }
+  return ranked.slice(0, 10);
 }
