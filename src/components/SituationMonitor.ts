@@ -16,10 +16,16 @@ function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
 
-function escapeHtml(str: string): string {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+// L'astuce DOM (textContent → innerHTML) n'échappe pas les guillemets : une valeur
+// injectée dans un attribut (title) pouvait en sortir et en ouvrir un autre
+// (ex: onmouseover). Version manuelle, alignée sur SentinelModal.ts.
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function actionTypeLabel(lang: 'fr' | 'en', actionType: SituationAction['actionType']): string {

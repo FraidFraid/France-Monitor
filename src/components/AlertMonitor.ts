@@ -12,10 +12,34 @@ function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
 
-function escapeHtml(str: string): string {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+// L'astuce DOM (textContent → innerHTML) n'échappe pas les guillemets : une valeur
+// injectée dans un attribut (title, href) pouvait en sortir et en ouvrir un autre
+// (ex: onmouseover). Version manuelle, alignée sur SentinelModal.ts.
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+/**
+ * N'autorise `linkUrl` en lien cliquable que pour les schémas http(s).
+ * `escapeHtml` protège des métacaractères HTML, pas du schéma d'une URL :
+ * `javascript:alert(document.cookie)` ne contient aucun caractère échappé et
+ * atterrirait inchangé dans `href`, où il s'exécute au clic malgré
+ * `target="_blank"` (qui protège du tabnabbing, pas de l'exécution d'URI).
+ * `new URL(...)` lève sur une URL relative ou malformée — capturé, traité
+ * comme non sûr plutôt que de planter le rendu.
+ */
+function isSafeSourceUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 const SEV_COLOR: Record<SituationSeverity, string> = {
@@ -365,7 +389,7 @@ export class AlertMonitor {
         </header>
         <p class="sit-mon__detail-summary">${escapeHtml(s.summary)}</p>
         ${zones ? `<div class="sit-mon__detail-zones">${fmIcon('map-pin')} ${zones}</div>` : ''}
-        ${s.linkUrl ? `
+        ${s.linkUrl && isSafeSourceUrl(s.linkUrl) ? `
           <div class="alert-mon__detail-actions">
             <a
               class="alert-mon__detail-link"
