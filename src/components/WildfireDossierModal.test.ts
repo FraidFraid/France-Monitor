@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ImpactFact } from '../types/index.ts';
-import { renderFactRow } from './WildfireDossierModal.ts';
+import { renderDeclaredBlock, renderFactRow } from './WildfireDossierModal.ts';
 
 function fact(over: Partial<ImpactFact> = {}): ImpactFact {
   return {
@@ -49,7 +49,79 @@ describe('renderFactRow', () => {
       sourceName: '<img src=x onerror=alert(1)>',
     }));
     expect(html).not.toContain('<script>');
-    expect(html).not.toContain('onerror=');
     expect(html).toContain('&lt;script&gt;');
+
+    // Assertion sémantique plutôt qu'une sous-chaîne : `not.toContain('onerror=')`
+    // est un proxy trompeur — le payload ne forme aucun élément qu'on l'ait ou
+    // non retiré, puisque sourceName est du texte échappé, pas du HTML actif.
+    // Ce qui compte est qu'aucun <img>/<script> ne se soit réellement formé.
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelectorAll('img').length).toBe(0);
+    expect(container.querySelectorAll('script').length).toBe(0);
+    const link = container.querySelector('a');
+    expect(link?.children.length ?? 0).toBe(0);
+  });
+});
+
+describe('renderFactRow — validation du schéma de sourceUrl', () => {
+  // Finding 1 (CRITICAL, round 1) : escapeHtml neutralise les métacaractères
+  // HTML, pas le SCHÉMA d'une URL. `javascript:` ne contient aucun caractère
+  // parmi & < > " ' et traverse l'échappement inchangé jusque dans href.
+  // Seuls http:/https: sont autorisés ; sinon le fait reste visible (§3.3)
+  // mais sans lien cliquable — jamais de href="#" trompeur.
+
+  it('rejette javascript: et ne produit aucun lien, mais garde la provenance textuelle', () => {
+    const html = renderFactRow(fact({ sourceUrl: 'javascript:alert(document.cookie)' }));
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('a')).toBeNull();
+    expect(html).toContain('Sud Ouest');
+  });
+
+  it('rejette data: et ne produit aucun lien', () => {
+    const html = renderFactRow(fact({ sourceUrl: 'data:text/html,<script>alert(1)</script>' }));
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('a')).toBeNull();
+  });
+
+  it('rejette une URL relative et ne produit aucun lien', () => {
+    const html = renderFactRow(fact({ sourceUrl: '/a/1' }));
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('a')).toBeNull();
+  });
+
+  it('rejette une chaîne vide et ne produit aucun lien', () => {
+    const html = renderFactRow(fact({ sourceUrl: '' }));
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    expect(container.querySelector('a')).toBeNull();
+  });
+
+  it('accepte https: et produit toujours un lien normal', () => {
+    const html = renderFactRow(fact({ sourceUrl: 'https://www.sudouest.fr/a/1' }));
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    const link = container.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('https://www.sudouest.fr/a/1');
+  });
+});
+
+describe('renderDeclaredBlock', () => {
+  // Finding 2 (Important, round 1) : un fait au kind hors énumération (donnée
+  // non validée venue d'une future /api/fires/impacts) ne doit jamais faire
+  // tomber le rendu de ses voisins — il est ignoré silencieusement.
+  it('ignore un fait au kind inconnu sans faire tomber ses voisins', () => {
+    const facts: ImpactFact[] = [
+      fact({ id: 1, kind: 'area_ha' }),
+      fact({ id: 2, kind: 'bogus_kind' as unknown as ImpactFact['kind'] }),
+      fact({ id: 3, kind: 'evacuated', value: 12, unit: 'personnes' }),
+    ];
+    const html = renderDeclaredBlock(facts);
+    expect(html).toContain('Surface brûlée');
+    expect(html).toContain('Personnes évacuées');
   });
 });

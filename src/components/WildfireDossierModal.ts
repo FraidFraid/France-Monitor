@@ -20,13 +20,16 @@ import type {
 import { fmIcon } from './shared/icons.ts';
 
 /**
- * Échappement HTML pour tout texte tiers (§6.2 règle 4). Étendu à `=` en plus
- * des cinq caractères usuels : `renderFactRow` place `sourceName` en texte
- * libre à côté d'un `href`, et une source malveillante peut y injecter un
- * fragment `onerror=...` sans le moindre `<`/`>`. Échapper `=` neutralise ce
- * fragment sans toucher aux chiffres ni aux espaces qu'affichent les autres
- * champs (`formatFr` notamment) — vérifié caractère par caractère, pas un
- * filtre par mot.
+ * Échappement HTML pour tout texte tiers (§6.2 règle 4) — les cinq
+ * métacaractères usuels, y compris les guillemets (une source malveillante
+ * placée dans un attribut comme `href` doit ne jamais pouvoir en sortir).
+ *
+ * Ceci neutralise le HTML actif (`<script>`, un attribut injecté via un
+ * guillemet non échappé), PAS le schéma d'une URL : `javascript:…` ne
+ * contient aucun de ces cinq caractères et traverserait cet échappement
+ * inchangé. C'est un problème différent, réglé séparément par
+ * `isSafeSourceUrl` (round 1, Finding 1) — les deux mécanismes sont
+ * complémentaires, ni l'un ni l'autre ne suffit seul.
  */
 function escapeHtml(value: string): string {
   return value
@@ -34,8 +37,38 @@ function escapeHtml(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-    .replaceAll('=', '&#61;');
+    .replaceAll("'", '&#39;');
+}
+
+/**
+ * N'autorise `sourceUrl` en lien cliquable que pour les schémas http(s).
+ * `escapeHtml` protège des métacaractères HTML, pas du schéma d'une URL :
+ * `javascript:alert(document.cookie)` ou `data:text/html,<script>…</script>`
+ * ne contiennent aucun caractère échappé et atterriraient inchangés dans
+ * `href`, où ils s'exécutent au clic malgré `target="_blank"` (qui protège
+ * du tabnabbing, pas de l'exécution d'URI). `new URL(...)` lève sur une URL
+ * relative ou malformée — capturé, traité comme non sûr plutôt que de
+ * planter le rendu (round 1, Finding 1).
+ */
+function isSafeSourceUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Un fait dont le `kind` sort de l'énumération connue (donnée non validée
+ * à l'exécution — `App.ts` fait un simple cast sur la réponse de
+ * `/api/fires/impacts`, à venir en Task 4). `renderFactRow` indexerait
+ * `KIND_LABEL` avec `undefined` et lèverait — ce garde permet à
+ * `renderDeclaredBlock` d'isoler un fait malformé sans faire tomber ses
+ * voisins (round 1, Finding 2).
+ */
+function isKnownFactKind(kind: string): kind is ImpactFactKind {
+  return kind in KIND_LABEL;
 }
 
 const KIND_LABEL: Record<ImpactFactKind, string> = {
@@ -94,6 +127,13 @@ export function renderFactRow(fact: ImpactFact): string {
     fact.provisional ? '<span class="wf-flag">provisoire</span>' : '',
     fact.hedged ? '<span class="wf-flag">approximatif</span>' : '',
   ].join('');
+  // Schéma non http(s) (javascript:, data:, relatif…) → le fait reste visible
+  // avec sa provenance textuelle (§3.3), mais sans lien cliquable. Jamais de
+  // href="#" trompeur qui ferait croire à un lien fonctionnel (round 1, Finding 1).
+  const sourceRef = isSafeSourceUrl(fact.sourceUrl)
+    ? `<a href="${escapeHtml(fact.sourceUrl)}" target="_blank" rel="noopener noreferrer"
+        >${escapeHtml(fact.sourceName)}</a>`
+    : `<span class="wf-fact__source-name">${escapeHtml(fact.sourceName)}</span>`;
 
   return `
     <li class="wf-fact" data-kind="${escapeHtml(fact.kind)}">
@@ -104,8 +144,7 @@ export function renderFactRow(fact: ImpactFact): string {
         ${flags}
       </div>
       <div class="wf-fact__meta">
-        <a href="${escapeHtml(fact.sourceUrl)}" target="_blank" rel="noopener noreferrer"
-        >${escapeHtml(fact.sourceName)}</a>
+        ${sourceRef}
         <span class="wf-fact__level">${escapeHtml(LEVEL_LABEL[fact.sourceLevel])}</span>
         <time datetime="${escapeHtml(fact.observedAt)}">${escapeHtml(
           new Date(fact.observedAt).toLocaleString('fr-FR'),
@@ -178,10 +217,17 @@ function renderObservedBlock(incident: FireIncident): string {
 
 /**
  * Bloc « déclaré » — une ligne par ImpactFact, ou la mention explicite
- * d'absence (§7) : jamais un zéro, jamais un chiffre supposé.
+ * d'absence (§7) : jamais un zéro, jamais un chiffre supposé. Export pur
+ * pour test (round 1, Finding 2).
+ *
+ * Un fait au `kind` inconnu (donnée non validée par l'API à venir) est
+ * ignoré silencieusement plutôt que de faire tomber tout le bloc — cohérent
+ * avec la règle du projet : une donnée manquante s'affiche comme manquante,
+ * elle n'emporte jamais le reste.
  */
-function renderDeclaredBlock(facts: ImpactFact[]): string {
-  if (facts.length === 0) {
+export function renderDeclaredBlock(facts: ImpactFact[]): string {
+  const known = facts.filter(f => isKnownFactKind(f.kind));
+  if (known.length === 0) {
     return `
       <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
       <p class="wf-modal__empty">Impacts non renseignés.</p>
@@ -189,7 +235,7 @@ function renderDeclaredBlock(facts: ImpactFact[]): string {
   }
   return `
     <h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>
-    <ul class="wf-facts">${facts.map(renderFactRow).join('')}</ul>
+    <ul class="wf-facts">${known.map(renderFactRow).join('')}</ul>
   `;
 }
 
