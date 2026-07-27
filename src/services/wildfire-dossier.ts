@@ -118,3 +118,25 @@ export function buildDossier(
     series,
   };
 }
+
+/**
+ * Âge lisible d'une observation, avec horloge injectable pour les tests.
+ *
+ * Renvoie « inconnu » sur un horodatage illisible plutôt qu'une fausse
+ * fraîcheur — l'outil ne doit jamais suggérer une actualité qu'il n'a pas.
+ * Jamais d'âge négatif : une donnée en avance sur notre horloge est traitée
+ * comme instantanée, pas comme future.
+ *
+ * Vit ici plutôt que dans un composant : le détecteur de situations ET le
+ * modal du dossier s'en servent, et une seule définition évite qu'ils
+ * divergent.
+ */
+export function formatObservationAge(iso: string, nowMs: number = Date.now()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return 'inconnu';
+  const minutes = Math.max(0, Math.round((nowMs - then) / 60_000));
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `il y a ${hours} h`;
+  return `il y a ${Math.floor(hours / 24)} j`;
+}

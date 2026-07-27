@@ -19,7 +19,7 @@ import type {
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
-import { selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
 
@@ -274,7 +274,13 @@ export function detectWildfireIncidents(raw: FranceRawData): DetectedSituation[]
       'Incendie majeur en cours',
       // Uniquement de l'OBSERVÉ : les hectares et les évacuations sont des
       // faits déclarés, ils vivent dans le dossier, pas dans l'alerte (§12.5).
-      `${incident.detectionsCount} détections VIIRS agrégées, ${Math.round(incident.frpTotal)} MW cumulés, emprise ~${extentKm} km.`,
+      // « agrégées sur 24 h » et l'âge du dernier passage sont indispensables :
+      // un cumul de FRP est dominé par le passage le plus intense de la fenêtre,
+      // pas par l'instant présent. Sans cette mention, « 6881 MW cumulés »
+      // laisse croire à une intensité actuelle qu'on n'a pas mesurée.
+      `${incident.detectionsCount} détections VIIRS agrégées sur 24 h, `
+        + `${Math.round(incident.frpTotal)} MW cumulés, emprise ~${extentKm} km. `
+        + `Dernière détection ${formatObservationAge(incident.endDatetime)}.`,
       zone,
       [
         `${incident.detectionsCount} détections sur ${incident.satellites.join(', ')}`,

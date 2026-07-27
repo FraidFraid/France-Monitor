@@ -457,7 +457,15 @@ export class FiresPanel {
     private _renderInfoBlock(): void {
         const multiSource = this.apiKeyUsed && this.sourcesInfo.length >= 2;
         const satellites  = multiSource ? this.sourcesInfo.join(', ') : 'SNPP';
-        const revisit     = multiSource ? '~1 h (3 orbites combinées)' : '~3 h (orbite unique)';
+        // Mesuré le 2026-07-27 : les 3 satellites sont sur le MÊME plan
+        // héliosynchrone, espacés d'environ 50 min. Ils passent donc tous au même
+        // créneau solaire local, ce qui donne deux GRAPPES par jour (jour et nuit)
+        // et non une couverture horaire. Écarts relevés : 0,5 à 0,7 h dans une
+        // grappe, 10,5 h entre deux grappes. Annoncer « ~1 h » laissait croire à un
+        // rafraîchissement continu et faisait passer un trou normal pour une panne.
+        const revisit     = multiSource
+            ? '~40 min en grappe · 2 grappes/jour'
+            : '~1 h en grappe · 2 grappes/jour';
 
         const info = document.createElement('details');
         info.style.cssText = 'background:rgba(255,149,0,0.07);border:1px solid rgba(255,149,0,0.22);border-radius:8px;padding:10px 12px;margin-bottom:14px;cursor:pointer;';
@@ -466,7 +474,8 @@ export class FiresPanel {
                 À savoir sur FIRMS <span style="margin-left:auto;font-size:10px;opacity:0.7;">${fmIcon('chevron-right')}</span>
             </summary>
             <div style="margin-top:10px;color:var(--text-muted);font-size:11px;line-height:1.8;display:flex;flex-direction:column;gap:4px;">
-                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> — revisite France toutes les <b style="color:var(--text-primary);">${revisit}</b>.</div>
+                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> — revisite France <b style="color:var(--text-primary);">${revisit}</b>.</div>
+                <div>${fmIcon('timer')} Même plan orbital : les passages arrivent groupés (jour et nuit), avec <b style="color:var(--text-primary);">~10 h sans observation</b> entre deux grappes. Un écart de plusieurs heures est normal.</div>
                 ${multiSource ? `<div>${fmIcon('link')} Détections proches (&lt; 3 km) regroupées en <b style="color:var(--text-primary);">incidents DBSCAN</b> avec score de sévérité.</div>` : ''}
                 ${multiSource ? `<div>${fmIcon('check')} Un incident vu par 2+ satellites reçoit le label <b style="color:#ff9500;">multi-satellite</b> (score impact ↑).</div>` : ''}
                 <div>${fmIcon('triangle-alert')} <b style="color:var(--text-primary);">Faux positifs</b> : torchères industrielles, aciéries, champs brûlés, réflexions solaires.</div>

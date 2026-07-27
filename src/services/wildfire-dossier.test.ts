@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActiveFire, FireIncident, ImpactFact } from '../types/index.ts';
 import { clusterFireDetections } from './fire-clustering.ts';
-import { buildDossier, gradeCredibility, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { buildDossier, formatObservationAge, gradeCredibility, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
 import fixture from './__fixtures__/gironde-2026-07-26-viirs.json';
 
 // Fixture-contrat : ces cibles viennent des données réelles du 2026-07-26.
@@ -187,5 +187,31 @@ describe('buildDossier', () => {
 
     expect(dossier?.facts.map(f => f.id)).toEqual([4]);
     expect(dossier?.communes).toEqual(['Biscarrosse']);
+  });
+});
+
+describe('formatObservationAge', () => {
+  const NOW = Date.parse('2026-07-27T13:00:00Z');
+
+  it('exprime les minutes, les heures puis les jours', () => {
+    expect(formatObservationAge('2026-07-27T12:55:00Z', NOW)).toBe('il y a 5 min');
+    expect(formatObservationAge('2026-07-27T04:00:00Z', NOW)).toBe('il y a 9 h');
+    expect(formatObservationAge('2026-07-24T13:00:00Z', NOW)).toBe('il y a 3 j');
+  });
+
+  it('bascule de minutes en heures à 60 min, et d\'heures en jours à 48 h', () => {
+    expect(formatObservationAge('2026-07-27T12:01:00Z', NOW)).toBe('il y a 59 min');
+    expect(formatObservationAge('2026-07-27T12:00:00Z', NOW)).toBe('il y a 1 h');
+    expect(formatObservationAge('2026-07-25T14:00:00Z', NOW)).toBe('il y a 47 h');
+    expect(formatObservationAge('2026-07-25T13:00:00Z', NOW)).toBe('il y a 2 j');
+  });
+
+  it('dit « inconnu » sur un horodatage illisible plutôt qu\'une fausse fraîcheur', () => {
+    expect(formatObservationAge('hier', NOW)).toBe('inconnu');
+    expect(formatObservationAge('', NOW)).toBe('inconnu');
+  });
+
+  it('ne renvoie jamais un âge négatif si l\'horodatage est en avance', () => {
+    expect(formatObservationAge('2026-07-27T14:00:00Z', NOW)).toBe('il y a 0 min');
   });
 });

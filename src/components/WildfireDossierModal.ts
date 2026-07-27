@@ -17,6 +17,9 @@
 import type {
   FireIncident, ImpactFact, ImpactFactKind, SituationSeverity, WildfireDossier,
 } from '../types/index.ts';
+// Âge d'observation partagé avec le détecteur de situations : une seule
+// définition, donc pas de divergence entre l'alerte et le dossier.
+import { formatObservationAge } from '../services/wildfire-dossier.ts';
 import { fmIcon } from './shared/icons.ts';
 
 /**
@@ -178,16 +181,6 @@ function formatDurationMinutes(minutes: number): string {
 }
 
 /** Âge de l'observation la plus récente, relatif à maintenant. */
-function formatAge(iso: string): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return 'inconnu';
-  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (minutes < 60) return `il y a ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `il y a ${hours} h`;
-  return `il y a ${Math.floor(hours / 24)} j`;
-}
-
 /**
  * Bloc « observé » (FIRMS) — détections, FRP, emprise, persistance, satellites.
  * Mesure instrumentale : aucun texte tiers ici (labels + nombres uniquement),
@@ -381,7 +374,7 @@ export class WildfireDossierModal {
 
     this.titleEl.innerHTML = `${fmIcon('flame')} Dossier grand feu — <span style="color:${sevColor}">${sevLabel}</span>`;
     this.subtitleEl.textContent =
-      `${depts}${communesLabel} · dernière détection ${formatAge(dossier.incident.endDatetime)}`;
+      `${depts}${communesLabel} · dernière détection ${formatObservationAge(dossier.incident.endDatetime)}`;
 
     this.observedEl.innerHTML = renderObservedBlock(dossier.incident);
     this.declaredEl.innerHTML = renderDeclaredBlock(dossier.facts);
