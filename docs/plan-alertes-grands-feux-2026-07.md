@@ -1955,7 +1955,18 @@ this.alertMonitor.setDossierHandler(situation => {
 });
 ```
 
-`openWildfireDossier` récupère les faits via `/api/fires/impacts`, appelle `buildDossier`, affiche le modal ; en cas d'échec réseau il affiche le dossier avec la seule détection et la mention « impacts non renseignés » (§7).
+Déclarer le champ avec **ce nom exact** — la Task 9 s'y branche :
+
+```ts
+  /** Modal du dossier « grand feu ». Nom référencé par la Task 9. */
+  private wildfireModal: WildfireDossierModal | null = null;
+```
+
+`openWildfireDossier(incident: LocatedFireIncident)` récupère les faits via
+`/api/fires/impacts?dept=<deptCodes joints par des virgules>`, appelle `buildDossier`, puis
+`this.wildfireModal?.show(dossier)`. En cas d'échec réseau — ou pendant que Neon est indisponible
+— il affiche le dossier avec la **seule détection** et la mention « impacts non renseignés » (§7),
+sans jamais lever.
 
 - [ ] **Step 7: Tests, build et commit**
 
@@ -1977,7 +1988,8 @@ git commit -m "feat: modal du dossier grand feu et hook AlertMonitor"
 **Interfaces:**
 - Consumes: `WildfireDossier`, `ImpactFact` (Task 5).
 - Produces: `enrichWithLlm(dossier, deps?): Promise<WildfireDossier>` où
-  `deps = { fetchImpl?: typeof fetch, endpoint?: string, model?: string }`.
+  `deps = { fetchImpl?: typeof fetch, endpoint?: string, model?: string }` — **pas** de
+  `sourceHint` : la provenance est héritée de la `quote` relue (voir Step 5).
   Les faits ajoutés portent `method: 'llm'`.
 
 - [ ] **Step 0: Durcir `hasFullProvenance` avant d'ajouter un producteur de faits**
@@ -2099,8 +2111,32 @@ Dans `openWildfireDossier` (Task 8), après le premier affichage :
 ```ts
 // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un
 // dossier, pour un seul incident. Jamais dans une boucle de rafraîchissement.
-void enrichWithLlm(dossier).then(enriched => this.wildfireModal.show(enriched));
+void enrichWithLlm(dossier).then(enriched => this.wildfireModal?.show(enriched));
 ```
+
+**D'où vient la provenance des faits que le LLM produit — point de conception à ne pas rater.**
+
+Le dossier ne contient **pas** le texte des articles : `/api/fires/impacts` renvoie des faits, et
+chaque fait porte sa `quote`, c'est-à-dire la phrase source verbatim. `enrichWithLlm` n'a donc
+aucun texte d'article à relire, et **aucune** source à inventer.
+
+Ce qu'il fait réellement : il relit les `quote` **déjà présentes** dans le dossier pour y trouver
+les genres de faits que les patterns ont manqués. Une phrase comme « l'incendie a détruit
+42 000 hectares et contraint 220 000 personnes à évacuer » peut avoir livré son `area_ha` aux
+patterns tout en laissant passer l'`evacuated`.
+
+Conséquence sur la signature : **il n'y a pas de `sourceHint` global.** Chaque fait produit hérite
+de la provenance de la `quote` dont il est issu — `sourceUrl`, `sourceName`, `sourceLevel`,
+`reliability`, `observedAt`, et `method: 'llm'`. C'est cohérent avec §3.3 : la provenance n'est
+jamais fabriquée, elle est **héritée** d'un fait qui l'avait déjà.
+
+Adapter les tests du Step 1 en conséquence : le `deps` porte `fetchImpl`, `endpoint` et `model`,
+mais **pas** de `sourceHint`. Le dossier d'entrée du test doit contenir au moins un fait avec sa
+`quote`, et le test vérifie que le fait produit par le LLM porte la **même** provenance que le
+fait source, plus `method: 'llm'`.
+
+Corollaire : un dossier sans aucun fait n'a rien à relire, donc `enrichWithLlm` le renvoie
+inchangé sans appeler Ollama. C'est le cas pendant l'indisponibilité de Neon — aucun appel inutile.
 
 - [ ] **Step 6: Vérification finale et commit**
 
