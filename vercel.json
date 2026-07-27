@@ -2,7 +2,7 @@
   "regions": ["fra1"],
   "crons": [
     { "path": "/api/fuel-price-series-refresh", "schedule": "0 */3 * * *" },
-    { "path": "/api/ingest/news", "schedule": "*/15 * * * *" }
+    { "path": "/api/ingest/news", "schedule": "*/30 * * * *" }
   ],
   "functions": {
     "api/fuel-price-series-refresh.js": { "maxDuration": 30 },
