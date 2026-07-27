@@ -23,9 +23,15 @@ interface CellGeo {
   commune: string;
 }
 
+/**
+ * Cache single-flight : la valeur stockée est la PROMESSE de résolution, pas
+ * le résultat déjà résolu. Deux échantillons voisins qui tombent sur la même
+ * maille pendant la même fenêtre de concurrence doivent partager le même appel
+ * réseau plutôt que d'en déclencher chacun un.
+ */
 export interface ResolveGeographyDeps {
   fetchImpl?: typeof fetch;
-  cache?: Map<string, CellGeo>;
+  cache?: Map<string, Promise<CellGeo | null>>;
 }
 
 /**
@@ -63,19 +69,34 @@ async function lookupCommune(
   }
 }
 
-/** Résout un point via le cache de mailles, en n'appelant le réseau qu'au premier accès. */
-async function resolvePoint(
+/**
+ * Résout un point via le cache de mailles, en single-flight : la promesse est
+ * posée dans le cache AVANT toute résolution (donc de façon synchrone, avant le
+ * premier `await` de `lookupCommune`), pour que des recherches concurrentes sur
+ * la même maille — cas d'un incident compact dont les 5 échantillons retombent
+ * dans la même case de 0,05° — partagent le même appel réseau au lieu d'en
+ * déclencher chacune un (constaté : 4 appels au lieu de 1 sans cette précaution).
+ *
+ * Un échec n'est jamais mis en cache durablement : l'entrée est retirée après
+ * résolution en `null`, pour qu'un incident ultérieur retente plutôt que de
+ * figer la maille en échec pour toute la durée de vie du cache (§7).
+ */
+function resolvePoint(
   lat: number,
   lon: number,
   fetchImpl: typeof fetch,
-  cache: Map<string, CellGeo>,
+  cache: Map<string, Promise<CellGeo | null>>,
 ): Promise<CellGeo | null> {
   const key = cellKey(lat, lon);
-  const cached = cache.get(key);
-  if (cached) return cached;
-  const resolved = await lookupCommune(lat, lon, fetchImpl);
-  if (resolved) cache.set(key, resolved);
-  return resolved;
+  const inFlightOrResolved = cache.get(key);
+  if (inFlightOrResolved) return inFlightOrResolved;
+
+  const promise = lookupCommune(lat, lon, fetchImpl).then((result) => {
+    if (!result) cache.delete(key);
+    return result;
+  });
+  cache.set(key, promise);
+  return promise;
 }
 
 /** Applique `fn` sur `items` par lots, pour borner la concurrence réseau. */
@@ -119,7 +140,7 @@ export async function resolveIncidentGeography(
   deps: ResolveGeographyDeps = {},
 ): Promise<LocatedFireIncident[]> {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const cache = deps.cache ?? new Map<string, CellGeo>();
+  const cache = deps.cache ?? new Map<string, Promise<CellGeo | null>>();
 
   // Un seul pool de points pour tout le lot, pour que la concurrence bornée (4)
   // profite à l'ensemble des incidents plutôt qu'incident par incident.
