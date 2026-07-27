@@ -1027,7 +1027,8 @@ git commit -m "feat: endpoint /api/fires/impacts exposant des séries de faits"
 **Interfaces:**
 - Consumes: `FireIncident`, `FireIncidentScore` (existants), `ImpactFactDTO` (Task 4), fixture `gironde-2026-07-26-viirs.json`, `clusterFireDetections` (existant).
 - Produces:
-  - Types `SourceLevel`, `Reliability`, `Credibility`, `ImpactFact`, `WildfireDossier`, `WildfireSeverity`
+  - Types `SourceLevel`, `Reliability`, `Credibility`, `ImpactFactKind`, `ImpactFact`, `LocatedFireIncident`, `WildfireDossier`
+    (la sévérité réutilise `SituationSeverity`, déjà existant — pas de type dédié, voir §6.3)
   - `MAJOR_FIRE_GATE = { minDetections: 40, minFrpTotal: 300 }`
   - `selectMajorIncidents(incidents: FireIncident[]): FireIncident[]`
   - `wildfireSeverity(incident: FireIncident): SituationSeverity`
@@ -1051,7 +1052,9 @@ describe('selectMajorIncidents — calibration Gironde', () => {
 
   it('isole le front principal et le second front, rien d\'autre', () => {
     const major = selectMajorIncidents(incidents);
-    expect(major.length).toBeGreaterThanOrEqual(1);
+    // « rien d'autre » doit être vérifié, pas seulement annoncé dans le titre :
+    // la fixture réelle produit 8 clusters, dont exactement 2 franchissent la porte.
+    expect(major).toHaveLength(2);
     const biggest = [...major].sort((a, b) => b.detectionsCount - a.detectionsCount)[0];
     expect(biggest.detectionsCount).toBeGreaterThan(400);
     expect(biggest.frpTotal).toBeGreaterThan(5000);
