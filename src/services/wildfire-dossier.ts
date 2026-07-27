@@ -53,7 +53,13 @@ function hasFullProvenance(fact: ImpactFact): boolean {
   // Un horodatage illisible n'est pas une provenance : il casserait
   // silencieusement la chronologie des révisions (§12.4) — Date.parse(NaN)
   // dans le comparateur de .sort() n'est pas garanti par la spec ECMAScript.
-  return !Number.isNaN(Date.parse(fact.observedAt));
+  if (Number.isNaN(Date.parse(fact.observedAt))) return false;
+  // `communes` doit être un tableau : le type le déclare non-optionnel, mais
+  // rien ne garantit ça à l'exécution (extraction LLM, JSON externe). Sans
+  // ce garde, un `communes` absent/null/chaîne glisse dans le flatMap de
+  // buildDossier et fait planter .sort()/.localeCompare() de façon
+  // synchrone — vérifié ici, au même endroit que le reste de la provenance.
+  return Array.isArray(fact.communes);
 }
 
 /**
@@ -106,7 +112,7 @@ export function buildDossier(
   return {
     incident,
     severity: wildfireSeverity(incident),
-    deptCodes: [...new Set(deptCodes)],
+    deptCodes: [...new Set(deptCodes)].sort(),
     communes,
     facts: graded,
     series,

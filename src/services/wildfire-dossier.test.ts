@@ -165,7 +165,27 @@ describe('buildDossier', () => {
     expect(dossier.communes).toEqual(['Biscarrosse', 'Lanton', 'Le Porge']);
   });
 
+  it('trie deptCodes après dédoublonnage, comme communes', () => {
+    const dossier = buildDossier(INCIDENT, [fact({ id: 1 })], ['40', '33']);
+    expect(dossier.deptCodes).toEqual(['33', '40']);
+  });
+
   it('reporte la sévérité de l\'incident, indépendante des faits déclarés (§12.5)', () => {
     expect(buildDossier(INCIDENT, [], ['33']).severity).toBe('critical');
+  });
+
+  it('rejette un fait dont communes n\'est pas un tableau (absent, null, chaîne), sans faire tomber ses voisins', () => {
+    const noCommunes = fact({ id: 1, communes: undefined as unknown as string[] });
+    const nullCommunes = fact({ id: 2, value: 3500, communes: null as unknown as string[] });
+    const stringCommunes = fact({ id: 3, value: 5000, communes: 'Le Porge' as unknown as string[] });
+    const valid = fact({ id: 4, value: 6000, communes: ['Biscarrosse'] });
+
+    let dossier: ReturnType<typeof buildDossier> | undefined;
+    expect(() => {
+      dossier = buildDossier(INCIDENT, [noCommunes, nullCommunes, stringCommunes, valid], ['33']);
+    }).not.toThrow();
+
+    expect(dossier?.facts.map(f => f.id)).toEqual([4]);
+    expect(dossier?.communes).toEqual(['Biscarrosse']);
   });
 });
