@@ -127,9 +127,8 @@ L'unité est **le fait déclaré, pas le nombre**. Un fait peut être qualitatif
 | `quote` | **phrase source verbatim** |
 | `sourceUrl`, `sourceName` | provenance |
 | `sourceLevel` | `primary` \| `secondary` \| `tertiary` — §12.2 |
-| `reliability` | `A`–`F`, **dérivée** de `tier` + métriques observées — §12.1 |
-| `credibility` | `1`–`6`, propre à ce fait — §12.1 |
-| `corroboration` | sources indépendantes affirmant le même fait — §12.3 |
+| `reliability` | `A`–`F`, **dérivée** de `tier` + domaine — §12.1 |
+| `hedged` | `true` si formulation approximative (« près de », « environ ») — entre dans `credibility` |
 | `observedAt` | horodatage de la *déclaration* (pas de l'ingestion) |
 | `deptCode` | rattachement géographique |
 | `communes` | communes nommées dans la source, si présentes |
@@ -518,12 +517,17 @@ Les confondre en une note unique détruit l'information.
 
 `ImpactFact` porte donc deux notations séparées, dans l'esprit du code Admiralty :
 
-| axe | échelle | origine |
-|---|---|---|
-| `reliability` | `A`–`F` | **dérivée**, pas saisie : `tier` de `feeds.ts` + métriques observées de `source-quality-history.ts` |
-| `credibility` | `1`–`6` | propre **à ce fait** : corroboration, statut officiel, caractère provisoire |
+| axe | échelle | origine | quand |
+|---|---|---|---|
+| `reliability` | `A`–`F` | **dérivée**, pas saisie : domaine officiel, puis `tier` de `feeds.ts` | à l'extraction (**stockée**) |
+| `credibility` | `1`–`6` | corroboration + niveau de source + formulation | à l'assemblage du dossier (**dérivée, non stockée**) |
 
-`reliability` réutilise le scoring existant — pas de second système à maintenir.
+`reliability` réutilise le `tier` existant — pas de second système à maintenir.
+
+**Pourquoi `credibility` n'est pas stockée** : elle dépend de la corroboration, donc de
+l'ensemble des faits connus à un instant donné. Un fait isolé aujourd'hui devient corroboré
+demain sans que le fait lui-même change. La stocker serait figer une valeur périmée et
+contredirait l'append-only du §3.1. Elle est donc recalculée par `buildDossier`.
 
 ### 12.2 Niveau de source, distinct de sa fiabilité
 
