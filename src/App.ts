@@ -78,6 +78,7 @@ import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } fr
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
 import { fetchFiresData } from './services/fires.ts';
+import { resolveIncidentGeography } from './services/incident-geography.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
 import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
 import {
@@ -1344,6 +1345,8 @@ export class App {
   private firesPanel: FiresPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
+  /** Incidents clusterisés ET géo-résolus — consommés par le dossier (Task 8). */
+  private currentFireIncidents: import('./types/index.ts').LocatedFireIncident[] = [];
   private currentFiresSources: { sources: string[]; apiKeyUsed: boolean } | null = null;
   private mtgFrpEnabled = false;
   private latestMtgFrpMetadata: MtgFrpMetadata | null = null;
@@ -4621,6 +4624,12 @@ export class App {
       throw err;
     }
     this.currentActiveFires = data.detections;
+    // La géo-résolution est best-effort : un échec laisse deptCodes/communes
+    // vides et l'alerte retombe sur les coordonnées (§7). Ne jamais bloquer
+    // l'affichage des détections pour attendre le découpage administratif.
+    void resolveIncidentGeography(data.incidents)
+      .then(located => { this.currentFireIncidents = located; })
+      .catch(() => { /* deptCodes/communes restent vides */ });
     this.firesLoaded = true;
     this.currentFiresSources = { sources: data.sources, apiKeyUsed: data.apiKeyUsed };
     // Transmet les métadonnées sources au panel (header + footer adaptatifs)
@@ -6267,6 +6276,7 @@ export class App {
       militaryFlightsCount: this.currentMilitaryFlightsCount,
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
       activeFires:          this.currentActiveFires,
+      fireIncidents:        this.currentFireIncidents,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
       gasState:             this.currentGasData,
