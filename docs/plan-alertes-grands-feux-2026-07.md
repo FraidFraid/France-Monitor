@@ -1743,7 +1743,9 @@ git commit -m "fix: alerte incendie par incident localisé au lieu du compteur n
 - Test: `src/components/WildfireDossierModal.test.ts`
 
 **Interfaces:**
-- Consumes: `WildfireDossier`, `ImpactFact` (Task 5), `buildDossier` (Task 6).
+- Consumes: `WildfireDossier`, `ImpactFact` (Task 5), `buildDossier` (Task 6),
+  et le champ `App.currentFireIncidents` alimenté par la **Task 10**.
+  **La Task 10 doit donc être exécutée AVANT celle-ci** — sans quoi le champ n'existe pas.
 - Produces:
   - `class WildfireDossierModal { constructor(container: HTMLElement); show(dossier: WildfireDossier): void; hide(): void; destroy(): void }`
   - `renderFactRow(fact: ImpactFact): string` — export pur pour test
@@ -1938,7 +1940,9 @@ Instancier `WildfireDossierModal`, puis :
 this.alertMonitor.setDossierHandler(situation => {
   if (situation.type !== 'WILDFIRE_ESCALATION') return false;
   const incidentId = situation.id.replace(/^wildfire-/, '');
-  const incident = this.fireIncidents.find(i => i.id === incidentId);
+  // Champ alimenté par la Task 10 (géo-résolution) — nom exact :
+  // currentFireIncidents, à côté de currentActiveFires (App.ts:1346).
+  const incident = this.currentFireIncidents.find(i => i.id === incidentId);
   if (!incident) return false;
   void this.openWildfireDossier(incident);
   return true;
