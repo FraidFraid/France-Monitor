@@ -1439,7 +1439,9 @@ export function buildDossier(
   return {
     incident,
     severity: wildfireSeverity(incident),
-    deptCodes: [...new Set(deptCodes)],
+    // Trié comme communes : sans cela, buildDossier(..., ['40','33']) et
+    // buildDossier(..., ['33','40']) produiraient des dossiers différents.
+    deptCodes: [...new Set(deptCodes)].sort(),
     communes,
     facts: graded,
     series,
@@ -1967,6 +1969,43 @@ git commit -m "feat: modal du dossier grand feu et hook AlertMonitor"
 - Produces: `enrichWithLlm(dossier, deps?): Promise<WildfireDossier>` où
   `deps = { fetchImpl?: typeof fetch, endpoint?: string, model?: string }`.
   Les faits ajoutés portent `method: 'llm'`.
+
+- [ ] **Step 0: Durcir `hasFullProvenance` avant d'ajouter un producteur de faits**
+
+`hasFullProvenance` (dans `wildfire-dossier.ts`) ne vérifie aujourd'hui que la **non-vacuité** de
+`observedAt`, pas qu'il est parsable. Un horodatage invalide produit un `NaN` dans le comparateur
+de `.sort()`, dont la spec ECMAScript ne garantit pas le comportement.
+
+Inoffensif jusqu'ici — le seul producteur, l'extracteur de la Task 1, émet de l'ISO 8601 valide.
+Mais cette tâche introduit un **second producteur** dont l'horodatage vient d'un `sourceHint`,
+donc potentiellement d'une réponse LLM. C'est le moment de fermer la porte, avant qu'elle serve.
+
+Un horodatage illisible n'est de toute façon pas une provenance : c'est `observedAt` qui porte la
+chronologie des révisions (§12.4), et une date invalide la casse en silence.
+
+```ts
+function hasFullProvenance(fact: ImpactFact): boolean {
+  if (!fact.quote || !fact.sourceUrl || !fact.sourceName || !fact.observedAt) return false;
+  // Un horodatage illisible n'est pas une provenance : il casserait
+  // silencieusement la chronologie des révisions.
+  return !Number.isNaN(Date.parse(fact.observedAt));
+}
+```
+
+Ajouter le test dans `src/services/wildfire-dossier.test.ts` :
+
+```ts
+it('rejette un fait dont l\'horodatage est illisible', () => {
+  const dossier = buildDossier(INCIDENT, [
+    fact({ id: 1 }),
+    fact({ id: 2, observedAt: 'hier' }),
+    fact({ id: 3, observedAt: '2026-13-45T99:99:99Z' }),
+  ], ['33']);
+  expect(dossier.facts.map(f => f.id)).toEqual([1]);
+});
+```
+
+Vérifier que les 15 tests existants de ce fichier restent verts.
 
 - [ ] **Step 1: Write the failing test**
 
