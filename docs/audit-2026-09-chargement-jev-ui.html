@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Audit France Monitor</title>
+<meta name="description" content="Audit du 22/09/2026 : chargement des données, scoring des news avec Jev, simplification de l’interface — et bilan de mise en œuvre du 23/09/2026.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #edf0f6;
+  --border: #d8deea;
+  --border-strong: #b9c2d6;
+  --text: #151a2c;
+  --muted: #55607a;
+  --accent: #2c4bcc;
+  --accent-soft: #e5eaff;
+  --ok: #17803d;
+  --ok-soft: #e3f4ea;
+  --warn: #a75a06;
+  --warn-soft: #fcf0de;
+  --code-bg: #eef1f8;
+  --shadow: 0 1px 2px rgb(21 26 44 / 6%), 0 8px 24px -12px rgb(21 26 44 / 18%);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --measure: 72ch;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a2b;
+    --border: #262838;
+    --border-strong: #3a3d55;
+    --text: #e8e8ec;
+    --muted: #9ea0b3;
+    --accent: #8ea4ff;
+    --accent-soft: #1b2142;
+    --ok: #46d98a;
+    --ok-soft: #0f2a1d;
+    --warn: #f3b04b;
+    --warn-soft: #2e2210;
+    --code-bg: #161826;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface-2: #1a1a2b;
+  --border: #262838;
+  --border-strong: #3a3d55;
+  --text: #e8e8ec;
+  --muted: #9ea0b3;
+  --accent: #8ea4ff;
+  --accent-soft: #1b2142;
+  --ok: #46d98a;
+  --ok-soft: #0f2a1d;
+  --warn: #f3b04b;
+  --warn-soft: #2e2210;
+  --code-bg: #161826;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.62 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  padding-inline: 20px;
+  padding-block: 0 64px;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* En-tête */
+.masthead {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-block: 40px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font: 600 13px/1 var(--font-sans);
+  letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.brand .flag { display: inline-flex; width: 18px; height: 12px; border-radius: 2px; overflow: hidden; box-shadow: 0 0 0 1px var(--border); }
+.brand .flag i { flex: 1; }
+.brand .flag i:nth-child(1) { background: #1f3fa8; }
+.brand .flag i:nth-child(2) { background: #f4f4f4; }
+.brand .flag i:nth-child(3) { background: #d52b3a; }
+h1 {
+  font: 600 clamp(30px, 4.2vw, 44px)/1.12 var(--font-serif);
+  letter-spacing: -.01em;
+  margin: 14px 0 8px;
+  text-wrap: balance;
+}
+.lede { margin: 0; max-width: var(--measure); font-size: 18px; color: var(--muted); text-wrap: pretty; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font: 500 13px/1.4 var(--font-sans);
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+}
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip.ok { background: var(--ok-soft); border-color: transparent; }
+.chip.ok .dot { background: var(--ok); }
+.chip.warn { background: var(--warn-soft); border-color: transparent; }
+.chip.warn .dot { background: var(--warn); }
+
+/* Mise en page */
+.layout {
+  max-width: 1180px; margin: 0 auto;
+  display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px;
+  padding-top: 32px;
+}
+.toc {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px);
+  align-self: start; max-height: calc(100vh - 40px); overflow-y: auto;
+  font-size: 14px; padding-right: 4px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.toc > summary {
+  font: 600 12px/1 var(--font-sans); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); list-style: none; cursor: default; margin-bottom: 12px;
+}
+.toc > summary::-webkit-details-marker { display: none; }
+.toc-list, .toc-list ol { list-style: none; margin: 0; padding: 0; }
+.toc-list > li { margin-bottom: 6px; }
+.toc-list ol { margin: 4px 0 8px 12px; border-left: 1px solid var(--border); }
+.toc-list ol li a { padding-left: 10px; font-size: 13px; }
+.toc a {
+  display: block; padding: 3px 6px; border-radius: 6px;
+  color: var(--muted); text-decoration: none; line-height: 1.35;
+}
+.toc a:hover { color: var(--text); background: var(--surface-2); }
+.toc a.is-active { color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+
+main { min-width: 0; }
+.intro { max-width: var(--measure); color: var(--muted); font-size: 15px; }
+.intro p { margin: 0 0 10px; }
+
+/* Encart résultats */
+.results {
+  margin: 28px 0 8px; padding: 22px 24px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.results-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
+.results h2 { font: 600 20px/1.2 var(--font-serif); margin: 0; }
+.results .note { font-size: 13px; color: var(--muted); margin: 0; }
+.results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 28px; }
+.result {
+  display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 12px;
+  padding: 11px 0; border-top: 1px solid var(--border);
+}
+.result .label { font-size: 14px; color: var(--muted); grid-column: 1 / -1; }
+.result .before { font: 400 14px/1.3 var(--font-mono); color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.result .after { font: 500 20px/1.2 var(--font-mono); color: var(--ok); font-variant-numeric: tabular-nums; }
+
+/* Contenu */
+.doc-section { padding-top: 12px; }
+.doc-section h2 {
+  font: 600 27px/1.2 var(--font-serif); letter-spacing: -.005em;
+  margin: 44px 0 16px; padding-top: 20px; border-top: 1px solid var(--border);
+  text-wrap: balance; position: relative;
+}
+.doc-section h3 { font: 600 18px/1.3 var(--font-sans); margin: 32px 0 10px; text-wrap: balance; position: relative; }
+.anchor {
+  position: absolute; left: -22px; top: auto; opacity: 0; text-decoration: none;
+  color: var(--border-strong); font-weight: 400;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+.doc-section h2 .anchor { padding-top: 0; }
+main p, main li { max-width: var(--measure); text-wrap: pretty; }
+main p { margin: 0 0 14px; }
+main ul, main ol { padding-left: 22px; margin: 0 0 16px; }
+main li { margin-bottom: 6px; }
+main li > ul, main li > ol { margin: 6px 0 4px; }
+strong { font-weight: 600; color: var(--text); }
+code {
+  font: 400 .88em/1.4 var(--font-mono); background: var(--code-bg);
+  padding: .1em .38em; border-radius: 5px; border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+pre.code {
+  margin: 0 0 18px; padding: 16px 18px; overflow-x: auto;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+  font: 400 13px/1.55 var(--font-mono);
+}
+pre.code code { background: none; border: 0; padding: 0; font-size: inherit; overflow-wrap: normal; white-space: pre; }
+.code-fold { margin: 0 0 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.code-fold > summary {
+  cursor: pointer; padding: 11px 16px; font: 500 14px/1.3 var(--font-sans); color: var(--accent);
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.code-fold > summary::-webkit-details-marker { display: none; }
+.code-fold > summary::before { content: "▸"; transition: transform .15s ease; }
+.code-fold[open] > summary::before { transform: rotate(90deg); }
+.code-fold pre.code { margin: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0 0 10px 10px; }
+
+.table-wrap {
+  margin: 4px 0 22px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface);
+}
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+th { font: 600 12px/1.3 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td { min-width: 120px; }
+td code { font-size: .85em; }
+
+footer.colophon {
+  max-width: 1180px; margin: 56px auto 0; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 20px; }
+  .toc {
+    position: static; max-height: none; margin-bottom: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  }
+  .toc > summary { cursor: pointer; margin-bottom: 0; }
+  .toc[open] > summary { margin-bottom: 12px; }
+  .anchor { display: none; }
+}
+@media (max-width: 520px) {
+  body { padding-inline: 16px; font-size: 15.5px; }
+  .masthead { padding-block: 28px 20px; }
+  .lede { font-size: 16.5px; }
+  .results { padding: 18px 16px; }
+  .doc-section h2 { font-size: 23px; }
+}
+</style>
+</head>
+<body>
+
+
+<header class="masthead">
+  <div class="brand"><span class="flag" aria-hidden="true"><i></i><i></i><i></i></span>France Monitor</div>
+  <h1>Audit : chargement, scoring des news, interface</h1>
+  <p class="lede">Mesures de production du 22 septembre 2026, plan d’action, intégration de Jev pour scorer les articles, simplification de l’interface — et bilan de la mise en œuvre du 23 septembre.</p>
+  <div class="meta">
+    <span class="chip "><span class="dot"></span>Audit du 22/09/2026</span>
+    <span class="chip ok"><span class="dot"></span>Mis en œuvre le 23/09/2026</span>
+    <span class="chip warn"><span class="dot"></span>Branche poussée, non fusionnée</span>
+    <span class="chip "><span class="dot"></span>550 tests · build · 16 scénarios navigateur</span>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="toc" id="toc" open>
+    <summary>Sommaire</summary>
+    <nav aria-label="Sommaire"><ol class="toc-list"><li><a href="#0-resume-executif" data-toc="0-resume-executif">0. Résumé exécutif</a></li><li><a href="#1-methode" data-toc="1-methode">1. Méthode</a></li><li><a href="#2-mesures-en-production" data-toc="2-mesures-en-production">2. Mesures en production</a><ol><li><a href="#2-1-page-d-39-accueil" data-toc="2-1-page-d-39-accueil">2.1 Page d&#39;accueil (/)</a></li><li><a href="#2-2-tableau-de-bord-view-app-live" data-toc="2-2-tableau-de-bord-view-app-live">2.2 Tableau de bord (/?view=app#live)</a></li><li><a href="#2-3-endpoints-api-latence-et-cache-cdn" data-toc="2-3-endpoints-api-latence-et-cache-cdn">2.3 Endpoints /api/* : latence et cache CDN</a></li><li><a href="#2-4-ce-que-le-navigateur-appelle-en-direct-hors-api" data-toc="2-4-ce-que-le-navigateur-appelle-en-direct-hors-api">2.4 Ce que le navigateur appelle en direct (hors /api)</a></li></ol></li><li><a href="#3-chargement-des-donnees-causes-et-plan" data-toc="3-chargement-des-donnees-causes-et-plan">3. Chargement des données — causes et plan</a><ol><li><a href="#3-1-causes-racines" data-toc="3-1-causes-racines">3.1 Causes racines</a></li><li><a href="#3-2-plan-d-39-action-priorise" data-toc="3-2-plan-d-39-action-priorise">3.2 Plan d&#39;action priorisé</a></li><li><a href="#3-3-architecture-cible-du-demarrage" data-toc="3-3-architecture-cible-du-demarrage">3.3 Architecture cible du démarrage</a></li><li><a href="#3-4-anomalies-a-corriger-independamment-de-la-performance" data-toc="3-4-anomalies-a-corriger-independamment-de-la-performance">3.4 Anomalies à corriger indépendamment de la performance</a></li></ol></li><li><a href="#4-jev-typesafe-pour-scorer-les-news" data-toc="4-jev-typesafe-pour-scorer-les-news">4. Jev (TypeSafe) pour scorer les news</a><ol><li><a href="#4-1-ce-que-jev-est-et-n-39-est-pas" data-toc="4-1-ce-que-jev-est-et-n-39-est-pas">4.1 Ce que Jev est, et n&#39;est pas</a></li><li><a href="#4-2-ou-l-39-inserer-une-fois-par-article-cote-serveur" data-toc="4-2-ou-l-39-inserer-une-fois-par-article-cote-serveur">4.2 Où l&#39;insérer : une fois par article, côté serveur</a></li><li><a href="#4-3-etat-et-questions-proposees" data-toc="4-3-etat-et-questions-proposees">4.3 État et questions proposées</a></li><li><a href="#4-4-combinaison-en-code-la-politique-reste-dans-le-depot" data-toc="4-4-combinaison-en-code-la-politique-reste-dans-le-depot">4.4 Combinaison en code (la politique reste dans le dépôt)</a></li><li><a href="#4-5-stockage-et-contrat-api" data-toc="4-5-stockage-et-contrat-api">4.5 Stockage et contrat API</a></li><li><a href="#4-6-cout-limites-risques" data-toc="4-6-cout-limites-risques">4.6 Coût, limites, risques</a></li><li><a href="#4-7-plan-de-mise-en-uvre-et-validation" data-toc="4-7-plan-de-mise-en-uvre-et-validation">4.7 Plan de mise en œuvre et validation</a></li></ol></li><li><a href="#5-interface-simplification" data-toc="5-interface-simplification">5. Interface — simplification</a><ol><li><a href="#5-1-ce-qu-39-un-nouvel-utilisateur-voit-au-premier-chargemen" data-toc="5-1-ce-qu-39-un-nouvel-utilisateur-voit-au-premier-chargemen">5.1 Ce qu&#39;un nouvel utilisateur voit au premier chargement (bureau 1440×900)</a></li><li><a href="#5-2-audit-technique-grille-impeccable" data-toc="5-2-audit-technique-grille-impeccable">5.2 Audit technique (grille impeccable)</a></li><li><a href="#5-3-proposition-mode-simple-par-defaut" data-toc="5-3-proposition-mode-simple-par-defaut">5.3 Proposition « mode simple » par défaut</a></li><li><a href="#5-4-mobile" data-toc="5-4-mobile">5.4 Mobile</a></li></ol></li><li><a href="#6-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0" data-toc="6-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0">6. Suivi de mise en œuvre (23/09/2026, branche feat/audit-2026-09-hobby-perf)</a></li><li><a href="#annexe-requetes-en-double-par-chargement" data-toc="annexe-requetes-en-double-par-chargement">Annexe — requêtes en double par chargement</a></li></ol></nav>
+  </details>
+  <main>
+    <div class="intro"><p>Date : 22 septembre 2026. Périmètre : dépôt <code>FranceMonitor</code> (branche <code>main</code>, avec les modifications non commitées du jour) et le site de production <a href="https://www.francemonitor.com">https://www.francemonitor.com</a>.</p>
+<p>Annexes (même dossier <code>docs/audit-2026-09-annexes/</code>) : A client/chargement, B serveur/API/cache, C pipeline news &amp; scoring, D inventaire UI, E mesures brutes en production, 3 captures d&#39;écran. Chaque annexe cite le code en <code>fichier:ligne</code>.</p>
+<p>Mesures faites depuis Paris avec Chrome headless piloté par le DevTools Protocol (rendu WebGL logiciel) et <code>curl</code>. Les valeurs absolues dépendent du réseau et de la machine ; les ordres de grandeur, les rapports entre scénarios et les causes sont stables. Quatre scénarios : bureau cache vidé, bureau à chaud (service worker + cache), mobile 390×844 cache vidé, bureau sous émulation 4G (9 Mbit/s, 150 ms) avec CPU ralenti ×4.</p>
+</div>
+    <section class="results" aria-labelledby="resultats">
+      <div class="results-head">
+        <h2 id="resultats">Résultats de la mise en œuvre</h2>
+        <p class="note">Avant : production du 22/09 · Après : build et serveur de dev de la branche</p>
+      </div>
+      <div class="results-grid">
+        <div class="result"><span class="label">JavaScript chargé sur l’accueil</span><span class="before">922 Ko + carte</span><span class="after">106 Ko</span></div>
+        <div class="result"><span class="label">Images de l’accueil</span><span class="before">27,9 Mo</span><span class="after">1,3 Mo</span></div>
+        <div class="result"><span class="label">Précache hors ligne</span><span class="before">14,5 Mo</span><span class="after">1,7 Mo</span></div>
+        <div class="result"><span class="label">Éléments dans la page</span><span class="before">14 549</span><span class="after">≈ 3 400</span></div>
+        <div class="result"><span class="label">Appels tiers directs</span><span class="before">165</span><span class="after">0</span></div>
+        <div class="result"><span class="label">Fonctions Vercel</span><span class="before">59</span><span class="after">4</span></div>
+      </div>
+    </section>
+    <section class="doc-section"><h2 id="0-resume-executif"><a class="anchor" href="#0-resume-executif" aria-label="Lien vers cette section">#</a>0. Résumé exécutif</h2>
+<p><strong>Le tableau de bord charge tout, pour tout le monde, à chaque visite, après la carte.</strong> C&#39;est la cause commune des lenteurs : les données de 25 modules sont demandées au démarrage quelle que soit la couche active, tout est sérialisé derrière l&#39;initialisation de la carte (fond Carto tiers), le cache CDN est contourné par des paramètres d&#39;URL uniques, et du travail « par article » (géocodage, résumé LLM, classification) est refait dans chaque navigateur au lieu d&#39;être fait une fois côté serveur.</p>
+<p>Chiffres clés (production, 22/09/2026) :</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Accueil</th>
+<th>Dashboard cache vidé</th>
+<th>Dashboard à chaud</th>
+<th>Dashboard 4G + CPU×4</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Requêtes en 45 s</td>
+<td>19</td>
+<td>317</td>
+<td>281</td>
+<td>308</td>
+</tr>
+<tr>
+<td>dont <code>/api/*</code></td>
+<td>0</td>
+<td>97 (32 MISS CDN, 10 erreurs)</td>
+<td>92</td>
+<td>98</td>
+</tr>
+<tr>
+<td>dont API externes appelées par le navigateur</td>
+<td>0</td>
+<td>165</td>
+<td>139</td>
+<td>152</td>
+</tr>
+<tr>
+<td>Octets transférés</td>
+<td>28,7 Mo (images)</td>
+<td>1,5 Mo</td>
+<td>0,09 Mo</td>
+<td>1,5 Mo</td>
+</tr>
+<tr>
+<td>First Contentful Paint</td>
+<td>5,8 s</td>
+<td>4,3 s</td>
+<td>0,55 s</td>
+<td>5,7 s</td>
+</tr>
+<tr>
+<td>Temps de script (thread principal)</td>
+<td>0,04 s</td>
+<td>13,6 s (52 tâches longues)</td>
+<td>9,0 s</td>
+<td>16 s (152 tâches longues, 56 s de tâches)</td>
+</tr>
+<tr>
+<td>Nœuds DOM / écouteurs</td>
+<td>177 / 10</td>
+<td>14 549 / 8 033</td>
+<td>14 553 / 7 063</td>
+<td>14 570 / 9 027</td>
+</tr>
+<tr>
+<td>Mémoire JS</td>
+<td>8 Mo</td>
+<td>89 Mo</td>
+<td>103 Mo</td>
+<td>101 Mo</td>
+</tr>
+</tbody></table></div>
+<p>Huit constats qui expliquent l&#39;essentiel :</p>
+<ol>
+<li><strong>Accueil : 28 Mo d&#39;images PNG</strong> (5 captures 5344×3104 et une 2560×1440, affichées à ≈ 720 px, chacune référencée par deux <code>&lt;img&gt;</code> sans <code>loading=&quot;lazy&quot;</code>) et tout le bundle carto (maplibre + deck.gl ≈ 490 Ko brotli) préchargé alors que la landing n&#39;a pas de carte.</li>
+<li><strong>La carte bloque tout</strong> : <code>init()</code> fait <code>await this.initMap()</code> (style Carto → sprites → glyphes → tuiles, plus ≈ 2,1 Mo de JS carto brut) avant de lancer le moindre fetch de données ; seul le widget baromètre réseau y échappe (annexe A §1, §6.1).</li>
+<li><strong>Tout est chargé au démarrage</strong> : 13 chunks de panneaux importés inconditionnellement dans <code>renderShell()</code> et 13 boucles de polling démarrées dans <code>init()</code> quel que soit l&#39;état des couches (hydrométrie Hub&#39;Eau 25 appels, santé 10 endpoints, éolien, nucléaire, pétrole, gaz, cyber, DROM…). <code>departements.geojson</code> (3,3 Mo) est sur le chemin critique pour tout le monde ; le rafraîchissement hydraulique tourne deux fois par chargement ; les vols militaires sont interrogés toutes les 5 s même couche éteinte.</li>
+<li><strong>Cache CDN contourné</strong> : <code>/api/news?since=&lt;horodatage à la milliseconde&gt;</code> et <code>/api/traffic/air?t=&lt;Date.now()&gt;</code> rendent chaque URL unique → chaque visiteur paie une invocation de fonction et la latence amont (4,7 s pour les news, 10,5 s pour le trafic aérien, appelé 4 fois en 45 s).</li>
+<li><strong>Travail par article refait par chaque visiteur</strong> : 88 appels <code>geo.api.gouv.fr/communes</code> + 26 <code>api-adresse</code> (géo-résolution des incidents et géocodage), 10 appels <code>/api/intelligence/v1/summarize</code> (résumés LLM), reclassification mots-clés.</li>
+<li><strong>Le flux news est du bruit à 86 %</strong> : sur 24 h, 863 articles sur 1 000 sont <code>general/info</code> mais sont téléchargés (186 Ko gz), mappés et injectés dans le DOM. Le classifieur mots-clés sur-alerte : « livre de Charles Spencer sur Lady Di » → <code>critical/security</code> 0,85 ; « McDonald&#39;s à l&#39;assaut des campagnes » → <code>high/security</code> ; « Bougainville nouveau pays » → <code>critical</code> ; « AG de l&#39;ONU » → <code>critical/health</code> 0,9. La confiance n&#39;est pas une probabilité (valeurs fixes par palier de mots-clés ; la passe Groq écrit une constante 0,75).</li>
+<li><strong>Doublons et erreurs systématiques</strong> à chaque chargement : <code>vigilance</code> ×2, <code>ecowatt</code> ×2, <code>cert.ssi</code> ×2, <code>ransomware.live</code> ×2 (502), <code>arcep</code> ×4 (404 J et J-1), <code>situation-history</code> ×3, <code>traffic/air</code> ×4, <code>biogas-sites</code> 502, ODRE <code>eco2mix-regional-tr</code> appelé en direct → 400 après 9,1 s. Et une route entière morte en prod : <code>/api/ministers/*</code> n&#39;a aucun handler (le panneau Gouvernement reçoit du HTML).</li>
+<li><strong>UI</strong> : 35 couches définies en 7 groupes (accordéon plat), 17 contrôles d&#39;en-tête, 89 boutons dans le DOM dont 29 avec <code>aria-label</code>, aucun <code>h1</code>–<code>h6</code> dans les 26 panneaux, 2 panneaux + alertes + bandeau ouverts d&#39;office sur la carte, 40 sources dans un menu déroulant, 5 échelles de couleur de gravité parallèles, 3 173 lignes de code mort. Sur mobile le panneau de droite recouvre la carte ; aucune mise en page tablette.</li>
+</ol>
+<p><strong>Trois chantiers</strong>, détaillés aux §3, §4 et §5 :</p>
+<ul>
+<li><strong>A. Chargement</strong> — 4 « quick wins » d&#39;une journée (cache CDN, doublons, images d&#39;accueil, en-têtes immutables), puis deux changements structurels : <em>données en parallèle de la carte + chargement à la demande par couche</em>, et <em>snapshot serveur unique</em> au démarrage. Objectif réaliste : dashboard utilisable en &lt; 2 s à froid sur fibre, &lt; 5 s en 4G, ≈ 30 requêtes au lieu de 317.</li>
+<li><strong>B. Jev</strong> — scorer chaque article <strong>une fois, côté serveur, dans le cron d&#39;ingestion</strong>, en remplacement de la passe Groq de reclassification (15 articles/tick, séquentielle), avec 9 questions typées (pertinence, catégorie, gravité, France ?, en cours ?, institution ?, fait divers ?, portée, type d&#39;infrastructure), stockage des réponses brutes en base, combinaison en code. Coût estimé 1 à 4 $/mois (pas de palier gratuit documenté : décision à prendre). Le classifieur mots-clés reste le repli déterministe ; Ollama/Groq gardent la génération de texte.</li>
+<li><strong>C. UI</strong> — un « mode simple » par défaut : carte + synthèse + alertes + 5 vues prédéfinies au lieu de 35 cases, un seul tiroir de détail, légendes repliées, sources dans un tiroir de statut, bottom-sheet sur mobile ; et une dette à solder (code mort, z-index, échelles de couleur, titres sémantiques).</li>
+</ul>
+
+</section><section class="doc-section"><h2 id="1-methode"><a class="anchor" href="#1-methode" aria-label="Lien vers cette section">#</a>1. Méthode</h2>
+<ul>
+<li><strong>Code</strong> : lecture directe de <code>src/App.ts</code> (6 830 lignes), <code>src/main.ts</code>, <code>src/LandingPage.ts</code>, <code>vite.config.ts</code>, <code>vercel.json</code>, <code>src/services/rss.ts</code>, <code>air-traffic.ts</code>, <code>summarization.ts</code> ; quatre explorations systématiques (annexes A à D) ; build local (<code>npm run build</code>, 53 s, 1 497 modules).</li>
+<li><strong>Production</strong> : <code>curl</code> sur la page, les bundles et 34 endpoints <code>/api/*</code> (2 appels chacun pour observer <code>x-vercel-cache</code>) ; Chrome headless avec journal réseau complet, métriques <code>Performance</code>, <code>PerformanceObserver</code> (FCP, LCP, CLS, tâches longues), captures d&#39;écran, texte visible (annexe E).</li>
+<li><strong>Jev</strong> : documentation TypeSafe lue le jour même (modèle <code>jev-1.13.0</code>, API <code>POST /v1/systemone</code>, primitives Choice/Score/Noul, page « jaggedness », tarification, SDK JavaScript <code>@typesafe-ai/sdk</code>). Aucune clé API dans le dépôt : <strong>aucune mesure de qualité réelle sur des titres français n&#39;a été faite</strong> ; c&#39;est la première étape du chantier B.</li>
+<li><strong>Limites</strong> : le rendu WebGL logiciel du headless retarde le premier affichage de la carte (LCP mesuré à 19 s, non représentatif) ; les métriques réseau, DOM, nombre de requêtes et temps de script sont fiables. L&#39;extension Chrome n&#39;a pas pu être utilisée (trois navigateurs connectés au compte, sélection manuelle requise) ; le headless local l&#39;a remplacée.</li>
+</ul>
+
+</section><section class="doc-section"><h2 id="2-mesures-en-production"><a class="anchor" href="#2-mesures-en-production" aria-label="Lien vers cette section">#</a>2. Mesures en production</h2>
+<h3 id="2-1-page-d-39-accueil"><a class="anchor" href="#2-1-page-d-39-accueil" aria-label="Lien vers cette section">#</a>2.1 Page d&#39;accueil (<code>/</code>)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Ressource</th>
+<th>Poids</th>
+<th>Remarque</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>6 PNG <code>public/landing/*.png</code></td>
+<td>27,9 Mo</td>
+<td>5344×3104 px pour 5 d&#39;entre elles, affichées à ≈ 720 px ; chacune référencée deux fois (<code>src/LandingPage.ts:89-217</code>), aucune en <code>loading=&quot;lazy&quot;</code>, ni <code>width</code>/<code>height</code>, ni WebP/AVIF</td>
+</tr>
+<tr>
+<td><code>index-*.js</code> + <code>maplibre-*.js</code> + <code>deck-gl-*.js</code> + <code>d3-*.js</code></td>
+<td>762 Ko (brotli)</td>
+<td><code>modulepreload</code> de la carte alors que la landing n&#39;en a pas besoin</td>
+</tr>
+<tr>
+<td>CSS</td>
+<td>37 Ko (brotli)</td>
+<td><code>main.css</code> (133 Ko brut, 8 016 lignes) chargé pour la landing</td>
+</tr>
+<tr>
+<td>Service worker</td>
+<td>précache de 78 entrées ≈ 14,5 Mo (brotli)</td>
+<td>inclut <code>data/drom-energy/raw/*.geojson</code>, <code>maires-politique.json</code> (2 Mo)… téléchargés en arrière-plan dès la landing</td>
+</tr>
+</tbody></table></div>
+<p>Résultat : FCP 5,8 s à froid sur fibre, uniquement à cause des images (le HTML arrive en 130 ms, <code>x-vercel-cache: HIT</code>).</p>
+<h3 id="2-2-tableau-de-bord-view-app-live"><a class="anchor" href="#2-2-tableau-de-bord-view-app-live" aria-label="Lien vers cette section">#</a>2.2 Tableau de bord (<code>/?view=app#live</code>)</h3>
+<p>Chronologie, bureau, cache vidé :</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>t</th>
+<th>Événement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0,19 s</td>
+<td>HTML reçu ; 4 bundles JS + 2 CSS en parallèle (HIT CDN)</td>
+</tr>
+<tr>
+<td>0,38 s</td>
+<td><strong>13 chunks de panneaux</strong> (DROM, Hydraulique, Éolien, Santé ×2, Feux, Trafic, Maritime, Cyber, Pétrole, Nucléaire, Pannes, Défense) + 1ʳᵉ salve <code>/api</code> depuis le widget baromètre (ecowatt, internet-outages, arcep 404, cert.ssi ×2, ransomware 502 ×2, NVD, infra-network, threats, exposure)</td>
+</tr>
+<tr>
+<td>2,24 s</td>
+<td>seulement maintenant : chunk <code>DeckGLMap</code> (83 Ko), puis style Carto à 2,75 s, tuiles à 4,9–6,8 s</td>
+</tr>
+<tr>
+<td>2,7 → 8,0 s</td>
+<td>thread principal occupé (exécution deck.gl + maplibre, construction de 14 500 nœuds) ; aucune requête de données</td>
+</tr>
+<tr>
+<td>8,5 s</td>
+<td>2ᵉ salve, une fois la carte prête : <code>/api/news?since…&amp;limit=1000</code> (4,7 s, MISS), <code>traffic/air</code> (10,7 s), <code>vigilance</code> ×2 (4,7 s), vigicrues via <code>json-proxy</code> (5,4 s), <code>eolien?parks=1</code> (4,5 s), <code>outages/citizen</code> (5,3 s), <code>transport/disruptions</code> (2,6 s), ODRE régional en direct (9,1 s → 400), <code>departements.geojson</code></td>
+</tr>
+<tr>
+<td>13–14 s</td>
+<td>10 appels <code>/api/intelligence/v1/summarize</code> ; 25 appels Hub&#39;Eau (stations puis observations)</td>
+</tr>
+<tr>
+<td>18 s</td>
+<td>10 endpoints <code>/api/health/*</code>, 88 appels <code>geo.api.gouv.fr/communes</code>, 26 <code>api-adresse</code> (jusqu&#39;à 24 s)</td>
+</tr>
+<tr>
+<td>32 s, 44 s</td>
+<td><code>traffic/air</code> à nouveau (10,5 s chacun) ; vols militaires toutes les 5 s</td>
+</tr>
+</tbody></table></div>
+<p>À chaud (service worker actif) les bundles viennent du cache, mais <strong>le nombre de requêtes de données est identique</strong> (281) et le temps de script reste à 9 s : le problème n&#39;est pas le poids du JS, c&#39;est le volume de travail au démarrage. Seul le flux news bénéficie d&#39;un cache persistant qui peint avant le réseau (<code>localStorage</code>, 30 min) ; les ≈ 20 autres services ne gardent qu&#39;un cache mémoire perdu à chaque rechargement (annexe A §3).</p>
+<h3 id="2-3-endpoints-api-latence-et-cache-cdn"><a class="anchor" href="#2-3-endpoints-api-latence-et-cache-cdn" aria-label="Lien vers cette section">#</a>2.3 Endpoints <code>/api/*</code> : latence et cache CDN</h3>
+<p>Deux appels successifs par endpoint ; « MISS→HIT » signifie que le CDN Vercel met bien en cache (seul le premier visiteur paie). Côté code, 51 des 55 handlers posent bien un <code>Cache-Control</code> (annexe B) : le problème n&#39;est pas l&#39;absence d&#39;en-têtes mais leur contournement et la lenteur des amonts sur MISS.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>1ᵉʳ appel</th>
+<th>2ᵉ appel</th>
+<th>Cache</th>
+<th>Remarque</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/api/news?limit=50</code></td>
+<td>1,37 s</td>
+<td>0,15 s</td>
+<td>MISS→HIT</td>
+<td>mais le client appelle avec <code>since=&lt;ms&gt;</code> → toujours MISS</td>
+</tr>
+<tr>
+<td><code>/api/news?since=J-1&amp;limit=1000</code></td>
+<td>0,19 s</td>
+<td>0,11 s</td>
+<td>MISS→HIT (avec <code>since</code> fixe)</td>
+<td>186 Ko gz, 1 000 items dont 863 <code>general/info</code></td>
+</tr>
+<tr>
+<td><code>/api/traffic/air</code></td>
+<td><strong>10,5 s</strong></td>
+<td>0,11 s</td>
+<td><code>s-maxage=20</code> mais <code>?t=</code> côté client</td>
+<td>appelé 4× en 45 s</td>
+</tr>
+<tr>
+<td><code>/api/energy/gas-pir</code></td>
+<td><strong>9,4 s</strong></td>
+<td>0,11 s</td>
+<td>MISS→HIT</td>
+<td>amont ENTSOG lent</td>
+</tr>
+<tr>
+<td><code>/api/weather/vigilance</code></td>
+<td>0,11 s (curl) / 4,7 s (navigateur)</td>
+<td>—</td>
+<td>STALE</td>
+<td>appelé 2× simultanément par le client</td>
+</tr>
+<tr>
+<td><code>/api/json-proxy?url=vigicrues</code></td>
+<td>5,4 s</td>
+<td>—</td>
+<td>MISS</td>
+<td>proxy générique, pas de cache Redis</td>
+</tr>
+<tr>
+<td><code>/api/outages/citizen</code></td>
+<td>5,3 s</td>
+<td>—</td>
+<td>MISS</td>
+<td>scraping cheerio + turf, handler le plus lourd en CPU</td>
+</tr>
+<tr>
+<td><code>/api/energy/eolien?parks=1</code></td>
+<td>4,5 s</td>
+<td>—</td>
+<td>MISS</td>
+<td>liste de 1 772 parcs quasi statique</td>
+</tr>
+<tr>
+<td><code>/api/transport/disruptions</code></td>
+<td>2,6 s</td>
+<td>—</td>
+<td>MISS</td>
+<td>seul endpoint en <code>max-age</code> (navigateur) au lieu de <code>s-maxage</code></td>
+</tr>
+<tr>
+<td><code>/api/infra-network</code>, <code>/api/internet-outages</code>, <code>/api/threats</code></td>
+<td>1,0–1,2 s</td>
+<td>0,11 s</td>
+<td>MISS→HIT</td>
+<td>corrects une fois chauds</td>
+</tr>
+<tr>
+<td><code>/api/energy/biogas-sites</code></td>
+<td>0,47 s</td>
+<td>0,42 s</td>
+<td><strong>502</strong> ×2</td>
+<td>cassé en prod</td>
+</tr>
+<tr>
+<td><code>/api/arcep?date=J</code> et <code>J-1</code></td>
+<td>0,15 s</td>
+<td>—</td>
+<td><strong>404</strong> ×4 par chargement</td>
+<td>date non encore publiée, aucune mémorisation négative</td>
+</tr>
+<tr>
+<td><code>/api/json-proxy?url=ransomware.live</code></td>
+<td>0,15 s</td>
+<td>—</td>
+<td><strong>502</strong> ×2 par chargement</td>
+<td></td>
+</tr>
+<tr>
+<td><code>/api/intelligence/v1/summarize</code></td>
+<td>0,07–0,09 s ×10</td>
+<td>—</td>
+<td>POST, Redis 24 h</td>
+<td>par visiteur, par article</td>
+</tr>
+<tr>
+<td><code>/api/ministers/*</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><strong>aucun handler en prod</strong> : le rewrite retombe sur <code>index.html</code> (annexe B §0)</td>
+</tr>
+<tr>
+<td>ecowatt, rte-iip, nuclear, market, commodities, fires, outages, gie, vigicrues, apl, sncf, fuel-price-series, exposure</td>
+<td>0,10–0,13 s</td>
+<td>0,10 s</td>
+<td>HIT</td>
+<td>corrects</td>
+</tr>
+</tbody></table></div>
+<p>Les bundles statiques (<code>/assets/*-&lt;hash&gt;.js</code>) sont servis avec <code>cache-control: public, max-age=0, must-revalidate</code> au lieu de <code>max-age=31536000, immutable</code> : <code>vercel.json</code> ne définit aucune règle de cache pour les assets (seulement CORS sur <code>/api/(.*)</code> et la CSP), et le préréglage Vite de Vercel ne s&#39;applique visiblement pas.</p>
+<h3 id="2-4-ce-que-le-navigateur-appelle-en-direct-hors-api"><a class="anchor" href="#2-4-ce-que-le-navigateur-appelle-en-direct-hors-api" aria-label="Lien vers cette section">#</a>2.4 Ce que le navigateur appelle en direct (hors <code>/api</code>)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Hôte</th>
+<th>Appels / chargement</th>
+<th>Origine dans le code</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>geo.api.gouv.fr/communes</code></td>
+<td>88</td>
+<td><code>src/services/incident-geography.ts:58</code> (géo-résolution des incidents feux, par incident, par visiteur)</td>
+</tr>
+<tr>
+<td><code>api-adresse.data.gouv.fr/search</code></td>
+<td>26</td>
+<td><code>src/services/geocoder.ts</code>, <code>src/components/OutagesPanel.ts</code></td>
+</tr>
+<tr>
+<td><code>hubeau.eaufrance.fr</code></td>
+<td>25</td>
+<td><code>src/services/hubeau-hydrometry.ts:402,477</code> (couche Hydro <strong>désactivée</strong> par défaut ; appelé deux fois, cf. §3.1)</td>
+</tr>
+<tr>
+<td><code>odre.opendatasoft.com</code></td>
+<td>11</td>
+<td><code>energy-regions.ts</code>, <code>metropoles.ts</code>, <code>ecowatt.ts</code>, <code>gas.ts</code> ; <code>DeckGLMap.ts:772-779</code> ajoute deux sources GRT/Teréga avec une URL ODRE en <code>data</code>, fetchée par MapLibre dès l&#39;init quelle que soit la couche gaz ; l&#39;appel <code>eco2mix-regional-tr</code> répond 400 après 9,1 s</td>
+</tr>
+<tr>
+<td><code>opendata.enedis.fr</code></td>
+<td>3</td>
+<td>pannes électricité</td>
+</tr>
+<tr>
+<td><code>tiles.basemaps.cartocdn.com</code></td>
+<td>9</td>
+<td>fond de carte (normal)</td>
+</tr>
+</tbody></table></div>
+<p>Ces appels directs contredisent la règle du dépôt (« tout passe par <code>/api/*</code> »), échappent au cache Redis/CDN, et exposent l&#39;utilisateur aux quotas et pannes des API tierces.</p>
+
+</section><section class="doc-section"><h2 id="3-chargement-des-donnees-causes-et-plan"><a class="anchor" href="#3-chargement-des-donnees-causes-et-plan" aria-label="Lien vers cette section">#</a>3. Chargement des données — causes et plan</h2>
+<h3 id="3-1-causes-racines"><a class="anchor" href="#3-1-causes-racines" aria-label="Lien vers cette section">#</a>3.1 Causes racines</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Cause</th>
+<th>Preuve</th>
+<th>Fichiers</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>C1</td>
+<td><strong>Sérialisation derrière la carte</strong> : <code>init()</code> attend <code>initMap()</code> (fetch du style Carto, <code>map.on(&#39;load&#39;)</code>, atlas d&#39;icônes séquentiel) avant de démarrer tous les polling et <code>loadCriticalLayers()</code></td>
+<td>aucune requête de données entre 0,4 s et 8,5 s</td>
+<td><code>src/App.ts:2107-2186</code>, <code>2124</code>, <code>components/DeckGLMap.ts:600-627</code>, <code>7961-7997</code></td>
+</tr>
+<tr>
+<td>C2</td>
+<td><strong>Tout au démarrage</strong> : <code>renderShell()</code> importe 13 panneaux (<code>void import(...)</code>) ; <code>init()</code> démarre 13 boucles <code>start*Polling()</code> inconditionnelles ; les seules bien gardées sont Pétrole et Santé (test de couche active dans le tick)</td>
+<td>13 chunks à t+380 ms ; Hub&#39;Eau, éolien, nucléaire, cyber chargés couches éteintes</td>
+<td><code>src/App.ts:2121</code>, <code>2153-2166</code>, <code>2631-3030</code> ; bon modèle : <code>4284-4293</code> (oil), <code>5735-5754</code> (health)</td>
+</tr>
+<tr>
+<td>C3</td>
+<td><strong><code>departements.geojson</code> (3,3 Mo) sur le chemin critique</strong> via <code>loadWeather()</code> → <code>updateWeather()</code> → <code>getDepartmentsGeojson()</code>, inconditionnel, alors que <code>vite.config.ts:228</code> documente l&#39;intention de le différer</td>
+<td>fetch à 13,3 s dans la trace</td>
+<td><code>src/App.ts:4588-4624</code>, <code>6112-6155</code>, <code>DeckGLMap.ts:9643-9666</code></td>
+</tr>
+<tr>
+<td>C4</td>
+<td><strong>Rafraîchissement hydraulique en double</strong> : <code>loadWeather()</code> appelle <code>refreshHydraulicLayer()</code> puis <code>loadSecondaryLayers()</code> le rappelle</td>
+<td>25 appels Hub&#39;Eau (stations ×23 + observations ×2)</td>
+<td><code>src/App.ts:4622</code>, <code>4772-4774</code>, <code>6171-6177</code></td>
+</tr>
+<tr>
+<td>C5</td>
+<td><strong>Polling militaire/AIS toutes les 5 s</strong> sans test de couche ; websocket AIS ouvert d&#39;office</td>
+<td><code>traffic/military</code> à 8,5 s, 43,5 s…</td>
+<td><code>src/App.ts:3973-4065</code></td>
+</tr>
+<tr>
+<td>C6</td>
+<td><strong>Paramètres d&#39;URL uniques</strong> qui rendent le cache CDN inutile (<code>since=</code> à la ms ; <code>?t=${now}</code> ajouté « pour contourner le cache navigateur » alors que le serveur pose <code>s-maxage=20</code>)</td>
+<td>32 MISS par chargement</td>
+<td><code>src/services/rss.ts:376-377</code>, <code>src/services/air-traffic.ts:39</code>, <code>api/traffic/air.js:23</code></td>
+</tr>
+<tr>
+<td>C7</td>
+<td><strong>Travail par article côté client</strong> : géocodage, géo-résolution des incidents, résumés LLM (3 par lot, <code>MAX_SUMMARIZE_ITEMS_PER_CYCLE</code>), classification ML dans un worker pour les items sans <code>threat</code></td>
+<td>124 appels géo + 10 POST LLM par visiteur</td>
+<td><code>incident-geography.ts:58</code>, <code>geocoder.ts</code>, <code>App.ts:4392-4530</code></td>
+</tr>
+<tr>
+<td>C8</td>
+<td><strong>Flux news non filtré côté serveur</strong> : 1 000 items/24 h dont 86 % de bruit, tous mappés (<code>mapIngestItem</code>), triés et rendus</td>
+<td>186 Ko gz, 14 500 nœuds DOM</td>
+<td><code>api/news.js:66-167</code>, <code>src/services/rss.ts:287-393</code>, <code>UnderMapNewsFeed.ts</code></td>
+</tr>
+<tr>
+<td>C9</td>
+<td><strong>Endpoints lents sans Redis</strong> ni mémorisation négative : chaque MISS attend l&#39;amont (2,6 à 10,7 s) ; <code>json-proxy</code> générique pour Vigicrues ; scraping citoyen à chaque MISS</td>
+<td>tableau §2.3</td>
+<td><code>api/traffic/air.js</code>, <code>api/json-proxy.js</code>, <code>api/_shared/citizen-outages-handler.js</code>, <code>api/energy/eolien.js</code>, <code>api/transport/disruptions.js</code></td>
+</tr>
+<tr>
+<td>C10</td>
+<td><strong>Doublons de fetch</strong> entre services et panneaux : seul <code>cyber.ts</code> a une garde in-flight (bon modèle)</td>
+<td>10 doublons par chargement</td>
+<td><code>vigilance-meteo.ts</code>, <code>ecowatt.ts</code>, <code>situation-history.ts</code>, <code>outages.ts</code> ; modèle : <code>services/cyber.ts:29-30,346</code></td>
+</tr>
+<tr>
+<td>C11</td>
+<td><strong>Caches clients non persistants</strong> : ≈ 20 services n&#39;ont qu&#39;une variable de module ; seul <code>newsCache.ts</code> peint avant le réseau</td>
+<td>tout est en « chargement » à chaque rechargement</td>
+<td><code>utils/newsCache.ts</code> (modèle), <code>services/ecowatt.ts:43-44</code>, <code>nuclear-rte.ts:25</code>, <code>fires.ts:140</code>…</td>
+</tr>
+<tr>
+<td>C12</td>
+<td><strong>Landing</strong> : images non optimisées, bundle carte préchargé, précache SW de 14,5 Mo, <code>d3</code> (mobile) et <code>Map.ts</code> importés statiquement pour tout le monde</td>
+<td>§2.1</td>
+<td><code>src/LandingPage.ts</code>, <code>public/landing/</code>, <code>vite.config.ts</code> (PWA, <code>manualChunks</code>), <code>components/MapContainer.ts:7</code></td>
+</tr>
+<tr>
+<td>C13</td>
+<td><strong>En-têtes de cache statiques absents</strong> de <code>vercel.json</code></td>
+<td><code>max-age=0, must-revalidate</code> sur les assets hashés</td>
+<td><code>vercel.json</code></td>
+</tr>
+<tr>
+<td>C14</td>
+<td><strong>Sources cassées appelées à chaque chargement</strong> (biogas-sites 502, ransomware 502, ARCEP 404 ×4, ODRE 400) sans mémorisation négative ; route <code>/api/ministers/*</code> sans handler</td>
+<td>10 erreurs par chargement</td>
+<td><code>api/energy/biogas-sites.js</code>, <code>api/json-proxy.js</code>, <code>api/arcep.js</code>, <code>src/services/energy-regions.ts</code>, <code>api/_shared/ministers.js</code> (jamais importé)</td>
+</tr>
+</tbody></table></div>
+<h3 id="3-2-plan-d-39-action-priorise"><a class="anchor" href="#3-2-plan-d-39-action-priorise" aria-label="Lien vers cette section">#</a>3.2 Plan d&#39;action priorisé</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Priorité</th>
+<th>Action</th>
+<th>Gain attendu</th>
+<th>Effort</th>
+<th>Où</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P0</td>
+<td><strong>Arrondir <code>since</code> à 5 min</strong> et <strong>supprimer <code>?t=</code></strong> sur <code>traffic/air</code> ; garder <code>s-maxage=60, stale-while-revalidate=300</code> sur <code>/api/news</code></td>
+<td>news : 4,7 s → 0,15 s pour 99 % des visiteurs ; air : 10,5 s → 0,1 s ; −30 invocations par visiteur</td>
+<td>S</td>
+<td><code>rss.ts:376</code>, <code>air-traffic.ts:39</code></td>
+</tr>
+<tr>
+<td>P0</td>
+<td><strong>Dédupliquer les fetchs in-flight</strong> (Map <code>url → Promise</code> dans <code>resilientFetch</code>, sur le modèle de <code>cyber.ts</code>) et <strong>supprimer le second <code>refreshHydraulicLayer()</code></strong></td>
+<td>−10 requêtes et −25 appels Hub&#39;Eau par chargement</td>
+<td>S</td>
+<td><code>src/utils/resilientFetch.ts</code>, <code>src/App.ts:4622</code></td>
+</tr>
+<tr>
+<td>P0</td>
+<td><strong>Images d&#39;accueil</strong> : redimensionner à 1440 px, AVIF/WebP + fallback, <code>loading=&quot;lazy&quot;</code> + <code>width</code>/<code>height</code> sauf le héros, une seule référence par image</td>
+<td>28 Mo → ≈ 1 Mo ; FCP landing 5,8 s → &lt; 1 s</td>
+<td>S</td>
+<td><code>public/landing/</code>, <code>src/LandingPage.ts:89-217</code></td>
+</tr>
+<tr>
+<td>P0</td>
+<td><strong>En-têtes immutables</strong> sur <code>/assets/(.*)</code> dans <code>vercel.json</code> ; <strong>ne pas précharger</strong> maplibre/deck.gl sur la landing (entrée HTML séparée ou <code>modulepreload</code> injecté seulement en mode app)</td>
+<td>−30 revalidations par navigation ; −490 Ko sur la landing</td>
+<td>S</td>
+<td><code>vercel.json</code>, <code>index.html</code>, <code>vite.config.ts</code></td>
+</tr>
+<tr>
+<td>P0</td>
+<td><strong>Mémorisation négative</strong> 10 min (Redis) pour ARCEP J/J-1, ransomware.live, biogas-sites ; corriger la requête ODRE régionale (400) ; <strong>créer le handler <code>/api/ministers/*</code></strong> (réexport de <code>handleMinistersRequest</code> + cache)</td>
+<td>−10 erreurs par chargement ; panneau Gouvernement de nouveau fonctionnel</td>
+<td>S</td>
+<td><code>api/arcep.js</code>, <code>api/json-proxy.js</code>, <code>energy-regions.ts</code>, nouveau <code>api/ministers/[...path].js</code></td>
+</tr>
+<tr>
+<td>P1</td>
+<td><strong>Données en parallèle de la carte</strong> : lancer les fetchs critiques (ecowatt, vigilance, crues, nucléaire, news) avant <code>await initMap()</code> et ne conditionner à la carte que les <code>updateX()</code> (rejouer l&#39;état une fois la carte prête)</td>
+<td>temps-à-données = max(carte, données) au lieu de carte + données ; −2 à −4 s à froid</td>
+<td>L</td>
+<td><code>src/App.ts:2107-2186</code>, <code>DeckGLMap.ts:600-627</code></td>
+</tr>
+<tr>
+<td>P1</td>
+<td><strong>Chargement à la demande par couche/panneau</strong> : n&#39;importer un panneau et ne démarrer son polling qu&#39;au premier toggle de sa couche (modèle <code>startOilPolling</code>/<code>startHealthPolling</code>), l&#39;arrêter au toggle inverse ; gaz GRT/Teréga et <code>departements.geojson</code> fetchés seulement si une couche consommatrice est active ; militaire/AIS gardés par la couche</td>
+<td>−150 requêtes et −60 % de script au démarrage</td>
+<td>M</td>
+<td><code>src/App.ts:2153-2166</code>, <code>2631-3030</code>, <code>3973-4065</code>, <code>DeckGLMap.ts:772-779</code>, <code>9643-9666</code></td>
+</tr>
+<tr>
+<td>P1</td>
+<td><strong>Déplacer le travail « par article » dans le cron d&#39;ingestion</strong> : géocodage complet (aujourd&#39;hui 30/tick, 140/1 000 items ont des coordonnées), géo-résolution des incidents dans <code>/api/fires</code>, résumés LLM en colonne <code>summary_ai</code> générée une fois, classification (§4)</td>
+<td>−124 appels géo et −10 POST LLM par visiteur ; quota Groq divisé par le nombre de visiteurs</td>
+<td>M</td>
+<td><code>api/ingest/news.ts:300-323</code>, <code>api/fires.js</code>, <code>api/news.js</code></td>
+</tr>
+<tr>
+<td>P1</td>
+<td><strong>Filtrer et paginer côté serveur</strong> : <code>/api/news?noise=0&amp;limit=300</code> renvoyant les items pertinents d&#39;abord (avec Jev, §4) ; le bruit derrière « tout afficher »</td>
+<td>186 Ko → &lt; 40 Ko ; −10 000 nœuds DOM</td>
+<td>S/M</td>
+<td><code>api/news.js</code>, <code>UnderMapNewsFeed.ts</code></td>
+</tr>
+<tr>
+<td>P1</td>
+<td><strong>Redis + stale-while-revalidate sur les endpoints lents</strong> : <code>traffic/air</code> (snapshot rafraîchi par cron ou par le relais), <code>gas-pir</code>, <code>outages/citizen</code> (cron dédié), <code>transport/disruptions</code>, Vigicrues via un endpoint dédié, <code>eolien?parks=1</code> → fichier statique <code>public/data/</code> ; migrer les caches mémoire de <code>sentinel-ndwi.ts</code> et <code>osm-railways.js</code> vers Redis ; timeout manquant sur <code>synthesis.js:167</code></td>
+<td>tous ces appels &lt; 0,2 s après le premier</td>
+<td>M</td>
+<td>annexe B §4, §6</td>
+</tr>
+<tr>
+<td>P2</td>
+<td><strong>Snapshot serveur unique</strong> : un cron (5 min) assemble énergie + météo/crues + finance + cyber/infra + feux (résumé) + militaires dans 3 ou 4 objets Redis ; le client fait <strong>un</strong> <code>GET /api/snapshot</code> (<code>s-maxage=60</code>) au démarrage puis rafraîchit par domaine</td>
+<td>≈ 35 requêtes → 1 ; démarrage indépendant des amonts ; invocations divisées par 20 (palier gratuit Vercel)</td>
+<td>M/L</td>
+<td>nouveau <code>api/snapshot.js</code> + cron dans <code>vercel.json</code> + <code>src/services/snapshot.ts</code> ; candidats/exclusions en annexe B §5</td>
+</tr>
+<tr>
+<td>P2</td>
+<td><strong>Persister les réponses critiques en <code>localStorage</code></strong> (généraliser <code>newsCache.ts</code> à ecowatt, vigilance, crues, nucléaire) pour peindre le dernier état connu avant le réseau</td>
+<td>affichage instantané au rechargement</td>
+<td>M</td>
+<td><code>src/utils/newsCache.ts</code> (modèle), services concernés</td>
+</tr>
+<tr>
+<td>P2</td>
+<td><strong>Rapatrier les appels externes directs</strong> (Hub&#39;Eau, ODRE, Enedis, geo.api, api-adresse) derrière <code>/api/*</code> avec Redis</td>
+<td>cache partagé, conformité, plus de 400 après 9 s</td>
+<td>M</td>
+<td>services cités §2.4</td>
+</tr>
+<tr>
+<td>P2</td>
+<td><strong>Alléger le précache SW</strong> : exclure <code>data/drom-energy/raw/*</code>, <code>maires-politique.json</code>, GeoJSON &gt; 500 Ko (<code>globIgnores</code>) ; import dynamique de <code>Map.ts</code> (mobile) dans <code>MapContainer.ts</code></td>
+<td>−10 Mo en arrière-plan à la première visite ; −32 Ko de d3 pour le bureau</td>
+<td>S</td>
+<td><code>vite.config.ts</code>, <code>components/MapContainer.ts:7</code></td>
+</tr>
+<tr>
+<td>P3</td>
+<td><strong>Rendu différé du DOM</strong> : construire le contenu d&#39;un panneau à son ouverture, virtualiser la liste news (fenêtre de 50), délégation d&#39;événements</td>
+<td>−8 000 écouteurs ; script 13 s → &lt; 4 s</td>
+<td>M</td>
+<td><code>Panel.ts</code>, <code>UnderMapNewsFeed.ts</code>, <code>LayerPanel.ts</code></td>
+</tr>
+<tr>
+<td>P3</td>
+<td><strong>Re-passer l&#39;audit d&#39;imports statiques</strong> sur les services ajoutés depuis juillet (radar-2d/column, wildfire-dossier, mtg-frp, situation-brief/engine) : <code>index-*.js</code> est repassé de 842 à 922 Ko brut</td>
+<td>−50 à −100 Ko sur le chunk critique</td>
+<td>M</td>
+<td><code>src/App.ts</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="3-3-architecture-cible-du-demarrage"><a class="anchor" href="#3-3-architecture-cible-du-demarrage" aria-label="Lien vers cette section">#</a>3.3 Architecture cible du démarrage</h3>
+<pre class="code"><code>Navigateur                                     Vercel (fra1)                     Cron
+──────────                                     ─────────────                     ────
+GET /?view=app ──► HTML + bundle app                                              toutes les 5 min : snapshot.js
+en parallèle :                                                                     assemble 12 sources → Redis
+  GET /api/snapshot ─────────────► Redis (s-maxage=60, SWR=300)                   toutes les 30 min : ingest news
+  GET /api/news?since=&lt;5 min&gt;&amp;noise=0&amp;limit=300 ─► Neon (s-maxage=60, SWR=300)     → Neon (Jev, géocodage, résumés)
+  initMap() (style Carto, tuiles)  ← les updateX() rejouent l&#39;état quand la carte est prête
+[toggle couche X] ─► import(XPanel) + GET /api/x + start polling X   (à la demande)
+</code></pre>
+<p>Ordre conseillé : les cinq P0 (une journée, gains immédiats et mesurables : refaire la trace de l&#39;annexe E avant/après), puis « à la demande » et « en parallèle de la carte » (le plus gros gain structurel), puis le snapshot.</p>
+<h3 id="3-4-anomalies-a-corriger-independamment-de-la-performance"><a class="anchor" href="#3-4-anomalies-a-corriger-independamment-de-la-performance" aria-label="Lien vers cette section">#</a>3.4 Anomalies à corriger indépendamment de la performance</h3>
+<ul>
+<li><code>/api/ministers/*</code> : 9 sous-routes appelées par <code>src/services/ministers.ts</code>, rewrite présent dans <code>vercel.json</code>, <strong>aucun fichier handler</strong> ; la logique (827 lignes, <code>api/_shared/ministers.js</code>) n&#39;est câblée qu&#39;au plugin Vite de dev. Le panneau Gouvernement est mort en prod (annexe B §0).</li>
+<li><code>api/intelligence/v1/synthesis.js:167</code> : appel Groq sans <code>AbortSignal</code> (ses deux voisins en ont un).</li>
+<li><code>api/ingest/news.ts:2</code> dit « toutes les 5 min » (cron réel : 30 min) ; <code>:13</code> dit « max 5/tick » Groq (constante réelle : 15).</li>
+<li><code>api/_lib/server-classifier.js</code> et <code>feeds-snapshot.js</code> sont des copies générées de <code>src/services/classifier.ts</code> et <code>src/config/feeds.ts</code> sans vérification en CI : une modification du classifieur peut partir côté client sans jamais atteindre l&#39;ingestion (ou l&#39;inverse). Ajouter un test qui régénère et compare.</li>
+<li>Trois flags <code>VITE_ENABLE_{GAS_PANEL,CYBER_PANEL,OIL_LAYER}</code> sont <strong>actifs par défaut</strong> faute de variable positionnée, contrairement à la note interne de juillet.</li>
+</ul>
+
+</section><section class="doc-section"><h2 id="4-jev-typesafe-pour-scorer-les-news"><a class="anchor" href="#4-jev-typesafe-pour-scorer-les-news" aria-label="Lien vers cette section">#</a>4. Jev (TypeSafe) pour scorer les news</h2>
+<h3 id="4-1-ce-que-jev-est-et-n-39-est-pas"><a class="anchor" href="#4-1-ce-que-jev-est-et-n-39-est-pas" aria-label="Lien vers cette section">#</a>4.1 Ce que Jev est, et n&#39;est pas</h3>
+<p>Jev (<code>jev-1.13.0</code>, TypeSafe) est un modèle « System One » : on lui envoie un <strong>état</strong> (texte ou JSON) et une carte de <strong>questions typées</strong>, il renvoie des réponses structurées avec probabilités calibrées, sans générer de texte. Trois primitives :</p>
+<ul>
+<li><strong>Choice</strong> : une option parmi N (distribution + <code>confidence</code>).</li>
+<li><strong>Score</strong> : une position sur des niveaux ordonnés décrits en mots (probabilités par niveau + <code>confidence</code>).</li>
+<li><strong>Noul</strong> : probabilité qu&#39;une condition soit vraie (0–1).</li>
+</ul>
+<p>Ce qui compte pour France Monitor :</p>
+<ul>
+<li>Toutes les questions d&#39;une requête sont évaluées <strong>en parallèle sur le même état</strong> : 9 questions coûtent à peine plus qu&#39;une seule (pattern « speculative fan-out »).</li>
+<li>Jev <strong>ne résume pas et ne rédige pas</strong> : synthèse, brief et résumés restent à Ollama/Groq. Rôle net : <em>Jev juge, le LLM rédige</em>.</li>
+<li>Il lit <strong>littéralement</strong> : critères concrets, sans double négation ; calculs, seuils et dates restent dans le code.</li>
+<li><strong>Français</strong> : la doc indique que l&#39;anglais est la langue principale, les autres langues « prises en charge mais moins précises ». À mesurer sur un jeu de titres français avant de s&#39;y fier (§4.7). Piste : instructions/critères en anglais, état en français.</li>
+<li>Tarif : <strong>0,042 $ par million de tokens d&#39;entrée</strong>, sortie gratuite ; limites 1 200 req/min et 250 000 tokens/s ; contexte 64 k. <strong>Aucun palier gratuit documenté</strong> (à vérifier à la création du compte sur <code>console.typesafe.ai</code>). Données : pas d&#39;entraînement sur les requêtes clients, DPA disponible, ZDR réservé aux comptes entreprise.</li>
+<li>SDK : <code>npm install @typesafe-ai/sdk</code> (Node 20+), <code>client.systemOne({ state, questions })</code>, types de réponse inférés.</li>
+</ul>
+<h3 id="4-2-ou-l-39-inserer-une-fois-par-article-cote-serveur"><a class="anchor" href="#4-2-ou-l-39-inserer-une-fois-par-article-cote-serveur" aria-label="Lien vers cette section">#</a>4.2 Où l&#39;insérer : une fois par article, côté serveur</h3>
+<p>Le point d&#39;insertion existe déjà : la <strong>passe Groq de reclassification</strong> du cron d&#39;ingestion (<code>api/ingest/news.ts:395-439</code>) est exactement le gabarit « appeler un classifieur externe sur un sous-ensemble budgété de lignes fraîchement insérées, puis <code>UPDATE</code> ». Aujourd&#39;hui elle ne traite que 15 articles par tick (<code>GROQ_BUDGET_PER_TICK</code>), séquentiellement, seulement ceux à confiance &lt; 0,60, écrit une confiance <strong>constante 0,75</strong> et s&#39;interrompt au premier 429. Jev la remplace :</p>
+<pre class="code"><code>RSS (38 flux) → dédup (sha256) → classification mots-clés (kw-1, déterministe, inchangée)
+             → [NOUVEAU] Jev : 1 requête / article inséré, concurrence 8, budget 200/tick
+             → UPDATE news_items : jev_answers (brut) + champs dérivés, classifier_version = &#39;jev-1&#39;
+/api/news → renvoie category/severity/confidence dérivés (Jev si confiant, sinon mots-clés)
+           + relevance, noise, alertable, scope, scoredBy
+</code></pre>
+<p>Pourquoi là et pas dans le navigateur : un article est scoré <strong>une fois</strong> (pas par visiteur), la clé reste serveur (exigence TypeSafe, et convention <code>.env.example</code> « jamais de clé <code>VITE_</code> »), le résultat est cachable par le CDN, et le client s&#39;allège (le worker <code>ai-worker</code> de 524 Ko et la chaîne Ollama→Groq→T5 côté client ne servent plus à classer). La classification ML côté client ne peut d&#39;ailleurs jamais émettre <code>critical</code> par construction (<code>ai-classifier.ts:113-121</code>).</p>
+<p>Contraintes déjà encodées à respecter : <code>maxDuration</code> 300 s et deadline interne 240 s (<code>api/ingest/news.ts:88,369</code>), budget par tick, « abandon de la passe sur erreur HTTP, poursuite sur timeout » (<code>api/_lib/groq-classifier.js:62-75</code>), et le filtre <code>classifier_version = &#39;kw-1&#39;</code> pour ne scorer chaque ligne qu&#39;une fois (<code>:401-407</code>).</p>
+<h3 id="4-3-etat-et-questions-proposees"><a class="anchor" href="#4-3-etat-et-questions-proposees" aria-label="Lien vers cette section">#</a>4.3 État et questions proposées</h3>
+<p>État (petit et nommé : le modèle perd en précision quand l&#39;état grossit) :</p>
+<pre class="code"><code>{
+  &quot;source&quot;: { &quot;name&quot;: &quot;Le Progrès&quot;, &quot;type&quot;: &quot;presse quotidienne régionale&quot;, &quot;region&quot;: &quot;Auvergne-Rhône-Alpes&quot;, &quot;tier&quot;: 3 },
+  &quot;article&quot;: {
+    &quot;title&quot;: &quot;Lyon. « On était choqué » : stupéfaction au lycée Colbert après le projet d&#39;attentat avorté&quot;,
+    &quot;summary&quot;: &quot;…description RSS tronquée à 600 caractères…&quot;,
+    &quot;published_at&quot;: &quot;2026-09-22T06:00:11Z&quot;
+  }
+}
+</code></pre>
+<p>Questions (une requête, <code>model: &quot;jev-1.13.0&quot;</code> épinglé pour figer la calibration ; les identifiants ne sont pas transmis au modèle) :</p>
+<details class="code-fold"><summary>Afficher le JSON (70 lignes)</summary><pre class="code"><code>{
+  &quot;relevance&quot;: {
+    &quot;type&quot;: &quot;score&quot;,
+    &quot;instructions&quot;: &quot;How useful is `article` for a national situational-awareness dashboard that monitors France&#39;s critical infrastructure, public safety, public health and social stability?&quot;,
+    &quot;criteria&quot;: [
+      &quot;Not useful: entertainment, sport, culture, recipes, celebrity, lifestyle, consumer tips, local trivia, opinion pieces&quot;,
+      &quot;Minor local event with no wider consequences: isolated crime, small accident, minor road incident, court case about a past event&quot;,
+      &quot;Notable event affecting a public service, an infrastructure, an institution or many people in a territory&quot;,
+      &quot;Major event with national impact or a direct threat to critical infrastructure, public order, health or security&quot;
+    ]
+  },
+  &quot;category&quot;: {
+    &quot;type&quot;: &quot;choice&quot;,
+    &quot;instructions&quot;: &quot;Which domain does `article` primarily belong to?&quot;,
+    &quot;criteria&quot;: {
+      &quot;security&quot;: &quot;Crime, terrorism, policing, public order, riots, attacks&quot;,
+      &quot;social&quot;: &quot;Strikes, demonstrations, social movements, labour conflicts&quot;,
+      &quot;energy&quot;: &quot;Electricity, gas, oil, fuel supply, nuclear plants, grid, renewables&quot;,
+      &quot;transport&quot;: &quot;Rail, road, air, maritime traffic and disruptions&quot;,
+      &quot;weather&quot;: &quot;Storms, floods, heatwaves, wildfires, weather warnings&quot;,
+      &quot;health&quot;: &quot;Epidemics, hospitals, drug shortages, public health alerts&quot;,
+      &quot;cyber&quot;: &quot;Cyberattacks, data breaches, telecom or internet outages&quot;,
+      &quot;infrastructure&quot;: &quot;Water, telecom networks, bridges, dams, industrial sites, other critical infrastructure&quot;,
+      &quot;defense&quot;: &quot;Armed forces, military activity, geopolitical threats to France&quot;,
+      &quot;finance&quot;: &quot;Markets, prices, economic shocks, major company failures&quot;,
+      &quot;other&quot;: &quot;None of the above&quot;
+    }
+  },
+  &quot;severity&quot;: {
+    &quot;type&quot;: &quot;score&quot;,
+    &quot;instructions&quot;: &quot;How severe is the situation described in `article` for people, services or infrastructure in France?&quot;,
+    &quot;criteria&quot;: [
+      &quot;No operational impact: information, announcement, analysis, statistics&quot;,
+      &quot;Localised and contained: a few people or one site affected, resolved or being resolved&quot;,
+      &quot;Significant ongoing disruption of a service, a network or a territory (a département or a city)&quot;,
+      &quot;Serious threat to life, to a critical infrastructure or to public order at regional scale&quot;,
+      &quot;National-scale crisis, major attack, disaster or outage in progress&quot;
+    ]
+  },
+  &quot;in_france&quot;: {
+    &quot;type&quot;: &quot;noul&quot;,
+    &quot;instructions&quot;: &quot;Does the event in `article` take place in France (metropolitan or overseas) or directly affect French territory, population, institutions or infrastructure?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;The event is located in France or has a stated direct effect on France&quot;, &quot;false&quot;: &quot;The event is abroad and only mentioned as international news&quot; }
+  },
+  &quot;ongoing&quot;: {
+    &quot;type&quot;: &quot;noul&quot;,
+    &quot;instructions&quot;: &quot;Is the event in `article` happening now or still unfolding, as opposed to a retrospective, an anniversary, an analysis, a trial or an investigation about a past event?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;The situation is current and may still evolve&quot;, &quot;false&quot;: &quot;The article looks back at a past event or gives background&quot; }
+  },
+  &quot;institution_involved&quot;: {
+    &quot;type&quot;: &quot;noul&quot;,
+    &quot;instructions&quot;: &quot;Does `article` explicitly mention the involvement of a public institution, an operator or an emergency service (préfecture, police, gendarmerie, SAMU, pompiers, ARS, hospital, SNCF, RTE, Enedis, EDF, Météo-France, mairie, ministry)?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;At least one such organisation is named as acting or affected&quot;, &quot;false&quot;: &quot;No such organisation is mentioned&quot; }
+  },
+  &quot;isolated_fait_divers&quot;: {
+    &quot;type&quot;: &quot;noul&quot;,
+    &quot;instructions&quot;: &quot;Is `article` an isolated crime or accident story (fait divers) with no consequence beyond the people directly involved?&quot;,
+    &quot;criteria&quot;: { &quot;true&quot;: &quot;A single incident with no effect on a service, a network or a territory&quot;, &quot;false&quot;: &quot;The event affects a service, a network, an institution or a whole area&quot; }
+  },
+  &quot;scope&quot;: {
+    &quot;type&quot;: &quot;choice&quot;,
+    &quot;instructions&quot;: &quot;What is the geographic scope of the event in `article`?&quot;,
+    &quot;criteria&quot;: { &quot;commune&quot;: &quot;One town or neighbourhood&quot;, &quot;departement&quot;: &quot;One département or several towns&quot;, &quot;region&quot;: &quot;One region or several départements&quot;, &quot;national&quot;: &quot;The whole country&quot;, &quot;international&quot;: &quot;Outside France or several countries&quot;, &quot;unknown&quot;: &quot;Cannot be determined&quot; }
+  },
+  &quot;infrastructure_type&quot;: {
+    &quot;type&quot;: &quot;choice&quot;,
+    &quot;instructions&quot;: &quot;If `article` concerns an infrastructure, which one? Answer `none` when no infrastructure is concerned.&quot;,
+    &quot;criteria&quot;: { &quot;electricity&quot;: null, &quot;gas&quot;: null, &quot;fuel&quot;: null, &quot;nuclear&quot;: null, &quot;water&quot;: null, &quot;telecom_internet&quot;: null, &quot;rail&quot;: null, &quot;road&quot;: null, &quot;air&quot;: null, &quot;port_maritime&quot;: null, &quot;hospital&quot;: null, &quot;none&quot;: &quot;No infrastructure is concerned&quot; }
+  }
+}
+</code></pre></details>
+<p><code>infrastructure_type</code> est spéculative : on ne lit sa réponse que si <code>category</code> ∈ {energy, transport, infrastructure, cyber}. Les catégories <code>floods</code>/<code>fires</code> de <code>EventCategory</code> sont couvertes par <code>weather</code> + <code>infrastructure_type</code>, à décider selon les consommateurs (§4.5).</p>
+<h3 id="4-4-combinaison-en-code-la-politique-reste-dans-le-depot"><a class="anchor" href="#4-4-combinaison-en-code-la-politique-reste-dans-le-depot" aria-label="Lien vers cette section">#</a>4.4 Combinaison en code (la politique reste dans le dépôt)</h3>
+<pre class="code"><code>// api/_lib/jev-policy.js — pur, testable, sans appel réseau (généré depuis src/ comme server-classifier)
+const SEV = [&#39;info&#39;, &#39;low&#39;, &#39;medium&#39;, &#39;high&#39;, &#39;critical&#39;];
+export function derive(a, kw) {
+  const relevance = a.relevance.score / 3;                        // 0..1
+  const inFrance  = a.in_france.noul;
+  const noise     = inFrance &lt; 0.5 || relevance &lt; 0.4 || a.isolated_fait_divers.noul &gt; 0.7;
+  const sevIdx    = Math.round(a.severity.score);                 // 0..4 → SEV
+  const severity  = a.severity.confidence &gt;= 0.6 ? SEV[sevIdx] : kw.severity;   // repli mots-clés
+  const category  = a.category.confidence &gt;= 0.5 &amp;&amp; a.category.choice !== &#39;other&#39; ? a.category.choice : kw.category;
+  const alertable = !noise &amp;&amp; sevIdx &gt;= 3 &amp;&amp; a.ongoing.noul &gt;= 0.6 &amp;&amp; inFrance &gt;= 0.7
+                    &amp;&amp; (a.institution_involved.noul &gt;= 0.5 || sevIdx === 4);
+  const rank      = 0.5 * relevance + 0.3 * (sevIdx / 4) + 0.1 * a.ongoing.noul + 0.1 * inFrance;
+  return { relevance, noise, severity, category, alertable, rank, scope: a.scope.choice,
+           confidence: a.severity.confidence };
+}
+</code></pre>
+<p>Les seuils (0,4 / 0,6 / 0,7) sont des points de départ à évaluer sur les données ; ils se changent <strong>sans ré-inférence</strong> puisque les réponses brutes sont stockées. Sur les exemples du §0 : « Lady Di » → <code>relevance</code> 0, <code>in_france</code> ≈ 0 → bruit ; « Guerre en Ukraine, décryptage » → <code>in_france</code> et <code>ongoing</code> bas → pas d&#39;alerte ; « projet d&#39;attentat avorté au lycée Colbert » → <code>security</code>, gravité 3, France, institution → alerte légitime, <code>ongoing</code> modéré (projet déjoué) → à surveiller.</p>
+<h3 id="4-5-stockage-et-contrat-api"><a class="anchor" href="#4-5-stockage-et-contrat-api" aria-label="Lien vers cette section">#</a>4.5 Stockage et contrat API</h3>
+<p>Migration Neon additive (<code>scripts/init-db.mjs</code>, idempotent) :</p>
+<pre class="code"><code>ALTER TABLE news_items
+  ADD COLUMN IF NOT EXISTS jev_answers jsonb,      -- réponses brutes, probabilités incluses
+  ADD COLUMN IF NOT EXISTS relevance real,
+  ADD COLUMN IF NOT EXISTS is_noise boolean,
+  ADD COLUMN IF NOT EXISTS alertable boolean,
+  ADD COLUMN IF NOT EXISTS scope text;
+-- classifier_version passe à &#39;jev-1&#39; pour les lignes scorées (réutilise le filtre existant)
+CREATE INDEX IF NOT EXISTS news_items_relevant_idx ON news_items (published_at DESC) WHERE is_noise = false;
+</code></pre>
+<p><code>/api/news</code> (<code>api/news.js:125-134</code>) ajoute <code>relevance</code>, <code>noise</code>, <code>alertable</code>, <code>scope</code>, <code>scoredBy</code> (dérivé de <code>classifier_version</code>, aujourd&#39;hui jamais exposé) ; <code>mapIngestItem</code> (<code>src/services/rss.ts:287-367</code>) les porte dans <code>NewsItem</code> et renseigne enfin <code>threat.source</code> correctement (<code>&#39;llm&#39;</code> est déclaré mais jamais produit ; tout item serveur est étiqueté <code>&#39;keyword&#39;</code>, <code>rss.ts:330-340</code>). Les ≈ 15 consommateurs (annexe C §3) continuent de lire <code>level</code>/<code>category</code>/<code>confidence</code> sans modification ; <code>UnderMapNewsFeed</code> utilise ensuite <code>relevance</code> pour trier et <code>noise</code> pour masquer ; <code>buildAlertMonitorSituations</code> (<code>App.ts:6382-6413</code>) utilise <code>alertable</code> au lieu de <code>level ∈ {critical, high}</code>.</p>
+<h3 id="4-6-cout-limites-risques"><a class="anchor" href="#4-6-cout-limites-risques" aria-label="Lien vers cette section">#</a>4.6 Coût, limites, risques</h3>
+<ul>
+<li><strong>Coût</strong> : état ≈ 200 tokens (le français tokenise ≈ 1,4× l&#39;anglais) + 9 questions ≈ 800 tokens → ≈ 1 000 tokens par article. Le flux 24 h renvoie 1 000 items (plafond) ; à 1 000–3 000 articles/jour : 1–3 M tokens/jour → <strong>0,04 à 0,13 $/jour, soit 1 à 4 $/mois</strong>. Pas de palier gratuit documenté : dépense nouvelle à valider explicitement au regard de la règle « paliers gratuits uniquement ». Alternative sans coût : garder Groq mais lui demander le même JSON typé (moins calibré, quotas gratuits déjà saturables).</li>
+<li><strong>Latence</strong> : non mesurée ; modèle conçu pour la décision rapide. 200 articles à concurrence 8 tiennent dans le budget de 240 s.</li>
+<li><strong>Score de stabilité v3</strong> : <code>france-country-intel.ts:442-456</code> compte les items <code>critical</code>/<code>high</code> (pilier <code>security</code> 25 %, pilier <code>signal</code> 40 %, plafonds par situation). Jev réduira les faux critiques → le score montera. Les fixtures de <code>france-country-intel.test.ts</code> verrouillent la calibration et <strong>ne doivent pas être retouchées</strong> ; il faut un <strong>mode ombre</strong> (stocker sans utiliser) puis une bascule par drapeau <code>NEWS_SCORING=jev|keywords</code>, avec comparaison des deux séries de scores avant activation. Même vigilance pour <code>stability-index.ts</code> (poids 100/50/25/10/0 par département).</li>
+<li><strong>Vie privée</strong> : seuls le titre et la description RSS (contenu public) sont envoyés ; aucune donnée utilisateur. Même périmètre que les deux appels Groq existants (reclassification, synthèse). À documenter dans <code>docs/privacy.md</code>.</li>
+<li><strong>Jaggedness</strong> connue de <code>jev-1.13</code> : lecture littérale, faiblesse en comptage et en dates, sensibilité au contenu adversarial (titres accrocheurs), pas d&#39;invariants structurels entre questions (ne pas déduire <code>P(non)</code> de <code>1 − P(oui)</code> d&#39;une autre question). D&#39;où : critères concrets, dates en code, une question par jugement, épinglage de version.</li>
+</ul>
+<h3 id="4-7-plan-de-mise-en-uvre-et-validation"><a class="anchor" href="#4-7-plan-de-mise-en-uvre-et-validation" aria-label="Lien vers cette section">#</a>4.7 Plan de mise en œuvre et validation</h3>
+<ol>
+<li><strong>Jeu d&#39;évaluation</strong> (½ jour) : exporter 300 articles récents (<code>/api/news?limit=300</code>), étiqueter à la main <code>pertinent / bruit</code>, <code>gravité</code>, <code>France ?</code>. Script <code>scripts/eval-jev.mjs</code> qui appelle l&#39;API et calcule l&#39;accord, précision/rappel des alertes, part de <code>confidence &lt; 0,5</code>. Comparer instructions en anglais vs en français. <strong>Go/no-go sur ces chiffres et sur le coût constaté.</strong></li>
+<li><strong>Mode ombre</strong> (1 jour) : <code>api/_lib/jev-client.js</code> + <code>jev-policy.js</code> (générés et testés comme les autres libs <code>_lib</code>), colonnes Neon, scoring dans le cron avec budget par tick, drapeau <code>NEWS_SCORING</code>. Rien ne change côté client.</li>
+<li><strong>Comparaison</strong> (1 semaine de données) : script ou page <code>/sources-quality</code> : distribution mots-clés vs Jev, liste des désaccords, dérive du score de stabilité.</li>
+<li><strong>Bascule progressive</strong> : d&#39;abord tri du flux et masquage du bruit (<code>relevance</code>, <code>noise</code>), puis alertes (<code>alertable</code>), enfin score de stabilité. Tests contractuels des seuils dans <code>tests/</code>.</li>
+<li><strong>Nettoyage</strong> : retirer la classification ML côté client (<code>ai-classifier.ts</code>, <code>ai-worker.ts</code>) ; garder les résumés locaux Ollama en option ; corriger <code>threat.source</code>.</li>
+</ol>
+
+</section><section class="doc-section"><h2 id="5-interface-simplification"><a class="anchor" href="#5-interface-simplification" aria-label="Lien vers cette section">#</a>5. Interface — simplification</h2>
+<h3 id="5-1-ce-qu-39-un-nouvel-utilisateur-voit-au-premier-chargemen"><a class="anchor" href="#5-1-ce-qu-39-un-nouvel-utilisateur-voit-au-premier-chargemen" aria-label="Lien vers cette section">#</a>5.1 Ce qu&#39;un nouvel utilisateur voit au premier chargement (bureau 1440×900)</h3>
+<ul>
+<li>En-tête : sélecteur Régions (10 presets repliés en <code>&lt;select&gt;</code>), FR/EN, « Note de situation », « Export », « Sources &amp; qualité », menu « Sources de données » (40 entrées avec cache/latence), horloge : <strong>17 éléments interactifs</strong>.</li>
+<li>Colonne gauche (380 px fixes) : widget baromètre pannes réseau, bouton « Intelligence France », arbre <strong>Couches</strong> : 7 groupes tous dépliés, 35 cases définies (<code>LayerPanel.ts:17-54</code>), dont 7 servent aussi de déclencheur d&#39;accordéon.</li>
+<li>Sur la carte : popup « Alertes » (3 items, dont deux faux positifs du classifieur), bandeau « Convergences 24 h », bascule Carte/Satellite, <strong>panneaux « Environnement » et « Énergie » ouverts d&#39;office</strong> (<code>FIRST_LOAD_PRESET_LAYERS</code>, <code>App.ts:451-456</code>), bouton flottant « Baromètre Santé », 2 légendes sous la carte, bouton « Voir les modules », pied de page 6 liens.</li>
+<li>≈ 65 éléments distincts visibles sans clic ; 89 boutons, 37 champs, 518 liens, 14 500 nœuds DOM. Aucun <code>h1</code>–<code>h6</code> : les titres de panneau sont des <code>&lt;span class=&quot;panel-title&quot;&gt;</code> (<code>Panel.ts:64-66</code>).</li>
+<li><strong>Visiteur récurrent</strong> : <code>DEFAULT_LAYERS</code> (38 clés, toutes à <code>false</code>) sert de repli ; un <code>localStorage</code> « tout éteint » donne une carte vide (le correctif du 5 juillet ne couvre que le tout premier chargement).</li>
+<li>Mobile 390 px : le panneau Environnement recouvre toute la carte, le popup Alertes est coupé, « Régions » chevauche l&#39;horloge ; aucune navigation dédiée ; <strong>aucune mise en page tablette</strong> (une seule règle entre 721 et 1180 px, pour un panneau de gare).</li>
+</ul>
+<p>Le produit a un vrai vocabulaire visuel (fond sombre cohérent, badges de gravité, monospace pour les métadonnées) ; ce n&#39;est pas un problème d&#39;esthétique mais de <strong>quantité de choses ouvertes en même temps</strong> et de <strong>hiérarchie</strong>.</p>
+<h3 id="5-2-audit-technique-grille-impeccable"><a class="anchor" href="#5-2-audit-technique-grille-impeccable" aria-label="Lien vers cette section">#</a>5.2 Audit technique (grille impeccable)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Dimension</th>
+<th>Score /4</th>
+<th>Constat principal</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>Accessibilité</td>
+<td>1</td>
+<td>147 sites de création de boutons pour 68 <code>aria-label</code> ; 7 <code>role=</code> dans toute l&#39;app ; aucun titre sémantique dans 26 panneaux ; <code>SearchModal</code> sans <code>aria-modal</code> ; 7 <code>outline:none</code> restants. Progrès depuis juillet : 14 règles <code>:focus-visible</code> (1 en juillet), 13 fichiers avec <code>keydown</code>, contrastes des tokens conformes (<code>--text-muted</code> 5,3:1)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Performance UI</td>
+<td>1</td>
+<td>14 500 nœuds et 8 000 écouteurs au démarrage ; 52 tâches longues ; tous les panneaux construits d&#39;emblée ; <code>DeckGLMap.ts</code> 12 723 lignes, <code>App.ts</code> 6 830</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Responsive</td>
+<td>1</td>
+<td>mobile : superpositions, panneau plein écran sans geste de fermeture ; tablette inexistante ; 11 seuils de breakpoint quasi doublons (768/767/760, 480/430/420) sans variable</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Thématisation</td>
+<td>2</td>
+<td>53 variables <code>:root</code> mais 156 hex et 499 <code>rgb()</code> hors <code>:root</code> ; 17 valeurs de <code>z-index</code> en dur alors qu&#39;une échelle <code>--z-*</code> à 6 paliers existe ; 36 <code>!important</code> ; aucun mode clair</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Anti-patterns</td>
+<td>3</td>
+<td>pas de « slop » IA ; mais 5 échelles de couleur de gravité parallèles (<code>--threat-*</code>, <code>--ecowatt-*</code>, <code>--meteo-*</code>, <code>--flood-*</code>, <code>truthBadge</code>) et surfaces flottantes empilées</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Total</strong></td>
+<td><strong>8/20</strong></td>
+<td>« Poor » : refonte de l&#39;état par défaut et de la hiérarchie nécessaire, pas du style</td>
+</tr>
+</tbody></table></div>
+<h3 id="5-3-proposition-mode-simple-par-defaut"><a class="anchor" href="#5-3-proposition-mode-simple-par-defaut" aria-label="Lien vers cette section">#</a>5.3 Proposition « mode simple » par défaut</h3>
+<ol>
+<li><strong>Un état par défaut minimal</strong> : carte + bandeau de synthèse (Convergences) + liste d&#39;alertes réduite à une ligne dépliable ; <strong>aucun panneau ouvert d&#39;office</strong> (Environnement ne s&#39;ouvre que sur vigilance ≥ orange ou au clic). Remplacer le couple <code>FIRST_LOAD_PRESET_LAYERS</code>/<code>DEFAULT_LAYERS</code> par un preset nommé, appliqué aussi quand le <code>localStorage</code> est vide ou « tout éteint ».</li>
+<li><strong>5 vues au lieu de 35 cases</strong> : <em>Vue générale</em>, <em>Énergie</em>, <em>Sécurité &amp; défense</em>, <em>Santé</em>, <em>Environnement &amp; transports</em>. Chaque vue active un preset de couches et de panneaux ; l&#39;arbre complet reste accessible derrière « Personnaliser » (jeu « essentiel » de 5-6 couches toujours visible, « avancé » replié). Les presets passent par <code>getEffectiveLayers()</code> et <code>syncTrafficGroupState()</code> (4 endroits à tenir synchronisés, cf. mémoire projet).</li>
+<li><strong>Un seul tiroir de détail à droite</strong> : tout ce qui s&#39;ouvre (Environnement, module, dossier feu, sources, gouvernement) s&#39;affiche dans le même tiroir, en onglets, jamais en popups superposés. <code>RightSidebar</code> (aujourd&#39;hui réservé à <code>MinistresPanel</code>) devient ce tiroir.</li>
+<li><strong>Légendes repliées</strong> sous une icône « ? » par couche active ; les 2 légendes sous la carte disparaissent.</li>
+<li><strong>Sources de données</strong> : un point de statut (vert/orange/rouge + « 1 indisponible ») qui ouvre le tiroir ; la liste de 40 sources avec cache/latence est une vue de diagnostic, pas d&#39;accueil.</li>
+<li><strong>En-tête</strong> : Régions, Vues, Recherche, Statut, Langue. « Note de situation » et « Export » vont dans un menu « ⋯ ».</li>
+<li><strong>Flux news</strong> : bruit masqué par défaut (<code>noise = false</code>, §4), tri par <code>relevance</code>, 50 items rendus (virtualisation), « voir plus ». Fusionner <code>MarketStrip</code> + <code>CommodityStrip</code> + historique en un seul bandeau sous la carte.</li>
+<li><strong>Hiérarchie sémantique</strong> : <code>h1</code> (visuellement masqué) pour le tableau de bord, <code>h2</code> par région d&#39;interface, <code>h3</code> par panneau (remplacer le <code>&lt;span class=&quot;panel-title&quot;&gt;</code> de <code>Panel.ts:64-66</code>) ; <code>aria-label</code> sur tous les boutons icône ; <code>aria-modal</code> sur <code>SearchModal</code> ; cases de couches natives ou <code>role=&quot;switch&quot;</code>.</li>
+<li><strong>Une seule échelle de gravité</strong> (token <code>--severity-*</code>) + un token de fraîcheur, à la place des 5 systèmes actuels ; respecter l&#39;échelle <code>--z-*</code> existante ; 3 breakpoints nommés (mobile / tablette / bureau) avec une vraie mise en page tablette (sidebar repliable).</li>
+<li><strong>Chargement perçu</strong> : squelettes par panneau (le loader unifié existe), plus de spinner global ; la carte s&#39;affiche avant les données (§3).</li>
+<li><strong>Code mort à supprimer</strong> (3 173 lignes, zéro référence) : <code>ToastNotification.ts</code>, <code>ElusPanel.ts</code>, <code>flood-geometry.ts</code>, <code>FilterPanel.ts</code> + <code>TimeBar.ts</code>, <code>osm-rail-graph.ts</code>, <code>ore-incidents.ts</code> ; retirer la clé <code>elus</code> masquée en dur de <code>LayerPanel.ts:53,94</code>.</li>
+</ol>
+<h3 id="5-4-mobile"><a class="anchor" href="#5-4-mobile" aria-label="Lien vers cette section">#</a>5.4 Mobile</h3>
+<ul>
+<li>Navigation par <strong>bottom-sheet</strong> à 3 hauteurs (fermé / aperçu / plein) pour le tiroir de détail, geste de fermeture, bouton « Carte » toujours visible.</li>
+<li>Barre inférieure : Vues · Alertes · Recherche · Plus. Pas de sélecteur Régions dans l&#39;en-tête (il va dans « Vues »).</li>
+<li>Le fallback D3/SVG (<code>Map.ts</code>) reste ; vérifier les cibles tactiles ≥ 44 px sur les puces de gravité.</li>
+</ul>
+<p>Commandes suggérées (skill impeccable) : <code>/impeccable distill</code> (état par défaut, presets), <code>/impeccable adapt</code> (mobile/tablette), <code>/impeccable harden</code> (a11y, états vides/erreur), puis <code>/impeccable polish</code>.</p>
+
+</section><section class="doc-section"><h2 id="6-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0"><a class="anchor" href="#6-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0" aria-label="Lien vers cette section">#</a>6. Suivi de mise en œuvre (23/09/2026, branche <code>feat/audit-2026-09-hobby-perf</code>)</h2>
+<p><strong>État au 23/09/2026 au soir</strong> :</p>
+<ul>
+<li>Branche commitée (<code>9d83531f</code>, 240 fichiers) et poussée sur GitHub ; build de prévisualisation Vercel réussi, routes non testées car la prévisualisation est protégée par l&#39;authentification Vercel.</li>
+<li><code>main</code> poussé et déployé en production en <code>0d44c1eb</code> (clic d&#39;une alerte de vol militaire vers l&#39;avion, borne de réflectivité du décodeur radar), CI verte ; la branche fusionne sans conflit avec ce <code>main</code> (fusion à blanc).</li>
+<li>Pas encore fusionnée : suivre <code>docs/runbook-passage-hobby.md</code> (QStash, vérification de la prévisualisation, fusion, passage en Hobby). Le décodeur radar n&#39;est actif qu&#39;après <code>railway up</code> depuis <code>services/radar-worker</code>.</li>
+</ul>
+<p>Vérifié : typecheck, lint, 550 tests (64 fichiers), build, contrôle des fichiers générés, et 16 scénarios navigateur (Chrome sans interface sur le serveur de dev de la branche). Les chiffres « après » ci-dessous viennent du build et du serveur de dev ; les mesures de production (latences CDN, octets) ne pourront être refaites qu&#39;après déploiement d&#39;une prévisualisation.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Avant (prod 22/09)</th>
+<th>Après (branche)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Chunk d&#39;entrée JS</td>
+<td>922 Ko (269 Ko gzip)</td>
+<td>106 Ko (33 Ko gzip)</td>
+</tr>
+<tr>
+<td>Préchargé sur l&#39;accueil</td>
+<td>maplibre + deck.gl + d3</td>
+<td>1 Ko (utilitaire Vite)</td>
+</tr>
+<tr>
+<td>Images de l&#39;accueil</td>
+<td>27,9 Mo de PNG</td>
+<td>1,3 Mo de WebP/AVIF, chargement différé</td>
+</tr>
+<tr>
+<td>Précache du service worker</td>
+<td>78 entrées, ≈ 14,5 Mo</td>
+<td>68 entrées, 1,7 Mo compressés</td>
+</tr>
+<tr>
+<td>Nœuds DOM du tableau de bord</td>
+<td>14 549</td>
+<td>≈ 3 400</td>
+</tr>
+<tr>
+<td>Appels <code>/api</code> au démarrage</td>
+<td>97 (prod)</td>
+<td>95 (dev, dont 26 géocodages d&#39;articles appelés à baisser)</td>
+</tr>
+<tr>
+<td>Appels tiers directs du navigateur</td>
+<td>165</td>
+<td>0 hors fond de carte, NOAA et RainViewer</td>
+</tr>
+<tr>
+<td>Géo-résolution des feux</td>
+<td>88 appels geo.api</td>
+<td>1 appel groupé <code>/api/geo/communes</code></td>
+</tr>
+<tr>
+<td>Erreurs console au démarrage</td>
+<td>5 (dev : 5, prod : 3)</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Fonctions Vercel</td>
+<td>59</td>
+<td>4 (limite Hobby : 12)</td>
+</tr>
+</tbody></table></div>
+<p>Fait (§3.2) : P0 en totalité ; P1 « à la demande par couche », « données en parallèle de la carte » (préchauffage des caches), cache Redis + SWR des endpoints lents, filtrage des brèves côté client, déplacement partiel du travail par article (géocodage serveur 30 → 150/tick, géo-résolution groupée) ; P2 persistance locale (Écowatt, vigilance, Vigicrues, nucléaire), appels tiers rapatriés derrière <code>/api/opendata-proxy</code>, précache allégé, <code>Map.ts</code> paresseux ; P3 plafond de 50 articles rendus + délégation d&#39;événements. §3.4 : routes ministres et GIE créées, timeout Groq, commentaires du cron corrigés, contrôle CI des fichiers générés.</p>
+<p>Jev (§4) : mode ombre codé et testé (<code>api/_lib/jev-*.js</code>, migration idempotente, <code>/api/news</code> enrichi, <code>scripts/eval-jev.mjs</code>), <strong>désactivé par défaut</strong> (<code>NEWS_SCORING=off</code>) : aucune dépense tant que la clé et le drapeau ne sont pas posés. Étape suivante : <code>node scripts/eval-jev.mjs --export 300</code>, étiquetage, puis <code>--run</code> avec une clé.</p>
+<p>Interface (§5.3) : vues prédéfinies, mode simple au premier chargement (aucun panneau ouvert), un seul panneau flottant à la fois avec barre de bascule (au lieu d&#39;un tiroir à onglets), menu « ⋯ », <code>h1</code>, titres de panneaux, légendes repliées, statut des sources compact, bandeau marchés fusionné, jetons z-index et gravité, tablette (barre latérale repliable), bottom-sheet mobile pour tous les panneaux flottants, 7 fichiers morts supprimés.</p>
+<p>Découvert et corrigé en cours de route (antérieur à la branche) : <strong>Groq a retiré <code>llama-3.3-70b-versatile</code></strong> — résumés, synthèse, brief et reclassification échouaient tous en production (modèles centralisés dans <code>api/_lib/groq-models.js</code>) ; Enedis refusait <code>limit=200</code> (« 0 enedis records ») ; ARCEP a déménagé vers un bucket OVH ; GRDF a supprimé des champs (<code>biogas-sites</code> 502) ; <code>posts.json</code> de ransomware.live pèse 21 Mo (filtré à 45 jours, la limite de réponse d&#39;une fonction est 4,5 Mo) ; <code>includeAssets</code> ajoutait 8 Mo de GeoJSON au précache ; un utilitaire Vite rangé dans le chunk deck.gl préchargeait toute la carte ; URL <code>localhost:3001</code> en dur dans 8 services ; masquer un panneau désactivait sa couche.</p>
+<p>Non fait, et pourquoi :</p>
+<ul>
+<li><strong>Snapshot serveur unique (P2)</strong> : le gain restant est faible une fois le cache CDN respecté et les couches chargées à la demande ; il demande un planificateur toutes les 5 min (budget QStash) et une refonte du démarrage. À reconsidérer sur mesures de production.</li>
+<li><strong>Historique de situation côté serveur</strong> (audit infra §6.2) : exige de porter le moteur de score v3 et ses entrées côté serveur ; chantier dédié.</li>
+<li><strong><code>alertable</code> dans les alertes</strong> : la fonction concernée (<code>buildAlertMonitorSituations</code>) est en cours de modification dans votre copie principale ; à brancher après fusion, et seulement si Jev est activé.</li>
+<li>Doublons résiduels mineurs, tous servis par le CDN : <code>/api/arcep</code> ×3 et <code>/api/energy/ecowatt</code> ×2 en 35 s.</li>
+</ul>
+</section><section class="doc-section"><h2 id="annexe-requetes-en-double-par-chargement"><a class="anchor" href="#annexe-requetes-en-double-par-chargement" aria-label="Lien vers cette section">#</a>Annexe — requêtes en double par chargement</h2>
+<p><code>ecowatt</code> ×2 · <code>arcep?date=J</code> ×2 · <code>arcep?date=J-1</code> ×2 · <code>rss?url=cert.ssi</code> ×2 · <code>json-proxy?url=ransomware.live</code> ×2 (502) · <code>situation-history?days=7</code> ×2 + <code>situation-history</code> ×1 · <code>traffic/military</code> ×2 · <code>traffic/air</code> ×4 (10,5 s chacun) · <code>weather/vigilance</code> ×2 · <code>intelligence/v1/summarize</code> ×10 · Hub&#39;Eau stations ×23 (deux passes).</p>
+<p>Les inventaires complets (55 handlers et leurs en-têtes, 63 composants, séquence d&#39;init ligne par ligne, contrat de données news) sont dans <code>docs/audit-2026-09-annexes/</code>.</p>
+</section>
+  </main>
+</div>
+
+<footer class="colophon">Généré depuis <code>docs/audit-2026-09-chargement-jev-ui.md</code> · annexes détaillées dans <code>docs/audit-2026-09-annexes/</code>.</footer>
+
+<script>
+(() => {
+  const toc = document.getElementById('toc');
+  const mq = window.matchMedia('(max-width: 1000px)');
+  const syncToc = () => { if (toc) toc.open = !mq.matches; };
+  syncToc();
+  mq.addEventListener?.('change', syncToc);
+  toc?.querySelector('summary')?.addEventListener('click', (e) => { if (!mq.matches) e.preventDefault(); });
+
+  const links = new Map([...document.querySelectorAll('[data-toc]')].map((a) => [a.dataset.toc, a]));
+  const headings = [...document.querySelectorAll('main h2[id], main h3[id]')].filter((h) => links.has(h.id));
+  if (!('IntersectionObserver' in window) || headings.length === 0) return;
+  let current = null;
+  const setActive = (id) => {
+    if (id === current) return;
+    current = id;
+    links.forEach((a, key) => a.classList.toggle('is-active', key === id));
+  };
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) setActive(visible[0].target.id);
+  }, { rootMargin: '0px 0px -70% 0px', threshold: 0 });
+  headings.forEach((h) => observer.observe(h));
+})();
+</script>
+
+</body>
+</html>

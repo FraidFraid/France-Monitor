@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Audit infrastructure France Monitor</title>
+<meta name="description" content="Qui fait quoi entre Vercel, Railway, Render, GitHub, Upstash, Neon et le navigateur : rôles vérifiés le 22/09/2026, constats, coûts et passage à Vercel Hobby.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #edf0f6;
+  --border: #d8deea;
+  --border-strong: #b9c2d6;
+  --text: #151a2c;
+  --muted: #55607a;
+  --accent: #2c4bcc;
+  --accent-soft: #e5eaff;
+  --ok: #17803d;
+  --ok-soft: #e3f4ea;
+  --warn: #a75a06;
+  --warn-soft: #fcf0de;
+  --code-bg: #eef1f8;
+  --shadow: 0 1px 2px rgb(21 26 44 / 6%), 0 8px 24px -12px rgb(21 26 44 / 18%);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --measure: 72ch;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a2b;
+    --border: #262838;
+    --border-strong: #3a3d55;
+    --text: #e8e8ec;
+    --muted: #9ea0b3;
+    --accent: #8ea4ff;
+    --accent-soft: #1b2142;
+    --ok: #46d98a;
+    --ok-soft: #0f2a1d;
+    --warn: #f3b04b;
+    --warn-soft: #2e2210;
+    --code-bg: #161826;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface-2: #1a1a2b;
+  --border: #262838;
+  --border-strong: #3a3d55;
+  --text: #e8e8ec;
+  --muted: #9ea0b3;
+  --accent: #8ea4ff;
+  --accent-soft: #1b2142;
+  --ok: #46d98a;
+  --ok-soft: #0f2a1d;
+  --warn: #f3b04b;
+  --warn-soft: #2e2210;
+  --code-bg: #161826;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px/1.62 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  padding-inline: 20px;
+  padding-block: 0 64px;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* En-tête */
+.masthead {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-block: 40px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font: 600 13px/1 var(--font-sans);
+  letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+}
+.brand .flag { display: inline-flex; width: 18px; height: 12px; border-radius: 2px; overflow: hidden; box-shadow: 0 0 0 1px var(--border); }
+.brand .flag i { flex: 1; }
+.brand .flag i:nth-child(1) { background: #1f3fa8; }
+.brand .flag i:nth-child(2) { background: #f4f4f4; }
+.brand .flag i:nth-child(3) { background: #d52b3a; }
+h1 {
+  font: 600 clamp(30px, 4.2vw, 44px)/1.12 var(--font-serif);
+  letter-spacing: -.01em;
+  margin: 14px 0 8px;
+  text-wrap: balance;
+}
+.lede { margin: 0; max-width: var(--measure); font-size: 18px; color: var(--muted); text-wrap: pretty; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font: 500 13px/1.4 var(--font-sans);
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+}
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip.ok { background: var(--ok-soft); border-color: transparent; }
+.chip.ok .dot { background: var(--ok); }
+.chip.warn { background: var(--warn-soft); border-color: transparent; }
+.chip.warn .dot { background: var(--warn); }
+
+/* Mise en page */
+.layout {
+  max-width: 1180px; margin: 0 auto;
+  display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px;
+  padding-top: 32px;
+}
+.toc {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px);
+  align-self: start; max-height: calc(100vh - 40px); overflow-y: auto;
+  font-size: 14px; padding-right: 4px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.toc > summary {
+  font: 600 12px/1 var(--font-sans); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); list-style: none; cursor: default; margin-bottom: 12px;
+}
+.toc > summary::-webkit-details-marker { display: none; }
+.toc-list, .toc-list ol { list-style: none; margin: 0; padding: 0; }
+.toc-list > li { margin-bottom: 6px; }
+.toc-list ol { margin: 4px 0 8px 12px; border-left: 1px solid var(--border); }
+.toc-list ol li a { padding-left: 10px; font-size: 13px; }
+.toc a {
+  display: block; padding: 3px 6px; border-radius: 6px;
+  color: var(--muted); text-decoration: none; line-height: 1.35;
+}
+.toc a:hover { color: var(--text); background: var(--surface-2); }
+.toc a.is-active { color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+
+main { min-width: 0; }
+.intro { max-width: var(--measure); color: var(--muted); font-size: 15px; }
+.intro p { margin: 0 0 10px; }
+
+/* Encart résultats */
+.results {
+  margin: 28px 0 8px; padding: 22px 24px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.results-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
+.results h2 { font: 600 20px/1.2 var(--font-serif); margin: 0; }
+.results .note { font-size: 13px; color: var(--muted); margin: 0; }
+.results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 28px; }
+.result {
+  display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 12px;
+  padding: 11px 0; border-top: 1px solid var(--border);
+}
+.result .label { font-size: 14px; color: var(--muted); grid-column: 1 / -1; }
+.result .before { font: 400 14px/1.3 var(--font-mono); color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.result .after { font: 500 20px/1.2 var(--font-mono); color: var(--ok); font-variant-numeric: tabular-nums; }
+
+/* Contenu */
+.doc-section { padding-top: 12px; }
+.doc-section h2 {
+  font: 600 27px/1.2 var(--font-serif); letter-spacing: -.005em;
+  margin: 44px 0 16px; padding-top: 20px; border-top: 1px solid var(--border);
+  text-wrap: balance; position: relative;
+}
+.doc-section h3 { font: 600 18px/1.3 var(--font-sans); margin: 32px 0 10px; text-wrap: balance; position: relative; }
+.anchor {
+  position: absolute; left: -22px; top: auto; opacity: 0; text-decoration: none;
+  color: var(--border-strong); font-weight: 400;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+.doc-section h2 .anchor { padding-top: 0; }
+main p, main li { max-width: var(--measure); text-wrap: pretty; }
+main p { margin: 0 0 14px; }
+main ul, main ol { padding-left: 22px; margin: 0 0 16px; }
+main li { margin-bottom: 6px; }
+main li > ul, main li > ol { margin: 6px 0 4px; }
+strong { font-weight: 600; color: var(--text); }
+code {
+  font: 400 .88em/1.4 var(--font-mono); background: var(--code-bg);
+  padding: .1em .38em; border-radius: 5px; border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+pre.code {
+  margin: 0 0 18px; padding: 16px 18px; overflow-x: auto;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+  font: 400 13px/1.55 var(--font-mono);
+}
+pre.code code { background: none; border: 0; padding: 0; font-size: inherit; overflow-wrap: normal; white-space: pre; }
+.code-fold { margin: 0 0 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.code-fold > summary {
+  cursor: pointer; padding: 11px 16px; font: 500 14px/1.3 var(--font-sans); color: var(--accent);
+  list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.code-fold > summary::-webkit-details-marker { display: none; }
+.code-fold > summary::before { content: "▸"; transition: transform .15s ease; }
+.code-fold[open] > summary::before { transform: rotate(90deg); }
+.code-fold pre.code { margin: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0 0 10px 10px; }
+
+.table-wrap {
+  margin: 4px 0 22px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface);
+}
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+th { font: 600 12px/1.3 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td { min-width: 120px; }
+td code { font-size: .85em; }
+
+footer.colophon {
+  max-width: 1180px; margin: 56px auto 0; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 20px; }
+  .toc {
+    position: static; max-height: none; margin-bottom: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  }
+  .toc > summary { cursor: pointer; margin-bottom: 0; }
+  .toc[open] > summary { margin-bottom: 12px; }
+  .anchor { display: none; }
+}
+@media (max-width: 520px) {
+  body { padding-inline: 16px; font-size: 15.5px; }
+  .masthead { padding-block: 28px 20px; }
+  .lede { font-size: 16.5px; }
+  .results { padding: 18px 16px; }
+  .doc-section h2 { font-size: 23px; }
+}
+</style>
+</head>
+<body>
+
+
+<header class="masthead">
+  <div class="brand"><span class="flag" aria-hidden="true"><i></i><i></i><i></i></span>France Monitor</div>
+  <h1>Audit d’infrastructure : qui fait quoi</h1>
+  <p class="lede">Vercel, Railway, Render, GitHub, Upstash, Neon et le navigateur : rôles vérifiés en production le 22 septembre 2026, flux de données, configuration, constats, plan pour réduire la facture — et suivi de la mise en œuvre du 23 septembre.</p>
+  <div class="meta">
+    <span class="chip "><span class="dot"></span>Audit du 22/09/2026</span>
+    <span class="chip ok"><span class="dot"></span>Mis en œuvre le 23/09/2026</span>
+    <span class="chip warn"><span class="dot"></span>Passage en Hobby à faire</span>
+    <span class="chip "><span class="dot"></span>Aucune valeur de secret dans ce document</span>
+  </div>
+</header>
+
+<div class="layout">
+  <details class="toc" id="toc" open>
+    <summary>Sommaire</summary>
+    <nav aria-label="Sommaire"><ol class="toc-list"><li><a href="#0-vue-d-39-ensemble" data-toc="0-vue-d-39-ensemble">0. Vue d&#39;ensemble</a></li><li><a href="#1-qui-fait-quoi-plateforme-par-plateforme" data-toc="1-qui-fait-quoi-plateforme-par-plateforme">1. Qui fait quoi, plateforme par plateforme</a><ol><li><a href="#1-1-vercel-projet-france-monitor-espace-fraidfraid-fonctions" data-toc="1-1-vercel-projet-france-monitor-espace-fraidfraid-fonctions">1.1 Vercel — projet france-monitor (espace fraidfraid), fonctions en fra1, CDN observé en cdg1</a></li><li><a href="#1-2-railway-projet-radar-worker-environnement-production" data-toc="1-2-railway-projet-radar-worker-environnement-production">1.2 Railway — projet radar-worker, environnement production</a></li><li><a href="#1-3-render-service-france-monitor-https-france-monitor-onren" data-toc="1-3-render-service-france-monitor-https-france-monitor-onren">1.3 Render — service france-monitor (https://france-monitor.onrender.com)</a></li><li><a href="#1-4-github-depot-public-fraidfraid-france-monitor" data-toc="1-4-github-depot-public-fraidfraid-france-monitor">1.4 GitHub — dépôt public FraidFraid/France-Monitor</a></li><li><a href="#1-5-upstash-redis" data-toc="1-5-upstash-redis">1.5 Upstash Redis</a></li><li><a href="#1-6-neon-postgres-projet-neon-teal-pocket-eu-central-1" data-toc="1-6-neon-postgres-projet-neon-teal-pocket-eu-central-1">1.6 Neon Postgres (projet neon-teal-pocket, eu-central-1)</a></li><li><a href="#1-7-groq-llm-cloud-cle-serveur" data-toc="1-7-groq-llm-cloud-cle-serveur">1.7 Groq (LLM cloud, clé serveur)</a></li><li><a href="#1-8-le-navigateur-fait-aussi-partie-de-l-39-infrastructure" data-toc="1-8-le-navigateur-fait-aussi-partie-de-l-39-infrastructure">1.8 Le navigateur fait aussi partie de l&#39;infrastructure</a></li><li><a href="#1-9-en-local-manuel-ou-vestige" data-toc="1-9-en-local-manuel-ou-vestige">1.9 En local, manuel, ou vestige</a></li></ol></li><li><a href="#2-flux-de-donnees-de-bout-en-bout" data-toc="2-flux-de-donnees-de-bout-en-bout">2. Flux de données de bout en bout</a></li><li><a href="#3-ou-vit-la-configuration" data-toc="3-ou-vit-la-configuration">3. Où vit la configuration</a></li><li><a href="#4-constats-par-ordre-d-39-importance" data-toc="4-constats-par-ordre-d-39-importance">4. Constats, par ordre d&#39;importance</a></li><li><a href="#5-ce-qui-reste-a-verifier-et-comment" data-toc="5-ce-qui-reste-a-verifier-et-comment">5. Ce qui reste à vérifier, et comment</a></li><li><a href="#6-recommandations-d-39-infrastructure-avant-les-chantiers-de" data-toc="6-recommandations-d-39-infrastructure-avant-les-chantiers-de">6. Recommandations d&#39;infrastructure (avant les chantiers de performance)</a></li><li><a href="#7-reduire-la-facture-25-mois-5-mois-puis-0-si-souhaite" data-toc="7-reduire-la-facture-25-mois-5-mois-puis-0-si-souhaite">7. Réduire la facture (≈ 25 €/mois → ≈ 5 €/mois, puis 0 € si souhaité)</a><ol><li><a href="#7-1-ce-qui-oblige-a-payer-vercel-pro-aujourd-39-hui" data-toc="7-1-ce-qui-oblige-a-payer-vercel-pro-aujourd-39-hui">7.1 Ce qui oblige à payer Vercel Pro aujourd&#39;hui</a></li><li><a href="#7-2-solution-recommandee-vercel-hobby-railway-conserve-4-6-m" data-toc="7-2-solution-recommandee-vercel-hobby-railway-conserve-4-6-m">7.2 Solution recommandée : Vercel Hobby + Railway conservé (≈ 4,6 €/mois, −80 %)</a></li><li><a href="#7-3-option-0-plus-tard-si-les-4-6-restants-genent" data-toc="7-3-option-0-plus-tard-si-les-4-6-restants-genent">7.3 Option 0 € (plus tard, si les 4,6 € restants gênent)</a></li><li><a href="#7-4-si-la-facture-n-39-est-pas-celle-supposee" data-toc="7-4-si-la-facture-n-39-est-pas-celle-supposee">7.4 Si la facture n&#39;est pas celle supposée</a></li></ol></li><li><a href="#8-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0" data-toc="8-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0">8. Suivi de mise en œuvre (23/09/2026, branche feat/audit-2026-09-hobby-perf)</a></li></ol></nav>
+  </details>
+  <main>
+    <div class="intro"><p>Date : 22 septembre 2026. Aucun code ni configuration modifié.</p>
+<p><strong>Méthode.</strong> Lecture du dépôt (<code>vercel.json</code>, <code>api/**</code>, <code>services/**</code>, <code>.github/workflows</code>, <code>ais-relay.js</code>, <code>vite.config.ts</code>, <code>.env.example</code>, noms des variables locales sans leurs valeurs), CLI <code>railway</code> et <code>gh</code> (tous deux connectés sur ce poste), sondes HTTP en production (<code>/api/health-check</code>, manifeste radar, <code>/health</code> du worker Railway, <code>/health</code> et <code>/opensky</code> du relais Render, historique de situation, séries carburants, dernier bundle de production pour vérifier l&#39;absence de clés).</p>
+<p><strong>Ce qui n&#39;a pas pu être vérifié d&#39;ici</strong> (et comment le faire, §5) : le dashboard Vercel (plan, variables réelles, usage, journaux des crons), les consoles Render, Upstash et Neon (plans, quotas consommés), la facturation Railway. Le dépôt GitHub est <strong>public</strong> : aucune valeur de secret ne figure dans ce document.</p>
+</div>
+    <section class="results" aria-labelledby="resultats">
+      <div class="results-head">
+        <h2 id="resultats">Ce qui change</h2>
+        <p class="note">Avant : production du 22/09 · Après : branche feat/audit-2026-09-hobby-perf</p>
+      </div>
+      <div class="results-grid">
+        <div class="result"><span class="label">Fonctions Vercel (limite Hobby : 12)</span><span class="before">59</span><span class="after">4</span></div>
+        <div class="result"><span class="label">Crons plus fréquents qu’une fois par jour</span><span class="before">2</span><span class="after">0</span></div>
+        <div class="result"><span class="label">Routes mortes en production</span><span class="before">3</span><span class="after">0</span></div>
+        <div class="result"><span class="label">Relais /opensky, par appel</span><span class="before">10 s</span><span class="after">cache 10 s</span></div>
+        <div class="result"><span class="label">Health-check en fonctionnement normal</span><span class="before">« down »</span><span class="after">« ok »</span></div>
+        <div class="result"><span class="label">Facture mensuelle (après passage en Hobby)</span><span class="before">≈ 23 €</span><span class="after">≈ 4,6 €</span></div>
+      </div>
+    </section>
+    <section class="doc-section"><h2 id="0-vue-d-39-ensemble"><a class="anchor" href="#0-vue-d-39-ensemble" aria-label="Lien vers cette section">#</a>0. Vue d&#39;ensemble</h2>
+<details class="code-fold"><summary>Afficher le code (20 lignes)</summary><pre class="code"><code>                         ┌──────────────────────── NAVIGATEUR de chaque visiteur ────────────────────────┐
+                         │ bundle Vite + service worker · classification mots-clés · worker ML · géocodage│
+                         │ écrit l&#39;historique de situation (POST par créneau de 6 h) · WebSocket AIS      │
+                         └──────┬──────────────────┬──────────────────────┬──────────────────────┬────────┘
+                                │ HTTPS            │ WSS                  │ HTTPS (rasters)      │ HTTPS direct
+                                ▼                  ▼                      ▼                      ▼
+   ┌────────────────────────────────┐  ┌────────────────────┐  ┌───────────────────────┐   Hub&#39;Eau · ODRE · EDF opendata
+   │ VERCEL — projet france-monitor │  │ RENDER             │  │ RAILWAY               │   Enedis · geo.api.gouv.fr
+   │ CDN (cdg1) + fonctions (fra1)  │  │ france-monitor     │  │ projet radar-worker   │   api-adresse (BAN) · data.gouv
+   │ statique + 55 fonctions        │  │ = ais-relay.js     │  │ FastAPI + volume 5 Go │   Carto (tuiles) · NOAA · RainViewer
+   │ cron news 30 min · cron        │  │ WS ← aisstream.io  │  │ boucle interne 5 min  │
+   │ carburants 3 h                 │  │ GET /opensky (10 s)│  │ ← Météo-France DPRadar│
+   └──┬───────┬───────┬───────┬─────┘  └─────────▲──────────┘  └──────────▲────────────┘
+      │       │       │       │                  │ si AIR_RELAY_URL         │ POST /refresh (filet)
+      ▼       ▼       ▼       ▼                  │                          │
+   Upstash   Neon    Groq   ≈ 40 API publiques ──┘              GitHub Actions : cron « */5 » (réel : 3–6 h)
+   Redis     Postgres LLM   (RTE, ODRE, Météo-France,           + CI lint/typecheck/test/build
+   cache ·   news 90 j ·    FIRMS, SNCF, TomTom, CERT-FR…)      + déploiement Vercel à chaque push sur main
+   verrous · snapshots      résumés, brief, synthèse
+   historique
+</code></pre></details>
+<p>Résumé en une phrase : <strong>Vercel héberge le site et fait office de proxy/cache vers une quarantaine d&#39;API publiques ; Railway fait le seul vrai calcul lourd (radar Météo-France) ; Render tient le relais AIS temps réel ; GitHub déploie et sert de filet au radar ; Upstash et Neon stockent ; le navigateur de chaque visiteur fait le reste (classification, géocodage, historique).</strong></p>
+
+</section><section class="doc-section"><h2 id="1-qui-fait-quoi-plateforme-par-plateforme"><a class="anchor" href="#1-qui-fait-quoi-plateforme-par-plateforme" aria-label="Lien vers cette section">#</a>1. Qui fait quoi, plateforme par plateforme</h2>
+<h3 id="1-1-vercel-projet-france-monitor-espace-fraidfraid-fonctions"><a class="anchor" href="#1-1-vercel-projet-france-monitor-espace-fraidfraid-fonctions" aria-label="Lien vers cette section">#</a>1.1 Vercel — projet <code>france-monitor</code> (espace <code>fraidfraid</code>), fonctions en <code>fra1</code>, CDN observé en <code>cdg1</code></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Rôle</th>
+<th>Détail</th>
+<th>Où est la configuration</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hébergement statique</td>
+<td><code>dist/</code> de Vite : <code>index.html</code> + assets hashés + service worker (précache de 78 entrées) + pages <code>about/methodology/legal/contact/docs</code> ; rewrites SPA ; CSP et en-têtes de sécurité</td>
+<td><code>vercel.json</code> (rewrites, headers), <code>vite.config.ts</code> (PWA)</td>
+</tr>
+<tr>
+<td>API <code>/api/*</code></td>
+<td><strong>55 fonctions</strong> : 10 en runtime Edge (<code>rss</code>, <code>rss-proxy</code>, <code>json-proxy</code>, <code>oil-proxy</code>, <code>fuel-prices-proxy</code>, <code>exposure</code>, <code>threats</code>, <code>intelligence/v1/*</code> ×3) et 45 en Node. Rôle : proxy vers ≈ 40 API publiques, normalisation, cache CDN (<code>s-maxage</code>) et Redis, isolation des clés</td>
+<td><code>api/**</code> ; <code>vercel.json</code> → <code>functions.maxDuration</code> (300 s ingest, 30 s finance/transport/threats/exposure)</td>
+</tr>
+<tr>
+<td>Cron n° 1</td>
+<td><code>POST /api/ingest/news</code> <strong>toutes les 30 min</strong> : 38 flux RSS → Neon <code>news_items</code>, classification mots-clés + Groq (≤ 15 articles/tick), géocodage (≤ 30/tick), purge &gt; 90 j, verrou Redis 280 s, statistiques dans Redis <code>ingest:last-tick</code></td>
+<td><code>vercel.json</code> (<code>crons</code>), secret <code>CRON_SECRET</code></td>
+</tr>
+<tr>
+<td>Cron n° 2</td>
+<td><code>/api/fuel-price-series-refresh</code> <strong>toutes les 3 h</strong> : agrège data.economie.gouv.fr → Redis <code>francemonitor:fuel-price-series:v1</code>, servi par <code>/api/fuel-price-series</code></td>
+<td>idem</td>
+</tr>
+<tr>
+<td>Déploiement</td>
+<td>Intégration Git : chaque push sur <code>main</code> produit un déploiement « Production » (dernier : 27/07/2026, commit <code>1ef47a0</code>, identique au <code>version.json</code> servi en prod). Le CLI <code>vercel</code> mentionné dans <code>docs/deployment.md</code> n&#39;est pas installé sur ce poste</td>
+<td>dashboard Vercel</td>
+</tr>
+<tr>
+<td>Variables attendues par le code</td>
+<td><code>UPSTASH_REDIS_REST_URL/TOKEN</code>, <code>DATABASE_URL</code>, <code>CRON_SECRET</code>, <code>RTE_CLIENT_ID/SECRET</code>, <code>METEO_FRANCE_API_KEY</code>, <code>METEO_FRANCE_RADAR_MANIFEST_URL</code>, <code>TOMTOM_API_KEY</code>, <code>OPENSKY_CLIENT_ID/SECRET</code>, <code>SNCF_API_KEY</code>, <code>NASA_FIRMS_API_KEY</code>, <code>CDSE_*</code>/<code>COPERNICUS_*</code>, <code>SHODAN_API_KEY</code>, <code>CENSYS_*</code>, <code>CLOUDFLARE_RADAR_TOKEN</code>, <code>GROQ_API_KEY</code>, <code>VITE_AIS_RELAY_URL</code> (inlinée au build : <code>wss://france-monitor.onrender.com</code>), <code>AIR_RELAY_URL</code> ou <code>WS_RELAY_URL</code> (optionnel), <code>SENTINEL_*</code></td>
+<td>dashboard Vercel — <strong>non vérifiable d&#39;ici</strong></td>
+</tr>
+</tbody></table></div>
+<p>Observé le 22/09 : site et API en service ; dernier tick d&#39;ingestion à 10:30:48 (38 flux, 109 articles insérés, 3,9 s, 1 flux en erreur 403 : <code>le-figaro</code>) ; <strong>≈ 2 600 articles/jour</strong> insérés (de 1 659 à 3 175 sur les sept derniers jours).</p>
+<p>Anomalies propres à Vercel :</p>
+<ul>
+<li><strong><code>/api/health-check</code> répond <code>status: &quot;down&quot;</code> en fonctionnement normal.</strong> Son seuil est de 15 min (<code>OK_TICK_MAX_MS</code>, <code>api/health-check.js:18</code>) alors que le cron est passé à 30 min le 27/07 (commit <code>84a2c81</code>). Toute sonde branchée dessus est en alerte la moitié du temps ; le signal de santé est donc inutilisable aujourd&#39;hui.</li>
+<li><strong>Deux routes appelées par le client n&#39;ont aucun handler en production</strong> et renvoient le HTML de <code>index.html</code> (repli SPA) : <code>/api/ministers/*</code> (9 appels, panneau Gouvernement mort) et <code>/api/gie/agsi</code> + <code>/api/gie/alsi</code> (<code>src/services/gas.ts:181,303</code>, stockages gaz GIE, panneau Gaz actif par défaut). Dans les deux cas la logique n&#39;existe que dans un plugin Vite de développement (<code>src/plugins/ministers-proxy.ts</code>, <code>src/plugins/gie-proxy.ts</code>) : <strong>ça marche sur le poste du développeur et pas en prod</strong>, sans erreur visible.</li>
+<li><code>/api/energy/biogas-sites</code> répond 502 ; <code>/api/arcep</code> 404 quatre fois par chargement (date non encore publiée).</li>
+<li>Les assets hashés sont servis avec <code>cache-control: public, max-age=0, must-revalidate</code> (aucune règle de cache statique dans <code>vercel.json</code>).</li>
+<li><strong>Plan</strong> : d&#39;après la documentation Vercel, un plan Hobby limite les crons à 2 par projet et à une exécution par jour ; la cadence 30 min observée implique un plan payant (Pro, 20 $/utilisateur/mois) ou une exception. À confirmer sur le dashboard.</li>
+</ul>
+<h3 id="1-2-railway-projet-radar-worker-environnement-production"><a class="anchor" href="#1-2-railway-projet-radar-worker-environnement-production" aria-label="Lien vers cette section">#</a>1.2 Railway — projet <code>radar-worker</code>, environnement <code>production</code></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Rôle</th>
+<th>Détail</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Service <code>radar-worker</code></td>
+<td>Conteneur Docker (<code>python:3.12-slim</code> + <code>libeccodes</code>, FastAPI/uvicorn sur le port 8091, entrypoint root → <code>setpriv</code> 65532) ; statut <strong>Online</strong> ; domaine public <code>radar-worker-production-0c93.up.railway.app</code> (également dans le workflow GitHub public, donc non secret)</td>
+</tr>
+<tr>
+<td>Volume</td>
+<td><code>radar-worker-volume</code> monté sur <code>/data</code> : <strong>428 Mo utilisés / 5 Go</strong> (BUFR validés + rasters WebP, rétention 24 fichiers chacun par défaut)</td>
+</tr>
+<tr>
+<td>Travail</td>
+<td>Boucle interne toutes les 300 s (<code>RADAR_REFRESH_INTERVAL_SECONDS</code> non défini → défaut) : découverte du dernier produit IMFR27 sur DPRadar (Météo-France, clé <code>METEO_FRANCE_RADAR_API_KEY</code>), téléchargement (≈ 350 Mo), décodage <code>bufr_bitstream</code> (0,2 s), rendu réflectivité + sommets d&#39;écho → <code>manifest.json</code> + <code>rasters/*.webp</code> ; refresh complet ≈ 5 s</td>
+</tr>
+<tr>
+<td>Endpoints</td>
+<td>publics : <code>GET /health</code>, <code>GET /manifest.json</code>, <code>GET /rasters/&lt;fichier&gt;.webp</code>, <code>GET /volume/column?lat&amp;lon</code> (profil vertical 3D, démonstration) ; authentifiés (<code>Authorization: Bearer RADAR_WORKER_TOKEN</code>) : <code>POST /refresh</code>, <code>POST /publish</code></td>
+</tr>
+<tr>
+<td>Variables</td>
+<td>applicatives : <code>METEO_FRANCE_RADAR_API_KEY</code>, <code>RADAR_WORKER_TOKEN</code>, <code>RADAR_STORAGE_DIR</code>, <code>RADAR_PUBLIC_BASE_URL</code> (+ 14 variables système Railway) ; <code>RADAR_RAW_RETENTION</code> / <code>RADAR_RASTER_RETENTION</code> non définies (défaut 24)</td>
+</tr>
+<tr>
+<td>Consommateurs</td>
+<td>Vercel <code>api/fire-observations/radar-2d.js</code> et <code>radar-column.js</code> (via <code>METEO_FRANCE_RADAR_MANIFEST_URL</code>, cache CDN 120 s) → client ; <strong>le navigateur télécharge les rasters directement sur Railway</strong> (<code>imageUrl</code> et <code>echoTopImageUrl</code> du manifeste pointent sur le domaine Railway)</td>
+</tr>
+<tr>
+<td>Déploiement</td>
+<td><code>railway up</code> depuis <code>services/radar-worker</code> ; <strong>aucun fichier <code>railway.json</code>/<code>railway.toml</code> dans le dépôt</strong> : port du domaine, volume et variables ont été configurés à la main (cf. mémoire projet : <code>railway domain update --port 8091</code>, <code>chown</code> du volume) ; tests Python en CI GitHub</td>
+</tr>
+<tr>
+<td>Observé</td>
+<td><code>/health</code> → <code>status ok</code>, <code>lastSuccessfulObservation</code> 10:45Z pour une sonde à 10:49 ; manifeste <code>observedAt</code> 10:40Z, <code>generatedAt</code> 10:45:19Z. Chaîne saine</td>
+</tr>
+<tr>
+<td>Non vérifié</td>
+<td>plan et coût (le CLI n&#39;expose pas la facturation) ; un <strong>second projet Railway <code>proactive-enjoyment</code></strong> existe dans l&#39;espace de travail, contenu inconnu</td>
+</tr>
+</tbody></table></div>
+<h3 id="1-3-render-service-france-monitor-https-france-monitor-onren"><a class="anchor" href="#1-3-render-service-france-monitor-https-france-monitor-onren" aria-label="Lien vers cette section">#</a>1.3 Render — service <code>france-monitor</code> (<code>https://france-monitor.onrender.com</code>)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Rôle</th>
+<th>Détail</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Programme</td>
+<td><code>ais-relay.js</code> à la racine du dépôt (Node, dépendances <code>ws</code> et <code>vite</code> — ce dernier seulement pour <code>loadEnv</code> — et <code>api/_shared/air-traffic.js</code>)</td>
+</tr>
+<tr>
+<td>Fonction 1 : relais AIS</td>
+<td>Une connexion amont vers <code>wss://stream.aisstream.io/v0/stream</code> (clé <code>AISSTREAM_API_KEY</code>), 12 zones (Manche, Atlantique, Méditerranée, Corse, Antilles, Guyane, Réunion, Mayotte, Saint-Pierre-et-Miquelon, Wallis, Polynésie, Nouvelle-Calédonie) réparties en 3 abonnements, rediffusée à tous les navigateurs connectés (389 navires observés) ; disjoncteur après 5 échecs, 5 min</td>
+</tr>
+<tr>
+<td>Fonction 2 : <code>GET /opensky</code></td>
+<td>Instantané du trafic aérien civil (airplanes.live, 5 zones ; repli OpenSky si identifiants) recalculé <strong>à chaque appel, sans cache</strong> : 10,3 à 11 s mesurés. Utilisé par Vercel <code>/api/traffic/air</code> si <code>AIR_RELAY_URL</code> ou <code>WS_RELAY_URL</code> est défini ; sinon Vercel appelle airplanes.live lui-même, pour la même durée. C&#39;est l&#39;origine des 10,5 s vus par les visiteurs</td>
+</tr>
+<tr>
+<td>Fonction 3 : <code>GET /health</code></td>
+<td><code>{ ok: true, ais: true, opensky: false }</code> → identifiants OpenSky absents sur Render</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td><strong>hors dépôt</strong> (pas de <code>render.yaml</code>) : commande de démarrage, <code>AISSTREAM_API_KEY</code>, port ; non vérifiable d&#39;ici</td>
+</tr>
+<tr>
+<td>Consommateurs</td>
+<td>navigateur (<code>VITE_AIS_RELAY_URL</code> inlinée dans le bundle Vercel), Vercel (optionnel, voir ci-dessus)</td>
+</tr>
+<tr>
+<td>Observé</td>
+<td>en ligne, <code>/health</code> en 0,12 s</td>
+</tr>
+<tr>
+<td>Risques</td>
+<td>si le service est sur le palier gratuit : mise en veille après 15 min sans requête HTTP et 750 h/mois, ce qui est le pire cas pour un relais temps réel (démarrage à froid de 30 à 60 s à la première connexion) ; une seule instance = point unique de panne du layer maritime et, éventuellement, du trafic aérien</td>
+</tr>
+</tbody></table></div>
+<h3 id="1-4-github-depot-public-fraidfraid-france-monitor"><a class="anchor" href="#1-4-github-depot-public-fraidfraid-france-monitor" aria-label="Lien vers cette section">#</a>1.4 GitHub — dépôt public <code>FraidFraid/France-Monitor</code></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Rôle</th>
+<th>Détail</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CI (<code>ci.yml</code>)</td>
+<td>sur push/PR <code>main</code> : lint, typecheck, <code>vitest</code>, build ; job Python : tests du worker radar. Derniers runs : 27/07 (succès)</td>
+</tr>
+<tr>
+<td>Cron « Radar refresh » (<code>radar-refresh.yml</code>)</td>
+<td>planifié <code>*/5 * * * *</code>, <strong>exécuté en réalité toutes les 3 à 6 h</strong> (8 runs entre le 20/09 23:36 et le 22/09 06:06 — dérive connue du planificateur GitHub sur les dépôts peu actifs). Fait un <code>POST /refresh</code> sur Railway avec le secret <code>RADAR_WORKER_TOKEN</code>, puis vérifie <code>lastSuccessfulObservation</code> &lt; 20 min. <strong>Filet de sécurité uniquement</strong> : la boucle interne du worker fait le vrai travail</td>
+</tr>
+<tr>
+<td>Déploiements</td>
+<td>l&#39;intégration Vercel crée un déploiement GitHub « Production » à chaque push (5 derniers : 27/07)</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><code>RADAR_WORKER_TOKEN</code></td>
+</tr>
+<tr>
+<td>Attention</td>
+<td>dépôt <strong>public</strong> : tout fichier commité est visible ; les audits n&#39;y mettent aucune valeur de secret</td>
+</tr>
+</tbody></table></div>
+<h3 id="1-5-upstash-redis"><a class="anchor" href="#1-5-upstash-redis" aria-label="Lien vers cette section">#</a>1.5 Upstash Redis</h3>
+<p>Rôle : cache de réponses (13 fichiers <code>api/</code> : finance ×2, séries carburants, <code>intelligence/v1/*</code> ×3, limitation de débit des 4 proxys génériques…), verrou anti-chevauchement du cron d&#39;ingestion, <code>ingest:last-tick</code>, <strong>historique de situation</strong> (<code>SET NX</code> par créneau de 6 h, TTL 31 j, index <code>RPUSH</code>/<code>LTRIM</code>). Configuration : <code>UPSTASH_REDIS_REST_URL/TOKEN</code> sur Vercel uniquement — absentes en local, donc <strong>en développement tous ces caches sont inactifs</strong> (<code>api/utils/redis.js</code> renvoie <code>null</code> sans erreur). Non vérifié : plan, commandes par jour. Ordre de grandeur : plusieurs dizaines de commandes par chargement de dashboard (une lecture/écriture par MISS CDN) — à comparer au quota du palier gratuit sur la console.</p>
+<h3 id="1-6-neon-postgres-projet-neon-teal-pocket-eu-central-1"><a class="anchor" href="#1-6-neon-postgres-projet-neon-teal-pocket-eu-central-1" aria-label="Lien vers cette section">#</a>1.6 Neon Postgres (projet <code>neon-teal-pocket</code>, eu-central-1)</h3>
+<p>Tables <code>feeds</code>, <code>news_items</code>, <code>situation_snapshots</code> (schéma dans <code>scripts/init-db.mjs</code>). Écriture : cron d&#39;ingestion Vercel (≈ 2 600 articles/jour, purge &gt; 90 j → <strong>≈ 230 000 lignes en régime permanent</strong>). Lecture : <code>/api/news</code> (chaque visiteur, le cache CDN étant contourné aujourd&#39;hui par <code>since=</code>), <code>/api/news/history</code>, <code>/api/health-check</code>. Configuration : <code>DATABASE_URL</code> sur Vercel uniquement (absente en local : <code>/api/news</code> répond 503 en dev sans le plugin). Non vérifié : plan, stockage utilisé, heures de calcul. Estimation : 150 à 350 Mo pour <code>news_items</code> et ses trois index, à rapprocher de la limite du palier gratuit (0,5 Go) ; la mise en veille automatique du calcul explique une partie des 4,7 s observées sur <code>/api/news</code> à froid.</p>
+<h3 id="1-7-groq-llm-cloud-cle-serveur"><a class="anchor" href="#1-7-groq-llm-cloud-cle-serveur" aria-label="Lien vers cette section">#</a>1.7 Groq (LLM cloud, clé serveur)</h3>
+<p>Appelé uniquement depuis Vercel : cron d&#39;ingestion (reclassification, ≤ 15 articles par tick, appels séquentiels, arrêt de la passe au premier 429), <code>intelligence/v1/summarize</code> (un appel par article <strong>et par visiteur</strong>, cache Redis 24 h par texte), <code>synthesis</code> (cache 15 min, appel sans timeout), <code>france-intel-brief</code> (cache 6 h). Un seul quota gratuit partagé entre ces quatre usages. Aucune clé côté client : le bundle de production a été vérifié (aucune clé Groq, TomTom ou Météo-France inlinée ; seule l&#39;URL publique du relais AIS l&#39;est).</p>
+<h3 id="1-8-le-navigateur-fait-aussi-partie-de-l-39-infrastructure"><a class="anchor" href="#1-8-le-navigateur-fait-aussi-partie-de-l-39-infrastructure" aria-label="Lien vers cette section">#</a>1.8 Le navigateur fait aussi partie de l&#39;infrastructure</h3>
+<ul>
+<li><strong>Calcul</strong> : classification mots-clés de tout ce qui n&#39;est pas classé serveur, classificateur ML dans un Web Worker (Transformers.js, modèle ≈ 100 Mo téléchargé à la demande), résumés T5 de secours, moteur de situations, score de stabilité, ISNR, clustering des news et des feux.</li>
+<li><strong>Réseau direct (hors Vercel)</strong> : Hub&#39;Eau, ODRE, Enedis, EDF opendata (DROM), geo.api.gouv.fr, api-adresse (BAN), data.gouv.fr, NOAA SWPC, RainViewer, tuiles Carto, rasters Railway, WebSocket Render.</li>
+<li><strong>Écriture</strong> : l&#39;historique de situation (<code>POST /api/situation-history</code>) est envoyé par le navigateur du premier visiteur de chaque créneau de 6 h (<code>src/services/situation-history.ts:82-98</code>). Résultat observé sur 7 jours : <strong>7 créneaux capturés sur 28, 21 manquants</strong>. Aucun cron serveur ne s&#39;en charge.</li>
+</ul>
+<h3 id="1-9-en-local-manuel-ou-vestige"><a class="anchor" href="#1-9-en-local-manuel-ou-vestige" aria-label="Lien vers cette section">#</a>1.9 En local, manuel, ou vestige</h3>
+<ul>
+<li>Développement : <code>npm run dev</code> (Vite + 45 plugins proxy qui miment les fonctions), <code>npm run dev:full</code> (+ <code>scrapling-proxy</code> Python sur le port 8080, <strong>dev uniquement — non déployé en production</strong> malgré les options Cloud Run/Lambda de son README), relais AIS local par plugin Vite, worker radar local (<code>radar:dev</code>, 8091), Ollama (<code>VITE_USE_OLLAMA</code>).</li>
+<li>Scripts manuels produisant des fichiers statiques commités dans <code>public/data</code> : <code>build:maires</code>, <code>build:fuel-price-series</code>, <code>ingest:drom-energy</code>, <code>generate:apl-snapshot</code> ; <code>db:init</code> (schéma Neon) ; <code>generate:server-libs</code> et <code>sync:feeds</code> (copies serveur du classifieur, du géocodeur et de la liste des flux — <strong>aucune vérification CI de leur fraîcheur</strong>).</li>
+<li>Vestige : <code>netlify.toml</code> (fonctions Netlify sur <code>api/</code>) — aucun indice d&#39;un déploiement Netlify actif ; à supprimer ou à documenter.</li>
+</ul>
+
+</section><section class="doc-section"><h2 id="2-flux-de-donnees-de-bout-en-bout"><a class="anchor" href="#2-flux-de-donnees-de-bout-en-bout" aria-label="Lien vers cette section">#</a>2. Flux de données de bout en bout</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Domaine</th>
+<th>Source amont</th>
+<th>Qui collecte / calcule</th>
+<th>Stockage / cache</th>
+<th>Servi par</th>
+<th>Consommé par</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Actualités</td>
+<td>38 flux RSS</td>
+<td>Vercel cron 30 min (<code>ingest/news.ts</code>) ; complété dans le navigateur (classification, géocodage, résumés)</td>
+<td>Neon 90 j ; CDN 60 s ; <code>localStorage</code> 30 min</td>
+<td><code>/api/news</code>, <code>/api/news/history</code> (+ <code>/api/rss</code>, <code>/api/rss-proxy</code> en repli)</td>
+<td>flux sous la carte, clusters, alertes, score, brief</td>
+</tr>
+<tr>
+<td>Radar météo 2D / 3D</td>
+<td>Météo-France DPRadar (IMFR27, PAM)</td>
+<td><strong>Railway</strong>, boucle 5 min (+ cron GitHub best-effort)</td>
+<td>volume Railway</td>
+<td>Railway (manifeste, rasters, colonne) via proxy Vercel 120 s</td>
+<td>FiresPanel, couche radar</td>
+</tr>
+<tr>
+<td>AIS maritime</td>
+<td>aisstream.io</td>
+<td><strong>Render</strong> <code>ais-relay.js</code> (un abonnement amont partagé)</td>
+<td>aucun (temps réel)</td>
+<td>WebSocket Render</td>
+<td>couche maritime, MaritimePanel, anomalies AIS (calcul navigateur)</td>
+</tr>
+<tr>
+<td>Trafic aérien civil</td>
+<td>airplanes.live / OpenSky</td>
+<td>Render <code>/opensky</code> ou Vercel en direct, 10 s, sans cache serveur</td>
+<td>CDN 20 s (contourné par <code>?t=</code>)</td>
+<td><code>/api/traffic/air</code></td>
+<td>couche trafic aérien (polling 12 s)</td>
+</tr>
+<tr>
+<td>Vols militaires</td>
+<td>adsb.fi / OpenSky filtré</td>
+<td>Vercel <code>traffic/military.js</code></td>
+<td>CDN 30 s</td>
+<td><code>/api/traffic/military</code></td>
+<td>polling 5 s navigateur, DefensePanel</td>
+</tr>
+<tr>
+<td>Carburants</td>
+<td>data.economie.gouv.fr</td>
+<td>Vercel cron 3 h</td>
+<td>Redis ; CDN 15 min</td>
+<td><code>/api/fuel-price-series</code>, <code>/api/fuel-prices-proxy</code></td>
+<td>OilPanel, tension carburants</td>
+</tr>
+<tr>
+<td>Historique de situation</td>
+<td>calcul navigateur (score, situations)</td>
+<td><strong>le navigateur</strong> (POST par créneau de 6 h)</td>
+<td>Redis 31 j</td>
+<td><code>/api/situation-history</code></td>
+<td>SituationHistoryPanel, brief</td>
+</tr>
+<tr>
+<td>Résumés / brief / synthèse IA</td>
+<td>Groq</td>
+<td>Vercel Edge <code>intelligence/v1/*</code></td>
+<td>Redis 24 h / 6 h / 15 min</td>
+<td><code>POST /api/intelligence/v1/*</code></td>
+<td>flux news, FranceIntelPanel, ISNR</td>
+</tr>
+<tr>
+<td>Énergie (Écowatt, éco2mix, IIP, nucléaire, gaz, éolien, biogaz, DROM)</td>
+<td>RTE, ODRE, ENTSOG, GRDF, EDF, BRGM, GIE</td>
+<td>Vercel à la demande (+ appels directs du navigateur vers ODRE/EDF) ; <strong>GIE : aucun handler en prod</strong></td>
+<td>CDN 5 à 60 min (pas de Redis)</td>
+<td><code>/api/energy/*</code>, <code>/api/rte-iip</code>, <code>/api/nuclear/*</code>, <code>/api/gie/*</code> (mort)</td>
+<td>EnergyPanel, GasPanel, EolienPanel…</td>
+</tr>
+<tr>
+<td>Météo / crues / hydrométrie</td>
+<td>Météo-France vigilance, Vigicrues, Hub&#39;Eau</td>
+<td>Vercel <code>weather/vigilance.js</code> ; Vigicrues via <code>json-proxy</code> ; <strong>Hub&#39;Eau appelé directement par le navigateur</strong> (25 appels)</td>
+<td>CDN 5 min</td>
+<td><code>/api/weather/vigilance</code>, <code>/api/json-proxy</code></td>
+<td>EnvironmentPanel, HydraulicPanel</td>
+</tr>
+<tr>
+<td>Santé (10 endpoints)</td>
+<td>DREES, SPF, ANSM, Sentiweb, ODISSE, data.gouv</td>
+<td>Vercel <code>health/*</code> (helper commun, timeout 12 s)</td>
+<td>CDN 15 min à 6 h</td>
+<td><code>/api/health/*</code></td>
+<td>NationalHealthPanel, HealthBarometer</td>
+</tr>
+<tr>
+<td>Cyber / exposition / infra réseau</td>
+<td>CERT-FR, ransomware.live, NVD, HIBP, Shodan, Censys, IODA, BGPView, PeeringDB, statuspages</td>
+<td>Vercel <code>threats.js</code> (Edge), <code>exposure.js</code>, <code>internet-outages.js</code>, <code>infra-network.js</code>, <code>arcep.js</code>, <code>json-proxy.js</code></td>
+<td>CDN 5 à 30 min</td>
+<td>idem</td>
+<td>CyberPanel, carte des menaces, OutagesPanel</td>
+</tr>
+<tr>
+<td>Feux</td>
+<td>NASA FIRMS, IPMA (MTG FRP)</td>
+<td>Vercel <code>fires.js</code>, <code>mtg-frp.js</code> ; <strong>géo-résolution des incidents dans le navigateur</strong> (88 appels geo.api.gouv.fr)</td>
+<td>CDN 1 h / 2 à 10 min</td>
+<td><code>/api/fires</code>, <code>/api/fire-observations/*</code></td>
+<td>FiresPanel, alertes grands feux, dossier (enrichi par Ollama en local seulement)</td>
+</tr>
+<tr>
+<td>Finance</td>
+<td>TradingView, Yahoo</td>
+<td>Vercel <code>finance/*</code></td>
+<td>Redis 15 min + CDN 15 min</td>
+<td><code>/api/finance/*</code></td>
+<td>MarketStrip, CommodityStrip</td>
+</tr>
+<tr>
+<td>Satellite</td>
+<td>Copernicus CDSE, AWS Earth Search, NASA GIBS</td>
+<td>Vercel <code>copernicus.js</code>, <code>sentinel-ndwi.ts</code> (cache mémoire 15 min, non partagé entre instances) ; GIBS appelé par le navigateur</td>
+<td>CDN 10 min</td>
+<td>idem</td>
+<td>SentinelModal, couche imagerie</td>
+</tr>
+<tr>
+<td>Gouvernement / ministres</td>
+<td>Wikidata, Assemblée nationale, Élysée</td>
+<td><strong>aucun handler en prod</strong> (logique câblée au dev seulement)</td>
+<td>—</td>
+<td><code>/api/ministers/*</code> → <code>index.html</code></td>
+<td>MinistresPanel (mort en prod)</td>
+</tr>
+</tbody></table></div>
+
+</section><section class="doc-section"><h2 id="3-ou-vit-la-configuration"><a class="anchor" href="#3-ou-vit-la-configuration" aria-label="Lien vers cette section">#</a>3. Où vit la configuration</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Vercel</th>
+<th>Railway</th>
+<th>Render</th>
+<th>GitHub</th>
+<th>Poste local (<code>.env</code>, <code>.env.local</code>)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>UPSTASH_REDIS_REST_URL</code> / <code>_TOKEN</code></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent (caches désactivés en dev)</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code> (Neon)</td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent (<code>/api/news</code> 503 en dev)</td>
+</tr>
+<tr>
+<td><code>CRON_SECRET</code></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent</td>
+</tr>
+<tr>
+<td><code>RTE_CLIENT_ID</code> / <code>_SECRET</code></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td>présent</td>
+</tr>
+<tr>
+<td><code>METEO_FRANCE_API_KEY</code></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent (<code>VITE_METEOFRANCE_API_KEY</code> dépréciée présente)</td>
+</tr>
+<tr>
+<td><code>METEO_FRANCE_RADAR_MANIFEST_URL</code></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td></td>
+<td><code>.env.local</code></td>
+</tr>
+<tr>
+<td><code>METEO_FRANCE_RADAR_API_KEY</code></td>
+<td></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td>présent</td>
+</tr>
+<tr>
+<td><code>RADAR_WORKER_TOKEN</code></td>
+<td></td>
+<td>requis</td>
+<td></td>
+<td>secret</td>
+<td><code>.env.local</code></td>
+</tr>
+<tr>
+<td><code>RADAR_STORAGE_DIR</code>, <code>RADAR_PUBLIC_BASE_URL</code></td>
+<td></td>
+<td>requis</td>
+<td></td>
+<td></td>
+<td><code>.env.local</code></td>
+</tr>
+<tr>
+<td><code>RADAR_REFRESH_INTERVAL_SECONDS</code>, <code>RADAR_*_RETENTION</code></td>
+<td></td>
+<td>non définis (défauts 300 s / 24)</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>AISSTREAM_API_KEY</code></td>
+<td></td>
+<td></td>
+<td>requis</td>
+<td></td>
+<td><code>VITE_AISSTREAM_KEY</code> (dev)</td>
+</tr>
+<tr>
+<td><code>VITE_AIS_RELAY_URL</code></td>
+<td>requis au build (inlinée)</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent (dev = <code>ws://localhost:8090</code>)</td>
+</tr>
+<tr>
+<td><code>AIR_RELAY_URL</code> / <code>WS_RELAY_URL</code></td>
+<td>optionnel (inconnu)</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent</td>
+</tr>
+<tr>
+<td><code>OPENSKY_CLIENT_ID</code> / <code>_SECRET</code></td>
+<td>optionnel</td>
+<td></td>
+<td>absent (<code>opensky:false</code>)</td>
+<td></td>
+<td>présent</td>
+</tr>
+<tr>
+<td><code>TOMTOM_API_KEY</code></td>
+<td>requis (trafic routier)</td>
+<td></td>
+<td></td>
+<td></td>
+<td>absent (<code>VITE_TOMTOM_API_KEY</code> dépréciée présente)</td>
+</tr>
+<tr>
+<td><code>SNCF_API_KEY</code>, <code>NASA_FIRMS_API_KEY</code>, <code>CDSE_*</code>, <code>SHODAN_API_KEY</code>, <code>CENSYS_*</code>, <code>CLOUDFLARE_RADAR_TOKEN</code>, <code>SENTINEL_*</code></td>
+<td>optionnels</td>
+<td></td>
+<td></td>
+<td></td>
+<td>présents</td>
+</tr>
+<tr>
+<td><code>GROQ_API_KEY</code></td>
+<td>optionnel</td>
+<td></td>
+<td></td>
+<td></td>
+<td>présent (+ <code>VITE_GROQ_API_KEY</code> dépréciée présente : ne jamais la définir sur Vercel)</td>
+</tr>
+<tr>
+<td><code>VITE_ENABLE_CYBER_PANEL</code> / <code>_GAS_PANEL</code> / <code>_OIL_LAYER</code></td>
+<td>non définis → <strong>actifs</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td>non définis</td>
+</tr>
+</tbody></table></div>
+<p>Trois variables <code>VITE_*</code> dépréciées traînent dans le <code>.env</code> local ; le bundle de production ne contient aucune clé, elles ne sont donc pas définies sur Vercel, mais elles seraient inlinées si quelqu&#39;un les y copiait.</p>
+
+</section><section class="doc-section"><h2 id="4-constats-par-ordre-d-39-importance"><a class="anchor" href="#4-constats-par-ordre-d-39-importance" aria-label="Lien vers cette section">#</a>4. Constats, par ordre d&#39;importance</h2>
+<ol>
+<li><strong>Monitoring aveugle.</strong> <code>/api/health-check</code> est en « down » une partie de chaque demi-heure à cause d&#39;un seuil (15 min) non mis à jour après le passage du cron à 30 min. Rien d&#39;autre ne surveille Railway ni Render.</li>
+<li><strong>L&#39;historique de situation dépend des visiteurs.</strong> 21 créneaux sur 28 manquent sur les 7 derniers jours : le seul « cron » est le navigateur du premier visiteur du créneau.</li>
+<li><strong>Deux fonctionnalités mortes en production sans erreur visible</strong> : ministres (<code>/api/ministers/*</code>) et stockages gaz GIE (<code>/api/gie/*</code>), toutes deux implémentées seulement en plugin Vite de développement. Plus <code>biogas-sites</code> en 502. Aucun test de fumée sur la prod ne les aurait attrapées.</li>
+<li><strong>Trafic aérien à 10 s</strong> pour tout le monde : le relais Render recalcule à chaque appel, sans cache ; le client contourne le cache CDN avec <code>?t=</code>.</li>
+<li><strong>Render héberge un service temps réel</strong> sur un palier probablement gratuit (mise en veille), avec une configuration entièrement hors dépôt.</li>
+<li>*<em>Le cron GitHub « <em>/5 » tourne toutes les 3 à 6 h.</em></em> Acceptable tant qu&#39;il n&#39;est qu&#39;un filet ; ne jamais lui confier une tâche primaire.</li>
+<li><strong>Configuration hors dépôt et non documentée</strong> : Railway (port, volume, variables), Render (commande, variables), Vercel (variables, plan). <code>docs/deployment.md</code> ne mentionne ni Railway, ni Render, ni Neon, ni GitHub Actions, ni les crons ; le README dit encore « cron 5 min » à trois endroits, <code>api/ingest/news.ts:2</code> aussi, <code>docs/design-alertes-grands-feux-2026-07.md</code> dit 15 min.</li>
+<li><strong>Coûts et quotas invisibles d&#39;ici</strong> : Vercel (plan Pro probable), Railway (service permanent + volume), Render, Upstash (commandes), Neon (0,5 Go, calcul). Un dépassement de palier gratuit serait silencieux.</li>
+<li><strong>Le navigateur appelle des tiers directement</strong> (Hub&#39;Eau, ODRE, EDF, geo.api, BAN, NOAA…) : pas de cache partagé, quotas tiers consommés par visiteur, règle du dépôt non respectée.</li>
+<li><strong>Copies générées non contrôlées</strong> (<code>api/_lib/server-classifier.js</code>, <code>feeds-snapshot.js</code>, <code>server-geocoder.js</code>) : le serveur et le client peuvent classer différemment sans que la CI le voie.</li>
+<li>Vestige <code>netlify.toml</code> ; second projet Railway <code>proactive-enjoyment</code> non identifié.</li>
+<li>Secrets : rien d&#39;inliné dans le bundle de production (vérifié) ; trois <code>VITE_*</code> dépréciées dans <code>.env</code> local à supprimer.</li>
+</ol>
+
+</section><section class="doc-section"><h2 id="5-ce-qui-reste-a-verifier-et-comment"><a class="anchor" href="#5-ce-qui-reste-a-verifier-et-comment" aria-label="Lien vers cette section">#</a>5. Ce qui reste à vérifier, et comment</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Point</th>
+<th>Où / comment</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Plan Vercel, variables réelles, usage (invocations, GB-h, bande passante), journaux des crons</td>
+<td><code>npm i -g vercel &amp;&amp; vercel login &amp;&amp; vercel link</code> puis <code>vercel env ls</code> (noms seulement) ; dashboard → Usage, Logs → Cron ; ou authentifier le connecteur Vercel de cette session</td>
+<td>confirmer le plan (cron 30 min), vérifier l&#39;absence de <code>VITE_GROQ_API_KEY</code> &amp; co, mesurer le coût des 30 invocations par visiteur</td>
+</tr>
+<tr>
+<td>Facturation et plan Railway</td>
+<td>dashboard Railway → Billing (le CLI ne l&#39;expose pas) ; <code>railway logs</code> pour les journaux du worker</td>
+<td>connaître le coût réel du service permanent et du volume</td>
+</tr>
+<tr>
+<td>Contenu du projet Railway <code>proactive-enjoyment</code></td>
+<td>dashboard Railway</td>
+<td>vestige à supprimer ou service à documenter</td>
+</tr>
+<tr>
+<td>Plan et configuration Render</td>
+<td>dashboard Render → service <code>france-monitor</code> → Settings, Environment, Events</td>
+<td>savoir si le relais se met en veille ; récupérer la commande de démarrage et la liste des variables</td>
+</tr>
+<tr>
+<td>Quota Upstash</td>
+<td>console Upstash → Commands/day, storage</td>
+<td>vérifier la marge du palier gratuit</td>
+</tr>
+<tr>
+<td>Stockage et calcul Neon</td>
+<td>console Neon ou <code>neonctl</code></td>
+<td>volume de <code>news_items</code> face aux 0,5 Go ; heures de calcul</td>
+</tr>
+<tr>
+<td>Configuration effective de <code>/api/traffic/air</code> (relais ou direct)</td>
+<td><code>vercel env ls</code> → présence de <code>AIR_RELAY_URL</code> / <code>WS_RELAY_URL</code></td>
+<td>savoir où mettre le cache</td>
+</tr>
+</tbody></table></div>
+
+</section><section class="doc-section"><h2 id="6-recommandations-d-39-infrastructure-avant-les-chantiers-de"><a class="anchor" href="#6-recommandations-d-39-infrastructure-avant-les-chantiers-de" aria-label="Lien vers cette section">#</a>6. Recommandations d&#39;infrastructure (avant les chantiers de performance)</h2>
+<ol>
+<li><strong>Rendre le monitoring vrai</strong> : seuil du health-check à 45 min (ou lu depuis la cadence du cron) ; une sonde externe gratuite (UptimeRobot ou équivalent) sur trois URL : <code>/api/health-check</code>, Railway <code>/health</code>, Render <code>/health</code> ; un workflow GitHub quotidien de fumée qui vérifie que <code>/api/ministers/composition</code>, <code>/api/gie/agsi</code>, <code>/api/energy/biogas-sites</code> et une dizaine d&#39;endpoints clés renvoient du JSON (aurait détecté les trois routes mortes).</li>
+<li><strong>Historique de situation côté serveur</strong> : un cron Vercel toutes les 6 h qui calcule et stocke le snapshot (le score v3 est une fonction pure, déjà dupliquée en partie dans <code>api/intelligence/v1/france-intel-brief.js</code>), le navigateur ne faisant plus que lire.</li>
+<li><strong>Créer les handlers manquants</strong> (<code>api/ministers/[...path].js</code>, <code>api/gie/agsi.js</code>, <code>api/gie/alsi.js</code>) avec cache, sur le modèle des plugins de dev, ou retirer les appels ; réparer <code>biogas-sites</code>.</li>
+<li><strong>Trafic aérien</strong> : cache Redis 20 à 30 s côté relais et côté Vercel ; retirer <code>?t=</code> du client (voir audit précédent).</li>
+<li><strong>Mettre la configuration dans le dépôt</strong> : <code>render.yaml</code> (Blueprint : commande, health check, variables attendues), <code>railway.toml</code> (port, health check, volume), et une section « topologie » dans <code>docs/deployment.md</code> reprenant ce document ; corriger README et commentaires (« 30 min »).</li>
+<li><strong>Décider du sort de Render</strong> : soit assumer le palier gratuit (documenter la mise en veille), soit déplacer le relais AIS comme second service du projet Railway existant (une seule plateforme, pas de mise en veille, coût à comparer) — décision à prendre au regard de la règle « paliers gratuits uniquement ».</li>
+<li><strong>Nettoyage</strong> : supprimer <code>netlify.toml</code>, les <code>VITE_*</code> dépréciées du <code>.env</code> local, et clarifier le projet Railway inconnu.</li>
+<li><strong>Vérifier les paliers</strong> (§5) avant les chantiers de performance : la réduction des invocations Vercel proposée dans l&#39;audit précédent (cache CDN respecté, snapshot) est aussi une mesure de coût.</li>
+</ol>
+
+</section><section class="doc-section"><h2 id="7-reduire-la-facture-25-mois-5-mois-puis-0-si-souhaite"><a class="anchor" href="#7-reduire-la-facture-25-mois-5-mois-puis-0-si-souhaite" aria-label="Lien vers cette section">#</a>7. Réduire la facture (≈ 25 €/mois → ≈ 5 €/mois, puis 0 € si souhaité)</h2>
+<p>Hypothèse de facture actuelle (à confirmer sur vos relevés) : <strong>Vercel Pro 20 $/mois (≈ 18,5 €) + Railway Hobby 5 $/mois (≈ 4,6 €)</strong> ≈ 23 € hors taxes. Render, Upstash, Neon, GitHub et Groq sont sur des paliers gratuits.</p>
+<h3 id="7-1-ce-qui-oblige-a-payer-vercel-pro-aujourd-39-hui"><a class="anchor" href="#7-1-ce-qui-oblige-a-payer-vercel-pro-aujourd-39-hui" aria-label="Lien vers cette section">#</a>7.1 Ce qui oblige à payer Vercel Pro aujourd&#39;hui</h3>
+<p>Une seule chose : <strong>la cadence des crons</strong>. Documentation Vercel (vérifiée le 22/09) : sur Hobby, 100 crons par projet mais <strong>une exécution par jour au maximum</strong>, précision à l&#39;heure (±59 min), et « les expressions cron plus fréquentes font échouer le déploiement ». Le cron d&#39;ingestion (30 min) et celui des carburants (3 h) sont donc incompatibles avec Hobby tels quels.</p>
+<p>Deux choses, en réalité. La seconde est le <strong>plafond de fonctions par déploiement</strong> : la page « Limits » de Vercel indique pour Hobby « Functions created per deployment : framework-dependent » ; pour un projet Vite avec un dossier <code>api/</code> (une fonction par fichier), c&#39;est la règle historique « No more than 12 Serverless Functions can be added to a Deployment on the Hobby plan », toujours en vigueur en 2026 (forum Vercel, discussions GitHub). France Monitor déploie <strong>55 fonctions</strong> (59 en comptant <code>api/utils/*.js</code>, que Vercel transforme aussi en fonctions) : un déploiement Hobby est donc refusé tel quel. C&#39;est ce qui a imposé Pro.</p>
+<p>Rien d&#39;autre n&#39;exige Pro : une seule personne, usage non commercial (le fair use Hobby interdit l&#39;usage commercial — à revoir le jour où France Monitor serait vendu), région <code>fra1</code> autorisée, <code>maxDuration</code> 300 s et 2 Go de mémoire disponibles avec Fluid Compute (actif par défaut sur ce projet), runtime Edge disponible.</p>
+<p><strong>Levier pour le plafond de fonctions : une seule fonction « attrape-tout ».</strong> Déplacer les 55 handlers dans <code>api/_handlers/**</code> (les dossiers préfixés <code>_</code> ne créent pas de fonction) et créer <code>api/[...path].ts</code>, un routeur qui importe dynamiquement le handler demandé (<code>{ &#39;news&#39;: () =&gt; import(&#39;./_handlers/news.js&#39;), … }</code>) et lui passe <code>req</code>/<code>res</code> tels quels ; un adaptateur de 40 lignes convertit <code>req</code> en <code>Request</code> pour les 10 handlers écrits en style Edge (<code>Request → Response</code>) afin de ne pas les réécrire. Une seule entrée <code>functions</code> dans <code>vercel.json</code> (<code>maxDuration: 300</code>), les rewrites identité <code>/api/x → /api/x</code> disparaissent, le repli SPA reste (le système de fichiers, donc la fonction, est consulté avant les rewrites). Les plugins Vite de dev ne changent pas. Effet secondaire bienvenu : un seul bundle, démarrages à froid moins nombreux, imports paresseux par route. Effort ≈ 1 jour, vérification par un déploiement de prévisualisation (branche) puis test des 55 routes.</p>
+<p>Usage inclus sur Hobby : 1 M d&#39;invocations, 4 h de CPU actif, 360 Go-h de mémoire, 100 Go de transfert, 1 M de requêtes edge par mois. Pour votre trafic, seuls deux postes méritent attention : le transfert (la page d&#39;accueil pèse 28 Mo → 100 Go = 3 500 visites de l&#39;accueil par mois) et les invocations (≈ 30 par chargement de dashboard tant que <code>since=</code>/<code>?t=</code> contournent le cache CDN). Les deux correctifs sont déjà en P0 de l&#39;audit de performance.</p>
+<h3 id="7-2-solution-recommandee-vercel-hobby-railway-conserve-4-6-m"><a class="anchor" href="#7-2-solution-recommandee-vercel-hobby-railway-conserve-4-6-m" aria-label="Lien vers cette section">#</a>7.2 Solution recommandée : Vercel Hobby + Railway conservé (≈ 4,6 €/mois, −80 %)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Étape</th>
+<th>Quoi</th>
+<th>Effort</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td><strong>Regrouper les 55 fonctions en une seule</strong> (<code>api/[...path].ts</code> + <code>api/_handlers/</code>, voir 7.1) et vérifier sur un déploiement de prévisualisation que les 55 routes répondent</td>
+<td>1 jour</td>
+</tr>
+<tr>
+<td>1</td>
+<td><strong>Sortir le cron d&#39;ingestion de Vercel.</strong> Planificateur externe gratuit : <strong>Upstash QStash</strong> (même compte que Redis ; palier gratuit 1 000 messages/jour, 10 planifications ; ici 48 messages/jour). Une planification <code>*/30 * * * *</code> qui fait <code>POST https://www.francemonitor.com/api/ingest/news</code> avec l&#39;en-tête <code>Authorization: Bearer &lt;CRON_SECRET&gt;</code>. Le handler exige déjà ce Bearer : <strong>aucun changement de code</strong>. Alternative sans nouveau service : le worker Railway, déjà permanent, fait ce POST toutes les 30 min (une tâche asyncio d&#39;une dizaine de lignes, variables <code>FM_INGEST_URL</code> + <code>FM_CRON_SECRET</code>). À éviter : le cron GitHub (observé : une exécution toutes les 3 à 6 h au lieu de 5 min)</td>
+<td>15 min (dashboard)</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Passer les carburants à une fois par jour</strong> : la donnée amont est quotidienne (<code>updatedAt</code> 23:59). Soit un cron Vercel <code>0 5 * * *</code> (autorisé sur Hobby), soit une seconde planification QStash</td>
+<td>5 min</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Modifier <code>vercel.json</code></strong> : retirer l&#39;entrée cron 30 min (sinon le déploiement Hobby échoue), garder ou retirer le cron quotidien</td>
+<td>5 min + déploiement</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Appliquer les deux P0 de l&#39;audit perf</strong> avant la bascule (images d&#39;accueil, respect du cache CDN) pour rester loin des quotas Hobby</td>
+<td>1 jour (déjà planifié)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Rétrograder</strong> : dashboard Vercel → Settings → Billing → Downgrade to Hobby (l&#39;équipe doit n&#39;avoir qu&#39;un membre développeur), puis vérifier le premier déploiement Hobby</td>
+<td>10 min</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Corriger le seuil du health-check</strong> (45 min) et brancher une sonde gratuite (UptimeRobot) dessus : c&#39;est elle qui détectera un planificateur externe en panne</td>
+<td>15 min</td>
+</tr>
+</tbody></table></div>
+<p>Coût après bascule : Railway 5 $/mois (vérifier sur la facture que l&#39;usage reste sous les 5 $ inclus ; sinon réduire le volume de 5 Go à 1 Go — 428 Mo utilisés — et la rétention <code>RADAR_RAW_RETENTION</code>).</p>
+<h3 id="7-3-option-0-plus-tard-si-les-4-6-restants-genent"><a class="anchor" href="#7-3-option-0-plus-tard-si-les-4-6-restants-genent" aria-label="Lien vers cette section">#</a>7.3 Option 0 € (plus tard, si les 4,6 € restants gênent)</h3>
+<p>Remplacer Railway par une VM <strong>Oracle Cloud « Always Free »</strong> (ARM Ampere jusqu&#39;à 4 cœurs / 24 Go, 200 Go de disque, gratuite sans limite de durée) qui hébergerait le worker radar, le relais AIS et, au besoin, le proxy Scrapling, derrière Caddy pour le TLS. Contreparties : carte bancaire exigée à l&#39;inscription, capacité ARM parfois indisponible dans la région choisie (Paris/Marseille), instance récupérable après 7 jours d&#39;inactivité CPU (le worker tourne en continu, ce n&#39;est pas un problème), et une VM à administrer soi-même (mises à jour, redémarrages). Render gratuit n&#39;est pas une bonne cible pour le worker : 512 Mo de RAM (à comparer à la consommation réelle visible dans Railway → Metrics), mise en veille après 15 min et pas de disque persistant.</p>
+<p>Je ne recommande pas cette option dans un premier temps : Railway à 5 $ est le seul service permanent et il fait un vrai travail (radar toutes les 5 min).</p>
+<h3 id="7-4-si-la-facture-n-39-est-pas-celle-supposee"><a class="anchor" href="#7-4-si-la-facture-n-39-est-pas-celle-supposee" aria-label="Lien vers cette section">#</a>7.4 Si la facture n&#39;est pas celle supposée</h3>
+<ul>
+<li>Si les 25 € comprennent <strong>Render Starter (7 $)</strong> plutôt que Vercel Pro : repasser Render en gratuit (le premier visiteur du layer maritime attend 30 à 60 s au réveil) ou, mieux, déplacer <code>ais-relay.js</code> comme <strong>second service du projet Railway existant</strong> (≈ 100 Mo de RAM, quelques centimes d&#39;usage, pas de mise en veille) — consolidation de toute façon souhaitable.</li>
+<li><strong>Jev</strong> (1 à 4 $/mois si activé) reste hors de question tant que la facture n&#39;est pas réglée ; Groq gratuit demeure le repli.</li>
+</ul>
+
+</section><section class="doc-section"><h2 id="8-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0"><a class="anchor" href="#8-suivi-de-mise-en-uvre-23-09-2026-branche-feat-audit-2026-0" aria-label="Lien vers cette section">#</a>8. Suivi de mise en œuvre (23/09/2026, branche <code>feat/audit-2026-09-hobby-perf</code>)</h2>
+<p><strong>État au 23/09/2026 au soir</strong> : branche commitée (<code>9d83531f</code>) et poussée, build de prévisualisation Vercel réussi (routes non testées : prévisualisation protégée par l&#39;authentification Vercel), pas encore fusionnée. <code>main</code> déployé en production en <code>0d44c1eb</code>, CI verte ; fusion à blanc de la branche sans conflit. Railway n&#39;est pas relié à GitHub : la correction du décodeur radar présente dans <code>main</code> ne tourne qu&#39;après <code>railway up</code>.</p>
+<ul>
+<li><strong>Regroupement des fonctions</strong> : 57 handlers sous <code>api/_handlers/**</code>, une seule fonction <code>api/index.js</code> (réécriture <code>/api/(.*)</code> → <code>/api?__fmroute=$1</code>), table générée <code>api/_routes.js</code>. Fonctions restantes : <code>api/index.js</code>, <code>api/ingest/news.ts</code>, <code>api/fuel-price-series-refresh.js</code>, <code>api/sentinel-ndwi.ts</code> (4, limite Hobby 12). Les handlers « edge » tournent désormais en Node via un adaptateur. Test de non-régression : <code>tests/api-router.test.ts</code>.</li>
+<li><strong><code>vercel.json</code> compatible Hobby</strong> : <code>fluid: true</code>, crons quotidiens seulement (ingestion 04:15 en filet de sécurité, carburants 05:00), cache immuable des assets hachés.</li>
+<li><strong>À faire par vous, dans cet ordre</strong> (détail et commandes dans <code>docs/runbook-passage-hobby.md</code>) : 1) créer la planification QStash toutes les 30 min ; 2) pousser la branche et vérifier la prévisualisation avec le script du runbook ; 3) fusionner ; 4) rétrograder Vercel en Hobby ; 5) brancher UptimeRobot sur les trois URL <code>/health</code>.</li>
+<li><strong>Corrigé</strong> : seuil du health-check (45 / 90 min), routes ministres et GIE, ARCEP (nouveau bucket), <code>biogas-sites</code>, cache du relais Render <code>/opensky</code> (10 s) et de <code>/api/traffic/air</code> (Redis 20 s), <code>netlify.toml</code> supprimé, <code>railway.toml</code> ajouté, test de fumée quotidien (<code>.github/workflows/smoke.yml</code>, qui détecte aussi les résumés Groq dégradés), contrôle CI des fichiers générés.</li>
+<li><strong>Reste ouvert</strong> : décision Render (garder le palier gratuit ou déplacer le relais sur Railway), vérification des quotas Upstash/Neon et de la facture réelle, historique de situation écrit par un cron plutôt que par les navigateurs.</li>
+</ul>
+</section>
+  </main>
+</div>
+
+<footer class="colophon">Généré depuis <code>docs/audit-2026-09-infrastructure.md</code> · procédure de bascule dans <code>docs/runbook-passage-hobby.md</code> (branche).</footer>
+
+<script>
+(() => {
+  const toc = document.getElementById('toc');
+  const mq = window.matchMedia('(max-width: 1000px)');
+  const syncToc = () => { if (toc) toc.open = !mq.matches; };
+  syncToc();
+  mq.addEventListener?.('change', syncToc);
+  toc?.querySelector('summary')?.addEventListener('click', (e) => { if (!mq.matches) e.preventDefault(); });
+
+  const links = new Map([...document.querySelectorAll('[data-toc]')].map((a) => [a.dataset.toc, a]));
+  const headings = [...document.querySelectorAll('main h2[id], main h3[id]')].filter((h) => links.has(h.id));
+  if (!('IntersectionObserver' in window) || headings.length === 0) return;
+  let current = null;
+  const setActive = (id) => {
+    if (id === current) return;
+    current = id;
+    links.forEach((a, key) => a.classList.toggle('is-active', key === id));
+  };
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible[0]) setActive(visible[0].target.id);
+  }, { rootMargin: '0px 0px -70% 0px', threshold: 0 });
+  headings.forEach((h) => observer.observe(h));
+})();
+</script>
+
+</body>
+</html>
