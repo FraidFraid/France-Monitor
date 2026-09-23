@@ -544,6 +544,8 @@ export interface MilitarySurge {
     radius?: number;  // km
     flightCount?: number;
     flightTypes?: FrenchAircraftType[];
+    /** ICAO24 des vols à l'origine de l'alerte, dans l'ordre reçu. */
+    flightIds?: string[];
 }
 
 /** Thresholds for surge detection */
@@ -561,6 +563,7 @@ const SURGE_THRESHOLDS = {
  * Detect military activity surges from current flight data
  */
 export function detectMilitarySurges(flights: Array<{
+    id?: string;
     latitude: number;
     longitude: number;
     aircraftType?: FrenchAircraftType;
@@ -572,11 +575,17 @@ export function detectMilitarySurges(flights: Array<{
     // 1. Check for emergency squawks
     const emergencies = flights.filter(f => f.squawkAlert?.severity === 'critical');
     if (emergencies.length > 0) {
+        const location = {
+            lat: emergencies.reduce((sum, flight) => sum + flight.latitude, 0) / emergencies.length,
+            lon: emergencies.reduce((sum, flight) => sum + flight.longitude, 0) / emergencies.length,
+        };
         surges.push({
             type: 'emergency',
             severity: 'alert',
             description: `${emergencies.length} avion(s) en situation d'urgence (squawk 7500/7700)`,
+            location,
             flightCount: emergencies.length,
+            flightIds: emergencies.flatMap((flight) => flight.id ? [flight.id] : []),
         });
     }
 

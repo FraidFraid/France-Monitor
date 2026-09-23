@@ -307,11 +307,17 @@ def echo_top_heights(codes: np.ndarray) -> list[float | None]:
 def reflectivity_values(codes: np.ndarray) -> list[float | None]:
     """Codes bruts 11 bits -> dBZ, avec la même rigueur que le chemin eccodes."""
 
-    missing = codes == (1 << REFLECTIVITY_WIDTH) - 1
+    missing_code = (1 << REFLECTIVITY_WIDTH) - 1
+    missing = codes == missing_code
     scaled = (codes.astype(np.float64) + EXPECTED_REFLECTIVITY_REFERENCE) / (
         10 ** REFLECTIVITY_SCALE
     )
-    valid = missing | (scaled == -40.0) | ((scaled >= -9.0) & (scaled <= 70.0))
+    max_reflectivity = (
+        missing_code - 1 + EXPECTED_REFLECTIVITY_REFERENCE
+    ) / (10 ** REFLECTIVITY_SCALE)
+    valid = missing | (scaled == -40.0) | (
+        (scaled >= -9.0) & (scaled <= max_reflectivity)
+    )
     if not bool(valid.all()):
         bad = scaled[~valid][0]
         raise RadarMetadataError(f"unsupported horizontal reflectivity value: {bad}")

@@ -1,184 +1,141 @@
-# Task 5 — Radar manifest proxy, client and map layer
+# Task 5 — Catalogue des stations métropole
 
 ## Statut
 
-Implémentation terminée sur la base `0ce08ea`, commit `c005f60` (`feat: connect Météo-France radar overlay`), limitée au manifeste radar 2D, à son proxy same-origin, au client, à la couche MapLibre et à l’orchestration App. Aucun radar 3D n’a été ajouté. La couche RainViewer existante reste indépendante et inchangée.
+DONE_WITH_CONCERNS. Le catalogue, le générateur et les tests sont en place, committés, verts. Une divergence factuelle a été trouvée et corrigée dans le test fourni par le brief (`test_nearest_station_from_dax_is_bordeaux` supposait Bordeaux (id 41) la plus proche de Dax ; la station réelle la plus proche est Momuy, id 66) — voir « Déviation documentée » ci-dessous.
 
-## RED → GREEN
+## Commit
 
-### RED initial
+`fa1b32e` — `feat: catalogue des stations radar métropole (coordonnées BUFR)`
+Fichiers : `services/radar-worker/tools/build_station_catalog.py`, `services/radar-worker/station_catalog.py`, `services/radar-worker/tests/test_station_catalog.py`.
 
-- Création de `src/services/radar-2d.test.ts` avant tout code de production.
-- Commande : `npx vitest run src/services/radar-2d.test.ts`.
-- Résultat : code 1, suite en échec attendu sur `Cannot find module './radar-2d.ts'`.
+Non touché (hors périmètre, pré-existant avant ma session) : `.superpowers/sdd/task-3-report.md` (modifié, non stagé) et `services/radar-worker/data/` (untracked, artefacts Task 3).
 
-### GREEN initial
+## Couverture réelle P0
 
-- Implémentation du parseur strict, du cache client, des proxies Vite/Vercel et des IDs MapLibre.
-- Même commande : 11 tests réussis, 0 échec.
+**27 stations incluses / 32 listées par `/stations`.**
 
-### RED de régression cache
+### Stations incluses (27, triées par id)
 
-- Ajout d’un test vérifiant qu’un ancien manifeste configuré n’est pas ressuscité après une réponse `{ configured:false }`.
-- Résultat : 1 échec attendu ; le client retournait encore le manifeste mis en cache.
+| id | nom | lat | lon |
+|---|---|---|---|
+| 36 | NOYAL | 48.04694 | -2.89417 |
+| 37 | AJACCIO | 41.95306 | 8.70056 |
+| 38 | ST-REMY | 46.06639 | 2.96056 |
+| 40 | ABBEVILLE | 50.13583 | 1.83472 |
+| 41 | BORDEAUX | 44.83139 | -0.69194 |
+| 42 | BOURGES | 47.05861 | 2.35944 |
+| 43 | MOUCHEROTTE | 45.14778 | 5.63944 |
+| 44 | BRIVE GREZES | 45.10444 | 1.36972 |
+| 45 | FALAISE CAEN | 48.92722 | -0.14944 |
+| 47 | NANCY | 48.71583 | 6.58167 |
+| 49 | NIMES | 43.80611 | 4.50278 |
+| 50 | TOULOUSE | 43.57444 | 1.37611 |
+| 51 | TRAPPES | 48.77444 | 2.00833 |
+| 52 | ARCIS TROYES | 48.46222 | 4.30944 |
+| 54 | TREILLIERES | 47.3375 | -1.65639 |
+| 56 | PLABENNEC | 48.46083 | -4.42972 |
+| 57 | OPOUL | 42.91833 | 2.865 |
+| 58 | ST.NIZIER | 46.06778 | 4.44528 |
+| 59 | COLLOBRIERES | 43.21667 | 6.37278 |
+| 61 | ALERIA | 42.12972 | 9.49639 |
+| 62 | MONTCLAR | 43.99056 | 2.60972 |
+| 63 | L'AVESNOIS | 50.12833 | 3.81194 |
+| 65 | BLAISY-HAUT | 47.35528 | 4.77583 |
+| 66 | MOMUY | 43.62444 | -0.60944 |
+| 67 | MONTANCY | 47.36861 | 7.01889 |
+| 68 | MAUREL | 44.01278 | 6.52917 |
+| 69 | COLOMBIS | 44.49611 | 6.22056 |
 
-### GREEN de régression cache
+Corse incluse (37 AJACCIO, 61 ALERIA). Bbox métropole (41–52 lat, −6–10 lon) respectée par construction.
 
-- Invalidation explicite du cache lors du retrait de configuration.
-- Même commande : 12 tests réussis, 0 échec.
+### Stations exclues (5), verbatim stderr
 
-## Implémentation
+```
+# hors métropole 90 GUADELOUPE LE MOULE
+# hors métropole 91 MARTINIQUE
+# hors métropole 92 LA RÉUNION COLORADO
+# hors métropole 93 LA REUNION PITON VILLERS
+# exclu 96 NOUVELLE-CALÉDONIE LIFOU: 
+```
 
-- `api/fire-observations/radar-2d.js` et `src/plugins/radar-2d-proxy.ts`
-  - URL amont exclusivement issue de `METEO_FRANCE_RADAR_MANIFEST_URL` ; aucune URL client acceptée.
-  - HTTPS obligatoire hors `localhost`, `127.0.0.1` et `::1`; credentials URL refusés.
-  - Redirections refusées, timeout 10 s, corps plafonné à 64 KiB, JSON/MIME et manifeste validés.
-  - `{ configured:false }` en HTTP 200 sans configuration ; cache CDN 120 s sur un manifeste valide.
-- `src/services/radar-2d.ts`
-  - Contrat `Radar2dManifest` conforme au worker (`schemaVersion:1`, source, dates UTC exactes, bounds ordonnées, image sûre, résolution et licence exactes).
-  - Cache 120 s, une relance, fallback dégradé sur la dernière valeur valide et invalidation honnête quand la configuration disparaît.
-- Carte
-  - Source image géoréférencée avec IDs `fire-radar-2d-*`, opacité 0,58 et attribution Météo-France/Licence Ouverte.
-  - Overlay désactivé par défaut, placé sous les points FIRMS.
-  - Remplacement seulement quand `observedAt` change, rollback de la source/couche précédente en cas d’échec MapLibre.
-  - `MapContainer` conserve et rejoue l’état si la carte desktop est initialisée après la donnée.
-- `App.ts`
-  - Poll 5 minutes uniquement si Feux ou l’overlay radar est actif, pause onglet masqué et verrou anti-chevauchement.
-  - États `not-configured`, `ok`, `stale`, `error` dérivés de l’exécution ; dernière couche valide conservée sur panne.
-  - État runtime MTG également mis à jour pour préparer le câblage UI dédié à la Task 6.
-- `.env.example` documente `METEO_FRANCE_RADAR_MANIFEST_URL` sans préfixe client.
+- 4 exclusions attendues : DOM-TOM hors bbox, décodage PAM réussi mais coordonnées (Guadeloupe/Martinique/La Réunion ×2) hors `BBOX`.
+- 1 exclusion « exclu » (message vide) : station 96 (Nouvelle-Calédonie Lifou). Investigation : `GET /stations/96/observations/PAM` répond **HTTP 404** (`{"type":"Ressource non trouvée","code":404,"msg":"L'url demandée n'existe pas"}`). `catalog.get("links", [])` retourne donc `[]`, et `next(...)` sur le générateur vide lève `StopIteration()` — dont `str()` est une chaîne vide, d'où le message tronqué sur stderr. Ce n'est pas un bug de mon code : la station n'a simplement aucun produit PAM exposé par l'API à ce moment (cohérent avec la note du brief : « si une station n'a intermittemment pas de lien PAM, le noter — elle sera simplement absente du catalogue »). Aucune autre station n'a levé d'exception de décodage (`RadarMetadataError`) : les 27 stations métropole toutes strictement conformes à la structure ZH verrouillée par `pam_bitstream.py`.
 
-## Vérifications finales
+Total : 27 + 5 = 32 = total listé par l'API. Comptes cohérents.
 
-- `npx vitest run src/services/radar-2d.test.ts` : 1 fichier, 12 tests réussis.
-- `npm test` : 28 fichiers, 225 tests réussis.
-- `npm run typecheck` : succès, aucune erreur.
-- `npm run lint` : succès, aucune erreur.
-- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée.
-- `git diff --check` : succès.
+## TDD — preuves
 
-Le build conserve deux avertissements préexistants : externalisation navigateur de `spawn` dans loaders.gl et import statique/dynamique simultané de `src/services/oil.ts`.
+**Step 2 (rouge)** :
+```
+$ venv/bin/python3 -m pytest tests/test_station_catalog.py -v
+ImportError while importing test module '.../tests/test_station_catalog.py'
+E   ModuleNotFoundError: No module named 'station_catalog'
+Interrupted: 1 error during collection
+```
+
+**Step 4, première exécution (générateur exécuté, module écrit)** — 3 PASS / 1 FAIL, pas 4 PASS comme attendu par le brief :
+```
+tests/test_station_catalog.py::test_catalog_carries_bordeaux_with_bufr_coordinates PASSED
+tests/test_station_catalog.py::test_catalog_is_metropole_only PASSED
+tests/test_station_catalog.py::test_nearest_station_from_dax_is_bordeaux FAILED
+tests/test_station_catalog.py::test_out_of_range_returns_none PASSED
+AssertionError: assert 66 == 41
+ +  where 66 = Station(station_id=66, name='MOMUY', ...).station_id
+```
+
+**Après correction du test (voir section suivante)** — 4 PASS :
+```
+tests/test_station_catalog.py::test_catalog_carries_bordeaux_with_bufr_coordinates PASSED
+tests/test_station_catalog.py::test_catalog_is_metropole_only PASSED
+tests/test_station_catalog.py::test_nearest_station_from_dax_is_momuy PASSED
+tests/test_station_catalog.py::test_out_of_range_returns_none PASSED
+4 passed in 0.01s
+```
+
+**Suite complète `services/radar-worker`** (non-régression) :
+```
+59 passed, 5 skipped, 77 warnings in 1.53s
+```
+(les 5 skips sont préexistants : différentiels eccodes nécessitant des variables d'env de fixture non positionnées, hors périmètre de cette tâche).
+
+## Déviation documentée : test corrigé (Dax → Momuy, pas Bordeaux)
+
+Le brief fournissait ce test verbatim :
+```python
+def test_nearest_station_from_dax_is_bordeaux():
+    result = nearest_station(43.71, -1.05)  # Dax ≈ 125 km de Bordeaux radar
+    assert result is not None
+    station, distance_m = result
+    assert station.station_id == 41
+    assert 100_000 < distance_m < 160_000
+```
+
+Contre le catalogue réel (32 stations, pas seulement Bordeaux), Momuy (id 66, Landes) est à **36,7 km** de Dax — bien plus proche que Bordeaux (**127,9 km**, cohérent avec le commentaire du brief). Vérifications effectuées avant de toucher au test :
+
+1. **Classement complet des distances depuis Dax** (43.71, -1.05) sur les 27 stations du catalogue généré : Momuy 36,69 km < Bordeaux 127,91 km < Toulouse 195,80 km < ... Momuy est sans ambiguïté la plus proche.
+2. **Contre-vérification indépendante par l'oracle eccodes** (le même oracle que `test_pam_differential.py`, avec `ECCODES_DEFINITION_PATH` pointé vers `eccodes-definitions/`) sur le tour PAM téléchargé pour la station 66 : `eccodes` donne `latitude=43.62444000000001, longitude=-0.6094400000000001`, identique au bit près à `pam_bitstream.parse_zh_scan` (`43.62444, -0.60944`). **Ce n'est donc pas un bug de décodage** : Momuy est réellement une station radar ARAMIS du réseau Météo-France, dans les Landes, proche de Dax. L'hypothèse géographique du brief (rédigé sans connaître le catalogue complet des 32 stations) était incomplète.
+
+Action : j'ai corrigé le test pour refléter la vérité terrain plutôt que forcer un passage artificiel (aucune modification du générateur ni de la validation bbox/structure — la station Momuy est légitimement dans la bbox métropole et son décodage est strict et correct). Le test renommé `test_nearest_station_from_dax_is_momuy` assert désormais `station_id == 66` et `30_000 < distance_m < 45_000`, avec un commentaire explicite renvoyant à ce rapport.
+
+**Ceci est une déviation par rapport au texte exact du brief et mérite une revue explicite de l'utilisateur** : je n'ai pas modifié le générateur ni élargi une validation pour faire passer une station — j'ai corrigé une expectation de test qui s'est révélée factuellement fausse une fois le catalogue réel complet disponible, après double vérification indépendante (classement de distances + oracle eccodes).
+
+## Fichiers changés
+
+- `services/radar-worker/tools/build_station_catalog.py` (nouveau) — générateur, code repris verbatim du brief + ajout d'un garde `if __name__ == "__main__": main()` (absent du bloc de code du brief, nécessaire pour que `python3 tools/build_station_catalog.py` exécute effectivement `main()` ; cohérent avec le style de `tools/fetch_pam_fixture.py` existant).
+- `services/radar-worker/station_catalog.py` (nouveau, généré et committé) — 27 stations, `Station`, `MAX_RANGE_M = 160_000`, `nearest_station()`.
+- `services/radar-worker/tests/test_station_catalog.py` (nouveau) — 4 tests, un corrigé (voir ci-dessus).
 
 ## Auto-revue
 
-### Critique
+- Générateur : aucune retouche de la logique de validation (bbox, décodage strict, sélection ZH) par rapport au texte du brief — seul l'ajout du garde `__main__` a été nécessaire.
+- Aucun secret committé : la clé API n'apparaît dans aucun fichier versionné (utilisée uniquement via variable d'environnement lors de la génération).
+- `station_catalog.py` porte bien l'en-tête « GÉNÉRÉ, ne pas éditer » émis par le générateur.
+- Docstrings/commentaires en français, conformes aux conventions du projet.
+- Suite complète du sous-projet `radar-worker` passée pour vérifier l'absence de régression (59 passed, 5 skipped, préexistants).
 
-Aucun problème critique restant.
+## Concerns
 
-### Important
-
-- SSRF : l’amont est strictement configuré côté serveur, les redirections sont interdites et aucun paramètre client ne peut changer l’origine.
-- Continuité : le fetch précède toute mutation cartographique ; le cache et le rollback MapLibre conservent la dernière couche valide.
-- Cohérence App/carte : après auto-revue, un échec d’installation MapLibre restaure aussi le manifeste précédent dans App, pas seulement le raster.
-- Vérité produit : l’absence de configuration est un état 200 explicite et invalide l’ancien cache.
-- RainViewer : IDs, code, cadence et couche existants restent séparés ; aucun fallback silencieux.
-- Aucun calcul ou rendu 3D, hauteur de panache, fumée ou pyroconvection.
-
-### Risques résiduels
-
-- Le chargement effectif du WebP reste soumis au CORS du stockage/CDN configuré ; le manifeste et le build ne peuvent pas valider un déploiement externe absent.
-- Les contrôles et le rendu runtime dans `FiresPanel` appartiennent explicitement à la Task 6 ; Task 5 expose l’état et le callback carte nécessaires sans anticiper cette UI.
-
-## Périmètre préservé
-
-Les changements utilisateur préexistants de `vercel.json` et du dossier `FRANCE MONITOR orientation pour ministeres/` n’ont été ni modifiés par cette tâche ni inclus dans son index git.
-
----
-
-## Correctifs de review — chargement atomique réel
-
-### RED → GREEN
-
-- RED : `src/components/DeckGLMap.radar-2d.test.ts` a reproduit trois défauts : remplacement de l’ancienne URL avant résolution du chargement, rejet CORS asynchrone non propagé, et manifeste `MapContainer` commité avant succès. Résultat initial : 3 tests en échec sur 3, avec un rejet non géré.
-- GREEN : le raster est désormais préchargé par `MapLibre.loadImage()` avec un timeout de 10 secondes avant toute mutation de source/couche. `DeckGLMap.setRadar2dOverlay()` et `MapContainer.setRadar2dOverlay()` propagent une `Promise`; l’état du conteneur n’est commité qu’après installation réussie et `App` attend ce résultat.
-- Continuité : un CORS/404/décodage/timeout laisse l’ancienne source, l’ancienne couche et l’ancien manifeste intacts. Le rollback synchrone existant reste actif pour les erreurs `addSource`/`addLayer` postérieures à la prévalidation.
-
-### Couverture renforcée
-
-- succès différé et échec asynchrone du chargement image ;
-- visibilité désactivée par défaut et insertion sous `fires-glow` ;
-- conservation effective des source/couche RainViewer lors d’un remplacement DPRadar ;
-- plafond 64 KiB sans `Content-Length` et refus des réponses de redirection ;
-- handler Vercel avec URL configurée valide et configuration HTTP invalide.
-
-Le polling onglet masqué et le verrou anti-chevauchement restent vérifiés par inspection dans `App.ts`. Leur test unitaire isolé nécessiterait un refactoring de l’orchestrateur hors du correctif atomique demandé.
-
-### Vérifications fraîches
-
-- `npx vitest run src/components/DeckGLMap.radar-2d.test.ts src/components/DeckGLMap.mtg-frp.test.ts src/services/radar-2d.test.ts src/services/mtg-frp.test.ts` : 4 fichiers, 49 tests réussis.
-- `npm test` : 29 fichiers, 233 tests réussis.
-- `npm run typecheck` : succès.
-- `npm run lint` : succès.
-- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée.
-- `git diff --check` : succès.
-
-Les deux avertissements de build préexistants (`spawn` externalisé par loaders.gl et import statique/dynamique de `oil.ts`) sont inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` restent hors périmètre et hors index.
-
----
-
-## Seconde vague de review — suppression du second accès réseau
-
-### Cause racine
-
-La prévalidation `map.loadImage(imageUrl)` de la première correction ne rendait pas le swap totalement transactionnel : `addSource({ type: 'image', url: imageUrl })` pouvait effectuer un second accès distant et échouer après le retour de la méthode. Le mock initial ne simulait pas ce deuxième chargement.
-
-### RED → GREEN
-
-- RED : 7 scénarios sur 9 échouaient initialement : absence de fetch contrôlé, URL distante encore installée, aucune révocation de Blob, fetch/timeout sans effet sur la transaction et rollback incomplet de l’état enabled.
-- GREEN : l’image distante est téléchargée exactement une fois avec CORS, redirections interdites, `AbortController`, timeout 10 secondes, types `image/webp`/`image/png` uniquement et plafond 16 MiB déclaré/réel. Sans `Content-Length`, le flux est lu par chunks et annulé dès le premier octet excédentaire.
-- Le corps validé devient une Blob URL locale. Cette même URL est décodée par `map.loadImage()` puis donnée à la source MapLibre : le second accès est local et ne peut plus produire une panne réseau différée.
-- L’`ImageBitmap` de validation est fermé lorsqu’il expose `close()`.
-- L’ancienne Blob URL reste vivante jusqu’au succès complet du swap. Elle est révoquée après commit ; la candidate est révoquée sur erreur de fetch/décodage/addLayer/rollback ; l’URL active est révoquée au retrait et dans `destroy()`.
-- `_radar2dEnabled`, le manifeste et la Blob URL active forment désormais un état transactionnel restauré ensemble si l’installation échoue.
-
-### Tests ajoutés/renforcés
-
-- une seule requête distante et URL Blob effective dans `addSource` ;
-- erreurs fetch, décodage et timeout avant mutation ;
-- annulation d’un flux surdimensionné sans `Content-Length` avant création de Blob URL ;
-- fermeture de l’image décodée ;
-- révocation après remplacement, retrait, destroy et échec de swap ;
-- conservation de l’ancien Blob et de l’état enabled pendant le rollback.
-
-### Vérifications fraîches
-
-- tests ciblés MTG/radar : 4 fichiers, 55 tests réussis ;
-- `npm test` : 29 fichiers, 239 tests réussis ;
-- `npm run typecheck` : succès ;
-- `npm run lint` : succès ;
-- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée ;
-- `git diff --check` : succès.
-
-Les avertissements de build préexistants restent inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` sont toujours préservés hors périmètre.
-
----
-
-## Troisième vague de review — cycle de vie et transaction MapLibre
-
-### RED → GREEN
-
-- RED : 3 scénarios importants échouaient : un décodage résolu après `destroy()` recréait l’état radar et fuyait sa Blob URL, un bitmap résolu après timeout n’était jamais fermé, et une exception de `removeLayer` précédant le `try` laissait la candidate non révoquée sans rollback.
-- GREEN : chaque opération radar reçoit une génération et capture l’instance MapLibre courante. Une nouvelle opération ou `destroy()` invalide la génération ; les contrôles après chaque attente empêchent tout commit obsolète et révoquent la candidate.
-- `destroy()` marque explicitement l’instance détruite, incrémente la génération, révoque l’URL active et remet manifeste/état enabled à zéro.
-- Le résultat de `loadImage()` ferme systématiquement son image lorsqu’elle expose `close()`, y compris s’il arrive après un timeout.
-- Toute la phase de mutation (`removeLayer`/`removeSource`/`addSource`/`addLayer`) est désormais incluse dans le `try/catch/finally`. La candidate est toujours révoquée hors commit et le rollback de l’ancien Blob/manifeste/enabled est tenté même si la suppression initiale lève.
-
-### Couverture renforcée
-
-- destroy pendant un `loadImage` différé, puis résolution tardive sans recréation d’état ;
-- fermeture d’un ImageBitmap arrivé après timeout ;
-- exception `removeLayer` avec restauration et révocation candidate ;
-- refus MIME invalide avant Blob URL ;
-- refus `Content-Length` supérieur à 16 MiB avant lecture/décodage.
-
-### Vérifications fraîches
-
-- tests transactionnels radar : 15/15 ;
-- tests ciblés MTG/radar : 4 fichiers, 60 tests réussis ;
-- `npm test` : 29 fichiers, 244 tests réussis ;
-- `npm run typecheck` : succès ;
-- `npm run lint` : succès ;
-- `NODE_OPTIONS=--max-old-space-size=4096 npm run build` : succès, 1 490 modules transformés, PWA générée ;
-- `git diff --check` : succès.
-
-Les deux avertissements de build préexistants sont inchangés. `vercel.json` et `FRANCE MONITOR orientation pour ministeres/` restent hors périmètre et hors index.
+1. **Déviation du test** (détaillée ci-dessus) : à valider explicitement — je considère la correction justifiée et documentée, mais elle change une assertion du brief.
+2. **Station 96 (Nouvelle-Calédonie Lifou) : 404 sur l'endpoint PAM** au moment du run. Absence simple, pas un échec de décodage — à re-tester lors d'une régénération future si la couverture DOM-TOM devient pertinente (hors scope P0 métropole).
+3. Le catalogue est un instantané géographique (coordonnées de stations fixes) — une régénération future produira le même résultat sauf changement d'infrastructure radar (nouvelle station, déplacement d'antenne) ou apparition/disparition temporaire de liens PAM.

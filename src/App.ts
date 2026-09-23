@@ -126,7 +126,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -1416,6 +1416,7 @@ export class App {
   private currentAisAnomalies: AisAnomaly[] = [];
   private currentJammingSignals: GpsJammingSignal[] = [];
   private currentMilitarySurges: MilitarySurge[] = [];
+  private currentMilitaryFlights: MilitaryFlight[] = [];
   private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
   private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
@@ -3813,14 +3814,33 @@ export class App {
     this.alertMonitor?.destroy();
     this.alertMonitor = new AlertMonitor(mapEl);
     this.alertMonitor.setDossierHandler((situation) => {
-      if (situation.type !== 'WILDFIRE_ESCALATION') return false;
-      const incidentId = situation.id.replace(/^wildfire-/, '');
-      // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
-      // à côté de currentActiveFires.
-      const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
-      if (!incident) return false;
-      void this.openWildfireDossier(incident);
-      return true;
+      if (situation.type === 'WILDFIRE_ESCALATION') {
+        const incidentId = situation.id.replace(/^wildfire-/, '');
+        // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
+        // à côté de currentActiveFires.
+        const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
+        if (!incident) return false;
+        void this.openWildfireDossier(incident);
+        return true;
+      }
+
+      if (situation.type === 'MILITARY_SURGE_ALERT') {
+        const flight = this.currentMilitaryFlights.find((item) => item.id === situation.entityId);
+        const lon = flight?.longitude ?? situation.lon;
+        const lat = flight?.latitude ?? situation.lat;
+        if (lon == null || lat == null) return false;
+
+        if (!this.activeLayers.military) {
+          this.onLayerToggle('military', true);
+        }
+        this.mapContainer?.flyTo(lon, lat, 10);
+        if (flight) {
+          this.mapPopup?.showMilitaryFlight(flight, mapEl.clientWidth / 2, mapEl.clientHeight / 2);
+        }
+        return true;
+      }
+
+      return false;
     });
     this.situationMonitor?.destroy();
     this.situationMonitor = new SituationMonitor(mapEl);
@@ -3964,6 +3984,7 @@ export class App {
         });
         const snapshot = await fetchMilitaryFlights();
         const flights = snapshot.flights;
+        this.currentMilitaryFlights = flights;
         this.currentMilitaryFlightsCount = flights.length;
         this.mapContainer?.updateMilitaryFlights(flights);
         this.refreshFranceIntelPanel();
@@ -3996,6 +4017,7 @@ export class App {
           // Detect and display military surges (WorldMonitor pattern)
           const surges = detectMilitarySurges(
             flights.map((f) => ({
+              id: f.id,
               latitude: f.latitude,
               longitude: f.longitude,
               aircraftType: f.aircraftType,
@@ -6412,6 +6434,10 @@ export class App {
           { label: t('alerts.watchTraffic'), ownerHint: t('alerts.airCell'), actionType: 'monitor' as const, automatable: true },
         ],
         sourceRefs: [t('alerts.sourceRefs.militaryFlights'), t('alerts.sourceRefs.adsb')],
+        entityId: surge.flightIds?.[0],
+        lat: surge.location?.lat,
+        lon: surge.location?.lon,
+        activateLayers: ['military'],
         updatedAt: now,
       }));
 

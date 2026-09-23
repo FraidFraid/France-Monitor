@@ -182,6 +182,16 @@ def test_decode_bufr_accepts_live_pure_bufr_shape(tmp_path, monkeypatch):
     )
 
 
+def test_decode_bufr_accepts_reflectivity_above_legacy_70_dbz_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(bufr_decoder, "GRID_SIZE", 2)
+    monkeypatch.setattr(models, "GRID_SIZE", 2)
+    fixture = _write_fixture(tmp_path, codes=(2047, 310, 1115, 2046))
+
+    grid = decode_bufr(fixture, observed_at="2026-07-16T12:50:00Z")
+
+    assert grid["values"] == [None, -9.0, 71.5, 164.6]
+
+
 def test_decode_bufr_rejects_catalogue_timestamp_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr(bufr_decoder, "GRID_SIZE", 2)
     monkeypatch.setattr(models, "GRID_SIZE", 2)

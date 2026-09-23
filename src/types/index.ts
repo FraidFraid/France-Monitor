@@ -2449,6 +2449,8 @@ export interface DetectedSituation {
   sourceRefs: string[];            // sources de données impliquées
   linkUrl?: string;
   linkLabel?: string;
+  /** Identifiant métier de l'objet à ouvrir (ex: ICAO24 d'un avion). */
+  entityId?: string;
   updatedAt: Date;
   // Optionnel : position géo pour fly-to + layers à activer au clic
   lat?: number;
