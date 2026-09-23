@@ -4,7 +4,7 @@ Date : 22 septembre 2026. Aucun code ni configuration modifié.
 
 **Méthode.** Lecture du dépôt (`vercel.json`, `api/**`, `services/**`, `.github/workflows`, `ais-relay.js`, `vite.config.ts`, `.env.example`, noms des variables locales sans leurs valeurs), CLI `railway` et `gh` (tous deux connectés sur ce poste), sondes HTTP en production (`/api/health-check`, manifeste radar, `/health` du worker Railway, `/health` et `/opensky` du relais Render, historique de situation, séries carburants, dernier bundle de production pour vérifier l'absence de clés).
 
-**Ce qui n'a pas pu être vérifié d'ici** (et comment le faire, §6) : le dashboard Vercel (plan, variables réelles, usage, journaux des crons), les consoles Render, Upstash et Neon (plans, quotas consommés), la facturation Railway. Le dépôt GitHub est **public** : aucune valeur de secret ne figure dans ce document.
+**Ce qui n'a pas pu être vérifié d'ici** (et comment le faire, §5) : le dashboard Vercel (plan, variables réelles, usage, journaux des crons), les consoles Render, Upstash et Neon (plans, quotas consommés), la facturation Railway. Le dépôt GitHub est **public** : aucune valeur de secret ne figure dans ce document.
 
 ---
 
@@ -260,7 +260,9 @@ Je ne recommande pas cette option dans un premier temps : Railway à 5 $ est le 
 
 ---
 
-## 8. Suivi de mise en œuvre (23/09/2026, branche `feat/audit-2026-09-hobby-perf`, non commitée, non déployée)
+## 8. Suivi de mise en œuvre (23/09/2026, branche `feat/audit-2026-09-hobby-perf`)
+
+**État au 23/09/2026 au soir** : branche commitée (`9d83531f`) et poussée, build de prévisualisation Vercel réussi (routes non testées : prévisualisation protégée par l'authentification Vercel), pas encore fusionnée. `main` déployé en production en `0d44c1eb`, CI verte ; fusion à blanc de la branche sans conflit. Railway n'est pas relié à GitHub : la correction du décodeur radar présente dans `main` ne tourne qu'après `railway up`.
 
 - **Regroupement des fonctions** : 57 handlers sous `api/_handlers/**`, une seule fonction `api/index.js` (réécriture `/api/(.*)` → `/api?__fmroute=$1`), table générée `api/_routes.js`. Fonctions restantes : `api/index.js`, `api/ingest/news.ts`, `api/fuel-price-series-refresh.js`, `api/sentinel-ndwi.ts` (4, limite Hobby 12). Les handlers « edge » tournent désormais en Node via un adaptateur. Test de non-régression : `tests/api-router.test.ts`.
 - **`vercel.json` compatible Hobby** : `fluid: true`, crons quotidiens seulement (ingestion 04:15 en filet de sécurité, carburants 05:00), cache immuable des assets hachés.

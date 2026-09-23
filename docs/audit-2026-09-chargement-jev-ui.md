@@ -430,7 +430,12 @@ Les inventaires complets (55 handlers et leurs en-têtes, 63 composants, séquen
 
 ---
 
-## 6. Suivi de mise en œuvre (23/09/2026, branche `feat/audit-2026-09-hobby-perf`, non commitée, non déployée)
+## 6. Suivi de mise en œuvre (23/09/2026, branche `feat/audit-2026-09-hobby-perf`)
+
+**État au 23/09/2026 au soir** :
+- Branche commitée (`9d83531f`, 240 fichiers) et poussée sur GitHub ; build de prévisualisation Vercel réussi, routes non testées car la prévisualisation est protégée par l'authentification Vercel.
+- `main` poussé et déployé en production en `0d44c1eb` (clic d'une alerte de vol militaire vers l'avion, borne de réflectivité du décodeur radar), CI verte ; la branche fusionne sans conflit avec ce `main` (fusion à blanc).
+- Pas encore fusionnée : suivre `docs/runbook-passage-hobby.md` (QStash, vérification de la prévisualisation, fusion, passage en Hobby). Le décodeur radar n'est actif qu'après `railway up` depuis `services/radar-worker`.
 
 Vérifié : typecheck, lint, 550 tests (64 fichiers), build, contrôle des fichiers générés, et 16 scénarios navigateur (Chrome sans interface sur le serveur de dev de la branche). Les chiffres « après » ci-dessous viennent du build et du serveur de dev ; les mesures de production (latences CDN, octets) ne pourront être refaites qu'après déploiement d'une prévisualisation.
 
