@@ -141,6 +141,12 @@ function compareNewsPriority(a: NewsItem, b: NewsItem): number {
   const geoDelta = Number(!!b.locationName) - Number(!!a.locationName);
   if (geoDelta !== 0) return geoDelta;
 
+  // Pertinence Jev avant la date (audit UI 2026-09 §5.3 point 7) — champ
+  // optionnel pas encore renseigné côté serveur : `undefined` retombe à 0
+  // des deux côtés, donc aucun changement de tri tant que rien ne le peuple.
+  const relevanceDelta = (b.relevance ?? 0) - (a.relevance ?? 0);
+  if (relevanceDelta !== 0) return relevanceDelta;
+
   return b.pubDate.getTime() - a.pubDate.getTime();
 }
 
@@ -155,6 +161,22 @@ function getSummaryText(item: NewsItem): string | null {
   if (item.summary) return truncateText(item.summary, 180);
   return null;
 }
+
+/**
+ * Une « brève » est un item sans intérêt stratégique, masqué par défaut
+ * (audit UI 2026-09 §5.3 point 7 : bruit PQR à 86 % — cf. mémoire projet
+ * `feedback_pqr_noise`). Le champ serveur `noise` (en cours d'ajout côté
+ * ingestion, cf. tâche Jev) fait autorité quand il est présent ; sinon on
+ * retombe sur le niveau de menace mots-clés (`info` = bruit).
+ * Type guard étroit : compile que `noise` existe déjà sur `NewsItem` ou non.
+ */
+function isNoiseItem(item: NewsItem): boolean {
+  const noise = (item as { noise?: boolean }).noise;
+  if (typeof noise === 'boolean') return noise;
+  return (item.threat?.level ?? 'info') === 'info';
+}
+
+const LIVE_PAGE_SIZE = 50;
 
 export class UnderMapNewsFeed {
   private container: HTMLElement;
@@ -171,6 +193,12 @@ export class UnderMapNewsFeed {
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
   /** Re-render guard: signature of the last rendered list content. */
   private lastRenderKey: string | null = null;
+  /** Brèves (bruit) masquées par défaut — bascule utilisateur, non persistée. */
+  private showNoise = false;
+  /** Fenêtre affichée en mode live (pagination "Voir plus", indépendante de l'historique). */
+  private liveRenderLimit = LIVE_PAGE_SIZE;
+  private noiseToggleEl: HTMLButtonElement | null = null;
+  private liveMoreEl: HTMLButtonElement | null = null;
 
   // History mode state
   private heatmap: NewsHeatmap | null = null;
@@ -275,10 +303,14 @@ export class UnderMapNewsFeed {
             `).join('')}
           </div>
         </div>
+        <button type="button" class="under-map-news__noise-toggle" id="under-map-news-noise-toggle" aria-pressed="false">
+          Afficher les brèves (0)
+        </button>
       </div>
       <div class="under-map-card__body under-map-news__body">
         <div class="under-map-news__list" id="under-map-news-list"></div>
       </div>
+      <button class="under-map-news__live-more" id="under-map-news-live-more" style="display:none;"></button>
       <button class="under-map-news__load-more" style="display:none;">Charger plus (50 suivants)</button>
       <div class="under-map-news__history-footer" style="display:none;"></div>
     `;
@@ -293,6 +325,8 @@ export class UnderMapNewsFeed {
     this.regionSelectEl = root.querySelector('.under-map-news__region-select');
     this.loadMoreEl = root.querySelector('.under-map-news__load-more');
     this.historyFooterEl = root.querySelector<HTMLElement>('.under-map-news__history-footer');
+    this.noiseToggleEl = root.querySelector('#under-map-news-noise-toggle');
+    this.liveMoreEl = root.querySelector('#under-map-news-live-more');
 
     // Mount heatmap component
     if (this.heatmapContainerEl) {
@@ -437,6 +471,8 @@ export class UnderMapNewsFeed {
       return true;
     });
     this.filteredItems.sort(compareNewsPriority);
+    // Filtre changé → on repart de la première page (mode live uniquement).
+    this.liveRenderLimit = LIVE_PAGE_SIZE;
   }
 
   /**
@@ -450,6 +486,8 @@ export class UnderMapNewsFeed {
       this.filter.searchQuery,
       this.filter.categories.join(','),
       this.filter.threatLevels.join(','),
+      String(this.showNoise),
+      String(this.liveRenderLimit),
     ].join('\u00a7');
     const itemsSig = this.filteredItems.map((item) => [
       item.id,
@@ -509,6 +547,20 @@ export class UnderMapNewsFeed {
       ].join('');
     }
     this.renderActiveFilterPills();
+
+    // Brèves (bruit) masquées par défaut — cf. `isNoiseItem()`.
+    const noiseItems = this.filteredItems.filter(isNoiseItem);
+    const visibleSource = this.showNoise ? this.filteredItems : this.filteredItems.filter((item) => !isNoiseItem(item));
+
+    if (this.noiseToggleEl) {
+      this.noiseToggleEl.textContent = this.showNoise
+        ? `Masquer les brèves (${noiseItems.length})`
+        : `Afficher les brèves (${noiseItems.length})`;
+      this.noiseToggleEl.setAttribute('aria-pressed', String(this.showNoise));
+      this.noiseToggleEl.classList.toggle('under-map-news__noise-toggle--active', this.showNoise);
+      this.noiseToggleEl.style.display = noiseItems.length > 0 || this.showNoise ? '' : 'none';
+    }
+
     this.listEl.innerHTML = '';
 
     if (this.filteredItems.length === 0) {
@@ -518,12 +570,37 @@ export class UnderMapNewsFeed {
           <div class="under-map-card__empty-text">${t('newsFeed.emptyBody')}</div>
         </div>
       `;
+      if (this.liveMoreEl) this.liveMoreEl.style.display = 'none';
       return;
     }
 
-    for (const item of this.filteredItems) {
+    if (visibleSource.length === 0) {
+      // Tout est masqué comme "brève" — le message pointe vers la bascule plutôt
+      // qu'un faux "aucun résultat" (les items existent, ils sont juste cachés).
+      this.listEl.innerHTML = `
+        <div class="under-map-card__empty">
+          <div class="under-map-card__empty-title">Aucune actualité notable</div>
+          <div class="under-map-card__empty-text">${noiseItems.length} brève${noiseItems.length > 1 ? 's' : ''} masquée${noiseItems.length > 1 ? 's' : ''} — « Afficher les brèves » pour les voir.</div>
+        </div>
+      `;
+      if (this.liveMoreEl) this.liveMoreEl.style.display = 'none';
+      return;
+    }
+
+    const pageItems = visibleSource.slice(0, this.liveRenderLimit);
+    for (const item of pageItems) {
       const el = this.renderItem(item);
       this.listEl.appendChild(el);
+    }
+
+    const remaining = visibleSource.length - pageItems.length;
+    if (this.liveMoreEl) {
+      if (remaining > 0) {
+        this.liveMoreEl.style.display = '';
+        this.liveMoreEl.textContent = `Voir plus (+${Math.min(LIVE_PAGE_SIZE, remaining)})`;
+      } else {
+        this.liveMoreEl.style.display = 'none';
+      }
     }
   }
 
@@ -574,14 +651,10 @@ export class UnderMapNewsFeed {
       </div>
     `;
 
-    el.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.read-article-btn')) return;
-      this.selectItem(item.id);
-      if (item.lat != null && item.lon != null && this.onItemClick) {
-        this.onItemClick(item);
-      }
-    });
-
+    // Pas de listener par item : la liste entière est déléguée depuis
+    // `.under-map-news__list` (un seul listener, voir `bindControls()`) —
+    // le lien "lire l'article" ci-dessous navigue nativement (`<a href target>`),
+    // la délégation l'ignore explicitement via `.closest('.read-article-btn')`.
     if (item.link && item.link !== '#') {
       const btnRow = document.createElement('div');
       btnRow.className = 'under-map-news__actions';
@@ -592,9 +665,6 @@ export class UnderMapNewsFeed {
       btn.href = item.link;
       btn.target = '_blank';
       btn.rel = 'noopener';
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
       btnRow.appendChild(btn);
       el.appendChild(btnRow);
     }
@@ -729,10 +799,43 @@ export class UnderMapNewsFeed {
       this.loadHistoryArticles();
     });
 
-    // Load more button
+    // Load more button (mode historique)
     this.loadMoreEl?.addEventListener('click', () => {
       if (!this.historyLoading && this.historyHasMore) {
         this.loadHistoryArticles(true);
+      }
+    });
+
+    // Bascule « Afficher les brèves » (mode live)
+    this.noiseToggleEl?.addEventListener('click', () => {
+      this.showNoise = !this.showNoise;
+      this.liveRenderLimit = LIVE_PAGE_SIZE;
+      this.lastRenderKey = null; // état de bascule hors buildRenderKey() → force le re-rendu
+      this.renderList();
+    });
+
+    // « Voir plus » (mode live) — pagination locale, indépendante de l'historique
+    this.liveMoreEl?.addEventListener('click', () => {
+      this.liveRenderLimit += LIVE_PAGE_SIZE;
+      this.lastRenderKey = null;
+      this.renderList();
+    });
+
+    // Délégation d'événements sur la liste (au lieu d'un listener par item) —
+    // un seul clic « lire l'article » laisse la navigation native du <a> suivre
+    // son cours ; tout autre clic dans un .news-item sélectionne/centre l'item.
+    this.listEl?.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.read-article-btn')) return;
+      const itemEl = target.closest<HTMLElement>('.news-item');
+      const itemId = itemEl?.dataset.itemId;
+      if (!itemId) return;
+      const source = this.filter.mode === 'history' ? this.historyItems : this.filteredItems;
+      const item = source.find((i) => i.id === itemId);
+      if (!item) return;
+      this.selectItem(item.id);
+      if (item.lat != null && item.lon != null && this.onItemClick) {
+        this.onItemClick(item);
       }
     });
   }
@@ -886,6 +989,13 @@ export class UnderMapNewsFeed {
 
     if (this.loadMoreEl) this.loadMoreEl.style.display = isHistory && this.historyHasMore ? '' : 'none';
     if (this.historyFooterEl) this.historyFooterEl.style.display = isHistory ? '' : 'none';
+    // Contrôles propres au mode live (bascule brèves, pagination locale) — masqués
+    // en historique ; en mode live c'est `renderList()` (déjà rejoué par
+    // `updateFilter()` juste avant) qui gère leur visibilité au cas par cas.
+    if (isHistory) {
+      if (this.noiseToggleEl) this.noiseToggleEl.style.display = 'none';
+      if (this.liveMoreEl) this.liveMoreEl.style.display = 'none';
+    }
 
     root.querySelectorAll<HTMLElement>('[data-period]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset['period'] === this.filter.historyPeriod);

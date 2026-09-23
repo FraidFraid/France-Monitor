@@ -49,6 +49,46 @@ function chunkArray(items, size) {
   return chunks;
 }
 
+// ── Cache + single-flight pour GET /opensky ──
+//
+// fetchAirTrafficSnapshot() a déjà son propre cache mémoire interne (20s, voir
+// api/_shared/air-traffic.js), mais sans coalescing : plusieurs requêtes concurrentes
+// arrivant avant que le premier fetch n'aboutisse déclenchent chacune leur propre calcul
+// complet du snapshot (~10s, plusieurs upstreams). Le cache ci-dessous garantit qu'un seul
+// calcul est en vol à la fois et que les appels rapprochés (10s) réutilisent son résultat.
+const OPENSKY_CACHE_TTL_MS = 10_000;
+let openskyCacheEntry = null; // { snapshot, fetchedAt }
+let openskyInflight = null; // Promise<snapshot> | null
+
+async function getOpenSkySnapshot() {
+  const now = Date.now();
+  if (openskyCacheEntry && now - openskyCacheEntry.fetchedAt < OPENSKY_CACHE_TTL_MS) {
+    return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
+  }
+
+  if (openskyInflight) {
+    const snapshot = await openskyInflight;
+    return { snapshot, cacheStatus: 'hit' };
+  }
+
+  openskyInflight = fetchAirTrafficSnapshot(fetch).finally(() => {
+    openskyInflight = null;
+  });
+
+  try {
+    const snapshot = await openskyInflight;
+    openskyCacheEntry = { snapshot, fetchedAt: Date.now() };
+    return { snapshot, cacheStatus: 'miss' };
+  } catch (error) {
+    // En cas d'échec, on retombe sur la dernière valeur connue plutôt que de faire
+    // échouer tous les appelants concurrents.
+    if (openskyCacheEntry) {
+      return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
+    }
+    throw error;
+  }
+}
+
 // Utilisation de global pour survivre aux rechargements HMR de Vite
 let relayInstance = global.__aisRelayInstance || null;
 
@@ -104,15 +144,16 @@ export function startRelayServer(options = {}) {
 
     if (req.method === 'GET' && url.pathname === '/opensky') {
       try {
-        const snapshot = await fetchAirTrafficSnapshot(fetch);
+        const { snapshot, cacheStatus } = await getOpenSkySnapshot();
         sendJson(res, 200, snapshot, {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'public, max-age=10',
           'X-Relay-Source': 'local-ais-relay',
+          'X-Relay-Cache': cacheStatus,
         });
       } catch (error) {
         sendJson(res, 502, {
           error: error instanceof Error ? error.message : 'OpenSky relay failed',
-        }, { 'Cache-Control': 'no-store' });
+        }, { 'Cache-Control': 'no-store', 'X-Relay-Cache': 'miss' });
       }
       return;
     }

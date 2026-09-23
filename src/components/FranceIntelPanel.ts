@@ -230,11 +230,12 @@ export class FranceIntelPanel extends Panel {
     this.modalEl.setAttribute('aria-hidden', 'false');
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.isOpen = false;
     this.modalEl.classList.remove('active');
     this.modalEl.setAttribute('aria-hidden', 'true');
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   resetBrief(): void {

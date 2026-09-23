@@ -559,11 +559,12 @@ export class GasPanel extends Panel {
     return GAS_PANEL_COLORS.storageHigh;
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     if (this.modalEl) {
       this.modalEl.style.display = 'none';
     }
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {

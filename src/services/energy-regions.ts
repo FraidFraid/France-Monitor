@@ -50,13 +50,17 @@ interface ProxyResponse {
 
 // ── Constantes ────────────────────────────────────────────────────────────
 
-const API_URL = import.meta.env.PROD
-  ? '/api/energy/ecowatt'
-  : 'http://localhost:3001/api/energy/ecowatt';
+const API_URL = '/api/energy/ecowatt';
 
-// Source directe ODRÉ pour J-1 (CORS activé sur opendatasoft public datasets)
+// Source ODRÉ pour J-1, via le proxy serveur (cache CDN, conformité
+// « tout passe par /api/* », §2.4 de l'audit).
 const ODRE_BASE =
   'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets';
+
+/** Route un appel ODRÉ via le proxy serveur. */
+function opendataProxyUrl(upstreamUrl: string): string {
+  return `/api/opendata-proxy?url=${encodeURIComponent(upstreamUrl)}`;
+}
 
 // Facteurs d'émission standard gCO₂/kWh (IPCC median lifecycle)
 const CO2_FACTORS = {
@@ -158,11 +162,20 @@ async function fetchYesterdayConsumption(): Promise<Map<string, number>> {
   const yesterday = new Date(Date.now() - 24 * 3_600_000);
   const iso = toHalfHourISO(yesterday);
 
-  const url =
+  // ODSQL exige la fonction littérale `date'...'` pour comparer une colonne
+  // `datetime` : une chaîne simplement entre guillemets est un `text` pour
+  // le moteur ODRÉ, incompatible avec `date_heure` → 400
+  // IncompatibleTypesInComparisonFilter. Confirmé par curl direct contre
+  // odre.opendatasoft.com le 2026-09-23 (voir docs/audit-2026-09-annexes).
+  // Le `where` doit aussi être URL-encodé : la version précédente envoyait
+  // espaces et guillemets bruts dans l'URL.
+  const where = encodeURIComponent(`date_heure=date'${iso}' AND consommation is not null`);
+  const upstream =
     `${ODRE_BASE}/eco2mix-regional-tr/records` +
     `?limit=20` +
     `&select=code_insee_region,consommation` +
-    `&where=date_heure="${iso}" AND consommation is not null`;
+    `&where=${where}`;
+  const url = opendataProxyUrl(upstream);
 
   const result = new Map<string, number>();
   try {
@@ -370,7 +383,10 @@ export async function fetchBorderHistory(days = 7): Promise<BorderHistory> {
   const sinceISO = since.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
 
   const selectFields = ['date_heure', ...HISTORY_FIELDS.map(f => f.field)].join(',');
-  const where = `date_heure >= "${sinceISO}" AND ech_comm_espagne is not null`;
+  // `date'...'` requis (idem fetchYesterdayConsumption ci-dessus) : une
+  // chaîne entre guillemets simples est un `text`, incompatible avec la
+  // colonne `datetime` → 400 IncompatibleTypesInComparisonFilter.
+  const where = `date_heure >= date'${sinceISO}' AND ech_comm_espagne is not null`;
 
   const records: Eco2mixNatRecord[] = [];
   const PAGE = 100;
@@ -378,12 +394,13 @@ export async function fetchBorderHistory(days = 7): Promise<BorderHistory> {
 
   try {
     while (true) {
-      const url =
+      const upstream =
         `${ODRE_BASE}/eco2mix-national-tr/records` +
         `?limit=${PAGE}&offset=${offset}` +
         `&select=${encodeURIComponent(selectFields)}` +
         `&where=${encodeURIComponent(where)}` +
         `&order_by=date_heure`;
+      const url = opendataProxyUrl(upstream);
 
       const resp = await fetch(url, { signal: AbortSignal.timeout(12_000) });
       if (!resp.ok) break;

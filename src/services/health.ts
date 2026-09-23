@@ -34,45 +34,25 @@ let cache: { fetchedAt: number; payload: HealthPayload } | null = null;
 
 // ═══ Endpoints ═════════════════════════════════════════════════════════════
 
-const EPIDEMIOLOGY_URL = import.meta.env.PROD
-  ? '/api/health/epidemiology'
-  : 'http://localhost:3001/api/health/epidemiology';
+const EPIDEMIOLOGY_URL = '/api/health/epidemiology';
 
-const SENTINELLES_URL = import.meta.env.PROD
-  ? '/api/health/sentinelles'
-  : 'http://localhost:3001/api/health/sentinelles';
+const SENTINELLES_URL = '/api/health/sentinelles';
 
-const EPIDEMIC_ALERTS_URL = import.meta.env.PROD
-  ? '/api/health/epidemic-alerts'
-  : 'http://localhost:3001/api/health/epidemic-alerts';
+const EPIDEMIC_ALERTS_URL = '/api/health/epidemic-alerts';
 
-const DRUG_SHORTAGES_URL = import.meta.env.PROD
-  ? '/api/health/drug-shortages'
-  : 'http://localhost:3001/api/health/drug-shortages';
+const DRUG_SHORTAGES_URL = '/api/health/drug-shortages';
 
-const DEPARTMENTAL_URL = import.meta.env.PROD
-  ? '/api/health/departmental'
-  : 'http://localhost:3001/api/health/departmental';
+const DEPARTMENTAL_URL = '/api/health/departmental';
 
-const OSCOUR_SOS_URL = import.meta.env.PROD
-  ? '/api/health/oscour-sos'
-  : 'http://localhost:3001/api/health/oscour-sos';
+const OSCOUR_SOS_URL = '/api/health/oscour-sos';
 
-const APL_URL = import.meta.env.PROD
-  ? '/api/health/apl'
-  : 'http://localhost:3001/api/health/apl';
+const APL_URL = '/api/health/apl';
 
-const EPIDEMIOLOGY_MONITOR_URL = import.meta.env.PROD
-  ? '/api/health/epidemiology-monitor'
-  : 'http://localhost:3001/api/health/epidemiology-monitor';
+const EPIDEMIOLOGY_MONITOR_URL = '/api/health/epidemiology-monitor';
 
-const SENTINELLES_INGESTION_URL = import.meta.env.PROD
-  ? '/api/health/sentinelles-ingestion'
-  : 'http://localhost:3001/api/health/sentinelles-ingestion';
+const SENTINELLES_INGESTION_URL = '/api/health/sentinelles-ingestion';
 
-const HANTAVIRUS_URL = import.meta.env.PROD
-  ? '/api/health/hantavirus'
-  : 'http://localhost:3001/api/health/hantavirus';
+const HANTAVIRUS_URL = '/api/health/hantavirus';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';

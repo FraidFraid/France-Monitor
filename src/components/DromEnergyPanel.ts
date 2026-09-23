@@ -210,10 +210,11 @@ export class DromEnergyPanel extends Panel {
     this.renderState();
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.modalEl.style.display = 'none';
     this.onHoverAsset?.(null);
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {

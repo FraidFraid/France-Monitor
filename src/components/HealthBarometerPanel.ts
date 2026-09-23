@@ -34,6 +34,7 @@ export class HealthBarometerPanel {
   mount(): void {
     this.modalEl = document.createElement('div');
     this.modalEl.id = 'health-barometer-panel';
+    this.modalEl.className = 'fm-floating-panel';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
         width: '400px',
@@ -160,9 +161,10 @@ export class HealthBarometerPanel {
     this.contentEl.innerHTML = this.renderContent(metrics);
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.modalEl.style.display = 'none';
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {

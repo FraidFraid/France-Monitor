@@ -305,10 +305,11 @@ export class OutagesPanel extends Panel {
     this.onCloseCallback = cb;
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.modalEl.style.display = 'none';
     this.onTabChangeCallback?.(null);
-    this.onCloseCallback?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onCloseCallback?.();
     // Clear highlights on close
     this.onDeptHoverCb?.(null);
     this.onZoneHoverCb?.(null);
@@ -710,8 +711,11 @@ export class OutagesPanel extends Panel {
       row.appendChild(topRow);
       row.appendChild(metaRow);
 
-      // Reverse geocoding async — remplace "…" par le nom de la ville
-      fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=1`)
+      // Reverse geocoding async — remplace "…" par le nom de la ville.
+      // Passe par /api/opendata-proxy (cache CDN, conformité « tout passe
+      // par /api/* », §2.4 de l'audit) au lieu d'un appel direct au navigateur.
+      const reverseGeocodeUpstream = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=1`;
+      fetch(`/api/opendata-proxy?url=${encodeURIComponent(reverseGeocodeUpstream)}`)
         .then(r => r.json())
         .then((data: { features?: Array<{ properties?: { city?: string; postcode?: string } }> }) => {
           const props = data.features?.[0]?.properties;

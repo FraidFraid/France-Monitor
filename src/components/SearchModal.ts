@@ -19,6 +19,9 @@ export class SearchModal {
     private newsItems: NewsItem[] = [];
     private onFlyTo: ((lon: number, lat: number, zoom: number, item?: NewsItem) => void) | null = null;
     private isVisible = false;
+    private contentEl: HTMLElement;
+    /** Élément qui avait le focus avant l'ouverture — restauré à la fermeture (RGAA 7.1). */
+    private lastFocusedEl: HTMLElement | null = null;
 
     constructor(container: HTMLElement, options: SearchModalOptions = {}) {
         this.container = container;
@@ -36,12 +39,25 @@ export class SearchModal {
         // Create modal content
         const content = document.createElement('div');
         content.className = 'search-modal-content';
+        content.setAttribute('role', 'dialog');
+        content.setAttribute('aria-modal', 'true');
+        content.setAttribute('aria-labelledby', 'search-modal-title');
         content.style.cssText = `
             width: 100%; max-width: 500px;
             background: var(--bg-panel); border: 1px solid var(--border-color);
             border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             display: flex; flex-direction: column;
         `;
+        this.contentEl = content;
+
+        // Titre accessible (non visible — le champ de recherche + son placeholder
+        // suffisent visuellement, mais un dialog RGAA a besoin d'un nom porté par
+        // aria-labelledby, cf. écart relevé par l'audit UI 2026-09 §1/§5).
+        const title = document.createElement('h2');
+        title.id = 'search-modal-title';
+        title.className = 'visually-hidden';
+        title.textContent = 'Recherche';
+        content.appendChild(title);
 
         // Input wrapper
         const inputWrap = document.createElement('div');
@@ -89,8 +105,13 @@ export class SearchModal {
                 e.preventDefault();
                 this.toggle();
             }
-            if (e.key === 'Escape' && this.isVisible) {
+            if (!this.isVisible) return;
+            if (e.key === 'Escape') {
                 this.hide();
+                return;
+            }
+            if (e.key === 'Tab') {
+                this.trapTab(e);
             }
         });
 
@@ -122,6 +143,7 @@ export class SearchModal {
     }
 
     public show() {
+        this.lastFocusedEl = document.activeElement as HTMLElement | null;
         this.isVisible = true;
         this.modalEl.style.display = 'flex';
         // forced reflow for transition
@@ -138,6 +160,33 @@ export class SearchModal {
         setTimeout(() => {
             if (!this.isVisible) this.modalEl.style.display = 'none';
         }, 200);
+        // Restaure le focus sur l'élément qui l'avait avant l'ouverture (RGAA 7.1) —
+        // sinon le focus clavier retombe silencieusement sur <body>.
+        this.lastFocusedEl?.focus();
+        this.lastFocusedEl = null;
+    }
+
+    /** Focus trap RGAA : Tab/Maj+Tab ne sortent jamais du dialog tant qu'il est ouvert. */
+    private trapTab(e: KeyboardEvent): void {
+        const focusable = this.contentEl.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+
+        if (e.shiftKey) {
+            if (active === first || !this.contentEl.contains(active)) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else {
+            if (active === last || !this.contentEl.contains(active)) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
     }
 
     private renderResults() {

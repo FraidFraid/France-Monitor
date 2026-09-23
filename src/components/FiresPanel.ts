@@ -272,9 +272,10 @@ export class FiresPanel {
         this._applyAndNotify();
     }
 
-    hide(): void {
+    hide(opts: { silent?: boolean } = {}): void {
         if (this.modalEl) this.modalEl.style.display = 'none';
-        this.onCloseCb?.();
+        // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+        if (!opts.silent) this.onCloseCb?.();
     }
 
     isVisible(): boolean {

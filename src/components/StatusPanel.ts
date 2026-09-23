@@ -172,11 +172,14 @@ export class StatusPanel {
         this.triggerEl.className = 'status-menu-trigger';
         this.triggerEl.type = 'button';
         this.triggerEl.setAttribute('aria-expanded', 'false');
+        // Déclencheur compact (audit UI 2026-09 §5.3 point 5) : une pastille de
+        // couleur + « Sources » + le compte de sources indisponibles seulement —
+        // la liste complète (avec fraîcheur/latence par source) reste dans le tiroir.
         this.triggerEl.innerHTML = `
-          ${this.icon ? `<span class="status-menu-trigger__icon">${this.icon}</span>` : ''}
-          <span class="status-menu-trigger__label">${this.title}</span>
+          <span class="status-menu-trigger__dot status-dot status-dot--loading" aria-hidden="true"></span>
+          <span class="status-menu-trigger__label">${t('status.compactLabel')}</span>
           <span class="status-menu-trigger__summary">${t('status.loading')}</span>
-          <span class="status-menu-trigger__caret">▾</span>
+          <span class="status-menu-trigger__caret" aria-hidden="true">▾</span>
         `;
         this.triggerEl.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -235,7 +238,9 @@ export class StatusPanel {
     }
 
     refreshTranslations(): void {
-        this.container.querySelectorAll<HTMLElement>('.status-menu-trigger__label, .status-menu-dropdown__title, .panel-title')
+        this.container.querySelectorAll<HTMLElement>('.status-menu-trigger__label')
+            .forEach((el) => { el.textContent = t('status.compactLabel'); });
+        this.container.querySelectorAll<HTMLElement>('.status-menu-dropdown__title, .panel-title')
             .forEach((el) => { el.textContent = t('status.title'); });
         this.updateTriggerSummary();
         // Translated labels are not part of the render key — force a re-render.
@@ -264,26 +269,35 @@ export class StatusPanel {
     private updateTriggerSummary(): void {
         if (!this.triggerEl) return;
 
-        const ok = this.sources.filter((src) => src.status === 'ok').length;
         const errors = this.sources.filter((src) => src.status === 'error').length;
         const stale = this.sources.filter((src) => src.status === 'stale').length;
         const loading = this.sources.filter((src) => src.status === 'loading').length;
+        const state = errors > 0 ? 'error' : stale > 0 ? 'stale' : loading > 0 ? 'loading' : 'ok';
 
-        let summary = t('status.summaryRealtime', { ok, total: this.sources.length });
-        if (errors > 0) {
-            summary = t('status.summaryUnavailable', { count: errors });
-        } else if (stale > 0) {
-            summary = t('status.summaryStale', { count: stale });
-        } else if (loading > 0) {
-            summary = t('status.loading');
-        }
+        // Compact : uniquement le compte de sources indisponibles (ou « à jour »/
+        // chargement) — le détail complet (fraîcheur, cache, latence) reste dans
+        // le tiroir déroulant, pas dans le déclencheur.
+        const summary = errors > 0
+            ? t('status.compactUnavailable', { count: errors })
+            : loading > 0
+                ? t('status.loading')
+                : t('status.compactAllOk');
 
         const summaryEl = this.triggerEl.querySelector('.status-menu-trigger__summary');
         if (summaryEl) {
             summaryEl.textContent = summary;
         }
 
-        this.triggerEl.setAttribute('data-state', errors > 0 ? 'error' : stale > 0 ? 'stale' : loading > 0 ? 'loading' : 'ok');
+        const dotEl = this.triggerEl.querySelector('.status-menu-trigger__dot');
+        if (dotEl) {
+            dotEl.className = `status-menu-trigger__dot status-dot status-dot--${state}`;
+        }
+
+        this.triggerEl.setAttribute('data-state', state);
+        this.triggerEl.setAttribute(
+            'aria-label',
+            `${t('status.compactLabel')} — ${summary}`,
+        );
     }
 
     /**

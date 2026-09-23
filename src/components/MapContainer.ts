@@ -4,7 +4,7 @@
  */
 
 import type { DeckGLMap } from './DeckGLMap.ts';
-import { Map as SVGMap } from './Map.ts';
+import type { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
 import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
@@ -65,7 +65,10 @@ export class MapContainer {
 
   async init(): Promise<void> {
     if (this.isMobile) {
-      this.svgMap = new SVGMap(this.container);
+      // Fallback mobile D3/SVG chargé à la demande — évite d'embarquer d3
+      // dans chaque session desktop (qui utilise DeckGLMap ci-dessous).
+      const { Map: SVGMapImpl } = await import('./Map.ts');
+      this.svgMap = new SVGMapImpl(this.container);
       if (this.onItemClick) this.svgMap.setOnItemClick(this.onItemClick);
       if (this.onItemHover) this.svgMap.setOnItemHover(this.onItemHover);
       await this.svgMap.init();

@@ -18,6 +18,7 @@ import type {
   CyberSeverity,
 } from '../types';
 import { CYBER_THRESHOLDS } from '../types';
+import { fetchJsonOnce } from '../utils/inflight.ts';
 
 // ═══ Cache ═══
 
@@ -32,14 +33,10 @@ const CACHE_TTL = 5 * 60_000; // 5 minutes
 // ═══ API URLs ═══
 
 // CERT-FR RSS (via notre proxy pour éviter CORS)
-const CERT_FR_RSS_URL = import.meta.env.PROD
-  ? '/api/rss'
-  : 'http://localhost:3001/api/rss';
+const CERT_FR_RSS_URL = '/api/rss';
 
 // Proxy JSON pour APIs externes (contourne CORS/403)
-const JSON_PROXY_URL = import.meta.env.PROD
-  ? '/api/json-proxy'
-  : 'http://localhost:3001/api/json-proxy';
+const JSON_PROXY_URL = '/api/json-proxy';
 
 // RansomwareLive API (via proxy pour éviter CORS)
 const RANSOMWARE_API_URL = 'https://data.ransomware.live/posts.json';
@@ -95,15 +92,13 @@ async function fetchCertFrAlerts(): Promise<{ alerts: CyberAlert[]; status: Cybe
   const proxyUrl = `${CERT_FR_RSS_URL}?url=${encodeURIComponent(certFrFeedUrl)}`;
 
   try {
-    const resp = await fetch(proxyUrl, {
+    // Single-flight par URL : threat-map.ts interroge le même flux CERT-FR au
+    // même moment (les deux vues du panneau cyber). `fetchJsonOnce` partage
+    // le fetch entre les deux modules sans qu'ils se connaissent — la clé de
+    // dédup est l'URL, construite à l'identique des deux côtés.
+    const data = await fetchJsonOnce<{ items?: CertFrRawItem[] }>(proxyUrl, {
       signal: AbortSignal.timeout(10_000),
     });
-
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-    }
-
-    const data = await resp.json();
     const items: CertFrRawItem[] = data.items || [];
 
     if (items.length === 0) {
@@ -159,15 +154,12 @@ async function fetchRansomwareData(): Promise<{
   const proxyUrl = `${JSON_PROXY_URL}?url=${encodeURIComponent(RANSOMWARE_API_URL)}`;
 
   try {
-    const resp = await fetch(proxyUrl, {
+    // Single-flight par URL : threat-map.ts interroge la même URL
+    // ransomware.live via le même proxy — voir le commentaire de
+    // fetchCertFrAlerts ci-dessus.
+    const rawData = await fetchJsonOnce<unknown>(proxyUrl, {
       signal: AbortSignal.timeout(15_000),
     });
-
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-    }
-
-    const rawData = await resp.json();
     const victims: RansomwareRawVictim[] = Array.isArray(rawData) ? rawData : [];
 
     // Filtrer victimes françaises des 30 derniers jours

@@ -22,6 +22,7 @@
     "db:init": "node scripts/init-db.mjs",
     "sync:feeds": "node scripts/sync-feeds.mjs",
     "generate:server-libs": "node scripts/generate-server-classifier.mjs",
+    "generate:api-routes": "node scripts/generate-api-routes.mjs",
     "preview": "vite preview",
     "lint": "eslint src/",
     "format": "prettier --write 'src/**/*.ts'",

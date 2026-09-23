@@ -123,7 +123,7 @@ export function createPremiumRingHeader(options: PremiumRingHeaderOptions): HTML
     </div>
     <div style="flex:1;min-width:0;">
       ${options.titlePrefix ? `<div style="font-size:10px;color:${mutedColor};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">${options.titlePrefix}</div>` : ''}
-      <div style="font-size:14px;font-weight:700;color:${textColor};">${options.title}</div>
+      <h2 style="margin:0;font-size:14px;font-weight:700;color:${textColor};">${options.title}</h2>
       <div id="${options.statusId}" style="margin-top:2px;font-size:11px;color:${options.ringStroke};">${options.subtitle}</div>
       ${options.updateId ? `<div id="${options.updateId}" style="margin-top:5px;font-size:10px;color:${mutedColor};"></div>` : ''}
       ${options.badgeId ? `<div id="${options.badgeId}" style="margin-top:4px;"></div>` : ''}
@@ -157,7 +157,7 @@ export function createPremiumIconHeader(options: PremiumIconHeaderOptions): HTML
     </div>
     <div style="flex:1;min-width:0;">
       ${options.titlePrefix ? `<div style="font-size:10px;color:${mutedColor};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">${options.titlePrefix}</div>` : ''}
-      <div style="font-size:14px;font-weight:700;color:${textColor};">${options.title}</div>
+      <h2 style="margin:0;font-size:14px;font-weight:700;color:${textColor};">${options.title}</h2>
       ${options.statusId ? `<div id="${options.statusId}" style="margin-top:2px;font-size:11px;color:${textColor};">${options.subtitle}</div>` : `<div style="margin-top:2px;font-size:11px;color:${mutedColor};">${options.subtitle}</div>`}
       ${options.updateId ? `<div id="${options.updateId}" style="margin-top:5px;font-size:10px;color:${mutedColor};"></div>` : ''}
       ${options.badgeId ? `<div id="${options.badgeId}" style="margin-top:4px;"></div>` : ''}

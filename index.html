@@ -19,12 +19,14 @@
     <meta name="apple-mobile-web-app-title" content="France Monitor" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
-    <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin />
-    <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
-    <link rel="dns-prefetch" href="https://tiles.basemaps.cartocdn.com" />
-    <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
-    <link rel="dns-prefetch" href="https://odre.opendatasoft.com" />
+    <!--
+      Pas de preconnect/dns-prefetch vers les hôtes de tuiles cartographiques
+      ici : `/` sert la landing (sans carte) à la quasi-totalité des visites,
+      et ces indices retardaient son premier rendu pour un gain nul. La carte
+      (MapContainer → DeckGLMap/Map) n'est chargée qu'à la demande sur la
+      route tableau de bord ; ses requêtes déclenchent leur propre
+      résolution DNS/TLS au moment voulu.
+    -->
     <link rel="canonical" href="https://www.francemonitor.com/" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />

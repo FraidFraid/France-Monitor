@@ -14,9 +14,7 @@ Watchdog.register('biogas', {
 let cache: { data: BiogasState; fetchedAt: number } | null = null;
 const CACHE_TTL = 30 * 60_000;
 
-const API_URL = import.meta.env.PROD
-    ? '/api/energy/biogas'
-    : 'http://localhost:3001/api/energy/biogas';
+const API_URL = '/api/energy/biogas';
 
 /* ── Aggregation: merge multiple records per day ───────── */
 

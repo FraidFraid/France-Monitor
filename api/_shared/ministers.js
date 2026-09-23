@@ -25,6 +25,27 @@ export function applyMinistersCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
+/**
+ * Enveloppe `res.end` pour poser un Cache-Control CDN sur les réponses 2xx et
+ * `no-store` sur les erreurs (400/404/502…). Utilisé par les handlers minces
+ * sous api/_handlers/ministers/*.js qui servent `handleMinistersRequest` en
+ * production (le plugin dev src/plugins/ministers-proxy.ts n'a pas de CDN et
+ * n'appelle pas ce wrapper).
+ * @param {{ statusCode: number, setHeader: (k: string, v: string) => void, end: (b?: unknown) => unknown }} res
+ * @param {number} ttlSec
+ */
+export function applyMinistersCdnCache(res, ttlSec) {
+  const originalEnd = res.end.bind(res);
+  res.end = (body) => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      res.setHeader('Cache-Control', `public, s-maxage=${ttlSec}, stale-while-revalidate=${ttlSec * 2}`);
+    } else {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+    return originalEnd(body);
+  };
+}
+
 function tryParseArray(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;

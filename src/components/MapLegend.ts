@@ -58,14 +58,39 @@ function escapeHtml(value: string): string {
 }
 
 export class MapLegend {
+    /** sessionStorage : mémorise si l'utilisateur a déjà ouvert la légende cette session
+     * (audit UI 2026-09 §5.3 — repliée par défaut derrière un petit déclencheur). */
+    private static readonly OPEN_KEY = 'fm-legend-open';
+
     private container: HTMLElement;
     private element: HTMLElement | null = null;
     private categories: LegendCategory[] = [];
     private onHoverCallback: ((categoryId: string | null) => void) | null = null;
-    private isCollapsed: boolean = false;
+    /** Repliée par défaut ; ne reste ouverte que si l'utilisateur l'a explicitement ouverte cette session. */
+    private isCollapsed: boolean = !this.readOpenState();
 
     constructor(container: HTMLElement) {
         this.container = container;
+    }
+
+    private readOpenState(): boolean {
+        try {
+            return sessionStorage.getItem(MapLegend.OPEN_KEY) === '1';
+        } catch {
+            return false;
+        }
+    }
+
+    private writeOpenState(open: boolean): void {
+        try {
+            if (open) {
+                sessionStorage.setItem(MapLegend.OPEN_KEY, '1');
+            } else {
+                sessionStorage.removeItem(MapLegend.OPEN_KEY);
+            }
+        } catch {
+            // sessionStorage indisponible — état limité au rendu courant.
+        }
     }
 
     init(): void {
@@ -87,15 +112,21 @@ export class MapLegend {
             return '';
         }
 
-        const cardsHtml = this.isCollapsed 
-            ? '' 
+        const cardsHtml = this.isCollapsed
+            ? ''
             : activeCategories.map(cat => this.renderCategoryCard(cat)).join('');
 
-        const chevron = this.isCollapsed ? '▲' : '▼';
-
+        // Repliée : petit déclencheur « ? Légende ». Ouverte : bouton pour la refermer.
         const toggleHtml = `
             <div class="legend-collapse-wrapper">
-                <button class="legend-collapse-btn" title="Replier/Déplier la légende">${chevron}</button>
+                <button
+                    class="legend-collapse-btn"
+                    aria-expanded="${!this.isCollapsed}"
+                    title="${this.isCollapsed ? 'Afficher la légende' : 'Masquer la légende'}"
+                >
+                    <span class="legend-collapse-btn__icon" aria-hidden="true">${this.isCollapsed ? '?' : '▾'}</span>
+                    <span class="legend-collapse-btn__label">${this.isCollapsed ? 'Légende' : 'Masquer'}</span>
+                </button>
             </div>
         `;
 
@@ -290,6 +321,7 @@ export class MapLegend {
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
                 this.isCollapsed = !this.isCollapsed;
+                this.writeOpenState(!this.isCollapsed);
                 this.update();
             });
         }

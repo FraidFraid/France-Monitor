@@ -99,6 +99,14 @@ export interface NewsItem {
   summary?: string;
   aiSummary?: string;
   aiSummaryStatus?: 'pending' | 'done' | 'failed';  // Status of AI summary generation
+  // Champs additifs du scoring serveur Jev (TypeSafe) — optionnels : absents
+  // tant que /api/news n'a pas scoré l'item (NEWS_SCORING='off', ou colonnes
+  // pas encore migrées). Voir api/_lib/jev-policy.js#derive et docs/audit-2026-09-chargement-jev-ui.md §4.5.
+  relevance?: number;         // 0..1, pertinence stratégique jugée par Jev
+  noise?: boolean;            // true = à masquer par défaut (hors sujet / fait divers isolé)
+  alertable?: boolean;        // true = remplit les critères d'alerte (cf. jev-policy.derive)
+  scope?: string;             // 'commune' | 'departement' | 'region' | 'national' | 'international' | 'unknown'
+  scoredBy?: 'keywords' | 'groq' | 'jev';  // moteur ayant produit category/severity/confidence
 }
 
 // ═══ Time & Filters ═══

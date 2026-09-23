@@ -32,6 +32,57 @@ interface CellGeo {
 export interface ResolveGeographyDeps {
   fetchImpl?: typeof fetch;
   cache?: Map<string, Promise<CellGeo | null>>;
+  /**
+   * Pré-résolution groupée via `/api/geo/communes` (un seul appel pour toutes les mailles).
+   * Par défaut : activée seulement sans `fetchImpl` injecté (production), pour que les tests
+   * existants du chemin point par point restent inchangés.
+   */
+  useBatch?: boolean;
+}
+
+/** Nombre maximal de points par appel groupé (borne du serveur : 200). */
+const BATCH_MAX_POINTS = 150;
+
+/**
+ * Remplit le cache de mailles en un appel `/api/geo/communes` par lot de points. Best-effort :
+ * en cas d'échec, les mailles restent absentes du cache et le chemin point par point prend le
+ * relais (repli). Un `null` du serveur (point en mer, hors France) est une réponse définitive
+ * et reste en cache pour la passe en cours ; seul un `{ error }` (échec amont) est retenté.
+ */
+async function prefetchCellsInBatch(
+  points: Array<[lat: number, lon: number]>,
+  fetchImpl: typeof fetch,
+  cache: Map<string, Promise<CellGeo | null>>,
+): Promise<void> {
+  const byCell = new Map<string, [number, number]>();
+  for (const [lat, lon] of points) {
+    const key = cellKey(lat, lon);
+    if (!cache.has(key) && !byCell.has(key)) byCell.set(key, [lat, lon]);
+  }
+  const entries = [...byCell.entries()];
+  for (let i = 0; i < entries.length; i += BATCH_MAX_POINTS) {
+    const chunk = entries.slice(i, i + BATCH_MAX_POINTS);
+    const query = chunk.map(([, [lat, lon]]) => `${lat.toFixed(4)},${lon.toFixed(4)}`).join(';');
+    try {
+      const response = await fetchImpl(`/api/geo/communes?points=${encodeURIComponent(query)}`, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) continue;
+      const body = (await response.json()) as {
+        results?: Array<{ nom?: string; codeDepartement?: string; error?: string } | null>;
+      };
+      if (!Array.isArray(body.results) || body.results.length !== chunk.length) continue;
+      chunk.forEach(([key], index) => {
+        const hit = body.results?.[index];
+        // null = aucune commune (mer, hors France) : réponse définitive, pas de nouvel essai point par point.
+        if (hit === null) cache.set(key, Promise.resolve(null));
+        else if (hit?.nom && hit.codeDepartement) cache.set(key, Promise.resolve({ commune: hit.nom, deptCode: hit.codeDepartement }));
+        // { error } : échec amont, la maille reste hors cache et le chemin point par point retentera.
+      });
+    } catch {
+      // Repli silencieux sur le chemin point par point.
+    }
+  }
 }
 
 /**
@@ -45,9 +96,11 @@ export function cellKey(lat: number, lon: number): string {
 }
 
 /**
- * Interroge geo.api.gouv.fr pour un point donné. Best-effort : toute erreur
- * réseau ou réponse invalide renvoie `null` sans lever (§7 — une donnée
- * manquante s'affiche comme manquante, jamais comme « France »).
+ * Interroge geo.api.gouv.fr pour un point donné, via `/api/opendata-proxy`
+ * (cache CDN + conformité « tout passe par /api/* », §2.4 de l'audit).
+ * Best-effort : toute erreur réseau ou réponse invalide renvoie `null` sans
+ * lever (§7 — une donnée manquante s'affiche comme manquante, jamais comme
+ * « France »).
  */
 async function lookupCommune(
   lat: number,
@@ -55,7 +108,12 @@ async function lookupCommune(
   fetchImpl: typeof fetch,
 ): Promise<CellGeo | null> {
   try {
-    const url = `https://geo.api.gouv.fr/communes?lat=${lat}&lon=${lon}&fields=nom,codeDepartement`;
+    // Arrondi à 4 décimales (~11 m) : améliore le taux de succès du cache
+    // CDN sans dégrader la résolution commune/département recherchée.
+    const roundedLat = lat.toFixed(4);
+    const roundedLon = lon.toFixed(4);
+    const upstream = `https://geo.api.gouv.fr/communes?lat=${roundedLat}&lon=${roundedLon}&fields=nom,codeDepartement`;
+    const url = `/api/opendata-proxy?url=${encodeURIComponent(upstream)}`;
     const response = await fetchImpl(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!response.ok) return null;
     // clone() avant lecture : un mock de test peut renvoyer la même Response pour
@@ -146,6 +204,9 @@ export async function resolveIncidentGeography(
   // profite à l'ensemble des incidents plutôt qu'incident par incident.
   const perIncidentPoints = incidents.map(samplePoints);
   const flatPoints = perIncidentPoints.flat();
+  if (deps.useBatch ?? deps.fetchImpl === undefined) {
+    await prefetchCellsInBatch(flatPoints, fetchImpl, cache);
+  }
   const flatResults = await mapWithConcurrency(flatPoints, MAX_CONCURRENCY, ([lat, lon]) =>
     resolvePoint(lat, lon, fetchImpl, cache),
   );

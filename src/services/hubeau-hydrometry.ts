@@ -20,6 +20,13 @@ Watchdog.register('hubeau', {
 const HUBEAU_STATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations';
 const HUBEAU_OBSERVATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr';
 
+/** Route un appel Hub'Eau via le proxy serveur (cache CDN, conformité
+ * « tout passe par /api/* », §2.4 de l'audit — hubeau.eaufrance.fr était
+ * appelé 25×/chargement en direct depuis le navigateur). */
+function opendataProxyUrl(upstreamUrl: string): string {
+  return `/api/opendata-proxy?url=${encodeURIComponent(upstreamUrl)}`;
+}
+
 const SNAPSHOT_TTL_MS = 7 * 60_000;
 const STALE_TTL_MS = 30 * 60_000;
 const STATION_RESOLUTION_TTL_MS = 12 * 60 * 60_000;
@@ -400,7 +407,7 @@ async function resolveStationsForAsset(
     fields: 'code_station,libelle_station,libelle_cours_eau,longitude_station,latitude_station,en_service',
   });
   const response = await resilientFetch<HubeauListResponse<HubeauStationRecord>>(
-    `${HUBEAU_STATIONS_URL}?${params.toString()}`,
+    opendataProxyUrl(`${HUBEAU_STATIONS_URL}?${params.toString()}`),
     { timeout: 8000, retries: 1, retryDelay: 600 },
   );
 
@@ -475,7 +482,7 @@ async function fetchObservations(
   });
 
   const response = await resilientFetch<HubeauListResponse<HubeauObservationRecord>>(
-    `${HUBEAU_OBSERVATIONS_URL}?${params.toString()}`,
+    opendataProxyUrl(`${HUBEAU_OBSERVATIONS_URL}?${params.toString()}`),
     { timeout: 9000, retries: 1, retryDelay: 700 },
   );
 

@@ -1,10 +1,21 @@
 import './styles/main.css';
 import './styles/landing.css';
-import { App } from './App';
 import { renderLandingPage } from './LandingPage';
 import { renderSourcesQualityPage } from './SourcesQualityPage';
 import { registerSW } from 'virtual:pwa-register';
 import { initI18n } from './services/i18n.ts';
+
+// `App` (et toute la pile carte : maplibre-gl, deck.gl, d3…) n'est chargé que
+// lorsque la route tableau de bord est effectivement rendue. La landing et la
+// page sources & qualité restent sur ce chemin léger (pas de modulepreload
+// de la carte pour ces routes).
+async function renderDashboard(container: HTMLElement): Promise<void> {
+  document.documentElement.classList.remove('fm-landing-mode');
+  document.body.classList.remove('fm-landing-mode');
+  const { App } = await import('./App');
+  const app = new App(container);
+  await app.init();
+}
 
 // Stale-chunk guard: after a new deploy, old hashed JS chunks are gone.
 // Dynamic imports fail with "Failed to fetch dynamically imported module".
@@ -60,10 +71,7 @@ void initI18n().then(() => {
     } else if (shouldRenderLanding()) {
       renderLandingPage(container);
     } else {
-      document.documentElement.classList.remove('fm-landing-mode');
-      document.body.classList.remove('fm-landing-mode');
-      const app = new App(container);
-      void app.init();
+      void renderDashboard(container);
     }
   }
 });

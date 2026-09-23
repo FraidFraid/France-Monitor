@@ -19,6 +19,7 @@
 import type { ThreatEvent } from '../types/index.ts';
 import { CITIES } from '../config/geo.ts';
 import { fetchExposureEvents } from './exposure.ts';
+import { fetchJsonOnce } from '../utils/inflight.ts';
 
 // ═══ Cache ═══
 
@@ -59,18 +60,12 @@ const CACHE_TTL = 10 * 60_000; // 10 minutes
 
 // ═══ API URLs ═══
 
-const JSON_PROXY_URL = import.meta.env.PROD
-  ? '/api/json-proxy'
-  : 'http://localhost:3001/api/json-proxy';
+const JSON_PROXY_URL = '/api/json-proxy';
 
-const RSS_PROXY_URL = import.meta.env.PROD
-  ? '/api/rss'
-  : 'http://localhost:3001/api/rss';
+const RSS_PROXY_URL = '/api/rss';
 
 // Endpoint dédié threats (Phase 3 — Vercel serverless)
-const THREATS_API_URL = import.meta.env.PROD
-  ? '/api/threats'
-  : 'http://localhost:3001/api/threats';
+const THREATS_API_URL = '/api/threats';
 
 // ═══ Geolocation helpers ═══
 
@@ -204,10 +199,10 @@ async function fetchRansomwareThreatEvents(): Promise<{ events: ThreatEvent[]; s
   const url = `${JSON_PROXY_URL}?url=${encodeURIComponent('https://data.ransomware.live/posts.json')}`;
 
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const raw: RansomwareRawVictim[] = await resp.json();
+    // Single-flight par URL : cyber.ts interroge la même URL ransomware.live
+    // via le même proxy au même moment (widget baromètre + panneau menaces).
+    // `fetchJsonOnce` partage le fetch — voir cyber.ts pour le pendant.
+    const raw = await fetchJsonOnce<RansomwareRawVictim[]>(url, { signal: AbortSignal.timeout(15_000) });
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const frenchVictims = (Array.isArray(raw) ? raw : []).filter((v) => {
@@ -286,10 +281,9 @@ async function fetchCertFrThreatEvents(): Promise<{ events: ThreatEvent[]; statu
   const proxyUrl = `${RSS_PROXY_URL}?url=${encodeURIComponent(certUrl)}`;
 
   try {
-    const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10_000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const data = await resp.json();
+    // Single-flight par URL : cyber.ts interroge le même flux CERT-FR — voir
+    // le commentaire de fetchRansomwareThreatEvents ci-dessus.
+    const data = await fetchJsonOnce<{ items?: CertFrItem[] }>(proxyUrl, { signal: AbortSignal.timeout(10_000) });
     const items: CertFrItem[] = data.items || [];
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 

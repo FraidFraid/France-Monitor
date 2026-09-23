@@ -156,10 +156,11 @@ export class NuclearPanel extends Panel {
     }
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     if (this.modalEl) this.modalEl.style.display = 'none';
     this._emitPlantHover(null);
-    this.onCloseCallback?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onCloseCallback?.();
   }
 
   isVisible(): boolean {

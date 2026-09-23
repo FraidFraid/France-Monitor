@@ -6,7 +6,13 @@
  * - Exponential backoff with jitter
  * - Timeout support via AbortSignal
  * - Graceful degradation with stale cache fallback
+ * - In-flight dedupe by URL: two callers requesting the same URL while a
+ *   request is already in flight share the same network call instead of
+ *   doubling it (docs/audit-2026-09-annexes/A-client-chargement.md §5 item 3
+ *   — Hub'Eau's duplicate hydraulic refresh goes through this helper).
  */
+
+import { dedupe } from './inflight.ts';
 
 export interface ResilientFetchOptions {
   /** Request timeout in milliseconds (default: 10000) */
@@ -49,6 +55,17 @@ const STALE_TTL_MS = 30 * 60_000; // 30 minutes stale tolerance
  * }
  */
 export async function resilientFetch<T>(
+  url: string,
+  options: ResilientFetchOptions = {}
+): Promise<ResilientFetchResult<T>> {
+  // Single-flight par URL : des appelants concurrents sur la même ressource
+  // (ex: deux couches qui dépendent du même endpoint Hub'Eau) partagent la
+  // même requête réseau au lieu de la doubler. Les options (timeout, retries)
+  // du PREMIER appelant s'appliquent pour la fenêtre de concurrence.
+  return dedupe(url, () => resilientFetchUncached<T>(url, options));
+}
+
+async function resilientFetchUncached<T>(
   url: string,
   options: ResilientFetchOptions = {}
 ): Promise<ResilientFetchResult<T>> {

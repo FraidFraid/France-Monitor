@@ -10,6 +10,8 @@
 import type { NuclearUnavailability, ReactorAvailabilityStatus } from '../types/index.ts';
 import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 import { Watchdog } from './watchdog.ts';
+import { dedupe } from '../utils/inflight.ts';
+import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('nuclear-rte', {
@@ -24,6 +26,23 @@ const API_URL = import.meta.env.PROD
 
 const CACHE_TTL_MS = 15 * 60_000;
 let _cache: { items: NuclearUnavailability[]; available: boolean; fetchedAt: number } | null = null;
+
+const PERSIST_TTL_MS = 10 * 60_000;
+const PERSIST_KEY = 'nuclear-rte-unavailabilities';
+
+function isNuclearUnavailabilityArray(value: unknown): value is NuclearUnavailability[] {
+    return Array.isArray(value);
+}
+
+/** JSON.parse ne revit pas les `Date` — reconvertir après lecture localStorage. */
+function reviveNuclearDates(items: NuclearUnavailability[]): NuclearUnavailability[] {
+    return items.map((item) => ({
+        ...item,
+        startDate: new Date(item.startDate),
+        endDate: item.endDate ? new Date(item.endDate) : null,
+        updatedAt: new Date(item.updatedAt),
+    }));
+}
 
 export interface NuclearRTEResult {
   items: NuclearUnavailability[];
@@ -45,25 +64,26 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     return { items: _cache.items, available: _cache.available, fetchedAt: new Date(_cache.fetchedAt) };
   }
 
+  // Rechargement de page : peindre la dernière disponibilité connue (< 10 min) avant réseau.
+  const persisted = readPersisted<NuclearUnavailability[]>(PERSIST_KEY, PERSIST_TTL_MS, isNuclearUnavailabilityArray);
+  if (persisted) {
+    const items = reviveNuclearDates(persisted);
+    const now = Date.now();
+    _cache = { items, available: true, fetchedAt: now };
+    return { items, available: true, fetchedAt: new Date(now) };
+  }
+
   Watchdog.report('nuclear-rte', { type: 'loading' });
   const t0 = Date.now();
 
   try {
-    const resp = await fetch(API_URL, { signal: AbortSignal.timeout(20_000) });
-
-    if (!resp.ok) {
-      console.warn('[nuclear-rte] HTTP error:', resp.status);
-      Watchdog.report('nuclear-rte', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!_cache });
-      // Servir le cache périmé si disponible (stale fallback)
-      if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
-      return { items: [], available: false };
-    }
-
-    const json = (await resp.json()) as {
-      available?: boolean;
-      items?: unknown[];
-      error?: string;
-    };
+    // Single-flight : évite un doublon si plusieurs consommateurs (panneau +
+    // couche carte) réclament la disponibilité nucléaire simultanément.
+    const json = await dedupe(API_URL, async () => {
+      const resp = await fetch(API_URL, { signal: AbortSignal.timeout(20_000) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return (await resp.json()) as { available?: boolean; items?: unknown[]; error?: string };
+    });
 
     if (json.available === false) {
       console.warn('[nuclear-rte] API reported unavailable:', json.error);
@@ -76,6 +96,7 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     const items = rawItems.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
     const now = Date.now();
     _cache = { items, available: true, fetchedAt: now };
+    writePersisted(PERSIST_KEY, items);
     Watchdog.report('nuclear-rte', { type: 'success', responseTimeMs: Date.now() - t0 });
     return { items, available: true, fetchedAt: new Date(now) };
   } catch (err) {

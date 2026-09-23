@@ -59,41 +59,38 @@ interface ArcepFeature {
 }
 
 /**
- * Fetch the latest GeoJSON file containing sites without service (HS).
- * The file is named using the current date. Should it fail, tries to fetch D-1.
+ * Fetch the GeoJSON file listing sites without service (HS).
+ *
+ * `/api/arcep` (sans paramètre `date`) renvoie désormais lui-même le dernier
+ * jour disponible côté serveur (header `X-Data-Date`, mis en cache), ou un
+ * 404 JSON quand aucune donnée n'est encore publiée. Le client ne doit donc
+ * appeler qu'UNE FOIS, sans boucle de repli J-1 : celle-ci doublait l'appel
+ * (et l'invocation de fonction Vercel) à chaque chargement, y compris quand
+ * J n'était simplement pas encore publié (§2.3 de l'audit : `arcep` ×4 par
+ * chargement, 404 systématiques).
  */
 export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
     Watchdog.report('arcep', { type: 'loading' });
     const t0 = Date.now();
     try {
-        const today = new Date();
-        const formatDate = (date: Date) => {
-            const yyyy = date.getFullYear();
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
-            const dd = String(date.getDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
-        };
+        const url = '/api/arcep';
+        const res = await fetch(url);
 
-        let dateStr = formatDate(today);
-        let url = `/api/arcep?date=${dateStr}`;
-        let res = await fetch(url);
-        let usedFallback = false;
-
-        // Fallback to yesterday if today's file is not yet uploaded
+        if (res.status === 404) {
+            // Source indisponible (fichier du jour pas encore publié) : état
+            // normal et attendu, pas une erreur — pas de console.error.
+            lastArcepDataDate = null;
+            Watchdog.report('arcep', { type: 'fallback', reason: 'source indisponible (404)' });
+            return [];
+        }
         if (!res.ok) {
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-            dateStr = formatDate(yesterday);
-            url = `/api/arcep?date=${dateStr}`;
-            res = await fetch(url);
-            usedFallback = true;
-            if (!res.ok) {
-                throw new Error(`Failed to fetch ARCEP data for ${dateStr}. Status: ${res.status}`);
-            }
+            throw new Error(`HTTP ${res.status}`);
         }
 
-        // Mémorise la date réelle du fichier servi (J ou J-1) pour l'UI
-        lastArcepDataDate = new Date(dateStr + 'T12:00:00');
+        // Date réelle du fichier servi, exposée par le serveur (dernier jour
+        // publié, pas forcément J) pour l'affichage J/J-1 côté UI.
+        const dataDateHeader = res.headers.get('X-Data-Date');
+        lastArcepDataDate = dataDateHeader ? new Date(`${dataDateHeader}T12:00:00`) : null;
 
         const json = await res.json();
         if (!json.features) {
@@ -105,9 +102,8 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
         Watchdog.report('arcep', {
             type: 'success',
             responseTimeMs: Date.now() - t0,
-            detail: `${sitesHS} sites HS${usedFallback ? ' · J-1' : ' · J'}`,
+            detail: `${sitesHS} sites HS${dataDateHeader ? ` · ${dataDateHeader}` : ''}`,
         });
-        if (usedFallback) Watchdog.report('arcep', { type: 'fallback', reason: 'fichier J indisponible → J-1' });
 
         return json.features.map((f: ArcepFeature, index: number): TelecomOutage => {
             const props = f.properties;
@@ -149,13 +145,22 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
 // ═══ Enedis Power Outages ═══
 
 // OpenDataSoft v2.1 catalogue endpoints (stable — remplace les v1 DataFair dépréciés)
+// Route via /api/opendata-proxy (cache CDN, conformité « tout passe par
+// /api/* », §2.4 de l'audit — opendata.enedis.fr était appelé en direct
+// depuis le navigateur, 3×/chargement).
+function opendataProxyUrl(upstreamUrl: string): string {
+    return `/api/opendata-proxy?url=${encodeURIComponent(upstreamUrl)}`;
+}
 const ENEDIS_BASE = 'https://opendata.enedis.fr/api/explore/v2.1/catalog/datasets';
-const ENEDIS_CONTINUITY_URL =
-    `${ENEDIS_BASE}/indicateur-continuite-dalimentation/records?limit=200&timezone=Europe%2FParis`;
-const ENEDIS_FREQ_URL =
-    `${ENEDIS_BASE}/frequence-moyenne-de-coupure-par-client-bt/records?limit=200&timezone=Europe%2FParis`;
-const ENEDIS_DURATION_URL =
-    `${ENEDIS_BASE}/duree-moyenne-de-coupure-bt/records?limit=200&timezone=Europe%2FParis`;
+const ENEDIS_CONTINUITY_URL = opendataProxyUrl(
+    `${ENEDIS_BASE}/indicateur-continuite-dalimentation/records?limit=100&timezone=Europe%2FParis`,
+);
+const ENEDIS_FREQ_URL = opendataProxyUrl(
+    `${ENEDIS_BASE}/frequence-moyenne-de-coupure-par-client-bt/records?limit=100&timezone=Europe%2FParis`,
+);
+const ENEDIS_DURATION_URL = opendataProxyUrl(
+    `${ENEDIS_BASE}/duree-moyenne-de-coupure-bt/records?limit=100&timezone=Europe%2FParis`,
+);
 
 // Cache configuration
 const POWER_CACHE_TTL_MS = 15 * 60_000; // 15 minutes for DataFair data

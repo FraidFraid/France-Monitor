@@ -8,9 +8,10 @@
 // edge function — this file is a dev-only mirror of api/intelligence/v1/france-intel-brief.js
 // and must be kept in sync with it.
 import type { Plugin } from 'vite';
+import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../api/_lib/groq-models.js';
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 const CACHE_TTL  = 6 * 60 * 60 * 1000; // 6 h in ms
 const BRIEF_PROMPT_VERSION = 'v13';
 
@@ -733,11 +734,12 @@ export function franceIntelProxyPlugin(options: FranceIntelProxyPluginOptions = 
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
+        ...groqModelParams(GROQ_MODEL),
                 messages: [{ role: 'user', content: buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, lang) }],
                 temperature: 0.3,
                 // 900 tokens : le schéma JSON v13 (bluf 400c + 4 jugements + 4 watch) peut
                 // atteindre ~3000 caractères — 420 tronquait le JSON en plein objet.
-                max_tokens: 900,
+                max_tokens: withReasoningHeadroom(GROQ_MODEL, 900),
                 response_format: { type: 'json_object' },
               }),
               signal: AbortSignal.timeout(30_000),

@@ -78,7 +78,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 
 ### 📰 News Intelligence
 - RSS aggregation from **60+ French national and regional (PQR)** sources
-- **Server-side ingestion** — Neon Postgres + Vercel Cron (5 min), 90-day retention
+- **Server-side ingestion** — Neon Postgres + Upstash QStash schedule (30 min, with a daily Vercel cron as a safety net), 90-day retention
 - Two-stage classification: keyword-based (instant) then optional **Groq LLM server-side** for ambiguous articles
 - AI summarisation: Ollama (local) → Groq (cloud) → Transformers.js (browser)
 - **History UI** — interactive heatmap (day × category), cursor-based pagination, filters (severity, region, search) across 90 days of articles
@@ -140,7 +140,12 @@ The long-term goal is to turn the France prototype into a reusable European comm
 └──────────────────────────┬──────────────────────────────────────┘
                            │ fetch /api/*
 ┌──────────────────────────▼──────────────────────────────────────┐
-│  Vercel Serverless Functions  (api/)                             │
+│  Vercel — ONE serverless function (api/index.js) routes every    │
+│  /api/* request to a handler in api/_handlers/ via the generated │
+│  table api/_routes.js (Hobby plan caps deployments at 12         │
+│  functions; 3 more dedicated functions handle long-running or    │
+│  large-body routes: ingest/news, fuel-price-series-refresh,      │
+│  sentinel-ndwi — see docs/deployment.md §1)                      │
 │                                                                  │
 │  Proxy + cache layer (Upstash Redis, TTL per route)              │
 │  ├── energy/        RTE Ecowatt, Eco2mix, nuclear REMIT         │
@@ -152,7 +157,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
 │  ├── intelligence/  LLM summarisation + brief v13 (Groq)        │
-│  ├── ingest/        Cron news ingestion (Neon Postgres, 5 min)  │
+│  ├── ingest/        News ingestion (Neon Postgres, QStash 30min)│
 │  ├── news/          News query + history timeline API            │
 │  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
 │                                                                  │
@@ -241,6 +246,8 @@ vercel env add UPSTASH_REDIS_REST_TOKEN
 # … repeat for each required variable (see .env.example)
 ```
 
+Full topology (Vercel + Railway + Render + GitHub Actions + Upstash + Neon), the environment variable matrix per platform, and how the single API router works: [`docs/deployment.md`](docs/deployment.md). Moving from Vercel Pro to the free Hobby plan: [`docs/runbook-passage-hobby.md`](docs/runbook-passage-hobby.md).
+
 ---
 
 ## ⚙️ Environment Variables
@@ -322,20 +329,26 @@ The contract is published as a machine-readable **OpenAPI 3.1** document at [`/o
 
 ```
 france-monitor/
-├── api/                         # Vercel Serverless Functions
-│   ├── rss.js / rss-proxy.js    # RSS CORS bypass + JSON conversion
-│   ├── threats.js               # Cyber OSINT aggregation (Shodan/Censys/breaches)
-│   ├── exposure.js              # Technical exposure scoring
-│   ├── json-proxy.js            # Generic JSON proxy (Ransomware Live, etc.)
-│   ├── energy/                  # Ecowatt, Eco2mix, nuclear REMIT
-│   ├── health/                  # ISS, SOS Médecins, OSCOUR
-│   ├── finance/                 # Market data, commodities
-│   ├── transport/               # SNCF, air traffic, AIS relay
-│   ├── outages/                 # Citizen outages, ORE, IODA
-│   ├── ingest/                  # Cron news ingestion (Neon Postgres + Groq LLM)
-│   ├── news.js / news/history   # News query API + history timeline
-│   ├── _lib/                    # Shared: classifier, geocoder, RSS parser, Groq classifier
-│   └── intelligence/v1/         # LLM summarisation (Groq)
+├── api/
+│   ├── index.js                 # THE Vercel function — routes every /api/* to api/_handlers/**
+│   ├── _routes.js                # GENERATED (npm run generate:api-routes) — url → handler import table
+│   ├── _utils/dispatch.js        # Router: matches the URL, adapts Node vs. "Edge"-style handlers
+│   ├── _handlers/                # Every route lives here (ignored by Vercel — not counted as functions)
+│   │   ├── rss.js / rss-proxy.js     # RSS CORS bypass + JSON conversion
+│   │   ├── threats.js                # Cyber OSINT aggregation (Shodan/Censys/breaches)
+│   │   ├── exposure.js               # Technical exposure scoring
+│   │   ├── json-proxy.js             # Generic JSON proxy (Ransomware Live, etc.)
+│   │   ├── energy/                   # Ecowatt, Eco2mix, nuclear REMIT
+│   │   ├── health/                   # ISS, SOS Médecins, OSCOUR
+│   │   ├── finance/                  # Market data, commodities
+│   │   ├── transport/                # SNCF, air traffic, AIS relay
+│   │   ├── news.js / news/history    # News query API + history timeline
+│   │   └── intelligence/v1/          # LLM summarisation (Groq)
+│   ├── _lib/                    # Shared: classifier, geocoder, RSS parser, Groq classifier (some generated)
+│   ├── ingest/                  # Dedicated function — news ingestion (Neon Postgres + Groq LLM),
+│   │                             # triggered by Upstash QStash every 30 min + a daily Vercel cron safety net
+│   ├── fuel-price-series-refresh.js  # Dedicated function — daily cron
+│   └── sentinel-ndwi.ts         # Dedicated function
 │
 ├── services/
 │   └── scrapling-proxy/         # FastAPI + Scrapling — Cloudflare bypass for PQR RSS
@@ -437,11 +450,11 @@ npm run dev:full            # Vite (3001) + Scrapling (8080) together
 
 ### News Ingestion Pipeline
 
-Articles are ingested server-side via a **Vercel Cron** (every 5 min) into **Neon Postgres**:
+Articles are ingested server-side every **30 minutes** into **Neon Postgres**, triggered by an Upstash QStash schedule (with a daily Vercel cron as a safety net — see `docs/deployment.md` §2):
 
 1. **Fetch & parse** — 60+ RSS feeds, concurrent (6 workers), exponential backoff on failure
 2. **Keyword classification** — instant category + severity assignment (< 1ms/item)
-3. **Groq LLM refinement** (optional) — if `GROQ_API_KEY` is set, ambiguous articles (confidence < 0.60) are sent to Groq for reclassification (max 5/tick, `llama-3.3-70b-versatile`)
+3. **Groq LLM refinement** (optional) — if `GROQ_API_KEY` is set, ambiguous articles (confidence < 0.60) are sent to Groq for reclassification (max 15/tick, `llama-3.3-70b-versatile`)
 4. **Geocoding** — best-effort lat/lon assignment (max 30/tick)
 5. **Retention** — articles older than 90 days are purged automatically
 

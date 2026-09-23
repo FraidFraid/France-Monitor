@@ -472,6 +472,23 @@ export class DeckGLMap {
   private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
   private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
+  // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
+  // is created, in parallel with map style/tile loading, instead of only
+  // after map.on('load') fires — this fetch has no dependency on the map.
+  private iconMappingPromise: Promise<Record<string, { x: number; y: number; width: number; height: number }>> | null = null;
+  // Perf audit §6 item 8: gas network sources start empty and are only
+  // fetched the first time the gas layer is switched on.
+  private gasNetworkSourcesPromise: Promise<void> | null = null;
+  // Perf audit §6 item 2: departements.geojson (3.3 MB) is memoized inside
+  // getDepartmentsGeojson(), but updateWeather/updateHealth/updateISNR/
+  // updateOutages used to trigger it unconditionally regardless of layer
+  // visibility. These four fields hold the most recent args passed while the
+  // corresponding layer was inactive, so setLayerVisibility() can replay the
+  // same call (cheap: memoized fetch, or first real one) once it's switched on.
+  private _pendingWeatherAlerts: MeteoAlert[] | null = null;
+  private _pendingHealthArgs: { regions: HealthRegionMetric[]; healthFeatures?: HealthFeatures; departments?: HealthDepartmentMetric[] } | null = null;
+  private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
+  private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
 
   public getHealthFeatures(): HealthFeatures | null {
     return this.latestHealthFeatures;
@@ -599,6 +616,12 @@ export class DeckGLMap {
 
   async init(): Promise<void> {
     this.container.innerHTML = '';
+
+    // Perf audit §5 item 4 / §6 item 7: this fetch doesn't depend on the map
+    // at all — start it now instead of after map.on('load') (loadIconAtlas()
+    // awaits it below, alongside getFrenchStyle()/map creation).
+    this.iconMappingPromise = fetch('/assets/dsfr-mapping.json')
+      .then((resp) => resp.json() as Promise<Record<string, { x: number; y: number; width: number; height: number }>>);
 
     // Fetch style with French labels pre-applied
     const frenchStyle = await getFrenchStyle();
@@ -769,14 +792,13 @@ export class DeckGLMap {
     });
 
     // Réseau de Transport Gaz Pression (GRTgaz, Teréga)
-    this.map.addSource(SRC_GAS_NETWORK_GRT, {
-      type: 'geojson',
-      data: 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/trace-du-reseau-grt-250/exports/geojson'
-    });
-    this.map.addSource(SRC_GAS_NETWORK_TEREGA, {
-      type: 'geojson',
-      data: 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/terega-trace-du-reseau/exports/geojson'
-    });
+    // Perf audit §5 item 6 / §6 item 8: these used to carry a live
+    // odre.opendatasoft.com URL as `data`, which MapLibre fetches immediately
+    // on addSource — regardless of whether the gas layer is visible (off by
+    // default). Start empty like the other ~30 sources; ensureGasNetworkSources()
+    // sets the real URL the first time gasNetwork is switched on.
+    this.map.addSource(SRC_GAS_NETWORK_GRT, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_GAS_NETWORK_TEREGA, { type: 'geojson', data: emptyFC() });
 
     // Gas Vital Organs (terminals, storage, PIR flows)
     this.map.addSource(SRC_GAS_VITALS, { type: 'geojson', data: emptyFC() });
@@ -7961,8 +7983,11 @@ export class DeckGLMap {
   private async loadIconAtlas(): Promise<void> {
     if (!this.map) return;
     try {
-      const respMapping = await fetch('/assets/dsfr-mapping.json');
-      const mapping = await respMapping.json() as Record<string, { x: number; y: number; width: number; height: number }>;
+      // Reuse the mapping fetch started in init() alongside map creation;
+      // fall back to a fresh fetch if init() somehow didn't kick it off.
+      const mapping = await (this.iconMappingPromise ?? fetch('/assets/dsfr-mapping.json').then(
+        (resp) => resp.json() as Promise<Record<string, { x: number; y: number; width: number; height: number }>>,
+      ));
 
       const { data: image } = await this.map.loadImage('/assets/dsfr-atlas.png');
 
@@ -9638,6 +9663,32 @@ export class DeckGLMap {
     }
   }
 
+  // ─── Gas Network Sources (lazy) ───
+
+  /**
+   * Perf audit §6 item 8: sets the real odre.opendatasoft.com URLs on the gas
+   * network sources the first time the gas layer is switched on. Memoized —
+   * a no-op after the first successful call, matching getDepartmentsGeojson()'s
+   * pattern. Called from setLayerVisibility() (mirrors ensureWeatherRadarLayer()).
+   */
+  private ensureGasNetworkSources(): Promise<void> {
+    if (!this.gasNetworkSourcesPromise) {
+      this.gasNetworkSourcesPromise = (async () => {
+        if (!this.map) return;
+        try {
+          const grtSrc = this.map.getSource(SRC_GAS_NETWORK_GRT) as maplibregl.GeoJSONSource | undefined;
+          const teregaSrc = this.map.getSource(SRC_GAS_NETWORK_TEREGA) as maplibregl.GeoJSONSource | undefined;
+          grtSrc?.setData('https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/trace-du-reseau-grt-250/exports/geojson');
+          teregaSrc?.setData('https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/terega-trace-du-reseau/exports/geojson');
+        } catch (error) {
+          console.warn('[DeckGLMap] Failed to load gas network sources', error);
+          this.gasNetworkSourcesPromise = null; // allow retry next time the layer is toggled on
+        }
+      })();
+    }
+    return this.gasNetworkSourcesPromise;
+  }
+
   // ─── Weather Layer ───
 
   private async getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
@@ -9665,6 +9716,17 @@ export class DeckGLMap {
 
   async updateWeather(alerts: MeteoAlert[]): Promise<void> {
     if (!this.map) return;
+
+    // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
+    // (and the risk icons below, also gated by `environmental`) while the
+    // layer is hidden. setLayerVisibility() replays this call with the same
+    // alerts the moment the layer is switched on.
+    if (!this.currentLayers?.environmental) {
+      this._pendingWeatherAlerts = alerts;
+      return;
+    }
+    this._pendingWeatherAlerts = null;
+
     const alertsByCode = new Map<string, MeteoAlert>();
     for (const a of alerts) alertsByCode.set(a.departmentCode, a);
 
@@ -9965,10 +10027,25 @@ export class DeckGLMap {
 
         // Mémorise toute valeur APL non-nulle reçue (fichier statique ou API) ;
         // un appel ultérieur sans APL ne pourra plus écraser la couche.
+        // (Runs unconditionally, even while hidden below — see
+        // project_apl_prod_overwrite.md: this memory must stay correct
+        // regardless of whether the choropleth itself is rendered.)
         for (const d of departments!) {
           const hasApl = d.aplIndex != null || (d.aplCategory != null && d.aplCategory !== 'indisponible');
           if (hasApl) this.aplByDept.set(d.depCode, { aplIndex: d.aplIndex ?? null, aplCategory: d.aplCategory ?? 'indisponible' });
         }
+
+        // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
+        // while no health layer is visible. setLayerVisibility() replays this
+        // call with the same args once one is switched on.
+        const anyHealthLayerActive =
+          this.currentLayers?.health || this.currentLayers?.healthApl ||
+          this.currentLayers?.healthOscour || this.currentLayers?.hospitals;
+        if (!anyHealthLayerActive) {
+          this._pendingHealthArgs = { regions, healthFeatures, departments };
+          return;
+        }
+        this._pendingHealthArgs = null;
 
         const baseGeojson = await this.getDepartmentsGeojson();
         if (!baseGeojson) return;
@@ -10097,6 +10174,16 @@ export class DeckGLMap {
 
   async updateISNR(scores: import('../types/index.ts').ISNRScore[]): Promise<void> {
     if (!this.map) return;
+
+    // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
+    // while the stability layer is hidden; replayed by setLayerVisibility()
+    // once it's switched on.
+    if (!this.currentLayers?.stability) {
+      this._pendingIsnrScores = scores;
+      return;
+    }
+    this._pendingIsnrScores = null;
+
     const scoresByCode = new Map<string, import('../types/index.ts').ISNRScore>();
     for (const s of scores) scoresByCode.set(s.code, s);
 
@@ -10312,6 +10399,16 @@ export class DeckGLMap {
     (this.map.getSource(SRC_TELECOM) as maplibregl.GeoJSONSource)?.setData(telecomFC);
 
     // 2. Power GEOJSON with data-driven styling
+    // Perf audit §6 item 2: skip the departments.geojson-backed power/tension
+    // choropleths while the outages layer is hidden — the telecom points
+    // above still render regardless. Replayed by setLayerVisibility() once
+    // the layer is switched on.
+    if (!this.currentLayers?.outages) {
+      this._pendingOutagesArgs = { telecoms, powers };
+      return;
+    }
+    this._pendingOutagesArgs = null;
+
     const powersByCode = new Map<string, PowerOutage>();
     for (const p of powers) powersByCode.set(p.departmentCode, p);
 
@@ -12288,6 +12385,29 @@ export class DeckGLMap {
 
     if (layers.weatherRadar) {
       void this.ensureWeatherRadarLayer();
+    }
+    if (layers.gasNetwork) {
+      void this.ensureGasNetworkSources();
+    }
+
+    // Perf audit §6 item 2: replay any department-choropleth update that was
+    // skipped (§ updateWeather/updateHealth/updateISNR/updateOutages above)
+    // while its layer was hidden, now that it's visible again.
+    if (layers.environmental && this._pendingWeatherAlerts !== null) {
+      const alerts = this._pendingWeatherAlerts;
+      void this.updateWeather(alerts);
+    }
+    if ((layers.health || layers.healthApl || layers.healthOscour || layers.hospitals) && this._pendingHealthArgs) {
+      const { regions, healthFeatures, departments } = this._pendingHealthArgs;
+      void this.updateHealth(regions, healthFeatures, departments);
+    }
+    if (layers.stability && this._pendingIsnrScores !== null) {
+      const scores = this._pendingIsnrScores;
+      void this.updateISNR(scores);
+    }
+    if (layers.outages && this._pendingOutagesArgs) {
+      const { telecoms, powers } = this._pendingOutagesArgs;
+      void this.updateOutages(telecoms, powers);
     }
 
     const vis = (visible: boolean) => visible ? 'visible' : 'none';

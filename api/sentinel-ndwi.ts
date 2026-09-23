@@ -1,3 +1,5 @@
+import { getOrRefresh } from './_utils/swr-cache.js';
+
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -20,11 +22,6 @@ type NdwiRequestBody = {
 type CdseTokenCache = {
   token: string;
   expiresAt: number;
-};
-
-type NdwiCacheEntry = {
-  expiresAt: number;
-  value: JsonValue;
 };
 
 type MinimalRequest = {
@@ -52,7 +49,11 @@ type StacFeature = {
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1/search';
 const CDSE_PROCESS_URL = 'https://sh.dataspace.copernicus.eu/api/v1/process';
 const CDSE_TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
-const NDWI_CACHE_TTL_MS = 15 * 60 * 1000;
+// Cache swr (mémoire + Redis) — 15 min de fraîcheur, pas de fenêtre stale : une image NDWI
+// périmée n'a pas de sens à servir "en dégradé" au-delà de son TTL, contrairement aux flux
+// temps réel. Le repli sur une valeur périmée reste possible si CDSE tombe en panne
+// (voir getOrRefresh : une erreur du producer retombe sur la dernière valeur connue).
+const NDWI_CACHE_TTL_SEC = 15 * 60;
 const NDWI_EVALSCRIPT = `//VERSION=3
 const ramp = [
   [-0.8, 0x008000],
@@ -73,7 +74,8 @@ function evaluatePixel(sample) {
   return [...viz.process(val), sample.dataMask];
 }`;
 
-const ndwiResponseCache = new Map<string, NdwiCacheEntry>();
+// Le token OAuth CDSE reste en mémoire process (c'est un secret à courte durée de vie :
+// il ne doit jamais transiter par Redis).
 let cdseTokenCache: CdseTokenCache | null = null;
 
 function explainNdwiError(error: unknown) {
@@ -421,26 +423,22 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       return;
     }
 
-    const cacheKey = buildCacheKey(aoi, date, maxCloudCoverage);
-    const cached = ndwiResponseCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      json(res, 200, cached.value);
-      return;
-    }
-
-    const scene = await fetchClosestScene(aoi, date, maxCloudCoverage);
-    const accessToken = await getCdseAccessToken();
-    const base64Png = await fetchNdwiImage(aoi, scene.datetime, maxCloudCoverage, accessToken);
-    const payload = {
-      sceneId: scene.id,
-      acquisitionDate: scene.datetime,
-      cloudCoverage: scene.cloudCover,
-      imageUrl: `data:image/png;base64,${base64Png}`,
-    };
-    ndwiResponseCache.set(cacheKey, {
-      expiresAt: Date.now() + NDWI_CACHE_TTL_MS,
-      value: payload,
-    });
+    const cacheKey = `swr:sentinel-ndwi:${buildCacheKey(aoi, date, maxCloudCoverage)}`;
+    const { value: payload } = (await getOrRefresh(
+      cacheKey,
+      { ttlSec: NDWI_CACHE_TTL_SEC },
+      async () => {
+        const scene = await fetchClosestScene(aoi, date, maxCloudCoverage);
+        const accessToken = await getCdseAccessToken();
+        const base64Png = await fetchNdwiImage(aoi, scene.datetime, maxCloudCoverage, accessToken);
+        return {
+          sceneId: scene.id,
+          acquisitionDate: scene.datetime,
+          cloudCoverage: scene.cloudCover,
+          imageUrl: `data:image/png;base64,${base64Png}`,
+        };
+      },
+    )) as { value: JsonValue };
     json(res, 200, payload);
   } catch (error) {
     const detail = explainNdwiError(error);
