@@ -67,3 +67,20 @@ describe('I5 — ligne de base de visite enregistrée après les données second
     expect(between('this.loadSecondaryLayers()', '.catch(')).toContain('this.recordV2VisitBaseline()');
   });
 });
+
+describe('m4 — marchés et matières premières rafraîchissent la v2', () => {
+  it('à l’arrivée des marchés et des matières premières, le poste est repeint', () => {
+    for (const name of ['startFinancePolling', 'startCommodityPolling']) {
+      expect(methodBody(name), name).toContain('this.repaintPoste()');
+    }
+  });
+
+  it('repeindre le poste : v2 seulement, rendu seul (aucun enregistrement d’instantané)', () => {
+    const body = methodBody('repaintPoste');
+    expect(body).toContain('if (!this.uiV2 || !this.poste) return;');
+    expect(body).toContain('this.updatePoste(');
+    for (const sideEffect of ['refreshFranceIntelPanel', 'recordStabilitySnapshot', 'pushHistorySnapshot']) {
+      expect(body).not.toContain(sideEffect);
+    }
+  });
+});

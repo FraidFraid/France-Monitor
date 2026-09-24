@@ -5090,6 +5090,7 @@ export class App {
         const data = await fetchMarketData();
         this.currentMarketData = data;
         this.marketStrip?.update(data);
+        this.repaintPoste(); // v2 : mouvements exceptionnels des indices dans la liste (m4)
       } catch (err) {
         console.error('[Finance] Polling failed', err);
       }
@@ -5121,6 +5122,7 @@ export class App {
         const data = await fetchCommodityData();
         this.currentCommodityData = data;
         this.commodityStrip?.update(data);
+        this.repaintPoste(); // v2 : mouvements exceptionnels du pétrole et du gaz dans la liste (m4)
       } catch (err) {
         console.error('[Commodities] Polling failed', err);
       }
@@ -7770,8 +7772,7 @@ export class App {
       // chargement), les caches sont vides et startV2Intel() n'a pas encore tourné ; on peint
       // le poste avec l'état courant, sans toucher à l'historique de stabilité local ni à
       // l'historique de situation partagé (voir shouldRecordIntelSnapshot).
-      const lang = this.intelLang();
-      this.updatePoste(this.buildFranceSnapshot(lang), this.buildAlertMonitorSituations(), lang);
+      this.repaintPoste();
       return poste;
     });
     return this.postePromise;
@@ -7811,6 +7812,17 @@ export class App {
       .catch(() => {
         // Sans historique, « Ce qui a changé » ne liste simplement pas les situations résolues.
       });
+  }
+
+  /**
+   * Repeint la v2 avec les caches courants, rendu seul : ni historique de stabilité local, ni
+   * historique de situation partagé, ni brief (premier rendu, arrivée des marchés et des matières
+   * premières : relecture finale m4). Sans effet en v1 ou avant le chargement du poste.
+   */
+  private repaintPoste(): void {
+    if (!this.uiV2 || !this.poste) return;
+    const lang = this.intelLang();
+    this.updatePoste(this.buildFranceSnapshot(lang), this.buildAlertMonitorSituations(), lang);
   }
 
   /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
