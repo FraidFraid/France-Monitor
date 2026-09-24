@@ -21,7 +21,7 @@ import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
-import { briefSituationIds, fetchFranceIntelBrief, shouldRefreshBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
+import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -1454,6 +1454,8 @@ export class App {
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   /** Couleur nationale du dernier brief demandé : un changement de couleur redemande le brief. */
   private franceIntelBriefMark: BriefLevelMark | null = null;
+  /** Revérifie à l'échéance de stabilisation (BRIEF_LEVEL_SETTLE_MS) avec un instantané frais ; un seul à la fois. */
+  private franceIntelBriefSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private currentCyberData: CyberState | null = null;
   private currentThreatEvents: ThreatEvent[] = [];
   private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
@@ -1641,6 +1643,7 @@ export class App {
     this.removePausableInterval(this._intervalVersion);
     this._intervalVersion = null;
     this.clearFranceIntelBriefRefresh();
+    this.clearFranceIntelBriefSettleTimer();
     this.clearPausableIntervals();
     this.removeGlobalListeners();
     this.visibilityHandlerInstalled = false;
@@ -2164,6 +2167,7 @@ export class App {
       panel.setInfrastructureWidget(this.networkBarometerWidget);
       panel.setOnClose(() => {
         this.clearFranceIntelBriefRefresh();
+        this.clearFranceIntelBriefSettleTimer();
       });
       panel.mount();
       this.franceIntelPanel = panel;
@@ -7310,10 +7314,36 @@ export class App {
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
     const now = Date.now();
-    if (shouldRefreshBrief(this.franceIntelBriefMark, snapshot.score, now)) {
+    const evaluation = evaluateBriefLevel(this.franceIntelBriefMark, snapshot.score, now);
+    this.franceIntelBriefMark = evaluation.mark;
+    if (evaluation.refresh) {
       this.requestFranceIntelBrief(snapshot, lang, { showLoading: false });
-      if (this.franceIntelBriefMark) this.franceIntelBriefMark.lastLevelRefreshAt = now;
+    } else {
+      this.armFranceIntelBriefSettleTimer(evaluation.settleAt);
     }
+  }
+
+  private clearFranceIntelBriefSettleTimer(): void {
+    if (this.franceIntelBriefSettleTimer !== null) {
+      clearTimeout(this.franceIntelBriefSettleTimer);
+      this.franceIntelBriefSettleTimer = null;
+    }
+  }
+
+  /**
+   * Comme refreshFranceIntelPanel n'est appelé que sur arrivée de données, un changement de
+   * couleur qui doit encore stabiliser (BRIEF_LEVEL_SETTLE_MS) a besoin d'un minuteur pour être
+   * revérifié même sans nouvelle donnée. Un seul minuteur à la fois.
+   */
+  private armFranceIntelBriefSettleTimer(settleAt: number | null): void {
+    this.clearFranceIntelBriefSettleTimer();
+    if (settleAt === null) return;
+    const delay = Math.max(0, settleAt - Date.now());
+    this.franceIntelBriefSettleTimer = setTimeout(() => {
+      this.franceIntelBriefSettleTimer = null;
+      if (!this.franceIntelPanel?.isVisible()) return;
+      this.refreshFranceIntelPanel();
+    }, delay);
   }
 
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
@@ -7430,9 +7460,14 @@ export class App {
     options?: { showLoading?: boolean },
   ): void {
     const requestId = ++this.franceIntelBriefRequestId;
+    // Un brief est demandé : plus rien à stabiliser (chaque demande de brief y compris via ce
+    // minuteur repart de zéro), et la nouvelle couleur devient la référence pour la suite.
+    this.clearFranceIntelBriefSettleTimer();
     this.franceIntelBriefMark = {
       level: scoreLevel(snapshot.score),
       lastLevelRefreshAt: this.franceIntelBriefMark?.lastLevelRefreshAt ?? null,
+      divergentLevel: null,
+      divergedSince: null,
     };
     // S1…S5 désignent les situations de CET instantané : figé pour les preuves cliquables.
     const situationIds = briefSituationIds(snapshot.situations);

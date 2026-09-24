@@ -357,21 +357,80 @@ export function briefSituationIds(situations: DetectedSituation[]): string[] {
 /** Au plus un brief redemandé pour changement de couleur par tranche de 10 min (anti-rafale). */
 export const BRIEF_LEVEL_REFRESH_MIN_MS = 10 * 60 * 1000;
 
+/**
+ * Attente de stabilisation avant de redemander le brief sur changement de couleur : le score
+ * traverse plusieurs bandes en quelques secondes à l'ouverture (81 jaune → 64 orange → 50 rouge →
+ * 43 en 12 s) ; sans cette attente, la première couleur traversée (ici orange) gagnait la
+ * course et le brief restait figé dessus pendant tout l'anti-rafale (bug 81/43, relecture F1).
+ */
+export const BRIEF_LEVEL_SETTLE_MS = 45 * 1000;
+
 export interface BriefLevelMark {
-  /** Couleur nationale au moment de la dernière demande de brief. */
+  /** Couleur du dernier brief effectivement demandé. */
   level: VigilanceLevel;
   /** Dernière demande déclenchée par un changement de couleur, null si aucune. */
   lastLevelRefreshAt: number | null;
+  /** Couleur actuellement différente de `level`, en cours de stabilisation ; null si alignée. */
+  divergentLevel: VigilanceLevel | null;
+  /** Horodatage où `divergentLevel` est apparu ; null si alignée. */
+  divergedSince: number | null;
+}
+
+export interface BriefLevelEvaluation {
+  /** Vrai si le brief doit être redemandé maintenant. */
+  refresh: boolean;
+  /** Marque à conserver pour le prochain appel, que `refresh` soit vrai ou faux. */
+  mark: BriefLevelMark;
+  /** Horodatage auquel revérifier (stabilisation en cours), ou null si rien à armer. */
+  settleAt: number | null;
 }
 
 /**
- * Faut-il redemander le brief ? Oui quand la couleur nationale n'est plus celle de la dernière
- * demande : sinon le brief garde le niveau de l'ouverture (constaté : « 81 » face à un indice
- * de 43). Anti-rafale : un score qui oscille autour d'un seuil ne relance qu'une fois par 10 min.
+ * Faut-il redemander le brief ? Oui quand la couleur nationale diffère de celle du dernier brief
+ * ET qu'elle est restée stable au moins BRIEF_LEVEL_SETTLE_MS (attente de stabilisation, corrige
+ * le bug 81/43 : la cascade de couleurs à l'ouverture ne doit pas figer le brief sur la première
+ * couleur traversée). Anti-rafale conservé pour l'oscillation autour d'un seuil : au plus un
+ * rafraîchissement déclenché par une couleur par tranche de BRIEF_LEVEL_REFRESH_MIN_MS, le
+ * premier n'étant pas limité. Fonction pure : App.ts persiste `mark` et arme un minuteur sur
+ * `settleAt` pour revérifier avec un instantané frais quand aucune nouvelle donnée n'arrive.
  */
-export function shouldRefreshBrief(mark: BriefLevelMark | null, score: number, now: number): boolean {
-  if (mark === null || scoreLevel(score) === mark.level) return false;
-  return mark.lastLevelRefreshAt === null || now - mark.lastLevelRefreshAt >= BRIEF_LEVEL_REFRESH_MIN_MS;
+export function evaluateBriefLevel(
+  mark: BriefLevelMark | null,
+  score: number,
+  now: number,
+): BriefLevelEvaluation {
+  const level = scoreLevel(score);
+  if (mark === null) {
+    return {
+      refresh: false,
+      mark: { level, lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null },
+      settleAt: null,
+    };
+  }
+  if (level === mark.level) {
+    // De retour à la couleur du dernier brief : rien à stabiliser.
+    if (mark.divergentLevel === null) return { refresh: false, mark, settleAt: null };
+    return { refresh: false, mark: { ...mark, divergentLevel: null, divergedSince: null }, settleAt: null };
+  }
+
+  // La couleur observée diffère du dernier brief : elle stabilise depuis `divergedSince`
+  // (repart à `now` si elle vient de changer, se poursuit si c'est la même qu'au dernier appel).
+  const divergedSince = mark.divergentLevel === level && mark.divergedSince !== null ? mark.divergedSince : now;
+  const stable = now - divergedSince >= BRIEF_LEVEL_SETTLE_MS;
+  const rateOk = mark.lastLevelRefreshAt === null || now - mark.lastLevelRefreshAt >= BRIEF_LEVEL_REFRESH_MIN_MS;
+
+  if (stable && rateOk) {
+    return {
+      refresh: true,
+      mark: { level, lastLevelRefreshAt: now, divergentLevel: null, divergedSince: null },
+      settleAt: null,
+    };
+  }
+  return {
+    refresh: false,
+    mark: { ...mark, divergentLevel: level, divergedSince },
+    settleAt: stable ? null : divergedSince + BRIEF_LEVEL_SETTLE_MS,
+  };
 }
 
 export function compactSituations(situations: DetectedSituation[]): CompactSituation[] {

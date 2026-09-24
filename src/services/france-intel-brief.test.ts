@@ -1,7 +1,16 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { briefSituationIds, buildDeterministicBrief, compactSituations, parseStructuredBrief, shouldRefreshBrief } from './france-intel-brief.ts';
+import {
+  BRIEF_LEVEL_REFRESH_MIN_MS,
+  BRIEF_LEVEL_SETTLE_MS,
+  briefSituationIds,
+  buildDeterministicBrief,
+  compactSituations,
+  evaluateBriefLevel,
+  parseStructuredBrief,
+  type BriefLevelMark,
+} from './france-intel-brief.ts';
 import type { BriefEventInput, DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
 
 function situation(overrides: Partial<DetectedSituation> = {}): DetectedSituation {
@@ -185,23 +194,76 @@ describe('briefSituationIds (relecture finale #3)', () => {
   });
 });
 
-describe('shouldRefreshBrief (bug brief 81 / indice 43)', () => {
+describe('evaluateBriefLevel (bug brief 81 / indice 43 — relecture finale F1)', () => {
   const T = 10_000_000;
 
-  it('redemande le brief quand la couleur nationale a changé', () => {
-    assert.equal(shouldRefreshBrief({ level: 'jaune', lastLevelRefreshAt: null }, 43, T), true);
+  it('attend la stabilisation avant de redemander (mais marque bien la divergence)', () => {
+    // Un seul changement de couleur, sans historique de stabilisation : pas de rafraîchissement
+    // immédiat (c'était le bug), mais la divergence est mémorisée pour la suite.
+    const mark: BriefLevelMark = { level: 'jaune', lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null };
+    const r = evaluateBriefLevel(mark, 43, T);
+    assert.equal(r.refresh, false);
+    assert.equal(r.mark.divergentLevel, 'rouge');
+    assert.equal(r.mark.divergedSince, T);
+    assert.equal(r.settleAt, T + BRIEF_LEVEL_SETTLE_MS);
   });
 
   it('ne redemande rien quand la couleur est la même', () => {
-    assert.equal(shouldRefreshBrief({ level: 'rouge', lastLevelRefreshAt: null }, 50, T), false);
+    const mark: BriefLevelMark = { level: 'rouge', lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null };
+    const r = evaluateBriefLevel(mark, 50, T);
+    assert.equal(r.refresh, false);
+    assert.equal(r.settleAt, null);
   });
 
   it('ne redemande rien avant la première demande', () => {
-    assert.equal(shouldRefreshBrief(null, 43, T), false);
+    const r = evaluateBriefLevel(null, 43, T);
+    assert.equal(r.refresh, false);
   });
 
-  it('un score qui oscille autour d’un seuil ne relance le brief qu’une fois par tranche de 10 min', () => {
-    assert.equal(shouldRefreshBrief({ level: 'orange', lastLevelRefreshAt: T - 60_000 }, 54, T), false);
-    assert.equal(shouldRefreshBrief({ level: 'orange', lastLevelRefreshAt: T - 600_000 }, 54, T), true);
+  it('un score qui oscille autour d’un seuil, une fois stable, ne relance le brief qu’une fois par tranche de 10 min', () => {
+    const stableMark = (lastLevelRefreshAt: number): BriefLevelMark => ({
+      level: 'orange',
+      lastLevelRefreshAt,
+      divergentLevel: 'rouge',
+      divergedSince: T - 100_000, // stable depuis largement plus que 45 s
+    });
+    assert.equal(evaluateBriefLevel(stableMark(T - 60_000), 54, T).refresh, false);
+    assert.equal(evaluateBriefLevel(stableMark(T - BRIEF_LEVEL_REFRESH_MIN_MS), 54, T).refresh, true);
+  });
+
+  it('cascade 81 → 64 → 50 → 43 en 12 s puis stable : aucun rafraîchissement pendant la cascade, un seul une fois 45 s de stabilité atteintes', () => {
+    // Brief initial déjà demandé au score 81 (vert)... en réalité 81 est jaune (70–84).
+    let mark: BriefLevelMark = { level: 'jaune', lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null };
+
+    // t=6s : 64 → orange (première divergence observée)
+    let r = evaluateBriefLevel(mark, 64, T + 6_000);
+    assert.equal(r.refresh, false);
+    mark = r.mark;
+    assert.equal(mark.divergentLevel, 'orange');
+    assert.equal(mark.divergedSince, T + 6_000);
+
+    // t=9s : 50 → rouge (couleur différente de celle observée à 6 s : le chrono de stabilisation repart à 9 s)
+    r = evaluateBriefLevel(mark, 50, T + 9_000);
+    assert.equal(r.refresh, false);
+    mark = r.mark;
+    assert.equal(mark.divergentLevel, 'rouge');
+    assert.equal(mark.divergedSince, T + 9_000);
+
+    // t=12s : 43 → rouge toujours (même couleur qu'à 9 s) : le chrono ne repart pas
+    r = evaluateBriefLevel(mark, 43, T + 12_000);
+    assert.equal(r.refresh, false);
+    mark = r.mark;
+    assert.equal(mark.divergedSince, T + 9_000);
+
+    // t=53.999s : toujours pas 45 s depuis 9 s
+    r = evaluateBriefLevel(mark, 43, T + 9_000 + BRIEF_LEVEL_SETTLE_MS - 1);
+    assert.equal(r.refresh, false);
+    mark = r.mark;
+
+    // t=54s : 45 s de stabilité écoulées depuis 9 s → exactement un rafraîchissement
+    r = evaluateBriefLevel(mark, 43, T + 9_000 + BRIEF_LEVEL_SETTLE_MS);
+    assert.equal(r.refresh, true);
+    assert.equal(r.mark.level, 'rouge');
+    assert.equal(r.mark.divergentLevel, null);
   });
 });
