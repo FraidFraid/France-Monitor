@@ -27,7 +27,7 @@ import {
   situationLevel,
   type VigilanceLevel,
 } from './vigilance.ts';
-import { categoryTheme, situationTheme, type SpecificThemeId, type ThemeId } from './themes.ts';
+import { SPECIFIC_THEMES, THEMES, categoryTheme, inTheme, situationTheme, type SpecificThemeId, type ThemeId } from './themes.ts';
 import type { VisitBaseline } from './intel-last-visit.ts';
 
 type Lang = 'fr' | 'en';
@@ -405,4 +405,70 @@ export function levelsForBaseline(queue: WorkQueue): VisitBaseline {
       .filter((i) => i.ref.kind !== 'event')
       .map((i): [string, VigilanceLevel] => [i.key, i.level]),
   );
+}
+
+// ─── Vue par thème, garde et thèmes qui tirent le niveau (spec §5.2, §7.2, §7.3) ─────────────
+
+export const WORK_LIST_CAP = 12;
+
+export interface WorkGuard {
+  reds: number;
+  /** Thèmes des rouges hors du thème courant, dans l'ordre de la barre de thèmes. */
+  themes: ThemeId[];
+  /** Thème vers lequel bascule un clic : celui qui a le plus de rouges hors du thème courant. */
+  target: ThemeId;
+}
+
+export interface WorkQueueView {
+  theme: ThemeId;
+  rows: WorkItem[];
+  total: number;
+  hiddenCount: number;
+  guard: WorkGuard | null;
+  greenTracked: number;
+  eventsStatus: EventsStatus;
+}
+
+export function viewWorkQueue(queue: WorkQueue, theme: ThemeId, showAll: boolean): WorkQueueView {
+  const inside = queue.items.filter((i) => inTheme(i.theme, theme));
+  const rows = showAll ? inside : inside.slice(0, WORK_LIST_CAP);
+  const outsideReds = queue.items.filter((i) => i.level === 'rouge' && !inTheme(i.theme, theme));
+  let guard: WorkGuard | null = null;
+  if (outsideReds.length > 0) {
+    const counts = new Map<ThemeId, number>();
+    for (const i of outsideReds) counts.set(i.theme, (counts.get(i.theme) ?? 0) + 1);
+    const themes = THEMES.map((th) => th.id).filter((id) => counts.has(id));
+    // Tri stable : à égalité, l'ordre de la barre de thèmes départage.
+    const target = [...themes].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0))[0];
+    guard = { reds: outsideReds.length, themes, target };
+  }
+  return {
+    theme,
+    rows,
+    total: inside.length,
+    hiddenCount: inside.length - rows.length,
+    guard,
+    greenTracked: queue.greenTracked[theme],
+    eventsStatus: queue.eventsStatus,
+  };
+}
+
+/**
+ * Thèmes qui tirent le niveau national (spec §5.2) : ceux qui sont au niveau national, deux au
+ * plus ; s'il n'y en a aucun, le thème au niveau le plus élevé ; aucun si tous sont verts.
+ */
+export function drivingThemes(themeLevels: Record<SpecificThemeId, VigilanceLevel>, national: VigilanceLevel): SpecificThemeId[] {
+  const top = maxLevel(SPECIFIC_THEMES.map((th) => themeLevels[th]));
+  if (top === 'vert') return [];
+  const equal: SpecificThemeId[] = national === 'vert' ? [] : SPECIFIC_THEMES.filter((th) => themeLevels[th] === national);
+  if (equal.length > 0) return equal.slice(0, 2);
+  return SPECIFIC_THEMES.filter((th) => themeLevels[th] === top).slice(0, 1);
+}
+
+/** Changements depuis la visite, toute la liste (bandeau d'état). */
+export function visitCounts(queue: WorkQueue): { nouveaux: number; aggravations: number } {
+  return {
+    nouveaux: queue.items.filter((i) => i.badge === 'nouveau').length,
+    aggravations: queue.items.filter((i) => i.badge === 'aggrave').length,
+  };
 }

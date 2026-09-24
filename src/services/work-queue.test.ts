@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildWorkQueue,
+  drivingThemes,
   levelsForBaseline,
   marketLines,
   officialAlertGroups,
+  viewWorkQueue,
+  visitCounts,
   type MarketLine,
   type WorkQueueInput,
 } from './work-queue.ts';
+import type { SpecificThemeId } from './themes.ts';
+import type { VigilanceLevel } from './vigilance.ts';
 import type {
   ChangeDigestItem,
   CommodityData,
@@ -209,5 +214,79 @@ describe('buildWorkQueue — états (spec §7.4)', () => {
   it('ligne de base à enregistrer : niveaux des éléments, sans les événements', () => {
     const q = buildWorkQueue(input({ situations: [situation()], events: eventsState({ events: [event()] }) }));
     expect(levelsForBaseline(q)).toEqual({ 'situation:energy-stress': 'orange' });
+  });
+});
+
+describe('viewWorkQueue (spec §7.2, §7.3)', () => {
+  it('au plus 12 lignes, puis « voir les autres »', () => {
+    const situations = Array.from({ length: 15 }, (_, i) => situation({ id: `s${i}` }));
+    const q = buildWorkQueue(input({ situations }));
+    const view = viewWorkQueue(q, 'general', false);
+    expect(view.rows).toHaveLength(12);
+    expect(view.total).toBe(15);
+    expect(view.hiddenCount).toBe(3);
+    expect(viewWorkQueue(q, 'general', true).rows).toHaveLength(15);
+  });
+
+  it('un thème ne garde que ses éléments ; la garde compte les rouges hors thème et vise le thème qui en a le plus', () => {
+    const q = buildWorkQueue(input({
+      situations: [
+        situation({ id: 'e', severity: 'critical' }),
+        situation({ id: 'c1', type: 'CYBER_PRESSURE', severity: 'critical' }),
+        situation({ id: 'c2', type: 'MARITIME_ANOMALY', severity: 'critical' }),
+      ],
+      alerts: [situation({ id: 'n', type: 'NEWS_ALERT', severity: 'critical', title: 'Fait divers national', category: 'general' })],
+    }));
+    const health = viewWorkQueue(q, 'health', false);
+    expect(health.total).toBe(0);
+    expect(health.guard).toEqual({ reds: 4, themes: ['general', 'energy', 'security'], target: 'security' });
+    const energy = viewWorkQueue(q, 'energy', false);
+    expect(energy.rows.map((r) => r.key)).toEqual(['situation:e']);
+    expect(energy.guard).toEqual({ reds: 3, themes: ['general', 'security'], target: 'security' });
+    expect(viewWorkQueue(q, 'general', false).guard).toBeNull();
+  });
+
+  it('un rouge rattaché à « Vue générale » seulement déclenche la garde et y bascule (revue)', () => {
+    const q = buildWorkQueue(input({
+      alerts: [situation({ id: 'n', type: 'NEWS_ALERT', severity: 'critical', title: 'Fait divers national', category: 'general' })],
+    }));
+    expect(viewWorkQueue(q, 'energy', false).guard).toEqual({ reds: 1, themes: ['general'], target: 'general' });
+  });
+
+  it('rien à traiter : compte des éléments suivis au vert et état des événements', () => {
+    const q = buildWorkQueue(input({ ecowatt: ecowatt({ '53': 'green' }), events: eventsState({ unavailable: true }) }));
+    const view = viewWorkQueue(q, 'energy', false);
+    expect(view.total).toBe(0);
+    expect(view.greenTracked).toBe(1);
+    expect(view.eventsStatus).toBe('unavailable');
+  });
+});
+
+describe('drivingThemes (spec §5.2)', () => {
+  const levels = (over: Partial<Record<SpecificThemeId, VigilanceLevel>>): Record<SpecificThemeId, VigilanceLevel> => ({
+    energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', ...over,
+  });
+
+  it('les thèmes au niveau national, deux au plus', () => {
+    expect(drivingThemes(levels({ energy: 'rouge', security: 'rouge', environment: 'rouge' }), 'rouge')).toEqual(['energy', 'security']);
+  });
+
+  it('sinon le thème au niveau le plus élevé', () => {
+    expect(drivingThemes(levels({ security: 'orange', health: 'jaune' }), 'rouge')).toEqual(['security']);
+    expect(drivingThemes(levels({ health: 'jaune' }), 'vert')).toEqual(['health']);
+  });
+
+  it('aucun si tous les thèmes sont verts', () => {
+    expect(drivingThemes(levels({}), 'jaune')).toEqual([]);
+  });
+});
+
+describe('visitCounts', () => {
+  it('compte nouveaux et aggravations sur toute la liste', () => {
+    const q = buildWorkQueue(input({
+      situations: [situation({ id: 'a', severity: 'critical' }), situation({ id: 'b' })],
+      baseline: { 'situation:a': 'orange' },
+    }));
+    expect(visitCounts(q)).toEqual({ nouveaux: 1, aggravations: 1 });
   });
 });
