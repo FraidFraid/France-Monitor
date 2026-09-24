@@ -46,7 +46,8 @@ export function renderStatusBar(model: StatusBarModel): string {
   const { lang } = model;
   const fr = lang === 'fr';
   if (model.level === null) {
-    return `<div class="sb-line"><span class="sb-loading">${fr ? 'Calcul du niveau national…' : 'Computing national level…'}</span></div>`;
+    // tabindex="-1" : repli de focus programmatique (jamais le body) si le bouton France disparaît.
+    return `<div class="sb-line" tabindex="-1"><span class="sb-loading">${fr ? 'Calcul du niveau national…' : 'Computing national level…'}</span></div>`;
   }
   const pill = `<button type="button" class="sb-level" data-select="france" aria-label="${fr ? 'Ouvrir la fiche France' : 'Open the France sheet'}">`
     + `${renderVigilancePill(model.level, lang)}</button>`;
@@ -60,7 +61,7 @@ export function renderStatusBar(model: StatusBarModel): string {
         ? `<b>Depuis votre visite (${escapeHtml(v.since)})</b> : ${count(v.aggravations, 'aggravation', 'aggravations', lang)} · ${count(v.nouveaux, 'nouveau', 'nouveaux', lang)}`
         : `<b>Since your visit (${escapeHtml(v.since)})</b>: ${count(v.aggravations, 'escalation', 'escalations', lang)} · ${v.nouveaux} new`;
   }
-  return `<div class="sb-line">${pill}<span class="sb-summary">${summary}</span>`
+  return `<div class="sb-line" tabindex="-1">${pill}<span class="sb-summary">${summary}</span>`
     + (visit ? `<span class="sb-visit">${visit}</span>` : '')
     + `<span class="sb-fresh"><span class="sb-dot" aria-hidden="true"></span>${escapeHtml(freshnessText(model.freshness, lang))}</span></div>`;
 }
@@ -89,6 +90,10 @@ export class StatusBar {
     const hadFocus = active instanceof HTMLElement && this.root.contains(active);
     this.root.innerHTML = html;
     this.lastHtml = html;
-    if (hadFocus) this.root.querySelector<HTMLElement>('[data-select="france"]')?.focus({ preventScroll: true });
+    if (!hadFocus) return;
+    // Le bouton France peut disparaître (niveau redevenu null) : repli sur la ligne elle-même,
+    // toujours présente et focalisable par programme, jamais le body (§9).
+    const target = this.root.querySelector<HTMLElement>('[data-select="france"]') ?? this.root.querySelector<HTMLElement>('.sb-line');
+    target?.focus({ preventScroll: true });
   }
 }

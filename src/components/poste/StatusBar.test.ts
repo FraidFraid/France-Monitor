@@ -47,6 +47,17 @@ describe('StatusBar (spec §5.2)', () => {
     root.querySelector<HTMLButtonElement>('[data-select="france"]')?.click();
     expect(onFrance).toHaveBeenCalledTimes(1);
   });
+
+  it('le focus ne tombe jamais sur <body> : repli si le bouton France disparaît (revue)', () => {
+    const root = mountRoot();
+    const bar = new StatusBar(root);
+    bar.update(base);
+    root.querySelector<HTMLButtonElement>('[data-select="france"]')?.focus();
+    expect(document.activeElement?.getAttribute('data-select')).toBe('france');
+    bar.update({ ...base, level: null });
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement instanceof HTMLElement && root.contains(document.activeElement)).toBe(true);
+  });
 });
 
 describe('ThemeBar (spec §5.3)', () => {
