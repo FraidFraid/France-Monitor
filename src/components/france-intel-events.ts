@@ -194,6 +194,14 @@ export function resolveEvidenceRef(ref: string, situationIds: readonly string[])
   return id === undefined ? null : { kind: 'situation', id };
 }
 
+/**
+ * État « historique indisponible » quand les modules d'événements n'ont pas pu être chargés
+ * (chunk en échec) : les deux sections le disent, au lieu d'un chargement sans fin.
+ */
+export function unavailableEventsState(now: number): IntelEventsState {
+  return { events: [], digest: [], totals: {}, anchor: { since: now - 24 * 60 * 60 * 1000, kind: 'default' }, fetchedAt: now, unavailable: true };
+}
+
 const UNAVAILABLE = (lang: Lang): string => `<div class="frintel-empty">${t(lang,
   'Historique serveur indisponible : ce fil reviendra au prochain rafraîchissement.',
   'Server history unavailable: this feed will return on the next refresh.')}</div>`;

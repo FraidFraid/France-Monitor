@@ -7428,7 +7428,10 @@ export class App {
     // Les événements consolidés alimentent le panneau ET servent de preuves citables au brief.
     void this.loadFranceIntelEvents().then((loaded) => {
       if (requestId !== this.franceIntelBriefRequestId) return null;
-      if (loaded && this.franceIntelPanel?.isVisible()) this.franceIntelPanel.updateEvents(loaded.state);
+      if (this.franceIntelPanel?.isVisible()) {
+        if (loaded) this.franceIntelPanel.updateEvents(loaded.state);
+        else this.franceIntelPanel.markEventsUnavailable();
+      }
       return fetchFranceIntelBrief(snapshot, lang, loaded?.briefEvents ?? []);
     }).then((result) => {
       if (!result || requestId !== this.franceIntelBriefRequestId) return;

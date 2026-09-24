@@ -11,7 +11,7 @@ import type {
   DetectedSituation,
   StructuredBrief,
 } from '../types/index.ts';
-import { renderChangesSection, renderEventsSection, resolveEvidenceRef, type EventDetailState } from './france-intel-events.ts';
+import { renderChangesSection, renderEventsSection, resolveEvidenceRef, unavailableEventsState, type EventDetailState } from './france-intel-events.ts';
 import { fetchEventDetail } from '../services/news-events.ts';
 import {
   filterFuelPriceSeries,
@@ -273,6 +273,11 @@ export class FranceIntelPanel extends Panel {
   updateEvents(state: IntelEventsState): void {
     this.eventsState = state;
     this.renderEventsSections();
+  }
+
+  /** Modules d'événements non chargés : message explicite plutôt qu'un chargement sans fin. */
+  markEventsUnavailable(): void {
+    this.updateEvents(unavailableEventsState(Date.now()));
   }
 
   destroy(): void {

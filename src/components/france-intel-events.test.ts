@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderChangesSection, renderEventRow, renderEventsSection, resolveEvidenceRef, safeHref } from './france-intel-events.ts';
+import { renderChangesSection, renderEventRow, renderEventsSection, resolveEvidenceRef, safeHref, unavailableEventsState } from './france-intel-events.ts';
 import type { IntelEventsState, NewsEvent } from '../types/index.ts';
 
 const NOW = Date.parse('2026-09-23T08:00:00Z');
@@ -77,5 +77,13 @@ describe('resolveEvidenceRef (relecture finale #3)', () => {
     expect(resolveEvidenceRef('S3', atBrief)).toBeNull();
     expect(resolveEvidenceRef('E42', atBrief)).toEqual({ kind: 'event', id: 42 });
     expect(resolveEvidenceRef('X1', atBrief)).toBeNull();
+  });
+});
+
+describe('module non chargé (relecture finale #7)', () => {
+  it('donne aux deux sections un message explicite au lieu d’un chargement sans fin', () => {
+    const s = unavailableEventsState(NOW);
+    expect(renderChangesSection(s, 'fr', NOW, new Map()).body).toContain('Historique serveur indisponible');
+    expect(renderEventsSection(s, 'fr', NOW, new Map()).body).toContain('Historique serveur indisponible');
   });
 });
