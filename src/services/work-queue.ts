@@ -340,7 +340,9 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   }
 
   const situationIds = new Set(input.situations.map((s) => s.id));
-  const eventTitles = (input.events?.events ?? []).map((e) => normalizeTitle(e.title));
+  // Relecture finale m3 (§14) : seulement les événements qui entrent dans la liste — un jumeau
+  // absent de la liste ne doit pas faire disparaître l'alerte.
+  const eventTitles = (input.events?.events ?? []).filter(eventEnters).map((e) => normalizeTitle(e.title));
   for (const a of input.alerts) {
     // Arbitrages A2 et A3 : la météo est couverte par les lignes officielles, un incendie par la
     // situation du moteur de même identifiant, une alerte presse par l'événement de même titre.

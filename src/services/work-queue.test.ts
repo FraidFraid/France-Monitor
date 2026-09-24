@@ -105,6 +105,18 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(q.items.find((i) => i.key === 'alert:news-alert-2')?.theme).toBe('security');
   });
 
+  it('alerte presse : dédoublonnée seulement contre un événement affiché dans la liste (relecture finale m3, §14)', () => {
+    const alert = situation({ id: 'news-alert-1', type: 'NEWS_ALERT', severity: 'critical', title: 'Explosion dans une usine chimique de Seine-Mar...', category: 'security' });
+    // Jumeau non corroboré (jaune, source unique) ou clos : il n'entre pas, l'alerte reste.
+    for (const twin of [event({ severity: 'medium', independentCount: 1 }), event({ status: 'closed' })]) {
+      const q = buildWorkQueue(input({ alerts: [alert], events: eventsState({ events: [twin] }) }));
+      expect(keys(q)).toEqual(['alert:news-alert-1']);
+    }
+    // Jumeau affiché : l'alerte s'efface derrière lui.
+    const shown = buildWorkQueue(input({ alerts: [alert], events: eventsState({ events: [event()] }) }));
+    expect(keys(shown)).toEqual(['event:42']);
+  });
+
   it('alertes officielles orange ou rouges regroupées par source et niveau, violet compté rouge', () => {
     const groups = officialAlertGroups(
       ecowatt({ '53': 'red', '11': 'orange', '84': 'green' }),
