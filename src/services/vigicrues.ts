@@ -7,6 +7,8 @@
 
 import type { FloodSegment, FloodVigilanceLevel } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { dedupe } from '../utils/inflight.ts';
+import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('vigicrues', {
@@ -21,6 +23,13 @@ const LEVEL_MAP: Record<number, FloodVigilanceLevel> = {
 
 let cache: { data: FloodSegment[]; fetchedAt: number } | null = null;
 const CACHE_TTL = 15 * 60_000; // 15 min
+
+const PERSIST_TTL_MS = 10 * 60_000;
+const PERSIST_KEY = 'vigicrues';
+
+function isFloodSegmentArray(value: unknown): value is FloodSegment[] {
+    return Array.isArray(value);
+}
 
 function parseVigicruesGeoJson(
     geojson: GeoJSON.FeatureCollection,
@@ -68,6 +77,13 @@ function parseVigicruesGeoJson(
 export async function fetchVigicrues(): Promise<FloodSegment[]> {
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;
 
+    // Rechargement de page : peindre le dernier état connu (< 10 min) avant réseau.
+    const persisted = readPersisted<FloodSegment[]>(PERSIST_KEY, PERSIST_TTL_MS, isFloodSegmentArray);
+    if (persisted) {
+        cache = { data: persisted, fetchedAt: Date.now() };
+        return persisted;
+    }
+
     Watchdog.report('vigicrues', { type: 'loading' });
     const t0 = Date.now();
 
@@ -77,17 +93,21 @@ export async function fetchVigicrues(): Promise<FloodSegment[]> {
         // navigateur direct, qui échoue en prod (« Failed to fetch »).
         const target = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
         const url = `/api/json-proxy?url=${encodeURIComponent(target)}`;
-        const resp = await fetch(url, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(10000),
+        // Single-flight : évite un doublon si deux consommateurs (couche +
+        // panneau) réclament Vigicrues au même instant.
+        const geojson = await dedupe(url, async () => {
+            const resp = await fetch(url, {
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(10000),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return (await resp.json()) as GeoJSON.FeatureCollection;
         });
 
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-        const geojson = await resp.json() as GeoJSON.FeatureCollection;
         const segments = parseVigicruesGeoJson(geojson, 'live');
 
         cache = { data: segments, fetchedAt: Date.now() };
+        writePersisted(PERSIST_KEY, segments);
         Watchdog.report('vigicrues', { type: 'success', responseTimeMs: Date.now() - t0 });
 
         const avgVertices = segments.length > 0

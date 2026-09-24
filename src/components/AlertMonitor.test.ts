@@ -137,3 +137,23 @@ describe('AlertMonitor — validation du schéma de linkUrl (bonus)', () => {
     monitor.destroy();
   });
 });
+
+describe('AlertMonitor — langage commun L1', () => {
+  it('affiche le niveau en couleur de vigilance et la confiance en mots, sans pourcentage', () => {
+    const container = document.createElement('div');
+    const monitor = new AlertMonitor(container);
+    monitor.update([situation({ severity: 'critical', confidence: 0.93 })]);
+
+    const item = container.querySelector('.sit-mon__item');
+    expect(item?.querySelector('.fm-vig--rouge')?.textContent).toBe('Rouge');
+    expect(item?.querySelector('.sit-mon__item-conf')?.textContent).toBe('confiance élevée');
+    expect(item?.textContent).not.toContain('CRIT');
+    expect(item?.textContent).not.toMatch(/\d+\s?%/);
+
+    openDetail(container);
+    const detail = document.querySelector('.sit-mon__detail');
+    expect(detail?.querySelector('.fm-vig--rouge')).not.toBeNull();
+    expect(detail?.textContent).not.toMatch(/\d+\s?%/);
+    monitor.destroy();
+  });
+});

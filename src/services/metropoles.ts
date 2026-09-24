@@ -47,24 +47,32 @@ const METROPOLE_GEO: Record<string, { name: string; lon: number; lat: number }> 
 const ODRE_BASE =
     'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-metropoles-tr/records';
 
-const ODRE_URL =
+/** Route un appel ODRÉ via le proxy serveur (cache CDN, conformité
+ * « tout passe par /api/* », §2.4 de l'audit). */
+function opendataProxyUrl(upstreamUrl: string): string {
+    return `/api/opendata-proxy?url=${encodeURIComponent(upstreamUrl)}`;
+}
+
+const ODRE_URL = opendataProxyUrl(
     ODRE_BASE +
     '?limit=100' +
     '&select=code_insee_epci,libelle_metropole,date_heure,consommation' +
     '&where=consommation%20is%20not%20null' +
-    '&order_by=-date_heure';
+    '&order_by=-date_heure',
+);
 
-/** Construit l'URL ODRE pour une fenêtre de ±30 min autour de J-1 (même heure). */
+/** Construit l'URL ODRE (via proxy) pour une fenêtre de ±30 min autour de J-1 (même heure). */
 function buildJ1Url(): string {
     const j1 = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const j1start = new Date(j1.getTime() - 30 * 60 * 1000).toISOString().replace(/\.\d+Z$/, 'Z');
     const j1end   = new Date(j1.getTime() + 30 * 60 * 1000).toISOString().replace(/\.\d+Z$/, 'Z');
     const where = `consommation is not null AND date_heure >= "${j1start}" AND date_heure <= "${j1end}"`;
-    return ODRE_BASE +
+    const upstream = ODRE_BASE +
         '?limit=100' +
         '&select=code_insee_epci,consommation' +
         `&where=${encodeURIComponent(where)}` +
         '&order_by=-date_heure';
+    return opendataProxyUrl(upstream);
 }
 
 /** Fetch silencieux des données J-1 → Map<code, consumptionMW>. */

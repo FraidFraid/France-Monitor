@@ -61,7 +61,11 @@ export abstract class Panel {
       titleRow.appendChild(icon);
     }
 
-    const title = document.createElement('span');
+    // Titre sémantique réel (h2) au lieu d'un <span> — les panneaux n'avaient
+    // jusqu'ici aucune balise de titre visible par un lecteur d'écran/plan de
+    // page (audit UI 2026-09 §5). La classe `panel-title` porte toujours le
+    // style visuel (voir reset des marges/font dans main.css).
+    const title = document.createElement('h2');
     title.className = 'panel-title';
     title.textContent = this.options.title;
     titleRow.appendChild(title);

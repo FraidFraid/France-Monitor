@@ -13,32 +13,48 @@
   --text-muted: #8a8a9a;
   --text-accent: #6c8cff;
 
+  /* ─── Sévérité — jeu de couleurs de base commun (audit UI 2026-09 §4/§6/§8b) ───
+     5 échelles (--threat-*, --ecowatt-*, --meteo-*, --flood-*, + truthBadge.ts
+     séparément en JS) redéfinissaient les mêmes teintes indépendamment. Ces 7
+     tokens sont la source unique quand la teinte est identique ou visuellement
+     équivalente ; les couleurs OFFICIELLES Météo-France/Vigicrues/Écowatt et le
+     rouge/orange propres à --threat-* restent inchangées à l'hexa près (aucune
+     re-teinte), cf. consignes d'audit — on nomme, on ne recolore pas. */
+  --sev-green: #34c759;
+  --sev-yellow: #ffcc00;
+  --sev-orange: #ff9500;
+  --sev-red: #ff3b30;
+  --sev-purple: #af52de;
+  --sev-blue: #5ac8fa;
+  --sev-grey: #6b7280;
+
   /* Threat levels */
   --threat-critical: #ff2d55;
   /* Variante éclaircie réservée au TEXTE critique sur surfaces (contraste ≥ 4,5:1), les fonds de badges gardent --threat-critical */
   --threat-critical-text: #ff5c7a;
+  /* #ff6b35 : orange-rouge propre à l'app, visuellement distinct de --sev-orange (#ff9500, Écowatt/Météo/Vigicrues officiel) — volontairement non consolidé */
   --threat-high: #ff6b35;
-  --threat-medium: #ffcc00;
-  --threat-low: #34c759;
-  --threat-info: #5ac8fa;
+  --threat-medium: var(--sev-yellow);
+  --threat-low: var(--sev-green);
+  --threat-info: var(--sev-blue);
 
-  /* Ecowatt signals */
-  --ecowatt-green: #34c759;
-  --ecowatt-orange: #ff9500;
-  --ecowatt-red: #ff3b30;
+  /* Ecowatt signals — teintes officielles RTE, identiques à --sev-* */
+  --ecowatt-green: var(--sev-green);
+  --ecowatt-orange: var(--sev-orange);
+  --ecowatt-red: var(--sev-red);
 
-  /* Meteo vigilance */
-  --meteo-green: #34c759;
-  --meteo-yellow: #ffcc00;
-  --meteo-orange: #ff9500;
-  --meteo-red: #ff3b30;
-  --meteo-violet: #af52de;
+  /* Meteo vigilance — teintes officielles Météo-France, identiques à --sev-* */
+  --meteo-green: var(--sev-green);
+  --meteo-yellow: var(--sev-yellow);
+  --meteo-orange: var(--sev-orange);
+  --meteo-red: var(--sev-red);
+  --meteo-violet: var(--sev-purple);
 
-  /* Flood vigilance */
-  --flood-green: #34c759;
-  --flood-yellow: #ffcc00;
-  --flood-orange: #ff9500;
-  --flood-red: #ff3b30;
+  /* Flood vigilance — teintes officielles Vigicrues, identiques à --sev-* */
+  --flood-green: var(--sev-green);
+  --flood-yellow: var(--sev-yellow);
+  --flood-orange: var(--sev-orange);
+  --flood-red: var(--sev-red);
 
   /* UI Elements */
   --border-color: #2a2a3e;
@@ -69,6 +85,29 @@
   --z-popup: 30;
   --z-modal: 40;
   --z-tooltip: 50;
+
+  /* Z-index — valeurs en dur nommées (audit UI 2026-09 §4/§8a) : 17 valeurs
+     étaient jusqu'ici écrites en dur dans le fichier, en plus de l'échelle
+     ci-dessus. Chaque token ci-dessous reprend EXACTEMENT la valeur en dur
+     qu'il remplace (zéro changement visuel) ; le nom documente le rôle réel
+     du site d'usage plutôt qu'un palier générique. */
+  --z-lift: 1;               /* survol/badge local, au-dessus des seuls voisins immédiats */
+  --z-lift-sm: 2;             /* bouton fermer / élément sticky local */
+  --z-lift-md: 5;             /* bulle info locale (ex. tooltip pétrole dans une carte) */
+  --z-map-widget: 12;         /* widgets flottants sur la carte (moniteurs situation/alerte) */
+  --z-map-widget-popup: 13;   /* popup au-dessus des widgets carte ci-dessus */
+  --z-map-overlay: 50;        /* bande flottante au-dessus du canvas carte, sous les tooltips */
+  --z-nav-drawer: 200;        /* tiroir mobile plein écran (sidebar droite) */
+  --z-nav-drawer-toggle: 420; /* bouton flottant d'ouverture du tiroir mobile */
+  --z-detail-overlay: 500;    /* vue détail plein écran (fixed inset) */
+  --z-skip-link: 1000;        /* lien d'évitement RGAA, au-dessus de tout le contenu */
+  --z-map-popup: 1200;        /* popup carte (clic sur un marqueur) */
+  --z-command-modal: 1400;    /* modale légère (ex. Sentinel) */
+  --z-canvas-tooltip: 2000;   /* tooltips deck.gl/AIS rendus au-dessus du canvas WebGL */
+  --z-detail-panel: 2100;     /* panneau détail persistant (ex. fiche gare) */
+  --z-drawer: 5000;           /* tiroir latéral applicatif (ex. console Intelligence France) */
+  --z-fixed-tooltip: 9999;    /* tooltip position fixed, au-dessus des modales */
+  --z-max: 10000;             /* sommet de la pile — modale plein écran prioritaire */
 
   /* Font */
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -118,7 +157,7 @@ body {
   position: fixed;
   top: 8px;
   left: 8px;
-  z-index: 1000;
+  z-index: var(--z-skip-link);
   padding: 10px 16px;
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -138,6 +177,20 @@ body {
   opacity: 1;
   outline: 2px solid var(--text-accent);
   outline-offset: 2px;
+}
+
+/* Utilitaire : contenu présent pour les lecteurs d'écran, invisible à l'écran
+   (RGAA — ex. libellés de contexte, titres de section repris ailleurs visuellement). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ═══ Scrollbar ═══ */
@@ -206,6 +259,147 @@ button.header-quality-link {
   background: transparent;
   cursor: pointer;
   font-family: inherit;
+}
+
+/* ═══ Bascule sidebar tablette (audit UI 2026-09 §5.3.5) ═══
+   Masqué par défaut ; rendu visible uniquement entre 769 et 1180px, dans le
+   bloc media tablette existant (#app.sidebar-collapsed .sidebar). */
+.header-sidebar-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.header-sidebar-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-color-light);
+}
+
+.header-sidebar-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ═══ Menu « ⋯ » (Note de situation / Export) — audit UI 2026-09 §5.3.4 ═══ */
+.header-overflow {
+  position: relative;
+}
+
+.header-overflow-trigger {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.header-overflow-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: rgba(18, 18, 26, 0.97);
+  border: 1px solid var(--border-color-light);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+  z-index: calc(var(--z-header) + 1);
+}
+
+.header-overflow-menu__item {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+
+.header-overflow-menu__item:hover,
+.header-overflow-menu__item:focus-visible {
+  background: var(--bg-surface-hover);
+}
+
+/* ═══ Sélecteur « panneaux ouverts » (audit UI 2026-09 §5.3.3) ═══
+   Ancré en haut à droite de la carte, sous le header. Peuplé par
+   refreshFloatingPanelSwitcher() ; caché sous 2 panneaux éligibles. */
+.floating-panel-switcher {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: var(--z-map-widget);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 24px));
+}
+
+.floating-panel-switcher__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: rgba(18, 18, 26, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.floating-panel-switcher__chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color-light);
+}
+
+.floating-panel-switcher__chip.is-active {
+  color: var(--text-primary);
+  background: rgba(108, 140, 255, 0.18);
+  border-color: var(--text-accent);
+}
+
+.floating-panel-switcher__icon {
+  display: inline-flex;
+  font-size: 12px;
+}
+
+.floating-panel-switcher__icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (max-width: 768px) {
+  .floating-panel-switcher {
+    max-width: calc(100% - 24px);
+  }
+
+  .floating-panel-switcher__label {
+    display: none;
+  }
 }
 
 .sources-quality-header {
@@ -1569,6 +1763,10 @@ button.header-quality-link {
 }
 
 .panel-title {
+  /* Reset marge/font par défaut du <h2> natif — style visuel inchangé
+     (titre désormais sémantique, audit UI 2026-09 §5). */
+  margin: 0;
+  font: inherit;
   font-size: 13px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1752,6 +1950,15 @@ button.header-quality-link {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  /* Pastille de chargement désormais visible en permanence dans le
+     déclencheur compact « Sources » du header — pas de clignotement continu. */
+  .status-dot--loading {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* ═══ Map Container ═══ */
 .map-container {
   flex: none;
@@ -1782,7 +1989,7 @@ button.header-quality-link {
   transform: translateX(-50%);
   width: max-content;
   max-width: min(560px, calc(100% - 48px));
-  z-index: 13;
+  z-index: var(--z-map-widget-popup);
   background: rgba(10, 12, 20, 0.82);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1811,7 +2018,6 @@ button.header-quality-link {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.09em;
-  text-transform: uppercase;
   color: var(--text-secondary, #9898a8);
 }
 
@@ -1858,7 +2064,6 @@ button.header-quality-link {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   line-height: 1;
   padding: 3px 8px;
   border-radius: 4px;
@@ -1886,7 +2091,6 @@ button.header-quality-link {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   line-height: 1;
   padding: 6px 10px;
   border-radius: 999px;
@@ -1975,7 +2179,6 @@ button.header-quality-link {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--threat-low, #34c759);
   border: 1px solid rgba(52, 199, 89, 0.4);
   border-radius: 4px;
@@ -2035,7 +2238,7 @@ button.header-quality-link {
   left: 12px;
   width: 400px;
   max-width: calc(100vw - 24px);
-  z-index: 12;
+  z-index: var(--z-map-widget);
   background: rgba(10, 12, 20, 0.76);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -2051,7 +2254,7 @@ button.header-quality-link {
   top: 12px;
   left: 12px;
   width: 272px;
-  z-index: 12;
+  z-index: var(--z-map-widget);
   background: rgba(10, 12, 20, 0.76);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -2133,7 +2336,6 @@ button.header-quality-link {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-primary, #f1f5f9);
   flex: 1;
 }
@@ -2280,7 +2482,7 @@ button.header-quality-link {
 .sit-mon__detail {
   position: fixed;
   inset: 0;
-  z-index: 500;
+  z-index: var(--z-detail-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2364,7 +2566,6 @@ button.header-quality-link {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted, #6b7280);
   margin-bottom: 6px;
 }
@@ -2569,15 +2770,53 @@ button.header-quality-link {
   align-items: start;
 }
 
-.under-map-market-group {
+/* ═══ Bande marchés/matières premières fusionnée (audit UI 2026-09 §5.3.7) ═══
+   Avant : 2 cartes .under-map-card empilées (chacune bordure/fond/ombre
+   propre). MarketStrip/CommodityStrip gardent leur mount() intact (ils
+   rendent toujours leur propre <section class="under-map-card">) — c'est ce
+   wrapper qui absorbe la carte visuelle unique et neutralise celle de
+   chaque enfant ci-dessous. */
+.under-map-market-band {
   display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+  flex-direction: row;
   min-width: 0;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(26, 26, 46, 0.96), rgba(18, 18, 26, 0.96));
+  border: 1px solid var(--border-color);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.under-map-market-group > div {
+
+.under-map-market-band__col {
   flex: 1;
   min-width: 0;
+  display: flex;
+}
+
+.under-map-market-band__col:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.under-map-market-band__col > .under-map-card {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .under-map-market-band {
+    flex-direction: column;
+  }
+
+  .under-map-market-band__col:first-child {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
 }
 
 .under-map-card {
@@ -2958,13 +3197,7 @@ button.header-quality-link {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-.market-strip__item.is-up {
-  border-color: rgba(52, 199, 89, 0.24);
-}
 
-.market-strip__item.is-down {
-  border-color: rgba(255, 107, 53, 0.24);
-}
 
 .market-strip__topline {
   display: flex;
@@ -3003,17 +3236,8 @@ button.header-quality-link {
   font-weight: 600;
 }
 
-.market-strip__item.is-up .market-strip__delta {
-  color: var(--threat-low);
-}
 
-.market-strip__item.is-down .market-strip__delta {
-  color: var(--threat-high);
-}
 
-.market-strip__item.is-flat .market-strip__delta {
-  color: var(--text-secondary);
-}
 
 .market-strip__sparkline {
   width: 100%;
@@ -3133,7 +3357,7 @@ button.header-quality-link {
   padding: 12px;
   max-width: 320px;
   min-width: 240px;
-  z-index: 1200;
+  z-index: var(--z-map-popup);
   pointer-events: auto;
   backdrop-filter: blur(8px);
   animation: popupFadeIn 0.15s ease-out;
@@ -3495,7 +3719,7 @@ button.header-quality-link {
   outline: 1px solid rgba(108, 140, 255, 0.4);
   outline-offset: -1px;
   transform: scale(1.1);
-  z-index: 1;
+  z-index: var(--z-lift);
 }
 
 .news-heatmap__cell--selected {
@@ -3605,6 +3829,55 @@ button.header-quality-link {
   cursor: not-allowed;
 }
 
+/* « Voir plus » — pagination locale du flux live (distinct du bouton historique ci-dessus) */
+.under-map-news__live-more {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(108, 140, 255, 0.08);
+  border: 1px solid rgba(108, 140, 255, 0.2);
+  border-radius: 10px;
+  color: var(--text-accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.under-map-news__live-more:hover {
+  background: rgba(108, 140, 255, 0.14);
+  border-color: rgba(108, 140, 255, 0.35);
+}
+
+/* Bascule « Afficher/Masquer les brèves » — bruit PQR masqué par défaut */
+.under-map-news__noise-toggle {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.under-map-news__noise-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.under-map-news__noise-toggle--active {
+  color: var(--text-accent);
+  border-color: rgba(108, 140, 255, 0.4);
+  background: rgba(108, 140, 255, 0.08);
+}
+
 .under-map-news__history-footer {
   text-align: center;
   font-size: 10px;
@@ -3674,7 +3947,7 @@ button.header-quality-link {
     bottom: 0;
     transform: translateX(100%);
     transition: transform 0.25s ease;
-    z-index: 200;
+    z-index: var(--z-nav-drawer);
     width: 100%;
     max-width: 360px;
     border-left: none;
@@ -3692,7 +3965,7 @@ button.header-quality-link {
     position: absolute;
     top: 12px;
     right: 12px;
-    z-index: 420;
+    z-index: var(--z-nav-drawer-toggle);
     background: var(--panel-bg);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
@@ -3703,12 +3976,6 @@ button.header-quality-link {
     justify-content: center;
     font-size: 16px;
     cursor: pointer;
-  }
-
-  .toast-container {
-    top: calc(var(--header-height) + 10px);
-    left: 10px;
-    right: 10px;
   }
 
   .update-notification {
@@ -4026,122 +4293,6 @@ button.header-quality-link {
   }
 }
 
-/* ═══ Toast Notifications ═══ */
-.toast-container {
-  position: fixed;
-  top: calc(var(--header-height) + 12px);
-  left: calc(var(--sidebar-width) + 16px);
-  right: 16px;
-  transform: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: var(--z-modal);
-  pointer-events: none;
-  max-width: none;
-  width: auto;
-  align-items: stretch;
-}
-
-.toast {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: linear-gradient(135deg, rgba(18, 18, 26, 0.84), rgba(10, 10, 15, 0.76));
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--panel-radius);
-  padding: 11px 15px;
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34),
-    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
-  pointer-events: auto;
-  animation: toastSlideIn 0.3s ease-out;
-  backdrop-filter: blur(14px) saturate(1.05);
-  -webkit-backdrop-filter: blur(14px) saturate(1.05);
-}
-
-.toast--critical {
-  border-color: rgba(255, 45, 85, 0.34);
-  background:
-    radial-gradient(circle at left center, rgba(255, 45, 85, 0.18), transparent 28%),
-    linear-gradient(135deg, rgba(18, 18, 26, 0.88), rgba(10, 10, 15, 0.78));
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34),
-    0 0 18px rgba(255, 45, 85, 0.18);
-}
-
-.toast--high {
-  border-color: rgba(255, 107, 53, 0.34);
-  background:
-    radial-gradient(circle at left center, rgba(255, 107, 53, 0.16), transparent 28%),
-    linear-gradient(135deg, rgba(18, 18, 26, 0.88), rgba(10, 10, 15, 0.78));
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34),
-    0 0 18px rgba(255, 107, 53, 0.14);
-}
-
-@keyframes toastSlideIn {
-  from {
-    transform: translateY(-10px);
-    opacity: 0;
-  }
-
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.toast-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-}
-
-.toast-title {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.toast-action {
-  background: rgba(108, 140, 255, 0.15);
-  color: var(--text-accent);
-  border: 1px solid rgba(108, 140, 255, 0.3);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.toast-action:hover {
-  background: rgba(108, 140, 255, 0.25);
-}
-
-.toast-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  font-size: 16px;
-  line-height: 1;
-  transition: color var(--transition-fast);
-}
-
-.toast-close:hover {
-  color: var(--text-primary);
-}
-
 /* ═══ Update Notification ═══ */
 .update-notification {
   position: fixed;
@@ -4204,51 +4355,6 @@ button.header-quality-link {
 
 .update-notification__dismiss:hover {
   color: var(--text-primary);
-}
-
-/* Toast exit animation */
-.toast--exiting {
-  animation: toastSlideOut 0.25s ease-in forwards;
-}
-
-@keyframes toastSlideOut {
-  from {
-    transform: translateY(0);
-    opacity: 1;
-  }
-
-  to {
-    transform: translateY(-10px);
-    opacity: 0;
-  }
-}
-
-/* Military surge toasts */
-.toast--military {
-  border-left: 3px solid var(--military-color, #4ecdc4);
-}
-
-.toast--military.toast--critical {
-  border-left-color: #ff2d55;
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34),
-    0 0 18px rgba(255, 45, 85, 0.2);
-}
-
-.toast--military.toast--high {
-  border-left-color: #ff9500;
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34),
-    0 0 16px rgba(255, 149, 0, 0.18);
-}
-
-.toast--medium {
-  border-color: rgba(255, 204, 0, 0.4);
-  background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(255, 204, 0, 0.06) 100%);
-}
-
-.toast--military.toast--medium {
-  border-left-color: #ffcc00;
 }
 
 /* ═══ Cluster Popup Styles ═══ */
@@ -4427,7 +4533,7 @@ button.header-quality-link {
   width: 390px;
   max-width: calc(100vw - 820px);
   min-width: 340px;
-  z-index: 2100;
+  z-index: var(--z-detail-panel);
   pointer-events: auto;
 }
 
@@ -4604,7 +4710,7 @@ button.header-quality-link {
   color: #b4bfd4;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .rail-station-detail-panel {
     left: 12px;
     right: 12px;
@@ -4614,7 +4720,7 @@ button.header-quality-link {
   }
 }
 
-@media (min-width: 721px) and (max-width: 1180px) {
+@media (min-width: 769px) and (max-width: 1180px) {
   .rail-station-detail-panel {
     left: 320px;
     right: 16px;
@@ -4622,42 +4728,41 @@ button.header-quality-link {
     min-width: 0;
     max-width: none;
   }
+
+  /* ─── Vraie mise en page tablette (audit UI 2026-09 §3/§8c) ───
+     Avant : saut direct du desktop (sidebar 380px fixe) au mode mobile
+     (sidebar 100% empilée) — aucune transition intermédiaire. Ici : sidebar
+     plus étroite (≈300px) et repliable. Le bouton de bascule (ajouté par
+     App.ts) pose/retire la classe `sidebar-collapsed` sur la racine `#app` ;
+     la carte récupère l'espace libéré (`.map-area` est déjà `flex:1`). */
+  .sidebar {
+    width: 300px;
+    transition: width var(--transition-normal);
+  }
+
+  #app.sidebar-collapsed .sidebar {
+    width: 0;
+    min-width: 0;
+    border-right: none;
+    overflow: hidden;
+  }
+
+  #app.sidebar-collapsed .sidebar-content {
+    padding: 0;
+  }
+
+  /* Bouton de bascule sidebar (audit UI 2026-09 §5.3.5) : uniquement dans
+     cette plage tablette — desktop garde la sidebar 380px fixe, mobile
+     empile déjà tout en pleine largeur. */
+  .header-sidebar-toggle {
+    display: inline-flex;
+  }
 }
 
-/* ═══ TimeBar (style WorldMonitor) ═══ */
-.time-bar {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.time-bar-buttons {
-  display: flex;
-  gap: 4px;
-}
-
-.time-bar-btn {
-  flex: 1;
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.time-bar-btn:hover {
-  border-color: var(--text-muted);
-  color: var(--text-primary);
-}
-
-.time-bar-btn.active {
-  background: var(--threat-low);
-  border-color: var(--threat-low);
-  color: var(--bg-primary);
+@media (min-width: 769px) and (max-width: 1180px) and (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
 }
 
 /* ═══ LayerPanel (style WorldMonitor COUCHES) ═══ */
@@ -4728,6 +4833,99 @@ button.header-quality-link {
 
 .layer-panel-list.collapsed {
   display: none;
+}
+
+/* ─── Vues prédéfinies (audit 2026-09 : 5 vues plutôt que 35 cases) ─── */
+.layer-panel-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px 10px;
+}
+
+.layer-panel-view-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1 1 30%;
+  min-width: 68px;
+  padding: 7px 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.layer-panel-view-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.layer-panel-view-btn.active {
+  background: rgba(68, 255, 136, 0.1);
+  border-color: rgba(68, 255, 136, 0.4);
+  color: var(--threat-low);
+}
+
+.layer-panel-view-btn__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.layer-panel-view-btn__label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+/* ─── Section repliable « Personnaliser les couches » ─── */
+.layer-panel-customize {
+  border-top: 1px solid var(--border-color);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.layer-panel-customize-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background var(--transition-fast);
+}
+
+.layer-panel-customize-header:hover {
+  background: var(--bg-surface-hover);
+}
+
+.layer-panel-customize-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.layer-panel-customize-icon {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.layer-panel-customize-body {
+  padding-top: 2px;
 }
 
 .layer-panel-item {
@@ -5203,7 +5401,7 @@ button.header-quality-link {
   cursor: pointer;
   padding: 2px 4px;
   transition: color 0.15s;
-  z-index: 2;
+  z-index: var(--z-lift-sm);
 }
 
 .wm-popup-close:hover {
@@ -5480,7 +5678,7 @@ button.header-quality-link {
   box-sizing: border-box;
 
   /* z-index ajusté : doit être au dessus du canvas de la map MAIS en dessous des tooltips (souvent 1000+) */
-  z-index: 50;
+  z-index: var(--z-map-overlay);
   pointer-events: none;
   /* Clics passent à travers sur l'espace vide... */
 
@@ -5512,6 +5710,7 @@ button.header-quality-link {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
 }
@@ -5520,6 +5719,25 @@ button.header-quality-link {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.legend-collapse-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.legend-collapse-btn__label {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
 }
 
 /* Zone scrollable horizontalement */
@@ -5803,6 +6021,69 @@ button.header-quality-link {
   }
 }
 
+/* ═══ Bottom sheets mobile — panneaux flottants « premium modal » (audit UI
+   2026-09 §5.4) ═══
+   Avant : ces panneaux (EnvironmentPanel, EnergyPanel, FiresPanel, CyberPanel,
+   DefensePanel, GasPanel, NuclearPanel, OilPanel, MaritimePanel — tous bâtis
+   sur `getPremiumModalStyle()`/`panelHeader.ts`) restent positionnés comme sur
+   desktop (`position:absolute; top:var(--right-panel-top); right:20px`) même
+   sur mobile, où ils recouvrent une bonne partie de la carte sans geste de
+   fermeture dédié. Ici : ancrés en bas, pleine largeur, hauteur plafonnée à
+   60vh, coins arrondis en haut, scroll interne (déjà géré par le conteneur
+   `.xxx-panel-content` flex:1/overflow-y:auto de chaque panel), barre de
+   poignée visible, zone de sécurité iOS. `!important` nécessaire : la
+   position/largeur est posée en `style.cssText` inline par chaque composant.
+   MaritimePanel, NationalHealthPanel, TrafficPanel, TransportPanel, ISNRPanel
+   et HealthBarometerPanel portent la classe générique `.fm-floating-panel`
+   (leur conteneur n'avait pas de classe propre). */
+@media (max-width: 768px) {
+  .cyber-panel-modal,
+  .defense-panel-modal,
+  .energy-panel-modal,
+  .environment-panel-modal,
+  .fires-panel-modal,
+  .gas-panel-modal,
+  .nuclear-panel-modal,
+  .oil-panel-modal,
+  .fm-floating-panel {
+    position: fixed !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 60vh !important;
+    border-radius: 16px 16px 0 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Ces panneaux se centrent ou se déplacent par transform/left/top inline. */
+  .fm-floating-panel {
+    transform: none !important;
+    overflow-y: auto !important;
+  }
+
+  .cyber-panel-modal::before,
+  .defense-panel-modal::before,
+  .energy-panel-modal::before,
+  .environment-panel-modal::before,
+  .fires-panel-modal::before,
+  .gas-panel-modal::before,
+  .nuclear-panel-modal::before,
+  .oil-panel-modal::before,
+  .fm-floating-panel::before {
+    content: '';
+    flex-shrink: 0;
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 10px auto 2px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+}
+
 /* Responsive adjustments for cyber panel */
 @media (max-width: 480px) {
   .cyber-panel-modal {
@@ -5821,12 +6102,12 @@ button.header-quality-link {
 }
 
 .deck-tooltip {
-  z-index: 2000 !important;
+  z-index: var(--z-canvas-tooltip) !important;
   pointer-events: none;
 }
 
 .ais-tooltip {
-  z-index: 2000 !important;
+  z-index: var(--z-canvas-tooltip) !important;
   pointer-events: none;
 }
 
@@ -6165,7 +6446,7 @@ button.header-quality-link {
 }
 
 /* Responsive : sur mobile, masquer le panel */
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .dn-panel { display: none !important; }
 }
 
@@ -6302,7 +6583,7 @@ button.header-quality-link {
 .sentinel-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1400;
+  z-index: var(--z-command-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6416,7 +6697,7 @@ button.header-quality-link {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 1;
+  z-index: var(--z-lift);
   display: inline-flex;
   align-items: center;
   min-height: 26px;
@@ -6690,7 +6971,7 @@ button.header-quality-link {
   width: 480px;
   height: calc(100vh - var(--header-height));
   height: calc(100dvh - var(--header-height));
-  z-index: 5000;
+  z-index: var(--z-drawer);
   background: var(--bg-primary);
   border-left: 1px solid var(--border-color);
   box-shadow: -12px 0 40px rgba(0, 0, 0, 0.42);
@@ -6723,7 +7004,6 @@ button.header-quality-link {
   color: var(--text-muted);
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .frintel-subtitle-live { color: var(--text-accent); }
@@ -6777,7 +7057,6 @@ button.header-quality-link {
 .frintel-card-title {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -6835,13 +7114,23 @@ button.header-quality-link {
 }
 
 .frintel-gauge-scale {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 10px;
+  margin-top: 3px;
+}
+
+.frintel-gauge-scale-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 8px;
   color: var(--text-muted);
-  margin-top: 3px;
+  white-space: nowrap;
 }
+
+.frintel-gauge-scale-tick:first-child { transform: none; }
+.frintel-gauge-scale-tick:last-child { transform: translateX(-100%); }
 
 .frintel-spark { width: 100%; height: 26px; margin-top: 8px; display: block; }
 
@@ -6978,7 +7267,6 @@ button.header-quality-link {
 .frintel-bluf-kicker {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-accent);
   margin-bottom: 4px;
 }
@@ -6988,7 +7276,6 @@ button.header-quality-link {
 .frintel-jd-kicker {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-muted);
   margin: 8px 0 4px;
 }
@@ -7035,6 +7322,43 @@ button.header-quality-link {
 .frintel-watch-item { display: flex; gap: 6px; align-items: baseline; margin-top: 5px; }
 .frintel-watch-h { color: var(--threat-medium); border-color: color-mix(in srgb, var(--threat-medium) 35%, transparent); }
 .frintel-watch-text { font-size: 11px; color: var(--text-secondary); }
+
+/* ─ Événements consolidés & « Depuis votre dernière visite » ─ */
+
+.frintel-ev { padding: 6px 0; border-top: 1px solid var(--border-color); }
+.frintel-ev:first-child { border-top: none; }
+
+.frintel-ev-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.frintel-ev-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+.frintel-ev-title { font-size: 11.5px; color: var(--text-primary); line-height: 1.4; }
+.frintel-ev-age { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9px; color: var(--text-muted); align-self: center; }
+.frintel-ev-detail { margin: 6px 0 0 14px; font-size: 11px; }
+.frintel-ev-detail ul { list-style: none; margin: 0; padding: 0; }
+.frintel-ev-detail li { margin-top: 4px; line-height: 1.4; }
+.frintel-ev-detail a { color: var(--text-secondary); }
+.frintel-ev-src { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9px; color: var(--text-muted); margin-right: 6px; }
+.frintel-ev-log { margin-top: 6px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9px; color: var(--text-muted); }
+.frintel-changes-totals { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9.5px; color: var(--text-secondary); margin: 6px 0 4px; }
+
+.frintel-jd-refs { display: inline-flex; gap: 3px; margin-right: 6px; }
+.frintel-ev-ref { cursor: pointer; background: none; color: var(--text-accent); }
+.frintel-jd-unsupported { color: var(--meteo-orange); font-weight: 700; }
+
+.frintel-ev.is-flash,
+.frintel-sit.is-flash { outline: 1px solid var(--text-accent); outline-offset: 2px; }
 
 /* ─ Domaines ─ */
 
@@ -7085,7 +7409,7 @@ button.header-quality-link {
 
 .frintel-oil-block { margin-top: 10px; border: 1px solid var(--border-color); padding: 8px 10px; }
 .frintel-oil-title {
-  font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 9px; letter-spacing: 0.14em;
   color: var(--text-muted); margin-bottom: 6px;
 }
 .frintel-oil-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -7096,8 +7420,9 @@ button.header-quality-link {
   font-size: 13px;
 }
 .frintel-oil-badge { font-size: 9px; }
+.frintel-oil-value .fm-vig { font-size: 10px; padding: 0 5px; vertical-align: 1px; }
 .frintel-fuel-history { margin-top: 8px; }
-.frintel-fuel-history-title { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.frintel-fuel-history-title { font-size: 9px; color: var(--text-muted); letter-spacing: 0.1em; }
 .frintel-fuel-chart { margin-top: 4px; }
 .frintel-fuel-legend { margin-top: 4px; }
 .frintel-fuel-row {
@@ -7122,7 +7447,7 @@ button.header-quality-link {
 .frintel-timeline-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; }
 .frintel-timeline-label {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 8px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: 8px; color: var(--text-muted); letter-spacing: 0.06em;
 }
 .frintel-timeline-track { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .frintel-timeline-cell {
@@ -7137,7 +7462,7 @@ button.header-quality-link {
 
 .fi-infra-widget-slot { border-bottom: 1px solid var(--border-color); }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   .frintel-drawer {
     width: 100vw;
     right: -100vw;
@@ -7158,7 +7483,7 @@ button.header-quality-link {
   position: absolute;
   left: 0;
   top: calc(100% + 8px);
-  z-index: 5;
+  z-index: var(--z-lift-md);
   width: min(280px, calc(100vw - 64px));
   padding: 10px 12px;
   border-radius: 8px;
@@ -7367,7 +7692,7 @@ button.header-quality-link {
 .sit-hist__bar.is-current {
   flex-grow: 1.4 !important;
   box-shadow: 0 0 8px currentColor, 0 0 16px rgba(108, 140, 255, 0.4);
-  z-index: 2;
+  z-index: var(--z-lift-sm);
   filter: brightness(1.3);
   position: relative;
 }
@@ -7445,7 +7770,7 @@ button.header-quality-link {
   font-size: 11px;
   max-width: 240px;
   pointer-events: none;
-  z-index: 9999;
+  z-index: var(--z-fixed-tooltip);
   display: none;
   box-shadow: 0 8px 28px rgba(0,0,0,0.5);
   backdrop-filter: blur(8px);
@@ -7635,7 +7960,7 @@ button.header-quality-link {
   outline-offset: 2px;
 }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
   .fires-multisensor__row { grid-template-columns: 1fr; }
   .fires-multisensor__controls {
     flex-direction: row;
@@ -7671,7 +7996,7 @@ button.header-quality-link {
 .wf-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: var(--z-max);
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -7696,7 +8021,7 @@ button.header-quality-link {
 .wf-modal__header {
   position: sticky;
   top: -18px;
-  z-index: 2;
+  z-index: var(--z-lift-sm);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -7976,7 +8301,7 @@ button.header-quality-link {
   color: var(--text-muted);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .wf-modal-overlay {
     align-items: flex-end;
     padding: 10px;
@@ -8005,7 +8330,7 @@ button.header-quality-link {
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 480px) {
   .wf-observed__grid {
     grid-template-columns: 1fr;
   }
@@ -8014,3 +8339,45 @@ button.header-quality-link {
     grid-column: auto;
   }
 }
+
+/* ─── Langage commun L1 : pastille de niveau (refonte UI, spec §4) ─── */
+.fm-vig {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #111;
+}
+.fm-vig--vert { background: var(--sev-green); }
+.fm-vig--jaune { background: var(--sev-yellow); }
+.fm-vig--orange { background: var(--sev-orange); }
+.fm-vig--rouge { background: var(--sev-red); }
+
+/* ─── Tiroir Intelligence : carte du niveau national (refonte UI, étape 1) ─── */
+.frintel-level-card { padding-top: 12px; }
+.frintel-level-row { display: flex; align-items: center; gap: 8px; }
+.frintel-level-row .fm-vig { font-size: 13px; padding: 1px 8px; }
+.frintel-level-phrase { font-size: 13px; color: var(--text-primary); }
+.frintel-level-driver { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.frintel-why { margin-top: 10px; }
+.frintel-why > summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+.frintel-why > summary:focus-visible { outline: 1px solid var(--text-accent); outline-offset: 2px; }
+.frintel-why-body { margin-top: 8px; }
+.frintel-why-index { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.frintel-sit-conf { font-size: 11px; color: var(--text-secondary); margin-left: 6px; }
+.frintel-sit-head { display: flex; align-items: center; }
+
+/* ─── Alertes et situations : niveau L1 et confiance en mots (refonte UI, étape 1) ─── */
+.sit-mon__item-badge .fm-vig { font-size: 10px; padding: 0 5px; }
+.sit-mon__item-conf { font-size: 10px; color: var(--text-secondary); }
+.sit-mon__detail-level { display: inline-flex; align-items: center; gap: 6px; }
+.sit-mon__detail-conf { font-size: 11px; color: var(--text-secondary); }
+
+/* ─── Marchés neutres (refonte UI, spec §4.4) : jaune seulement au-delà d'un seuil ─── */
+.market-strip__item.is-neutral .market-strip__delta { color: var(--text-secondary); }
+.market-strip__item.is-alert { border-color: rgba(255, 204, 0, 0.35); }
+.market-strip__item.is-alert .market-strip__delta { color: var(--sev-yellow); }

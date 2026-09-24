@@ -12,6 +12,8 @@
 
 import type { EcowattSignal, EcowattResponse, EnergyMix, InterconnectionFlow } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { dedupe } from '../utils/inflight.ts';
+import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('ecowatt', {
@@ -43,9 +45,15 @@ interface Eco2mixResponse {
 let cache: { data: EcowattResponse; fetchedAt: number } | null = null;
 const CACHE_TTL = 15 * 60_000; // 15 min (aligné sur la granularité des données)
 
-const API_URL = import.meta.env.PROD
-    ? '/api/energy/ecowatt'
-    : 'http://localhost:3001/api/energy/ecowatt';
+/** Cache localStorage : peint le dernier signal connu au rechargement si < 10 min. */
+const PERSIST_TTL_MS = 10 * 60_000;
+const PERSIST_KEY = 'ecowatt';
+
+function isEcowattResponse(value: unknown): value is EcowattResponse {
+    return !!value && typeof value === 'object' && 'signals' in value && 'mixes' in value;
+}
+
+const API_URL = '/api/energy/ecowatt';
 
 interface Eco2mixNatRecord {
     ech_comm_angleterre: number | null;
@@ -91,6 +99,19 @@ function computeSignal(rec: Eco2mixRecord): EcowattSignal {
     return 'green';                    // Autonome ou exportatrice
 }
 
+/** JSON.parse ne revit pas les `Date` : les timestamps stockés en localStorage
+ * reviennent en chaînes ISO — on les reconvertit pour respecter le contrat
+ * de type `EnergyMix.timestamp: Date` consommé ailleurs dans le code. */
+function reviveEcowattDates(data: EcowattResponse): EcowattResponse {
+    return {
+        ...data,
+        national: { ...data.national, timestamp: new Date(data.national.timestamp) },
+        mixes: Object.fromEntries(
+            Object.entries(data.mixes).map(([code, mix]) => [code, { ...mix, timestamp: new Date(mix.timestamp) }]),
+        ),
+    };
+}
+
 /**
  * Fetch les signaux énergétiques par région (eco2mix temps réel).
  * Retourne EcowattResponse (signaux et mix par région, et mix national).
@@ -100,15 +121,28 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
 
     const fallback: EcowattResponse = { signals: {}, mixes: {}, national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 }, interconnections: [] };
 
+    // Rechargement de page : peindre le dernier signal connu (< 10 min) avant réseau.
+    const persisted = readPersisted<EcowattResponse>(PERSIST_KEY, PERSIST_TTL_MS, isEcowattResponse);
+    if (persisted) {
+        const revived = reviveEcowattDates(persisted);
+        cache = { data: revived, fetchedAt: Date.now() };
+        return revived;
+    }
+
     Watchdog.report('ecowatt', { type: 'loading' });
     const t0 = Date.now();
 
     try {
-        const resp = await fetch(API_URL, { signal: AbortSignal.timeout(10_000) });
-
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-        const json = await resp.json() as { regional: Eco2mixResponse, national: Eco2mixNatResponse };
+        // Single-flight : le widget baromètre réseau (warm-up) et le
+        // chargement des couches critiques appellent tous les deux
+        // fetchEcowatt() quasi simultanément au démarrage. On déduplique
+        // fetch ET parsing JSON ensemble : un corps de réponse ne se lit
+        // qu'une fois, impossible de partager juste la Response.
+        const json = await dedupe(API_URL, async () => {
+            const resp = await fetch(API_URL, { signal: AbortSignal.timeout(10_000) });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return (await resp.json()) as { regional: Eco2mixResponse, national: Eco2mixNatResponse };
+        });
         const jsonReg = json.regional;
         const jsonNat = json.national;
 
@@ -200,6 +234,7 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
         const result: EcowattResponse = { signals, mixes, national, interconnections };
 
         cache = { data: result, fetchedAt: Date.now() };
+        writePersisted(PERSIST_KEY, result);
         Watchdog.report('ecowatt', { type: 'success', responseTimeMs: Date.now() - t0 });
 
         const nRegions = Object.keys(signals).length;

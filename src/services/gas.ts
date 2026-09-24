@@ -52,6 +52,12 @@ const CACHE_TTL = 15 * 60_000; // 15 minutes
 
 const ODRE_BASE = 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets';
 
+/** Route un appel ODRÉ via le proxy serveur (cache CDN, conformité
+ * « tout passe par /api/* », §2.4 de l'audit). */
+function opendataProxyUrl(upstreamUrl: string): string {
+  return `/api/opendata-proxy?url=${encodeURIComponent(upstreamUrl)}`;
+}
+
 // ═══ EcoGaz Signal Fetch ═══
 
 interface EcoGazApiResponse {
@@ -78,7 +84,7 @@ async function fetchEcoGazSignal(): Promise<{ data: EcoGazStatus; status: 'ok' |
   const now = new Date();
 
   try {
-    const url = `${ODRE_BASE}/signal-ecogaz/records?limit=6&order_by=gas_day%20desc`;
+    const url = opendataProxyUrl(`${ODRE_BASE}/signal-ecogaz/records?limit=6&order_by=gas_day%20desc`);
     const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -149,7 +155,7 @@ interface OdreStorageRecord {
 async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: 'ok' | 'stale' | 'error'; netFlowGWhDay?: number }> {
   try {
     // ODRE dataset for gas storage levels
-    const url = `${ODRE_BASE}/stock-quotidien-stockages-gaz/records?limit=50&order_by=date%20desc`;
+    const url = opendataProxyUrl(`${ODRE_BASE}/stock-quotidien-stockages-gaz/records?limit=50&order_by=date%20desc`);
     const resp = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

@@ -6,7 +6,7 @@ import {
   type Radar2dManifest,
 } from './radar-2d.ts';
 import { handleRadar2dProxyRequest } from '../plugins/radar-2d-proxy.ts';
-import radar2dHandler from '../../api/fire-observations/radar-2d.js';
+import radar2dHandler from '../../api/_handlers/fire-observations/radar-2d.js';
 import {
   RADAR_2D_LAYER_ID,
   RADAR_2D_SOURCE_ID,

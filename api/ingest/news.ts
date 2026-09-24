@@ -1,17 +1,40 @@
 /**
- * api/ingest/news.ts — Cron d'ingestion serveur du flux news (Vercel Cron, toutes les 5 min).
+ * api/ingest/news.ts — Cron d'ingestion serveur du flux news.
+ *
+ * Cadence : tant que le projet est en Vercel Pro (décision du 24/09/2026), Vercel Cron
+ * toutes les 30 min (vercel.json). Au passage en Hobby (docs/runbook-passage-hobby.md),
+ * deux déclencheurs distincts, tous deux Authorization: Bearer ${CRON_SECRET} (GET ou POST) —
+ *  - Vercel Cron, 1 exécution/jour (limite du palier Hobby : une seule entrée
+ *    quotidienne fixe autorisée) : filet de sécurité.
+ *  - Upstash QStash, toutes les ~30 min (configuré côté Upstash, hors dépôt) :
+ *    cadence réelle. QStash relaie l'auth via l'en-tête
+ *    `Upstash-Forward-Authorization` → le handler la voit comme un
+ *    `Authorization` normal, aucune logique spécifique requise ici.
  *
  * Pipeline par tick :
- *  1. Auth Bearer CRON_SECRET (standard Vercel Cron) sinon 401.
+ *  1. Auth Bearer CRON_SECRET sinon 401.
  *  2. Verrou anti-chevauchement Upstash Redis (SET ingest_lock NX EX 280) si dispo.
  *  3. Sync de la table `feeds` depuis api/_lib/feeds-snapshot.js (généré depuis
  *     src/config/feeds.ts par scripts/sync-feeds.mjs).
  *  4. Sélection des feeds dus (enabled, next_poll_at, cooldown) — max 40.
  *  5. Fetch (timeout 10 s) → parse (api/_lib/parse-rss.js) → hash sha256 →
  *     classification keyword (api/_lib/server-classifier.js) → INSERT déduped.
- *  5.5 Si GROQ_API_KEY défini : classification LLM des articles ambigus
- *     (confidence < 0.60, max 5/tick) — UPDATE category/severity in place.
- *  6. Géocodage best-effort des items réellement insérés (max 30/tick).
+ *  5.5 Si GROQ_API_KEY défini ET NEWS_SCORING !== 'jev' : classification LLM
+ *     des articles ambigus (confidence < 0.60, max GROQ_BUDGET_PER_TICK = 15/tick)
+ *     — UPDATE category/severity in place.
+ *  5.6 Si NEWS_SCORING = 'shadow' | 'jev' ET TYPESAFE_API_KEY défini : scoring
+ *     Jev (api/_lib/jev-client.js + jev-policy.js) des articles insérés ce
+ *     tick (repli sur les plus anciens non encore scorés), budget
+ *     JEV_BUDGET_PER_TICK (200 par défaut), concurrence 8. 'shadow' stocke les
+ *     réponses et les colonnes dérivées sans toucher category/severity/
+ *     confidence ; 'jev' les écrase en plus et remplace la passe Groq
+ *     (classifier_version = 'jev-1'). Désactivé par défaut (NEWS_SCORING='off') :
+ *     coût nul tant que la variable n'est pas positionnée.
+ *  6. Géocodage best-effort des items réellement insérés (max 150/tick,
+ *     concurrence 4).
+ *  6.5 Regroupement des articles en événements (api/_lib/news-events-db.js) :
+ *     rattachement, agrégats, journal des changements, statuts, purge 90 j.
+ *     Best-effort : un échec est journalisé sans faire échouer le tick.
  *  7. Purge des items > 90 jours, libération du verrou, stats JSON.
  *
  * Sans DATABASE_URL → 503 explicite (pas de crash au chargement du module).
@@ -24,16 +47,45 @@ import { classify, CLASSIFIER_VERSION } from '../_lib/server-classifier.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
 import { classifyWithGroq } from '../_lib/groq-classifier.js';
-import { redisSet } from '../utils/redis.js';
+import {
+  scoreArticle,
+  JevAuthError,
+  JevRateLimitError,
+  JevValidationError,
+  JevServerError,
+} from '../_lib/jev-client.js';
+import { buildState } from '../_lib/jev-questions.js';
+import { derive as deriveJevJudgment } from '../_lib/jev-policy.js';
+import { redisSet } from '../_utils/redis.js';
+import { ensureEventTables, runEventPass } from '../_lib/news-events-db.js';
 
 export const config = { maxDuration: 300 };
 
 const GROQ_BUDGET_PER_TICK = 15;
 const GROQ_CONFIDENCE = 0.75;
 
+// ─── Scoring Jev (TypeSafe), désactivé par défaut — coût nul tant que
+// NEWS_SCORING n'est pas positionné. 'off' (défaut) | 'shadow' | 'jev'. ───
+const NEWS_SCORING = (process.env.NEWS_SCORING ?? 'off').trim().toLowerCase();
+const JEV_BUDGET_PER_TICK = Number(process.env.JEV_BUDGET_PER_TICK ?? 200) || 200;
+const JEV_CONCURRENCY = 8;
+const JEV_TIMEOUT_MS = 15_000;
+const JEV_MAX_SERVER_ERRORS = 3;
+const JEV_CLASSIFIER_VERSION = 'jev-1';
+
 // Dernier état d'ingestion exposé à /api/health-check (Redis, best-effort).
 const LAST_TICK_KEY = 'ingest:last-tick';
 const LAST_TICK_TTL_S = 24 * 60 * 60;
+
+interface EventPassStats {
+  considered: number;
+  created: number;
+  attached: number;
+  skipped: number;
+  ambiguous: number;
+  logged: number;
+  statusChanges: number;
+}
 
 interface IngestTickSummary {
   timestamp: string;
@@ -41,7 +93,12 @@ interface IngestTickSummary {
   inserted: number;
   errors: Array<{ feedId: string; error: string }>;
   durationMs: number;
+  jev?: JevPassResult & { mode: string };
+  events?: EventPassStats;
 }
+
+// Tables d'événements créées une fois par instance chaude (DDL idempotent, mais 7 allers-retours).
+let eventTablesReady = false;
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -81,13 +138,40 @@ interface FeedResult {
   error?: string;
 }
 
+interface JevCandidateRow {
+  id: number;
+  title: string;
+  description: string | null;
+  published_at: string | Date | null;
+  category: string | null;
+  severity: string | null;
+  confidence: number | null;
+  feed_name: string | null;
+  feed_region: string | null;
+  feed_tier: number | null;
+}
+
+interface JevPassResult {
+  scored: number;
+  skipped: number;
+  candidates: number;
+  authStopped: boolean;
+  rateLimited: boolean;
+  validationError: boolean;
+  serverErrors: number;
+}
+
 // ─── Constantes ───
 
 const MAX_FEEDS_PER_TICK = 40;
 const FEED_CONCURRENCY = 6;
 const TIME_BUDGET_MS = 240_000;
 const FEED_FETCH_TIMEOUT_MS = 10_000;
-const MAX_GEOCODES_PER_TICK = 30;
+// 150/tick (concurrence 4) : les ~110 articles insérés par tick avaient un
+// budget de géocodage (30) trop bas — le navigateur devait rattraper le
+// reste (88 appels geo.api.gouv.fr par visiteur, cf. audit C7).
+const MAX_GEOCODES_PER_TICK = 150;
+const GEOCODE_CONCURRENCY = 4;
 const DEFAULT_POLL_INTERVAL_S = 300;
 const LOCK_KEY = 'ingest_lock';
 const LOCK_TTL_S = 280;
@@ -295,31 +379,192 @@ async function processFeedsPool(sql: NeonSql, feeds: FeedRow[], deadline: number
   return results;
 }
 
-// ─── Géocodage best-effort des items insérés ───
+// ─── Géocodage best-effort des items insérés (pool de concurrence 4) ───
 
 async function geocodeInserted(sql: NeonSql, items: InsertedItem[], deadline: number): Promise<number> {
-  let geocoded = 0;
   const batch = items.slice(0, MAX_GEOCODES_PER_TICK);
+  let geocoded = 0;
+  let cursor = 0;
 
-  for (const item of batch) {
-    if (Date.now() >= deadline) break;
-    try {
-      const result = (await geocodeNewsItem(item.title, item.region)) as
-        | { lat: number; lon: number; source: string }
-        | null;
-      if (result) {
-        await sql`
-          UPDATE news_items
-          SET lat = ${result.lat}, lon = ${result.lon}, geocode_source = ${result.source}
-          WHERE id = ${item.id}
-        `;
-        geocoded += 1;
+  async function worker(): Promise<void> {
+    while (cursor < batch.length && Date.now() < deadline) {
+      const item = batch[cursor];
+      cursor += 1;
+      try {
+        const result = (await geocodeNewsItem(item.title, item.region)) as
+          | { lat: number; lon: number; source: string }
+          | null;
+        if (result) {
+          await sql`
+            UPDATE news_items
+            SET lat = ${result.lat}, lon = ${result.lon}, geocode_source = ${result.source}
+            WHERE id = ${item.id}
+          `;
+          geocoded += 1;
+        }
+      } catch {
+        // best-effort : lat/lon restent null
       }
-    } catch {
-      // best-effort : lat/lon restent null
     }
   }
+
+  const workers = Array.from({ length: Math.min(GEOCODE_CONCURRENCY, batch.length) }, () => worker());
+  await Promise.all(workers);
   return geocoded;
+}
+
+// ─── Scoring Jev (TypeSafe), mode ombre ou actif ───
+// Colonnes additives idempotentes — sûr à rejouer à chaque tick (coût
+// négligeable, `IF NOT EXISTS`). cf. scripts/init-db.mjs pour le miroir.
+async function ensureJevColumns(sql: NeonSql): Promise<void> {
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_answers jsonb`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_model text`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_scored_at timestamptz`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS relevance real`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS is_noise boolean`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS alertable boolean`;
+  await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS scope text`;
+}
+
+/**
+ * Sélectionne jusqu'à `JEV_BUDGET_PER_TICK` candidats : d'abord les items
+ * insérés ce tick, puis (si le budget n'est pas épuisé) les plus anciens
+ * jamais scorés (`jev_scored_at IS NULL`), du plus récent au plus ancien.
+ */
+async function selectJevCandidates(sql: NeonSql, insertedIds: number[]): Promise<JevCandidateRow[]> {
+  let rows: Record<string, unknown>[] = [];
+  if (insertedIds.length > 0) {
+    rows = await sql`
+      SELECT n.id, n.title, n.description, n.published_at, n.category, n.severity, n.confidence,
+             f.name AS feed_name, f.region AS feed_region, f.tier AS feed_tier
+      FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
+      WHERE n.id = ANY(${insertedIds}::bigint[])
+      ORDER BY n.id ASC
+      LIMIT ${JEV_BUDGET_PER_TICK}
+    `;
+  }
+
+  if (rows.length < JEV_BUDGET_PER_TICK) {
+    const remaining = JEV_BUDGET_PER_TICK - rows.length;
+    const excluded = insertedIds.length > 0 ? insertedIds : [0];
+    const backfill = await sql`
+      SELECT n.id, n.title, n.description, n.published_at, n.category, n.severity, n.confidence,
+             f.name AS feed_name, f.region AS feed_region, f.tier AS feed_tier
+      FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
+      WHERE n.jev_scored_at IS NULL AND NOT (n.id = ANY(${excluded}::bigint[]))
+      ORDER BY n.published_at DESC NULLS LAST
+      LIMIT ${remaining}
+    `;
+    rows = rows.concat(backfill);
+  }
+
+  return rows as unknown as JevCandidateRow[];
+}
+
+/**
+ * Score les candidats via Jev (concurrence JEV_CONCURRENCY) et écrit les
+ * colonnes dérivées. En mode 'shadow' : ne touche jamais category/severity/
+ * confidence/classifier_version (observation pure, cf. audit §4.6 — le score
+ * de stabilité est fixture-locké, on ne le nourrit qu'après comparaison).
+ * En mode 'jev' : les écrase et pose classifier_version='jev-1'.
+ */
+async function runJevPass(
+  sql: NeonSql,
+  candidates: JevCandidateRow[],
+  deadline: number,
+  apiKey: string,
+): Promise<JevPassResult> {
+  const result: JevPassResult = {
+    scored: 0,
+    skipped: 0,
+    candidates: candidates.length,
+    authStopped: false,
+    rateLimited: false,
+    validationError: false,
+    serverErrors: 0,
+  };
+
+  let stop = false;
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (!stop && cursor < candidates.length && Date.now() < deadline) {
+      const row = candidates[cursor];
+      cursor += 1;
+
+      const state = buildState(
+        { title: row.title, description: row.description, published_at: row.published_at },
+        { name: row.feed_name, region: row.feed_region, tier: row.feed_tier },
+      );
+
+      try {
+        const response = await scoreArticle(state, { apiKey, timeoutMs: JEV_TIMEOUT_MS });
+        const kw = {
+          category: row.category ?? 'general',
+          severity: row.severity ?? 'info',
+          confidence: typeof row.confidence === 'number' ? row.confidence : 0.2,
+        };
+        const judgment = deriveJevJudgment(response.answers, kw);
+        const answersJson = JSON.stringify(response.answers);
+
+        if (NEWS_SCORING === 'jev') {
+          await sql`
+            UPDATE news_items SET
+              category = ${judgment.category},
+              severity = ${judgment.severity},
+              confidence = ${judgment.confidence},
+              classifier_version = ${JEV_CLASSIFIER_VERSION},
+              jev_answers = ${answersJson}::jsonb,
+              jev_model = ${response.model},
+              jev_scored_at = now(),
+              relevance = ${judgment.relevance},
+              is_noise = ${judgment.noise},
+              alertable = ${judgment.alertable},
+              scope = ${judgment.scope}
+            WHERE id = ${row.id}
+          `;
+        } else {
+          // shadow : colonnes dérivées seulement, jamais category/severity/confidence.
+          await sql`
+            UPDATE news_items SET
+              jev_answers = ${answersJson}::jsonb,
+              jev_model = ${response.model},
+              jev_scored_at = now(),
+              relevance = ${judgment.relevance},
+              is_noise = ${judgment.noise},
+              alertable = ${judgment.alertable},
+              scope = ${judgment.scope}
+            WHERE id = ${row.id}
+          `;
+        }
+        result.scored += 1;
+      } catch (err) {
+        if (err instanceof JevAuthError) {
+          stop = true;
+          result.authStopped = true;
+        } else if (err instanceof JevRateLimitError) {
+          stop = true;
+          result.rateLimited = true;
+        } else if (err instanceof JevValidationError) {
+          // Même forme de requête pour chaque article → bug de code, pas un
+          // incident isolé : inutile de la répéter sur le reste du lot.
+          stop = true;
+          result.validationError = true;
+        } else if (err instanceof JevServerError) {
+          result.serverErrors += 1;
+          if (result.serverErrors >= JEV_MAX_SERVER_ERRORS) stop = true;
+        } else {
+          // Timeout / erreur réseau (JevTimeoutError) : on passe à l'article suivant.
+          result.skipped += 1;
+        }
+        console.warn('[ingest] Jev scoring error:', err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(JEV_CONCURRENCY, candidates.length) }, () => worker());
+  await Promise.all(workers);
+  return result;
 }
 
 // ─── Handler ───
@@ -393,9 +638,10 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     }
 
     // 3.5 Optional Groq LLM classification for ambiguous articles
+    // (sautée quand Jev remplace la reclassification, NEWS_SCORING='jev')
     let groqClassified = 0;
     const groqApiKey = process.env['GROQ_API_KEY'];
-    if (groqApiKey && insertedItems.length > 0) {
+    if (groqApiKey && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
       try {
         const ids = insertedItems.map(i => i.id);
         const candidates = await sql`
@@ -438,8 +684,44 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       }
     }
 
-    // 4. Géocodage des items réellement insérés (max 30/tick)
+    // 3.6 Scoring Jev (TypeSafe) — désactivé par défaut (NEWS_SCORING='off').
+    let jevResult: JevPassResult | null = null;
+    const typesafeApiKey = process.env['TYPESAFE_API_KEY'];
+    if ((NEWS_SCORING === 'shadow' || NEWS_SCORING === 'jev') && typesafeApiKey) {
+      try {
+        await ensureJevColumns(sql);
+        const insertedIds = insertedItems.map((i) => i.id);
+        const jevCandidates = await selectJevCandidates(sql, insertedIds);
+        if (jevCandidates.length > 0) {
+          jevResult = await runJevPass(sql, jevCandidates, deadline, typesafeApiKey);
+        }
+      } catch (err) {
+        console.warn('[ingest] Jev pass failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // 4. Géocodage des items réellement insérés (max 150/tick, concurrence 4)
     const geocoded = await geocodeInserted(sql, insertedItems, deadline);
+
+    // 4.5 Regroupement en événements — best-effort, après le géocodage (pénalité de distance).
+    let eventStats: EventPassStats | null = null;
+    if (Date.now() < deadline) {
+      try {
+        if (!eventTablesReady) {
+          await ensureEventTables(sql);
+          eventTablesReady = true;
+        }
+        eventStats = (await runEventPass(sql, {
+          insertedIds: insertedItems.map((i) => i.id),
+          deadline,
+        })) as EventPassStats;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[ingest] event pass failed:', message);
+        // Visible dans le dernier tick de /api/health-check : un échec répété ne passe pas inaperçu.
+        errors.push({ feedId: 'events', error: message });
+      }
+    }
 
     // 5. Rétention 90 jours
     await sql`DELETE FROM news_items WHERE collected_at < now() - interval '90 days'`;
@@ -450,6 +732,8 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       inserted: insertedItems.length,
       errors,
       durationMs: Date.now() - startedAt,
+      ...(jevResult ? { jev: { ...jevResult, mode: NEWS_SCORING } } : {}),
+      ...(eventStats ? { events: eventStats } : {}),
     };
 
     json(res, 200, {
@@ -457,6 +741,9 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       newItems: insertedItems.length,
       groqClassified,
       geocoded,
+      newsScoring: NEWS_SCORING,
+      jev: jevResult,
+      events: eventStats,
       durationMs: Date.now() - startedAt,
       errors,
     });

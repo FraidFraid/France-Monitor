@@ -155,7 +155,7 @@ export class EnvironmentPanel extends Panel {
     this.renderContent();
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.selectedDepartmentCode = null;
     // Selection was cleared while the DOM keeps its styles → force next render.
     this.lastRenderedHtml = null;
@@ -163,7 +163,8 @@ export class EnvironmentPanel extends Panel {
     this.onSelectDepartment?.(null);
     this.onHoverSegment?.(null);
     if (this.modalEl) this.modalEl.style.display = 'none';
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {

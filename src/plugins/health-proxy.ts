@@ -386,7 +386,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/epidemic-alerts', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/epidemic-alerts.js');
+          const mod = await import('../../api/_handlers/health/epidemic-alerts.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -429,7 +429,7 @@ export function healthProxyPlugin(): Plugin {
       server.middlewares.use('/api/health/departmental', async (_req, res) => {
         try {
           // In dev, dynamically import the handler
-          const mod = await import('../../api/health/departmental.js');
+          const mod = await import('../../api/_handlers/health/departmental.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -456,7 +456,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/oscour-sos', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/oscour-sos.js');
+          const mod = await import('../../api/_handlers/health/oscour-sos.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -482,7 +482,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/apl', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/apl.js');
+          const mod = await import('../../api/_handlers/health/apl.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -508,7 +508,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/epidemiology-monitor', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/epidemiology-monitor.js');
+          const mod = await import('../../api/_handlers/health/epidemiology-monitor.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -534,7 +534,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/sentinelles-ingestion', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/sentinelles-ingestion.js');
+          const mod = await import('../../api/_handlers/health/sentinelles-ingestion.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,
@@ -560,7 +560,7 @@ export function healthProxyPlugin(): Plugin {
 
       server.middlewares.use('/api/health/hantavirus', async (_req, res) => {
         try {
-          const mod = await import('../../api/health/hantavirus.js');
+          const mod = await import('../../api/_handlers/health/hantavirus.js');
           const fakeReq = { method: 'GET' };
           const fakeRes = {
             statusCode: 200,

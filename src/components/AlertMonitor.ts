@@ -5,8 +5,10 @@
  * mélanger alertes temps réel et situations agrégées.
  */
 
-import type { DetectedSituation, SituationSeverity } from '../types/index.ts';
+import type { DetectedSituation } from '../types/index.ts';
 import { fmIcon } from './shared/icons.ts';
+import { confidenceLabel, levelColorVar, maxLevel, situationLevel } from '../services/vigilance.ts';
+import { renderVigilancePill } from './shared/vigilancePill.ts';
 
 function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
@@ -41,27 +43,6 @@ function isSafeSourceUrl(value: string): boolean {
     return false;
   }
 }
-
-const SEV_COLOR: Record<SituationSeverity, string> = {
-  critical: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  watch: '#3b82f6',
-};
-
-const SEV_LABEL_FR: Record<SituationSeverity, string> = {
-  critical: 'CRIT',
-  high: 'ÉLEVÉ',
-  medium: 'MOYEN',
-  watch: 'VEILLE',
-};
-
-const SEV_LABEL_EN: Record<SituationSeverity, string> = {
-  critical: 'CRIT',
-  high: 'HIGH',
-  medium: 'MEDIUM',
-  watch: 'WATCH',
-};
 
 const TYPE_ICON: Record<string, string> = {
   NEWS_ALERT: fmIcon('newspaper'),
@@ -150,11 +131,11 @@ export class AlertMonitor {
       ? this.allAlerts
       : this.allAlerts.slice(0, AlertMonitor.COMPACT_LIMIT);
 
-    const critCount = this.allAlerts.filter((s) => s.severity === 'critical').length;
-    const highCount = this.allAlerts.filter((s) => s.severity === 'high').length;
     const total = this.allAlerts.length;
     const hiddenCount = Math.max(0, total - visibleAlerts.length);
-    const worstColor = critCount > 0 ? SEV_COLOR.critical : highCount > 0 ? SEV_COLOR.high : SEV_COLOR.medium;
+    const worstColor = total > 0
+      ? levelColorVar(maxLevel(this.allAlerts.map((s) => situationLevel(s.severity))))
+      : 'rgba(255,255,255,0.15)';
     const collapseTitle = this.collapsed ? t(this.lang, 'Afficher', 'Expand') : t(this.lang, 'Réduire', 'Collapse');
     const toggleAllLabel = this.expandedAll ? t(this.lang, 'Réduire la liste', 'Show less') : t(this.lang, 'Voir toutes', 'View all');
 
@@ -341,10 +322,9 @@ export class AlertMonitor {
   }
 
   private renderItem(s: DetectedSituation): string {
-    const color = SEV_COLOR[s.severity];
-    const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
+    const level = situationLevel(s.severity);
+    const color = levelColorVar(level);
     const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
-    const pct = Math.round(s.confidence * 100);
     const zone = s.affectedZones[0] ? escapeHtml(s.affectedZones[0]) : '';
     const extraZones = s.affectedZones.length > 1 ? `+${s.affectedZones.length - 1}` : '';
 
@@ -355,8 +335,8 @@ export class AlertMonitor {
           <div class="sit-mon__item-top">
             <span class="sit-mon__item-icon">${icon}</span>
             <span class="sit-mon__item-title">${escapeHtml(s.title)}</span>
-            <span class="sit-mon__item-badge" style="color:${color};">${sevLabel}</span>
-            <span class="sit-mon__item-conf">${pct}%</span>
+            <span class="sit-mon__item-badge">${renderVigilancePill(level, this.lang)}</span>
+            <span class="sit-mon__item-conf">${confidenceLabel(s.confidence, this.lang)}</span>
           </div>
           ${zone ? `<div class="sit-mon__item-zone">${fmIcon('map-pin')} ${zone}${extraZones ? ` <span class="sit-mon__item-zone-extra">${extraZones}</span>` : ''}</div>` : ''}
         </div>
@@ -371,10 +351,9 @@ export class AlertMonitor {
 
     document.querySelector('.sit-mon__detail')?.remove();
 
-    const color = SEV_COLOR[s.severity];
+    const level = situationLevel(s.severity);
+    const color = levelColorVar(level);
     const icon = TYPE_ICON[s.type] ?? fmIcon('triangle-alert');
-    const sevLabel = this.lang === 'fr' ? SEV_LABEL_FR[s.severity] : SEV_LABEL_EN[s.severity];
-    const pct = Math.round(s.confidence * 100);
     const zones = s.affectedZones.map((z) => escapeHtml(z)).join(' · ');
 
     const detail = document.createElement('div');
@@ -384,7 +363,7 @@ export class AlertMonitor {
         <header class="sit-mon__detail-header" style="border-left-color:${color};">
           <span>${icon}</span>
           <span class="sit-mon__detail-title">${escapeHtml(s.title)}</span>
-          <span class="sit-mon__detail-badge" style="background:${color};">${sevLabel} · ${pct}%</span>
+          <span class="sit-mon__detail-level">${renderVigilancePill(level, this.lang)} <span class="sit-mon__detail-conf">${confidenceLabel(s.confidence, this.lang)}</span></span>
           <button class="sit-mon__detail-close" type="button" aria-label="Fermer">${fmIcon('x')}</button>
         </header>
         <p class="sit-mon__detail-summary">${escapeHtml(s.summary)}</p>

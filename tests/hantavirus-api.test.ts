@@ -6,7 +6,7 @@ import {
   extractSpfSituationFromHtml,
   buildSnapshot,
   buildActiveClusterTemplates,
-} from '../api/health/hantavirus.js';
+} from '../api/_handlers/health/hantavirus.js';
 
 const SAMPLE_PEPPS_HTML = `
   <html>

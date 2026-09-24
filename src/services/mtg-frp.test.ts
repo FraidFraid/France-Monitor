@@ -7,7 +7,7 @@ import {
   validateMtgMapRequest,
 } from './mtg-frp.ts';
 import { handleMtgFrpProxyRequest } from '../plugins/mtg-frp-proxy.ts';
-import mtgFrpHandler from '../../api/fire-observations/mtg-frp.js';
+import mtgFrpHandler from '../../api/_handlers/fire-observations/mtg-frp.js';
 import {
   MTG_FRP_LAYER_ID,
   MTG_FRP_SOURCE_ID,

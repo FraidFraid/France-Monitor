@@ -10,9 +10,7 @@ Watchdog.register('biogas-sites', {
 let cache: { data: BiomethaneSite[]; fetchedAt: number } | null = null;
 const CACHE_TTL = 60 * 60_000; // 1h — static data updated monthly
 
-const API_URL = import.meta.env.PROD
-    ? '/api/energy/biogas-sites'
-    : 'http://localhost:3001/api/energy/biogas-sites';
+const API_URL = '/api/energy/biogas-sites';
 
 export async function fetchBiomethaneSites(): Promise<BiomethaneSite[]> {
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;

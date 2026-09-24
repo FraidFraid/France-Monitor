@@ -1,0 +1,150 @@
+name: Smoke test production
+
+# Test de fumée quotidien de la production : vérifie que les endpoints /api/*
+# renvoient bien du JSON (pas le HTML de repli de la SPA — c'est exactement
+# comme ça que /api/ministers/* et /api/gie/* sont restés morts en prod sans
+# erreur visible pendant des semaines, voir docs/audit-2026-09-infrastructure.md
+# §1.1 constat n°3) et que les trois services de la topologie (Vercel, Railway,
+# Render) sont en ligne. Voir docs/deployment.md pour la topologie complète.
+#
+# NOTE : les routes /api/ministers/*, /api/gie/agsi|alsi et /api/opendata-proxy
+# n'existent en prod qu'une fois la branche d'audit 2026-09 fusionnée et déployée
+# (leurs handlers sont ajoutés dans cette même branche par un autre chantier).
+# Ce workflow échouera sur ces routes tant que ce déploiement n'a pas eu lieu —
+# c'est attendu, pas un bug de ce fichier.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'   # une fois par jour ; heure décalée pour éviter les pics de cron GitHub
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  SITE: https://www.francemonitor.com
+  RADAR_WORKER: https://radar-worker-production-0c93.up.railway.app
+  AIS_RELAY: https://france-monitor.onrender.com
+
+jobs:
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Vérifier les routes /api/* de production
+        id: api
+        run: |
+          set -u
+          fail=0
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "## Résultat du test de fumée production" >> "$summary"
+          echo "" >> "$summary"
+          echo "| Route | Statut HTTP attendu | Statut obtenu | Content-Type | Résultat |" >> "$summary"
+          echo "|---|---|---|---|---|" >> "$summary"
+
+          # path;expected_status — content-type attendu : toujours application/json ici
+          routes=(
+            "/api/news?limit=3;200"
+            "/api/news/history;200"
+            "/api/weather/vigilance;200"
+            "/api/energy/ecowatt;200"
+            "/api/energy/biogas-sites;200"
+            "/api/traffic/air;200"
+            "/api/fires;200"
+            "/api/threats;200"
+            "/api/exposure;200"
+            "/api/finance/market;200"
+            "/api/rte-iip;200"
+            "/api/arcep;200"
+            "/api/ministers/composition;200"
+            "/api/gie/agsi;200"
+            "/api/gie/alsi;200"
+            "/api/opendata-proxy?url=https%3A%2F%2Fgeo.api.gouv.fr%2Fregions;200"
+            "/api/health-check;200"
+          )
+
+          for entry in "${routes[@]}"; do
+            path="${entry%;*}"
+            expected="${entry#*;}"
+            url="$SITE$path"
+            body=$(mktemp)
+            headers=$(mktemp)
+            code=$(curl -s -o "$body" -D "$headers" -w "%{http_code}" --max-time 30 "$url") || code="000"
+            ctype=$(grep -i '^content-type:' "$headers" | head -1 | cut -d' ' -f2- | tr -d '\r' | cut -d';' -f1)
+
+            result="OK"
+            if [ "$code" != "$expected" ]; then
+              result="FAIL (HTTP $code)"
+              fail=1
+            elif [ "$ctype" != "application/json" ]; then
+              result="FAIL (content-type: ${ctype:-aucun}, attendu application/json — probablement le repli SPA HTML)"
+              fail=1
+            fi
+
+            echo "$path -> $result"
+            echo "| \`$path\` | $expected | $code | ${ctype:-—} | $result |" >> "$summary"
+            rm -f "$body" "$headers"
+          done
+
+          echo "" >> "$summary"
+
+          echo "### /api/health-check" >> "$summary"
+          health_body=$(curl -s --max-time 30 "$SITE/api/health-check") || health_body="{}"
+          status=$(echo "$health_body" | jq -r '.status // "inconnu"')
+          echo "statut rapporté : \`$status\`" >> "$summary"
+          if [ "$status" = "down" ]; then
+            echo "::error::/api/health-check rapporte status=down"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::au moins une route /api/* a échoué le test de fumée (voir le résumé du job)"
+          fi
+          exit $fail
+
+      - name: Vérifier que les résumés IA ne sont pas dégradés (Groq)
+        # Un modèle Groq retiré ne casse rien de visible : chaque appel retombe sur son repli et
+        # répond 200. Constaté le 23/09/2026 (llama-3.3-70b-versatile retiré). On vérifie donc le
+        # champ `degraded` d'un vrai résumé. Le texte change chaque jour pour éviter le cache Redis 24 h.
+        run: |
+          set -u
+          day=$(date -u +%Y-%m-%d)
+          payload=$(jq -n --arg d "$day" '{text: ("Test de fumée du " + $d + " : la préfecture de Gironde a déclenché le plan ORSEC après des inondations touchant vingt communes, avec 150 interventions des pompiers.")}')
+          body=$(curl -s --max-time 60 -X POST -H 'content-type: application/json' -d "$payload" "https://www.francemonitor.com/api/intelligence/v1/summarize") || body='{}'
+          echo "$body" | head -c 400; echo
+          degraded=$(echo "$body" | jq -r '.degraded // false')
+          summary=$(echo "$body" | jq -r '.summary // ""')
+          echo "### Résumé IA (Groq) : degraded=$degraded" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$degraded" = "true" ] || [ -z "$summary" ]; then
+            echo "::error::le résumé IA est dégradé : Groq en échec (modèle retiré, clé, quota ?) — voir api/_lib/groq-models.js"
+            exit 1
+          fi
+
+      - name: Vérifier Railway (radar-worker) /health
+        if: always()
+        run: |
+          set -u
+          code=$(curl -s -o /tmp/radar-health.json -w "%{http_code}" --max-time 30 "$RADAR_WORKER/health") || code="000"
+          echo "Railway /health -> HTTP $code"
+          cat /tmp/radar-health.json 2>/dev/null || true
+          echo ""
+          echo "### Railway radar-worker /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Railway radar-worker /health a répondu HTTP $code"
+            exit 1
+          fi
+
+      - name: Vérifier Render (ais-relay) /health
+        if: always()
+        run: |
+          set -u
+          code=$(curl -s -o /tmp/ais-health.json -w "%{http_code}" --max-time 30 "$AIS_RELAY/health") || code="000"
+          echo "Render /health -> HTTP $code"
+          cat /tmp/ais-health.json 2>/dev/null || true
+          echo ""
+          echo "### Render ais-relay /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Render ais-relay /health a répondu HTTP $code"
+            exit 1
+          fi

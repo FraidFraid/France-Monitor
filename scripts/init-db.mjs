@@ -6,6 +6,7 @@
  */
 
 import { neon } from '@neondatabase/serverless';
+import { ensureEventTables } from '../api/_lib/news-events-db.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -49,6 +50,20 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_news_collected ON news_items (collected_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_news_cat_sev ON news_items (category, severity, collected_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_news_published ON news_items (published_at DESC)`,
+  // Colonnes du scoring Jev (TypeSafe) — additives, miroir de
+  // ensureJevColumns() dans api/ingest/news.ts (idempotent des deux côtés :
+  // la fonction runtime les repose à chaque tick si NEWS_SCORING est actif,
+  // ce script les pose une fois pour un environnement neuf).
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_answers jsonb`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_model text`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS jev_scored_at timestamptz`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS relevance real`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS is_noise boolean`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS alertable boolean`,
+  `ALTER TABLE news_items ADD COLUMN IF NOT EXISTS scope text`,
+  // Sert /api/news?noise=exclude : index partiel, ne grossit qu'avec les
+  // lignes non-bruit une fois le scoring actif.
+  `CREATE INDEX IF NOT EXISTS idx_news_relevant ON news_items (published_at DESC) WHERE is_noise IS NOT TRUE`,
   `CREATE TABLE IF NOT EXISTS situation_snapshots (
     id bigserial PRIMARY KEY,
     taken_at timestamptz DEFAULT now(),
@@ -62,5 +77,10 @@ for (const statement of STATEMENTS) {
   await sql.query(statement);
   console.log(`[init-db] OK: ${summary}…`);
 }
+
+// Événements (news_events, news_event_log, news_items.event_id) : même fonction que le cron
+// d'ingestion, qui les crée aussi au premier passage.
+await ensureEventTables(sql);
+console.log('[init-db] OK: tables d’événements');
 
 console.log('[init-db] schema ready.');

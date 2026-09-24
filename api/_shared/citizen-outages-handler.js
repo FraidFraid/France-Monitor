@@ -1,6 +1,8 @@
 import * as cheerioModule from 'cheerio';
 import * as turfModule from '@turf/turf';
 
+import { getOrRefresh } from '../_utils/swr-cache.js';
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 1200; // 1.2s entre chaque requête scraping (< 1req/s par politesse)
@@ -22,8 +24,12 @@ const HEADERS = {
   'Accept-Language': 'fr-FR,fr;q=0.9',
 };
 
-// Module-level server cache (shared across warm invocations)
-let _serverCache = null;
+// Cache swr (mémoire + Redis) — 10 min frais, tolérance 1 h le temps que le scraping
+// (rate-limité, plusieurs secondes) aboutisse en tâche de fond.
+const CACHE_KEY = 'swr:citizen-outages';
+const CACHE_TTL_SEC = 10 * 60;
+const CACHE_STALE_SEC = 60 * 60;
+
 let _geocodeCache = new Map(); // ville → [lng, lat]
 let _lastFetchTimes = {}; // source → timestamp (rate limiting)
 
@@ -81,36 +87,32 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // Serve from server cache if fresh (10 min)
-  const now = Date.now();
-  if (_serverCache && now - _serverCache.fetchedAt < 10 * 60_000) {
-    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=120');
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json(_serverCache.data);
-  }
-
   try {
-    const response = await fetchCitizenOutagesData();
+    const { value: data, cache } = await getOrRefresh(
+      CACHE_KEY,
+      { ttlSec: CACHE_TTL_SEC, staleSec: CACHE_STALE_SEC, timeoutMs: 15_000 },
+      fetchCitizenOutagesData,
+    );
 
-    // Update server cache
-    _serverCache = { data: response, fetchedAt: now };
-
-    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=120');
     res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json(response);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[citizen-outages] Fatal error:', message);
 
-    // Return stale cache on error rather than failing
-    if (_serverCache) {
+    if (cache === 'stale') {
+      // Rafraîchissement en cours/échoué : on sert la dernière donnée connue, avec un
+      // Cache-Control court côté CDN et un flag explicite (comme l'ancien fallback d'erreur).
       res.setHeader('Cache-Control', 's-maxage=60');
       return res.status(200).json({
-        ..._serverCache.data,
-        stats: { ..._serverCache.data.stats, stale: true },
+        ...data,
+        stats: { ...data.stats, stale: true },
       });
     }
 
+    res.setHeader('Cache-Control', `s-maxage=${CACHE_TTL_SEC}, stale-while-revalidate=120`);
+    res.setHeader('X-Cache', cache);
+    return res.status(200).json(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[citizen-outages] Fatal error:', message);
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(502).json({ error: `Citizen outages fetch failed: ${message}` });
   }
 }

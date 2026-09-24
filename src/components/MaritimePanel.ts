@@ -74,6 +74,11 @@ export class MaritimePanel {
     this._updateAisBadge();
   }
 
+  /** Panneau affiché (données ou chargement) — `isVisible` est un champ privé. */
+  isOpen(): boolean {
+    return this.isVisible;
+  }
+
   hide(): void {
     this.isVisible = false;
     this._searchQuery = '';
@@ -90,6 +95,7 @@ export class MaritimePanel {
     if (this.containerEl) return; // idempotent
 
     this.containerEl = document.createElement('div');
+    this.containerEl.className = 'fm-floating-panel';
     this.containerEl.style.cssText = `
       ${getPremiumModalStyle({
         width: '400px',

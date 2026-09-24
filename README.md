@@ -78,7 +78,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 
 ### 📰 News Intelligence
 - RSS aggregation from **60+ French national and regional (PQR)** sources
-- **Server-side ingestion** — Neon Postgres + Vercel Cron (5 min), 90-day retention
+- **Server-side ingestion** — Neon Postgres + Upstash QStash schedule (30 min, with a daily Vercel cron as a safety net), 90-day retention
 - Two-stage classification: keyword-based (instant) then optional **Groq LLM server-side** for ambiguous articles
 - AI summarisation: Ollama (local) → Groq (cloud) → Transformers.js (browser)
 - **History UI** — interactive heatmap (day × category), cursor-based pagination, filters (severity, region, search) across 90 days of articles
@@ -140,7 +140,12 @@ The long-term goal is to turn the France prototype into a reusable European comm
 └──────────────────────────┬──────────────────────────────────────┘
                            │ fetch /api/*
 ┌──────────────────────────▼──────────────────────────────────────┐
-│  Vercel Serverless Functions  (api/)                             │
+│  Vercel — ONE serverless function (api/index.js) routes every    │
+│  /api/* request to a handler in api/_handlers/ via the generated │
+│  table api/_routes.js (Hobby plan caps deployments at 12         │
+│  functions; 3 more dedicated functions handle long-running or    │
+│  large-body routes: ingest/news, fuel-price-series-refresh,      │
+│  sentinel-ndwi — see docs/deployment.md §1)                      │
 │                                                                  │
 │  Proxy + cache layer (Upstash Redis, TTL per route)              │
 │  ├── energy/        RTE Ecowatt, Eco2mix, nuclear REMIT         │
@@ -151,8 +156,8 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── outages/       citizen scraping, ORE, Cloudflare, IODA     │
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
-│  ├── intelligence/  LLM summarisation + brief v13 (Groq)        │
-│  ├── ingest/        Cron news ingestion (Neon Postgres, 5 min)  │
+│  ├── intelligence/  LLM summarisation + brief v14 (Groq)        │
+│  ├── ingest/        News ingestion (Neon Postgres, QStash 30min)│
 │  ├── news/          News query + history timeline API            │
 │  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
 │                                                                  │
@@ -241,6 +246,8 @@ vercel env add UPSTASH_REDIS_REST_TOKEN
 # … repeat for each required variable (see .env.example)
 ```
 
+Full topology (Vercel + Railway + Render + GitHub Actions + Upstash + Neon), the environment variable matrix per platform, and how the single API router works: [`docs/deployment.md`](docs/deployment.md). Moving from Vercel Pro to the free Hobby plan: [`docs/runbook-passage-hobby.md`](docs/runbook-passage-hobby.md).
+
 ---
 
 ## ⚙️ Environment Variables
@@ -322,20 +329,26 @@ The contract is published as a machine-readable **OpenAPI 3.1** document at [`/o
 
 ```
 france-monitor/
-├── api/                         # Vercel Serverless Functions
-│   ├── rss.js / rss-proxy.js    # RSS CORS bypass + JSON conversion
-│   ├── threats.js               # Cyber OSINT aggregation (Shodan/Censys/breaches)
-│   ├── exposure.js              # Technical exposure scoring
-│   ├── json-proxy.js            # Generic JSON proxy (Ransomware Live, etc.)
-│   ├── energy/                  # Ecowatt, Eco2mix, nuclear REMIT
-│   ├── health/                  # ISS, SOS Médecins, OSCOUR
-│   ├── finance/                 # Market data, commodities
-│   ├── transport/               # SNCF, air traffic, AIS relay
-│   ├── outages/                 # Citizen outages, ORE, IODA
-│   ├── ingest/                  # Cron news ingestion (Neon Postgres + Groq LLM)
-│   ├── news.js / news/history   # News query API + history timeline
-│   ├── _lib/                    # Shared: classifier, geocoder, RSS parser, Groq classifier
-│   └── intelligence/v1/         # LLM summarisation (Groq)
+├── api/
+│   ├── index.js                 # THE Vercel function — routes every /api/* to api/_handlers/**
+│   ├── _routes.js                # GENERATED (npm run generate:api-routes) — url → handler import table
+│   ├── _utils/dispatch.js        # Router: matches the URL, adapts Node vs. "Edge"-style handlers
+│   ├── _handlers/                # Every route lives here (ignored by Vercel — not counted as functions)
+│   │   ├── rss.js / rss-proxy.js     # RSS CORS bypass + JSON conversion
+│   │   ├── threats.js                # Cyber OSINT aggregation (Shodan/Censys/breaches)
+│   │   ├── exposure.js               # Technical exposure scoring
+│   │   ├── json-proxy.js             # Generic JSON proxy (Ransomware Live, etc.)
+│   │   ├── energy/                   # Ecowatt, Eco2mix, nuclear REMIT
+│   │   ├── health/                   # ISS, SOS Médecins, OSCOUR
+│   │   ├── finance/                  # Market data, commodities
+│   │   ├── transport/                # SNCF, air traffic, AIS relay
+│   │   ├── news.js / news/history    # News query API + history timeline
+│   │   └── intelligence/v1/          # LLM summarisation (Groq)
+│   ├── _lib/                    # Shared: classifier, geocoder, RSS parser, Groq classifier (some generated)
+│   ├── ingest/                  # Dedicated function — news ingestion (Neon Postgres + Groq LLM),
+│   │                             # triggered by Upstash QStash every 30 min + a daily Vercel cron safety net
+│   ├── fuel-price-series-refresh.js  # Dedicated function — daily cron
+│   └── sentinel-ndwi.ts         # Dedicated function
 │
 ├── services/
 │   └── scrapling-proxy/         # FastAPI + Scrapling — Cloudflare bypass for PQR RSS
@@ -364,7 +377,9 @@ france-monitor/
 │   │   ├── situation-engine.ts  # 10-rule multi-source situation correlation
 │   │   ├── stability-index.ts   # ISNR departmental composite index
 │   │   ├── france-country-intel.ts  # Country snapshot + stability score v3 (explainable breakdown)
-│   │   ├── france-intel-brief.ts    # Structured brief v13 — LLM JSON + deterministic fallback
+│   │   ├── france-intel-brief.ts    # Structured brief v14 — evidence-cited LLM JSON + deterministic fallback
+│   │   ├── news-events.ts       # Consolidated news events (/api/events*) + change digest
+│   │   ├── intel-last-visit.ts  # "Since your last visit" anchor (localStorage + sessionStorage)
 │   │   ├── cyber.ts             # Cyber threat feed aggregation
 │   │   ├── cyber-threat-scoring.ts  # Composite cyber pressure scoring (NEW)
 │   │   ├── exposure.ts          # Technical exposure (Shodan/Censys)
@@ -437,11 +452,11 @@ npm run dev:full            # Vite (3001) + Scrapling (8080) together
 
 ### News Ingestion Pipeline
 
-Articles are ingested server-side via a **Vercel Cron** (every 5 min) into **Neon Postgres**:
+Articles are ingested server-side every **30 minutes** into **Neon Postgres**, triggered by an Upstash QStash schedule (with a daily Vercel cron as a safety net — see `docs/deployment.md` §2):
 
 1. **Fetch & parse** — 60+ RSS feeds, concurrent (6 workers), exponential backoff on failure
 2. **Keyword classification** — instant category + severity assignment (< 1ms/item)
-3. **Groq LLM refinement** (optional) — if `GROQ_API_KEY` is set, ambiguous articles (confidence < 0.60) are sent to Groq for reclassification (max 5/tick, `llama-3.3-70b-versatile`)
+3. **Groq LLM refinement** (optional) — if `GROQ_API_KEY` is set, ambiguous articles (confidence < 0.60) are sent to Groq for reclassification (max 15/tick, `llama-3.3-70b-versatile`)
 4. **Geocoding** — best-effort lat/lon assignment (max 30/tick)
 5. **Retention** — articles older than 90 days are purged automatically
 
@@ -470,8 +485,9 @@ Every data service registers with `Watchdog` and emits `loading` / `success` / `
 ### Stability Score v3 & Intelligence Brief
 
 - The national score formula lives in `src/services/france-country-intel.ts` (`scoreFromPillars`). Its calibration is **locked by contract tests** in `france-country-intel.test.ts` (quiet day 88–94, loaded day 74–86, real tension 58–72, crisis 38–55, major crisis <40). Never adjust the test targets to make a formula change pass.
-- Score bands (85/70/55/40) are duplicated in four places that must move together: `FranceIntelPanel.ts`, `france-intel-brief.ts`, `api/intelligence/v1/france-intel-brief.js` and `src/plugins/france-intel-proxy.ts`.
-- The brief edge function and its Vite dev proxy are **mirrors** — any change to one must be applied to the other.
+- Score bands (85/70/55/40) are duplicated in three places that must move together: `FranceIntelPanel.ts`, `france-intel-brief.ts` and `api/_handlers/intelligence/v1/france-intel-brief.js`.
+- There is no dev mirror of the brief any more: in dev, the Vite API router fallback serves the production handler.
+- Brief v14 judgments cite evidence IDs (`E<id>` consolidated event, `S<n>` correlated situation). Displayed sources are derived from the cited evidence server-side (`api/_lib/brief-evidence.js`), never copied from the model; a judgment without valid evidence is shown as UNSUPPORTED with low confidence.
 - Δ24h and the sparkline come from a per-browser localStorage ring buffer (`src/utils/stability-history.ts`, 7-day retention, 30-min write throttle). A cold start shows "—" by design.
 
 ### Coding Conventions
@@ -529,6 +545,11 @@ Current high-level milestones:
 ---
 
 ## 📋 Recent Updates
+
+### 2026-09-23
+- **Consolidated news events** — the ingestion cron now groups articles reporting the same fact into events (lexical title matching within 72 h, distance penalty, media-group-aware corroboration: EBRA titles count as one independent source). Events carry severity, status (active < 12 h, cooling < 48 h, closed) and a change log, served by `/api/events`, `/api/events/detail` and `/api/events/changes`.
+- **"Since your last visit"** — the France Intelligence drawer opens on what changed since the analyst's previous visit: escalations, corroborations and new or closed serious events, with totals per change type.
+- **Evidence-backed brief v14** — every judgment cites `E<id>`/`S<n>` evidence, clickable in the drawer; sources are derived from the evidence; "high" confidence requires corroborated evidence.
 
 ### 2026-07-05
 - **Country Intelligence refonte** — the France Intelligence drawer is now an ops console (480 px, monospace metrics, severity-only colours, zero emoji): explainable **Stability Index v3** (baseline 95 − progressive pillar deductions, situation-linked caps, EMA smoothing, calibration locked by contract tests), per-pillar Δ24h + 7-day sparkline backed by a new localStorage history (`stability-history.ts`), and a new **Correlated Situations** block surfacing the 10-rule engine (evidence chains, confidence, sources, recommended actions, keyboard-operable)

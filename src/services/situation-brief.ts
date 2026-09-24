@@ -9,6 +9,7 @@
  */
 
 import type { HistorySlot, SituationSeverity, SituationType } from '../types/index.ts';
+import { levelLabel, situationLevel } from './vigilance.ts';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -35,13 +36,6 @@ const SEVERITY_ORDER: Record<SituationSeverity, number> = {
   high: 3,
   medium: 2,
   watch: 1,
-};
-
-const SEVERITY_LABEL_FR: Record<SituationSeverity, string> = {
-  critical: 'Critique',
-  high: 'Élevé',
-  medium: 'Moyen',
-  watch: 'Veille',
 };
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -105,7 +99,7 @@ function toBriefItem(source: BriefSourceSituation, now: number, resolved: boolea
     type: source.type,
     title: source.title,
     severity: source.severity,
-    severityLabel: SEVERITY_LABEL_FR[source.severity],
+    severityLabel: levelLabel(situationLevel(source.severity)),
     sinceLabel: formatSinceLabel(now - source.since, resolved),
     resolved,
   };

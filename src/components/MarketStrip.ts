@@ -1,4 +1,5 @@
 import type { MarketData } from '../types/index.ts';
+import { marketBarometer, marketTone, type MarketKind } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 
@@ -30,6 +31,11 @@ const MARKET_SECTIONS: { key: MarketCategory; label: string }[] = [
 ];
 
 const CATEGORY_FALLBACK: MarketCategory = 'services';
+
+/** Seuls les indices ont un seuil exceptionnel ; devises et actions restent toujours neutres. */
+function marketKindForSection(section: string): MarketKind {
+  return section === 'indices' ? 'index' : 'other';
+}
 
 export class MarketStrip {
   private container: HTMLElement;
@@ -83,21 +89,16 @@ export class MarketStrip {
       return;
     }
 
-    const avgChange = items.reduce((sum, item) => sum + item.changePercent, 0) / (items.length || 1);
+    const barometer = marketBarometer(items.map((item) => ({
+      name: item.name,
+      changePercent: item.changePercent,
+      kind: marketKindForSection(item.category ?? CATEGORY_FALLBACK),
+    })));
     if (this.barometerDotEl && this.barometerTextEl) {
-      let color = '#9ca3af'; // text-muted / flat
-      let text = 'CLIMAT STABLE';
-      if (avgChange > 0.1) {
-        color = '#4ade80'; // theme green
-        text = `TENDANCE HAUSSIÈRE (+${avgChange.toFixed(2)}%)`;
-      } else if (avgChange < -0.1) {
-        color = '#f87171'; // theme red
-        text = `TENDANCE BAISSIÈRE (${avgChange.toFixed(2)}%)`;
-      }
-
+      const color = barometer.tone === 'alert' ? 'var(--sev-yellow)' : 'var(--text-muted)';
       this.barometerDotEl.style.background = color;
-      this.barometerDotEl.style.boxShadow = `0 0 6px ${color}`;
-      this.barometerTextEl.textContent = text;
+      this.barometerDotEl.style.boxShadow = 'none';
+      this.barometerTextEl.textContent = barometer.text;
       this.barometerTextEl.style.color = color;
     }
 
@@ -121,13 +122,10 @@ export class MarketStrip {
       list.className = 'market-strip__list';
 
       for (const item of sectionItems) {
-        const trendClass =
-          item.trend === 'up' ? 'is-up' :
-          item.trend === 'down' ? 'is-down' :
-          'is-flat';
+        const tone = marketTone(item.changePercent, marketKindForSection(item.category ?? CATEGORY_FALLBACK));
 
         const card = document.createElement('article');
-        card.className = `market-strip__item ${trendClass}`;
+        card.className = `market-strip__item is-${tone}`;
         card.innerHTML = `
           <div class="market-strip__topline">
             <span class="market-strip__name">${escapeHtml(item.name)}</span>
@@ -135,7 +133,7 @@ export class MarketStrip {
           </div>
           <div class="market-strip__price">${escapeHtml(formatPrice(item.price, item.category))}</div>
           <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
-          ${buildMarketSparkline(item.history, item.trend)}
+          ${buildMarketSparkline(item.history, tone)}
         `;
         list.appendChild(card);
       }

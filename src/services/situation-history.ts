@@ -12,6 +12,7 @@ import type {
   SituationSnapshot,
   SituationSeverity,
 } from '../types/index.ts';
+import { dedupe } from '../utils/inflight.ts';
 
 const SCHEMA_VERSION = 1 as const;
 const CACHE_PREFIX   = `fm:situation-history:v${SCHEMA_VERSION}`;
@@ -165,9 +166,15 @@ export async function getHistory(days: 7 | 30, force = false): Promise<HistoryRe
   }
 
   try {
-    const res  = await fetch(`/api/situation-history?days=${days}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data: HistoryResponse = await res.json();
+    // Single-flight par `days` : plusieurs panneaux peuvent réclamer le
+    // même historique quasi simultanément au démarrage (constaté en prod :
+    // `situation-history?days=7` ×2 par chargement).
+    const url = `/api/situation-history?days=${days}`;
+    const data = await dedupe(url, async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as HistoryResponse;
+    });
     writeCache(days, data);
     const fetchedAt = new Date().toISOString();
     return {

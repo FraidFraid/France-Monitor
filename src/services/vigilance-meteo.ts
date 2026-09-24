@@ -14,6 +14,8 @@
 import type { MeteoAlert, MeteoVigilanceLevel, MeteoRiskType } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 import type { IconName } from '../components/shared/icons.ts';
+import { dedupe } from '../utils/inflight.ts';
+import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('meteo-france', {
@@ -177,6 +179,17 @@ let cache: { data: MeteoAlert[]; fetchedAt: number } | null = null;
 let timelineCache: { data: VigilanceTimeline; fetchedAt: number } | null = null;
 const CACHE_TTL = 15 * 60_000; // 15 min
 
+/** TTL du cache localStorage : peint l'état connu au rechargement sans réseau
+ * si l'entrée a moins de 10 min (docs/audit-2026-09-annexes/A-client-chargement.md
+ * §6 item 6). Volontairement plus court que CACHE_TTL mémoire : on ne veut
+ * pas rejouer une donnée d'un précédent onglet trop vieille. */
+const PERSIST_TTL_MS = 10 * 60_000;
+const PERSIST_KEY_ALERTS = 'vigilance-meteo-alerts';
+
+function isMeteoAlertArray(value: unknown): value is MeteoAlert[] {
+  return Array.isArray(value);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TIMELINE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -307,56 +320,72 @@ interface VigilanceApiResponse {
 const API_URL = '/api/weather/vigilance';
 
 /**
+ * Fetch brut de `/api/weather/vigilance`, partagé entre `fetchVigilanceMeteo`
+ * et `fetchVigilanceTimeline` : les deux interrogent la même URL, souvent à
+ * quelques millisecondes d'écart au démarrage (constaté en prod : `vigilance`
+ * appelé 2× simultanément). `dedupe()` garantit un seul appel réseau en vol ;
+ * chaque appelant reparse la réponse selon son propre besoin (alertes vs
+ * timeline complète).
+ *
+ * Lève en cas d'échec HTTP/réseau/content-type inattendu — chaque appelant
+ * gère son propre repli (cache mémoire, cache persisté, ou timeline vide).
+ */
+function fetchVigilanceApiRaw(): Promise<VigilanceApiResponse> {
+    return dedupe(API_URL, async () => {
+        const resp = await fetch(API_URL, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(8000),
+        });
+
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            const text = await resp.text();
+            console.warn(`[MeteoFrance] Unexpected content-type: ${contentType}`);
+            console.warn(`[MeteoFrance] Response preview: ${text.slice(0, 100)}...`);
+            throw new Error(`content-type inattendu: ${contentType}`);
+        }
+
+        if (resp.status === 401 || resp.status === 403) {
+            throw new Error(`Auth ${resp.status} - vérifier apikey`);
+        }
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+        }
+
+        return (await resp.json()) as VigilanceApiResponse;
+    });
+}
+
+/**
  * Fetch alertes de vigilance Météo-France.
  * Retourne uniquement les départements en alerte (jaune+).
  *
  * Authentification gérée côté serveur (proxy /api/weather/vigilance).
  */
 export async function fetchVigilanceMeteo(): Promise<MeteoAlert[]> {
-    // Retourner le cache s'il est valide
+    // Retourner le cache mémoire s'il est valide
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
         return cache.data;
+    }
+
+    // Rechargement de page : peindre l'état localStorage (< 10 min) avant
+    // tout réseau, comme newsCache.ts le fait déjà pour les articles.
+    const persisted = readPersisted<MeteoAlert[]>(PERSIST_KEY_ALERTS, PERSIST_TTL_MS, isMeteoAlertArray);
+    if (persisted) {
+        cache = { data: persisted, fetchedAt: Date.now() };
+        return persisted;
     }
 
     Watchdog.report('meteo-france', { type: 'loading' });
     const t0 = Date.now();
 
     try {
-        const resp = await fetch(API_URL, {
-            headers: {
-                'Accept': 'application/json',
-            },
-            signal: AbortSignal.timeout(8000),
-        });
-
-        // Vérifier que la réponse est bien du JSON avant de parser
-        const contentType = resp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-            console.warn(`[MeteoFrance] Unexpected content-type: ${contentType}`);
-            const text = await resp.text();
-            console.warn(`[MeteoFrance] Response preview: ${text.slice(0, 100)}...`);
-            Watchdog.report('meteo-france', { type: 'failure', error: `content-type inattendu: ${contentType}`, isFallback: !!cache });
-            return cache?.data ?? [];
-        }
-
-        // Gérer les erreurs HTTP
-        if (resp.status === 401 || resp.status === 403) {
-            console.warn(`[MeteoFrance] Auth error ${resp.status} - check API key`);
-            Watchdog.report('meteo-france', { type: 'failure', error: `Auth ${resp.status} - vérifier apikey`, isFallback: !!cache });
-            return cache?.data ?? [];
-        }
-        if (!resp.ok) {
-            console.warn(`[MeteoFrance] HTTP error ${resp.status}`);
-            Watchdog.report('meteo-france', { type: 'failure', error: `HTTP ${resp.status}`, isFallback: !!cache });
-            return cache?.data ?? [];
-        }
-
-        // Parser la réponse JSON
-        const json = await resp.json() as VigilanceApiResponse;
+        const json = await fetchVigilanceApiRaw();
         const alerts = parseVigilanceResponse(json);
 
-        // Mettre en cache
+        // Mettre en cache (mémoire + localStorage)
         cache = { data: alerts, fetchedAt: Date.now() };
+        writePersisted(PERSIST_KEY_ALERTS, alerts);
         Watchdog.report('meteo-france', { type: 'success', responseTimeMs: Date.now() - t0 });
         console.log(`[MeteoFrance] ${alerts.length} départements en alerte`);
         return alerts;
@@ -380,25 +409,7 @@ export async function fetchVigilanceTimeline(): Promise<VigilanceTimeline> {
     }
 
     try {
-        const resp = await fetch(API_URL, {
-            headers: {
-                'Accept': 'application/json',
-            },
-            signal: AbortSignal.timeout(8000),
-        });
-
-        const contentType = resp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-            console.warn(`[MeteoFrance] Unexpected content-type: ${contentType}`);
-            return timelineCache?.data ?? createEmptyTimeline();
-        }
-
-        if (!resp.ok) {
-            console.warn(`[MeteoFrance] HTTP error ${resp.status}`);
-            return timelineCache?.data ?? createEmptyTimeline();
-        }
-
-        const json = await resp.json() as VigilanceApiResponse;
+        const json = await fetchVigilanceApiRaw();
         const timeline = parseVigilanceTimeline(json);
 
         // Mettre en cache

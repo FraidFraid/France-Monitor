@@ -10,6 +10,7 @@
 
 import type { IodaOutageEvent, IspBgpStatus, NetworkOutageState } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { dedupe } from '../utils/inflight.ts';
 
 Watchdog.register('ioda-bgp', {
     label: 'IODA / BGP',
@@ -150,18 +151,17 @@ export async function fetchNetworkOutages(): Promise<NetworkOutageState> {
     const t0 = Date.now();
 
     try {
-        const res = await fetch('/api/internet-outages', {
-            signal: AbortSignal.timeout(15_000),
+        const url = '/api/internet-outages';
+        const json = await dedupe(url, async () => {
+            const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return (await res.json()) as {
+                events:        Record<string, unknown>[];
+                ispStatus:     Record<string, unknown>[];
+                sourcesStatus: { ioda: string; bgpview: string };
+                generatedAt:   string;
+            };
         });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const json = await res.json() as {
-            events:        Record<string, unknown>[];
-            ispStatus:     Record<string, unknown>[];
-            sourcesStatus: { ioda: string; bgpview: string };
-            generatedAt:   string;
-        };
 
         const events    = (Array.isArray(json.events)    ? json.events    : []).map(parseEvent);
         const ispStatus = (Array.isArray(json.ispStatus) ? json.ispStatus : []).map(parseIspStatus);

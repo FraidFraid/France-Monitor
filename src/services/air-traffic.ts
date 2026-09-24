@@ -1,5 +1,6 @@
 import type { AirTrafficFlight, AirTrafficAirportScore } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { dedupe } from '../utils/inflight.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('air-traffic', {
@@ -32,13 +33,22 @@ export async function fetchAirTrafficSnapshot(): Promise<AirTrafficApiResponse> 
     return cachedSnapshot;
   }
 
+  // Single-flight : le layer trafic aérien est repollé toutes les 12 s et
+  // peut aussi être déclenché en warm-up — un appel concurrent partage la
+  // requête en cours plutôt que d'en doubler une (constaté : 4 appels
+  // `/api/traffic/air` par chargement, 10,5 s chacun côté MISS amont).
+  return dedupe('air-traffic-snapshot', () => fetchAirTrafficSnapshotUncached(now));
+}
+
+async function fetchAirTrafficSnapshotUncached(now: number): Promise<AirTrafficApiResponse> {
   Watchdog.report('air-traffic', { type: 'loading' });
   const t0 = Date.now();
 
-  // Append cache busting parameter to bypass aggressive browser caching
-  const cacheBuster = `?t=${now}`;
+  // Le serveur pose déjà `s-maxage=20` (voir api/traffic/air.js) : un cache
+  // buster `?t=` annulait ce cache CDN pour chaque visiteur. Le TTL client
+  // ci-dessus (5 s) et le cache CDN amont suffisent, plus de contournement.
   try {
-    const response = await fetch(`${AIR_TRAFFIC_ENDPOINT}${cacheBuster}`, {
+    const response = await fetch(AIR_TRAFFIC_ENDPOINT, {
       signal: AbortSignal.timeout(20_000),
     });
 

@@ -202,8 +202,12 @@ export async function geocode(query: string): Promise<GeoResult | null> {
     }
 
     try {
+        // Tout appel api-adresse passe par /api/opendata-proxy (cache CDN,
+        // conformité « tout passe par /api/* » — §2.4 de l'audit).
+        const proxied = (upstream: string): string => `/api/opendata-proxy?url=${encodeURIComponent(upstream)}`;
+
         // First try with type=municipality for exact city matches
-        let url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1&type=municipality`;
+        let url = proxied(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1&type=municipality`);
         let resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
 
         let data: {
@@ -219,7 +223,7 @@ export async function geocode(query: string): Promise<GeoResult | null> {
 
         // If no municipality found, try without type filter (catches localities, hamlets, etc.)
         if (!data?.features?.length) {
-            url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1`;
+            url = proxied(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1`);
             resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
             if (resp.ok) {
                 data = await resp.json();

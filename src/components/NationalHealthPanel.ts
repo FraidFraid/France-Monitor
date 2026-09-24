@@ -53,6 +53,7 @@ export class NationalHealthPanel extends Panel {
 
   mount(): void {
     this.modalEl = document.createElement('div');
+    this.modalEl.className = 'fm-floating-panel';
     this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
         width: '400px',
@@ -518,9 +519,10 @@ export class NationalHealthPanel extends Panel {
       .replace(/^-+|-+$/g, '');
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     if (this.modalEl) this.modalEl.style.display = 'none';
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {

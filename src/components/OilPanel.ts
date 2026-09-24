@@ -1159,9 +1159,9 @@ export class OilPanel extends Panel {
     }
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.modalEl.style.display = 'none';
-    if (this.onClose) {
+    if (this.onClose && !opts.silent) {
       this.onClose();
     }
   }

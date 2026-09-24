@@ -300,6 +300,13 @@ interface IngestApiItem {
     confidence?: number | null;
     lat?: number | null;
     lon?: number | null;
+    // Champs additifs du scoring serveur (api/_handlers/news.js, cf. audit §4.5) —
+    // absents tant que l'item n'a pas été scoré par Jev.
+    relevance?: number | null;
+    noise?: boolean | null;
+    alertable?: boolean | null;
+    scope?: string | null;
+    scoredBy?: 'keywords' | 'groq' | 'jev' | null;
 }
 
 interface IngestApiResponse {
@@ -322,20 +329,33 @@ function isEventCategory(value: string): value is EventCategory {
     return EVENT_CATEGORIES.has(value);
 }
 
+const SCORED_BY_VALUES: ReadonlySet<string> = new Set(['keywords', 'groq', 'jev']);
+
+function isScoredBy(value: unknown): value is 'keywords' | 'groq' | 'jev' {
+    return typeof value === 'string' && SCORED_BY_VALUES.has(value);
+}
+
 /**
  * Construit la classification d'un item serveur déjà classifié.
  * Retourne undefined si category/severity manquants ou hors vocabulaire
  * (→ App.ts re-classifiera via le pipeline keyword habituel).
+ *
+ * `source` reflète le moteur réel (`scoredBy`, dérivé serveur de
+ * `classifier_version`) : 'llm' pour Groq/Jev, 'keyword' sinon — avant ce
+ * changement, tout item serveur ressortait toujours en 'keyword' même
+ * classifié par Groq (cf. audit §4.5 / annexe C §1).
  */
 function buildServerClassification(item: IngestApiItem): ThreatClassification | undefined {
     const category = typeof item.category === 'string' ? item.category : '';
     const severity = typeof item.severity === 'string' ? item.severity : '';
     if (!isEventCategory(category) || !isThreatLevel(severity)) return undefined;
+    const source: ThreatClassification['source'] =
+        item.scoredBy === 'groq' || item.scoredBy === 'jev' ? 'llm' : 'keyword';
     return {
         level: severity,
         category,
         confidence: typeof item.confidence === 'number' ? item.confidence : 0.8,
-        source: 'keyword', // classification produite côté serveur (pipeline keyword)
+        source,
     };
 }
 
@@ -363,32 +383,80 @@ function mapIngestItem(raw: IngestApiItem): NewsItem | null {
         threat: buildServerClassification(raw),
         lat: hasCoords && typeof raw.lat === 'number' ? raw.lat : undefined,
         lon: hasCoords && typeof raw.lon === 'number' ? raw.lon : undefined,
+        relevance: typeof raw.relevance === 'number' ? raw.relevance : undefined,
+        noise: typeof raw.noise === 'boolean' ? raw.noise : undefined,
+        alertable: typeof raw.alertable === 'boolean' ? raw.alertable : undefined,
+        scope: typeof raw.scope === 'string' ? raw.scope : undefined,
+        scoredBy: isScoredBy(raw.scoredBy) ? raw.scoredBy : undefined,
     };
+}
+
+// ─── Mémoïsation de /api/news ───
+// Arrondir `since` à un palier de 5 min rend l'URL stable pour tous les
+// visiteurs dans cette fenêtre → le CDN Vercel peut enfin servir un HIT
+// (avant ce correctif, la précision milliseconde rendait chaque URL unique :
+// 4,7 s mesurés en prod à chaque visite, cf. audit C6/P0).
+// La mémoïsation en mémoire (promesse en vol + résultat 60 s) évite en plus
+// un doublon de requête quand un préchargement précoce (App.ts, avant
+// l'init de la carte) et le pipeline normal (fetchAllFeeds) appellent tous
+// les deux fetchFromIngestApi() à quelques centaines de ms d'écart.
+const INGEST_SINCE_BUCKET_MS = 5 * 60_000;
+const INGEST_MEMO_TTL_MS = 60_000;
+
+let ingestInFlight: Promise<NewsItem[] | null> | null = null;
+let ingestMemo: { items: NewsItem[] | null; fetchedAt: number } | null = null;
+
+function floorToBucket(ms: number, bucketMs: number): number {
+    return Math.floor(ms / bucketMs) * bucketMs;
 }
 
 /**
  * Tente le chemin consolidé /api/news (items déjà classifiés + géocodés serveur).
  * Retourne null (sans jeter) si l'API est indisponible (503, 404 dev sans plugin,
  * timeout, payload invalide ou vide) → fallback vers le fetch direct des flux.
+ *
+ * Mémoïsé 60 s (résultat + promesse en vol partagée) : plusieurs appels
+ * rapprochés ne déclenchent qu'une seule requête réseau. Signature et nom
+ * inchangés — les appelants existants n'ont rien à modifier.
  */
 export async function fetchFromIngestApi(): Promise<NewsItem[] | null> {
-    try {
-        const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
-        const url = `/api/news?since=${encodeURIComponent(since)}&limit=1000`;
-        const resp = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-        if (resp.status !== 200) return null;
+    const now = Date.now();
+    if (ingestMemo && now - ingestMemo.fetchedAt < INGEST_MEMO_TTL_MS) {
+        return ingestMemo.items;
+    }
+    if (ingestInFlight) {
+        return ingestInFlight;
+    }
 
-        const payload = await resp.json() as IngestApiResponse;
-        if (!Array.isArray(payload.items) || payload.items.length === 0) return null;
+    const run = (async (): Promise<NewsItem[] | null> => {
+        try {
+            const sinceMs = floorToBucket(now - 24 * 60 * 60_000, INGEST_SINCE_BUCKET_MS);
+            const since = new Date(sinceMs).toISOString();
+            const url = `/api/news?since=${encodeURIComponent(since)}&limit=1000`;
+            const resp = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+            if (resp.status !== 200) return null;
 
-        const items: NewsItem[] = [];
-        for (const raw of payload.items) {
-            const item = mapIngestItem(raw);
-            if (item) items.push(item);
+            const payload = await resp.json() as IngestApiResponse;
+            if (!Array.isArray(payload.items) || payload.items.length === 0) return null;
+
+            const items: NewsItem[] = [];
+            for (const raw of payload.items) {
+                const item = mapIngestItem(raw);
+                if (item) items.push(item);
+            }
+            return items.length > 0 ? items : null;
+        } catch {
+            return null;
         }
-        return items.length > 0 ? items : null;
-    } catch {
-        return null;
+    })();
+
+    ingestInFlight = run;
+    try {
+        const result = await run;
+        ingestMemo = { items: result, fetchedAt: Date.now() };
+        return result;
+    } finally {
+        ingestInFlight = null;
     }
 }
 
@@ -592,4 +660,6 @@ export async function fetchAllFeeds(feeds: Feed[]): Promise<NewsItem[]> {
 export function clearRSSCache(): void {
     cache.clear();
     breakers.clear();
+    ingestMemo = null;
+    ingestInFlight = null;
 }

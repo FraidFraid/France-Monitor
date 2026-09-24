@@ -8,8 +8,8 @@
 
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { queryNews } from '../../api/news.js';
-import { queryNewsHistory } from '../../api/news/history.js';
+import { queryNews } from '../../api/_handlers/news.js';
+import { queryNewsHistory } from '../../api/_handlers/news/history.js';
 
 interface NewsProxyOptions {
   /** Neon Postgres connection string (defaults to process.env.DATABASE_URL). */

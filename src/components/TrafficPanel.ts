@@ -44,6 +44,7 @@ export class TrafficPanel extends Panel {
 
     mount(): void {
         this.modalEl = document.createElement('div');
+        this.modalEl.className = 'fm-floating-panel';
         this.modalEl.style.cssText = `
       ${getPremiumModalStyle({
             width: '400px',
@@ -107,6 +108,10 @@ export class TrafficPanel extends Panel {
         if (this.modalEl) {
             this.modalEl.style.display = 'none';
         }
+    }
+
+    isVisible(): boolean {
+        return this.modalEl?.style.display === 'flex';
     }
 
     protected render(): void {

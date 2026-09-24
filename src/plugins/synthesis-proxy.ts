@@ -1,11 +1,12 @@
 // src/plugins/synthesis-proxy.ts
 import type { Plugin } from 'vite';
+import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../api/_lib/groq-models.js';
 
 /** Redis key used by the serverless function — kept here to document the contract */
 export const CACHE_KEY = 'isnr:synthesis:fr';
 const CACHE_TTL = 900;
 const GROQ_URL  = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 
 // Simple in-process memory cache for dev (mirrors Redis TTL behaviour)
 let _devCache: { value: string; expiresAt: number } | null = null;
@@ -206,9 +207,10 @@ export function synthesisProxyPlugin(): Plugin {
               },
               body: JSON.stringify({
                 model: GROQ_MODEL,
+        ...groqModelParams(GROQ_MODEL),
                 messages: [{ role: 'user', content: buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear) }],
                 temperature: 0.3,
-                max_tokens: 300,
+                max_tokens: withReasoningHeadroom(GROQ_MODEL, 300),
               }),
             });
 

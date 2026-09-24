@@ -99,6 +99,14 @@ export interface NewsItem {
   summary?: string;
   aiSummary?: string;
   aiSummaryStatus?: 'pending' | 'done' | 'failed';  // Status of AI summary generation
+  // Champs additifs du scoring serveur Jev (TypeSafe) — optionnels : absents
+  // tant que /api/news n'a pas scoré l'item (NEWS_SCORING='off', ou colonnes
+  // pas encore migrées). Voir api/_lib/jev-policy.js#derive et docs/audit-2026-09-chargement-jev-ui.md §4.5.
+  relevance?: number;         // 0..1, pertinence stratégique jugée par Jev
+  noise?: boolean;            // true = à masquer par défaut (hors sujet / fait divers isolé)
+  alertable?: boolean;        // true = remplit les critères d'alerte (cf. jev-policy.derive)
+  scope?: string;             // 'commune' | 'departement' | 'region' | 'national' | 'international' | 'unknown'
+  scoredBy?: 'keywords' | 'groq' | 'jev';  // moteur ayant produit category/severity/confidence
 }
 
 // ═══ Time & Filters ═══
@@ -1606,7 +1614,9 @@ export interface BriefJudgment {
   priority: 1 | 2 | 3 | 4;              // P1 = le plus important
   text: string;                          // ≤ 280 caractères
   confidence: BriefConfidence;
-  sources: string[];                     // ≤ 5 noms de sources
+  sources: string[];                     // ≤ 5 noms, DÉDUITS des preuves (jamais du modèle)
+  evidence: string[];                    // ≤ 4 identifiants cités : E<id> événement, S<n> situation
+  unsupported: boolean;                  // aucune preuve valide → affiché « non étayé »
 }
 
 export interface BriefWatchItem {
@@ -1619,6 +1629,89 @@ export interface StructuredBrief {
   judgments: BriefJudgment[];            // ≤ 4, triés par priorité
   watch: BriefWatchItem[];               // ≤ 4
   origin: 'llm' | 'deterministic';
+}
+
+// ─── Événements consolidés (socle Intelligence France) ──────────────────────
+// Produits côté serveur par le cron d'ingestion (api/_lib/news-events-db.js),
+// lus via /api/events, /api/events/detail et /api/events/changes.
+
+export type NewsEventStatus = 'active' | 'cooling' | 'closed';
+export type NewsEventChangeKind = 'created' | 'escalated' | 'deescalated' | 'corroborated' | 'reopened' | 'cooling' | 'closed';
+
+export interface NewsEvent {
+  id: number;
+  evidenceId: string;                    // « E<id> », identifiant citable par le brief
+  title: string;
+  category: string;
+  severity: ThreatLevel;
+  status: NewsEventStatus;
+  firstSeen: string;                     // ISO
+  lastSeen: string;                      // ISO
+  articleCount: number;
+  sourceCount: number;                   // flux distincts
+  independentCount: number;              // groupes de presse distincts
+  sourceNames: string[];                 // ≤ 8, ordre d'apparition
+  lat: number | null;
+  lon: number | null;
+}
+
+export interface NewsEventChange {
+  at: string;                            // ISO
+  kind: NewsEventChangeKind;
+  from: string | null;
+  to: string | null;
+  event: NewsEvent;
+}
+
+export interface NewsEventArticle {
+  id: number;
+  title: string;
+  link: string;
+  feedName: string | null;
+  publishedAt: string | null;
+}
+
+export interface NewsEventDetail {
+  event: NewsEvent;
+  articles: NewsEventArticle[];
+  log: Array<{ at: string; kind: NewsEventChangeKind; from: string | null; to: string | null }>;
+}
+
+/** Point de départ du fil « depuis votre dernière visite ». */
+export interface IntelVisitAnchor {
+  since: number;                         // ms epoch
+  kind: 'last-visit' | 'default';        // default = aucune visite connue → 24 h
+}
+
+/** Changements regroupés par événement pour l'affichage. */
+export interface ChangeDigestItem {
+  event: NewsEvent;
+  kinds: NewsEventChangeKind[];          // triés du plus au moins important
+  latestAt: string;
+  severityFrom: string | null;           // gravité avant la première aggravation de la période
+  independentFrom: number | null;        // sources indépendantes avant la première corroboration
+}
+
+export interface IntelEventsState {
+  events: NewsEvent[];
+  digest: ChangeDigestItem[];
+  totals: Partial<Record<NewsEventChangeKind, number>>;
+  anchor: IntelVisitAnchor;
+  fetchedAt: number;
+  unavailable: boolean;                  // historique serveur injoignable : le dire, ne rien inventer
+}
+
+/** Événement tel qu'envoyé au brief (contrat v14, validé par api/_lib/brief-evidence.js). */
+export interface BriefEventInput {
+  id: string;                            // « E<id> »
+  title: string;
+  category: string;
+  severity: ThreatLevel;
+  sources: string[];
+  sourceCount: number;
+  independentCount: number;
+  lastSeen: string;
+  status: NewsEventStatus;
 }
 
 // ─── Explicabilité du score de stabilité ────────────────────────────────────

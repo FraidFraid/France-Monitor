@@ -6,6 +6,7 @@
 import type { MapLayers } from '../types/index.ts';
 import { AIS_RELAY_URL } from '../services/ais-connection.ts';
 import { fmIcon } from './shared/icons.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, LAYER_PRESETS, layersForPreset, type LayerPresetId } from '../config/layer-presets.ts';
 
 interface LayerDef {
   key: keyof MapLayers;
@@ -50,15 +51,23 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesTelecom',  label: 'TÉLÉCOM 4G·5G', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
   { key: 'outagesInternet', label: 'INTERNET / BGP', icon: fmIcon('globe'), sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: fmIcon('cloud'),   sublayerOf: 'outages' },
-  { key: 'elus', label: 'ÉLUS & REPRÉSENTANTS', icon: fmIcon('landmark') },
 ];
 
 export type LayerToggleHandler = (key: keyof MapLayers, enabled: boolean) => void;
+export type PresetSelectHandler = (id: LayerPresetId) => void;
+
+/** Association groupe → couches enfants, dérivée de `LAYER_DEFS` (voir `groupHasActiveChild`). */
+const _GROUP_KEYS = ['newsGroup', 'energySystems', 'health', 'traffic', 'sovereignty', 'outages', 'environmentGroup'] as const;
+
+export interface LayerPanelOptions {
+  onPresetSelect?: PresetSelectHandler;
+}
 
 export class LayerPanel {
   private container: HTMLElement;
   private layers: MapLayers;
   private onChange: LayerToggleHandler | null = null;
+  private onPresetSelect: PresetSelectHandler | null = null;
   private collapsed = false;
   private newsExpanded = true;
   private healthExpanded = true;
@@ -67,15 +76,57 @@ export class LayerPanel {
   private sovereigntyExpanded = true;
   private outagesExpanded = true;
   private environmentExpanded = true;
+  /** Groupes dont l'utilisateur a explicitement changé l'état plié/déplié — n'est plus recalculé automatiquement. */
+  private manuallyToggledGroups = new Set<(typeof _GROUP_KEYS)[number]>();
+  /** Section « Personnaliser les couches » : repliée par défaut sauf si aucune vue ne correspond à l'état courant. */
+  private customizeExpanded = false;
+  private customizeManuallySet = false;
   private element: HTMLElement | null = null;
 
-  constructor(container: HTMLElement, initialLayers: MapLayers) {
+  constructor(container: HTMLElement, initialLayers: MapLayers, options: LayerPanelOptions = {}) {
     this.container = container;
     this.layers = { ...initialLayers };
+    this.onPresetSelect = options.onPresetSelect ?? null;
   }
 
   setOnChange(handler: LayerToggleHandler): void {
     this.onChange = handler;
+  }
+
+  /** Câblé par App : reçoit l'id de la vue choisie dans la barre « Vues ». */
+  setPresetHandler(handler: PresetSelectHandler): void {
+    this.onPresetSelect = handler;
+  }
+
+  /** Vue dont l'état exact (couches enfant) correspond à `this.layers`, ou `null` si aucune ne correspond. */
+  private getMatchingPresetId(): LayerPresetId | null {
+    for (const preset of LAYER_PRESETS) {
+      const expected = layersForPreset(preset.id);
+      const matches = ALL_PRESETABLE_LAYER_KEYS.every((key) => !!this.layers[key] === !!expected[key]);
+      if (matches) return preset.id;
+    }
+    return null;
+  }
+
+  /** Un groupe a-t-il au moins une couche enfant (ou lui-même, cas `health`) active ? */
+  private groupHasActiveChild(groupKey: keyof MapLayers): boolean {
+    if (this.layers[groupKey]) return true;
+    return LAYER_DEFS.some((d) => d.sublayerOf === groupKey && this.layers[d.key]);
+  }
+
+  /** Resynchronise les 7 accordéons non touchés manuellement sur « replié sauf enfant actif ». */
+  private syncAutoExpandedGroups(): void {
+    const setIfAuto = (id: (typeof _GROUP_KEYS)[number], apply: (value: boolean) => void, groupKey: keyof MapLayers) => {
+      if (this.manuallyToggledGroups.has(id)) return;
+      apply(this.groupHasActiveChild(groupKey));
+    };
+    setIfAuto('newsGroup', (v) => { this.newsExpanded = v; }, 'newsGroup');
+    setIfAuto('energySystems', (v) => { this.energyExpanded = v; }, 'energySystems');
+    setIfAuto('health', (v) => { this.healthExpanded = v; }, 'health');
+    setIfAuto('traffic', (v) => { this.trafficExpanded = v; }, 'traffic');
+    setIfAuto('sovereignty', (v) => { this.sovereigntyExpanded = v; }, 'sovereignty');
+    setIfAuto('outages', (v) => { this.outagesExpanded = v; }, 'outages');
+    setIfAuto('environmentGroup', (v) => { this.environmentExpanded = v; }, 'environmentGroup');
   }
 
   updateLayers(layers: MapLayers): void {
@@ -91,7 +142,7 @@ export class LayerPanel {
   }
 
   private renderItem(def: LayerDef): string {
-    const hidden = def.key === 'elus' || (def.key === 'trafficMaritime' && !AIS_RELAY_URL);
+    const hidden = def.key === 'trafficMaritime' && !AIS_RELAY_URL;
     return `
       <label class="layer-panel-item ${this.layers[def.key] ? 'active' : ''}" data-layer="${def.key}" style="${hidden ? 'display:none;' : ''}">
         <input type="checkbox" ${this.layers[def.key] ? 'checked' : ''} />
@@ -107,6 +158,30 @@ export class LayerPanel {
 
     const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energySystems', 'traffic', 'sovereignty', 'outages', 'environmentGroup', 'health']);
     const enabledCount = LAYER_DEFS.filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
+
+    // Vues prédéfinies : quelle vue (si une seule) correspond exactement à l'état courant.
+    const matchedPresetId = this.getMatchingPresetId();
+    if (!this.customizeManuallySet) {
+      this.customizeExpanded = matchedPresetId === null;
+    }
+    this.syncAutoExpandedGroups();
+
+    const viewsBarHtml = `
+      <div class="layer-panel-views" role="group" aria-label="Vues prédéfinies">
+        ${LAYER_PRESETS.map((preset) => `
+          <button
+            type="button"
+            class="layer-panel-view-btn ${matchedPresetId === preset.id ? 'active' : ''}"
+            data-preset="${preset.id}"
+            aria-pressed="${matchedPresetId === preset.id}"
+            title="${preset.description}"
+          >
+            <span class="layer-panel-view-btn__icon" aria-hidden="true">${fmIcon(preset.icon)}</span>
+            <span class="layer-panel-view-btn__label">${preset.label}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
 
     let listHtml = '';
     let inNewsGroup = false;
@@ -251,12 +326,54 @@ export class LayerPanel {
         </button>
       </div>
       <div class="layer-panel-list ${this.collapsed ? 'collapsed' : ''}">
-        ${listHtml}
+        ${viewsBarHtml}
+        <div class="layer-panel-customize">
+          <div
+            class="layer-panel-customize-header"
+            id="layer-panel-customize-toggle"
+            role="button"
+            tabindex="0"
+            aria-expanded="${this.customizeExpanded}"
+          >
+            <span class="layer-panel-customize-title">Personnaliser les couches</span>
+            <span class="layer-panel-customize-icon" aria-hidden="true">${this.customizeExpanded ? '&#9660;' : '&#9654;'}</span>
+          </div>
+          <div class="layer-panel-customize-body" style="display: ${this.customizeExpanded ? 'block' : 'none'};">
+            ${listHtml}
+          </div>
+        </div>
       </div>
       <div class="layer-panel-footer ${this.collapsed ? 'collapsed' : ''}">
         <span class="layer-panel-count" title="${enabledCount} couches affichées / ${LAYER_DEFS.length} disponibles">${enabledCount}/${LAYER_DEFS.length} actifs</span>
       </div>
     `;
+
+    // Vues prédéfinies
+    this.element.querySelectorAll<HTMLButtonElement>('.layer-panel-view-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.preset as LayerPresetId | undefined;
+        if (!id) return;
+        this.customizeManuallySet = false;
+        this.manuallyToggledGroups.clear();
+        this.onPresetSelect?.(id);
+      });
+    });
+
+    // Section « Personnaliser les couches » — repliable, clavier (RGAA 7.1/7.3)
+    const customizeToggle = this.element.querySelector<HTMLElement>('#layer-panel-customize-toggle');
+    if (customizeToggle) {
+      customizeToggle.addEventListener('click', () => {
+        this.customizeManuallySet = true;
+        this.customizeExpanded = !this.customizeExpanded;
+        this.render();
+      });
+      customizeToggle.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          customizeToggle.click();
+        }
+      });
+    }
 
     // Opérabilité clavier des en-têtes d'accordéon (RGAA 7.1/7.3) :
     // on enrichit chaque <div> en bouton focusable ; Entrée/Espace rejouent
@@ -289,6 +406,7 @@ export class LayerPanel {
       });
       newsToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('newsGroup');
         this.newsExpanded = !this.newsExpanded;
         this.render();
       });
@@ -307,6 +425,7 @@ export class LayerPanel {
 
       healthToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('health');
         this.healthExpanded = !this.healthExpanded;
         this.render();
       });
@@ -324,6 +443,7 @@ export class LayerPanel {
 
       trafficToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('traffic');
         this.trafficExpanded = !this.trafficExpanded;
         this.render();
       });
@@ -341,6 +461,7 @@ export class LayerPanel {
 
       energyToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('energySystems');
         this.energyExpanded = !this.energyExpanded;
         this.render();
       });
@@ -358,6 +479,7 @@ export class LayerPanel {
 
       sovereigntyToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('sovereignty');
         this.sovereigntyExpanded = !this.sovereigntyExpanded;
         this.render();
       });
@@ -374,6 +496,7 @@ export class LayerPanel {
       });
       environmentToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('environmentGroup');
         this.environmentExpanded = !this.environmentExpanded;
         this.render();
       });
@@ -390,6 +513,7 @@ export class LayerPanel {
       });
       outagesToggle.addEventListener('click', (e) => {
         e.preventDefault();
+        this.manuallyToggledGroups.add('outages');
         this.outagesExpanded = !this.outagesExpanded;
         this.render();
       });

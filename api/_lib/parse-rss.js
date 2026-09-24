@@ -102,7 +102,21 @@ export function decodeHtmlEntities(text) {
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    // Entités numériques APRÈS &amp; : les flux doublement encodés (&amp;#039;) sont décodés.
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => safeCodePoint(Number(dec)))
     .replace(/<[^>]+>/g, '');
+}
+
+/**
+ * Caractère d'une entité numérique. Hors plage (0, demi-substituts, > U+10FFFF) → U+FFFD :
+ * fromCodePoint lèverait, et Postgres refuse le NUL.
+ * @param {number} code
+ * @returns {string}
+ */
+function safeCodePoint(code) {
+  if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return '�';
+  return String.fromCodePoint(code);
 }

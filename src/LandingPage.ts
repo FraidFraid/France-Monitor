@@ -1,5 +1,54 @@
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
+// Dimensions intrinsèques des variantes 1440w générées par
+// scripts/optimize-landing-images.py — utilisées comme attributs width/height
+// pour réserver l'espace de mise en page (évite le layout shift) avant même
+// que l'image ne soit chargée.
+const LANDING_MAP_DIMS = { width: 1440, height: 836 } as const; // ratio source 5344x3104
+const LANDING_HERO_DIMS = { width: 1440, height: 810 } as const; // ratio source 2560x1440
+
+interface LandingPictureOptions {
+  /** Nom de fichier sans extension (ex: "news-map") dans /landing/. */
+  name: string;
+  alt: string;
+  /** Attribut sizes du <picture>, ajusté au conteneur réel dans la mise en page. */
+  sizes: string;
+  dims: { width: number; height: number };
+  /**
+   * Image visible dès le premier rendu (ex: le hero) : pas de lazy-loading,
+   * priorité de récupération haute. Sinon : loading="lazy" + decoding="async".
+   */
+  priority?: boolean;
+}
+
+/** Construit un <picture> AVIF/WebP responsive (720w/1440w) pour une capture de la landing. */
+function landingPicture({ name, alt, sizes, dims, priority = false }: LandingPictureOptions): string {
+  const loadingAttrs = priority
+    ? 'fetchpriority="high" decoding="async"'
+    : 'loading="lazy" decoding="async"';
+  return `
+    <picture>
+      <source
+        type="image/avif"
+        srcset="/landing/${name}-720w.avif 720w, /landing/${name}-1440w.avif 1440w"
+        sizes="${sizes}"
+      />
+      <source
+        type="image/webp"
+        srcset="/landing/${name}-720w.webp 720w, /landing/${name}-1440w.webp 1440w"
+        sizes="${sizes}"
+      />
+      <img
+        src="/landing/${name}-1440w.webp"
+        width="${dims.width}"
+        height="${dims.height}"
+        alt="${alt}"
+        ${loadingAttrs}
+      />
+    </picture>
+  `;
+}
+
 function setLandingMeta(): void {
   document.title = t('landing.metaTitle');
 
@@ -86,7 +135,13 @@ export function renderLandingPage(container: HTMLElement): void {
           </div>
           <div class="landing-hero__visual">
             <div class="landing-hero-card">
-              <img src="/landing/hero-overview.png" alt="Vue générale de France Monitor avec carte nationale et panneau nucléaire." />
+              ${landingPicture({
+                name: 'hero-overview',
+                alt: 'Vue générale de France Monitor avec carte nationale et panneau nucléaire.',
+                sizes: '(max-width: 1120px) 100vw, 720px',
+                dims: LANDING_HERO_DIMS,
+                priority: true,
+              })}
             </div>
             <div class="landing-floating-note landing-floating-note--top">
               <span class="landing-note-label">${t('landing.overviewLabel')}</span>
@@ -134,7 +189,12 @@ export function renderLandingPage(container: HTMLElement): void {
           <div class="landing-feature-grid">
             <article class="landing-feature-card landing-feature-card--wide">
               <div class="landing-feature-card__media">
-                <img src="/landing/news-map.png" alt="Carte des actualités géolocalisées de France Monitor avec clusters de couleur." />
+                ${landingPicture({
+                  name: 'news-map',
+                  alt: 'Carte des actualités géolocalisées de France Monitor avec clusters de couleur.',
+                  sizes: '(max-width: 1120px) 100vw, 1380px',
+                  dims: LANDING_MAP_DIMS,
+                })}
               </div>
               <div class="landing-feature-card__body">
                 <span class="landing-tag">${t('landing.features.newsTag')}</span>
@@ -145,7 +205,12 @@ export function renderLandingPage(container: HTMLElement): void {
 
             <article class="landing-feature-card">
               <div class="landing-feature-card__media">
-                <img src="/landing/ecowatt-map.png" alt="Vue Ecowatt du réseau électrique français avec régions colorées et flux frontaliers." />
+                ${landingPicture({
+                  name: 'ecowatt-map',
+                  alt: 'Vue Ecowatt du réseau électrique français avec régions colorées et flux frontaliers.',
+                  sizes: '(max-width: 1120px) 100vw, 681px',
+                  dims: LANDING_MAP_DIMS,
+                })}
               </div>
               <div class="landing-feature-card__body">
                 <span class="landing-tag">${t('landing.features.energyTag')}</span>
@@ -156,7 +221,12 @@ export function renderLandingPage(container: HTMLElement): void {
 
             <article class="landing-feature-card">
               <div class="landing-feature-card__media">
-                <img src="/landing/health-map.png" alt="Vue santé nationale avec stress hospitalier et indicateurs de vigilance." />
+                ${landingPicture({
+                  name: 'health-map',
+                  alt: 'Vue santé nationale avec stress hospitalier et indicateurs de vigilance.',
+                  sizes: '(max-width: 1120px) 100vw, 681px',
+                  dims: LANDING_MAP_DIMS,
+                })}
               </div>
               <div class="landing-feature-card__body">
                 <span class="landing-tag">${t('landing.features.healthTag')}</span>
@@ -167,7 +237,12 @@ export function renderLandingPage(container: HTMLElement): void {
 
             <article class="landing-feature-card">
               <div class="landing-feature-card__media">
-                <img src="/landing/defense-map.png" alt="Vue défense avec activité militaire, brouillage GPS et proximité des câbles sous-marins." />
+                ${landingPicture({
+                  name: 'defense-map',
+                  alt: 'Vue défense avec activité militaire, brouillage GPS et proximité des câbles sous-marins.',
+                  sizes: '(max-width: 1120px) 100vw, 681px',
+                  dims: LANDING_MAP_DIMS,
+                })}
               </div>
               <div class="landing-feature-card__body">
                 <span class="landing-tag">${t('landing.features.sovereigntyTag')}</span>
@@ -178,7 +253,12 @@ export function renderLandingPage(container: HTMLElement): void {
 
             <article class="landing-feature-card">
               <div class="landing-feature-card__media">
-                <img src="/landing/cloud-map.png" alt="Vue cloud et IXP centrée sur Paris avec statut des datacenters et points d'échange." />
+                ${landingPicture({
+                  name: 'cloud-map',
+                  alt: "Vue cloud et IXP centrée sur Paris avec statut des datacenters et points d'échange.",
+                  sizes: '(max-width: 1120px) 100vw, 681px',
+                  dims: LANDING_MAP_DIMS,
+                })}
               </div>
               <div class="landing-feature-card__body">
                 <span class="landing-tag">${t('landing.features.networksTag')}</span>
@@ -199,22 +279,52 @@ export function renderLandingPage(container: HTMLElement): void {
           </div>
           <div class="landing-gallery">
             <figure class="landing-gallery__item landing-gallery__item--large">
-              <img src="/landing/hero-overview.png" alt="Capture large de France Monitor centrée sur la carte nationale." />
+              ${landingPicture({
+                name: 'hero-overview',
+                alt: 'Capture large de France Monitor centrée sur la carte nationale.',
+                sizes: '(max-width: 1120px) 100vw, 900px',
+                dims: LANDING_HERO_DIMS,
+              })}
             </figure>
             <figure class="landing-gallery__item">
-              <img src="/landing/news-map.png" alt="Capture du module d'actualités géolocalisées." />
+              ${landingPicture({
+                name: 'news-map',
+                alt: "Capture du module d'actualités géolocalisées.",
+                sizes: '(max-width: 1120px) 50vw, 440px',
+                dims: LANDING_MAP_DIMS,
+              })}
             </figure>
             <figure class="landing-gallery__item">
-              <img src="/landing/ecowatt-map.png" alt="Capture du module Ecowatt." />
+              ${landingPicture({
+                name: 'ecowatt-map',
+                alt: 'Capture du module Ecowatt.',
+                sizes: '(max-width: 1120px) 50vw, 440px',
+                dims: LANDING_MAP_DIMS,
+              })}
             </figure>
             <figure class="landing-gallery__item">
-              <img src="/landing/defense-map.png" alt="Capture du module défense." />
+              ${landingPicture({
+                name: 'defense-map',
+                alt: 'Capture du module défense.',
+                sizes: '(max-width: 1120px) 50vw, 440px',
+                dims: LANDING_MAP_DIMS,
+              })}
             </figure>
             <figure class="landing-gallery__item">
-              <img src="/landing/health-map.png" alt="Capture du module santé." />
+              ${landingPicture({
+                name: 'health-map',
+                alt: 'Capture du module santé.',
+                sizes: '(max-width: 1120px) 50vw, 440px',
+                dims: LANDING_MAP_DIMS,
+              })}
             </figure>
             <figure class="landing-gallery__item">
-              <img src="/landing/cloud-map.png" alt="Capture du module cloud et IXP." />
+              ${landingPicture({
+                name: 'cloud-map',
+                alt: 'Capture du module cloud et IXP.',
+                sizes: '(max-width: 1120px) 50vw, 440px',
+                dims: LANDING_MAP_DIMS,
+              })}
             </figure>
           </div>
         </section>

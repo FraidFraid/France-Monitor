@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { currentSlotKey, buildSlotGrid } from '../api/utils/slots.js';
+import { currentSlotKey, buildSlotGrid } from '../api/_utils/slots.js';
 
 describe('api/utils/slots · currentSlotKey', () => {
   it('mappe chaque heure UTC vers son créneau de 6 h', () => {

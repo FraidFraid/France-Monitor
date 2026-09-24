@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { buildSnapshot, buildActiveClusterTemplates } from '../api/health/hantavirus.js';
+import { buildSnapshot, buildActiveClusterTemplates } from '../api/_handlers/health/hantavirus.js';
 
 describe('api/health/hantavirus · fallback officiel', () => {
   it('buildSnapshot defaults align with latest official hantavirus baseline', () => {

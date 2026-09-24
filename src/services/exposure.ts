@@ -37,9 +37,7 @@ const CACHE_TTL = 30 * 60_000; // 30 minutes (données moins volatiles)
 
 // ═══ API URLs ═══
 
-const EXPOSURE_API_URL = import.meta.env.PROD
-  ? '/api/exposure'
-  : 'http://localhost:3001/api/exposure';
+const EXPOSURE_API_URL = '/api/exposure';
 
 // ═══ Fetch ═══
 

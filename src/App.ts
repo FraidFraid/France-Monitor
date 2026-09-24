@@ -6,7 +6,7 @@
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
-import { fmIcon } from './components/shared/icons.ts';
+import { fmIcon, type IconName } from './components/shared/icons.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
 import type { SearchModal } from './components/SearchModal.ts';
@@ -21,14 +21,16 @@ import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
-import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
+import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
+import { scoreLevel } from './services/vigilance.ts';
+import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
 import { detectWildfireIncidents } from './services/situation-engine.ts';
 import { getPreviousScoreForSmoothing, recordStabilitySnapshot } from './utils/stability-history.ts';
-import type { FranceCountrySnapshot, FranceIntelTimelineLane, StructuredBrief } from './types/index.ts';
+import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
@@ -45,6 +47,7 @@ import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, layersForPreset, type LayerPresetId } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
@@ -59,7 +62,7 @@ import { detectAisAnomalies } from './services/ais-anomalies.ts';
 import { detectCableThreats, militaryShipToAIS, type DefenseAlert } from './services/cable-threats.ts';
 import { ALL_FEEDS } from './config/feeds.ts';
 import { VIEW_PRESETS } from './config/geo.ts';
-import { fetchAllFeeds } from './services/rss.ts';
+import { fetchAllFeeds, fetchFromIngestApi } from './services/rss.ts';
 import { classifyByKeywords } from './services/classifier.ts';
 import { classifyWithAI } from './services/ai-classifier.ts';
 import { summarizeWithFallback } from './services/summarization.ts';
@@ -442,19 +445,75 @@ const DEFAULT_LAYERS: MapLayers = {
   dayNight: false,
 };
 
-// Preset d'accueil affiché au TOUT PREMIER chargement uniquement (aucune couche
-// persistée : ni paramètre `layers` dans l'URL, ni localStorage). Évite une carte
-// vide à la première visite. N'affecte PAS les utilisateurs existants (leur état
-// vient de localStorage/URL) ni DEFAULT_LAYERS (qui reste le fallback de merge).
-// Seuls des enfants sont listés : normalizeLayerState() dérive les groupes parents
-// (newsGroup, energySystems, environmentGroup).
-const FIRST_LOAD_PRESET_LAYERS: Partial<MapLayers> = {
-  news: true,          // Actualités PQR
-  powerGrid: true,     // Écowatt / réseau électrique
-  environmental: true, // Vigilance Météo-France + Vigicrues
-};
-
 const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
+
+/**
+ * Registre des panneaux flottants possédés par une couche (audit UI 2026-09
+ * §5.3 point 3 : un seul panneau flottant ouvert à la fois). Un seul id
+ * représentatif par panneau — les groupes santé/pannes réseau partagent un
+ * unique panneau pour plusieurs clés enfant (`layerKeys`). Source unique pour
+ * getFloatingPanelInstance()/hideAllFloatingPanels()/showFloatingPanel()/le
+ * sélecteur « panneaux ouverts » (refreshFloatingPanelSwitcher()). `id` est
+ * toujours une clé passée telle quelle à _handlePanelVisibility().
+ */
+interface FloatingPanelDef {
+  id: keyof MapLayers;
+  label: string;
+  icon: IconName;
+  layerKeys: ReadonlyArray<keyof MapLayers>;
+}
+
+const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
+  { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
+  { id: 'fires', label: 'Feux de forêt', icon: 'flame', layerKeys: ['fires'] },
+  { id: 'dayNight', label: 'Jour / nuit', icon: 'moon', layerKeys: ['dayNight'] },
+  { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
+  { id: 'dromEnergy', label: 'Énergie DROM', icon: 'palmtree', layerKeys: ['dromEnergy'] },
+  { id: 'nuclearFleet', label: 'Parc nucléaire', icon: 'atom', layerKeys: ['nuclearFleet'] },
+  { id: 'gasNetwork', label: 'Réseau gaz', icon: 'flame', layerKeys: ['gasNetwork'] },
+  { id: 'hydroBackbone', label: 'Stress hydro', icon: 'droplet', layerKeys: ['hydroBackbone'] },
+  { id: 'oilNetwork', label: 'Pétrole', icon: 'fuel', layerKeys: ['oilNetwork'] },
+  { id: 'windMonitor', label: 'Éolien', icon: 'wind', layerKeys: ['windMonitor'] },
+  { id: 'health', label: 'Santé', icon: 'stethoscope', layerKeys: ['health', 'healthOscour', 'healthApl', 'hospitals'] },
+  { id: 'trafficRoad', label: 'Trafic routier', icon: 'car-front', layerKeys: ['trafficRoad'] },
+  { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
+  { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
+  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
+  { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
+  { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
+  {
+    id: 'outagesElec',
+    label: 'Pannes réseau',
+    icon: 'satellite-dish',
+    layerKeys: ['outagesElec', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
+  },
+];
+
+/**
+ * handleSourcePanelClick()'s source names → their FLOATING_PANEL_DEFS id
+ * (best-effort, only for the chip switcher's "current" highlight — that
+ * click path can open a panel without its layer being active, so it can't
+ * be driven by floatingPanelIdForLayerKey()).
+ */
+const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
+  'Météo-France': 'environmental',
+  'Vigicrues': 'environmental',
+  'Éolien France': 'windMonitor',
+  'SNCF': 'trafficRail',
+  'NASA FIRMS': 'fires',
+  'Trafic': 'trafficRoad',
+  'Cyber': 'cyber',
+  'Écowatt RTE': 'powerGrid',
+  'ARCEP Réseau Mobile': 'outagesElec',
+  'Enedis / Pannes Électricité': 'outagesElec',
+  'Infra Réseau DC / IXP': 'outagesElec',
+  'IODA Internet': 'outagesElec',
+  'Réseau Gaz / EcoGaz': 'gasNetwork',
+  'Pétrole SDES / INSEE': 'oilNetwork',
+  'Vols Militaires ADS-B': 'military',
+  'Feux NASA FIRMS': 'fires',
+  'Santé SPF / DREES': 'health',
+};
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -1329,6 +1388,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
 ];
 
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
+/** Attente maximale des événements (preuves E…) avant de demander le brief sans eux. */
+const FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS = 8_000;
 const MAX_SUMMARIZE_ITEMS_PER_CYCLE = 10;
 
 export class App {
@@ -1391,6 +1452,10 @@ export class App {
   private hasUpdate = false;
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  /** Couleur nationale du dernier brief demandé : un changement de couleur redemande le brief. */
+  private franceIntelBriefMark: BriefLevelMark | null = null;
+  /** Revérifie à l'échéance de stabilisation (BRIEF_LEVEL_SETTLE_MS) avec un instantané frais ; un seul à la fois. */
+  private franceIntelBriefSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private currentCyberData: CyberState | null = null;
   private currentThreatEvents: ThreatEvent[] = [];
   private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
@@ -1476,8 +1541,36 @@ export class App {
   private outagesLoaded = false;
   private trafficLoadPromise: Promise<void> | null = null;
   private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
+  // Perf audit top-10 item 5 / task 5: these 13 panels used to be
+  // dynamically imported unconditionally inside renderShell(), so every
+  // session downloaded all 13 chunks regardless of which layers were ever
+  // toggled. Each is now lazy-loaded on first activation via the matching
+  // ensureXPanel() below (memoized, same pattern as ensureFranceIntelPanel()),
+  // dispatched from onLayerToggle()/restoreActiveLayerPanelsAfterRefresh()
+  // through ensureLazyPanelForLayer().
+  private dromEnergyPanelPromise: Promise<void> | null = null;
+  private hydraulicPanelPromise: Promise<void> | null = null;
+  private eolienPanelPromise: Promise<void> | null = null;
+  private healthPanelsPromise: Promise<void> | null = null;
+  private firesPanelPromise: Promise<void> | null = null;
+  private trafficPanelPromise: Promise<void> | null = null;
+  private maritimePanelPromise: Promise<void> | null = null;
+  private cyberPanelPromise: Promise<void> | null = null;
+  private oilPanelPromise: Promise<void> | null = null;
+  private nuclearPanelPromise: Promise<void> | null = null;
+  private outagesPanelPromise: Promise<void> | null = null;
+  private defensePanelPromise: Promise<void> | null = null;
   private hasRestoredActiveLayerPanels = false;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
+  // ── Single floating panel (audit UI 2026-09 §5.3 point 3) ────────────────
+  /** Dernier panneau flottant ouvert explicitement via showFloatingPanel() —
+   *  repli pour la puce active du sélecteur sur les panneaux sans isVisible(). */
+  private currentFloatingPanelId: keyof MapLayers | null = null;
+  private floatingPanelSwitcherEl: HTMLElement | null = null;
+  /** true seulement pendant l'application du preset d'accueil (premier
+   *  chargement OU état persisté "tout éteint") — voir init() et
+   *  restoreActiveLayerPanelsAfterRefresh(). */
+  private suppressFirstLoadPanelAutoOpen = false;
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
   private _intervalMilitaryFlights: PausableTimer | null = null;
@@ -1551,6 +1644,7 @@ export class App {
     this.removePausableInterval(this._intervalVersion);
     this._intervalVersion = null;
     this.clearFranceIntelBriefRefresh();
+    this.clearFranceIntelBriefSettleTimer();
     this.clearPausableIntervals();
     this.removeGlobalListeners();
     this.visibilityHandlerInstalled = false;
@@ -1840,6 +1934,61 @@ export class App {
     });
   }
 
+  /**
+   * Bascule tablette (769–1180 px) de la sidebar (audit UI 2026-09 §5.3
+   * point 5) — le bouton n'est visible que dans cette plage via CSS
+   * (.header-sidebar-toggle, main.css). Pose/retire `sidebar-collapsed` sur
+   * la racine #app (this.container ; la règle `#app.sidebar-collapsed
+   * .sidebar` existe déjà dans main.css), état persisté dans localStorage,
+   * et déclenche un resize après la transition CSS de la sidebar. Ni
+   * MapContainer ni DeckGLMap n'exposent de resize()/invalidateSize() — la
+   * carte MapLibre observe déjà son conteneur via son ResizeObserver interne
+   * (`trackResize`, activé par défaut), donc l'événement `resize` générique
+   * suffit à la faire se remesurer, et rafraîchit au passage
+   * syncCompactMode() (bascule des presets régions en `<select>`).
+   */
+  private bindSidebarToggle(header: HTMLElement): void {
+    const toggle = header.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
+    if (!toggle) return;
+
+    let collapsed = false;
+    try {
+      collapsed = localStorage.getItem('fm-sidebar-collapsed') === 'true';
+    } catch {
+      collapsed = false;
+    }
+
+    const apply = (next: boolean, persist: boolean): void => {
+      collapsed = next;
+      this.container.classList.toggle('sidebar-collapsed', collapsed);
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.setAttribute('aria-label', collapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
+      if (!persist) return;
+      try {
+        localStorage.setItem('fm-sidebar-collapsed', String(collapsed));
+      } catch {
+        // Quota dépassé / navigation privée : pas bloquant, juste pas persisté.
+      }
+    };
+
+    apply(collapsed, false);
+
+    toggle.addEventListener('click', () => {
+      apply(!collapsed, true);
+      const sidebarEl = this.container.querySelector<HTMLElement>('.sidebar');
+      if (!sidebarEl) {
+        window.dispatchEvent(new Event('resize'));
+        return;
+      }
+      const onTransitionEnd = (event: TransitionEvent): void => {
+        if (event.propertyName !== 'width') return;
+        sidebarEl.removeEventListener('transitionend', onTransitionEnd);
+        window.dispatchEvent(new Event('resize'));
+      };
+      sidebarEl.addEventListener('transitionend', onTransitionEnd);
+    });
+  }
+
   private updateShellTranslations(): void {
     const language = getCurrentLanguage();
     this.aboutTriggerEl?.setAttribute('aria-label', t('app.aboutAria'));
@@ -1860,6 +2009,15 @@ export class App {
     this.container.querySelectorAll<HTMLElement>('.header-language-toggle').forEach((toggle) => {
       toggle.setAttribute('aria-label', t('app.languageSwitcher'));
     });
+    const dashboardHeadingEl = this.container.querySelector<HTMLElement>('h1.visually-hidden');
+    if (dashboardHeadingEl) dashboardHeadingEl.textContent = t('app.dashboardHeading');
+    this.container.querySelector<HTMLButtonElement>('[data-overflow-trigger]')?.setAttribute('aria-label', t('app.moreActionsAria'));
+    this.floatingPanelSwitcherEl?.setAttribute('aria-label', t('app.floatingPanelSwitcherAria'));
+    const sidebarToggle = this.container.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
+    if (sidebarToggle) {
+      const isCollapsed = this.container.classList.contains('sidebar-collapsed');
+      sidebarToggle.setAttribute('aria-label', isCollapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
+    }
     const aboutModal = this.container.querySelector('.about-modal');
     if (aboutModal) {
       aboutModal.querySelector<HTMLButtonElement>('.about-modal__close')?.setAttribute('aria-label', t('app.closeAbout'));
@@ -2010,6 +2168,7 @@ export class App {
       panel.setInfrastructureWidget(this.networkBarometerWidget);
       panel.setOnClose(() => {
         this.clearFranceIntelBriefRefresh();
+        this.clearFranceIntelBriefSettleTimer();
       });
       panel.mount();
       this.franceIntelPanel = panel;
@@ -2109,18 +2268,42 @@ export class App {
     // All layers start OFF by default. URL params win; localStorage restores Ctrl+R.
     const urlState = readUrlState();
     const persistedLayers = urlState.layers ?? this.readStoredActiveLayers();
-    if (persistedLayers) {
+    // A-t-on au moins UNE couche enfant persistée active ? Un état "tout
+    // éteint" (ex. localStorage écrit par une session précédente qui a tout
+    // désactivé) est traité comme un premier chargement — sinon la carte est
+    // vide (audit UI 2026-09 §5.1/§5.3 point 1).
+    const hasPersistedChildActive = persistedLayers != null
+      && ALL_PRESETABLE_LAYER_KEYS.some((key) => persistedLayers[key]);
+    if (hasPersistedChildActive) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
+      this.suppressFirstLoadPanelAutoOpen = false;
     } else {
-      // Premier chargement : rien de persisté → preset d'accueil pour ne pas
-      // présenter une carte vide. Même chemin (normalizeLayerState) que la
-      // restauration : les groupes parents sont recalculés automatiquement.
-      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...FIRST_LOAD_PRESET_LAYERS });
+      // Premier chargement OU état persisté "tout éteint" → preset d'accueil
+      // nommé (mode simple, §5.3 point 1/2) pour ne pas présenter une carte
+      // vide. Même chemin (normalizeLayerState) que la restauration : les
+      // groupes parents sont recalculés automatiquement. Contrairement à un
+      // retour d'utilisateur avec de vraies couches persistées, ce chemin ne
+      // doit ouvrir AUCUN panneau flottant d'office (restoreActiveLayerPanelsAfterRefresh
+      // lit ce flag) — seul un clic explicite ouvre un panneau.
+      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...layersForPreset(DEFAULT_PRESET_ID) });
+      this.suppressFirstLoadPanelAutoOpen = true;
     }
 
     this.renderShell();
     this.startVersionPolling();
     this.updateBarometerFabVisibility();
+
+    // ── Cache warm-up (perf audit §6 item 1) ──────────────────────────────
+    // initMap() below awaits a third-party network chain (cartocdn style →
+    // sprite/glyphs/tiles) plus ~2 MB of map JS before ANY data fetch used
+    // to start. Fire the critical-layer network calls now, in parallel with
+    // the map bootstrap, so their latency overlaps instead of serializing
+    // after it. Results are intentionally NOT applied to the map here —
+    // loadCriticalLayers() below calls the same service functions again
+    // once the map exists and applies them normally; this call only exists
+    // to warm each service's own in-flight/short-TTL cache.
+    this.warmCriticalDataCache();
+
     await this.initMap();
 
     // ── Apply saved layer visibility IMMEDIATELY (before any data) ──────────
@@ -2152,8 +2335,14 @@ export class App {
     // ── Polling — start immediately, independent of layer data
     this.startRSSPipeline();
     this.startMilitaryPolling();
-    this.startFinancePolling();
-    this.startCommodityPolling();
+    // Finance/commodities strips render under the map and aren't part of the
+    // critical first paint — defer their startup (immediate fetch + interval)
+    // until the browser is idle so they don't compete with critical-layer
+    // fetches right after map init (perf audit §6 item 4, last bullet).
+    this.deferAfterFirstPaint(() => {
+      this.startFinancePolling();
+      this.startCommodityPolling();
+    });
     this.startOilPolling();
     this.startAirTrafficPolling();
     this.startHealthPolling();
@@ -2185,6 +2374,43 @@ export class App {
     this.loadOptionalLayers().catch((err) => console.error('[Init] Optional layers error:', err));
   }
 
+  /**
+   * Fire the critical-layer network calls (ecowatt, weather vigilance, floods,
+   * nuclear) and the server news ingest, without applying their results.
+   *
+   * Called before `await this.initMap()` so their network latency overlaps
+   * with the map bootstrap instead of being fully serialized after it
+   * (perf audit §6 item 1). `loadCriticalLayers()`/the RSS pipeline call the
+   * same functions again once the map exists; each service's own short-TTL
+   * memoization / in-flight-promise guard means that second call reuses this
+   * warm-up's result instead of re-issuing the request. Errors are swallowed
+   * here — the real call later handles its own error/fallback UI.
+   */
+  /**
+   * Runs `fn` once the browser is idle (requestIdleCallback), falling back to
+   * a fixed 3 s timeout in browsers/environments without it. Used for
+   * below-the-fold work (finance/commodity strips) that shouldn't compete
+   * with critical-layer network calls right after first paint.
+   */
+  private deferAfterFirstPaint(fn: () => void): void {
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+    if (typeof ric === 'function') {
+      ric(() => fn());
+    } else {
+      setTimeout(fn, 3000);
+    }
+  }
+
+  private warmCriticalDataCache(): void {
+    fetchEcowatt().catch(() => {});
+    fetchVigilanceTimeline().catch(() => {});
+    fetchVigilanceMeteo().catch(() => {});
+    fetchVigicrues().catch(() => {});
+    fetchNuclearUnavailabilities().catch(() => {});
+    fetchRTEIIPIncidents().catch(() => {});
+    fetchFromIngestApi().catch(() => {});
+  }
+
   // ─── Shell Layout ───────────────────────────────────────────────────────────
 
   private renderShell(): void {
@@ -2197,10 +2423,21 @@ export class App {
     skipLink.textContent = 'Aller au contenu';
     this.container.appendChild(skipLink);
 
+    // ── Titre de page sémantique (audit UI 2026-09 §5.2/§5.3.8) — masqué
+    // visuellement, donne au tableau de bord un vrai <h1> pour les lecteurs
+    // d'écran et le plan de page (jusqu'ici absent hors du <noscript>).
+    const dashboardHeading = document.createElement('h1');
+    dashboardHeading.className = 'visually-hidden';
+    dashboardHeading.textContent = t('app.dashboardHeading');
+    this.container.appendChild(dashboardHeading);
+
     // ── Header ──
     const header = document.createElement('header');
     header.className = 'header';
     header.innerHTML = `
+      <button class="header-sidebar-toggle" type="button" data-sidebar-toggle aria-expanded="true" aria-label="${t('app.sidebarCollapseAria')}">
+        ${fmIcon('menu')}
+      </button>
       <button class="header-title header-about-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="${t('app.aboutAria')}">
         <img class="header-logo" src="/icon.svg" alt="France Monitor logo" />
         <span class="header-title-text">
@@ -2213,10 +2450,22 @@ export class App {
           <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language-toggle="fr" aria-pressed="${language === 'fr'}">FR</button>
           <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language-toggle="en" aria-pressed="${language === 'en'}">EN</button>
         </div>
-        <button class="header-quality-link header-note-btn" type="button" data-note-report>Note de situation</button>
-        <button class="header-quality-link header-export-btn" type="button" data-export-menu aria-haspopup="menu" aria-expanded="false">Export</button>
         <a class="header-quality-link" href="/sources-quality">Sources & qualité</a>
         <div id="header-data-sources"></div>
+        <div class="header-overflow" data-header-overflow>
+          <button
+            class="header-quality-link header-overflow-trigger"
+            type="button"
+            data-overflow-trigger
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label="${t('app.moreActionsAria')}"
+          >⋯</button>
+          <div class="header-overflow-menu" role="menu" data-overflow-menu hidden>
+            <button class="header-overflow-menu__item" type="button" role="menuitem" data-note-report>Note de situation</button>
+            <button class="header-overflow-menu__item" type="button" role="menuitem" data-export-menu>Export</button>
+          </div>
+        </div>
         <span class="header-clock" id="clock"></span>
         <span class="header-live-dot" title="${t('app.live')}"></span>
       </div>
@@ -2225,12 +2474,65 @@ export class App {
     this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
     this.bindLanguageToggle(header);
+    this.bindSidebarToggle(header);
+
+    // ── Menu « ⋯ » (Note de situation / Export) — audit UI 2026-09 §5.3.4 ──
+    // Regroupe deux actions header peu fréquentes derrière un seul bouton,
+    // avec le clavier/focus attendu d'un menu (RGAA 7.1/7.3/8.9).
+    const overflowWrapper = header.querySelector<HTMLElement>('[data-header-overflow]');
+    const overflowTrigger = header.querySelector<HTMLButtonElement>('[data-overflow-trigger]');
+    const overflowMenu = header.querySelector<HTMLElement>('[data-overflow-menu]');
+    const overflowItems = overflowMenu
+      ? Array.from(overflowMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      : [];
+
+    const setOverflowOpen = (open: boolean): void => {
+      overflowTrigger?.setAttribute('aria-expanded', String(open));
+      if (overflowMenu) overflowMenu.hidden = !open;
+      if (open) overflowItems[0]?.focus();
+    };
+
+    overflowTrigger?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setOverflowOpen(overflowTrigger.getAttribute('aria-expanded') !== 'true');
+    });
+
+    overflowMenu?.addEventListener('keydown', (event) => {
+      const currentIndex = overflowItems.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        overflowItems[(currentIndex + 1 + overflowItems.length) % overflowItems.length]?.focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        overflowItems[(currentIndex - 1 + overflowItems.length) % overflowItems.length]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setOverflowOpen(false);
+        overflowTrigger?.focus();
+      } else if (event.key === 'Tab') {
+        setOverflowOpen(false);
+      }
+    });
+
+    this.addGlobalListener(document, 'click', (event) => {
+      if (!overflowWrapper) return;
+      if (overflowTrigger?.getAttribute('aria-expanded') !== 'true') return;
+      if (!overflowWrapper.contains(event.target as Node)) setOverflowOpen(false);
+    });
+
     header.querySelector<HTMLButtonElement>('[data-note-report]')?.addEventListener('click', () => {
+      setOverflowOpen(false);
+      overflowTrigger?.focus();
       void this.openSituationReport();
     });
     header.querySelector<HTMLButtonElement>('[data-export-menu]')?.addEventListener('click', (event) => {
       event.stopPropagation();
-      void this.toggleExportMenu(event.currentTarget as HTMLElement);
+      setOverflowOpen(false);
+      // Ancre sur le déclencheur « ⋯ » (stable, toujours visible) plutôt que
+      // sur l'item de menu qu'on vient de masquer — ExportMenu mesure sa
+      // position au clic (getBoundingClientRect()), un élément caché
+      // renverrait un rectangle vide.
+      void this.toggleExportMenu(overflowTrigger ?? (event.currentTarget as HTMLElement));
     });
 
     const aboutModal = document.createElement('div');
@@ -2476,6 +2778,18 @@ export class App {
     };
     mapArea.appendChild(barometerBtn);
 
+    // ── « Panneaux ouverts » : sélecteur de panneau flottant unique ──
+    // (audit UI 2026-09 §5.3 point 3). Peuplé/masqué par
+    // refreshFloatingPanelSwitcher() — vide et caché tant qu'il n'y a pas
+    // au moins 2 panneaux flottants éligibles.
+    const floatingPanelSwitcher = document.createElement('div');
+    floatingPanelSwitcher.className = 'floating-panel-switcher';
+    floatingPanelSwitcher.setAttribute('role', 'group');
+    floatingPanelSwitcher.setAttribute('aria-label', t('app.floatingPanelSwitcherAria'));
+    floatingPanelSwitcher.hidden = true;
+    mapArea.appendChild(floatingPanelSwitcher);
+    this.floatingPanelSwitcherEl = floatingPanelSwitcher;
+
     main.appendChild(mapArea);
 
     // ── Right Sidebar ──
@@ -2530,22 +2844,29 @@ export class App {
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
     this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled));
+    this.layerPanel.setPresetHandler((id) => this.applyLayerPreset(id));
     this.layerPanel.mount();
 
     const underMapGrid = document.getElementById('under-map-grid')!;
 
-    // Moitié gauche : Flux boursier + Matières premières côte à côte
-    const marketGroupWrapper = document.createElement('div');
-    marketGroupWrapper.className = 'under-map-market-group';
-    underMapGrid.appendChild(marketGroupWrapper);
+    // Moitié gauche : Flux boursier + Matières premières fusionnés en UNE
+    // seule bande (audit UI 2026-09 §5.3 point 7 — auparavant 2 cartes
+    // empilées, chacune avec sa propre bordure/fond/ombre). Chaque composant
+    // garde son mount() intact ; .under-map-market-band neutralise juste la
+    // carte individuelle de chaque enfant en CSS (main.css).
+    const marketBand = document.createElement('div');
+    marketBand.className = 'under-map-market-band';
+    underMapGrid.appendChild(marketBand);
 
     const marketStripContainer = document.createElement('div');
-    marketGroupWrapper.appendChild(marketStripContainer);
+    marketStripContainer.className = 'under-map-market-band__col';
+    marketBand.appendChild(marketStripContainer);
     this.marketStrip = new MarketStrip(marketStripContainer);
     this.marketStrip.mount();
 
     const commodityStripContainer = document.createElement('div');
-    marketGroupWrapper.appendChild(commodityStripContainer);
+    commodityStripContainer.className = 'under-map-market-band__col';
+    marketBand.appendChild(commodityStripContainer);
     this.commodityStrip = new CommodityStrip(commodityStripContainer);
     this.commodityStrip.mount();
 
@@ -2621,6 +2942,7 @@ export class App {
     });
     this.environmentPanel.setOnClose(() => {
       this.layoutEnvironmentFloatingPanels();
+      this.refreshFloatingPanelSwitcher();
     });
     this.environmentPanel.mount();
 
@@ -2628,50 +2950,9 @@ export class App {
     this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
     this.energyPanel.mount();
 
-    void import('./components/DromEnergyPanel.ts').then(({ DromEnergyPanel }) => {
-      const panel = new DromEnergyPanel(floatContainer);
-      panel.setOnClose(() => this.closeEnergyLayer('dromEnergy'));
-      panel.setOnHoverAsset((asset) => {
-        this.mapContainer?.highlightDromEnergyAsset(asset);
-      });
-      panel.mount();
-      this.dromEnergyPanel = panel;
-      // Catch-up: layer restored before the lazy chunk arrived → re-apply visibility
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.dromEnergy) {
-        if (this.currentDromEnergyDashboard) panel.show(this.currentDromEnergyDashboard);
-        else if (this.currentDromEnergyError) panel.showErrorState(this.currentDromEnergyError);
-        else panel.showLoadingState();
-        this.layoutEnergyFloatingPanels();
-      }
-    });
-
-    void import('./components/HydraulicPanel.ts').then(({ HydraulicPanel }) => {
-      const panel = new HydraulicPanel(floatContainer);
-      panel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
-      panel.setOnSelectAsset((asset) => {
-        this.mapContainer?.flyTo(asset.location.lon, asset.location.lat, 10.5);
-      });
-      panel.mount();
-      this.hydraulicPanel = panel;
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.hydroBackbone) {
-        panel.show(this.currentHydraulicAssets, this.currentEcowattResponse);
-        this.layoutEnergyFloatingPanels();
-      }
-    });
-
-    void import('./components/EolienPanel.ts').then(({ EolienPanel }) => {
-      const panel = new EolienPanel(floatContainer);
-      panel.setOnClose(() => this.closeEnergyLayer('windMonitor'));
-      panel.setOnSelectPark((park) => {
-        this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
-      });
-      panel.mount();
-      this.eolienPanel = panel;
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.windMonitor) {
-        panel.show(this.currentEolienLive, this.currentEolienParks);
-        this.layoutEnergyFloatingPanels();
-      }
-    });
+    // DromEnergyPanel/HydraulicPanel/EolienPanel: lazy-loaded on first layer
+    // activation — see ensureDromEnergyPanel()/ensureHydraulicPanel()/
+    // ensureEolienPanel() below (perf audit task 5).
 
     this.isnrPanel = new ISNRPanel(floatContainer);
     this.isnrPanel.setOnHoverDepartment((code) => {
@@ -2680,24 +2961,8 @@ export class App {
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
 
-    void import('./components/NationalHealthPanel.ts').then(({ NationalHealthPanel }) => {
-      const panel = new NationalHealthPanel(floatContainer);
-      panel.mount();
-      this.nationalHealthPanel = panel;
-      // Catch-up: health layers restored before the lazy chunk arrived
-      const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      if (this.hasRestoredActiveLayerPanels && anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health'));
-      }
-    });
-
-    void import('./components/HealthBarometerPanel.ts').then(({ HealthBarometerPanel }) => {
-      const panel = new HealthBarometerPanel(floatContainer);
-      panel.mount();
-      this.healthBarometerPanel = panel;
-    });
+    // NationalHealthPanel/HealthBarometerPanel: lazy-loaded on first health
+    // layer activation — see ensureHealthPanels() below (perf audit task 5).
 
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
@@ -2715,14 +2980,10 @@ export class App {
 
       if (!isAnyHealthLayerActive) return;
 
-      // Hide other floating panels (le panneau santé prend la place)
-      this.environmentPanel?.hide();
-      this.energyPanel?.hide();
-      this.transportPanel?.hide();
-      this.firesPanel?.hide();
-      this.trafficPanel?.hide();
-      this.isnrPanel?.hide();
-      this.franceIntelPanel?.hide();
+      // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3) — sauf
+      // healthBarometerPanel, avec lequel nationalHealthPanel peut coexister
+      // (exception volontaire, cf. 'open-health-barometer' ci-dessous).
+      this.hideAllFloatingPanels('health');
 
       // Utiliser les VRAIES features (currentHealthFeatures), pas getHealthFeatures()
       // qui pouvait renvoyer l'objet vide posé par loadAplData → panneau non peuplé.
@@ -2733,6 +2994,8 @@ export class App {
         // l'activation) re-dispatch 'open-national-health' à la fin → peuplera.
         this.nationalHealthPanel?.showLoading();
       }
+      this.currentFloatingPanelId = 'health';
+      this.refreshFloatingPanelSwitcher();
     });
 
     this.addGlobalListener(document, 'open-health-barometer', () => {
@@ -2747,14 +3010,10 @@ export class App {
 
       const metrics = window.__healthBarometerMetrics ?? this.lastBarometerMetrics;
       if (metrics) {
-        this.environmentPanel?.hide();
-        this.energyPanel?.hide();
-        this.transportPanel?.hide();
-        this.firesPanel?.hide();
-        this.trafficPanel?.hide();
-        this.isnrPanel?.hide();
-        this.franceIntelPanel?.hide();
-        // Remove nationalHealthPanel?.hide() to allow both panels to be open simultaneously
+        // 'health' excepté : nationalHealthPanel peut rester ouvert à côté du
+        // baromètre (exception volontaire préexistante, pas de
+        // nationalHealthPanel?.hide() ici).
+        this.hideAllFloatingPanels('health');
         this.healthBarometerPanel?.show(metrics);
       } else {
         // Données santé pas encore calculées → loader unifié, remplacé par show(metrics)
@@ -2803,138 +3062,19 @@ export class App {
     });
     this.transportPanel.mount();
 
-    void import('./components/FiresPanel.ts').then(({ FiresPanel }) => {
-      const panel = new FiresPanel(floatContainer);
-      panel.mount();
-      panel.setOnFilteredFires((filtered) => {
-        this.mapContainer?.updateFires(filtered);
-      });
-      panel.setOnFirePointsToggle((enabled) => {
-        this.mapContainer?.setFirePointsVisible(enabled);
-      });
-      panel.setOnHoverFire((lat, lon) => {
-        if (lat !== null && lon !== null) {
-          this.mapContainer?.highlightFire(lat, lon);
-        } else {
-          this.mapContainer?.clearFireHighlight();
-        }
-      });
-      panel.setOnHoverIncident((points) => {
-        if (points) {
-          this.mapContainer?.highlightFireCluster(points);
-        } else {
-          this.mapContainer?.clearFireHighlight();
-        }
-      });
-      panel.setOnModisToggle((enabled) => {
-        this.mapContainer?.setModisOverlayVisible(enabled);
-      });
-      panel.setOnMtgFrpToggle((enabled) => {
-        this.mtgFrpEnabled = enabled;
-        if (!enabled) {
-          this.mapContainer?.setMtgFrpEnabled(false);
-          return;
-        }
-        void this.loadMtgFrpMetadata().catch((error) => {
-          console.error('[App] MTG-FRP activation failed', error);
-        });
-      });
-      panel.setOnRadar2dToggle((enabled) => {
-        this.radar2dEnabled = enabled;
-        const generation = ++this.radar2dTransitionGeneration;
-        const isCurrent = (): boolean => generation === this.radar2dTransitionGeneration;
-        this.radar2dTransitionQueue = this.radar2dTransitionQueue.then(() =>
-          runRadar2dToggleTransition({
-            enabled,
-            isCurrent,
-            loadManifest: () => this.loadRadar2dManifest(false, isCurrent),
-            disableOverlay: async () => {
-              await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
-            },
-            syncEnabled: (next) => {
-              this.radar2dEnabled = next;
-              this.firesPanel?.setRadar2dEnabled(next);
-            },
-            onError: (error) => {
-              console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
-            },
-          }),
-        );
-      });
-      panel.setOnEchoTopsToggle((enabled) => {
-        this.echoTopsEnabled = enabled;
-        this.mapContainer?.setEchoTopsOverlay(this.latestRadar2dManifest, enabled);
-      });
-      panel.setOnClose(() => {
-        this.layoutEnvironmentFloatingPanels();
-      });
-      this.firesPanel = panel;
-      panel.setEchoTopsAvailability(Boolean(this.latestRadar2dManifest?.echoTopImageUrl));
-      panel.setObservationRuntimeState(this.fireObservationRuntime);
-      // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
-      // setRawFires re-triggers the filter + map update through onFilteredFires.
-      if (this.currentFiresSources) {
-        panel.setSourcesInfo(this.currentFiresSources.sources, this.currentFiresSources.apiKeyUsed);
-      }
-      if (this.currentActiveFires.length > 0) {
-        panel.setRawFires(this.currentActiveFires);
-      }
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.fires) {
-        this.renderFiresPanel();
-        this.layoutEnvironmentFloatingPanels();
-      }
-    });
-
-    void import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
-      const panel = new TrafficPanel(floatContainer);
-      panel.setOnClickIncident((lng, lat) => {
-        this.mapContainer?.flyTo(lng, lat, 14);
-      });
-      panel.mount();
-      this.trafficPanel = panel;
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.trafficRoad) {
-        this.renderTrafficPanel();
-      }
-    });
-
-    void import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
-      const panel = new MaritimePanel(floatContainer);
-      panel.setOnHighlightShip((mmsi) => {
-        this.mapContainer?.setHighlightedShip(mmsi);
-      });
-      this.maritimePanel = panel;
-      if (this.activeLayers.trafficMaritime) {
-        if (this.maritimeHasData) panel.show();
-        else panel.showLoading();
-      }
-    });
+    // FiresPanel/TrafficPanel/MaritimePanel/CyberPanel: lazy-loaded on first
+    // layer activation — see ensureFiresPanel()/ensureTrafficPanel()/
+    // ensureMaritimePanel()/ensureCyberPanel() below (perf audit task 5).
 
     // ElusPanel disabled
 
-    // Cyber Panel (Cybersecurity Dashboard)
-    void import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
-      const panel = new CyberPanel(floatContainer);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnThreatFiltersChange((filters) => {
-        this.currentThreatFilters = filters;
-        this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
-      });
-      panel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
-      panel.mount();
-      this.cyberPanel = panel;
-      // Replay buffered data pushed while the chunk was loading
-      if (this.currentCyberData) panel.update(this.currentCyberData);
-      if (this.currentThreatEvents.length > 0) panel.updateThreatEvents(this.currentThreatEvents);
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        panel.show(this.currentCyberData);
-      }
-    });
-
     this.addGlobalListener(document, 'open-cyber-panel', () => {
+      // Fired from BarometerWidget's tooltip button, independent of the
+      // 'cyber' layer being toggled on — ensure the chunk is loaded first.
       if (!this.currentCyberData) void this.loadCyber();
-      this.cyberPanel?.show(this.currentCyberData);
+      void this.ensureCyberPanel().then(() => {
+        this.cyberPanel?.show(this.currentCyberData);
+      });
     });
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
@@ -2945,117 +3085,9 @@ export class App {
     });
     this.gasPanel.mount();
 
-    // Oil Panel (Vigilance Pétrole - Raffineries, Stocks, Flux) — lazy-loaded
-    void import('./components/OilPanel.ts').then(({ OilPanel }) => {
-      const panel = new OilPanel(floatContainer);
-      // skipLayout: oil panel doesn't use the energy floating stack
-      panel.setOnClose(() => this.closeEnergyLayer('oilNetwork', { skipLayout: true }));
-      panel.setOnFuelTensionMapVisibilityChange((visible) => {
-        void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
-      });
-      panel.mount();
-      this.oilPanel = panel;
-      // Restore: mirror _handlePanelVisibility('oilNetwork') — show even without data yet
-      // (loadOil was already triggered during restore and will update() the panel).
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.oilNetwork) {
-        panel.show(this.currentOilData, this.currentFuelTensionData);
-      }
-    });
-
-    // Nuclear Panel (Veille Nucléaire — RTE unavailabilities + REMIT)
-    void import('./components/NuclearPanel.ts').then(({ NuclearPanel }) => {
-      const panel = new NuclearPanel(floatContainer);
-      panel.mount();
-      panel.setOnPlantHover((plantName) => {
-        if (!plantName) {
-          this.mapContainer?.setHighlightedInfrastructurePoint(null);
-          return;
-        }
-        const plant = NUCLEAR_PLANTS.find((item) => item.name === plantName);
-        this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
-      });
-      panel.setOnClose(() => {
-        // Clear any highlighted plant before deactivating the layer
-        this.mapContainer?.setHighlightedInfrastructurePoint(null);
-        this.closeEnergyLayer('nuclearFleet');
-      });
-      this.nuclearPanel = panel;
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.nuclearFleet) {
-        panel.show(this.currentNuclearState, this.currentEcowattResponse);
-        this.layoutEnergyFloatingPanels();
-      }
-    });
-
-    // Outages Panel (Pannes Réseau — incidents ORE Enedis)
-    // Outages Panel (Pannes Réseau — incidents ORE Enedis) — lazy-loaded
-    void import('./components/OutagesPanel.ts').then(({ OutagesPanel }) => {
-      const panel = new OutagesPanel(floatContainer);
-      panel.setOnClose(() => {
-        this.activeLayers.outages = false;
-        this.activeLayers.outagesElec = false;
-        this.activeLayers.outagesTelecom = false;
-        this.activeLayers.outagesInternet = false;
-        this.activeLayers.outagesCloud = false;
-        this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-        this.layerPanel?.updateLayers(this.activeLayers);
-      });
-      panel.setOnDeptHover((code) => this.mapContainer?.highlightPowerDept(code));
-      panel.setOnZoneHover((id) => this.mapContainer?.highlightCitizenZone(id));
-      panel.setOnIspHover((data) => this.mapContainer?.highlightIsp(data));
-      panel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
-      panel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
-      panel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
-      panel.setOnTabChange((_tab) => {
-        // Tab changes drive panel content only — layer dimming is driven exclusively
-        // by legend card hover, not by which panel tab is active.
-      });
-      panel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
-      panel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
-      panel.setOnDcClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
-      panel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
-      panel.mount();
-      this.outagesPanel = panel;
-      // Restore: if the layer state was restored before this lazy chunk resolved,
-      // re-open the panel exactly as _handlePanelVisibility('outages…') would.
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.outages) {
-        if (this.outagesLoaded) {
-          panel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
-        } else {
-          panel.showLoading();
-        }
-      }
-    });
-
-    // Defense Panel (Cable threats) - positioned below CyberPanel
-    void import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
-      const panel = new DefensePanel(floatContainer);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnAlertClick((alert) => {
-        if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
-          this.onLayerToggle('trafficMaritime', true);
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        if (!this.activeLayers.subseaCables) {
-          this.onLayerToggle('subseaCables', true);
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        // Fly to the threat location when clicking on an alert item
-        this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
-      });
-      panel.setOnJammingClick((signal) => {
-        const zoom = signal.clusterRadius != null
-          ? (signal.clusterRadius > 50 ? 8 : 9)
-          : 11;
-        this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
-      });
-      panel.mount();
-      this.defensePanel = panel;
-      if (this.hasRestoredActiveLayerPanels && this.activeLayers.military && this.activeLayers.sovereignty) {
-        panel.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-    });
+    // OilPanel/NuclearPanel/OutagesPanel/DefensePanel: lazy-loaded on first
+    // layer activation — see ensureOilPanel()/ensureNuclearPanel()/
+    // ensureOutagesPanel()/ensureDefensePanel() below (perf audit task 5).
 
     // Day/Night Panel (panneau latéral droit — contrôle terminateur)
     this.dayNightPanel = new DayNightPanel(this.container);
@@ -3195,15 +3227,14 @@ export class App {
   }
 
   private handleSourcePanelClick(name: string): void {
-    this.environmentPanel?.hide();
-    this.energyPanel?.hide();
-    this.eolienPanel?.hide();
-    this.transportPanel?.hide();
-    this.firesPanel?.hide();
-    this.trafficPanel?.hide();
-    this.isnrPanel?.hide();
-    this.nationalHealthPanel?.hide();
-    this.franceIntelPanel?.hide();
+    // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3). Cette
+    // liste bascule des panneaux SANS forcément activer la couche
+    // correspondante (l'utilisateur clique une source dans le menu Sources,
+    // pas une case à cocher) — elle ne peut donc pas passer par
+    // showFloatingPanel()/_handlePanelVisibility(), qui exigent la couche
+    // active pour la plupart des branches ; on garde son show() dédié
+    // ci-dessous, seul le hide-others est centralisé.
+    this.hideAllFloatingPanels();
 
     if (name === 'Météo-France' || name === 'Vigicrues') {
       this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
@@ -3251,6 +3282,8 @@ export class App {
     } else if (name === 'Santé SPF / DREES') {
       if (this.currentHealthFeatures) this.nationalHealthPanel?.show(this.currentHealthFeatures);
     }
+    this.currentFloatingPanelId = SOURCE_NAME_TO_FLOATING_PANEL[name] ?? null;
+    this.refreshFloatingPanelSwitcher();
   }
 
   private restoreActiveLayerPanelsAfterRefresh(): void {
@@ -3285,10 +3318,23 @@ export class App {
     ];
 
     for (const key of restoreOrder) {
-      if (this.activeLayers[key]) {
+      if (!this.activeLayers[key]) continue;
+      // Perf audit task 5: ensure the lazy panel chunk for this key is
+      // requested (its own catch-up logic shows it once loaded) — mirrors
+      // what onLayerToggle() does on a live toggle.
+      void Promise.all(this.ensureLazyPanelForLayer(key)).then(() => this.refreshFloatingPanelSwitcher());
+      if (this.suppressFirstLoadPanelAutoOpen) {
+        // Preset d'accueil (premier chargement / état "tout éteint") : les
+        // couches sont actives (la carte les affiche) mais aucun panneau ne
+        // doit s'ouvrir tout seul — cf. init() (audit UI 2026-09 §5.3.2).
+        this.activateLayerSilently(key);
+      } else {
+        // Utilisateur récurrent avec de vraies couches persistées : on garde
+        // le comportement historique (les panneaux actifs se rouvrent tous).
         this._handlePanelVisibility(key, true);
       }
     }
+    this.refreshFloatingPanelSwitcher();
   }
 
   private getEffectiveLayers(): MapLayers {
@@ -3351,9 +3397,14 @@ export class App {
     this.layerPanel?.updateLayers(this.activeLayers);
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
     if (!opts.skipLayout) this.layoutEnergyFloatingPanels();
+    this.refreshFloatingPanelSwitcher();
   }
 
-  private onLayerToggle(key: keyof MapLayers, enabled: boolean): void {
+  private onLayerToggle(
+    key: keyof MapLayers,
+    enabled: boolean,
+    opts: { suppressPanel?: boolean } = {},
+  ): void {
     this.activeLayers[key] = enabled;
     if (key === 'cyber') {
       this.activeLayers.threatMap = enabled;
@@ -3403,7 +3454,42 @@ export class App {
         console.error('[App] Radar 2D manifest load failed', error);
       });
     }
-    this._handlePanelVisibility(key, enabled);
+    // AIS relay socket: opened lazily at boot (startMilitaryPolling) only if
+    // trafficMaritime/military was already active. connectAis() is idempotent
+    // (no-op if already connecting/connected), so this just covers the case
+    // where the layer is switched on later in the session (perf audit §6 item 4).
+    if ((key === 'trafficMaritime' || key === 'military') && enabled) {
+      connectAis();
+    }
+    // Air traffic: polling only runs while the layer is active (perf audit
+    // §6 item 4 / top-10 list) — start/stop the interval on toggle instead of
+    // always running it in the background.
+    if (key === 'trafficAir') {
+      if (enabled) this.startAirTrafficPolling();
+      else this.stopAirTrafficPolling();
+    }
+    // Perf audit task 5: request the lazy panel chunk for this key (if any)
+    // the first time it's switched on — its own catch-up logic shows it once
+    // the chunk resolves.
+    if (enabled) void Promise.all(this.ensureLazyPanelForLayer(key)).then(() => this.refreshFloatingPanelSwitcher());
+
+    // Single floating panel (audit UI 2026-09 §5.3.3): a preset applies
+    // several toggles in a row and must never pop a panel open on its own
+    // (opts.suppressPanel, set by applyLayerPreset()) — the data/chunk load
+    // above still runs, only the panel stays hidden. A real, explicit toggle
+    // routes through showFloatingPanel(), which hides every other panel
+    // first. Layers with no floating panel (or being switched off) keep the
+    // direct _handlePanelVisibility() path.
+    const floatingId = this.floatingPanelIdForLayerKey(key);
+    if (enabled && opts.suppressPanel) {
+      this.activateLayerSilently(key);
+      this.refreshFloatingPanelSwitcher();
+    } else if (enabled && floatingId) {
+      this.showFloatingPanel(floatingId);
+    } else {
+      this._handlePanelVisibility(key, enabled);
+      this.refreshFloatingPanelSwitcher();
+    }
   }
 
   /**
@@ -3706,6 +3792,609 @@ export class App {
     }
   }
 
+  // ─── Lazy panel loaders (perf audit task 5) ──────────────────────────────
+  //
+  // These 13 panels used to be dynamically imported unconditionally inside
+  // renderShell(), so every session downloaded all 13 chunks regardless of
+  // whether their layer was ever toggled on. Each ensureXPanel() below loads
+  // its chunk once (memoized), on first activation only — dispatched from
+  // onLayerToggle()/restoreActiveLayerPanelsAfterRefresh() through
+  // ensureLazyPanelForLayer(). Each mirrors the "catch-up" logic the eager
+  // versions used to run in their .then() callback (re-checking
+  // this.activeLayers.X once the chunk resolves, since the panel object
+  // doesn't exist yet when onLayerToggle's synchronous _handlePanelVisibility
+  // call runs) — but does NOT re-trigger the underlying data load
+  // (loadOil/loadNuclear/loadEolien/loadCyber/refreshHydraulicSignalSources/
+  // loadHealth/loadDromEnergy), since _handlePanelVisibility already did
+  // that on the original toggle; re-triggering here would risk a duplicate
+  // in-flight request if the chunk resolves before that fetch completes.
+
+  private ensureDromEnergyPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.dromEnergyPanelPromise ??= import('./components/DromEnergyPanel.ts').then(({ DromEnergyPanel }) => {
+      const panel = new DromEnergyPanel(this.floatContainerEl!);
+      panel.setOnClose(() => this.closeEnergyLayer('dromEnergy'));
+      panel.setOnHoverAsset((asset) => {
+        this.mapContainer?.highlightDromEnergyAsset(asset);
+      });
+      panel.mount();
+      this.dromEnergyPanel = panel;
+      if (this.activeLayers.dromEnergy) {
+        if (this.currentDromEnergyDashboard) panel.show(this.currentDromEnergyDashboard);
+        else if (this.currentDromEnergyError) panel.showErrorState(this.currentDromEnergyError);
+        else panel.showLoadingState();
+        this.layoutEnergyFloatingPanels();
+      }
+    });
+    return this.dromEnergyPanelPromise;
+  }
+
+  private ensureHydraulicPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.hydraulicPanelPromise ??= import('./components/HydraulicPanel.ts').then(({ HydraulicPanel }) => {
+      const panel = new HydraulicPanel(this.floatContainerEl!);
+      panel.setOnClose(() => this.closeEnergyLayer('hydroBackbone'));
+      panel.setOnSelectAsset((asset) => {
+        this.mapContainer?.flyTo(asset.location.lon, asset.location.lat, 10.5);
+      });
+      panel.mount();
+      this.hydraulicPanel = panel;
+      if (this.activeLayers.hydroBackbone) {
+        panel.show(this.currentHydraulicAssets, this.currentEcowattResponse);
+        this.layoutEnergyFloatingPanels();
+      }
+    });
+    return this.hydraulicPanelPromise;
+  }
+
+  private ensureEolienPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.eolienPanelPromise ??= import('./components/EolienPanel.ts').then(({ EolienPanel }) => {
+      const panel = new EolienPanel(this.floatContainerEl!);
+      panel.setOnClose(() => this.closeEnergyLayer('windMonitor'));
+      panel.setOnSelectPark((park) => {
+        this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
+      });
+      panel.mount();
+      this.eolienPanel = panel;
+      if (this.activeLayers.windMonitor) {
+        panel.show(this.currentEolienLive, this.currentEolienParks);
+        this.layoutEnergyFloatingPanels();
+      }
+    });
+    return this.eolienPanelPromise;
+  }
+
+  private ensureHealthPanels(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.healthPanelsPromise ??= Promise.all([
+      import('./components/NationalHealthPanel.ts'),
+      import('./components/HealthBarometerPanel.ts'),
+    ]).then(([{ NationalHealthPanel }, { HealthBarometerPanel }]) => {
+      const nationalPanel = new NationalHealthPanel(this.floatContainerEl!);
+      nationalPanel.mount();
+      this.nationalHealthPanel = nationalPanel;
+
+      const barometerPanel = new HealthBarometerPanel(this.floatContainerEl!);
+      barometerPanel.mount();
+      this.healthBarometerPanel = barometerPanel;
+
+      const anyHealthActive =
+        this.activeLayers.health || this.activeLayers.healthApl ||
+        this.activeLayers.healthOscour || this.activeLayers.hospitals;
+      if (anyHealthActive) {
+        document.dispatchEvent(new CustomEvent('open-national-health'));
+      }
+    });
+    return this.healthPanelsPromise;
+  }
+
+  private ensureFiresPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.firesPanelPromise ??= import('./components/FiresPanel.ts').then(({ FiresPanel }) => {
+      const panel = new FiresPanel(this.floatContainerEl!);
+      panel.mount();
+      panel.setOnFilteredFires((filtered) => {
+        this.mapContainer?.updateFires(filtered);
+      });
+      panel.setOnFirePointsToggle((enabled) => {
+        this.mapContainer?.setFirePointsVisible(enabled);
+      });
+      panel.setOnHoverFire((lat, lon) => {
+        if (lat !== null && lon !== null) {
+          this.mapContainer?.highlightFire(lat, lon);
+        } else {
+          this.mapContainer?.clearFireHighlight();
+        }
+      });
+      panel.setOnHoverIncident((points) => {
+        if (points) {
+          this.mapContainer?.highlightFireCluster(points);
+        } else {
+          this.mapContainer?.clearFireHighlight();
+        }
+      });
+      panel.setOnModisToggle((enabled) => {
+        this.mapContainer?.setModisOverlayVisible(enabled);
+      });
+      panel.setOnMtgFrpToggle((enabled) => {
+        this.mtgFrpEnabled = enabled;
+        if (!enabled) {
+          this.mapContainer?.setMtgFrpEnabled(false);
+          return;
+        }
+        void this.loadMtgFrpMetadata().catch((error) => {
+          console.error('[App] MTG-FRP activation failed', error);
+        });
+      });
+      panel.setOnRadar2dToggle((enabled) => {
+        this.radar2dEnabled = enabled;
+        const generation = ++this.radar2dTransitionGeneration;
+        const isCurrent = (): boolean => generation === this.radar2dTransitionGeneration;
+        this.radar2dTransitionQueue = this.radar2dTransitionQueue.then(() =>
+          runRadar2dToggleTransition({
+            enabled,
+            isCurrent,
+            loadManifest: () => this.loadRadar2dManifest(false, isCurrent),
+            disableOverlay: async () => {
+              await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
+            },
+            syncEnabled: (next) => {
+              this.radar2dEnabled = next;
+              this.firesPanel?.setRadar2dEnabled(next);
+            },
+            onError: (error) => {
+              console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
+            },
+          }),
+        );
+      });
+      panel.setOnEchoTopsToggle((enabled) => {
+        this.echoTopsEnabled = enabled;
+        this.mapContainer?.setEchoTopsOverlay(this.latestRadar2dManifest, enabled);
+      });
+      panel.setOnClose(() => {
+        this.layoutEnvironmentFloatingPanels();
+        this.refreshFloatingPanelSwitcher();
+      });
+      this.firesPanel = panel;
+      panel.setEchoTopsAvailability(Boolean(this.latestRadar2dManifest?.echoTopImageUrl));
+      panel.setObservationRuntimeState(this.fireObservationRuntime);
+      // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
+      // setRawFires re-triggers the filter + map update through onFilteredFires.
+      if (this.currentFiresSources) {
+        panel.setSourcesInfo(this.currentFiresSources.sources, this.currentFiresSources.apiKeyUsed);
+      }
+      if (this.currentActiveFires.length > 0) {
+        panel.setRawFires(this.currentActiveFires);
+      }
+      if (this.activeLayers.fires) {
+        this.renderFiresPanel();
+        this.layoutEnvironmentFloatingPanels();
+      }
+    });
+    return this.firesPanelPromise;
+  }
+
+  private ensureTrafficPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.trafficPanelPromise ??= import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
+      const panel = new TrafficPanel(this.floatContainerEl!);
+      panel.setOnClickIncident((lng, lat) => {
+        this.mapContainer?.flyTo(lng, lat, 14);
+      });
+      panel.mount();
+      this.trafficPanel = panel;
+      if (this.activeLayers.trafficRoad) {
+        this.renderTrafficPanel();
+      }
+    });
+    return this.trafficPanelPromise;
+  }
+
+  private ensureMaritimePanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.maritimePanelPromise ??= import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
+      const panel = new MaritimePanel(this.floatContainerEl!);
+      panel.setOnHighlightShip((mmsi) => {
+        this.mapContainer?.setHighlightedShip(mmsi);
+      });
+      this.maritimePanel = panel;
+      if (this.activeLayers.trafficMaritime) {
+        if (this.maritimeHasData) panel.show();
+        else panel.showLoading();
+      }
+    });
+    return this.maritimePanelPromise;
+  }
+
+  private ensureCyberPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.cyberPanelPromise ??= import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
+      const panel = new CyberPanel(this.floatContainerEl!);
+      panel.setOnClose(() => {
+        // Optional: could update StatusPanel state here
+      });
+      panel.setOnThreatFiltersChange((filters) => {
+        this.currentThreatFilters = filters;
+        this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
+      });
+      panel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
+      panel.mount();
+      this.cyberPanel = panel;
+      // Replay buffered data pushed while the chunk was loading
+      if (this.currentCyberData) panel.update(this.currentCyberData);
+      if (this.currentThreatEvents.length > 0) panel.updateThreatEvents(this.currentThreatEvents);
+      if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
+        panel.show(this.currentCyberData);
+      }
+    });
+    return this.cyberPanelPromise;
+  }
+
+  private ensureOilPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.oilPanelPromise ??= import('./components/OilPanel.ts').then(({ OilPanel }) => {
+      const panel = new OilPanel(this.floatContainerEl!);
+      // skipLayout: oil panel doesn't use the energy floating stack
+      panel.setOnClose(() => this.closeEnergyLayer('oilNetwork', { skipLayout: true }));
+      panel.setOnFuelTensionMapVisibilityChange((visible) => {
+        void this.mapContainer?.updateFuelTension(visible ? this.currentFuelTensionData : null);
+      });
+      panel.mount();
+      this.oilPanel = panel;
+      // mirror _handlePanelVisibility('oilNetwork') — show even without data yet
+      // (loadOil was already triggered when the layer was toggled and will
+      // update() the panel once it resolves).
+      if (this.activeLayers.oilNetwork) {
+        panel.show(this.currentOilData, this.currentFuelTensionData);
+      }
+    });
+    return this.oilPanelPromise;
+  }
+
+  private ensureNuclearPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.nuclearPanelPromise ??= import('./components/NuclearPanel.ts').then(({ NuclearPanel }) => {
+      const panel = new NuclearPanel(this.floatContainerEl!);
+      panel.mount();
+      panel.setOnPlantHover((plantName) => {
+        if (!plantName) {
+          this.mapContainer?.setHighlightedInfrastructurePoint(null);
+          return;
+        }
+        const plant = NUCLEAR_PLANTS.find((item) => item.name === plantName);
+        this.mapContainer?.setHighlightedInfrastructurePoint(plant?.coordinates ?? null);
+      });
+      panel.setOnClose(() => {
+        // Clear any highlighted plant before deactivating the layer
+        this.mapContainer?.setHighlightedInfrastructurePoint(null);
+        this.closeEnergyLayer('nuclearFleet');
+      });
+      this.nuclearPanel = panel;
+      if (this.activeLayers.nuclearFleet) {
+        panel.show(this.currentNuclearState, this.currentEcowattResponse);
+        this.layoutEnergyFloatingPanels();
+      }
+    });
+    return this.nuclearPanelPromise;
+  }
+
+  private ensureOutagesPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.outagesPanelPromise ??= import('./components/OutagesPanel.ts').then(({ OutagesPanel }) => {
+      const panel = new OutagesPanel(this.floatContainerEl!);
+      panel.setOnClose(() => {
+        this.activeLayers.outages = false;
+        this.activeLayers.outagesElec = false;
+        this.activeLayers.outagesTelecom = false;
+        this.activeLayers.outagesInternet = false;
+        this.activeLayers.outagesCloud = false;
+        this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
+        this.layerPanel?.updateLayers(this.activeLayers);
+        this.refreshFloatingPanelSwitcher();
+      });
+      panel.setOnDeptHover((code) => this.mapContainer?.highlightPowerDept(code));
+      panel.setOnZoneHover((id) => this.mapContainer?.highlightCitizenZone(id));
+      panel.setOnIspHover((data) => this.mapContainer?.highlightIsp(data));
+      panel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
+      panel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
+      panel.setOnIxpHover((data) => this.mapContainer?.highlightIxp(data));
+      panel.setOnTabChange((_tab) => {
+        // Tab changes drive panel content only — layer dimming is driven exclusively
+        // by legend card hover, not by which panel tab is active.
+      });
+      panel.setOnIspClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 7));
+      panel.setOnIodaClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 6));
+      panel.setOnDcClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
+      panel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
+      panel.mount();
+      this.outagesPanel = panel;
+      if (this.activeLayers.outages) {
+        if (this.outagesLoaded) {
+          panel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
+        } else {
+          panel.showLoading();
+        }
+      }
+    });
+    return this.outagesPanelPromise;
+  }
+
+  private ensureDefensePanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.defensePanelPromise ??= import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
+      const panel = new DefensePanel(this.floatContainerEl!);
+      panel.setOnClose(() => {
+        // Optional: could update StatusPanel state here
+      });
+      panel.setOnAlertClick((alert) => {
+        // suppressPanel: true — ces couches ne sont activées qu'en renfort
+        // visuel sur la carte pendant que l'utilisateur regarde DefensePanel ;
+        // sans ça, showFloatingPanel('trafficMaritime') fermerait le panneau
+        // Défense qu'il est justement en train de consulter (audit UI
+        // 2026-09 §5.3.3).
+        if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
+          this.onLayerToggle('trafficMaritime', true, { suppressPanel: true });
+          this.layerPanel?.updateLayers(this.activeLayers);
+        }
+        if (!this.activeLayers.subseaCables) {
+          this.onLayerToggle('subseaCables', true, { suppressPanel: true });
+          this.layerPanel?.updateLayers(this.activeLayers);
+        }
+        // Fly to the threat location when clicking on an alert item
+        this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
+      });
+      panel.setOnJammingClick((signal) => {
+        const zoom = signal.clusterRadius != null
+          ? (signal.clusterRadius > 50 ? 8 : 9)
+          : 11;
+        this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
+      });
+      panel.mount();
+      this.defensePanel = panel;
+      if (this.activeLayers.military && this.activeLayers.sovereignty) {
+        panel.show(this.currentDefenseAlerts, this.currentJammingSignals);
+      }
+    });
+    return this.defensePanelPromise;
+  }
+
+  /**
+   * Dispatches a toggled/restored layer key to the matching ensureXPanel()
+   * loader above, if any. Called from onLayerToggle() (when a layer is
+   * switched on) and restoreActiveLayerPanelsAfterRefresh() (persisted
+   * layers active at boot). No-op for layers with no lazy panel (or an
+   * eagerly-constructed one, e.g. environmentPanel/energyPanel/gasPanel).
+   */
+  /**
+   * Returns the ensureXPanel() promise(s) this key triggers (empty array for
+   * layers with no lazy panel). Callers that don't need the promises (the
+   * normal toggle/restore path) simply ignore the return value; callers that
+   * need to know once the chunk has resolved — activateLayerSilently(), to
+   * hide a panel that only became showable after an async import — chain on
+   * it. ensureXPanel() promises are memoized (`??=`), so calling this twice
+   * for the same key never re-triggers the import.
+   */
+  private ensureLazyPanelForLayer(key: keyof MapLayers): Promise<void>[] {
+    switch (key) {
+      case 'dromEnergy': return [this.ensureDromEnergyPanel()];
+      case 'hydroBackbone': return [this.ensureHydraulicPanel()];
+      case 'windMonitor': return [this.ensureEolienPanel()];
+      case 'health':
+      case 'healthApl':
+      case 'healthOscour':
+      case 'hospitals':
+        return [this.ensureHealthPanels()];
+      case 'fires': return [this.ensureFiresPanel()];
+      case 'trafficRoad': return [this.ensureTrafficPanel()];
+      case 'trafficMaritime': return [this.ensureMaritimePanel()];
+      case 'cyber':
+      case 'threatMap':
+        return [this.ensureCyberPanel()];
+      case 'sovereignty':
+        return [this.ensureCyberPanel(), this.ensureDefensePanel()];
+      case 'oilNetwork': return [this.ensureOilPanel()];
+      case 'nuclearFleet': return [this.ensureNuclearPanel()];
+      case 'outages':
+      case 'outagesElec':
+      case 'outagesTelecom':
+      case 'outagesInternet':
+      case 'outagesCloud':
+        return [this.ensureOutagesPanel()];
+      case 'military':
+        return [this.ensureDefensePanel()];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Single floating-panel registry lookups (audit UI 2026-09 §5.3.3) — see
+   * FLOATING_PANEL_DEFS for the layer-key → panel mapping.
+   */
+  private floatingPanelIdForLayerKey(key: keyof MapLayers): (keyof MapLayers) | null {
+    return FLOATING_PANEL_DEFS.find((def) => def.layerKeys.includes(key))?.id ?? null;
+  }
+
+  private getFloatingPanelInstance(key: keyof MapLayers): { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null {
+    // Accepts either a def's representative `id` or any of its `layerKeys`
+    // members (e.g. 'healthOscour' resolves to the same panel as 'health') —
+    // callers like activateLayerSilently() pass the exact key that was just
+    // toggled, which isn't always the representative one.
+    const id = this.floatingPanelIdForLayerKey(key) ?? key;
+    switch (id) {
+      case 'environmental': return this.environmentPanel;
+      case 'fires': return this.firesPanel;
+      case 'dayNight': return this.dayNightPanel;
+      case 'powerGrid': return this.energyPanel;
+      case 'dromEnergy': return this.dromEnergyPanel;
+      case 'nuclearFleet': return this.nuclearPanel;
+      case 'gasNetwork': return this.gasPanel;
+      case 'hydroBackbone': return this.hydraulicPanel;
+      case 'oilNetwork': return this.oilPanel;
+      case 'windMonitor': return this.eolienPanel;
+      case 'health': return this.nationalHealthPanel;
+      case 'trafficRoad': return this.trafficPanel;
+      // MaritimePanel has a private `isVisible` field of its own (unrelated
+      // to the optional method this interface declares) — TS treats that as
+      // a structural conflict, so we assert instead of returning it as-is.
+      // isFloatingPanelVisible()'s `typeof panel.isVisible === 'function'`
+      // check still resolves correctly at runtime (the field is a boolean,
+      // not a function), falling back to the tracked currentFloatingPanelId.
+      case 'trafficMaritime': return this.maritimePanel as { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null;
+      case 'trafficRail': return this.transportPanel;
+      case 'cyber': return this.cyberPanel;
+      case 'military': return this.defensePanel;
+      case 'stability': return this.isnrPanel;
+      case 'outagesElec': return this.outagesPanel;
+      default: return null;
+    }
+  }
+
+  /** Hides every layer-owned floating panel (FLOATING_PANEL_DEFS) plus the
+   *  France Intel drawer, optionally sparing one — the shared "one floating
+   *  panel at a time" primitive (audit UI 2026-09 §5.3.3). `exceptId` is used
+   *  by showFloatingPanel() (about to show it) and by the health-barometer
+   *  open path (nationalHealthPanel/healthBarometerPanel are allowed to
+   *  coexist, a pre-existing, intentional exception). */
+  private hideAllFloatingPanels(exceptId?: keyof MapLayers): void {
+    for (const def of FLOATING_PANEL_DEFS) {
+      if (def.id === exceptId) continue;
+      // silent : masquer sans passer par onClose, qui désactiverait la couche (closeEnergyLayer…).
+      this.getFloatingPanelInstance(def.id)?.hide({ silent: true });
+    }
+    this.franceIntelPanel?.hide({ silent: true });
+  }
+
+  /**
+   * Central "open exactly one floating panel" helper (audit UI 2026-09
+   * §5.3.3). Hides every other layer-owned floating panel, then reuses
+   * _handlePanelVisibility()'s existing per-layer show logic (cached data or
+   * loading state) to display `id`. Call sites are explicit user actions: a
+   * layer checkbox toggled on (onLayerToggle()), a chip in the switcher, or
+   * a Sources-panel click (handleSourcePanelClick()) — never a preset
+   * (applyLayerPreset() deliberately keeps panels hidden, see
+   * activateLayerSilently()).
+   */
+  private showFloatingPanel(id: keyof MapLayers): void {
+    this.hideAllFloatingPanels(id);
+    this._handlePanelVisibility(id, true);
+    this.currentFloatingPanelId = id;
+    this.refreshFloatingPanelSwitcher();
+  }
+
+  /**
+   * Activates `key` exactly like a real layer toggle (data load via
+   * _handlePanelVisibility, lazy panel chunk request) but hides whatever
+   * floating panel that activation would otherwise show — both the
+   * synchronous case (chunk already loaded) and the async one (chunk
+   * resolves later, after this call returns). Used by applyLayerPreset() and
+   * the first-load path of restoreActiveLayerPanelsAfterRefresh(): a preset
+   * or the home view changes the map, it never auto-opens a panel — only
+   * showFloatingPanel() does that, from an explicit action.
+   */
+  private activateLayerSilently(key: keyof MapLayers): void {
+    this._handlePanelVisibility(key, true);
+    // silent : la couche reste active, seul le panneau est masqué (voir hideAllFloatingPanels).
+    this.getFloatingPanelInstance(key)?.hide({ silent: true });
+    for (const p of this.ensureLazyPanelForLayer(key)) {
+      void p.then(() => this.getFloatingPanelInstance(key)?.hide({ silent: true }));
+    }
+  }
+
+  /** Is `id`'s floating panel currently the one on screen? Prefers the
+   *  panel's own isVisible() (ground truth, catches closes that bypassed
+   *  showFloatingPanel — e.g. the panel's own × button) and falls back to
+   *  the tracked id for the few panels that don't implement isVisible()
+   *  (TrafficPanel, MaritimePanel, TransportPanel, DayNightPanel). */
+  private isFloatingPanelVisible(id: keyof MapLayers): boolean {
+    const panel = this.getFloatingPanelInstance(id);
+    if (!panel) return false;
+    if (typeof panel.isVisible === 'function') return panel.isVisible();
+    return this.currentFloatingPanelId === id;
+  }
+
+  /**
+   * « Panneaux ouverts » chip bar (audit UI 2026-09 §5.3 point 3): one chip
+   * per floating panel whose owning layer is active AND whose lazy chunk has
+   * resolved. Hidden below 2 eligible panels — with 0 or 1 there is nothing
+   * to switch between. Clicking a chip routes through showFloatingPanel(),
+   * the single place that hides every other panel.
+   */
+  private refreshFloatingPanelSwitcher(): void {
+    const el = this.floatingPanelSwitcherEl;
+    if (!el) return;
+
+    if (this.currentFloatingPanelId && !this.floatingPanelIsEligible(this.currentFloatingPanelId)) {
+      this.currentFloatingPanelId = null;
+    }
+
+    const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id));
+
+    if (eligible.length < 2) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+
+    el.hidden = false;
+    el.innerHTML = eligible.map((def) => {
+      const pressed = this.isFloatingPanelVisible(def.id);
+      return `
+        <button
+          type="button"
+          class="floating-panel-switcher__chip ${pressed ? 'is-active' : ''}"
+          data-panel-key="${def.id}"
+          aria-pressed="${pressed}"
+          title="${def.label}"
+        >
+          <span class="floating-panel-switcher__icon" aria-hidden="true">${fmIcon(def.icon)}</span>
+          <span class="floating-panel-switcher__label">${def.label}</span>
+        </button>
+      `;
+    }).join('');
+
+    el.querySelectorAll<HTMLButtonElement>('[data-panel-key]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset['panelKey'] as keyof MapLayers | undefined;
+        if (key) this.showFloatingPanel(key);
+      });
+    });
+  }
+
+  private floatingPanelIsEligible(id: keyof MapLayers): boolean {
+    const def = FLOATING_PANEL_DEFS.find((d) => d.id === id);
+    if (!def) return false;
+    if (!def.layerKeys.some((k) => this.activeLayers[k])) return false;
+    return this.getFloatingPanelInstance(id) != null;
+  }
+
+  /**
+   * « Vues » de LayerPanel (audit UI 2026-09 §5.3 point 2) : applique en un
+   * clic l'état de couches enfant d'un preset nommé (layer-presets.ts), en
+   * réutilisant onLayerToggle() couche par couche pour que chargement de
+   * données, polling et persistance restent identiques à un bascule manuel.
+   * `suppressPanel` fait tenir la promesse de la tâche 1 : une vue change la
+   * carte, jamais les panneaux ouverts (seul un clic explicite le fait, via
+   * showFloatingPanel()) ; elle éteint aussi le polling des couches
+   * désactivées exactement comme un bascule manuel (onLayerToggle() gère
+   * déjà trafficAir/trafficRoad/trafficMaritime start/stop).
+   */
+  private applyLayerPreset(id: LayerPresetId): void {
+    const target = layersForPreset(id);
+    for (const key of ALL_PRESETABLE_LAYER_KEYS) {
+      const wanted = target[key] ?? false;
+      if (this.activeLayers[key] === wanted) continue;
+      this.onLayerToggle(key, wanted, { suppressPanel: true });
+    }
+    this.currentFloatingPanelId = null;
+    this.hideAllFloatingPanels();
+    // Le LayerPanel tient son propre état des cases : le resynchroniser, sinon il diverge de App.
+    this.layerPanel?.updateLayers(this.activeLayers);
+    this.refreshFloatingPanelSwitcher();
+  }
+
   // ─── Map ────────────────────────────────────────────────────────────────────
 
   private async initMap(): Promise<void> {
@@ -3971,7 +4660,13 @@ export class App {
   }
 
   private startMilitaryPolling(): void {
-    connectAis();
+    // Perf audit §6 item 4: only open the AIS relay socket when something
+    // actually needs it at boot. onLayerToggle() below opens it on-demand
+    // (connectAis() is idempotent) the first time trafficMaritime/military
+    // is switched on later.
+    if (this.activeLayers.trafficMaritime || this.activeLayers.military) {
+      connectAis();
+    }
     // Heavy analyses (surges + GPS jamming) run at most every 30 s; positions stay at 5 s.
     let lastDetectionRun = 0;
     const fetchFlights = async () => {
@@ -4059,8 +4754,24 @@ export class App {
     fetchFlights();
     // ADS-B: refresh frequently enough to feel live without hammering sources.
     // Pausable: suspended while the tab is hidden, resumed with an immediate tick.
+    //
+    // Perf audit §5 item 5 / §6 item 4: military flights also feed AlertMonitor
+    // (surges + GPS jamming), so polling never stops outright — but when the
+    // military layer/panel isn't visible there is no map to update, so the
+    // tick is throttled to once every 5 min instead of every 5 s. The guard
+    // lives here, at the tick entry, rather than inside fetchFlights() itself.
+    const MILITARY_SLOW_POLL_MS = 5 * 60_000;
+    let lastSlowFlightsFetch = Date.now();
     this._intervalMilitaryFlights = this.registerPausableInterval(
-      () => { fetchFlights().catch(err => console.error('[App] Military flights poll error', err)); },
+      () => {
+        const militaryActive = this.activeLayers.military || this.defensePanel?.isVisible() === true;
+        if (!militaryActive) {
+          const now = Date.now();
+          if (now - lastSlowFlightsFetch < MILITARY_SLOW_POLL_MS) return;
+          lastSlowFlightsFetch = now;
+        }
+        fetchFlights().catch(err => console.error('[App] Military flights poll error', err));
+      },
       5_000,
     );
 
@@ -4198,7 +4909,7 @@ export class App {
       this.maritimeHasData = true;
       updateShips();
       // Remplace le loader maritime par les données dès la 1re trame AIS.
-      if (this.activeLayers.trafficMaritime) this.maritimePanel?.show();
+      if (this.activeLayers.trafficMaritime && this.maritimePanel?.isOpen()) this.maritimePanel.show();
     });
 
     updateShips();
@@ -4307,31 +5018,44 @@ export class App {
     }, POLL_COMMODITIES_MS);
   }
 
+  private _airTrafficPollInFlight = false;
+
+  private async pollAirTraffic(): Promise<void> {
+    if (this._airTrafficPollInFlight) return;
+    this._airTrafficPollInFlight = true;
+    try {
+      await this.loadAirTraffic();
+    } catch (err) {
+      console.error('[AirTraffic] Polling failed', err);
+      this.statusPanel?.updateSource('Trafic aérien', {
+        status: 'error',
+        lastUpdate: new Date(),
+        detail: 'airplanes.live + OpenSky · proxy agrégé',
+        error: err instanceof Error ? err.message : 'Échec trafic aérien',
+      });
+    } finally {
+      this._airTrafficPollInFlight = false;
+    }
+  }
+
+  /**
+   * Perf audit §6 item 4: air traffic (10 s response, polled every
+   * POLL_AIR_TRAFFIC_MS) used to fetch unconditionally regardless of the
+   * trafficAir layer. Now a no-op at boot when the layer is off, and
+   * started/stopped from onLayerToggle() instead.
+   */
   private startAirTrafficPolling(): void {
-    let inFlight = false;
-
-    const poll = async () => {
-      if (inFlight) return;
-      inFlight = true;
-      try {
-        await this.loadAirTraffic();
-      } catch (err) {
-        console.error('[AirTraffic] Polling failed', err);
-        this.statusPanel?.updateSource('Trafic aérien', {
-          status: 'error',
-          lastUpdate: new Date(),
-          detail: 'airplanes.live + OpenSky · proxy agrégé',
-          error: err instanceof Error ? err.message : 'Échec trafic aérien',
-        });
-      } finally {
-        inFlight = false;
-      }
-    };
-
-    void poll();
+    if (!this.activeLayers.trafficAir) return;
+    if (this._intervalAirTraffic !== null) return; // already running
+    void this.pollAirTraffic();
     this._intervalAirTraffic = this.registerPausableInterval(() => {
-      poll().catch(err => console.error('[App] AirTraffic poll error', err));
+      this.pollAirTraffic().catch(err => console.error('[App] AirTraffic poll error', err));
     }, POLL_AIR_TRAFFIC_MS);
+  }
+
+  private stopAirTrafficPolling(): void {
+    this.removePausableInterval(this._intervalAirTraffic);
+    this._intervalAirTraffic = null;
   }
 
   private async fetchAndProcessRSS(): Promise<void> {
@@ -4575,8 +5299,9 @@ export class App {
       this.statusPanel?.updateSource('Écowatt RTE', { status: 'stale', lastUpdate: new Date() });
     }
 
-    if (this.activeLayers.powerGrid) {
-      this.energyPanel?.show(this.currentEcowattResponse);
+    // Rafraîchit seulement un panneau déjà ouvert : ne pas rouvrir un panneau masqué par l'utilisateur.
+    if (this.activeLayers.powerGrid && this.energyPanel?.isVisible()) {
+      this.energyPanel.show(this.currentEcowattResponse);
       this.layoutEnergyFloatingPanels();
     }
 
@@ -4619,7 +5344,12 @@ export class App {
       this.layoutEnvironmentFloatingPanels();
     }
 
-    await this.refreshHydraulicLayer();
+    // Perf audit §5 item 3 / §6 item 3: no explicit refreshHydraulicLayer()
+    // call here anymore — loadSecondaryLayers()'s own 'hydraulic' task runs
+    // right after loadCriticalLayers() (which includes this loadWeather())
+    // resolves, and refreshHydraulicLayer() already reads the up-to-date
+    // this.currentMeteoAlerts/currentFloodSegments/currentEcowattResponse set
+    // above. Calling it here duplicated that work on every single page load.
     this.refreshFranceIntelPanel();
   }
 
@@ -4741,6 +5471,10 @@ export class App {
   }
 
   private async refreshHydraulicLayer(): Promise<void> {
+    // Seuls la couche « stress hydro-énergétique » et son panneau consomment ces actifs : sans elle,
+    // pas d'appels Hub'Eau (25 requêtes à chaque rafraîchissement Écowatt/crues, audit 2026-09).
+    // L'activation de la couche relance ce rafraîchissement (refreshHydraulicSignalSources()).
+    if (!this.activeLayers.hydroBackbone) return;
     const { buildHydraulicBackboneAssets } = await import('./services/hydraulic-backbone.ts');
     this.currentHydraulicHydrometry = await fetchHydraulicHydrometrySnapshot(
       this.currentHydraulicAssets.length > 0 ? this.currentHydraulicAssets : buildHydraulicBackboneAssets(null, [], []),
@@ -4914,7 +5648,7 @@ export class App {
     })().finally(() => {
       this.trafficLoadPromise = null;
       // Remplace le loader par les données (ou l'état vide) une fois le fetch settlé.
-      if (this.activeLayers.trafficRoad) this.renderTrafficPanel();
+      if (this.activeLayers.trafficRoad && this.trafficPanel?.isVisible()) this.renderTrafficPanel();
     });
 
     return this.trafficLoadPromise;
@@ -5159,8 +5893,8 @@ export class App {
         lastUpdate: new Date(dashboard.updatedAt),
       });
 
-      if (this.activeLayers.dromEnergy) {
-        this.dromEnergyPanel?.show(dashboard);
+      if (this.activeLayers.dromEnergy && this.dromEnergyPanel?.isVisible()) {
+        this.dromEnergyPanel.show(dashboard);
         this.layoutEnergyFloatingPanels();
       }
     } catch (error) {
@@ -5409,8 +6143,8 @@ export class App {
       const enrichedRail = buildRailNetworkData(enriched);
       this.currentRailNetworkData = enrichedRail;
       this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail) {
-        this.transportPanel?.show(enriched, {
+      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
+        this.transportPanel.show(enriched, {
           fullCoverageLoaded: this.sncfFullCoverageLoaded,
           dataLoaded: true,
           mapCoverageReady: this.hasRailMapCoverage(),
@@ -5429,8 +6163,8 @@ export class App {
     const railData = buildRailNetworkData(disruptions);
     this.currentRailNetworkData = railData;
     this.mapContainer?.updateRailNetwork(railData);
-    if (this.activeLayers.trafficRail) {
-      this.transportPanel?.show(disruptions, {
+    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
+      this.transportPanel.show(disruptions, {
         fullCoverageLoaded: this.sncfFullCoverageLoaded,
         dataLoaded: disruptions.length > 0,
         mapCoverageReady: this.hasRailMapCoverage(),
@@ -5453,8 +6187,8 @@ export class App {
       const enrichedRail = buildRailNetworkData(enriched);
       this.currentRailNetworkData = enrichedRail;
       this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail) {
-        this.transportPanel?.show(enriched, {
+      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
+        this.transportPanel.show(enriched, {
           fullCoverageLoaded: true,
           dataLoaded: true,
           mapCoverageReady: this.hasRailMapCoverage(),
@@ -5471,8 +6205,8 @@ export class App {
     this.currentRailNetworkData = railData;
     this.mapContainer?.updateRailNetwork(railData);
     this.transportPanel?.setFullCoverageLoading(false);
-    if (this.activeLayers.trafficRail) {
-      this.transportPanel?.show(disruptions, {
+    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
+      this.transportPanel.show(disruptions, {
         fullCoverageLoaded: true,
         dataLoaded: true,
         mapCoverageReady: this.hasRailMapCoverage(),
@@ -6032,6 +6766,10 @@ export class App {
 
     this._intervalInfraNetwork = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
+      // Perf audit §6 item 4: currentInfraState only feeds the outages panel
+      // (App.ts 'Infra Réseau DC / IXP' / 'IODA Internet' sources) — gate the
+      // recurring refresh the same way startOilPolling()/startHealthPolling() do.
+      if (!this.activeLayers.outages && this.outagesPanel?.isVisible() !== true) return;
       this.refreshInfraNetworkLive(true).catch((err) => console.error('[App] Infra network poll error', err));
     }, POLL_INFRA_NETWORK_MS);
   }
@@ -6601,6 +7339,37 @@ export class App {
     void pushHistorySnapshot(snapshot);
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
+    const now = Date.now();
+    const evaluation = evaluateBriefLevel(this.franceIntelBriefMark, snapshot.score, now);
+    this.franceIntelBriefMark = evaluation.mark;
+    if (evaluation.refresh) {
+      this.requestFranceIntelBrief(snapshot, lang, { showLoading: false });
+    } else {
+      this.armFranceIntelBriefSettleTimer(evaluation.settleAt);
+    }
+  }
+
+  private clearFranceIntelBriefSettleTimer(): void {
+    if (this.franceIntelBriefSettleTimer !== null) {
+      clearTimeout(this.franceIntelBriefSettleTimer);
+      this.franceIntelBriefSettleTimer = null;
+    }
+  }
+
+  /**
+   * Comme refreshFranceIntelPanel n'est appelé que sur arrivée de données, un changement de
+   * couleur qui doit encore stabiliser (BRIEF_LEVEL_SETTLE_MS) a besoin d'un minuteur pour être
+   * revérifié même sans nouvelle donnée. Un seul minuteur à la fois.
+   */
+  private armFranceIntelBriefSettleTimer(settleAt: number | null): void {
+    this.clearFranceIntelBriefSettleTimer();
+    if (settleAt === null) return;
+    const delay = Math.max(0, settleAt - Date.now());
+    this.franceIntelBriefSettleTimer = setTimeout(() => {
+      this.franceIntelBriefSettleTimer = null;
+      if (!this.franceIntelPanel?.isVisible()) return;
+      this.refreshFranceIntelPanel();
+    }, delay);
   }
 
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
@@ -6717,16 +7486,62 @@ export class App {
     options?: { showLoading?: boolean },
   ): void {
     const requestId = ++this.franceIntelBriefRequestId;
+    // Un brief est demandé : plus rien à stabiliser (chaque demande de brief y compris via ce
+    // minuteur repart de zéro), et la nouvelle couleur devient la référence pour la suite.
+    this.clearFranceIntelBriefSettleTimer();
+    this.franceIntelBriefMark = {
+      level: scoreLevel(snapshot.score),
+      lastLevelRefreshAt: this.franceIntelBriefMark?.lastLevelRefreshAt ?? null,
+      divergentLevel: null,
+      divergedSince: null,
+    };
+    // S1…S5 désignent les situations de CET instantané : figé pour les preuves cliquables.
+    const situationIds = briefSituationIds(snapshot.situations);
     if (options?.showLoading !== false) {
       this.franceIntelPanel?.showBriefLoading();
     }
 
-    void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
-      if (requestId !== this.franceIntelBriefRequestId) return;
-      if (!this.franceIntelPanel?.isVisible()) return;
-      if (this.franceIntelPanel.getCurrentLang() !== lang) return;
-      this.franceIntelPanel.updateBrief(brief, freshness);
+    // Les événements consolidés alimentent le panneau ET servent de preuves citables au brief.
+    const eventsLoad = this.loadFranceIntelEvents();
+    // Le panneau les reçoit dès qu'ils arrivent, sans limite de temps.
+    void eventsLoad.then((loaded) => {
+      if (requestId !== this.franceIntelBriefRequestId || !this.franceIntelPanel?.isVisible()) return;
+      if (loaded) this.franceIntelPanel.updateEvents(loaded.state);
+      else this.franceIntelPanel.markEventsUnavailable();
     });
+    // Le brief ne les attend que FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS : une base qui cale ne
+    // doit pas le laisser sur « Génération… » ; il part alors avec les seules situations.
+    void settleWithin(eventsLoad.then((loaded) => loaded?.briefEvents ?? []), FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS, [])
+      .then((briefEvents) => (requestId === this.franceIntelBriefRequestId
+        ? fetchFranceIntelBrief(snapshot, lang, briefEvents)
+        : null))
+      .then((result) => {
+        if (!result || requestId !== this.franceIntelBriefRequestId) return;
+        if (!this.franceIntelPanel?.isVisible()) return;
+        if (this.franceIntelPanel.getCurrentLang() !== lang) return;
+        this.franceIntelPanel.updateBrief(result.brief, result.freshness, situationIds);
+      });
+  }
+
+  /**
+   * Événements + fil « depuis votre dernière visite » (modules chargés à la demande, hors
+   * chunk critique). L'état porte `unavailable` si l'API échoue ; null seulement si le
+   * chunk lui-même n'a pas pu être chargé.
+   */
+  private async loadFranceIntelEvents(): Promise<{ state: IntelEventsState; briefEvents: BriefEventInput[] } | null> {
+    try {
+      const [events, visit] = await Promise.all([
+        import('./services/news-events.ts'),
+        import('./services/intel-last-visit.ts'),
+      ]);
+      const state = await events.loadIntelEventsState(visit.beginIntelVisit());
+      // L'utilisateur a vu l'état courant : c'est l'ancre de sa prochaine visite.
+      if (!state.unavailable) visit.recordIntelVisitSeen();
+      return { state, briefEvents: events.selectBriefEvents(state.events) };
+    } catch (err) {
+      console.warn('[App] France intel events unavailable', err);
+      return null;
+    }
   }
 
   private clearFranceIntelBriefRefresh(): void {
@@ -6756,14 +7571,13 @@ export class App {
       console.error('[App] Network barometer refresh on France Intel open failed', err);
     });
 
-    this.environmentPanel?.hide();
-    this.energyPanel?.hide();
-    this.isnrPanel?.hide();
-    this.cyberPanel?.hide();
+    // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3).
+    // healthBarometerPanel n'est pas dans FLOATING_PANEL_DEFS (il peut
+    // coexister avec nationalHealthPanel, cf. 'open-health-barometer') donc
+    // hideAllFloatingPanels() ne le couvre pas — il ne doit pas non plus
+    // rester ouvert derrière Intelligence France.
+    this.hideAllFloatingPanels();
     this.healthBarometerPanel?.hide();
-    this.firesPanel?.hide();
-    this.transportPanel?.hide();
-    this.trafficPanel?.hide();
 
     const panel = await this.ensureFranceIntelPanel();
     const lang = panel.getCurrentLang();
@@ -6771,6 +7585,8 @@ export class App {
     panel.show(snapshot);
     this.requestFranceIntelBrief(snapshot, lang);
     this.scheduleFranceIntelBriefRefresh();
+    this.currentFloatingPanelId = null;
+    this.refreshFloatingPanelSwitcher();
   }
 
   private updateISNR(): void {

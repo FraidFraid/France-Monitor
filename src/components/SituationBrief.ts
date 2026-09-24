@@ -12,23 +12,16 @@
  * L'historique 24 h (situations résolues) est injecté une fois via setRecent24h().
  */
 
-import type { DetectedSituation, SituationSeverity, SituationType } from '../types/index.ts';
+import type { DetectedSituation, SituationType } from '../types/index.ts';
 import {
   selectBriefItems,
   type BriefItem,
   type BriefSourceSituation,
 } from '../services/situation-brief.ts';
 import { fmIcon } from './shared/icons.ts';
+import { levelColorVar, situationLevel } from '../services/vigilance.ts';
 
 // ─── Affichage sévérité ──────────────────────────────────────────────────────────
-
-/** Couleurs par sévérité — variables CSS (dark mode par défaut, cohérent app). */
-const SEV_VAR: Record<SituationSeverity, string> = {
-  critical: 'var(--threat-critical, #ff2d55)',
-  high: 'var(--threat-high, #ff6b35)',
-  medium: 'var(--threat-medium, #ffcc00)',
-  watch: 'var(--threat-info, #5ac8fa)',
-};
 
 const TYPE_ICON: Record<SituationType, string> = {
   ENERGY_STRESS: fmIcon('zap'),
@@ -252,7 +245,7 @@ export class SituationBrief {
   }
 
   private renderItem(item: BriefItem, index: number): string {
-    const color = SEV_VAR[item.severity];
+    const color = levelColorVar(situationLevel(item.severity));
     const icon = TYPE_ICON[item.type] ?? fmIcon('triangle-alert');
     const zone = item.zone ? `<span class="sit-brief__item-zone">${escapeHtml(item.zone)}</span>` : '';
     const resolvedTag = item.resolved

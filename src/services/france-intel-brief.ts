@@ -1,5 +1,6 @@
 // src/services/france-intel-brief.ts
 import type {
+  BriefEventInput,
   BriefJudgment,
   BriefWatchItem,
   DetectedSituation,
@@ -8,13 +9,14 @@ import type {
   StructuredBrief,
 } from '../types/index.ts';
 import { getDelta24h } from '../utils/stability-history.ts';
+import { levelVigilanceWord, scoreLevel, type VigilanceLevel } from './vigilance.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
   expiresAt: number;
 }
 
-const PROMPT_VERSION = 'v13';
+const PROMPT_VERSION = 'v15';
 const _cache = new Map<string, BriefCacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
@@ -27,7 +29,12 @@ function hashCacheSeed(seed: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function buildClientCacheKey(ctx: FranceBriefContext, situations: DetectedSituation[], lang: 'fr' | 'en'): string {
+function buildClientCacheKey(
+  ctx: FranceBriefContext,
+  situations: DetectedSituation[],
+  events: BriefEventInput[],
+  lang: 'fr' | 'en',
+): string {
   return `${PROMPT_VERSION}:${lang}:${hashCacheSeed(JSON.stringify({
     score: ctx.score,
     axes: ctx.axes,
@@ -37,6 +44,7 @@ function buildClientCacheKey(ctx: FranceBriefContext, situations: DetectedSituat
     topHeadlines: ctx.topHeadlines,
     energySummary: ctx.energySummary,
     situations: compactSituations(situations),
+    events: events.map((e) => [e.id, e.severity, e.independentCount, e.status]),
   }))}`;
 }
 
@@ -48,9 +56,10 @@ export interface FranceBriefResult {
 export async function fetchFranceIntelBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations' | 'briefContext'>,
   lang: 'fr' | 'en' = 'fr',
+  events: BriefEventInput[] = [],
 ): Promise<FranceBriefResult> {
   const ctx = snapshot.briefContext;
-  const cacheKey = buildClientCacheKey(ctx, snapshot.situations, lang);
+  const cacheKey = buildClientCacheKey(ctx, snapshot.situations, events, lang);
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return { brief: cached.brief, freshness: 'cached' };
@@ -116,6 +125,7 @@ export async function fetchFranceIntelBrief(
         },
         energy,
         situations: compactSituations(snapshot.situations),
+        events,
         lang,
       }),
     });
@@ -134,7 +144,7 @@ export async function fetchFranceIntelBrief(
 
   // Fallback déterministe : le bloc brief ne meurt jamais.
   return {
-    brief: buildDeterministicBrief(snapshot, lang, getDelta24h()),
+    brief: buildDeterministicBrief(snapshot, lang, getDelta24h(), events),
     freshness: 'fresh',
   };
 }
@@ -157,6 +167,8 @@ const JUDGMENT_TEXT_MAX = 280;
 const MAX_JUDGMENTS = 4;
 const MAX_WATCH = 4;
 const MAX_SOURCES = 5;
+const MAX_EVIDENCE = 4;
+const EVIDENCE_ID = /^[ES]\d{1,12}$/;
 
 /** Valide et borne un brief JSON (LLM ou cache). Retourne null si structurellement invalide. */
 export function parseStructuredBrief(
@@ -182,7 +194,12 @@ export function parseStructuredBrief(
     const sources = Array.isArray(j.sources)
       ? j.sources.filter((s): s is string => typeof s === 'string').slice(0, MAX_SOURCES)
       : [];
-    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources });
+    const evidence = Array.isArray(j.evidence)
+      ? j.evidence.filter((e): e is string => typeof e === 'string' && EVIDENCE_ID.test(e)).slice(0, MAX_EVIDENCE)
+      : [];
+    // Le serveur v14 tranche « non étayé » ; à défaut (brief déterministe sérialisé), l'absence de preuve le décide.
+    const unsupported = typeof j.unsupported === 'boolean' ? j.unsupported : evidence.length === 0;
+    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
   }
   judgments.sort((a, b) => a.priority - b.priority);
 
@@ -200,14 +217,6 @@ export function parseStructuredBrief(
   return { bluf: raw.bluf.trim().slice(0, BLUF_MAX), judgments, watch, origin };
 }
 
-function bandLabel(score: number, lang: 'fr' | 'en'): string {
-  if (score >= 85) return 'stable';
-  if (score >= 70) return lang === 'fr' ? 'en vigilance' : 'under watch';
-  if (score >= 55) return lang === 'fr' ? 'sous tension' : 'under pressure';
-  if (score >= 40) return lang === 'fr' ? 'dégradée' : 'degraded';
-  return lang === 'fr' ? 'critique' : 'critical';
-}
-
 const PILLAR_LABELS: Record<string, { fr: string; en: string }> = {
   continuity: { fr: 'continuité', en: 'continuity' },
   security: { fr: 'sécurité', en: 'security' },
@@ -222,36 +231,71 @@ const SEVERITY_PRIORITY: Record<DetectedSituation['severity'], 1 | 2 | 3 | 4> = 
   watch: 4,
 };
 
+const EVENT_PRIORITY: Record<BriefEventInput['severity'], 1 | 2 | 3 | 4> = {
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+  info: 4,
+};
+
+const MAX_DETERMINISTIC_JUDGMENTS = 3;
+
 /**
  * Brief de secours 100 % moteur : toujours disponible, zéro hallucination.
- * Utilisé si le LLM est indisponible, invalide ou hors ligne.
+ * Utilisé si le LLM est indisponible, invalide ou hors ligne. Jugements : les situations
+ * (S1…), complétées par les événements corroborés (≥ 2 sources indépendantes) jusqu'à 3.
  */
 export function buildDeterministicBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations'>,
   lang: 'fr' | 'en',
   delta24h: number | null = null,
+  events: BriefEventInput[] = [],
 ): StructuredBrief {
   const { score, scoreBreakdown, situations } = snapshot;
   const dominant = [...scoreBreakdown.pillars].sort((a, b) => b.deduction - a.deduction)[0];
   const pillarLabel = dominant
     ? (lang === 'fr' ? PILLAR_LABELS[dominant.key].fr : PILLAR_LABELS[dominant.key].en)
     : (lang === 'fr' ? 'aucune' : 'none');
-  const deltaText = delta24h == null
+  // Mot d'abord, sans nombre : l'indice chiffré reste dans « Pourquoi ce niveau ? ».
+  const trend = delta24h == null || delta24h === 0
     ? ''
     : lang === 'fr'
-      ? `, ${delta24h >= 0 ? '+' : '−'}${Math.abs(delta24h)} sur 24 h`
-      : `, ${delta24h >= 0 ? '+' : '−'}${Math.abs(delta24h)} over 24h`;
+      ? (delta24h < 0 ? ', en dégradation sur 24 h' : ', en amélioration sur 24 h')
+      : (delta24h < 0 ? ', worsening over 24h' : ', improving over 24h');
+  const word = levelVigilanceWord(scoreLevel(score), lang);
+  const count = situations.length;
+  const countText = lang === 'fr'
+    ? (count === 0 ? 'Aucune situation active' : count === 1 ? '1 situation active' : `${count} situations actives`)
+    : (count === 0 ? 'No active situation' : count === 1 ? '1 active situation' : `${count} active situations`);
 
   const bluf = lang === 'fr'
-    ? `Situation nationale ${bandLabel(score, lang)} (${score}/100${deltaText}). Pression dominante : ${pillarLabel}. ${situations.length} situation(s) corrélée(s) active(s).`
-    : `National situation ${bandLabel(score, lang)} (${score}/100${deltaText}). Dominant pressure: ${pillarLabel}. ${situations.length} active correlated situation(s).`;
+    ? `France en ${word}${trend}. Pression dominante : ${pillarLabel}. ${countText}.`
+    : `France under ${word}${trend}. Dominant pressure: ${pillarLabel}. ${countText}.`;
 
-  const judgments: BriefJudgment[] = situations.slice(0, 3).map((s) => ({
+  const judgments: BriefJudgment[] = situations.slice(0, MAX_DETERMINISTIC_JUDGMENTS).map((s, i) => ({
     priority: SEVERITY_PRIORITY[s.severity],
     text: `${s.title} — ${s.summary}`.slice(0, JUDGMENT_TEXT_MAX),
     confidence: s.confidence >= 0.75 ? 'high' : s.confidence >= 0.55 ? 'moderate' : 'low',
     sources: s.sourceRefs.slice(0, MAX_SOURCES),
+    // Même numérotation que compactSituations (ordre d'origine) : S1 = première situation.
+    evidence: [`S${i + 1}`],
+    unsupported: false,
   }));
+  for (const e of events) {
+    if (judgments.length >= MAX_DETERMINISTIC_JUDGMENTS) break;
+    if (e.independentCount < 2) continue;
+    judgments.push({
+      priority: EVENT_PRIORITY[e.severity],
+      text: (lang === 'fr'
+        ? `${e.title} — repris par ${e.independentCount} sources indépendantes`
+        : `${e.title} — reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
+      confidence: e.independentCount >= 3 ? 'moderate' : 'low',
+      sources: e.sources.slice(0, MAX_SOURCES),
+      evidence: [e.id],
+      unsupported: false,
+    });
+  }
   if (judgments.length === 0) {
     judgments.push({
       priority: 4,
@@ -260,6 +304,9 @@ export function buildDeterministicBrief(
         : 'No active multi-source correlation — diffuse background pressure without a dominant convergence point.',
       confidence: 'high',
       sources: [lang === 'fr' ? 'Moteur de situations' : 'Situation engine'],
+      // Constat du moteur lui-même (absence de corrélation) : rien à citer, rien d'inventé.
+      evidence: [],
+      unsupported: false,
     });
   }
   // Tri par priorité croissante — contrat StructuredBrief (« triés par priorité »)
@@ -296,6 +343,94 @@ export interface CompactSituation {
   drivers: string[];
   sourceRefs: string[];
   affectedZones: string[];
+}
+
+/**
+ * Identifiants des situations numérotées S1…S5 dans le brief (même tranche que
+ * compactSituations). À figer au moment de la demande : l'instantané courant bouge
+ * ensuite à chaque rafraîchissement, et S2 désignerait une autre situation.
+ */
+export function briefSituationIds(situations: DetectedSituation[]): string[] {
+  return situations.slice(0, 5).map((s) => s.id);
+}
+
+/** Au plus un brief redemandé pour changement de couleur par tranche de 10 min (anti-rafale). */
+export const BRIEF_LEVEL_REFRESH_MIN_MS = 10 * 60 * 1000;
+
+/**
+ * Attente de stabilisation avant de redemander le brief sur changement de couleur : le score
+ * traverse plusieurs bandes en quelques secondes à l'ouverture (81 jaune → 64 orange → 50 rouge →
+ * 43 en 12 s) ; sans cette attente, la première couleur traversée (ici orange) gagnait la
+ * course et le brief restait figé dessus pendant tout l'anti-rafale (bug 81/43, relecture F1).
+ */
+export const BRIEF_LEVEL_SETTLE_MS = 45 * 1000;
+
+export interface BriefLevelMark {
+  /** Couleur du dernier brief effectivement demandé. */
+  level: VigilanceLevel;
+  /** Dernière demande déclenchée par un changement de couleur, null si aucune. */
+  lastLevelRefreshAt: number | null;
+  /** Couleur actuellement différente de `level`, en cours de stabilisation ; null si alignée. */
+  divergentLevel: VigilanceLevel | null;
+  /** Horodatage où `divergentLevel` est apparu ; null si alignée. */
+  divergedSince: number | null;
+}
+
+export interface BriefLevelEvaluation {
+  /** Vrai si le brief doit être redemandé maintenant. */
+  refresh: boolean;
+  /** Marque à conserver pour le prochain appel, que `refresh` soit vrai ou faux. */
+  mark: BriefLevelMark;
+  /** Horodatage auquel revérifier (stabilisation en cours), ou null si rien à armer. */
+  settleAt: number | null;
+}
+
+/**
+ * Faut-il redemander le brief ? Oui quand la couleur nationale diffère de celle du dernier brief
+ * ET qu'elle est restée stable au moins BRIEF_LEVEL_SETTLE_MS (attente de stabilisation, corrige
+ * le bug 81/43 : la cascade de couleurs à l'ouverture ne doit pas figer le brief sur la première
+ * couleur traversée). Anti-rafale conservé pour l'oscillation autour d'un seuil : au plus un
+ * rafraîchissement déclenché par une couleur par tranche de BRIEF_LEVEL_REFRESH_MIN_MS, le
+ * premier n'étant pas limité. Fonction pure : App.ts persiste `mark` et arme un minuteur sur
+ * `settleAt` pour revérifier avec un instantané frais quand aucune nouvelle donnée n'arrive.
+ */
+export function evaluateBriefLevel(
+  mark: BriefLevelMark | null,
+  score: number,
+  now: number,
+): BriefLevelEvaluation {
+  const level = scoreLevel(score);
+  if (mark === null) {
+    return {
+      refresh: false,
+      mark: { level, lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null },
+      settleAt: null,
+    };
+  }
+  if (level === mark.level) {
+    // De retour à la couleur du dernier brief : rien à stabiliser.
+    if (mark.divergentLevel === null) return { refresh: false, mark, settleAt: null };
+    return { refresh: false, mark: { ...mark, divergentLevel: null, divergedSince: null }, settleAt: null };
+  }
+
+  // La couleur observée diffère du dernier brief : elle stabilise depuis `divergedSince`
+  // (repart à `now` si elle vient de changer, se poursuit si c'est la même qu'au dernier appel).
+  const divergedSince = mark.divergentLevel === level && mark.divergedSince !== null ? mark.divergedSince : now;
+  const stable = now - divergedSince >= BRIEF_LEVEL_SETTLE_MS;
+  const rateOk = mark.lastLevelRefreshAt === null || now - mark.lastLevelRefreshAt >= BRIEF_LEVEL_REFRESH_MIN_MS;
+
+  if (stable && rateOk) {
+    return {
+      refresh: true,
+      mark: { level, lastLevelRefreshAt: now, divergentLevel: null, divergedSince: null },
+      settleAt: null,
+    };
+  }
+  return {
+    refresh: false,
+    mark: { ...mark, divergentLevel: level, divergedSince },
+    settleAt: stable ? null : divergedSince + BRIEF_LEVEL_SETTLE_MS,
+  };
 }
 
 export function compactSituations(situations: DetectedSituation[]): CompactSituation[] {

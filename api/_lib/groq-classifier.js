@@ -1,9 +1,10 @@
+import { GROQ_FAST_MODEL as GROQ_MODEL, groqModelParams, withReasoningHeadroom } from './groq-models.js';
 // api/_lib/groq-classifier.js
 // Optional Groq LLM classification for ambiguous news articles.
 // Called by the ingestion cron when GROQ_API_KEY is set.
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 const GROQ_TIMEOUT_MS = 5000;
 
 const VALID_CATEGORIES = new Set([
@@ -49,12 +50,13 @@ export async function classifyWithGroq(apiKey, title, description) {
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
+        ...groqModelParams(GROQ_MODEL),
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.1,
-        max_tokens: 80,
+        max_tokens: withReasoningHeadroom(GROQ_MODEL, 80),
         response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),

@@ -148,9 +148,10 @@ export class EolienPanel extends Panel {
     this.renderContent(live, parks);
   }
 
-  hide(): void {
+  hide(opts: { silent?: boolean } = {}): void {
     this.modalEl.style.display = 'none';
-    this.onClose?.();
+    // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
+    if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {
