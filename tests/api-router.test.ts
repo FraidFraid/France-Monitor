@@ -55,8 +55,13 @@ describe('table de routes API', () => {
       rewrites: { source: string; destination: string }[];
     };
     for (const file of Object.keys(cfg.functions)) expect(existsSync(join(ROOT, file)), file).toBe(true);
-    // Palier Hobby : une exécution par jour au plus (champs minute et heure fixes).
-    for (const cron of cfg.crons) expect(cron.schedule, cron.path).toMatch(/^\d{1,2} \d{1,2} \* \* \*$/);
+    // Projet encore en Vercel Pro (décision du 24/09/2026) : on garde les crons de la production
+    // (actualités toutes les 30 min, carburants toutes les 3 h). Au passage en Hobby, suivre
+    // docs/runbook-passage-hobby.md : QStash d'abord, puis crons quotidiens ici et dans vercel.json.
+    expect(Object.fromEntries(cfg.crons.map((c) => [c.path, c.schedule]))).toEqual({
+      '/api/ingest/news': '*/30 * * * *',
+      '/api/fuel-price-series-refresh': '0 */3 * * *',
+    });
     // La réécriture API doit précéder le repli SPA.
     const apiIdx = cfg.rewrites.findIndex((r) => r.source === '/api/(.*)');
     const spaIdx = cfg.rewrites.findIndex((r) => r.source === '/(.*)');

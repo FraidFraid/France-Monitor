@@ -1,12 +1,13 @@
 /**
  * api/ingest/news.ts — Cron d'ingestion serveur du flux news.
  *
- * Cadence réelle : deux déclencheurs distincts, tous deux Authorization:
- * Bearer ${CRON_SECRET} (méthode GET ou POST) —
- *  - Vercel Cron, 1 exécution/jour (vercel.json, limite du palier Hobby :
- *    une seule entrée quotidienne fixe autorisée) : filet de sécurité.
+ * Cadence : tant que le projet est en Vercel Pro (décision du 24/09/2026), Vercel Cron
+ * toutes les 30 min (vercel.json). Au passage en Hobby (docs/runbook-passage-hobby.md),
+ * deux déclencheurs distincts, tous deux Authorization: Bearer ${CRON_SECRET} (GET ou POST) —
+ *  - Vercel Cron, 1 exécution/jour (limite du palier Hobby : une seule entrée
+ *    quotidienne fixe autorisée) : filet de sécurité.
  *  - Upstash QStash, toutes les ~30 min (configuré côté Upstash, hors dépôt) :
- *    cadence réelle en production. QStash relaie l'auth via l'en-tête
+ *    cadence réelle. QStash relaie l'auth via l'en-tête
  *    `Upstash-Forward-Authorization` → le handler la voit comme un
  *    `Authorization` normal, aucune logique spécifique requise ici.
  *
