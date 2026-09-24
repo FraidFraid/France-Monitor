@@ -8353,3 +8353,20 @@ button.header-quality-link {
     grid-column: auto;
   }
 }
+
+/* ─── Langage commun L1 : pastille de niveau (refonte UI, spec §4) ─── */
+.fm-vig {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #111;
+}
+.fm-vig--vert { background: var(--sev-green); }
+.fm-vig--jaune { background: var(--sev-yellow); }
+.fm-vig--orange { background: var(--sev-orange); }
+.fm-vig--rouge { background: var(--sev-red); }
