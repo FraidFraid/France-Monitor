@@ -156,7 +156,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── outages/       citizen scraping, ORE, Cloudflare, IODA     │
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
-│  ├── intelligence/  LLM summarisation + brief v13 (Groq)        │
+│  ├── intelligence/  LLM summarisation + brief v14 (Groq)        │
 │  ├── ingest/        News ingestion (Neon Postgres, QStash 30min)│
 │  ├── news/          News query + history timeline API            │
 │  └── rss / rss-proxy  CORS-bypass + Scrapling bypass            │
@@ -377,7 +377,9 @@ france-monitor/
 │   │   ├── situation-engine.ts  # 10-rule multi-source situation correlation
 │   │   ├── stability-index.ts   # ISNR departmental composite index
 │   │   ├── france-country-intel.ts  # Country snapshot + stability score v3 (explainable breakdown)
-│   │   ├── france-intel-brief.ts    # Structured brief v13 — LLM JSON + deterministic fallback
+│   │   ├── france-intel-brief.ts    # Structured brief v14 — evidence-cited LLM JSON + deterministic fallback
+│   │   ├── news-events.ts       # Consolidated news events (/api/events*) + change digest
+│   │   ├── intel-last-visit.ts  # "Since your last visit" anchor (localStorage + sessionStorage)
 │   │   ├── cyber.ts             # Cyber threat feed aggregation
 │   │   ├── cyber-threat-scoring.ts  # Composite cyber pressure scoring (NEW)
 │   │   ├── exposure.ts          # Technical exposure (Shodan/Censys)
@@ -483,8 +485,9 @@ Every data service registers with `Watchdog` and emits `loading` / `success` / `
 ### Stability Score v3 & Intelligence Brief
 
 - The national score formula lives in `src/services/france-country-intel.ts` (`scoreFromPillars`). Its calibration is **locked by contract tests** in `france-country-intel.test.ts` (quiet day 88–94, loaded day 74–86, real tension 58–72, crisis 38–55, major crisis <40). Never adjust the test targets to make a formula change pass.
-- Score bands (85/70/55/40) are duplicated in four places that must move together: `FranceIntelPanel.ts`, `france-intel-brief.ts`, `api/intelligence/v1/france-intel-brief.js` and `src/plugins/france-intel-proxy.ts`.
-- The brief edge function and its Vite dev proxy are **mirrors** — any change to one must be applied to the other.
+- Score bands (85/70/55/40) are duplicated in three places that must move together: `FranceIntelPanel.ts`, `france-intel-brief.ts` and `api/_handlers/intelligence/v1/france-intel-brief.js`.
+- There is no dev mirror of the brief any more: in dev, the Vite API router fallback serves the production handler.
+- Brief v14 judgments cite evidence IDs (`E<id>` consolidated event, `S<n>` correlated situation). Displayed sources are derived from the cited evidence server-side (`api/_lib/brief-evidence.js`), never copied from the model; a judgment without valid evidence is shown as UNSUPPORTED with low confidence.
 - Δ24h and the sparkline come from a per-browser localStorage ring buffer (`src/utils/stability-history.ts`, 7-day retention, 30-min write throttle). A cold start shows "—" by design.
 
 ### Coding Conventions
@@ -542,6 +545,11 @@ Current high-level milestones:
 ---
 
 ## 📋 Recent Updates
+
+### 2026-09-23
+- **Consolidated news events** — the ingestion cron now groups articles reporting the same fact into events (lexical title matching within 72 h, distance penalty, media-group-aware corroboration: EBRA titles count as one independent source). Events carry severity, status (active < 12 h, cooling < 48 h, closed) and a change log, served by `/api/events`, `/api/events/detail` and `/api/events/changes`.
+- **"Since your last visit"** — the France Intelligence drawer opens on what changed since the analyst's previous visit: escalations, corroborations and new or closed serious events, with totals per change type.
+- **Evidence-backed brief v14** — every judgment cites `E<id>`/`S<n>` evidence, clickable in the drawer; sources are derived from the evidence; "high" confidence requires corroborated evidence.
 
 ### 2026-07-05
 - **Country Intelligence refonte** — the France Intelligence drawer is now an ops console (480 px, monospace metrics, severity-only colours, zero emoji): explainable **Stability Index v3** (baseline 95 − progressive pillar deductions, situation-linked caps, EMA smoothing, calibration locked by contract tests), per-pillar Δ24h + 7-day sparkline backed by a new localStorage history (`stability-history.ts`), and a new **Correlated Situations** block surfacing the 10-rule engine (evidence chains, confidence, sources, recommended actions, keyboard-operable)
