@@ -65,13 +65,16 @@ function parseAnchor(raw: string | null): IntelVisitAnchor | null {
   }
 }
 
-/** Ancre de l'onglet courant ; à la première ouverture, la calcule et enregistre la visite. */
+/**
+ * Ancre de l'onglet courant ; à la première ouverture, la calcule et la fige pour l'onglet.
+ * N'enregistre PAS la visite : seul recordIntelVisitSeen le fait, une fois l'état réellement
+ * affiché (une ouverture pendant une panne ne doit pas consommer la fenêtre suivante).
+ */
 export function beginIntelVisit(now = Date.now(), stores: VisitStores = browserStores()): IntelVisitAnchor {
   const existing = parseAnchor(read(stores.session, ANCHOR_KEY));
   if (existing) return existing;
   const anchor = resolveVisitAnchor(read(stores.local, LAST_SEEN_KEY), now);
   write(stores.session, ANCHOR_KEY, JSON.stringify(anchor));
-  write(stores.local, LAST_SEEN_KEY, String(now));
   return anchor;
 }
 

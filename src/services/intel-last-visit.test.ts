@@ -35,3 +35,13 @@ describe('beginIntelVisit', () => {
     expect(beginIntelVisit(NOW, { local: null, session: null })).toEqual({ since: NOW - 24 * H, kind: 'default' });
   });
 });
+
+describe('visite pendant une panne (relecture finale #6)', () => {
+  it('ouvrir l’onglet sans voir l’état courant ne consomme pas la fenêtre de la visite suivante', () => {
+    const local = memory();
+    local.setItem('fm:intel:last-seen', String(NOW - 5 * H));
+    // Historique indisponible : l'application n'appelle pas recordIntelVisitSeen.
+    beginIntelVisit(NOW, { local, session: memory() });
+    expect(beginIntelVisit(NOW + H, { local, session: memory() })).toEqual({ since: NOW - 5 * H, kind: 'last-visit' });
+  });
+});
