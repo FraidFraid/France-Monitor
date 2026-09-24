@@ -6,6 +6,7 @@ import {
   eventLevel,
   fuelTensionLevel,
   infraStatusLevel,
+  isnrLevel,
   levelColorVar,
   levelHex,
   levelLabel,
@@ -137,5 +138,18 @@ describe('marchés (spec §4.4)', () => {
     expect(marketBarometer([{ name: 'CAC 40', changePercent: -3.42, kind: 'index' }, { name: 'DAX', changePercent: 0.1, kind: 'index' }]))
       .toEqual({ tone: 'alert', text: 'Mouvement exceptionnel : CAC 40 −3,42 %' });
     expect(marketBarometer([])).toEqual({ tone: 'neutral', text: 'Marchés : données indisponibles' });
+  });
+});
+
+describe('isnrLevel (note de situation, arbitrage A8)', () => {
+  it('bornes 20/40/60 ; « élevé » et « critique » fusionnent en rouge', () => {
+    expect(isnrLevel(19)).toBe('vert');
+    expect(isnrLevel(20)).toBe('jaune');
+    expect(isnrLevel(39)).toBe('jaune');
+    expect(isnrLevel(40)).toBe('orange');
+    expect(isnrLevel(59)).toBe('orange');
+    expect(isnrLevel(60)).toBe('rouge');
+    expect(isnrLevel(95)).toBe('rouge');
+    expect(isnrLevel(Number.NaN)).toBe('jaune');
   });
 });

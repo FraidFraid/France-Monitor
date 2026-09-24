@@ -18,18 +18,16 @@ import type {
   MeteoAlert,
   NewsItem,
   PowerOutage,
-  SituationSeverity,
   TelecomOutage,
-  ThreatLevel,
   TransportDisruption,
   WatchdogSnapshot,
 } from '../types/index.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
+import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
 import {
   buildSituationReportHtml,
   type ReportDomainSignal,
   type ReportEvent,
-  type ReportSeverity,
   type ReportSituation,
   type ReportSource,
   type ReportSourceState,
@@ -121,44 +119,6 @@ function formatAge(cacheAgeMs: number | null, lastUpdate: Date | null, now: Date
   return `${Math.round(hours / 24)} j`;
 }
 
-// ─── Mappings de sévérité ─────────────────────────────────────────────────────
-
-function mapSituationSeverity(severity: SituationSeverity): ReportSeverity {
-  switch (severity) {
-    case 'critical':
-      return 'critical';
-    case 'high':
-      return 'high';
-    case 'medium':
-      return 'medium';
-    case 'watch':
-      return 'low';
-  }
-}
-
-function mapThreatLevel(level: ThreatLevel | undefined): ReportSeverity {
-  switch (level) {
-    case 'critical':
-      return 'critical';
-    case 'high':
-      return 'high';
-    case 'medium':
-      return 'medium';
-    case 'low':
-      return 'low';
-    default:
-      return 'info';
-  }
-}
-
-function stabilityStatusLabel(score: number): string {
-  if (score >= 80) return 'CRITIQUE';
-  if (score >= 60) return 'ÉLEVÉ';
-  if (score >= 40) return 'TENSION';
-  if (score >= 20) return 'VEILLE';
-  return 'STABLE';
-}
-
 // ─── Signaux par domaine (uniquement les états NON nominaux) ──────────────────
 
 function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
@@ -176,7 +136,7 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
       signals.push({
         domain: 'Écowatt (tension électrique)',
         levelLabel: red.length > 0 ? 'Rouge' : 'Orange',
-        severity: red.length > 0 ? 'high' : 'medium',
+        level: red.length > 0 ? 'rouge' : 'orange',
         detail: `${red.length} région(s) rouge, ${orange.length} orange${names.length > 0 ? ` : ${names.join(', ')}` : ''}.`,
       });
     }
@@ -190,7 +150,7 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     signals.push({
       domain: 'Vigilance météo',
       levelLabel: meteoRed.length > 0 ? 'Rouge' : 'Orange',
-      severity: meteoRed.length > 0 ? 'critical' : 'medium',
+      level: meteoRed.length > 0 ? 'rouge' : 'orange',
       detail: `${meteoRed.length} dépt rouge, ${meteoOrange.length} orange${names.length > 0 ? ` : ${names.join(', ')}` : ''}.`,
     });
   }
@@ -203,7 +163,7 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     signals.push({
       domain: 'Crues (Vigicrues)',
       levelLabel: floodRed.length > 0 ? 'Rouge' : 'Orange',
-      severity: floodRed.length > 0 ? 'critical' : 'medium',
+      level: floodRed.length > 0 ? 'rouge' : 'orange',
       detail: `${floodRed.length} tronçon(s) rouge, ${floodOrange.length} orange${names.length > 0 ? ` : ${names.join(', ')}` : ''}.`,
     });
   }
@@ -220,7 +180,7 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     signals.push({
       domain: 'Transport',
       levelLabel: 'Perturbé',
-      severity: hasCritical ? 'high' : 'medium',
+      level: hasCritical ? 'orange' : 'jaune',
       detail: `${parts.join(', ')}.`,
     });
   }
@@ -238,7 +198,7 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     signals.push({
       domain: 'Pannes réseaux',
       levelLabel: 'Actives',
-      severity: totalOff >= 5000 || telecomActive.length >= 5 ? 'high' : 'medium',
+      level: totalOff >= 5000 || telecomActive.length >= 5 ? 'orange' : 'jaune',
       detail: `${parts.join(', ')}.`,
     });
   }
@@ -256,7 +216,7 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
   const shownSituations = ctx.situations.slice(0, SITUATION_CAP);
   const situations: ReportSituation[] = shownSituations.map((s) => ({
     title: s.title,
-    severity: mapSituationSeverity(s.severity),
+    level: situationLevel(s.severity),
     since: `constatée à ${formatTime(s.updatedAt)}`,
     zone: s.affectedZones[0] ?? 'France',
     summary: s.summary,
@@ -270,7 +230,7 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
       .map((s) => ({ code: s.code, name: s.name, score: s.score }));
     stability = {
       nationalScore: ctx.stability.nationalScore,
-      statusLabel: stabilityStatusLabel(ctx.stability.nationalScore),
+      statusLabel: levelVigilanceWord(isnrLevel(ctx.stability.nationalScore)),
       topDepartments,
     };
   }
@@ -288,7 +248,7 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
       place: n.locationName ?? n.feedRegion,
       title: n.title,
       source: n.source,
-      severity: mapThreatLevel(n.threat?.level),
+      level: eventLevel(n.threat?.level ?? 'info'),
     }));
 
   const sources: ReportSource[] = ctx.sources

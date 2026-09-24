@@ -178,3 +178,15 @@ export function marketBarometer(moves: readonly MarketMove[]): { tone: MarketTon
   const avg = finite.reduce((sum, m) => sum + m.changePercent, 0) / finite.length;
   return { tone: 'neutral', text: `Variation moyenne : ${formatSignedPct(avg)}` };
 }
+
+/**
+ * Indice ISNR (0–100, plus haut = pire) pour la note de situation : bornes existantes 20/40/60 ;
+ * « élevé » (60–79) et « critique » (≥ 80) fusionnent en rouge, comme l'indice national (A8).
+ */
+export function isnrLevel(score: number): VigilanceLevel {
+  if (!Number.isFinite(score)) return 'jaune';
+  if (score >= 60) return 'rouge';
+  if (score >= 40) return 'orange';
+  if (score >= 20) return 'jaune';
+  return 'vert';
+}

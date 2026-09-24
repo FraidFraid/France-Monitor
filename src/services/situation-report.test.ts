@@ -26,7 +26,7 @@ describe('buildSituationReportHtml — données complètes', () => {
       situations: [
         {
           title: 'Tension énergétique nationale',
-          severity: 'critical',
+          level: 'rouge',
           since: 'constatée à 14:30',
           zone: 'PACA',
           summary: 'Signal Écowatt rouge confirmé.',
@@ -35,14 +35,14 @@ describe('buildSituationReportHtml — données complètes', () => {
       moreSituationsCount: 2,
       stability: {
         nationalScore: 47,
-        statusLabel: 'TENSION',
+        statusLabel: 'vigilance orange',
         topDepartments: [{ code: '13', name: 'Bouches-du-Rhône', score: 62 }],
       },
       domainSignals: [
-        { domain: 'Vigilance météo', levelLabel: 'Rouge', severity: 'critical', detail: '1 dépt rouge : Var.' },
+        { domain: 'Vigilance météo', levelLabel: 'Rouge', level: 'rouge', detail: '1 dépt rouge : Var.' },
       ],
       events: [
-        { time: '13:58', place: 'Marseille', title: 'Incident majeur en centre-ville', source: 'AFP', severity: 'high' },
+        { time: '13:58', place: 'Marseille', title: 'Incident majeur en centre-ville', source: 'AFP', level: 'orange' },
       ],
       newsCacheAvailable: true,
       sources: [
@@ -73,7 +73,7 @@ describe('buildSituationReportHtml — données complètes', () => {
     assert.ok(html.includes('PACA'));
     assert.ok(html.includes('+ 2 situation(s) complémentaire(s)'));
     assert.ok(html.includes('47'));
-    assert.ok(html.includes('TENSION'));
+    assert.ok(html.includes('vigilance orange'));
     assert.ok(html.includes('Bouches-du-Rhône'));
   });
 
@@ -103,7 +103,7 @@ describe('buildSituationReportHtml — données vides/dégradées', () => {
   });
 
   it('affiche la mention nominale pour la synthèse sans situation', () => {
-    assert.ok(html.includes('Aucune situation critique détectée. Situation nominale.'));
+    assert.ok(html.includes('Aucune situation active : pas de vigilance particulière.'));
   });
 
   it('affiche « non disponible » pour les sections sans donnée en cache', () => {
@@ -131,7 +131,7 @@ describe('buildSituationReportHtml — échappement HTML', () => {
             place: '<b>Lyon</b>',
             title: '<script>alert(1)</script>',
             source: '<img src=x onerror=alert(2)>',
-            severity: 'high',
+            level: 'orange',
           },
         ],
       }),
@@ -147,7 +147,7 @@ describe('buildSituationReportHtml — échappement HTML', () => {
     const html = buildSituationReportHtml(
       baseData({
         situations: [
-          { title: '<script>x</script>', severity: 'high', since: 'constatée à 09:00', zone: '<i>zone</i>' },
+          { title: '<script>x</script>', level: 'orange', since: 'constatée à 09:00', zone: '<i>zone</i>' },
         ],
         permalink: 'https://x/?a=1&b="2"<3>',
       }),
@@ -156,5 +156,19 @@ describe('buildSituationReportHtml — échappement HTML', () => {
     assert.ok(!html.includes('<script>x</script>'));
     assert.ok(html.includes('&lt;script&gt;x&lt;/script&gt;'));
     assert.ok(html.includes('https://x/?a=1&amp;b=&quot;2&quot;&lt;3&gt;'));
+  });
+});
+
+describe('buildSituationReportHtml — langage commun L1 (refonte UI étape 2)', () => {
+  it('le mot du niveau sur la teinte officielle, texte noir, sans ancien libellé', () => {
+    const html = buildSituationReportHtml(
+      baseData({
+        situations: [{ title: 'Tension énergétique nationale', level: 'rouge', since: 'constatée à 14:30', zone: 'PACA' }],
+      }),
+    );
+    assert.ok(html.includes('background:#ff3b30;'));
+    assert.ok(html.includes('color:#111;'));
+    assert.ok(html.includes('>Rouge</span>'));
+    assert.ok(!html.includes('>Critique</span>'));
   });
 });
