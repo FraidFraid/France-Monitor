@@ -156,6 +156,13 @@ describe('dispatch', () => {
     expect(JSON.parse(String(res.body))).toEqual({ echo: 'bonjour', lang: 'fr', host: 'www.francemonitor.com' });
   });
 
+  it('sert le brief France par la vraie table de routes (plus de miroir dev)', async () => {
+    const res = mockRes();
+    await dispatch({ url: '/api/intelligence/v1/france-intel-brief', method: 'GET', headers: { host: 'localhost' } }, res);
+    expect(res.statusCode).toBe(405);
+    expect(existsSync(join(ROOT, 'src/plugins/france-intel-proxy.ts'))).toBe(false);
+  });
+
   it('transforme une exception du handler en 500 JSON', async () => {
     const res = mockRes();
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
