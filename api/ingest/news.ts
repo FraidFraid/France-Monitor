@@ -607,7 +607,9 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
   }
 
   const errors: Array<{ feedId: string; error: string }> = [];
-  let tickSummary: IngestTickSummary | null = null;
+  let tickSummary: IngestTickSummary;
+  let status: number;
+  let body: unknown;
 
   try {
     const sql = getDb() as unknown as NeonSql;
@@ -736,7 +738,8 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       ...(eventStats ? { events: eventStats } : {}),
     };
 
-    json(res, 200, {
+    status = 200;
+    body = {
       processedFeeds: results.length,
       newItems: insertedItems.length,
       groqClassified,
@@ -746,7 +749,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       events: eventStats,
       durationMs: Date.now() - startedAt,
       errors,
-    });
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[api/ingest/news] tick failed:', message);
@@ -757,18 +760,21 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       errors: [...errors, { feedId: '*', error: message }],
       durationMs: Date.now() - startedAt,
     };
-    json(res, 500, { error: message, durationMs: Date.now() - startedAt, errors });
-  } finally {
-    // Persiste le dernier tick pour /api/health-check (never-throws, TTL 24 h).
-    if (tickSummary) {
-      await redisSet(LAST_TICK_KEY, JSON.stringify(tickSummary), LAST_TICK_TTL_S);
-    }
-    if (redis && lockAcquired) {
-      try {
-        await redis.del(LOCK_KEY);
-      } catch {
-        // TTL 280 s libèrera le verrou de toute façon.
-      }
+    status = 500;
+    body = { error: message, durationMs: Date.now() - startedAt, errors };
+  }
+
+  // Bilan et verrou AVANT la réponse : avec Fluid Compute ("fluid": true dans vercel.json),
+  // le travail lancé après res.end() n'est pas garanti — le bilan se perdait et
+  // /api/health-check restait figé sur le dernier passage d'avant l'activation.
+  // Persiste le dernier tick pour /api/health-check (never-throws, TTL 24 h).
+  await redisSet(LAST_TICK_KEY, JSON.stringify(tickSummary), LAST_TICK_TTL_S);
+  if (redis && lockAcquired) {
+    try {
+      await redis.del(LOCK_KEY);
+    } catch {
+      // TTL 280 s libèrera le verrou de toute façon.
     }
   }
+  json(res, status, body);
 }
