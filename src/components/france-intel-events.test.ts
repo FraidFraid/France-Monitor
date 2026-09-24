@@ -119,6 +119,11 @@ describe('rendu des événements', () => {
     expect(html).toContain('>Escalated<');
     expect(html).not.toContain('→');
   });
+
+  it('le mot du niveau accompagne la couleur de la ligne (§9)', () => {
+    expect(renderEventRow(event({ severity: 'critical' }), 'fr', NOW, undefined)).toContain('<span class="frintel-ev-level">Rouge</span>');
+    expect(renderEventRow(event({ severity: 'medium' }), 'en', NOW, undefined)).toContain('<span class="frintel-ev-level">Yellow</span>');
+  });
 });
 
 describe('resolveEvidenceRef (relecture finale #3)', () => {

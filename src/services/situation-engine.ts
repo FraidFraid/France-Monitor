@@ -11,6 +11,8 @@
 
 import type {
   DetectedSituation,
+  FuelTensionLevel,
+  OilVigilanceStatus,
   SituationAction,
   SituationActionType,
   SituationSeverity,
@@ -534,6 +536,22 @@ function detectDefenseSignalElevated(raw: FranceRawData): DetectedSituation | nu
 
 // ─── Règle 10 : FUEL_SUPPLY_RISK ─────────────────────────────────────────────
 
+// Valeurs du tableau de bord carburant et pétrole en français : aucune valeur anglaise du moteur
+// à l'écran (spec §4.3). Les règles et les seuils ne changent pas.
+const FUEL_TENSION_FR: Record<FuelTensionLevel, string> = {
+  LOW: 'faible',
+  MEDIUM: 'modérée',
+  HIGH: 'forte',
+  CRITICAL: 'critique',
+};
+
+const OIL_STATUS_FR: Record<OilVigilanceStatus, string> = {
+  normal: 'normaux',
+  tense: 'sous tension',
+  critical: 'critiques',
+  unknown: 'non renseignés',
+};
+
 function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
   const fuelLevel = raw.fuelTensionDashboard?.national.tensionLevel ?? null;
   const oilStatus = raw.oilDashboard?.meta.status ?? null;
@@ -555,6 +573,8 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
   const topDepts = (raw.fuelTensionDashboard?.national.topDepartments ?? [])
     .slice(0, 3)
     .map(d => d.departmentName);
+  const fuelWord = fuelLevel ? FUEL_TENSION_FR[fuelLevel] : 'inconnue';
+  const oilWord = oilStatus ? OIL_STATUS_FR[oilStatus] : null;
 
   return situation(
     'fuel-supply-risk',
@@ -562,16 +582,16 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Risque d\'approvisionnement carburant',
-    `Tension carburant ${fuelLevel}${oilStatus ? ` — stocks pétroliers ${oilStatus}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
+    `Tension carburant ${fuelWord}${oilWord ? ` — stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
     topDepts.length > 0 ? topDepts : ['France'],
     [
-      `Tension carburant nationale : ${fuelLevel}`,
-      ...(oilTense ? [`Vigilance stocks pétroliers : ${oilStatus} (score ${oilVigilance}/100)`] : []),
+      `Tension carburant nationale : ${fuelWord}`,
+      ...(oilTense && oilWord ? [`Vigilance stocks pétroliers : ${oilWord} (score ${oilVigilance}/100)`] : []),
       ...(anomalyShare > 5 ? [`${Math.round(anomalyShare)}% des stations en anomalie tarifaire`] : []),
     ],
     [
       action('Surveiller les niveaux de stocks SPE', 'Analyste énergie', 'monitor'),
-      action('Identifier les départements à tension CRITICAL pour anticiper les blocages', 'IA + analyste territorial', 'cross-check', true),
+      action('Identifier les départements en tension critique pour anticiper les blocages', 'IA + analyste territorial', 'cross-check', true),
     ],
     ['SDES CPDP', 'Prix carburants data.gouv.fr'],
   );

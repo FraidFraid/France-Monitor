@@ -175,6 +175,7 @@ export function renderEventRow(e: NewsEvent, lang: Lang, now: number, detail: Ev
     <article class="frintel-ev${detail ? ' is-expanded' : ''}" data-event-id="${e.id}">
       <button type="button" class="frintel-ev-head" aria-expanded="${detail ? 'true' : 'false'}">
         <span class="frintel-ev-dot" style="background:${levelColorVar(eventLevel(e.severity))}"></span>
+        <span class="frintel-ev-level">${levelLabel(eventLevel(e.severity), lang)}</span>
         <span class="frintel-ev-title">${escapeHtml(e.title)}</span>
       </button>
       <div class="frintel-sit-tags">

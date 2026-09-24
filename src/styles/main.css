@@ -8387,3 +8387,12 @@ button.header-quality-link {
 .market-strip__item.is-neutral .market-strip__delta { color: var(--text-secondary); }
 .market-strip__item.is-alert { border-color: rgba(255, 204, 0, 0.35); }
 .market-strip__item.is-alert .market-strip__delta { color: var(--sev-yellow); }
+
+/* ─── Le mot du niveau accompagne la couleur dans les lignes (refonte UI étape 2, §9) ─── */
+.frintel-ev-level,
+.sit-brief__item-level {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}

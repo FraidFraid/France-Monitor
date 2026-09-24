@@ -293,3 +293,14 @@ describe('situation-engine · detectSituations', () => {
     assertHasSituation(fuelFixture(), 'FUEL_SUPPLY_RISK');
   });
 });
+
+describe('situation-engine · textes en français (refonte UI étape 2, arbitrage A7)', () => {
+  it('la situation carburant n’affiche aucune valeur anglaise du moteur', () => {
+    const fuel = detectSituations(fuelFixture()).find((s) => s.type === 'FUEL_SUPPLY_RISK');
+    assert.ok(fuel);
+    const text = [fuel.summary, ...fuel.drivers, ...fuel.recommendedActions.map((a) => a.label)].join(' ');
+    assert.ok(!/\b(LOW|MEDIUM|HIGH|CRITICAL|tense)\b/.test(text), text);
+    assert.ok(text.includes('Tension carburant forte'), text);
+    assert.ok(text.includes('stocks pétroliers sous tension'), text);
+  });
+});

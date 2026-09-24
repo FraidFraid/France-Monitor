@@ -267,3 +267,21 @@ describe('evaluateBriefLevel (bug brief 81 / indice 43 — relecture finale F1)'
     assert.equal(r.mark.divergentLevel, null);
   });
 });
+
+describe('buildDeterministicBrief — sous-scores hors des jugements (refonte UI étape 2)', () => {
+  it('ne recopie pas les phrases chiffrées du résumé d’une situation', () => {
+    const cyber = situation({
+      id: 'cyber-pressure', title: 'Pression cyber multi-source',
+      summary: 'Baromètre cyber consolidé à 63/100, dominé par ransomware.',
+    });
+    const social = situation({
+      id: 'social-escalation', title: 'Escalade sociale localisée',
+      summary: '4 département(s) avec tensions sociales ou sécuritaires élevées. Score national ISNR : 41/100.',
+    });
+    const brief = buildDeterministicBrief({ score: 61, scoreBreakdown: breakdown(), situations: [cyber, social] }, 'fr');
+    const texts = brief.judgments.map((j) => j.text);
+    assert.ok(texts.every((text) => !/\d+\s*\/\s*\d+/.test(text)), texts.join(' | '));
+    assert.ok(texts.includes('Pression cyber multi-source'));
+    assert.ok(texts.includes('Escalade sociale localisée — 4 département(s) avec tensions sociales ou sécuritaires élevées.'));
+  });
+});
