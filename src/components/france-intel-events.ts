@@ -13,6 +13,7 @@ import type {
   NewsEventStatus,
   ThreatLevel,
 } from '../types/index.ts';
+import { eventLevel, levelColorVar, levelLabel } from '../services/vigilance.ts';
 
 type Lang = 'fr' | 'en';
 export type EventDetailState = NewsEventDetail | 'loading' | 'error';
@@ -43,26 +44,10 @@ export function safeHref(link: string): string | null {
   return /^https?:\/\//i.test(link.trim()) ? escapeHtml(link.trim()) : null;
 }
 
-const SEVERITY_COLOR: Record<ThreatLevel, string> = {
-  critical: 'var(--threat-critical)',
-  high: 'var(--threat-high)',
-  medium: 'var(--threat-medium)',
-  low: 'var(--threat-low)',
-  info: 'var(--threat-info)',
-};
-
-const SEVERITY_LABEL: Record<ThreatLevel, { fr: string; en: string }> = {
-  critical: { fr: 'CRITIQUE', en: 'CRITICAL' },
-  high: { fr: 'ÉLEVÉ', en: 'HIGH' },
-  medium: { fr: 'MOYEN', en: 'MEDIUM' },
-  low: { fr: 'FAIBLE', en: 'LOW' },
-  info: { fr: 'INFO', en: 'INFO' },
-};
-
 const STATUS_LABEL: Record<NewsEventStatus, { fr: string; en: string }> = {
-  active: { fr: 'ACTIF', en: 'ACTIVE' },
-  cooling: { fr: 'REFROIDIT', en: 'COOLING' },
-  closed: { fr: 'CLOS', en: 'CLOSED' },
+  active: { fr: 'actif', en: 'active' },
+  cooling: { fr: 'refroidit', en: 'cooling' },
+  closed: { fr: 'clos', en: 'closed' },
 };
 
 const KIND_LABEL: Record<NewsEventChangeKind, { fr: string; en: string }> = {
@@ -92,7 +77,7 @@ const SEVERITIES: readonly ThreatLevel[] = ['critical', 'high', 'medium', 'low',
 
 function severityLabel(value: string | null, lang: Lang): string {
   const known = SEVERITIES.find((s) => s === value);
-  return known ? SEVERITY_LABEL[known][lang] : escapeHtml(value ?? '?');
+  return known ? levelLabel(eventLevel(known), lang).toLowerCase() : escapeHtml(value ?? '?');
 }
 
 function hhmm(iso: string | number, lang: Lang): string {
@@ -115,19 +100,19 @@ function chip(text: string, tone: '' | 'warn' | 'crit' | 'zone' = ''): string {
 function kindChip(item: ChangeDigestItem, kind: NewsEventChangeKind, lang: Lang): string {
   switch (kind) {
     case 'escalated':
-      return chip(`${t(lang, 'AGGRAVÉ', 'ESCALATED')} ${severityLabel(item.severityFrom, lang)} → ${severityLabel(item.event.severity, lang)}`, 'crit');
+      return chip(`${t(lang, 'Aggravé', 'Escalated')} ${severityLabel(item.severityFrom, lang)} → ${severityLabel(item.event.severity, lang)}`, 'crit');
     case 'created':
-      return chip(t(lang, 'NOUVEAU', 'NEW'), 'warn');
+      return chip(t(lang, 'Nouveau', 'New'), 'warn');
     case 'corroborated':
-      return chip(`${t(lang, 'CORROBORÉ', 'CORROBORATED')} ${item.independentFrom ?? '?'} → ${item.event.independentCount}`, 'zone');
+      return chip(`${t(lang, 'Corroboré', 'Corroborated')} ${item.independentFrom ?? '?'} → ${item.event.independentCount}`, 'zone');
     case 'reopened':
-      return chip(t(lang, 'ROUVERT', 'REOPENED'), 'warn');
+      return chip(t(lang, 'Rouvert', 'Reopened'), 'warn');
     case 'deescalated':
-      return chip(t(lang, 'ATTÉNUÉ', 'DE-ESCALATED'));
+      return chip(t(lang, 'Atténué', 'De-escalated'));
     case 'closed':
-      return chip(t(lang, 'CLOS', 'CLOSED'));
+      return chip(t(lang, 'Clos', 'Closed'));
     case 'cooling':
-      return chip(t(lang, 'REFROIDIT', 'COOLING'));
+      return chip(t(lang, 'Refroidit', 'Cooling'));
   }
 }
 
@@ -137,7 +122,7 @@ function corroborationChip(e: NewsEvent, lang: Lang): string {
   }
   return e.sourceCount > 1
     ? chip(t(lang, `${e.sourceCount} titres · même groupe`, `${e.sourceCount} outlets · same group`), 'warn')
-    : chip(t(lang, 'SOURCE UNIQUE', 'SINGLE SOURCE'), 'warn');
+    : chip(t(lang, 'Source unique', 'Single source'), 'warn');
 }
 
 function renderDetail(detail: EventDetailState, lang: Lang): string {
@@ -164,7 +149,7 @@ export function renderEventRow(e: NewsEvent, lang: Lang, now: number, detail: Ev
   return `
     <article class="frintel-ev${detail ? ' is-expanded' : ''}" data-event-id="${e.id}">
       <button type="button" class="frintel-ev-head" aria-expanded="${detail ? 'true' : 'false'}">
-        <span class="frintel-ev-dot" style="background:${SEVERITY_COLOR[e.severity]}"></span>
+        <span class="frintel-ev-dot" style="background:${levelColorVar(eventLevel(e.severity))}"></span>
         <span class="frintel-ev-title">${escapeHtml(e.title)}</span>
       </button>
       <div class="frintel-sit-tags">

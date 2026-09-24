@@ -6,8 +6,6 @@ import type {
   FranceIntelTimelineLane,
   IntelEventsState,
   MeteoVigilanceLevel,
-  FranceScoreBreakdown,
-  SituationSeverity,
   DetectedSituation,
   StructuredBrief,
 } from '../types/index.ts';
@@ -20,6 +18,8 @@ import {
   renderFuelPriceChartSvg,
 } from '../utils/fuelPriceChart.ts';
 import { getDelta24h, getPillarDeltas24h, getSparklineSeries } from '../utils/stability-history.ts';
+import { renderScoreCard, renderSituationRow } from './france-intel-score.ts';
+import { briefConfidenceLabel, levelColorVar, levelLabel, officialLevel } from '../services/vigilance.ts';
 
 const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
   green: 'Vert',
@@ -54,75 +54,6 @@ function escapeHtml(text: string): string {
   return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-
-// ─── Bandes du score v3 (spec §4.3) ─────────────────────────────────────────
-
-function scoreBandLabel(score: number, lang: 'fr' | 'en'): string {
-  if (score >= 85) return 'STABLE';
-  if (score >= 70) return 'VIGILANCE';
-  if (score >= 55) return t(lang, 'SOUS TENSION', 'UNDER PRESSURE');
-  if (score >= 40) return t(lang, 'DÉGRADÉ', 'DEGRADED');
-  return t(lang, 'CRITIQUE', 'CRITICAL');
-}
-
-function scoreBandColor(score: number): string {
-  if (score >= 85) return 'var(--threat-low)';
-  if (score >= 70) return 'var(--threat-medium)';
-  if (score >= 55) return 'var(--meteo-orange)';
-  if (score >= 40) return 'var(--threat-high)';
-  return 'var(--threat-critical-text)';
-}
-
-const SEVERITY_COLORS: Record<SituationSeverity, string> = {
-  critical: 'var(--threat-critical)',
-  high: 'var(--threat-high)',
-  medium: 'var(--threat-medium)',
-  watch: 'var(--threat-info)',
-};
-
-// Ordre du tableau RULES du situation-engine — cosmétique, stable entre sessions.
-const SIT_CODES: Record<string, string> = {
-  'energy-stress': 'SIT-01',
-  'import-dependency-risk': 'SIT-02',
-  'flood-crisis': 'SIT-03',
-  'wildfire-escalation': 'SIT-04',
-  'cyber-pressure': 'SIT-05',
-  'social-escalation': 'SIT-06',
-  'telecom-disruption': 'SIT-07',
-  'maritime-anomaly': 'SIT-08',
-  'defense-signal-elevated': 'SIT-09',
-  'fuel-supply-risk': 'SIT-10',
-};
-
-function sitCode(id: string): string {
-  return SIT_CODES[id] ?? 'SIT-00';
-}
-
-const PILLAR_UI: Array<{ key: FranceScoreBreakdown['pillars'][number]['key']; fr: string; en: string }> = [
-  { key: 'continuity', fr: 'CONTINUITÉ', en: 'CONTINUITY' },
-  { key: 'security', fr: 'SÉCURITÉ', en: 'SECURITY' },
-  { key: 'signal', fr: 'SIGNAL', en: 'SIGNAL' },
-  { key: 'defense', fr: 'DÉFENSE', en: 'DEFENSE' },
-];
-
-function pillarBarColor(value: number): string {
-  if (value >= 55) return 'var(--meteo-orange)';
-  if (value >= 35) return 'var(--threat-medium)';
-  return 'var(--threat-low)';
-}
-
-function formatDelta(delta: number | null | undefined): string {
-  if (delta == null) return '—';
-  if (delta > 0) return `+${delta} ▲`;
-  if (delta < 0) return `−${Math.abs(delta)} ▼`;
-  return '0 ·';
-}
-
-function deltaColor(delta: number | null | undefined, invert = false): string {
-  if (delta == null || delta === 0) return 'var(--text-muted)';
-  const worse = invert ? delta < 0 : delta > 0;
-  return worse ? 'var(--threat-high)' : 'var(--threat-low)';
-}
 
 function intensity(count: number): number {
   if (count <= 0) return 0.08;
@@ -167,6 +98,8 @@ export class FranceIntelPanel extends Panel {
   private flash: { ref: string; until: number } | null = null;
   /** Situations numérotées S1…S5 au moment du brief affiché (briefSituationIds). */
   private briefSituationIds: string[] = [];
+  /** Volet « Pourquoi ce niveau ? » ouvert ; état hors du DOM, le contenu est reconstruit en continu. */
+  private scoreWhyOpen = false;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
@@ -180,8 +113,8 @@ export class FranceIntelPanel extends Panel {
       <div class="frintel-shell">
         <header class="frintel-header">
           <div>
-            <h2 class="frintel-title">FRANCE</h2>
-            <div class="frintel-subtitle">Country Intelligence · <span class="frintel-subtitle-live fi-active-count"></span></div>
+            <h2 class="frintel-title">France</h2>
+            <div class="frintel-subtitle"><span class="frintel-subtitle-live fi-active-count"></span></div>
           </div>
           <div class="frintel-header-actions">
             <span class="frintel-updated fi-updated"></span>
@@ -197,6 +130,13 @@ export class FranceIntelPanel extends Panel {
     this.container.appendChild(this.modalEl);
     // Délégation : le contenu est reconstruit par innerHTML à chaque rafraîchissement.
     this.contentEl?.addEventListener('click', (e) => this.handleEventsClick(e));
+    // `toggle` ne remonte pas : écoute en capture sur le conteneur.
+    this.contentEl?.addEventListener('toggle', (e) => {
+      const target = e.target;
+      if (target instanceof HTMLDetailsElement && target.classList.contains('frintel-why')) {
+        this.scoreWhyOpen = target.open;
+      }
+    }, true);
 
     const closeBtn = this.modalEl.querySelector('.fi-close') as HTMLButtonElement | null;
     closeBtn?.addEventListener('click', () => this.hide());
@@ -301,7 +241,7 @@ export class FranceIntelPanel extends Panel {
     if (countEl) {
       countEl.textContent = activeCount > 0
         ? `${activeCount} ${t(lang, activeCount > 1 ? 'situations actives' : 'situation active', activeCount > 1 ? 'active situations' : 'active situation')}`
-        : t(lang, 'surveillance nominale', 'nominal watch');
+        : t(lang, 'aucune situation active', 'no active situation');
     }
     const updatedEl = this.modalEl.querySelector('.fi-updated');
     if (updatedEl) {
@@ -407,6 +347,7 @@ export class FranceIntelPanel extends Panel {
   private focusedSelector(): string | null {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || !this.contentEl?.contains(el)) return null;
+    if (el.matches('.frintel-why > summary')) return '.frintel-why > summary';
     if (el.dataset.evidence) return `.frintel-ev-ref[data-evidence="${CSS.escape(el.dataset.evidence)}"]`;
     const eventId = el.closest<HTMLElement>('[data-event-id]')?.dataset.eventId;
     if (eventId && el.classList.contains('frintel-ev-head')) {
@@ -444,91 +385,14 @@ export class FranceIntelPanel extends Panel {
   }
 
   private renderScoreBlock(snapshot: FranceCountrySnapshot, lang: 'fr' | 'en'): string {
-    const bd = snapshot.scoreBreakdown;
-    const score = bd.score;
-    const tint = scoreBandColor(score);
-    const delta24 = getDelta24h();
-    const pillarDeltas = getPillarDeltas24h();
-    const spark = this.renderScoreSparkline(getSparklineSeries(), score, lang);
-
-    const pillarRows = PILLAR_UI.map(({ key, fr, en }) => {
-      const pillar = bd.pillars.find((p) => p.key === key);
-      if (!pillar) return '';
-      const delta = pillarDeltas ? pillarDeltas[key] : null;
-      return `
-        <div class="frintel-pillar-label">${t(lang, fr, en)}</div>
-        <div class="frintel-pillar-track"><span class="frintel-pillar-fill" style="width:${Math.min(100, pillar.value)}%;background:${pillarBarColor(pillar.value)};"></span></div>
-        <div class="frintel-pillar-val">${pillar.value}</div>
-        <div class="frintel-pillar-delta" style="color:${deltaColor(delta)};">${formatDelta(delta)}</div>
-        <div class="frintel-pillar-ded">−${pillar.deduction.toFixed(1)}</div>
-      `;
-    }).join('');
-
-    const dominant = [...bd.pillars].sort((a, b) => b.deduction - a.deduction)[0];
-    const dominantUi = dominant ? PILLAR_UI.find((p) => p.key === dominant.key) : undefined;
-    const whyParts = dominant && dominant.components.length > 0
-      ? dominant.components.map((c) => `${escapeHtml(c.label)} ${c.value}`).join(' · ')
-      : t(lang, 'pression diffuse de fond', 'diffuse background pressure');
-    const whyLine = dominantUi
-      ? `${t(lang, 'Facteur principal', 'Main factor')} : ${t(lang, dominantUi.fr, dominantUi.en)} — ${whyParts}`
-      : '';
-    const capLine = bd.situationCap != null
-      ? `<div class="frintel-score-cap">${t(lang, `Plafonné à ${bd.situationCap} par situation active`, `Capped at ${bd.situationCap} by active situation`)}</div>`
-      : '';
-
-    return `
-      <section class="frintel-card">
-        <div class="frintel-card-top">
-          <div class="frintel-card-title">${t(lang, 'Indice de stabilité', 'Stability Index')}</div>
-          <div class="frintel-card-meta">${t(lang, 'Base 95 − pression temps réel', 'Baseline 95 − live pressure')}</div>
-        </div>
-        <div class="frintel-score-row">
-          <div class="frintel-score-main">
-            <div class="frintel-score-value" style="color:${tint};">${score}</div>
-            <div class="frintel-score-band" style="color:${tint};">${scoreBandLabel(score, lang)}</div>
-            <div class="frintel-score-delta">Δ24H <span style="color:${deltaColor(delta24, true)};">${formatDelta(delta24)}</span></div>
-          </div>
-          <div class="frintel-score-viz">
-            <div class="frintel-gauge" role="img" aria-label="${t(lang, `Indice ${score} sur 100`, `Index ${score} out of 100`)}">
-              <span class="frintel-gauge-zone" style="width:40%;background:var(--threat-critical);"></span>
-              <span class="frintel-gauge-zone" style="width:15%;background:var(--threat-high);"></span>
-              <span class="frintel-gauge-zone" style="width:15%;background:var(--meteo-orange);"></span>
-              <span class="frintel-gauge-zone" style="width:15%;background:var(--threat-medium);"></span>
-              <span class="frintel-gauge-zone" style="width:15%;background:var(--threat-low);"></span>
-              <span class="frintel-gauge-marker" style="left:${score}%;"></span>
-            </div>
-            <div class="frintel-gauge-scale"><span>0</span><span>40</span><span>55</span><span>70</span><span>85</span><span>100</span></div>
-            ${spark}
-          </div>
-        </div>
-        <div class="frintel-pillars">
-          ${pillarRows}
-        </div>
-        ${whyLine ? `<div class="frintel-score-why">${whyLine}</div>` : ''}
-        ${capLine}
-      </section>
-    `;
-  }
-
-  private renderScoreSparkline(series: number[], score: number, lang: 'fr' | 'en'): string {
-    if (series.length < 2) return '';
-    const W = 200;
-    const H = 26;
-    const min = Math.min(...series) - 2;
-    const max = Math.max(...series) + 2;
-    const range = max - min || 1;
-    const toX = (i: number): number => (i / (series.length - 1)) * W;
-    const toY = (v: number): number => H - ((v - min) / range) * H;
-    const pts = series.map((v, i) => `${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
-    const last = series[series.length - 1];
-    return `
-      <svg class="frintel-spark" viewBox="0 0 ${W} ${H}" role="img"
-        aria-label="${t(lang, 'Historique du score sur 7 jours', '7-day score history')}">
-        <polyline points="${pts}" fill="none" stroke="var(--text-accent)" stroke-width="1.5"/>
-        <circle cx="${toX(series.length - 1).toFixed(1)}" cy="${toY(last).toFixed(1)}" r="2" fill="${scoreBandColor(score)}"/>
-      </svg>
-      <div class="frintel-spark-caption">${t(lang, '7 JOURS', '7 DAYS')}</div>
-    `;
+    return renderScoreCard({
+      breakdown: snapshot.scoreBreakdown,
+      delta24h: getDelta24h(),
+      pillarDeltas: getPillarDeltas24h(),
+      series: getSparklineSeries(),
+      lang,
+      whyOpen: this.scoreWhyOpen,
+    });
   }
 
   private renderSituationsBlock(situations: DetectedSituation[], lang: 'fr' | 'en'): string {
@@ -537,53 +401,21 @@ export class FranceIntelPanel extends Panel {
       this.situationsInitialized = true;
     }
 
-    const rows = situations.map((s) => {
-      const expanded = this.expandedSituations.has(s.id);
-      const color = SEVERITY_COLORS[s.severity];
-      const drivers = s.drivers.map((d, i) => `
-        <div class="frintel-sit-driver">${i === s.drivers.length - 1 ? '└─' : '├─'} ${escapeHtml(d)}</div>
-      `).join('');
-      const zoneChips = s.affectedZones.slice(0, 4).map((z) =>
-        `<span class="frintel-chip frintel-chip-zone">${escapeHtml(z)}</span>`).join('');
-      const actionChips = s.recommendedActions.slice(0, 3).map((a) =>
-        `<span class="frintel-chip">ACTION · ${escapeHtml(a.label)}</span>`).join('');
-      const sourceChips = s.sourceRefs.slice(0, 5).map((r) =>
-        `<span class="frintel-chip">${escapeHtml(r)}</span>`).join('');
-      // Lien bouton ↔ zone dépliée pour les lecteurs d'écran : le détail n'est
-      // rendu que déplié, donc aria-controls n'est posé que lorsqu'il existe.
-      const detailId = `frintel-sit-detail-${escapeHtml(s.id)}`;
-      return `
-        <article class="frintel-sit${expanded ? ' is-expanded' : ''}" data-sit-id="${escapeHtml(s.id)}">
-          <span class="frintel-sit-rail" style="background:${color};"></span>
-          <div class="frintel-sit-body">
-            <button type="button" class="frintel-sit-head" aria-expanded="${expanded ? 'true' : 'false'}"${expanded ? ` aria-controls="${detailId}"` : ''}>
-              <span class="frintel-sit-code">${sitCode(s.id)} · ${escapeHtml(s.type)}</span>
-              <span class="frintel-sit-sev" style="color:${color};">${s.severity.toUpperCase()} · CONF ${s.confidence.toFixed(2)}</span>
-            </button>
-            <div class="frintel-sit-title">${escapeHtml(s.title)}</div>
-            ${expanded ? `
-              <div class="frintel-sit-detail" id="${detailId}">
-                <p class="frintel-sit-summary">${escapeHtml(s.summary)}</p>
-                <div class="frintel-sit-drivers">${drivers}</div>
-                <div class="frintel-sit-tags">${zoneChips}${sourceChips}${actionChips}</div>
-              </div>
-            ` : ''}
-          </div>
-        </article>
-      `;
-    }).join('');
+    const rows = situations
+      .map((s) => renderSituationRow(s, lang, this.expandedSituations.has(s.id)))
+      .join('');
 
     return `
       <section class="frintel-card">
         <div class="frintel-card-top">
           <div class="frintel-card-title frintel-card-title-accent">${t(lang, 'Situations corrélées', 'Correlated Situations')}</div>
           <div class="frintel-card-meta">${situations.length > 0
-            ? `${situations.length} ${t(lang, 'actives · moteur 10 règles', 'active · 10-rule engine')}`
-            : t(lang, 'moteur 10 règles', '10-rule engine')}</div>
+            ? `${situations.length} ${t(lang, situations.length > 1 ? 'actives' : 'active', 'active')}`
+            : ''}</div>
         </div>
         ${situations.length > 0
           ? `<div class="frintel-sit-list">${rows}</div>`
-          : `<div class="frintel-empty">${t(lang, 'Surveillance nominale — aucune corrélation active.', 'Nominal watch — no active correlation.')}</div>`}
+          : `<div class="frintel-empty">${t(lang, 'Aucune situation corrélée active.', 'No active correlated situation.')}</div>`}
       </section>
     `;
   }
@@ -616,48 +448,48 @@ export class FranceIntelPanel extends Panel {
     type Level = 'low' | 'medium' | 'high';
     const tiles: Array<{ label: string; value: number; meta: string; level: Level }> = [
       {
-        label: 'CYBER', value: s.cyberAlerts,
+        label: 'Cyber', value: s.cyberAlerts,
         meta: `${t(lang, 'alertes 30j', '30d alerts')} · ${s.cyberCritical} CVE`,
         level: s.cyberCritical > 0 ? 'high' : s.cyberAlerts > 5 ? 'medium' : 'low',
       },
       {
-        label: 'RAIL', value: s.railDisruptions,
+        label: 'Rail', value: s.railDisruptions,
         meta: `${s.railSevere} ${t(lang, 'fortes', 'severe')}`,
         level: s.railSevere > 0 ? 'high' : s.railDisruptions > 10 ? 'medium' : 'low',
       },
       {
-        label: t(lang, 'MILITAIRE', 'MILITARY'), value: s.militaryFlights,
+        label: t(lang, 'Militaire', 'Military'), value: s.militaryFlights,
         meta: t(lang, 'vols actifs', 'active flights'),
         level: s.militaryFlights > 10 ? 'medium' : 'low',
       },
       {
-        label: 'MARITIME', value: s.maritimeTrafficFrance,
+        label: 'Maritime', value: s.maritimeTrafficFrance,
         meta: t(lang, 'navires zone FR', 'ships FR waters'),
         level: 'low',
       },
       {
-        label: t(lang, 'PANNES', 'OUTAGES'), value: outages,
+        label: t(lang, 'Pannes', 'Outages'), value: outages,
         meta: `${t(lang, 'élec', 'power')} ${s.powerOutages} · ${t(lang, 'télécom', 'telecom')} ${s.telecomOutages}`,
         level: outages > 5 ? 'high' : outages > 0 ? 'medium' : 'low',
       },
       {
-        label: t(lang, 'DÉFENSE', 'DEFENSE'), value: s.defenseAlerts + s.jammingSignals,
+        label: t(lang, 'Défense', 'Defense'), value: s.defenseAlerts + s.jammingSignals,
         meta: `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts} · GPS ${s.jammingSignals}`,
         level: s.defenseHigh > 0 || s.jammingSignals > 0 ? 'high' : s.defenseAlerts > 0 ? 'medium' : 'low',
       },
       {
-        label: t(lang, 'MÉTÉO', 'WEATHER'), value: meteoTotal,
+        label: t(lang, 'Météo', 'Weather'), value: meteoTotal,
         meta: `${t(lang, 'vigies', 'watches')} ${s.meteoAlerts} · ${t(lang, 'crues', 'floods')} ${s.floodAlerts} · ${t(lang, 'feux', 'fires')} ${s.fireDetections}`,
         level: s.meteoAlerts > 3 || s.floodAlerts > 2 ? 'high' : meteoTotal > 0 ? 'medium' : 'low',
       },
       {
-        label: 'FINANCE', value: s.marketStress,
+        label: 'Finance', value: s.marketStress,
         meta: t(lang, 'lignes sous tension', 'stressed lines'),
         level: s.marketStress > 2 ? 'medium' : 'low',
       },
     ];
     const levelColor: Record<Level, string> = {
-      low: 'var(--threat-low)', medium: 'var(--threat-medium)', high: 'var(--threat-high)',
+      low: levelColorVar('vert'), medium: levelColorVar('jaune'), high: levelColorVar('orange'),
     };
     const tilesHtml = tiles.map((tile) => `
       <div class="frintel-dom-tile">
@@ -720,7 +552,7 @@ export class FranceIntelPanel extends Panel {
       <section class="frintel-card">
         <div class="frintel-card-top">
           <div class="frintel-card-title">${t(lang, 'Énergie', 'Energy')}</div>
-          <div class="frintel-card-meta">${energy?.ecowattSignal ? `Ecowatt ${escapeHtml(energy.ecowattSignal.toUpperCase())}` : t(lang, 'Données partielles', 'Partial data')}</div>
+          <div class="frintel-card-meta">${energy?.ecowattSignal ? `${t(lang, 'Écowatt : signal', 'Ecowatt: signal')} ${levelLabel(officialLevel(energy.ecowattSignal), lang).toLowerCase()}` : t(lang, 'Données partielles', 'Partial data')}</div>
         </div>
         ${energy ? `
           <div class="frintel-energy-stack">
@@ -840,14 +672,8 @@ export class FranceIntelPanel extends Panel {
       { hour: '2-digit', minute: '2-digit' },
     );
     meta.textContent = brief.origin === 'llm'
-      ? `${t(lang, 'IA + MOTEUR', 'AI + ENGINE')} · ${freshness === 'fresh' ? 'FRESH' : 'CACHED'} ${renderedAt}`
-      : `${t(lang, 'SYNTHÈSE MOTEUR', 'ENGINE SYNTHESIS')} ${renderedAt}`;
-
-    const confidenceLabel: Record<StructuredBrief['judgments'][number]['confidence'], string> = {
-      high: t(lang, 'ÉLEVÉE', 'HIGH'),
-      moderate: t(lang, 'MODÉRÉE', 'MODERATE'),
-      low: t(lang, 'FAIBLE', 'LOW'),
-    };
+      ? `${t(lang, 'IA', 'AI')} · ${freshness === 'fresh' ? t(lang, 'à jour', 'fresh') : t(lang, 'en cache', 'cached')} ${renderedAt}`
+      : `${t(lang, 'Synthèse automatique', 'Automatic synthesis')} ${renderedAt}`;
 
     const judgments = brief.judgments.map((j) => `
       <div class="frintel-judgment">
@@ -860,8 +686,8 @@ export class FranceIntelPanel extends Panel {
               <span class="frintel-jd-sources">${escapeHtml(j.sources.join(' · '))}</span>
             </span>
             <span>
-              ${j.unsupported ? `<span class="frintel-jd-unsupported">${t(lang, 'NON ÉTAYÉ', 'UNSUPPORTED')}</span> ` : ''}
-              <span class="frintel-jd-conf frintel-jd-conf-${j.confidence}">${t(lang, 'CONFIANCE', 'CONFIDENCE')} ${confidenceLabel[j.confidence]}</span>
+              ${j.unsupported ? `<span class="frintel-jd-unsupported">${t(lang, 'Non étayé', 'Unsupported')}</span> ` : ''}
+              <span class="frintel-jd-conf frintel-jd-conf-${j.confidence}">${briefConfidenceLabel(j.confidence, lang)}</span>
             </span>
           </div>
         </div>

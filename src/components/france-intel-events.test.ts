@@ -33,7 +33,7 @@ describe('rendu des événements', () => {
   });
 
   it('distingue source unique, même groupe et corroboration indépendante', () => {
-    expect(renderEventRow(event({ sourceCount: 1, independentCount: 1 }), 'fr', NOW, undefined)).toContain('SOURCE UNIQUE');
+    expect(renderEventRow(event({ sourceCount: 1, independentCount: 1 }), 'fr', NOW, undefined)).toContain('Source unique');
     expect(renderEventRow(event({ sourceCount: 4, independentCount: 1 }), 'fr', NOW, undefined)).toContain('4 titres · même groupe');
     expect(renderEventRow(event(), 'fr', NOW, undefined)).toContain('3 sources · 2 indépendantes');
   });
@@ -65,8 +65,8 @@ describe('rendu des événements', () => {
         { at: '2026-09-23T06:00:00Z', kind: 'created', from: null, to: 'medium' },
       ],
     });
-    expect(html).toContain('aggravé MOYEN → ÉLEVÉ');
-    expect(html).toContain('créé · MOYEN');
+    expect(html).toContain('aggravé jaune → orange');
+    expect(html).toContain('créé · jaune');
   });
 });
 

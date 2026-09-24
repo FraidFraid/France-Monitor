@@ -7025,7 +7025,6 @@ button.header-quality-link {
   color: var(--text-muted);
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .frintel-subtitle-live { color: var(--text-accent); }
@@ -7079,7 +7078,6 @@ button.header-quality-link {
 .frintel-card-title {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -7280,7 +7278,6 @@ button.header-quality-link {
 .frintel-bluf-kicker {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-accent);
   margin-bottom: 4px;
 }
@@ -7290,7 +7287,6 @@ button.header-quality-link {
 .frintel-jd-kicker {
   font-size: 9px;
   letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--text-muted);
   margin: 8px 0 4px;
 }
@@ -7424,7 +7420,7 @@ button.header-quality-link {
 
 .frintel-oil-block { margin-top: 10px; border: 1px solid var(--border-color); padding: 8px 10px; }
 .frintel-oil-title {
-  font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 9px; letter-spacing: 0.14em;
   color: var(--text-muted); margin-bottom: 6px;
 }
 .frintel-oil-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -7436,7 +7432,7 @@ button.header-quality-link {
 }
 .frintel-oil-badge { font-size: 9px; }
 .frintel-fuel-history { margin-top: 8px; }
-.frintel-fuel-history-title { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.frintel-fuel-history-title { font-size: 9px; color: var(--text-muted); letter-spacing: 0.1em; }
 .frintel-fuel-chart { margin-top: 4px; }
 .frintel-fuel-legend { margin-top: 4px; }
 .frintel-fuel-row {
@@ -7461,7 +7457,7 @@ button.header-quality-link {
 .frintel-timeline-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; }
 .frintel-timeline-label {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 8px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: 8px; color: var(--text-muted); letter-spacing: 0.06em;
 }
 .frintel-timeline-track { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .frintel-timeline-cell {
@@ -8370,3 +8366,17 @@ button.header-quality-link {
 .fm-vig--jaune { background: var(--sev-yellow); }
 .fm-vig--orange { background: var(--sev-orange); }
 .fm-vig--rouge { background: var(--sev-red); }
+
+/* ─── Tiroir Intelligence : carte du niveau national (refonte UI, étape 1) ─── */
+.frintel-level-card { padding-top: 12px; }
+.frintel-level-row { display: flex; align-items: center; gap: 8px; }
+.frintel-level-row .fm-vig { font-size: 13px; padding: 1px 8px; }
+.frintel-level-phrase { font-size: 13px; color: var(--text-primary); }
+.frintel-level-driver { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.frintel-why { margin-top: 10px; }
+.frintel-why > summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+.frintel-why > summary:focus-visible { outline: 1px solid var(--text-accent); outline-offset: 2px; }
+.frintel-why-body { margin-top: 8px; }
+.frintel-why-index { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.frintel-sit-conf { font-size: 11px; color: var(--text-secondary); margin-left: 6px; }
+.frintel-sit-head { display: flex; align-items: center; }

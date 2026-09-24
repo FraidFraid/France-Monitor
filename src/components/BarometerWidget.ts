@@ -9,6 +9,7 @@ import type { NetworkBarometerResult } from '../services/network-barometer.ts';
 import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
 import type { NuclearState } from '../types/index.ts';
 import type { EolienLive } from '../services/eolien/types.ts';
+import { infraStatusLevel, levelHex, levelLabel } from '../services/vigilance.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -147,8 +148,8 @@ export class BarometerWidget {
     group.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-width:0;';
 
     const title = document.createElement('div');
-    title.style.cssText = 'font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-primary);line-height:1.3;white-space:nowrap;';
-    title.textContent = 'INFRASTRUCTURES FRANCE';
+    title.style.cssText = 'font-size:11px;font-weight:700;color:var(--text-primary);line-height:1.3;white-space:nowrap;';
+    title.textContent = 'Infrastructures France';
 
     const statusRow = document.createElement('div');
     statusRow.style.cssText = 'display:flex;align-items:center;gap:5px;margin-top:3px;';
@@ -157,7 +158,7 @@ export class BarometerWidget {
     this.dotEl.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#34c759;flex-shrink:0;';
 
     this.statusLabelEl = document.createElement('div');
-    this.statusLabelEl.style.cssText = 'font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;';
+    this.statusLabelEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
     this.statusLabelEl.textContent = '—';
 
     statusRow.appendChild(this.dotEl);
@@ -303,9 +304,8 @@ export class BarometerWidget {
 
     const { score, status, details } = result;
 
-    const color = status === 'nominal'  ? '#34c759'
-                : status === 'degraded' ? '#ffcc00'
-                :                         '#ff2d55';
+    const level = infraStatusLevel(status);
+    const color = levelHex(level);
 
     // Arc dashoffset: 0 = full circle (score=100), CIRCUMFERENCE = empty (score=0)
     const offset = CIRCUMFERENCE * (1 - score / 100);
@@ -321,9 +321,7 @@ export class BarometerWidget {
       this.dotEl.classList.remove('barometer-pulse');
     }
 
-    this.statusLabelEl.textContent =
-      status === 'nominal'  ? 'Nominal'  :
-      status === 'degraded' ? 'Dégradé'  : 'Critique';
+    this.statusLabelEl.textContent = levelLabel(level);
     this.statusLabelEl.style.color = color;
 
     this.currentDetails = details;
