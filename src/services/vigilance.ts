@@ -157,7 +157,8 @@ export interface MarketMove {
   kind: MarketKind;
 }
 
-function formatSignedPct(value: number): string {
+/** Variation signée à la française (« −3,42 % », « +6,10 % ») ; partagée avec la liste « À traiter ». */
+export function formatSignedPct(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
   return `${sign}${Math.abs(value).toFixed(2).replace('.', ',')} %`;
 }
