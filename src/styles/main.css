@@ -8396,3 +8396,190 @@ button.header-quality-link {
   font-weight: 700;
   color: var(--text-secondary);
 }
+
+/* ═══ Refonte UI étape 2 : disposition A1 derrière ?ui=v2 (spec §5, §9) ═══
+   Toute la mise en page est préfixée par #app.ui-v2 : l'interface par défaut ne change pas.
+   Ordinateur : liste, carte, fiche. Tablette (700 à 1 100 px) : liste et carte, fiche en volet.
+   Mobile (moins de 700 px) : trois onglets en bas, fiche en volet remontable. */
+.fm-v2-bar, .fm-v2-list, .fm-v2-fiche, .fm-v2-tabs { display: none; }
+
+#app.ui-v2 .fm-v2-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 14px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sb-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text-primary); }
+.sb-level { padding: 0; border: 0; background: none; cursor: pointer; }
+.sb-level .fm-vig { font-size: 13px; padding: 1px 8px; }
+.sb-level:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; border-radius: 4px; }
+.sb-summary, .sb-loading { color: var(--text-secondary); }
+.sb-fresh { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; color: var(--text-secondary); }
+/* Voyant neutre : la couleur est réservée à la gravité (spec §2). */
+.sb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+
+.tb-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tb-list::-webkit-scrollbar { display: none; }
+.tb-theme {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.tb-theme.is-on { color: var(--text-primary); border-color: var(--text-accent); background: var(--bg-surface); }
+.tb-theme:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 1px; }
+.tb-level .fm-vig { font-size: 10px; padding: 0 5px; }
+
+/* Ordinateur : trois colonnes, rien ne recouvre la carte. */
+#app.ui-v2 .main-container { flex-direction: row; position: relative; }
+#app.ui-v2 .map-area { min-width: 0; }
+#app.ui-v2 .sidebar { width: 300px; height: auto; }
+#app.ui-v2.sidebar-collapsed .sidebar { display: none; }
+#app.ui-v2 .header-sidebar-toggle { display: inline-flex; width: auto; gap: 6px; padding: 0 10px; }
+.header-sidebar-toggle__label { font-size: 12px; }
+/* L'en-tête compte un élément de plus (bouton « Couches ») : il ne s'étire pas ; sur ordinateur,
+   l'en-tête passe à quatre colonnes pour tenir sur une ligne ; sur mobile, il revient au flux
+   (contrôlé à 390 px lors de la vérification du plan : sans ces règles, le titre chevauche l'état). */
+#app.ui-v2 .header-sidebar-toggle { justify-self: start; }
+@media (min-width: 1101px) {
+  #app.ui-v2 .header { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+}
+@media (max-width: 768px) {
+  #app.ui-v2 .header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+  #app.ui-v2 .header-sidebar-toggle__label { display: none; }
+  #app.ui-v2 .header-center { flex: 1 1 96px; width: auto; min-width: 0; }
+  #app.ui-v2 .header-center .region-presets-list { min-width: 0; }
+  #app.ui-v2 .region-preset-select { min-width: 0; width: 100%; }
+}
+#app.ui-v2 .fm-v2-list {
+  display: flex; flex-direction: column; flex: 0 0 30%; min-width: 300px; max-width: 460px;
+  overflow-y: auto; background: var(--bg-secondary); border-right: 1px solid var(--border-color);
+}
+#app.ui-v2 .fm-v2-fiche {
+  display: flex; flex-direction: column; flex: 0 0 28%; min-width: 340px; max-width: 480px;
+  overflow: hidden; background: var(--bg-primary); border-left: 1px solid var(--border-color);
+}
+
+/* Liste « À traiter » */
+.wl-head { padding: 10px 12px 6px; }
+.wl-title { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--text-secondary); }
+.wl-title:focus { outline: none; }
+.wl-list { margin: 0; padding: 0; list-style: none; }
+.wl-item {
+  display: flex; gap: 8px; width: 100%; padding: 8px 12px; border: 0; border-top: 1px solid var(--border-color);
+  background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
+}
+.wl-item:hover { background: var(--bg-surface-hover); }
+.wl-item.is-selected { background: var(--bg-surface); }
+.wl-item:focus-visible { outline: 2px solid var(--text-accent); outline-offset: -2px; }
+.wl-bar { flex: none; align-self: stretch; width: 3px; border-radius: 2px; }
+.wl-bar--vert { background: var(--sev-green); }
+.wl-bar--jaune { background: var(--sev-yellow); }
+.wl-bar--orange { background: var(--sev-orange); }
+.wl-bar--rouge { background: var(--sev-red); }
+.wl-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wl-item-title { font-size: 13px; font-weight: 600; line-height: 1.35; }
+.wl-meta { font-size: 11.5px; color: var(--text-secondary); }
+/* Badge neutre : la couleur est réservée à la gravité (spec §2). */
+.wl-badge { padding: 0 4px; border: 1px solid var(--text-secondary); border-radius: 3px; font-size: 10px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.wl-note, .wl-empty { margin: 0; padding: 8px 12px; list-style: none; font-size: 12px; color: var(--text-secondary); }
+.wl-more {
+  align-self: flex-start; margin: 6px 12px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: transparent; color: var(--text-accent); font: inherit; font-size: 12px; cursor: pointer;
+}
+.wl-guard {
+  position: sticky; bottom: 0; margin-top: auto; padding: 8px 12px; border: 0; border-top: 1px solid var(--border-color);
+  background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.wl-more:focus-visible, .wl-guard:focus-visible { outline: 2px solid var(--text-accent); outline-offset: -2px; }
+
+/* Fiche unique */
+.fiche-chrome { display: flex; justify-content: flex-end; min-height: 8px; padding: 6px 8px 0; }
+.fiche-close {
+  width: 28px; height: 28px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: transparent; color: var(--text-secondary); font-size: 16px; cursor: pointer;
+}
+.fiche-close:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 1px; }
+.fiche-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 14px 20px; }
+.fiche-kind { font-size: 11px; color: var(--text-secondary); }
+.fiche-name { margin: 2px 0 6px; font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.fiche-name:focus { outline: none; }
+.fiche-level { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
+.fiche-fresh { margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+.fiche-part { margin-top: 12px; }
+.fiche-part-title { margin: 0 0 4px; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); }
+.fiche-part p { margin: 0 0 4px; font-size: 13px; line-height: 1.45; color: var(--text-primary); }
+.fiche-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--text-primary); }
+.fiche-time { display: inline-block; min-width: 40px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fiche-link { padding: 0; border: 0; background: none; color: var(--text-accent); font: inherit; text-align: left; cursor: pointer; }
+.fiche-figures-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.fiche-figures-grid dt { font-size: 11px; color: var(--text-secondary); }
+.fiche-figures-grid dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.fiche-horizon { display: inline-block; min-width: 34px; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.fiche-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.fiche-source { padding: 1px 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 11.5px; color: var(--text-primary); text-decoration: none; }
+a.fiche-source, button.fiche-source { color: var(--text-accent); }
+.fiche-judgment p { margin: 0 0 2px; }
+.fiche-judgment-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
+.fiche-ref { font-size: 11.5px; }
+.fiche-conf, .fiche-meta, .fiche-empty { font-size: 11.5px; color: var(--text-secondary); }
+.fiche-why { margin-top: 14px; }
+.fiche-why > summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
+.fiche-why-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.fiche-why-title { margin: 6px 0 2px; font-size: 11.5px; color: var(--text-secondary); }
+.fiche-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.fiche-action {
+  padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer;
+}
+.fiche-link:focus-visible,
+.fiche-action:focus-visible,
+.fiche-source:focus-visible,
+.fiche-why > summary:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
+
+/* Onglets du mobile */
+.v2-tabs { display: flex; height: 100%; }
+.v2-tab { flex: 1; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.v2-tab.is-on { color: var(--text-primary); font-weight: 700; box-shadow: inset 0 2px 0 var(--text-accent); }
+.v2-tab:focus-visible { outline: 2px solid var(--text-accent); outline-offset: -2px; }
+
+/* Tablette : liste et carte ; la fiche s'ouvre en volet à droite, par-dessus la carte (spec §9). */
+@media (min-width: 700px) and (max-width: 1100px) {
+  #app.ui-v2 .fm-v2-list { flex-basis: 40%; }
+  #app.ui-v2 .fm-v2-fiche {
+    position: absolute; top: 0; right: 0; bottom: 0; z-index: var(--z-drawer);
+    width: min(380px, 60%); min-width: 0; max-width: none;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.42);
+  }
+  #app.ui-v2:not([data-v2-fiche="open"]) .fm-v2-fiche { display: none; }
+}
+
+/* Mobile : trois onglets en bas ; une sélection ouvre la fiche en volet remontable (spec §9). */
+@media (max-width: 699px) {
+  #app.ui-v2 .main-container { flex-direction: column; padding-bottom: 52px; }
+  #app.ui-v2 .fm-v2-list,
+  #app.ui-v2 .map-area,
+  #app.ui-v2 .fm-v2-fiche {
+    display: none; flex: 1 1 auto; width: 100%; min-width: 0; max-width: none; min-height: 0; border: 0;
+  }
+  #app.ui-v2[data-v2-tab="list"] .fm-v2-list { display: flex; }
+  #app.ui-v2[data-v2-tab="map"] .map-area { display: flex; }
+  #app.ui-v2[data-v2-tab="fiche"] .fm-v2-fiche { display: flex; }
+  #app.ui-v2[data-v2-fiche="open"]:not([data-v2-tab="fiche"]) .fm-v2-fiche {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 52px; z-index: var(--z-drawer);
+    max-height: 70vh; border-top: 1px solid var(--border-color); border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  }
+  #app.ui-v2 .fm-v2-tabs {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: calc(var(--z-drawer) + 1);
+    height: 52px; padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg-secondary); border-top: 1px solid var(--border-color);
+  }
+  #app.ui-v2 .sidebar { width: 100%; max-height: 45vh; }
+  #app.ui-v2 .app-bottom-links { display: none; }
+  #app.ui-v2 .sb-fresh { margin-left: 0; }
+}

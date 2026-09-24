@@ -21,15 +21,23 @@ import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
+import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
+import { isUiV2 } from './services/ui-mode.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
 import { detectWildfireIncidents } from './services/situation-engine.ts';
-import { getPreviousScoreForSmoothing, recordStabilitySnapshot } from './utils/stability-history.ts';
+import {
+  getDelta24h,
+  getPillarDeltas24h,
+  getPreviousScoreForSmoothing,
+  getSparklineSeries,
+  recordStabilitySnapshot,
+} from './utils/stability-history.ts';
 import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
@@ -129,7 +137,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight } from './types/index.ts';
+import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -1390,6 +1398,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
 /** Attente maximale des événements (preuves E…) avant de demander le brief sans eux. */
 const FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS = 8_000;
+/** v2 (?ui=v2) : relecture des événements consolidés pour la liste et la fiche France (arbitrage A11). */
+const V2_EVENTS_REFRESH_MS = 5 * 60_000;
 const MAX_SUMMARIZE_ITEMS_PER_CYCLE = 10;
 
 export class App {
@@ -1456,6 +1466,18 @@ export class App {
   private franceIntelBriefMark: BriefLevelMark | null = null;
   /** Revérifie à l'échéance de stabilisation (BRIEF_LEVEL_SETTLE_MS) avec un instantané frais ; un seul à la fois. */
   private franceIntelBriefSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  // ── Disposition A1 derrière ?ui=v2 (refonte UI, étape 2) ──────────────────
+  /** Nouvelle interface « poste de situation » (paramètre d'URL ?ui=v2) ; sinon l'interface actuelle. */
+  private readonly uiV2 = isUiV2(window.location.search);
+  private poste: PosteSituation | null = null;
+  private postePromise: Promise<PosteSituation> | null = null;
+  /** Conteneurs de la v2, créés par renderShell(). */
+  private v2Roots: { status: HTMLElement; themes: HTMLElement; list: HTMLElement; fiche: HTMLElement; tabs: HTMLElement } | null = null;
+  /** Brief, événements et ligne de base lancés pour la fiche France (équivalent v2 du tiroir ouvert). */
+  private v2IntelStarted = false;
+  private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
+  /** Matières premières en cache : mouvements exceptionnels de l'énergie dans la liste (spec §4.4). */
+  private currentCommodityData: CommodityData[] = [];
   private currentCyberData: CyberState | null = null;
   private currentThreatEvents: ThreatEvent[] = [];
   private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
@@ -1645,6 +1667,7 @@ export class App {
     this._intervalVersion = null;
     this.clearFranceIntelBriefRefresh();
     this.clearFranceIntelBriefSettleTimer();
+    if (this.v2EventsTimer !== null) { clearInterval(this.v2EventsTimer); this.v2EventsTimer = null; }
     this.clearPausableIntervals();
     this.removeGlobalListeners();
     this.visibilityHandlerInstalled = false;
@@ -1920,6 +1943,11 @@ export class App {
       this.newsPanel?.refreshTranslations();
       this.statusPanel?.refreshTranslations();
       this.refreshFranceIntelPanel();
+      // v2 : la fiche France suit la bascule FR/EN de l'en-tête ; le brief est redemandé dans la langue.
+      if (this.uiV2 && this.v2IntelStarted) {
+        const lang = this.intelLang();
+        this.requestFranceIntelBrief(this.buildFranceSnapshot(lang), lang, { showLoading: false });
+      }
     });
   }
 
@@ -1951,11 +1979,14 @@ export class App {
     const toggle = header.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
     if (!toggle) return;
 
-    let collapsed = false;
+    // v2 (arbitrage A6) : la barre des couches est repliée par défaut, et mémorisée à part.
+    const storageKey = this.uiV2 ? 'fm-v2-sidebar-collapsed' : 'fm-sidebar-collapsed';
+    let collapsed = this.uiV2;
     try {
-      collapsed = localStorage.getItem('fm-sidebar-collapsed') === 'true';
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) collapsed = stored === 'true';
     } catch {
-      collapsed = false;
+      collapsed = this.uiV2;
     }
 
     const apply = (next: boolean, persist: boolean): void => {
@@ -1965,7 +1996,7 @@ export class App {
       toggle.setAttribute('aria-label', collapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
       if (!persist) return;
       try {
-        localStorage.setItem('fm-sidebar-collapsed', String(collapsed));
+        localStorage.setItem(storageKey, String(collapsed));
       } catch {
         // Quota dépassé / navigation privée : pas bloquant, juste pas persisté.
       }
@@ -2013,6 +2044,8 @@ export class App {
     if (dashboardHeadingEl) dashboardHeadingEl.textContent = t('app.dashboardHeading');
     this.container.querySelector<HTMLButtonElement>('[data-overflow-trigger]')?.setAttribute('aria-label', t('app.moreActionsAria'));
     this.floatingPanelSwitcherEl?.setAttribute('aria-label', t('app.floatingPanelSwitcherAria'));
+    const layersLabel = this.container.querySelector<HTMLElement>('.header-sidebar-toggle__label');
+    if (layersLabel) layersLabel.textContent = language === 'fr' ? 'Couches' : 'Layers';
     const sidebarToggle = this.container.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
     if (sidebarToggle) {
       const isCollapsed = this.container.classList.contains('sidebar-collapsed');
@@ -2290,6 +2323,12 @@ export class App {
     }
 
     this.renderShell();
+    if (this.uiV2) {
+      void this.ensurePoste().catch((err) => {
+        console.error('[App] Poste de situation indisponible', err);
+        if (this.v2Roots) this.v2Roots.list.innerHTML = '<p class="wl-empty">Interface indisponible : rechargez la page.</p>';
+      });
+    }
     this.startVersionPolling();
     this.updateBarometerFabVisibility();
 
@@ -2360,6 +2399,9 @@ export class App {
     // ── CRITICAL layers — await: map becomes useful
     await this.loadCriticalLayers();
     this.updateISNR();
+    if (this.uiV2) {
+      void this.startV2Intel().catch((err) => console.error('[App] Fiche France v2 : démarrage impossible', err));
+    }
     this.restoreActiveLayerPanelsAfterRefresh();
 
     // ── SECONDARY layers — background
@@ -2436,7 +2478,7 @@ export class App {
     header.className = 'header';
     header.innerHTML = `
       <button class="header-sidebar-toggle" type="button" data-sidebar-toggle aria-expanded="true" aria-label="${t('app.sidebarCollapseAria')}">
-        ${fmIcon('menu')}
+        ${fmIcon('menu')}${this.uiV2 ? `<span class="header-sidebar-toggle__label">${language === 'fr' ? 'Couches' : 'Layers'}</span>` : ''}
       </button>
       <button class="header-title header-about-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="${t('app.aboutAria')}">
         <img class="header-logo" src="/icon.svg" alt="France Monitor logo" />
@@ -2471,6 +2513,18 @@ export class App {
       </div>
     `;
     this.container.appendChild(header);
+
+    // ── Disposition A1 (?ui=v2) : bandeau d'état et barre de thèmes sous l'en-tête ──
+    let v2Bar: HTMLElement | null = null;
+    if (this.uiV2) {
+      this.container.classList.add('ui-v2');
+      this.container.dataset.v2Tab = 'list';
+      this.container.dataset.v2Fiche = 'default';
+      v2Bar = document.createElement('div');
+      v2Bar.className = 'fm-v2-bar';
+      v2Bar.innerHTML = '<div class="fm-v2-status"></div><div class="fm-v2-themes"></div>';
+      this.container.appendChild(v2Bar);
+    }
     this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
     this.bindLanguageToggle(header);
@@ -2790,7 +2844,24 @@ export class App {
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
 
+    // ── Disposition A1 (?ui=v2) : liste « À traiter » à gauche de la carte, fiche à droite ──
+    let v2List: HTMLElement | null = null;
+    let v2Fiche: HTMLElement | null = null;
+    if (this.uiV2) {
+      v2List = document.createElement('aside');
+      v2List.className = 'fm-v2-list';
+      v2List.setAttribute('aria-label', 'À traiter');
+      v2List.innerHTML = '<p class="wl-empty">Chargement…</p>';
+      main.appendChild(v2List);
+    }
+
     main.appendChild(mapArea);
+
+    if (this.uiV2) {
+      v2Fiche = document.createElement('aside');
+      v2Fiche.className = 'fm-v2-fiche';
+      main.appendChild(v2Fiche);
+    }
 
     // ── Right Sidebar ──
     const rightSidebarEl = document.createElement('aside');
@@ -2808,6 +2879,15 @@ export class App {
 
     this.container.appendChild(main);
     this.container.appendChild(bottomLinks);
+    if (v2Bar && v2List && v2Fiche) {
+      const tabs = document.createElement('nav');
+      tabs.className = 'fm-v2-tabs';
+      tabs.setAttribute('aria-label', 'Vues');
+      this.container.appendChild(tabs);
+      const status = v2Bar.querySelector<HTMLElement>('.fm-v2-status');
+      const themes = v2Bar.querySelector<HTMLElement>('.fm-v2-themes');
+      if (status && themes) this.v2Roots = { status, themes, list: v2List, fiche: v2Fiche, tabs };
+    }
     this.updateNotification = new UpdateNotification(this.container);
     this.syncRightSidebarTriggers(false);
 
@@ -2844,7 +2924,11 @@ export class App {
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
     this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled));
-    this.layerPanel.setPresetHandler((id) => this.applyLayerPreset(id));
+    this.layerPanel.setPresetHandler((id) => {
+      this.applyLayerPreset(id);
+      // v2 (arbitrage A5) : la vue choisie dans « Couches » devient aussi le thème de la liste et de la fiche.
+      this.poste?.setTheme(id, { silent: true });
+    });
     this.layerPanel.mount();
 
     const underMapGrid = document.getElementById('under-map-grid')!;
@@ -3024,6 +3108,11 @@ export class App {
 
     // France Intelligence Panel — open on sidebar button click or map click
     this.addGlobalListener(document, 'open-france-intel', () => {
+      // v2 : pas de tiroir, la fiche France de la colonne de droite (spec §5, §14).
+      if (this.uiV2) {
+        this.poste?.select('france');
+        return;
+      }
       void this.openFranceIntelPanel();
     });
 
@@ -4395,6 +4484,50 @@ export class App {
     this.refreshFloatingPanelSwitcher();
   }
 
+  /**
+   * Dossier dédié d'une alerte ou d'une situation (grand feu, vol militaire) ; false s'il n'y en a
+   * pas. Partagé par AlertMonitor (v1) et la fiche d'alerte ou de situation (v2).
+   */
+  private openAlertDossier(situation: DetectedSituation): boolean {
+    if (situation.type === 'WILDFIRE_ESCALATION') {
+      const incidentId = situation.id.replace(/^wildfire-/, '');
+      // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
+      // à côté de currentActiveFires.
+      const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
+      if (!incident) return false;
+      void this.openWildfireDossier(incident);
+      return true;
+    }
+
+    if (situation.type === 'MILITARY_SURGE_ALERT') {
+      const flight = this.currentMilitaryFlights.find((item) => item.id === situation.entityId);
+      const lon = flight?.longitude ?? situation.lon;
+      const lat = flight?.latitude ?? situation.lat;
+      if (lon == null || lat == null) return false;
+
+      if (!this.activeLayers.military) {
+        this.onLayerToggle('military', true);
+      }
+      this.mapContainer?.flyTo(lon, lat, 10);
+      const mapEl = document.getElementById('map-container');
+      if (flight && mapEl) {
+        this.mapPopup?.showMilitaryFlight(flight, mapEl.clientWidth / 2, mapEl.clientHeight / 2);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  /** « Voir sur la carte » d'une situation : active ses couches (SituationMonitor v1, fiche v2). */
+  private activateLayersFromSituation(layerKeys: readonly string[]): void {
+    for (const key of layerKeys) {
+      if (key in this.activeLayers && !this.activeLayers[key as keyof typeof this.activeLayers]) {
+        this.onLayerToggle(key as keyof typeof this.activeLayers, true);
+      }
+    }
+  }
+
   // ─── Map ────────────────────────────────────────────────────────────────────
 
   private async initMap(): Promise<void> {
@@ -4500,72 +4633,42 @@ export class App {
     });
 
     await this.mapContainer.init();
-    this.alertMonitor?.destroy();
-    this.alertMonitor = new AlertMonitor(mapEl);
-    this.alertMonitor.setDossierHandler((situation) => {
-      if (situation.type === 'WILDFIRE_ESCALATION') {
-        const incidentId = situation.id.replace(/^wildfire-/, '');
-        // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
-        // à côté de currentActiveFires.
-        const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
-        if (!incident) return false;
-        void this.openWildfireDossier(incident);
-        return true;
-      }
-
-      if (situation.type === 'MILITARY_SURGE_ALERT') {
-        const flight = this.currentMilitaryFlights.find((item) => item.id === situation.entityId);
-        const lon = flight?.longitude ?? situation.lon;
-        const lat = flight?.latitude ?? situation.lat;
-        if (lon == null || lat == null) return false;
-
-        if (!this.activeLayers.military) {
-          this.onLayerToggle('military', true);
-        }
-        this.mapContainer?.flyTo(lon, lat, 10);
-        if (flight) {
-          this.mapPopup?.showMilitaryFlight(flight, mapEl.clientWidth / 2, mapEl.clientHeight / 2);
-        }
-        return true;
-      }
-
-      return false;
-    });
-    this.situationMonitor?.destroy();
-    this.situationMonitor = new SituationMonitor(mapEl);
-    this.situationMonitor.setOnLayerActivate((layerKeys) => {
-      for (const key of layerKeys) {
-        if (key in this.activeLayers && !this.activeLayers[key as keyof typeof this.activeLayers]) {
-          this.onLayerToggle(key as keyof typeof this.activeLayers, true);
-        }
-      }
-    });
-    this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
-      this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
-    });
-    // Modèle "synthèse → détail" : le monitor ne s'affiche plus spontanément,
-    // il s'ouvre via le bouton "Détails" du bandeau de synthèse.
-    this.situationMonitor.enableManualMode();
-
-    // Synthèse d'ouverture — même flux que SituationMonitor, aucun re-fetch du moteur.
-    this.situationBrief?.destroy();
-    this.situationBrief = new SituationBrief(mapEl);
-    this.situationBrief.setOnFlyTo((lon, lat, zoom) => {
-      this.mapContainer?.flyTo(lon, lat, zoom ?? 8);
-    });
-    this.situationBrief.setOnOpenDetails(() => {
-      this.situationMonitor?.toggleOpen();
-    });
-    // Historique 24 h (situations résolues) : fetch léger unique, tolérant aux erreurs.
-    void getHistory(7)
-      .then((result) => {
-        this.situationBrief?.setRecent24h(
-          resolvedSituationsFromHistory(result.data.slots, Date.now()),
-        );
-      })
-      .catch(() => {
-        // Le bandeau vit sans historique : il affichera les seules situations actives.
+    // v2 (?ui=v2) : alertes, convergences et situations passent dans la liste « À traiter » et
+    // leurs fiches ; les trois panneaux flottants ne sont créés que pour l'interface par défaut.
+    if (!this.uiV2) {
+      this.alertMonitor?.destroy();
+      this.alertMonitor = new AlertMonitor(mapEl);
+      this.alertMonitor.setDossierHandler((situation) => this.openAlertDossier(situation));
+      this.situationMonitor?.destroy();
+      this.situationMonitor = new SituationMonitor(mapEl);
+      this.situationMonitor.setOnLayerActivate((layerKeys) => this.activateLayersFromSituation(layerKeys));
+      this.situationMonitor.setOnFlyTo((lon, lat, zoom) => {
+        this.mapContainer?.flyTo(lon, lat, zoom ?? 10);
       });
+      // Modèle "synthèse → détail" : le monitor ne s'affiche plus spontanément,
+      // il s'ouvre via le bouton "Détails" du bandeau de synthèse.
+      this.situationMonitor.enableManualMode();
+
+      // Synthèse d'ouverture — même flux que SituationMonitor, aucun re-fetch du moteur.
+      this.situationBrief?.destroy();
+      this.situationBrief = new SituationBrief(mapEl);
+      this.situationBrief.setOnFlyTo((lon, lat, zoom) => {
+        this.mapContainer?.flyTo(lon, lat, zoom ?? 8);
+      });
+      this.situationBrief.setOnOpenDetails(() => {
+        this.situationMonitor?.toggleOpen();
+      });
+      // Historique 24 h (situations résolues) : fetch léger unique, tolérant aux erreurs.
+      void getHistory(7)
+        .then((result) => {
+          this.situationBrief?.setRecent24h(
+            resolvedSituationsFromHistory(result.data.slots, Date.now()),
+          );
+        })
+        .catch(() => {
+          // Le bandeau vit sans historique : il affichera les seules situations actives.
+        });
+    }
 
     void import('./components/SituationHistoryPanel.ts').then(({ SituationHistoryPanel }) => {
       this.situationHistoryPanel?.destroy();
@@ -5006,6 +5109,7 @@ export class App {
     const fetchCommodities = async () => {
       try {
         const data = await fetchCommodityData();
+        this.currentCommodityData = data;
         this.commodityStrip?.update(data);
       } catch (err) {
         console.error('[Commodities] Polling failed', err);
@@ -7147,6 +7251,8 @@ export class App {
         sourceRefs: [item.source, t('alerts.sourceRefs.rss')],
         linkUrl: item.link,
         linkLabel: t('alerts.openArticle'),
+        // v2 : rattache l'alerte presse au thème de son article (spec §7.3).
+        category: item.threat?.category ?? ('general' as const),
         updatedAt: item.pubDate,
       }));
 
@@ -7325,7 +7431,7 @@ export class App {
   }
 
   private refreshFranceIntelPanel(): void {
-    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
     recordStabilitySnapshot(snapshot.score, {
       continuity: snapshot.axes.continuity,
@@ -7333,12 +7439,17 @@ export class App {
       signal: snapshot.axes.signal,
       defense: snapshot.axes.defense,
     });
-    this.alertMonitor?.update(this.buildAlertMonitorSituations(), lang);
-    this.situationMonitor?.update(snapshot.situations, lang);
-    this.situationBrief?.update(snapshot.situations);
+    const alerts = this.buildAlertMonitorSituations();
+    if (this.uiV2) {
+      this.updatePoste(snapshot, alerts, lang);
+    } else {
+      this.alertMonitor?.update(alerts, lang);
+      this.situationMonitor?.update(snapshot.situations, lang);
+      this.situationBrief?.update(snapshot.situations);
+    }
     void pushHistorySnapshot(snapshot);
-    if (!this.franceIntelPanel?.isVisible()) return;
-    this.franceIntelPanel.show(snapshot);
+    if (!this.isIntelSurfaceVisible()) return;
+    this.franceIntelPanel?.show(snapshot);
     const now = Date.now();
     const evaluation = evaluateBriefLevel(this.franceIntelBriefMark, snapshot.score, now);
     this.franceIntelBriefMark = evaluation.mark;
@@ -7367,14 +7478,14 @@ export class App {
     const delay = Math.max(0, settleAt - Date.now());
     this.franceIntelBriefSettleTimer = setTimeout(() => {
       this.franceIntelBriefSettleTimer = null;
-      if (!this.franceIntelPanel?.isVisible()) return;
+      if (!this.isIntelSurfaceVisible()) return;
       this.refreshFranceIntelPanel();
     }, delay);
   }
 
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
   private buildSituationReportContext(): SituationReportContext {
-    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
     return {
       generatedAt: new Date(),
@@ -7402,7 +7513,7 @@ export class App {
 
   /** Instantané des caches courants pour l'export CSV / GeoJSON (aucun fetch). */
   private buildExportContext(): ExportContext {
-    const lang = this.franceIntelPanel?.getCurrentLang() ?? 'fr';
+    const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
     return {
       news: this.newsItems,
@@ -7499,13 +7610,20 @@ export class App {
     const situationIds = briefSituationIds(snapshot.situations);
     if (options?.showLoading !== false) {
       this.franceIntelPanel?.showBriefLoading();
+      this.poste?.setBriefPending();
     }
 
-    // Les événements consolidés alimentent le panneau ET servent de preuves citables au brief.
+    // Les événements consolidés alimentent le tiroir (v1) ou la liste et la fiche (v2), et servent
+    // de preuves citables au brief.
     const eventsLoad = this.loadFranceIntelEvents();
-    // Le panneau les reçoit dès qu'ils arrivent, sans limite de temps.
+    // Ils sont remis dès qu'ils arrivent, sans limite de temps.
     void eventsLoad.then((loaded) => {
-      if (requestId !== this.franceIntelBriefRequestId || !this.franceIntelPanel?.isVisible()) return;
+      if (requestId !== this.franceIntelBriefRequestId || !this.isIntelSurfaceVisible()) return;
+      if (this.uiV2) {
+        this.deliverV2Events(loaded?.state ?? null);
+        return;
+      }
+      if (!this.franceIntelPanel) return;
       if (loaded) this.franceIntelPanel.updateEvents(loaded.state);
       else this.franceIntelPanel.markEventsUnavailable();
     });
@@ -7517,9 +7635,10 @@ export class App {
         : null))
       .then((result) => {
         if (!result || requestId !== this.franceIntelBriefRequestId) return;
-        if (!this.franceIntelPanel?.isVisible()) return;
-        if (this.franceIntelPanel.getCurrentLang() !== lang) return;
-        this.franceIntelPanel.updateBrief(result.brief, result.freshness, situationIds);
+        if (!this.isIntelSurfaceVisible()) return;
+        if (this.intelLang() !== lang) return;
+        this.franceIntelPanel?.updateBrief(result.brief, result.freshness, situationIds);
+        this.poste?.setBrief(result.brief, result.freshness, situationIds);
       });
   }
 
@@ -7555,10 +7674,10 @@ export class App {
     this.clearFranceIntelBriefRefresh();
     this.franceIntelBriefRefreshTimer = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
-      if (!this.franceIntelPanel?.isVisible()) return;
-      const lang = this.franceIntelPanel.getCurrentLang();
+      if (!this.isIntelSurfaceVisible()) return;
+      const lang = this.intelLang();
       const snapshot = this.buildFranceSnapshot(lang);
-      this.franceIntelPanel.show(snapshot);
+      this.franceIntelPanel?.show(snapshot);
       this.requestFranceIntelBrief(snapshot, lang, { showLoading: false });
     }, FRANCE_INTEL_BRIEF_REFRESH_MS);
   }
@@ -7587,6 +7706,111 @@ export class App {
     this.scheduleFranceIntelBriefRefresh();
     this.currentFloatingPanelId = null;
     this.refreshFloatingPanelSwitcher();
+  }
+
+  // ─── Disposition A1 derrière ?ui=v2 (refonte UI, étape 2) ───────────────────
+
+  /** Langue de l'instantané et du brief : bascule FR/EN de l'en-tête en v2, bouton du tiroir sinon. */
+  private intelLang(): 'fr' | 'en' {
+    return this.uiV2 ? getCurrentLanguage() : (this.franceIntelPanel?.getCurrentLang() ?? 'fr');
+  }
+
+  /** Surface qui affiche le brief : la fiche France (v2, dès son lancement) ou le tiroir ouvert (v1). */
+  private isIntelSurfaceVisible(): boolean {
+    return this.uiV2 ? this.v2IntelStarted : this.franceIntelPanel?.isVisible() === true;
+  }
+
+  /** Contrôleur de la v2, chargé à la demande (hors du chunk critique). */
+  private ensurePoste(): Promise<PosteSituation> {
+    if (this.poste) return Promise.resolve(this.poste);
+    if (this.postePromise) return this.postePromise;
+    const roots = this.v2Roots;
+    if (!roots) return Promise.reject(new Error('Poste de situation : conteneurs absents'));
+    this.postePromise = import('./components/poste/PosteSituation.ts').then(({ PosteSituation }) => {
+      const poste = new PosteSituation({ app: this.container, ...roots }, {
+        onThemeChange: (theme) => this.applyLayerPreset(theme),
+        onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
+        onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
+        onOpenDossier: (situation) => this.openAlertDossier(situation),
+        onOpenReport: () => {
+          void this.openSituationReport();
+        },
+        onShowFrance: () => {
+          const france = VIEW_PRESETS.france;
+          this.mapContainer?.flyTo(france.center[0], france.center[1], france.zoom);
+        },
+        onFicheRendered: (body) => {
+          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Pourquoi ce niveau ? ».
+          const slot = body.querySelector('.fiche-infra-slot');
+          if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
+        },
+      });
+      this.poste = poste;
+      this.refreshFranceIntelPanel();
+      return poste;
+    });
+    return this.postePromise;
+  }
+
+  /**
+   * Équivalent v2 de l'ouverture du tiroir : la fiche France est toujours affichée, donc brief,
+   * événements et ligne de base de visite partent dès que les couches critiques sont chargées.
+   */
+  private async startV2Intel(): Promise<void> {
+    if (this.v2IntelStarted) return;
+    const poste = await this.ensurePoste();
+    const visit = await import('./services/intel-last-visit.ts');
+    // Revue : la ligne de base DOIT être figée avant le premier enregistrement (deliverV2Events).
+    poste.setBaseline(visit.beginVisitBaseline());
+    this.v2IntelStarted = true;
+    // Les couches critiques sont là : la v2 peut afficher le niveau national.
+    this.refreshFranceIntelPanel();
+    if (!this.currentCyberData) void this.loadCyber();
+    if (!this.currentOilData) void this.loadOil();
+    void this.refreshNetworkBarometerWidget().catch((err) => {
+      console.error('[App] Network barometer refresh on v2 start failed', err);
+    });
+    const lang = this.intelLang();
+    this.requestFranceIntelBrief(this.buildFranceSnapshot(lang), lang);
+    this.scheduleFranceIntelBriefRefresh();
+    this.v2EventsTimer = setInterval(() => {
+      if (document.hidden) return; // skip tick while tab is hidden
+      void this.loadFranceIntelEvents().then((loaded) => this.deliverV2Events(loaded?.state ?? null));
+    }, V2_EVENTS_REFRESH_MS);
+    void getHistory(7)
+      .then((result) => poste.setResolved(resolvedSituationsFromHistory(result.data.slots, Date.now())))
+      .catch(() => {
+        // Sans historique, « Ce qui a changé » ne liste simplement pas les situations résolues.
+      });
+  }
+
+  /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
+  private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en'): void {
+    this.poste?.update({
+      snapshot,
+      alerts,
+      ecowatt: this.currentEcowattResponse,
+      meteo: this.currentMeteoAlerts,
+      floods: this.currentFloodSegments,
+      markets: this.currentMarketData,
+      commodities: this.currentCommodityData,
+      sources: this.statusPanel?.getSources() ?? [],
+      score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
+      // Revue : pas de niveau national avant les couches critiques (jamais un vert par défaut).
+      ready: this.v2IntelStarted,
+      lang,
+      now: Date.now(),
+    });
+  }
+
+  /** Remet les événements à la v2 et enregistre la ligne de base, au même moment que l'ancre de visite. */
+  private deliverV2Events(state: IntelEventsState | null): void {
+    const poste = this.poste;
+    if (!poste) return;
+    poste.setEvents(state);
+    if (state && !state.unavailable) {
+      void import('./services/intel-last-visit.ts').then((visit) => visit.recordVisitBaseline(poste.currentLevels()));
+    }
   }
 
   private updateISNR(): void {
