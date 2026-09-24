@@ -75,7 +75,7 @@ export class FichePanel {
     const html = renderFiche(model, lang);
     if (html === this.lastHtml) return;
     const sameFiche = this.currentKey === model.key;
-    const restore = this.focusTarget();
+    const restore = this.focusTarget(sameFiche);
     const scrollTop = this.body.scrollTop;
     this.body.innerHTML = html;
     this.lastHtml = html;
@@ -93,9 +93,13 @@ export class FichePanel {
     if (!this.closeButton.hidden) this.closeButton.focus({ preventScroll: true });
   }
 
-  private focusTarget(): (() => HTMLElement | null) | null {
+  private focusTarget(sameFiche: boolean): (() => HTMLElement | null) | null {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || !this.body.contains(el)) return null;
+    // Fiche différente (ex. citation d'un jugement qui ouvre une autre fiche) : la cible focalisée
+    // (même data-select/data-action) n'a aucune raison d'exister dans la nouvelle fiche ; se
+    // replier directement sur son titre plutôt que de laisser le focus tomber sur <body>.
+    if (!sameFiche) return () => this.body.querySelector<HTMLElement>('.fiche-name');
     if (el.matches('.fiche-why > summary')) return () => this.body.querySelector<HTMLElement>('.fiche-why > summary');
     const select = el.dataset.select;
     if (select !== undefined) return () => findByData(this.body, 'select', select);

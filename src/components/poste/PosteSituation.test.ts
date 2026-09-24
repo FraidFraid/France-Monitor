@@ -178,6 +178,17 @@ describe('PosteSituation', () => {
     expect(vi.mocked(fetchEventDetail)).toHaveBeenCalledTimes(1);
   });
 
+  it('une citation ouvre une autre fiche : le focus va au titre de la nouvelle fiche, jamais à <body> (correction)', () => {
+    const { roots, poste } = setup();
+    poste.setBrief(BRIEF, 'fresh', ['energy-stress']);
+    const ref = roots.fiche.querySelector<HTMLButtonElement>('.fiche-judgment [data-select="event:42"]');
+    ref?.focus();
+    ref?.click();
+    expect(ficheKey(roots)).toBe('event:42');
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('fiche-name')).toBe(true);
+  });
+
   it('mobile : onglets ; une sélection ouvre la fiche en volet ; l’onglet « France » montre la fiche du pays', () => {
     const { roots, poste } = setup(390);
     expect(roots.tabs.textContent).toContain('À traiter');
