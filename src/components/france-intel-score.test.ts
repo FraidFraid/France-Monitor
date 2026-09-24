@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderScoreCard, renderSituationRow, scoreDriverText } from './france-intel-score.ts';
+import { renderScoreCard, renderSituationRow, renderWhyBody, scoreDriverText, trendText } from './france-intel-score.ts';
 import type { DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
 
 function breakdown(score = 43): FranceScoreBreakdown {
@@ -124,5 +124,21 @@ describe('renderSituationRow', () => {
     expect(html).toContain('data-sit-id="x&quot;y"');
     expect(html).toContain('frintel-sit-detail');
     expect(html).toContain('Action : Surveiller Écowatt J+1');
+  });
+});
+
+describe('renderWhyBody (partagé avec la fiche France, refonte UI étape 2)', () => {
+  it('rend le contenu chiffré sans le volet qui l’entoure, identique à celui du tiroir', () => {
+    const html = renderWhyBody({ ...base, breakdown: breakdown(43) });
+    expect(html).toContain('Indice de stabilité 43/100');
+    expect(html).toContain('frintel-pillars');
+    expect(html).not.toContain('<details');
+    expect(renderScoreCard({ ...base, breakdown: breakdown(43) })).toContain(html);
+  });
+
+  it('trendText dit la tendance en mots', () => {
+    expect(trendText(-3, 'fr')).toBe('en dégradation sur 24 h');
+    expect(trendText(2, 'en')).toBe('improving over 24 h');
+    expect(trendText(null, 'fr')).toBe('');
   });
 });

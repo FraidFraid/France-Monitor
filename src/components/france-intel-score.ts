@@ -29,12 +29,16 @@ const PILLAR_UI: ReadonlyArray<{ key: FranceScoreBreakdown['pillars'][number]['k
   { key: 'defense', fr: 'Défense', en: 'Defense' },
 ];
 
-export interface ScoreCardInput {
+/** Contenu chiffré du volet « Pourquoi ce niveau ? » (tiroir v1 et fiche France v2). */
+export interface WhyBodyInput {
   breakdown: FranceScoreBreakdown;
   delta24h: number | null;
   pillarDeltas: StabilityPillarValues | null;
   series: number[];
   lang: Lang;
+}
+
+export interface ScoreCardInput extends WhyBodyInput {
   whyOpen: boolean;
 }
 
@@ -62,7 +66,8 @@ export function dominantFactorText(breakdown: FranceScoreBreakdown, lang: Lang):
   return comps.length > 0 ? `${pillarName} — ${comps.join(' · ')}` : pillarName;
 }
 
-function trendText(delta: number | null, lang: Lang): string {
+/** « en dégradation sur 24 h » / « en amélioration sur 24 h » ; vide si stable ou inconnu. */
+export function trendText(delta: number | null, lang: Lang): string {
   if (delta == null || delta === 0) return '';
   return delta < 0
     ? t(lang, 'en dégradation sur 24 h', 'worsening over 24 h')
@@ -104,10 +109,10 @@ function renderSparkline(series: number[], level: VigilanceLevel, lang: Lang): s
   `;
 }
 
-export function renderScoreCard(input: ScoreCardInput): string {
+/** Intérieur du volet « Pourquoi ce niveau ? » : indice, Δ24 h, jauge, courbe 7 jours, piliers, facteur, plafond. */
+export function renderWhyBody(input: WhyBodyInput): string {
   const { breakdown: bd, lang } = input;
   const level = scoreLevel(bd.score);
-  const trend = trendText(input.delta24h, lang);
 
   const pillarRows = PILLAR_UI.map(({ key, fr, en }) => {
     const pillar = bd.pillars.find((p) => p.key === key);
@@ -134,6 +139,35 @@ export function renderScoreCard(input: ScoreCardInput): string {
     : '';
 
   return `
+    <div class="frintel-why-index">${t(lang, `Indice de stabilité ${bd.score}/100 (base ${bd.baseline}, moins la pression en temps réel)`, `Stability index ${bd.score}/100 (baseline ${bd.baseline}, minus live pressure)`)}</div>
+    ${deltaLine}
+    <div class="frintel-gauge" role="img" aria-label="${t(lang, `Indice ${bd.score} sur 100`, `Index ${bd.score} out of 100`)}">
+      <span class="frintel-gauge-zone" style="width:55%;background:${levelColorVar('rouge')};"></span>
+      <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('orange')};"></span>
+      <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('jaune')};"></span>
+      <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('vert')};"></span>
+      <span class="frintel-gauge-marker" style="left:${bd.score}%;"></span>
+    </div>
+    <div class="frintel-gauge-scale">
+      <span class="frintel-gauge-scale-tick" style="left:0%;">0</span>
+      <span class="frintel-gauge-scale-tick" style="left:55%;">55</span>
+      <span class="frintel-gauge-scale-tick" style="left:70%;">70</span>
+      <span class="frintel-gauge-scale-tick" style="left:85%;">85</span>
+      <span class="frintel-gauge-scale-tick" style="left:100%;">100</span>
+    </div>
+    ${renderSparkline(input.series, level, lang)}
+    <div class="frintel-pillars">${pillarRows}</div>
+    ${factorLine}
+    ${capLine}
+  `;
+}
+
+export function renderScoreCard(input: ScoreCardInput): string {
+  const { breakdown: bd, lang } = input;
+  const level = scoreLevel(bd.score);
+  const trend = trendText(input.delta24h, lang);
+
+  return `
     <section class="frintel-card frintel-level-card">
       <div class="frintel-level-row">
         ${renderVigilancePill(level, lang)}
@@ -142,28 +176,7 @@ export function renderScoreCard(input: ScoreCardInput): string {
       <div class="frintel-level-driver">${scoreDriverText(bd, lang)}${trend ? ` · ${trend}` : ''}</div>
       <details class="frintel-why"${input.whyOpen ? ' open' : ''}>
         <summary>${t(lang, 'Pourquoi ce niveau ?', 'Why this level?')}</summary>
-        <div class="frintel-why-body">
-          <div class="frintel-why-index">${t(lang, `Indice de stabilité ${bd.score}/100 (base ${bd.baseline}, moins la pression en temps réel)`, `Stability index ${bd.score}/100 (baseline ${bd.baseline}, minus live pressure)`)}</div>
-          ${deltaLine}
-          <div class="frintel-gauge" role="img" aria-label="${t(lang, `Indice ${bd.score} sur 100`, `Index ${bd.score} out of 100`)}">
-            <span class="frintel-gauge-zone" style="width:55%;background:${levelColorVar('rouge')};"></span>
-            <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('orange')};"></span>
-            <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('jaune')};"></span>
-            <span class="frintel-gauge-zone" style="width:15%;background:${levelColorVar('vert')};"></span>
-            <span class="frintel-gauge-marker" style="left:${bd.score}%;"></span>
-          </div>
-          <div class="frintel-gauge-scale">
-            <span class="frintel-gauge-scale-tick" style="left:0%;">0</span>
-            <span class="frintel-gauge-scale-tick" style="left:55%;">55</span>
-            <span class="frintel-gauge-scale-tick" style="left:70%;">70</span>
-            <span class="frintel-gauge-scale-tick" style="left:85%;">85</span>
-            <span class="frintel-gauge-scale-tick" style="left:100%;">100</span>
-          </div>
-          ${renderSparkline(input.series, level, lang)}
-          <div class="frintel-pillars">${pillarRows}</div>
-          ${factorLine}
-          ${capLine}
-        </div>
+        <div class="frintel-why-body">${renderWhyBody(input)}</div>
       </details>
     </section>
   `;
