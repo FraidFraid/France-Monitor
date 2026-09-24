@@ -17,6 +17,7 @@
 // missing column (to_jsonb of a row only ever contains columns that exist).
 
 import { neon } from '@neondatabase/serverless';
+import { decodeHtmlEntities } from '../_lib/parse-rss.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
@@ -50,9 +51,9 @@ export function mapNewsRow(row) {
     feedName: toStringOrNull(row.feed_name),
     feedRegion: toStringOrNull(row.feed_region),
     tier: toNumberOrNull(row.tier),
-    title: toStringOrNull(row.title),
+    title: toDecodedTextOrNull(row.title),
     link: toStringOrNull(row.link),
-    description: toStringOrNull(row.description),
+    description: toDecodedTextOrNull(row.description),
     publishedAt: toIsoOrNull(row.published_at),
     collectedAt: toIsoOrNull(row.collected_at),
     category: toStringOrNull(row.category),
@@ -109,6 +110,17 @@ function toNumberOrNull(value) {
 function toStringOrNull(value) {
   if (value === null || value === undefined) return null;
   return String(value);
+}
+
+/**
+ * Texte d'article : décode les entités restées dans les lignes stockées avant la correction de
+ * decodeHtmlEntities (rétention 90 jours).
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+function toDecodedTextOrNull(value) {
+  if (value === null || value === undefined) return null;
+  return decodeHtmlEntities(String(value));
 }
 
 /**

@@ -14,7 +14,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseRssXml, detectSourceFormat } from '../api/_lib/parse-rss.js';
+import { parseRssXml, detectSourceFormat, decodeHtmlEntities } from '../api/_lib/parse-rss.js';
 import { contentHash, computeBackoffMs, slugifyFeedId } from '../api/_lib/db.js';
 import { classify, CLASSIFIER_VERSION } from '../api/_lib/server-classifier.js';
 import { extractLocations } from '../api/_lib/server-geocoder.js';
@@ -146,5 +146,16 @@ describe('server-geocoder.js / feeds-snapshot.js', () => {
     assert.equal(slugifyFeedId("L'Obs"), 'l-obs');
     assert.equal(slugifyFeedId('NC la 1ère'), 'nc-la-1ere');
     assert.equal(slugifyFeedId('France 24 FR'), 'france-24-fr');
+  });
+});
+
+describe('decodeHtmlEntities (bug « d&#039;anciennes », refonte UI étape 1)', () => {
+  it('décode les entités numériques, y compris doublement encodées', () => {
+    assert.equal(decodeHtmlEntities('la famille et d&amp;#039;anciennes petites amies'), "la famille et d'anciennes petites amies");
+    assert.equal(decodeHtmlEntities('Proc&#xE8;s &#224; Lyon'), 'Procès à Lyon');
+  });
+
+  it('remplace une entité hors plage sans lever ni produire de caractère NUL', () => {
+    assert.equal(decodeHtmlEntities('a&#0;b&#99999999;c'), 'a�b�c');
   });
 });

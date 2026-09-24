@@ -200,7 +200,12 @@ const en = {
     sourceLabels: {
       llm: 'LLM',
       ml: 'AI',
-      keyword: 'Rules',
+      keyword: 'Keywords',
+    },
+    confidenceLabels: {
+      high: 'high confidence',
+      moderate: 'moderate confidence',
+      low: 'low confidence',
     },
     timeAgo: {
       justNow: 'just now',

@@ -122,14 +122,20 @@ function extractTag(xml: string, tagName: string): string | null {
 }
 
 function decodeHtmlEntities(text: string): string {
+  const safeCodePoint = (code: number): string =>
+    (!Number.isInteger(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff))
+      ? '�'
+      : String.fromCodePoint(code);
   return text
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/<[^>]+>/g, ''); // Strip HTML tags
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => safeCodePoint(Number(dec)))
+    .replace(/<[^>]+>/g, '');
 }
 
 export function rssJsonProxyPlugin(): Plugin {

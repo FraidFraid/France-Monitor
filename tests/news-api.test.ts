@@ -85,6 +85,20 @@ describe('mapNewsRow', () => {
   });
 });
 
+describe('mapNewsRow — entités restées dans les lignes déjà stockées', () => {
+  it('décode le titre et le résumé', () => {
+    const item = mapNewsRow({
+      id: 1, feed_id: 'la-depeche', feed_name: 'La Dépêche', feed_region: null, tier: 3,
+      title: 'Proc&#xE8;s en appel', link: 'https://example.fr/a',
+      description: 'la famille et d&#039;anciennes petites amies',
+      published_at: '2026-09-22T06:00:00Z', collected_at: '2026-09-22T06:05:00Z',
+      category: 'security', severity: 'high', confidence: 0.9, lat: null, lon: null, classifier_version: 'kw-1',
+    });
+    expect(item.title).toBe('Procès en appel');
+    expect(item.description).toBe("la famille et d'anciennes petites amies");
+  });
+});
+
 describe('parseDateParam (repère de non-régression)', () => {
   it('accepte un ISO 8601 arrondi à 5 min (cf. src/services/rss.ts fetchFromIngestApi)', () => {
     const date = parseDateParam('2026-09-22T06:00:00.000Z', new Date());

@@ -4,6 +4,7 @@ import type { HeatmapClickEvent } from './NewsHeatmap.ts';
 import { t } from '../services/i18n.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon, type IconName } from './shared/icons.ts';
+import { confidenceBand } from '../services/vigilance.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -620,7 +621,7 @@ export class UnderMapNewsFeed {
     const summaryText = getSummaryText(item);
     const locationLabel = item.locationName ?? item.feedRegion ?? null;
     const confidenceLabel = item.threat?.confidence != null
-      ? `${Math.round(item.threat.confidence * 100)}%`
+      ? t(`newsFeed.confidenceLabels.${confidenceBand(item.threat.confidence)}`)
       : null;
     const sourceLabel = item.threat?.source === 'llm'
       ? t('newsFeed.sourceLabels.llm')
