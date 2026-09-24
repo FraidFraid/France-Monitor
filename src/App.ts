@@ -22,6 +22,7 @@ import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import { briefSituationIds, fetchFranceIntelBrief } from './services/france-intel-brief.ts';
+import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
@@ -1386,6 +1387,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
 ];
 
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
+/** Attente maximale des événements (preuves E…) avant de demander le brief sans eux. */
+const FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS = 8_000;
 const MAX_SUMMARIZE_ITEMS_PER_CYCLE = 10;
 
 export class App {
@@ -7426,19 +7429,25 @@ export class App {
     }
 
     // Les événements consolidés alimentent le panneau ET servent de preuves citables au brief.
-    void this.loadFranceIntelEvents().then((loaded) => {
-      if (requestId !== this.franceIntelBriefRequestId) return null;
-      if (this.franceIntelPanel?.isVisible()) {
-        if (loaded) this.franceIntelPanel.updateEvents(loaded.state);
-        else this.franceIntelPanel.markEventsUnavailable();
-      }
-      return fetchFranceIntelBrief(snapshot, lang, loaded?.briefEvents ?? []);
-    }).then((result) => {
-      if (!result || requestId !== this.franceIntelBriefRequestId) return;
-      if (!this.franceIntelPanel?.isVisible()) return;
-      if (this.franceIntelPanel.getCurrentLang() !== lang) return;
-      this.franceIntelPanel.updateBrief(result.brief, result.freshness, situationIds);
+    const eventsLoad = this.loadFranceIntelEvents();
+    // Le panneau les reçoit dès qu'ils arrivent, sans limite de temps.
+    void eventsLoad.then((loaded) => {
+      if (requestId !== this.franceIntelBriefRequestId || !this.franceIntelPanel?.isVisible()) return;
+      if (loaded) this.franceIntelPanel.updateEvents(loaded.state);
+      else this.franceIntelPanel.markEventsUnavailable();
     });
+    // Le brief ne les attend que FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS : une base qui cale ne
+    // doit pas le laisser sur « Génération… » ; il part alors avec les seules situations.
+    void settleWithin(eventsLoad.then((loaded) => loaded?.briefEvents ?? []), FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS, [])
+      .then((briefEvents) => (requestId === this.franceIntelBriefRequestId
+        ? fetchFranceIntelBrief(snapshot, lang, briefEvents)
+        : null))
+      .then((result) => {
+        if (!result || requestId !== this.franceIntelBriefRequestId) return;
+        if (!this.franceIntelPanel?.isVisible()) return;
+        if (this.franceIntelPanel.getCurrentLang() !== lang) return;
+        this.franceIntelPanel.updateBrief(result.brief, result.freshness, situationIds);
+      });
   }
 
   /**
