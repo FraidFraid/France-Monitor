@@ -715,7 +715,10 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
           deadline,
         })) as EventPassStats;
       } catch (err) {
-        console.warn('[ingest] event pass failed:', err instanceof Error ? err.message : err);
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[ingest] event pass failed:', message);
+        // Visible dans le dernier tick de /api/health-check : un échec répété ne passe pas inaperçu.
+        errors.push({ feedId: 'events', error: message });
       }
     }
 

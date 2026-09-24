@@ -94,3 +94,17 @@ describe('planEventAssignments', () => {
     expect(plan.ambiguous).toEqual([{ articleId: 2, candidate: { seedArticleId: 1 }, score: expect.any(Number) }]);
   });
 });
+
+describe('titres hostiles (relecture finale #1)', () => {
+  it('ne lève pas et ne produit ni NUL ni demi-substitut sur une entité hors plage', () => {
+    expect(decodeEntities('a&#99999999;b')).toBe('a�b');
+    expect(decodeEntities('a&#0;b')).toBe('a�b');
+    expect(decodeEntities('a&#xD800;b')).toBe('a�b');
+    expect(decodeEntities('a&#x110000;b')).toBe('a�b');
+  });
+
+  it('planifie un lot contenant une entité hors plage sans échouer', () => {
+    const plan = planEventAssignments([{ id: 1, title: 'Incendie &#99999999; à Lyon : un entrepôt détruit', publishedAt: T0, lat: null, lon: null }], []);
+    expect(plan.seeds).toEqual([1]);
+  });
+});

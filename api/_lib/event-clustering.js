@@ -20,11 +20,20 @@ const STOPWORDS = new Set(`a ai au aux avec ce ces cet cette comme dans de des d
 // Rubriques que la PQR place en tête de titre (« Décryptage. », « Vidéo. ») : sans valeur pour le rapprochement.
 const SECTION_WORDS = new Set(['decryptage', 'temoignages', 'temoignage', 'video', 'videos', 'direct', 'info', 'infos', 'exclusif', 'enquete', 'portrait', 'entretien', 'analyse', 'podcast', 'live', 'photos', 'carte', 'chronique', 'tribune', 'edito', 'interview', 'reportage', 'recit', 'faits', 'divers', 'breve', 'alerte', 'urgent', 'exclu', 'infographie', 'quiz', 'question']);
 
+/**
+ * Caractère d'une entité numérique. Hors plage (0, demi-substituts, > U+10FFFF) → U+FFFD :
+ * fromCodePoint lèverait (et bloquerait toute la passe du cron), et Postgres refuse le NUL.
+ */
+function safeCodePoint(code) {
+  if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return '�';
+  return String.fromCodePoint(code);
+}
+
 /** Décode les entités HTML vues dans les flux (&#039;, &#xE9;, &quot;…) et unifie les apostrophes. */
 export function decodeEntities(input) {
   return String(input ?? '')
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => safeCodePoint(Number(dec)))
     .replace(/&apos;/gi, "'")
     .replace(/&quot;/gi, '"')
     .replace(/&nbsp;/gi, ' ')
