@@ -3197,13 +3197,7 @@ button.header-quality-link {
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-.market-strip__item.is-up {
-  border-color: rgba(52, 199, 89, 0.24);
-}
 
-.market-strip__item.is-down {
-  border-color: rgba(255, 107, 53, 0.24);
-}
 
 .market-strip__topline {
   display: flex;
@@ -3242,17 +3236,8 @@ button.header-quality-link {
   font-weight: 600;
 }
 
-.market-strip__item.is-up .market-strip__delta {
-  color: var(--threat-low);
-}
 
-.market-strip__item.is-down .market-strip__delta {
-  color: var(--threat-high);
-}
 
-.market-strip__item.is-flat .market-strip__delta {
-  color: var(--text-secondary);
-}
 
 .market-strip__sparkline {
   width: 100%;
@@ -8380,3 +8365,8 @@ button.header-quality-link {
 .sit-mon__item-conf { font-size: 10px; color: var(--text-secondary); }
 .sit-mon__detail-level { display: inline-flex; align-items: center; gap: 6px; }
 .sit-mon__detail-conf { font-size: 11px; color: var(--text-secondary); }
+
+/* ─── Marchés neutres (refonte UI, spec §4.4) : jaune seulement au-delà d'un seuil ─── */
+.market-strip__item.is-neutral .market-strip__delta { color: var(--text-secondary); }
+.market-strip__item.is-alert { border-color: rgba(255, 204, 0, 0.35); }
+.market-strip__item.is-alert .market-strip__delta { color: var(--sev-yellow); }

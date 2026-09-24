@@ -130,3 +130,42 @@ export function briefConfidenceLabel(c: BriefConfidence, lang: Lang = 'fr'): str
 export function confidenceLabel(confidence: number, lang: Lang = 'fr'): string {
   return briefConfidenceLabel(confidenceBand(confidence), lang);
 }
+
+// ─── Marchés (spec §4.4) : neutres, jaune seulement au-delà d'un seuil exceptionnel ─────────
+
+export type MarketKind = 'index' | 'energy' | 'other';
+export type MarketTone = 'neutral' | 'alert';
+
+export const MARKET_ALERT_THRESHOLD: Record<Exclude<MarketKind, 'other'>, number> = { index: 3, energy: 5 };
+
+export function marketTone(changePercent: number, kind: MarketKind): MarketTone {
+  if (kind === 'other' || !Number.isFinite(changePercent)) return 'neutral';
+  return Math.abs(changePercent) >= MARKET_ALERT_THRESHOLD[kind] ? 'alert' : 'neutral';
+}
+
+export interface MarketMove {
+  name: string;
+  changePercent: number;
+  kind: MarketKind;
+}
+
+function formatSignedPct(value: number): string {
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+  return `${sign}${Math.abs(value).toFixed(2).replace('.', ',')} %`;
+}
+
+/** Ligne de synthèse des marchés : le plus fort mouvement exceptionnel, sinon la variation moyenne. */
+export function marketBarometer(moves: readonly MarketMove[]): { tone: MarketTone; text: string } {
+  const alerts = moves
+    .filter((m) => marketTone(m.changePercent, m.kind) === 'alert')
+    .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+  if (alerts.length > 0) {
+    const top = alerts[0];
+    const more = alerts.length > 1 ? ` (+${alerts.length - 1})` : '';
+    return { tone: 'alert', text: `Mouvement exceptionnel : ${top.name} ${formatSignedPct(top.changePercent)}${more}` };
+  }
+  const finite = moves.filter((m) => Number.isFinite(m.changePercent));
+  if (finite.length === 0) return { tone: 'neutral', text: 'Marchés : données indisponibles' };
+  const avg = finite.reduce((sum, m) => sum + m.changePercent, 0) / finite.length;
+  return { tone: 'neutral', text: `Variation moyenne : ${formatSignedPct(avg)}` };
+}

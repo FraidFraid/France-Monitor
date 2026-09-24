@@ -1,8 +1,7 @@
-import type { CommodityData, MarketData } from '../types/index.ts';
+import type { MarketTone } from '../services/vigilance.ts';
 
-type Trend = MarketData['trend'] | CommodityData['trend'];
-
-export function buildMarketSparkline(history: number[] | undefined, trend: Trend): string {
+/** Courbe neutre ; jaune seulement pour un mouvement exceptionnel (spec refonte UI §4.4). */
+export function buildMarketSparkline(history: number[] | undefined, tone: MarketTone): string {
   if (!history || history.length < 2) return '';
 
   const width = 112;
@@ -16,10 +15,7 @@ export function buildMarketSparkline(history: number[] | undefined, trend: Trend
     return `${x},${y}`;
   }).join(' ');
 
-  const stroke =
-    trend === 'up' ? 'var(--threat-low)' :
-    trend === 'down' ? 'var(--threat-high)' :
-    'var(--text-muted)';
+  const stroke = tone === 'alert' ? 'var(--sev-yellow)' : 'var(--text-muted)';
 
   return `
     <svg class="market-strip__sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">

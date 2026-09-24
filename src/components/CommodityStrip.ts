@@ -1,4 +1,5 @@
 import type { CommodityData } from '../types/index.ts';
+import { marketTone } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 
@@ -94,13 +95,11 @@ export class CommodityStrip {
       const listEl = this.listEls[item.category];
       if (!listEl) continue;
 
-      const trendClass =
-        item.trend === 'up'   ? 'is-up' :
-        item.trend === 'down' ? 'is-down' :
-        'is-flat';
+      // Pétrole et gaz : seuil de ±5 % ; métaux et produits agricoles toujours neutres.
+      const tone = marketTone(item.changePercent, item.category === 'energy' ? 'energy' : 'other');
 
       const card = document.createElement('article');
-      card.className = `market-strip__item ${trendClass}`;
+      card.className = `market-strip__item is-${tone}`;
       card.innerHTML = `
         <div class="market-strip__topline">
           <span class="market-strip__name">${escapeHtml(item.name)}</span>
@@ -108,7 +107,7 @@ export class CommodityStrip {
         </div>
         <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
         <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
-        ${buildMarketSparkline(item.history, item.trend)}
+        ${buildMarketSparkline(item.history, tone)}
       `;
       listEl.appendChild(card);
 

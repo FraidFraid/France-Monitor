@@ -10,6 +10,8 @@ import {
   levelLabel,
   levelPhrase,
   levelVigilanceWord,
+  marketBarometer,
+  marketTone,
   maxLevel,
   officialLevel,
   scoreLevel,
@@ -105,5 +107,27 @@ describe('renderVigilancePill', () => {
   it('affiche le mot dans une pastille de la couleur du niveau', () => {
     expect(renderVigilancePill('rouge')).toBe('<span class="fm-vig fm-vig--rouge">Rouge</span>');
     expect(renderVigilancePill('vert', 'en')).toBe('<span class="fm-vig fm-vig--vert">Green</span>');
+  });
+});
+
+describe('marchés (spec §4.4)', () => {
+  it('jaune au-delà de ±3 % pour un indice, ±5 % pour le pétrole ou le gaz', () => {
+    expect(marketTone(-3, 'index')).toBe('alert');
+    expect(marketTone(2.9, 'index')).toBe('neutral');
+    expect(marketTone(5.1, 'energy')).toBe('alert');
+    expect(marketTone(-4.9, 'energy')).toBe('neutral');
+  });
+
+  it('jamais coloré pour les autres lignes ni pour une variation manquante', () => {
+    expect(marketTone(12, 'other')).toBe('neutral');
+    expect(marketTone(Number.NaN, 'index')).toBe('neutral');
+  });
+
+  it('baromètre : neutre en temps normal, exceptionnel au-delà d\'un seuil', () => {
+    expect(marketBarometer([{ name: 'CAC 40', changePercent: -0.31, kind: 'index' }, { name: 'DAX', changePercent: -0.13, kind: 'index' }]))
+      .toEqual({ tone: 'neutral', text: 'Variation moyenne : −0,22 %' });
+    expect(marketBarometer([{ name: 'CAC 40', changePercent: -3.42, kind: 'index' }, { name: 'DAX', changePercent: 0.1, kind: 'index' }]))
+      .toEqual({ tone: 'alert', text: 'Mouvement exceptionnel : CAC 40 −3,42 %' });
+    expect(marketBarometer([])).toEqual({ tone: 'neutral', text: 'Marchés : données indisponibles' });
   });
 });
