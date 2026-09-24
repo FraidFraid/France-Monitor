@@ -145,6 +145,12 @@ body {
   overflow: hidden;
 }
 
+/* L'attribut hidden masque toujours, même quand la classe impose un display (flex, grid…) :
+   sinon le menu « ⋯ », le sélecteur de panneaux et les filtres actifs restaient visibles. */
+[hidden] {
+  display: none !important;
+}
+
 /* ═══ Accessibilité ═══ */
 /* Indicateur de focus global (RGAA 10.7) — n'affecte que la navigation clavier */
 :focus-visible {
