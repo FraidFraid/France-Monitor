@@ -9,13 +9,14 @@ import type {
   StructuredBrief,
 } from '../types/index.ts';
 import { getDelta24h } from '../utils/stability-history.ts';
+import { levelVigilanceWord, scoreLevel, type VigilanceLevel } from './vigilance.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
   expiresAt: number;
 }
 
-const PROMPT_VERSION = 'v14';
+const PROMPT_VERSION = 'v15';
 const _cache = new Map<string, BriefCacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
@@ -216,14 +217,6 @@ export function parseStructuredBrief(
   return { bluf: raw.bluf.trim().slice(0, BLUF_MAX), judgments, watch, origin };
 }
 
-function bandLabel(score: number, lang: 'fr' | 'en'): string {
-  if (score >= 85) return 'stable';
-  if (score >= 70) return lang === 'fr' ? 'en vigilance' : 'under watch';
-  if (score >= 55) return lang === 'fr' ? 'sous tension' : 'under pressure';
-  if (score >= 40) return lang === 'fr' ? 'dégradée' : 'degraded';
-  return lang === 'fr' ? 'critique' : 'critical';
-}
-
 const PILLAR_LABELS: Record<string, { fr: string; en: string }> = {
   continuity: { fr: 'continuité', en: 'continuity' },
   security: { fr: 'sécurité', en: 'security' },
@@ -264,15 +257,21 @@ export function buildDeterministicBrief(
   const pillarLabel = dominant
     ? (lang === 'fr' ? PILLAR_LABELS[dominant.key].fr : PILLAR_LABELS[dominant.key].en)
     : (lang === 'fr' ? 'aucune' : 'none');
-  const deltaText = delta24h == null
+  // Mot d'abord, sans nombre : l'indice chiffré reste dans « Pourquoi ce niveau ? ».
+  const trend = delta24h == null || delta24h === 0
     ? ''
     : lang === 'fr'
-      ? `, ${delta24h >= 0 ? '+' : '−'}${Math.abs(delta24h)} sur 24 h`
-      : `, ${delta24h >= 0 ? '+' : '−'}${Math.abs(delta24h)} over 24h`;
+      ? (delta24h < 0 ? ', en dégradation sur 24 h' : ', en amélioration sur 24 h')
+      : (delta24h < 0 ? ', worsening over 24h' : ', improving over 24h');
+  const word = levelVigilanceWord(scoreLevel(score), lang);
+  const count = situations.length;
+  const countText = lang === 'fr'
+    ? (count === 0 ? 'Aucune situation active' : count === 1 ? '1 situation active' : `${count} situations actives`)
+    : (count === 0 ? 'No active situation' : count === 1 ? '1 active situation' : `${count} active situations`);
 
   const bluf = lang === 'fr'
-    ? `Situation nationale ${bandLabel(score, lang)} (${score}/100${deltaText}). Pression dominante : ${pillarLabel}. ${situations.length} situation(s) corrélée(s) active(s).`
-    : `National situation ${bandLabel(score, lang)} (${score}/100${deltaText}). Dominant pressure: ${pillarLabel}. ${situations.length} active correlated situation(s).`;
+    ? `France en ${word}${trend}. Pression dominante : ${pillarLabel}. ${countText}.`
+    : `France under ${word}${trend}. Dominant pressure: ${pillarLabel}. ${countText}.`;
 
   const judgments: BriefJudgment[] = situations.slice(0, MAX_DETERMINISTIC_JUDGMENTS).map((s, i) => ({
     priority: SEVERITY_PRIORITY[s.severity],
@@ -353,6 +352,26 @@ export interface CompactSituation {
  */
 export function briefSituationIds(situations: DetectedSituation[]): string[] {
   return situations.slice(0, 5).map((s) => s.id);
+}
+
+/** Au plus un brief redemandé pour changement de couleur par tranche de 10 min (anti-rafale). */
+export const BRIEF_LEVEL_REFRESH_MIN_MS = 10 * 60 * 1000;
+
+export interface BriefLevelMark {
+  /** Couleur nationale au moment de la dernière demande de brief. */
+  level: VigilanceLevel;
+  /** Dernière demande déclenchée par un changement de couleur, null si aucune. */
+  lastLevelRefreshAt: number | null;
+}
+
+/**
+ * Faut-il redemander le brief ? Oui quand la couleur nationale n'est plus celle de la dernière
+ * demande : sinon le brief garde le niveau de l'ouverture (constaté : « 81 » face à un indice
+ * de 43). Anti-rafale : un score qui oscille autour d'un seuil ne relance qu'une fois par 10 min.
+ */
+export function shouldRefreshBrief(mark: BriefLevelMark | null, score: number, now: number): boolean {
+  if (mark === null || scoreLevel(score) === mark.level) return false;
+  return mark.lastLevelRefreshAt === null || now - mark.lastLevelRefreshAt >= BRIEF_LEVEL_REFRESH_MIN_MS;
 }
 
 export function compactSituations(situations: DetectedSituation[]): CompactSituation[] {

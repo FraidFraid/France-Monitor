@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 // @ts-expect-error — module JS sans déclaration de types
-import handler, { validateBriefShape, buildPrompt } from '../api/_handlers/intelligence/v1/france-intel-brief.js';
+import handler, { validateBriefShape, buildPrompt, describeStability } from '../api/_handlers/intelligence/v1/france-intel-brief.js';
+import { levelVigilanceWord, scoreLevel } from '../src/services/vigilance.ts';
 // @ts-expect-error — module JS sans déclaration de types
 import { sanitizeEvents, buildEvidenceIndex } from '../api/_lib/brief-evidence.js';
 
@@ -59,5 +60,14 @@ describe('handler v14 (Groq simulé)', () => {
     expect(payload.brief.judgments[0]).toMatchObject({ evidence: ['E42', 'S1'], sources: ['Sud Ouest', 'France Info', 'Ecowatt RTE'] });
     const sent = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as { messages: Array<{ content: string }> };
     expect(sent.messages[0].content).toContain('E42 [weather/high');
+  });
+});
+
+describe('describeStability v15 (échelle L1)', () => {
+  it('suit scoreLevel pour chaque score de 0 à 100, en français et en anglais', () => {
+    for (let s = 0; s <= 100; s += 1) {
+      expect(describeStability(s, 'fr')).toBe(levelVigilanceWord(scoreLevel(s), 'fr'));
+      expect(describeStability(s, 'en')).toBe(levelVigilanceWord(scoreLevel(s), 'en'));
+    }
   });
 });

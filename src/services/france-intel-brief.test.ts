@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { briefSituationIds, buildDeterministicBrief, compactSituations, parseStructuredBrief } from './france-intel-brief.ts';
+import { briefSituationIds, buildDeterministicBrief, compactSituations, parseStructuredBrief, shouldRefreshBrief } from './france-intel-brief.ts';
 import type { BriefEventInput, DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
 
 function situation(overrides: Partial<DetectedSituation> = {}): DetectedSituation {
@@ -90,8 +90,9 @@ describe('buildDeterministicBrief', () => {
       -2,
     );
     assert.equal(brief.origin, 'deterministic');
-    assert.ok(brief.bluf.includes('61/100'));
-    assert.ok(brief.bluf.includes('−2') || brief.bluf.includes('-2'));
+    assert.ok(brief.bluf.includes('vigilance orange'));
+    assert.ok(brief.bluf.includes('en dégradation sur 24 h'));
+    assert.ok(!brief.bluf.includes('/100'), 'le nombre ne figure que dans « Pourquoi ce niveau ? »');
     // priorité ← sévérité : high → P2, medium → P3
     assert.equal(brief.judgments[0].priority, 2);
     assert.equal(brief.judgments[1].priority, 3);
@@ -181,5 +182,26 @@ describe('briefSituationIds (relecture finale #3)', () => {
     const ids = briefSituationIds(situations);
     assert.deepEqual(ids, ['sit-1', 'sit-2', 'sit-3', 'sit-4', 'sit-5']);
     assert.equal(ids.length, compactSituations(situations).length);
+  });
+});
+
+describe('shouldRefreshBrief (bug brief 81 / indice 43)', () => {
+  const T = 10_000_000;
+
+  it('redemande le brief quand la couleur nationale a changé', () => {
+    assert.equal(shouldRefreshBrief({ level: 'jaune', lastLevelRefreshAt: null }, 43, T), true);
+  });
+
+  it('ne redemande rien quand la couleur est la même', () => {
+    assert.equal(shouldRefreshBrief({ level: 'rouge', lastLevelRefreshAt: null }, 50, T), false);
+  });
+
+  it('ne redemande rien avant la première demande', () => {
+    assert.equal(shouldRefreshBrief(null, 43, T), false);
+  });
+
+  it('un score qui oscille autour d’un seuil ne relance le brief qu’une fois par tranche de 10 min', () => {
+    assert.equal(shouldRefreshBrief({ level: 'orange', lastLevelRefreshAt: T - 60_000 }, 54, T), false);
+    assert.equal(shouldRefreshBrief({ level: 'orange', lastLevelRefreshAt: T - 600_000 }, 54, T), true);
   });
 });

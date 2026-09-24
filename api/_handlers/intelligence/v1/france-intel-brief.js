@@ -1,5 +1,5 @@
 // api/intelligence/v1/france-intel-brief.js
-// Vercel Edge Function — generates the national intelligence brief via Groq (contract v14).
+// Vercel Edge Function — generates the national intelligence brief via Groq (contract v14, prompt v15 : posture en échelle L1).
 // Input payload: { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount,
 //   topHeadlines, signalCounts, energy, situations, events, lang }, built from
 // FranceBriefContext + /api/events by france-intel-brief.ts (client).
@@ -20,14 +20,18 @@ import { sanitizeEvents, buildEvidenceIndex, formatEventsBlock, applyEvidence } 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 // Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 const CACHE_TTL  = 6 * 60 * 60; // 6 hours
-const BRIEF_PROMPT_VERSION = 'v14';
+const BRIEF_PROMPT_VERSION = 'v15';
 
-function describeStability(score, lang) {
-  if (score >= 85) return 'stable';
-  if (score >= 70) return lang === 'fr' ? 'en vigilance' : 'under watch';
-  if (score >= 55) return lang === 'fr' ? 'sous tension' : 'under pressure';
-  if (score >= 40) return lang === 'fr' ? 'dégradée' : 'degraded';
-  return lang === 'fr' ? 'critique' : 'critical';
+// Échelle L1 (quatre couleurs de vigilance officielles), seuils du score v3 85/70/55.
+// Alignée sur src/services/vigilance.ts#scoreLevel : test d'alignement dans
+// tests/france-intel-brief-api.test.ts.
+export function describeStability(score, lang) {
+  const fr = lang === 'fr';
+  if (!Number.isFinite(score)) return fr ? 'vigilance jaune' : 'yellow vigilance';
+  if (score >= 85) return fr ? 'vigilance verte' : 'green vigilance';
+  if (score >= 70) return fr ? 'vigilance jaune' : 'yellow vigilance';
+  if (score >= 55) return fr ? 'vigilance orange' : 'orange vigilance';
+  return fr ? 'vigilance rouge' : 'red vigilance';
 }
 
 function describeCyber(score, lang) {

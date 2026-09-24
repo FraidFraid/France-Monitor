@@ -21,7 +21,8 @@ import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
-import { briefSituationIds, fetchFranceIntelBrief } from './services/france-intel-brief.ts';
+import { briefSituationIds, fetchFranceIntelBrief, shouldRefreshBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
+import { scoreLevel } from './services/vigilance.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -1451,6 +1452,8 @@ export class App {
   private hasUpdate = false;
   private franceIntelBriefRequestId = 0;
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  /** Couleur nationale du dernier brief demandé : un changement de couleur redemande le brief. */
+  private franceIntelBriefMark: BriefLevelMark | null = null;
   private currentCyberData: CyberState | null = null;
   private currentThreatEvents: ThreatEvent[] = [];
   private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
@@ -7306,6 +7309,11 @@ export class App {
     void pushHistorySnapshot(snapshot);
     if (!this.franceIntelPanel?.isVisible()) return;
     this.franceIntelPanel.show(snapshot);
+    const now = Date.now();
+    if (shouldRefreshBrief(this.franceIntelBriefMark, snapshot.score, now)) {
+      this.requestFranceIntelBrief(snapshot, lang, { showLoading: false });
+      if (this.franceIntelBriefMark) this.franceIntelBriefMark.lastLevelRefreshAt = now;
+    }
   }
 
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
@@ -7422,6 +7430,10 @@ export class App {
     options?: { showLoading?: boolean },
   ): void {
     const requestId = ++this.franceIntelBriefRequestId;
+    this.franceIntelBriefMark = {
+      level: scoreLevel(snapshot.score),
+      lastLevelRefreshAt: this.franceIntelBriefMark?.lastLevelRefreshAt ?? null,
+    };
     // S1…S5 désignent les situations de CET instantané : figé pour les preuves cliquables.
     const situationIds = briefSituationIds(snapshot.situations);
     if (options?.showLoading !== false) {
