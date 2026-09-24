@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderChangesSection, renderEventRow, renderEventsSection, resolveEvidenceRef, safeHref, unavailableEventsState } from './france-intel-events.ts';
-import type { IntelEventsState, NewsEvent } from '../types/index.ts';
+import type { ChangeDigestItem, IntelEventsState, NewsEvent } from '../types/index.ts';
 
 const NOW = Date.parse('2026-09-23T08:00:00Z');
 
@@ -67,6 +67,57 @@ describe('rendu des événements', () => {
     });
     expect(html).toContain('aggravé jaune → orange');
     expect(html).toContain('créé · jaune');
+  });
+
+  it('puce « Aggravé » sans flèche quand le niveau L1 d’origine et d’arrivée sont identiques (info→low, relecture finale F3)', () => {
+    const item: ChangeDigestItem = {
+      event: event({ severity: 'low' }),
+      kinds: ['escalated'],
+      latestAt: '2026-09-23T07:00:00Z',
+      severityFrom: 'info',
+      independentFrom: null,
+    };
+    const html = renderChangesSection(state({ digest: [item] }), 'fr', NOW, new Map()).body;
+    expect(html).toContain('>Aggravé<');
+    expect(html).not.toContain('vert → vert');
+    expect(html).not.toContain('→');
+  });
+
+  it('puce « Aggravé jaune → orange » conservée quand les niveaux L1 diffèrent (medium→high)', () => {
+    const item: ChangeDigestItem = {
+      event: event({ severity: 'high' }),
+      kinds: ['escalated'],
+      latestAt: '2026-09-23T07:00:00Z',
+      severityFrom: 'medium',
+      independentFrom: null,
+    };
+    const html = renderChangesSection(state({ digest: [item] }), 'fr', NOW, new Map()).body;
+    expect(html).toContain('Aggravé jaune → orange');
+  });
+
+  it('journal : « aggravé » sans flèche pour info→low, « aggravé jaune → orange » conservé pour medium→high', () => {
+    const html = renderEventRow(event(), 'fr', NOW, {
+      event: event(), articles: [],
+      log: [
+        { at: '2026-09-23T07:10:00Z', kind: 'escalated', from: 'info', to: 'low' },
+        { at: '2026-09-23T07:00:00Z', kind: 'escalated', from: 'medium', to: 'high' },
+      ],
+    });
+    expect(html).toContain('· aggravé</div>');
+    expect(html).toContain('aggravé jaune → orange');
+  });
+
+  it('en anglais : « Escalated » sans flèche pour info→low', () => {
+    const item: ChangeDigestItem = {
+      event: event({ severity: 'low' }),
+      kinds: ['escalated'],
+      latestAt: '2026-09-23T07:00:00Z',
+      severityFrom: 'info',
+      independentFrom: null,
+    };
+    const html = renderChangesSection(state({ digest: [item] }), 'en', NOW, new Map()).body;
+    expect(html).toContain('>Escalated<');
+    expect(html).not.toContain('→');
   });
 });
 

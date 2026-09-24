@@ -13,7 +13,7 @@ import type {
   NewsEventStatus,
   ThreatLevel,
 } from '../types/index.ts';
-import { eventLevel, levelColorVar, levelLabel } from '../services/vigilance.ts';
+import { eventLevel, levelColorVar, levelLabel, type VigilanceLevel } from '../services/vigilance.ts';
 
 type Lang = 'fr' | 'en';
 export type EventDetailState = NewsEventDetail | 'loading' | 'error';
@@ -80,6 +80,22 @@ function severityLabel(value: string | null, lang: Lang): string {
   return known ? levelLabel(eventLevel(known), lang).toLowerCase() : escapeHtml(value ?? '?');
 }
 
+/** Niveau L1 d'une gravité brute (info/low/medium/high/critical), null si inconnue. */
+function severityL1(value: string | null): VigilanceLevel | null {
+  const known = SEVERITIES.find((s) => s === value);
+  return known ? eventLevel(known) : null;
+}
+
+/**
+ * info et low partagent tous deux le vert L1 : une transition entre les deux n'est pas une
+ * vraie aggravation/atténuation visible (relecture finale F3, évite « Aggravé vert → vert »).
+ */
+function sameL1(from: string | null, to: string | null): boolean {
+  const a = severityL1(from);
+  const b = severityL1(to);
+  return a !== null && a === b;
+}
+
 function hhmm(iso: string | number, lang: Lang): string {
   return new Date(iso).toLocaleTimeString(lang === 'fr' ? 'fr-FR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
 }
@@ -100,7 +116,9 @@ function chip(text: string, tone: '' | 'warn' | 'crit' | 'zone' = ''): string {
 function kindChip(item: ChangeDigestItem, kind: NewsEventChangeKind, lang: Lang): string {
   switch (kind) {
     case 'escalated':
-      return chip(`${t(lang, 'Aggravé', 'Escalated')} ${severityLabel(item.severityFrom, lang)} → ${severityLabel(item.event.severity, lang)}`, 'crit');
+      return chip(sameL1(item.severityFrom, item.event.severity)
+        ? t(lang, 'Aggravé', 'Escalated')
+        : `${t(lang, 'Aggravé', 'Escalated')} ${severityLabel(item.severityFrom, lang)} → ${severityLabel(item.event.severity, lang)}`, 'crit');
     case 'created':
       return chip(t(lang, 'Nouveau', 'New'), 'warn');
     case 'corroborated':
@@ -108,6 +126,9 @@ function kindChip(item: ChangeDigestItem, kind: NewsEventChangeKind, lang: Lang)
     case 'reopened':
       return chip(t(lang, 'Rouvert', 'Reopened'), 'warn');
     case 'deescalated':
+      // severityFrom (ChangeDigestItem) ne suit que la gravité avant la première aggravation de
+      // la période : aucune donnée « avant » n'est disponible ici pour une atténuation, donc pas
+      // de x → y à arbitrer — seul le journal (renderDetail) compare des gravités réelles.
       return chip(t(lang, 'Atténué', 'De-escalated'));
     case 'closed':
       return chip(t(lang, 'Clos', 'Closed'));
@@ -137,9 +158,13 @@ function renderDetail(detail: EventDetailState, lang: Lang): string {
   const log = detail.log.slice(0, MAX_LOG_ROWS).map((l) => {
     const isSeverity = l.kind === 'created' || l.kind === 'escalated' || l.kind === 'deescalated';
     const value = (v: string | null): string => (isSeverity ? severityLabel(v, lang) : escapeHtml(v ?? '?'));
-    const change = l.from !== null && l.to !== null
-      ? ` ${value(l.from)} → ${value(l.to)}`
-      : l.to !== null ? ` · ${value(l.to)}` : '';
+    // Niveau L1 d'origine et d'arrivée identiques (ex. info→low, tous deux verts) : pas de
+    // x → y trompeur, juste le mot (relecture finale F3).
+    const change = isSeverity && sameL1(l.from, l.to)
+      ? ''
+      : l.from !== null && l.to !== null
+        ? ` ${value(l.from)} → ${value(l.to)}`
+        : l.to !== null ? ` · ${value(l.to)}` : '';
     return `<div>${hhmm(l.at, lang)} · ${LOG_LABEL[l.kind][lang]}${change}</div>`;
   }).join('');
   return `<div class="frintel-ev-detail"><ul>${articles}</ul>${log ? `<div class="frintel-ev-log">${log}</div>` : ''}</div>`;
