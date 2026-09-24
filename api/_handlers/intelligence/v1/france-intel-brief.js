@@ -430,7 +430,9 @@ export default async function handler(request) {
     signalCounts,
     energy,
     situations,
-    events,
+    // lastSeen n'entre pas dans l'invite : hors de la clé, sinon chaque nouvel article
+    // d'un événement changerait la clé et relancerait Groq.
+    events.map(({ lastSeen: _lastSeen, ...rest }) => rest),
   );
   const cached = await redisGet(cacheKey);
   if (cached) {
@@ -499,9 +501,10 @@ export default async function handler(request) {
       if (calmWords.test(brief.bluf)) brief = null;
     }
 
-    if (brief) {
-      await redisSet(cacheKey, JSON.stringify({ brief }), CACHE_TTL);
-    }
+    // Mis en cache même rejeté (null) : Groq a répondu, redemander la même clé donnerait le
+    // même refus et coûterait un appel de plus (un appel par clé de 6 h, palier gratuit).
+    // Les échecs HTTP de Groq (429, 5xx) ne sont pas mis en cache, plus haut.
+    await redisSet(cacheKey, JSON.stringify({ brief }), CACHE_TTL);
     return new Response(JSON.stringify({ brief, fromCache: false }), {
       headers: { 'Content-Type': 'application/json' },
     });
