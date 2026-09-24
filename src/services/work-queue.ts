@@ -284,9 +284,28 @@ function eventEnters(e: NewsEvent): boolean {
   return e.independentCount >= 2 || rank >= LEVEL_RANK.orange;
 }
 
-function baselineBadge(key: string, level: VigilanceLevel, baseline: VisitBaseline | null): WorkBadge {
+/** Gravité en fin d'identifiant d'une poussée militaire (App.ts : `military-surge-<type>-<gravité>`). */
+const MILITARY_SURGE_SEVERITY_SUFFIX = /-(?:info|warning|alert)$/;
+
+/**
+ * Identité de ligne de base d'un élément (relecture finale m2) : sa clé d'affichage, sauf quand
+ * celle-ci contient le niveau — alerte officielle (« official:<source>:<niveau> » → la source,
+ * « official:<source> ») et poussée militaire (« alert:military-surge-<type>-<gravité> » →
+ * « alert:military-surge-<type> »). Même identité à un niveau plus haut → « AGGRAVÉ », jamais
+ * « NOUVEAU ». Les clés d'affichage (et celles de la v1) ne changent pas.
+ */
+export function baselineIdentity(item: Pick<WorkItem, 'key' | 'ref'>): string {
+  if (item.ref.kind === 'official') return `official:${item.ref.group.source}`;
+  if (item.ref.kind === 'alert' && item.ref.situation.type === 'MILITARY_SURGE_ALERT') {
+    return item.key.replace(MILITARY_SURGE_SEVERITY_SUFFIX, '');
+  }
+  return item.key;
+}
+
+/** Badge depuis la visite : identité absente → nouveau ; niveau plus haut → aggravé ; sinon rien. */
+function baselineBadge(identity: string, level: VigilanceLevel, baseline: VisitBaseline | null): WorkBadge {
   if (baseline === null) return null;
-  const before: VigilanceLevel | undefined = baseline[key];
+  const before: VigilanceLevel | undefined = baseline[identity];
   if (before === undefined) return 'nouveau';
   return LEVEL_RANK[level] > LEVEL_RANK[before] ? 'aggrave' : null;
 }
@@ -330,19 +349,21 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     const key = `alert:${a.id}`;
     const level = situationLevel(a.severity);
     const since = a.updatedAt.getTime();
+    const ref: WorkRef = { kind: 'alert', situation: a };
     items.push({
       key, level, title: a.title, place: firstZone(a.affectedZones), since: Number.isFinite(since) ? since : null,
-      independentSources: null, theme: situationTheme(a.type, a.category), badge: baselineBadge(key, level, baseline),
-      ref: { kind: 'alert', situation: a },
+      independentSources: null, theme: situationTheme(a.type, a.category),
+      badge: baselineBadge(baselineIdentity({ key, ref }), level, baseline), ref,
     });
   }
 
   for (const group of officialAlertGroups(input.ecowatt, input.meteo, input.floods)) {
     const key = `official:${group.source}:${group.level}`;
+    const ref: WorkRef = { kind: 'official', group };
     items.push({
       key, level: group.level, title: officialTitle(group, lang), place: placesLabel(group.places), since: seenAt(key),
-      independentSources: null, theme: OFFICIAL_THEME[group.source], badge: baselineBadge(key, group.level, baseline),
-      ref: { kind: 'official', group },
+      independentSources: null, theme: OFFICIAL_THEME[group.source],
+      badge: baselineBadge(baselineIdentity({ key, ref }), group.level, baseline), ref,
     });
   }
 
@@ -404,13 +425,20 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   return { items, official, themeLevels, greenTracked, eventsStatus };
 }
 
-/** Niveaux à enregistrer comme ligne de base de la visite (les événements ont leur fil serveur). */
+/**
+ * Niveaux à enregistrer comme ligne de base de la visite (les événements ont leur fil serveur),
+ * par identité (baselineIdentity) : le niveau le plus élevé quand plusieurs lignes la partagent
+ * (alertes officielles orange et rouges d'une même source).
+ */
 export function levelsForBaseline(queue: WorkQueue): VisitBaseline {
-  return Object.fromEntries(
-    queue.items
-      .filter((i) => i.ref.kind !== 'event')
-      .map((i): [string, VigilanceLevel] => [i.key, i.level]),
-  );
+  const levels: Record<string, VigilanceLevel> = {};
+  for (const item of queue.items) {
+    if (item.ref.kind === 'event') continue;
+    const identity = baselineIdentity(item);
+    const before: VigilanceLevel | undefined = levels[identity];
+    levels[identity] = before === undefined ? item.level : maxLevel([before, item.level]);
+  }
+  return levels;
 }
 
 // ─── Vue par thème, garde et thèmes qui tirent le niveau (spec §5.2, §7.2, §7.3) ─────────────

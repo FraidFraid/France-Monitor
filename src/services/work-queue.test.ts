@@ -207,6 +207,52 @@ describe('buildWorkQueue — tri et badges (spec §7.2)', () => {
   });
 });
 
+describe('buildWorkQueue — identité de ligne de base sans le niveau (relecture finale m2)', () => {
+  const surge = (severity: DetectedSituation['severity'], suffix: string): DetectedSituation => situation({
+    id: `military-surge-concentration-${suffix}`, type: 'MILITARY_SURGE_ALERT', severity, title: 'Concentration inhabituelle de vols militaires',
+  });
+
+  it('alerte officielle : même source, niveau plus haut → AGGRAVÉ, et non NOUVEAU ; clé d’affichage inchangée', () => {
+    const q = buildWorkQueue(input({ meteo: [meteo('Var', 'red')], baseline: { 'official:meteo': 'orange' } }));
+    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['official:meteo:rouge', 'aggrave']]);
+  });
+
+  it('alerte officielle : même niveau ou plus bas → pas de badge ; source absente → NOUVEAU', () => {
+    const q = buildWorkQueue(input({
+      ecowatt: ecowatt({ '53': 'orange' }),
+      meteo: [meteo('Var', 'orange')],
+      floods: [flood('Loire amont', 'orange')],
+      baseline: { 'official:meteo': 'rouge', 'official:ecowatt': 'orange' },
+    }));
+    expect(Object.fromEntries(q.items.map((i) => [i.key, i.badge]))).toEqual({
+      'official:ecowatt:orange': null,
+      'official:meteo:orange': null,
+      'official:vigicrues:orange': 'nouveau',
+    });
+  });
+
+  it('poussée militaire : la gravité dans l’identifiant ne fait pas un NOUVEAU ; clé d’affichage inchangée', () => {
+    const q = buildWorkQueue(input({
+      alerts: [surge('critical', 'alert')],
+      baseline: { 'alert:military-surge-concentration': 'orange' },
+    }));
+    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['alert:military-surge-concentration-alert', 'aggrave']]);
+  });
+
+  it('ligne de base enregistrée par identité, au niveau le plus élevé de la source', () => {
+    const q = buildWorkQueue(input({
+      meteo: [meteo('Var', 'red'), meteo('Gard', 'orange')],
+      alerts: [surge('high', 'warning')],
+      situations: [situation()],
+    }));
+    expect(levelsForBaseline(q)).toEqual({
+      'official:meteo': 'rouge',
+      'alert:military-surge-concentration': 'orange',
+      'situation:energy-stress': 'orange',
+    });
+  });
+});
+
 describe('buildWorkQueue — états (spec §7.4)', () => {
   it('événements en chargement, indisponibles ou disponibles', () => {
     expect(buildWorkQueue(input({ events: null })).eventsStatus).toBe('loading');
