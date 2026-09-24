@@ -214,5 +214,14 @@ describe('PosteSituation', () => {
     expect(roots.themes.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.querySelector('.fiche-head .fm-vig')).toBeNull();
     expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
+    // Relecture finale m1 : ni indice, ni jauge, ni piliers calculés sur des données absentes.
+    expect(roots.fiche.textContent).toContain('Calcul du niveau national…');
+    expect(roots.fiche.textContent).not.toContain('Indice de stabilité');
+    expect(roots.fiche.querySelector('.frintel-gauge, .frintel-pillars')).toBeNull();
+    // La fiche thème dit le chargement, jamais « Rien à traiter ».
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
+    expect(ficheKey(roots)).toBe('theme:energy');
+    expect(roots.fiche.textContent).toContain('Chargement des données…');
+    expect(roots.fiche.textContent).not.toContain('Rien à traiter');
   });
 });

@@ -79,6 +79,8 @@ export interface ThemeFicheInput {
   changeTimes: ReadonlyMap<string, number>;
   freshness: string;
   whyOpen: boolean;
+  /** Couches critiques chargées : avant, « Chargement des données… », jamais « Rien à traiter » (relecture finale m1). */
+  ready: boolean;
   lang: Lang;
 }
 
@@ -128,7 +130,7 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
   const n = items.length;
 
   const essentiel: string[] = n === 0
-    ? [nothingToHandleText(queue.greenTracked[theme], lang)]
+    ? [input.ready ? nothingToHandleText(queue.greenTracked[theme], lang) : t(lang, 'Chargement des données…', 'Loading data…')]
     : [
         t(lang,
           `${n} élément${plural(n)} à traiter${reds > 0 ? `, dont ${reds} rouge${plural(reds)}` : ''}.`,

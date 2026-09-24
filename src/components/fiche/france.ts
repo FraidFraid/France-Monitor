@@ -48,6 +48,11 @@ export interface FranceFicheInput {
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
   freshness: string;
   whyOpen: boolean;
+  /**
+   * Couches critiques chargées. Avant, l'indice est calculé sur des données absentes : ni indice,
+   * ni jauge, ni piliers dans le volet (relecture finale m1).
+   */
+  ready: boolean;
   lang: Lang;
   now: number;
 }
@@ -179,13 +184,15 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
     figures.push({ label: t(lang, 'Événements ouverts', 'Open events'), value: String(input.events.events.length) });
   }
   const why = [
-    renderWhyBody({
-      breakdown: snapshot.scoreBreakdown,
-      delta24h: input.score.delta24h,
-      pillarDeltas: input.score.pillarDeltas,
-      series: input.score.series,
-      lang,
-    }),
+    input.ready
+      ? renderWhyBody({
+          breakdown: snapshot.scoreBreakdown,
+          delta24h: input.score.delta24h,
+          pillarDeltas: input.score.pillarDeltas,
+          series: input.score.series,
+          lang,
+        })
+      : `<p class="fiche-meta">${t(lang, 'Calcul du niveau national…', 'Computing the national level…')}</p>`,
     // Le baromètre des infrastructures (et son infobulle) est un composant vivant : App.ts l'y rattache.
     '<div class="fiche-infra-slot"></div>',
     renderDomainsBlock(snapshot, lang),

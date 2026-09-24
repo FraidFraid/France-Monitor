@@ -339,6 +339,7 @@ export class PosteSituation {
       score: data.score,
       freshness: this.freshness(data),
       whyOpen: this.whyOpen.has('france'),
+      ready: data.ready,
       lang: data.lang,
       now: data.now,
     });
@@ -356,6 +357,7 @@ export class PosteSituation {
       changeTimes: this.firstSeen,
       freshness: this.freshness(data),
       whyOpen: this.whyOpen.has(`theme:${theme}`),
+      ready: data.ready,
       lang: data.lang,
     });
   }

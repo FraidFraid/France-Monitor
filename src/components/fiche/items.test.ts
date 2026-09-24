@@ -69,7 +69,7 @@ function queue(over: Partial<WorkQueueInput> = {}): ReturnType<typeof buildWorkQ
 function themeInput(over: Partial<ThemeFicheInput> = {}): ThemeFicheInput {
   return {
     theme: 'energy', queue: queue(), snapshot: { signals: signals(), energy: null }, events: null,
-    changeTimes: new Map(), freshness: '33 sources sur 35 à jour', whyOpen: false, lang: 'fr', ...over,
+    changeTimes: new Map(), freshness: '33 sources sur 35 à jour', whyOpen: false, ready: true, lang: 'fr', ...over,
   };
 }
 
@@ -80,6 +80,12 @@ describe('fiche thème', () => {
     expect(model.name).toBe('Énergie');
     expect(model.level).toBe('vert');
     expect(model.essentiel).toEqual(['Rien à traiter. 1 élément suivi est au vert.']);
+  });
+
+  it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter » (relecture finale m1)', () => {
+    const model = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt({ '53': 'green' }) }) }));
+    expect(model.essentiel).toEqual(['Chargement des données…']);
+    expect(renderFiche(model, 'fr')).not.toContain('Rien à traiter');
   });
 
   it('niveau et signaux officiels du thème, chiffres clés, éléments dans le volet', () => {

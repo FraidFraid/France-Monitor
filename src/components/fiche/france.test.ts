@@ -87,7 +87,7 @@ function input(over: Partial<FranceFicheInput> = {}): FranceFicheInput {
   return {
     snapshot: snap, queue, drivers: ['energy'], brief: { brief: BRIEF, freshness: 'fresh' }, briefSituationIds: ['energy-stress'],
     events, resolved: [], changeTimes: new Map(), score: { delta24h: -4, pillarDeltas: null, series: [81, 70, 43] },
-    freshness: '33 sources sur 35 à jour', whyOpen: false, lang: 'fr', now: NOW, ...over,
+    freshness: '33 sources sur 35 à jour', whyOpen: false, ready: true, lang: 'fr', now: NOW, ...over,
   };
 }
 
@@ -110,6 +110,14 @@ describe('buildFranceFiche (spec §6.3, §14)', () => {
     for (const part of ['frintel-pillars', 'frintel-dom-grid', 'frintel-timeline', 'fiche-infra-slot', 'Événements consolidés ouverts (1)']) {
       expect(html).toContain(part);
     }
+  });
+
+  it('avant les couches critiques : ni indice, ni jauge, ni piliers dans le volet (relecture finale m1)', () => {
+    const html = renderFiche(buildFranceFiche(input({
+      ready: false, snapshot: snapshot({ score: 95, scoreBreakdown: breakdown(95), situations: [] }),
+    })), 'fr');
+    expect(html).toContain('Calcul du niveau national…');
+    for (const part of ['Indice de stabilité', 'frintel-gauge', 'frintel-pillars', '95/100']) expect(html).not.toContain(part);
   });
 
   it('brief en attente : l’essentiel l’annonce, jamais « indisponible »', () => {
