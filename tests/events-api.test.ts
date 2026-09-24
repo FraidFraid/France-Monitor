@@ -82,6 +82,18 @@ describe('lecture (Postgres embarqué)', () => {
     expect(titles).toContain(RINER);
     expect(titles).not.toContain('Bordeaux : un marché de producteurs inauguré place des Quinconces');
   });
+
+  it('décode les entités HTML (même doublement encodées) dans le titre des articles d’un événement (relecture finale F4)', async () => {
+    const encodedTitle = "Proc&#xE8;s de l&#039;assassinat";
+    await insertArticles(sql, [
+      { id: 5, feedId: 'le-monde', title: encodedTitle, publishedAt: T0 + 3 * H, category: 'security', severity: 'high' },
+    ]);
+    await runEventPass(sql, { now: T0 + 4 * H, insertedIds: [5] });
+    const [seed] = await sql`SELECT id FROM news_events WHERE seed_article_id = ${5}`;
+    expect(seed).toBeTruthy();
+    const detail = await getEventDetail(sql, Number(seed.id));
+    expect(detail.articles.map((a: { title: string }) => a.title)).toEqual(["Procès de l'assassinat"]);
+  });
 });
 
 describe('handler /api/events', () => {

@@ -6,6 +6,7 @@
 // dès qu'une deuxième source indépendante le reprend ou que sa gravité monte.
 
 import { neon } from '@neondatabase/serverless';
+import { decodeHtmlEntities } from './parse-rss.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const STATUSES = ['active', 'cooling', 'closed'];
@@ -109,7 +110,9 @@ export async function getEventDetail(sql, id) {
     event: mapEventRow(row),
     articles: articles.map((a) => ({
       id: Number(a.id),
-      title: String(a.title),
+      // Même traitement que mapNewsRow (api/_handlers/news.js) : des titres stockés avant le
+      // correctif d'entités (2026-09) restent encodés en base, parfois doublement (&amp;#039;).
+      title: decodeHtmlEntities(String(a.title)),
       link: String(a.link),
       feedName: a.feed_name === null ? null : String(a.feed_name),
       publishedAt: toIso(a.effective_at),
