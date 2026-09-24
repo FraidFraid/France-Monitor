@@ -31,6 +31,9 @@
  *     coût nul tant que la variable n'est pas positionnée.
  *  6. Géocodage best-effort des items réellement insérés (max 150/tick,
  *     concurrence 4).
+ *  6.5 Regroupement des articles en événements (api/_lib/news-events-db.js) :
+ *     rattachement, agrégats, journal des changements, statuts, purge 90 j.
+ *     Best-effort : un échec est journalisé sans faire échouer le tick.
  *  7. Purge des items > 90 jours, libération du verrou, stats JSON.
  *
  * Sans DATABASE_URL → 503 explicite (pas de crash au chargement du module).
@@ -53,6 +56,7 @@ import {
 import { buildState } from '../_lib/jev-questions.js';
 import { derive as deriveJevJudgment } from '../_lib/jev-policy.js';
 import { redisSet } from '../_utils/redis.js';
+import { ensureEventTables, runEventPass } from '../_lib/news-events-db.js';
 
 export const config = { maxDuration: 300 };
 
@@ -72,6 +76,16 @@ const JEV_CLASSIFIER_VERSION = 'jev-1';
 const LAST_TICK_KEY = 'ingest:last-tick';
 const LAST_TICK_TTL_S = 24 * 60 * 60;
 
+interface EventPassStats {
+  considered: number;
+  created: number;
+  attached: number;
+  skipped: number;
+  ambiguous: number;
+  logged: number;
+  statusChanges: number;
+}
+
 interface IngestTickSummary {
   timestamp: string;
   feedsProcessed: number;
@@ -79,7 +93,11 @@ interface IngestTickSummary {
   errors: Array<{ feedId: string; error: string }>;
   durationMs: number;
   jev?: JevPassResult & { mode: string };
+  events?: EventPassStats;
 }
+
+// Tables d'événements créées une fois par instance chaude (DDL idempotent, mais 7 allers-retours).
+let eventTablesReady = false;
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -684,6 +702,23 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     // 4. Géocodage des items réellement insérés (max 150/tick, concurrence 4)
     const geocoded = await geocodeInserted(sql, insertedItems, deadline);
 
+    // 4.5 Regroupement en événements — best-effort, après le géocodage (pénalité de distance).
+    let eventStats: EventPassStats | null = null;
+    if (Date.now() < deadline) {
+      try {
+        if (!eventTablesReady) {
+          await ensureEventTables(sql);
+          eventTablesReady = true;
+        }
+        eventStats = (await runEventPass(sql, {
+          insertedIds: insertedItems.map((i) => i.id),
+          deadline,
+        })) as EventPassStats;
+      } catch (err) {
+        console.warn('[ingest] event pass failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
     // 5. Rétention 90 jours
     await sql`DELETE FROM news_items WHERE collected_at < now() - interval '90 days'`;
 
@@ -694,6 +729,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       errors,
       durationMs: Date.now() - startedAt,
       ...(jevResult ? { jev: { ...jevResult, mode: NEWS_SCORING } } : {}),
+      ...(eventStats ? { events: eventStats } : {}),
     };
 
     json(res, 200, {
@@ -703,6 +739,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       geocoded,
       newsScoring: NEWS_SCORING,
       jev: jevResult,
+      events: eventStats,
       durationMs: Date.now() - startedAt,
       errors,
     });

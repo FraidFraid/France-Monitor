@@ -6,6 +6,7 @@
  */
 
 import { neon } from '@neondatabase/serverless';
+import { ensureEventTables } from '../api/_lib/news-events-db.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -76,5 +77,10 @@ for (const statement of STATEMENTS) {
   await sql.query(statement);
   console.log(`[init-db] OK: ${summary}…`);
 }
+
+// Événements (news_events, news_event_log, news_items.event_id) : même fonction que le cron
+// d'ingestion, qui les crée aussi au premier passage.
+await ensureEventTables(sql);
+console.log('[init-db] OK: tables d’événements');
 
 console.log('[init-db] schema ready.');
