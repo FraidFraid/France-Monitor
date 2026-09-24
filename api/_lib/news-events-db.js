@@ -98,50 +98,56 @@ export async function runEventPass(sql, options = {}) {
     stats.skipped = plan.skipped.length;
     stats.ambiguous = plan.ambiguous.length;
 
+    // Chaque requête Neon HTTP est sa propre transaction : l'ordre des écritures rend la passe
+    // reprenable. Le rattachement des articles est écrit EN DERNIER ; tant qu'il n'a pas eu
+    // lieu, les articles restent en attente et le passage suivant refait tout à l'identique
+    // (graines idempotentes, agrégats recalculés, « créé » décidé par l'absence de journal).
+
     // 1. Événements « graines » (un par nouvel événement), idempotent grâce à seed_article_id.
     const seedIds = plan.seeds;
     const seedRows = new Map(pending.map((r) => [Number(r.id), r]));
     const seedToEvent = new Map();
-    const newEventIds = new Set();
     if (seedIds.length > 0) {
       const titles = seedIds.map((id) => String(seedRows.get(id).title));
       const seen = seedIds.map((id) => new Date(toMs(seedRows.get(id).effective_at)).toISOString());
-      // RETURNING ne rend que les lignes réellement créées : une graine déjà insérée par un
-      // passage interrompu n'est pas journalisée « créée » une seconde fois.
-      const created = await sql`
+      await sql`
         INSERT INTO news_events (seed_article_id, title, first_seen, last_seen)
         SELECT * FROM unnest(${seedIds}::bigint[], ${titles}::text[], ${seen}::timestamptz[], ${seen}::timestamptz[])
         ON CONFLICT (seed_article_id) DO NOTHING
-        RETURNING id
       `;
-      for (const r of created) newEventIds.add(Number(r.id));
       const rows = await sql`SELECT id, seed_article_id FROM news_events WHERE seed_article_id = ANY(${seedIds}::bigint[])`;
       for (const r of rows) seedToEvent.set(Number(r.seed_article_id), Number(r.id));
     }
 
-    // 2. Rattachements (graines et ajouts) en une seule mise à jour.
-    const assignIds = [];
-    const assignEvents = [];
-    for (const seed of seedIds) { assignIds.push(seed); assignEvents.push(seedToEvent.get(seed)); }
+    // 2. Rattachements décidés (graines et ajouts), pas encore écrits.
+    /** @type {Map<number, number>} article → événement */
+    const assignments = new Map();
+    for (const seed of seedIds) {
+      const eventId = seedToEvent.get(seed);
+      if (eventId !== undefined) assignments.set(seed, eventId);
+    }
     for (const a of plan.attaches) {
       const eventId = 'eventId' in a.target ? a.target.eventId : seedToEvent.get(a.target.seedArticleId);
-      if (eventId === undefined) continue;
-      assignIds.push(a.articleId);
-      assignEvents.push(eventId);
+      if (eventId !== undefined) assignments.set(a.articleId, eventId);
     }
-    if (assignIds.length > 0) {
+    stats.attached = plan.attaches.length;
+
+    // 3. Agrégats et journal des événements touchés, articles en attente compris.
+    const touched = [...new Set(assignments.values())];
+    if (touched.length > 0) {
+      const refreshed = await refreshEvents(sql, touched, assignments, now);
+      stats.created = refreshed.created;
+      stats.logged += refreshed.logged;
+    }
+
+    // 4. Rattachement des articles, en dernier (voir plus haut).
+    if (assignments.size > 0) {
       await sql`
         UPDATE news_items AS n SET event_id = v.event_id
-        FROM unnest(${assignIds}::bigint[], ${assignEvents}::bigint[]) AS v(id, event_id)
+        FROM unnest(${[...assignments.keys()]}::bigint[], ${[...assignments.values()]}::bigint[]) AS v(id, event_id)
         WHERE n.id = v.id
       `;
     }
-    stats.created = newEventIds.size;
-    stats.attached = plan.attaches.length;
-
-    // 3. Recalcul des agrégats des événements touchés et journal des changements.
-    const touched = [...new Set(assignEvents)];
-    if (touched.length > 0) stats.logged += await refreshEvents(sql, touched, newEventIds, now);
   }
 
   // 4. Rétention alignée sur news_items (90 jours), AVANT le vieillissement : un événement
@@ -180,25 +186,35 @@ export async function runEventPass(sql, options = {}) {
 }
 
 /**
+ * Recalcule les agrégats des événements touchés et écrit leur journal. Les articles en attente
+ * (`assignments`, pas encore rattachés en base) comptent déjà dans l'agrégat. Un événement
+ * sans aucune entrée de journal est « créé » : décision reprenable après un passage interrompu.
  * @param {Sql} sql
  * @param {number[]} eventIds
- * @param {Set<number>} created  événements créés à ce passage (journalisés « created »)
+ * @param {Map<number, number>} assignments  article en attente → événement
  * @param {number} now
- * @returns {Promise<number>} nombre d'entrées de journal écrites
+ * @returns {Promise<{ logged: number, created: number }>}
  */
-async function refreshEvents(sql, eventIds, created, now) {
+async function refreshEvents(sql, eventIds, assignments, now) {
+  const pendingIds = [...assignments.keys()];
   const rows = await sql`
     SELECT n.id, n.event_id, n.title, n.feed_id, f.name AS feed_name, f.tier,
            LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
            n.category, n.severity, n.lat, n.lon
     FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
-    WHERE n.event_id = ANY(${eventIds}::bigint[])
+    WHERE n.event_id = ANY(${eventIds}::bigint[]) OR n.id = ANY(${pendingIds}::bigint[])
   `;
-  const current = await sql`SELECT id, severity, independent_count, status FROM news_events WHERE id = ANY(${eventIds}::bigint[])`;
-  const before = new Map(current.map((r) => [Number(r.id), { severity: String(r.severity), independentCount: Number(r.independent_count), status: String(r.status) }]));
+  const current = await sql`
+    SELECT e.id, e.severity, e.independent_count, e.status,
+           EXISTS (SELECT 1 FROM news_event_log l WHERE l.event_id = e.id) AS logged
+    FROM news_events e WHERE e.id = ANY(${eventIds}::bigint[])
+  `;
+  const before = new Map(current.map((r) => [Number(r.id), r.logged === true
+    ? { severity: String(r.severity), independentCount: Number(r.independent_count), status: String(r.status) }
+    : null]));
   const byEvent = new Map();
   for (const r of rows) {
-    const id = Number(r.event_id);
+    const id = assignments.get(Number(r.id)) ?? Number(r.event_id);
     if (!byEvent.has(id)) byEvent.set(id, []);
     byEvent.get(id).push({
       id: Number(r.id), title: String(r.title), feedId: String(r.feed_id), feedName: r.feed_name === null ? null : String(r.feed_name),
@@ -208,6 +224,7 @@ async function refreshEvents(sql, eventIds, created, now) {
   }
   const cols = { id: [], title: [], category: [], severity: [], first: [], last: [], articles: [], sources: [], independent: [], names: [], lat: [], lon: [], status: [] };
   const log = [];
+  let created = 0;
   for (const [id, articles] of byEvent) {
     const agg = summarizeEvent(articles);
     const status = eventStatusAt(agg.lastSeen, now);
@@ -215,10 +232,11 @@ async function refreshEvents(sql, eventIds, created, now) {
     cols.first.push(new Date(agg.firstSeen).toISOString()); cols.last.push(new Date(agg.lastSeen).toISOString());
     cols.articles.push(agg.articleCount); cols.sources.push(agg.sourceCount); cols.independent.push(agg.independentCount);
     cols.names.push(JSON.stringify(agg.sourceNames)); cols.lat.push(agg.lat); cols.lon.push(agg.lon); cols.status.push(status);
-    const previous = created.has(id) ? null : before.get(id) ?? null;
+    const previous = before.get(id) ?? null;
+    if (previous === null) created += 1;
     for (const entry of diffEvent(previous, { severity: agg.severity, independentCount: agg.independentCount, status })) log.push({ eventId: id, ...entry });
   }
-  if (cols.id.length === 0) return 0;
+  if (cols.id.length === 0) return { logged: 0, created };
   await sql`
     UPDATE news_events AS e SET
       title = v.title, category = v.category, severity = v.severity,
@@ -233,7 +251,7 @@ async function refreshEvents(sql, eventIds, created, now) {
     ) AS v(id, title, category, severity, first_seen, last_seen, article_count, source_count, independent_count, names, lat, lon, status)
     WHERE e.id = v.id
   `;
-  return writeLog(sql, log, now);
+  return { logged: await writeLog(sql, log, now), created };
 }
 
 /** @param {Sql} sql @param {Array<{ eventId: number, kind: string, from: string | null, to: string | null }>} entries @param {number} now */

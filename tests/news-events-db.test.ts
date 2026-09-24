@@ -110,3 +110,42 @@ describe('runEventPass', () => {
     expect(await logKinds()).toEqual([]);
   });
 });
+
+describe('runEventPass — reprise après échec (relecture finale #2)', () => {
+  it('un échec avant l’écriture des agrégats laisse les articles en attente, repris au passage suivant', async () => {
+    await insertArticles(sql, [
+      { id: 1, feedId: 'le-progres', title: RINER, publishedAt: T0, severity: 'high' },
+      { id: 2, feedId: 'le-monde', title: RINER, publishedAt: T0 + H, severity: 'high' },
+    ]);
+    let failed = false;
+    const flaky: Sql = (strings, ...params) => {
+      if (!failed && strings.join('?').includes('source_names = ARRAY')) {
+        failed = true;
+        return Promise.reject(new Error('neon: transient'));
+      }
+      return sql(strings, ...params);
+    };
+    await expect(runEventPass(flaky, { now: T0 + 2 * H })).rejects.toThrow('transient');
+    await runEventPass(sql, { now: T0 + 2 * H });
+    const [e] = await events();
+    expect(e).toMatchObject({ severity: 'high', article_count: 2, independent_count: 2 });
+    expect(await logKinds()).toEqual(['created']);
+  });
+
+  it('un échec après le journal ne rejournalise pas « créé » au passage suivant', async () => {
+    await insertArticles(sql, [{ id: 1, feedId: 'le-monde', title: RINER, publishedAt: T0 }]);
+    let failed = false;
+    const flaky: Sql = (strings, ...params) => {
+      if (!failed && strings.join('?').includes('UPDATE news_items AS n SET event_id')) {
+        failed = true;
+        return Promise.reject(new Error('neon: transient'));
+      }
+      return sql(strings, ...params);
+    };
+    await expect(runEventPass(flaky, { now: T0 + H })).rejects.toThrow('transient');
+    await runEventPass(sql, { now: T0 + H });
+    expect(await logKinds()).toEqual(['created']);
+    const rows = await sql`SELECT count(*)::int AS n FROM news_items WHERE event_id IS NULL`;
+    expect(rows[0].n).toBe(0);
+  });
+});
