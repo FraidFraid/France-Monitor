@@ -92,6 +92,14 @@ export function renderWorkList(model: WorkListModel): string {
     + `<ul class="wl-list">${rows}${notes.join('')}</ul>${empty}${more}${guard}`;
 }
 
+/**
+ * Élément réellement affiché : sans boîte (ancêtre en display: none — liste du mobile hors de son
+ * onglet, volet fermé de la tablette), il ne peut pas recevoir le focus, qui tomberait sur <body>.
+ */
+export function isDisplayed(el: Element): boolean {
+  return el.getClientRects().length > 0;
+}
+
 function findByKey(root: ParentNode, key: string): HTMLElement | null {
   for (const el of root.querySelectorAll<HTMLElement>('[data-key]')) {
     if (el.dataset.key === key) return el;
@@ -137,11 +145,23 @@ export class WorkList {
     target?.focus({ preventScroll: true });
   }
 
-  /** Rend le focus à la ligne d'une clé (retour de la fiche) ; false si elle n'est plus affichée. */
+  /**
+   * Rend le focus à la ligne d'une clé (retour de la fiche) ; false si elle n'est pas affichée :
+   * absente de la liste, ou liste masquée (onglet Carte du mobile : relecture finale I2).
+   */
   focusRow(key: string): boolean {
     const row = findByKey(this.root, key);
-    row?.focus({ preventScroll: true });
-    return row !== null;
+    if (!row || !isDisplayed(row)) return false;
+    row.focus({ preventScroll: true });
+    return true;
+  }
+
+  /** Focus sur le titre de la liste ; false si la liste n'est pas affichée. */
+  focusTitle(): boolean {
+    const title = this.root.querySelector<HTMLElement>('.wl-title');
+    if (!title || !isDisplayed(title)) return false;
+    title.focus({ preventScroll: true });
+    return true;
   }
 
   private focusTarget(el: HTMLElement): () => HTMLElement | null {

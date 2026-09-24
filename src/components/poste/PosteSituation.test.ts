@@ -105,7 +105,32 @@ const activeKey = (): string | undefined => (document.activeElement instanceof H
 afterEach(() => {
   document.body.replaceChildren();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
+
+const activeTab = (): string | undefined => (document.activeElement instanceof HTMLElement ? document.activeElement.dataset.tab : undefined);
+
+/**
+ * happy-dom n'a pas de mise en page : simule main.css (§9) en donnant zéro boîte aux éléments de
+ * la liste ou de la fiche quand la disposition les masque (onglets du mobile, volet de la tablette).
+ */
+function simulateLayoutCss(roots: PosteRoots, layout: 'mobile' | 'tablet'): void {
+  const original = Element.prototype.getClientRects;
+  vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(function (this: Element): DOMRectList {
+    const { v2Tab, v2Fiche } = roots.app.dataset;
+    const listHidden = layout === 'mobile' && v2Tab !== 'list';
+    const ficheHidden = layout === 'mobile' ? v2Tab !== 'fiche' && v2Fiche !== 'open' : v2Fiche !== 'open';
+    if ((listHidden && roots.list.contains(this)) || (ficheHidden && roots.fiche.contains(this))) {
+      return [] as unknown as DOMRectList;
+    }
+    return original.call(this);
+  });
+}
+
+/** Situation localisée, avec couche : la fiche porte « Voir sur la carte ». */
+function locatedData(): PosteData {
+  return data({ snapshot: { ...data().snapshot, situations: [situation({ lon: 2.35, lat: 48.85, activateLayers: ['powerGrid'] })] } });
+}
 
 describe('layoutFor (spec §9)', () => {
   it('mobile sous 700 px, tablette jusqu’à 1 100 px, ordinateur au-delà', () => {
@@ -231,6 +256,95 @@ describe('PosteSituation', () => {
     roots.tabs.querySelector<HTMLButtonElement>('[data-tab="fiche"]')?.click();
     expect(roots.app.dataset.v2Tab).toBe('fiche');
     expect(ficheKey(roots)).toBe('france');
+  });
+
+  it('tablette : « Voir sur la carte » ferme d’abord le volet, puis active et vole ; focus rendu à la ligne (relecture finale I2)', () => {
+    const { roots, cb, poste } = setup(820);
+    poste.update(locatedData());
+    simulateLayoutCss(roots, 'tablet');
+    poste.select('situation:energy-stress');
+    const seen: Array<string | undefined> = [];
+    cb.onActivateLayers.mockImplementation(() => { seen.push(roots.app.dataset.v2Fiche); });
+    cb.onFlyTo.mockImplementation(() => { seen.push(roots.app.dataset.v2Fiche); });
+    const action = roots.fiche.querySelector<HTMLButtonElement>('[data-action="map"]');
+    action?.focus();
+    action?.click();
+    expect(cb.onActivateLayers).toHaveBeenCalledWith(['powerGrid']);
+    expect(cb.onFlyTo).toHaveBeenCalledWith(2.35, 48.85, 10);
+    expect(seen).toEqual(['default', 'default']);
+    expect(roots.app.dataset.v2Fiche).toBe('default');
+    expect(activeKey()).toBe('situation:energy-stress');
+  });
+
+  it('mobile : « Voir sur la carte » ferme le volet et passe à l’onglet Carte AVANT le flyTo ; focus sur l’onglet (I2)', () => {
+    const { roots, cb, poste } = setup(390);
+    poste.update(locatedData());
+    simulateLayoutCss(roots, 'mobile');
+    poste.select('situation:energy-stress');
+    let atFly: [string | undefined, string | undefined] | null = null;
+    cb.onFlyTo.mockImplementation(() => { atFly = [roots.app.dataset.v2Tab, roots.app.dataset.v2Fiche]; });
+    const action = roots.fiche.querySelector<HTMLButtonElement>('[data-action="map"]');
+    action?.focus();
+    action?.click();
+    expect(atFly).toEqual(['map', 'default']);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(activeTab()).toBe('map');
+  });
+
+  it('mobile : « Afficher la couche » d’une alerte officielle ferme aussi le volet avant d’activer (I2)', () => {
+    const { roots, cb, poste } = setup(390);
+    const mix = { timestamp: new Date(0), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 };
+    poste.update(data({ ecowatt: { signals: { '53': 'red' }, mixes: {}, national: mix, interconnections: [] } }));
+    simulateLayoutCss(roots, 'mobile');
+    poste.select('official:ecowatt:rouge');
+    let atActivate: [string | undefined, string | undefined] | null = null;
+    cb.onActivateLayers.mockImplementation(() => { atActivate = [roots.app.dataset.v2Tab, roots.app.dataset.v2Fiche]; });
+    roots.fiche.querySelector<HTMLButtonElement>('[data-action="show-layer"]')?.click();
+    expect(cb.onActivateLayers).toHaveBeenCalledWith(['powerGrid']);
+    expect(atActivate).toEqual(['map', 'default']);
+  });
+
+  it('mobile : même règle pour « Voir sur la carte » de la fiche France et « Voir l’aéronef » (I2, extension)', () => {
+    const { roots, cb, poste } = setup(390);
+    const surge = situation({
+      id: 'military-surge-concentration-alert', type: 'MILITARY_SURGE_ALERT', severity: 'critical', title: 'Concentration de vols militaires',
+      lat: 47.1, lon: 2.4, activateLayers: ['military'],
+    });
+    poste.update(data({ alerts: [surge] }));
+    const states: Array<[string | undefined, string | undefined]> = [];
+    const record = (): void => { states.push([roots.app.dataset.v2Tab, roots.app.dataset.v2Fiche]); };
+    cb.onShowFrance.mockImplementation(record);
+    cb.onOpenDossier.mockImplementation(() => { record(); return true; });
+    poste.select('france');
+    roots.fiche.querySelector<HTMLButtonElement>('[data-action="show-france"]')?.click();
+    roots.tabs.querySelector<HTMLButtonElement>('[data-tab="list"]')?.click();
+    poste.select('alert:military-surge-concentration-alert');
+    roots.fiche.querySelector<HTMLButtonElement>('[data-action="dossier"]')?.click();
+    expect(states).toEqual([['map', 'default'], ['map', 'default']]);
+  });
+
+  it('mobile : fermer le volet depuis l’onglet Carte met le focus sur l’onglet actif, jamais sur <body> (I2)', () => {
+    const { roots, poste } = setup(390);
+    simulateLayoutCss(roots, 'mobile');
+    poste.select('situation:energy-stress');
+    roots.tabs.querySelector<HTMLButtonElement>('[data-tab="map"]')?.click();
+    expect(roots.app.dataset.v2Fiche).toBe('open');
+    const close = roots.fiche.querySelector<HTMLButtonElement>('.fiche-close');
+    close?.focus();
+    close?.click();
+    expect(roots.app.dataset.v2Fiche).toBe('default');
+    expect(document.activeElement).not.toBe(document.body);
+    expect(activeTab()).toBe('map');
+  });
+
+  it('tablette : fermer une fiche sans ligne (thème) met le focus sur le titre de la liste, jamais sur <body> (I2)', () => {
+    const { roots } = setup(820);
+    simulateLayoutCss(roots, 'tablet');
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
+    expect(roots.app.dataset.v2Fiche).toBe('open');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(roots.app.dataset.v2Fiche).toBe('default');
+    expect(document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('wl-title')).toBe(true);
   });
 
   it('ligne de base : les niveaux affichés, sans les événements', () => {

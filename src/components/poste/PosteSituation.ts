@@ -247,7 +247,40 @@ export class PosteSituation {
     if (key === null) return;
     this.selection = null;
     this.render();
-    if (!this.workList.focusRow(key)) this.fichePanel.focusHeading();
+    this.restoreFocus(key);
+  }
+
+  /**
+   * Focus après la fermeture du volet (relecture finale I2) : la ligne de la clé si elle est
+   * affichée, sinon le titre de la fiche visible, sinon l'onglet actif (mobile) ou le titre de la
+   * liste — jamais <body> (une ligne d'une liste masquée ne peut pas recevoir le focus).
+   */
+  private restoreFocus(key: string | null): void {
+    if (key !== null && this.workList.focusRow(key)) return;
+    if (this.fichePanel.focusHeading()) return;
+    if (this.layout() === 'mobile' && this.focusActiveTab()) return;
+    this.workList.focusTitle();
+  }
+
+  private focusActiveTab(): boolean {
+    const tab = this.roots.tabs.querySelector<HTMLElement>(`[data-tab="${this.tab}"]`);
+    tab?.focus({ preventScroll: true });
+    return tab !== null;
+  }
+
+  /**
+   * Actions qui montrent la carte, hors ordinateur (relecture finale I2) : le volet se ferme
+   * d'abord (sélection effacée), puis l'onglet Carte s'affiche (mobile) ; l'appelant active
+   * ensuite les couches et fait le flyTo, sur une carte visible que le volet ne recouvre plus.
+   */
+  private revealMap(): void {
+    const layout = this.layout();
+    if (layout === 'desktop') return;
+    const key = this.selection;
+    this.selection = null;
+    if (layout === 'mobile') this.tab = 'map';
+    this.render();
+    this.restoreFocus(key);
   }
 
   setTab(tab: PosteTab): void {
@@ -312,7 +345,7 @@ export class PosteSituation {
     }
     this.fichePanel.render(model, lang, this.selection !== null);
     this.callbacks.onFicheRendered(this.fichePanel.getBody());
-    if (vanished && ficheHadFocus) this.fichePanel.focusHeading();
+    if (vanished && ficheHadFocus) this.restoreFocus(null);
 
     const history = this.events && !(this.events.unavailable && this.events.events.length === 0) ? this.events : null;
     this.statusBar.update({
@@ -431,46 +464,47 @@ export class PosteSituation {
   private runAction(action: string, ficheKey: string): void {
     const data = this.data;
     if (!data) return;
-    const toMap = (): void => {
-      if (this.layout() === 'mobile') this.setTab('map');
-    };
     if (action === 'report') {
       this.callbacks.onOpenReport();
       return;
     }
+    // Toute action qui montre la carte ferme d'abord le volet (hors ordinateur), puis agit.
     if (action === 'show-france') {
+      this.revealMap();
       this.callbacks.onShowFrance();
-      toMap();
       return;
     }
     if (action === 'show-theme') {
+      this.revealMap();
       this.callbacks.onThemeChange(this.theme);
-      toMap();
       return;
     }
     const item = this.queue?.items.find((i) => i.key === ficheKey);
     if (action === 'show-layer' && item?.ref.kind === 'official') {
-      this.callbacks.onActivateLayers(item.ref.group.source === 'ecowatt' ? ['powerGrid'] : ['environmental']);
-      toMap();
+      const layers = item.ref.group.source === 'ecowatt' ? ['powerGrid'] : ['environmental'];
+      this.revealMap();
+      this.callbacks.onActivateLayers(layers);
       return;
     }
     const situation = item?.ref.kind === 'situation' || item?.ref.kind === 'alert'
       ? item.ref.situation
       : data.snapshot.situations.find((s) => `situation:${s.id}` === ficheKey);
     if (action === 'dossier' && situation) {
+      // « Voir l'aéronef » vole vers l'appareil sur la carte ; le dossier d'incendie est une fenêtre.
+      if (situation.type === 'MILITARY_SURGE_ALERT') this.revealMap();
       this.callbacks.onOpenDossier(situation);
       return;
     }
     if (action !== 'map') return;
+    const eventId = ficheKey.startsWith('event:') ? Number(ficheKey.slice('event:'.length)) : null;
+    const event = situation || eventId === null ? undefined : this.events?.events.find((e) => e.id === eventId);
+    this.revealMap();
     if (situation) {
       if (situation.activateLayers && situation.activateLayers.length > 0) this.callbacks.onActivateLayers(situation.activateLayers);
       if (situation.lon != null && situation.lat != null) this.callbacks.onFlyTo(situation.lon, situation.lat, 10);
-    } else if (ficheKey.startsWith('event:')) {
-      const id = Number(ficheKey.slice('event:'.length));
-      const event = this.events?.events.find((e) => e.id === id);
-      if (event && event.lon !== null && event.lat !== null) this.callbacks.onFlyTo(event.lon, event.lat, 10);
+    } else if (event && event.lon !== null && event.lat !== null) {
+      this.callbacks.onFlyTo(event.lon, event.lat, 10);
     }
-    toMap();
   }
 
   private renderTabs(lang: Lang): void {

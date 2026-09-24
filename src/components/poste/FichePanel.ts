@@ -4,6 +4,7 @@
 // volets est remonté au contrôleur, qui le garde hors du DOM.
 
 import { renderFiche, type FicheModel, type Lang } from '../fiche/parts.ts';
+import { isDisplayed } from './WorkList.ts';
 
 function findByData(root: ParentNode, attr: 'select' | 'action', value: string): HTMLElement | null {
   for (const el of root.querySelectorAll<HTMLElement>(`[data-${attr}]`)) {
@@ -85,8 +86,12 @@ export class FichePanel {
     restore?.()?.focus({ preventScroll: true });
   }
 
-  focusHeading(): void {
-    this.body.querySelector<HTMLElement>('.fiche-name')?.focus({ preventScroll: true });
+  /** Focus sur le titre de la fiche ; false si la fiche n'est pas affichée (volet fermé, onglet masqué). */
+  focusHeading(): boolean {
+    const heading = this.body.querySelector<HTMLElement>('.fiche-name');
+    if (!heading || !isDisplayed(heading)) return false;
+    heading.focus({ preventScroll: true });
+    return true;
   }
 
   focusClose(): void {

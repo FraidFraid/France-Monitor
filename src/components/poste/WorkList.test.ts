@@ -44,7 +44,16 @@ const activeKey = (): string | undefined => (document.activeElement instanceof H
 
 afterEach(() => {
   document.body.replaceChildren();
+  vi.restoreAllMocks();
 });
+
+/** happy-dom n'a pas de mise en page : simule un conteneur en display: none (aucune boîte). */
+function hideWithin(container: HTMLElement): void {
+  const original = Element.prototype.getClientRects;
+  vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(function (this: Element): DOMRectList {
+    return container.contains(this) ? ([] as unknown as DOMRectList) : original.call(this);
+  });
+}
 
 describe('renderWorkList (spec §7.2, §7.4)', () => {
   it('titre, mot du niveau dans chaque ligne, badge et sources indépendantes', () => {
@@ -106,6 +115,18 @@ describe('WorkList — clavier et focus (spec §9)', () => {
     expect(activeKey()).toBe('situation:b');
     list.update(at(NOW + 30 * 60_000, ['a', 'c']));
     expect(activeKey()).toBe('situation:a');
+  });
+
+  it('focusRow : false et aucun focus si la ligne n’est pas affichée (liste masquée, relecture finale I2)', () => {
+    const { root, list } = mount();
+    list.update(model({ situations: [situation()] }));
+    expect(list.focusRow('situation:energy-stress')).toBe(true);
+    expect(activeKey()).toBe('situation:energy-stress');
+    root.querySelector<HTMLElement>('.wl-item')?.blur();
+    hideWithin(root);
+    expect(list.focusRow('situation:energy-stress')).toBe(false);
+    expect(activeKey()).toBeUndefined();
+    expect(list.focusTitle()).toBe(false);
   });
 
   it('ne réécrit pas le DOM quand rien ne change', () => {
