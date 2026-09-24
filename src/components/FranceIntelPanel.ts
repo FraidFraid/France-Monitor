@@ -11,7 +11,7 @@ import type {
   DetectedSituation,
   StructuredBrief,
 } from '../types/index.ts';
-import { renderChangesSection, renderEventsSection, type EventDetailState } from './france-intel-events.ts';
+import { renderChangesSection, renderEventsSection, resolveEvidenceRef, type EventDetailState } from './france-intel-events.ts';
 import { fetchEventDetail } from '../services/news-events.ts';
 import {
   filterFuelPriceSeries,
@@ -165,6 +165,8 @@ export class FranceIntelPanel extends Panel {
   private eventDetails = new Map<number, EventDetailState>();
   /** Preuve mise en évidence ; gardée en état car le panneau est souvent reconstruit en entier. */
   private flash: { ref: string; until: number } | null = null;
+  /** Situations numérotées S1…S5 au moment du brief affiché (briefSituationIds). */
+  private briefSituationIds: string[] = [];
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
@@ -260,8 +262,9 @@ export class FranceIntelPanel extends Panel {
     this.renderBriefSection();
   }
 
-  updateBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached'): void {
+  updateBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached', situationIds: string[] = []): void {
     this.briefState = { brief, freshness };
+    this.briefSituationIds = situationIds;
     this.renderBriefSection();
     // Les preuves citées doivent rester consultables dans la liste d'événements.
     this.renderEventsSections();
@@ -410,14 +413,14 @@ export class FranceIntelPanel extends Panel {
     return null;
   }
 
-  /** E42 → ligne de l'événement ; S2 → deuxième situation (numérotation de compactSituations). */
+  /** E42 → ligne de l'événement ; S2 → deuxième situation telle que numérotée au moment du brief. */
   private findEvidenceElement(ref: string): HTMLElement | null {
     if (!this.contentEl) return null;
-    if (ref.startsWith('E')) {
-      return this.contentEl.querySelector<HTMLElement>(`.fi-events-body [data-event-id="${CSS.escape(ref.slice(1))}"]`);
-    }
-    const situation = this.lastSnapshot?.situations[Number(ref.slice(1)) - 1];
-    return situation ? this.contentEl.querySelector<HTMLElement>(`[data-sit-id="${CSS.escape(situation.id)}"]`) : null;
+    const target = resolveEvidenceRef(ref, this.briefSituationIds);
+    if (!target) return null;
+    return target.kind === 'event'
+      ? this.contentEl.querySelector<HTMLElement>(`.fi-events-body [data-event-id="${CSS.escape(String(target.id))}"]`)
+      : this.contentEl.querySelector<HTMLElement>(`[data-sit-id="${CSS.escape(target.id)}"]`);
   }
 
   private focusEvidence(ref: string): void {

@@ -21,7 +21,7 @@ import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
-import { fetchFranceIntelBrief } from './services/france-intel-brief.ts';
+import { briefSituationIds, fetchFranceIntelBrief } from './services/france-intel-brief.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
@@ -7419,6 +7419,8 @@ export class App {
     options?: { showLoading?: boolean },
   ): void {
     const requestId = ++this.franceIntelBriefRequestId;
+    // S1…S5 désignent les situations de CET instantané : figé pour les preuves cliquables.
+    const situationIds = briefSituationIds(snapshot.situations);
     if (options?.showLoading !== false) {
       this.franceIntelPanel?.showBriefLoading();
     }
@@ -7432,7 +7434,7 @@ export class App {
       if (!result || requestId !== this.franceIntelBriefRequestId) return;
       if (!this.franceIntelPanel?.isVisible()) return;
       if (this.franceIntelPanel.getCurrentLang() !== lang) return;
-      this.franceIntelPanel.updateBrief(result.brief, result.freshness);
+      this.franceIntelPanel.updateBrief(result.brief, result.freshness, situationIds);
     });
   }
 

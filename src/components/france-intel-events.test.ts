@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderChangesSection, renderEventRow, renderEventsSection, safeHref } from './france-intel-events.ts';
+import { renderChangesSection, renderEventRow, renderEventsSection, resolveEvidenceRef, safeHref } from './france-intel-events.ts';
 import type { IntelEventsState, NewsEvent } from '../types/index.ts';
 
 const NOW = Date.parse('2026-09-23T08:00:00Z');
@@ -67,5 +67,15 @@ describe('rendu des événements', () => {
     });
     expect(html).toContain('aggravé MOYEN → ÉLEVÉ');
     expect(html).toContain('créé · MOYEN');
+  });
+});
+
+describe('resolveEvidenceRef (relecture finale #3)', () => {
+  it('résout S<n> contre les situations figées au moment du brief, pas contre l’instantané courant', () => {
+    const atBrief = ['energy-stress', 'cyber-pressure'];
+    expect(resolveEvidenceRef('S2', atBrief)).toEqual({ kind: 'situation', id: 'cyber-pressure' });
+    expect(resolveEvidenceRef('S3', atBrief)).toBeNull();
+    expect(resolveEvidenceRef('E42', atBrief)).toEqual({ kind: 'event', id: 42 });
+    expect(resolveEvidenceRef('X1', atBrief)).toBeNull();
   });
 });

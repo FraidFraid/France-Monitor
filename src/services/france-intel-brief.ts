@@ -346,6 +346,15 @@ export interface CompactSituation {
   affectedZones: string[];
 }
 
+/**
+ * Identifiants des situations numérotées S1…S5 dans le brief (même tranche que
+ * compactSituations). À figer au moment de la demande : l'instantané courant bouge
+ * ensuite à chaque rafraîchissement, et S2 désignerait une autre situation.
+ */
+export function briefSituationIds(situations: DetectedSituation[]): string[] {
+  return situations.slice(0, 5).map((s) => s.id);
+}
+
 export function compactSituations(situations: DetectedSituation[]): CompactSituation[] {
   return situations.slice(0, 5).map((s) => ({
     type: String(s.type).slice(0, 40),

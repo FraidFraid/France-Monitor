@@ -180,6 +180,20 @@ export function renderEventRow(e: NewsEvent, lang: Lang, now: number, detail: Ev
   `;
 }
 
+export type EvidenceTarget = { kind: 'event'; id: number } | { kind: 'situation'; id: string };
+
+/**
+ * Cible d'une preuve citée : E<id> → événement ; S<n> → n-ième situation parmi celles
+ * figées au moment du brief (briefSituationIds), jamais l'instantané courant.
+ */
+export function resolveEvidenceRef(ref: string, situationIds: readonly string[]): EvidenceTarget | null {
+  const event = /^E(\d{1,12})$/.exec(ref);
+  if (event) return { kind: 'event', id: Number(event[1]) };
+  const situation = /^S(\d{1,2})$/.exec(ref);
+  const id = situation ? situationIds[Number(situation[1]) - 1] : undefined;
+  return id === undefined ? null : { kind: 'situation', id };
+}
+
 const UNAVAILABLE = (lang: Lang): string => `<div class="frintel-empty">${t(lang,
   'Historique serveur indisponible : ce fil reviendra au prochain rafraîchissement.',
   'Server history unavailable: this feed will return on the next refresh.')}</div>`;

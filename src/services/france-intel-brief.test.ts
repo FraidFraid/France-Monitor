@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
-import { buildDeterministicBrief, compactSituations, parseStructuredBrief } from './france-intel-brief.ts';
+import { briefSituationIds, buildDeterministicBrief, compactSituations, parseStructuredBrief } from './france-intel-brief.ts';
 import type { BriefEventInput, DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
 
 function situation(overrides: Partial<DetectedSituation> = {}): DetectedSituation {
@@ -172,5 +172,14 @@ describe('brief v14 — preuves', () => {
     assert.equal(brief.judgments[0].priority, 1);
     assert.equal(brief.judgments[0].confidence, 'low');
     assert.ok(brief.judgments.every((j) => !j.unsupported));
+  });
+});
+
+describe('briefSituationIds (relecture finale #3)', () => {
+  it('suit la numérotation S1…S5 de compactSituations', () => {
+    const situations = Array.from({ length: 7 }, (_, i) => situation({ id: `sit-${i + 1}`, title: `Situation ${i + 1}` }));
+    const ids = briefSituationIds(situations);
+    assert.deepEqual(ids, ['sit-1', 'sit-2', 'sit-3', 'sit-4', 'sit-5']);
+    assert.equal(ids.length, compactSituations(situations).length);
   });
 });
