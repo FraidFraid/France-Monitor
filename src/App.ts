@@ -28,7 +28,7 @@ import {
 } from './services/france-country-intel.ts';
 import { detectWildfireIncidents } from './services/situation-engine.ts';
 import { getPreviousScoreForSmoothing, recordStabilitySnapshot } from './utils/stability-history.ts';
-import type { FranceCountrySnapshot, FranceIntelTimelineLane, StructuredBrief } from './types/index.ts';
+import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
@@ -7423,12 +7423,38 @@ export class App {
       this.franceIntelPanel?.showBriefLoading();
     }
 
-    void fetchFranceIntelBrief(snapshot, lang).then(({ brief, freshness }) => {
-      if (requestId !== this.franceIntelBriefRequestId) return;
+    // Les événements consolidés alimentent le panneau ET servent de preuves citables au brief.
+    void this.loadFranceIntelEvents().then((loaded) => {
+      if (requestId !== this.franceIntelBriefRequestId) return null;
+      if (loaded && this.franceIntelPanel?.isVisible()) this.franceIntelPanel.updateEvents(loaded.state);
+      return fetchFranceIntelBrief(snapshot, lang, loaded?.briefEvents ?? []);
+    }).then((result) => {
+      if (!result || requestId !== this.franceIntelBriefRequestId) return;
       if (!this.franceIntelPanel?.isVisible()) return;
       if (this.franceIntelPanel.getCurrentLang() !== lang) return;
-      this.franceIntelPanel.updateBrief(brief, freshness);
+      this.franceIntelPanel.updateBrief(result.brief, result.freshness);
     });
+  }
+
+  /**
+   * Événements + fil « depuis votre dernière visite » (modules chargés à la demande, hors
+   * chunk critique). L'état porte `unavailable` si l'API échoue ; null seulement si le
+   * chunk lui-même n'a pas pu être chargé.
+   */
+  private async loadFranceIntelEvents(): Promise<{ state: IntelEventsState; briefEvents: BriefEventInput[] } | null> {
+    try {
+      const [events, visit] = await Promise.all([
+        import('./services/news-events.ts'),
+        import('./services/intel-last-visit.ts'),
+      ]);
+      const state = await events.loadIntelEventsState(visit.beginIntelVisit());
+      // L'utilisateur a vu l'état courant : c'est l'ancre de sa prochaine visite.
+      if (!state.unavailable) visit.recordIntelVisitSeen();
+      return { state, briefEvents: events.selectBriefEvents(state.events) };
+    } catch (err) {
+      console.warn('[App] France intel events unavailable', err);
+      return null;
+    }
   }
 
   private clearFranceIntelBriefRefresh(): void {

@@ -4,12 +4,15 @@ import type { BarometerWidget } from './BarometerWidget.ts';
 import type {
   FranceCountrySnapshot,
   FranceIntelTimelineLane,
+  IntelEventsState,
   MeteoVigilanceLevel,
   FranceScoreBreakdown,
   SituationSeverity,
   DetectedSituation,
   StructuredBrief,
 } from '../types/index.ts';
+import { renderChangesSection, renderEventsSection, type EventDetailState } from './france-intel-events.ts';
+import { fetchEventDetail } from '../services/news-events.ts';
 import {
   filterFuelPriceSeries,
   formatFuelDeltaCents,
@@ -37,6 +40,8 @@ const RISK_LABELS: Record<string, string> = {
   avalanche: 'Avalanches',
   'wave-surge': 'Vagues-submersion',
 };
+
+const FLASH_MS = 1500;
 
 function t(lang: 'fr' | 'en', fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
@@ -155,6 +160,11 @@ export class FranceIntelPanel extends Panel {
   private lastSnapshot: FranceCountrySnapshot | null = null;
   private expandedSituations = new Set<string>();
   private situationsInitialized = false;
+  private eventsState: IntelEventsState | null = null;
+  /** Événements dépliés (articles chargés à la demande), communs aux deux listes. */
+  private eventDetails = new Map<number, EventDetailState>();
+  /** Preuve mise en évidence ; gardée en état car le panneau est souvent reconstruit en entier. */
+  private flash: { ref: string; until: number } | null = null;
 
   constructor(container: HTMLElement) {
     super(container, { title: 'France Intelligence', icon: '🇫🇷', collapsible: false });
@@ -183,6 +193,8 @@ export class FranceIntelPanel extends Panel {
 
     this.contentEl = this.modalEl.querySelector('.frintel-content');
     this.container.appendChild(this.modalEl);
+    // Délégation : le contenu est reconstruit par innerHTML à chaque rafraîchissement.
+    this.contentEl?.addEventListener('click', (e) => this.handleEventsClick(e));
 
     const closeBtn = this.modalEl.querySelector('.fi-close') as HTMLButtonElement | null;
     closeBtn?.addEventListener('click', () => this.hide());
@@ -251,13 +263,28 @@ export class FranceIntelPanel extends Panel {
   updateBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached'): void {
     this.briefState = { brief, freshness };
     this.renderBriefSection();
+    // Les preuves citées doivent rester consultables dans la liste d'événements.
+    this.renderEventsSections();
+  }
+
+  updateEvents(state: IntelEventsState): void {
+    this.eventsState = state;
+    this.renderEventsSections();
   }
 
   destroy(): void {
     this.modalEl?.remove();
   }
 
+  /**
+   * Le panneau est reconstruit à chaque mise à jour de données (des dizaines de fois au
+   * démarrage) : chaque rendu rend le focus clavier à l'équivalent recréé de l'élément focalisé.
+   */
   private renderContent(snapshot: FranceCountrySnapshot): void {
+    this.preservingFocus(() => this.renderContentNow(snapshot));
+  }
+
+  private renderContentNow(snapshot: FranceCountrySnapshot): void {
     if (!this.contentEl) return;
     const lang = snapshot.briefLang;
 
@@ -278,6 +305,13 @@ export class FranceIntelPanel extends Panel {
 
     this.contentEl.innerHTML = `
       ${this.renderScoreBlock(snapshot, lang)}
+      <section class="frintel-card">
+        <div class="frintel-card-top">
+          <div class="frintel-card-title">${t(lang, 'Depuis votre dernière visite', 'Since your last visit')}</div>
+          <div class="frintel-card-meta fi-changes-meta"></div>
+        </div>
+        <div class="fi-changes-body"></div>
+      </section>
       ${this.renderSituationsBlock(snapshot.situations, lang)}
       <section class="frintel-card">
         <div class="frintel-card-top">
@@ -285,6 +319,13 @@ export class FranceIntelPanel extends Panel {
           <div class="frintel-card-meta fi-brief-meta"></div>
         </div>
         <div class="frintel-brief-body fi-brief-body"></div>
+      </section>
+      <section class="frintel-card">
+        <div class="frintel-card-top">
+          <div class="frintel-card-title">${t(lang, 'Événements consolidés', 'Consolidated events')}</div>
+          <div class="frintel-card-meta fi-events-meta"></div>
+        </div>
+        <div class="fi-events-body"></div>
       </section>
       <div class="fi-infra-widget-slot"></div>
       ${this.renderDomainsBlock(snapshot, lang)}
@@ -294,6 +335,104 @@ export class FranceIntelPanel extends Panel {
 
     this.bindSituationToggles();
     this.renderBriefSection();
+    this.renderEventsSections();
+  }
+
+  private renderEventsSections(): void {
+    this.preservingFocus(() => this.renderEventsSectionsNow());
+  }
+
+  private renderEventsSectionsNow(): void {
+    const lang = this.currentLang;
+    const now = Date.now();
+    const pinned = new Set(this.briefState?.brief.judgments.flatMap((j) => j.evidence) ?? []);
+    const sections: Array<[string, { meta: string; body: string }]> = [
+      ['changes', renderChangesSection(this.eventsState, lang, now, this.eventDetails)],
+      ['events', renderEventsSection(this.eventsState, lang, now, this.eventDetails, pinned)],
+    ];
+    for (const [key, html] of sections) {
+      const meta = this.modalEl.querySelector(`.fi-${key}-meta`);
+      const body = this.modalEl.querySelector(`.fi-${key}-body`);
+      if (!meta || !body) continue;
+      meta.textContent = html.meta;
+      body.innerHTML = html.body || fmLoaderHTML({ text: t(lang, 'Chargement des événements…', 'Loading events…'), variant: 'inline' });
+    }
+    this.applyFlash();
+  }
+
+  private handleEventsClick(e: MouseEvent): void {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const ref = target.closest<HTMLElement>('[data-evidence]')?.dataset.evidence;
+    if (ref) {
+      this.focusEvidence(ref);
+      return;
+    }
+    const head = target.closest<HTMLElement>('.frintel-ev-head');
+    const id = Number(head?.closest<HTMLElement>('[data-event-id]')?.dataset.eventId);
+    if (!head || !Number.isSafeInteger(id)) return;
+    head.focus({ preventScroll: true }); // Safari ne focalise pas un bouton cliqué à la souris
+    void this.toggleEvent(id);
+  }
+
+  private async toggleEvent(id: number): Promise<void> {
+    if (this.eventDetails.has(id)) {
+      this.eventDetails.delete(id);
+      this.renderEventsSections();
+      return;
+    }
+    this.eventDetails.set(id, 'loading');
+    this.renderEventsSections();
+    const detail = await fetchEventDetail(id);
+    if (!this.eventDetails.has(id)) return; // replié pendant le chargement
+    this.eventDetails.set(id, detail ?? 'error');
+    this.renderEventsSections();
+  }
+
+  private preservingFocus(render: () => void): void {
+    const selector = this.focusedSelector();
+    render();
+    if (selector) this.contentEl?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+  }
+
+  /** Sélecteur stable de l'élément focalisé (événement, situation ou preuve), null sinon. */
+  private focusedSelector(): string | null {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || !this.contentEl?.contains(el)) return null;
+    if (el.dataset.evidence) return `.frintel-ev-ref[data-evidence="${CSS.escape(el.dataset.evidence)}"]`;
+    const eventId = el.closest<HTMLElement>('[data-event-id]')?.dataset.eventId;
+    if (eventId && el.classList.contains('frintel-ev-head')) {
+      const section = el.closest('.fi-changes-body') ? 'changes' : 'events';
+      return `.fi-${section}-body [data-event-id="${CSS.escape(eventId)}"] .frintel-ev-head`;
+    }
+    const sitId = el.closest<HTMLElement>('[data-sit-id]')?.dataset.sitId;
+    if (sitId && el.classList.contains('frintel-sit-head')) return `[data-sit-id="${CSS.escape(sitId)}"] .frintel-sit-head`;
+    return null;
+  }
+
+  /** E42 → ligne de l'événement ; S2 → deuxième situation (numérotation de compactSituations). */
+  private findEvidenceElement(ref: string): HTMLElement | null {
+    if (!this.contentEl) return null;
+    if (ref.startsWith('E')) {
+      return this.contentEl.querySelector<HTMLElement>(`.fi-events-body [data-event-id="${CSS.escape(ref.slice(1))}"]`);
+    }
+    const situation = this.lastSnapshot?.situations[Number(ref.slice(1)) - 1];
+    return situation ? this.contentEl.querySelector<HTMLElement>(`[data-sit-id="${CSS.escape(situation.id)}"]`) : null;
+  }
+
+  private focusEvidence(ref: string): void {
+    const el = this.findEvidenceElement(ref);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    this.flash = { ref, until: Date.now() + FLASH_MS };
+    this.applyFlash();
+    window.setTimeout(() => this.applyFlash(), FLASH_MS);
+  }
+
+  private applyFlash(): void {
+    this.contentEl?.querySelectorAll('.is-flash').forEach((node) => node.classList.remove('is-flash'));
+    if (this.flash && Date.now() < this.flash.until) this.findEvidenceElement(this.flash.ref)?.classList.add('is-flash');
+    else this.flash = null;
   }
 
   private renderScoreBlock(snapshot: FranceCountrySnapshot, lang: 'fr' | 'en'): string {
@@ -708,8 +847,14 @@ export class FranceIntelPanel extends Panel {
         <div class="frintel-jd-main">
           <div class="frintel-jd-text">${escapeHtml(j.text)}</div>
           <div class="frintel-jd-foot">
-            <span class="frintel-jd-sources">${escapeHtml(j.sources.join(' · '))}</span>
-            <span class="frintel-jd-conf frintel-jd-conf-${j.confidence}">${t(lang, 'CONFIANCE', 'CONFIDENCE')} ${confidenceLabel[j.confidence]}</span>
+            <span>
+              <span class="frintel-jd-refs">${j.evidence.map((id) => `<button type="button" class="frintel-chip frintel-ev-ref" data-evidence="${escapeHtml(id)}">${escapeHtml(id)}</button>`).join('')}</span>
+              <span class="frintel-jd-sources">${escapeHtml(j.sources.join(' · '))}</span>
+            </span>
+            <span>
+              ${j.unsupported ? `<span class="frintel-jd-unsupported">${t(lang, 'NON ÉTAYÉ', 'UNSUPPORTED')}</span> ` : ''}
+              <span class="frintel-jd-conf frintel-jd-conf-${j.confidence}">${t(lang, 'CONFIANCE', 'CONFIDENCE')} ${confidenceLabel[j.confidence]}</span>
+            </span>
           </div>
         </div>
       </div>
