@@ -24,7 +24,7 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { isUiV2, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -2309,7 +2309,9 @@ export class App {
       && ALL_PRESETABLE_LAYER_KEYS.some((key) => persistedLayers[key]);
     if (hasPersistedChildActive) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
-      this.suppressFirstLoadPanelAutoOpen = false;
+      // v1 : les panneaux des couches persistées se rouvrent (comportement historique) ; v2
+      // (relecture finale I1) : les couches restent actives sans ouvrir de panneau sur la fiche.
+      this.suppressFirstLoadPanelAutoOpen = !reopensLayerPanelsOnLoad(this.uiV2);
     } else {
       // Premier chargement OU état persisté "tout éteint" → preset d'accueil
       // nommé (mode simple, §5.3 point 1/2) pour ne pas présenter une carte
@@ -4506,7 +4508,7 @@ export class App {
       if (lon == null || lat == null) return false;
 
       if (!this.activeLayers.military) {
-        this.onLayerToggle('military', true);
+        this.onLayerToggle('military', true, layerActivationOptions(this.uiV2));
       }
       this.mapContainer?.flyTo(lon, lat, 10);
       const mapEl = document.getElementById('map-container');
@@ -4519,11 +4521,14 @@ export class App {
     return false;
   }
 
-  /** « Voir sur la carte » d'une situation : active ses couches (SituationMonitor v1, fiche v2). */
+  /**
+   * « Voir sur la carte » d'une situation : active ses couches (SituationMonitor v1, fiche v2). En
+   * v2, sans ouvrir leur panneau flottant sur la colonne fiche (relecture finale I1).
+   */
   private activateLayersFromSituation(layerKeys: readonly string[]): void {
     for (const key of layerKeys) {
       if (key in this.activeLayers && !this.activeLayers[key as keyof typeof this.activeLayers]) {
-        this.onLayerToggle(key as keyof typeof this.activeLayers, true);
+        this.onLayerToggle(key as keyof typeof this.activeLayers, true, layerActivationOptions(this.uiV2));
       }
     }
   }

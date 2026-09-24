@@ -18,3 +18,18 @@ export function isUiV2(search: string): boolean {
 export function shouldRecordIntelSnapshot(uiV2: boolean, v2IntelStarted: boolean): boolean {
   return !uiV2 || v2IntelStarted;
 }
+
+/**
+ * Options d'une activation de couche déclenchée depuis le poste (« Voir sur la carte »,
+ * « Afficher la couche », « Voir l'aéronef ») — relecture finale I1 : en v2, les panneaux
+ * flottants (position: fixed, à droite) recouvriraient la colonne fiche ; la couche s'active sans
+ * ouvrir son panneau, qui reste accessible par le sélecteur de panneaux (§14). v1 : inchangé.
+ */
+export function layerActivationOptions(uiV2: boolean): { suppressPanel?: boolean } {
+  return uiV2 ? { suppressPanel: true } : {};
+}
+
+/** Réouverture, au chargement, des panneaux des couches persistées : v1 seulement (relecture finale I1). */
+export function reopensLayerPanelsOnLoad(uiV2: boolean): boolean {
+  return !uiV2;
+}
