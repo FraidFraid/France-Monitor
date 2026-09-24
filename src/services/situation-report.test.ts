@@ -172,3 +172,35 @@ describe('buildSituationReportHtml — langage commun L1 (refonte UI étape 2)',
     assert.ok(!html.includes('>Critique</span>'));
   });
 });
+
+describe('buildSituationReportHtml — signaux par domaine sans mot en double (relecture finale m5)', () => {
+  const html = buildSituationReportHtml(
+    baseData({
+      domainSignals: [
+        { domain: 'Écowatt (tension électrique)', levelLabel: 'Orange', level: 'orange', detail: '0 région(s) rouge, 1 orange : Bretagne.' },
+        { domain: 'Vigilance météo', levelLabel: 'Rouge', level: 'rouge', detail: '1 dépt rouge, 0 orange : Var.' },
+        { domain: 'Transport', levelLabel: 'Perturbé', level: 'jaune', detail: '2 perturbation(s) ferroviaire(s) majeure(s).' },
+      ],
+    }),
+  );
+  const item = (domain: string): string =>
+    html.split('<li class="dom-item"').slice(1).find((li) => li.includes(domain)) ?? '';
+
+  it('la pastille « Rouge » ou « Orange » n’est plus suivie du même mot', () => {
+    for (const [domain, word] of [['Vigilance météo', 'Rouge'], ['Écowatt (tension électrique)', 'Orange']]) {
+      const li = item(domain);
+      assert.ok(li.includes(`>${word}</span>`), `pastille ${word} absente pour ${domain}`);
+      assert.equal(li.split(`>${word}<`).length - 1, 1, `mot ${word} en double pour ${domain}`);
+      assert.ok(!li.includes('class="dom-level"'));
+    }
+  });
+
+  it('un libellé qui dit autre chose que la pastille reste affiché', () => {
+    assert.ok(item('Transport').includes('<span class="dom-level">Perturbé</span>'));
+  });
+
+  it('les détails (départements, régions, risques) restent', () => {
+    assert.ok(item('Vigilance météo').includes('1 dépt rouge, 0 orange : Var.'));
+    assert.ok(item('Écowatt (tension électrique)').includes('Bretagne'));
+  });
+});

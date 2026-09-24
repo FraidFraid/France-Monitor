@@ -174,17 +174,21 @@ function renderDomains(signals: ReportDomainSignal[]): string {
   }
 
   const rows = signals
-    .map(
-      (d) => `
+    .map((d) => {
+      // Relecture finale (m5) : un libellé qui répète le mot de la pastille (« Rouge » après
+      // « Rouge ») est omis ; un libellé qui dit autre chose (« Perturbé », « Actives ») reste.
+      const repeatsBadge = d.levelLabel.trim().toLowerCase() === levelLabel(d.level).toLowerCase();
+      const levelText = repeatsBadge ? '' : `<span class="dom-level">${escapeHtml(d.levelLabel)}</span>`;
+      return `
       <li class="dom-item" style="border-left-color:${levelHex(d.level)};">
         <div class="dom-head">
           <span class="dom-name">${escapeHtml(d.domain)}</span>
           ${levelBadge(d.level)}
-          <span class="dom-level">${escapeHtml(d.levelLabel)}</span>
+          ${levelText}
         </div>
         <div class="dom-detail">${escapeHtml(d.detail)}</div>
-      </li>`,
-    )
+      </li>`;
+    })
     .join('');
 
   return `<ul class="dom-list">${rows}</ul>`;
