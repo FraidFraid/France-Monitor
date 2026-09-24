@@ -62,6 +62,36 @@ describe('renderScoreCard', () => {
     expect(html).toContain('improving over 24 h');
     expect(html).toContain('Why this level?');
   });
+
+  it('donne le Δ24 h chiffré, le facteur principal et les repères de seuils, seulement dans le volet (F2, §14)', () => {
+    const html = renderScoreCard({ ...base, breakdown: breakdown(43) });
+    const visible = html.slice(0, html.indexOf('<details'));
+    const panel = html.slice(html.indexOf('<details'));
+    expect(visible).not.toContain('Variation sur 24 h');
+    expect(visible).not.toContain('Facteur principal');
+    expect(visible).not.toContain('left:55%');
+    expect(panel).toContain('Variation sur 24 h : −4 ▼');
+    expect(panel).toContain('Facteur principal : Continuité — Carburants &amp; pétrole 100 · Pression électrique 75');
+    expect(panel).toContain('left:55%');
+    expect(panel).toContain('left:70%');
+    expect(panel).toContain('left:85%');
+    expect(panel).toContain('left:0%');
+    expect(panel).toContain('left:100%');
+  });
+
+  it('« — » pour un Δ24 h inconnu ; rien pour le facteur principal quand aucun pilier ne pèse (déduction < 1)', () => {
+    const bd = breakdown(92);
+    bd.pillars = bd.pillars.map((p) => ({ ...p, deduction: 0.4 }));
+    const html = renderScoreCard({ ...base, breakdown: bd, delta24h: null });
+    expect(html).toContain('Variation sur 24 h : —');
+    expect(html).not.toContain('Facteur principal');
+  });
+
+  it('facteur principal et Δ24 h en anglais avec la bascule EN', () => {
+    const html = renderScoreCard({ ...base, breakdown: breakdown(43), lang: 'en', delta24h: -4 });
+    expect(html).toContain('24 h change: −4 ▼');
+    expect(html).toContain('Main factor: Continuity — Carburants &amp; pétrole 100 · Pression électrique 75');
+  });
 });
 
 describe('scoreDriverText', () => {

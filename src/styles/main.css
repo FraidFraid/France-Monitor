@@ -7114,13 +7114,23 @@ button.header-quality-link {
 }
 
 .frintel-gauge-scale {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 10px;
+  margin-top: 3px;
+}
+
+.frintel-gauge-scale-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 8px;
   color: var(--text-muted);
-  margin-top: 3px;
+  white-space: nowrap;
 }
+
+.frintel-gauge-scale-tick:first-child { transform: none; }
+.frintel-gauge-scale-tick:last-child { transform: translateX(-100%); }
 
 .frintel-spark { width: 100%; height: 26px; margin-top: 8px; display: block; }
 
