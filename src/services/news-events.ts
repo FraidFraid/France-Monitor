@@ -1,7 +1,6 @@
 // src/services/news-events.ts — événements consolidés côté serveur (/api/events*).
 // Les articles sont regroupés en événements par le cron d'ingestion ; ce service ne fait
-// que lire, valider et ordonner. Disjoncteur : 3 échecs consécutifs → 5 min sans appel ;
-// chaque appel est abandonné au bout de 8 s.
+// que lire, valider et ordonner. Disjoncteur : 3 échecs consécutifs → 5 min sans appel.
 
 import type {
   BriefEventInput,
@@ -20,7 +19,6 @@ import type {
 const FIVE_MIN_MS = 5 * 60 * 1000;
 const FAILURE_THRESHOLD = 3;
 const COOLDOWN_MS = 5 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 8_000;
 const SEVERITIES: readonly ThreatLevel[] = ['critical', 'high', 'medium', 'low', 'info'];
 const STATUSES: readonly NewsEventStatus[] = ['active', 'cooling', 'closed'];
 const KINDS: readonly NewsEventChangeKind[] = ['created', 'escalated', 'deescalated', 'corroborated', 'reopened', 'cooling', 'closed'];
@@ -94,11 +92,8 @@ function parseChange(value: unknown): NewsEventChange | null {
 
 async function getJson(url: string): Promise<unknown> {
   if (Date.now() < cooldownUntil) throw new Error('news-events: disjoncteur ouvert');
-  // Délai borné : le brief attend ces données ; une base qui cale ne doit pas le retenir.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('news-events: délai dépassé')), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`news-events: HTTP ${res.status}`);
     const body: unknown = await res.json();
     consecutiveFailures = 0;
@@ -110,8 +105,6 @@ async function getJson(url: string): Promise<unknown> {
       consecutiveFailures = 0;
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

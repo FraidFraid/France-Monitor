@@ -70,20 +70,6 @@ describe('loadIntelEventsState', () => {
     expect(state).toMatchObject({ events: [], digest: [], unavailable: true });
   });
 
-  it('abandonne un appel bloqué au bout de 8 s au lieu de retenir le brief (relecture finale #5)', async () => {
-    vi.useFakeTimers();
-    try {
-      vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
-      })));
-      const pending = loadIntelEventsState({ since: 0, kind: 'default' }, 1);
-      await vi.advanceTimersByTimeAsync(8_000);
-      expect((await pending).unavailable).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('arrondit « since » dans l’URL du fil de changements', async () => {
     const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(url.startsWith('/api/events/changes') ? { changes: [], totals: { created: 12 } } : { events: [event()] })));
     vi.stubGlobal('fetch', fetchMock);
