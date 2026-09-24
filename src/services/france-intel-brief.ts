@@ -1,5 +1,6 @@
 // src/services/france-intel-brief.ts
 import type {
+  BriefEventInput,
   BriefJudgment,
   BriefWatchItem,
   DetectedSituation,
@@ -14,7 +15,7 @@ interface BriefCacheEntry {
   expiresAt: number;
 }
 
-const PROMPT_VERSION = 'v13';
+const PROMPT_VERSION = 'v14';
 const _cache = new Map<string, BriefCacheEntry>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
@@ -27,7 +28,12 @@ function hashCacheSeed(seed: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function buildClientCacheKey(ctx: FranceBriefContext, situations: DetectedSituation[], lang: 'fr' | 'en'): string {
+function buildClientCacheKey(
+  ctx: FranceBriefContext,
+  situations: DetectedSituation[],
+  events: BriefEventInput[],
+  lang: 'fr' | 'en',
+): string {
   return `${PROMPT_VERSION}:${lang}:${hashCacheSeed(JSON.stringify({
     score: ctx.score,
     axes: ctx.axes,
@@ -37,6 +43,7 @@ function buildClientCacheKey(ctx: FranceBriefContext, situations: DetectedSituat
     topHeadlines: ctx.topHeadlines,
     energySummary: ctx.energySummary,
     situations: compactSituations(situations),
+    events: events.map((e) => [e.id, e.severity, e.independentCount, e.status]),
   }))}`;
 }
 
@@ -48,9 +55,10 @@ export interface FranceBriefResult {
 export async function fetchFranceIntelBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations' | 'briefContext'>,
   lang: 'fr' | 'en' = 'fr',
+  events: BriefEventInput[] = [],
 ): Promise<FranceBriefResult> {
   const ctx = snapshot.briefContext;
-  const cacheKey = buildClientCacheKey(ctx, snapshot.situations, lang);
+  const cacheKey = buildClientCacheKey(ctx, snapshot.situations, events, lang);
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return { brief: cached.brief, freshness: 'cached' };
@@ -116,6 +124,7 @@ export async function fetchFranceIntelBrief(
         },
         energy,
         situations: compactSituations(snapshot.situations),
+        events,
         lang,
       }),
     });
@@ -134,7 +143,7 @@ export async function fetchFranceIntelBrief(
 
   // Fallback déterministe : le bloc brief ne meurt jamais.
   return {
-    brief: buildDeterministicBrief(snapshot, lang, getDelta24h()),
+    brief: buildDeterministicBrief(snapshot, lang, getDelta24h(), events),
     freshness: 'fresh',
   };
 }
@@ -157,6 +166,8 @@ const JUDGMENT_TEXT_MAX = 280;
 const MAX_JUDGMENTS = 4;
 const MAX_WATCH = 4;
 const MAX_SOURCES = 5;
+const MAX_EVIDENCE = 4;
+const EVIDENCE_ID = /^[ES]\d{1,12}$/;
 
 /** Valide et borne un brief JSON (LLM ou cache). Retourne null si structurellement invalide. */
 export function parseStructuredBrief(
@@ -182,7 +193,12 @@ export function parseStructuredBrief(
     const sources = Array.isArray(j.sources)
       ? j.sources.filter((s): s is string => typeof s === 'string').slice(0, MAX_SOURCES)
       : [];
-    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources });
+    const evidence = Array.isArray(j.evidence)
+      ? j.evidence.filter((e): e is string => typeof e === 'string' && EVIDENCE_ID.test(e)).slice(0, MAX_EVIDENCE)
+      : [];
+    // Le serveur v14 tranche « non étayé » ; à défaut (brief déterministe sérialisé), l'absence de preuve le décide.
+    const unsupported = typeof j.unsupported === 'boolean' ? j.unsupported : evidence.length === 0;
+    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
   }
   judgments.sort((a, b) => a.priority - b.priority);
 
@@ -222,14 +238,26 @@ const SEVERITY_PRIORITY: Record<DetectedSituation['severity'], 1 | 2 | 3 | 4> = 
   watch: 4,
 };
 
+const EVENT_PRIORITY: Record<BriefEventInput['severity'], 1 | 2 | 3 | 4> = {
+  critical: 1,
+  high: 2,
+  medium: 3,
+  low: 4,
+  info: 4,
+};
+
+const MAX_DETERMINISTIC_JUDGMENTS = 3;
+
 /**
  * Brief de secours 100 % moteur : toujours disponible, zéro hallucination.
- * Utilisé si le LLM est indisponible, invalide ou hors ligne.
+ * Utilisé si le LLM est indisponible, invalide ou hors ligne. Jugements : les situations
+ * (S1…), complétées par les événements corroborés (≥ 2 sources indépendantes) jusqu'à 3.
  */
 export function buildDeterministicBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations'>,
   lang: 'fr' | 'en',
   delta24h: number | null = null,
+  events: BriefEventInput[] = [],
 ): StructuredBrief {
   const { score, scoreBreakdown, situations } = snapshot;
   const dominant = [...scoreBreakdown.pillars].sort((a, b) => b.deduction - a.deduction)[0];
@@ -246,12 +274,29 @@ export function buildDeterministicBrief(
     ? `Situation nationale ${bandLabel(score, lang)} (${score}/100${deltaText}). Pression dominante : ${pillarLabel}. ${situations.length} situation(s) corrélée(s) active(s).`
     : `National situation ${bandLabel(score, lang)} (${score}/100${deltaText}). Dominant pressure: ${pillarLabel}. ${situations.length} active correlated situation(s).`;
 
-  const judgments: BriefJudgment[] = situations.slice(0, 3).map((s) => ({
+  const judgments: BriefJudgment[] = situations.slice(0, MAX_DETERMINISTIC_JUDGMENTS).map((s, i) => ({
     priority: SEVERITY_PRIORITY[s.severity],
     text: `${s.title} — ${s.summary}`.slice(0, JUDGMENT_TEXT_MAX),
     confidence: s.confidence >= 0.75 ? 'high' : s.confidence >= 0.55 ? 'moderate' : 'low',
     sources: s.sourceRefs.slice(0, MAX_SOURCES),
+    // Même numérotation que compactSituations (ordre d'origine) : S1 = première situation.
+    evidence: [`S${i + 1}`],
+    unsupported: false,
   }));
+  for (const e of events) {
+    if (judgments.length >= MAX_DETERMINISTIC_JUDGMENTS) break;
+    if (e.independentCount < 2) continue;
+    judgments.push({
+      priority: EVENT_PRIORITY[e.severity],
+      text: (lang === 'fr'
+        ? `${e.title} — repris par ${e.independentCount} sources indépendantes`
+        : `${e.title} — reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
+      confidence: e.independentCount >= 3 ? 'moderate' : 'low',
+      sources: e.sources.slice(0, MAX_SOURCES),
+      evidence: [e.id],
+      unsupported: false,
+    });
+  }
   if (judgments.length === 0) {
     judgments.push({
       priority: 4,
@@ -260,6 +305,9 @@ export function buildDeterministicBrief(
         : 'No active multi-source correlation — diffuse background pressure without a dominant convergence point.',
       confidence: 'high',
       sources: [lang === 'fr' ? 'Moteur de situations' : 'Situation engine'],
+      // Constat du moteur lui-même (absence de corrélation) : rien à citer, rien d'inventé.
+      evidence: [],
+      unsupported: false,
     });
   }
   // Tri par priorité croissante — contrat StructuredBrief (« triés par priorité »)

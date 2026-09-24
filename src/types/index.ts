@@ -1614,7 +1614,9 @@ export interface BriefJudgment {
   priority: 1 | 2 | 3 | 4;              // P1 = le plus important
   text: string;                          // ≤ 280 caractères
   confidence: BriefConfidence;
-  sources: string[];                     // ≤ 5 noms de sources
+  sources: string[];                     // ≤ 5 noms, DÉDUITS des preuves (jamais du modèle)
+  evidence: string[];                    // ≤ 4 identifiants cités : E<id> événement, S<n> situation
+  unsupported: boolean;                  // aucune preuve valide → affiché « non étayé »
 }
 
 export interface BriefWatchItem {

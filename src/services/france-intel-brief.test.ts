@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
 import { buildDeterministicBrief, compactSituations, parseStructuredBrief } from './france-intel-brief.ts';
-import type { DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
+import type { BriefEventInput, DetectedSituation, FranceScoreBreakdown } from '../types/index.ts';
 
 function situation(overrides: Partial<DetectedSituation> = {}): DetectedSituation {
   return {
@@ -142,5 +142,35 @@ describe('compactSituations', () => {
     assert.ok(compact[0].title.length <= 120);
     assert.equal(compact[0].drivers.length, 5);
     assert.ok(compact[0].drivers[0].length <= 160);
+  });
+});
+
+describe('brief v14 — preuves', () => {
+  const bluf = 'Situation nationale sous tension, tirée par la continuité énergétique.';
+
+  it('parseStructuredBrief conserve les preuves valides et le drapeau « non étayé » du serveur', () => {
+    const brief = parseStructuredBrief({
+      bluf,
+      judgments: [
+        { priority: 1, text: 'Étayé.', confidence: 'high', sources: ['Sud Ouest'], evidence: ['E42', 'S1', 'bogus'], unsupported: false },
+        { priority: 2, text: 'Sans preuve.', confidence: 'low', sources: [], evidence: [], unsupported: true },
+      ],
+      watch: [],
+    }, 'llm');
+    assert.ok(brief);
+    assert.deepEqual(brief.judgments[0].evidence, ['E42', 'S1']);
+    assert.equal(brief.judgments[1].unsupported, true);
+  });
+
+  it('buildDeterministicBrief cite S1… puis complète avec les événements corroborés', () => {
+    const events: BriefEventInput[] = [
+      { id: 'E7', title: 'Explosion dans une usine chimique', category: 'security', severity: 'critical', sources: ['France Info', 'Le Monde'], sourceCount: 2, independentCount: 2, lastSeen: '2026-09-23T06:00:00Z', status: 'active' },
+      { id: 'E8', title: 'Fait divers mono-source', category: 'security', severity: 'high', sources: ['Le Progrès'], sourceCount: 1, independentCount: 1, lastSeen: '2026-09-23T06:00:00Z', status: 'active' },
+    ];
+    const brief = buildDeterministicBrief({ score: 61, scoreBreakdown: breakdown(), situations: [situation()] }, 'fr', null, events);
+    assert.deepEqual(brief.judgments.map((j) => j.evidence), [['E7'], ['S1']]);
+    assert.equal(brief.judgments[0].priority, 1);
+    assert.equal(brief.judgments[0].confidence, 'low');
+    assert.ok(brief.judgments.every((j) => !j.unsupported));
   });
 });
