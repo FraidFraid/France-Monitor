@@ -121,7 +121,8 @@ export async function getEventDetail(sql, id) {
 /**
  * Fil « depuis votre dernière visite ». Renvoie les totaux de TOUS les changements par type,
  * mais ne détaille que ceux qui méritent l'attention : aggravations, corroborations,
- * réouvertures, et créations ou clôtures d'événements graves (high, critical).
+ * réouvertures, créations ou clôtures d'événements graves (high, critical), et créations
+ * d'événements déjà corroborés (≥ 2 groupes indépendants).
  * @param {Sql} sql
  * @param {Date} since
  */
@@ -133,7 +134,11 @@ export async function listChanges(sql, since) {
     FROM news_event_log l JOIN news_events e ON e.id = l.event_id
     WHERE l.at >= ${sinceIso}
       AND (l.kind IN ('escalated', 'corroborated', 'reopened')
-           OR (l.kind IN ('created', 'closed') AND e.severity IN ('high', 'critical')))
+           OR (l.kind IN ('created', 'closed') AND e.severity IN ('high', 'critical'))
+           -- Né déjà corroboré (plusieurs groupes dans le même tick) : seule l'entrée « créé »
+           -- existe, sans « corroboré » ; sans cette ligne, l'actualité qui éclate partout
+           -- d'un coup manquerait au fil.
+           OR (l.kind = 'created' AND e.independent_count >= 2))
     ORDER BY l.at DESC, l.id DESC
     LIMIT ${MAX_CHANGES}
   `;

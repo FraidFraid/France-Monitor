@@ -71,7 +71,15 @@ describe('lecture (Postgres embarqué)', () => {
   it('fil des changements : totaux complets, détail limité aux changements notables', async () => {
     const out = await listChanges(sql, new Date(T0 - H));
     expect(out.totals).toEqual({ created: 3 });
-    expect(out.changes.map((c: { kind: string; event: { severity: string } }) => [c.kind, c.event.severity])).toEqual([['created', 'critical']]);
+    const detailed = out.changes.map((c: { kind: string; event: { severity: string } }) => [c.kind, c.event.severity]).sort();
+    expect(detailed).toEqual([['created', 'critical'], ['created', 'medium']]);
+  });
+
+  it('détaille un événement né déjà corroboré, même de gravité moyenne (relecture finale #4)', async () => {
+    const out = await listChanges(sql, new Date(T0 - H));
+    const titles = out.changes.map((c: { event: { title: string } }) => c.event.title);
+    expect(titles).toContain(RINER);
+    expect(titles).not.toContain('Bordeaux : un marché de producteurs inauguré place des Quinconces');
   });
 });
 
