@@ -18,7 +18,7 @@ function memory(): VisitStorage & { data: Map<string, string> } {
 }
 
 describe('resolveVisitAnchor', () => {
-  it('24 h sans visite connue, valeur invalide ou future ; borne a 7 jours', () => {
+  it('24 h sans visite connue, valeur invalide ou future ; borne à 7 jours', () => {
     expect(resolveVisitAnchor(null, NOW)).toEqual({ since: NOW - 24 * H, kind: 'default' });
     expect(resolveVisitAnchor('abc', NOW).kind).toBe('default');
     expect(resolveVisitAnchor(String(NOW + H), NOW).kind).toBe('default');
@@ -28,51 +28,50 @@ describe('resolveVisitAnchor', () => {
 });
 
 describe('beginIntelVisit', () => {
-  it('fige l ancre pour l onglet et la retrouve a la visite suivante', () => {
+  it('fige l’ancre pour l’onglet et la retrouve à la visite suivante', () => {
     const local = memory();
     const firstTab = { local, session: memory() };
     expect(beginIntelVisit(NOW, firstTab).kind).toBe('default');
-    // Rafraichissement dans le meme onglet : meme ancre.
+    // Rafraîchissement dans le même onglet : même ancre.
     expect(beginIntelVisit(NOW + H, firstTab).kind).toBe('default');
     recordIntelVisitSeen(NOW + 2 * H, firstTab);
-    // Nouvel onglet le lendemain : l ancre est la derniere consultation.
+    // Nouvel onglet le lendemain : l'ancre est la dernière consultation.
     expect(beginIntelVisit(NOW + 20 * H, { local, session: memory() })).toEqual({ since: NOW + 2 * H, kind: 'last-visit' });
   });
 
-  it('fonctionne sans stockage (navigation privee bloquee)', () => {
+  it('fonctionne sans stockage (navigation privée bloquée)', () => {
     expect(beginIntelVisit(NOW, { local: null, session: null })).toEqual({ since: NOW - 24 * H, kind: 'default' });
   });
 });
 
 describe('visite pendant une panne (relecture finale #6)', () => {
-  it("ouvrir l onglet sans voir l etat courant ne consomme pas la fenetre de la visite suivante", () => {
+  it('ouvrir l’onglet sans voir l’état courant ne consomme pas la fenêtre de la visite suivante', () => {
     const local = memory();
     local.setItem('fm:intel:last-seen', String(NOW - 5 * H));
-    // Historique indisponible : l application n appelle pas recordIntelVisitSeen.
+    // Historique indisponible : l'application n'appelle pas recordIntelVisitSeen.
     beginIntelVisit(NOW, { local, session: memory() });
     expect(beginIntelVisit(NOW + H, { local, session: memory() })).toEqual({ since: NOW - 5 * H, kind: 'last-visit' });
   });
 });
-
-describe('ligne de base des niveaux (badges nouveau/aggrave, refonte UI etape 2)', () => {
-  it("fige pour l onglet les niveaux de la visite precedente, meme apres un nouvel enregistrement", () => {
+describe('ligne de base des niveaux (badges nouveau/aggravé, refonte UI étape 2)', () => {
+  it('fige pour l’onglet les niveaux de la visite précédente, même après un nouvel enregistrement', () => {
     const local = memory();
     const tab = { local, session: memory() };
-    expect(beginVisitBaseline(tab)).toBeNull(); // premiere visite : aucun badge de situation
+    expect(beginVisitBaseline(tab)).toBeNull(); // première visite : aucun badge de situation
     recordVisitBaseline({ 'situation:energy-stress': 'orange' }, tab);
-    // Revue : si l enregistrement remplacait la ligne de base de l onglet, aucun badge n apparaitrait jamais.
+    // Revue : si l’enregistrement remplaçait la ligne de base de l’onglet, aucun badge n’apparaîtrait jamais.
     expect(beginVisitBaseline(tab)).toBeNull();
     expect(beginVisitBaseline({ local, session: memory() })).toEqual({ 'situation:energy-stress': 'orange' });
   });
 
-  it("ignore une valeur illisible et les niveaux inconnus", () => {
+  it('ignore une valeur illisible et les niveaux inconnus', () => {
     expect(parseVisitBaseline('{')).toBeNull();
     expect(parseVisitBaseline('[1]')).toBeNull();
     expect(parseVisitBaseline('null')).toBeNull();
     expect(parseVisitBaseline('{"a":"rouge","b":"violet","c":3}')).toEqual({ a: 'rouge' });
   });
 
-  it("borne le nombre de cles enregistrees et fonctionne sans stockage", () => {
+  it('borne le nombre de clés enregistrées et fonctionne sans stockage', () => {
     const local = memory();
     const levels = Object.fromEntries(Array.from({ length: 400 }, (_, i): [string, 'jaune'] => [`k${i}`, 'jaune']));
     recordVisitBaseline(levels, { local, session: memory() });
@@ -80,3 +79,4 @@ describe('ligne de base des niveaux (badges nouveau/aggrave, refonte UI etape 2)
     expect(beginVisitBaseline({ local: null, session: null })).toBeNull();
   });
 });
+
