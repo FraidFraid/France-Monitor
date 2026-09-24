@@ -84,6 +84,8 @@ export interface PosteCallbacks {
   onShowFrance: () => void;
   /** Après chaque rendu de fiche : App y rattache le baromètre des infrastructures (§14). */
   onFicheRendered: (body: HTMLElement) => void;
+  /** Onglet « Carte » affiché (mobile) : la carte, créée masquée, s'ajuste à son conteneur (m7). */
+  onMapShown: () => void;
 }
 
 export interface PosteRoots {
@@ -277,16 +279,21 @@ export class PosteSituation {
     const layout = this.layout();
     if (layout === 'desktop') return;
     const key = this.selection;
+    const mapShown = layout === 'mobile' && this.tab !== 'map';
     this.selection = null;
     if (layout === 'mobile') this.tab = 'map';
     this.render();
+    if (mapShown) this.callbacks.onMapShown(); // avant le flyTo de l'appelant (m7)
     this.restoreFocus(key);
   }
 
   setTab(tab: PosteTab): void {
+    const mapShown = tab === 'map' && this.tab !== 'map';
     this.tab = tab;
     if (tab === 'fiche') this.selection = null; // l'onglet « France » montre la fiche du pays ou du thème
     this.render();
+    // Relecture finale m7 : la carte, créée dans l'onglet masqué, s'ajuste maintenant qu'elle s'affiche.
+    if (mapShown) this.callbacks.onMapShown();
   }
 
   private layout(): PosteLayout {

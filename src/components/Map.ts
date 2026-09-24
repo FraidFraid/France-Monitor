@@ -123,6 +123,34 @@ export class Map {
         this.onItemHover = h;
     }
 
+    /**
+     * Ajuste la carte à son conteneur (relecture finale m7) : en v2 mobile, la carte est créée
+     * dans l'onglet « Carte » masqué (init retombe alors sur 400 × 600) ; le poste l'appelle quand
+     * l'onglet s'affiche. Conteneur encore masqué (taille nulle) : rien ne change.
+     */
+    resize(): void {
+        if (!this.svg || !this.projection) return;
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        if (width === 0 || height === 0) return;
+
+        this.projection
+            .scale(Math.min(width, height) * 2.8)
+            .translate([width / 2, height / 2]);
+        this.svg.attr('width', width).attr('height', height);
+
+        const pathGen = geoPath().projection(this.projection);
+        const gMap = this.svg.select<SVGGElement>('.map-geo');
+        if (gMap.selectAll('.dept').empty()) {
+            gMap.selectAll('*').remove();
+            this.drawFrancePlaceholder(gMap, pathGen, width, height);
+        } else {
+            gMap.selectAll<SVGPathElement, GeoPermissibleObjects>('.dept')
+                .attr('d', (d) => pathGen(d) ?? '');
+        }
+        this.renderPoints();
+    }
+
     flyTo(_longitude: number, _latitude: number, _zoom?: number): void {
         // No-op on mobile SVG — could animate projection center in future
     }

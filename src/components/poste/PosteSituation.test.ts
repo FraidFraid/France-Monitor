@@ -91,7 +91,7 @@ function setup(width = 1440) {
   document.body.appendChild(app);
   const cb = {
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
-    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(),
+    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(), onMapShown: vi.fn(),
   } satisfies PosteCallbacks;
   const poste = new PosteSituation(roots, cb, { viewportWidth: () => width });
   poste.setEvents(eventsState());
@@ -345,6 +345,24 @@ describe('PosteSituation', () => {
     document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(roots.app.dataset.v2Fiche).toBe('default');
     expect(document.activeElement instanceof HTMLElement && document.activeElement.classList.contains('wl-title')).toBe(true);
+  });
+
+  it('mobile : passer sur l’onglet Carte redimensionne la carte, une fois par passage (relecture finale m7)', () => {
+    const { roots, cb, poste } = setup(390);
+    const tab = (id: string): HTMLButtonElement | null => roots.tabs.querySelector<HTMLButtonElement>(`[data-tab="${id}"]`);
+    tab('map')?.click();
+    expect(cb.onMapShown).toHaveBeenCalledTimes(1);
+    tab('map')?.click();
+    expect(cb.onMapShown).toHaveBeenCalledTimes(1);
+    tab('list')?.click();
+    // « Voir sur la carte » passe aussi sur l'onglet Carte : la carte s'ajuste AVANT le flyTo.
+    poste.update(locatedData());
+    poste.select('situation:energy-stress');
+    const order: string[] = [];
+    cb.onMapShown.mockImplementation(() => { order.push('resize'); });
+    cb.onFlyTo.mockImplementation(() => { order.push('flyTo'); });
+    roots.fiche.querySelector<HTMLButtonElement>('[data-action="map"]')?.click();
+    expect(order).toEqual(['resize', 'flyTo']);
   });
 
   it('ligne de base : les niveaux affichés, sans les événements', () => {

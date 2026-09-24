@@ -7751,6 +7751,8 @@ export class App {
           const slot = body.querySelector('.fiche-infra-slot');
           if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
         },
+        // Relecture finale m7 : la carte mobile, créée dans l'onglet masqué, s'ajuste à l'affichage.
+        onMapShown: () => this.mapContainer?.resize(),
       });
       this.poste = poste;
       // Revue (correction post-relecture) : premier rendu seul, sans passer par

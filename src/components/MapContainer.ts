@@ -96,6 +96,14 @@ export class MapContainer {
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
 
+  /**
+   * Ajuste la carte à son conteneur devenu visible (v2 mobile, onglet « Carte » : relecture
+   * finale m7). La carte D3 du mobile ne suit pas son conteneur ; MapLibre le fait seule.
+   */
+  resize(): void {
+    this.svgMap?.resize();
+  }
+
   // ─── News ───
   updateNews(items: NewsItem[]): void {
     this.deckMap?.updateNews(items);
