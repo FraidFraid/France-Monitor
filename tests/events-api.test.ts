@@ -48,7 +48,8 @@ describe('lecture (Postgres embarqué)', () => {
       { id: 4, feedId: 'france-info', title: 'Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché', publishedAt: T0 + H, severity: 'critical' },
     ]);
     await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4] });
-  });
+    // Premier démarrage de PGlite (compilation WASM) : lent quand la suite tourne en parallèle.
+  }, 30_000);
 
   it('liste sans le bruit « info » mono-source, gravité puis corroboration en tête', async () => {
     const events = await listEvents(sql, { statuses: ['active', 'cooling'], limit: 10 });

@@ -9,11 +9,15 @@ const RINER = 'Paris. Teddy Riner visé par des messages haineux : une enquête 
 
 let sql: Sql;
 
+// Premier démarrage de PGlite = compilation WASM : plusieurs secondes quand toute la suite
+// tourne en parallèle sur une machine chargée ; au-delà des 10 s par défaut des hooks.
+const PGLITE_HOOK_TIMEOUT_MS = 30_000;
+
 beforeEach(async () => {
   ({ sql } = await createTestSql());
   await seedFeeds(sql);
   await ensureEventTables(sql);
-});
+}, PGLITE_HOOK_TIMEOUT_MS);
 
 async function events(): Promise<Record<string, unknown>[]> {
   return sql`SELECT * FROM news_events ORDER BY id`;
