@@ -19,7 +19,7 @@ import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
 import type { VisitBaseline } from '../../services/intel-last-visit.ts';
 import { scoreLevel } from '../../services/vigilance.ts';
-import { drivenByText, themeLabel, type ThemeId } from '../../services/themes.ts';
+import { SPECIFIC_THEMES, drivenByText, themeLabel, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
 import {
   buildWorkQueue,
   drivingThemes,
@@ -150,7 +150,7 @@ export class PosteSituation {
     this.fichePanel = new FichePanel(roots.fiche);
 
     this.statusBar.setOnSelectFrance(() => this.select('france'));
-    this.themeBar.setOnSelect((theme) => this.setTheme(theme));
+    this.themeBar.setOnSelect((theme) => this.chooseTheme(theme));
     this.workList.setOnSelect((key) => this.select(key));
     this.workList.setOnShowAll((showAll) => {
       this.showAll = showAll;
@@ -223,6 +223,16 @@ export class PosteSituation {
     this.selection = null; // un thème affiche sa propre fiche
     if (!opts.silent) this.callbacks.onThemeChange(theme);
     this.render();
+  }
+
+  /**
+   * Choix dans la barre de thèmes : filtre la liste (setTheme) ; hors ordinateur, la fiche n'est
+   * visible qu'en volet, donc le thème ouvre aussi sa fiche — même s'il est déjà choisi (relecture
+   * finale I3, §7.4 et §11). « Vue générale » filtre seulement : la fiche France reste au bandeau.
+   */
+  private chooseTheme(theme: ThemeId): void {
+    this.setTheme(theme);
+    if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
   }
 
   select(key: string | null): void {
@@ -349,6 +359,10 @@ export class PosteSituation {
   private defaultFiche(data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel {
     const theme = this.theme;
     if (theme === 'general') return this.franceFiche(data, queue, drivers);
+    return this.themeFiche(theme, data, queue);
+  }
+
+  private themeFiche(theme: SpecificThemeId, data: PosteData, queue: WorkQueue): FicheModel {
     return buildThemeFiche({
       theme,
       queue,
@@ -366,6 +380,11 @@ export class PosteSituation {
     const { lang, now } = data;
     const whyOpen = this.whyOpen.has(key);
     if (key === 'france') return this.franceFiche(data, queue, drivers);
+    if (key.startsWith('theme:')) {
+      // Fiche thème ouverte en volet (tablette, mobile : relecture finale I3).
+      const theme = SPECIFIC_THEMES.find((th) => key === `theme:${th}`);
+      return theme ? this.themeFiche(theme, data, queue) : null;
+    }
     const item = queue.items.find((i) => i.key === key);
     if (key.startsWith('event:')) {
       const id = Number(key.slice('event:'.length));

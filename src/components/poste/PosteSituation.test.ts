@@ -144,6 +144,37 @@ describe('PosteSituation', () => {
     expect(roots.list.textContent).toContain('À traiter · Énergie · 1');
     expect(ficheKey(roots)).toBe('theme:energy');
     expect(roots.list.querySelector('.wl-guard')?.textContent).toContain('Hors de ce thème : 1 rouge');
+    // Ordinateur : la fiche du thème est la fiche par défaut, pas un volet (comportement conservé).
+    expect(roots.app.dataset.v2Fiche).toBe('default');
+  });
+
+  for (const [label, width] of [['tablette', 820], ['mobile', 390]] as const) {
+    it(`${label} : choisir un thème filtre la liste ET ouvre sa fiche en volet ; le même thème la rouvre (relecture finale I3)`, () => {
+      const { roots, cb, poste } = setup(width);
+      const energy = (): HTMLButtonElement | null => roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]');
+      energy()?.click();
+      expect(cb.onThemeChange).toHaveBeenCalledWith('energy');
+      expect(roots.list.textContent).toContain('À traiter · Énergie · 1');
+      expect(ficheKey(roots)).toBe('theme:energy');
+      expect(roots.app.dataset.v2Fiche).toBe('open');
+      poste.close();
+      expect(roots.app.dataset.v2Fiche).toBe('default');
+      energy()?.click();
+      expect(ficheKey(roots)).toBe('theme:energy');
+      expect(roots.app.dataset.v2Fiche).toBe('open');
+    });
+  }
+
+  it('tablette : « Vue générale » filtre sans ouvrir de volet ; une clé theme:<id> ouvre la fiche du thème (I3)', () => {
+    const { roots, poste } = setup(820);
+    poste.select('theme:security');
+    expect(ficheKey(roots)).toBe('theme:security');
+    expect(roots.app.dataset.v2Fiche).toBe('open');
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="general"]')?.click();
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="general"]')?.click();
+    expect(roots.app.dataset.v2Fiche).toBe('default');
+    expect(roots.list.textContent).toContain('À traiter · Vue générale');
   });
 
   it('élément disparu : fiche par défaut, sélection effacée, focus sur le titre de la fiche (revue)', () => {
