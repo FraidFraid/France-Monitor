@@ -19,7 +19,8 @@ import {
 } from '../utils/fuelPriceChart.ts';
 import { getDelta24h, getPillarDeltas24h, getSparklineSeries } from '../utils/stability-history.ts';
 import { renderScoreCard, renderSituationRow } from './france-intel-score.ts';
-import { briefConfidenceLabel, levelColorVar, levelLabel, officialLevel } from '../services/vigilance.ts';
+import { briefConfidenceLabel, fuelTensionLevel, levelColorVar, levelLabel, officialLevel } from '../services/vigilance.ts';
+import { renderVigilancePill } from './shared/vigilancePill.ts';
 
 const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
   green: 'Vert',
@@ -579,9 +580,15 @@ export class FranceIntelPanel extends Panel {
             const fuelHistory = energy.fuelPriceHistory;
             const hasFuelHistory = !!fuelHistory && fuelHistory.series.length > 0;
             if (!oilDays && !fuelLevel && !hasFuelHistory) return '';
-            const oilColor = oilStatus === 'critical' ? 'var(--threat-critical)' : oilStatus === 'tense' ? 'var(--threat-medium)' : 'var(--threat-low)';
-            const oilLabel = oilStatus === 'critical' ? t(lang, 'Critique', 'Critical') : oilStatus === 'tense' ? t(lang, 'Sous tension', 'Tense') : t(lang, 'Normal', 'Normal');
-            const fuelColor = fuelLevel === 'CRITICAL' ? 'var(--threat-critical)' : fuelLevel === 'HIGH' ? 'var(--threat-high)' : fuelLevel === 'MEDIUM' ? 'var(--threat-medium)' : 'var(--threat-low)';
+            // Jamais vert pour un statut inconnu (couleur neutre) ; les autres statuts suivent L1.
+            const oilColor = oilStatus === 'critical' ? levelColorVar('rouge')
+              : oilStatus === 'tense' ? levelColorVar('orange')
+              : oilStatus === 'normal' ? levelColorVar('vert')
+              : 'var(--text-secondary)';
+            const oilLabel = oilStatus === 'critical' ? t(lang, 'Critique', 'Critical')
+              : oilStatus === 'tense' ? t(lang, 'Sous tension', 'Tense')
+              : oilStatus === 'normal' ? t(lang, 'Normal', 'Normal')
+              : t(lang, 'Inconnu', 'Unknown');
             const visibleSeries = hasFuelHistory ? filterFuelPriceSeries(fuelHistory, '1m') : [];
             const fuelChart = visibleSeries.length > 0
               ? renderFuelPriceChartSvg(visibleSeries, {
@@ -597,7 +604,7 @@ export class FranceIntelPanel extends Panel {
                   ${escapeHtml(series.label)}
                 </span>
                 <span class="frintel-fuel-value">${escapeHtml(formatFuelPrice(series.latestPrice))}</span>
-                <span class="frintel-fuel-delta" style="color:${series.delta7dCents != null && series.delta7dCents > 0 ? 'var(--threat-high)' : series.delta7dCents != null && series.delta7dCents < 0 ? 'var(--threat-low)' : 'var(--text-muted)'};">7j ${escapeHtml(formatFuelDeltaCents(series.delta7dCents))}</span>
+                <span class="frintel-fuel-delta" style="color:var(--text-secondary);">7j ${escapeHtml(formatFuelDeltaCents(series.delta7dCents))}</span>
               </div>
             `).join('');
             return `
@@ -613,7 +620,10 @@ export class FranceIntelPanel extends Panel {
                   ${fuelLevel != null ? `
                     <div class="frintel-oil-row">
                       <span class="frintel-oil-label">${t(lang, 'Tension carburants', 'Fuel tension')}</span>
-                      <span class="frintel-oil-value" style="color:${fuelColor};">${escapeHtml(fuelLevel)}${fuelAnomaly != null ? ` <span class="frintel-oil-badge" style="color:${fuelColor};">${fuelAnomaly.toFixed(1)}% ${t(lang, 'anomalies', 'anomalies')}</span>` : ''}</span>
+                      <span class="frintel-oil-value">
+                        ${renderVigilancePill(fuelTensionLevel(fuelLevel), lang)}
+                        ${fuelAnomaly != null ? ` <span class="frintel-oil-badge" style="color:${levelColorVar(fuelTensionLevel(fuelLevel))};">${fuelAnomaly.toFixed(1)}% ${t(lang, 'anomalies', 'anomalies')}</span>` : ''}
+                      </span>
                     </div>
                   ` : ''}
                 </div>

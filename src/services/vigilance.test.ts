@@ -4,6 +4,7 @@ import {
   confidenceBand,
   confidenceLabel,
   eventLevel,
+  fuelTensionLevel,
   infraStatusLevel,
   levelColorVar,
   levelHex,
@@ -70,6 +71,13 @@ describe('conversions', () => {
   it('maxLevel garde le plus grave, vert sur une liste vide', () => {
     expect(maxLevel(['jaune', 'rouge', 'orange'])).toBe('rouge');
     expect(maxLevel([])).toBe('vert');
+  });
+
+  it('tension carburants (FuelTensionLevel, relecture finale F5)', () => {
+    expect(fuelTensionLevel('LOW')).toBe('vert');
+    expect(fuelTensionLevel('MEDIUM')).toBe('jaune');
+    expect(fuelTensionLevel('HIGH')).toBe('orange');
+    expect(fuelTensionLevel('CRITICAL')).toBe('rouge');
   });
 });
 

@@ -6,7 +6,7 @@
 // Les couches officielles de la carte ne passent PAS par ici : elles gardent leurs couleurs
 // d'origine, violet Météo compris.
 
-import type { BriefConfidence, SituationSeverity, ThreatLevel } from '../types/index.ts';
+import type { BriefConfidence, FuelTensionLevel, SituationSeverity, ThreatLevel } from '../types/index.ts';
 
 export type VigilanceLevel = 'vert' | 'jaune' | 'orange' | 'rouge';
 export type OfficialColor = 'green' | 'yellow' | 'orange' | 'red' | 'violet';
@@ -41,6 +41,14 @@ export function officialLevel(color: OfficialColor): VigilanceLevel {
   if (color === 'red' || color === 'violet') return 'rouge';
   if (color === 'orange') return 'orange';
   if (color === 'yellow') return 'jaune';
+  return 'vert';
+}
+
+/** Tension carburants (moteur énergie) : LOW→vert, MEDIUM→jaune, HIGH→orange, CRITICAL→rouge. */
+export function fuelTensionLevel(level: FuelTensionLevel): VigilanceLevel {
+  if (level === 'CRITICAL') return 'rouge';
+  if (level === 'HIGH') return 'orange';
+  if (level === 'MEDIUM') return 'jaune';
   return 'vert';
 }
 

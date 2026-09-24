@@ -7420,6 +7420,7 @@ button.header-quality-link {
   font-size: 13px;
 }
 .frintel-oil-badge { font-size: 9px; }
+.frintel-oil-value .fm-vig { font-size: 10px; padding: 0 5px; vertical-align: 1px; }
 .frintel-fuel-history { margin-top: 8px; }
 .frintel-fuel-history-title { font-size: 9px; color: var(--text-muted); letter-spacing: 0.1em; }
 .frintel-fuel-chart { margin-top: 4px; }
