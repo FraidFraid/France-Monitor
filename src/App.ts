@@ -24,7 +24,7 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { isUiV2 } from './services/ui-mode.ts';
+import { isUiV2, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -7433,12 +7433,19 @@ export class App {
   private refreshFranceIntelPanel(): void {
     const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
-    recordStabilitySnapshot(snapshot.score, {
-      continuity: snapshot.axes.continuity,
-      security: snapshot.axes.security,
-      signal: snapshot.axes.signal,
-      defense: snapshot.axes.defense,
-    });
+    // Revue (correction post-relecture) : en v2, tant que les couches critiques ne sont pas
+    // chargées, les caches consommés par l'instantané sont vides — ne pas écrire dans l'historique
+    // de stabilité local ni dans l'historique de situation partagé (SET NX, une seule écriture par
+    // créneau de 6 h pour TOUS les visiteurs) avant que startV2Intel() ait tourné.
+    const canRecord = shouldRecordIntelSnapshot(this.uiV2, this.v2IntelStarted);
+    if (canRecord) {
+      recordStabilitySnapshot(snapshot.score, {
+        continuity: snapshot.axes.continuity,
+        security: snapshot.axes.security,
+        signal: snapshot.axes.signal,
+        defense: snapshot.axes.defense,
+      });
+    }
     const alerts = this.buildAlertMonitorSituations();
     if (this.uiV2) {
       this.updatePoste(snapshot, alerts, lang);
@@ -7447,7 +7454,7 @@ export class App {
       this.situationMonitor?.update(snapshot.situations, lang);
       this.situationBrief?.update(snapshot.situations);
     }
-    void pushHistorySnapshot(snapshot);
+    if (canRecord) void pushHistorySnapshot(snapshot);
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
     const now = Date.now();
@@ -7746,7 +7753,13 @@ export class App {
         },
       });
       this.poste = poste;
-      this.refreshFranceIntelPanel();
+      // Revue (correction post-relecture) : premier rendu seul, sans passer par
+      // refreshFranceIntelPanel — à cet instant (juste après renderShell(), avant tout
+      // chargement), les caches sont vides et startV2Intel() n'a pas encore tourné ; on peint
+      // le poste avec l'état courant, sans toucher à l'historique de stabilité local ni à
+      // l'historique de situation partagé (voir shouldRecordIntelSnapshot).
+      const lang = this.intelLang();
+      this.updatePoste(this.buildFranceSnapshot(lang), this.buildAlertMonitorSituations(), lang);
       return poste;
     });
     return this.postePromise;
