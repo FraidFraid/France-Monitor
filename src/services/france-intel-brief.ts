@@ -242,17 +242,17 @@ const EVENT_PRIORITY: Record<BriefEventInput['severity'], 1 | 2 | 3 | 4> = {
 
 const MAX_DETERMINISTIC_JUDGMENTS = 3;
 
-/**
- * Brief de secours 100 % moteur : toujours disponible, zéro hallucination.
- * Utilisé si le LLM est indisponible, invalide ou hors ligne. Jugements : les situations
- * (S1…), complétées par les événements corroborés (≥ 2 sources indépendantes) jusqu'à 3.
- */
 /** Jugement de repli d'une situation : son titre et son résumé sans phrase chiffrée (sous-scores du moteur, spec §4.3). */
 function situationJudgmentText(s: DetectedSituation): string {
   const plain = splitScoreSentences(s.summary).plain.join(' ');
   return plain ? `${s.title} — ${plain}` : s.title;
 }
 
+/**
+ * Brief de secours 100 % moteur : toujours disponible, zéro hallucination.
+ * Utilisé si le LLM est indisponible, invalide ou hors ligne. Jugements : les situations
+ * (S1…), complétées par les événements corroborés (≥ 2 sources indépendantes) jusqu'à 3.
+ */
 export function buildDeterministicBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations'>,
   lang: 'fr' | 'en',
