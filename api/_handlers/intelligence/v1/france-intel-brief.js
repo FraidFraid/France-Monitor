@@ -1,22 +1,26 @@
 // api/intelligence/v1/france-intel-brief.js
-// Vercel Edge Function — generates the national intelligence brief via Groq (contract v13).
+// Vercel Edge Function — generates the national intelligence brief via Groq (contract v14).
 // Input payload: { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount,
-//   topHeadlines, signalCounts, energy, situations, lang }, built from
-// FranceBriefContext by france-intel-brief.ts (client).
+//   topHeadlines, signalCounts, energy, situations, events, lang }, built from
+// FranceBriefContext + /api/events by france-intel-brief.ts (client).
 // Response: { brief: StructuredBrief | null, fromCache: boolean } — brief is
 // { bluf, judgments, watch } once validateBriefShape() has passed the LLM output
 // through JSON parsing + structural validation, or null if the LLM call failed,
-// returned malformed JSON, or GROQ_API_KEY is unset. There is no server-side
-// fallback brief: a null brief here is handled client-side (deterministic synthesis).
+// returned malformed JSON, cited no valid evidence at all, or GROQ_API_KEY is unset.
+// v14 : chaque jugement cite des preuves (E<id> = événement, S<n> = situation) ; les
+// sources affichées sont déduites de ces preuves (api/_lib/brief-evidence.js), jamais
+// recopiées du modèle. There is no server-side fallback brief: a null brief here is
+// handled client-side (deterministic synthesis).
 export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../../_utils/redis.js';
 import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../../_lib/groq-models.js';
+import { sanitizeEvents, buildEvidenceIndex, formatEventsBlock, applyEvidence } from '../../../_lib/brief-evidence.js';
 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 // Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 const CACHE_TTL  = 6 * 60 * 60; // 6 hours
-const BRIEF_PROMPT_VERSION = 'v13';
+const BRIEF_PROMPT_VERSION = 'v14';
 
 function describeStability(score, lang) {
   if (score >= 85) return 'stable';
@@ -42,7 +46,7 @@ function hashCacheSeed(seed) {
   return (hash >>> 0).toString(36);
 }
 
-function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations) {
+function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, events) {
   const seed = JSON.stringify({
     lang,
     countryScore,
@@ -54,6 +58,7 @@ function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, met
     signalCounts,
     energy,
     situations,
+    events,
   });
   return `france-intel:brief:${lang}:${BRIEF_PROMPT_VERSION}:${hashCacheSeed(seed)}`;
 }
@@ -105,7 +110,10 @@ function sanitizeSituations(raw) {
 }
 
 // Validation structurelle de la sortie LLM — miroir serveur de parseStructuredBrief (client).
-function validateBriefShape(value) {
+// `index` = preuves citables (buildEvidenceIndex). Un brief dont AUCUN jugement ne cite de
+// preuve valide alors que des preuves existaient est rejeté (le client bascule sur la
+// synthèse moteur) ; sans aucune preuve disponible, les jugements passent marqués non étayés.
+export function validateBriefShape(value, index = new Map()) {
   if (typeof value !== 'object' || value === null) return null;
   if (typeof value.bluf !== 'string' || value.bluf.trim().length < 20) return null;
   if (!Array.isArray(value.judgments) || value.judgments.length === 0) return null;
@@ -115,15 +123,17 @@ function validateBriefShape(value) {
     if (![1, 2, 3, 4].includes(j.priority)) return null;
     if (!['high', 'moderate', 'low'].includes(j.confidence)) return null;
     if (typeof j.text !== 'string' || j.text.trim().length === 0) return null;
+    const { evidence, sources, unsupported, confidence } = applyEvidence(j, index);
     judgments.push({
       priority: j.priority,
       text: j.text.trim().slice(0, 280),
-      confidence: j.confidence,
-      sources: Array.isArray(j.sources)
-        ? j.sources.filter((s) => typeof s === 'string').slice(0, 5)
-        : [],
+      confidence,
+      evidence,
+      sources,
+      unsupported,
     });
   }
+  if (index.size > 0 && judgments.every((j) => j.unsupported)) return null;
   judgments.sort((a, b) => a.priority - b.priority);
   const watch = [];
   if (Array.isArray(value.watch)) {
@@ -252,11 +262,11 @@ function formatSituationsBlock(situations, lang) {
     const zones = s.affectedZones.length > 0 ? ` | zones: ${s.affectedZones.join(', ')}` : '';
     const drivers = s.drivers.length > 0 ? `\n   preuves: ${s.drivers.join(' ; ')}` : '';
     const sources = s.sourceRefs.length > 0 ? `\n   sources: ${s.sourceRefs.join(', ')}` : '';
-    return `${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} — ${s.summary}${zones}${drivers}${sources}`;
+    return `S${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} — ${s.summary}${zones}${drivers}${sources}`;
   }).join('\n');
 }
 
-function buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, lang) {
+export function buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, events, lang) {
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
     : lang === 'fr' ? '(aucune actualité significative)' : '(no significant news)';
@@ -267,16 +277,20 @@ function buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertC
   const calmAllowed = countryScore >= 88 && maxAxis < 20 && immediateSignalsLow && situations.length === 0;
   const situationSummary = buildSituationSummary(signalCounts, energy, lang);
   const situationsBlock = formatSituationsBlock(situations, lang);
+  const eventsBlock = formatEventsBlock(events, lang);
 
-  const schema = `{"bluf": "...", "judgments": [{"priority": 1, "text": "...", "confidence": "high|moderate|low", "sources": ["..."]}], "watch": [{"text": "...", "horizon": "6h|24h|48h"}]}`;
+  const schema = `{"bluf": "...", "judgments": [{"priority": 1, "text": "...", "confidence": "high|moderate|low", "evidence": ["E123", "S1"]}], "watch": [{"text": "...", "horizon": "6h|24h|48h"}]}`;
 
   if (lang === 'en') {
     return `[SYSTEM]
 You are a senior OSINT analyst writing France's national intelligence brief. Output MUST be a single valid JSON object matching this exact schema, nothing else:
 ${schema}
 
-[CORRELATED SITUATIONS — primary facts, established by a deterministic engine]
+[CORRELATED SITUATIONS — primary facts, established by a deterministic engine; cite as S1, S2…]
 ${situationsBlock}
+
+[CONSOLIDATED NEWS EVENTS — articles grouped by event, with corroboration; cite as E…]
+${eventsBlock}
 
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
@@ -284,14 +298,14 @@ Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
 Signals: ${signalCounts.criticalNews} critical / ${signalCounts.highNews} high headlines, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom, ${signalCounts.defenseAlerts} cable alerts, ${signalCounts.jammingSignals} GPS jamming, ${signalCounts.militaryFlights} military flights, ${signalCounts.fireDetections} fires, ${signalCounts.marketStress} stressed market lines
 Situation summary:
 ${situationSummary}
-Recent headlines:
+Recent headlines (context only, NOT citable):
 ${headlineList}
 
 [RULES]
 1. "bluf": 2-3 sentences, ≤ 400 chars. Overall assessment: posture, dominant pressure, whether pressures converge.
 2. "judgments": 2-4 items. Base them PRIMARILY on the correlated situations above. priority 1 = most important. Each text ≤ 280 chars, must state something actionable or falsifiable — no filler.
 3. "confidence": derive from the situation confidence values (≥0.75 high, ≥0.55 moderate, else low). Never exceed the engine's confidence.
-4. "sources": only names present in the data above (e.g. "Ecowatt RTE", "CERT-FR"). Never invent sources.
+4. "evidence": 1-4 identifiers copied from the lists above (E… events, S… situations). A judgment without a valid identifier is shown as UNSUPPORTED with low confidence. Never cite a headline or a source name. An event with a single independent source cannot justify "high" confidence.
 5. "watch": 1-4 concrete indicators with a realistic horizon. Be specific ("Ecowatt D+1 signal at 17:00", not "energy situation").
 6. Calm wording (stable/calm/normal/under control) is ${calmAllowed ? 'allowed' : 'FORBIDDEN'}.
 7. Never quote numeric scores or /100 values. Never invent facts, actors or locations.
@@ -302,8 +316,11 @@ ${headlineList}
 Tu es un analyste OSINT senior rédigeant le brief national France. Ta sortie DOIT être un unique objet JSON valide conforme à ce schéma, rien d'autre :
 ${schema}
 
-[SITUATIONS CORRÉLÉES — faits primaires, établis par un moteur déterministe]
+[SITUATIONS CORRÉLÉES — faits primaires, établis par un moteur déterministe ; à citer S1, S2…]
 ${situationsBlock}
+
+[ÉVÉNEMENTS CONSOLIDÉS — articles regroupés par événement, avec leur corroboration ; à citer E…]
+${eventsBlock}
 
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
@@ -311,14 +328,14 @@ Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
 Signaux : ${signalCounts.criticalNews} titres critiques / ${signalCounts.highNews} élevés, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.powerOutages} coupures élec, ${signalCounts.telecomOutages} télécom, ${signalCounts.defenseAlerts} alertes câbles, ${signalCounts.jammingSignals} brouillages GPS, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.fireDetections} feux, ${signalCounts.marketStress} lignes marché sous tension
 Résumé situationnel :
 ${situationSummary}
-Actualités récentes :
+Actualités récentes (contexte seulement, NON citables) :
 ${headlineList}
 
 [CONSIGNES]
 1. "bluf" : 2-3 phrases, ≤ 400 caractères. Évaluation d'ensemble : posture, pression dominante, convergence ou non des pressions.
 2. "judgments" : 2-4 éléments. Fonde-les EN PRIORITÉ sur les situations corrélées ci-dessus. priority 1 = le plus important. Chaque texte ≤ 280 caractères, doit affirmer quelque chose d'actionnable ou de falsifiable — aucun remplissage.
 3. "confidence" : dérive-la des confiances du moteur (≥0.75 high, ≥0.55 moderate, sinon low). Ne dépasse jamais la confiance du moteur.
-4. "sources" : uniquement des noms présents dans les données ci-dessus (ex. "Ecowatt RTE", "CERT-FR"). N'invente jamais de source.
+4. "evidence" : 1 à 4 identifiants recopiés des listes ci-dessus (E… événements, S… situations). Un jugement sans identifiant valide sera affiché NON ÉTAYÉ avec une confiance faible. Ne cite jamais un titre ni un nom de source. Un événement couvert par une seule source indépendante ne peut pas justifier une confiance « high ».
 5. "watch" : 1-4 indicateurs concrets avec un horizon réaliste. Sois spécifique (« signal Ecowatt J+1 à 17h », pas « situation énergétique »).
 6. Vocabulaire calme (stable/calme/normal/sous contrôle) : ${calmAllowed ? 'autorisé' : 'INTERDIT'}.
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
@@ -397,6 +414,8 @@ export default async function handler(request) {
     fuelPriceDelta30dCents: typeof body.energy.fuelPriceDelta30dCents === 'number' ? body.energy.fuelPriceDelta30dCents : null,
   } : null;
   const situations = sanitizeSituations(body.situations);
+  const events = sanitizeEvents(body.events);
+  const evidenceIndex = buildEvidenceIndex(events, situations);
 
   // Try Redis cache using the request context, so one bad or outdated response
   // does not mask newer national states for the whole TTL window.
@@ -411,6 +430,7 @@ export default async function handler(request) {
     signalCounts,
     energy,
     situations,
+    events,
   );
   const cached = await redisGet(cacheKey);
   if (cached) {
@@ -439,9 +459,9 @@ export default async function handler(request) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         ...groqModelParams(GROQ_MODEL),
-        messages: [{ role: 'user', content: buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, lang) }],
+        messages: [{ role: 'user', content: buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, events, lang) }],
         temperature: 0.3,
-        // 900 tokens : le schéma JSON v13 (bluf 400c + 4 jugements + 4 watch) peut
+        // 900 tokens : le schéma JSON v14 (bluf 400c + 4 jugements + 4 watch) peut
         // atteindre ~3000 caractères — 420 tronquait le JSON en plein objet.
         max_tokens: withReasoningHeadroom(GROQ_MODEL, 900),
         response_format: { type: 'json_object' },
@@ -465,7 +485,7 @@ export default async function handler(request) {
       const start = rawContent.indexOf('{');
       const end = rawContent.lastIndexOf('}');
       if (start >= 0 && end > start) {
-        brief = validateBriefShape(JSON.parse(rawContent.slice(start, end + 1)));
+        brief = validateBriefShape(JSON.parse(rawContent.slice(start, end + 1)), evidenceIndex);
       }
     } catch {
       brief = null;
