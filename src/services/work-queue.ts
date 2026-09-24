@@ -29,6 +29,7 @@ import {
 } from './vigilance.ts';
 import { SPECIFIC_THEMES, THEMES, categoryTheme, inTheme, situationTheme, type SpecificThemeId, type ThemeId } from './themes.ts';
 import type { VisitBaseline } from './intel-last-visit.ts';
+import { splitZoneScore } from './situation-text.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -251,6 +252,11 @@ function placesLabel(places: readonly string[]): string | null {
   return `${places.slice(0, 2).join(', ')} +${places.length - 2}`;
 }
 
+/** Lieu d'une ligne : la première zone, sans son sous-score « (72/100) » (relecture finale I4, A7). */
+function firstZone(zones: readonly string[]): string | null {
+  return zones.length > 0 ? splitZoneScore(zones[0]).name : null;
+}
+
 function parseTime(iso: string): number | null {
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
@@ -309,7 +315,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     const key = `situation:${s.id}`;
     const level = situationLevel(s.severity);
     items.push({
-      key, level, title: s.title, place: s.affectedZones[0] ?? null, since: seenAt(key), independentSources: null,
+      key, level, title: s.title, place: firstZone(s.affectedZones), since: seenAt(key), independentSources: null,
       theme: situationTheme(s.type), badge: baselineBadge(key, level, baseline), ref: { kind: 'situation', situation: s },
     });
   }
@@ -325,7 +331,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     const level = situationLevel(a.severity);
     const since = a.updatedAt.getTime();
     items.push({
-      key, level, title: a.title, place: a.affectedZones[0] ?? null, since: Number.isFinite(since) ? since : null,
+      key, level, title: a.title, place: firstZone(a.affectedZones), since: Number.isFinite(since) ? since : null,
       independentSources: null, theme: situationTheme(a.type, a.category), badge: baselineBadge(key, level, baseline),
       ref: { kind: 'alert', situation: a },
     });

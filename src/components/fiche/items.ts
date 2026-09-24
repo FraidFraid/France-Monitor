@@ -33,7 +33,7 @@ import {
   type WorkBadge,
   type WorkQueue,
 } from '../../services/work-queue.ts';
-import { splitScoreLines, splitScoreSentences } from '../../services/situation-text.ts';
+import { splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
 import { escapeHtml, formatAge, safeHref, type EventDetailState } from '../france-intel-events.ts';
 import { renderEnergyBlock } from '../france-intel-blocks.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
@@ -330,8 +330,10 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
       html: `<ul class="fiche-list">${drivers.plain.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`,
     });
   }
-  if (s.affectedZones.length > 0) {
-    sections.push({ title: t(lang, 'Zones', 'Areas'), html: `<p>${escapeHtml(s.affectedZones.join(' · '))}</p>` });
+  // Relecture finale I4 : « Seine-Saint-Denis (72/100) » → le nom ici, le score dans le volet.
+  const zones = s.affectedZones.map(splitZoneScore);
+  if (zones.length > 0) {
+    sections.push({ title: t(lang, 'Zones', 'Areas'), html: `<p>${escapeHtml(zones.map((z) => z.name).join(' · '))}</p>` });
   }
   if (s.recommendedActions.length > 0) {
     const rows = s.recommendedActions.map((a) => {
@@ -348,7 +350,8 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
   }
 
   // Arbitrage A7 : sous-scores et phrases chiffrées du moteur seulement dans le volet.
-  const whyRows = [...drivers.scored, ...summary.scored].map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+  const zoneScores = zones.flatMap((z) => (z.score === null ? [] : [`${z.name} : ${z.score}`]));
+  const whyRows = [...drivers.scored, ...summary.scored, ...zoneScores].map((line) => `<li>${escapeHtml(line)}</li>`).join('');
   const why = `<ul class="fiche-list">${whyRows}`
     + `<li>${capitalize(confidenceLabel(s.confidence, lang))} (${Math.round(s.confidence * 100)} %)</li>`
     + `<li>${t(lang, 'Niveau', 'Level')} : ${levelLabel(level, lang)}, ${levelPhrase(level, lang)}</li></ul>`;

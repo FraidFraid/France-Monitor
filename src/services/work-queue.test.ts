@@ -165,6 +165,18 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
   });
 });
 
+describe('buildWorkQueue — aucun sous-score hors du volet (relecture finale I4, A7)', () => {
+  it('lieu de la ligne : le nom de la zone, jamais son sous-score « (72/100) »', () => {
+    const q = buildWorkQueue(input({
+      situations: [situation({
+        id: 'social-escalation', type: 'SOCIAL_ESCALATION', severity: 'high', title: 'Escalade sociale localisée',
+        affectedZones: ['Seine-Saint-Denis (72/100)', 'Bouches-du-Rhône (66/100)', 'Rhône (58/100)'],
+      })],
+    }));
+    expect(q.items[0].place).toBe('Seine-Saint-Denis');
+  });
+});
+
 describe('buildWorkQueue — tri et badges (spec §7.2)', () => {
   it('rouge d’abord, puis nouveau ou aggravé, puis le plus récent', () => {
     const q = buildWorkQueue(input({

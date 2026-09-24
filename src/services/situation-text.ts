@@ -24,3 +24,17 @@ export function splitScoreSentences(text: string): { plain: string[]; scored: st
     .filter((sentence) => sentence.length > 0);
   return splitScoreLines(sentences);
 }
+
+/** « Seine-Saint-Denis (72/100) » : nom de zone suivi de son sous-score entre parenthèses. */
+const ZONE_SCORE_PATTERN = /^(.*?)\s*\((\d+(?:[.,]\d+)?\s*\/\s*\d+)\)\s*$/;
+
+/**
+ * Sépare une zone du moteur « Nom (n/m) » (SOCIAL_ESCALATION) en nom et sous-score (relecture
+ * finale I4) : la v2 n'affiche que le nom dans la ligne et la partie « Zones » ; le score rejoint
+ * « Pourquoi ce niveau ? ». Une zone sans sous-score reste telle quelle.
+ */
+export function splitZoneScore(zone: string): { name: string; score: string | null } {
+  const match = ZONE_SCORE_PATTERN.exec(zone);
+  if (!match || match[1].trim() === '') return { name: zone, score: null };
+  return { name: match[1].trim(), score: match[2] };
+}

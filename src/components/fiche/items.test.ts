@@ -154,12 +154,34 @@ describe('fiches situation et alerte (arbitrage A1)', () => {
     sourceRefs: ['CERT-FR'],
   });
 
+  // Fixture réaliste, au format exact de detectSocialEscalation (situation-engine.ts) : zones
+  // « Nom (score/100) », phrase et facteur chiffrés (relecture finale I4).
+  const social = situation({
+    id: 'social-escalation', type: 'SOCIAL_ESCALATION', severity: 'high', confidence: 0.78, title: 'Escalade sociale localisée',
+    summary: '5 département(s) avec tensions sociales ou sécuritaires élevées. Score national ISNR : 41/100.',
+    affectedZones: ['Seine-Saint-Denis (72/100)', 'Bouches-du-Rhône (66/100)', 'Rhône (58/100)'],
+    drivers: [
+      '5 dept(s) avec dimension sociale/sécurité ≥ 40',
+      'Score national ISNR : 41/100',
+      '2 dept(s) en situation critique (score ≥ 65)',
+    ],
+    recommendedActions: [
+      { label: 'Surveiller les flux RSS des PQR locales sur les départements actifs', ownerHint: 'Analyste OSINT', actionType: 'monitor', automatable: true },
+    ],
+    sourceRefs: ['ISNR (PQR + alertes)', 'Vigicrues', 'Vigilance météo'],
+  });
+
   it('les sous-scores du moteur ne sont visibles que dans « Pourquoi ce niveau ? » (A7)', () => {
+    for (const fixture of [cyber, social]) {
+      const model = buildSituationFiche({
+        situation: fixture, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
+      });
+      expect(visibleOf(renderFiche(model, 'fr')), fixture.type).not.toMatch(/\d+\s*\/\s*\d+/);
+    }
     const html = renderFiche(buildSituationFiche({
       situation: cyber, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
     }), 'fr');
     const visible = visibleOf(html);
-    expect(visible).not.toMatch(/\d+\s*\/\s*\d+/);
     expect(visible).toContain('2 alerte(s) critique(s) CERT-FR');
     expect(visible).toContain('Pression cyber multi-source : vigilance orange.');
     expect(visible).toContain('Consulter les bulletins CERT-FR');
@@ -167,6 +189,16 @@ describe('fiches situation et alerte (arbitrage A1)', () => {
     expect(html).toContain('Score cyber consolidé : 63/100 (tendance stable)');
     expect(html).toContain('Ransomware : 25/25');
     expect(html).toContain('Confiance élevée (82 %)');
+  });
+
+  it('zones « Nom (n/m) » : le nom seul dans « Zones », les scores dans le volet (relecture finale I4)', () => {
+    const model = buildSituationFiche({
+      situation: social, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
+    });
+    expect(model.sections.find((s) => s.title === 'Zones')?.html).toBe('<p>Seine-Saint-Denis · Bouches-du-Rhône · Rhône</p>');
+    expect(model.why).toContain('<li>Seine-Saint-Denis : 72/100</li>');
+    expect(model.why).toContain('<li>Rhône : 58/100</li>');
+    expect(model.why).toContain('<li>Score national ISNR : 41/100</li>');
   });
 
   it('alerte : lien source http(s) seulement, dossier et carte quand ils existent', () => {
