@@ -132,3 +132,44 @@ export function recordVisitBaseline(levels: VisitBaseline, stores: VisitStores =
   const entries = Object.entries(levels).slice(0, MAX_BASELINE_KEYS);
   write(stores.local, LEVELS_KEY, JSON.stringify(Object.fromEntries(entries)));
 }
+
+// ─── Enregistrement de la ligne de base de l'onglet (relecture finale I5) ───────────────────
+
+/** Cible d'écouteurs minimale (document, window), injectable pour les tests. */
+interface ListenerTarget {
+  addEventListener(type: string, listener: () => void): void;
+}
+
+/** Cycle de vie de la page : passage en arrière-plan (visibilitychange → hidden) et départ (pagehide). */
+export interface PageLifecycle {
+  document: ListenerTarget & { readonly visibilityState: string };
+  window: ListenerTarget;
+}
+
+export interface VisitBaselineSession {
+  /** Ligne de base de l'onglet, figée avant tout enregistrement (null : première visite). */
+  baseline: VisitBaseline | null;
+  /** Enregistre les niveaux affichés comme ligne de base de la prochaine visite. */
+  record: () => void;
+}
+
+/**
+ * Fige la ligne de base de l'onglet (beginVisitBaseline), PUIS seulement donne de quoi enregistrer :
+ * l'ordre exigé par la revue est garanti par construction. Enregistre aussi quand l'onglet passe
+ * en arrière-plan ou est quitté, pour que la ligne de base soit la dernière liste vue, données
+ * secondaires comprises (cyber, pétrole, AIS, militaire) — jamais la liste partielle du démarrage,
+ * qui ferait des « NOUVEAU » à tort à la visite suivante. Écouteurs posés une fois, à l'appel.
+ */
+export function startVisitBaseline(
+  levels: () => VisitBaseline,
+  lifecycle: PageLifecycle,
+  stores: VisitStores = browserStores(),
+): VisitBaselineSession {
+  const baseline = beginVisitBaseline(stores);
+  const record = (): void => recordVisitBaseline(levels(), stores);
+  lifecycle.document.addEventListener('visibilitychange', () => {
+    if (lifecycle.document.visibilityState === 'hidden') record();
+  });
+  lifecycle.window.addEventListener('pagehide', record);
+  return { baseline, record };
+}

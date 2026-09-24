@@ -47,3 +47,23 @@ describe('I1 — en v2, aucun panneau flottant ne s’ouvre sur la colonne fiche
       .toContain('this.suppressFirstLoadPanelAutoOpen = !reopensLayerPanelsOnLoad(this.uiV2);');
   });
 });
+
+describe('I5 — ligne de base de visite enregistrée après les données secondaires et au départ', () => {
+  it('startV2Intel fige la ligne de base et pose les écouteurs (startVisitBaseline) avant de marquer le démarrage', () => {
+    const body = methodBody('startV2Intel');
+    const start = body.indexOf('visit.startVisitBaseline(');
+    expect(start).toBeGreaterThan(-1);
+    expect(body).not.toContain('beginVisitBaseline');
+    expect(start).toBeLessThan(body.indexOf('this.v2IntelStarted = true'));
+  });
+
+  it('un seul chemin d’enregistrement, seulement après startV2Intel (session de ligne de base)', () => {
+    expect(methodBody('recordV2VisitBaseline')).toContain('this.v2BaselineSession?.record()');
+    expect(methodBody('deliverV2Events')).toContain('this.recordV2VisitBaseline()');
+    expect(app).not.toContain('visit.recordVisitBaseline(');
+  });
+
+  it('enregistre aussi une fois les couches secondaires chargées', () => {
+    expect(between('this.loadSecondaryLayers()', '.catch(')).toContain('this.recordV2VisitBaseline()');
+  });
+});

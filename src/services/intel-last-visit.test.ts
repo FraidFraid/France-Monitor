@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   beginIntelVisit,
   beginVisitBaseline,
@@ -6,6 +6,8 @@ import {
   recordIntelVisitSeen,
   recordVisitBaseline,
   resolveVisitAnchor,
+  startVisitBaseline,
+  type VisitBaseline,
   type VisitStorage,
 } from './intel-last-visit.ts';
 
@@ -80,3 +82,46 @@ describe('ligne de base des niveaux (badges nouveau/aggravé, refonte UI étape 
   });
 });
 
+describe('enregistrement de la ligne de base de l’onglet (relecture finale I5)', () => {
+  function lifecycle(): { document: EventTarget & { visibilityState: string }; window: EventTarget } {
+    return { document: Object.assign(new EventTarget(), { visibilityState: 'visible' }), window: new EventTarget() };
+  }
+  const stored = (local: ReturnType<typeof memory>): unknown => JSON.parse(local.data.get('fm:intel:last-seen-levels') ?? 'null');
+
+  it('fige la ligne de base de la visite précédente AVANT tout enregistrement', () => {
+    const local = memory();
+    local.setItem('fm:intel:last-seen-levels', JSON.stringify({ 'situation:a': 'orange' }));
+    const tab = { local, session: memory() };
+    const session = startVisitBaseline(() => ({ 'situation:b': 'rouge' }), lifecycle(), tab);
+    session.record();
+    expect(session.baseline).toEqual({ 'situation:a': 'orange' });
+    expect(stored(local)).toEqual({ 'situation:b': 'rouge' });
+    // Rechargement du même onglet : toujours la visite précédente.
+    expect(beginVisitBaseline(tab)).toEqual({ 'situation:a': 'orange' });
+  });
+
+  it('enregistre la dernière liste vue quand l’onglet passe en arrière-plan ou est quitté', () => {
+    const local = memory();
+    const page = lifecycle();
+    let levels: VisitBaseline = { 'situation:a': 'jaune' };
+    startVisitBaseline(() => levels, page, { local, session: memory() });
+    page.document.dispatchEvent(new Event('visibilitychange'));
+    expect(stored(local)).toBeNull(); // redevenu visible : rien
+    levels = { 'situation:a': 'jaune', 'alert:military-surge-concentration': 'orange' };
+    page.document.visibilityState = 'hidden';
+    page.document.dispatchEvent(new Event('visibilitychange'));
+    expect(stored(local)).toEqual(levels);
+    levels = { 'situation:a': 'rouge' };
+    page.window.dispatchEvent(new Event('pagehide'));
+    expect(stored(local)).toEqual({ 'situation:a': 'rouge' });
+  });
+
+  it('pose ses écouteurs une seule fois', () => {
+    const page = lifecycle();
+    const onDocument = vi.spyOn(page.document, 'addEventListener');
+    const onWindow = vi.spyOn(page.window, 'addEventListener');
+    startVisitBaseline(() => ({}), page, { local: memory(), session: memory() });
+    expect(onDocument.mock.calls.map(([type]) => type)).toEqual(['visibilitychange']);
+    expect(onWindow.mock.calls.map(([type]) => type)).toEqual(['pagehide']);
+  });
+});

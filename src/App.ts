@@ -22,6 +22,7 @@ import { ISNRPanel } from './components/ISNRPanel.ts';
 import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
+import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
 import { isUiV2, layerActivationOptions, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
@@ -1475,6 +1476,8 @@ export class App {
   private v2Roots: { status: HTMLElement; themes: HTMLElement; list: HTMLElement; fiche: HTMLElement; tabs: HTMLElement } | null = null;
   /** Brief, événements et ligne de base lancés pour la fiche France (équivalent v2 du tiroir ouvert). */
   private v2IntelStarted = false;
+  /** Ligne de base de visite figée par startV2Intel ; null avant (aucun enregistrement possible). */
+  private v2BaselineSession: VisitBaselineSession | null = null;
   private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
   /** Matières premières en cache : mouvements exceptionnels de l'énergie dans la liste (spec §4.4). */
   private currentCommodityData: CommodityData[] = [];
@@ -2411,6 +2414,8 @@ export class App {
       .then(() => {
         this.updateISNR();
         this.restoreActiveLayerPanelsAfterRefresh();
+        // v2 (relecture finale I5) : la liste compte maintenant les données secondaires.
+        this.recordV2VisitBaseline();
       })
       .catch((err) => console.error('[Init] Secondary layers error:', err));
 
@@ -7780,8 +7785,12 @@ export class App {
     if (this.v2IntelStarted) return;
     const poste = await this.ensurePoste();
     const visit = await import('./services/intel-last-visit.ts');
-    // Revue : la ligne de base DOIT être figée avant le premier enregistrement (deliverV2Events).
-    poste.setBaseline(visit.beginVisitBaseline());
+    if (this.v2IntelStarted) return;
+    // Revue : la ligne de base DOIT être figée avant le premier enregistrement ; startVisitBaseline
+    // la fige, puis pose une seule fois les écouteurs visibilitychange (hidden) et pagehide qui
+    // enregistrent la dernière liste vue (relecture finale I5).
+    this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
+    poste.setBaseline(this.v2BaselineSession.baseline);
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
@@ -7828,9 +7837,15 @@ export class App {
     const poste = this.poste;
     if (!poste) return;
     poste.setEvents(state);
-    if (state && !state.unavailable) {
-      void import('./services/intel-last-visit.ts').then((visit) => visit.recordVisitBaseline(poste.currentLevels()));
-    }
+    if (state && !state.unavailable) this.recordV2VisitBaseline();
+  }
+
+  /**
+   * Enregistre les niveaux affichés comme ligne de base de la prochaine visite (v2). Sans effet
+   * avant startV2Intel, qui fige d'abord la ligne de base de l'onglet (relecture finale I5).
+   */
+  private recordV2VisitBaseline(): void {
+    this.v2BaselineSession?.record();
   }
 
   private updateISNR(): void {
