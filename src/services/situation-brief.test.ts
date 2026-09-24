@@ -128,10 +128,10 @@ describe('selectBriefItems — état nominal', () => {
 describe('selectBriefItems — libellés FR', () => {
   it('mappe la sévérité vers le libellé français attendu', () => {
     const cases: Array<[SituationSeverity, string]> = [
-      ['critical', 'Critique'],
-      ['high', 'Élevé'],
-      ['medium', 'Moyen'],
-      ['watch', 'Veille'],
+      ['critical', 'Rouge'],
+      ['high', 'Orange'],
+      ['medium', 'Jaune'],
+      ['watch', 'Jaune'],
     ];
     for (const [severity, label] of cases) {
       const [item] = selectBriefItems([src({ id: severity, severity })], [], NOW);

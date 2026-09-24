@@ -41,7 +41,7 @@ describe('SituationBrief — échappement des guillemets en attribut', () => {
     expect(item).not.toBeNull();
     // La charge sort de l'attribut title si le guillemet n'est pas échappé.
     expect(item?.getAttribute('onmouseover')).toBeNull();
-    expect(item?.getAttribute('title')).toBe(`Critique · ${payload}`);
+    expect(item?.getAttribute('title')).toBe(`Rouge · ${payload}`);
     brief.destroy();
   });
 });

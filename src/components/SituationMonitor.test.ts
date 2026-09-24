@@ -45,3 +45,17 @@ describe('SituationMonitor — échappement des guillemets en attribut', () => {
     monitor.destroy();
   });
 });
+
+describe('SituationMonitor — langage commun L1', () => {
+  it('affiche le niveau en couleur de vigilance et la confiance en mots', () => {
+    const container = document.createElement('div');
+    const monitor = new SituationMonitor(container);
+    monitor.update([situation({ severity: 'high', confidence: 0.6 })]);
+
+    const item = container.querySelector('.sit-mon__item');
+    expect(item?.querySelector('.fm-vig--orange')?.textContent).toBe('Orange');
+    expect(item?.querySelector('.sit-mon__item-conf')?.textContent).toBe('confiance moyenne');
+    expect(item?.textContent).not.toContain('ÉLEVÉ');
+    monitor.destroy();
+  });
+});
