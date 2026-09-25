@@ -12,7 +12,8 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, EcowattSignal, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
@@ -258,9 +259,6 @@ import {
   LYR_TELECOM_PTS,
   LYR_POWER_FILL,
   LYR_POWER_LINE,
-  SRC_POWER_TENSION,
-  LYR_POWER_TENSION_FILL,
-  LYR_POWER_TENSION_LINE,
   SRC_CITIZEN_ZONES,
   LYR_CITIZEN_FILL,
   LYR_CITIZEN_LINE,
@@ -310,7 +308,9 @@ import {
   RAIL_SEVERITY_COLOR,
   RAIL_SEVERITY_HEX,
   RAIL_SEVERITY_TINT,
-  ECOWATT_COLORS,
+  REGION_BALANCE_COLORS,
+  REGION_BALANCE_LINE_COLORS,
+  regionEnergyBalance,
   METEO_COLORS,
   WEATHER_HIGHLIGHT_STATE,
   WEATHER_RISK_ICONS,
@@ -595,6 +595,9 @@ export class DeckGLMap {
   private energyBorderHistory = new Map<string, number[]>();  // sparkline series
   private energyRegionPopup: maplibregl.Popup | null = null;
   private energyFlowPopup: maplibregl.Popup | null = null;
+  // Dernier signal Écowatt OFFICIEL reçu (national, RTE) — pour l'info-bulle région, qui
+  // n'affiche plus de signal PAR région (Écowatt n'en a jamais eu).
+  private lastEcowattOfficial: import('../types/index.ts').EcowattOfficial | null = null;
 
   // ─── Gas tooltip data ───
   private gasFlowStats = new Map<string, import('../types/index.ts').GasInterconnectionFlowStats>();
@@ -848,7 +851,6 @@ export class DeckGLMap {
     // Outages (Telecom endpoints & Power regions)
     this.map.addSource(SRC_TELECOM, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_POWER, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_POWER_TENSION, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_IIP, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_TERMINATOR, { type: 'geojson', data: emptyFC() });
@@ -3316,26 +3318,6 @@ export class DeckGLMap {
         'line-width': 1.5,
       },
     });
-    // Tension réseau Ecowatt (0 PDL mesurés) — fill semi-transparent + contour pointillé
-    this.map.addLayer({
-      id: LYR_POWER_TENSION_FILL,
-      type: 'fill',
-      source: SRC_POWER_TENSION,
-      paint: {
-        'fill-color': ['get', 'tensionColor'],
-        'fill-opacity': 0.08,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_POWER_TENSION_LINE,
-      type: 'line',
-      source: SRC_POWER_TENSION,
-      paint: {
-        'line-color': ['get', 'tensionColor'],
-        'line-width': 1.5,
-        'line-opacity': 0.6,
-      },
-    });
     this.map.addLayer({
       id: LYR_TELECOM_PTS,
       type: 'circle',
@@ -4498,34 +4480,9 @@ export class DeckGLMap {
       iipHoverPopup = null;
     });
 
-    [LYR_POWER_FILL, LYR_POWER_TENSION_FILL].forEach(lyr => {
+    [LYR_POWER_FILL].forEach(lyr => {
       this.map!.on('mouseenter', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
       this.map!.on('mouseleave', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
-    });
-    this.map.on('click', LYR_POWER_TENSION_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const code = (feat.properties?.code as string) ?? '';
-      const tensionColor = (feat.properties?.tensionColor as string) ?? '#F97316';
-      const name = feat.properties?.nom ?? feat.properties?.name ?? code;
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:200px;">
-          <h4 style="margin:0 0 4px; font-weight:700; font-size:15px; color:#fff;">
-            ${name} <span style="font-size:12px; font-weight:normal; color:#9898a8;">(${code})</span>
-          </h4>
-          <div style="margin:0 0 10px; font-size:12px; font-weight:600; color:${tensionColor};">
-            ${tensionColor === '#EF4444' ? `${fmStatusDot('critical')} Signal rouge` : `${fmStatusDot('high')} Signal orange`} — Tension réseau Ecowatt
-          </div>
-          <div style="font-size:11px; color:#a1a1aa; line-height:1.5;">
-            Aucune panne PDL mesurée par Enedis.<br/>
-            Signal de tension préventif uniquement.
-          </div>
-        </div>
-      `;
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
     });
     this.map.on('click', LYR_POWER_FILL, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
@@ -5350,8 +5307,6 @@ export class DeckGLMap {
     });
 
     // ─── Energy Region Interactions (tooltip on hover) ───
-    const ECOWATT_SIG_COLORS: Record<string, string> = { green: '#34c759', orange: '#ff9500', red: '#ff3b30' };
-    const ECOWATT_SIG_LABELS: Record<string, string> = { green: 'Consommation normale', orange: 'Système électrique tendu', red: 'Coupures ciblées possibles' };
     const co2Color = (v: number) => v < 100 ? '#34c759' : v < 300 ? '#ff9500' : '#ff3b30';
     const fmtMW = (mw: number) => mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${Math.round(mw)} MW`;
     const fmtDelta = (p: number) => `${p >= 0 ? '+' : ''}${p.toFixed(1)} %`;
@@ -5388,8 +5343,11 @@ export class DeckGLMap {
 
       const p = s.production;
       const total = p.total || 1;
-      const sig = s.ecowattToday;
-      const sigColor = ECOWATT_SIG_COLORS[sig] ?? '#888';
+      // Écowatt est un signal NATIONAL (RTE) : dernier `official` reçu par updateEnergy, jamais
+      // dérivé des données de la région survolée.
+      const natLevel = ecowattToday(this.lastEcowattOfficial, Date.now());
+      const natLabel = natLevel ? ecowattLevelLabel(natLevel) : 'indisponible';
+      const natColor = natLevel === 'red' ? '#ff3b30' : natLevel === 'orange' ? '#ff9500' : natLevel === 'green' ? '#34c759' : '#888';
       const deltaColor = s.consumptionDeltaPct <= 0 ? '#34c759' : '#ff3b30';
 
       const prodRows: [string, number][] = [
@@ -5410,11 +5368,7 @@ export class DeckGLMap {
             <strong style="font-size:13px;color:#fff;">${s.regionName}</strong>
             <span style="font-size:10px;color:#666;">${formatUpdateTime(s.updatedAt)}</span>
           </div>
-          ${sectionLabel('Écowatt')}
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:${sigColor};display:inline-block;"></span>
-            <span style="font-size:12px;color:${sigColor};font-weight:600;">${ECOWATT_SIG_LABELS[sig] ?? sig}</span>
-          </div>
+          ${row('Écowatt (signal national RTE)', natLabel, natColor)}
           ${sep}
           ${sectionLabel('Consommation')}
           ${row('Actuelle', fmtMW(s.consumptionMW))}
@@ -8397,7 +8351,6 @@ export class DeckGLMap {
       LYR_HEALTH_OSCOUR_CIRCLES,
       LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
       LYR_POWER_FILL, LYR_POWER_LINE,
-      LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE,
       LYR_CITIZEN_FILL, LYR_CITIZEN_LINE,
       LYR_TELECOM_PTS,
       LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
@@ -8417,7 +8370,7 @@ export class DeckGLMap {
     } else if (categoryId === 'hospitals') {
       activeLayers = [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL];
     } else if (categoryId === 'outagesElec') {
-      activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_POWER_TENSION_FILL, LYR_POWER_TENSION_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
+      activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
     } else if (categoryId === 'outagesTelecom') {
       activeLayers = [LYR_TELECOM_PTS];
     } else if (categoryId === 'outagesInternet') {
@@ -8649,28 +8602,31 @@ export class DeckGLMap {
 
   // ─── Energy Layer ───
 
-  async updateEnergy(ecowatt: EcowattResponse | Record<string, EcowattSignal>): Promise<void> {
+  async updateEnergy(ecowatt: EcowattResponse): Promise<void> {
     if (!this.map) return;
     try {
-      // Pour éviter les problèmes de typage avec le mock pendant la transition
-      const isResponseObj = 'signals' in ecowatt;
-      const signals = (isResponseObj ? (ecowatt as EcowattResponse).signals : ecowatt) as Record<string, EcowattSignal>;
-      const interconnections = (isResponseObj ? (ecowatt as EcowattResponse).interconnections : []) || [];
+      // Le signal Écowatt officiel est NATIONAL (pas de signal par région) : conservé pour
+      // l'info-bulle région (une seule ligne « signal national »), jamais pour la couleur des
+      // régions ci-dessous.
+      this.lastEcowattOfficial = ecowatt.official ?? null;
+      const mixes = ecowatt.mixes ?? {};
+      const interconnections = ecowatt.interconnections ?? [];
 
       const resp = await fetch('/data/regions.geojson');
       if (!resp.ok) return;
       const geojson = await resp.json() as GeoJSON.FeatureCollection;
-      // Inject Ecowatt colors into features
+      // Couleur des régions : solde production/consommation éco2mix, indicatif — PAS une
+      // vigilance. Palette bleue/violette neutre (jamais vert/orange/rouge).
       for (const feat of geojson.features) {
         const code = (feat.properties?.code as string) ?? '';
-        const signal = signals[code] ?? 'green';
+        const productionTotalMW = mixes[code]?.total;
+        const consumptionMW = this.energyRegionStats.get(code)?.consumptionMW;
+        const balance = regionEnergyBalance(consumptionMW, productionTotalMW);
         feat.properties = {
           ...feat.properties,
-          fillColor: ECOWATT_COLORS[signal],
-          lineColor: signal === 'green' ? 'rgba(52,199,89,0.3)' :
-            signal === 'orange' ? 'rgba(255,149,0,0.5)' :
-              'rgba(255,59,48,0.6)',
-          signal,
+          fillColor: REGION_BALANCE_COLORS[balance],
+          lineColor: REGION_BALANCE_LINE_COLORS[balance],
+          regionBalance: balance,
         };
       }
       const src = this.map.getSource(SRC_POWER_REGIONS) as maplibregl.GeoJSONSource;
@@ -10417,8 +10373,7 @@ export class DeckGLMap {
       if (!baseGeojson) return;
       const geojson = this.cloneDepartmentsGeojson(baseGeojson);
 
-      // Filter to departments with actual measured outages only (map layer)
-      // Departments with only Ecowatt risk signal (offGridCount=0) are shown in the panel but NOT on the map
+      // Filter to departments with actual measured outages only
       geojson.features = geojson.features.filter(f => {
         const code = (f.properties?.code as string) ?? '';
         const pout = powersByCode.get(code);
@@ -10448,22 +10403,6 @@ export class DeckGLMap {
 
       const powerSrc = this.map.getSource(SRC_POWER) as maplibregl.GeoJSONSource;
       powerSrc?.setData(geojson);
-
-      // Tension departments (Ecowatt signal, 0 PDL) — outline only, no fill
-      const tensionGeojson = this.cloneDepartmentsGeojson(baseGeojson);
-      tensionGeojson.features = tensionGeojson.features
-        .filter(f => {
-          const code = (f.properties?.code as string) ?? '';
-          const pout = powersByCode.get(code);
-          return !!pout && pout.offGridCount === 0;
-        })
-        .map(f => {
-          const code = (f.properties?.code as string) ?? '';
-          const pout = powersByCode.get(code)!;
-          const tensionColor = pout.eventCause.includes('rouge') ? '#EF4444' : '#F97316';
-          return { ...f, properties: { ...f.properties, tensionColor } };
-        });
-      (this.map.getSource(SRC_POWER_TENSION) as maplibregl.GeoJSONSource)?.setData(tensionGeojson);
     } catch (e) {
       console.warn('[DeckGLMap] Error mapping power outages', e);
     }
@@ -10532,33 +10471,19 @@ export class DeckGLMap {
     this.refreshAisLayers();
   }
 
-  /** Highlight a specific department on the power outages layer (actual + tension). */
+  /** Highlight a specific department on the power outages layer. */
   highlightPowerDept(deptCode: string | null): void {
     if (!this.map) return;
     if (deptCode) {
-      // Actual outages layer
       this.map.setPaintProperty(LYR_POWER_FILL, 'fill-color', [
         'case', ['==', ['get', 'code'], deptCode], 'rgba(255,255,255,0.35)', ['get', 'fillColor'],
       ]);
       this.map.setPaintProperty(LYR_POWER_LINE, 'line-color', [
         'case', ['==', ['get', 'code'], deptCode], '#FFFFFF', ['get', 'lineColor'],
       ]);
-      // Tension layer
-      this.map.setPaintProperty(LYR_POWER_TENSION_FILL, 'fill-opacity', [
-        'case', ['==', ['get', 'code'], deptCode], 0.25, 0.08,
-      ]);
-      this.map.setPaintProperty(LYR_POWER_TENSION_LINE, 'line-color', [
-        'case', ['==', ['get', 'code'], deptCode], '#FFFFFF', ['get', 'tensionColor'],
-      ]);
-      this.map.setPaintProperty(LYR_POWER_TENSION_LINE, 'line-width', [
-        'case', ['==', ['get', 'code'], deptCode], 2.5, 1.5,
-      ]);
     } else {
       this.map.setPaintProperty(LYR_POWER_FILL, 'fill-color', ['get', 'fillColor']);
       this.map.setPaintProperty(LYR_POWER_LINE, 'line-color', ['get', 'lineColor']);
-      this.map.setPaintProperty(LYR_POWER_TENSION_FILL, 'fill-opacity', 0.08);
-      this.map.setPaintProperty(LYR_POWER_TENSION_LINE, 'line-color', ['get', 'tensionColor']);
-      this.map.setPaintProperty(LYR_POWER_TENSION_LINE, 'line-width', 1.5);
     }
   }
 
@@ -12583,8 +12508,6 @@ export class DeckGLMap {
     this.setVis(LYR_SUBMARINE_CABLES_LANDING, vis(layers.subseaCables));
     this.setVis(LYR_POWER_FILL, vis(layers.outagesElec));
     this.setVis(LYR_POWER_LINE, vis(layers.outagesElec));
-    this.setVis(LYR_POWER_TENSION_FILL, vis(layers.outagesElec));
-    this.setVis(LYR_POWER_TENSION_LINE, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_LINE, vis(layers.outagesElec));
     this.setVis(LYR_IIP_GLOW, vis(layers.outagesElec));

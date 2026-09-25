@@ -32,7 +32,7 @@ describe('blocs du tiroir en rendus purs (refonte UI étape 2)', () => {
 
   it('énergie : signal Écowatt en mot L1, carburants en pastille, statut inconnu jamais vert', () => {
     const html = renderEnergyBlock(energy(), 'fr');
-    expect(html).toContain('Écowatt : signal rouge');
+    expect(html).toContain('Écowatt (national) : signal rouge');
     expect(html).toContain('<span class="fm-vig fm-vig--orange">Orange</span>');
     expect(renderEnergyBlock(energy({ oilVigilanceStatus: 'unknown' }), 'fr')).toContain('color:var(--text-secondary);">46j');
     expect(renderEnergyBlock(null, 'fr')).toContain('Aucun profil énergie disponible.');

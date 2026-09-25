@@ -48,6 +48,7 @@ import type { EolienLive } from '@/services/eolien/types.ts';
 import type { TrafficIncident } from '@/services/traffic.ts';
 import { detectSituations } from './situation-engine.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -178,10 +179,11 @@ function averageWeighted(parts: Array<{ value: number; weight: number }>): numbe
   return clamp(Math.round(weighted / totalWeight));
 }
 
-function ecowattPressure(raw: FranceRawData): number {
-  const signalValues = Object.values(raw.ecowattResponse?.signals ?? {});
-  if (signalValues.includes('red')) return 75;
-  if (signalValues.includes('orange')) return 45;
+/** Écowatt est un signal NATIONAL (RTE) : le niveau du jour, pas une agrégation régionale. */
+function ecowattPressure(raw: FranceRawData, nowMs: number = Date.now()): number {
+  const level = ecowattToday(raw.ecowattResponse?.official, nowMs);
+  if (level === 'red') return 75;
+  if (level === 'orange') return 45;
   return 0;
 }
 
@@ -240,6 +242,7 @@ function computeFranceRiskPillars(
   raw: FranceRawData,
   signals: FranceCountrySignals,
   isnr: ISNRData | null,
+  nowMs: number = Date.now(),
 ): { continuity: number; defense: number; security: number; signal: number; shock: number } {
   const scores = isnr?.scores ?? [];
   const isnrSocial = avgDim(scores, 'social');
@@ -252,7 +255,7 @@ function computeFranceRiskPillars(
   // Continuité : énergie + transport + télécom + pannes + météo
   // (transport n'apparaît PLUS dans social pour éviter le double-comptage)
   const continuity = averageWeighted([
-    { value: Math.max(powerPressure(signals), ecowattPressure(raw)), weight: 25 },
+    { value: Math.max(powerPressure(signals), ecowattPressure(raw, nowMs)), weight: 25 },
     { value: fuelPressure(raw), weight: 20 },
     { value: telecomPressure(signals), weight: 15 },
     { value: transportPressure(signals), weight: 25 },
@@ -283,7 +286,7 @@ function computeFranceRiskPillars(
     headlinePressure(signals),
     scaleCount(signals.meteoAlerts + signals.floodAlerts, 8, 55)
       + scaleCount(signals.jammingSignals, 3, 20),
-    Math.max(ecowattPressure(raw), fuelPressure(raw) >= 70 ? 50 : fuelPressure(raw) >= 45 ? 28 : 0),
+    Math.max(ecowattPressure(raw, nowMs), fuelPressure(raw) >= 70 ? 50 : fuelPressure(raw) >= 45 ? 28 : 0),
   ));
 
   return { continuity, defense, security, signal, shock };
@@ -385,7 +388,7 @@ function selectDiverseNews(items: NewsItem[], maxItems: number, maxPerSource = 2
  * Assembles the energy summary from ecowattResponse + nuclearState + eolienLive.
  * Exact same logic as App.ts buildFranceIntelData() lines ~4730–4783.
  */
-function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | null {
+function buildEnergySnapshot(raw: FranceRawData, nowMs: number = Date.now()): FranceIntelEnergySummary | null {
   const nationalMix = raw.ecowattResponse?.national ?? null;
   if (!nationalMix) return null;
 
@@ -395,15 +398,8 @@ function buildEnergySnapshot(raw: FranceRawData): FranceIntelEnergySummary | nul
     return Math.round((value / nationalMix.total) * 100);
   };
 
-  const signals = raw.ecowattResponse?.signals ?? {};
-  const signalValues = Object.values(signals);
-  const ecowattSignal: EcowattSignal | null = signalValues.includes('red')
-    ? 'red'
-    : signalValues.includes('orange')
-      ? 'orange'
-      : signalValues.includes('green')
-        ? 'green'
-        : null;
+  // Écowatt est un signal NATIONAL (RTE) : le niveau du jour, pas une agrégation régionale.
+  const ecowattSignal: EcowattSignal | null = ecowattToday(raw.ecowattResponse?.official, nowMs);
 
   return {
     ecowattSignal,
@@ -490,12 +486,13 @@ export function computeFranceAxes(
   signals: FranceCountrySignals,
   isnr: ISNRData | null,
   raw?: FranceRawData,
+  nowMs: number = Date.now(),
 ): FranceCountryAxes {
   if (!raw) {
     return { continuity: 0, defense: 0, security: 0, signal: 0 };
   }
 
-  const pillars = computeFranceRiskPillars(raw, signals, isnr);
+  const pillars = computeFranceRiskPillars(raw, signals, isnr, nowMs);
   return {
     continuity: pillars.continuity,
     defense: pillars.defense,
@@ -512,6 +509,7 @@ export function buildFranceBriefContext(
   signals: FranceCountrySignals,
   axes: FranceCountryAxes,
   raw: FranceRawData,
+  nowMs: number = Date.now(),
 ): Omit<FranceBriefContext, 'score'> {
   const scores = raw.isnrData?.scores ?? [];
   const isnrComponents = {
@@ -541,16 +539,10 @@ export function buildFranceBriefContext(
     .slice(0, 6)
     .map((n) => n.title.replace(/[\r\n]+/g, ' ').slice(0, 120));
 
-  const signalValues = Object.values(raw.ecowattResponse?.signals ?? {});
-  const ecowattSignal: string | null = signalValues.includes('red')
-    ? 'red'
-    : signalValues.includes('orange')
-      ? 'orange'
-      : signalValues.includes('green')
-        ? 'green'
-        : null;
+  // Écowatt est un signal NATIONAL (RTE) : le niveau du jour, pas une agrégation régionale.
+  const ecowattSignal: string | null = ecowattToday(raw.ecowattResponse?.official, nowMs);
 
-  const energySummary = buildEnergySnapshot(raw);
+  const energySummary = buildEnergySnapshot(raw, nowMs);
 
   return {
     axes,
@@ -575,9 +567,10 @@ export function computeFranceRiskScore(
   isnr?: ISNRData | null,
   situations: ReadonlyArray<{ severity: SituationSeverity }> = [],
   previousScore: number | null = null,
+  nowMs: number = Date.now(),
 ): number {
   const pillars = raw && signals
-    ? computeFranceRiskPillars(raw, signals, isnr ?? null)
+    ? computeFranceRiskPillars(raw, signals, isnr ?? null, nowMs)
     : { continuity: axes.continuity, defense: axes.defense, security: axes.security, signal: axes.signal, shock: 0 };
   return scoreFromPillars(pillars, situations, previousScore).score;
 }
@@ -589,8 +582,9 @@ export function computeFranceScoreBreakdown(
   isnr: ISNRData | null,
   situations: ReadonlyArray<{ severity: SituationSeverity }> = [],
   previousScore: number | null = null,
+  nowMs: number = Date.now(),
 ): FranceScoreBreakdown {
-  const pillars = computeFranceRiskPillars(raw, signals, isnr);
+  const pillars = computeFranceRiskPillars(raw, signals, isnr, nowMs);
   const result = scoreFromPillars(pillars, situations, previousScore);
 
   const scores = isnr?.scores ?? [];
@@ -603,7 +597,7 @@ export function computeFranceScoreBreakdown(
 
   const componentsByPillar: Record<FranceScorePillarBreakdown['key'], Array<{ label: string; value: number }>> = {
     continuity: [
-      { label: 'Pression électrique', value: Math.max(powerPressure(signals), ecowattPressure(raw)) },
+      { label: 'Pression électrique', value: Math.max(powerPressure(signals), ecowattPressure(raw, nowMs)) },
       { label: 'Carburants & pétrole', value: fuelPressure(raw) },
       { label: 'Transport', value: transportPressure(signals) },
       { label: 'Télécom', value: telecomPressure(signals) },
@@ -670,16 +664,19 @@ export function buildFranceCountrySnapshot(
     brief?: StructuredBrief | null;
     briefFreshness?: 'fresh' | 'cached';
     previousScore?: number | null;
+    /** Horodatage de référence (ms epoch) pour les signaux datés (Écowatt…). Défaut : Date.now(). */
+    now?: number;
   },
 ): FranceCountrySnapshot {
+  const nowMs = options?.now ?? Date.now();
   const signals = buildFranceSignals(raw);
-  const axes = computeFranceAxes(signals, raw.isnrData, raw);
-  const situations: DetectedSituation[] = detectSituations(raw);
+  const axes = computeFranceAxes(signals, raw.isnrData, raw, nowMs);
+  const situations: DetectedSituation[] = detectSituations(raw, nowMs);
   const scoreBreakdown = computeFranceScoreBreakdown(
-    raw, signals, raw.isnrData ?? null, situations, options?.previousScore ?? null,
+    raw, signals, raw.isnrData ?? null, situations, options?.previousScore ?? null, nowMs,
   );
   const score = scoreBreakdown.score;
-  const partialCtx = buildFranceBriefContext(signals, axes, raw);
+  const partialCtx = buildFranceBriefContext(signals, axes, raw, nowMs);
   const briefContext: FranceBriefContext = { ...partialCtx, score };
 
   // Fallback stubs when raw data is unavailable
@@ -707,7 +704,7 @@ export function buildFranceCountrySnapshot(
     cyber,
     meteo: raw.meteoAlerts,
     topNews: selectDiverseNews(raw.newsItems, 20, 2),
-    energy: buildEnergySnapshot(raw),
+    energy: buildEnergySnapshot(raw, nowMs),
     timeline: raw.timeline,
     brief: options?.brief,
     briefLang: raw.briefLang,

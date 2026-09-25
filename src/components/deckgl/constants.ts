@@ -1,6 +1,6 @@
 // Extracted from DeckGLMap.ts — source/layer IDs, color tables and static dictionaries.
 import maplibregl from 'maplibre-gl';
-import type { EcowattSignal, MapViewState, MeteoRiskType } from '../../types/index.ts';
+import type { MapViewState, MeteoRiskType } from '../../types/index.ts';
 import type { IconName } from '../shared/icons.ts';
 
 // ─── Source & Layer IDs ───
@@ -211,9 +211,6 @@ export const LYR_SUBMARINE_CABLES_LANDING = 'submarine-cables-landing';
 export const LYR_TELECOM_PTS = 'telecom-pts';
 export const LYR_POWER_FILL = 'power-fill';
 export const LYR_POWER_LINE = 'power-line';
-export const SRC_POWER_TENSION = 'power-tension-src';
-export const LYR_POWER_TENSION_FILL = 'power-tension-fill';
-export const LYR_POWER_TENSION_LINE = 'power-tension-line';
 export const SRC_CITIZEN_ZONES = 'citizen-zones-src';
 export const LYR_CITIZEN_FILL = 'citizen-zones-fill';
 export const LYR_CITIZEN_LINE = 'citizen-zones-line';
@@ -289,12 +286,41 @@ export const RAIL_SEVERITY_TINT: Record<string, string> = {
   info: 'rgba(90,200,250,0.12)',
 };
 
-// ─── Ecowatt signal → color ───
-export const ECOWATT_COLORS: Record<EcowattSignal, string> = {
-  green: 'rgba(52,199,89,0.15)',
-  orange: 'rgba(255,149,0,0.25)',
-  red: 'rgba(255,59,48,0.30)',
+// ─── Solde régional production/consommation éco2mix → couleur des régions sur la carte ───
+// PAS une vigilance : Écowatt est un signal national (voir src/services/ecowatt-official.ts).
+// Une région structurellement importatrice (Île-de-France…) l'est en temps normal ; on ne
+// colore donc plus les régions en vert/orange/rouge, mais sur une palette bleue/violette
+// neutre indiquant seulement l'indicatif consommation/production locale.
+export type RegionEnergyBalance = 'exportatrice' | 'equilibree' | 'importatrice' | 'inconnue';
+
+export const REGION_BALANCE_COLORS: Record<RegionEnergyBalance, string> = {
+  exportatrice: 'rgba(56,132,255,0.16)',   // bleu clair — production locale largement excédentaire
+  equilibree: 'rgba(94,92,230,0.20)',      // bleu-violet — consommation et production proches
+  importatrice: 'rgba(142,68,224,0.30)',   // violet — région structurellement importatrice
+  inconnue: 'rgba(120,130,150,0.12)',      // gris-bleu — donnée indisponible
 };
+
+export const REGION_BALANCE_LINE_COLORS: Record<RegionEnergyBalance, string> = {
+  exportatrice: 'rgba(56,132,255,0.35)',
+  equilibree: 'rgba(94,92,230,0.45)',
+  importatrice: 'rgba(142,68,224,0.55)',
+  inconnue: 'rgba(120,130,150,0.25)',
+};
+
+/**
+ * Classe le solde régional production/consommation éco2mix. Ratio = consommation / production
+ * locale (mixes[code].total) : > 1 la région importe structurellement, < 1 elle est exportatrice.
+ * Sans consommation connue pour la région (pas encore reçue via updateEnergyTooltipData),
+ * retourne 'inconnue' plutôt que d'inventer une valeur.
+ */
+export function regionEnergyBalance(consumptionMW: number | undefined, productionTotalMW: number | undefined): RegionEnergyBalance {
+  if (typeof consumptionMW !== 'number' || !Number.isFinite(consumptionMW)) return 'inconnue';
+  if (typeof productionTotalMW !== 'number' || !Number.isFinite(productionTotalMW) || productionTotalMW <= 0) return 'inconnue';
+  const ratio = consumptionMW / productionTotalMW;
+  if (ratio < 0.85) return 'exportatrice';
+  if (ratio <= 1.15) return 'equilibree';
+  return 'importatrice';
+}
 
 // ─── Météo vigilance → color ───
 export const METEO_COLORS: Record<string, string> = {

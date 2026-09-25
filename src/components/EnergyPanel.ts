@@ -5,22 +5,23 @@ import {
   getPremiumCloseButtonStyle,
   getPremiumModalStyle,
 } from './panelHeader.ts';
-import type { EcowattSignal, EcowattResponse } from '../types/index.ts';
+import type { EcowattOfficialDay, EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
+import { ecowattToday, ecowattUpcoming, ecowattLastPublished, ecowattLevelLabel } from '../services/ecowatt-official.ts';
+import { officialLevel, levelHex } from '../services/vigilance.ts';
+import { parseApiDate, formatUpdateTime } from '../utils/format-date.ts';
 import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
 import { fmIcon } from './shared/icons.ts';
 
-// ─── Palette signal Écowatt ───
-const SIG_COLOR: Record<EcowattSignal, string> = {
-  green: '#16A34A',
-  orange: '#F97316',
-  red: '#EF4444',
-};
-const SIG_LABEL: Record<EcowattSignal, string> = {
-  green: 'Consommation normale',
-  orange: 'Système électrique tendu',
-  red: 'Coupures ciblées possibles',
-};
+// Aucun niveau Écowatt connu (signal absent, ou repli open data) : gris neutre, jamais une
+// couleur de vigilance qui ne vient pas de RTE.
+const NEUTRAL_COLOR = '#8e8e93';
+
+/** "AAAA-MM-JJ" → "JJ/MM" (le jour est déjà exprimé en heure de Paris, pas de parsing de date). */
+function ddmm(isoDay: string): string {
+  const [, m, d] = isoDay.split('-');
+  return `${d}/${m}`;
+}
 
 // ─── Palette mix énergétique ───
 const MIX_COLORS = {
@@ -85,15 +86,16 @@ export class EnergyPanel extends Panel {
       centerId: 'elec-ring-icon',
       centerText: fmIcon('zap', { size: 20 }),
       centerFontSize: '20px',
-      ringStroke: SIG_COLOR.green,
+      ringStroke: NEUTRAL_COLOR,
       title: 'Écowatt RTE - Réseau électrique',
-      subtitle: SIG_LABEL.green,
+      subtitle: 'Signal Écowatt',
       statusId: 'elec-signal-label',
       updateId: 'elec-update-time',
       badgeId: 'elec-truth-badge',
       gradientStart: 'rgba(22, 163, 74, 0.18)',
       gradientEnd: 'rgba(249, 115, 22, 0.08)',
       titlePrefix: 'Backbone énergétique',
+      extraTopRowHtml: '<div id="elec-upcoming-band" style="margin-top:6px;"></div>',
     });
     header.className = 'energy-panel-header';
     this.modalEl.appendChild(header);
@@ -153,7 +155,7 @@ export class EnergyPanel extends Panel {
     if (!this.contentEl) return;
     this.modalEl.style.display = 'flex';
 
-    if (!data || Object.keys(data.signals).length === 0) {
+    if (!data) {
       this.contentEl.innerHTML = `
         <div style="text-align: center; padding: 32px 16px;">
           <div style="margin-bottom: 16px; opacity: 0.6;">${fmIcon('plug-zap', { size: 48 })}</div>
@@ -168,50 +170,76 @@ export class EnergyPanel extends Panel {
     this.renderContent(data);
   }
 
+  /** Bande J → J+3 : jour abrégé + pastille de niveau (vide pour le repli open data, jours passés). */
+  private renderUpcomingBand(days: EcowattOfficialDay[]): string {
+    if (days.length === 0) return '';
+    return `<div style="display:flex;gap:10px;">${days.map((d, i) => {
+      const color = levelHex(officialLevel(d.level));
+      const label = i === 0 ? 'Auj.' : new Date(`${d.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' }).replace(/\.$/, '');
+      return `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;" title="${ecowattLevelLabel(d.level)}">
+          <span style="font-size:9px;color:var(--text-muted);text-transform:capitalize;">${label}</span>
+          <span style="width:9px;height:9px;border-radius:50%;background:${color};display:block;"></span>
+        </div>`;
+    }).join('')}</div>`;
+  }
+
   private updateHeader(data: EcowattResponse): void {
-    const nat = data.national;
-    const totalMW = nat.total > 0 ? nat.total : 1;
-
-    // ── Composante 1 : Charge du réseau (50 pts) ──────────────────────────
-    const chargeScore = Math.min(50, (totalMW / 85_000) * 50);
-
-    // ── Composante 2 : Régions en tension (30 pts) ────────────────────────
-    const allSigs = Object.values(data.signals) as EcowattSignal[];
-    const nRegions = allSigs.length || 1;
-    const nOrange = allSigs.filter(s => s === 'orange').length;
-    const nRed    = allSigs.filter(s => s === 'red').length;
-    const tensionScore = Math.min(30, (nOrange * 15 + nRed * 30) / nRegions);
-
-    // ── Composante 3 : Dépendance aux imports nets (20 pts) ───────────────
-    const netImportMW = data.interconnections.reduce((sum, ic) => sum + Math.max(0, ic.flowMW), 0);
-    const importScore = Math.min(20, (netImportMW / 10_000) * 20);
-
-    // ── Score total & couleur ─────────────────────────────────────────────
-    const gridScore = Math.round(chargeScore + tensionScore + importScore);
-    const valMap: Record<EcowattSignal, number> = { red: 3, orange: 2, green: 1 };
-    const worstSig: EcowattSignal = allSigs.length > 0
-      ? allSigs.reduce((worst, s) => valMap[s] > valMap[worst] ? s : worst, 'green' as EcowattSignal)
-      : 'green';
+    const nowMs = Date.now();
+    const official = data.official;
 
     const ring = this.modalEl.querySelector('#elec-ring-progress') as SVGCircleElement | null;
     const icon = this.modalEl.querySelector('#elec-ring-icon') as HTMLElement | null;
     const lbl  = this.modalEl.querySelector('#elec-signal-label') as HTMLElement | null;
     const time = this.modalEl.querySelector('#elec-update-time') as HTMLElement | null;
     const badge = this.modalEl.querySelector('#elec-truth-badge') as HTMLElement | null;
+    const band = this.modalEl.querySelector('#elec-upcoming-band') as HTMLElement | null;
 
-    if (ring) {
-      ring.setAttribute('stroke', SIG_COLOR[worstSig]);
-      ring.setAttribute('stroke-dasharray', `${gridScore} 100`);
+    const level = ecowattToday(official, nowMs);
+    // Le badge dit la fraîcheur du SIGNAL Écowatt (pas celle du mix) : « TEMPS RÉEL » seulement
+    // quand RTE a publié le signal du jour ; même codage que les autres badges (orange = différé).
+    if (badge) {
+      badge.innerHTML = official && official.source === 'rte' && level
+        ? renderFreshnessBadge(['ecowatt'])
+        : official?.source === 'odre'
+          ? renderTruthBadge('SIGNAL DIFFÉRÉ · J-1', '#F59E0B')
+          : renderTruthBadge('SIGNAL INDISPONIBLE', '#EF4444');
     }
-    if (icon) {
-      icon.textContent = String(gridScore);
-      icon.style.fontSize = '20px';
-      icon.style.fontWeight = '700';
-      icon.style.color = SIG_COLOR[worstSig];
+
+    if (official && official.source === 'rte' && level) {
+      // ── Signal du jour, publié par RTE (jour J à J+3) ──────────────────
+      const color = levelHex(officialLevel(level));
+      if (ring) { ring.setAttribute('stroke', color); ring.setAttribute('stroke-dasharray', '100 100'); }
+      if (icon) icon.style.color = color;
+      if (lbl)  { lbl.textContent = ecowattLevelLabel(level); lbl.style.color = color; }
+      if (time) {
+        const d = parseApiDate(official.generatedAt);
+        time.textContent = d
+          ? `RTE Écowatt · publié le ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} à ${formatUpdateTime(d)}`
+          : 'RTE Écowatt';
+      }
+      if (band) band.innerHTML = this.renderUpcomingBand(ecowattUpcoming(official, nowMs));
+    } else if (official && official.source === 'odre') {
+      // ── Repli open data RTE : jours PASSÉS seulement, jamais présenté comme le signal du jour ──
+      const last = ecowattLastPublished(official, nowMs);
+      if (ring) { ring.setAttribute('stroke', NEUTRAL_COLOR); ring.setAttribute('stroke-dasharray', '100 100'); }
+      if (icon) icon.style.color = NEUTRAL_COLOR;
+      if (lbl) {
+        lbl.textContent = last
+          ? `Dernier signal publié le ${ddmm(last.date)} : ${ecowattLevelLabel(last.level)} (open data RTE, J-1)`
+          : 'Signal Écowatt indisponible';
+        lbl.style.color = NEUTRAL_COLOR;
+      }
+      if (time) time.textContent = '';
+      if (band) band.innerHTML = '';
+    } else {
+      // ── Ni RTE ni repli open data disponibles ──────────────────────────
+      if (ring) { ring.setAttribute('stroke', NEUTRAL_COLOR); ring.setAttribute('stroke-dasharray', '0 100'); }
+      if (icon) icon.style.color = NEUTRAL_COLOR;
+      if (lbl)  { lbl.textContent = 'Signal Écowatt indisponible'; lbl.style.color = NEUTRAL_COLOR; }
+      if (time) time.textContent = '';
+      if (band) band.innerHTML = '';
     }
-    if (lbl)   { lbl.textContent = SIG_LABEL[worstSig]; lbl.style.color = SIG_COLOR[worstSig]; }
-    if (time)  time.textContent = `MàJ : ${nat.timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-    if (badge) badge.innerHTML = renderFreshnessBadge(['ecowatt']);
   }
 
   private renderContent(data: EcowattResponse): void {
@@ -280,10 +308,20 @@ export class EnergyPanel extends Panel {
           </div>`;
       }).join('');
 
+      // Dépendance aux imports nets (indicatif) : part de la charge nationale couverte par les
+      // imports aux frontières, plafonnée à 20 — inchangé depuis l'ancien score composite.
+      const netImportMW = data.interconnections.reduce((sum, ic) => sum + Math.max(0, ic.flowMW), 0);
+      const importScore = Math.min(20, Math.round((netImportMW / 10_000) * 20));
+
       flowsCard = `
         <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05);">
-          <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px;">
-            Échanges frontières
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+              Échanges frontières
+            </div>
+            <div style="font-size: 10px; color: var(--text-muted);" title="Part de la charge nationale couverte par les imports aux frontières">
+              Dépendance imports : <strong style="color: var(--text-secondary);">${importScore}/20</strong>
+            </div>
           </div>
           ${rows}
         </div>`;

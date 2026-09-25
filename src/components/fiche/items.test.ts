@@ -11,12 +11,15 @@ import { renderFiche } from './parts.ts';
 import { buildWorkQueue, officialAlertGroups, type WorkQueueInput } from '../../services/work-queue.ts';
 import type {
   DetectedSituation,
+  EcowattHourValue,
   EcowattResponse,
+  EcowattSignal,
   FranceCountrySignals,
   FranceIntelEnergySummary,
   NewsEvent,
   NewsEventDetail,
 } from '../../types/index.ts';
+import { parisDate } from '../../services/ecowatt-official.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
 const visibleOf = (html: string): string => html.slice(0, html.indexOf('<details'));
@@ -46,9 +49,19 @@ function event(over: Partial<NewsEvent> = {}): NewsEvent {
   };
 }
 
-function ecowatt(signalsByRegion: EcowattResponse['signals']): EcowattResponse {
+// Écowatt est un signal NATIONAL (RTE) : le jour est ancré sur l'horloge réelle (Europe/Paris),
+// comme dans work-queue.ts (officialEntries → ecowattToday(ecowatt?.official, Date.now())).
+function ecowatt(level: EcowattSignal): EcowattResponse {
   const mix = { timestamp: new Date(0), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 };
-  return { signals: signalsByRegion, mixes: {}, national: mix, interconnections: [] };
+  const hourValue: EcowattHourValue = level === 'green' ? 1 : level === 'orange' ? 2 : 3;
+  return {
+    official: {
+      source: 'rte',
+      generatedAt: new Date(NOW).toISOString(),
+      days: [{ date: parisDate(Date.now()), level, message: '', hours: Array(24).fill(hourValue) as EcowattHourValue[] }],
+    },
+    mixes: {}, national: mix, interconnections: [],
+  };
 }
 
 function energy(): FranceIntelEnergySummary {
@@ -75,7 +88,7 @@ function themeInput(over: Partial<ThemeFicheInput> = {}): ThemeFicheInput {
 
 describe('fiche thème', () => {
   it('rien à traiter : fiche verte et éléments suivis au vert (§7.4)', () => {
-    const model = buildThemeFiche(themeInput({ queue: queue({ ecowatt: ecowatt({ '53': 'green' }) }) }));
+    const model = buildThemeFiche(themeInput({ queue: queue({ ecowatt: ecowatt('green') }) }));
     expect(model.kind).toBe('Thème');
     expect(model.name).toBe('Énergie');
     expect(model.level).toBe('vert');
@@ -83,7 +96,7 @@ describe('fiche thème', () => {
   });
 
   it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter » (relecture finale m1)', () => {
-    const model = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt({ '53': 'green' }) }) }));
+    const model = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt('green') }) }));
     expect(model.essentiel).toEqual(['Chargement des données…']);
     expect(renderFiche(model, 'fr')).not.toContain('Rien à traiter');
   });

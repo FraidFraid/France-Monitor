@@ -10,7 +10,6 @@
  */
 
 import type {
-  EcowattSignal,
   EnergyMix,
   RegionEnergyStats,
   InterconnectionFlowStats,
@@ -110,19 +109,6 @@ let cache: Cache | null = null;
 
 function n(v: number | null): number {
   return v ?? 0;
-}
-
-function computeSignal(conso: number, prod: number, ech: number): EcowattSignal {
-  if (conso === 0) return 'green';
-  if (prod === 0) {
-    if (ech < -3000) return 'red';
-    if (ech < -1000) return 'orange';
-    return 'green';
-  }
-  const ratio = conso / prod;
-  if (ratio > 1.25) return 'red';
-  if (ratio > 1.10) return 'orange';
-  return 'green';
 }
 
 function computeCarbonIntensity(mix: EnergyMix): number {
@@ -225,8 +211,6 @@ function parseRegions(
     };
 
     const conso  = n(rec.consommation);
-    const ech    = n(rec.ech_physiques);
-    const signal = computeSignal(conso, total, ech);
 
     const consoJ1          = yesterdayConsumption.get(code) ?? 0;
     const consumptionDelta = consoJ1 > 0 ? ((conso - consoJ1) / consoJ1) * 100 : 0;
@@ -241,9 +225,6 @@ function parseRegions(
       production:          mix,
       lowCarbonPct:        Math.round(lowCarbonPct * 10) / 10,
       carbonIntensity:     Math.round(computeCarbonIntensity(mix)),
-      ecowattToday:        signal,
-      ecowattJ1:           signal, // pas de prévision disponible : même signal
-      ecowattJ2:           signal,
     });
   }
 
@@ -328,12 +309,8 @@ export async function fetchEnergyRegions(): Promise<EnergyRegionsData> {
 
     cache = { regions, flows, fetchedAt: Date.now() };
 
-    console.log(
-      `[energy-regions] ${regions.length} régions, ${flows.length} flux — ` +
-      `🟢 ${regions.filter(r => r.ecowattToday === 'green').length} / ` +
-      `🟡 ${regions.filter(r => r.ecowattToday === 'orange').length} / ` +
-      `🔴 ${regions.filter(r => r.ecowattToday === 'red').length}`,
-    );
+    // Le signal Écowatt (national, RTE) n'est plus dérivé du mix régional ici — voir ecowatt.ts.
+    console.log(`[energy-regions] ${regions.length} régions, ${flows.length} flux`);
 
     return { regions, flows };
   } catch (err) {

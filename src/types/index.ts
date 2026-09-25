@@ -198,7 +198,38 @@ export interface NewsHistoryResponse {
 
 // ═══ Energy (Ecowatt) ═══
 
+/**
+ * Niveau du signal Écowatt OFFICIEL de RTE, national par nature (il n'existe pas de signal
+ * Écowatt régional) : dvalue 1 = vert, 2 = orange (système électrique tendu), 3 = rouge
+ * (système très tendu, coupures possibles).
+ */
 export type EcowattSignal = 'green' | 'orange' | 'red';
+
+/** Pas horaire Écowatt (hvalue) : 0 = vert avec production décarbonée (API v5), 1 vert, 2 orange, 3 rouge. */
+export type EcowattHourValue = 0 | 1 | 2 | 3;
+
+export interface EcowattOfficialDay {
+  /** Jour concerné, heure de Paris, « AAAA-MM-JJ ». */
+  date: string;
+  level: EcowattSignal;
+  /** Message du jour publié par RTE (« Pas d'alerte. »…), texte brut. */
+  message: string;
+  /** 24 pas horaires, de 0 h à 23 h (heure de Paris). */
+  hours: EcowattHourValue[];
+}
+
+export interface EcowattOfficial {
+  /**
+   * 'rte' : API Écowatt v5 de RTE (jour J à J+3, temps réel).
+   * 'odre' : jeu open data RTE « nouveau_signal_ecowatt » sur ODRÉ, repli : jours PASSÉS
+   * seulement (J-1 au mieux), jamais présenté comme le signal du jour.
+   */
+  source: 'rte' | 'odre';
+  /** Dernière génération du fichier par RTE (ISO 8601), null si inconnue. */
+  generatedAt: string | null;
+  /** Jours triés par date croissante. */
+  days: EcowattOfficialDay[];
+}
 
 export interface RegionEnergyStats {
   regionCode:          string;     // code INSEE région (ex: "11")
@@ -209,9 +240,6 @@ export interface RegionEnergyStats {
   production:          EnergyMix;  // réutilise le type existant
   lowCarbonPct:        number;     // (nucleaire+hydro+eolien+solaire) / total
   carbonIntensity:     number;     // gCO₂/kWh estimé
-  ecowattToday:        EcowattSignal;
-  ecowattJ1:           EcowattSignal; // estimé (même signal en l'absence de prévision)
-  ecowattJ2:           EcowattSignal;
 }
 
 export interface InterconnectionFlowStats {
@@ -233,18 +261,17 @@ export interface InterconnectionFlow {
   coordinates: [number, number]; // target coordinates outside France
 }
 
+/**
+ * Données électriques : signal Écowatt officiel (national, RTE) + mix éco2mix par région et
+ * national + échanges aux frontières (ODRÉ). Le mix régional n'est PAS une vigilance : une
+ * région importatrice (Île-de-France…) l'est structurellement.
+ */
 export interface EcowattResponse {
-  signals: Record<string, EcowattSignal>;
+  /** Signal Écowatt officiel ; null si RTE et le repli open data sont indisponibles. */
+  official: EcowattOfficial | null;
   mixes: Record<string, EnergyMix>;
   national: EnergyMix;
   interconnections: InterconnectionFlow[];
-}
-
-export interface EcowattData {
-  date: string;
-  signal: EcowattSignal;
-  message: string;
-  regions?: Record<string, EcowattSignal>;
 }
 
 export interface EnergyMix {

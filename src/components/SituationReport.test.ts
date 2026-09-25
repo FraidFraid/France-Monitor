@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { collectSituationReportData, type SituationReportContext } from './SituationReport.ts';
-import type { DetectedSituation } from '../types/index.ts';
+import type { DetectedSituation, EcowattHourValue } from '../types/index.ts';
+import { parisDate } from '../services/ecowatt-official.ts';
 
 function situation(over: Partial<DetectedSituation> = {}): DetectedSituation {
   return {
@@ -19,7 +20,14 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
     stability: { scores: [], nationalScore: 47, timestamp: new Date(0) },
     meteoAlerts: [{ department: 'Var', departmentCode: '83', level: 'violet', risks: ['heat'] }],
     floodSegments: [],
-    ecowatt: { signals: { '53': 'red' }, mixes: {}, national: mix, interconnections: [] },
+    ecowatt: {
+      official: {
+        source: 'rte',
+        generatedAt: new Date(0).toISOString(),
+        days: [{ date: parisDate(Date.now()), level: 'red', message: 'Risque de coupures.', hours: Array(24).fill(3) as EcowattHourValue[] }],
+      },
+      mixes: {}, national: mix, interconnections: [],
+    },
     sncfDisruptions: [],
     trafficIncidents: [],
     powerOutages: [],

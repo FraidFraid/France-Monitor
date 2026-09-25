@@ -77,28 +77,9 @@ export const MOCK_NEWS_ITEMS: NewsItem[] = withIds([
   { source: '20 Minutes', title: 'Pollution sonore : plaintes autour de l\'aeroport de Toulouse-Blagnac', link: '#', pubDate: new Date(Date.now() - 40000000), isAlert: false, tier: 4, threat: { level: 'low', category: 'general', confidence: 0.45, source: 'keyword' }, lat: 43.6293, lon: 1.3640, locationName: 'Blagnac' },
 ]);
 
-// ═══ Mock Ecowatt Signals (par code région) ═══
-
-import type { EcowattSignal, MeteoAlert } from '../types/index.ts';
-
-/** Signal Ecowatt par code région — pour colorer les régions sur la carte */
-export const MOCK_ECOWATT_REGIONS: Record<string, EcowattSignal> = {
-  '11': 'red',      // Île-de-France
-  '24': 'green',    // Centre-Val de Loire
-  '27': 'green',    // Bourgogne-Franche-Comté
-  '28': 'green',    // Normandie
-  '32': 'orange',   // Hauts-de-France
-  '44': 'green',    // Grand Est
-  '52': 'green',    // Pays de la Loire
-  '53': 'green',    // Bretagne
-  '75': 'green',    // Nouvelle-Aquitaine
-  '76': 'orange',   // Occitanie
-  '84': 'green',    // Auvergne-Rhône-Alpes
-  '93': 'green',    // PACA
-  '94': 'green',    // Corse
-};
-
 // ═══ Mock Météo-France Alerts ═══
+
+import type { MeteoAlert } from '../types/index.ts';
 
 export const MOCK_METEO_ALERTS: MeteoAlert[] = [
   { department: 'Nord', departmentCode: '59', level: 'orange', risks: ['wind'] },

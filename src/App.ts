@@ -77,6 +77,7 @@ import { classifyWithAI } from './services/ai-classifier.ts';
 import { summarizeWithFallback } from './services/summarization.ts';
 import { geocodeNewsItem } from './services/geocoder.ts';
 import { fetchEcowatt } from './services/ecowatt.ts';
+import { ecowattStatusNote, ecowattToday } from './services/ecowatt-official.ts';
 import { fetchBiogasProduction } from './services/biogas.ts';
 import { fetchBiomethaneSites } from './services/biogas-sites.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
@@ -834,22 +835,24 @@ const CYBER_LEGEND: LegendCategory = {
   notes: ['Couleur = sévérité maximale affichée sur la carte ; les clusters héritent du signal le plus fort.'],
 };
 
+// Couleur des régions = solde production/consommation éco2mix (teintes de REGION_BALANCE_COLORS,
+// deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
   id: 'powerGrid',
-  title: 'Électricité — Écowatt',
+  title: 'Électricité — solde régional',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
   items: [
-    { id: 'green', label: 'Situation normale', color: '#22C55E', shape: 'square' },
-    { id: 'orange', label: 'Système tendu', color: '#F59E0B', shape: 'square' },
-    { id: 'red', label: 'Coupures possibles', color: '#EF4444', shape: 'square' },
+    { id: 'balance-export', label: 'Région exportatrice', color: '#3884FF', shape: 'square' },
+    { id: 'balance-even', label: 'Région équilibrée', color: '#5E5CE6', shape: 'square' },
+    { id: 'balance-import', label: 'Région importatrice', color: '#8E44E0', shape: 'square' },
     // Electric flow arcs: Blue/cyan neon plasma effect
     { id: 'elec-import', label: 'Import élec.', color: '#FF4B4B', icon: '←', iconSize: 18 },
     { id: 'elec-export', label: 'Export élec.', color: '#16A34A', icon: '→', iconSize: 18 },
   ],
   source: {
-    label: 'RTE / Écowatt',
+    label: 'RTE Écowatt (national) · éco2mix/ODRÉ',
     year: new Date().getFullYear(),
   },
   refresh: {
@@ -1875,8 +1878,9 @@ export class App {
             'Mix/interconnexions : INDISPONIBLE',
           ]
         : [
-            'Qualité des données : signal, mix et interconnexions en TEMPS RÉEL (eco2mix/ODRE)',
-            'Détail réacteurs nucléaires : non inclus ici',
+            ecowattStatusNote(this.currentEcowattResponse.official, Date.now()),
+            'Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance',
+            'Mix et interconnexions : TEMPS RÉEL (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici',
           ]
       : [
           'Qualité des données : chargement en cours',
@@ -4206,6 +4210,7 @@ export class App {
       panel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
       panel.mount();
       this.outagesPanel = panel;
+      panel.setEcowattNational(ecowattToday(this.currentEcowattResponse?.official, Date.now()));
       if (this.activeLayers.outages) {
         if (this.outagesLoaded) {
           panel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
@@ -5396,15 +5401,17 @@ export class App {
       fetchBorderHistory(7).catch(() => new Map()),
     ]);
 
-    if (Object.keys(ecowatt.signals).length > 0) {
+    if (Object.keys(ecowatt.mixes).length > 0 || ecowatt.official !== null) {
       this.currentEcowattResponse = ecowatt;
       this.currentEcowattUsesFallback = false;
       await this.mapContainer?.updateEnergy(ecowatt);
       this.mapContainer?.updateEnergyTooltipData(energyRegions.regions, energyRegions.flows, borderHistory);
-      this.statusPanel?.updateSource('Écowatt RTE', { status: 'ok', lastUpdate: new Date() });
+      // Signal officiel du jour (API RTE) → à jour ; repli open data (J-1) ou signal absent → figé.
+      const officialLive = ecowattToday(ecowatt.official, Date.now()) !== null;
+      this.statusPanel?.updateSource('Écowatt RTE', { status: officialLive ? 'ok' : 'stale', lastUpdate: new Date() });
     } else {
       this.currentEcowattResponse = {
-        signals: {},
+        official: null,
         mixes: {},
         national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
         interconnections: [],
@@ -5420,6 +5427,8 @@ export class App {
       this.energyPanel.show(this.currentEcowattResponse);
       this.layoutEnergyFloatingPanels();
     }
+    // La tension réseau est nationale (Écowatt) : le panneau des pannes l'affiche en une ligne.
+    this.outagesPanel?.setEcowattNational(ecowattToday(this.currentEcowattResponse.official, Date.now()));
 
     await this.refreshHydraulicLayer();
     this.refreshEnergyDataLegends();
@@ -6968,7 +6977,7 @@ export class App {
       {
         name: 'ecowatt', task: this.loadEcowatt().catch(() => {
           this.currentEcowattResponse = {
-            signals: {},
+            official: null,
             mixes: {},
             national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
             interconnections: [],

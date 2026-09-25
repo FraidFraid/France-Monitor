@@ -174,7 +174,7 @@ export function renderEnergyBlock(energy: FranceIntelEnergySummary | null, lang:
     <section class="frintel-card">
       <div class="frintel-card-top">
         <div class="frintel-card-title">${t(lang, 'Énergie', 'Energy')}</div>
-        <div class="frintel-card-meta">${energy?.ecowattSignal ? `${t(lang, 'Écowatt : signal', 'Ecowatt: signal')} ${levelLabel(officialLevel(energy.ecowattSignal), lang).toLowerCase()}` : t(lang, 'Données partielles', 'Partial data')}</div>
+        <div class="frintel-card-meta">${energy?.ecowattSignal ? `${t(lang, 'Écowatt (national) : signal', 'Ecowatt (national): signal')} ${levelLabel(officialLevel(energy.ecowattSignal), lang).toLowerCase()}` : t(lang, 'Données partielles', 'Partial data')}</div>
       </div>
       ${energy ? `
         <div class="frintel-energy-stack">

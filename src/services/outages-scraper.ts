@@ -7,7 +7,6 @@
  * Fonctionnalités :
  * - Cache client 10 min (évite les re-fetches inutiles)
  * - Circuit breaker : désactivation après 2 échecs consécutifs
- * - Corrélation avec Ecowatt : booste la severity si signal orange/rouge
  * - Helpers de visualisation : couleurs par severity, GeoJSON layer-ready
  */
 
@@ -132,48 +131,6 @@ export async function fetchCitizenReports(): Promise<CitizenOutageReport[]> {
     return [...response.reports].sort(
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-}
-
-/**
- * Corrèle les zones de pannes avec un signal Ecowatt.
- * Si le signal est orange/rouge, remonte la severity des zones 'low'/'medium'.
- *
- * @param ecowattSignal 'green' | 'orange' | 'red'
- * @returns FeatureCollection avec severities ajustées
- */
-export function correlateWithEcowatt(
-    zones: OutageZoneCollection,
-    ecowattSignal: 'green' | 'orange' | 'red'
-): OutageZoneCollection {
-    if (ecowattSignal === 'green') return zones;
-
-    const boostedFeatures = zones.features.map((zone: OutageZone) => {
-        const props = zone.properties;
-        let severity = props.severity;
-
-        if (ecowattSignal === 'red') {
-            // Tension réseau nationale : monter d'un niveau
-            if (severity === 'low') severity = 'medium';
-            else if (severity === 'medium') severity = 'high';
-        } else if (ecowattSignal === 'orange') {
-            // Vigilance : monter seulement les zones avec peu de reports
-            if (severity === 'low' && props.totalReports > 5) severity = 'medium';
-        }
-
-        if (severity === props.severity) return zone;
-
-        return {
-            ...zone,
-            properties: {
-                ...props,
-                severity,
-                // Marquer la corrélation pour le rendu
-                ecowattCorrelated: true,
-            } as OutageZoneProperties,
-        };
-    });
-
-    return { ...zones, features: boostedFeatures };
 }
 
 /**

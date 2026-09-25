@@ -24,6 +24,7 @@ import type {
 } from '../types/index.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
 import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
+import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
   buildSituationReportHtml,
   type ReportDomainSignal,
@@ -62,22 +63,6 @@ const SITUATION_CAP = 6;
 const EVENTS_CAP = 6;
 const TOP_DEPARTMENTS_CAP = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const ECOWATT_REGION_NAMES: Record<string, string> = {
-  '11': 'Île-de-France',
-  '24': 'Centre-Val de Loire',
-  '27': 'Bourgogne-Franche-Comté',
-  '28': 'Normandie',
-  '32': 'Hauts-de-France',
-  '44': 'Grand Est',
-  '52': 'Pays de la Loire',
-  '53': 'Bretagne',
-  '75': 'Nouvelle-Aquitaine',
-  '76': 'Occitanie',
-  '84': 'Auvergne-Rhône-Alpes',
-  '93': 'PACA',
-  '94': 'Corse',
-};
 
 const STATE_PRIORITY: Record<ReportSourceState, number> = {
   error: 0,
@@ -124,20 +109,17 @@ function formatAge(cacheAgeMs: number | null, lastUpdate: Date | null, now: Date
 function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
   const signals: ReportDomainSignal[] = [];
 
-  // Écowatt — inclus si au moins une région orange/rouge.
+  // Écowatt — signal NATIONAL (RTE) ; inclus si le niveau du jour est orange ou rouge.
+  // Le jour Écowatt est ancré sur l'horloge réelle (Europe/Paris), pas sur `generatedAt` : le
+  // signal RTE du jour ne se rejoue pas pour une note générée à une date arbitraire.
   if (ctx.ecowatt) {
-    const entries = Object.entries(ctx.ecowatt.signals);
-    const red = entries.filter(([, s]) => s === 'red');
-    const orange = entries.filter(([, s]) => s === 'orange');
-    if (red.length > 0 || orange.length > 0) {
-      const names = [...red, ...orange]
-        .map(([code]) => ECOWATT_REGION_NAMES[code] ?? `Région ${code}`)
-        .slice(0, 5);
+    const level = ecowattToday(ctx.ecowatt.official, Date.now());
+    if (level === 'red' || level === 'orange') {
       signals.push({
-        domain: 'Écowatt (tension électrique)',
-        levelLabel: red.length > 0 ? 'Rouge' : 'Orange',
-        level: red.length > 0 ? 'rouge' : 'orange',
-        detail: `${red.length} région(s) rouge, ${orange.length} orange${names.length > 0 ? ` : ${names.join(', ')}` : ''}.`,
+        domain: 'Écowatt (signal national RTE)',
+        levelLabel: level === 'red' ? 'Rouge' : 'Orange',
+        level: level === 'red' ? 'rouge' : 'orange',
+        detail: `Signal national : ${ecowattLevelLabel(level)}.`,
       });
     }
   }

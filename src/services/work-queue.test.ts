@@ -10,6 +10,7 @@ import {
   type MarketLine,
   type WorkQueueInput,
 } from './work-queue.ts';
+import { parisDate } from './ecowatt-official.ts';
 import type { SpecificThemeId } from './themes.ts';
 import type { VigilanceLevel } from './vigilance.ts';
 import type {
@@ -17,6 +18,7 @@ import type {
   CommodityData,
   DetectedSituation,
   EcowattResponse,
+  EcowattSignal,
   FloodSegment,
   IntelEventsState,
   MarketData,
@@ -48,9 +50,15 @@ function eventsState(over: Partial<IntelEventsState> = {}): IntelEventsState {
   return { events: [], digest: [], totals: {}, anchor: { since: NOW - 3 * H, kind: 'last-visit' }, fetchedAt: NOW, unavailable: false, ...over };
 }
 
-function ecowatt(signals: EcowattResponse['signals']): EcowattResponse {
+/** Écowatt est un signal NATIONAL : la fixture construit `official` avec un jour = parisDate(NOW). */
+function ecowatt(level: EcowattSignal | null): EcowattResponse {
   const mix = { timestamp: new Date(0), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 };
-  return { signals, mixes: {}, national: mix, interconnections: [] };
+  const official: EcowattResponse['official'] = level ? {
+    source: 'rte',
+    generatedAt: new Date(NOW).toISOString(),
+    days: [{ date: parisDate(NOW), level, message: 'Test', hours: Array.from({ length: 24 }, () => 1) }],
+  } : null;
+  return { official, mixes: {}, national: mix, interconnections: [] };
 }
 
 function meteo(department: string, level: MeteoAlert['level'], risks: MeteoAlert['risks'] = []): MeteoAlert {
@@ -72,7 +80,7 @@ function market(over: Partial<MarketLine> = {}): MarketLine {
 function input(over: Partial<WorkQueueInput> = {}): WorkQueueInput {
   return {
     situations: [], alerts: [], events: eventsState(), ecowatt: null, meteo: [], floods: [], markets: [],
-    baseline: null, firstSeen: new Map(), lang: 'fr', ...over,
+    baseline: null, firstSeen: new Map(), lang: 'fr', now: NOW, ...over,
   };
 }
 
@@ -117,25 +125,29 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(keys(shown)).toEqual(['event:42']);
   });
 
-  it('alertes officielles orange ou rouges regroupées par source et niveau, violet compté rouge', () => {
+  it('alertes officielles orange ou rouges regroupées par source et niveau, violet compté rouge (Écowatt national : une seule entrée)', () => {
     const groups = officialAlertGroups(
-      ecowatt({ '53': 'red', '11': 'orange', '84': 'green' }),
+      ecowatt('red'),
       [meteo('Var', 'violet', ['heat', 'thunderstorm']), meteo('Gard', 'red'), meteo('Isère', 'yellow')],
       [flood('Loire amont', 'orange')],
+      NOW,
     );
-    // Object.entries range les clés numériques par ordre croissant : '11' avant '53'.
     expect(groups.map((g) => [g.source, g.level, g.places])).toEqual([
-      ['ecowatt', 'orange', ['Île-de-France']],
-      ['ecowatt', 'rouge', ['Bretagne']],
+      ['ecowatt', 'rouge', ['France']],
       ['meteo', 'rouge', ['Var', 'Gard']],
       ['vigicrues', 'orange', ['Loire amont']],
     ]);
-    expect(groups[2].details[0]).toBe('Var : Canicule, Orages');
+    expect(groups[1].details[0]).toBe('Var : Canicule, Orages');
+  });
+
+  it('niveau inconnu (signal officiel indisponible) : pas de ligne Écowatt', () => {
+    const groups = officialAlertGroups(ecowatt(null), [], [], NOW);
+    expect(groups.some((g) => g.source === 'ecowatt')).toBe(false);
   });
 
   it('le jaune officiel n’entre pas dans la liste mais colore son thème', () => {
-    const q = buildWorkQueue(input({ ecowatt: ecowatt({ '53': 'red' }), meteo: [meteo('Isère', 'yellow')] }));
-    expect(q.items.map((i) => i.title)).toEqual(['Écowatt : signal rouge sur 1 région']);
+    const q = buildWorkQueue(input({ ecowatt: ecowatt('red'), meteo: [meteo('Isère', 'yellow')] }));
+    expect(q.items.map((i) => i.title)).toEqual(['Écowatt : signal rouge (national)']);
     expect(q.themeLevels.energy).toBe('rouge');
     expect(q.themeLevels.environment).toBe('jaune');
   });
@@ -231,7 +243,7 @@ describe('buildWorkQueue — identité de ligne de base sans le niveau (relectur
 
   it('alerte officielle : même niveau ou plus bas → pas de badge ; source absente → NOUVEAU', () => {
     const q = buildWorkQueue(input({
-      ecowatt: ecowatt({ '53': 'orange' }),
+      ecowatt: ecowatt('orange'),
       meteo: [meteo('Var', 'orange')],
       floods: [flood('Loire amont', 'orange')],
       baseline: { 'official:meteo': 'rouge', 'official:ecowatt': 'orange' },
@@ -274,7 +286,7 @@ describe('buildWorkQueue — états (spec §7.4)', () => {
 
   it('compte les éléments suivis restés au vert, par thème (A10)', () => {
     const q = buildWorkQueue(input({
-      ecowatt: ecowatt({ '53': 'green' }),
+      ecowatt: ecowatt('green'),
       events: eventsState({ events: [event({ id: 1, severity: 'low', category: 'health' }), event({ id: 2, severity: 'info', category: 'finance' })] }),
       markets: [market()],
     }));
@@ -324,7 +336,7 @@ describe('viewWorkQueue (spec §7.2, §7.3)', () => {
   });
 
   it('rien à traiter : compte des éléments suivis au vert et état des événements', () => {
-    const q = buildWorkQueue(input({ ecowatt: ecowatt({ '53': 'green' }), events: eventsState({ unavailable: true }) }));
+    const q = buildWorkQueue(input({ ecowatt: ecowatt('green'), events: eventsState({ unavailable: true }) }));
     const view = viewWorkQueue(q, 'energy', false);
     expect(view.total).toBe(0);
     expect(view.greenTracked).toBe(1);

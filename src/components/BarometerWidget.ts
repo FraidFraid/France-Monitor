@@ -428,7 +428,7 @@ export class BarometerWidget {
 
     const rows: Array<[string, number | null, ('health' | 'cyber')?]> = [
       ['BGP / Internet',        details.bgp    ?? null],
-      ['Électricité (Ecowatt)', details.elec   ?? null],
+      ['Électricité (Écowatt national)', details.elec   ?? null],
       ['Nucléaire (RTE)',       this.currentNuclear?.score ?? null],
       ['Éolien (éCO2mix)',      windScore],
       ['Telecom ARCEP',         details.telecom ?? null],

@@ -9,12 +9,14 @@ import { fetchEventDetail } from '../../services/news-events.ts';
 import { PosteSituation, layoutFor, type PosteCallbacks, type PosteData, type PosteRoots } from './PosteSituation.ts';
 import type {
   DetectedSituation,
+  EcowattHourValue,
   FranceCountrySignals,
   FranceScoreBreakdown,
   IntelEventsState,
   NewsEvent,
   StructuredBrief,
 } from '../../types/index.ts';
+import { parisDate } from '../../services/ecowatt-official.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
 
@@ -294,7 +296,17 @@ describe('PosteSituation', () => {
   it('mobile : « Afficher la couche » d’une alerte officielle ferme aussi le volet avant d’activer (I2)', () => {
     const { roots, cb, poste } = setup(390);
     const mix = { timestamp: new Date(0), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 };
-    poste.update(data({ ecowatt: { signals: { '53': 'red' }, mixes: {}, national: mix, interconnections: [] } }));
+    // Écowatt est un signal NATIONAL (RTE) : une seule place « France », jamais par région.
+    poste.update(data({
+      ecowatt: {
+        official: {
+          source: 'rte',
+          generatedAt: new Date(NOW).toISOString(),
+          days: [{ date: parisDate(Date.now()), level: 'red', message: '', hours: Array(24).fill(3) as EcowattHourValue[] }],
+        },
+        mixes: {}, national: mix, interconnections: [],
+      },
+    }));
     simulateLayoutCss(roots, 'mobile');
     poste.select('official:ecowatt:rouge');
     let atActivate: [string | undefined, string | undefined] | null = null;

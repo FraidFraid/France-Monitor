@@ -4,7 +4,10 @@
  * Sources:
  * - ARCEP: Mobile network outages (GeoJSON) — données J ou J-1
  * - Enedis OpenDataSoft v2.1: Historical continuity metrics (HISTORIQUE)
- * - RTE Ecowatt: Grid tension signals (TEMPS RÉEL)
+ *
+ * La tension réseau électrique (Écowatt, RTE) est un signal NATIONAL — elle n'injecte plus de
+ * département ici. Elle est portée par le pilier énergie et affichée ailleurs (fiche, baromètre
+ * réseau) ; voir ecowatt.ts / situation-engine.ts.
  *
  * Enedis URLs migration:
  *   Deprecated: opendata.enedis.fr/data-fair/api/v1/datasets/[id]/lines  (410 Gone)
@@ -17,7 +20,6 @@ import { DEPARTMENTS } from './stability-index.ts';
 
 /** Date réelle du fichier ARCEP servi (J ou J-1) — live binding ESM. */
 export let lastArcepDataDate: Date | null = null;
-import { fetchEcowatt } from './ecowatt.ts';
 import { resilientFetchResults } from '../utils/resilientFetch.ts';
 import {
     adaptContinuityRecords,
@@ -40,7 +42,7 @@ Watchdog.register('arcep', {
 Watchdog.register('enedis-power', {
     label: 'Enedis / Pannes Électricité',
     staleAfterMs: 15 * 60_000,
-    detail: 'Continuité BT · OpenDataSoft v2.1 DataFair + Écowatt',
+    detail: 'Continuité BT · OpenDataSoft v2.1 DataFair',
     freshness: 'HISTORIQUE',
 });
 
@@ -200,9 +202,8 @@ let powerCache: { data: PowerOutage[]; fetchedAt: number } | null = null;
 const previousPowerByDept = new Map<string, number>();
 
 /**
- * Fetch power outages by merging:
- * 1. Enedis DataFair historical metrics (baseline)
- * 2. Ecowatt grid tension signals (context)
+ * Fetch power outages from Enedis DataFair historical continuity metrics.
+ * La tension réseau (Écowatt) est nationale : elle n'entre plus dans ce calcul (voir en-tête).
  */
 export async function fetchPowerOutages(): Promise<PowerOutage[]> {
     const now = Date.now();
@@ -233,11 +234,10 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
 
     try {
         // Fetch all data sources in parallel
-        const [continuityRows, freqRows, durRows, ecowatt] = await Promise.all([
+        const [continuityRows, freqRows, durRows] = await Promise.all([
             fetchDataFairRecords<DataFairContinuityRecord>(ENEDIS_CONTINUITY_URL),
             fetchDataFairRecords<DataFairFrequencyRecord>(ENEDIS_FREQ_URL),
             fetchDataFairRecords<DataFairDurationRecord>(ENEDIS_DURATION_URL),
-            fetchEcowatt(),
         ]);
 
         // Stale response: a newer call already took over
@@ -253,13 +253,10 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
 
         // Compute power outages for all known departments
         const deptCodes = new Set<string>(Object.keys(DEPARTMENTS));
-        const computed: Array<PowerOutage & { _signal: 'green' | 'orange' | 'red' }> = [];
+        const computed: PowerOutage[] = [];
 
         for (const departmentCode of deptCodes) {
             const continuityPct = continuityByDept.get(departmentCode) ?? 0;
-            const regionCode = DEPARTMENTS[departmentCode]?.regionCode;
-            const rawSignal = (regionCode ? ecowatt.signals[regionCode] : undefined) ?? 'green';
-            const signal = softenSignal(rawSignal, continuityPct);
 
             // Compute off-grid count
             const hasEnedisMetric = continuityPct > 0;
@@ -267,16 +264,17 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
                 ? Math.round(Math.max(1, continuityPct * 120))
                 : 0;
 
-            const signalLabel = signal === 'red' ? 'rouge' : signal === 'orange' ? 'orange' : 'vert';
+            // La tension réseau (Écowatt) est nationale : elle est portée par le pilier énergie
+            // et affichée ailleurs (fiche, baromètre réseau) — elle n'entre plus dans ce libellé.
             const causePrefix = hasEnedisMetric
                 ? 'Indicateurs Historiques DataFair'
-                : 'Risque tension réseau';
+                : 'Aucun indicateur Enedis disponible';
 
             // Build metrics string
             const freqStr = freqMetrics ? `freq=${freqMetrics.total.toFixed(2)}` : 'freq=n/a';
             const durStr = durMetrics ? `dur=${durMetrics.totalMinutes.toFixed(1)}min` : 'dur=n/a';
 
-            const eventCause = `${causePrefix} — Signal ${signalLabel} · continuité=${continuityPct.toFixed(2)}% · BT national(${freqStr}, ${durStr})`;
+            const eventCause = `${causePrefix} · continuité=${continuityPct.toFixed(2)}% · BT national(${freqStr}, ${durStr})`;
 
             // Compute trend vs previous value
             const departmentName = DEPARTMENTS[departmentCode]?.name ?? `Département ${departmentCode}`;
@@ -297,30 +295,10 @@ export async function fetchPowerOutages(): Promise<PowerOutage[]> {
                 totalPDL,
                 eventCause,
                 trend,
-                _signal: signal,
             });
         }
 
-        // Include departments with Ecowatt tension signal (for panel display)
-        // OR with actual measured Enedis outages.
-        // The map layer separately filters to offGridCount > 0.
-        let results = computed
-            .filter((r) => {
-                if (r._signal !== 'green') return true;   // Ecowatt orange/red → show in panel
-                return r.offGridCount >= 1200;             // Green with real outage → show
-            })
-            .map(({ _signal, ...rest }) => rest);
-
-        // If nothing at all, show top 6 by impact
-        if (results.length === 0) {
-            results = computed
-                .sort((a, b) => b.offGridCount - a.offGridCount)
-                .slice(0, 6)
-                .map(({ _signal, ...rest }) => rest);
-        }
-
-        // Sort by affected count (descending)
-        results.sort((a, b) => b.offGridCount - a.offGridCount);
+        const results = selectPowerOutages(computed);
 
         // ── CB success reset ─────────────────────────────────────────────────
         if (_cb.state !== 'closed' || _cb.failures > 0) {
@@ -414,16 +392,19 @@ async function fetchDataFairRecords<T>(url: string): Promise<T[]> {
 // ═══ Helpers ═══
 
 /**
- * Soften Ecowatt signal based on local continuity metrics.
- * Avoids "all red" visual when no local fragility indicator exists.
+ * Sélectionne les départements à afficher : mesures Enedis réelles uniquement
+ * (offGridCount ≥ 1200 PDL hors réseau). La tension réseau électrique (Écowatt) est un signal
+ * NATIONAL, porté par le pilier énergie et affiché ailleurs (fiche, baromètre réseau) — elle
+ * n'injecte plus de département ici.
+ * Repli « top 6 » par impact si aucun département ne franchit le seuil.
+ * Exporté pour test (pure, sans réseau).
  */
-function softenSignal(
-    signal: 'green' | 'orange' | 'red',
-    continuityPct: number
-): 'green' | 'orange' | 'red' {
-    if (signal === 'red' && continuityPct < 2.5) return 'orange';
-    if (signal === 'orange' && continuityPct < 0.8) return 'green';
-    return signal;
+export function selectPowerOutages(computed: readonly PowerOutage[]): PowerOutage[] {
+    const measured = computed.filter((r) => r.offGridCount >= 1200);
+    const base = measured.length > 0
+        ? measured
+        : [...computed].sort((a, b) => b.offGridCount - a.offGridCount).slice(0, 6);
+    return [...base].sort((a, b) => b.offGridCount - a.offGridCount);
 }
 
 // Re-export adapter utilities for external use

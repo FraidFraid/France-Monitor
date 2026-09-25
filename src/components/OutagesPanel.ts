@@ -8,10 +8,11 @@
 import { Panel } from './Panel.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
-import type { PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
+import type { EcowattSignal, PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
 import type { RTEIIPState } from '../services/rte-iip.ts';
 import type { OutagesMeta } from '../services/outages.ts';
 import { getFreshnessState } from '../services/outages.ts';
+import { ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { iodaScoreColor, iodaScoreLabel, ispStatusColor, ispStatusLabel } from '../services/internet-outages.ts';
 import { dcStatusColor, dcStatusLabel, ixpStatusColor } from '../services/infra-network.ts';
 import { getDatacenterVisualMeta } from '../utils/infra-network-visuals.js';
@@ -42,6 +43,9 @@ export class OutagesPanel extends Panel {
   private lastInfra: InfraNetworkState | null = null;
   private lastZones: OutageZone[] = [];
   private lastRTEIIP: RTEIIPState | null = null;
+  // Signal Écowatt NATIONAL du jour (RTE) — l'accordéon « Tension réseau » n'a plus de
+  // déclinaison par département, Écowatt n'ayant jamais été un signal régional.
+  private lastEcowattLevel: EcowattSignal | null = null;
 
   // ARCEP fetch date (J ou J-1) — utilisé pour le badge UI
   private arcepFetchedDate: Date | null = null;
@@ -81,6 +85,18 @@ export class OutagesPanel extends Panel {
   setRTEIIP(state: RTEIIPState | null): void {
     this.lastRTEIIP = state;
     // Refresh le contenu si l'onglet électrique est actif
+    if (this.activeTab === 'electric' && this.modalEl.style.display !== 'none') {
+      this._renderContent();
+    }
+  }
+
+  /**
+   * Signal Écowatt NATIONAL du jour (RTE), à appeler par l'orchestrateur (App.ts) à chaque
+   * rafraîchissement Écowatt. L'accordéon « Tension réseau (Écowatt) » n'apparaît que si le
+   * niveau du jour est 'orange' ou 'red'.
+   */
+  setEcowattNational(level: EcowattSignal | null): void {
+    this.lastEcowattLevel = level;
     if (this.activeTab === 'electric' && this.modalEl.style.display !== 'none') {
       this._renderContent();
     }
@@ -394,11 +410,13 @@ export class OutagesPanel extends Panel {
     const powers = this.lastPower;
     const zones  = this.lastZones;
 
-    // Split into actual outages (measured by Enedis) vs Ecowatt tension risk only
-    const actualOutages  = powers.filter(p => p.offGridCount > 0);
-    const tensionRisk    = powers.filter(p => p.offGridCount === 0);
+    // PDL hors réseau : mesurés par Enedis. Le signal Écowatt est NATIONAL (RTE) — plus de
+    // déclinaison "tension" par département.
+    const actualOutages = powers.filter(p => p.offGridCount > 0);
+    const nationalTension: EcowattSignal | null =
+      this.lastEcowattLevel === 'orange' || this.lastEcowattLevel === 'red' ? this.lastEcowattLevel : null;
 
-    if (powers.length === 0 && zones.length === 0) {
+    if (powers.length === 0 && zones.length === 0 && !nationalTension) {
       this.contentEl!.innerHTML = `
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
           <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('check', { size: 32 })}</div>
@@ -420,7 +438,7 @@ export class OutagesPanel extends Panel {
     const summary = document.createElement('div');
     summary.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;';
     summary.appendChild(mkBadge(actualOutages.length, 'PDL hors réseau', '#F59E0B'));
-    summary.appendChild(mkBadge(tensionRisk.length,   'Tension réseau',  '#F97316'));
+    summary.appendChild(mkBadge(nationalTension ? 1 : 0, 'Tension réseau',  '#F97316'));
     summary.appendChild(mkBadge(zones.length,          'Zones signalées', '#A855F7'));
     frag.appendChild(summary);
 
@@ -432,9 +450,9 @@ export class OutagesPanel extends Panel {
       actualOutages.length === 0 ? 'Aucune panne mesurée' : undefined,
     ));
 
-    // ── Accordion : Tension réseau (signal Ecowatt uniquement) ──
-    if (tensionRisk.length > 0) {
-      frag.appendChild(this._buildTensionAccordion(tensionRisk));
+    // ── Accordion : Tension réseau (signal Écowatt NATIONAL, RTE) ──
+    if (nationalTension) {
+      frag.appendChild(this._buildTensionAccordion(nationalTension));
     }
 
     // ── Accordion : Zones signalées par les citoyens ──
@@ -501,7 +519,7 @@ export class OutagesPanel extends Panel {
     if (title.includes('PDL hors réseau')) {
       const note = document.createElement('div');
       note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:4px;line-height:1.4;';
-      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). La tension réseau (Ecowatt) et les zones signalées sont bien en TEMPS RÉEL/prévisionnel.";
+      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). Les zones signalées sont bien en TEMPS RÉEL/prévisionnel. La tension réseau (signal national Écowatt, RTE) est un indicateur distinct, sans lien avec les PDL mesurés.";
       inner.appendChild(note);
     }
 
@@ -562,19 +580,21 @@ export class OutagesPanel extends Panel {
     return wrapper;
   }
 
-  private _buildTensionAccordion(powers: PowerOutage[]): HTMLElement {
+  /** Écowatt est un signal NATIONAL (RTE) : une seule ligne « France », jamais par département. */
+  private _buildTensionAccordion(level: EcowattSignal): HTMLElement {
     let expanded = false;
+    const col = level === 'red' ? '#EF4444' : '#F97316';
+    const dotLevel = level === 'red' ? 'critical' : 'high';
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = `border:1px solid rgba(249,115,22,0.25);border-radius:10px;overflow:hidden;margin-bottom:12px;`;
+    wrapper.style.cssText = `border:1px solid ${col}40;border-radius:10px;overflow:hidden;margin-bottom:12px;`;
     const header = document.createElement('div');
-    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(249,115,22,0.08);cursor:pointer;user-select:none;`;
+    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:${col}14;cursor:pointer;user-select:none;`;
     const chevron = document.createElement('span');
     chevron.textContent = '▸';
     chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:#F97316;">${fmStatusDot('high')} Tension réseau (Ecowatt)</span>
-        <span style="font-size:10px;font-weight:700;color:#F97316;background:rgba(249,115,22,0.15);padding:1px 7px;border-radius:10px;">${powers.length}</span>
+        <span style="font-size:12px;font-weight:700;color:${col};">${fmStatusDot(dotLevel)} Tension réseau (Écowatt)</span>
       </div>
     `;
     header.appendChild(chevron);
@@ -586,40 +606,21 @@ export class OutagesPanel extends Panel {
     inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
 
     const note = document.createElement('div');
-    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(249,115,22,0.05);border-left:2px solid #F97316;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Signal Ecowatt RTE — indique une tension sur l\'équilibre offre/demande du réseau électrique national. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes. Aucun PDL mesuré hors réseau dans ces départements.';
+    note.style.cssText = `font-size:10px;color:var(--text-muted);background:${col}0d;border-left:2px solid ${col};padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;`;
+    note.textContent = 'Signal Écowatt RTE — national, indique une tension sur l\'équilibre offre/demande du réseau électrique. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes.';
     inner.appendChild(note);
 
-    for (const p of powers) {
-      // Extract signal from eventCause (e.g. "Signal 🟠 orange")
-      const signalMatch = p.eventCause.match(/Signal ([^\s·]+)/);
-      const signalStr = signalMatch ? signalMatch[1] : '?';
-      const col = p.eventCause.includes('rouge') ? '#EF4444' : '#F97316';
+    const row = document.createElement('div');
+    row.style.cssText = `background:${col}0f;border:1px solid ${col}26;border-left:3px solid ${col};border-radius:8px;padding:9px 11px;`;
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:12px;font-weight:700;color:var(--text-primary);">France</span>
+        <span style="font-size:10px;font-weight:700;color:${col};">${ecowattLevelLabel(level)}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);">Signal national RTE Écowatt</div>
+    `;
+    inner.appendChild(row);
 
-      const row = document.createElement('div');
-      row.style.cssText = `background:rgba(249,115,22,0.06);border:1px solid rgba(249,115,22,0.15);border-left:3px solid ${col};border-radius:8px;padding:9px 11px;cursor:pointer;transition:background 0.15s;`;
-      row.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
-          <span style="font-size:12px;font-weight:700;color:var(--text-primary);">
-            ${p.departmentName}
-            <span style="color:var(--text-muted);font-weight:400;font-size:10px;"> (${p.departmentCode})</span>
-          </span>
-          <span style="font-size:10px;font-weight:700;color:${col};">${signalStr}</span>
-        </div>
-        <div style="font-size:10px;color:var(--text-muted);">Signal Ecowatt · pas de PDL mesurés</div>
-      `;
-      row.addEventListener('mouseenter', () => {
-        this.elevateHoveredCard(row);
-        row.style.background = 'rgba(249,115,22,0.12)';
-        this.onDeptHoverCb?.(p.departmentCode);
-      });
-      row.addEventListener('mouseleave', () => {
-        this.resetHoveredCard(row);
-        row.style.background = 'rgba(249,115,22,0.06)';
-        this.onDeptHoverCb?.(null);
-      });
-      inner.appendChild(row);
-    }
     body.appendChild(inner);
     wrapper.appendChild(body);
     header.addEventListener('click', () => {

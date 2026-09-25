@@ -9,6 +9,7 @@ import type {
   MeteoAlert,
 } from '../types/index.ts';
 import type { HydraulicHydrometrySnapshot } from './hubeau-hydrometry.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 
 const REGION_TO_CODE: Record<string, string> = {
   'Ile-de-France': '11',
@@ -200,10 +201,13 @@ function computeDerivedHydroScore(
   ecowatt: EcowattResponse | null,
   floods: FloodSegment[],
   alerts: MeteoAlert[],
+  nowMs: number,
 ): number {
   const regionCode = REGION_TO_CODE[asset.location.region];
   const mix = regionCode ? ecowatt?.mixes[regionCode] : undefined;
-  const ecowattSignal = regionCode ? ecowatt?.signals[regionCode] : undefined;
+  // Écowatt est un signal NATIONAL (RTE) : même niveau pour tous les actifs, quelle que soit
+  // leur région ; le mix (hydroShare) reste, lui, une donnée régionale (éco2mix).
+  const ecowattSignal = ecowattToday(ecowatt?.official, nowMs);
   const hydroShare = mix && mix.total > 0 ? mix.hydro / mix.total : null;
 
   let score = 0;
@@ -239,11 +243,12 @@ function computeHydrometrySynergy(
   alerts: MeteoAlert[],
   asset: HydraulicBackboneAsset,
   ecowatt: EcowattResponse | null,
+  nowMs: number,
 ): number {
   const floodLevel = getNearestFloodLevel(asset, floods);
   const weatherPressure = getWeatherPressure(asset, alerts);
   const regionCode = REGION_TO_CODE[asset.location.region];
-  const ecowattSignal = regionCode ? ecowatt?.signals[regionCode] : undefined;
+  const ecowattSignal = ecowattToday(ecowatt?.official, nowMs);
   const mix = regionCode ? ecowatt?.mixes[regionCode] : undefined;
   const hydroShare = mix && mix.total > 0 ? mix.hydro / mix.total : null;
 
@@ -275,6 +280,7 @@ export function buildHydraulicBackboneAssets(
   floods: FloodSegment[] = [],
   alerts: MeteoAlert[] = [],
   hydrometrySnapshot: HydraulicHydrometrySnapshot | null = null,
+  nowMs: number = Date.now(),
 ): HydraulicBackboneAsset[] {
   const computedAt = new Date().toISOString();
 
@@ -299,7 +305,7 @@ export function buildHydraulicBackboneAssets(
 
       const criticalityScore = computeCriticality(baseAsset);
       const hydrometrySupport = hydrometrySnapshot?.assets[seed.id] ?? null;
-      const derivedScore = computeDerivedHydroScore(baseAsset, ecowatt, floods, alerts);
+      const derivedScore = computeDerivedHydroScore(baseAsset, ecowatt, floods, alerts, nowMs);
       const measuredAdjustment = hydrometrySupport?.measuredStressAdjustment ?? 0;
       const finalScore = derivedScore + measuredAdjustment + computeHydrometrySynergy(
         hydrometrySupport?.hydroTrend ?? 'unavailable',
@@ -307,6 +313,7 @@ export function buildHydraulicBackboneAssets(
         alerts,
         baseAsset,
         ecowatt,
+        nowMs,
       );
       const hydroTrend = classifyHydroTrend(finalScore);
 

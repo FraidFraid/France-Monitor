@@ -8,13 +8,13 @@ import {
   type CommodityData,
   type DetectedSituation,
   type EcowattResponse,
-  type EcowattSignal,
   type FloodSegment,
   type IntelEventsState,
   type MarketData,
   type MeteoAlert,
   type NewsEvent,
 } from '../types/index.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 import {
   LEVEL_RANK,
   eventLevel,
@@ -98,6 +98,8 @@ export interface WorkQueueInput {
   /** Heure d'apparition pendant la session, par clé (après la chauffe du démarrage). */
   firstSeen: ReadonlyMap<string, number>;
   lang: Lang;
+  /** Horodatage de référence (ms epoch) pour les signaux datés (Écowatt…). Défaut : Date.now(). */
+  now?: number;
 }
 
 export interface WorkQueue {
@@ -110,23 +112,6 @@ export interface WorkQueue {
   greenTracked: Record<ThemeId, number>;
   eventsStatus: EventsStatus;
 }
-
-// Même table que situation-engine.ts et SituationReport.ts (codes INSEE des régions Écowatt).
-const ECOWATT_REGION_NAMES: Record<string, string> = {
-  '11': 'Île-de-France',
-  '24': 'Centre-Val de Loire',
-  '27': 'Bourgogne-Franche-Comté',
-  '28': 'Normandie',
-  '32': 'Hauts-de-France',
-  '44': 'Grand Est',
-  '52': 'Pays de la Loire',
-  '53': 'Bretagne',
-  '75': 'Nouvelle-Aquitaine',
-  '76': 'Occitanie',
-  '84': 'Auvergne-Rhône-Alpes',
-  '93': 'PACA',
-  '94': 'Corse',
-};
 
 const OFFICIAL_THEME: Record<OfficialSource, SpecificThemeId> = {
   ecowatt: 'energy',
@@ -157,12 +142,17 @@ interface OfficialEntry {
   detail: string;
 }
 
-function officialEntries(ecowatt: EcowattResponse | null, meteo: readonly MeteoAlert[], floods: readonly FloodSegment[]): OfficialEntry[] {
+function officialEntries(
+  ecowatt: EcowattResponse | null,
+  meteo: readonly MeteoAlert[],
+  floods: readonly FloodSegment[],
+  nowMs: number,
+): OfficialEntry[] {
   const out: OfficialEntry[] = [];
-  const signals: Record<string, EcowattSignal> = ecowatt?.signals ?? {};
-  for (const [code, signal] of Object.entries(signals)) {
-    const place = ECOWATT_REGION_NAMES[code] ?? `Région ${code}`;
-    out.push({ source: 'ecowatt', level: officialLevel(signal), place, detail: place });
+  // Écowatt est un signal NATIONAL (RTE) : au plus une entrée, jamais par région.
+  const level = ecowattToday(ecowatt?.official, nowMs);
+  if (level) {
+    out.push({ source: 'ecowatt', level: officialLevel(level), place: 'France', detail: 'France : signal national RTE' });
   }
   for (const alert of meteo) {
     const risks = alert.risks.map((risk) => RISK_LABELS[risk] ?? risk).join(', ');
@@ -184,9 +174,10 @@ export function officialAlertGroups(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
   floods: readonly FloodSegment[],
+  nowMs: number = Date.now(),
 ): OfficialAlertGroup[] {
   const groups = new Map<string, OfficialAlertGroup>();
-  for (const entry of officialEntries(ecowatt, meteo, floods)) {
+  for (const entry of officialEntries(ecowatt, meteo, floods, nowMs)) {
     if (LEVEL_RANK[entry.level] < LEVEL_RANK.orange) continue;
     const key = `${entry.source}:${entry.level}`;
     const group = groups.get(key) ?? { source: entry.source, level: entry.level, places: [], details: [] };
@@ -204,8 +195,9 @@ export function officialSignals(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
   floods: readonly FloodSegment[],
+  nowMs: number = Date.now(),
 ): OfficialSignal[] {
-  const entries = officialEntries(ecowatt, meteo, floods);
+  const entries = officialEntries(ecowatt, meteo, floods, nowMs);
   return OFFICIAL_SOURCES.flatMap((source) => {
     const own = entries.filter((e) => e.source === source);
     if (own.length === 0) return [];
@@ -215,15 +207,17 @@ export function officialSignals(
 }
 
 export function officialTitle(group: OfficialAlertGroup, lang: Lang): string {
+  const word = levelLabel(group.level, lang).toLowerCase();
+  // Écowatt est national : le titre ne compte plus de régions.
+  if (group.source === 'ecowatt') {
+    return lang === 'en' ? `Ecowatt: ${word} signal (national)` : `Écowatt : signal ${word} (national)`;
+  }
   const n = group.places.length;
   const s = n > 1 ? 's' : '';
-  const word = levelLabel(group.level, lang).toLowerCase();
   if (lang === 'en') {
-    if (group.source === 'ecowatt') return `Ecowatt: ${word} signal in ${n} region${s}`;
     if (group.source === 'meteo') return `Weather ${levelVigilanceWord(group.level, 'en')}: ${n} department${s}`;
     return `Vigicrues ${word}: ${n} river section${s}`;
   }
-  if (group.source === 'ecowatt') return `Écowatt : signal ${word} sur ${n} région${s}`;
   if (group.source === 'meteo') return `Vigilance météo ${word} : ${n} département${s}`;
   return `Vigicrues ${word} : ${n} tronçon${s}`;
 }
@@ -327,6 +321,7 @@ export function compareWorkItems(a: WorkItem, b: WorkItem): number {
 
 export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   const { baseline, firstSeen, lang } = input;
+  const nowMs = input.now ?? Date.now();
   const seenAt = (key: string): number | null => firstSeen.get(key) ?? null;
   const items: WorkItem[] = [];
 
@@ -359,7 +354,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     });
   }
 
-  for (const group of officialAlertGroups(input.ecowatt, input.meteo, input.floods)) {
+  for (const group of officialAlertGroups(input.ecowatt, input.meteo, input.floods, nowMs)) {
     const key = `official:${group.source}:${group.level}`;
     const ref: WorkRef = { kind: 'official', group };
     items.push({
@@ -393,7 +388,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
 
   items.sort(compareWorkItems);
 
-  const official = officialSignals(input.ecowatt, input.meteo, input.floods);
+  const official = officialSignals(input.ecowatt, input.meteo, input.floods, nowMs);
   const themeLevel = (theme: SpecificThemeId): VigilanceLevel => maxLevel([
     ...official.filter((o) => OFFICIAL_THEME[o.source] === theme).map((o) => o.level),
     ...items.filter((i) => i.theme === theme).map((i) => i.level),
