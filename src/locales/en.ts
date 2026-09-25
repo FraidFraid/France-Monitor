@@ -11,6 +11,8 @@ const en = {
     sidebarExpandAria: 'Show sidebar',
     sidebarCollapseAria: 'Collapse sidebar',
     floatingPanelSwitcherAria: 'Open panels',
+    floatingPanelShow: 'Show the “{{value}}” panel',
+    floatingPanelHide: 'Hide the “{{value}}” panel',
     aboutAria: 'About France Monitor',
     closeAbout: 'Close About dialog',
     aboutSubtitle: 'Situational dashboard for France',

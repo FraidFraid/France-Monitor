@@ -26,6 +26,7 @@ import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
 import { isUiV2, layerActivationOptions, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -2854,6 +2855,8 @@ export class App {
     floatingPanelSwitcher.hidden = true;
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
+    // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
+    this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
 
     // ── Disposition A1 (?ui=v2) : liste « À traiter » à gauche de la carte, fiche à droite ──
     let v2List: HTMLElement | null = null;
@@ -3417,21 +3420,26 @@ export class App {
       'outagesCloud',
     ];
 
-    for (const key of restoreOrder) {
-      if (!this.activeLayers[key]) continue;
+    const activeKeys = restoreOrder.filter((key) => this.activeLayers[key]);
+    // Utilisateur récurrent avec de vraies couches persistées : les couches se rechargent, mais un
+    // seul panneau flottant se rouvre (règle « un seul panneau à la fois », §5.3.3) ; les autres
+    // restent accessibles par la barre « Panneaux ouverts ». Preset d'accueil (premier chargement /
+    // état « tout éteint ») : aucun panneau ne s'ouvre tout seul — cf. init() (§5.3.2).
+    const plan = this.suppressFirstLoadPanelAutoOpen
+      ? { open: [] as (keyof MapLayers)[], silent: activeKeys }
+      : restorePanelPlan(activeKeys, (key) => FLOATING_PANEL_DEFS.find((def) => def.layerKeys.includes(key))?.id ?? null);
+
+    for (const key of activeKeys) {
       // Perf audit task 5: ensure the lazy panel chunk for this key is
       // requested (its own catch-up logic shows it once loaded) — mirrors
       // what onLayerToggle() does on a live toggle.
       void Promise.all(this.ensureLazyPanelForLayer(key)).then(() => this.refreshFloatingPanelSwitcher());
-      if (this.suppressFirstLoadPanelAutoOpen) {
-        // Preset d'accueil (premier chargement / état "tout éteint") : les
-        // couches sont actives (la carte les affiche) mais aucun panneau ne
-        // doit s'ouvrir tout seul — cf. init() (audit UI 2026-09 §5.3.2).
-        this.activateLayerSilently(key);
-      } else {
-        // Utilisateur récurrent avec de vraies couches persistées : on garde
-        // le comportement historique (les panneaux actifs se rouvrent tous).
+      if (plan.open.includes(key)) {
         this._handlePanelVisibility(key, true);
+        const def = FLOATING_PANEL_DEFS.find((d) => d.layerKeys.includes(key));
+        if (def) this.currentFloatingPanelId = def.id;
+      } else {
+        this.activateLayerSilently(key);
       }
     }
     this.refreshFloatingPanelSwitcher();
@@ -4436,19 +4444,23 @@ export class App {
     if (eligible.length < 2) {
       el.hidden = true;
       el.innerHTML = '';
+      this.layoutFloatingPanelSwitcher();
       return;
     }
 
     el.hidden = false;
     el.innerHTML = eligible.map((def) => {
+      // Surligné = son panneau est à l'écran ; un clic l'ouvre ou le referme (la couche reste active).
       const pressed = this.isFloatingPanelVisible(def.id);
+      const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label });
       return `
         <button
           type="button"
           class="floating-panel-switcher__chip ${pressed ? 'is-active' : ''}"
           data-panel-key="${def.id}"
           aria-pressed="${pressed}"
-          title="${def.label}"
+          aria-label="${action}"
+          title="${action}"
         >
           <span class="floating-panel-switcher__icon" aria-hidden="true">${fmIcon(def.icon)}</span>
           <span class="floating-panel-switcher__label">${def.label}</span>
@@ -4459,9 +4471,37 @@ export class App {
     el.querySelectorAll<HTMLButtonElement>('[data-panel-key]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset['panelKey'] as keyof MapLayers | undefined;
-        if (key) this.showFloatingPanel(key);
+        if (!key) return;
+        if (this.isFloatingPanelVisible(key)) this.hideFloatingPanel(key);
+        else this.showFloatingPanel(key);
       });
     });
+    this.layoutFloatingPanelSwitcher();
+  }
+
+  /** Referme le panneau flottant `id` sans éteindre sa couche (clic sur son bouton surligné). */
+  private hideFloatingPanel(id: keyof MapLayers): void {
+    this.getFloatingPanelInstance(id)?.hide({ silent: true });
+    if (this.currentFloatingPanelId === id) this.currentFloatingPanelId = null;
+    this.refreshFloatingPanelSwitcher();
+  }
+
+  /**
+   * Mise en page de la barre : une seule rangée ; si elle déborde, les boutons non surlignés passent
+   * en icône seule (libellé en infobulle). Puis les panneaux de droite (v1) démarrent sous la barre.
+   */
+  private layoutFloatingPanelSwitcher(): void {
+    const el = this.floatingPanelSwitcherEl;
+    if (!el) return;
+    el.classList.remove('is-compact');
+    // Rangée alignée à droite : elle déborde vers la GAUCHE, ce que scrollWidth ne voit pas ; on
+    // compare donc le bord gauche du premier bouton à celui de la barre.
+    const first = el.firstElementChild;
+    if (!el.hidden && first && first.getBoundingClientRect().left < el.getBoundingClientRect().left - 1) {
+      el.classList.add('is-compact');
+    }
+    const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
+    document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
   }
 
   private floatingPanelIsEligible(id: keyof MapLayers): boolean {
