@@ -157,7 +157,8 @@ export interface MarketMove {
   kind: MarketKind;
 }
 
-function formatSignedPct(value: number): string {
+/** Variation signée à la française (« −3,42 % », « +6,10 % ») ; partagée avec la liste « À traiter ». */
+export function formatSignedPct(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '−' : '';
   return `${sign}${Math.abs(value).toFixed(2).replace('.', ',')} %`;
 }
@@ -176,4 +177,16 @@ export function marketBarometer(moves: readonly MarketMove[]): { tone: MarketTon
   if (finite.length === 0) return { tone: 'neutral', text: 'Marchés : données indisponibles' };
   const avg = finite.reduce((sum, m) => sum + m.changePercent, 0) / finite.length;
   return { tone: 'neutral', text: `Variation moyenne : ${formatSignedPct(avg)}` };
+}
+
+/**
+ * Indice ISNR (0–100, plus haut = pire) pour la note de situation : bornes existantes 20/40/60 ;
+ * « élevé » (60–79) et « critique » (≥ 80) fusionnent en rouge, comme l'indice national (A8).
+ */
+export function isnrLevel(score: number): VigilanceLevel {
+  if (!Number.isFinite(score)) return 'jaune';
+  if (score >= 60) return 'rouge';
+  if (score >= 40) return 'orange';
+  if (score >= 20) return 'jaune';
+  return 'vert';
 }

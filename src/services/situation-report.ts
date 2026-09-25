@@ -9,17 +9,17 @@
  * Testable en isolation (voir situation-report.test.ts).
  */
 
-// ─── Types partagés (données de la note) ─────────────────────────────────────
+import { levelHex, levelLabel, type VigilanceLevel } from './vigilance.ts';
 
-/** Sévérité normalisée pour l'affichage de la note. */
-export type ReportSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+// ─── Types partagés (données de la note) ─────────────────────────────────────
+// Niveaux en langage commun L1 (refonte UI, étape 2) : Rouge, Orange, Jaune, Vert.
 
 /** État d'une source instrumentée (miroir de DataSourceStatus.status). */
 export type ReportSourceState = 'ok' | 'stale' | 'error' | 'loading';
 
 export interface ReportSituation {
   title: string;
-  severity: ReportSeverity;
+  level: VigilanceLevel;
   /** Libellé pré-formaté, ex. « détectée à 14:32 ». */
   since: string;
   /** Zone/région principale concernée. */
@@ -35,7 +35,7 @@ export interface ReportStabilityDept {
 
 export interface ReportStability {
   nationalScore: number;
-  /** STABLE / VEILLE / TENSION / ÉLEVÉ / CRITIQUE. */
+  /** Mot L1 de l'indice (« vigilance orange »). */
   statusLabel: string;
   topDepartments: ReportStabilityDept[];
 }
@@ -45,7 +45,7 @@ export interface ReportDomainSignal {
   domain: string;
   /** Niveau lisible propre au domaine, ex. « Rouge », « Perturbé ». */
   levelLabel: string;
-  severity: ReportSeverity;
+  level: VigilanceLevel;
   detail: string;
 }
 
@@ -55,7 +55,7 @@ export interface ReportEvent {
   place?: string;
   title: string;
   source: string;
-  severity: ReportSeverity;
+  level: VigilanceLevel;
 }
 
 export interface ReportSource {
@@ -84,23 +84,6 @@ export interface SituationReportData {
   version: string | null;
 }
 
-// ─── Styles de sévérité (couleurs sobres imprimables, sans fond sombre) ──────
-
-interface SeverityStyle {
-  label: string;
-  fg: string;
-  bg: string;
-  border: string;
-}
-
-const SEVERITY_STYLE: Record<ReportSeverity, SeverityStyle> = {
-  critical: { label: 'Critique', fg: '#991b1b', bg: '#fdecec', border: '#e6a5a5' },
-  high: { label: 'Élevée', fg: '#9a3412', bg: '#fdeee0', border: '#eabf94' },
-  medium: { label: 'Modérée', fg: '#854d0e', bg: '#fbf3dd', border: '#e0cf94' },
-  low: { label: 'Faible', fg: '#1e40af', bg: '#eaf0fd', border: '#adc2ee' },
-  info: { label: 'Info', fg: '#475569', bg: '#eef1f5', border: '#c7d0dc' },
-};
-
 interface SourceStateStyle {
   label: string;
   dot: string;
@@ -127,23 +110,24 @@ export function escapeHtml(value: string): string {
 
 // ─── Fragments de rendu ───────────────────────────────────────────────────────
 
-function severityBadge(severity: ReportSeverity): string {
-  const s = SEVERITY_STYLE[severity];
-  return `<span class="badge" style="color:${s.fg};background:${s.bg};border-color:${s.border};">${escapeHtml(s.label)}</span>`;
+/** Pastille L1 : le mot sur la teinte officielle, texte noir (contraste AA, spec §4.1). */
+function levelBadge(level: VigilanceLevel): string {
+  const hex = levelHex(level);
+  return `<span class="badge" style="color:#111;background:${hex};border-color:${hex};">${escapeHtml(levelLabel(level))}</span>`;
 }
 
 function renderSituations(data: SituationReportData): string {
   if (data.situations.length === 0) {
-    return `<p class="nominal">Aucune situation critique détectée. Situation nominale.</p>`;
+    return `<p class="nominal">Aucune situation active : pas de vigilance particulière.</p>`;
   }
 
   const rows = data.situations
     .map((s) => {
       const summary = s.summary ? `<div class="sit-summary">${escapeHtml(s.summary)}</div>` : '';
       return `
-        <li class="sit-item" style="border-left-color:${SEVERITY_STYLE[s.severity].fg};">
+        <li class="sit-item" style="border-left-color:${levelHex(s.level)};">
           <div class="sit-head">
-            ${severityBadge(s.severity)}
+            ${levelBadge(s.level)}
             <span class="sit-title">${escapeHtml(s.title)}</span>
           </div>
           <div class="sit-meta">${escapeHtml(s.zone)} · ${escapeHtml(s.since)}</div>
@@ -190,17 +174,21 @@ function renderDomains(signals: ReportDomainSignal[]): string {
   }
 
   const rows = signals
-    .map(
-      (d) => `
-      <li class="dom-item" style="border-left-color:${SEVERITY_STYLE[d.severity].fg};">
+    .map((d) => {
+      // Relecture finale (m5) : un libellé qui répète le mot de la pastille (« Rouge » après
+      // « Rouge ») est omis ; un libellé qui dit autre chose (« Perturbé », « Actives ») reste.
+      const repeatsBadge = d.levelLabel.trim().toLowerCase() === levelLabel(d.level).toLowerCase();
+      const levelText = repeatsBadge ? '' : `<span class="dom-level">${escapeHtml(d.levelLabel)}</span>`;
+      return `
+      <li class="dom-item" style="border-left-color:${levelHex(d.level)};">
         <div class="dom-head">
           <span class="dom-name">${escapeHtml(d.domain)}</span>
-          ${severityBadge(d.severity)}
-          <span class="dom-level">${escapeHtml(d.levelLabel)}</span>
+          ${levelBadge(d.level)}
+          ${levelText}
         </div>
         <div class="dom-detail">${escapeHtml(d.detail)}</div>
-      </li>`,
-    )
+      </li>`;
+    })
     .join('');
 
   return `<ul class="dom-list">${rows}</ul>`;
@@ -221,7 +209,7 @@ function renderEvents(data: SituationReportData): string {
         <tr>
           <td class="ev-time">${escapeHtml(e.time)}</td>
           <td class="ev-place">${place}</td>
-          <td class="ev-title">${severityBadge(e.severity)} ${escapeHtml(e.title)}</td>
+          <td class="ev-title">${levelBadge(e.level)} ${escapeHtml(e.title)}</td>
           <td class="ev-source">${escapeHtml(e.source)}</td>
         </tr>`;
     })
@@ -302,8 +290,8 @@ const STYLES = `
     color: #1a3a6b; margin: 0 0 8px; padding-bottom: 3px; border-bottom: 1px solid #e2e6ec;
   }
   .badge {
-    display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.04em;
-    text-transform: uppercase; padding: 1px 6px; border: 1px solid; border-radius: 3px;
+    display: inline-block; font-size: 9.5px; font-weight: 800;
+    padding: 1px 6px; border: 1px solid; border-radius: 3px;
     vertical-align: middle;
   }
   .nominal { margin: 0; color: #15803d; font-weight: 600; }

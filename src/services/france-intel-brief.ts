@@ -10,6 +10,7 @@ import type {
 } from '../types/index.ts';
 import { getDelta24h } from '../utils/stability-history.ts';
 import { levelVigilanceWord, scoreLevel, type VigilanceLevel } from './vigilance.ts';
+import { splitScoreSentences } from './situation-text.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
@@ -241,6 +242,12 @@ const EVENT_PRIORITY: Record<BriefEventInput['severity'], 1 | 2 | 3 | 4> = {
 
 const MAX_DETERMINISTIC_JUDGMENTS = 3;
 
+/** Jugement de repli d'une situation : son titre et son résumé sans phrase chiffrée (sous-scores du moteur, spec §4.3). */
+function situationJudgmentText(s: DetectedSituation): string {
+  const plain = splitScoreSentences(s.summary).plain.join(' ');
+  return plain ? `${s.title} — ${plain}` : s.title;
+}
+
 /**
  * Brief de secours 100 % moteur : toujours disponible, zéro hallucination.
  * Utilisé si le LLM est indisponible, invalide ou hors ligne. Jugements : les situations
@@ -275,7 +282,7 @@ export function buildDeterministicBrief(
 
   const judgments: BriefJudgment[] = situations.slice(0, MAX_DETERMINISTIC_JUDGMENTS).map((s, i) => ({
     priority: SEVERITY_PRIORITY[s.severity],
-    text: `${s.title} — ${s.summary}`.slice(0, JUDGMENT_TEXT_MAX),
+    text: situationJudgmentText(s).slice(0, JUDGMENT_TEXT_MAX),
     confidence: s.confidence >= 0.75 ? 'high' : s.confidence >= 0.55 ? 'moderate' : 'low',
     sources: s.sourceRefs.slice(0, MAX_SOURCES),
     // Même numérotation que compactSituations (ordre d'origine) : S1 = première situation.

@@ -258,6 +258,7 @@ export class SituationBrief {
            role="listitem"
            title="${escapeHtml(`${item.severityLabel} · ${item.title}`)}">
         <span class="sit-brief__dot" style="background:${color};"></span>
+        <span class="sit-brief__item-level">${escapeHtml(item.severityLabel)}</span>
         <span class="sit-brief__item-icon">${icon}</span>
         <span class="sit-brief__item-title">${escapeHtml(item.title)}</span>
         ${zone}

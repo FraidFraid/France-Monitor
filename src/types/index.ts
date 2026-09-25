@@ -2542,6 +2542,8 @@ export interface DetectedSituation {
   sourceRefs: string[];            // sources de données impliquées
   linkUrl?: string;
   linkLabel?: string;
+  /** Catégorie de l'article d'origine (alertes presse) : rattache l'alerte à son thème. */
+  category?: EventCategory;
   /** Identifiant métier de l'objet à ouvrir (ex: ICAO24 d'un avion). */
   entityId?: string;
   updatedAt: Date;

@@ -248,6 +248,11 @@ export class StatusPanel {
         this.renderList();
     }
 
+    /** Sources suivies, lecture seule : voyant de fraîcheur du bandeau d'état v2 (« 33 sources sur 35 à jour »). */
+    getSources(): readonly DataSourceStatus[] {
+        return this.sources;
+    }
+
     /** Update a single source by name */
     updateSource(name: string, update: Partial<DataSourceStatus>): void {
         const idx = this.sources.findIndex((s) => s.name === name);

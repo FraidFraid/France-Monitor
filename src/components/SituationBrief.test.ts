@@ -45,3 +45,13 @@ describe('SituationBrief — échappement des guillemets en attribut', () => {
     brief.destroy();
   });
 });
+
+describe('SituationBrief — le mot du niveau accompagne la couleur (§9)', () => {
+  it('affiche « Rouge » à côté de la pastille de couleur', () => {
+    const container = document.createElement('div');
+    const brief = new SituationBrief(container);
+    brief.update([situation({ severity: 'critical' })]);
+    expect(container.querySelector('.sit-brief__item-level')?.textContent).toBe('Rouge');
+    brief.destroy();
+  });
+});
