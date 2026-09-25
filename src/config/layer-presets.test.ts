@@ -37,35 +37,35 @@ describe('layer-presets', () => {
     assert.ok(LAYER_PRESETS.some((p) => p.id === DEFAULT_PRESET_ID));
   });
 
-  it('layersForPreset("general") active uniquement news/powerGrid/environmental', () => {
+  it('layersForPreset("general") active une couche phare par thème', () => {
     const result = layersForPreset('general');
-    assert.equal(result.news, true);
-    assert.equal(result.powerGrid, true);
-    assert.equal(result.environmental, true);
-    assert.equal(result.military, false);
+    for (const key of ['news', 'powerGrid', 'military', 'health', 'environmental'] as const) {
+      assert.equal(result[key], true, `${key} devrait être actif`);
+    }
     assert.equal(result.cyber, false);
     assert.equal(result.fires, false);
+    assert.equal(result.nuclearFleet, false);
   });
 
-  it('layersForPreset("energy") active le jeu énergie attendu', () => {
+  it('layersForPreset("energy") active tout le thème énergie (DROM et charge métropolitaine compris)', () => {
     const result = layersForPreset('energy');
-    for (const key of ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'windMonitor', 'hydroBackbone', 'outagesElec'] as const) {
+    for (const key of ['dromEnergy', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'hydroBackbone', 'oilNetwork', 'windMonitor', 'metroLoad', 'outagesElec'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
     assert.equal(result.news, false);
     assert.equal(result.military, false);
   });
 
-  it('layersForPreset("security") active défense/cyber/télécom sans toucher santé', () => {
+  it('layersForPreset("security") active tout le thème sécurité & défense sans toucher santé', () => {
     const result = layersForPreset('security');
-    for (const key of ['news', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet'] as const) {
+    for (const key of ['news', 'stability', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet', 'outagesCloud'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
     assert.equal(result.health, false);
     assert.equal(result.hospitals, false);
   });
 
-  it('layersForPreset("health") active le jeu santé attendu', () => {
+  it('layersForPreset("health") active tout le thème santé', () => {
     const result = layersForPreset('health');
     for (const key of ['health', 'healthOscour', 'healthApl', 'hospitals'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
@@ -73,13 +73,17 @@ describe('layer-presets', () => {
     assert.equal(result.powerGrid, false);
   });
 
-  it('layersForPreset("environment") active le jeu environnement/transports attendu', () => {
+  it('layersForPreset("environment") active tout le thème environnement & transports', () => {
     const result = layersForPreset('environment');
-    for (const key of ['environmental', 'weatherRadar', 'fires', 'trafficRoad', 'trafficRail'] as const) {
+    for (const key of ['environmental', 'weatherRadar', 'fires', 'dayNight', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
-    assert.equal(result.trafficAir, false);
-    assert.equal(result.trafficMaritime, false);
+    assert.equal(result.powerGrid, false);
+  });
+
+  it('les quatre thèmes sont complets : chaque couche appartient à exactement un thème', () => {
+    const themed = LAYER_PRESETS.filter((p) => p.id !== 'general').flatMap((p) => p.layers);
+    assert.deepEqual([...themed].sort(), [...ALL_PRESETABLE_LAYER_KEYS].sort());
   });
 
   it('remet toujours à false toutes les clés enfant hors de la vue sélectionnée', () => {

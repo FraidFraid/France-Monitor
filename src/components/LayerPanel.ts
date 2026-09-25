@@ -78,9 +78,11 @@ export class LayerPanel {
   private environmentExpanded = true;
   /** Groupes dont l'utilisateur a explicitement changé l'état plié/déplié — n'est plus recalculé automatiquement. */
   private manuallyToggledGroups = new Set<(typeof _GROUP_KEYS)[number]>();
-  /** Section « Personnaliser les couches » : repliée par défaut sauf si aucune vue ne correspond à l'état courant. */
-  private customizeExpanded = false;
-  private customizeManuallySet = false;
+  /**
+   * Section « Personnaliser les couches » : dépliée par défaut (décision du 25/09/2026 : on doit voir
+   * les couches actives ou non dès l'ouverture), repliée seulement si l'utilisateur la replie.
+   */
+  private customizeExpanded = true;
   private element: HTMLElement | null = null;
 
   constructor(container: HTMLElement, initialLayers: MapLayers, options: LayerPanelOptions = {}) {
@@ -161,9 +163,6 @@ export class LayerPanel {
 
     // Vues prédéfinies : quelle vue (si une seule) correspond exactement à l'état courant.
     const matchedPresetId = this.getMatchingPresetId();
-    if (!this.customizeManuallySet) {
-      this.customizeExpanded = matchedPresetId === null;
-    }
     this.syncAutoExpandedGroups();
 
     const viewsBarHtml = `
@@ -353,7 +352,8 @@ export class LayerPanel {
       btn.addEventListener('click', () => {
         const id = btn.dataset.preset as LayerPresetId | undefined;
         if (!id) return;
-        this.customizeManuallySet = false;
+        // Choisir une vue remontre la liste : ses couches, cochées, dans leurs groupes dépliés.
+        this.customizeExpanded = true;
         this.manuallyToggledGroups.clear();
         this.onPresetSelect?.(id);
       });
@@ -363,7 +363,6 @@ export class LayerPanel {
     const customizeToggle = this.element.querySelector<HTMLElement>('#layer-panel-customize-toggle');
     if (customizeToggle) {
       customizeToggle.addEventListener('click', () => {
-        this.customizeManuallySet = true;
         this.customizeExpanded = !this.customizeExpanded;
         this.render();
       });
