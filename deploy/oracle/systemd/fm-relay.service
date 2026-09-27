@@ -1,0 +1,34 @@
+[Unit]
+Description=France Monitor - relais AIS/OpenSky (ais-relay.js)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+EnvironmentFile=/etc/francemonitor/francemonitor.env
+Environment=NODE_ENV=production
+# Port fixe côté VM (écoute 127.0.0.1 uniquement, Caddy fait /relay/* → ici).
+Environment=RELAY_PORT=8090
+ExecStart=/usr/bin/node ais-relay.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Durcissement raisonnable — pas d'écriture locale (relais mémoire pur).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

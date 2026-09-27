@@ -1,0 +1,33 @@
+[Unit]
+Description=France Monitor - API Node (server/prod/http-server.mjs)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+EnvironmentFile=/etc/francemonitor/francemonitor.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server/prod/http-server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Durcissement raisonnable — service purement réseau (Upstash/Neon distants),
+# aucune écriture locale attendue.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

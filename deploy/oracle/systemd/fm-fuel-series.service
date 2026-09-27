@@ -1,0 +1,30 @@
+[Unit]
+Description=France Monitor - rafraichissement series prix carburants
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target fm-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+EnvironmentFile=/etc/francemonitor/francemonitor.env
+# api/fuel-price-series-refresh.js accepte Authorization: Bearer <CRON_SECRET> (ou
+# FUEL_PRICE_SERIES_REFRESH_SECRET) : on réutilise CRON_SECRET.
+# Le secret ne doit pas apparaître dans la ligne de commande (lisible par `ps`) : systemd passe
+# « $CRON_SECRET » tel quel ($$), le shell l'étend depuis l'EnvironmentFile, printf (commande
+# interne) l'envoie sur l'entrée standard et curl lit l'en-tête avec -H @-.
+ExecStart=/bin/sh -c 'printf "Authorization: Bearer %%s" "$$CRON_SECRET" | exec /usr/bin/curl --fail --silent --show-error --max-time 60 -H @- http://127.0.0.1:3000/api/fuel-price-series-refresh'
+# Pas de Restart= : en cas d'échec (Neon indisponible, quota…), le timer relance à l'échéance
+# suivante ; des relances rapprochées épuiseraient le quota gratuit de la base.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true

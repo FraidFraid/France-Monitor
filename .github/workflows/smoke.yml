@@ -22,9 +22,11 @@ permissions:
   contents: read
 
 env:
-  SITE: https://www.francemonitor.com
-  RADAR_WORKER: https://radar-worker-production-0c93.up.railway.app
-  AIS_RELAY: https://france-monitor.onrender.com
+  # Variables de dépôt avec repli sur les valeurs actuelles (Railway/Render/Vercel)
+  # tant que la bascule vers la VM Oracle n'a pas eu lieu — voir docs/deployment-oracle.md.
+  SITE: ${{ vars.SITE_URL || 'https://www.francemonitor.com' }}
+  RADAR_WORKER: ${{ vars.RADAR_WORKER_URL || 'https://radar-worker-production-0c93.up.railway.app' }}
+  AIS_RELAY: ${{ vars.AIS_RELAY_URL || 'https://france-monitor.onrender.com' }}
 
 jobs:
   smoke:
@@ -111,7 +113,7 @@ jobs:
           set -u
           day=$(date -u +%Y-%m-%d)
           payload=$(jq -n --arg d "$day" '{text: ("Test de fumée du " + $d + " : la préfecture de Gironde a déclenché le plan ORSEC après des inondations touchant vingt communes, avec 150 interventions des pompiers.")}')
-          body=$(curl -s --max-time 60 -X POST -H 'content-type: application/json' -d "$payload" "https://www.francemonitor.com/api/intelligence/v1/summarize") || body='{}'
+          body=$(curl -s --max-time 60 -X POST -H 'content-type: application/json' -d "$payload" "$SITE/api/intelligence/v1/summarize") || body='{}'
           echo "$body" | head -c 400; echo
           degraded=$(echo "$body" | jq -r '.degraded // false')
           summary=$(echo "$body" | jq -r '.summary // ""')

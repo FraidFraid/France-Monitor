@@ -1,0 +1,125 @@
+name: Deploy to VM
+
+# Déploiement sur la VM Oracle Always Free (voir docs/deployment-oracle.md).
+# Le job `deploy` est SAUTÉ tant que le secret VM_HOST n'existe pas, pour que
+# `main` continue de passer avant que la VM soit prête (`secrets` n'étant pas
+# lisible dans un `if:` de job, la détection passe par le job `check-vm` et
+# ses outputs).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-vm:
+    name: Détecter la configuration VM
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: VM_HOST est-il défini ?
+        id: check
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          if [ -n "$VM_HOST" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::secret VM_HOST absent — déploiement VM sauté (la VM Oracle n'est pas encore configurée, voir docs/deployment-oracle.md)"
+          fi
+
+  deploy:
+    name: Build + déploiement
+    needs: check-vm
+    if: needs.check-vm.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          # Variables VITE_* inlinées au build — voir vite.config.ts / docs/deployment.md §3.
+          VITE_AIS_RELAY_URL: ${{ vars.VITE_AIS_RELAY_URL }}
+          VITE_ENABLE_CYBER_PANEL: ${{ vars.VITE_ENABLE_CYBER_PANEL }}
+          VITE_ENABLE_GAS_PANEL: ${{ vars.VITE_ENABLE_GAS_PANEL }}
+          VITE_ENABLE_OIL_LAYER: ${{ vars.VITE_ENABLE_OIL_LAYER }}
+        run: npm run build
+
+      - name: Créer l'archive de déploiement
+        run: |
+          set -eu
+          tar -czf "francemonitor-${{ github.sha }}.tar.gz" \
+            dist api server services/radar-worker ais-relay.js package.json package-lock.json
+
+      - name: Préparer la clé SSH et known_hosts
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_HOST_KEY: ${{ secrets.VM_HOST_KEY }}
+        run: |
+          set -eu
+          install -d -m 700 ~/.ssh
+          umask 177
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${VM_HOST_KEY:-}" ]; then
+            printf '%s\n' "$VM_HOST_KEY" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+      - name: Copier l'archive sur la VM
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "francemonitor-${{ github.sha }}.tar.gz" \
+            "$VM_USER@$VM_HOST:/tmp/francemonitor-${{ github.sha }}.tar.gz"
+
+      - name: Déployer via fm-deploy
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "$VM_USER@$VM_HOST" \
+            "sudo /usr/local/bin/fm-deploy /tmp/francemonitor-${{ github.sha }}.tar.gz"
+
+      - name: Nettoyer la clé SSH locale
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Vérifier la production après bascule
+        run: |
+          set -u
+          site="${{ vars.SITE_URL }}"
+          site="${site:-https://www.francemonitor.com}"
+          code=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 30 "$site/api/health-check") || code="000"
+          echo "GET $site/api/health-check -> HTTP $code"
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::vérification post-déploiement en échec ($site/api/health-check -> HTTP $code)"
+            exit 1
+          fi

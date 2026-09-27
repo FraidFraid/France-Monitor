@@ -1,6 +1,8 @@
+import { existsSync, readFileSync } from 'fs';
 import { createServer } from 'http';
+import { join } from 'path';
 import { fileURLToPath } from 'url';
-import { loadEnv } from 'vite';
+import { parseEnv } from 'util';
 import WebSocket, { WebSocketServer } from 'ws';
 
 import { fetchAirTrafficSnapshot } from './api/_shared/air-traffic.js';
@@ -92,11 +94,20 @@ async function getOpenSkySnapshot() {
 // Utilisation de global pour survivre aux rechargements HMR de Vite
 let relayInstance = global.__aisRelayInstance || null;
 
+/**
+ * Complète process.env avec les fichiers .env du dossier courant, dans l'ordre de priorité de
+ * `loadEnv` de Vite (.env.<mode>.local > .env.<mode> > .env.local > .env), sans jamais écraser une
+ * variable déjà posée. Sans dépendance à vite : en production (VM, `npm ci --omit=dev`), vite n'est
+ * pas installé et les variables viennent de l'EnvironmentFile systemd.
+ */
 function loadRelayEnv(mode = process.env.NODE_ENV || 'development') {
-  const env = loadEnv(mode, process.cwd(), '');
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === 'string' && value.length > 0 && !process.env[key]) {
-      process.env[key] = value;
+  for (const file of [`.env.${mode}.local`, `.env.${mode}`, '.env.local', '.env']) {
+    const path = join(process.cwd(), file);
+    if (!existsSync(path)) continue;
+    for (const [key, value] of Object.entries(parseEnv(readFileSync(path, 'utf8')))) {
+      if (typeof value === 'string' && value.length > 0 && !process.env[key]) {
+        process.env[key] = value;
+      }
     }
   }
 }
