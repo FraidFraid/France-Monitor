@@ -1,0 +1,4250 @@
+[
+  {
+    "id": 10498277,
+    "feedId": "rfi",
+    "feedName": "RFI",
+    "title": "Burkina Faso: Ibrahim Traoré dresse le bilan de ses quatre années au pouvoir",
+    "description": "Au Burkina Faso, à quelques jours du quatrième anniversaire de sa prise de pouvoir par un coup d’État, le 30 septembre 2022, le capitaine Ibrahim Traoré était face à la presse ce dimanche 27 septembre",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Bilan politique à l'étranger",
+    "claude": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10497336,
+    "feedId": "courrier-international",
+    "feedName": "Courrier International",
+    "title": "Pourquoi la guerre civile éthiopienne est-elle en train de reprendre ?",
+    "description": "En Éthiopie, les violents combats qui opposent depuis mercredi 23 septembre les forces fédérales au Front de libération du peuple du Tigré font craindre la reprise de la guerre civile qui, entre 2020 ",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Conflit armé à l'étranger, sans effet déclaré sur la France",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10494602,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Désinformation russe : le nombre de faux contenus d’actualité a augmenté de 850 % en un an",
+    "description": "Selon un rapport publié lundi par NewsGuard, entreprise américaine spécialisée dans la désinformation, le nombre de faux contenus usurpant l'identité de médias fiables a explosé de 850 % en un an. Par",
+    "current": {
+      "category": "health",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Rapport d'analyse sur la désinformation",
+    "claude": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10494009,
+    "feedId": "midi-libre",
+    "feedName": "Midi Libre",
+    "title": "Apologie du terrorisme : un Héraultais arrêté pour avoir publié sur TikTok des vidéos faisant la promotion du djihad et du terrorisme islamique",
+    "description": "Interpellé le 17 septembre dernier, le mis en cause a comparu devant le tribunal judiciaire de Montpellier où il a demandé un délai pour préparer sa défense. Son procès a été renvoyé au 30 octobre. Da",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Affaire judiciaire (apologie), fait passé",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10493882,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "Ultradroite : l'ex-jardinier radicalisé de Montauban, condamné pour terrorisme, à nouveau écroué après la saisie d'armes blanches chez lui malgré l'interdiction d'en détenir",
+    "description": "EXCLUSIF. Les services de renseignement ne l'avaient jamais vraiment lâché. Jeudi 24 septembre 2026, ils ont frappé à la porte de Dominique D., 50 ans, l'ex-jardinier de Montauban condamné pour avoir ",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Interpellation d'un individu déjà condamné, menace neutralisée",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10493739,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Royaume-Uni : enquête sur un possible lien avec l’Iran après un projet d’attaque contre une base militaire américaine",
+    "description": "La police antiterroriste britannique cherche à déterminer si Téhéran est derrière un projet d’attentat déjoué près d’une base aérienne utilisée par l’armée américaine. Cinq personnes ont été arrêtées",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Enquête sur un projet d'attentat déjoué au Royaume-Uni",
+    "claude": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10488859,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "DIRECT. Guerre en Ukraine : pour Zelensky, le choix des cibles civiles par la Russie est du \"terrorisme\"",
+    "description": "Vivez en direct la journée du lundi 28 septembre 2026 à propos de l'actualité de la guerre en Ukraine sur ladepeche.fr.",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Guerre en Ukraine, sans effet déclaré sur la France",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10486826,
+    "feedId": "rfi",
+    "feedName": "RFI",
+    "title": "À l'ONU, Kyaw Moe Tun, le diplomate rebelle entré en résistance contre la junte birmane",
+    "description": "L’Assemblée générale de l'ONU se termine ce lundi 28 septembre à New York. Les dirigeants du monde entier ont défilé à la tribune. La Birmanie, elle, n’a pas été représentée. Le pays est en guerre civ",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Portrait diplomatique",
+    "claude": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10487437,
+    "feedId": "l-obs",
+    "feedName": "L'Obs",
+    "title": "« Un Opéra pour un empire » : comment Napoléon III a offert à Paris le Palais Garnier",
+    "description": "Attentat, rivalités politiques, guerre et Commune : un documentaire passionnant retrace l’épopée du monument imaginé par Charles Garnier. Ce soir à 22h25 sur Arte et disponible à la demande sur Arte.t",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Documentaire historique",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10485575,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Trois personnes sont mortes lors d'une traversée clandestine de la Manche au large de Wissant",
+    "description": "Trois personnes sont mortes dans une nouvelle traversée clandestine de la Manche ce lundi 28 septembre lors d'un naufrage impliquant un taxi-boat au large de Wissant (Pas-de-Calais).",
+    "current": {
+      "category": "transport",
+      "severity": "critical",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Naufrage mortel de migrants dans la Manche",
+    "claude": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10485266,
+    "feedId": "nc-la-1ere",
+    "feedName": "NC la 1ère",
+    "title": "INTERVIEW. Grippe : pourquoi la Nouvelle-Calédonie appelle à la vigilance renforcée",
+    "description": "Le nombre d’infections respiratoires augmente depuis la mi-août en Nouvelle-Calédonie, avec une circulation principalement liée à la grippe de type A. Sans parler d’épidémie à ce stade, les autorités ",
+    "current": {
+      "category": "health",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Hausse saisonnière de la grippe, appel à la vigilance",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10482947,
+    "feedId": "atlantico",
+    "feedName": "Atlantico",
+    "title": "Empathie suicidaire des Européens ? L’ancien garde du corps du chef politique du Hamas avait obtenu asile et nationalité britannique avant de projeter des attentats contre des juifs",
+    "description": "Ancien garde du corps d’Ismaïl Haniyeh mystérieusement devenu citoyen britannique, \"Mr X\" est détenu à Londres à la demande de Berlin, qui le soupçonne d’avoir participé à la préparation d’attentats c",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tribune d'opinion sur une affaire étrangère",
+    "claude": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10476714,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Séisme au Sénat : le RN aura un groupe, du jamais-vu - L’édito politique - 28/09",
+    "description": "Ce lundi 28 septembre, Séisme au Sénat, le RN qui aurait un groupe  a été abordé dans l'édito politique de Guillaume Daret sur BFMTV",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Métaphore politique (sénatoriales)",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10476815,
+    "feedId": "courrier-international",
+    "feedName": "Courrier International",
+    "title": "Cinq hommes soupçonnés de préparer un “acte terroriste” arrêtés près de la base de Fairford",
+    "description": "La police antiterroriste enquête sur un “incident majeur” survenu dimanche près de cette base militaire utilisée par l’armée de l’air américaine dans l’ouest de l’Angleterre. Selon la presse britanniq",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Projet d'attentat déjoué au Royaume-Uni, sans effet déclaré sur la France",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10474360,
+    "feedId": "courrier-international",
+    "feedName": "Courrier International",
+    "title": "Au Royaume-Uni, cinq hommes soupçonnés de préparer un “acte terroriste” arrêtés près de la base de Fairford",
+    "description": "La police antiterroriste enquête sur un “incident majeur” survenu dimanche près de cette base militaire utilisée par l’armée de l’air américaine dans l’ouest de l’Angleterre. Selon la presse britanniq",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Projet d'attentat déjoué au Royaume-Uni, sans effet déclaré sur la France",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10473237,
+    "feedId": "liberation",
+    "feedName": "Libération",
+    "title": "A la Maison de la Culture de Seine-Saint-Denis, «rien n’est su» cherche la porte de survie après le trauma",
+    "description": "L’adaptation du texte éponyme de Sabine Garrigues, dont la fille a été assassinée lors de l’attentat du Bataclan, verse dans un lyrisme trop appuyé avant de retrouver sa force dans le récit brut du ré",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Critique théâtrale",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10449050,
+    "feedId": "liberation",
+    "feedName": "Libération",
+    "title": "Delphine Horvilleur : «Quand je retourne en Israël, j’ai l’impression de voir des fantômes partout»",
+    "description": "Trois ans après le 7 Octobre, la rabbine publie «Sermons sous les décombres», une réflexion sur l’évolution de sa pensée depuis l’attentat et la guerre menée par le gouvernement Nétanyahou contre Gaza",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Entretien",
+    "claude": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10447169,
+    "feedId": "rfi",
+    "feedName": "RFI",
+    "title": "Des dizaines de morts en Inde et au Népal suite à des pluies diluviennes",
+    "description": "Des pluies diluviennes et des glissements de terrain ont fait au moins 56 morts en trois jours dans le nord-est de l'Inde, dans l'État d'Uttar Pradesh, et 14 au Népal voisin, ont annoncé dimanche les ",
+    "current": {
+      "category": "floods",
+      "severity": "critical",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Catastrophe meurtrière à l'étranger",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10440883,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Royaume-Uni : l'antiterrorisme enquête sur un incident près d'une base militaire",
+    "description": "La police antiterroriste a été chargée de l'enquête sur un \"incident majeur\" survenu dimanche près d'une base militaire utilisée par l'armée de l'air américaine dans l'ouest de l'Angleterre, selon les",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10439527,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Covid : les consultations en hausse de 76 %, faut-il craindre une nouvelle épidémie ?",
+    "description": "Avec l'arrivée de l'automne, le Covid fait son retour. Dans les cabinets médicaux, les consultations sont en nette progression, avec une hausse de 76 % en une semaine. Alors que la campagne de vaccina",
+    "current": {
+      "category": "health",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Hausse saisonnière du Covid, épidémie évoquée comme hypothèse",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10436194,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Royaume-Uni : un « incident majeur » signalé près d’une base utilisée par l’US Air Force, cinq arrestations liées à des explosifs",
+    "description": "La police britannique a déclaré un incident majeur et évacué des habitations près de la base militaire de Fairford après l’arrestation de cinq individus. L’antiterrorisme a été chargé de l’enquête",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10432381,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Royaume-Uni : un « incident majeur » signalé près d’une base utilisée par l’US Air Force, des arrestations liées à des explosifs",
+    "description": "La police britannique a déclaré un incident majeur et évacué des habitations près de la base militaire de Fairford après l’arrestation de plusieurs hommes. L’antiterrorisme a été chargé de l’enquête",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10443975,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Au Royaume-Uni, l’antiterrorisme mobilisé pour un « incident majeur » près d’une base utilisée par l’US Air Force",
+    "description": "Un « incident majeur » a été révélé par la police britannique sur une base militaire de l’ouest de l’Angleterre utilisée par l’armée de l’air américaine. Des arrestations ont eu lieu, la police antite",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10419997,
+    "feedId": "midi-libre",
+    "feedName": "Midi Libre",
+    "title": "Un homme meurt percuté par un véhicule qui roulait à contresens, l’autoroute A9 coupée à la circulation",
+    "description": "L’autoroute a été coupée après un accident mortel ce dimanche 27 septembre sur l’autoroute A9 près de Montpellier.",
+    "current": {
+      "category": "transport",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Accident mortel isolé, autoroute coupée temporairement",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10422914,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "En Ukraine, la ville occupée d’Olechky confrontée au spectre de la famine",
+    "description": "Touchés par de graves pénuries de nourriture et de médicaments, les habitants de cette ville du sud du pays, située sur la ligne de front, sont en proie à une crise humanitaire. Kiev a porté ce dossie",
+    "current": {
+      "category": "social",
+      "severity": "critical",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Crise humanitaire liée à la guerre en Ukraine",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10388519,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "Corse : une maison détruite à l'explosif, le parquet antiterroriste saisi",
+    "description": "Une maison a été détruite à l'explosif à Ghisonaccia, en Haute-Corse, dans la nuit de vendredi à samedi. Le parquet national antiterroriste (Pnat) a ouvert une enquête pour association de malfaiteurs ",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Attentat à l'explosif en Haute-Corse, parquet antiterroriste saisi",
+    "claude": {
+      "severity": "high",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10391930,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Notre enquête. Risques climatiques dans nos régions : « On n’est pas à l’abri d’un tsunami »",
+    "description": "",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Enquête prospective sur les risques",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10384873,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Une maison détruite à l’explosif en Corse, le parquet antiterroriste saisi",
+    "description": "Une enquête pour association de malfaiteurs en vue de la préparation d’un acte de terrorisme a été ouverte par le parquet national antiterroriste (Pnat) après la destruction d’une maison à l’explosif,",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Attentat à l'explosif en Haute-Corse, parquet antiterroriste saisi",
+    "claude": {
+      "severity": "high",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10382441,
+    "feedId": "l-obs",
+    "feedName": "L'Obs",
+    "title": "« Un Opéra pour un empire » : comment Napoléon III a offert à Paris le Palais Garnier",
+    "description": "Attentat, rivalités politiques, guerre et Commune : un documentaire passionnant retrace l’épopée du monument imaginé par Charles Garnier. Ce soir à 22h25 sur Arte et disponible à la demande sur Arte.t",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Documentaire historique",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10380679,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Les images des inondations à Bangkok en Thaïlande",
+    "description": "La ville de Bangkok en Thaïlande est sous les eaux après 48 heures de pluies diluviennes. L'état de catastrophe naturelle a été déclaré dans l'ensemble des 50 districts de Bangkok. Près de 300 millimè",
+    "current": {
+      "category": "floods",
+      "severity": "critical",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Inondations à Bangkok",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10380075,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "Covid-19 : \"La circulation virale grimpe rapidement...\" Avec la hausse du nombre de cas, doit-on craindre une nouvelle épidémie ?",
+    "description": "Depuis le début du mois de septembre, les cas de Covid-19 repartent à la hausse, a alerté mercredi Santé publique France. La menace d’un retour épidémique reste encore loin, rassurent les médecins.",
+    "current": {
+      "category": "health",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Hausse du Covid, épidémie évoquée comme hypothèse",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10383187,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Une maison détruite par un attentat en Haute-Corse, le Parquet national antiterroriste saisi de l'enquête",
+    "description": "Dans la nuit du vendredi 25 au samedi 26 septembre, une villa a été détruite par une explosion, à Ghisonaccia. Une enquête a été ouverte. Le parquet national antiterroriste s'est saisi du dossier.",
+    "current": {
+      "category": "security",
+      "severity": "critical",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Attentat à l'explosif en Haute-Corse, parquet antiterroriste saisi",
+    "claude": {
+      "severity": "high",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-aveugle"
+  },
+  {
+    "id": 10436944,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Cinq personnes arrêtées en Angleterre après un \"incident majeur\" près d'une base militaire utilisée par l'armée américaine, la police antiterroriste saisie",
+    "description": "Selon la police du Gloucestershire, ces individus sont soupçonnés d'avoir commis \"des infractions à la loi sur les explosifs\". Ils sont actuellement en détention.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Incident antiterroriste en Angleterre (aligné sur l'analyste)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10488154,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Plus de 200 milliards de dollars pour plus de 43 millions d’infractions reconnues?  Facebook pourrait écoper d’une amende record pour avoir trompé les habitants du Nouveau-Mexique dans le scandale Cambridge Analytica",
+    "description": "Le groupe Meta pourrait devoir faire face à une amende record après s'être rendu coupable de malversation sur les données personnelles de ses utilisateurs. L'affaire révèle surtout un cruel manque de ",
+    "current": {
+      "category": "cyber",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Affaire judiciaire à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10384464,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Le chanteur marocain Saad Lamjarred condamné en appel à dix ans de prison pour viol ; sa peine alourdie",
+    "description": "L’artiste veut se pourvoir en cassation, a fait savoir samedi l’une de ses avocates. Il avait été condamné à six ans de réclusion criminelle en première instance.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Décision de justice sur un fait passé",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10486652,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Accident mortel à Val d’Yerre : un homme de 75 ans décède au volant de son tracteur",
+    "description": "",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Accident mortel isolé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10485548,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "A l'approche des élections de mi-mandat, les faux sites d'information locaux se multiplient aux États-Unis pour tenter de faire pencher la balance du côté de Donald Trump",
+    "description": "À quelques semaines seulement d'élections qui peuvent renverser la majorité en faveur de Donald Trump au Congrès, les faux sites d'actualité se multiplient et répandent de fausses informations contre ",
+    "current": {
+      "category": "general",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Analyse politique étrangère",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10379401,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Le policier national filmé en train de jeter au sol un homme à Carcassonne sera jugé le 6 novembre",
+    "description": "En attendant d'être jugé devant le tribunal correctionnel, le policier national a été placé sous contrôle judiciaire \"avec interdiction d'exercer toute activité policière ou toute activité en lien ave",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Procès à venir sur un fait passé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10413988,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "La violente tempête \"Nor'easter\" s'intensifie sur le nord-est des États-Unis, au moins un mort et des dizaines de milliers de foyers privés d’électricité",
+    "description": "La tempête qui touche le nord-est des États-Unis a gagné en intensité dans la soirée du samedi 26 septembre. Selon les médias américains, ces intempéries ont pour le moment fait un mort.",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tempête aux États-Unis",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10481805,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "\"Une sincérité que je n'avais jamais ressentie auparavant\" : une victime du père Preynat fait part de sa \"satisfaction\" après sa rencontre avec le pape",
+    "description": "Selon le cofondateur de l'association La Parole libérée, qui a été l'une des sept victimes de violences sexuelles de la part de membres du clergé reçues par Léon XIV, le pape reconnaît \"un problème sy",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Témoignage",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10434798,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Un bar-restaurant visé par des tirs près de Lyon, trois blessés dont une jeune femme grièvement",
+    "description": "Trois personnes ont été blessées par des tirs dans la nuit à Vénissieux, dont une jeune femme de 18 ans au pronostic vital engagé.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Fusillade locale, fait divers isolé",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10419901,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "Perdu, il se gare sur l'autoroute et part à pied vérifier les panneaux : percuté de plein fouet par un minibus rempli de jeunes footballeurs, il survit par \"miracle\"",
+    "description": "Un homme de 59 ans a survécu à un choc violent à 80 km/h sur l'A6, en Côte-d'Or, après être descendu de son fourgon pour lire des panneaux de signalisation. Les jeunes footballeurs à bord du minibus i",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Accident isolé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10498290,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "L’Iran dément « catégoriquement » toute implication dans un projet d’attaque contre une base militaire utilisée par les Etats-Unis en Angleterre",
+    "description": "Cinq hommes, tous Britanniques, ont été arrêtés, sont soupçonnés de « préparation d’un acte terroriste ». Interrogé par la presse sur la possibilité que ce projet d’attaque « ait été motivé par un Eta",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Démenti diplomatique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10435130,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "Vladimir Poutine invité au G20 : plusieurs sénateurs exhortent Donald Trump à annuler sa venue",
+    "description": "Un groupe de sénateurs américains a alerté Donald Trump sur la venue de Vladimir Poutine au sommet du G20, à Miami. L’invitation du chef d'État russe prévue en décembre intervient alors que son gouver",
+    "current": {
+      "category": "general",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Politique étrangère",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10431629,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Rhône. Une jeune femme entre la vie et la mort après une fusillade nocturne à Vénissieux",
+    "description": "",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Fusillade locale, fait divers isolé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424672,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Présidentielle 2027 : « Le match ne se résume pas à un affrontement entre Gabriel Attal et Édouard Philippe », insiste la députée bretonne Sandrine Le Feur",
+    "description": "Députée du Finistère et présidente de la Commission du développement durable et de l’aménagement durable à l’Assemblée, Sandrine Le Feur participe à la rédaction du programme de Gabriel Attal. Elle at",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10486902,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Royaume-Uni: cinq hommes arrêtés pour préparation d’un “acte terroriste” près d’une base aérienne",
+    "description": "Cinq hommes soupçonnés de \"préparation d'un acte terroriste\" ont été arrêtés dans la nuit de samedi à dimanche dans l'ouest de l'Angleterre, près d'une base militaire utilisée par l'armée de l'air amé",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "high",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Projet d'attentat déjoué au Royaume-Uni (aligné sur l'analyste)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10434401,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Royaume-Uni : la police antiterroriste saisie après un « incident majeur » près d’une base utilisée par l’armée de l’air américaine",
+    "description": "La police du Gloucestershire a annoncé l’arrestation de plusieurs hommes « pour des infractions présumées à la loi sur les explosifs », dans l’ouest de l’Angleterre.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10437027,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "A Lourdes, le Pape Léon XIV attendu sur les abus sexuels de l'Eglise",
+    "description": "Natalia Mendoza est en direct de Lourdes.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424288,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Vols annulés, électricité coupée, inondations côtières… Le nord-est des Etats-Unis frappé par une tempête rare pour la saison",
+    "description": "Les grandes villes de New York, Boston et Philadelphie sont sous la menace de \"Nor'easter\". Ce phénomène frappe généralement entre l'automne et le début du printemps.",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tempête aux États-Unis",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10490204,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "\"La fin d'une longue cavale\" : 5 ans après une fusillade dans le Tarn, le tireur présumé rattrapé en Espagne",
+    "description": "EXCLUSIF. Le principal suspect de la fusillade survenue en juillet 2021 sur la place du marché d'Aussillon, qui avait fait trois blessés, a été arrêté cet été en Espagne après près de cinq ans de cava",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Arrestation pour une fusillade de 2021",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10418232,
+    "feedId": "liberation",
+    "feedName": "Libération",
+    "title": "«Je n’ai aucun moyen de savoir quand il m’a photographiée» : face aux lunettes connectées, de plus en plus de femmes impuissantes et inquiètes",
+    "description": "Tandis que le parquet de Paris a ouvert des enquêtes après des plaintes de personnes filmées à leur insu à l’aide de lunettes équipées de caméras, d’autres victimes témoignent auprès de «Libération».",
+    "current": {
+      "category": "cyber",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sujet de société",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10458678,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Féminicide dans le Cher : le compagnon de la victime mis en examen et placé en détention provisoire",
+    "description": "L’autopsie a établi que la victime, âgée de 47 ans, est morte d’un « syndrome asphyxique et hémorragique », après avoir subi un « déchaînement de violence », selon le parquet.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Affaire judiciaire (féminicide)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10494450,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "EN DIRECT, guerre en Ukraine : à Kiev, un drone russe s’est écrasé sur l’Académie nationale des sciences d’Ukraine, faisant des morts et des blessés",
+    "description": "En plein cœur de la capitale, un drone russe s’est écrasé sur un bâtiment non résidentiel, provoquant un incendie, a annoncé le maire de Kiev, Vitali Klitschko, qui déplore des morts et des blessés.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Frappe meurtrière en Ukraine",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10490689,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "L’armée israélienne annonce avoir tué à Gaza le ravisseur d’un couple d’otages du 7-Octobre",
+    "description": "Le 7 octobre 2023, Noa Argamani est enlevée au festival de musique Nova. Elle est emmenée de force sur une moto, criant, les mains tendues vers son compagnon. Ce dimanche 27 septembre, l’armée israéli",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Opération militaire ciblée à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10496830,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Un pilote chevronné meurt dans le terrible crash de son ULM en Lot-et-Garonne",
+    "description": "",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Accident d'ULM mortel isolé",
+    "claude": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10420360,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "A Madrid, des centaines de personnes ont campé toute la nuit pour soutenir une octogénaire expulsée de chez elle",
+    "description": "Les images de l’expulsion de Maricarmen Abascal, 87 ans, accentue la pression sur le premier ministre socialiste, Pedro Sanchez, qui s’était engagé à faire du logement une priorité gouvernementale.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Mobilisation sociale à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493344,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Procès pour corruption : quatre ans de prison et cinq ans d'inéligibilité requis contre Rachida Dati",
+    "description": "Le Parquet national financier a requis lundi contre Rachida Dati quatre ans de prison, dont deux ans ferme avec bracelet électronique ainsi que cinq ans d'inéligibilité et d'interdiction de la fonctio",
+    "current": {
+      "category": "general",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Procès",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10475448,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "L'ÉDITO INTERNATIONAL - Royaume-Uni: cinq hommes arrêtés pour préparation d'un \"acte terroriste\" près d'une base aérienne utilisée par l'armée de l'air américaine",
+    "description": "Cinq hommes soupçonnés de \"préparation d'un acte terroriste\" ont été arrêtés dans la nuit de samedi à dimanche dans l'ouest de l'Angleterre, près d'une base militaire utilisée par l'armée de l'air amé",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Éditorial",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10484387,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Arabie saoudite : les écoles de Ryad en distanciel pour une semaine",
+    "description": "Les écoles de Ryad fonctionneront en distanciel pour une durée d'une semaine, en pleine recrudescence des attaques des Houthis du Yémen contre l'Arabie saoudite, selon des messages envoyés dimanche au",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Guerre au Yémen, effets en Arabie saoudite",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10425439,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Le pape Léon XIV se recueille devant un symbole des victimes de violences sexuelles dans l’Eglise, à Lourdes",
+    "description": "Le souverain pontife, resté jusqu’à présent silencieux sur le sujet depuis son arrivée en France, doit rencontrer sept d’entre elles à huis clos dimanche, avant de conclure une journée marquée par une",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10429598,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "Des pluies diluviennes font au moins 56 morts dans le nord de l'Inde",
+    "description": "Des pluies diluviennes accompagnées d'orages ont fait au moins 56 morts en trois jours dans le nord-est de l'Inde dans l'Etat d'Uttar Pradesh, le plus peuplé du pays, a indiqué dimanche l'agence gouve",
+    "current": {
+      "category": "floods",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Catastrophe meurtrière à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10416559,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Du glanage au pillage : le ras-le-bol des agriculteurs nordistes",
+    "description": "Le glanage traditionnel laisse place au vol dans les champs. Si ramasser les restes de récoltes après le passage des machines est légal et encadré, la crise du pouvoir d'achat bouscule les règles. Auj",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vols dans les champs, sujet agricole",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10379338,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Le chanteur marocain Saad Lamjarred condamné en appel à dix ans de prison pour viol, sa peine alourdie",
+    "description": "L’artiste veut se pourvoir en cassation, a fait savoir samedi l’une de ses avocats. Il avait été condamné à six ans de réclusion criminelle en première instance.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Décision de justice sur un fait passé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10490876,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "Crash d'Air Algérie : La compagnie Swiftair condamnée à une amende de 225.000 euros pour homicides involontaires",
+    "description": "Alors que la justice espagnole a rendu un non-lieu, le tribunal correctionnel de Paris vient de condamner la compagnie Swiftair à 225.000 euros d’amende pour homicides involontaires après le crash du ",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Décision de justice sur un accident de 2014",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10379347,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "A Madrid, des dizaines de milliers de personnes ont manifesté contre la gestion de la crise migratoire à Ceuta",
+    "description": "L’arrivée de plus de 70 000 migrants en provenance du Maroc voisin à la fin de juillet a déclenché une crise politique pour le premier ministre socialiste, Pedro Sanchez.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Manifestation à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10432364,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Violences sexuelles dans l’Église : à Lourdes, le Pape exhorte les évêques à « poursuivre la voie engagée » contre les abus avant de recevoir sept victimes",
+    "description": "Léon XIV a entamé sa troisième journée de visite en France par une adresse à la Conférence des évêques. Il y a notamment fait mention du travail à accomplir",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10399897,
+    "feedId": "rfi",
+    "feedName": "RFI",
+    "title": "Djibouti: point d'appui stratégique dans le chaudron moyen-oriental",
+    "description": "Jeudi 24 septembre, lors de son interview télévisée, Emmanuel Macron a déclaré que la France allait envoyer des moyens militaires en Arabie saoudite dans un contexte de regain des hostilités entre Rya",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Analyse géopolitique",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10436916,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "A Bangkok, des milliers d’habitants évacués après d’importantes inondations",
+    "description": "Près de 4 900 personnes ont été évacuées vers des centres d’accueil et environ 52 000 foyers ont été touchés par les inondations. Les autorités ont déclaré l’état de catastrophe dans l’ensemble de la ",
+    "current": {
+      "category": "floods",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Inondations à Bangkok",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10382168,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "Moyen-Orient : Donald Trump annonce rejetter le plan iranien pour rouvrir le détroit d'Ormuz",
+    "description": "Donald Trump a annoncé samedi qu'il rejetait la proposition de l'Iran, qui souhaitait un accord pour rouvrir le détroit d'Ormuz sous sept jours. \"Je rejette leur proposition\", a déclaré le président a",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Crise d'Ormuz, effet sur la France non déclaré",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10474068,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "L'accès à l'avortement de plus en plus difficile en France malgré son inscription dans la Constitution, alerte le Planning familial",
+    "description": "Fractures géographiques, manque d'informations, hausse des préjugés... Le Planning familial dévoile lundi son baromètre sur l'IVG et dresse le constat de \"parcours semés d'obstacles\" où l'accès à ce d",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Baromètre, sujet de société",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10486892,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Blocus: six avocats saisissent l'IGPN et dénoncent des \"violences policières d'une particulière gravité\" à l'égard de plusieurs lycéens",
+    "description": "Dans un communiqué publié ce dimanche 27 septembre, plusieurs avocats dénoncent \"des pratiques scandaleuses visant à terroriser cette jeunesse\", après que certains de leurs clients ont rapporté avoir ",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Plainte pour violences lors de blocus de lycées",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10394268,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "REPLAY. Guerre en Ukraine : \"La menace à la sécurité russe sera éliminée, peu importe les circonstances...\" A l'ONU, Sergueï Lavrov répète que le Kremlin ira jusqu'au bout",
+    "description": "Vivez en direct la journée du samedi 26 septembre 2026 à propos de l'actualité de la guerre en Ukraine sur ladepeche.fr.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Déclarations diplomatiques sur la guerre",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10463933,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Au moins 27 morts dans une double fusillade en Afrique du Sud",
+    "description": "En Afrique du Sud, une onzième victime a été retrouvée à l'est de Johannesburg alors que l'enquête continue pour retrouver un possible tueur en série. Mais ce week-end a aussi été marque par plusieurs",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Fusillades meurtrières à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10414733,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Présidentielle 2027 : « Le match ne se résume pas à un affrontement entre Gabriel Attal et Édouard Philippe », insiste la députée bretonne Sandrine Le Feur",
+    "description": "Députée du Finistère et présidente de la Commission du développement durable et de l’aménagement durable à l’Assemblée, Sandrine Le Feur participe à la rédaction du programme de Gabriel Attal. Elle at",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493220,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Contacts avec les parties intimes, sécurité à la maison, agressions sexuelles : ce que contiennent les questionnaires qui seront distribués aux élèves de l'école primaire au lycée",
+    "description": "Ces questionnaires seront proposés aux élèves à partir de début novembre, après les vacances. Si un élève s'identifie et fait état de violences, \"il sera immédiatement recontacté\", assure le ministre ",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique éducative",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10429774,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Allemagne : deux morts dans l’accident d’un autocar de touristes en route vers la Fête de la bière",
+    "description": "Un autocar transportant une cinquantaine de touristes philippins s’est renversé sur une autoroute allemande alors qu’il se rendait à la Fête de la bière à Munich",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Accident à l'étranger",
+    "claude": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10415292,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Un incendie  à Dompnac en Ardèche parcourt au moins 30 hectares, une centaine de pompiers mobilisés",
+    "description": "Un incendie s’est déclaré ce samedi 26 septembre dans la commune de Dompnac, en Ardèche. D'importants effectifs de sapeurs-pompiers ont été mobilisés sur place.",
+    "current": {
+      "category": "fires",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Feu de forêt en cours, moyens importants",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10498377,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Des croix gammées découvertes dans un parc de Besançon, la mairie porte plainte",
+    "description": "Des croix gammées ont été découvertes au parc Marulaz, à Besançon, dans le Doubs. Le maire LR de la ville, Ludovic Fagaut a condamné fermement ces inscriptions à caractère antisémite et annoncé le dép",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Dégradations à caractère antisémite, plainte",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424272,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Deux tueries dans des bars du Cap et de Johannesburg, en Afrique du Sud, font 27 morts au total",
+    "description": "L'Afrique du Sud est inondée d'armes à feu légales et illégales, et des fusillades du même genre sont fréquentes, souvent alimentées par les rivalités entre gangs.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Fusillades meurtrières à l'étranger",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10435637,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "\"Je suis bloquée\": la chanteuse Helena immobilisée à Bangkok à cause des inondations inédites qui touchent la capitale thaïlandaise",
+    "description": "La chanteuse belge est bloquée à Bangkok où des pluies diluviennes se sont abattues ces derniers jours. L'état de catastrophe naturelle a été déclenché dans les 50 districts de la capitale thaïlandais",
+    "current": {
+      "category": "floods",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Personnalité bloquée par des inondations à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10389646,
+    "feedId": "le-figaro",
+    "feedName": "Le Figaro",
+    "title": "Gironde : trois hommes, dont deux mineurs, mis en examen pour avoir alcoolisé à son insu, violé et filmé une adolescente",
+    "description": "Âgée de 16 ans, la victime a déposé plainte après les faits, qui se sont produits en juin dernier à Saint-Seurin-sur l’Isle, à côté de Libourne.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Affaire judiciaire, faits de juin",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10435758,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Série de féminicides en Afrique du Sud : comment en est-on arrivé là ?",
+    "description": "Jacqueline Derens, ancienne militante contre l'apartheid et autrice de \"Femmes d'Afrique du Sud\", est notre invitée.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Analyse",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10483007,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Le youtubeur Greg Guillotin a été placé en garde à vue après une plainte pour violences conjugales déposée par son ex-compagne",
+    "description": "La plaignante, âgée de 27 ans, accuse Grégory Guillotin de violences physiques et psychologiques répétées entre 2019 et 2026, au moment de leur relation.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Garde à vue d'une personnalité, affaire privée",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10412490,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Notre enquête. Incendies : pourquoi les Alpes et la vallée du Rhône sont de plus en plus vulnérables",
+    "description": "",
+    "current": {
+      "category": "fires",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Enquête prospective",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10425242,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "États-Unis. Un mort, pannes d'électricité, concerts annulés...  : une rare tempête frappe New York et Boston",
+    "description": "",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tempête aux États-Unis",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10491976,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "\"Une réponse plus ferme aux attaques hybrides russes\": Bruxelles veut mettre en place un \"protocole d'urgence\"",
+    "description": "La cheffe de la diplomatie européenne Kaja Kallas s'exprime à l'issue d'une réunion des ministres de la Défense de l'Union européenne à Bruxelles, lundi 28 septembre.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Annonce de politique européenne",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10491974,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Blocus des lycées: \"Leurs revendications sont légitimes\", juge Bally Bagayoko, maire LFI de Saint-Denis",
+    "description": "Moins d'un mois après la rentrée scolaire, les élèves de plusieurs lycées de France appellent au blocus de leurs établissements protestant contre la surcharge d'emplois du temps ou encore l'absence de",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Déclaration politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10484331,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Opération \"Breaking Bad\": 10 personnes mises en examen après le démantèlement d'une \"organisation criminelle transnationale\"",
+    "description": "Une informations judiciaire a été ouverte en 2025 après la découverte d'un laboratoire clandestin de cocaïne dans le Maine-et-Loire. ",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Affaire judiciaire, trafic démantelé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10498368,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "5,7 milliards de dollars de dommages: condamné à payer une grosse amende pour avoir violé deux brevets, notamment avec ses iPhone et Watch, Apple va faire appel",
+    "description": "Attaqué en justice par Taction Technology, Apple a été jugé coupable d'avoir enfreint deux brevets relatifs aux contrôles haptiques dans certains de ses appareils. L'entreprise de Cupertino va faire a",
+    "current": {
+      "category": "general",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Affaire judiciaire à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424209,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Aux Etats-Unis, les Haïtiens pourchassés par les agents de l’ICE : « Plus personne ne sort, les rues et les églises sont désertes, les gens ont peur d’être arrêtés »",
+    "description": "Depuis la fin, le 27 juillet, d’un statut protecteur qui permettait aux Haïtiens de résider aux Etats-Unis, 350 000 d’entre eux sont menacés d’expulsion par la police fédérale de l’immigration. Beauco",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Situation sociale à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10486969,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Crash du vol Ouagadougou-Alger en 2014 : la compagnie Swiftair condamnée",
+    "description": "La compagnie aérienne espagnole Swiftair, propriétaire de l'avion MD-83 qui s'était écrasé en plein Sahel le 24 juillet 2014, a été condamnée lundi pour homicides involontaires à la peine maximale de ",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Décision de justice sur un accident de 2014",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10426829,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "\"C'est un scandale sans nom\" : Arnaud Gallais, victime de violences sexuelles, dénonce l'insuffisance de la prise en compte de ce fléau dans l'Eglise par le pape Léon XIV",
+    "description": "Arnaud Gallais, président de l'association Mouv'Enfants, dénonce des \"crimes de masse\" commis dans l'Eglise et ne se satisfait pas de la rencontre organisée entre le pape et sept victimes de violences",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Témoignage",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10412689,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Le nord-est des Etats-Unis balayé par une puissante tempête, des « inondations côtières majeures » redoutées par les autorités",
+    "description": "La tempête doit se déplacer vers le New Jersey et Long Island dans la nuit de samedi à dimanche et toucher la région avec « toute sa force » dimanche matin, d’après les prévisionnistes.",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tempête aux États-Unis",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10394900,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "RD Congo, au moins 14 morts dans un crash d'avion dont 2 responsables militaires",
+    "description": "En RD Congo, deux hauts responsables de l’armée congolaise sont décédés dans un crash d’avion survenu vendredi 25 septembre. Douze autres personnes, membres de la délégation et de l’équipage, ont égal",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Accident aérien meurtrier à l'étranger (aligné sur l'analyste)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10393505,
+    "feedId": "le-figaro",
+    "feedName": "Le Figaro",
+    "title": "Guerre au Moyen-Orient : Oman appelle à la «retenue» et se dit prêt à jouer les médiateurs",
+    "description": "À la tribune de l’ONU, le ministre omanais des Affaires étrangères, Badr al-Busaidi, a appelé samedi les parties au conflit à privilégier le dialogue et assuré qu’Oman était prêt à contribuer à une mé",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Déclaration diplomatique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10484345,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Les forces de l'ordre interviendront en cas de violences sur les blocus dans les lycées, prévient le gouvernement",
+    "description": "Plusieurs avocats ont dénoncé des \"violences policières d'une particulière gravité\" sur plusieurs lycéens impliqués dans des blocus d'établissements cette semaine en Seine-Saint-Denis et dans le Val-d",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Blocus de lycées, maintien de l'ordre annoncé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10476624,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "EN DIRECT, guerre en Ukraine : Séoul déplore que Kiev communique publiquement sur le transfert de prisonniers nord-coréens",
+    "description": "Deux soldats avaient été faits prisonniers par l’Ukraine, en janvier 2025, après un déploiement militaire de Pyongyang en soutien à son allié russe. Le président ukrainien, Volodymyr Zelensky, avait r",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Guerre en Ukraine, volet diplomatique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10488152,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Dans la Manche, trois personnes sont mortes en tentant de rejoindre l’Angleterre",
+    "description": "« Un naufrage impliquant un taxi-boat est survenu ce jour au large de Wissant », a déclaré la préfecture, qui prévoit un point presse à Calais en fin de matinée.",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Naufrage mortel de migrants dans la Manche (aligné sur l'analyste)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10443297,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Visite du pape à Lourdes : Léon XIV va rencontrer dans la soirée sept victimes de violences sexuelles dans l'Eglise",
+    "description": "Parmi les personnes reçues, Jean-Marie Delbos, victime de l'école Notre-Dame de Bétharram, et Bertrand Virieux, victime du prêtre Bernard Preynat.",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10497062,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Guerre en Ukraine : l'Académie des sciences à Kiev frappée par un drone russe, une femme tuée",
+    "description": "Le site se trouve en plein centre de la capitale, dans un quartier d'ordinaire plus épargné que le reste de la ville par les drones russes, à proximité d'ambassades et de bâtiments gouvernementaux.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Frappe meurtrière en Ukraine",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10428303,
+    "feedId": "courrier-international",
+    "feedName": "Courrier International",
+    "title": "Comment la Russie se sert de la tech occidentale pour recruter des combattants étrangers",
+    "description": "Des jeunes hommes étrangers pourraient être ciblés par des campagnes de recrutement liées à la Russie, sous le couvert d’offres d’emploi ou de castings. Selon “Politico Europe”, ces opérations s’appui",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Analyse",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10429168,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Un mort, des milliers d'habitants sans électricité, inondations... une tempête rare balaie le nord-est des Etats-Unis",
+    "description": "",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Tempête aux États-Unis",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10420400,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Il donnait des cours de \"jouissance sexuelle\": qui est Élysée Ade, le \"gourou de La Villette\"?",
+    "description": "Il proposait des thérapies payantes sans aucune formation et est parvenu à rassembler une vingtaine d'adeptes dans son giron. Lundi 28 septembre s'ouvre à Paris le procès en appel d'Elysée Ade. Surnom",
+    "current": {
+      "category": "social",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Affaire judiciaire (dérive sectaire)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10431189,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Le pape à Lourdes, élections sénatoriales, tempête sur les États-Unis : le point à la mi-journée",
+    "description": "Le pape à Lourdes, où il va rencontrer sept victimes de violences sexuelles dans l’Église en France, l’élection de 178 sénateurs et une tempête qui a coupé l’électricité à des dizaines de milliers d’A",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Point d'actualité",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493183,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "EN DIRECT, guerre en Ukraine : les attaques russes font deux morts dans la région de Kiev et deux jeunes victimes dans les oblasts de Dnipropetrovsk et Kharkiv",
+    "description": "Volodymyr Zelensky a annoncé, lundi matin, que deux personnes, dont une de nationalité azerbaïdjanaise, ont été tuées près de la capitale ukrainienne. Un garçon de 13 ans, blessé dans l’oblast de Khar",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Frappes meurtrières en Ukraine",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424296,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Les écoles de Riyad fonctionneront en distanciel pendant une semaine face à la recrudescence des attaques des houthis du Yémen contre l'Arabie saoudite",
+    "description": "Après plusieurs années d'accalmie, le Yémen a replongé en juillet dans la guerre, nouveau front du conflit au Moyen-Orient.",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Guerre au Yémen, effets en Arabie saoudite",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10447466,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "Gers : un octogénaire britannique retrouvé mort à son domicile, deux hommes en fuite",
+    "description": "Le corps sans vie d'un Britannique de 84 ans a été découvert dans la nuit de vendredi à samedi à l'extérieur de son domicile à Verlus, commune d'une centaine d'habitants proche du département des Land",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Homicide présumé isolé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493321,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Crash du vol Ouagadougou-Alger en 2014 : la compagnie Swiftair condamnée en France",
+    "description": "La compagnie aérienne espagnole Swiftair, propriétaire de l'avion MD-83 qui s'était écrasé en plein Sahel le 24 juillet 2014, a été condamnée lundi pour homicides involontaires à la peine maximale de ",
+    "current": {
+      "category": "transport",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Décision de justice sur un accident de 2014",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10433503,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "Royaume-Uni : Un « incident majeur » relevé près d’une base utilisée par l’US Air Force",
+    "description": "La police britannique a indiqué ce dimanche qu’un « incident majeur » s’était déroulé près d’une base militaire. Plusieurs personnes auraient été arrêtées",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Incident antiterroriste au Royaume-Uni (aligné sur l'analyste)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10497341,
+    "feedId": "courrier-international",
+    "feedName": "Courrier International",
+    "title": "Football : “une tempête se prépare” pour Manchester City, sera-t-elle apocalyptique ?",
+    "description": "Le club du nord de l’Angleterre a été reconnu coupable vendredi 25 septembre de 114 infractions financières aux règles du championnat et il sera vraisemblablement sanctionné. Cependant, l’ampleur de l",
+    "current": {
+      "category": "weather",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Sport (métaphore)",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10421642,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Fusillades en Afrique du Sud : au moins 27 morts dans deux bars au Cap et à Johannesburg",
+    "description": "A Johannesburg, huit assaillants armés de fusils d’assaut ont abattu 17 clients, tandis que 10 personnes ont été tuées dans un township proche du Cap. Les motifs de ces attaques restent inconnus selon",
+    "current": {
+      "category": "security",
+      "severity": "high",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Fusillades meurtrières à l'étranger",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10494451,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Procès de Rachida Dati : quatre ans de prison requis contre l’ancienne ministre, accusée d’avoir noué un pacte de corruption avec Carlos Ghosn",
+    "description": "Cinq ans d’inéligibilité et d’interdiction de la fonction publique, avec exécution provisoire, ont également été demandés. Quant à l’ancien PDG de Renault en fuite au Liban, le ministère public a auss",
+    "current": {
+      "category": "general",
+      "severity": "medium",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Procès",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10424700,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "« Le pire, c’est que s’il gagne, je ne serais même pas surpris » : les anciens champions français subjugués par Paul Seixas avant le championnat du monde",
+    "description": "À 20 ans (depuis mercredi) seulement, le phénoménal Paul Seixas est déjà présenté comme l’un des grands favoris du championnat du monde, ce dimanche, autour de Montréal. Où il entend marquer l’histoir",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493079,
+    "feedId": "l-est-republicain",
+    "feedName": "L'Est Républicain",
+    "title": "Édition. En pleine controverse, l'écrivain Thélyson Orélien stoppe sa tournée en France et rentre au Canada",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Culture",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10443136,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "\"Une perte de repères\". Des parents inquiets du changement d’Atsem de leurs enfants, la municipalité explique son choix",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10449491,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "\" Céline Dion, c'est une présence extraordinaire \" : Élisabeth Reynaud publie un nouveau livre sur la chanteuse",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Culture",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10418946,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Ces 6 étudiants en soins infirmiers de Saint-Lô se démènent pour concrétiser un voyage humanitaire à Madagascar",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10474077,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Demi Vollering et Brandon McNulty au sommet, les Bleus du volley en argent, Cassandre Beaugrand sur le toit du monde... Le récap sport du week-end",
+    "description": "Malgré un collectif renouvelé, l'équipe de France de volley est montée en puissance tout le long des championnats d'Europse et ne s'est inclinée en finale, samedi, que face aux numéros 1 mondiaux polo",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Sport",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10452252,
+    "feedId": "le-figaro",
+    "feedName": "Le Figaro",
+    "title": "Tennis : pourquoi Arthur Fils va reprendre du service à Tokyo… en qualifications",
+    "description": "Éloigné des courts depuis l’US Open, le numéro un français disputera lundi les qualifications du tournoi de Tokyo. Un contretemps lié à un «problème administratif».",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10418944,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "EasyJet annonce de nouveaux vols depuis l'aéroport de Nice vers l'Égypte : voici à partir de quand",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Transport aérien commercial",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10428686,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Le président du Rassemblement national Jordan Bardella en visite surprise à Menton ce dimanche matin",
+    "description": "À l’occasion de la fête de la Saint-Michel, le dimanche 27 septembre 2026, les habitants de Menton ont eu la surprise de voir Jordan Bardella arriver pour la messe.",
+    "current": {
+      "category": "social",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10446966,
+    "feedId": "le-progres",
+    "feedName": "Le Progrès",
+    "title": "Cyclisme. Mondiaux : Van Aert et van der Poel en tête à Montréal, suivez la course en ligne masculine",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10497146,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Léon XIV : le pape dénonce le retour de la guerre en Europe",
+    "description": "🇪🇺 🕊️ À #Metz, le pape a appelé à tirer les leçons de l’histoire face au retour de la guerre en #Europe. En s’appuyant sur les paroles de Robert #Schuman, il plaide pour une Europe engagée dans le ",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10431934,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Lauréats, nouvelles variétés de pommes de terre... Le championnat du monde de la frite rassemble 70.000 visiteurs à Arras",
+    "description": "L'événement s'est déroulé ce samedi et a mis à l'honneur plusieurs participants dans sept catégories différentes. L'occasion de présenter les évolutions de la filière de la pomme de terre qui doit s'a",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Événement festif",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10474980,
+    "feedId": "zinfos974",
+    "feedName": "Zinfos974",
+    "title": "\"Retour au temps de l’ORTF\" : l’UDSA de Joé Bédier saisit l’Arcom après une interview de Laurent Virapoullé",
+    "description": "À quelques jours du jugement très attendu du tribunal administratif sur les municipales de Saint-André, la tension politique monte encore d’un cran à Saint-André. L’UDSA de Joé Bédier a annoncé ce dim",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10495829,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Grève de la fonction publique: plusieurs manifestations prévues à travers la Charente-Maritime",
+    "description": "Une intersyndicale de la fonction publique appelle les agents à manifester, dans toute la France, ce mardi 29 septembre, pour réclamer des meilleures conditions de travail et une revalorisation salari",
+    "current": {
+      "category": "social",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Journée de grève de la fonction publique annoncée",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10378294,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "JO : l'Allemagne choisit Munich pour postuler à l'organisation en 2036, 2040 ou 2044",
+    "description": "La ville de Munich a été retenue samedi par le comité olympique allemand (DOSB) pour candidater à l'accueil des JO d'été en 2036, 2040 ou 2044. La capitale de la Bavière était en concurrence avec le d",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10491748,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Un SDF de 32 ans retrouvé mort dans un abri de fortune à Montpellier : enquête de police et autopsie",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Décès d'un sans-abri, enquête",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10427755,
+    "feedId": "nc-la-1ere",
+    "feedName": "NC la 1ère",
+    "title": "RENDEZ-VOUS. Le dessin de la semaine avec Nicolas Yann Martin : 27 septembre 2026",
+    "description": "Chaque dimanche, notre dessinateur Nicolas Yann Martin pose son regard sur l’actualité. Au journal télévisé du 27 septembre 2026, c’est celle de Koumac !",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Dessin de presse",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10422365,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "DIRECT. Le pape Léon XIV à Lourdes : Les fidèles de plus en plus nombreux pour la messe du pape",
+    "description": "Retrouvez en direct toute la journée, ce dimanche 27 septembre 2026, toute l'actualité sur la venue du pape Léon.",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10380514,
+    "feedId": "l-est-republicain",
+    "feedName": "L'Est Républicain",
+    "title": "Photos. À Besançon, près de 1500 personnes marchent pour le climat",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Marche pour le climat",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10438002,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "A Lourdes, les pèlerins séduits par un pape \"simple\" à l'écoute des plus vulnérables",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10443790,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "« La sécurité des usagers est en jeu » : une subvention dans cette commune de l’arrière-pays de Nice pour rénover les chemins privés ouverts au public",
+    "description": "Face à la détérioration de nombreuses voies privées empruntées par tous, la municipalité de Gattières propose une aide financière aux propriétaires en échange du maintien du passage public.",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10414787,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "REPORTAGE. En Haute-Garonne, un ingénieur de 45 ans conçoit une fontaine innovante capable de purifier l'eau potable durant deux années entières",
+    "description": "Après plusieurs vies professionnelles, Céline et Frédéric Seban se sont lancé un double défi : créer des filtres pour améliorer la qualité de l’eau et imaginer un système qui répond aux grands enjeux ",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Innovation",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10415297,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Visite du pape à Lourdes: les fidèles déjà présents en nombre",
+    "description": "Troisième journée de visite en France pour le pape Léon XIV ce dimanche 27 septembre. Arrivé à Lourdes hier soir, le souverain pontife va présider la messe dominicale sur la prairie du sanctuaire. L'a",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10484661,
+    "feedId": "01net",
+    "feedName": "01net",
+    "title": "Google Messages change la manière de répondre aux messages",
+    "description": "Google déploie en ce moment une mise à jour de son application Messages qui va vous demander de changer certains réflexes pour afficher l’heure des messages ou y répondre.",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Technologie grand public",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10413609,
+    "feedId": "midi-libre",
+    "feedName": "Midi Libre",
+    "title": "\"J’étais émerveillé de voir la réaction des gens\" : le cardinal Bustillo raconte la visite du pape Léon XIV en France",
+    "description": "Il est l’une des figures montantes de l’Église. Mgr François Bustillo, l’un des cinq cardinaux électeurs en France, auteurs des \"Carnets corses\", répond à nos questions sur le déplacement historique e",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Entretien",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10389417,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "À Falaise, 90 commerçants ont signé la charte du dispositif Angela",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10491777,
+    "feedId": "france-bleu",
+    "feedName": "France Bleu",
+    "title": "Trois migrants sont morts sur une embarcation au large de Wissant lors d'une tentative de traversée de la Manche",
+    "description": "Trois migrants sont morts ce lundi 28 septembre au large de Wissant. Ils étaient à bord d'une embarcation à destination de l'Angleterre. Une centaine d'exilés ont été secourus et débarqués au port de ",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Naufrage mortel de migrants dans la Manche",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10381323,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "DIAPORAMA. Le pape Léon XIV à Lourdes : le Sanctuaire se prépare à accueillir le pape ce soir à la Grotte de Massabielle",
+    "description": "Le Sanctuaire s'apprête à accueillir le pape Léon XIV dans le cadre de son voyage apostolique en France. Les milliers de pèlerins déjà présents sur le Sanctuaire de Lourdes montrent déjà beaucoup de f",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10380001,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Jeune homme jeté à terre à Carcassonne : le policier jugé début novembre",
+    "description": "Un policier de Carcassonne sera jugé le 6 novembre pour avoir jeté à terre un jeune homme, décédé plusieurs jours plus tard. Aucun lien n’a encore été établi entre la mort du jeune homme et les violen",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Procès à venir sur un fait passé",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10450724,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Coupe de France de football. « On les a regardés dans les yeux » : Monteux y a cru jusqu’au bout contre Mandelieu",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10471680,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "Sénatoriales : Gendre de Mélenchon, premier élu LFI au Sénat… Qui est Gabriel Amard ?",
+    "description": "Elu dimanche sénateur, le député du Rhône Gabriel Amard est le premier de chez LFI à faire son entrée dans la chambre haute du Parlement",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10484401,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Visite du pape en France : les hôtels font le plein, les retombées restent à mesurer",
+    "description": "La visite de Léon XIV dope les réservations à Metz et à Lourdes. À Paris, l’activité hôtelière progresse aussi, mais l’effet du pape reste difficile à isoler. Aucun bilan consolidé ne permet encore de",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Économie locale",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10493560,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "EN DIRECT Guerre en Ukraine : La Corée du Sud exige des excuses de l’Ukraine, le pape appelle à « sacrifier des positions »...",
+    "description": "Suivez avec nous les informations de ce lundi 28 septembre concernant le conflit russo-ukrainien",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Guerre en Ukraine, volet diplomatique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10481674,
+    "feedId": "dna",
+    "feedName": "DNA",
+    "title": "En direct. Visite du pape Léon XIV à Metz : l'arrivée du Saint-Père imminente à Lorraine Aéroport, suivez cette journée historique avec nous",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10482855,
+    "feedId": "mayotte-hebdo",
+    "feedName": "Mayotte Hebdo",
+    "title": "Le Parc marin mise sur les plongeurs pour suivre les jeunes coraux",
+    "description": "🎁 Article offert Depuis le printemps, des plongeurs bénévoles participent au projet Mwamba, lancé en 2026 par le Parc naturel marin de Mayotte pour suivre la reprise des récifs après le blanchissemen",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Environnement",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493175,
+    "feedId": "le-figaro",
+    "feedName": "Le Figaro",
+    "title": "Ligue des nations : face à Israël, l'Irlande a «permis d’attirer l'attention du monde» sur Gaza, estime son sélectionneur",
+    "description": "Les joueurs irlandais ont multiplié les gestes de protestation, ce dimanche, lors de leur rencontre face aux Israéliens.",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10498383,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Isère: les syndicats appellent à une large grève dans la fonction publique ce mardi",
+    "description": "Les syndicats isérois de la fonction publique appellent à la mobilisation ce mardi 29 septembre. Deux manifestations sont prévues à Grenoble et Bourgoin-Jallieu pour défendre les services publics et l",
+    "current": {
+      "category": "social",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Journée de grève de la fonction publique annoncée",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10415899,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "Météo en Bretagne : la pluie fait son retour ce dimanche",
+    "description": "La pluie est de retour sur la Bretagne, ce dimanche 27 septembre, et les éclaircies se feront rares. Les températures devraient, elles, flirter avec la barre des 20 °C dans l’ouest de la région, et la",
+    "current": {
+      "category": "weather",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Météo ordinaire",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10489611,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "Netflix : Mais pourquoi les chats sont totalement accros à la série « Sealook » ?",
+    "description": "Sur les réseaux sociaux, les propriétaires de chats multiplient les vidéos où l’on voit leur animal captivé par la série Netflix « Sealook »",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Divertissement",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10488141,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Rachat du FC Nantes: Pancrate, Linette, Marcelo… ces personnalités qui seraient associées au projet de Paulo Tavares",
+    "description": "Alors que des discussions ont été entamées en vue du rachat du FC Nantes, le projet le plus avancé mené par l’ex-agent Paulo Tavares pourrait inclure plusieurs acteurs du football bien connus rapporte",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10451397,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Découvrez quelle plage de la Côte d’Azur a été rebaptisée Brigitte-Bardot et où les chiens sont les bienvenus",
+    "description": "Dimanche 27 septembre 2026, la plage canine située près de l’hôpital Lenval à Nice a été baptisée du nom de l’icône française. Ses galets et son eau étaient déjà « chiens friendly » depuis 2021.",
+    "current": {
+      "category": "social",
+      "severity": "info",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10482625,
+    "feedId": "midi-libre",
+    "feedName": "Midi Libre",
+    "title": "Près de 11 000 euros d’amende et 242 points de permis retirés… le mariage vire au fiasco et il va coûter très cher",
+    "description": "À Saint-Priest (Rhône), un cortège de mariage a donné lieu samedi à 87 verbalisations pour des comportements dangereux sur la route, a annoncé le maire Gilles Gascon. Les forces de l’ordre ont infligé",
+    "current": {
+      "category": "social",
+      "severity": "medium",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Infractions routières sanctionnées",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10432986,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Disparition inquiétante en Maine-et-Loire : un appel à témoins lancé pour retrouver une femme de 67 ans",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Disparition inquiétante, appel à témoins",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10473900,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Paris, Lyon, Bordeaux… Hallencourt : pourquoi le village fait partie des 20 villes ambassadrices du Pasteurdon",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10478076,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "Le pape Léon XIV achève à Metz sa visite en France, Emmanuel Macron présent à la messe",
+    "description": "Pour le dernier jour de visite en France, le pape Léon XIV se rend lundi à Metz, notamment pour célébrer la construction européenne comme source de paix. Le président français Emmanuel Macron assister",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10437529,
+    "feedId": "le-telegramme",
+    "feedName": "Le Télégramme",
+    "title": "« Leur camp, ce n’est pas celui de l’Ukraine » : Jean-Noël Barrot critique le positionnement de Marine Le Pen et Jean-Luc Mélenchon",
+    "description": "Jean-Noël Barrot accuse Le Pen et Mélenchon de soutenir Poutine. Le ministre des Affaires étrangères dénonce leurs propos sur l’Ukraine, estimant qu’ils ont « choisi leur camp ».",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10496811,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Loire. Un jeune homme de 19 ans tué à coups de couteau, un suspect recherché",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Homicide isolé, suspect recherché",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10423438,
+    "feedId": "sud-ouest",
+    "feedName": "Sud Ouest",
+    "title": "Abandonnée sur une île déserte au XVIe siècle, la Périgourdine Mademoiselle de La Rocque est devenue une légende au Canada",
+    "description": "Partie avec une flotte de pionniers vers la Nouvelle-France en 1542, Marguerite de La Rocque a été débarquée de force avec son amant sur une île dans le golfe du Saint-Laurent. Elle y a survécu deux a",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Histoire",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10475217,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Finances : Plusieurs taxes vont augmenter à Blangy-sur-Bresle, voilà ce qui va changer",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Fiscalité locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10434594,
+    "feedId": "numerama",
+    "feedName": "Numerama",
+    "title": "Amazon brade l’écran OLED incurvé LG UltraGear de 39 pouces à moins de 700 €",
+    "description": "[Deal du jour] Le LG UltraGear 39GS95QE, un écran de jeu OLED ultralarge et incurvé de 39 pouces, voit son prix fondre sur Amazon. Il passe à 699,99 € au lieu de 1 499 € à sa sortie.",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Consommation",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10450178,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "« Je ne ferai pas de discours, mais je vais sans doute verser ma larme… » : après dix ans de succès, ce restaurant emblématique du haut pays de Grasse ferme ses portes",
+    "description": "Dix ans après avoir transformé un snack saisonnier en restaurant réputé à l’année, Nicolas et Hélène ferment Le Montagnard à la station L’Audibergue d’Andon, dans le Haut pays de Grasse. Émotion pour ",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10497409,
+    "feedId": "liberation",
+    "feedName": "Libération",
+    "title": "Birmanie : 33 morts dans une frappe aérienne de l’armée selon les rebelles",
+    "description": "Selon l’Armée d’Arakan, il s’agit d’une des attaques les plus meurtrières de l’année de l’Etat de Rakhine.",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Frappe aérienne meurtrière à l'étranger",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10485545,
+    "feedId": "rfi",
+    "feedName": "RFI",
+    "title": "EN DIRECT - Léon XIV participe à une réunion réunion interreligieuse à Metz",
+    "description": "Après deux jours à Paris et une journée à Lourdes, où Léon XIV a rassemblé plus d’un million de personnes au total, le pape achève ce lundi sa visite en France à Metz, dans le nord-est de l’Hexagone. ",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10436550,
+    "feedId": "midi-libre",
+    "feedName": "Midi Libre",
+    "title": "\"C’est tombé dans les assiettes des clients\" : les fientes des étourneaux font vivre un enfer aux restaurateurs et commerçants de cette commune héraultaise",
+    "description": "Installés dans les platanes du sud de la France, les étourneaux représentent, depuis quelques saisons, un marronnier incontournable. À Sérignan, la situation a atteint, au mois d’août, un point inédit",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10452894,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "DIRECT. Stade Toulousain-Montpellier : avantage 19-8 à la mi-temps pour les \"rouge et noir\" dans ce gros choc à Ernest-Wallon entre les deux derniers finalistes du Top 14 ! Suivez le match en live",
+    "description": "Vainqueur de l'UBB, champion d'Europe en titre, lors de sa dernière réception à Ernest-Wallon, le Stade Toulousain défie cette fois-ci le MHR, finaliste de la dernière saison de Top 14 contre qui il a",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10445676,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Un coffre vieux de plusieurs centaines d'années découvert dans une église de Seine-et-Marne",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Patrimoine",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10415138,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Une exposition au Tréport rend hommage à Paul Paray, chef d'orchestre et compositeur devenu mondialement connu",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Culture",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10493191,
+    "feedId": "le-figaro",
+    "feedName": "Le Figaro",
+    "title": "Paix en Europe : Léon XIV exhorte à «faire preuve de courage dans la négociation»",
+    "description": "À Metz, dernière étape de sa visite en France, Léon XIV a exhorté lundi les dirigeants européens à accepter des compromis pour la paix. Devant Emmanuel Macron, le pape a défendu le dialogue et le droi",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10420847,
+    "feedId": "l-obs",
+    "feedName": "L'Obs",
+    "title": "Soso Maness, sous influence : « Mon insulte préférée ? “Nique tes morts” (sur le Vieux-Port) »",
+    "description": "A bientôt quarante ans, le rappeur se livre pour évoquer ses conneries de jeunesse, son rapport à la paternité, les cartes « Dragon Ball Z » ou les Parisiens à Marseille. Sans aucun filtre, mais pléth",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Entretien",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10412688,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "« Tender Loving Care », de Mike Leigh, remporte la Coquille d’or au Festival international du film de Saint-Sébastien",
+    "description": "Le prix spécial du jury a récompensé « Border », film quasi-muet du jeune cinéaste Ah Biao, originaire de Hongkong, véritable surprise de la compétition espagnole.",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": false
+    },
+    "why": "Culture",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10378064,
+    "feedId": "slate-fr",
+    "feedName": "Slate FR",
+    "title": "",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Titre vide",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10495838,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "\"Le Premier ministre a une attitude irresponsable, qu'il vienne ici\": en soutien au blocus des lycées, le maire de Saint-Denis Bally Bagayoko interpelle Sébastien Lecornu",
+    "description": "Après des perturbations dans plusieurs lycées, le Premier ministre avait dénoncé une \"surenchère irresponsable\" de LFI. Les élèves mobilisés demandent notamment de meilleures conditions de travail.",
+    "current": {
+      "category": "social",
+      "severity": "medium",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Déclaration politique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10498297,
+    "feedId": "le-monde",
+    "feedName": "Le Monde",
+    "title": "Pour les pompiers du Gard, qu’ils soient professionnels et volontaires, la résignation est souvent de mise",
+    "description": "Les sapeurs-pompiers venus de toute la France se mobilisent à Paris, du 27 au 29 septembre, pour dénoncer le manque de moyens nécessaires à l’exercice de leur mission.",
+    "current": {
+      "category": "security",
+      "severity": "medium",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Mobilisation des pompiers",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10381769,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Hausse du prix du carburant : le cri de colère des citoyens du pays de Châteaubriant",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Mécontentement sur le prix des carburants",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10379274,
+    "feedId": "l-est-republicain",
+    "feedName": "L'Est Républicain",
+    "title": "Nancy. Grève et manifestation de la fonction publique : « le ras-le-bol est partagé des agents »",
+    "description": "",
+    "current": {
+      "category": "social",
+      "severity": "medium",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "low",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Grève et manifestation de la fonction publique",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10475150,
+    "feedId": "l-est-republicain",
+    "feedName": "L'Est Républicain",
+    "title": "Ligue des nations. Sans Mbappé, les Bleus de Zidane veulent enchaîner en Belgique",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10429712,
+    "feedId": "l-obs",
+    "feedName": "L'Obs",
+    "title": "Jennifer Tamas : « Le point commun entre la cour de Louis XIV et ma culture banlieue m’a tout de suite sauté aux yeux »",
+    "description": "La chercheuse spécialiste du XVIIe siècle français publie « Barbe Bleue, contre‑enquête. Ce qui fait trembler les hommes ». Une exploration haletante du conte de Perrault, relu à l’aune des débats con",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Entretien",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10381746,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Après plusieurs années derrière le comptoir, elles quittent cette boulangerie très appréciée en Gironde",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10383584,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Les pieds dans l’eau, à la découverte des espèces méconnues qui peuplent le Las, le fleuve qui traverse Toulon",
+    "description": "Au Revest, une animation de la Fête du Las a permis de partir à la découverte des poissons et invertébrés qui évoluent dans le cours d’eau. Pour le plus grand bonheur des tout-petits.",
+    "current": {
+      "category": "social",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Environnement",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10487927,
+    "feedId": "imaz-press-reunion",
+    "feedName": "Imaz Press Réunion",
+    "title": "Saint-Paul : les élus réclament davantage de financements pour le logement social à La Réunion",
+    "description": "De retour du congrès de l'Union sociale de l'habitat (USH) à Bordeaux, les élus saint-paulois font le point ce lundi 28 septembre 2026 sur les...",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Politique locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10481496,
+    "feedId": "imaz-press-reunion",
+    "feedName": "Imaz Press Réunion",
+    "title": "[Vidéo] Produire de l'énergie à La Réunion sans changer le paysage",
+    "description": "Comment produire de l'énergie à La Réunion sans changer le paysage. La Région donne des pistes de réflexion dans le post ci-dessous. (Photo Photo...",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Énergie, réflexion prospective",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10441148,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "Accès à l’A8 depuis la promenade des Anglais à Nice : ce que révèlent les chiffres de TomTom",
+    "description": "Depuis le 20 août 2026, la Métropole Nice Côte d’Azur expérimente la remise en service de l’entrée d’autoroute à partir du boulevard du Mercantour. Les statistiques du spécialiste des informations rou",
+    "current": {
+      "category": "security",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Circulation",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10385543,
+    "feedId": "le-progres",
+    "feedName": "Le Progrès",
+    "title": "Jura. Les Jurassiens qui ont vu Léon XIV au Stade de France témoignent : « C’était magique »",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10490498,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Derrière les vidéos virales, le Pilates Reformer fait travailler en profondeur dans l'Eure",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Loisirs",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10418143,
+    "feedId": "europe-1",
+    "feedName": "Europe 1",
+    "title": "Visite du pape à Lourdes : prière et cérémonial dans la grotte des Apparitions au plus près des pèlerins",
+    "description": "Le pape Léon XIV a confié ce samedi soir la France à la protection de la Vierge Marie lors d'une prière à la grotte de Lourdes, peu après son arrivée dans le sanctuaire marial. Un moment de prière et ",
+    "current": {
+      "category": "social",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10391937,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Coupe de France de football. Sans trembler, Chambéry SF se qualifie au 5e tour face à Misérieux-Trévoux",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Sport",
+    "claude": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10413838,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Pompier dans ce centre de secours de la Sarthe depuis ses 18 ans, il en prend le commandement",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Vie locale",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10435467,
+    "feedId": "le-progres",
+    "feedName": "Le Progrès",
+    "title": "Religion. Visite du pape : Léon XIV va rencontrer des pèlerins malades et des victimes d'abus sexuels",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10489031,
+    "feedId": "la-depeche",
+    "feedName": "La Dépêche",
+    "title": "Pape Léon XIV à Lourdes : à son départ à l'aéroport, elle glisse quelques mots touchants à l'oreille du Saint-Père",
+    "description": "Au petit matin, lundi, les six maires des communes voisines de l’aéroport Tarbes-Lourdes-Pyrénées ont salué une dernière fois le pape Léon XIV avant son départ. Parmi eux, Marie-Laure Pargala, maire d",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Visite du pape",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10425738,
+    "feedId": "futura-sciences",
+    "feedName": "Futura Sciences",
+    "title": "La plante de la semaine : cet arbuste exotique offre des fleurs superbes et des fruits au goût « à nul autre pareil »",
+    "description": "Les Français sont de vrais « jardinophiles » ! Et vous ? Avec cette chronique, (re)découvrez une plante, un fruit, un légume.Voilà un arbre exotique qui pourrait bien s’inviter dans votre jardin, même",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Jardinage",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10434203,
+    "feedId": "l-est-republicain",
+    "feedName": "L'Est Républicain",
+    "title": "Royaume-Uni. Une base militaire visée par un « incident majeur », la police antiterroriste saisie",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Incident antiterroriste au Royaume-Uni",
+    "claude": {
+      "severity": "medium",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "reviewedBy": "analyste-verifie"
+  },
+  {
+    "id": 10439462,
+    "feedId": "bfm-tv",
+    "feedName": "BFM TV",
+    "title": "Marches pour le climat: des milliers de personnes ont manifesté pour l'Écologie partout en France",
+    "description": "Ce samedi 26 septembre, des milliers de personnes se sont rassemblées en France pour le climat, après un été caniculaire dans le pays.",
+    "current": {
+      "category": "social",
+      "severity": "medium",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Marches pour le climat",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10469670,
+    "feedId": "nice-matin",
+    "feedName": "Nice Matin",
+    "title": "PME : vos données sont-elles vraiment à l’abri ?",
+    "description": "Une panne de serveur ou un dégât des eaux et c’est parfois toute l’activité d’une entreprise qui peut s’arrêter. Pourtant, plus d’un tiers des petites entreprises monégasques interrogées récemment par",
+    "current": {
+      "category": "security",
+      "severity": "medium",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Conseil aux entreprises",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10495873,
+    "feedId": "france-24-fr",
+    "feedName": "France 24 FR",
+    "title": "JOJ Dakar 2026 : retrouvez les calendriers des Jeux olympiques de la jeunesse",
+    "description": "Destinés aux athlètes âgés de moins de 17 ans, les Jeux olympiques de la jeunesse (JOJ) 2026 auront lieu à Dakar du 31 octobre au 13 novembre. Il s'agit de la première compétition olympique jamais org",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": false,
+      "ongoing": true
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10429661,
+    "feedId": "20-minutes",
+    "feedName": "20 Minutes",
+    "title": "Vu partout cet été, comment continuer à porter le jort en automne ?",
+    "description": "Vous avez aimé porter votre jort tout l’été ? Sachez que vous n’êtes pas obligés de vous en séparer avec la baisse des températures",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Mode",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10416412,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "\"Une rustine\" : ces catholiques féministes déçues du manque d'inclusion des femmes à la messe du pape Léon XIV à Paris",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Société",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10483068,
+    "feedId": "france-info",
+    "feedName": "France Info",
+    "title": "Au procès de Rachida Dati, le Parquet national financier dénonce \"une atteinte manifeste à notre démocratie\" dans ses réquisitions",
+    "description": "Le duo de procureurs doit annoncer lundi matin les peines qu'il réclame à l'encontre de Rachida Dati et de Carlos Ghosn, jugé en son absence, pour corruption et trafic d'influence. Puis, dans l'après-",
+    "current": {
+      "category": "security",
+      "severity": "low",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Procès",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10380476,
+    "feedId": "actu-fr",
+    "feedName": "Actu.fr",
+    "title": "Patrimoine en Loire-Atlantique : que devient cette ancienne friche industrielle",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "info",
+      "scoredBy": "keywords"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": true
+    },
+    "why": "Patrimoine",
+    "claude": null,
+    "reviewedBy": null
+  },
+  {
+    "id": 10397094,
+    "feedId": "le-dauphine",
+    "feedName": "Le Dauphiné",
+    "title": "Coupe de France de football. « C’est un match un peu cruel » : Creys-Morestel s'incline face à Neuville après avoir manqué un penalty",
+    "description": "",
+    "current": {
+      "category": "general",
+      "severity": "low",
+      "scoredBy": "groq"
+    },
+    "expected": {
+      "severity": "info",
+      "inFrance": true,
+      "ongoing": false
+    },
+    "why": "Sport",
+    "claude": null,
+    "reviewedBy": null
+  }
+]
