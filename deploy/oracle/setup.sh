@@ -105,13 +105,16 @@ fi
 
 log "arborescence /srv, /etc, /var/lib, /opt"
 
-install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$BASE_DIR"
-install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$RELEASES_DIR"
-install -d -m 750 -o root      -g "$FM_GROUP"  "$CONFIG_DIR"
+# Caddy (utilisateur caddy) doit traverser jusqu'à dist/ : le code est public (dépôt ouvert), 755.
+install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" "$BASE_DIR"
+install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" "$RELEASES_DIR"
+# 751 : traversable (Caddy va lire tls/) mais non listable ; les secrets restent en 640 root:fm.
+install -d -m 751 -o root      -g "$FM_GROUP"  "$CONFIG_DIR"
 install -d -m 750 -o root      -g caddy        "$TLS_DIR"
 install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$RADAR_STORAGE_DIR"
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /opt/francemonitor
-install -d -m 750 -o root      -g root         /var/log/caddy
+# Caddy écrit ses journaux d'accès ici sous l'utilisateur caddy.
+install -d -m 750 -o caddy     -g caddy        /var/log/caddy
 
 if [ ! -f "$ENV_FILE" ]; then
   log "création de $ENV_FILE (vide) — à remplir depuis deploy/oracle/francemonitor.env.example"
