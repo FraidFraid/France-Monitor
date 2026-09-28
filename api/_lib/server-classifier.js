@@ -930,6 +930,12 @@ function isJudicialOrRetrospective(title) {
 function isHypothetical(title) {
   return HYPOTHETICAL_RE.test(normalizeForMatch(title));
 }
+var TERROR_RE = /\b(?:attentats?|terrorisme|terroristes?|antiterroristes?|antiterrorisme)\b/;
+var VICTIM_RE = /\b(?:morts?|mortes?|tuee?s?|victimes?|blessee?s?|otages?|deces|decedee?s?)\b/;
+function isTerrorWithoutVictims(title) {
+  const text = normalizeForMatch(title);
+  return TERROR_RE.test(text) && !VICTIM_RE.test(text);
+}
 var AMBIGUOUS_ANCHORS = /* @__PURE__ */ new Set([
   "nord",
   "cher",
@@ -1476,6 +1482,7 @@ function qualifyByKeywords(title, summary) {
       reasons.push("declencheur_hors_titre");
     }
   }
+  if (reportedLevel === "critical" && isTerrorWithoutVictims(title)) reportedLevel = "high";
   for (const reason of titleQ.reasons) {
     if (levelRank(reportedLevel) > levelRank(TITLE_REASON_CAP[reason])) reasons.push(reason);
   }

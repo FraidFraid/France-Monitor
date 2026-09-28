@@ -89,6 +89,21 @@ export function isHypothetical(title: string): boolean {
     return HYPOTHETICAL_RE.test(normalizeForMatch(title));
 }
 
+// ─── Terrorisme sans victime (titre) ───
+
+const TERROR_RE = /\b(?:attentats?|terrorisme|terroristes?|antiterroristes?|antiterrorisme)\b/;
+const VICTIM_RE = /\b(?:morts?|mortes?|tuee?s?|victimes?|blessee?s?|otages?|deces|decedee?s?)\b/;
+
+/**
+ * Vrai si le titre parle de terrorisme sans faire état de victimes : attentat déjoué, dégâts
+ * matériels, enquête. La gravité se juge aux conséquences — high au plus, pas critical
+ * (annotation de l'analyste du 28/09 : maison détruite en Corse, projet déjoué au Royaume-Uni).
+ */
+export function isTerrorWithoutVictims(title: string): boolean {
+    const text = normalizeForMatch(title);
+    return TERROR_RE.test(text) && !VICTIM_RE.test(text);
+}
+
 // ─── Zone (titre) ───
 
 /** Mots courants homonymes de lieux français : jamais une ancre (« Corée du Nord », « à l'aube »). */

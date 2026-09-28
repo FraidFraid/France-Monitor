@@ -5,7 +5,7 @@ import { replayKeywords, replayEvents, labelMetrics } from '../scripts/replay-cl
 describe('replayKeywords', () => {
   it('article mots-clés : note kw-2 qualifiée', () => {
     expect(replayKeywords({ scoredBy: 'keywords', title: 'Apologie du terrorisme : un homme arrêté', description: null, category: 'security', severity: 'critical' }))
-      .toMatchObject({ severity: 'low', reportedSeverity: 'critical', temporality: 'passe', reasons: ['passe'], scoredBy: 'kw-2' });
+      .toMatchObject({ severity: 'low', reportedSeverity: 'high', temporality: 'passe', reasons: ['passe'], scoredBy: 'kw-2' });
   });
   it('article groq-1 : note gardée, plafonnée et qualifiée par le titre', () => {
     expect(replayKeywords({ scoredBy: 'groq', title: 'Thaïlande : Bangkok sous les eaux', description: null, category: 'floods', severity: 'critical' }))

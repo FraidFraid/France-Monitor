@@ -19,7 +19,7 @@ describe('qualifyByKeywords — règles kw-2', () => {
   it('judiciaire : gravité signalée critical, retenue low, passé', () => {
     const q = qualifyByKeywords('Apologie du terrorisme : un Héraultais arrêté pour avoir publié des vidéos');
     expect(q.classification?.level).toBe('low');
-    expect(q).toMatchObject({ reportedLevel: 'critical', temporality: 'passe', reasons: ['passe'] });
+    expect(q).toMatchObject({ reportedLevel: 'high', temporality: 'passe', reasons: ['passe'] });
   });
   it('hypothétique : retenue low, à venir', () => {
     expect(qualifyByKeywords('Covid : les consultations en hausse de 76 %, faut-il craindre une nouvelle épidémie ?'))
@@ -28,7 +28,7 @@ describe('qualifyByKeywords — règles kw-2', () => {
   });
   it('étranger : retenue medium, zone étranger', () => {
     expect(qualifyByKeywords('Royaume-Uni : l’antiterrorisme enquête sur un incident près d’une base militaire'))
-      .toMatchObject({ classification: { level: 'medium' }, reportedLevel: 'critical', zone: 'etranger', reasons: ['etranger'] });
+      .toMatchObject({ classification: { level: 'medium' }, reportedLevel: 'high', zone: 'etranger', reasons: ['etranger'] });
   });
   it('un motif n’est inscrit que s’il abaisse la gravité', () => {
     // Peter May : déclencheur « tempête » dans le résumé → medium ; « étranger » (plafond medium) n'abaisse rien de plus.
@@ -37,12 +37,15 @@ describe('qualifyByKeywords — règles kw-2', () => {
   });
   it('les vrais événements graves restent critical, sans motif', () => {
     expect(qualifyByKeywords('Attentat à Paris : plusieurs blessés')).toMatchObject({ classification: { level: 'critical' }, zone: 'france', reasons: [] });
-    expect(classifyByKeywords('ATTENTAT DÉJOUÉ À LYON')?.level).toBe('critical');
-    expect(classifyByKeywords('Une maison détruite par un attentat en Haute-Corse, le Parquet national antiterroriste saisi')?.level).toBe('critical');
     expect(classifyByKeywords('Séisme de magnitude 5,2 ressenti dans les Pyrénées-Orientales')?.level).toBe('critical');
     expect(classifyByKeywords('Vigilance rouge tempête sur la Bretagne')?.level).toBe('critical');
   });
   it('titre high, description critical : ramené au niveau du titre', () => {
     expect(classifyByKeywords('Fusillade devant un bar à Marseille', 'La piste d’un attentat est écartée.')?.level).toBe('high');
+  });
+  it('terrorisme sans victime au titre : high, pas critical (annotation de l’analyste)', () => {
+    expect(classifyByKeywords('ATTENTAT DÉJOUÉ À LYON')?.level).toBe('high');
+    expect(classifyByKeywords('Une maison détruite par un attentat en Haute-Corse, le Parquet national antiterroriste saisi')?.level).toBe('high');
+    expect(classifyByKeywords('Attentat au marché de Noël : trois morts')?.level).toBe('critical');
   });
 });

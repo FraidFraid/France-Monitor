@@ -17,6 +17,7 @@ import type {
 } from '../types/index.ts';
 import {
     TITLE_REASON_CAP,
+    isTerrorWithoutVictims,
     levelRank,
     minLevel,
     neutralizeMetaphors,
@@ -462,6 +463,8 @@ export function qualifyByKeywords(title: string, summary?: string): KeywordQuali
             reasons.push('declencheur_hors_titre');
         }
     }
+    // Terrorisme sans victime au titre : high au plus (gravité jugée aux conséquences).
+    if (reportedLevel === 'critical' && isTerrorWithoutVictims(title)) reportedLevel = 'high';
     for (const reason of titleQ.reasons) {
         if (levelRank(reportedLevel) > levelRank(TITLE_REASON_CAP[reason])) reasons.push(reason);
     }

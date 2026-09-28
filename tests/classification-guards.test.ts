@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeForMatch, neutralizeMetaphors, isJudicialOrRetrospective, isHypothetical, titleZone,
-  titleQualification, minLevel, levelRank, TITLE_REASON_CAP, FRENCH_ANCHOR_FORMS, FOREIGN_FORMS,
+  titleQualification, minLevel, levelRank, TITLE_REASON_CAP, FRENCH_ANCHOR_FORMS, FOREIGN_FORMS, isTerrorWithoutVictims,
 } from '../src/services/classification-guards.ts';
 
 describe('neutralizeMetaphors', () => {
@@ -130,4 +130,18 @@ describe('prénoms homonymes de gentilés', () => {
   it('« Philippine » (prénom) ne rend pas un titre étranger', () => {
     expect(titleZone('Meurtre de Philippine : le suspect sera jugé')).not.toBe('etranger');
   });
+});
+
+describe('isTerrorWithoutVictims (règle ajoutée après l’annotation de l’analyste)', () => {
+  it.each([
+    'Une maison détruite par un attentat en Haute-Corse, le Parquet national antiterroriste saisi de l’enquête',
+    'ATTENTAT DÉJOUÉ À LYON',
+    'Royaume-Uni : l’antiterrorisme enquête sur un incident près d’une base militaire',
+  ])('sans victime au titre : %s', (title) => expect(isTerrorWithoutVictims(title)).toBe(true));
+  it.each([
+    'Attentat à Paris : plusieurs blessés',
+    'Attentat au marché de Noël : trois morts',
+    'Prise d’otages dans une école',
+    'Incendie à Tours : un immeuble évacué',
+  ])('victimes ou hors terrorisme : %s', (title) => expect(isTerrorWithoutVictims(title)).toBe(false));
 });
