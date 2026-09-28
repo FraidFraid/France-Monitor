@@ -3,8 +3,8 @@
 # Reproduit à l'identique les réécritures et en-têtes de vercel.json (racine
 # du dépôt) : routes /api, /about|/methodology|/legal|/contact|/docs, repli
 # SPA, cache immuable sur les assets hashés, CSP/sécurité, ACAO sur /api.
-# TLS : certificat "Origin CA" Cloudflare (SSL "Full (strict)" côté Cloudflare)
-# — voir docs/deployment-oracle.md §b/c pour la génération des fichiers.
+# TLS : certificats Let's Encrypt automatiques de Caddy (Cloudflare en SSL "Full (strict)").
+# Le certificat Origin CA de Cloudflare n'est plus nécessaire (docs/deployment-oracle.md).
 #
 # Installé par setup.sh dans /etc/caddy/Caddyfile. Valider après modification :
 #   caddy validate --config deploy/oracle/Caddyfile
@@ -23,14 +23,20 @@
 }
 
 francemonitor.com {
-	tls /etc/francemonitor/tls/origin.pem /etc/francemonitor/tls/origin-key.pem
+	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
+	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
+	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
+	# Cloudflare tant que « Always Use HTTPS » reste désactivé côté Cloudflare.
 
 	# Apex → www, comme aujourd'hui sur Vercel (docs/deployment.md).
 	redir https://www.francemonitor.com{uri} permanent
 }
 
 www.francemonitor.com {
-	tls /etc/francemonitor/tls/origin.pem /etc/francemonitor/tls/origin-key.pem
+	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
+	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
+	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
+	# Cloudflare tant que « Always Use HTTPS » reste désactivé côté Cloudflare.
 
 	encode zstd gzip
 

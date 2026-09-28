@@ -136,6 +136,12 @@ tant que les certificats Origin CA (§b) ne sont pas encore déposés.
 2. **Enregistrements DNS** (proxifiés, nuage orange) :
    - `A` `www` → `<IP publique de la VM>`, proxy activé.
    - `A` `@` (apex) → `<IP publique de la VM>`, proxy activé.
+> **Mise à jour du 28/09/2026 : on n'utilise PLUS le certificat Origin CA.** Caddy obtient seul des
+> certificats Let's Encrypt (Caddyfile sans directive `tls`), valides pour les navigateurs pendant
+> l'activation de la zone Cloudflare (le DNS renvoie alors l'IP de la VM) puis pour Cloudflare en
+> **Full (strict)**. Garder « Always Use HTTPS » désactivé côté Cloudflare (renouvellement HTTP-01).
+> L'encadré ci-dessous reste pour mémoire.
+>
 > **Constaté le 28/09/2026 :** Cloudflare refuse d'émettre un certificat Origin CA tant que la zone est
 > « pending » (serveurs de noms pas encore basculés) : *« This zone is either not part of your account »*.
 > Ordre qui marche : (1) sur la VM, générer la clé et la CSR (`openssl req -new -newkey ec -pkeyopt
