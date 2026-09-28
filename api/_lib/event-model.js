@@ -44,7 +44,10 @@ function rankOf(severity) {
 /**
  * Gravité retenue d'un événement (spec 2026-09-28 § 4.5) : chaque groupe de presse compte une fois,
  * à sa gravité la plus élevée ; l'événement prend la 2ᵉ plus élevée (niveau atteint par au moins
- * 2 groupes indépendants). Un seul groupe : sa gravité, plafonnée à medium.
+ * 2 groupes indépendants). Un seul groupe : sa gravité, plafonnée à medium. Plancher (revue
+ * finale) : un événement signalé high ou critical par un groupe reste au moins medium, même si un
+ * 2ᵉ groupe le note plus bas — seulement dans ce cas, pour ne pas allonger « À traiter » (rejeu
+ * du 28/09 : 54 entrées, contre 65 avec un plancher à tous les niveaux).
  * @param {Array<{ feedId: string, severity: string | null }>} articles
  * @returns {string}
  */
@@ -57,7 +60,8 @@ export function corroboratedSeverity(articles) {
   }
   const ranks = [...byGroup.values()].sort((x, y) => y - x);
   if (ranks.length === 0) return 'info';
-  const rank = ranks.length === 1 ? Math.min(ranks[0], SEVERITY_RANK.medium) : ranks[1];
+  if (ranks.length === 1) return SEVERITY_NAMES[Math.min(ranks[0], SEVERITY_RANK.medium)];
+  const rank = ranks[0] >= SEVERITY_RANK.high ? Math.max(ranks[1], SEVERITY_RANK.medium) : ranks[1];
   return SEVERITY_NAMES[rank];
 }
 

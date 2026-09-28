@@ -127,3 +127,12 @@ describe('qualifyEvent', () => {
       .toMatchObject({ zone: 'etranger', temporality: 'passe', reasons: [] });
   });
 });
+
+describe('corroboratedSeverity — plancher des signalements graves (revue finale I2)', () => {
+  it('signalé high+ par un groupe : medium au moins, même si un 2ᵉ groupe le note plus bas', () => {
+    expect(corroboratedSeverity([{ feedId: 'france-info', severity: 'high' }, { feedId: 'le-monde', severity: 'info' }])).toBe('medium');
+    expect(corroboratedSeverity([{ feedId: 'france-info', severity: 'critical' }, { feedId: 'le-monde', severity: 'low' }, { feedId: 'sud-ouest', severity: 'info' }])).toBe('medium');
+    // Sous high, pas de plancher : l'accord des 2 groupes décide (la liste ne s'allonge pas).
+    expect(corroboratedSeverity([{ feedId: 'france-info', severity: 'medium' }, { feedId: 'le-monde', severity: 'info' }])).toBe('info');
+  });
+});
