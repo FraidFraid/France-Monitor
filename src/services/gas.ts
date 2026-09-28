@@ -19,18 +19,75 @@ import type {
   EcoGazSignal,
   GasStorage,
   GasInterconnection,
+  GasTerminal,
 } from '../types';
 import { GAS_TERMINALS, GAS_STORAGES, GAS_INTERCONNECTIONS } from '../config/gas-infrastructure';
 import { Watchdog } from './watchdog.ts';
 
-// Forme minimale d'un terminal renvoyé par GIE ALSI (champs réellement lus)
-interface AlsiTerminal {
-  name?: string;
-  sendOut?: number | string;
-  inventory?: number | string;
-  workingGasVolume?: number | string;
-  inventoryFull?: number | string;
-  full?: number | string;
+/** Dernière journée publiée d'un terminal méthanier (GET /api/gie/alsi, source GIE ALSI). */
+export interface AlsiTerminalDay {
+  eic: string;
+  gasDayStart: string;
+  sendOutGWhDay: number | null;
+  inventoryGWh: number | null;
+  inventoryMaxGWh: number | null;
+  referenceSendOutGWhDay: number | null;
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Valide la réponse de /api/gie/alsi ; les entrées mal formées sont ignorées. */
+export function parseAlsiTerminals(json: unknown): AlsiTerminalDay[] {
+  if (!json || typeof json !== 'object') return [];
+  const terminals = (json as { terminals?: unknown }).terminals;
+  if (!Array.isArray(terminals)) return [];
+  const days: AlsiTerminalDay[] = [];
+  for (const item of terminals) {
+    if (!item || typeof item !== 'object') continue;
+    const t = item as Record<string, unknown>;
+    if (typeof t.eic !== 'string' || typeof t.gasDayStart !== 'string') continue;
+    days.push({
+      eic: t.eic,
+      gasDayStart: t.gasDayStart,
+      sendOutGWhDay: finiteOrNull(t.sendOutGWhDay),
+      inventoryGWh: finiteOrNull(t.inventoryGWh),
+      inventoryMaxGWh: finiteOrNull(t.inventoryMaxGWh),
+      referenceSendOutGWhDay: finiteOrNull(t.referenceSendOutGWhDay),
+    });
+  }
+  return days;
+}
+
+/**
+ * Applique les chiffres GIE ALSI du jour aux terminaux (appariement par code EIC) sans modifier
+ * la configuration : capacité déclarée (DTRS), émission réseau, taux d'utilisation, stock GNL.
+ */
+export function applyAlsiTerminals(
+  terminals: readonly GasTerminal[],
+  days: readonly AlsiTerminalDay[],
+): GasTerminal[] {
+  return terminals.map((terminal) => {
+    const day = terminal.gieEic ? days.find((d) => d.eic === terminal.gieEic) : undefined;
+    if (!day) return { ...terminal };
+    const capacityGWh = day.referenceSendOutGWhDay !== null && day.referenceSendOutGWhDay > 0
+      ? day.referenceSendOutGWhDay
+      : terminal.capacityGWh;
+    const next: GasTerminal = { ...terminal, capacityGWh, dataDate: day.gasDayStart };
+    if (day.sendOutGWhDay !== null) {
+      next.currentSendOut = day.sendOutGWhDay;
+      if (capacityGWh > 0) next.utilizationPct = (day.sendOutGWhDay / capacityGWh) * 100;
+    }
+    if (day.inventoryGWh !== null) {
+      next.inventory = day.inventoryGWh;
+      if (day.inventoryMaxGWh !== null && day.inventoryMaxGWh > 0) {
+        next.inventoryCapacity = day.inventoryMaxGWh;
+        next.inventoryPct = (day.inventoryGWh / day.inventoryMaxGWh) * 100;
+      }
+    }
+    return next;
+  });
 }
 
 Watchdog.register('gas-network', {
@@ -227,6 +284,20 @@ async function fetchAgsiNetFlow(): Promise<{ netFlowGWhDay?: number; status: 'ok
   }
 }
 
+// Chiffres du jour par terminal méthanier (GIE ALSI, un appel amont par terminal côté serveur).
+async function fetchAlsiTerminals(): Promise<{ days: AlsiTerminalDay[]; status: 'ok' | 'error' }> {
+  try {
+    const alsiResp = await fetch('/api/gie/alsi', { signal: AbortSignal.timeout(12_000) });
+    if (!alsiResp.ok) throw new Error(`HTTP ${alsiResp.status}`);
+    const days = parseAlsiTerminals(await alsiResp.json());
+    if (days.length === 0) throw new Error('aucun terminal dans la réponse');
+    return { days, status: 'ok' };
+  } catch (err) {
+    console.warn('[Gas/ALSI] Failed to load GIE ALSI data:', err);
+    return { days: [], status: 'error' };
+  }
+}
+
 function determineFillTrend(_record?: OdreStorageRecord): 'filling' | 'stable' | 'withdrawing' {
   // Fallback saisonnier quand aucun enregistrement live n'est disponible
   const month = new Date().getMonth();
@@ -309,11 +380,12 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
   const t0 = Date.now();
 
   // Fetch all sources in parallel
-  const [ecogazResult, storageResult, pirResult, agsiResult] = await Promise.all([
+  const [ecogazResult, storageResult, pirResult, agsiResult, alsiResult] = await Promise.all([
     fetchEcoGazSignal(),
     fetchStorageLevels(),
     fetchPirFlows(),
     fetchAgsiNetFlow(),
+    fetchAlsiTerminals(),
   ]);
 
   // Calculate national stats
@@ -326,34 +398,7 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
   const totalImport = interconnections.filter(i => i.flowGWhDay > 0).reduce((sum, i) => sum + i.flowGWhDay, 0);
   const totalExport = Math.abs(interconnections.filter(i => i.flowGWhDay < 0).reduce((sum, i) => sum + i.flowGWhDay, 0));
 
-  const terminals = [...GAS_TERMINALS];
-  let alsiStatus: 'ok' | 'error' = 'error';
-  try {
-    const alsiResp = await fetch('/api/gie/alsi', { signal: AbortSignal.timeout(5_000) });
-    if (!alsiResp.ok) throw new Error(`HTTP ${alsiResp.status}`);
-    const alsiData = await alsiResp.json();
-    alsiStatus = 'ok';
-    for (const t of terminals) {
-      const alsiMatch = alsiData.data?.find((d: AlsiTerminal) =>
-         d.name?.toLowerCase().includes(t.name.split(' ')[0].toLowerCase())
-      );
-      if (alsiMatch) {
-        t.currentSendOut = Number(alsiMatch.sendOut);
-        t.utilizationPct = (t.currentSendOut / t.capacityGWh) * 100;
-        t.inventory = Number(alsiMatch.inventory);
-        if (alsiMatch.workingGasVolume) {
-           t.inventoryCapacity = Number(alsiMatch.workingGasVolume);
-           t.inventoryPct = (t.inventory / t.inventoryCapacity) * 100;
-        } else if (alsiMatch.inventoryFull) {
-           t.inventoryPct = Number(alsiMatch.inventoryFull);
-        } else if (alsiMatch.full) {
-           t.inventoryPct = Number(alsiMatch.full);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[Gas/ALSI] Failed to load GIE ALSI data:', err);
-  }
+  const terminals = applyAlsiTerminals(GAS_TERMINALS, alsiResult.days);
 
   const state: GasNetworkState = {
     ecogaz: ecogazResult.data,
@@ -375,7 +420,7 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
       terega: pirResult.status,
       odre: storageResult.status,
       agsi: agsiResult.status,
-      alsi: alsiStatus,
+      alsi: alsiResult.status,
     },
     lastUpdate: new Date(),
   };

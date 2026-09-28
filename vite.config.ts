@@ -36,7 +36,6 @@ import { copernicusProxyPlugin } from './src/plugins/copernicus-proxy';
 import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
-import gieProxyPlugin from './src/plugins/gie-proxy';
 import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
 import { threatsProxyPlugin } from './src/plugins/threats-proxy';
 import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
@@ -134,7 +133,6 @@ export default defineConfig(({ mode }) => {
       biogasProxyPlugin(),
       dromEnergyProxyPlugin(),
       gasPirProxyPlugin(),
-      gieProxyPlugin(),
       eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),

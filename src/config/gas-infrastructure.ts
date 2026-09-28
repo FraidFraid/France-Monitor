@@ -7,7 +7,9 @@
 import type { GasTerminal, GasStorage, GasInterconnection } from '../types/index';
 
 // ═══ Terminaux Méthaniers (LNG) ═══
-// 4 terminaux actifs en France métropolitaine
+// 4 terminaux actifs en France métropolitaine. gieEic = code EIC de l'installation chez GIE ALSI
+// (https://alsi.gie.eu/api/about?show=listing). capacityGWh = capacité de regazéification déclarée
+// (DTRS ALSI du 26/09/2026), remplacée par la valeur du jour quand /api/gie/alsi répond.
 
 export const GAS_TERMINALS: GasTerminal[] = [
   {
@@ -16,7 +18,8 @@ export const GAS_TERMINALS: GasTerminal[] = [
     type: 'lng-terminal',
     coordinates: [4.9230, 43.4050],
     operator: 'Elengy',
-    capacityGWh: 55,
+    capacityGWh: 49,
+    gieEic: '63W179356656691A',
     status: 'active',
   },
   {
@@ -25,7 +28,8 @@ export const GAS_TERMINALS: GasTerminal[] = [
     type: 'lng-terminal',
     coordinates: [4.8800, 43.4100],
     operator: 'Elengy',
-    capacityGWh: 85,
+    capacityGWh: 320,
+    gieEic: '63W943693783886F',
     status: 'active',
   },
   {
@@ -34,7 +38,8 @@ export const GAS_TERMINALS: GasTerminal[] = [
     type: 'lng-terminal',
     coordinates: [-2.1500, 47.3100],
     operator: 'Elengy',
-    capacityGWh: 100,
+    capacityGWh: 337,
+    gieEic: '63W631527814486R',
     status: 'active',
   },
   {
@@ -43,7 +48,8 @@ export const GAS_TERMINALS: GasTerminal[] = [
     type: 'lng-terminal',
     coordinates: [2.2000, 51.0300],
     operator: 'Dunkerque LNG',
-    capacityGWh: 130,
+    capacityGWh: 575,
+    gieEic: '21W0000000000451',
     status: 'active',
   },
 ];

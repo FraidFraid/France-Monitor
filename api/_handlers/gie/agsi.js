@@ -1,7 +1,7 @@
 // api/_handlers/gie/agsi.js — Vercel Serverless Function
 // Proxy vers l'API AGSI (Aggregated Gas Storage Inventory) de GIE — niveaux de
-// stockage gaz agrégés par opérateur (Storengy, Teréga…). Portage prod du
-// plugin dev src/plugins/gie-proxy.ts (conservé pour le dev, sans clé requise).
+// stockage gaz agrégés France (30 dernières journées gazières). En dev, servi
+// tel quel par api-router-fallback (GIE_API_KEY requise, sinon 503).
 //
 // Route  : GET /api/gie/agsi
 // Cache  : 1h (données publiées quotidiennement par GIE)
@@ -30,6 +30,21 @@ export default async function handler(req, res) {
       signal: AbortSignal.timeout(10_000),
     });
     const body = await resp.text();
+    // GIE répond 200 avec { error, message } quand la clé est refusée : ne pas le mettre en cache
+    // comme un succès.
+    if (resp.ok) {
+      let upstreamError = null;
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error) upstreamError = String(parsed.message || parsed.error);
+      } catch {
+        upstreamError = 'réponse non JSON';
+      }
+      if (upstreamError) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(502).json({ error: `GIE AGSI : ${upstreamError}` });
+      }
+    }
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', resp.ok ? 'public, s-maxage=3600, stale-while-revalidate=1800' : 'no-store');
     return res.status(resp.status).end(body);

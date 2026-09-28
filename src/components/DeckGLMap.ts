@@ -7244,6 +7244,9 @@ export class DeckGLMap {
     const utilPct = Number(properties.utilizationPct ?? NaN);
     const inventoryPct = Number(properties.inventoryPct ?? NaN);
     const inventory = Number(properties.inventory ?? NaN);
+    // Journée gazière des chiffres GIE ALSI (YYYY-MM-DD) : sans elle, valeurs de configuration.
+    const dataDate = typeof properties.dataDate === 'string' ? properties.dataDate : '';
+    const dataDateLabel = /^\d{4}-\d{2}-\d{2}$/.test(dataDate) ? `${dataDate.slice(8, 10)}/${dataDate.slice(5, 7)}` : '';
 
     return `
       <div style="color:#e8e8ec; font-family:sans-serif; min-width:240px; padding:2px;">
@@ -7266,6 +7269,7 @@ export class DeckGLMap {
           ${isTerminal && Number.isFinite(inventory) ? `<span style="color:#9898a8;">Stock GNL</span><strong>${inventory.toFixed(0)} GWh</strong>` : ''}
           ${isTerminal && Number.isFinite(sendOut) ? `<span style="color:#9898a8;">Émission réseau</span><strong>${sendOut.toFixed(0)} GWh/j</strong>` : ''}
           ${isTerminal && Number.isFinite(utilPct) ? `<span style="color:#9898a8;">Taux d'utilisation</span><strong>${utilPct.toFixed(1)} %</strong>` : ''}
+          ${isTerminal ? `<span style="color:#9898a8;">Source</span><strong>${dataDateLabel ? `GIE ALSI · jour gazier ${dataDateLabel}` : 'Configuration (GIE ALSI indisponible)'}</strong>` : ''}
         </div>
       </div>
     `;
@@ -8985,6 +8989,9 @@ export class DeckGLMap {
             capacity: terminal.capacityGWh,
             currentSendOut: terminal.currentSendOut,
             utilizationPct: terminal.utilizationPct,
+            inventory: terminal.inventory,
+            inventoryPct: terminal.inventoryPct,
+            dataDate: terminal.dataDate,
             status: terminal.status,
           },
         });

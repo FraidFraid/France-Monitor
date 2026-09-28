@@ -2024,11 +2024,15 @@ export interface GasTerminal {
   coordinates: [number, number]; // [lng, lat]
   operator: 'Elengy' | 'Dunkerque LNG';
   capacityGWh: number; // Daily regasification capacity
+  /** Code EIC de l'installation chez GIE ALSI (appariement des données par terminal). */
+  gieEic?: string;
   currentSendOut?: number; // Current send-out rate (GWh/day)
   utilizationPct?: number; // Utilization percentage
-  inventory?: number; // Current LNG stock level
-  inventoryCapacity?: number; // Total tank capacity
+  inventory?: number; // Current LNG stock level (GWh)
+  inventoryCapacity?: number; // Total tank capacity (GWh)
   inventoryPct?: number; // Fill level of tanks
+  /** Journée gazière (YYYY-MM-DD) des chiffres GIE ALSI ; absent = valeurs de configuration. */
+  dataDate?: string;
   status: 'active' | 'maintenance' | 'offline';
 }
 
