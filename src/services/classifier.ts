@@ -7,18 +7,22 @@
  * les faits divers et éviter le bruit excessif de la presse locale.
  */
 
-import type { ThreatClassification, EventCategory, ThreatLevel } from '../types/index.ts';
-
-function normalizeForMatch(value: string): string {
-    return value
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/['’`]/g, ' ')
-        .replace(/[^a-z0-9]+/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-}
+import type {
+    ClassificationReason,
+    EventCategory,
+    EventTemporality,
+    EventZone,
+    ThreatClassification,
+    ThreatLevel,
+} from '../types/index.ts';
+import {
+    TITLE_REASON_CAP,
+    levelRank,
+    minLevel,
+    neutralizeMetaphors,
+    normalizeForMatch,
+    titleQualification,
+} from './classification-guards.ts';
 
 // ─── Entités Nommées pour Mitigation Bruit PQR ───
 
@@ -277,15 +281,10 @@ export function isDomesticAccident(text: string): boolean {
 }
 
 /**
- * Classify a news item title + summary by keyword matching.
- * Returns null if no keywords match (= general/info).
+ * Classement mots-clés d'un texte déjà normalisé (règles kw-1, inchangées).
+ * Retourne undefined si aucun mot-clé ne correspond (= general/info).
  */
-export function classifyByKeywords(
-    title: string,
-    summary?: string,
-): ThreatClassification | undefined {
-    const text = normalizeForMatch(`${title} ${summary ?? ''}`);
-
+function classifyNormalized(text: string): ThreatClassification | undefined {
     let bestCategory: EventCategory = 'general';
     let bestLevel: ThreatLevel = 'info';
     let bestConfidence = 0;
@@ -425,12 +424,53 @@ export function classifyByKeywords(
     };
 }
 
-function levelRank(level: ThreatLevel): number {
-    switch (level) {
-        case 'critical': return 4;
-        case 'high': return 3;
-        case 'medium': return 2;
-        case 'low': return 1;
-        default: return 0;
+export interface KeywordQualification {
+    /** Gravité retenue (après plafonds du titre) ; undefined si aucun mot-clé. */
+    classification: ThreatClassification | undefined;
+    /** Gravité signalée : après la règle du déclencheur, avant les plafonds du titre. */
+    reportedLevel: ThreatLevel;
+    temporality: EventTemporality;
+    zone: EventZone;
+    /** Motifs qui ont abaissé la gravité (metaphore : toujours inscrit quand un terme a été écarté). */
+    reasons: ClassificationReason[];
+}
+
+/**
+ * Classement mots-clés kw-2 (spec 2026-09-28 § 4.2) : règles kw-1 sur titre + description après
+ * neutralisation des métaphores ; high/critical seulement si le TITRE seul le justifie (sinon
+ * medium, confiance 0,5, motif declencheur_hors_titre) ; puis plafonds du titre (passé et
+ * hypothèse → low, étranger → medium).
+ */
+export function qualifyByKeywords(title: string, summary?: string): KeywordQualification {
+    const normalized = normalizeForMatch(`${title} ${summary ?? ''}`);
+    const neutralized = neutralizeMetaphors(normalized);
+    const reasons: ClassificationReason[] = neutralized === normalized ? [] : ['metaphore'];
+    const titleQ = titleQualification(title);
+    const full = classifyNormalized(neutralized);
+    if (!full) {
+        return { classification: undefined, reportedLevel: 'info', temporality: titleQ.temporality, zone: titleQ.zone, reasons };
     }
+    let reportedLevel = full.level;
+    let confidence = full.confidence;
+    if (levelRank(reportedLevel) >= levelRank('high')) {
+        const titleLevel = classifyNormalized(neutralizeMetaphors(normalizeForMatch(title)))?.level ?? 'info';
+        if (levelRank(titleLevel) >= levelRank('high')) {
+            reportedLevel = minLevel(reportedLevel, titleLevel);
+        } else {
+            reportedLevel = 'medium';
+            confidence = Math.min(confidence, 0.5);
+            reasons.push('declencheur_hors_titre');
+        }
+    }
+    for (const reason of titleQ.reasons) {
+        if (levelRank(reportedLevel) > levelRank(TITLE_REASON_CAP[reason])) reasons.push(reason);
+    }
+    const level = minLevel(reportedLevel, titleQ.maxSeverity);
+    const classification = level === full.level && confidence === full.confidence ? full : { ...full, level, confidence };
+    return { classification, reportedLevel, temporality: titleQ.temporality, zone: titleQ.zone, reasons };
+}
+
+/** Gravité retenue par mots-clés (interface historique du client). */
+export function classifyByKeywords(title: string, summary?: string): ThreatClassification | undefined {
+    return qualifyByKeywords(title, summary).classification;
 }

@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Version du classifier keyword — bump si la logique de src/services/classifier.ts change de sémantique. */
-const CLASSIFIER_VERSION = 'kw-1';
+const CLASSIFIER_VERSION = 'kw-2';
 
 const BANNER = (source) => `/**
  * GENERATED FILE — DO NOT EDIT.
@@ -31,22 +31,31 @@ const BANNER = (source) => `/**
  */`;
 
 const CLASSIFIER_ENTRY = `
-export { classifyByKeywords, detectEntities, isFaitDiversNoise, isDomesticAccident } from './src/services/classifier.ts';
-import { classifyByKeywords } from './src/services/classifier.ts';
+export { classifyByKeywords, qualifyByKeywords, detectEntities, isFaitDiversNoise, isDomesticAccident } from './src/services/classifier.ts';
+export { titleQualification, TITLE_REASON_CAP } from './src/services/classification-guards.ts';
+import { qualifyByKeywords } from './src/services/classifier.ts';
 
 export const CLASSIFIER_VERSION = ${JSON.stringify(CLASSIFIER_VERSION)};
 
 /**
- * API serveur : classification keyword d'un item news.
- * Retourne toujours un résultat ({category, severity, confidence}) —
- * fallback general/info si aucun mot-clé ne matche.
+ * API serveur : classement mots-clés qualifié d'un item news (spec 2026-09-28 § 4.2).
+ * Retourne toujours un résultat — general/info si aucun mot-clé ne correspond.
  */
-export function classify(title: string, description?: string): { category: string; severity: string; confidence: number } {
-  const result = classifyByKeywords(title, description);
-  if (!result) {
-    return { category: 'general', severity: 'info', confidence: 0.2 };
-  }
-  return { category: result.category, severity: result.level, confidence: result.confidence };
+export function classify(title: string, description?: string): {
+  category: string; severity: string; confidence: number;
+  reportedSeverity: string; temporality: string; zone: string; reasons: string[];
+} {
+  const q = qualifyByKeywords(title, description);
+  const c = q.classification;
+  return {
+    category: c ? c.category : 'general',
+    severity: c ? c.level : 'info',
+    confidence: c ? c.confidence : 0.2,
+    reportedSeverity: q.reportedLevel,
+    temporality: q.temporality,
+    zone: q.zone,
+    reasons: q.reasons,
+  };
 }
 `;
 
