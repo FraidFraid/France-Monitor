@@ -44,6 +44,8 @@ import { Redis } from '@upstash/redis';
 import { getDb, hasDatabaseUrl, contentHash, computeBackoffMs } from '../_lib/db.js';
 import { parseRssXml } from '../_lib/parse-rss.js';
 import { classify, CLASSIFIER_VERSION } from '../_lib/server-classifier.js';
+import { ensureClassificationColumns } from '../_lib/classification-columns.js';
+import { insertNewsItems } from '../_lib/news-items-write.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
 import { classifyWithGroq } from '../_lib/groq-classifier.js';
@@ -99,6 +101,18 @@ interface IngestTickSummary {
 
 // Tables d'événements créées une fois par instance chaude (DDL idempotent, mais 7 allers-retours).
 let eventTablesReady = false;
+let classificationColumnsReady = false;
+
+/** Sortie qualifiée de classify() (api/_lib/server-classifier.js, généré). */
+interface ServerClassification {
+  category: string;
+  severity: string;
+  confidence: number;
+  reportedSeverity: string | null;
+  temporality: string | null;
+  zone: string | null;
+  reasons: string[];
+}
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -274,16 +288,7 @@ async function processFeed(sql: NeonSql, feed: FeedRow): Promise<FeedResult> {
   const inserted: InsertedItem[] = [];
 
   if (items.length > 0) {
-    const hashes: string[] = [];
-    const feedIds: string[] = [];
-    const titles: string[] = [];
-    const links: string[] = [];
-    const descriptions: Array<string | null> = [];
-    const publishedAts: Array<string | null> = [];
-    const categories: string[] = [];
-    const severities: string[] = [];
-    const confidences: number[] = [];
-    const versions: string[] = [];
+    const rows: Parameters<typeof insertNewsItems>[1] = [];
     const seenHashes = new Set<string>();
 
     for (const item of items) {
@@ -291,55 +296,25 @@ async function processFeed(sql: NeonSql, feed: FeedRow): Promise<FeedResult> {
       if (seenHashes.has(hash)) continue; // dédup intra-flux
       seenHashes.add(hash);
 
-      let category = 'general';
-      let severity = 'info';
-      let confidence = 0.2;
+      let classified: ServerClassification;
       let version: string = CLASSIFIER_VERSION;
       try {
-        const result = classify(item.title, item.description) as {
-          category: string;
-          severity: string;
-          confidence: number;
-        };
-        category = result.category;
-        severity = result.severity;
-        confidence = result.confidence;
+        classified = classify(item.title, item.description) as ServerClassification;
       } catch {
         // Classifier en erreur : on insère quand même, marqué 'error'.
-        category = 'general';
-        severity = 'info';
-        confidence = 0;
+        classified = { category: 'general', severity: 'info', confidence: 0, reportedSeverity: null, temporality: null, zone: null, reasons: [] };
         version = 'error';
       }
-
-      hashes.push(hash);
-      feedIds.push(feed.id);
-      titles.push(item.title);
-      links.push(item.link);
-      descriptions.push(item.description ?? null);
-      publishedAts.push(parsePublishedAt(item.pubDate));
-      categories.push(category);
-      severities.push(severity);
-      confidences.push(confidence);
-      versions.push(version);
+      rows.push({
+        hash, feedId: feed.id, title: item.title, link: item.link, description: item.description ?? null,
+        publishedAt: parsePublishedAt(item.pubDate), category: classified.category, severity: classified.severity,
+        confidence: classified.confidence, version, reportedSeverity: classified.reportedSeverity,
+        temporality: classified.temporality, zone: classified.zone, reasons: classified.reasons,
+      });
     }
 
-    if (hashes.length > 0) {
-      const rows = await sql`
-        INSERT INTO news_items
-          (content_hash, feed_id, title, link, description, published_at,
-           category, severity, confidence, classifier_version)
-        SELECT * FROM unnest(
-          ${hashes}::text[], ${feedIds}::text[], ${titles}::text[], ${links}::text[],
-          ${descriptions}::text[], ${publishedAts}::timestamptz[],
-          ${categories}::text[], ${severities}::text[], ${confidences}::real[], ${versions}::text[]
-        )
-        ON CONFLICT (content_hash) DO NOTHING
-        RETURNING id, title
-      `;
-      for (const row of rows) {
-        inserted.push({ id: Number(row.id), title: String(row.title), region: feed.region });
-      }
+    for (const row of await insertNewsItems(sql, rows)) {
+      inserted.push({ id: row.id, title: row.title, region: feed.region });
     }
   }
 
@@ -617,6 +592,12 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
 
     // 1. Sync config → table feeds
     await syncFeeds(sql);
+
+    // 1.5 Colonnes de qualification (idempotent, une fois par processus) : avant toute insertion.
+    if (!classificationColumnsReady) {
+      await ensureClassificationColumns(sql);
+      classificationColumnsReady = true;
+    }
 
     // 2. Feeds dus
     const dueRows = await sql`
