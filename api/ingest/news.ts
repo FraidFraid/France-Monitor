@@ -19,9 +19,10 @@
  *  4. Sélection des feeds dus (enabled, next_poll_at, cooldown) — max 40.
  *  5. Fetch (timeout 10 s) → parse (api/_lib/parse-rss.js) → hash sha256 →
  *     classification keyword (api/_lib/server-classifier.js) → INSERT déduped.
- *  5.5 Si GROQ_API_KEY défini ET NEWS_SCORING !== 'jev' : classification LLM
- *     des articles ambigus (confidence < 0.60, max GROQ_BUDGET_PER_TICK = 15/tick)
- *     — UPDATE category/severity in place.
+ *  5.5 Si un LLM de classement est configuré (CLASSIFIER_LLM_* ou GROQ_API_KEY, voir
+ *     api/_lib/llm-classifier.js) ET NEWS_SCORING !== 'jev' : passe par lots
+ *     (api/_lib/llm-pass.js) — candidats high/critical puis ambigus, 2 lots de 10 au plus,
+ *     qualification écrite (gravité retenue et signalée, zone, temporalité, motifs).
  *  5.6 Si NEWS_SCORING = 'shadow' | 'jev' ET TYPESAFE_API_KEY défini : scoring
  *     Jev (api/_lib/jev-client.js + jev-policy.js) des articles insérés ce
  *     tick (repli sur les plus anciens non encore scorés), budget
@@ -48,7 +49,8 @@ import { ensureClassificationColumns } from '../_lib/classification-columns.js';
 import { insertNewsItems } from '../_lib/news-items-write.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
-import { classifyWithGroq } from '../_lib/groq-classifier.js';
+import { classifierLlmConfig } from '../_lib/llm-classifier.js';
+import { runLlmPass } from '../_lib/llm-pass.js';
 import {
   scoreArticle,
   JevAuthError,
@@ -63,8 +65,6 @@ import { ensureEventTables, runEventPass } from '../_lib/news-events-db.js';
 
 export const config = { maxDuration: 300 };
 
-const GROQ_BUDGET_PER_TICK = 15;
-const GROQ_CONFIDENCE = 0.75;
 
 // ─── Scoring Jev (TypeSafe), désactivé par défaut — coût nul tant que
 // NEWS_SCORING n'est pas positionné. 'off' (défaut) | 'shadow' | 'jev'. ───
@@ -620,50 +620,20 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       if (result.error) errors.push({ feedId: result.feedId, error: result.error });
     }
 
-    // 3.5 Optional Groq LLM classification for ambiguous articles
-    // (sautée quand Jev remplace la reclassification, NEWS_SCORING='jev')
+    // 3.5 Passe LLM par lots (groq-2 / llm-2), sautée quand Jev remplace la reclassification.
+    // Le champ du bilan garde son nom historique (groqClassified).
     let groqClassified = 0;
-    const groqApiKey = process.env['GROQ_API_KEY'];
-    if (groqApiKey && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
+    const llm = classifierLlmConfig();
+    if (llm && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
       try {
-        const ids = insertedItems.map(i => i.id);
-        const candidates = await sql`
-          SELECT id, title, description
-          FROM news_items
-          WHERE id = ANY(${ids}::bigint[])
-            AND confidence < 0.60
-            AND classifier_version = ${CLASSIFIER_VERSION}
-          ORDER BY confidence ASC
-          LIMIT ${GROQ_BUDGET_PER_TICK}
-        `;
-
-        for (const row of candidates) {
-          if (Date.now() >= deadline) break;
-
-          try {
-            const result = await classifyWithGroq(
-              groqApiKey,
-              String(row.title),
-              row.description != null ? String(row.description) : null,
-            );
-            if (result) {
-              await sql`
-                UPDATE news_items
-                SET category = ${result.category},
-                    severity = ${result.severity},
-                    confidence = ${GROQ_CONFIDENCE},
-                    classifier_version = 'groq-1'
-                WHERE id = ${row.id}
-              `;
-              groqClassified++;
-            }
-          } catch (err) {
-            console.warn('[ingest] Groq pass stopped:', err instanceof Error ? err.message : err);
-            break;
-          }
-        }
+        groqClassified = await runLlmPass(sql, {
+          llm,
+          insertedIds: insertedItems.map((i) => i.id),
+          keywordVersion: CLASSIFIER_VERSION,
+          deadline,
+        });
       } catch (err) {
-        console.warn('[ingest] Groq candidate query failed:', err instanceof Error ? err.message : err);
+        console.warn('[ingest] LLM pass failed:', err instanceof Error ? err.message : err);
       }
     }
 
