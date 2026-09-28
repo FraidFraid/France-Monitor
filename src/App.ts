@@ -41,6 +41,7 @@ import {
   recordStabilitySnapshot,
 } from './utils/stability-history.ts';
 import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief } from './types/index.ts';
+import { PressAlertSource, pruneStalePressAlerts } from './services/press-alert-source.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
@@ -1510,8 +1511,8 @@ export class App {
   private currentAisAnomalies: AisAnomaly[] = [];
   private currentJammingSignals: GpsJammingSignal[] = [];
   private currentMilitarySurges: MilitarySurge[] = [];
-  /** Alertes presse issues des événements corroborés ; null → calcul par article (spec 2026-09-28 § 4.7). */
-  private latestPressEvents: PressAlertEvent[] | null = null;
+  /** Alertes presse issues des événements corroborés, réévaluées à chaque rafraîchissement (spec 2026-09-28 § 4.7). */
+  private readonly pressAlertSource = new PressAlertSource();
   private currentMilitaryFlights: MilitaryFlight[] = [];
   private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
@@ -7317,8 +7318,11 @@ export class App {
 
     // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
     // sinon repli sur les articles un par un.
-    const newsSituations = this.latestPressEvents
-      ? this.latestPressEvents.map((e) => this.pressEventSituation(e, locale))
+    const pressEvents = this.pressAlertSource.current(ALERT_MONITOR_LIMIT, nowMs);
+    // Pas de doublon entre les deux origines dans le cache (revue finale C2).
+    pruneStalePressAlerts(this.alertMonitorCache, pressEvents !== null);
+    const newsSituations = pressEvents
+      ? pressEvents.map((e) => this.pressEventSituation(e, locale))
       : this.newsItems
       .filter((item) => item.threat?.level === 'critical' || item.threat?.level === 'high')
       .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
@@ -7753,7 +7757,7 @@ export class App {
         import('./services/intel-last-visit.ts'),
       ]);
       const state = await events.loadIntelEventsState(visit.beginIntelVisit());
-      this.latestPressEvents = events.pressAlertEvents(state, ALERT_MONITOR_LIMIT);
+      this.pressAlertSource.update(state, events.pressAlertEvents);
       // L'utilisateur a vu l'état courant : c'est l'ancre de sa prochaine visite.
       if (!state.unavailable) visit.recordIntelVisitSeen();
       return { state, briefEvents: events.selectBriefEvents(state.events) };
