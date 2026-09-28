@@ -4,6 +4,21 @@ import type { LineString, MultiLineString, Polygon } from 'geojson';
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
+/** Temporalité d'un article ou d'un événement (axe « urgency » du CAP, spec 2026-09-28 § 4.1). */
+export type EventTemporality = 'en_cours' | 'passe' | 'a_venir';
+
+/** Zone d'un article ou d'un événement. */
+export type EventZone = 'france' | 'etranger' | 'indeterminee';
+
+/** Motif d'abaissement de la gravité (spec 2026-09-28 § 4.1). */
+export type ClassificationReason =
+  | 'declencheur_hors_titre'
+  | 'metaphore'
+  | 'passe'
+  | 'hypothetique'
+  | 'etranger'
+  | 'non_confirme';
+
 export type EventCategory =
   | 'social'
   | 'security'
