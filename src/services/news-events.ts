@@ -14,6 +14,9 @@ import type {
   NewsEventDetail,
   NewsEventStatus,
   ThreatLevel,
+  ClassificationReason,
+  EventTemporality,
+  EventZone,
 } from '../types/index.ts';
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
@@ -22,6 +25,9 @@ const COOLDOWN_MS = 5 * 60 * 1000;
 const SEVERITIES: readonly ThreatLevel[] = ['critical', 'high', 'medium', 'low', 'info'];
 const STATUSES: readonly NewsEventStatus[] = ['active', 'cooling', 'closed'];
 const KINDS: readonly NewsEventChangeKind[] = ['created', 'escalated', 'deescalated', 'corroborated', 'reopened', 'cooling', 'closed'];
+const ZONES: readonly EventZone[] = ['france', 'etranger', 'indeterminee'];
+const TEMPORALITIES: readonly EventTemporality[] = ['en_cours', 'passe', 'a_venir'];
+const REASONS: readonly ClassificationReason[] = ['declencheur_hors_titre', 'metaphore', 'passe', 'hypothetique', 'etranger', 'non_confirme'];
 
 export const SEVERITY_RANK: Record<ThreatLevel, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
@@ -78,6 +84,15 @@ export function parseNewsEvent(value: unknown): NewsEvent | null {
     sourceNames: Array.isArray(value.sourceNames) ? value.sourceNames.filter((s): s is string => typeof s === 'string') : [],
     lat: num(value.lat),
     lon: num(value.lon),
+    peakSeverity: oneOf(value.peakSeverity, SEVERITIES) ?? severity,
+    temporality: oneOf(value.temporality, TEMPORALITIES),
+    zone: oneOf(value.zone, ZONES),
+    reasons: Array.isArray(value.reasons)
+      ? value.reasons.flatMap((r) => {
+        const reason = oneOf(r, REASONS);
+        return reason === null ? [] : [reason];
+      })
+      : [],
   };
 }
 

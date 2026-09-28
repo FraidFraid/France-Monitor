@@ -79,3 +79,14 @@ describe('loadIntelEventsState', () => {
     expect(state.events).toHaveLength(1);
   });
 });
+
+describe('parseNewsEvent — axes de qualification', () => {
+  const base = { id: 7, title: 'T', category: 'security', severity: 'medium', status: 'active', firstSeen: '2026-09-28T08:00:00Z', lastSeen: '2026-09-28T09:00:00Z' };
+  it('lit gravité signalée, zone, temporalité et motifs connus', () => {
+    expect(parseNewsEvent({ ...base, peakSeverity: 'critical', zone: 'etranger', temporality: 'passe', reasons: ['etranger', 'inconnu', 'non_confirme'] }))
+      .toMatchObject({ peakSeverity: 'critical', zone: 'etranger', temporality: 'passe', reasons: ['etranger', 'non_confirme'] });
+  });
+  it('API antérieure : gravité signalée = retenue, axes nuls', () => {
+    expect(parseNewsEvent(base)).toMatchObject({ peakSeverity: 'medium', zone: null, temporality: null, reasons: [] });
+  });
+});

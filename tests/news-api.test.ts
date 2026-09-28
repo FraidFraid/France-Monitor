@@ -105,3 +105,13 @@ describe('parseDateParam (repère de non-régression)', () => {
     expect(date?.toISOString()).toBe('2026-09-22T06:00:00.000Z');
   });
 });
+
+describe('qualification des articles (spec 2026-09-28 § 4.6)', () => {
+  const ROW = { id: 1, feed_id: 'le-monde', title: 'Titre', link: 'https://example.fr/1', published_at: '2026-09-28T08:00:00Z', classifier_version: 'kw-2' };
+  it('llm-2 → llm', () => expect(scoredByFromVersion('llm-2')).toBe('llm'));
+  it('expose les axes de qualification (colonnes absentes → null / [])', () => {
+    expect(mapNewsRow({ ...ROW, reported_severity: 'critical', temporality: 'passe', zone: 'etranger', reasons: 'passe,etranger' }))
+      .toMatchObject({ reportedSeverity: 'critical', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'] });
+    expect(mapNewsRow({ ...ROW })).toMatchObject({ reportedSeverity: null, temporality: null, zone: null, reasons: [] });
+  });
+});

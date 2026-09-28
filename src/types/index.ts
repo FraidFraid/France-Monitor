@@ -121,7 +121,7 @@ export interface NewsItem {
   noise?: boolean;            // true = à masquer par défaut (hors sujet / fait divers isolé)
   alertable?: boolean;        // true = remplit les critères d'alerte (cf. jev-policy.derive)
   scope?: string;             // 'commune' | 'departement' | 'region' | 'national' | 'international' | 'unknown'
-  scoredBy?: 'keywords' | 'groq' | 'jev';  // moteur ayant produit category/severity/confidence
+  scoredBy?: 'keywords' | 'groq' | 'jev' | 'llm';  // moteur ayant produit category/severity/confidence
 }
 
 // ═══ Time & Filters ═══
@@ -1695,6 +1695,11 @@ export interface NewsEvent {
   sourceNames: string[];                 // ≤ 8, ordre d'apparition
   lat: number | null;
   lon: number | null;
+  /** Gravité la plus élevée signalée par ses articles ; > severity → « à confirmer » (spec 2026-09-28). */
+  peakSeverity?: ThreatLevel;
+  temporality?: EventTemporality | null;
+  zone?: EventZone | null;
+  reasons?: ClassificationReason[];
 }
 
 export interface NewsEventChange {

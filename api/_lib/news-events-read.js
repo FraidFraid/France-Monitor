@@ -7,6 +7,7 @@
 
 import { neon } from '@neondatabase/serverless';
 import { decodeHtmlEntities } from './parse-rss.js';
+import { decodeReasons } from './classification-columns.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const STATUSES = ['active', 'cooling', 'closed'];
@@ -39,6 +40,10 @@ export function mapEventRow(row) {
     sourceNames: Array.isArray(row.source_names) ? row.source_names.map(String) : [],
     lat: toNum(row.lat),
     lon: toNum(row.lon),
+    peakSeverity: row.peak_severity == null ? String(row.severity) : String(row.peak_severity),
+    temporality: row.temporality == null ? null : String(row.temporality),
+    zone: row.zone == null ? null : String(row.zone),
+    reasons: decodeReasons(row.reasons),
   };
 }
 

@@ -121,3 +121,12 @@ describe('handler /api/events', () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe('mapEventRow — qualification (spec 2026-09-28 § 4.6)', () => {
+  it('expose la qualification ; événement ancien : pic = gravité retenue, axes nuls', () => {
+    const base = { id: '7', title: 't', category: 'security', severity: 'medium', status: 'active', first_seen: '2026-09-28T06:00:00Z', last_seen: '2026-09-28T07:00:00Z', article_count: 1, source_count: 1, independent_count: 1, source_names: [], lat: null, lon: null };
+    expect(mapEventRow({ ...base, peak_severity: 'critical', zone: 'france', temporality: 'en_cours', reasons: 'non_confirme' }))
+      .toMatchObject({ peakSeverity: 'critical', zone: 'france', temporality: 'en_cours', reasons: ['non_confirme'] });
+    expect(mapEventRow(base)).toMatchObject({ peakSeverity: 'medium', zone: null, temporality: null, reasons: [] });
+  });
+});

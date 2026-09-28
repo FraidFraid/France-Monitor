@@ -18,6 +18,7 @@
 
 import { neon } from '@neondatabase/serverless';
 import { decodeHtmlEntities } from '../_lib/parse-rss.js';
+import { decodeReasons } from '../_lib/classification-columns.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
@@ -33,6 +34,7 @@ export function scoredByFromVersion(classifierVersion) {
   if (typeof classifierVersion !== 'string' || classifierVersion.length === 0) return null;
   if (classifierVersion.startsWith('jev-')) return 'jev';
   if (classifierVersion.startsWith('groq-')) return 'groq';
+  if (classifierVersion.startsWith('llm-')) return 'llm';
   if (classifierVersion.startsWith('kw-')) return 'keywords';
   return null;
 }
@@ -66,6 +68,10 @@ export function mapNewsRow(row) {
     noise: toBooleanOrNull(row.is_noise),
     alertable: toBooleanOrNull(row.alertable),
     scope: toStringOrNull(row.scope),
+    reportedSeverity: toStringOrNull(row.reported_severity),
+    temporality: toStringOrNull(row.temporality),
+    zone: toStringOrNull(row.zone),
+    reasons: decodeReasons(row.reasons),
   };
 }
 
@@ -213,7 +219,11 @@ export async function queryNews(searchParams) {
       to_jsonb(n)->>'relevance' AS relevance,
       to_jsonb(n)->>'is_noise' AS is_noise,
       to_jsonb(n)->>'alertable' AS alertable,
-      to_jsonb(n)->>'scope' AS scope
+      to_jsonb(n)->>'scope' AS scope,
+      to_jsonb(n)->>'reported_severity' AS reported_severity,
+      to_jsonb(n)->>'temporality' AS temporality,
+      to_jsonb(n)->>'zone' AS zone,
+      to_jsonb(n)->>'reasons' AS reasons
     FROM news_items n
     LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE ${conditions.join(' AND ')}

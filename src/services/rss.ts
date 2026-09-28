@@ -307,7 +307,7 @@ interface IngestApiItem {
     noise?: boolean | null;
     alertable?: boolean | null;
     scope?: string | null;
-    scoredBy?: 'keywords' | 'groq' | 'jev' | null;
+    scoredBy?: 'keywords' | 'groq' | 'jev' | 'llm' | null;
 }
 
 interface IngestApiResponse {
@@ -330,9 +330,9 @@ function isEventCategory(value: string): value is EventCategory {
     return EVENT_CATEGORIES.has(value);
 }
 
-const SCORED_BY_VALUES: ReadonlySet<string> = new Set(['keywords', 'groq', 'jev']);
+const SCORED_BY_VALUES: ReadonlySet<string> = new Set(['keywords', 'groq', 'jev', 'llm']);
 
-function isScoredBy(value: unknown): value is 'keywords' | 'groq' | 'jev' {
+function isScoredBy(value: unknown): value is 'keywords' | 'groq' | 'jev' | 'llm' {
     return typeof value === 'string' && SCORED_BY_VALUES.has(value);
 }
 
@@ -351,7 +351,7 @@ function buildServerClassification(item: IngestApiItem): ThreatClassification | 
     const severity = typeof item.severity === 'string' ? item.severity : '';
     if (!isEventCategory(category) || !isThreatLevel(severity)) return undefined;
     const source: ThreatClassification['source'] =
-        item.scoredBy === 'groq' || item.scoredBy === 'jev' ? 'llm' : 'keyword';
+        item.scoredBy === 'keywords' || item.scoredBy === undefined || item.scoredBy === null ? 'keyword' : 'llm';
     return {
         level: severity,
         category,
