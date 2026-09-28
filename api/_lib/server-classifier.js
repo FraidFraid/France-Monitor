@@ -772,7 +772,67 @@ var FOREIGN_DEMONYM_PATTERNS = [
   "hezbollah",
   "kremlin(?! bicetre)",
   "maison blanche",
-  "pentagone"
+  "pentagone",
+  // Complément après le rejeu du 28/09 (« guerre civile éthiopienne ») : gentilés des pays de la liste.
+  "ethiopien(?:ne)?s?",
+  "soudanaise?s?",
+  "somalien(?:ne)?s?",
+  "congolaise?s?",
+  "nigerien(?:ne)?s?",
+  "birmane?s?",
+  "kenyane?s?",
+  "haitien(?:ne)?s?",
+  "cubaine?s?",
+  "argentine?s?",
+  "chilien(?:ne)?s?",
+  "peruvien(?:ne)?s?",
+  "bolivien(?:ne)?s?",
+  "equatorien(?:ne)?s?",
+  "danoise?s?",
+  "suedoise?s?",
+  "norvegien(?:ne)?s?",
+  "finlandaise?s?",
+  "autrichien(?:ne)?s?",
+  "tcheques?",
+  "slovaques?",
+  "croates?",
+  "bulgares?",
+  "lituanien(?:ne)?s?",
+  "estonien(?:ne)?s?",
+  "letton(?:ne)?s?",
+  "moldaves?",
+  "kosovare?s?",
+  "albanaise?s?",
+  "bosnien(?:ne)?s?",
+  "libyen(?:ne)?s?",
+  "mauritanien(?:ne)?s?",
+  "senegalaise?s?",
+  "ivoirien(?:ne)?s?",
+  "burkinabes?",
+  "tchadien(?:ne)?s?",
+  "camerounaise?s?",
+  "gabonaise?s?",
+  "rwandaise?s?",
+  "ougandaise?s?",
+  "tanzanien(?:ne)?s?",
+  "jordanien(?:ne)?s?",
+  "koweitien(?:ne)?s?",
+  "qatarie?s?",
+  "emiratie?s?",
+  "kurdes?",
+  "azerbaidjanaise?s?",
+  "kazakhe?s?",
+  "ouzbeke?s?",
+  "nepalaise?s?",
+  "bangladaise?s?",
+  "cambodgien(?:ne)?s?",
+  "malaisien(?:ne)?s?",
+  "indonesien(?:ne)?s?",
+  "philippins?",
+  "taiwanaise?s?",
+  "neo zelandaise?s?",
+  "islandaise?s?",
+  "jamaicaine?s?"
 ];
 
 // src/services/classification-guards.ts
@@ -863,7 +923,7 @@ var JUDICIAL_RETROSPECTIVE_RE = new RegExp(
     "\\d+ ans apres"
   ].map((p) => `\\b${p}\\b`).join("|")
 );
-var HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\bfaut il craindre\b|\bscenarios?\b/;
+var HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\b(?:faut il|doit on|peut on) (?:craindre|s inquieter|avoir peur)\b|\bscenarios?\b/;
 function isJudicialOrRetrospective(title) {
   return JUDICIAL_RETROSPECTIVE_RE.test(normalizeForMatch(title));
 }

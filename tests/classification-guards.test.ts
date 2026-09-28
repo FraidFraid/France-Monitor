@@ -111,3 +111,23 @@ describe('outils', () => {
     expect(levelRank('critical')).toBe(4);
   });
 });
+
+describe('règles complétées après le rejeu (Tâche 11)', () => {
+  it.each([
+    'Pourquoi la guerre civile éthiopienne est-elle en train de reprendre ?',
+    'Le président soudanais limogé',
+    'Des soldats congolais tués dans l’est du pays',
+    'Le gouvernement argentin dévalue le peso',
+  ])('gentilé étranger → étranger : %s', (title) => expect(titleZone(title)).toBe('etranger'));
+  it.each([
+    'Covid-19 : doit-on craindre une nouvelle épidémie ?',
+    'Grippe aviaire : faut-il s’inquiéter ?',
+    'Canicule : peut-on craindre des coupures ?',
+  ])('hypothétique : %s', (title) => expect(isHypothetical(title)).toBe(true));
+});
+
+describe('prénoms homonymes de gentilés', () => {
+  it('« Philippine » (prénom) ne rend pas un titre étranger', () => {
+    expect(titleZone('Meurtre de Philippine : le suspect sera jugé')).not.toBe('etranger');
+  });
+});

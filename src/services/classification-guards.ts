@@ -79,7 +79,7 @@ const JUDICIAL_RETROSPECTIVE_RE = new RegExp(
         'il y a \\d+ ans', '\\d+ ans apres',
     ].map((p) => `\\b${p}\\b`).join('|'),
 );
-const HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\bfaut il craindre\b|\bscenarios?\b/;
+const HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\b(?:faut il|doit on|peut on) (?:craindre|s inquieter|avoir peur)\b|\bscenarios?\b/;
 
 export function isJudicialOrRetrospective(title: string): boolean {
     return JUDICIAL_RETROSPECTIVE_RE.test(normalizeForMatch(title));
