@@ -136,6 +136,16 @@ tant que les certificats Origin CA (§b) ne sont pas encore déposés.
 2. **Enregistrements DNS** (proxifiés, nuage orange) :
    - `A` `www` → `<IP publique de la VM>`, proxy activé.
    - `A` `@` (apex) → `<IP publique de la VM>`, proxy activé.
+> **Constaté le 28/09/2026 :** Cloudflare refuse d'émettre un certificat Origin CA tant que la zone est
+> « pending » (serveurs de noms pas encore basculés) : *« This zone is either not part of your account »*.
+> Ordre qui marche : (1) sur la VM, générer la clé et la CSR (`openssl req -new -newkey ec -pkeyopt
+> ec_paramgen_curve:prime256v1 -nodes -keyout /etc/francemonitor/tls/origin-key.pem -out
+> /etc/francemonitor/tls/origin.csr`), la clé ne quitte jamais la VM ; (2) poser un certificat autosigné
+> temporaire avec cette clé dans `origin.pem` (Caddy démarre) et laisser Cloudflare en mode **Full** ;
+> (3) basculer les serveurs de noms ; (4) une fois la zone active, *Create Certificate → Use my private key
+> and CSR* avec la CSR, remplacer `origin.pem` par le certificat obtenu, `systemctl reload caddy`, puis
+> passer en **Full (strict)**.
+
 3. **Certificat Origin CA** : *SSL/TLS → Origin Server → Create Certificate*.
    - Liste d'hôtes : `francemonitor.com`, `www.francemonitor.com` (les deux, un seul certificat sert les deux blocs du Caddyfile).
    - Validité 15 ans (par défaut), clé RSA 2048 (par défaut).
