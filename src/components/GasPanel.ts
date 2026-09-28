@@ -399,6 +399,8 @@ export class GasPanel extends Panel {
           ${this.renderSourceBadge('ODRE', data.sourceStatus.odre)}
           ${this.renderSourceBadge('PEG NaTran', data.sourceStatus.grtgaz)}
           ${this.renderSourceBadge('Teréga', data.sourceStatus.terega)}
+          ${this.renderSourceBadge('GIE AGSI', data.sourceStatus.agsi)}
+          ${this.renderSourceBadge('GIE ALSI', data.sourceStatus.alsi)}
         </div>
       </div>
     `;

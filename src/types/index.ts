@@ -2106,6 +2106,9 @@ export interface GasNetworkState {
     grtgaz: 'ok' | 'stale' | 'error';
     terega: 'ok' | 'stale' | 'error';
     odre: 'ok' | 'stale' | 'error';
+    /** GIE AGSI (stockages agrégés) et ALSI (terminaux GNL) : source à citer, conditions de la clé GIE. */
+    agsi: 'ok' | 'stale' | 'error';
+    alsi: 'ok' | 'stale' | 'error';
   };
   lastUpdate: Date;
 }

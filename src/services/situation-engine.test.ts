@@ -73,7 +73,7 @@ function nominalFixture(): FranceRawData {
         totalImportGWhDay: 0,
         totalExportGWhDay: 0,
       },
-      sourceStatus: { ecogaz: 'ok', grtgaz: 'ok', terega: 'ok', odre: 'ok' },
+      sourceStatus: { ecogaz: 'ok', grtgaz: 'ok', terega: 'ok', odre: 'ok', agsi: 'ok', alsi: 'ok' },
       lastUpdate: new Date('2026-04-09T08:00:00Z'),
     }),
   });

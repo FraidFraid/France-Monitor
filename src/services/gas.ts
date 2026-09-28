@@ -9,6 +9,8 @@
  * Sources:
  * - https://www.ecogaz.fr/api/ (signal + prévisions)
  * - https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/
+ * - GIE AGSI (agsi.gie.eu, débit net des stockages) et ALSI (alsi.gie.eu, terminaux GNL) via
+ *   /api/gie/* : les conditions de la clé GIE imposent de citer la source (badges de GasPanel).
  */
 
 import type {
@@ -34,7 +36,7 @@ interface AlsiTerminal {
 Watchdog.register('gas-network', {
   label: 'Réseau Gaz / EcoGaz',
   staleAfterMs: 15 * 60_000,
-  detail: 'GRTgaz EcoGaz + ODRE stockages + ENTSOG PIR',
+  detail: 'GRTgaz EcoGaz + ODRE stockages + ENTSOG PIR + GIE AGSI/ALSI',
   freshness: 'TEMPS_REEL',
 });
 
@@ -152,7 +154,7 @@ interface OdreStorageRecord {
   date_maj?: string;
 }
 
-async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: 'ok' | 'stale' | 'error'; netFlowGWhDay?: number }> {
+async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: 'ok' | 'stale' | 'error' }> {
   try {
     // ODRE dataset for gas storage levels
     const url = opendataProxyUrl(`${ODRE_BASE}/stock-quotidien-stockages-gaz/records?limit=50&order_by=date%20desc`);
@@ -178,31 +180,50 @@ async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: '
       };
     });
 
-    // We no longer overwrite with AGSI company-level data which was causing 
+    // We no longer overwrite with AGSI company-level data which was causing
     // the identical "Débit net" duplicate bug on all sites of the same operator.
-    
-    // Fetch national net flow from AGSI
-    let netFlowGWhDay: number | undefined;
-    try {
-      const agsiResp = await fetch('/api/gie/agsi', { signal: AbortSignal.timeout(5_000) });
-      if (agsiResp.ok) {
-        const agsiData = await agsiResp.json();
-        let totalInjection = 0;
-        let totalWithdrawal = 0;
-        for (const item of (agsiData.data || [])) {
-          totalInjection += Number(item.injection || 0);
-          totalWithdrawal += Number(item.withdrawal || 0);
-        }
-        netFlowGWhDay = totalInjection > totalWithdrawal ? totalInjection : -totalWithdrawal;
-      }
-    } catch (e) {
-      console.warn('[Gas/AGSI] Failed to load GIE AGSI data for national flow:', e);
-    }
-    
-    return { storages: enriched, status: 'ok', netFlowGWhDay };
+    return { storages: enriched, status: 'ok' };
   } catch (err) {
     console.warn('[Gas/Storage] ODRE fetch failed, using static data:', err);
     return { storages: GAS_STORAGES, status: 'stale' };
+  }
+}
+
+// Une journée gazière agrégée France renvoyée par GIE AGSI (champs réellement lus, en GWh/j).
+export interface AgsiDay {
+  gasDayStart?: string;
+  injection?: number | string;
+  withdrawal?: number | string;
+}
+
+/**
+ * Débit net national des stockages (GWh/j) : injection − soutirage de la DERNIÈRE journée publiée.
+ * AGSI (?country=FR) renvoie 30 journées agrégées France : les additionner donnait un cumul
+ * mensuel (~18 000 « GWh/j » au lieu de ~600). Positif = remplissage, négatif = soutirage.
+ */
+export function agsiNetFlowGWhDay(days: readonly AgsiDay[]): number | undefined {
+  let latest: AgsiDay | undefined;
+  for (const day of days) {
+    if (!day.gasDayStart) continue;
+    if (!latest?.gasDayStart || day.gasDayStart > latest.gasDayStart) latest = day;
+  }
+  if (!latest) return undefined;
+  const net = Number(latest.injection ?? 0) - Number(latest.withdrawal ?? 0);
+  return Number.isFinite(net) ? net : undefined;
+}
+
+// Débit net national des stockages (GIE AGSI), indépendant d'ODRE : son statut alimente le badge
+// de source « GIE AGSI » que les conditions de la clé GIE imposent d'afficher.
+async function fetchAgsiNetFlow(): Promise<{ netFlowGWhDay?: number; status: 'ok' | 'error' }> {
+  try {
+    const agsiResp = await fetch('/api/gie/agsi', { signal: AbortSignal.timeout(5_000) });
+    if (!agsiResp.ok) throw new Error(`HTTP ${agsiResp.status}`);
+    const agsiData = (await agsiResp.json()) as { data?: AgsiDay[] };
+    const netFlowGWhDay = agsiNetFlowGWhDay(Array.isArray(agsiData.data) ? agsiData.data : []);
+    return { netFlowGWhDay, status: 'ok' };
+  } catch (e) {
+    console.warn('[Gas/AGSI] Failed to load GIE AGSI data for national flow:', e);
+    return { status: 'error' };
   }
 }
 
@@ -288,10 +309,11 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
   const t0 = Date.now();
 
   // Fetch all sources in parallel
-  const [ecogazResult, storageResult, pirResult] = await Promise.all([
+  const [ecogazResult, storageResult, pirResult, agsiResult] = await Promise.all([
     fetchEcoGazSignal(),
     fetchStorageLevels(),
     fetchPirFlows(),
+    fetchAgsiNetFlow(),
   ]);
 
   // Calculate national stats
@@ -305,26 +327,27 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
   const totalExport = Math.abs(interconnections.filter(i => i.flowGWhDay < 0).reduce((sum, i) => sum + i.flowGWhDay, 0));
 
   const terminals = [...GAS_TERMINALS];
+  let alsiStatus: 'ok' | 'error' = 'error';
   try {
     const alsiResp = await fetch('/api/gie/alsi', { signal: AbortSignal.timeout(5_000) });
-    if (alsiResp.ok) {
-      const alsiData = await alsiResp.json();
-      for (const t of terminals) {
-        const alsiMatch = alsiData.data?.find((d: AlsiTerminal) =>
-           d.name?.toLowerCase().includes(t.name.split(' ')[0].toLowerCase())
-        );
-        if (alsiMatch) {
-          t.currentSendOut = Number(alsiMatch.sendOut);
-          t.utilizationPct = (t.currentSendOut / t.capacityGWh) * 100;
-          t.inventory = Number(alsiMatch.inventory);
-          if (alsiMatch.workingGasVolume) {
-             t.inventoryCapacity = Number(alsiMatch.workingGasVolume);
-             t.inventoryPct = (t.inventory / t.inventoryCapacity) * 100;
-          } else if (alsiMatch.inventoryFull) {
-             t.inventoryPct = Number(alsiMatch.inventoryFull);
-          } else if (alsiMatch.full) {
-             t.inventoryPct = Number(alsiMatch.full);
-          }
+    if (!alsiResp.ok) throw new Error(`HTTP ${alsiResp.status}`);
+    const alsiData = await alsiResp.json();
+    alsiStatus = 'ok';
+    for (const t of terminals) {
+      const alsiMatch = alsiData.data?.find((d: AlsiTerminal) =>
+         d.name?.toLowerCase().includes(t.name.split(' ')[0].toLowerCase())
+      );
+      if (alsiMatch) {
+        t.currentSendOut = Number(alsiMatch.sendOut);
+        t.utilizationPct = (t.currentSendOut / t.capacityGWh) * 100;
+        t.inventory = Number(alsiMatch.inventory);
+        if (alsiMatch.workingGasVolume) {
+           t.inventoryCapacity = Number(alsiMatch.workingGasVolume);
+           t.inventoryPct = (t.inventory / t.inventoryCapacity) * 100;
+        } else if (alsiMatch.inventoryFull) {
+           t.inventoryPct = Number(alsiMatch.inventoryFull);
+        } else if (alsiMatch.full) {
+           t.inventoryPct = Number(alsiMatch.full);
         }
       }
     }
@@ -344,13 +367,15 @@ export async function fetchGasNetwork(): Promise<GasNetworkState> {
       storageTrend: deriveNationalTrend(totalImport, totalExport),
       totalImportGWhDay: totalImport,
       totalExportGWhDay: totalExport,
-      storageNetFlowGWhDay: storageResult.netFlowGWhDay,
+      storageNetFlowGWhDay: agsiResult.netFlowGWhDay,
     },
     sourceStatus: {
       ecogaz: ecogazResult.status,
       grtgaz: pirResult.status,
       terega: pirResult.status,
       odre: storageResult.status,
+      agsi: agsiResult.status,
+      alsi: alsiStatus,
     },
     lastUpdate: new Date(),
   };
