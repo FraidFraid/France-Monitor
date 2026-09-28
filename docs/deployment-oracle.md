@@ -14,7 +14,7 @@ Voir aussi `docs/deployment.md` (topologie actuelle Vercel/Railway/Render) et
 ## Résumé — actions manuelles, dans l'ordre
 
 1. Créer/vérifier le compte Oracle Cloud **Free Tier** (§a) — ne jamais passer en Pay As You Go.
-2. Créer l'instance VM.Standard.A1.Flex 2 OCPU / 6 Go, Ubuntu 24.04 aarch64 (§a).
+2. Créer l'instance VM.Standard.A1.Flex 2 OCPU / 3 Go, Ubuntu 24.04 aarch64 (§a).
 3. Ouvrir 80/443 dans la liste de sécurité du VCN (§a).
 4. Lancer `deploy/oracle/setup.sh` en root sur la VM (§a).
 5. Configurer Cloudflare : site, DNS, certificat Origin CA, SSL Full (strict), cache API, WebSockets (§b).
@@ -48,17 +48,18 @@ pour France Monitor :
 |---|---|
 | Forme | `VM.Standard.A1.Flex` |
 | OCPU | **2** |
-| Mémoire | **6 Go** |
+| Mémoire | **3 Go** (6 Go à la création, réduite le 28/09/2026) |
 | OS | Ubuntu 24.04 (aarch64) |
 | Disque de démarrage (boot volume) | 100 Go |
 | Adresse IP publique | **Éphémère** (pas d'IP réservée) |
 | Clé SSH publique | fournie à la création (celle de l'administrateur, distincte de la clé de déploiement CI) |
 
-Pourquoi 2 OCPU / 6 Go et pas 4 OCPU / 24 Go (tout le quota Always Free d'un coup) :
+Pourquoi 2 OCPU / 3 Go et pas tout le quota Always Free (2 OCPU / 12 Go au total pour un compte Always Free) :
 
-- Ça laisse de la marge dans le quota (1 500 OCPU-h / 9 000 Go-h par mois) pour une deuxième instance plus tard si besoin.
-- Une VM plus petite a statistiquement plus de chances de dépasser le seuil d'utilisation qui évite la récupération pour inactivité (voir encadré ci-dessous) : les mêmes processus (Caddy, API Node, relais AIS Node, worker radar Python) représentent un pourcentage d'utilisation plus élevé d'une allocation 2/6 que d'une allocation 4/24.
-- 6 Go reste confortable pour la charge réelle (Caddy + un process Node API + un process Node relais + un worker FastAPI/uvicorn) ; `deploy/oracle/setup.sh` crée un swapfile de 4 Go en filet de sécurité pour les pics mémoire du décodage radar BUFR (ponctuellement plusieurs centaines de Mo à quelques Go, cf. commentaire dans `services/radar-worker/publish_job.py`).
+- **Récupération pour inactivité** : Oracle peut récupérer une instance Always Free si, sur 7 jours, CPU (95ᵉ centile) < 20 % ET réseau < 20 % ET mémoire < 20 % (A1). Il suffit qu'UN critère dépasse 20 %. Le CPU tourne à ~2 % et le réseau est faible : c'est la mémoire qui nous protège. Mesure Oracle (`oci_computeagent` / `MemoryUtilization`, agent `oracle-cloud-agent` actif) le 28/09/2026 : **14–16 % à 6 Go** → VM réduite à **3 Go** : **≈ 23 %** mesuré juste après (12:55–13:05 UTC). Marge mince : si la moyenne sur 24 h retombe sous ~22 %, passer à 2 Go (≈ 33 %, le swap de 4 Go absorbe les pics). Une « relance » ponctuelle tous les 2–3 jours ne sert à rien : les seuils portent sur 7 jours glissants.
+- Contrôle : `oci monitoring metric-data summarize-metrics-data --namespace oci_computeagent --query-text 'MemoryUtilization[1h]{resourceId = "<ocid>"}.mean()' …` doit rester nettement au-dessus de 20 %. Ne pas remonter la mémoire sans refaire ce calcul.
+- 3 Go suffisent pour la charge réelle (Caddy + API Node + relais AIS Node + worker FastAPI/uvicorn ≈ 0,7 Go utilisés) ; `deploy/oracle/setup.sh` crée un swapfile de 4 Go en filet de sécurité pour les pics mémoire du décodage radar BUFR (cf. commentaire dans `services/radar-worker/publish_job.py`). Le build Vite se fait dans GitHub Actions, pas sur la VM.
+- Redimensionner (redémarrage ~2 min, services relancés par systemd) : `oci compute instance update --instance-id <ocid> --shape-config '{"ocpus":2,"memoryInGBs":3}' --force --wait-for-state RUNNING`.
 
 Le disque de démarrage de 100 Go tient dans le total Always Free de 200 Go de
 stockage bloc (boot volume compris) — de la marge reste disponible pour un
@@ -68,9 +69,10 @@ second volume si besoin plus tard.
 service** : Oracle peut récupérer une instance Always Free si, sur une
 fenêtre glissante de 7 jours, le CPU au 95ᵉ centile, le réseau ET (pour les
 formes A1) la mémoire sont **tous** sous 20 % d'utilisation. Conséquence
-pratique : après le premier déploiement, surveiller la mémoire utilisée
-(`free -h`, ou un exportateur de métriques) et redimensionner l'instance
-à la hausse si l'utilisation réelle reste trop proche de 20 % sur la durée.
+pratique : surveiller la mémoire **telle qu'Oracle la mesure** (métrique
+`MemoryUtilization`, voir ci-dessus ; `free -h` donne un chiffre un peu plus
+bas) et, si elle reste trop proche de 20 %, **réduire** la mémoire de
+l'instance (la même charge pèse alors plus en pourcentage) — jamais l'augmenter.
 Le test de fumée quotidien (`smoke.yml`) détectera de toute façon un arrêt
 de l'instance (toutes les routes échoueraient).
 
@@ -85,7 +87,7 @@ formes Always Free, pas une erreur de configuration).
 1. Console Oracle Cloud → **Compute → Instances → Create Instance**.
 2. Nom : `francemonitor-vm` (ou équivalent).
 3. Image : **Canonical Ubuntu 24.04** (aarch64 — bien vérifier l'architecture ARM, pas x86).
-4. Forme : **Ampere · VM.Standard.A1.Flex**, 2 OCPU, 6 Go de mémoire.
+4. Forme : **Ampere · VM.Standard.A1.Flex**, 2 OCPU, 3 Go de mémoire.
 5. Configuration réseau : VCN par défaut (ou dédié), **adresse IPv4 publique éphémère** activée (ne pas réserver d'IP).
 6. Clé SSH : coller la clé publique de l'administrateur (paire dédiée, à conserver — c'est la clé d'accès root/`ubuntu`, distincte de la clé de déploiement CI créée en §d).
 7. Volume de démarrage : 100 Go.

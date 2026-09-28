@@ -136,7 +136,7 @@ fi
 # ─────────────────────────────────────────────────────────────────
 # 4. Swap — filet de sécurité mémoire
 #
-# La VM Always Free recommandée (VM.Standard.A1.Flex, 2 OCPU / 6 Go, voir
+# La VM Always Free recommandée (VM.Standard.A1.Flex, 2 OCPU / 3 Go, voir
 # docs/deployment-oracle.md §a) fait tourner Caddy + API Node + relais AIS
 # Node + worker radar Python en simultané ; le décodage BUFR radar peut
 # ponctuellement consommer plusieurs centaines de Mo à quelques Go. Un

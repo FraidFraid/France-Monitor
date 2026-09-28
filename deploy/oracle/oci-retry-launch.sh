@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy/oracle/oci-retry-launch.sh — relance la création de la VM Always Free « francemonitor »
-# (VM.Standard.A1.Flex 2 OCPU / 6 Go, Ubuntu 24.04 Minimal aarch64, disque 100 Go) tant qu'Oracle
+# (VM.Standard.A1.Flex 2 OCPU / 3 Go, Ubuntu 24.04 Minimal aarch64, disque 100 Go) tant qu'Oracle
 # répond « Out of host capacity », puis s'arrête dès qu'elle existe.
 #
 # Prérequis : OCI CLI configurée (~/.oci/config, compte Free Tier, région eu-paris-1) et la clé SSH
@@ -19,7 +19,7 @@ REGION=eu-paris-1
 AD="mwCU:EU-PARIS-1-AD-1"
 SHAPE=VM.Standard.A1.Flex
 OCPUS=2
-MEMORY_GB=6
+MEMORY_GB=3          # mémoire > 20 % utilisée = pas de récupération pour inactivité (docs/deployment-oracle.md §a)
 BOOT_GB=100
 SSH_PUB="$HOME/.ssh/francemonitor_oracle.pub"
 RETRY_S=300          # « Out of host capacity » : réessai toutes les 5 min
