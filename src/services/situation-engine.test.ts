@@ -2,10 +2,24 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 
 import { detectSituations } from './situation-engine.ts';
+import { parisDate } from './ecowatt-official.ts';
 import type { FranceRawData } from './france-country-intel.ts';
+import type { EcowattOfficial, EcowattSignal } from '../types/index.ts';
+
+// 24/09/2026 10 h à Paris (CEST, UTC+2).
+const NOW = Date.parse('2026-09-24T08:00:00Z');
 
 function typed<T>(value: unknown): T {
   return value as T;
+}
+
+/** Écowatt est un signal NATIONAL : construit `official` avec un jour = parisDate(NOW). */
+function ecowattOfficial(level: EcowattSignal): EcowattOfficial {
+  return {
+    source: 'rte',
+    generatedAt: new Date(NOW).toISOString(),
+    days: [{ date: parisDate(NOW), level, message: 'Test', hours: Array.from({ length: 24 }, () => 1) }],
+  };
 }
 
 function baseRawData(overrides: Partial<FranceRawData> = {}): FranceRawData {
@@ -59,7 +73,7 @@ function nominalFixture(): FranceRawData {
         totalImportGWhDay: 0,
         totalExportGWhDay: 0,
       },
-      sourceStatus: { ecogaz: 'ok', grtgaz: 'ok', terega: 'ok', odre: 'ok' },
+      sourceStatus: { ecogaz: 'ok', grtgaz: 'ok', terega: 'ok', odre: 'ok', agsi: 'ok', alsi: 'ok' },
       lastUpdate: new Date('2026-04-09T08:00:00Z'),
     }),
   });
@@ -68,7 +82,7 @@ function nominalFixture(): FranceRawData {
 function energyStressFixture(): FranceRawData {
   return baseRawData({
     ecowattResponse: typed<FranceRawData['ecowattResponse']>({
-      signals: { '11': 'red', '32': 'orange' },
+      official: ecowattOfficial('red'),
       mixes: {},
       national: { timestamp: new Date(), nuclear: 30, wind: 1, solar: 1, hydro: 1, gas: 5, other: 2, total: 40 },
       interconnections: [],
@@ -82,7 +96,7 @@ function energyStressFixture(): FranceRawData {
 function importDependencyFixture(): FranceRawData {
   return baseRawData({
     ecowattResponse: typed<FranceRawData['ecowattResponse']>({
-      signals: {},
+      official: null,
       mixes: {},
       national: { timestamp: new Date(), nuclear: 40, wind: 5, solar: 2, hydro: 4, gas: 10, other: 3, total: 64 },
       interconnections: [
@@ -233,8 +247,8 @@ function fuelFixture(): FranceRawData {
   });
 }
 
-function assertHasSituation(raw: FranceRawData, type: string): void {
-  const situations = detectSituations(raw);
+function assertHasSituation(raw: FranceRawData, type: string, nowMs: number = NOW): void {
+  const situations = detectSituations(raw, nowMs);
   assert.ok(
     situations.some((s) => s.type === type),
     `Expected ${type} in ${situations.map((s) => s.type).join(', ') || 'no situations'}`,
@@ -243,11 +257,16 @@ function assertHasSituation(raw: FranceRawData, type: string): void {
 
 describe('situation-engine · detectSituations', () => {
   it('nominal data does not emit situations', () => {
-    assert.deepEqual(detectSituations(nominalFixture()), []);
+    assert.deepEqual(detectSituations(nominalFixture(), NOW), []);
   });
 
-  it('energy stress fixture emits ENERGY_STRESS', () => {
-    assertHasSituation(energyStressFixture(), 'ENERGY_STRESS');
+  it('energy stress fixture emits ENERGY_STRESS (Écowatt national : plus de dépendance à des régions)', () => {
+    assertHasSituation(energyStressFixture(), 'ENERGY_STRESS', NOW);
+  });
+
+  it('signal Écowatt d’un autre jour (pas « aujourd’hui ») → pas de ENERGY_STRESS', () => {
+    const situations = detectSituations(energyStressFixture(), NOW + 10 * 24 * 3600_000);
+    assert.ok(!situations.some((s) => s.type === 'ENERGY_STRESS'));
   });
 
   it('electric imports fixture emits IMPORT_DEPENDENCY_RISK', () => {

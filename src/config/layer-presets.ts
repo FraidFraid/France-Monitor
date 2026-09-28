@@ -65,41 +65,47 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'outagesCloud',
 ];
 
+/**
+ * Chaque thème active TOUTES ses couches (décision utilisateur du 25/09/2026 : les vues courtes de
+ * l'audit laissaient des couches du thème de côté). Les quatre thèmes couvrent à eux seuls toutes
+ * les couches de `ALL_PRESETABLE_LAYER_KEYS` (vérifié par test) ; « Vue générale » prend une couche
+ * phare par thème.
+ */
 export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
   {
     id: 'general',
     label: 'Vue générale',
     icon: 'compass',
-    description: 'Actualités, réseau électrique et météo/crues — le socle par défaut.',
-    layers: ['news', 'powerGrid', 'environmental'],
+    description: 'Une couche phare par thème : actualités, réseau électrique, défense, santé, météo/crues.',
+    layers: ['news', 'powerGrid', 'military', 'health', 'environmental'],
   },
   {
     id: 'energy',
     label: 'Énergie',
     icon: 'zap',
-    description: 'Réseau électrique, nucléaire, gaz, pétrole, éolien, stress hydraulique et pannes élec.',
-    layers: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'windMonitor', 'hydroBackbone', 'outagesElec'],
+    description: 'Tout le thème énergie : réseau électrique, nucléaire, gaz, pétrole, éolien, hydraulique, DROM, charge métropolitaine et pannes élec.',
+    layers: ['dromEnergy', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'hydroBackbone', 'oilNetwork', 'windMonitor', 'metroLoad', 'outagesElec'],
   },
   {
     id: 'security',
     label: 'Sécurité & défense',
     icon: 'shield',
-    description: 'Actualités, défense, cyber, câbles sous-marins et pannes télécom/Internet.',
-    layers: ['news', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet'],
+    description: 'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, câbles sous-marins et pannes télécom/Internet/cloud.',
+    layers: ['news', 'stability', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
   },
   {
     id: 'health',
     label: 'Santé',
     icon: 'stethoscope',
-    description: 'Épidémiologie, urgences OSCOUR/SOS Médecins, déserts médicaux et hôpitaux.',
+    description: 'Tout le thème santé : épidémiologie, urgences OSCOUR/SOS Médecins, déserts médicaux et hôpitaux.',
     layers: ['health', 'healthOscour', 'healthApl', 'hospitals'],
   },
   {
     id: 'environment',
     label: 'Environnement & transports',
     icon: 'leaf',
-    description: 'Météo/crues, radar précipitations, feux de forêt, trafic routier et ferroviaire.',
-    layers: ['environmental', 'weatherRadar', 'fires', 'trafficRoad', 'trafficRail'],
+    description: 'Tout le thème environnement & transports : météo/crues, radar, feux, jour/nuit, trafics routier, ferroviaire, maritime et aérien.',
+    layers: ['environmental', 'weatherRadar', 'fires', 'dayNight', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
   },
 ];
 

@@ -340,6 +340,10 @@ export class GasPanel extends Panel {
         ${data.terminals.map(t => `
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
             <span style="color: var(--text-secondary); font-size: 11px;">${t.name}</span>
+            ${t.currentSendOut !== undefined ? `
+            <span title="Émission réseau / capacité déclarée${t.dataDate ? ` · GIE ALSI, jour gazier ${t.dataDate}` : ''}" style="margin-left: auto; margin-right: 8px; font-size: 10px; color: var(--text-secondary); font-variant-numeric: tabular-nums;">
+              ${t.currentSendOut.toFixed(0)} GWh/j${t.utilizationPct !== undefined ? ` · ${t.utilizationPct.toFixed(0)} %` : ''}
+            </span>` : ''}
             <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: ${t.status === 'active' ? GAS_PANEL_COLORS.terminalActiveBg : GAS_PANEL_COLORS.terminalMaintenanceBg}; color: ${t.status === 'active' ? GAS_PANEL_COLORS.terminal : GAS_PANEL_COLORS.storageCritical};">
               ${t.status === 'active' ? 'Actif' : 'Maintenance'}
             </span>
@@ -399,6 +403,8 @@ export class GasPanel extends Panel {
           ${this.renderSourceBadge('ODRE', data.sourceStatus.odre)}
           ${this.renderSourceBadge('PEG NaTran', data.sourceStatus.grtgaz)}
           ${this.renderSourceBadge('Teréga', data.sourceStatus.terega)}
+          ${this.renderSourceBadge('GIE AGSI', data.sourceStatus.agsi)}
+          ${this.renderSourceBadge('GIE ALSI', data.sourceStatus.alsi)}
         </div>
       </div>
     `;

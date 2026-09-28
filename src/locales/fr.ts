@@ -11,6 +11,8 @@ const fr = {
     sidebarExpandAria: 'Afficher la barre latérale',
     sidebarCollapseAria: 'Réduire la barre latérale',
     floatingPanelSwitcherAria: 'Panneaux ouverts',
+    floatingPanelShow: 'Afficher le panneau « {{value}} »',
+    floatingPanelHide: 'Masquer le panneau « {{value}} »',
     aboutAria: 'À propos de France Monitor',
     closeAbout: 'Fermer la fenêtre À propos',
     aboutSubtitle: 'Tableau de bord situationnel pour la France',

@@ -1,0 +1,112 @@
+# deploy/oracle/Caddyfile — France Monitor derrière Cloudflare (VM Oracle).
+#
+# Reproduit à l'identique les réécritures et en-têtes de vercel.json (racine
+# du dépôt) : routes /api, /about|/methodology|/legal|/contact|/docs, repli
+# SPA, cache immuable sur les assets hashés, CSP/sécurité, ACAO sur /api.
+# TLS : certificats Let's Encrypt automatiques de Caddy (Cloudflare en SSL "Full (strict)").
+# Le certificat Origin CA de Cloudflare n'est plus nécessaire (docs/deployment-oracle.md).
+#
+# Installé par setup.sh dans /etc/caddy/Caddyfile. Valider après modification :
+#   caddy validate --config deploy/oracle/Caddyfile
+#   sudo systemctl reload caddy
+
+# Options globales : Cloudflare est le seul mandataire devant Caddy. Sans trusted_proxies, Caddy
+# remplacerait X-Forwarded-For par l'adresse du serveur Cloudflare, et api/_utils/rate-limit.js
+# (premier élément de X-Forwarded-For) mettrait tous les visiteurs d'un même point de présence
+# dans le même quota. Plages officielles (https://www.cloudflare.com/ips-v4 et ips-v6, relevées le
+# 27/09/2026) : les mettre à jour si Cloudflare les change.
+{
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+francemonitor.com {
+	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
+	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
+	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
+	# Cloudflare tant que « Always Use HTTPS » reste désactivé côté Cloudflare.
+
+	# Apex → www, comme aujourd'hui sur Vercel (docs/deployment.md).
+	redir https://www.francemonitor.com{uri} permanent
+}
+
+www.francemonitor.com {
+	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
+	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
+	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
+	# Cloudflare tant que « Always Use HTTPS » reste désactivé côté Cloudflare.
+
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/francemonitor-access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+
+	# ── En-têtes de sécurité (vercel.json → headers, dernier bloc, source "/(.*)") ──
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# HSTS, comme Vercel le posait (max-age=63072000).
+		Strict-Transport-Security "max-age=63072000"
+		Content-Security-Policy "default-src 'self'; connect-src 'self' https: wss: blob: data:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://static.cloudflareinsights.com https://vercel.live https://challenges.cloudflare.com; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+	}
+
+	# ── Cache immuable sur les assets hashés (vercel.json → headers[0]) ──
+	@immutableAssets {
+		path_regexp ^/assets/(.+)-([A-Za-z0-9_-]{8})\.(js|css|woff2|png|svg|webp|avif|json)$
+	}
+	header @immutableAssets Cache-Control "public, max-age=31536000, immutable"
+
+	# Tout le reste (HTML, sw.js, manifeste, images non versionnées) : revalidation à chaque fois,
+	# comme le défaut de Vercel — sinon Cloudflare garderait un ancien service worker. « ? » : ne
+	# s'applique que si la réponse n'a pas déjà un Cache-Control (API, assets immuables).
+	header ?Cache-Control "public, max-age=0, must-revalidate"
+
+	# ── /api : Access-Control-Allow-Origin * (vercel.json → headers[1]) est posé par le serveur Node
+	# (server/prod/http-server.mjs) ; ne PAS le reposer ici : un en-tête en double (« *, * ») est
+	# refusé par les navigateurs.
+	@api path /api /api/*
+
+	# ── Routage (mutuellement exclusif, premier bloc qui matche l'emporte) ──
+
+	# API Node (server/prod/http-server.mjs, 127.0.0.1:3000) — chemin conservé.
+	handle @api {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Relais AIS/OpenSky (ais-relay.js, 127.0.0.1:8090) — préfixe /relay retiré,
+	# WebSocket compris (reverse_proxy gère l'upgrade Connection/Upgrade nativement).
+	# Le relais n'accepte le WebSocket que sur "/" : VITE_AIS_RELAY_URL doit donc
+	# être wss://www.francemonitor.com/relay (rien après), voir
+	# francemonitor.env.example.
+	# « /relay* » attrape aussi « /relay » sans barre finale (forme de VITE_AIS_RELAY_URL).
+	handle_path /relay* {
+		reverse_proxy 127.0.0.1:8090
+	}
+
+	# Worker radar (services/radar-worker, 127.0.0.1:8091) — préfixe /radar retiré.
+	handle_path /radar* {
+		reverse_proxy 127.0.0.1:8091
+	}
+
+	# Pages statiques réécrites (vercel.json → rewrites, avant le repli SPA).
+	@staticPages path /about /methodology /legal /contact /docs
+	handle @staticPages {
+		rewrite * {path}.html
+		root * /srv/francemonitor/current/dist
+		file_server
+	}
+
+	# Repli SPA (vercel.json → rewrites, dernière règle "/(.*)")  + fichiers statiques.
+	handle {
+		root * /srv/francemonitor/current/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -86,7 +86,7 @@ export interface ThemeFicheInput {
 
 function officialSignalText(o: OfficialSignal, lang: Lang): string {
   const word = levelLabel(o.level, lang).toLowerCase();
-  if (o.source === 'ecowatt') return t(lang, `Écowatt : signal ${word}`, `Ecowatt: ${word} signal`);
+  if (o.source === 'ecowatt') return t(lang, `Écowatt : signal ${word} (national)`, `Ecowatt: ${word} signal (national)`);
   if (o.source === 'meteo') return t(lang, `Vigilance météo ${word}`, `Weather ${levelVigilanceWord(o.level, 'en')}`);
   return t(lang, `Vigicrues ${word}`, `Vigicrues ${word}`);
 }

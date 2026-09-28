@@ -12,7 +12,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  WORKER_URL: https://radar-worker-production-0c93.up.railway.app
+  # Variable de dépôt avec repli sur la valeur actuelle (Railway) tant que la
+  # bascule vers la VM Oracle n'a pas eu lieu — voir docs/deployment-oracle.md.
+  WORKER_URL: ${{ vars.RADAR_WORKER_URL || 'https://radar-worker-production-0c93.up.railway.app' }}
   # Le worker se rafraîchit lui-même toutes les 5 min : on n'alerte que si
   # l'observation publiée dépasse cet âge, pas sur un hoquet DPRadar isolé.
   MAX_OBSERVATION_AGE_SECONDS: 1200

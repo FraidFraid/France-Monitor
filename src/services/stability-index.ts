@@ -19,6 +19,7 @@ import type {
   PowerOutage,
   ThreatEvent,
 } from '../types/index.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 
 // ═══ Configuration ═══
 
@@ -493,17 +494,16 @@ function computeInfraFromFloods(segments: FloodSegment[]): number {
   return maxScore;
 }
 
-function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, deptCode: string): number {
-  if (!ecowatt) return 0;
-  // Trouver la région du département
-  const dept = DEPARTMENTS[deptCode];
-  if (!dept) return 0;
-  const signal = ecowatt.signals[dept.regionCode];
-  if (!signal) return 0;
-  // Les tensions électriques (Ecowatt) sont des routines hivernales en France.
-  // Elles ne constituent PAS un facteur OSINT de déstabilisation à moins de se traduire par des coupures réelles.
-  if (signal === 'red') return 30;
-  if (signal === 'orange') return 15;
+/**
+ * Composante Infra pour la tension électrique. Écowatt est un signal NATIONAL (RTE) : le même
+ * niveau du jour s'applique à tous les départements, il n'existe pas de déclinaison régionale.
+ * Les tensions électriques (Ecowatt) sont des routines hivernales en France.
+ * Elles ne constituent PAS un facteur OSINT de déstabilisation à moins de se traduire par des coupures réelles.
+ */
+export function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, nowMs: number = Date.now()): number {
+  const level = ecowattToday(ecowatt?.official, nowMs);
+  if (level === 'red') return 30;
+  if (level === 'orange') return 15;
   return 0;
 }
 
@@ -596,8 +596,9 @@ export function computeISNR(
   telecomOutages: TelecomOutage[],
   powerOutages: PowerOutage[],
   threatEvents: ThreatEvent[] = [],
+  nowMs: number = Date.now(),
 ): ISNRData {
-  const now = new Date();
+  const now = new Date(nowMs);
   const timeRangeMs = TIME_RANGE_MS[timeRange];
   const cutoff = now.getTime() - timeRangeMs;
 
@@ -610,6 +611,10 @@ export function computeISNR(
   const scores: ISNRScore[] = [];
   let nationalTotal = 0;
   let deptCount = 0;
+
+  // Écowatt est national : le niveau du jour est identique pour tous les départements,
+  // calculé une seule fois hors boucle.
+  const infraFromEcowatt = computeInfraFromEcowatt(ecowatt, nowMs);
 
   for (const [code, dept] of Object.entries(DEPARTMENTS)) {
     const items = itemsByDept.get(code) ?? [];
@@ -625,7 +630,6 @@ export function computeISNR(
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
     const infraFromMeteo = computeInfraFromMeteo(meteoAlerts, code);
     const infraFromFlood = computeInfraFromFloods(floodSegments);
-    const infraFromEcowatt = computeInfraFromEcowatt(ecowatt, code);
     const infraFromOutages = computeInfraFromOutages(code, telecomOutages, powerOutages);
     const infra = Math.round(Math.min(100, Math.max(
       infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt,

@@ -78,9 +78,11 @@ export class LayerPanel {
   private environmentExpanded = true;
   /** Groupes dont l'utilisateur a explicitement changé l'état plié/déplié — n'est plus recalculé automatiquement. */
   private manuallyToggledGroups = new Set<(typeof _GROUP_KEYS)[number]>();
-  /** Section « Personnaliser les couches » : repliée par défaut sauf si aucune vue ne correspond à l'état courant. */
-  private customizeExpanded = false;
-  private customizeManuallySet = false;
+  /**
+   * Section « Personnaliser les couches » : dépliée par défaut (décision du 25/09/2026 : on doit voir
+   * les couches actives ou non dès l'ouverture), repliée seulement si l'utilisateur la replie.
+   */
+  private customizeExpanded = true;
   private element: HTMLElement | null = null;
 
   constructor(container: HTMLElement, initialLayers: MapLayers, options: LayerPanelOptions = {}) {
@@ -161,9 +163,6 @@ export class LayerPanel {
 
     // Vues prédéfinies : quelle vue (si une seule) correspond exactement à l'état courant.
     const matchedPresetId = this.getMatchingPresetId();
-    if (!this.customizeManuallySet) {
-      this.customizeExpanded = matchedPresetId === null;
-    }
     this.syncAutoExpandedGroups();
 
     const viewsBarHtml = `
@@ -353,7 +352,8 @@ export class LayerPanel {
       btn.addEventListener('click', () => {
         const id = btn.dataset.preset as LayerPresetId | undefined;
         if (!id) return;
-        this.customizeManuallySet = false;
+        // Choisir une vue remontre la liste : ses couches, cochées, dans leurs groupes dépliés.
+        this.customizeExpanded = true;
         this.manuallyToggledGroups.clear();
         this.onPresetSelect?.(id);
       });
@@ -363,7 +363,6 @@ export class LayerPanel {
     const customizeToggle = this.element.querySelector<HTMLElement>('#layer-panel-customize-toggle');
     if (customizeToggle) {
       customizeToggle.addEventListener('click', () => {
-        this.customizeManuallySet = true;
         this.customizeExpanded = !this.customizeExpanded;
         this.render();
       });
@@ -613,7 +612,7 @@ export class LayerPanel {
         this.helpItem(fmIcon('bar-chart-3'), 'Indice de stabilité', 'Score composite ISNR par département : social, sécurité/cyber, infrastructure et vélocité. Escalade visible si une dimension domine.', 'live'),
       ]),
       this.helpSection(fmIcon('zap'), 'Énergie', [
-        this.helpItem(fmIcon('zap'), 'Réseau électrique / Écowatt', 'Signal national Écowatt (RTE) : vert / orange / rouge.', 'live'),
+        this.helpItem(fmIcon('zap'), 'Réseau électrique / Écowatt', 'Signal Écowatt officiel de RTE (national) : vert / orange / rouge, du jour à J+3. Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance.', 'live'),
         this.helpItem(fmIcon('atom'), 'Parc nucléaire', 'Disponibilité des réacteurs (RTE) et signaux REMIT — arrêts planifiés et fortuits.', 'live'),
         this.helpItem(fmIcon('flame'), 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR en temps réel.', 'live'),
         this.helpItem(fmIcon('droplet'), 'Hydro – stress hydro-énergétique', 'Score de stress dérivé des mesures Hub’Eau. Indicateur de tension hydraulique.', 'derived'),
@@ -645,7 +644,7 @@ export class LayerPanel {
         this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Baromètre multi-signaux : leaks FR, ransomware 30j, CERT/NVD critiques, exposition passive Shodan/Censys et incidents géolocalisés. Chaque famille est plafonnée pour éviter la saturation.', 'live'),
       ]),
       this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau', [
-        this.helpItem(fmIcon('zap'), 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes) et signal Ecowatt.', 'live'),
+        this.helpItem(fmIcon('zap'), 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes).', 'live'),
         this.helpItem(fmIcon('satellite-dish'), 'Télécom 4G·5G', 'Antennes dégradées ou hors service (données ARCEP).', 'live'),
         this.helpItem(fmIcon('globe'), 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
         this.helpItem(fmIcon('cloud'), 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),

@@ -62,3 +62,6 @@ __pycache__/
 
 # Documents internes (repo public — ne jamais publier)
 FRANCE MONITOR orientation pour ministeres/
+
+# Secrets de production récupérés par `vercel env pull` (migration VM) — ne JAMAIS commiter.
+.env.vercel*

@@ -1,0 +1,39 @@
+[Unit]
+Description=France Monitor - worker radar Meteo-France (FastAPI/uvicorn)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current/services/radar-worker
+EnvironmentFile=/etc/francemonitor/francemonitor.env
+# Constantes propres à la VM (priment sur d'éventuelles valeurs Railway
+# héritées d'un francemonitor.env copié depuis `vercel env pull` / `railway
+# variables` — voir docs/deployment-oracle.md §c).
+Environment=RADAR_STORAGE_DIR=/var/lib/francemonitor/radar
+Environment=RADAR_PUBLIC_BASE_URL=https://www.francemonitor.com/radar
+Environment=ECCODES_DEFINITION_PATH=/srv/francemonitor/current/services/radar-worker/eccodes-definitions
+ExecStart=/opt/francemonitor/radar-venv/bin/uvicorn app:app --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Durcissement raisonnable — seule écriture attendue : RADAR_STORAGE_DIR
+# (manifest.json, rasters/*.webp, raw/* — voir app.py _write_json_atomic).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/radar
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

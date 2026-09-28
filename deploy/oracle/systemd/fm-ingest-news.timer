@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - ingestion news toutes les 30 minutes
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=*-*-* *:0/30:00
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

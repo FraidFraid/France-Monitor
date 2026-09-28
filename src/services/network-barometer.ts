@@ -16,6 +16,7 @@ import type { CyberState } from '../types/index.ts';
 import type { InfraNetworkState } from '../types/index.ts';
 import type { EolienLive } from './eolien/types.ts';
 import { fetchEcowatt } from './ecowatt.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 import { fetchNetworkOutages } from './internet-outages.ts';
 import { fetchTelecomOutages } from './outages.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
@@ -65,11 +66,18 @@ export function setBarometerEolienLive(live: EolienLive | null): void {
 
 // ── Normalisations par source (→ health score 0-100, 100 = nominal) ───────────
 
-function normalizeElec(data: EcowattResponse): number {
-  const signalValues = Object.values(data.signals);
-  if (signalValues.length === 0) return 100;
-  const mapped = signalValues.map(s => s === 'green' ? 100 : s === 'orange' ? 60 : 20);
-  return Math.round(mapped.reduce((a, b) => a + b, 0) / mapped.length);
+/**
+ * Écowatt est un signal NATIONAL (RTE) : green → santé pleine, orange/rouge → dégradée.
+ * Niveau inconnu (signal officiel indisponible) → `null`, jamais un 100 « par défaut » : la
+ * composante électricité est alors exclue et les poids restants renormalisés par
+ * `calculateGlobalScore()`.
+ */
+export function normalizeElec(data: EcowattResponse, nowMs: number = Date.now()): number | null {
+  const level = ecowattToday(data.official, nowMs);
+  if (level === 'green') return 100;
+  if (level === 'orange') return 60;
+  if (level === 'red') return 20;
+  return null;
 }
 
 function normalizeTelecom(outages: TelecomOutage[]): number {

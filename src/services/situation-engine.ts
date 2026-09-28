@@ -21,6 +21,7 @@ import type {
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
@@ -89,21 +90,17 @@ function action(
 
 // ─── Règle 1 : ENERGY_STRESS ─────────────────────────────────────────────────
 
-function detectEnergyStress(raw: FranceRawData): DetectedSituation | null {
-  const ecowatt = raw.ecowattResponse;
+function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
   const nuclear = raw.nuclearState?.stress;
-  if (!ecowatt) return null;
-
-  const signals = Object.values(ecowatt.signals);
-  const redRegions  = signals.filter(s => s === 'red').length;
-  const orangeRegions = signals.filter(s => s === 'orange').length;
-  const ecowattPressure = redRegions > 0 ? 'red' : orangeRegions >= 2 ? 'orange' : null;
-  if (!ecowattPressure) return null;
+  // Écowatt est un signal NATIONAL (RTE) : le niveau du jour s'applique à toute la France, il
+  // n'existe pas de déclinaison régionale.
+  const level = ecowattToday(raw.ecowattResponse?.official, nowMs);
+  if (!level || level === 'green') return null;
 
   const nuclearTense = nuclear && (nuclear.level === 'TENSION' || nuclear.level === 'CRITIQUE');
   const nuclearCritique = nuclear?.level === 'CRITIQUE';
 
-  // Besoin : ecowatt orange/red ET au moins un autre signal confirmant
+  // Besoin : Écowatt orange/rouge ET au moins un autre signal confirmant
   const confirmedByNuclear = nuclearTense ?? false;
   const confirmedByOutages = raw.powerOutages.length >= 3;
   const confirmedByEolien  = (raw.eolienLive?.production ?? 9999) < 500; // faible vent
@@ -111,30 +108,18 @@ function detectEnergyStress(raw: FranceRawData): DetectedSituation | null {
   const confirmedBy = [confirmedByNuclear, confirmedByOutages, confirmedByEolien].filter(Boolean).length;
   if (confirmedBy === 0) return null;
 
-  const severity: SituationSeverity = (ecowattPressure === 'red' || nuclearCritique) ? 'critical'
+  const severity: SituationSeverity = (level === 'red' || nuclearCritique) ? 'critical'
     : confirmedBy >= 2 ? 'high'
     : 'medium';
 
-  const confidence = Math.min(0.95, 0.50 + confirmedBy * 0.15 + (ecowattPressure === 'red' ? 0.15 : 0));
+  const confidence = Math.min(0.95, 0.50 + confirmedBy * 0.15 + (level === 'red' ? 0.15 : 0));
 
   const drivers: string[] = [];
-  if (ecowattPressure === 'red') drivers.push(`Ecowatt rouge — ${redRegions} région(s) en tension critique`);
-  else drivers.push(`Ecowatt orange — ${orangeRegions} région(s) sous pression`);
+  if (level === 'red') drivers.push('Écowatt rouge — signal national RTE');
+  else drivers.push('Écowatt orange — signal national RTE');
   if (confirmedByNuclear) drivers.push(`Parc nucléaire dégradé (stress ${nuclear?.level}${nuclear ? ` — ratio ${Math.round(nuclear.stressRatio * 100)}%` : ''})`);
   if (confirmedByOutages) drivers.push(`${raw.powerOutages.length} pannes électriques signalées`);
   if (confirmedByEolien)  drivers.push(`Production éolienne très faible (< 500 MW)`);
-
-  const ECOWATT_REGION_NAMES: Record<string, string> = {
-    '11': 'Île-de-France', '24': 'Centre-Val de Loire', '27': 'Bourgogne-Franche-Comté',
-    '28': 'Normandie', '32': 'Hauts-de-France', '44': 'Grand Est',
-    '52': 'Pays de la Loire', '53': 'Bretagne', '75': 'Nouvelle-Aquitaine',
-    '76': 'Occitanie', '84': 'Auvergne-Rhône-Alpes', '93': 'PACA', '94': 'Corse',
-  };
-
-  const affectedZones = Object.entries(ecowatt.signals)
-    .filter(([, s]) => s === 'red' || s === 'orange')
-    .map(([code]) => ECOWATT_REGION_NAMES[code] ?? `Région ${code}`)
-    .slice(0, 4);
 
   return situation(
     'energy-stress',
@@ -142,15 +127,15 @@ function detectEnergyStress(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Tension énergétique nationale',
-    `Signal Ecowatt ${ecowattPressure} confirmé par ${confirmedBy} source(s) additionnelle(s). Risque de déséquilibre offre/demande électrique.`,
-    affectedZones.length > 0 ? affectedZones : ['France'],
+    `Signal Écowatt ${level} (national RTE) confirmé par ${confirmedBy} source(s) additionnelle(s). Risque de déséquilibre offre/demande électrique.`,
+    ['France'],
     drivers,
     [
-      action('Surveiller Ecowatt RTE et les prévisions J+1', 'Analyste énergie', 'monitor'),
+      action('Surveiller Écowatt RTE et les prévisions J+1', 'Analyste énergie', 'monitor'),
       action('Contrôler les REMIT nucléaires en cours', 'Analyste énergie', 'investigate'),
       action('Vérifier les pannes Enedis sur zones denses', 'Analyste infra', 'cross-check', true),
     ],
-    ['Ecowatt RTE', 'REMIT RTE', 'Enedis outages'],
+    ['Écowatt RTE', 'REMIT RTE', 'Enedis outages'],
   );
 }
 
@@ -599,7 +584,7 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
 
 // ─── Orchestrateur principal ──────────────────────────────────────────────────
 
-const RULES: Array<(raw: FranceRawData) => DetectedSituation | null> = [
+const RULES: Array<(raw: FranceRawData, nowMs: number) => DetectedSituation | null> = [
   detectEnergyStress,
   detectImportDependency,
   detectFloodCrisis,
@@ -615,12 +600,12 @@ const RULES: Array<(raw: FranceRawData) => DetectedSituation | null> = [
  * Détecte les situations opérationnelles à partir des données brutes.
  * Retourne au maximum 10 situations triées par sévérité > confiance.
  */
-export function detectSituations(raw: FranceRawData): DetectedSituation[] {
+export function detectSituations(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation[] {
   const results: DetectedSituation[] = [];
 
   for (const rule of RULES) {
     try {
-      const s = rule(raw);
+      const s = rule(raw, nowMs);
       if (s) results.push(s);
     } catch (err) {
       // Une règle ne doit jamais faire crasher l'engine
