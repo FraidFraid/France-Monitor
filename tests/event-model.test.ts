@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — module JS sans déclaration de types
-import { summarizeEvent, eventStatusAt, diffEvent, mediaGroupOf } from '../api/_lib/event-model.js';
+import { summarizeEvent, eventStatusAt, diffEvent, mediaGroupOf, corroboratedSeverity, qualifyEvent } from '../api/_lib/event-model.js';
 
 const H = 60 * 60 * 1000;
 const T0 = Date.parse('2026-09-23T06:00:00Z');
@@ -21,14 +21,16 @@ describe('summarizeEvent', () => {
     expect(agg.independentCount).toBe(1);
   });
 
-  it('prend le titre du flux de meilleur rang, la gravité maximale et la catégorie dominante', () => {
+  it('prend le titre du flux de meilleur rang, la gravité corroborée et la catégorie dominante', () => {
     const agg = summarizeEvent([
       a(1, 'le-progres', 'Le Progrès', 3, 0, { title: 'Titre PQR', severity: 'high' }),
       a(2, 'le-monde', 'Le Monde', 1, 2, { title: 'Titre national', category: 'general' }),
       a(3, 'sud-ouest', 'Sud Ouest', 3, 3, { severity: 'low' }),
     ]);
     expect(agg.title).toBe('Titre national');
-    expect(agg.severity).toBe('high');
+    // EBRA high, Le Monde medium, Sud Ouest low → 2ᵉ plus élevée = medium ; pic signalé high.
+    expect(agg.severity).toBe('medium');
+    expect(agg).toMatchObject({ peakSeverity: 'high', reasons: ['non_confirme'] });
     expect(agg.category).toBe('security');
     expect(agg.independentCount).toBe(3);
     expect(agg.firstSeen).toBe(T0);
@@ -84,5 +86,44 @@ describe('summarizeEvent — ordre', () => {
       a(1, 'le-progres', 'Le Progrès', 3, 0),
     ]);
     expect(agg.sourceNames).toEqual(['Le Progrès', 'Le Monde']);
+  });
+});
+
+describe('corroboratedSeverity', () => {
+  const art = (feedId: string, severity: string | null) => ({ feedId, severity });
+
+  it('prend la 2ᵉ gravité la plus élevée parmi les groupes', () => {
+    expect(corroboratedSeverity([art('france-info', 'critical'), art('le-monde', 'high'), art('ouest-france', 'medium')])).toBe('high');
+  });
+  it('un seul groupe : sa gravité plafonnée à medium', () => {
+    expect(corroboratedSeverity([art('france-info', 'critical')])).toBe('medium');
+    expect(corroboratedSeverity([art('le-progres', 'critical'), art('le-dauphine', 'high')])).toBe('medium');
+    expect(corroboratedSeverity([art('sud-ouest', 'low')])).toBe('low');
+  });
+  it('chaque groupe compte une fois, à sa gravité la plus élevée', () => {
+    expect(corroboratedSeverity([art('le-progres', 'critical'), art('dna', 'low'), art('le-monde', 'critical')])).toBe('critical');
+  });
+  it('gravités absentes → info', () => {
+    expect(corroboratedSeverity([art('le-monde', null), art('sud-ouest', null)])).toBe('info');
+    expect(corroboratedSeverity([])).toBe('info');
+  });
+});
+
+describe('qualifyEvent', () => {
+  const art = (feedId: string, severity: string, extra: Record<string, unknown> = {}) => ({ feedId, severity, zone: null, temporality: null, reasons: [], ...extra });
+
+  it('gravité signalée, zone, temporalité et motifs ; non_confirme quand le pic dépasse la retenue', () => {
+    expect(qualifyEvent([
+      art('france-info', 'critical', { zone: 'france', temporality: 'en_cours' }),
+      art('le-monde', 'medium', { zone: 'etranger', temporality: 'passe', reasons: ['passe'] }),
+    ], 'medium')).toEqual({ peakSeverity: 'critical', zone: 'france', temporality: 'en_cours', reasons: ['passe', 'non_confirme'] });
+  });
+  it('articles non qualifiés (antérieurs au déploiement) : zone et temporalité nulles', () => {
+    expect(qualifyEvent([art('le-monde', 'high'), art('sud-ouest', 'high')], 'high'))
+      .toEqual({ peakSeverity: 'high', zone: null, temporality: null, reasons: [] });
+  });
+  it('étranger seul, passé seul', () => {
+    expect(qualifyEvent([art('rfi', 'medium', { zone: 'etranger', temporality: 'passe' })], 'medium'))
+      .toMatchObject({ zone: 'etranger', temporality: 'passe', reasons: [] });
   });
 });

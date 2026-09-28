@@ -46,8 +46,10 @@ describe('lecture (Postgres embarqué)', () => {
       { id: 2, feedId: 'le-monde', title: RINER, publishedAt: T0 + H, severity: 'medium' },
       { id: 3, feedId: 'sud-ouest', title: 'Bordeaux : un marché de producteurs inauguré place des Quinconces', publishedAt: T0, category: 'general', severity: 'info' },
       { id: 4, feedId: 'france-info', title: 'Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché', publishedAt: T0 + H, severity: 'critical' },
+      // 2ᵉ groupe de presse : sans lui, l'événement mono-source serait plafonné à medium (gravité corroborée).
+      { id: 6, feedId: 'le-monde', title: 'Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché', publishedAt: T0 + H, severity: 'critical' },
     ]);
-    await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4] });
+    await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4, 6] });
     // Premier démarrage de PGlite (compilation WASM) : lent quand la suite tourne en parallèle.
   }, 30_000);
 
