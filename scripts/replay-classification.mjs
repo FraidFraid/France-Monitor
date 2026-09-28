@@ -21,7 +21,10 @@ import { classifierLlmConfig, classifyBatch, qualifyJudgment, LLM_BATCH_SIZE } f
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LABELS = path.join(ROOT, 'tests/fixtures/classification/labels.json');
-const LLM_PAUSE_MS = 15_000;
+// 8 000 jetons/min chez Groq (palier gratuit) et ~2 500 jetons par lot : 25 s entre deux lots,
+// une seule nouvelle tentative après 60 s sur un 429.
+const LLM_PAUSE_MS = 25_000;
+const LLM_RETRY_MS = 60_000;
 const SERIOUS = new Set(['high', 'critical']);
 
 /** @param {{ scoredBy: string | null, title: string, description: string | null, category: string, severity: string }} article */
@@ -101,7 +104,15 @@ async function replayLlm(articles, notes, llm) {
   const total = Math.ceil(targets.length / LLM_BATCH_SIZE);
   for (let s = 0; s < targets.length; s += LLM_BATCH_SIZE) {
     const batch = targets.slice(s, s + LLM_BATCH_SIZE);
-    const judgments = await classifyBatch(llm, batch);
+    let judgments;
+    try {
+      judgments = await classifyBatch(llm, batch);
+    } catch (err) {
+      if (/** @type {{ status?: number }} */ (err).status !== 429) throw err;
+      console.log(`LLM : quota par minute atteint, nouvelle tentative dans ${LLM_RETRY_MS / 1000} s`);
+      await new Promise((r) => setTimeout(r, LLM_RETRY_MS));
+      judgments = await classifyBatch(llm, batch);
+    }
     if (judgments) {
       batch.forEach((a, k) => {
         const j = judgments[k];
