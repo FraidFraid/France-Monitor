@@ -5,7 +5,8 @@ Version : `kw-2` (mots-clés) / `groq-2` (LLM, `llm-2` si un autre fournisseur e
 ## Ce que le système affirme
 
 - Chaque article et chaque événement porte une **gravité signalée**, une **gravité retenue**, une **temporalité** (en cours / passé / à venir), une **zone** (France / étranger / indéterminée) et les **motifs** qui ont abaissé la gravité — à la manière du Common Alerting Protocol, qui sépare gravité, urgence et certitude.
-- La **gravité retenue** d'un événement est le niveau atteint par au moins **2 groupes de presse indépendants**. Un seul groupe : `medium` au plus ; l'événement apparaît « À confirmer » dans « À traiter » s'il a été signalé `high` ou `critical`.
+- La **gravité retenue** d'un événement est le niveau atteint par au moins **2 groupes de presse indépendants**. Un seul groupe : `medium` au plus ; l'événement apparaît « À confirmer » dans « À traiter » s'il a été signalé `high` ou `critical`. Un événement signalé `high` ou `critical` par un groupe reste au moins `medium`, même si un autre groupe le note plus bas.
+- Les événements « à confirmer » sont classés par leur gravité signalée dans `/api/events` : ils ne sortent pas des premiers résultats.
 - La presse n'entre dans « À traiter » que par des événements consolidés (repli sur les articles si les événements ne sont pas chargés).
 - La gravité retenue est le seul champ lu par la carte, le score national, les fils et le brief ; les autres axes servent l'affichage et l'audit.
 
@@ -32,10 +33,10 @@ Instantané de production du 28/09/2026 14:19 UTC : 4 570 articles publiés sur 
 |---|---|---|---|
 | critical | 27 | 0 | 0 |
 | high | 55 | 9 | 2 |
-| medium | 18 | 48 | 34 |
+| medium | 18 | 60 | 34 |
 | « À confirmer » | — | 20 | 4 |
 
-Les 2 événements `high` restants avec LLM gardent leur ancienne note faute d'articles dans la fenêtre de 48 h (artefact du rejeu).
+Les 2 événements `high` restants avec LLM gardent leur ancienne note faute d'articles dans la fenêtre de 48 h (artefact du rejeu). La colonne « avec LLM » précède aussi le plancher des signalements graves (qui relève certains événements de `low`/`info` à `medium`, sans rien ajouter à « À traiter »).
 
 | Articles | Avant | Mots-clés seuls | Avec LLM |
 |---|---|---|---|
