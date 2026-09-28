@@ -130,3 +130,31 @@ describe('mapEventRow — qualification (spec 2026-09-28 § 4.6)', () => {
     expect(mapEventRow(base)).toMatchObject({ peakSeverity: 'medium', zone: null, temporality: null, reasons: [] });
   });
 });
+
+describe('classement des événements à confirmer (revue finale C1)', () => {
+  let db: Sql;
+  const LONE = 'Attentat signalé par une seule rédaction';
+  beforeAll(async () => {
+    ({ sql: db } = await createTestSql());
+    await seedFeeds(db);
+    await ensureEventTables(db);
+    const at = '2026-09-28T10:00:00Z';
+    for (let i = 1; i <= 45; i++) {
+      await db`INSERT INTO news_events (seed_article_id, title, category, severity, first_seen, last_seen, independent_count, status)
+        VALUES (${i}, ${`Corroboré ${i}`}, 'security', 'medium', ${at}, ${at}, 2, 'active')`;
+    }
+    await db`INSERT INTO news_events (seed_article_id, title, category, severity, peak_severity, first_seen, last_seen, independent_count, status)
+      VALUES (100, ${LONE}, 'security', 'medium', 'critical', '2026-09-28T09:00:00Z', '2026-09-28T09:00:00Z', 1, 'active')`;
+    await db`INSERT INTO news_event_log (event_id, at, kind, to_value)
+      SELECT id, '2026-09-28T09:00:00Z', 'created', 'medium' FROM news_events WHERE seed_article_id = 100`;
+  }, 30_000);
+
+  it('un mono-source signalé critique est classé par sa gravité signalée : il entre dans les 40 premiers', async () => {
+    const events = await listEvents(db, { statuses: ['active'], limit: 40 });
+    expect(events[0].title).toBe(LONE);
+  });
+  it('sa création apparaît dans le fil des changements', async () => {
+    const out = await listChanges(db, new Date('2026-09-28T08:00:00Z'));
+    expect(out.changes.map((c: { event: { title: string } }) => c.event.title)).toContain(LONE);
+  });
+});
