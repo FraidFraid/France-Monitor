@@ -75,7 +75,7 @@ const JUDICIAL_RETROSPECTIVE_RE = new RegExp(
     [
         'proces', '(?:sera|seront) jugee?s?', 'jugee?s? pour', 'condamnee?s?', 'condamnation',
         'mise?s? en examen', 'requiert', 'requisitions?', 'requis contre', 'verdict', 'en appel',
-        'cour d appel', 'fait appel', 'apologie', 'hommage', 'commemorations?', 'anniversaire',
+        'cour d appel', 'fait appel', 'hommage', 'commemorations?', 'anniversaire',
         'il y a \\d+ ans', '\\d+ ans apres',
     ].map((p) => `\\b${p}\\b`).join('|'),
 );

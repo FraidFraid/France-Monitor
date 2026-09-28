@@ -24,12 +24,14 @@ describe('isJudicialOrRetrospective', () => {
     'Féminicide dans le Cher : le compagnon mis en examen',
     'Il y a 10 ans, les attentats du 13-Novembre',
     'Hommage aux victimes de l’attentat',
-    'Apologie du terrorisme : un Héraultais arrêté',
+    'Condamné pour terrorisme, un Héraultais écroué',
   ])('vrai : %s', (title) => expect(isJudicialOrRetrospective(title)).toBe(true));
   it.each([
     'Attentat à Paris : plusieurs blessés',
     'Le barrage a été jugé dangereux, la vallée évacuée',
     'Appel à la grève à la SNCF jeudi',
+    // « apologie » nomme un délit, pas une étape judiciaire (décision de l’utilisateur, 28/09).
+    'Apologie du terrorisme : un Héraultais arrêté',
   ])('faux : %s', (title) => expect(isJudicialOrRetrospective(title)).toBe(false));
 });
 

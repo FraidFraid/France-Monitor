@@ -915,7 +915,6 @@ var JUDICIAL_RETROSPECTIVE_RE = new RegExp(
     "en appel",
     "cour d appel",
     "fait appel",
-    "apologie",
     "hommage",
     "commemorations?",
     "anniversaire",

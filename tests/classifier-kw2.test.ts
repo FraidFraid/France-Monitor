@@ -17,7 +17,7 @@ describe('qualifyByKeywords — règles kw-2', () => {
     expect(classifyByKeywords('Tempête médiatique autour du nouveau livre de l’écrivain')).toBeUndefined();
   });
   it('judiciaire : gravité signalée critical, retenue low, passé', () => {
-    const q = qualifyByKeywords('Apologie du terrorisme : un Héraultais arrêté pour avoir publié des vidéos');
+    const q = qualifyByKeywords('Condamné pour terrorisme, un Héraultais de nouveau écroué');
     expect(q.classification?.level).toBe('low');
     expect(q).toMatchObject({ reportedLevel: 'high', temporality: 'passe', reasons: ['passe'] });
   });
@@ -39,6 +39,10 @@ describe('qualifyByKeywords — règles kw-2', () => {
     expect(qualifyByKeywords('Attentat à Paris : plusieurs blessés')).toMatchObject({ classification: { level: 'critical' }, zone: 'france', reasons: [] });
     expect(classifyByKeywords('Séisme de magnitude 5,2 ressenti dans les Pyrénées-Orientales')?.level).toBe('critical');
     expect(classifyByKeywords('Vigilance rouge tempête sur la Bretagne')?.level).toBe('critical');
+  });
+  it('« apologie » est une action de police en cours, pas un procès : high', () => {
+    expect(qualifyByKeywords('Apologie du terrorisme : un Héraultais arrêté pour avoir publié des vidéos'))
+      .toMatchObject({ classification: { level: 'high' }, temporality: 'en_cours', reasons: [] });
   });
   it('titre high, description critical : ramené au niveau du titre', () => {
     expect(classifyByKeywords('Fusillade devant un bar à Marseille', 'La piste d’un attentat est écartée.')?.level).toBe('high');

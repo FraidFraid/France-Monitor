@@ -32,6 +32,10 @@ describe('invite', () => {
     }
     expect(LLM_BATCH_SIZE).toBe(10);
   });
+  it('compte la menace terroriste au niveau 3 même sans victime (décision du 28/09)', () => {
+    expect(BATCH_SYSTEM_PROMPT).toContain('projet terroriste déjoué');
+    expect(BATCH_SYSTEM_PROMPT).toContain('vaut 3, même sans victime');
+  });
   it('numérote les articles et tronque la description à 200 caractères', () => {
     const prompt = buildBatchUserPrompt([{ title: 'Titre A', description: 'x'.repeat(300) }, { title: 'Titre\nB', description: null }]);
     expect(prompt).toContain('1. Titre : Titre A');
