@@ -115,8 +115,14 @@ while true; do
   if ! INSTANCE_ID="$(existing_instance)"; then sleep 60; continue; fi
   if [ -n "$INSTANCE_ID" ]; then
     log "instance présente : $INSTANCE_ID — attente de l'état RUNNING"
-    oci_q compute instance get --instance-id "$INSTANCE_ID" --wait-for-state RUNNING >/dev/null 2>&1 || true
-    IP="$(public_ip "$INSTANCE_ID")"
+    # L'IP publique n'apparaît qu'une fois l'instance démarrée : on attend jusqu'à 10 min.
+    IP=""
+    for _ in $(seq 1 60); do
+      STATE="$(oci_q compute instance get --instance-id "$INSTANCE_ID" --query 'data."lifecycle-state"' --raw-output 2>/dev/null)"
+      IP="$(public_ip "$INSTANCE_ID")"
+      [ "$STATE" = "RUNNING" ] && [ -n "$IP" ] && [ "$IP" != "null" ] && break
+      sleep 10
+    done
     echo "$IP" > "$IP_FILE"
     log "VM PRÊTE — IP publique : $IP (écrite dans $IP_FILE)"
     notify "VM créée ! IP publique : $IP"
