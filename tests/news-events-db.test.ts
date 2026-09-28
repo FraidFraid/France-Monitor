@@ -47,7 +47,8 @@ describe('runEventPass', () => {
     const stats = await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4] });
     expect(stats).toMatchObject({ considered: 4, created: 2, attached: 2 });
     const [riner, pont] = await events();
-    expect(riner).toMatchObject({ article_count: 3, source_count: 3, independent_count: 2, severity: 'high', status: 'active' });
+    // EBRA (Le Progrès + Le Dauphiné) high, Le Monde medium → retenue medium, signalée high, à confirmer.
+    expect(riner).toMatchObject({ article_count: 3, source_count: 3, independent_count: 2, severity: 'medium', peak_severity: 'high', reasons: 'non_confirme', zone: null, status: 'active' });
     expect(riner.title).toBe('Teddy Riner visé par des messages haineux, le parquet ouvre une enquête pour injures racistes');
     expect(riner.source_names).toEqual(['Le Progrès', 'Le Dauphiné', 'Le Monde']);
     expect(pont).toMatchObject({ article_count: 1, independent_count: 1 });

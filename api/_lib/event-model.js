@@ -32,6 +32,8 @@ export function mediaGroupOf(feedId) {
 }
 
 export const SEVERITY_RANK = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
+export const SEVERITY_NAMES = ['info', 'low', 'medium', 'high', 'critical'];
+const REASON_ORDER = ['declencheur_hors_titre', 'metaphore', 'passe', 'hypothetique', 'etranger', 'non_confirme'];
 export const ACTIVE_MS = 12 * 60 * 60 * 1000;
 export const CLOSED_MS = 48 * 60 * 60 * 1000;
 
@@ -40,17 +42,66 @@ function rankOf(severity) {
 }
 
 /**
+ * Gravité retenue d'un événement (spec 2026-09-28 § 4.5) : chaque groupe de presse compte une fois,
+ * à sa gravité la plus élevée ; l'événement prend la 2ᵉ plus élevée (niveau atteint par au moins
+ * 2 groupes indépendants). Un seul groupe : sa gravité, plafonnée à medium. Plancher (revue
+ * finale) : un événement signalé high ou critical par un groupe reste au moins medium, même si un
+ * 2ᵉ groupe le note plus bas — seulement dans ce cas, pour ne pas allonger « À traiter » (rejeu
+ * du 28/09 : 54 entrées, contre 65 avec un plancher à tous les niveaux).
+ * @param {Array<{ feedId: string, severity: string | null }>} articles
+ * @returns {string}
+ */
+export function corroboratedSeverity(articles) {
+  const byGroup = new Map();
+  for (const a of articles) {
+    const group = mediaGroupOf(a.feedId);
+    const rank = rankOf(a.severity);
+    if (!byGroup.has(group) || rank > byGroup.get(group)) byGroup.set(group, rank);
+  }
+  const ranks = [...byGroup.values()].sort((x, y) => y - x);
+  if (ranks.length === 0) return 'info';
+  if (ranks.length === 1) return SEVERITY_NAMES[Math.min(ranks[0], SEVERITY_RANK.medium)];
+  const rank = ranks[0] >= SEVERITY_RANK.high ? Math.max(ranks[1], SEVERITY_RANK.medium) : ranks[1];
+  return SEVERITY_NAMES[rank];
+}
+
+/**
+ * Qualification d'un événement : gravité signalée (pic des articles), zone, temporalité, motifs.
+ * Zone et temporalité nulles quand aucun article n'est qualifié (articles antérieurs à kw-2).
+ * @param {Array<{ severity: string | null, zone?: string | null, temporality?: string | null, reasons?: string[] }>} articles
+ * @param {string} severity  gravité retenue (corroboratedSeverity)
+ */
+export function qualifyEvent(articles, severity) {
+  let peak = 0;
+  const zones = new Set();
+  const times = new Set();
+  const reasons = new Set();
+  for (const a of articles) {
+    peak = Math.max(peak, rankOf(a.severity));
+    if (a.zone) zones.add(a.zone);
+    if (a.temporality) times.add(a.temporality);
+    for (const r of a.reasons ?? []) reasons.add(r);
+  }
+  if (peak > rankOf(severity)) reasons.add('non_confirme');
+  const zone = zones.has('france') ? 'france' : zones.has('etranger') ? 'etranger' : zones.has('indeterminee') ? 'indeterminee' : null;
+  const temporality = times.has('en_cours') ? 'en_cours' : times.has('a_venir') ? 'a_venir' : times.has('passe') ? 'passe' : null;
+  return { peakSeverity: SEVERITY_NAMES[peak], zone, temporality, reasons: REASON_ORDER.filter((r) => reasons.has(r)) };
+}
+
+/**
  * @typedef {{ id: number, title: string, feedId: string, feedName: string | null, tier: number | null,
- *   publishedAt: number, category: string | null, severity: string | null, lat: number | null, lon: number | null }} MemberArticle
+ *   publishedAt: number, category: string | null, severity: string | null, lat: number | null, lon: number | null,
+ *   zone?: string | null, temporality?: string | null, reasons?: string[] }} MemberArticle
  * @typedef {{ title: string, category: string, severity: string, firstSeen: number, lastSeen: number,
  *   articleCount: number, sourceCount: number, independentCount: number, sourceNames: string[],
- *   lat: number | null, lon: number | null }} EventAggregate
+ *   lat: number | null, lon: number | null, peakSeverity: string, zone: string | null,
+ *   temporality: string | null, reasons: string[] }} EventAggregate
  */
 
 /**
  * Agrège les articles d'un événement. Titre représentatif : l'article du flux de meilleur rang
  * (tier le plus bas), puis le plus ancien. Catégorie : la plus fréquente hors « general ».
- * Gravité : la plus élevée observée.
+ * Gravité retenue : corroboratedSeverity ; qualification : qualifyEvent.
  * @param {MemberArticle[]} articles  au moins un article
  * @returns {EventAggregate}
  */
@@ -58,7 +109,6 @@ export function summarizeEvent(articles) {
   const sorted = [...articles].sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || a.publishedAt - b.publishedAt || a.id - b.id);
   const representative = sorted[0];
   const categoryCounts = new Map();
-  let severity = 'info';
   let firstSeen = Infinity;
   let lastSeen = -Infinity;
   const feeds = new Set();
@@ -71,7 +121,6 @@ export function summarizeEvent(articles) {
   const chronological = [...articles].sort((a, b) => a.publishedAt - b.publishedAt || a.id - b.id);
   for (const a of chronological) {
     if (a.category && a.category !== 'general') categoryCounts.set(a.category, (categoryCounts.get(a.category) ?? 0) + 1);
-    if (a.severity && rankOf(a.severity) > rankOf(severity)) severity = a.severity;
     firstSeen = Math.min(firstSeen, a.publishedAt);
     lastSeen = Math.max(lastSeen, a.publishedAt);
     if (!feeds.has(a.feedId)) {
@@ -84,10 +133,12 @@ export function summarizeEvent(articles) {
   let category = 'general';
   let best = 0;
   for (const [c, n] of categoryCounts) if (n > best) { best = n; category = c; }
+  const severity = corroboratedSeverity(articles);
   return {
     title: decodeEntities(representative.title).replace(/\s+/g, ' ').trim(),
     category,
     severity,
+    ...qualifyEvent(articles, severity),
     firstSeen,
     lastSeen,
     articleCount: articles.length,

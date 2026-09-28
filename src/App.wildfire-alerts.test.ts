@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { ActiveFire, FireIncident, LocatedFireIncident } from './types/index.ts';
+import { PressAlertSource } from './services/press-alert-source.ts';
 
 const { fetchFiresData, resolveIncidentGeography } = vi.hoisted(() => ({
   fetchFiresData: vi.fn(),
@@ -60,6 +61,7 @@ function appForAlerts(currentFireIncidents: LocatedFireIncident[]): App & Record
     currentAisAnomalies: [],
     currentFireIncidents,
     alertMonitorCache: new Map(),
+    pressAlertSource: new PressAlertSource(),
   });
   return app;
 }

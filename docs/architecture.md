@@ -45,6 +45,17 @@ Raw domain signals converge into a country-level intelligence pipeline (`src/ser
 2. The stability score v3 derives from pressure pillars (baseline 95 minus progressive deductions), is capped by active situations and smoothed against a local 7-day history; the full per-pillar breakdown ships with each snapshot for explainability.
 3. A structured intelligence brief (BLUF, prioritised judgments, watch items) is generated server-side as validated JSON (Groq), with a deterministic client-side fallback built from the same detected situations — outputs remain auditable even without any LLM.
 
+## News Classification
+
+Server-side ingestion (`api/ingest/news.ts`, every 30 min) qualifies each article, then groups articles into events. Every article and event carries a reported severity, a kept (operational) severity, a timing (ongoing / past / upcoming), a location (France / abroad / undetermined) and the reasons for any downgrade — following the separation of severity, urgency and certainty of the Common Alerting Protocol.
+
+1. **Keywords (`kw-2`)** — `src/services/classifier.ts` + `src/services/classification-guards.ts`, shared with the browser and bundled into `api/_lib/server-classifier.js` (generated).
+2. **LLM arbitration (`groq-2` / `llm-2`)** — `api/_lib/llm-pass.js` sends at most 2 batches of 10 articles per run with a written 5-level scale to an OpenAI-compatible endpoint (Groq by default, configurable); the server applies the caps.
+3. **Event severity** — `api/_lib/event-model.js`: each media group counts once; an event keeps the second-highest group level; a single group is capped at `medium` and shown as "to be confirmed" when reported higher.
+4. **Screen** — press enters the "À traiter" list only through consolidated events; the event card explains the level.
+
+See `docs/classification.md` for the rules, measurements and known limits.
+
 ## Reuse Model
 
 The intended European reuse model is country-specific connector modules feeding a common presentation and API-proxy architecture. A new country should be able to add:

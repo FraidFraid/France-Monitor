@@ -4,6 +4,21 @@ import type { LineString, MultiLineString, Polygon } from 'geojson';
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
+/** Temporalité d'un article ou d'un événement (axe « urgency » du CAP, spec 2026-09-28 § 4.1). */
+export type EventTemporality = 'en_cours' | 'passe' | 'a_venir';
+
+/** Zone d'un article ou d'un événement. */
+export type EventZone = 'france' | 'etranger' | 'indeterminee';
+
+/** Motif d'abaissement de la gravité (spec 2026-09-28 § 4.1). */
+export type ClassificationReason =
+  | 'declencheur_hors_titre'
+  | 'metaphore'
+  | 'passe'
+  | 'hypothetique'
+  | 'etranger'
+  | 'non_confirme';
+
 export type EventCategory =
   | 'social'
   | 'security'
@@ -106,7 +121,7 @@ export interface NewsItem {
   noise?: boolean;            // true = à masquer par défaut (hors sujet / fait divers isolé)
   alertable?: boolean;        // true = remplit les critères d'alerte (cf. jev-policy.derive)
   scope?: string;             // 'commune' | 'departement' | 'region' | 'national' | 'international' | 'unknown'
-  scoredBy?: 'keywords' | 'groq' | 'jev';  // moteur ayant produit category/severity/confidence
+  scoredBy?: 'keywords' | 'groq' | 'jev' | 'llm';  // moteur ayant produit category/severity/confidence
 }
 
 // ═══ Time & Filters ═══
@@ -1680,6 +1695,11 @@ export interface NewsEvent {
   sourceNames: string[];                 // ≤ 8, ordre d'apparition
   lat: number | null;
   lon: number | null;
+  /** Gravité la plus élevée signalée par ses articles ; > severity → « à confirmer » (spec 2026-09-28). */
+  peakSeverity?: ThreatLevel;
+  temporality?: EventTemporality | null;
+  zone?: EventZone | null;
+  reasons?: ClassificationReason[];
 }
 
 export interface NewsEventChange {
@@ -1726,6 +1746,16 @@ export interface IntelEventsState {
   anchor: IntelVisitAnchor;
   fetchedAt: number;
   unavailable: boolean;                  // historique serveur injoignable : le dire, ne rien inventer
+}
+
+/** Événement consolidé et corroboré repris comme alerte presse (spec 2026-09-28 § 4.7). */
+export interface PressAlertEvent {
+  id: number;
+  title: string;
+  severity: ThreatLevel;
+  category: EventCategory;
+  sources: string[];
+  lastSeen: string;
 }
 
 /** Événement tel qu'envoyé au brief (contrat v14, validé par api/_lib/brief-evidence.js). */

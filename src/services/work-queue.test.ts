@@ -372,3 +372,20 @@ describe('visitCounts', () => {
     expect(visitCounts(q)).toEqual({ nouveaux: 1, aggravations: 1 });
   });
 });
+
+describe('événements à confirmer (spec 2026-09-28 § 4.7)', () => {
+  it('mono-source signalé critique : entre en jaune avec le niveau signalé', () => {
+    const q = buildWorkQueue(input({ events: eventsState({ events: [event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1, sourceCount: 1 })] }) }));
+    expect(q.items.find((i) => i.key === 'event:42')).toMatchObject({ level: 'jaune', unconfirmedPeak: 'rouge' });
+    expect(q.themeLevels.security).toBe('jaune');
+  });
+  it('corroboré à low mais signalé high : jaune, pas compté vert', () => {
+    const q = buildWorkQueue(input({ events: eventsState({ events: [event({ severity: 'low', peakSeverity: 'high', independentCount: 2 })] }) }));
+    expect(q.items.find((i) => i.key === 'event:42')).toMatchObject({ level: 'jaune', unconfirmedPeak: 'orange' });
+    expect(q.greenTracked.security).toBe(0);
+  });
+  it('confirmé : pas de mention', () => {
+    const q = buildWorkQueue(input({ events: eventsState({ events: [event()] }) }));
+    expect(q.items.find((i) => i.key === 'event:42')?.unconfirmedPeak).toBeUndefined();
+  });
+});

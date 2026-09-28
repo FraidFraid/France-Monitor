@@ -256,3 +256,23 @@ describe('fiches alerte officielle et marché', () => {
     expect(model.essentiel[0]).toBe('CAC 40 varie de −3,42 % sur la journée, au-delà du seuil de ±3 %.');
   });
 });
+
+describe('buildEventFiche — qualification', () => {
+  it('mono-source signalé critique : « à confirmer » et motifs dans « Pourquoi ce niveau ? »', () => {
+    const fiche = buildEventFiche({
+      event: event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1, sourceCount: 1, zone: 'france', temporality: 'en_cours', reasons: ['non_confirme'] }),
+      detail: undefined, whyOpen: true, lang: 'fr', now: NOW,
+    });
+    expect(fiche.level).toBe('jaune');
+    expect(fiche.driver).toBe('À confirmer — signalé rouge, source unique');
+    expect(fiche.why).toContain('Gravité signalée : rouge → retenue : jaune');
+    expect(fiche.why).toContain('Lieu : en France');
+    expect(fiche.why).toContain('Temporalité : en cours');
+    expect(fiche.why).toContain('niveau le plus grave signalé par une seule source indépendante');
+  });
+  it('événement antérieur au déploiement : ni lieu ni motifs', () => {
+    const fiche = buildEventFiche({ event: event(), detail: undefined, whyOpen: true, lang: 'fr', now: NOW });
+    expect(fiche.why).not.toContain('Lieu');
+    expect(fiche.why).not.toContain('Motifs');
+  });
+});

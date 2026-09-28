@@ -7,6 +7,7 @@
 
 import { neon } from '@neondatabase/serverless';
 import { decodeHtmlEntities } from './parse-rss.js';
+import { decodeReasons } from './classification-columns.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const STATUSES = ['active', 'cooling', 'closed'];
@@ -39,6 +40,10 @@ export function mapEventRow(row) {
     sourceNames: Array.isArray(row.source_names) ? row.source_names.map(String) : [],
     lat: toNum(row.lat),
     lon: toNum(row.lon),
+    peakSeverity: row.peak_severity == null ? String(row.severity) : String(row.peak_severity),
+    temporality: row.temporality == null ? null : String(row.temporality),
+    zone: row.zone == null ? null : String(row.zone),
+    reasons: decodeReasons(row.reasons),
   };
 }
 
@@ -76,11 +81,17 @@ export function parseSince(raw, now) {
  */
 export async function listEvents(sql, { statuses, limit }) {
   const rows = await sql`
-    SELECT * FROM news_events
-    WHERE status = ANY(${statuses}::text[])
-      AND NOT (severity = 'info' AND independent_count < 2)
-    ORDER BY array_position(ARRAY['info','low','medium','high','critical'], severity) + LEAST(independent_count - 1, 2) DESC,
-             last_seen DESC, id DESC
+    SELECT * FROM news_events e
+    WHERE e.status = ANY(${statuses}::text[])
+      AND NOT (e.severity = 'info' AND e.independent_count < 2)
+    -- Un événement « à confirmer » (signalé plus haut que retenu, spec 2026-09-28) est classé au
+    -- moins par sa gravité signalée : sinon il sortirait des premiers résultats et n'atteindrait
+    -- jamais « À traiter ». peak_severity lu par to_jsonb : la requête tient avant la migration.
+    ORDER BY GREATEST(
+               array_position(ARRAY['info','low','medium','high','critical'], e.severity) + LEAST(e.independent_count - 1, 2),
+               array_position(ARRAY['info','low','medium','high','critical'], coalesce(to_jsonb(e)->>'peak_severity', e.severity))
+             ) DESC,
+             e.last_seen DESC, e.id DESC
     LIMIT ${limit}
   `;
   return rows.map(mapEventRow);
@@ -138,6 +149,8 @@ export async function listChanges(sql, since) {
     WHERE l.at >= ${sinceIso}
       AND (l.kind IN ('escalated', 'corroborated', 'reopened')
            OR (l.kind IN ('created', 'closed') AND e.severity IN ('high', 'critical'))
+           -- Signalé grave par une seule source (« à confirmer ») : sa création compte aussi.
+           OR (l.kind = 'created' AND to_jsonb(e)->>'peak_severity' IN ('high', 'critical'))
            -- Né déjà corroboré (plusieurs groupes dans le même tick) : seule l'entrée « créé »
            -- existe, sans « corroboré » ; sans cette ligne, l'actualité qui éclate partout
            -- d'un coup manquerait au fil.

@@ -46,8 +46,10 @@ describe('lecture (Postgres embarqué)', () => {
       { id: 2, feedId: 'le-monde', title: RINER, publishedAt: T0 + H, severity: 'medium' },
       { id: 3, feedId: 'sud-ouest', title: 'Bordeaux : un marché de producteurs inauguré place des Quinconces', publishedAt: T0, category: 'general', severity: 'info' },
       { id: 4, feedId: 'france-info', title: 'Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché', publishedAt: T0 + H, severity: 'critical' },
+      // 2ᵉ groupe de presse : sans lui, l'événement mono-source serait plafonné à medium (gravité corroborée).
+      { id: 6, feedId: 'le-monde', title: 'Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché', publishedAt: T0 + H, severity: 'critical' },
     ]);
-    await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4] });
+    await runEventPass(sql, { now: T0 + 2 * H, insertedIds: [1, 2, 3, 4, 6] });
     // Premier démarrage de PGlite (compilation WASM) : lent quand la suite tourne en parallèle.
   }, 30_000);
 
@@ -117,5 +119,42 @@ describe('handler /api/events', () => {
     expect(get.statusCode).toBe(503);
     expect(get.body).toEqual({ error: 'events database not configured' });
     vi.unstubAllEnvs();
+  });
+});
+
+describe('mapEventRow — qualification (spec 2026-09-28 § 4.6)', () => {
+  it('expose la qualification ; événement ancien : pic = gravité retenue, axes nuls', () => {
+    const base = { id: '7', title: 't', category: 'security', severity: 'medium', status: 'active', first_seen: '2026-09-28T06:00:00Z', last_seen: '2026-09-28T07:00:00Z', article_count: 1, source_count: 1, independent_count: 1, source_names: [], lat: null, lon: null };
+    expect(mapEventRow({ ...base, peak_severity: 'critical', zone: 'france', temporality: 'en_cours', reasons: 'non_confirme' }))
+      .toMatchObject({ peakSeverity: 'critical', zone: 'france', temporality: 'en_cours', reasons: ['non_confirme'] });
+    expect(mapEventRow(base)).toMatchObject({ peakSeverity: 'medium', zone: null, temporality: null, reasons: [] });
+  });
+});
+
+describe('classement des événements à confirmer (revue finale C1)', () => {
+  let db: Sql;
+  const LONE = 'Attentat signalé par une seule rédaction';
+  beforeAll(async () => {
+    ({ sql: db } = await createTestSql());
+    await seedFeeds(db);
+    await ensureEventTables(db);
+    const at = '2026-09-28T10:00:00Z';
+    for (let i = 1; i <= 45; i++) {
+      await db`INSERT INTO news_events (seed_article_id, title, category, severity, first_seen, last_seen, independent_count, status)
+        VALUES (${i}, ${`Corroboré ${i}`}, 'security', 'medium', ${at}, ${at}, 2, 'active')`;
+    }
+    await db`INSERT INTO news_events (seed_article_id, title, category, severity, peak_severity, first_seen, last_seen, independent_count, status)
+      VALUES (100, ${LONE}, 'security', 'medium', 'critical', '2026-09-28T09:00:00Z', '2026-09-28T09:00:00Z', 1, 'active')`;
+    await db`INSERT INTO news_event_log (event_id, at, kind, to_value)
+      SELECT id, '2026-09-28T09:00:00Z', 'created', 'medium' FROM news_events WHERE seed_article_id = 100`;
+  }, 30_000);
+
+  it('un mono-source signalé critique est classé par sa gravité signalée : il entre dans les 40 premiers', async () => {
+    const events = await listEvents(db, { statuses: ['active'], limit: 40 });
+    expect(events[0].title).toBe(LONE);
+  });
+  it('sa création apparaît dans le fil des changements', async () => {
+    const out = await listChanges(db, new Date('2026-09-28T08:00:00Z'));
+    expect(out.changes.map((c: { event: { title: string } }) => c.event.title)).toContain(LONE);
   });
 });

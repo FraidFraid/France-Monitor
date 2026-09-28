@@ -19,9 +19,10 @@
  *  4. Sélection des feeds dus (enabled, next_poll_at, cooldown) — max 40.
  *  5. Fetch (timeout 10 s) → parse (api/_lib/parse-rss.js) → hash sha256 →
  *     classification keyword (api/_lib/server-classifier.js) → INSERT déduped.
- *  5.5 Si GROQ_API_KEY défini ET NEWS_SCORING !== 'jev' : classification LLM
- *     des articles ambigus (confidence < 0.60, max GROQ_BUDGET_PER_TICK = 15/tick)
- *     — UPDATE category/severity in place.
+ *  5.5 Si un LLM de classement est configuré (CLASSIFIER_LLM_* ou GROQ_API_KEY, voir
+ *     api/_lib/llm-classifier.js) ET NEWS_SCORING !== 'jev' : passe par lots
+ *     (api/_lib/llm-pass.js) — candidats high/critical puis ambigus, 2 lots de 10 au plus,
+ *     qualification écrite (gravité retenue et signalée, zone, temporalité, motifs).
  *  5.6 Si NEWS_SCORING = 'shadow' | 'jev' ET TYPESAFE_API_KEY défini : scoring
  *     Jev (api/_lib/jev-client.js + jev-policy.js) des articles insérés ce
  *     tick (repli sur les plus anciens non encore scorés), budget
@@ -44,9 +45,12 @@ import { Redis } from '@upstash/redis';
 import { getDb, hasDatabaseUrl, contentHash, computeBackoffMs } from '../_lib/db.js';
 import { parseRssXml } from '../_lib/parse-rss.js';
 import { classify, CLASSIFIER_VERSION } from '../_lib/server-classifier.js';
+import { ensureClassificationColumns } from '../_lib/classification-columns.js';
+import { insertNewsItems } from '../_lib/news-items-write.js';
 import { geocodeNewsItem } from '../_lib/server-geocoder.js';
 import { FEEDS } from '../_lib/feeds-snapshot.js';
-import { classifyWithGroq } from '../_lib/groq-classifier.js';
+import { classifierLlmConfig } from '../_lib/llm-classifier.js';
+import { runLlmPass } from '../_lib/llm-pass.js';
 import {
   scoreArticle,
   JevAuthError,
@@ -61,8 +65,6 @@ import { ensureEventTables, runEventPass } from '../_lib/news-events-db.js';
 
 export const config = { maxDuration: 300 };
 
-const GROQ_BUDGET_PER_TICK = 15;
-const GROQ_CONFIDENCE = 0.75;
 
 // ─── Scoring Jev (TypeSafe), désactivé par défaut — coût nul tant que
 // NEWS_SCORING n'est pas positionné. 'off' (défaut) | 'shadow' | 'jev'. ───
@@ -95,10 +97,24 @@ interface IngestTickSummary {
   durationMs: number;
   jev?: JevPassResult & { mode: string };
   events?: EventPassStats;
+  /** Bilan de la passe LLM (quota épuisé, lots illisibles) : visible dans /api/health-check. */
+  llm?: { classified: number; calls: number; unreadable: number; stopped: string | null };
 }
 
 // Tables d'événements créées une fois par instance chaude (DDL idempotent, mais 7 allers-retours).
 let eventTablesReady = false;
+let classificationColumnsReady = false;
+
+/** Sortie qualifiée de classify() (api/_lib/server-classifier.js, généré). */
+interface ServerClassification {
+  category: string;
+  severity: string;
+  confidence: number;
+  reportedSeverity: string | null;
+  temporality: string | null;
+  zone: string | null;
+  reasons: string[];
+}
 
 // ─── Types minimaux Vercel Node (pattern api/sentinel-ndwi.ts) ───
 
@@ -274,16 +290,7 @@ async function processFeed(sql: NeonSql, feed: FeedRow): Promise<FeedResult> {
   const inserted: InsertedItem[] = [];
 
   if (items.length > 0) {
-    const hashes: string[] = [];
-    const feedIds: string[] = [];
-    const titles: string[] = [];
-    const links: string[] = [];
-    const descriptions: Array<string | null> = [];
-    const publishedAts: Array<string | null> = [];
-    const categories: string[] = [];
-    const severities: string[] = [];
-    const confidences: number[] = [];
-    const versions: string[] = [];
+    const rows: Parameters<typeof insertNewsItems>[1] = [];
     const seenHashes = new Set<string>();
 
     for (const item of items) {
@@ -291,55 +298,25 @@ async function processFeed(sql: NeonSql, feed: FeedRow): Promise<FeedResult> {
       if (seenHashes.has(hash)) continue; // dédup intra-flux
       seenHashes.add(hash);
 
-      let category = 'general';
-      let severity = 'info';
-      let confidence = 0.2;
+      let classified: ServerClassification;
       let version: string = CLASSIFIER_VERSION;
       try {
-        const result = classify(item.title, item.description) as {
-          category: string;
-          severity: string;
-          confidence: number;
-        };
-        category = result.category;
-        severity = result.severity;
-        confidence = result.confidence;
+        classified = classify(item.title, item.description) as ServerClassification;
       } catch {
         // Classifier en erreur : on insère quand même, marqué 'error'.
-        category = 'general';
-        severity = 'info';
-        confidence = 0;
+        classified = { category: 'general', severity: 'info', confidence: 0, reportedSeverity: null, temporality: null, zone: null, reasons: [] };
         version = 'error';
       }
-
-      hashes.push(hash);
-      feedIds.push(feed.id);
-      titles.push(item.title);
-      links.push(item.link);
-      descriptions.push(item.description ?? null);
-      publishedAts.push(parsePublishedAt(item.pubDate));
-      categories.push(category);
-      severities.push(severity);
-      confidences.push(confidence);
-      versions.push(version);
+      rows.push({
+        hash, feedId: feed.id, title: item.title, link: item.link, description: item.description ?? null,
+        publishedAt: parsePublishedAt(item.pubDate), category: classified.category, severity: classified.severity,
+        confidence: classified.confidence, version, reportedSeverity: classified.reportedSeverity,
+        temporality: classified.temporality, zone: classified.zone, reasons: classified.reasons,
+      });
     }
 
-    if (hashes.length > 0) {
-      const rows = await sql`
-        INSERT INTO news_items
-          (content_hash, feed_id, title, link, description, published_at,
-           category, severity, confidence, classifier_version)
-        SELECT * FROM unnest(
-          ${hashes}::text[], ${feedIds}::text[], ${titles}::text[], ${links}::text[],
-          ${descriptions}::text[], ${publishedAts}::timestamptz[],
-          ${categories}::text[], ${severities}::text[], ${confidences}::real[], ${versions}::text[]
-        )
-        ON CONFLICT (content_hash) DO NOTHING
-        RETURNING id, title
-      `;
-      for (const row of rows) {
-        inserted.push({ id: Number(row.id), title: String(row.title), region: feed.region });
-      }
+    for (const row of await insertNewsItems(sql, rows)) {
+      inserted.push({ id: row.id, title: row.title, region: feed.region });
     }
   }
 
@@ -618,6 +595,12 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     // 1. Sync config → table feeds
     await syncFeeds(sql);
 
+    // 1.5 Colonnes de qualification (idempotent, une fois par processus) : avant toute insertion.
+    if (!classificationColumnsReady) {
+      await ensureClassificationColumns(sql);
+      classificationColumnsReady = true;
+    }
+
     // 2. Feeds dus
     const dueRows = await sql`
       SELECT id, url, name, region, tier, poll_interval_s, consecutive_failures
@@ -639,50 +622,24 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       if (result.error) errors.push({ feedId: result.feedId, error: result.error });
     }
 
-    // 3.5 Optional Groq LLM classification for ambiguous articles
-    // (sautée quand Jev remplace la reclassification, NEWS_SCORING='jev')
+    // 3.5 Passe LLM par lots (groq-2 / llm-2), sautée quand Jev remplace la reclassification.
+    // Le champ du bilan garde son nom historique (groqClassified).
     let groqClassified = 0;
-    const groqApiKey = process.env['GROQ_API_KEY'];
-    if (groqApiKey && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
+    let llmOutcome: IngestTickSummary['llm'];
+    const llm = classifierLlmConfig();
+    if (llm && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
       try {
-        const ids = insertedItems.map(i => i.id);
-        const candidates = await sql`
-          SELECT id, title, description
-          FROM news_items
-          WHERE id = ANY(${ids}::bigint[])
-            AND confidence < 0.60
-            AND classifier_version = ${CLASSIFIER_VERSION}
-          ORDER BY confidence ASC
-          LIMIT ${GROQ_BUDGET_PER_TICK}
-        `;
-
-        for (const row of candidates) {
-          if (Date.now() >= deadline) break;
-
-          try {
-            const result = await classifyWithGroq(
-              groqApiKey,
-              String(row.title),
-              row.description != null ? String(row.description) : null,
-            );
-            if (result) {
-              await sql`
-                UPDATE news_items
-                SET category = ${result.category},
-                    severity = ${result.severity},
-                    confidence = ${GROQ_CONFIDENCE},
-                    classifier_version = 'groq-1'
-                WHERE id = ${row.id}
-              `;
-              groqClassified++;
-            }
-          } catch (err) {
-            console.warn('[ingest] Groq pass stopped:', err instanceof Error ? err.message : err);
-            break;
-          }
-        }
+        llmOutcome = await runLlmPass(sql, {
+          llm,
+          insertedIds: insertedItems.map((i) => i.id),
+          keywordVersion: CLASSIFIER_VERSION,
+          deadline,
+          // Lots par passage (2 par défaut, ~165 000 jetons/j) : à baisser si le quota gratuit sature.
+          batchesPerTick: Number(process.env['CLASSIFIER_LLM_BATCHES_PER_TICK']) || undefined,
+        }) as IngestTickSummary['llm'];
+        groqClassified = llmOutcome?.classified ?? 0;
       } catch (err) {
-        console.warn('[ingest] Groq candidate query failed:', err instanceof Error ? err.message : err);
+        console.warn('[ingest] LLM pass failed:', err instanceof Error ? err.message : err);
       }
     }
 
@@ -736,6 +693,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       durationMs: Date.now() - startedAt,
       ...(jevResult ? { jev: { ...jevResult, mode: NEWS_SCORING } } : {}),
       ...(eventStats ? { events: eventStats } : {}),
+      ...(llmOutcome ? { llm: llmOutcome } : {}),
     };
 
     status = 200;
@@ -743,6 +701,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       processedFeeds: results.length,
       newItems: insertedItems.length,
       groqClassified,
+      llm: llmOutcome ?? null,
       geocoded,
       newsScoring: NEWS_SCORING,
       jev: jevResult,

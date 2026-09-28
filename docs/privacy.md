@@ -20,6 +20,16 @@ The intended fallback chain is:
 
 This keeps local processing as the default preference and avoids exposing cloud credentials client-side.
 
+### News article classification
+
+To rate the severity of press articles, the ingestion server sends each article's **title and a summary excerpt** (200 characters at most) to the configured LLM endpoint, in batches of 10. These are public press contents, which may name people; no user data is ever sent.
+
+- Default provider: **Groq** (United States), free tier.
+- Replaceable without code changes through `CLASSIFIER_LLM_URL`, `CLASSIFIER_LLM_MODEL` and `CLASSIFIER_LLM_KEY` (any OpenAI-compatible endpoint) — for instance **Albert**, the French State AI API reserved for public administrations, or an **Ollama** instance run by the operator.
+- Known limitation: while Groq is used, these excerpts leave the European Union. A deployment for a public administration must switch to a sovereign provider.
+
+See `docs/classification.md` for the classification rules and their measured behaviour.
+
 ## Safety Boundaries
 
 France Monitor is a monitoring and correlation tool. It is not:

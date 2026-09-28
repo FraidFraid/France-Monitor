@@ -33,6 +33,7 @@ function relative(since: number, now: number, lang: Lang, ongoing: boolean): str
 /** « Rouge · Seine-Maritime · il y a 30 min · 3 sources indép. » (spec §7.2), texte brut. */
 export function rowMeta(item: WorkItem, lang: Lang, now: number): string {
   const parts = [levelLabel(item.level, lang)];
+  if (item.unconfirmedPeak) parts.push(`${lang === 'fr' ? 'signalé' : 'reported'} ${levelLabel(item.unconfirmedPeak, lang)}`);
   if (item.place) parts.push(item.place);
   if (item.since !== null) {
     // Un événement ou une alerte datent d'un instant (« il y a ») ; une situation dure (« depuis »).
@@ -49,9 +50,11 @@ export function rowMeta(item: WorkItem, lang: Lang, now: number): string {
 
 function badgeHtml(item: WorkItem, lang: Lang): string {
   // Majuscules du §7.2, exception explicite au §4.3 (arbitrage A4) ; couleur neutre (§2).
-  if (item.badge === 'nouveau') return ` <span class="wl-badge">${lang === 'fr' ? 'NOUVEAU' : 'NEW'}</span>`;
-  if (item.badge === 'aggrave') return ` <span class="wl-badge">${lang === 'fr' ? 'AGGRAVÉ' : 'ESCALATED'}</span>`;
-  return '';
+  // Événement signalé grave par une seule source (spec 2026-09-28 § 4.7).
+  const confirm = item.unconfirmedPeak ? ` <span class="wl-badge">${lang === 'fr' ? 'À CONFIRMER' : 'UNCONFIRMED'}</span>` : '';
+  if (item.badge === 'nouveau') return confirm + ` <span class="wl-badge">${lang === 'fr' ? 'NOUVEAU' : 'NEW'}</span>`;
+  if (item.badge === 'aggrave') return confirm + ` <span class="wl-badge">${lang === 'fr' ? 'AGGRAVÉ' : 'ESCALATED'}</span>`;
+  return confirm;
 }
 
 export function renderWorkList(model: WorkListModel): string {

@@ -4,7 +4,10 @@
 // AlertMonitor et que le §14 exige que leur détail reste accessible (arbitrage A1).
 
 import type {
+  ClassificationReason,
   DetectedSituation,
+  EventTemporality,
+  EventZone,
   FranceCountrySnapshot,
   IntelEventsState,
   NewsEvent,
@@ -15,12 +18,14 @@ import type {
 import {
   MARKET_ALERT_THRESHOLD,
   confidenceLabel,
+  eventDisplayLevel,
   eventLevel,
   formatSignedPct,
   levelLabel,
   levelPhrase,
   levelVigilanceWord,
   situationLevel,
+  unconfirmedPeakLevel,
 } from '../../services/vigilance.ts';
 import { categoryTheme, themeLabel, type SpecificThemeId } from '../../services/themes.ts';
 import {
@@ -233,15 +238,36 @@ function logText(entry: NewsEventDetail['log'][number], lang: Lang): string {
   return entry.to !== null ? `${label} · ${value(entry.to)}` : label;
 }
 
+const REASON_LABEL: Record<ClassificationReason, [string, string]> = {
+  declencheur_hors_titre: ['mot-clé présent seulement dans le résumé', 'keyword only in the summary'],
+  metaphore: ['emploi figuré écarté (« séisme politique »)', 'figurative use ignored'],
+  passe: ['procès, enquête ou rappel d’un fait passé', 'trial, inquiry or past event'],
+  hypothetique: ['hypothèse ou risque évoqué', 'hypothesis or possible risk'],
+  etranger: ['à l’étranger, sans effet déclaré sur la France', 'abroad, no stated effect on France'],
+  non_confirme: ['niveau le plus grave signalé par une seule source indépendante (à confirmer)', 'highest level reported by a single independent source (unconfirmed)'],
+};
+const ZONE_LABEL: Record<EventZone, [string, string]> = {
+  france: ['en France', 'in France'], etranger: ['à l’étranger', 'abroad'], indeterminee: ['non déterminé', 'undetermined'],
+};
+const TEMPORALITY_LABEL: Record<EventTemporality, [string, string]> = {
+  en_cours: ['en cours', 'ongoing'], passe: ['fait passé', 'past event'], a_venir: ['hypothèse, à venir', 'hypothesis, upcoming'],
+};
+
 export function buildEventFiche(input: EventFicheInput): FicheModel {
   const { event: e, detail, lang, now } = input;
-  const level = eventLevel(e.severity);
+  const level = eventDisplayLevel(e.severity, e.peakSeverity);
   const indep = e.independentCount;
-  const driver = indep >= 2
+  const baseDriver = indep >= 2
     ? t(lang, `${indep} sources indépendantes`, `${indep} independent sources`)
     : e.sourceCount > 1
       ? t(lang, `${e.sourceCount} titres du même groupe`, `${e.sourceCount} outlets from one group`)
       : t(lang, 'source unique', 'single source');
+  const unconfirmed = unconfirmedPeakLevel(e.severity, e.peakSeverity);
+  const driver = unconfirmed
+    ? `${t(lang, `À confirmer — signalé ${levelLabel(unconfirmed, lang).toLowerCase()}`, `Unconfirmed — reported ${levelLabel(unconfirmed, lang).toLowerCase()}`)}, ${baseDriver}`
+    : baseDriver;
+  const i = lang === 'fr' ? 0 : 1;
+  const reasons = (e.reasons ?? []).map((r) => REASON_LABEL[r][i]);
   const names = e.sourceNames.slice(0, 4).join(', ');
   const since = formatClock(parseTime(e.firstSeen) ?? now, lang);
   const loaded = detail !== undefined && detail !== 'loading' && detail !== 'error' ? detail : null;
@@ -266,6 +292,10 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
     + `<li>${t(lang, 'Corroboration', 'Corroboration')} : ${t(lang,
       `${indep} groupe${plural(indep)} de presse indépendant${plural(indep)} sur ${e.sourceCount} flux`,
       `${indep} independent press group${plural(indep)} across ${e.sourceCount} feeds`)}</li>`
+    + `<li>${t(lang, 'Gravité signalée', 'Reported severity')} : ${levelLabel(eventLevel(e.peakSeverity ?? e.severity), lang).toLowerCase()} → ${t(lang, 'retenue', 'kept')} : ${levelLabel(level, lang).toLowerCase()}</li>`
+    + (e.zone ? `<li>${t(lang, 'Lieu', 'Location')} : ${ZONE_LABEL[e.zone][i]}</li>` : '')
+    + (e.temporality ? `<li>${t(lang, 'Temporalité', 'Timing')} : ${TEMPORALITY_LABEL[e.temporality][i]}</li>` : '')
+    + (reasons.length > 0 ? `<li>${t(lang, 'Motifs', 'Reasons')} : ${escapeHtml(reasons.join(' ; '))}</li>` : '')
     + `<li>${t(lang, 'Statut', 'Status')} : ${status}</li>`
     + `</ul>`;
   return {

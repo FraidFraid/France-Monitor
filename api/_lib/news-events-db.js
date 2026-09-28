@@ -9,6 +9,7 @@
 
 import { planEventAssignments } from './event-clustering.js';
 import { summarizeEvent, eventStatusAt, diffEvent } from './event-model.js';
+import { ensureClassificationColumns, encodeReasons, decodeReasons } from './classification-columns.js';
 
 export const EVENTS_BUDGET_PER_TICK = 1000;
 const WINDOW_HOURS = 72;
@@ -49,6 +50,11 @@ export async function ensureEventTables(sql) {
   await sql`CREATE INDEX IF NOT EXISTS idx_news_event_log_at ON news_event_log (at DESC)`;
   await sql`ALTER TABLE news_items ADD COLUMN IF NOT EXISTS event_id bigint`;
   await sql`CREATE INDEX IF NOT EXISTS idx_news_items_event ON news_items (event_id)`;
+  await sql`ALTER TABLE news_events ADD COLUMN IF NOT EXISTS peak_severity text`;
+  await sql`ALTER TABLE news_events ADD COLUMN IF NOT EXISTS temporality text`;
+  await sql`ALTER TABLE news_events ADD COLUMN IF NOT EXISTS zone text`;
+  await sql`ALTER TABLE news_events ADD COLUMN IF NOT EXISTS reasons text`;
+  await ensureClassificationColumns(sql);
 }
 
 const toMs = (v) => (v instanceof Date ? v.getTime() : Date.parse(String(v)));
@@ -200,7 +206,7 @@ async function refreshEvents(sql, eventIds, assignments, now) {
   const rows = await sql`
     SELECT n.id, n.event_id, n.title, n.feed_id, f.name AS feed_name, f.tier,
            LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
-           n.category, n.severity, n.lat, n.lon
+           n.category, n.severity, n.lat, n.lon, n.zone, n.temporality, n.reasons
     FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE n.event_id = ANY(${eventIds}::bigint[]) OR n.id = ANY(${pendingIds}::bigint[])
   `;
@@ -220,9 +226,11 @@ async function refreshEvents(sql, eventIds, assignments, now) {
       id: Number(r.id), title: String(r.title), feedId: String(r.feed_id), feedName: r.feed_name === null ? null : String(r.feed_name),
       tier: toNum(r.tier), publishedAt: toMs(r.effective_at), category: r.category === null ? null : String(r.category),
       severity: r.severity === null ? null : String(r.severity), lat: toNum(r.lat), lon: toNum(r.lon),
+      zone: r.zone == null ? null : String(r.zone), temporality: r.temporality == null ? null : String(r.temporality),
+      reasons: decodeReasons(r.reasons),
     });
   }
-  const cols = { id: [], title: [], category: [], severity: [], first: [], last: [], articles: [], sources: [], independent: [], names: [], lat: [], lon: [], status: [] };
+  const cols = { id: [], title: [], category: [], severity: [], first: [], last: [], articles: [], sources: [], independent: [], names: [], lat: [], lon: [], status: [], peak: [], temporality: [], zone: [], reasons: [] };
   const log = [];
   let created = 0;
   for (const [id, articles] of byEvent) {
@@ -232,6 +240,7 @@ async function refreshEvents(sql, eventIds, assignments, now) {
     cols.first.push(new Date(agg.firstSeen).toISOString()); cols.last.push(new Date(agg.lastSeen).toISOString());
     cols.articles.push(agg.articleCount); cols.sources.push(agg.sourceCount); cols.independent.push(agg.independentCount);
     cols.names.push(JSON.stringify(agg.sourceNames)); cols.lat.push(agg.lat); cols.lon.push(agg.lon); cols.status.push(status);
+    cols.peak.push(agg.peakSeverity); cols.temporality.push(agg.temporality); cols.zone.push(agg.zone); cols.reasons.push(encodeReasons(agg.reasons));
     const previous = before.get(id) ?? null;
     if (previous === null) created += 1;
     for (const entry of diffEvent(previous, { severity: agg.severity, independentCount: agg.independentCount, status })) log.push({ eventId: id, ...entry });
@@ -243,12 +252,16 @@ async function refreshEvents(sql, eventIds, assignments, now) {
       first_seen = v.first_seen, last_seen = v.last_seen,
       article_count = v.article_count, source_count = v.source_count, independent_count = v.independent_count,
       source_names = ARRAY(SELECT jsonb_array_elements_text(v.names::jsonb)),
-      lat = v.lat, lon = v.lon, status = v.status, updated_at = now()
+      lat = v.lat, lon = v.lon, status = v.status,
+      peak_severity = v.peak_severity, temporality = v.temporality, zone = v.zone, reasons = v.reasons,
+      updated_at = now()
     FROM unnest(
       ${cols.id}::bigint[], ${cols.title}::text[], ${cols.category}::text[], ${cols.severity}::text[],
       ${cols.first}::timestamptz[], ${cols.last}::timestamptz[], ${cols.articles}::int[], ${cols.sources}::int[],
-      ${cols.independent}::int[], ${cols.names}::text[], ${cols.lat}::float8[], ${cols.lon}::float8[], ${cols.status}::text[]
-    ) AS v(id, title, category, severity, first_seen, last_seen, article_count, source_count, independent_count, names, lat, lon, status)
+      ${cols.independent}::int[], ${cols.names}::text[], ${cols.lat}::float8[], ${cols.lon}::float8[], ${cols.status}::text[],
+      ${cols.peak}::text[], ${cols.temporality}::text[], ${cols.zone}::text[], ${cols.reasons}::text[]
+    ) AS v(id, title, category, severity, first_seen, last_seen, article_count, source_count, independent_count, names, lat, lon, status,
+           peak_severity, temporality, zone, reasons)
     WHERE e.id = v.id
   `;
   return { logged: await writeLog(sql, log, now), created };
