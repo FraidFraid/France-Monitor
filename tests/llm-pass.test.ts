@@ -39,7 +39,7 @@ describe('runLlmPass', () => {
       calls.push(batch.map((a) => a.id));
       return batch.map((a) => (a.id === 1 ? judgment(4) : a.id === 2 ? judgment(3) : null));
     });
-    expect(await runLlmPass(sql, opts(classify, 5))).toBe(2);
+    expect(await runLlmPass(sql, opts(classify, 5))).toEqual({ classified: 2, calls: 1, unreadable: 0, stopped: null });
     expect(calls).toEqual([[1, 2, 3]]);
     const rows = await sql`SELECT id, severity, reported_severity, zone, temporality, reasons, confidence, classifier_version FROM news_items ORDER BY id`;
     expect(rows[0]).toMatchObject({ severity: 'medium', reported_severity: 'critical', zone: 'etranger', temporality: 'en_cours', reasons: 'etranger', classifier_version: 'groq-2' });
@@ -56,7 +56,7 @@ describe('runLlmPass', () => {
     const classify = vi.fn()
       .mockImplementationOnce(async (_llm: unknown, batch: unknown[]) => batch.map(() => judgment(1)))
       .mockImplementationOnce(async () => { throw Object.assign(new Error('LLM HTTP 429'), { status: 429 }); });
-    expect(await runLlmPass(sql, opts(classify, 25))).toBe(10);
+    expect(await runLlmPass(sql, opts(classify, 25))).toEqual({ classified: 10, calls: 2, unreadable: 0, stopped: 'http-429' });
     expect(classify).toHaveBeenCalledTimes(2);
     expect(classify.mock.calls[0][1]).toHaveLength(10);
     const [{ count }] = await sql`SELECT count(*)::int AS count FROM news_items WHERE classifier_version = 'groq-2'`;
@@ -68,15 +68,21 @@ describe('runLlmPass', () => {
     const classify = vi.fn()
       .mockResolvedValueOnce(null)
       .mockImplementationOnce(async (_llm: unknown, batch: unknown[]) => batch.map(() => judgment(2)));
-    expect(await runLlmPass(sql, opts(classify, 12))).toBe(2);
+    expect(await runLlmPass(sql, opts(classify, 12))).toEqual({ classified: 2, calls: 2, unreadable: 1, stopped: null });
     expect(classify).toHaveBeenCalledTimes(2);
   });
 
   it('échéance dépassée ou aucun article inséré : aucun appel', async () => {
     await insertItem({ id: 1, feedId: 'le-monde', title: 'Article', severity: 'info', confidence: 0.2 });
     const classify = vi.fn();
-    expect(await runLlmPass(sql, opts(classify, 1, Date.now() - 1))).toBe(0);
-    expect(await runLlmPass(sql, opts(classify, 0))).toBe(0);
+    expect(await runLlmPass(sql, opts(classify, 1, Date.now() - 1))).toEqual({ classified: 0, calls: 0, unreadable: 0, stopped: 'deadline' });
+    expect(await runLlmPass(sql, opts(classify, 0))).toEqual({ classified: 0, calls: 0, unreadable: 0, stopped: null });
     expect(classify).not.toHaveBeenCalled();
+  });
+
+  it('nombre de lots par passage réglable (revue finale I3)', async () => {
+    for (const id of ids(25)) await insertItem({ id, feedId: 'le-monde', title: `Article ${id}`, severity: 'info', confidence: 0.2, publishedAt: T0 + id * 1000 });
+    const classify = vi.fn(async (_llm: unknown, batch: unknown[]) => batch.map(() => judgment(1)));
+    expect(await runLlmPass(sql, { ...opts(classify, 25), batchesPerTick: 1 })).toEqual({ classified: 10, calls: 1, unreadable: 0, stopped: null });
   });
 });

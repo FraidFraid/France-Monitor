@@ -97,6 +97,8 @@ interface IngestTickSummary {
   durationMs: number;
   jev?: JevPassResult & { mode: string };
   events?: EventPassStats;
+  /** Bilan de la passe LLM (quota épuisé, lots illisibles) : visible dans /api/health-check. */
+  llm?: { classified: number; calls: number; unreadable: number; stopped: string | null };
 }
 
 // Tables d'événements créées une fois par instance chaude (DDL idempotent, mais 7 allers-retours).
@@ -623,15 +625,19 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     // 3.5 Passe LLM par lots (groq-2 / llm-2), sautée quand Jev remplace la reclassification.
     // Le champ du bilan garde son nom historique (groqClassified).
     let groqClassified = 0;
+    let llmOutcome: IngestTickSummary['llm'];
     const llm = classifierLlmConfig();
     if (llm && insertedItems.length > 0 && NEWS_SCORING !== 'jev') {
       try {
-        groqClassified = await runLlmPass(sql, {
+        llmOutcome = await runLlmPass(sql, {
           llm,
           insertedIds: insertedItems.map((i) => i.id),
           keywordVersion: CLASSIFIER_VERSION,
           deadline,
-        });
+          // Lots par passage (2 par défaut, ~165 000 jetons/j) : à baisser si le quota gratuit sature.
+          batchesPerTick: Number(process.env['CLASSIFIER_LLM_BATCHES_PER_TICK']) || undefined,
+        }) as IngestTickSummary['llm'];
+        groqClassified = llmOutcome?.classified ?? 0;
       } catch (err) {
         console.warn('[ingest] LLM pass failed:', err instanceof Error ? err.message : err);
       }
@@ -687,6 +693,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       durationMs: Date.now() - startedAt,
       ...(jevResult ? { jev: { ...jevResult, mode: NEWS_SCORING } } : {}),
       ...(eventStats ? { events: eventStats } : {}),
+      ...(llmOutcome ? { llm: llmOutcome } : {}),
     };
 
     status = 200;
@@ -694,6 +701,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       processedFeeds: results.length,
       newItems: insertedItems.length,
       groqClassified,
+      llm: llmOutcome ?? null,
       geocoded,
       newsScoring: NEWS_SCORING,
       jev: jevResult,
