@@ -197,10 +197,13 @@ install -m 644 -o root -g root "$ORACLE_DIR/Caddyfile" /etc/caddy/Caddyfile
 
 if command -v caddy >/dev/null 2>&1; then
   log "validation du Caddyfile"
-  caddy validate --config /etc/caddy/Caddyfile || {
+  # Sous l'utilisateur caddy : lancée en root, la validation crée les journaux au nom de root et
+  # le service caddy ne peut plus les ouvrir (« permission denied », vu le 28/09/2026).
+  runuser -u caddy -- caddy validate --config /etc/caddy/Caddyfile || {
     echo "AVERTISSEMENT : le Caddyfile ne valide pas (attendu tant que les certificats TLS" >&2
     echo "d'origine Cloudflare ne sont pas encore déposés dans $TLS_DIR — voir docs/deployment-oracle.md §b/c)." >&2
   }
+  chown -R caddy:caddy /var/log/caddy
 fi
 
 # ─────────────────────────────────────────────────────────────────
