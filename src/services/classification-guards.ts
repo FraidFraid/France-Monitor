@@ -115,7 +115,7 @@ const AMBIGUOUS_ANCHORS = new Set([
 const FRENCH_ANCHOR_WORDS: readonly string[] = [
     'France', 'français', 'française', 'françaises', 'Hexagone', 'outre-mer', 'Élysée', 'Matignon',
     'Assemblée nationale', 'Beauvau', 'Quai d’Orsay', 'Bercy', 'préfecture', 'préfet', 'préfète', 'préfets',
-    'gendarmerie', 'gendarmes', 'SNCF', 'EDF', 'RTE', 'Enedis', 'GRDF', 'RATP', 'Corse', 'Nouvelle-Calédonie',
+    'gendarmerie', 'gendarmes', 'Vigipirate', 'ORSEC', 'SGDSN', 'DGSI', 'DGSE', 'Pnat', 'plan blanc', 'SNCF', 'EDF', 'RTE', 'Enedis', 'GRDF', 'RATP', 'Corse', 'Nouvelle-Calédonie',
     'Polynésie', 'Saint-Pierre-et-Miquelon', 'Wallis', 'Futuna', 'Saint-Martin', 'Saint-Barthélemy',
 ];
 

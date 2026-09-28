@@ -147,3 +147,10 @@ describe('isTerrorWithoutVictims (règle ajoutée après l’annotation de l’a
     'Incendie à Tours : un immeuble évacué',
   ])('victimes ou hors terrorisme : %s', (title) => expect(isTerrorWithoutVictims(title)).toBe(false));
 });
+
+describe('ancres de sécurité nationale (revue finale I4)', () => {
+  it('un plan ou un service de l’État ancre le titre en France', () => {
+    expect(titleZone('Menace iranienne : le plan Vigipirate relevé au niveau urgence attentat')).toBe('france');
+    expect(titleZone('Projet d’attentat russe déjoué : la DGSI interpelle deux hommes')).toBe('france');
+  });
+});
