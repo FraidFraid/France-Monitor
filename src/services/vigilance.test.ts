@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  unconfirmedPeakLevel,
+  eventDisplayLevel,
   briefConfidenceLabel,
   confidenceBand,
   confidenceLabel,
@@ -151,5 +153,22 @@ describe('isnrLevel (note de situation, arbitrage A8)', () => {
     expect(isnrLevel(60)).toBe('rouge');
     expect(isnrLevel(95)).toBe('rouge');
     expect(isnrLevel(Number.NaN)).toBe('jaune');
+  });
+});
+
+describe('unconfirmedPeakLevel / eventDisplayLevel', () => {
+  it('signalé critical, retenu medium → rouge non confirmé, affiché jaune', () => {
+    expect(unconfirmedPeakLevel('medium', 'critical')).toBe('rouge');
+    expect(eventDisplayLevel('medium', 'critical')).toBe('jaune');
+  });
+  it('signalé high, retenu low → orange non confirmé, affiché jaune', () => {
+    expect(unconfirmedPeakLevel('low', 'high')).toBe('orange');
+    expect(eventDisplayLevel('low', 'high')).toBe('jaune');
+  });
+  it('confirmé, signalé bas ou inconnu : null, niveau retenu', () => {
+    expect(unconfirmedPeakLevel('critical', 'critical')).toBeNull();
+    expect(unconfirmedPeakLevel('low', 'medium')).toBeNull();
+    expect(unconfirmedPeakLevel('high', undefined)).toBeNull();
+    expect(eventDisplayLevel('high', undefined)).toBe('orange');
   });
 });

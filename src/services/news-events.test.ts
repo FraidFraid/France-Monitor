@@ -3,11 +3,12 @@ import {
   digestChanges,
   loadIntelEventsState,
   parseNewsEvent,
+  pressAlertEvents,
   resetNewsEventsCircuit,
   roundDownTo5Min,
   selectBriefEvents,
 } from './news-events.ts';
-import type { NewsEvent, NewsEventChange } from '../types/index.ts';
+import type { IntelEventsState, NewsEvent, NewsEventChange, ThreatLevel } from '../types/index.ts';
 
 function event(overrides: Partial<NewsEvent> = {}): NewsEvent {
   const id = overrides.id ?? 42;
@@ -90,3 +91,29 @@ describe('parseNewsEvent — axes de qualification', () => {
     expect(parseNewsEvent(base)).toMatchObject({ peakSeverity: 'medium', zone: null, temporality: null, reasons: [] });
   });
 });
+
+describe('pressAlertEvents', () => {
+  const NOW = Date.parse('2026-09-28T10:00:00Z');
+  const ev = (id: number, severity: ThreatLevel, lastSeen: string, extra: Partial<NewsEvent> = {}): NewsEvent => ({
+    id, evidenceId: `E${id}`, title: `E${id}`, category: 'security', severity, status: 'active', firstSeen: lastSeen, lastSeen,
+    articleCount: 2, sourceCount: 4, independentCount: 2, sourceNames: ['Le Monde', 'France Info', 'Sud Ouest', 'RFI'],
+    lat: null, lon: null, ...extra,
+  });
+  const state = (events: NewsEvent[], over: Partial<IntelEventsState> = {}): IntelEventsState => ({
+    events, digest: [], totals: {}, anchor: { since: NOW - 3_600_000, kind: 'last-visit' }, fetchedAt: NOW, unavailable: false, ...over,
+  });
+  it('null si absents, indisponibles ou périmés (repli sur les articles)', () => {
+    expect(pressAlertEvents(null, 2, NOW)).toBeNull();
+    expect(pressAlertEvents(state([], { unavailable: true }), 2, NOW)).toBeNull();
+    expect(pressAlertEvents(state([], { fetchedAt: NOW - 31 * 60_000 }), 2, NOW)).toBeNull();
+  });
+  it('ouverts, retenus ≥ high, les plus graves puis les plus récents, 3 sources au plus', () => {
+    const out = pressAlertEvents(state([
+      ev(1, 'high', '2026-09-28T09:00:00Z'), ev(2, 'critical', '2026-09-28T08:00:00Z'), ev(3, 'medium', '2026-09-28T09:30:00Z'),
+      ev(4, 'critical', '2026-09-28T09:10:00Z', { status: 'closed' }), ev(5, 'high', '2026-09-28T09:40:00Z'),
+    ]), 2, NOW);
+    expect(out?.map((e) => e.id)).toEqual([2, 5]);
+    expect(out?.[0]).toMatchObject({ severity: 'critical', category: 'security', sources: ['Le Monde', 'France Info', 'Sud Ouest'] });
+  });
+});
+

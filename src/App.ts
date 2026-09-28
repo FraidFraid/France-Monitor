@@ -40,7 +40,7 @@ import {
   getSparklineSeries,
   recordStabilitySnapshot,
 } from './utils/stability-history.ts';
-import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, StructuredBrief } from './types/index.ts';
+import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief } from './types/index.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
@@ -1510,6 +1510,8 @@ export class App {
   private currentAisAnomalies: AisAnomaly[] = [];
   private currentJammingSignals: GpsJammingSignal[] = [];
   private currentMilitarySurges: MilitarySurge[] = [];
+  /** Alertes presse issues des événements corroborés ; null → calcul par article (spec 2026-09-28 § 4.7). */
+  private latestPressEvents: PressAlertEvent[] | null = null;
   private currentMilitaryFlights: MilitaryFlight[] = [];
   private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
@@ -7282,13 +7284,42 @@ export class App {
     return buildFranceEngine(raw, { ...options, previousScore: getPreviousScoreForSmoothing() });
   }
 
+  private pressEventSituation(e: PressAlertEvent, locale: string): DetectedSituation {
+    const lastSeen = new Date(e.lastSeen);
+    return {
+      id: `news-event-${e.id}`,
+      type: 'NEWS_ALERT',
+      severity: threatLevelToSituationSeverity(e.severity),
+      confidence: 0.9,
+      title: truncateLabel(e.title, 88),
+      summary: e.title,
+      affectedZones: [],
+      drivers: [
+        t('alerts.source', { value: e.sources.join(', ') }),
+        t('alerts.category', { value: t(`newsFeed.categoryLabels.${e.category}`) }),
+        t('alerts.publication', { value: lastSeen.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }),
+      ],
+      recommendedActions: [
+        { label: t('alerts.verifyArticle'), ownerHint: t('alerts.osintWatch'), actionType: 'investigate' },
+        { label: t('alerts.followField'), ownerHint: t('alerts.trackingCell'), actionType: 'monitor', automatable: true },
+      ],
+      sourceRefs: [...e.sources, t('alerts.sourceRefs.rss')],
+      category: e.category,
+      updatedAt: lastSeen,
+    };
+  }
+
   private buildAlertMonitorSituations(): DetectedSituation[] {
     const language = getCurrentLanguage();
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
 
-    const newsSituations = this.newsItems
+    // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
+    // sinon repli sur les articles un par un.
+    const newsSituations = this.latestPressEvents
+      ? this.latestPressEvents.map((e) => this.pressEventSituation(e, locale))
+      : this.newsItems
       .filter((item) => item.threat?.level === 'critical' || item.threat?.level === 'high')
       .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
       .slice(0, ALERT_MONITOR_LIMIT)
@@ -7722,6 +7753,7 @@ export class App {
         import('./services/intel-last-visit.ts'),
       ]);
       const state = await events.loadIntelEventsState(visit.beginIntelVisit());
+      this.latestPressEvents = events.pressAlertEvents(state, ALERT_MONITOR_LIMIT);
       // L'utilisateur a vu l'état courant : c'est l'ancre de sa prochaine visite.
       if (!state.unavailable) visit.recordIntelVisitSeen();
       return { state, briefEvents: events.selectBriefEvents(state.events) };
@@ -7898,6 +7930,8 @@ export class App {
     const poste = this.poste;
     if (!poste) return;
     poste.setEvents(state);
+    // Les alertes presse suivent les événements tout juste chargés (spec 2026-09-28 § 4.7).
+    this.repaintPoste();
     if (state && !state.unavailable) this.recordV2VisitBaseline();
   }
 

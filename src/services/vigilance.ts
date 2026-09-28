@@ -37,6 +37,22 @@ export function eventLevel(level: ThreatLevel): VigilanceLevel {
   return 'vert';
 }
 
+/**
+ * Niveau signalé mais non confirmé d'un événement (spec 2026-09-28 § 4.7) : gravité signalée
+ * orange ou rouge au-dessus de la gravité retenue ; null sinon.
+ */
+export function unconfirmedPeakLevel(severity: ThreatLevel, peak: ThreatLevel | undefined): VigilanceLevel | null {
+  if (!peak) return null;
+  const reported = eventLevel(peak);
+  return LEVEL_RANK[reported] >= LEVEL_RANK.orange && LEVEL_RANK[reported] > LEVEL_RANK[eventLevel(severity)] ? reported : null;
+}
+
+/** Niveau affiché d'un événement : un événement « à confirmer » entre au moins en jaune. */
+export function eventDisplayLevel(severity: ThreatLevel, peak: ThreatLevel | undefined): VigilanceLevel {
+  const retained = eventLevel(severity);
+  return unconfirmedPeakLevel(severity, peak) !== null && LEVEL_RANK[retained] < LEVEL_RANK.jaune ? 'jaune' : retained;
+}
+
 export function officialLevel(color: OfficialColor): VigilanceLevel {
   if (color === 'red' || color === 'violet') return 'rouge';
   if (color === 'orange') return 'orange';

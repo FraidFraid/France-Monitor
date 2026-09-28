@@ -17,6 +17,7 @@ import {
 import { ecowattToday } from './ecowatt-official.ts';
 import {
   LEVEL_RANK,
+  eventDisplayLevel,
   eventLevel,
   formatSignedPct,
   levelLabel,
@@ -25,6 +26,7 @@ import {
   maxLevel,
   officialLevel,
   situationLevel,
+  unconfirmedPeakLevel,
   type VigilanceLevel,
 } from './vigilance.ts';
 import { SPECIFIC_THEMES, THEMES, categoryTheme, inTheme, situationTheme, type SpecificThemeId, type ThemeId } from './themes.ts';
@@ -81,6 +83,8 @@ export interface WorkItem {
   independentSources: number | null;
   theme: ThemeId;
   badge: WorkBadge;
+  /** Événement « à confirmer » : niveau signalé par une seule source indépendante (spec 2026-09-28). */
+  unconfirmedPeak?: VigilanceLevel;
   ref: WorkRef;
 }
 
@@ -273,6 +277,7 @@ function sameStory(alertTitle: string, eventTitles: readonly string[]): boolean 
 
 function eventEnters(e: NewsEvent): boolean {
   if (e.status === 'closed') return false;
+  if (unconfirmedPeakLevel(e.severity, e.peakSeverity) !== null) return true;
   const rank = LEVEL_RANK[eventLevel(e.severity)];
   if (rank < LEVEL_RANK.jaune) return false;
   return e.independentCount >= 2 || rank >= LEVEL_RANK.orange;
@@ -368,8 +373,10 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   if (events) {
     for (const e of events.events) {
       if (!eventEnters(e)) continue;
+      const unconfirmedPeak = unconfirmedPeakLevel(e.severity, e.peakSeverity);
       items.push({
-        key: `event:${e.id}`, level: eventLevel(e.severity), title: e.title, place: null, since: parseTime(e.firstSeen),
+        key: `event:${e.id}`, level: eventDisplayLevel(e.severity, e.peakSeverity), title: e.title, place: null, since: parseTime(e.firstSeen),
+        ...(unconfirmedPeak ? { unconfirmedPeak } : {}),
         independentSources: e.independentCount, theme: categoryTheme(e.category), badge: eventBadge(e, events),
         ref: { kind: 'event', event: e },
       });
@@ -407,7 +414,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   };
   for (const o of official) if (o.level === 'vert') countGreen(OFFICIAL_THEME[o.source]);
   for (const e of events?.events ?? []) {
-    if (e.status !== 'closed' && eventLevel(e.severity) === 'vert') countGreen(categoryTheme(e.category));
+    if (e.status !== 'closed' && eventDisplayLevel(e.severity, e.peakSeverity) === 'vert') countGreen(categoryTheme(e.category));
   }
   for (const line of input.markets) {
     if (Number.isFinite(line.changePercent) && marketTone(line.changePercent, line.kind) === 'neutral') {

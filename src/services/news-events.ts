@@ -15,8 +15,10 @@ import type {
   NewsEventStatus,
   ThreatLevel,
   ClassificationReason,
+  EventCategory,
   EventTemporality,
   EventZone,
+  PressAlertEvent,
 } from '../types/index.ts';
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
@@ -27,6 +29,11 @@ const STATUSES: readonly NewsEventStatus[] = ['active', 'cooling', 'closed'];
 const KINDS: readonly NewsEventChangeKind[] = ['created', 'escalated', 'deescalated', 'corroborated', 'reopened', 'cooling', 'closed'];
 const ZONES: readonly EventZone[] = ['france', 'etranger', 'indeterminee'];
 const TEMPORALITIES: readonly EventTemporality[] = ['en_cours', 'passe', 'a_venir'];
+const CATEGORIES: readonly EventCategory[] = [
+  'social', 'security', 'energy', 'weather', 'transport', 'infrastructure', 'health', 'general', 'finance', 'floods', 'fires', 'cyber',
+];
+/** Au-delà, les événements chargés sont trop anciens pour remplacer les alertes par article. */
+const PRESS_EVENTS_MAX_AGE_MS = 30 * 60 * 1000;
 const REASONS: readonly ClassificationReason[] = ['declencheur_hors_titre', 'metaphore', 'passe', 'hypothetique', 'etranger', 'non_confirme'];
 
 export const SEVERITY_RANK: Record<ThreatLevel, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
@@ -239,4 +246,25 @@ export async function loadIntelEventsState(anchor: IntelVisitAnchor, now = Date.
     fetchedAt: now,
     unavailable: events.status === 'rejected' || changes.status === 'rejected',
   };
+}
+
+/**
+ * Alertes presse tirées des événements consolidés : ouverts et retenus ≥ high (donc corroborés par
+ * 2 groupes), les plus graves puis les plus récents. null → l'appelant garde le calcul par article
+ * (événements absents, indisponibles ou périmés).
+ */
+export function pressAlertEvents(state: IntelEventsState | null, limit: number, now = Date.now()): PressAlertEvent[] | null {
+  if (!state || state.unavailable || now - state.fetchedAt > PRESS_EVENTS_MAX_AGE_MS) return null;
+  return state.events
+    .filter((e) => e.status !== 'closed' && SEVERITY_RANK[e.severity] >= SEVERITY_RANK.high)
+    .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+    .slice(0, limit)
+    .map((e) => ({
+      id: e.id,
+      title: e.title,
+      severity: e.severity,
+      category: oneOf(e.category, CATEGORIES) ?? 'general',
+      sources: e.sourceNames.slice(0, 3),
+      lastSeen: e.lastSeen,
+    }));
 }

@@ -1748,6 +1748,16 @@ export interface IntelEventsState {
   unavailable: boolean;                  // historique serveur injoignable : le dire, ne rien inventer
 }
 
+/** Événement consolidé et corroboré repris comme alerte presse (spec 2026-09-28 § 4.7). */
+export interface PressAlertEvent {
+  id: number;
+  title: string;
+  severity: ThreatLevel;
+  category: EventCategory;
+  sources: string[];
+  lastSeen: string;
+}
+
 /** Événement tel qu'envoyé au brief (contrat v14, validé par api/_lib/brief-evidence.js). */
 export interface BriefEventInput {
   id: string;                            // « E<id> »

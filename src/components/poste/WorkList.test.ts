@@ -151,3 +151,12 @@ describe('WorkList — clavier et focus (spec §9)', () => {
     expect(onGuard).toHaveBeenCalledWith('energy');
   });
 });
+
+describe('ligne « à confirmer » (spec 2026-09-28 § 4.7)', () => {
+  it('mention et niveau signalé', () => {
+    const html = renderWorkList(model({ events: events({ events: [event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1, sourceCount: 1 })] }) }));
+    expect(html).toContain('À CONFIRMER');
+    expect(html).toContain('Jaune · signalé Rouge');
+    expect(html).toContain('wl-bar--jaune');
+  });
+});
