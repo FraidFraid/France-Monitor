@@ -53,7 +53,40 @@ export function parseRssXml(xml) {
     }
   }
 
-  return items;
+  return dropPlaceholderDrafts(items);
+}
+
+/** Toute date antérieure est une date « zéro » de CMS (01/01/1970), pas une vraie publication. */
+export const PLACEHOLDER_DATE_BEFORE_MS = Date.UTC(1971, 0, 1);
+
+/**
+ * @param {string | undefined} pubDate
+ * @returns {boolean}
+ */
+export function isPlaceholderPubDate(pubDate) {
+  if (!pubDate) return false;
+  const time = Date.parse(pubDate);
+  return !Number.isNaN(time) && time < PLACEHOLDER_DATE_BEFORE_MS;
+}
+
+/**
+ * Items datés du 01/01/1970 : version provisoire pas encore publiée (vu sur imazpress.com, rubrique
+ * france-monde : « Actualités du monde : <titre> » daté 1970, republié ~30 min plus tard avec son
+ * vrai titre et sa vraie date sous le même lien). Dans un flux dont d'autres items sont datés, on les
+ * écarte ; dans un flux qui ne date aucun item, on les garde avec l'heure de collecte, comme un item
+ * sans date.
+ * @template {{ pubDate: string }} T
+ * @param {T[]} items
+ * @returns {T[]}
+ */
+export function dropPlaceholderDrafts(items) {
+  const placeholders = items.filter((item) => isPlaceholderPubDate(item.pubDate));
+  if (placeholders.length === 0) return items;
+  if (placeholders.length < items.length) {
+    return items.filter((item) => !isPlaceholderPubDate(item.pubDate));
+  }
+  const now = new Date().toISOString();
+  return items.map((item) => ({ ...item, pubDate: now }));
 }
 
 /**

@@ -11,6 +11,7 @@
 
 import type { NewsItem, Feed, ThreatClassification, ThreatLevel, EventCategory } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
+import { dropPlaceholderDrafts } from './rss-dates.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('rss-pqr', {
@@ -232,7 +233,7 @@ function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
         });
     }
 
-    return items;
+    return dropPlaceholderDrafts(items);
 }
 
 /** Simple hash for dedup IDs */
@@ -279,7 +280,7 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
         });
     }
 
-    return { items, sourceFormat };
+    return { items: dropPlaceholderDrafts(items), sourceFormat };
 }
 
 // ─── Ingestion API consolidée (/api/news) ───
