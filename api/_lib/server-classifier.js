@@ -1024,7 +1024,7 @@ function titleQualification(title) {
   const zone = titleZone(title);
   if (zone === "etranger") reasons.push("etranger");
   const maxSeverity = reasons.reduce((cap, r) => minLevel(cap, TITLE_REASON_CAP[r]), "critical");
-  return { maxSeverity, temporality, zone, reasons };
+  return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)) };
 }
 
 // src/services/classifier.ts

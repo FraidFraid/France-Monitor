@@ -85,15 +85,15 @@ describe('titleZone', () => {
 describe('titleQualification', () => {
   it('sans garde : critical, en cours', () => {
     expect(titleQualification('Attentat à Paris : plusieurs blessés')).toEqual({
-      maxSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [],
+      maxSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [], terrorism: true,
     });
   });
   it('cumule les gardes et garde le plafond le plus bas', () => {
     expect(titleQualification('Royaume-Uni : cinq hommes condamnés pour terrorisme')).toEqual({
-      maxSeverity: 'low', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'],
+      maxSeverity: 'low', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'], terrorism: true,
     });
     expect(titleQualification('Thaïlande : Bangkok sous les eaux')).toEqual({
-      maxSeverity: 'medium', temporality: 'en_cours', zone: 'etranger', reasons: ['etranger'],
+      maxSeverity: 'medium', temporality: 'en_cours', zone: 'etranger', reasons: ['etranger'], terrorism: false,
     });
     expect(titleQualification('Et si la Seine débordait ?')).toMatchObject({ maxSeverity: 'low', temporality: 'a_venir', reasons: ['hypothetique'] });
   });
@@ -152,5 +152,16 @@ describe('ancres de sécurité nationale (revue finale I4)', () => {
   it('un plan ou un service de l’État ancre le titre en France', () => {
     expect(titleZone('Menace iranienne : le plan Vigipirate relevé au niveau urgence attentat')).toBe('france');
     expect(titleZone('Projet d’attentat russe déjoué : la DGSI interpelle deux hommes')).toBe('france');
+  });
+});
+
+describe('titleQualification — terrorisme au titre (règle serveur, 29/09)', () => {
+  it.each([
+    'Apologie du terrorisme : un Héraultais arrêté',
+    'Royaume-Uni : cinq hommes arrêtés pour préparation d’un “acte terroriste” près d’une base aérienne',
+    'Ultradroite : l’ex-jardinier radicalisé, condamné pour terrorisme, de nouveau écroué',
+  ])('vrai : %s', (title) => expect(titleQualification(title).terrorism).toBe(true));
+  it('faux sans terme de terrorisme', () => {
+    expect(titleQualification('Incendie à Tours : un immeuble évacué').terrorism).toBe(false);
   });
 });

@@ -132,3 +132,18 @@ describe('classifyBatch', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+describe('qualifyJudgment — menace terroriste imposée par le serveur (29/09)', () => {
+  const j = (severity: number, inFrance = true, ongoing = true) => ({ category: 'security', severity, inFrance, ongoing });
+  it('terrorisme au titre : gravité signalée 3 au moins, même si le modèle dit 1', () => {
+    expect(qualifyJudgment(j(1), titleQ({ terrorism: true }))).toMatchObject({ severity: 'high', reportedSeverity: 'high' });
+  });
+  it('les plafonds s’appliquent ensuite : étranger → medium, passé → low', () => {
+    expect(qualifyJudgment(j(1, false), titleQ({ terrorism: true }))).toMatchObject({ severity: 'medium', reportedSeverity: 'high', reasons: ['etranger'] });
+    expect(qualifyJudgment(j(1, true, false), titleQ({ terrorism: true }))).toMatchObject({ severity: 'low', reportedSeverity: 'high', reasons: ['passe'] });
+  });
+  it('sans terrorisme au titre : la note du modèle reste', () => {
+    expect(qualifyJudgment(j(1), titleQ())).toMatchObject({ severity: 'low' });
+    expect(qualifyJudgment(j(4), titleQ({ terrorism: true }))).toMatchObject({ severity: 'critical' });
+  });
+});

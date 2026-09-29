@@ -99,7 +99,9 @@ export function parseBatchResponse(content, count) {
  * Qualification serveur d'un jugement : le titre l'emporte (étranger, passé, hypothèse), le modèle
  * complète ; gravité retenue = min(modèle, plafond du titre, étranger → medium, passé → low).
  * @param {LlmJudgment} judgment
- * @param {{ maxSeverity: string, temporality: string, zone: string, reasons: string[] }} title  titleQualification(title)
+ * Terrorisme au titre : gravité signalée 3 au moins — la clause « menace » de la grille ne suffit pas,
+ * le modèle note 1 un projet déjoué ou une arrestation (vérifié le 29/09) ; les plafonds s'appliquent ensuite.
+ * @param {{ maxSeverity: string, temporality: string, zone: string, reasons: string[], terrorism?: boolean }} title  titleQualification(title)
  */
 export function qualifyJudgment(judgment, title) {
   const zone = title.zone === 'etranger' || !judgment.inFrance ? 'etranger' : 'france';
@@ -107,7 +109,7 @@ export function qualifyJudgment(judgment, title) {
   let cap = RANK[/** @type {keyof typeof RANK} */ (title.maxSeverity)] ?? RANK.critical;
   if (zone === 'etranger') cap = Math.min(cap, RANK.medium);
   if (temporality === 'passe') cap = Math.min(cap, RANK.low);
-  const reported = judgment.severity;
+  const reported = title.terrorism ? Math.max(judgment.severity, RANK.high) : judgment.severity;
   /** @type {string[]} */
   const reasons = [];
   if (temporality === 'passe' && reported > RANK.low) reasons.push('passe');
