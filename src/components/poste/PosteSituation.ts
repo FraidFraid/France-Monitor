@@ -111,6 +111,12 @@ function durationLabel(ms: number, lang: Lang): string {
   return `${Math.round(hours / 24)} ${lang === 'fr' ? 'j' : 'd'}`;
 }
 
+/** Champ de saisie : Échap y garde son sens (effacer, fermer une liste déroulante). */
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
+}
+
 export class PosteSituation {
   private readonly roots: PosteRoots;
   private readonly callbacks: PosteCallbacks;
@@ -167,14 +173,13 @@ export class PosteSituation {
     });
     this.fichePanel.setOnClose(() => this.close());
 
-    // Échap referme la fiche (spec §9), que le focus soit dans la liste ou dans la fiche.
-    const onEscape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || this.selection === null) return;
+    // Échap ramène à l'État où que soit le focus — liste, fiche ou carte (spec 2026-09-29 § 4) —,
+    // sauf dans un champ de saisie.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || this.selection === null || isTypingTarget(e.target)) return;
       e.preventDefault();
       this.close();
-    };
-    roots.list.addEventListener('keydown', onEscape);
-    roots.fiche.addEventListener('keydown', onEscape);
+    });
     roots.tabs.addEventListener('click', (e) => {
       const tab = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
       if (tab === 'list' || tab === 'map' || tab === 'fiche') this.setTab(tab);

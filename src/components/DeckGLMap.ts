@@ -4262,7 +4262,7 @@ export class DeckGLMap {
           ${isDept ? motifsHtml : ''}
 
           <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); text-align: center;">
-            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health'))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
+            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: true } }))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
           </div>
         </div>
       `;

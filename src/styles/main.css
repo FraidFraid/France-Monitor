@@ -8608,3 +8608,29 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .app-bottom-links { display: none; }
   #app.ui-v2 .sb-fresh { margin-left: 0; }
 }
+
+/* ═══ Refonte v2 « carte d'abord » (spec 2026-09-29) ═══ */
+#app.ui-v2 { --v2-list-w: 320px; --v2-fiche-w: 420px; }
+@media (min-width: 1101px) {
+  #app.ui-v2 .fm-v2-list { flex: 0 0 var(--v2-list-w); min-width: 0; max-width: none; }
+  #app.ui-v2 .fm-v2-fiche { flex: 0 0 var(--v2-fiche-w); min-width: 0; max-width: none; }
+  /* Panneaux de module : dans la zone de la carte, jamais sur le fil ni sur l'État (§ 4). */
+  #app.ui-v2 .cyber-panel-modal,
+  #app.ui-v2 .defense-panel-modal,
+  #app.ui-v2 .energy-panel-modal,
+  #app.ui-v2 .environment-panel-modal,
+  #app.ui-v2 .fires-panel-modal,
+  #app.ui-v2 .gas-panel-modal,
+  #app.ui-v2 .nuclear-panel-modal,
+  #app.ui-v2 .oil-panel-modal,
+  #app.ui-v2 .fm-floating-panel {
+    left: auto !important;
+    right: calc(var(--v2-fiche-w) + 16px) !important;
+    max-width: calc(100vw - var(--v2-list-w) - var(--v2-fiche-w) - 32px) !important;
+  }
+  /* Tiroir Couches : par-dessus la carte seulement, contre le fil (§ 4). */
+  #app.ui-v2 .sidebar {
+    position: absolute; top: 0; bottom: 0; left: var(--v2-list-w); z-index: 20;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.35);
+  }
+}

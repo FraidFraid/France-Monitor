@@ -33,3 +33,14 @@ export function layerActivationOptions(uiV2: boolean): { suppressPanel?: boolean
 export function reopensLayerPanelsOnLoad(uiV2: boolean): boolean {
   return !uiV2;
 }
+
+/**
+ * v2 (spec 2026-09-29 § 4) : un panneau de module ne s'ouvre que sur une demande explicite de
+ * l'analyste (sélecteur de panneaux, « Voir les indicateurs » d'une bulle de la carte), jamais au
+ * chargement ni à l'activation d'une couche. Le déclencheur le dit par `detail.explicit === true`.
+ * v1 : inchangé, tout déclencheur ouvre le panneau.
+ */
+export function opensModulePanel(uiV2: boolean, detail: unknown): boolean {
+  if (!uiV2) return true;
+  return typeof detail === 'object' && detail !== null && (detail as { explicit?: unknown }).explicit === true;
+}

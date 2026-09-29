@@ -25,7 +25,7 @@ import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { isUiV2, layerActivationOptions, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -1598,6 +1598,8 @@ export class App {
   /** Dernier panneau flottant ouvert explicitement via showFloatingPanel() —
    *  repli pour la puce active du sélecteur sur les panneaux sans isVisible(). */
   private currentFloatingPanelId: keyof MapLayers | null = null;
+  /** Vrai pendant une ouverture demandée par l'analyste (sélecteur de panneaux) — spec 2026-09-29 § 4. */
+  private explicitPanelRequest = false;
   private floatingPanelSwitcherEl: HTMLElement | null = null;
   /** true seulement pendant l'application du preset d'accueil (premier
    *  chargement OU état persisté "tout éteint") — voir init() et
@@ -2940,7 +2942,8 @@ export class App {
 
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
-    this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled));
+    // v2 : l'activation d'une couche ne l'ouvre jamais (spec 2026-09-29 § 4), le sélecteur de panneaux le fait.
+    this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled, layerActivationOptions(this.uiV2)));
     this.layerPanel.setPresetHandler((id) => {
       this.applyLayerPreset(id);
       // v2 (arbitrage A5) : la vue choisie dans « Couches » devient aussi le thème de la liste et de la fiche.
@@ -3071,7 +3074,9 @@ export class App {
       this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err));
     }, POLL_NETWORK_BAROMETER_MS);
 
-    this.addGlobalListener(document, 'open-national-health', () => {
+    this.addGlobalListener(document, 'open-national-health', (e) => {
+      // v2 : jamais d'ouverture d'office (chargement, activation de couche), seulement à la demande.
+      if (!opensModulePanel(this.uiV2, (e as CustomEvent<unknown>).detail)) return;
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
@@ -3743,7 +3748,7 @@ export class App {
         this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
       }
       if (enabled && anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health'));
+        document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.explicitPanelRequest } }));
       } else if (!anyHealthActive) {
         this.healthBarometerPanel?.hide();
         this.nationalHealthPanel?.hide();
@@ -4391,7 +4396,12 @@ export class App {
    */
   private showFloatingPanel(id: keyof MapLayers): void {
     this.hideAllFloatingPanels(id);
-    this._handlePanelVisibility(id, true);
+    this.explicitPanelRequest = true;
+    try {
+      this._handlePanelVisibility(id, true);
+    } finally {
+      this.explicitPanelRequest = false;
+    }
     this.currentFloatingPanelId = id;
     this.refreshFloatingPanelSwitcher();
   }
@@ -6616,7 +6626,8 @@ export class App {
     // Ré-ouvre/peuple le panneau dès qu'UN sous-onglet santé (dont APL) est actif —
     // sinon activer APL seul ouvrait un panneau jamais peuplé.
     if (hasData && anyHealthActive) {
-      document.dispatchEvent(new CustomEvent('open-national-health'));
+      // Un panneau déjà ouvert à la demande (chargement affiché) se remplit : c'est la même demande.
+      document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.nationalHealthPanel?.isVisible() === true } }));
     }
     this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);
     const ss = payload.healthFeatures.sourceStatus;

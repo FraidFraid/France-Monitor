@@ -400,3 +400,26 @@ describe('PosteSituation', () => {
     expect(roots.fiche.textContent).not.toContain('Rien à traiter');
   });
 });
+
+describe('Échap partout (spec 2026-09-29 § 4)', () => {
+  it('ramène à l’État même quand le focus est sur la carte', () => {
+    const { roots, poste } = setup();
+    poste.select('event:42');
+    expect(ficheKey(roots)).toBe('event:42');
+    const map = document.createElement('div');
+    map.tabIndex = 0;
+    document.body.appendChild(map);
+    map.focus();
+    map.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(ficheKey(roots)).toBe('france');
+  });
+
+  it('laisse Échap aux champs de saisie', () => {
+    const { roots, poste } = setup();
+    poste.select('event:42');
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(ficheKey(roots)).toBe('event:42');
+  });
+});
