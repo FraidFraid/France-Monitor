@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { eventMapPoints, sourcesRadius, v2FloodSegments } from './v2-map.ts';
 import type { FloodSegment, NewsEvent } from '../types/index.ts';
+import { buildWorkQueue, viewWorkQueue } from './work-queue.ts';
+import type { ThemeId } from './themes.ts';
 
 function event(over: Partial<NewsEvent> = {}): NewsEvent {
   const id = over.id ?? 1;
@@ -53,5 +55,25 @@ describe('v2FloodSegments', () => {
   it('ne garde que les tronçons orange et rouges', () => {
     const kept = v2FloodSegments([flood('a', 'green'), flood('b', 'yellow'), flood('c', 'orange'), flood('d', 'red')]);
     expect(kept.map((s) => s.name)).toEqual(['c', 'd']);
+  });
+});
+
+describe('carte et fil : un seul thème, un seul jeu d’événements', () => {
+  const events = [
+    event({ id: 1, category: 'energy', severity: 'high' }),
+    event({ id: 2, category: 'security', severity: 'critical' }),
+    event({ id: 3, category: 'social', severity: 'medium' }),
+    event({ id: 4, category: 'weather', severity: 'high' }),
+    event({ id: 5, category: 'energy', severity: 'high', zone: 'etranger' }),
+  ];
+  const state = { events, digest: [], totals: {}, anchor: { since: 0, kind: 'last-visit' as const }, fetchedAt: 0, unavailable: false };
+
+  it.each(['general', 'energy', 'security', 'environment', 'transport'] as ThemeId[])('thème %s : les points de la carte sont des lignes du fil', (theme) => {
+    const queue = buildWorkQueue({
+      situations: [], alerts: [], events: state, ecowatt: null, meteo: [], floods: [], markets: [],
+      baseline: null, firstSeen: new Map(), lang: 'fr', now: 0,
+    });
+    const rowEventIds = new Set(viewWorkQueue(queue, theme, true).rows.flatMap((r) => (r.ref.kind === 'event' ? [r.ref.event.id] : [])));
+    for (const p of eventMapPoints(events, theme)) expect(rowEventIds.has(p.id)).toBe(true);
   });
 });

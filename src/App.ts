@@ -2973,6 +2973,9 @@ export class App {
       this.applyLayerPreset(id);
       // v2 (arbitrage A5) : la vue choisie dans « Couches » devient aussi le thème de la liste et de la fiche.
       this.poste?.setTheme(id, { silent: true });
+      // Silencieux : `onThemeChange` ne tourne pas, la carte doit suivre le thème du fil elle-même.
+      this.v2Theme = id;
+      this.refreshEventPoints();
     });
     this.layerPanel.mount();
 
