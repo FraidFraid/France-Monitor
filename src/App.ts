@@ -28,7 +28,7 @@ import { scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
-import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
+import { restorePanelPlan, switcherPanelOffsetPx, v2PanelTopPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -4544,6 +4544,11 @@ export class App {
     }
     const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
+    if (this.uiV2) {
+      const mapTop = el.parentElement?.getBoundingClientRect().top ?? 0;
+      const bottom = el.hidden ? null : el.getBoundingClientRect().bottom;
+      document.documentElement.style.setProperty('--v2-panel-top', `${v2PanelTopPx(bottom, mapTop)}px`);
+    }
   }
 
   private floatingPanelIsEligible(id: keyof MapLayers): boolean {

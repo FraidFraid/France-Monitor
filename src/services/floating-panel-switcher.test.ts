@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWITCHER_TOP_PX, restorePanelPlan, switcherPanelOffsetPx } from './floating-panel-switcher.ts';
+import { SWITCHER_TOP_PX, restorePanelPlan, switcherPanelOffsetPx, v2PanelTopPx } from './floating-panel-switcher.ts';
 
 const PANEL: Record<string, string> = {
   environmental: 'environmental',
@@ -51,5 +51,12 @@ describe('switcherPanelOffsetPx — les panneaux commencent sous la barre de bou
 
   it('v2 : les panneaux s’ouvrent sur la colonne fiche, pas sous la carte : aucun décalage', () => {
     expect(switcherPanelOffsetPx(28, true)).toBe(0);
+  });
+});
+
+describe('v2PanelTopPx — un panneau ouvert ne recouvre pas la barre de puces', () => {
+  it('sous la barre quand elle est affichée, en haut de la carte sinon', () => {
+    expect(v2PanelTopPx(185, 101)).toBe(193);
+    expect(v2PanelTopPx(null, 101)).toBe(109);
   });
 });

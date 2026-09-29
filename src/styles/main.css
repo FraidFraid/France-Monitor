@@ -8618,6 +8618,20 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
     left: auto !important;
     right: calc(var(--v2-fiche-w) + 16px) !important;
     max-width: calc(100vw - var(--v2-list-w) - var(--v2-fiche-w) - 32px) !important;
+    /* Sous la barre de puces (posé par App.layoutFloatingPanelSwitcher) : la puce du panneau ouvert reste cliquable. */
+    top: var(--v2-panel-top, 109px) !important;
+    max-height: calc(100vh - var(--v2-panel-top, 109px) - 56px) !important;
+  }
+  /* Environnement, Incendies et Maritime sont ajoutés à <body>, hors de #app : mêmes règles, valeurs
+     littérales (--v2-list-w et --v2-fiche-w ne sont définies que sur #app). */
+  body:has(#app.ui-v2) > .environment-panel-modal,
+  body:has(#app.ui-v2) > .fires-panel-modal,
+  body:has(#app.ui-v2) > .fm-floating-panel {
+    left: auto !important;
+    right: 436px !important; /* fiche 420 px + 16 px */
+    max-width: calc(100vw - 320px - 420px - 32px) !important;
+    top: var(--v2-panel-top, 109px) !important;
+    max-height: calc(100vh - var(--v2-panel-top, 109px) - 56px) !important;
   }
   /* Tiroir Couches : par-dessus la carte seulement, contre le fil (§ 4). */
   #app.ui-v2 .sidebar {

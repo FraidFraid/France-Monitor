@@ -22,6 +22,17 @@ export function switcherPanelOffsetPx(switcherHeightPx: number, uiV2: boolean): 
 }
 
 /**
+ * v2 : haut (px, repère de la fenêtre) des panneaux de module — sous la barre « panneaux ouverts »
+ * quand elle est affichée, sinon en haut de la zone carte —, pour qu'un panneau ouvert ne recouvre
+ * jamais ses propres commandes (spec 2026-09-29 § 4 : « ne recouvre jamais le fil ni les commandes »).
+ * @param switcherBottomPx  bas de la barre, null si elle est masquée
+ * @param mapTopPx          haut de la zone carte
+ */
+export function v2PanelTopPx(switcherBottomPx: number | null, mapTopPx: number): number {
+  return Math.round((switcherBottomPx ?? mapTopPx) + PANEL_GAP_PX);
+}
+
+/**
  * Restauration des couches persistées au chargement (v1) : un seul panneau flottant se rouvre
  * (règle « un seul panneau à la fois », audit UI 2026-09 §5.3.3), celui de la première couche dans
  * l'ordre de restauration. Les couches qui partagent ce panneau le chargent aussi ; une couche sans
