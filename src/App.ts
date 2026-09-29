@@ -483,10 +483,10 @@ interface FloatingPanelDef {
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
-/** v2 : largeur de carte sous laquelle les puces des panneaux passent sous Carte | Satellite. */
-const V2_NARROW_MAP_PX = 640;
 /** v2 : largeur du tiroir Couches (main.css --v2-drawer-w). */
 const V2_DRAWER_PX = 300;
+/** v2 : place réservée au sélecteur Carte | Satellite, en haut à droite de la carte (main.css, 180px). */
+const V2_MAP_CONTROLS_PX = 180;
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
@@ -4567,12 +4567,18 @@ export class App {
     const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
     if (this.uiV2) {
-      // Carte étroite : les puces passent sous Carte | Satellite (main.css, .is-narrow-map).
       const mapWidth = el.parentElement?.clientWidth ?? 0;
-      el.classList.toggle('is-narrow-map', mapWidth < V2_NARROW_MAP_PX);
       // À côté du tiroir Couches ouvert, s'il reste moins de 150 px : icônes seules (nom en infobulle).
       const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
       el.classList.toggle('is-icon-only', drawerOpen && mapWidth - V2_DRAWER_PX - 24 < 150);
+      // Les puces restent sur la ligne de Carte | Satellite, tiroir ouvert ou fermé ; elles ne passent
+      // dessous que si elles n'y tiennent pas sur une rangée (largeur naturelle mesurée sans plafond).
+      el.classList.add('is-measuring');
+      const chips = Array.from(el.children) as HTMLElement[];
+      const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 8 * Math.max(0, chips.length - 1);
+      el.classList.remove('is-measuring');
+      const beside = mapWidth - (drawerOpen ? V2_DRAWER_PX : 0) - 24 - V2_MAP_CONTROLS_PX;
+      el.classList.toggle('is-below-controls', oneRow > beside);
       // Bas de la rangée de puces dans la carte : l'étiquette « Baromètre Santé » se place dessous.
       const bottom = el.hidden ? 0 : el.offsetTop + el.offsetHeight;
       document.documentElement.style.setProperty('--v2-switcher-bottom', `${bottom}px`);

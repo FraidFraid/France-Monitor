@@ -8692,12 +8692,13 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
     /* Laisse la place au sélecteur Carte | Satellite (≈ 165 px), en haut à droite. */
     max-width: calc(100% - 24px - 180px);
   }
-  /* Tiroir Couches ouvert (il recouvre le bord gauche de la carte) : puces à sa droite, sous Carte | Satellite. */
+  /* Tiroir Couches ouvert (il recouvre le bord gauche de la carte) : puces à sa droite, à la même hauteur. */
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher {
-    top: 60px;
     left: calc(var(--v2-drawer-w) + 12px);
-    max-width: calc(100% - var(--v2-drawer-w) - 24px);
+    max-width: calc(100% - var(--v2-drawer-w) - 24px - 180px);
   }
+  /* Mesure de la largeur naturelle d'une rangée (App.layoutFloatingPanelSwitcher). */
+  #app.ui-v2 .floating-panel-switcher.is-measuring { max-width: none !important; flex-wrap: nowrap !important; }
   /* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
   #app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
   #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -8759,9 +8760,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .floating-panel-switcher__chip { transition: none; }
 }
 
-/* Carte étroite (< 640 px, classe posée par App.layoutFloatingPanelSwitcher d'après la largeur de la
-   carte) : les puces passent sous Carte | Satellite et prennent toute la largeur. */
+/* Pas la place sur une rangée à côté de Carte | Satellite (classe posée par
+   App.layoutFloatingPanelSwitcher) : les puces passent dessous et prennent toute la largeur libre. */
 @media (min-width: 1101px) {
-  #app.ui-v2 .floating-panel-switcher.is-narrow-map { top: 60px; max-width: calc(100% - 24px); }
-  #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-narrow-map { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
+  #app.ui-v2 .floating-panel-switcher.is-below-controls { top: 60px; max-width: calc(100% - 24px); }
+  #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-below-controls { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }
