@@ -36,6 +36,8 @@ RADAR_STORAGE_DIR=/var/lib/francemonitor/radar
 RADAR_VENV=/opt/francemonitor/radar-venv
 SWAPFILE=/swapfile
 SWAPFILE_SIZE_MB=4096
+BACKUP_USER=fmbackup
+BACKUP_DIR=/var/backups/francemonitor
 
 log() { echo "[setup] $*"; }
 
@@ -79,6 +81,20 @@ else
   log "Caddy déjà présent : $(caddy version)"
 fi
 
+# Client PostgreSQL 17 (dépôt officiel PGDG) pour fm-backup-db : pg_dump doit être de la même
+# version majeure que la base Neon (17) ; Ubuntu 24.04 ne fournit que la 16.
+if [ ! -x /usr/lib/postgresql/17/bin/pg_dump ]; then
+  log "installation du client PostgreSQL 17 (dépôt PGDG)"
+  install -d -m 755 /usr/share/postgresql-common/pgdg
+  curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
+  apt-get update -y
+  apt-get install -y --no-install-recommends postgresql-client-17
+else
+  log "client PostgreSQL 17 déjà présent"
+fi
+
 # ─────────────────────────────────────────────────────────────────
 # 2. Utilisateur système `fm` + groupe de déploiement
 # ─────────────────────────────────────────────────────────────────
@@ -88,6 +104,12 @@ if ! id "$FM_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$BASE_DIR" --shell /usr/sbin/nologin "$FM_USER"
 else
   log "utilisateur $FM_USER déjà présent"
+fi
+
+# Utilisateur des sauvegardes : fm (celui de l'API) ne peut ni lire ni effacer les copies.
+if ! id "$BACKUP_USER" >/dev/null 2>&1; then
+  log "création de l'utilisateur système $BACKUP_USER"
+  useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$BACKUP_USER"
 fi
 
 groupadd -f fmdeploy
@@ -115,6 +137,8 @@ install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$RADAR_STORAGE_DIR"
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /opt/francemonitor
 # Caddy écrit ses journaux d'accès ici sous l'utilisateur caddy.
 install -d -m 750 -o caddy     -g caddy        /var/log/caddy
+# Copies de la base (fm-backup-db).
+install -d -m 700 -o "$BACKUP_USER" -g "$BACKUP_USER" "$BACKUP_DIR"
 
 if [ ! -f "$ENV_FILE" ]; then
   log "création de $ENV_FILE (vide) — à remplir depuis deploy/oracle/francemonitor.env.example"
@@ -218,6 +242,8 @@ install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-ingest-news.service  /et
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-ingest-news.timer    /etc/systemd/system/fm-ingest-news.timer
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-fuel-series.service  /etc/systemd/system/fm-fuel-series.service
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-fuel-series.timer    /etc/systemd/system/fm-fuel-series.timer
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.service    /etc/systemd/system/fm-backup-db.service
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.timer      /etc/systemd/system/fm-backup-db.timer
 
 systemctl daemon-reload
 
@@ -225,7 +251,7 @@ systemctl daemon-reload
 # déployée (/srv/francemonitor/current n'existe pas), fm-api/fm-relay/fm-radar
 # n'ont rien à exécuter. Le premier `fm-deploy` les démarre.
 systemctl enable fm-api.service fm-relay.service fm-radar.service
-systemctl enable fm-ingest-news.timer fm-fuel-series.timer
+systemctl enable fm-ingest-news.timer fm-fuel-series.timer fm-backup-db.timer
 systemctl enable caddy
 
 # ─────────────────────────────────────────────────────────────────
@@ -234,6 +260,8 @@ systemctl enable caddy
 
 log "installation de /usr/local/bin/fm-deploy"
 install -m 750 -o root -g root "$ORACLE_DIR/fm-deploy.sh" /usr/local/bin/fm-deploy
+log "installation de /usr/local/bin/fm-backup-db"
+install -m 755 -o root -g root "$ORACLE_DIR/fm-backup-db.sh" /usr/local/bin/fm-backup-db
 
 log "installation de la règle sudoers (groupe fmdeploy → fm-deploy uniquement)"
 SUDOERS_FILE=/etc/sudoers.d/fm-deploy

@@ -1,0 +1,32 @@
+[Unit]
+Description=France Monitor - sauvegarde de la base Neon (complete le dimanche, legere les autres nuits)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Utilisateur dédié : fm (celui de l'API) ne peut ni lire ni effacer les copies. systemd lit
+# l'EnvironmentFile en root avant de changer d'utilisateur.
+User=fmbackup
+Group=fmbackup
+EnvironmentFile=/etc/francemonitor/francemonitor.env
+ExecStart=/usr/local/bin/fm-backup-db auto
+# Pas de Restart= : chaque essai consomme le transfert gratuit de Neon (5 Go/mois). Une complète
+# manquée le dimanche est refaite la nuit suivante (règle des 8 jours du script).
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+
+ReadWritePaths=/var/backups/francemonitor
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
