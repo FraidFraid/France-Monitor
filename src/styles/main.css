@@ -8675,3 +8675,61 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 }
 /* Le bouton ⋯ porte aussi .header-quality-link (masqué ≤ 900 px) : en v2 il reste visible, il contient « Sources & qualité ». */
 #app.ui-v2 .header-overflow-trigger { display: inline-flex; }
+
+/* ── v2 : puces des panneaux de couche, en haut à gauche de la carte (demande du 29/09) ──
+   Seul accès aux panneaux en v2 (cocher une couche ne les ouvre pas) : elles doivent se voir.
+   Système existant seulement : accent --text-accent (#6c8cff), surfaces sombres ; le halo reprend
+   celui de la puce active. Libellé toujours visible (plus de mode icône seule), retour à la ligne. */
+@media (min-width: 1101px) {
+  #app.ui-v2 .floating-panel-switcher {
+    top: 12px;
+    left: 12px;
+    right: auto;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    /* Laisse la place au sélecteur Carte | Satellite, en haut à droite. */
+    max-width: calc(100% - 300px);
+  }
+  #app.ui-v2 .floating-panel-switcher__chip,
+  #app.ui-v2 .floating-panel-switcher.is-compact .floating-panel-switcher__chip:not(.is-active) {
+    height: 36px;
+    padding: 0 14px 0 12px;
+    gap: 8px;
+    border-radius: 18px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+    background: rgba(12, 14, 22, 0.92);
+    border: 1px solid rgba(108, 140, 255, 0.5);
+    box-shadow: 0 0 0 1px rgba(108, 140, 255, 0.14), 0 0 16px rgba(108, 140, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.45);
+    transition: background 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
+      box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  #app.ui-v2 .floating-panel-switcher.is-compact .floating-panel-switcher__chip:not(.is-active) .floating-panel-switcher__label {
+    display: inline;
+  }
+  #app.ui-v2 .floating-panel-switcher__icon { color: var(--text-accent); }
+  #app.ui-v2 .floating-panel-switcher__icon svg { width: 16px; height: 16px; }
+  #app.ui-v2 .floating-panel-switcher__chip:hover {
+    background: rgba(108, 140, 255, 0.16);
+    border-color: var(--text-accent);
+    box-shadow: 0 0 0 1px rgba(108, 140, 255, 0.35), 0 0 20px rgba(108, 140, 255, 0.42), 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+  /* Panneau ouvert : puce pleine d'accent (distincte du survol, translucide), texte sombre
+     (contraste ≈ 6:1 sur #6c8cff), halo marqué. */
+  #app.ui-v2 .floating-panel-switcher__chip.is-active,
+  #app.ui-v2 .floating-panel-switcher__chip.is-active:hover {
+    color: #0b0e1a;
+    font-weight: 700;
+    background: var(--text-accent);
+    border-color: var(--text-accent);
+    box-shadow: 0 0 0 3px rgba(108, 140, 255, 0.3), 0 0 26px rgba(108, 140, 255, 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+  #app.ui-v2 .floating-panel-switcher__chip.is-active .floating-panel-switcher__icon { color: #0b0e1a; }
+  #app.ui-v2 .floating-panel-switcher__chip:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 3px; }
+}
+@media (min-width: 1101px) and (prefers-reduced-motion: reduce) {
+  #app.ui-v2 .floating-panel-switcher__chip { transition: none; }
+}
