@@ -156,6 +156,8 @@ export interface TitleQualification {
     temporality: EventTemporality;
     zone: EventZone;
     reasons: TitleReason[];
+    /** Le titre parle de terrorisme : le serveur impose au LLM une gravité signalée de 3 au moins (décision du 29/09). */
+    terrorism: boolean;
 }
 
 export function titleQualification(title: string): TitleQualification {
@@ -172,5 +174,5 @@ export function titleQualification(title: string): TitleQualification {
     const zone = titleZone(title);
     if (zone === 'etranger') reasons.push('etranger');
     const maxSeverity = reasons.reduce<ThreatLevel>((cap, r) => minLevel(cap, TITLE_REASON_CAP[r]), 'critical');
-    return { maxSeverity, temporality, zone, reasons };
+    return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)) };
 }

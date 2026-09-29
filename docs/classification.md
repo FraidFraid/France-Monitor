@@ -22,6 +22,7 @@ Version : `kw-2` (mots-clés) / `groq-2` (LLM, `llm-2` si un autre fournisseur e
 
 **LLM (`api/_lib/llm-classifier.js`, `api/_lib/llm-pass.js`)**
 - Grille écrite à 5 niveaux (0 aucun impact opérationnel … 4 crise nationale en cours) ; un projet terroriste déjoué, l'arrestation de suspects de terrorisme ou une menace crédible contre une infrastructure ou l'ordre public vaut 3, même sans victime.
+- Titre qui parle de terrorisme : le serveur impose une gravité signalée de 3 au moins (le modèle notait 1 un projet déjoué malgré la clause de la grille — vérifié le 29/09) ; les plafonds s'appliquent ensuite.
 - Réponses « en France ? » et « en cours ? » ; le serveur applique les plafonds (étranger → `medium`, passé → `low`, plafonds du titre) : le modèle ne peut pas les contourner.
 - 2 lots de 10 articles par passage (candidats graves des mots-clés d'abord, puis ambigus).
 
@@ -51,7 +52,7 @@ Critères (fixés avant la mesure) :
 | Aucun événement étranger au-dessus de `medium` | 0 — OK |
 | Aucun article annoté ≤ `medium` sorti `critical` | 0 avec LLM — OK |
 | Aucun article annoté hors de France au-dessus de `medium` | 0 avec LLM — OK |
-| ≥ 80 % des articles annotés `high`+ restent ≥ `medium` | mots-clés seuls : 100 % (7/7) — OK ; avec LLM et la grille précédente : 57 % (4/7) — échec ; avec la grille finale : **à vérifier** (quota) |
+| ≥ 80 % des articles annotés `high`+ restent ≥ `medium` | mots-clés seuls : 100 % (7/7) ; avec LLM : 57 % (4/7) avec la grille seule, **100 % (7/7)** avec la règle serveur « terrorisme au titre » (29/09) — OK |
 
 La colonne « avec LLM » vient du rejeu complet fait avant l'ajout de la clause « menace terroriste » à la grille ; cette clause ne touche que le niveau 3 (elle ne peut créer ni `critical` ni événement étranger au-dessus de `medium`). L'échec du rappel avec la grille précédente venait de deux causes, corrigées le 28/09 par décision de l'analyste : la grille notait 1 un projet terroriste déjoué (« situation maîtrisée ») et « apologie » était traité comme un marqueur judiciaire. La revérification avec la grille finale — un rejeu complet (~52 000 jetons) puis un contrôle ciblé des 3 articles concernés — a buté sur le quota journalier gratuit de Groq (200 000 jetons, consommé en continu par la production) : elle est à faire dès le lendemain ou juste après le déploiement.
 
