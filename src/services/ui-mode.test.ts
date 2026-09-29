@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layerActivationOptions, layerStateStorage, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
+import { layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
 
 describe('shouldRecordIntelSnapshot (garde : pas d’écriture dans l’historique partagé avec des caches vides)', () => {
   it('v1 : toujours vrai, le tiroir décide seul de sa visibilité', () => {
@@ -59,5 +59,15 @@ describe('layerStateStorage (spec 2026-09-29 § 5)', () => {
     const win = { localStorage: local } as Pick<Window, 'localStorage' | 'sessionStorage'>;
     Object.defineProperty(win, 'sessionStorage', { get() { throw new Error('SecurityError'); } });
     expect(layerStateStorage(true, win)).toBeNull();
+  });
+});
+
+describe('legendStatusLabel (spec 2026-09-29 § 8)', () => {
+  it('v2 : l’état de récupération, pas une promesse de temps réel', () => {
+    expect(['ok', 'stale', 'error'].map((s) => legendStatusLabel(true, s as 'ok' | 'stale' | 'error'))).toEqual(['À JOUR', 'EN RETARD', 'INDISPONIBLE']);
+  });
+  it('v1 : inchangé', () => {
+    expect(legendStatusLabel(false, 'ok')).toBe('TEMPS RÉEL');
+    expect(legendStatusLabel(false, 'stale')).toBe('CACHE FIGÉ');
   });
 });

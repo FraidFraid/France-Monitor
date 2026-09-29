@@ -160,6 +160,13 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     for (const part of ['Indice de stabilité', 'frintel-pillars', '95/100']) expect(html).not.toContain(part);
   });
 
+  it('note périmée (plus de 12 h) : grisée, avec sa date', () => {
+    const note = buildFranceFiche(input({ briefMeta: { at: NOW - 13 * H, level: 'orange' } })).sections
+      .find((s) => s.title === 'Note de situation')?.html ?? '';
+    expect(note).toContain('fiche-stale');
+    expect(note).toContain('données du');
+  });
+
   it('actions : voir sur la carte et note de situation ; bascule EN', () => {
     const model = buildFranceFiche(input({ lang: 'en' }));
     expect(model.actions.map((a) => a.id)).toEqual(['show-france', 'report']);

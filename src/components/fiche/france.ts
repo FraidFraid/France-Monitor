@@ -7,6 +7,7 @@ import type { FranceCountrySnapshot, IntelEventsState, StructuredBrief } from '.
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
 import { LEVEL_RANK, briefConfidenceLabel, confidenceLabel, eventLevel, levelLabel, scoreLevel, situationLevel, type VigilanceLevel } from '../../services/vigilance.ts';
+import { dataDateLabel, freshnessOf } from '../../services/freshness.ts';
 import { drivenByText, type ThemeId } from '../../services/themes.ts';
 import type { WorkQueue } from '../../services/work-queue.ts';
 import { escapeHtml, formatAge, resolveEvidenceRef } from '../france-intel-events.ts';
@@ -214,7 +215,10 @@ function noteHtml(input: FranceFicheInput): string {
       `Written at ${formatClock(input.briefMeta.at, lang)}, level ${levelLabel(input.briefMeta.level, lang).toLowerCase()}`)}</p>`
     : '';
   const judgments = brief.judgments.length > 0 ? judgmentsHtml(brief, input) : '';
-  return `<p>${escapeHtml(brief.bluf)}</p>${judgments}${watch}${meta}${briefOrigin(input.brief, lang)}`;
+  const body = `<p>${escapeHtml(brief.bluf)}</p>${judgments}${watch}${meta}${briefOrigin(input.brief, lang)}`;
+  const at = input.briefMeta?.at ?? null;
+  if (freshnessOf(at, 'brief', input.now) === 'fresh') return body;
+  return `<div class="fiche-stale"><p class="fiche-meta">${escapeHtml(dataDateLabel(at, lang))}</p>${body}</div>`;
 }
 
 function changesHtml(input: FranceFicheInput): string {

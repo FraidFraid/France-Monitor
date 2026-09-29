@@ -164,6 +164,7 @@ function officialEntries(
     out.push({ source: 'ecowatt', level: officialLevel(level), place: 'France', detail: 'France : signal national RTE' });
   }
   for (const alert of meteo) {
+    if (alert.endDate && alert.endDate.getTime() < nowMs) continue; // vigilance échue (spec 2026-09-29 § 8)
     const risks = alert.risks.map((risk) => RISK_LABELS[risk] ?? risk).join(', ');
     out.push({
       source: 'meteo',

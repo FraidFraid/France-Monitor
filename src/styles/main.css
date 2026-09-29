@@ -8638,3 +8638,4 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .wl-foreign { border-top: 1px solid var(--border-color); }
 #app.ui-v2 .wl-foreign-title { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 #app.ui-v2 .wl-item-title { white-space: normal; overflow: visible; text-overflow: clip; }
+#app.ui-v2 .fiche-stale { opacity: 0.6; }

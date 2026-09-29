@@ -146,6 +146,11 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(groups.some((g) => g.source === 'ecowatt')).toBe(false);
   });
 
+  it('une vigilance Météo-France échue sort du fil', () => {
+    const ended = { ...meteo('Var', 'orange'), endDate: new Date(NOW - H) };
+    expect(officialAlertGroups(null, [ended], [], NOW)).toEqual([]);
+  });
+
   it('le jaune officiel n’entre pas dans la liste mais colore son thème', () => {
     const q = buildWorkQueue(input({ ecowatt: ecowatt('red'), meteo: [meteo('Isère', 'yellow')] }));
     expect(q.items.map((i) => i.title)).toEqual(['Écowatt : signal rouge (national)']);

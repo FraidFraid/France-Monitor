@@ -8,6 +8,7 @@ import {
 import type { HealthFeatures } from '../types/index.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon } from './shared/icons.ts';
+import { parseDataDate, partitionByFreshness } from '../services/freshness.ts';
 
 const ODISSE_WINTER_ALERTS_URL =
   'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/ma_region_epidemies_hivernales_alertes/records?limit=100&order_by=-date&where=valeur%20%3E%3D%203';
@@ -261,6 +262,19 @@ export class NationalHealthPanel extends Panel {
       });
     }
 
+    // Spec 2026-09-29 § 8 : au-delà de 14 jours, une alerte n'est plus « du moment ».
+    const now = Date.now();
+    const older: AlertItem[] = [];
+    for (const bucket of ['rouge', 'orange', 'jaune'] as const) {
+      const split = partitionByFreshness(buckets[bucket], (i) => parseDataDate(i.date), 'healthAlerts', now);
+      buckets[bucket] = split.current;
+      older.push(...split.older);
+    }
+    const olderGroup = older.length > 0
+      ? `<details style="margin-bottom:6px; opacity:0.7;"><summary style="cursor:pointer; padding:7px 10px; color:#9898a8; font-size:11px;">Plus anciennes (${older.length})</summary>`
+        + `<div style="padding:8px 0 2px;">${older.sort((a, b) => b.date.localeCompare(a.date)).map((i) => i.html).join('')}</div></details>`
+      : '';
+
     if (this.epidemicAlertsLoading && Object.values(buckets).every(b => b.length === 0)) {
       return `
         <div style="margin-bottom:16px;">
@@ -275,6 +289,7 @@ export class NationalHealthPanel extends Panel {
         <div style="margin-bottom:16px;">
           ${this.renderSectionHeader('Alertes du moment', '#9898a8')}
           <div style="padding:10px 12px; background:rgba(255,255,255,0.04); border-radius:7px; color:#9898a8; font-size:11px;">Aucune alerte active à ce stade.</div>
+          ${olderGroup}
         </div>`;
     }
 
@@ -302,6 +317,7 @@ export class NationalHealthPanel extends Panel {
         ${renderGroup('rouge', 'Critique / Crise', true)}
         ${renderGroup('orange', 'Alerte / Élevé', false)}
         ${renderGroup('jaune', 'Vigilance / Surveillance', false)}
+        ${olderGroup}
       </div>`;
   }
 

@@ -27,7 +27,7 @@ import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type Brie
 import { scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -1879,14 +1879,7 @@ export class App {
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
-    switch (status) {
-      case 'ok':
-        return 'TEMPS RÉEL';
-      case 'stale':
-        return 'CACHE FIGÉ';
-      default:
-        return 'INDISPONIBLE';
-    }
+    return legendStatusLabel(this.uiV2, status);
   }
 
   private refreshEnergyDataLegends(): void {
@@ -1901,7 +1894,7 @@ export class App {
         : [
             ecowattStatusNote(this.currentEcowattResponse.official, Date.now()),
             'Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance',
-            'Mix et interconnexions : TEMPS RÉEL (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici',
+            `Mix et interconnexions : ${this.formatLegendSourceStatus('ok')} (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici`,
           ]
       : [
           'Qualité des données : chargement en cours',
@@ -1910,7 +1903,7 @@ export class App {
     const gasNotes = this.currentGasData
       ? [
           `EcoGaz : ${this.formatLegendSourceStatus(this.currentGasData.sourceStatus.ecogaz)}`,
-          'Stockages/flux : données ODRE (TEMPS RÉEL) quand disponibles, sinon INDISPONIBLE',
+          `Stockages/flux : données ODRE (${this.formatLegendSourceStatus('ok')}) quand disponibles, sinon INDISPONIBLE`,
           'Terminaux et sites : HISTORIQUE / référentiel local',
         ]
       : [

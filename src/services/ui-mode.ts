@@ -57,3 +57,10 @@ export function layerStateStorage(uiV2: boolean, win: Pick<Window, 'localStorage
     return null;
   }
 }
+
+/** Libellé d'état d'une source dans la légende ; v2 : l'état de la récupération, jamais « temps réel ». */
+export function legendStatusLabel(uiV2: boolean, status: 'ok' | 'stale' | 'error'): string {
+  if (status === 'ok') return uiV2 ? 'À JOUR' : 'TEMPS RÉEL';
+  if (status === 'stale') return uiV2 ? 'EN RETARD' : 'CACHE FIGÉ';
+  return 'INDISPONIBLE';
+}
