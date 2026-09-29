@@ -8639,3 +8639,14 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .wl-foreign-title { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 #app.ui-v2 .wl-item-title { white-space: normal; overflow: visible; text-overflow: clip; }
 #app.ui-v2 .fiche-stale { opacity: 0.6; }
+
+/* ── v2 : en-tête sur deux lignes (spec 2026-09-29 § 4) ── */
+#app.ui-v2 .header-clock, #app.ui-v2 .header-live-dot { display: none; }
+#app.ui-v2 .header .fm-v2-status { min-width: 0; overflow: hidden; }
+#app.ui-v2 .fm-v2-bar { flex-direction: row; align-items: center; gap: 12px; padding: 6px 14px; }
+#app.ui-v2 .fm-v2-themes { flex: 1 1 auto; min-width: 0; }
+#app.ui-v2 .fm-v2-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+#app.ui-v2 .sb-fresh { display: none; } /* la liste « SOURCES » de l'en-tête le dit déjà */
+@media (min-width: 1101px) {
+  #app.ui-v2 .header { grid-template-columns: auto minmax(0, 1fr) auto; }
+}

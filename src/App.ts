@@ -2546,13 +2546,31 @@ export class App {
       this.container.dataset.v2Fiche = 'default';
       v2Bar = document.createElement('div');
       v2Bar.className = 'fm-v2-bar';
-      v2Bar.innerHTML = '<div class="fm-v2-status"></div><div class="fm-v2-themes"></div>';
+      v2Bar.innerHTML = '<div class="fm-v2-themes"></div><div class="fm-v2-tools"></div>';
       this.container.appendChild(v2Bar);
     }
     this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
     this.bindLanguageToggle(header);
     this.bindSidebarToggle(header);
+
+    if (this.uiV2 && v2Bar) {
+      // En-tête sur deux lignes (spec 2026-09-29 § 4) : l'état national dans l'en-tête, à la place des
+      // régions ; régions et bouton Couches sur la ligne des thèmes ; « Sources & qualité » dans ⋯.
+      const status = document.createElement('div');
+      status.className = 'fm-v2-status';
+      const tools = v2Bar.querySelector<HTMLElement>('.fm-v2-tools');
+      const regions = header.querySelector<HTMLElement>('#region-presets');
+      const layersToggle = header.querySelector<HTMLElement>('[data-sidebar-toggle]');
+      if (regions && tools) {
+        regions.replaceWith(status);
+        tools.append(regions);
+      }
+      if (layersToggle && tools) tools.append(layersToggle);
+      header.querySelector('a.header-quality-link')?.remove();
+      header.querySelector('[data-overflow-menu]')?.insertAdjacentHTML('afterbegin',
+        '<a class="header-overflow-menu__item" role="menuitem" href="/sources-quality">Sources & qualité</a>');
+    }
 
     // ── Menu « ⋯ » (Note de situation / Export) — audit UI 2026-09 §5.3.4 ──
     // Regroupe deux actions header peu fréquentes derrière un seul bouton,
@@ -2910,7 +2928,7 @@ export class App {
       tabs.className = 'fm-v2-tabs';
       tabs.setAttribute('aria-label', 'Vues');
       this.container.appendChild(tabs);
-      const status = v2Bar.querySelector<HTMLElement>('.fm-v2-status');
+      const status = this.container.querySelector<HTMLElement>('.fm-v2-status');
       const themes = v2Bar.querySelector<HTMLElement>('.fm-v2-themes');
       if (status && themes) this.v2Roots = { status, themes, list: v2List, fiche: v2Fiche, tabs };
     }
