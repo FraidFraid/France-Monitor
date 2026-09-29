@@ -3,7 +3,9 @@
 // Input payload: { countryScore, axes, isnrComponents, cyberScore, meteoAlertCount,
 //   topHeadlines, signalCounts, energy, situations, events, lang }, built from
 // FranceBriefContext + /api/events by france-intel-brief.ts (client).
-// Response: { brief: StructuredBrief | null, fromCache: boolean } — brief is
+// Response: { brief: StructuredBrief | null, fromCache: boolean, generatedAt?: ISO string } — generatedAt
+// is the time the brief was really generated (kept in the Redis entry, so a cached reply carries it;
+// absent on entries written before it existed and on failed calls). brief is
 // { bluf, judgments, watch } once validateBriefShape() has passed the LLM output
 // through JSON parsing + structural validation, or null if the LLM call failed,
 // returned malformed JSON, cited no valid evidence at all, or GROQ_API_KEY is unset.
@@ -508,8 +510,9 @@ export default async function handler(request) {
     // Mis en cache même rejeté (null) : Groq a répondu, redemander la même clé donnerait le
     // même refus et coûterait un appel de plus (un appel par clé de 6 h, palier gratuit).
     // Les échecs HTTP de Groq (429, 5xx) ne sont pas mis en cache, plus haut.
-    await redisSet(cacheKey, JSON.stringify({ brief }), CACHE_TTL);
-    return new Response(JSON.stringify({ brief, fromCache: false }), {
+    const generatedAt = new Date().toISOString();
+    await redisSet(cacheKey, JSON.stringify({ brief, generatedAt }), CACHE_TTL);
+    return new Response(JSON.stringify({ brief, generatedAt, fromCache: false }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {

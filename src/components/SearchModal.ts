@@ -107,6 +107,7 @@ export class SearchModal {
             }
             if (!this.isVisible) return;
             if (e.key === 'Escape') {
+                e.preventDefault();
                 this.hide();
                 return;
             }

@@ -13,6 +13,7 @@ import {
 import { parisDate } from './ecowatt-official.ts';
 import type { SpecificThemeId } from './themes.ts';
 import type { VigilanceLevel } from './vigilance.ts';
+import type { DepartementIndex } from './departement-lookup.ts';
 import type {
   ChangeDigestItem,
   CommodityData,
@@ -145,6 +146,11 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(groups.some((g) => g.source === 'ecowatt')).toBe(false);
   });
 
+  it('une vigilance Météo-France échue sort du fil', () => {
+    const ended = { ...meteo('Var', 'orange'), endDate: new Date(NOW - H) };
+    expect(officialAlertGroups(null, [ended], [], NOW)).toEqual([]);
+  });
+
   it('le jaune officiel n’entre pas dans la liste mais colore son thème', () => {
     const q = buildWorkQueue(input({ ecowatt: ecowatt('red'), meteo: [meteo('Isère', 'yellow')] }));
     expect(q.items.map((i) => i.title)).toEqual(['Écowatt : signal rouge (national)']);
@@ -202,15 +208,15 @@ describe('buildWorkQueue — aucun sous-score hors du volet (relecture finale I4
 });
 
 describe('buildWorkQueue — tri et badges (spec §7.2)', () => {
-  it('rouge d’abord, puis nouveau ou aggravé, puis le plus récent', () => {
+  it('rouge d’abord, puis le plus récent ; une étiquette ne change plus le rang', () => {
     const q = buildWorkQueue(input({
       situations: [situation({ id: 'a' }), situation({ id: 'b' }), situation({ id: 'c', severity: 'critical' })],
       baseline: { 'situation:a': 'orange', 'situation:c': 'rouge' },
       firstSeen: new Map([['situation:a', NOW - H]]),
     }));
-    expect(keys(q)).toEqual(['situation:c', 'situation:b', 'situation:a']);
-    expect(q.items.map((i) => i.badge)).toEqual([null, 'nouveau', null]);
-    expect(q.items[2].since).toBe(NOW - H);
+    expect(keys(q)).toEqual(['situation:c', 'situation:a', 'situation:b']);
+    expect(q.items.map((i) => i.badge)).toEqual([null, null, 'nouveau']);
+    expect(q.items[1].since).toBe(NOW - H);
   });
 
   it('aggravé quand la couleur monte depuis la visite ; aucun badge sans ligne de base', () => {
@@ -387,5 +393,52 @@ describe('événements à confirmer (spec 2026-09-28 § 4.7)', () => {
   it('confirmé : pas de mention', () => {
     const q = buildWorkQueue(input({ events: eventsState({ events: [event()] }) }));
     expect(q.items.find((i) => i.key === 'event:42')?.unconfirmedPeak).toBeUndefined();
+  });
+});
+
+describe('fil de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
+  const index: DepartementIndex = {
+    at: (lon, lat) => (lon > 0 && lon < 2 && lat > 49 && lat < 50 ? { code: '76', nom: 'Seine-Maritime' } : null),
+    nameOf: (code) => (code === '01' ? 'Ain' : null),
+  };
+
+  it('un événement étranger sort de la liste et va dans « Hors de France »', () => {
+    const q = buildWorkQueue(input({ events: eventsState({ events: [event({ id: 1, zone: 'etranger' }), event({ id: 2, zone: 'france' })] }) }));
+    expect(keys(q)).toEqual(['event:2']);
+    expect(q.foreign.map((i) => i.key)).toEqual(['event:1']);
+    expect(viewWorkQueue(q, 'general', false).foreign.map((i) => i.key)).toEqual(['event:1']);
+  });
+
+  it('première visite : aucune étiquette, même pour un événement créé dans les 24 h', () => {
+    const e = event();
+    const digest: ChangeDigestItem[] = [{ event: e, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }];
+    const q = buildWorkQueue(input({ events: eventsState({ events: [e], digest, anchor: { since: NOW - 24 * H, kind: 'default' } }) }));
+    expect(q.items[0].badge).toBeNull();
+  });
+
+  it('tri : gravité puis dernier article ; une étiquette ne remonte plus une ligne', () => {
+    const recent = event({ id: 1, severity: 'high', lastSeen: '2026-09-24T07:55:00Z' });
+    const older = event({ id: 2, severity: 'high', lastSeen: '2026-09-24T06:00:00Z' });
+    const digest: ChangeDigestItem[] = [{ event: older, kinds: ['created'], latestAt: '2026-09-24T06:00:00Z', severityFrom: null, independentFrom: null }];
+    const q = buildWorkQueue(input({ events: eventsState({ events: [older, recent], digest }) }));
+    expect(keys(q)).toEqual(['event:1', 'event:2']);
+    expect(q.items[0].since).toBe(Date.parse('2026-09-24T07:55:00Z'));
+  });
+
+  it('lieu : département des coordonnées, « France » sans coordonnées, rien hors des départements, nom d’un code', () => {
+    const q = buildWorkQueue(input({
+      departements: index,
+      situations: [situation({ affectedZones: ['01'] })],
+      events: eventsState({ events: [
+        event({ id: 1, lat: 49.4, lon: 1.1 }),
+        event({ id: 2, lat: null, lon: null }),
+        event({ id: 3, lat: -20.9, lon: 55.45 }),
+      ] }),
+    }));
+    const place = (key: string): string | null | undefined => q.items.find((i) => i.key === key)?.place;
+    expect(place('event:1')).toBe('Seine-Maritime');
+    expect(place('event:2')).toBe('France');
+    expect(place('event:3')).toBeNull();
+    expect(place('situation:energy-stress')).toBe('Ain');
   });
 });

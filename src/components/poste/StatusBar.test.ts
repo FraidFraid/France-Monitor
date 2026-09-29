@@ -61,7 +61,7 @@ describe('StatusBar (spec §5.2)', () => {
 });
 
 describe('ThemeBar (spec §5.3)', () => {
-  it('cinq thèmes, le mot du niveau sur chacun, le thème choisi est pressé', () => {
+  it('cinq thèmes, pastille seulement orange ou rouge (jamais sur Vue générale), le thème choisi est pressé', () => {
     const html = renderThemeBar({
       selected: 'energy',
       levels: { general: 'rouge', energy: 'rouge', security: 'orange', health: 'vert', environment: 'jaune' },
@@ -69,7 +69,13 @@ describe('ThemeBar (spec §5.3)', () => {
     });
     expect(html.match(/data-theme=/g)).toHaveLength(5);
     expect(html).toContain('data-theme="energy" aria-pressed="true"');
-    expect(html).toContain('Santé <span class="tb-level"><span class="fm-vig fm-vig--vert">Vert</span>');
+    expect(html).toContain('Sécurité et défense <span class="tb-level"><span class="fm-vig fm-vig--orange">Orange</span>');
+    expect(html).toContain('Énergie <span class="tb-level"><span class="fm-vig fm-vig--rouge">Rouge</span>');
+    // Vert et jaune : pas de pastille, le niveau reste dit aux lecteurs d'écran ; jamais rien sur « Vue générale ».
+    expect(html.match(/class="fm-vig /g)).toHaveLength(2);
+    expect(html).toContain('<span class="visually-hidden">· Vert</span>');
+    expect(html).toContain('<span class="visually-hidden">· Jaune</span>');
+    expect(html).not.toMatch(/data-theme="general"[^>]*>[^<]*<span/);
     // Niveau national pas encore calculé : aucune pastille plutôt qu'un vert par défaut (revue).
     expect(renderThemeBar({ selected: 'general', levels: null, lang: 'fr' })).not.toContain('fm-vig');
   });

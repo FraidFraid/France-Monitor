@@ -1,7 +1,7 @@
-// src/components/poste/ThemeBar.ts — barre de thèmes (spec §5.3) : les cinq vues, chacune avec la
-// pastille de son niveau (le mot sur la couleur, §9). « Vue générale » porte le niveau national.
+// src/components/poste/ThemeBar.ts — barre de thèmes (spec §5.3) : les cinq vues, pastille de niveau
+// (le mot sur la couleur, §9) seulement pour un thème orange ou rouge (spec 2026-09-29 § 4).
 
-import type { VigilanceLevel } from '../../services/vigilance.ts';
+import { levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { THEMES, themeLabel, type ThemeId } from '../../services/themes.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -18,7 +18,13 @@ export interface ThemeBarModel {
 export function renderThemeBar(model: ThemeBarModel): string {
   const buttons = THEMES.map((th) => {
     const on = th.id === model.selected;
-    const level = model.levels ? ` <span class="tb-level">${renderVigilancePill(model.levels[th.id], model.lang)}</span>` : '';
+    const lv = model.levels?.[th.id];
+    // Spec 2026-09-29 § 4 : pastille seulement pour un thème orange ou rouge, jamais sur « Vue générale »
+    // (le niveau national est dit par la barre d'état) ; les autres le disent aux lecteurs d'écran.
+    const level = !lv ? ''
+      : th.id !== 'general' && (lv === 'orange' || lv === 'rouge')
+        ? ` <span class="tb-level">${renderVigilancePill(lv, model.lang)}</span>`
+        : th.id === 'general' ? '' : ` <span class="visually-hidden">· ${levelLabel(lv, model.lang)}</span>`;
     return `<button type="button" class="tb-theme${on ? ' is-on' : ''}" data-theme="${th.id}" aria-pressed="${on ? 'true' : 'false'}">`
       + `${escapeHtml(themeLabel(th.id, model.lang))}${level}</button>`;
   }).join('');

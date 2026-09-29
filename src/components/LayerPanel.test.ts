@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
-import { LayerPanel } from './LayerPanel.ts';
+import { LayerPanel, visibleLayerDefs } from './LayerPanel.ts';
 import { layersForPreset } from '../config/layer-presets.ts';
 import type { MapLayers } from '../types/index.ts';
 
@@ -28,5 +28,17 @@ describe('LayerPanel — « Personnaliser les couches »', () => {
     const host = mountWith(layersForPreset('energy'));
     host.querySelector<HTMLElement>('#layer-panel-customize-toggle')?.click();
     expect(host.querySelector<HTMLElement>('.layer-panel-customize-body')?.style.display).toBe('none');
+  });
+});
+
+describe('LayerPanel — entrée « Événements en cours » (v2 seulement)', () => {
+  it('absente hors v2, présente en v2', () => {
+    expect(visibleLayerDefs(false).some((d) => d.key === 'events')).toBe(false);
+    expect(visibleLayerDefs(true).some((d) => d.key === 'events')).toBe(true);
+  });
+
+  it('rendu : sans ?ui=v2 aucune case « ÉVÉNEMENTS EN COURS »', () => {
+    const host = mountWith(layersForPreset('energy'));
+    expect(host.textContent).not.toContain('ÉVÉNEMENTS EN COURS');
   });
 });

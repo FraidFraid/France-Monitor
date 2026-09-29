@@ -125,3 +125,29 @@ export function layersForPreset(id: LayerPresetId): Partial<MapLayers> {
   }
   return result;
 }
+
+/** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite — les événements et les vigilances. */
+export function v2StartupLayers(): Partial<MapLayers> {
+  return { events: true, environmental: true };
+}
+
+/**
+ * Couches d'un thème. v2 : « Vue générale » revient aux vigilances seules (la couche Événements,
+ * hors des vues, n'est pas touchée) ; les autres thèmes gardent toutes leurs couches (décision du
+ * 25/09/2026). v1 : les vues ci-dessus.
+ */
+export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers> {
+  if (!uiV2 || id !== 'general') return layersForPreset(id);
+  const off = Object.fromEntries(ALL_PRESETABLE_LAYER_KEYS.map((key) => [key, false])) as Partial<MapLayers>;
+  return { ...off, environmental: true };
+}
+
+/**
+ * Vrai si l'état de couches persisté (URL ou stockage) contient au moins une couche enfant active.
+ * Un état « tout éteint » est traité comme un premier chargement. La couche Événements, hors des
+ * vues, compte aussi : une carte réduite à elle seule se conserve au rechargement (spec 2026-09-29 § 5).
+ */
+export function hasPersistedLayers(persisted: Partial<MapLayers> | null): boolean {
+  if (!persisted) return false;
+  return Boolean(persisted.events) || ALL_PRESETABLE_LAYER_KEYS.some((key) => persisted[key]);
+}

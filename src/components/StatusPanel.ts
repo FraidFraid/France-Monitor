@@ -212,6 +212,7 @@ export class StatusPanel {
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
+                if (this.isOpen) event.preventDefault();
                 this.setOpen(false);
             }
         });

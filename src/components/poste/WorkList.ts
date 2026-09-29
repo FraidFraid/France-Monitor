@@ -19,6 +19,8 @@ export interface WorkListModel {
   ready: boolean;
   lang: Lang;
   now: number;
+  /** Groupe « Hors de France » déplié : état tenu par le poste, jamais perdu à un rafraîchissement. */
+  foreignOpen?: boolean;
 }
 
 function relative(since: number, now: number, lang: Lang, ongoing: boolean): string {
@@ -30,10 +32,9 @@ function relative(since: number, now: number, lang: Lang, ongoing: boolean): str
   return ongoing ? `for ${unit}` : `${unit} ago`;
 }
 
-/** « Rouge · Seine-Maritime · il y a 30 min · 3 sources indép. » (spec §7.2), texte brut. */
+/** « Haut-Rhin · il y a 2 h · 5 sources » (spec 2026-09-29 § 6), texte brut ; le niveau est dit par la barre. */
 export function rowMeta(item: WorkItem, lang: Lang, now: number): string {
-  const parts = [levelLabel(item.level, lang)];
-  if (item.unconfirmedPeak) parts.push(`${lang === 'fr' ? 'signalé' : 'reported'} ${levelLabel(item.unconfirmedPeak, lang)}`);
+  const parts: string[] = [];
   if (item.place) parts.push(item.place);
   if (item.since !== null) {
     // Un événement ou une alerte datent d'un instant (« il y a ») ; une situation dure (« depuis »).
@@ -42,33 +43,35 @@ export function rowMeta(item: WorkItem, lang: Lang, now: number): string {
   }
   if (item.independentSources !== null) {
     parts.push(item.independentSources >= 2
-      ? (lang === 'fr' ? `${item.independentSources} sources indép.` : `${item.independentSources} indep. sources`)
+      ? `${item.independentSources} sources`
       : (lang === 'fr' ? 'source unique' : 'single source'));
   }
   return parts.join(' · ');
 }
 
 function badgeHtml(item: WorkItem, lang: Lang): string {
-  // Majuscules du §7.2, exception explicite au §4.3 (arbitrage A4) ; couleur neutre (§2).
-  // Événement signalé grave par une seule source (spec 2026-09-28 § 4.7).
-  const confirm = item.unconfirmedPeak ? ` <span class="wl-badge">${lang === 'fr' ? 'À CONFIRMER' : 'UNCONFIRMED'}</span>` : '';
-  if (item.badge === 'nouveau') return confirm + ` <span class="wl-badge">${lang === 'fr' ? 'NOUVEAU' : 'NEW'}</span>`;
-  if (item.badge === 'aggrave') return confirm + ` <span class="wl-badge">${lang === 'fr' ? 'AGGRAVÉ' : 'ESCALATED'}</span>`;
-  return confirm;
+  const fr = lang === 'fr';
+  const label = item.unconfirmedPeak ? (fr ? 'À CONFIRMER' : 'UNCONFIRMED')
+    : item.badge === 'aggrave' ? (fr ? 'AGGRAVÉ' : 'ESCALATED')
+      : item.badge === 'nouveau' ? (fr ? 'NOUVEAU' : 'NEW')
+        : null;
+  return label ? ` <span class="wl-badge">${label}</span>` : '';
+}
+
+function rowHtml(item: WorkItem, model: WorkListModel): string {
+  const selected = item.key === model.selectedKey;
+  return `<li class="wl-row"><button type="button" class="wl-item${selected ? ' is-selected' : ''}" data-key="${escapeHtml(item.key)}"`
+    + ` aria-current="${selected ? 'true' : 'false'}" aria-controls="fm-v2-fiche">`
+    + `<span class="wl-bar wl-bar--${item.level}" aria-hidden="true"></span>`
+    + `<span class="wl-body"><span class="wl-item-title">${escapeHtml(item.title)}${badgeHtml(item, model.lang)}</span>`
+    + `<span class="wl-meta"><span class="visually-hidden">${levelLabel(item.level, model.lang)} · </span>${escapeHtml(rowMeta(item, model.lang, model.now))}</span></span></button></li>`;
 }
 
 export function renderWorkList(model: WorkListModel): string {
-  const { view, lang, now } = model;
+  const { view, lang } = model;
   const fr = lang === 'fr';
   const title = `${fr ? 'À traiter' : 'To handle'} · ${themeLabel(view.theme, lang)} · ${view.total}`;
-  const rows = view.rows.map((item) => {
-    const selected = item.key === model.selectedKey;
-    return `<li class="wl-row"><button type="button" class="wl-item${selected ? ' is-selected' : ''}" data-key="${escapeHtml(item.key)}"`
-      + ` aria-current="${selected ? 'true' : 'false'}" aria-controls="fm-v2-fiche">`
-      + `<span class="wl-bar wl-bar--${item.level}" aria-hidden="true"></span>`
-      + `<span class="wl-body"><span class="wl-item-title">${escapeHtml(item.title)}${badgeHtml(item, lang)}</span>`
-      + `<span class="wl-meta">${escapeHtml(rowMeta(item, lang, now))}</span></span></button></li>`;
-  }).join('');
+  const rows = view.rows.map((item) => rowHtml(item, model)).join('');
   const notes: string[] = [];
   if (view.eventsStatus === 'loading') {
     notes.push(`<li class="wl-note">${fmLoaderHTML({ text: fr ? 'Chargement des événements…' : 'Loading events…', variant: 'inline' })}</li>`);
@@ -91,8 +94,12 @@ export function renderWorkList(model: WorkListModel): string {
       ? `Hors de ce thème : ${view.guard.reds} rouge${view.guard.reds > 1 ? 's' : ''} (${guardThemes})`
       : `Outside this theme: ${view.guard.reds} red (${guardThemes})`)}</button>`
     : '';
+  const foreign = view.foreign.length > 0
+    ? `<details class="wl-foreign"${model.foreignOpen ? ' open' : ''}><summary class="wl-foreign-title">${escapeHtml(fr ? `Hors de France : ${view.foreign.length}` : `Outside France: ${view.foreign.length}`)}</summary>`
+      + `<ul class="wl-list">${view.foreign.map((item) => rowHtml(item, model)).join('')}</ul></details>`
+    : '';
   return `<div class="wl-head"><h2 class="wl-title" tabindex="-1">${escapeHtml(title)}</h2></div>`
-    + `<ul class="wl-list">${rows}${notes.join('')}</ul>${empty}${more}${guard}`;
+    + `<ul class="wl-list">${rows}${notes.join('')}</ul>${empty}${more}${guard}${foreign}`;
 }
 
 /**
@@ -116,9 +123,19 @@ export class WorkList {
   private onSelect: ((key: string) => void) | null = null;
   private onShowAll: ((showAll: boolean) => void) | null = null;
   private onGuard: ((theme: ThemeId) => void) | null = null;
+  private onForeignToggle: ((open: boolean) => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
+    // `toggle` ne remonte pas : écoute en capture. L'attribut `open` fait foi.
+    root.addEventListener('toggle', (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement) || !target.matches('details.wl-foreign')) return;
+      const open = target.hasAttribute('open');
+      // Le HTML mémorisé suit l'état du groupe : la mise à jour suivante ne reconstruit pas la liste pour rien.
+      this.lastHtml = this.lastHtml.replace(/<details class="wl-foreign"( open)?>/, `<details class="wl-foreign"${open ? ' open' : ''}>`);
+      this.onForeignToggle?.(open);
+    }, true);
     root.addEventListener('click', (e) => this.handleClick(e));
     root.addEventListener('keydown', (e) => this.handleKeydown(e));
   }
@@ -133,6 +150,10 @@ export class WorkList {
 
   setOnGuard(handler: (theme: ThemeId) => void): void {
     this.onGuard = handler;
+  }
+
+  setOnForeignToggle(handler: (open: boolean) => void): void {
+    this.onForeignToggle = handler;
   }
 
   update(model: WorkListModel): void {
@@ -172,6 +193,7 @@ export class WorkList {
     if (key !== undefined) return () => findByKey(this.root, key);
     if (el.dataset.more !== undefined) return () => this.root.querySelector<HTMLElement>('.wl-more');
     if (el.dataset.guard !== undefined) return () => this.root.querySelector<HTMLElement>('.wl-guard');
+    if (el.classList.contains('wl-foreign-title')) return () => this.root.querySelector<HTMLElement>('.wl-foreign-title');
     return () => this.root.querySelector<HTMLElement>('.wl-title');
   }
 
@@ -194,7 +216,8 @@ export class WorkList {
   }
 
   private handleKeydown(e: KeyboardEvent): void {
-    const items = [...this.root.querySelectorAll<HTMLElement>('.wl-item')];
+    // Seules les lignes affichées : celles du groupe « Hors de France » replié n'ont pas de boîte.
+    const items = [...this.root.querySelectorAll<HTMLElement>('.wl-item')].filter(isDisplayed);
     const index = items.findIndex((el) => el === document.activeElement);
     if (index === -1) return;
     let next: number;

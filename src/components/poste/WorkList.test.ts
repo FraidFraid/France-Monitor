@@ -3,7 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { WorkList, renderWorkList, type WorkListModel } from './WorkList.ts';
 import { buildWorkQueue, viewWorkQueue, type WorkQueueInput } from '../../services/work-queue.ts';
 import type { ThemeId } from '../../services/themes.ts';
-import type { DetectedSituation, IntelEventsState, NewsEvent } from '../../types/index.ts';
+import type { ChangeDigestItem, DetectedSituation, IntelEventsState, NewsEvent } from '../../types/index.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
 
@@ -56,14 +56,15 @@ function hideWithin(container: HTMLElement): void {
 }
 
 describe('renderWorkList (spec §7.2, §7.4)', () => {
-  it('titre, mot du niveau dans chaque ligne, badge et sources indépendantes', () => {
+  it('titre, badge et méta de chaque ligne (niveau réservé aux lecteurs d’écran)', () => {
     const html = renderWorkList(model({ events: events({
       events: [event()],
       digest: [{ event: event(), kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }],
     }) }));
     expect(html).toContain('À traiter · Vue générale · 1');
     expect(html).toContain('>NOUVEAU</span>');
-    expect(html).toContain('Rouge · il y a 30 min · 3 sources indép.');
+    expect(html).toContain('<span class="visually-hidden">Rouge · </span>');
+    expect(html).toContain('France · il y a 10 min · 3 sources');
   });
 
   it('rien à traiter, événements indisponibles, voir les autres, garde hors thème', () => {
@@ -153,10 +154,75 @@ describe('WorkList — clavier et focus (spec §9)', () => {
 });
 
 describe('ligne « à confirmer » (spec 2026-09-28 § 4.7)', () => {
-  it('mention et niveau signalé', () => {
+  it('mention et niveau affiché', () => {
     const html = renderWorkList(model({ events: events({ events: [event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1, sourceCount: 1 })] }) }));
     expect(html).toContain('À CONFIRMER');
-    expect(html).toContain('Jaune · signalé Rouge');
+    expect(html).toContain('<span class="visually-hidden">Jaune · </span>');
     expect(html).toContain('wl-bar--jaune');
+  });
+});
+
+describe('ligne de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
+  it('lieu · heure du dernier article · sources ; le niveau seulement pour les lecteurs d’écran', () => {
+    const html = renderWorkList(model({ events: events({ events: [event({ severity: 'high', lastSeen: '2026-09-24T06:00:00Z', independentCount: 5 })] }) }));
+    expect(html).toContain('France · il y a 2 h · 5 sources');
+    expect(html).toContain('<span class="visually-hidden">Orange · </span>');
+  });
+
+  it('une seule étiquette : À CONFIRMER passe avant AGGRAVÉ', () => {
+    const e = event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1 });
+    const digest: ChangeDigestItem[] = [{ event: e, kinds: ['escalated'], latestAt: '2026-09-24T07:50:00Z', severityFrom: 'low', independentFrom: null }];
+    const html = renderWorkList(model({ events: events({ events: [e], digest }) }));
+    expect(html).toContain('À CONFIRMER');
+    expect(html).not.toContain('AGGRAVÉ');
+  });
+
+  it('groupe replié « Hors de France »', () => {
+    const html = renderWorkList(model({ events: events({ events: [event({ id: 9, title: 'Inondations à Bangkok', zone: 'etranger' })] }) }));
+    expect(html).toContain('<details class="wl-foreign">');
+    expect(html).toContain('Hors de France : 1');
+    expect(html).toContain('data-key="event:9"');
+  });
+});
+
+describe('groupe « Hors de France » (relecture finale I2)', () => {
+  const foreignModel = (now: number, foreignOpen?: boolean): WorkListModel => ({
+    ...model({ events: events({ events: [
+      event({ id: 1, title: 'Explosion à Rouen' }),
+      event({ id: 9, title: 'Inondations à Bangkok', zone: 'etranger' }),
+    ] }) }, 'general', now),
+    ...(foreignOpen === undefined ? {} : { foreignOpen }),
+  });
+
+  it('ouvert, il le reste après une mise à jour 5 minutes plus tard', () => {
+    const { root, list } = mount();
+    let open = false;
+    list.setOnForeignToggle((o) => { open = o; });
+    list.update(foreignModel(NOW));
+    const details = root.querySelector('details.wl-foreign');
+    expect(details).not.toBeNull();
+    details?.setAttribute('open', '');
+    details?.dispatchEvent(new Event('toggle'));
+    expect(open).toBe(true);
+    // Le poste repasse l'état ; la liste est mise à jour (« il y a … » change).
+    list.update(foreignModel(NOW + 5 * 60_000, open));
+    expect(root.querySelector('details.wl-foreign')?.hasAttribute('open')).toBe(true);
+    expect(renderWorkList(foreignModel(NOW, true))).toContain('<details class="wl-foreign" open>');
+  });
+
+  it('flèche bas depuis la dernière ligne visible ne va pas dans le groupe replié', () => {
+    const { root, list } = mount();
+    list.update(foreignModel(NOW));
+    const original = Element.prototype.getClientRects;
+    vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(function (this: Element): DOMRectList {
+      return this.closest('details.wl-foreign:not([open])') ? ([] as unknown as DOMRectList) : original.call(this);
+    });
+    const visible = root.querySelector<HTMLElement>('[data-key="event:1"]');
+    visible?.focus();
+    expect(activeKey()).toBe('event:1');
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(activeKey()).toBe('event:1');
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(activeKey()).toBe('event:1');
   });
 });

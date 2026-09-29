@@ -18,6 +18,7 @@ import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
+import type { EventMapPoint, LightVigilance } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
@@ -36,6 +37,7 @@ import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 import { buildDefaultGibsViirsTileUrl, resolveLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
 import { fetchMtgFrpMetadata, getMtgFrpTileTemplate } from '../services/mtg-frp.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
@@ -399,6 +401,7 @@ export class DeckGLMap {
   private newsItems: NewsItem[] = [];
   private itemsById: Map<string, NewsItem> = new Map();
   private hoveredId: number | null = null;
+  private lightVigilance: LightVigilance | null = null;
   private onItemClick: ((item: NewsItem) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onItemHover:
@@ -471,7 +474,6 @@ export class DeckGLMap {
   // non-nulles pour qu'un refresh santé ultérieur n'efface jamais la couche.
   private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
-  private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
   // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
   // is created, in parallel with map style/tile loading, instead of only
   // after map.on('load') fires — this fetch has no dependency on the map.
@@ -566,6 +568,10 @@ export class DeckGLMap {
   private globalTrafficVisible = true;  // Controlled by military layer toggle
   private globalTrafficData: AisShipData[] = [];
   private roadTrafficVisible = false;
+  /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
+  private eventPoints: EventMapPoint[] = [];
+  private eventPointsVisible = false;
+  private onEventPointClick: ((id: number) => void) | null = null;
   private airTrafficVisible = false;
   private dayNightVisible = false;
   private dayNightOptions = {
@@ -1150,6 +1156,8 @@ export class DeckGLMap {
         'line-opacity': 1,
       },
     });
+
+    this.applyLightVigilance();
 
     // NOTE: Weather icons layer is added later (after all fill layers) to ensure visibility
 
@@ -4262,7 +4270,7 @@ export class DeckGLMap {
           ${isDept ? motifsHtml : ''}
 
           <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); text-align: center;">
-            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health'))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
+            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: true } }))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
           </div>
         </div>
       `;
@@ -6113,6 +6121,37 @@ export class DeckGLMap {
           getPosition: [this.threatEvents, this.viewState.zoom],
           getFillColor: [this.threatEvents, this.viewState.zoom],
           getRadius: [this.threatEvents, this.viewState.zoom],
+        },
+      }),
+      new ScatterplotLayer<EventMapPoint>({
+        id: 'deck-news-events',
+        data: this.eventPoints,
+        visible: this.eventPointsVisible,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: EventMapPoint) => [d.lon, d.lat],
+        radiusUnits: 'pixels',
+        getRadius: (d: EventMapPoint) => d.radius,
+        filled: true,
+        getFillColor: (d: EventMapPoint) => (d.hollow ? [0, 0, 0, 0] : [...d.color, 220]) as [number, number, number, number],
+        stroked: true,
+        lineWidthUnits: 'pixels',
+        getLineWidth: (d: EventMapPoint) => (d.hollow ? 2 : 1),
+        getLineColor: (d: EventMapPoint) => (d.hollow ? [...d.color, 255] : [10, 12, 18, 230]) as [number, number, number, number],
+        pickable: true,
+        onHover: (info) => {
+          const point = info.object as EventMapPoint | undefined;
+          const canvas = this.map?.getCanvas();
+          if (canvas) canvas.title = point ? point.title : '';
+        },
+        onClick: (info) => {
+          const point = info.object as EventMapPoint | undefined;
+          if (point) this.onEventPointClick?.(point.id);
+        },
+        updateTriggers: {
+          getFillColor: this.eventPoints,
+          getLineColor: this.eventPoints,
+          getLineWidth: this.eventPoints,
+          getRadius: this.eventPoints,
         },
       }),
     ];
@@ -9654,16 +9693,9 @@ export class DeckGLMap {
 
   // ─── Weather Layer ───
 
-  private async getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
-    this.departmentsGeojsonPromise ??= fetch('/data/departements.geojson')
-      .then((resp) => resp.ok ? resp.json() as Promise<GeoJSON.FeatureCollection> : null)
-      .catch((error) => {
-        this.departmentsGeojsonPromise = null;
-        console.warn('[DeckGLMap] Failed to cache departments GeoJSON', error);
-        return null;
-      });
-
-    return this.departmentsGeojsonPromise;
+  private getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
+    // Chargeur partagé avec l'index des départements du fil (v2) : un seul téléchargement.
+    return loadDepartementsGeojson();
   }
 
   private cloneDepartmentsGeojson(base: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
@@ -11701,6 +11733,34 @@ export class DeckGLMap {
     if (!this.map) return;
   }
 
+  setEventPoints(points: EventMapPoint[]): void {
+    this.eventPoints = points;
+    this.scheduleOverlayUpdate();
+  }
+
+  /** v2 (spec 2026-09-29 § 5) : vigilances en aplat léger ; appliqué dès que les couches météo existent. */
+  setLightVigilance(o: LightVigilance): void {
+    this.lightVigilance = o;
+    this.applyLightVigilance();
+  }
+
+  private applyLightVigilance(): void {
+    const o = this.lightVigilance;
+    if (!o || !this.map?.getLayer(LYR_WEATHER_FILL)) return;
+    this.map.setPaintProperty(LYR_WEATHER_FILL, 'fill-opacity', [
+      'case', ['boolean', ['get', 'hasAlert'], false],
+      ['case', WEATHER_HIGHLIGHT_STATE, o.highlight,
+        ['match', ['get', 'level'], 'violet', o.violet, 'red', o.red, 'orange', o.orange, 'yellow', o.yellow, 0]],
+      0,
+    ]);
+    // Jaune sans bordure (sauf survol) ; orange, rouge et violet gardent la leur.
+    this.map.setPaintProperty(LYR_WEATHER_LINE_YELLOW, 'line-opacity', ['case', WEATHER_HIGHLIGHT_STATE, 1, 0]);
+  }
+
+  setOnEventPointClick(handler: ((id: number) => void) | null): void {
+    this.onEventPointClick = handler;
+  }
+
   updateTrafficIncidents(incidents: TrafficIncident[]): void {
     if (!this.map) return;
     this.roadTrafficIncidents = incidents;
@@ -12311,6 +12371,11 @@ export class DeckGLMap {
 
   setLayerVisibility(layers: MapLayers): void {
     this.currentLayers = layers;
+    const eventsVisible = layers.events === true;
+    if (eventsVisible !== this.eventPointsVisible) {
+      this.eventPointsVisible = eventsVisible;
+      this.scheduleOverlayUpdate();
+    }
     // Update DOM overlay immediately to reflect news toggle
     this.updatePulseMarkerPositions();
     if (!this.map) return;

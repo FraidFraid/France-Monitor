@@ -141,6 +141,8 @@ export interface FicheModel {
   sources: FicheSource[];
   /** HTML déjà échappé du volet « Pourquoi ce niveau ? » ; vide → volet omis. */
   why: string;
+  /** Volet « Pourquoi ce niveau ? » juste sous l'en-tête (onglet État). */
+  whyFirst?: boolean;
   whyOpen: boolean;
   actions: FicheAction[];
 }
@@ -149,9 +151,9 @@ function part(cls: string, title: string, body: string): string {
   return `<section class="fiche-part ${cls}"><h3 class="fiche-part-title">${title}</h3>${body}</section>`;
 }
 
-function renderChanges(model: FicheModel, lang: Lang): string {
-  if (model.changes.length === 0 && model.changesMeta === '') return '';
-  const rows = model.changes.map((c) => {
+/** Lignes de changements (heure, texte, lien) ; '' si aucune. */
+export function renderChangeRows(changes: readonly FicheChange[], lang: Lang): string {
+  const rows = changes.map((c) => {
     const time = `<span class="fiche-time">${c.at === null ? '—' : formatClock(c.at, lang)}</span>`;
     const text = escapeHtml(c.text);
     const body = c.select
@@ -159,9 +161,15 @@ function renderChanges(model: FicheModel, lang: Lang): string {
       : `<span>${text}</span>`;
     return `<li class="fiche-change">${time} ${body}</li>`;
   }).join('');
+  return rows ? `<ul class="fiche-list">${rows}</ul>` : '';
+}
+
+function renderChanges(model: FicheModel, lang: Lang): string {
+  if (model.changes.length === 0 && model.changesMeta === '') return '';
+  const list = renderChangeRows(model.changes, lang);
   const meta = model.changesMeta ? `<div class="fiche-meta">${escapeHtml(model.changesMeta)}</div>` : '';
-  const empty = rows ? '' : `<p class="fiche-empty">${t(lang, 'Aucun changement notable.', 'No notable change.')}</p>`;
-  return part('fiche-changes', t(lang, 'Ce qui a changé', 'What changed'), `${meta}${rows ? `<ul class="fiche-list">${rows}</ul>` : empty}`);
+  const empty = list ? '' : `<p class="fiche-empty">${t(lang, 'Aucun changement notable.', 'No notable change.')}</p>`;
+  return part('fiche-changes', t(lang, 'Ce qui a changé', 'What changed'), `${meta}${list || empty}`);
 }
 
 function renderSources(model: FicheModel, lang: Lang): string {
@@ -204,9 +212,10 @@ export function renderFiche(model: FicheModel, lang: Lang): string {
       + `<summary>${t(lang, 'Pourquoi ce niveau ?', 'Why this level?')}</summary>`
       + `<div class="fiche-why-body">${model.why}</div></details>`
     : '';
+  const whyFirst = model.whyFirst === true;
   const actions = model.actions.length > 0
     ? `<div class="fiche-actions">${model.actions
       .map((a) => `<button type="button" class="fiche-action" data-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`
     : '';
-  return `<article class="fiche" data-fiche="${escapeHtml(model.key)}">${head}${essentiel}${renderChanges(model, lang)}${sections}${figures}${watch}${renderSources(model, lang)}${why}${actions}</article>`;
+  return `<article class="fiche" data-fiche="${escapeHtml(model.key)}">${head}${whyFirst ? why : ''}${essentiel}${renderChanges(model, lang)}${sections}${figures}${watch}${renderSources(model, lang)}${whyFirst ? '' : why}${actions}</article>`;
 }

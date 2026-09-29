@@ -25,8 +25,11 @@ import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { isUiV2, layerActivationOptions, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
-import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
+import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
+import type { ThemeId } from './services/themes.ts';
+import { innerLayerOpen } from './services/escape-layers.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -58,7 +61,7 @@ import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, layersForPreset, type LayerPresetId } from './config/layer-presets.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
@@ -152,6 +155,7 @@ import type { ExportContext } from './services/data-export.ts';
 import type { ExportMenu } from './components/ExportMenu.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
+import { loadDepartementIndex } from './services/departement-lookup.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
 // Cache global des dernières métriques du baromètre santé, partagé avec le handler
@@ -419,6 +423,7 @@ function buildNuclearBriefingContext(state: NuclearState | null): NuclearBriefin
 const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
   news: false,
+  events: false,
   alerts: false,
   energySystems: false,
   dromEnergy: false,
@@ -474,6 +479,9 @@ interface FloatingPanelDef {
   icon: IconName;
   layerKeys: ReadonlyArray<keyof MapLayers>;
 }
+
+/** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
+const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
@@ -1132,6 +1140,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     legend: NEWS_LEGEND,
   },
   {
+    id: 'events',
+    groupId: 'news',
+    role: 'child',
+    // Jamais masquée par le maître du groupe Actualités : c'est la couche de base de la v2.
+    dependsOnGroup: false,
+    label: 'Evenements',
+  },
+  {
     id: 'stability',
     groupId: 'news',
     role: 'child',
@@ -1481,6 +1497,9 @@ export class App {
   private v2Roots: { status: HTMLElement; themes: HTMLElement; list: HTMLElement; fiche: HTMLElement; tabs: HTMLElement } | null = null;
   /** Brief, événements et ligne de base lancés pour la fiche France (équivalent v2 du tiroir ouvert). */
   private v2IntelStarted = false;
+  /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
+  private v2Theme: ThemeId = 'general';
+  private v2EventsState: IntelEventsState | null = null;
   /** Ligne de base de visite figée par startV2Intel ; null avant (aucun enregistrement possible). */
   private v2BaselineSession: VisitBaselineSession | null = null;
   private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
@@ -1598,6 +1617,8 @@ export class App {
   /** Dernier panneau flottant ouvert explicitement via showFloatingPanel() —
    *  repli pour la puce active du sélecteur sur les panneaux sans isVisible(). */
   private currentFloatingPanelId: keyof MapLayers | null = null;
+  /** Vrai pendant une ouverture demandée par l'analyste (sélecteur de panneaux) — spec 2026-09-29 § 4. */
+  private explicitPanelRequest = false;
   private floatingPanelSwitcherEl: HTMLElement | null = null;
   /** true seulement pendant l'application du preset d'accueil (premier
    *  chargement OU état persisté "tout éteint") — voir init() et
@@ -1862,14 +1883,7 @@ export class App {
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
-    switch (status) {
-      case 'ok':
-        return 'TEMPS RÉEL';
-      case 'stale':
-        return 'CACHE FIGÉ';
-      default:
-        return 'INDISPONIBLE';
-    }
+    return legendStatusLabel(this.uiV2, status);
   }
 
   private refreshEnergyDataLegends(): void {
@@ -1884,7 +1898,7 @@ export class App {
         : [
             ecowattStatusNote(this.currentEcowattResponse.official, Date.now()),
             'Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance',
-            'Mix et interconnexions : TEMPS RÉEL (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici',
+            `Mix et interconnexions : ${this.formatLegendSourceStatus('ok')} (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici`,
           ]
       : [
           'Qualité des données : chargement en cours',
@@ -1893,7 +1907,7 @@ export class App {
     const gasNotes = this.currentGasData
       ? [
           `EcoGaz : ${this.formatLegendSourceStatus(this.currentGasData.sourceStatus.ecogaz)}`,
-          'Stockages/flux : données ODRE (TEMPS RÉEL) quand disponibles, sinon INDISPONIBLE',
+          `Stockages/flux : données ODRE (${this.formatLegendSourceStatus('ok')}) quand disponibles, sinon INDISPONIBLE`,
           'Terminaux et sites : HISTORIQUE / référentiel local',
         ]
       : [
@@ -2273,7 +2287,7 @@ export class App {
 
   private readStoredActiveLayers(): Partial<MapLayers> | null {
     try {
-      const raw = localStorage.getItem(ACTIVE_LAYERS_STORAGE_KEY);
+      const raw = layerStateStorage(this.uiV2, window)?.getItem(ACTIVE_LAYERS_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (!parsed || typeof parsed !== 'object') return null;
@@ -2295,7 +2309,7 @@ export class App {
     const normalized = { ...layers };
     normalized.cyber = normalized.cyber || normalized.threatMap;
     normalized.threatMap = normalized.cyber;
-    normalized.newsGroup = normalized.news || normalized.stability;
+    normalized.newsGroup = normalized.news || normalized.stability || normalized.events;
     if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
       normalized.trafficRoad = true;
     }
@@ -2316,8 +2330,7 @@ export class App {
     // éteint" (ex. localStorage écrit par une session précédente qui a tout
     // désactivé) est traité comme un premier chargement — sinon la carte est
     // vide (audit UI 2026-09 §5.1/§5.3 point 1).
-    const hasPersistedChildActive = persistedLayers != null
-      && ALL_PRESETABLE_LAYER_KEYS.some((key) => persistedLayers[key]);
+    const hasPersistedChildActive = hasPersistedLayers(persistedLayers);
     if (hasPersistedChildActive) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
       // v1 : les panneaux des couches persistées se rouvrent (comportement historique) ; v2
@@ -2331,7 +2344,7 @@ export class App {
       // retour d'utilisateur avec de vraies couches persistées, ce chemin ne
       // doit ouvrir AUCUN panneau flottant d'office (restoreActiveLayerPanelsAfterRefresh
       // lit ce flag) — seul un clic explicite ouvre un panneau.
-      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...layersForPreset(DEFAULT_PRESET_ID) });
+      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...(this.uiV2 ? v2StartupLayers() : layersForPreset(DEFAULT_PRESET_ID)) });
       this.suppressFirstLoadPanelAutoOpen = true;
     }
 
@@ -2537,13 +2550,31 @@ export class App {
       this.container.dataset.v2Fiche = 'default';
       v2Bar = document.createElement('div');
       v2Bar.className = 'fm-v2-bar';
-      v2Bar.innerHTML = '<div class="fm-v2-status"></div><div class="fm-v2-themes"></div>';
+      v2Bar.innerHTML = '<div class="fm-v2-themes"></div><div class="fm-v2-tools"></div>';
       this.container.appendChild(v2Bar);
     }
     this.aboutTriggerEl = header.querySelector<HTMLButtonElement>('.header-about-trigger');
     this.headerLiveDotEl = header.querySelector<HTMLElement>('.header-live-dot');
     this.bindLanguageToggle(header);
     this.bindSidebarToggle(header);
+
+    if (this.uiV2 && v2Bar) {
+      // En-tête sur deux lignes (spec 2026-09-29 § 4) : l'état national dans l'en-tête, à la place des
+      // régions ; régions et bouton Couches sur la ligne des thèmes ; « Sources & qualité » dans ⋯.
+      const status = document.createElement('div');
+      status.className = 'fm-v2-status';
+      const tools = v2Bar.querySelector<HTMLElement>('.fm-v2-tools');
+      const regions = header.querySelector<HTMLElement>('#region-presets');
+      const layersToggle = header.querySelector<HTMLElement>('[data-sidebar-toggle]');
+      if (regions && tools) {
+        regions.replaceWith(status);
+        tools.append(regions);
+      }
+      if (layersToggle && tools) tools.append(layersToggle);
+      header.querySelector('a.header-quality-link')?.remove();
+      header.querySelector('[data-overflow-menu]')?.insertAdjacentHTML('afterbegin',
+        '<a class="header-overflow-menu__item" role="menuitem" href="/sources-quality">Sources & qualité</a>');
+    }
 
     // ── Menu « ⋯ » (Note de situation / Export) — audit UI 2026-09 §5.3.4 ──
     // Regroupe deux actions header peu fréquentes derrière un seul bouton,
@@ -2679,6 +2710,7 @@ export class App {
     this.addGlobalListener(document, 'keydown', (event) => {
       if (!(event instanceof KeyboardEvent)) return;
       if (event.key === 'Escape' && aboutModal.getAttribute('aria-hidden') === 'false') {
+        event.preventDefault();
         setAboutModalOpen(false);
       }
     });
@@ -2860,6 +2892,16 @@ export class App {
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
+    // v2 : Échap ferme le panneau de module (lui seul). Écouté sur `document`, donc avant le
+    // gestionnaire de PosteSituation (sur `window`) qui ignore un événement déjà traité.
+    this.addGlobalListener(document, 'keydown', (event) => {
+      if (!moduleInColumn(this.uiV2, window.innerWidth) || !(event instanceof KeyboardEvent) || event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      // Une fenêtre, un menu ou une bulle de carte ouverts reçoivent Échap avant le panneau.
+      if (innerLayerOpen(document, MODULE_PANEL_SELECTOR)) return;
+      if (this.closeV2ModulePanel()) event.preventDefault();
+    });
 
     // ── Disposition A1 (?ui=v2) : liste « À traiter » à gauche de la carte, fiche à droite ──
     let v2List: HTMLElement | null = null;
@@ -2901,7 +2943,7 @@ export class App {
       tabs.className = 'fm-v2-tabs';
       tabs.setAttribute('aria-label', 'Vues');
       this.container.appendChild(tabs);
-      const status = v2Bar.querySelector<HTMLElement>('.fm-v2-status');
+      const status = this.container.querySelector<HTMLElement>('.fm-v2-status');
       const themes = v2Bar.querySelector<HTMLElement>('.fm-v2-themes');
       if (status && themes) this.v2Roots = { status, themes, list: v2List, fiche: v2Fiche, tabs };
     }
@@ -2918,7 +2960,7 @@ export class App {
 
     // Baromètre Pannes Réseau (premier élément de la sidebar, avant les couches)
     this.networkBarometerWidget = new BarometerWidget(sidebarEl);
-    this.networkBarometerWidget.mount({ attach: false });
+    this.networkBarometerWidget.mount({ attach: false, briefing: !this.uiV2 });
 
     // Bouton Intelligence France (juste au-dessus des couches)
     const intelSidebarBtn = document.createElement('button');
@@ -2940,11 +2982,15 @@ export class App {
 
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
-    this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled));
+    // v2 : l'activation d'une couche ne l'ouvre jamais (spec 2026-09-29 § 4), le sélecteur de panneaux le fait.
+    this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled, layerActivationOptions(this.uiV2)));
     this.layerPanel.setPresetHandler((id) => {
       this.applyLayerPreset(id);
       // v2 (arbitrage A5) : la vue choisie dans « Couches » devient aussi le thème de la liste et de la fiche.
       this.poste?.setTheme(id, { silent: true });
+      // Silencieux : `onThemeChange` ne tourne pas, la carte doit suivre le thème du fil elle-même.
+      this.v2Theme = id;
+      this.refreshEventPoints();
     });
     this.layerPanel.mount();
 
@@ -3071,7 +3117,9 @@ export class App {
       this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err));
     }, POLL_NETWORK_BAROMETER_MS);
 
-    this.addGlobalListener(document, 'open-national-health', () => {
+    this.addGlobalListener(document, 'open-national-health', (e) => {
+      // v2 : jamais d'ouverture d'office (chargement, activation de couche), seulement à la demande.
+      if (!opensModulePanel(this.uiV2, (e as CustomEvent<unknown>).detail)) return;
       // Only open if at least one health layer is active
       const isAnyHealthLayerActive =
         this.activeLayers.health ||
@@ -3530,7 +3578,7 @@ export class App {
 
     // Persist layer state across sessions
     try {
-      localStorage.setItem(ACTIVE_LAYERS_STORAGE_KEY, JSON.stringify(this.activeLayers));
+      layerStateStorage(this.uiV2, window)?.setItem(ACTIVE_LAYERS_STORAGE_KEY, JSON.stringify(this.activeLayers));
     } catch (err) {
       console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
     }
@@ -3647,8 +3695,8 @@ export class App {
         this.activeLayers.outagesInternet ||
         this.activeLayers.outagesCloud;
     }
-    if (key === 'news' || key === 'stability') {
-      this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability;
+    if (key === 'news' || key === 'stability' || key === 'events') {
+      this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability || this.activeLayers.events;
     }
   }
 
@@ -3743,7 +3791,7 @@ export class App {
         this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
       }
       if (enabled && anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health'));
+        document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.explicitPanelRequest } }));
       } else if (!anyHealthActive) {
         this.healthBarometerPanel?.hide();
         this.nationalHealthPanel?.hide();
@@ -4390,8 +4438,14 @@ export class App {
    * activateLayerSilently()).
    */
   private showFloatingPanel(id: keyof MapLayers): void {
+    this.syncV2ColumnVars();
     this.hideAllFloatingPanels(id);
-    this._handlePanelVisibility(id, true);
+    this.explicitPanelRequest = true;
+    try {
+      this._handlePanelVisibility(id, true);
+    } finally {
+      this.explicitPanelRequest = false;
+    }
     this.currentFloatingPanelId = id;
     this.refreshFloatingPanelSwitcher();
   }
@@ -4505,6 +4559,27 @@ export class App {
     }
     const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
+    this.syncV2ColumnVars();
+  }
+
+  /** v2 : pose la géométrie de la colonne État (`.fm-v2-fiche`) en variables CSS ; les panneaux de module s'y placent. */
+  private syncV2ColumnVars(): void {
+    if (!this.uiV2) return;
+    const fiche = this.v2Roots?.fiche;
+    if (!fiche) return;
+    const rect = fiche.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const root = document.documentElement.style;
+    for (const [name, value] of Object.entries(v2ColumnVars(rect))) root.setProperty(name, value);
+  }
+
+  /** v2 : ferme le panneau de module ouvert (l'État ou la fiche réapparaît) ; true s'il y en avait un. */
+  private closeV2ModulePanel(): boolean {
+    if (!FLOATING_PANEL_DEFS.some((def) => this.isFloatingPanelVisible(def.id))) return false;
+    this.currentFloatingPanelId = null;
+    this.hideAllFloatingPanels();
+    this.refreshFloatingPanelSwitcher();
+    return true;
   }
 
   private floatingPanelIsEligible(id: keyof MapLayers): boolean {
@@ -4526,7 +4601,7 @@ export class App {
    * déjà trafficAir/trafficRoad/trafficMaritime start/stop).
    */
   private applyLayerPreset(id: LayerPresetId): void {
-    const target = layersForPreset(id);
+    const target = themeLayers(this.uiV2, id);
     for (const key of ALL_PRESETABLE_LAYER_KEYS) {
       const wanted = target[key] ?? false;
       if (this.activeLayers[key] === wanted) continue;
@@ -5527,7 +5602,7 @@ export class App {
       const segments = await fetchVigicrues();
       this.currentFloodSegments = segments;
       this.environmentLoaded = true;
-      this.mapContainer?.updateFloods(segments);
+      this.mapContainer?.updateFloods(this.uiV2 ? v2FloodSegments(segments) : segments);
       const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
       const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
       const reconstructedOnly = segments.length > 0 && segments.every((segment) => segment.dataSource !== 'live');
@@ -6616,7 +6691,8 @@ export class App {
     // Ré-ouvre/peuple le panneau dès qu'UN sous-onglet santé (dont APL) est actif —
     // sinon activer APL seul ouvrait un panneau jamais peuplé.
     if (hasData && anyHealthActive) {
-      document.dispatchEvent(new CustomEvent('open-national-health'));
+      // Un panneau déjà ouvert à la demande (chargement affiché) se remplit : c'est la même demande.
+      document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.nationalHealthPanel?.isVisible() === true } }));
     }
     this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);
     const ss = payload.healthFeatures.sourceStatus;
@@ -7647,6 +7723,8 @@ export class App {
     this.networkBarometerWidget?.update(result);
     this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
     this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
+    // v2 (spec 2026-09-29 § 7) : pas d'appel à la synthèse ISNR (Groq), son bloc n'est plus affiché.
+    if (this.uiV2) return;
 
     const medium = this.newsItems
       .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
@@ -7741,7 +7819,7 @@ export class App {
         if (!this.isIntelSurfaceVisible()) return;
         if (this.intelLang() !== lang) return;
         this.franceIntelPanel?.updateBrief(result.brief, result.freshness, situationIds);
-        this.poste?.setBrief(result.brief, result.freshness, situationIds);
+        this.poste?.setBrief(result.brief, result.freshness, situationIds, { at: result.generatedAt ?? Date.now(), level: scoreLevel(snapshot.score) });
       });
   }
 
@@ -7832,7 +7910,11 @@ export class App {
     if (!roots) return Promise.reject(new Error('Poste de situation : conteneurs absents'));
     this.postePromise = import('./components/poste/PosteSituation.ts').then(({ PosteSituation }) => {
       const poste = new PosteSituation({ app: this.container, ...roots }, {
-        onThemeChange: (theme) => this.applyLayerPreset(theme),
+        onThemeChange: (theme) => {
+          this.v2Theme = theme;
+          this.applyLayerPreset(theme);
+          this.refreshEventPoints();
+        },
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
         onOpenDossier: (situation) => this.openAlertDossier(situation),
@@ -7844,12 +7926,16 @@ export class App {
           this.mapContainer?.flyTo(france.center[0], france.center[1], france.zoom);
         },
         onFicheRendered: (body) => {
-          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Pourquoi ce niveau ? ».
+          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Indicateurs » de l'onglet État.
           const slot = body.querySelector('.fiche-infra-slot');
           if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
         },
         // Relecture finale m7 : la carte mobile, créée dans l'onglet masqué, s'ajuste à l'affichage.
         onMapShown: () => this.mapContainer?.resize(),
+        // Une sélection prend la colonne : le panneau de module ouvert se ferme d'abord.
+        onSelect: () => {
+          if (moduleInColumn(this.uiV2, window.innerWidth)) this.closeV2ModulePanel();
+        },
       });
       this.poste = poste;
       // Revue (correction post-relecture) : premier rendu seul, sans passer par
@@ -7877,6 +7963,11 @@ export class App {
     // enregistrent la dernière liste vue (relecture finale I5).
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
+    this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
+    this.mapContainer?.setLightVigilance(LIGHT_VIGILANCE);
+    void loadDepartementIndex().then((index) => {
+      if (index) poste.setDepartements(index);
+    });
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
@@ -7930,10 +8021,18 @@ export class App {
   }
 
   /** Remet les événements à la v2 et enregistre la ligne de base, au même moment que l'ancre de visite. */
+  /** Couche Événements de la v2 : les événements du fil, du thème choisi (spec 2026-09-29 § 5). */
+  private refreshEventPoints(): void {
+    if (!this.uiV2) return;
+    this.mapContainer?.setEventPoints(eventMapPoints(this.v2EventsState?.events ?? [], this.v2Theme));
+  }
+
   private deliverV2Events(state: IntelEventsState | null): void {
     const poste = this.poste;
     if (!poste) return;
     poste.setEvents(state);
+    this.v2EventsState = state;
+    this.refreshEventPoints();
     // Les alertes presse suivent les événements tout juste chargés (spec 2026-09-28 § 4.7).
     this.repaintPoste();
     if (state && !state.unavailable) this.recordV2VisitBaseline();

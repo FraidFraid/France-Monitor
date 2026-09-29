@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWITCHER_TOP_PX, restorePanelPlan, switcherPanelOffsetPx } from './floating-panel-switcher.ts';
+import { SWITCHER_TOP_PX, restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './floating-panel-switcher.ts';
 
 const PANEL: Record<string, string> = {
   environmental: 'environmental',
@@ -51,5 +51,13 @@ describe('switcherPanelOffsetPx — les panneaux commencent sous la barre de bou
 
   it('v2 : les panneaux s’ouvrent sur la colonne fiche, pas sous la carte : aucun décalage', () => {
     expect(switcherPanelOffsetPx(28, true)).toBe(0);
+  });
+});
+
+describe('v2ColumnVars — un panneau de module prend la place exacte de la colonne État', () => {
+  it('reprend le rectangle de la colonne, arrondi au pixel', () => {
+    expect(v2ColumnVars({ top: 101.4, left: 1179.6, width: 420, height: 899.2 })).toEqual({
+      '--v2-col-top': '101px', '--v2-col-left': '1180px', '--v2-col-width': '420px', '--v2-col-height': '899px',
+    });
   });
 });

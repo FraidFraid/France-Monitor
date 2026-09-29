@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 
 import {
@@ -8,6 +8,7 @@ import {
   buildDeterministicBrief,
   compactSituations,
   evaluateBriefLevel,
+  fetchFranceIntelBrief,
   parseStructuredBrief,
   type BriefLevelMark,
 } from './france-intel-brief.ts';
@@ -283,5 +284,48 @@ describe('buildDeterministicBrief — sous-scores hors des jugements (refonte UI
     assert.ok(texts.every((text) => !/\d+\s*\/\s*\d+/.test(text)), texts.join(' | '));
     assert.ok(texts.includes('Pression cyber multi-source'));
     assert.ok(texts.includes('Escalade sociale localisée — 4 département(s) avec tensions sociales ou sécuritaires élevées.'));
+  });
+});
+
+describe('fetchFranceIntelBrief — heure de rédaction (spec 2026-09-29 § 8)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const BRIEF = {
+    bluf: 'Situation nationale sous tension, tirée par la continuité énergétique.',
+    judgments: [{ priority: 1, text: 'Pression cyber découplée.', confidence: 'moderate', sources: [] }],
+    watch: [],
+  };
+  // Le score sert de graine à la clé du cache client : un score distinct par test.
+  const snapshot = (score: number) => ({
+    score,
+    scoreBreakdown: breakdown(),
+    situations: [],
+    briefContext: { score, axes: {}, signals: {}, topHeadlines: [], cyberScore: 0, isnrComponents: {}, energySummary: null },
+  }) as unknown as Parameters<typeof fetchFranceIntelBrief>[0];
+  const serving = (payload: object) => vi.fn(async () => new Response(JSON.stringify(payload)));
+
+  it('lit generatedAt du serveur, y compris pour une réponse venue du cache serveur', async () => {
+    const iso = '2026-09-29T06:00:00.000Z';
+    vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true, generatedAt: iso }));
+    const r = await fetchFranceIntelBrief(snapshot(51));
+    assert.equal(r.generatedAt, Date.parse(iso));
+    assert.equal(r.freshness, 'cached');
+  });
+
+  it('absent ou invalide : null (ancienne entrée Redis)', async () => {
+    vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true }));
+    assert.equal((await fetchFranceIntelBrief(snapshot(52))).generatedAt, null);
+    vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true, generatedAt: 'pas une date' }));
+    assert.equal((await fetchFranceIntelBrief(snapshot(53))).generatedAt, null);
+  });
+
+  it('survit à un passage par le cache client', async () => {
+    const iso = '2026-09-29T05:00:00.000Z';
+    const fetchMock = serving({ brief: BRIEF, fromCache: false, generatedAt: iso });
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchFranceIntelBrief(snapshot(54));
+    const again = await fetchFranceIntelBrief(snapshot(54));
+    assert.equal(fetchMock.mock.calls.length, 1);
+    assert.equal(again.freshness, 'cached');
+    assert.equal(again.generatedAt, Date.parse(iso));
   });
 });

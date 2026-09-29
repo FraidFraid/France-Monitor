@@ -17,9 +17,10 @@ import type {
 } from '../../types/index.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
+import type { DepartementIndex } from '../../services/departement-lookup.ts';
 import type { VisitBaseline } from '../../services/intel-last-visit.ts';
-import { scoreLevel } from '../../services/vigilance.ts';
-import { SPECIFIC_THEMES, drivenByText, themeLabel, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
+import { scoreLevel, type VigilanceLevel } from '../../services/vigilance.ts';
+import { SPECIFIC_THEMES, drivenByText, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
 import {
   buildWorkQueue,
   drivingThemes,
@@ -40,15 +41,11 @@ import { ThemeBar } from './ThemeBar.ts';
 import { WorkList } from './WorkList.ts';
 import { FichePanel } from './FichePanel.ts';
 
-export type PosteLayout = 'mobile' | 'tablet' | 'desktop';
+import { innerLayerOpen } from '../../services/escape-layers.ts';
+import { layoutFor, type PosteLayout } from '../../services/ui-mode.ts';
+export { layoutFor };
+export type { PosteLayout };
 export type PosteTab = 'list' | 'map' | 'fiche';
-
-/** Disposition selon la largeur (spec §9) : moins de 700 px mobile, 700 à 1 100 px tablette. */
-export function layoutFor(width: number): PosteLayout {
-  if (width < 700) return 'mobile';
-  if (width <= 1100) return 'tablet';
-  return 'desktop';
-}
 
 /** Chauffe du démarrage : ce qui apparaît pendant ces 2 min vient des données qui arrivent, pas d'un changement. */
 const WARMUP_MS = 2 * 60 * 1000;
@@ -86,6 +83,8 @@ export interface PosteCallbacks {
   onFicheRendered: (body: HTMLElement) => void;
   /** Onglet « Carte » affiché (mobile) : la carte, créée masquée, s'ajuste à son conteneur (m7). */
   onMapShown: () => void;
+  /** Toute sélection (ligne, carte, lien) : App ferme d'abord le panneau de module ouvert dans la colonne (v2). */
+  onSelect: (key: string) => void;
 }
 
 export interface PosteRoots {
@@ -111,6 +110,12 @@ function durationLabel(ms: number, lang: Lang): string {
   return `${Math.round(hours / 24)} ${lang === 'fr' ? 'j' : 'd'}`;
 }
 
+/** Champ de saisie : Échap y garde son sens (effacer, fermer une liste déroulante). */
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
+}
+
 export class PosteSituation {
   private readonly roots: PosteRoots;
   private readonly callbacks: PosteCallbacks;
@@ -127,6 +132,8 @@ export class PosteSituation {
   private showAll = false;
   private tab: PosteTab = 'list';
   private readonly whyOpen = new Set<string>();
+  /** Groupe « Hors de France » déplié (état conservé d'un rafraîchissement à l'autre). */
+  private foreignOpen = false;
   private lastTabsHtml = '';
 
   // ── Données ──
@@ -134,9 +141,11 @@ export class PosteSituation {
   private queue: WorkQueue | null = null;
   private events: IntelEventsState | null = null;
   private brief: { brief: StructuredBrief; freshness: 'fresh' | 'cached' } | null = null;
+  private briefMeta: { at: number; level: VigilanceLevel } | null = null;
   private briefSituationIds: string[] = [];
   private resolved: BriefSourceSituation[] = [];
   private baseline: VisitBaseline | null = null;
+  private departements: DepartementIndex | null = null;
   private warmupUntil: number | null = null;
   private readonly knownKeys = new Set<string>();
   private readonly firstSeen = new Map<string, number>();
@@ -159,6 +168,9 @@ export class PosteSituation {
       this.render();
     });
     this.workList.setOnGuard((theme) => this.setTheme(theme));
+    this.workList.setOnForeignToggle((open) => {
+      this.foreignOpen = open;
+    });
     this.fichePanel.setOnSelect((key) => this.select(key));
     this.fichePanel.setOnAction((action, ficheKey) => this.runAction(action, ficheKey));
     this.fichePanel.setOnWhyToggle((ficheKey, open) => {
@@ -167,14 +179,16 @@ export class PosteSituation {
     });
     this.fichePanel.setOnClose(() => this.close());
 
-    // Échap referme la fiche (spec §9), que le focus soit dans la liste ou dans la fiche.
-    const onEscape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || this.selection === null) return;
+    // Échap ramène à l'État où que soit le focus — liste, fiche ou carte (spec 2026-09-29 § 4) —,
+    // sauf dans un champ de saisie. Écouté sur `window` (après tous les écouteurs de `document`) :
+    // Échap ne ferme que l'élément le plus intérieur — un gestionnaire qui l'a traité (defaultPrevented),
+    // une fenêtre, un menu ou une bulle de carte ouverts passent avant la fiche.
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || this.selection === null || e.defaultPrevented || !roots.app.isConnected || isTypingTarget(e.target)) return;
+      if (innerLayerOpen()) return;
       e.preventDefault();
       this.close();
-    };
-    roots.list.addEventListener('keydown', onEscape);
-    roots.fiche.addEventListener('keydown', onEscape);
+    });
     roots.tabs.addEventListener('click', (e) => {
       const tab = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
       if (tab === 'list' || tab === 'map' || tab === 'fiche') this.setTab(tab);
@@ -192,14 +206,21 @@ export class PosteSituation {
     this.rebuild();
   }
 
-  setBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached', situationIds: readonly string[]): void {
+  setDepartements(index: DepartementIndex): void {
+    this.departements = index;
+    this.rebuild();
+  }
+
+  setBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached', situationIds: readonly string[], meta: { at: number; level: VigilanceLevel }): void {
     this.brief = { brief, freshness };
+    this.briefMeta = meta;
     this.briefSituationIds = [...situationIds];
     this.render();
   }
 
   setBriefPending(): void {
     this.brief = null;
+    this.briefMeta = null;
     this.render();
   }
 
@@ -222,22 +243,24 @@ export class PosteSituation {
     if (theme === this.theme) return;
     this.theme = theme;
     this.showAll = false;
-    this.selection = null; // un thème affiche sa propre fiche
+    this.selection = null; // l'État reste affiché (spec 2026-09-29 § 7)
     if (!opts.silent) this.callbacks.onThemeChange(theme);
     this.render();
   }
 
-  /**
-   * Choix dans la barre de thèmes : filtre la liste (setTheme) ; hors ordinateur, la fiche n'est
-   * visible qu'en volet, donc le thème ouvre aussi sa fiche — même s'il est déjà choisi (relecture
-   * finale I3, §7.4 et §11). « Vue générale » filtre seulement : la fiche France reste au bandeau.
-   */
   private chooseTheme(theme: ThemeId): void {
+    // Second clic sur le thème actif : sa fiche (spec 2026-09-29 § 7). Hors ordinateur, choisir un
+    // thème ouvre aussi sa fiche (la fiche n'y est visible qu'en volet).
+    if (theme === this.theme && theme !== 'general') {
+      this.select(`theme:${theme}`);
+      return;
+    }
     this.setTheme(theme);
     if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
   }
 
   select(key: string | null): void {
+    if (key !== null) this.callbacks.onSelect(key);
     this.selection = key;
     this.render();
     // Tablette et mobile : la fiche s'ouvre en volet, le focus la suit.
@@ -313,6 +336,7 @@ export class PosteSituation {
       markets: marketLines(data.markets, data.commodities),
       baseline: this.baseline,
       firstSeen: this.firstSeen,
+      departements: this.departements,
       lang: data.lang,
     });
     this.trackAppearances(queue, data.now);
@@ -366,7 +390,7 @@ export class PosteSituation {
       lang,
     });
     this.themeBar.update({ selected: this.theme, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
-    this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now });
+    this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now, foreignOpen: this.foreignOpen });
     this.renderTabs(lang);
     this.roots.app.dataset.v2Tab = this.tab;
     this.roots.app.dataset.v2Fiche = this.selection === null ? 'default' : 'open';
@@ -383,6 +407,7 @@ export class PosteSituation {
       drivers,
       brief: this.brief,
       briefSituationIds: this.briefSituationIds,
+      briefMeta: this.briefMeta,
       events: this.events,
       resolved: this.resolved,
       changeTimes: this.firstSeen,
@@ -395,11 +420,9 @@ export class PosteSituation {
     });
   }
 
-  /** « Vue générale » : la France ; un thème : sa fiche (spec §6.1, §7.3). */
+  /** Fiche par défaut : l'onglet État de la France, quel que soit le thème (spec 2026-09-29 § 7). */
   private defaultFiche(data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel {
-    const theme = this.theme;
-    if (theme === 'general') return this.franceFiche(data, queue, drivers);
-    return this.themeFiche(theme, data, queue);
+    return this.franceFiche(data, queue, drivers);
   }
 
   private themeFiche(theme: SpecificThemeId, data: PosteData, queue: WorkQueue): FicheModel {
@@ -515,7 +538,7 @@ export class PosteSituation {
   }
 
   private renderTabs(lang: Lang): void {
-    const ficheLabel = this.theme === 'general' ? 'France' : themeLabel(this.theme, lang);
+    const ficheLabel = lang === 'fr' ? 'État' : 'State';
     const tabs: Array<[PosteTab, string]> = [
       ['list', lang === 'fr' ? 'À traiter' : 'To handle'],
       ['map', lang === 'fr' ? 'Carte' : 'Map'],

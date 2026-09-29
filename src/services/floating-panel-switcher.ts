@@ -22,6 +22,19 @@ export function switcherPanelOffsetPx(switcherHeightPx: number, uiV2: boolean): 
 }
 
 /**
+ * v2 : géométrie de la colonne de droite (`.fm-v2-fiche`) sous forme de variables CSS ; les panneaux
+ * de module s'y posent pile (spec 2026-09-29 § 4 : « à la place de l'État »).
+ */
+export function v2ColumnVars(rect: { top: number; left: number; width: number; height: number }): Record<string, string> {
+  return {
+    '--v2-col-top': `${Math.round(rect.top)}px`,
+    '--v2-col-left': `${Math.round(rect.left)}px`,
+    '--v2-col-width': `${Math.round(rect.width)}px`,
+    '--v2-col-height': `${Math.round(rect.height)}px`,
+  };
+}
+
+/**
  * Restauration des couches persistées au chargement (v1) : un seul panneau flottant se rouvre
  * (règle « un seul panneau à la fois », audit UI 2026-09 §5.3.3), celui de la première couche dans
  * l'ordre de restauration. Les couches qui partagent ce panneau le chargent aussi ; une couche sans

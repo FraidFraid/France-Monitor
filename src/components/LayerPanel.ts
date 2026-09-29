@@ -5,6 +5,7 @@
 
 import type { MapLayers } from '../types/index.ts';
 import { AIS_RELAY_URL } from '../services/ais-connection.ts';
+import { isUiV2 } from '../services/ui-mode.ts';
 import { fmIcon } from './shared/icons.ts';
 import { ALL_PRESETABLE_LAYER_KEYS, LAYER_PRESETS, layersForPreset, type LayerPresetId } from '../config/layer-presets.ts';
 
@@ -17,6 +18,7 @@ interface LayerDef {
 
 const LAYER_DEFS: LayerDef[] = [
   { key: 'newsGroup', label: 'ACTUALITÉS', icon: fmIcon('newspaper') },
+  { key: 'events', label: 'ÉVÉNEMENTS EN COURS', icon: fmIcon('map-pin'), sublayerOf: 'newsGroup' },
   { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: fmIcon('newspaper'), sublayerOf: 'newsGroup' },
   { key: 'stability', label: 'INDICE STABILITÉ', icon: fmIcon('bar-chart-3'), sublayerOf: 'newsGroup' },
   { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: fmIcon('zap') },
@@ -52,6 +54,15 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesInternet', label: 'INTERNET / BGP', icon: fmIcon('globe'), sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: fmIcon('cloud'),   sublayerOf: 'outages' },
 ];
+
+/** Entrées affichées : « Événements en cours » n'existe que dans la v2 (la v1 ne change pas). */
+export function visibleLayerDefs(uiV2: boolean): readonly LayerDef[] {
+  return uiV2 ? LAYER_DEFS : LAYER_DEFS.filter((d) => d.key !== 'events');
+}
+
+function currentLayerDefs(): readonly LayerDef[] {
+  return visibleLayerDefs(isUiV2(window.location.search));
+}
 
 export type LayerToggleHandler = (key: keyof MapLayers, enabled: boolean) => void;
 export type PresetSelectHandler = (id: LayerPresetId) => void;
@@ -159,7 +170,7 @@ export class LayerPanel {
     if (!this.element) return;
 
     const nonToggleKeys = new Set<keyof MapLayers>(['newsGroup', 'energySystems', 'traffic', 'sovereignty', 'outages', 'environmentGroup', 'health']);
-    const enabledCount = LAYER_DEFS.filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
+    const enabledCount = currentLayerDefs().filter((d) => !nonToggleKeys.has(d.key) && this.layers[d.key]).length;
 
     // Vues prédéfinies : quelle vue (si une seule) correspond exactement à l'état courant.
     const matchedPresetId = this.getMatchingPresetId();
@@ -191,7 +202,7 @@ export class LayerPanel {
     let inOutagesGroup = false;
     let inEnvironmentGroup = false;
 
-    for (const def of LAYER_DEFS) {
+    for (const def of currentLayerDefs()) {
       // Close any open groups before starting a new master group
       const closeGroups = () => {
         if (inNewsGroup) { listHtml += `</div></div>`; inNewsGroup = false; }
@@ -343,7 +354,7 @@ export class LayerPanel {
         </div>
       </div>
       <div class="layer-panel-footer ${this.collapsed ? 'collapsed' : ''}">
-        <span class="layer-panel-count" title="${enabledCount} couches affichées / ${LAYER_DEFS.length} disponibles">${enabledCount}/${LAYER_DEFS.length} actifs</span>
+        <span class="layer-panel-count" title="${enabledCount} couches affichées / ${currentLayerDefs().length} disponibles">${enabledCount}/${currentLayerDefs().length} actifs</span>
       </div>
     `;
 
