@@ -22,6 +22,7 @@ import {
   t,
   type FicheChange,
   type FicheModel,
+  type FicheSource,
   type Lang,
 } from './parts.ts';
 
@@ -63,6 +64,19 @@ function evidenceKey(ref: string, input: FranceFicheInput): string | null {
   const target = resolveEvidenceRef(ref, input.briefSituationIds);
   if (!target) return null;
   return target.kind === 'event' ? `event:${target.id}` : `situation:${target.id}`;
+}
+
+function evidenceLabel(ref: string, input: FranceFicheInput): string {
+  const target = resolveEvidenceRef(ref, input.briefSituationIds);
+  if (target?.kind === 'event') {
+    const event = input.events?.events.find((e) => e.id === target.id);
+    return event ? `${ref} · ${event.title}` : ref;
+  }
+  if (target?.kind === 'situation') {
+    const situation = input.snapshot.situations.find((s) => s.id === target.id);
+    return situation ? `${ref} · ${situation.title}` : ref;
+  }
+  return ref;
 }
 
 function changesMeta(input: FranceFicheInput): string {
@@ -155,6 +169,22 @@ function judgmentsHtml(brief: StructuredBrief, input: FranceFicheInput): string 
   return `<ul class="fiche-list">${rows}</ul>`;
 }
 
+function franceSources(brief: StructuredBrief, input: FranceFicheInput): FicheSource[] {
+  const out: FicheSource[] = [];
+  const seen = new Set<string>();
+  for (const ref of brief.judgments.flatMap((j) => j.evidence)) {
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    out.push({ label: evidenceLabel(ref, input), href: null, select: evidenceKey(ref, input) });
+  }
+  for (const name of brief.judgments.flatMap((j) => j.sources)) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push({ label: name, href: null, select: null });
+  }
+  return out;
+}
+
 function briefOrigin(brief: FranceFicheInput['brief'], lang: Lang): string {
   if (!brief) return '';
   const text = brief.brief.origin === 'llm'
@@ -195,6 +225,7 @@ function changesHtml(input: FranceFicheInput): string {
 
 export function buildFranceFiche(input: FranceFicheInput): FicheModel {
   const { snapshot, lang } = input;
+  const brief = input.brief?.brief ?? null;
   const n = snapshot.situations.length;
   const count = lang === 'fr' ? `${n} situation${n > 1 ? 's' : ''} active${n > 1 ? 's' : ''}` : `${n} active situation${n === 1 ? '' : 's'}`;
   const situations = situationsHtml(input);
@@ -224,8 +255,7 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
     figures: [],
     watch: [],
     sourcesTitle: t(lang, 'Preuves et sources', 'Evidence and sources'),
-    // Les preuves sont déjà cliquables dans la note : pas de partie « Preuves et sources » séparée (spec § 7).
-    sources: [],
+    sources: brief ? franceSources(brief, input) : [],
     why: input.ready
       ? renderWhyBody({
           breakdown: snapshot.scoreBreakdown,

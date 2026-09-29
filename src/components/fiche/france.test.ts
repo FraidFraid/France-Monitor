@@ -98,7 +98,13 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('Pourquoi replié en tête, puis Situations, Note, Depuis votre visite, Indicateurs', () => {
     const model = buildFranceFiche(input());
     expect(model.whyFirst).toBe(true);
-    expect(sectionTitles(renderFiche(model, 'fr'))).toEqual(['Situations (1)', 'Note de situation', 'Depuis votre dernière visite', 'Indicateurs']);
+    expect(sectionTitles(renderFiche(model, 'fr'))).toEqual(['Situations (1)', 'Note de situation', 'Depuis votre dernière visite', 'Indicateurs', 'Preuves et sources']);
+  });
+
+  it('preuves lisibles et sources nommées des jugements', () => {
+    const html = renderFiche(buildFranceFiche(input()), 'fr');
+    expect(html).toContain('E42 · Explosion dans une usine chimique');
+    expect(html).toContain('SDES');
   });
 
   it('les graphiques sont visibles, plus cachés dans le volet ; ni événements consolidés, ni chiffres clés', () => {
