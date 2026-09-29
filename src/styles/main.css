@@ -8466,20 +8466,7 @@ button.header-quality-link {
 #app.ui-v2.sidebar-collapsed .sidebar { display: none; }
 #app.ui-v2 .header-sidebar-toggle { display: inline-flex; width: auto; gap: 6px; padding: 0 10px; }
 .header-sidebar-toggle__label { font-size: 12px; }
-/* L'en-tête compte un élément de plus (bouton « Couches ») : il ne s'étire pas ; sur ordinateur,
-   l'en-tête passe à quatre colonnes pour tenir sur une ligne ; sur mobile, il revient au flux
-   (contrôlé à 390 px lors de la vérification du plan : sans ces règles, le titre chevauche l'état). */
-#app.ui-v2 .header-sidebar-toggle { justify-self: start; }
-@media (min-width: 1101px) {
-  #app.ui-v2 .header { grid-template-columns: auto auto minmax(0, 1fr) auto; }
-}
-@media (max-width: 768px) {
-  #app.ui-v2 .header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
-  #app.ui-v2 .header-sidebar-toggle__label { display: none; }
-  #app.ui-v2 .header-center { flex: 1 1 96px; width: auto; min-width: 0; }
-  #app.ui-v2 .header-center .region-presets-list { min-width: 0; }
-  #app.ui-v2 .region-preset-select { min-width: 0; width: 100%; }
-}
+/* En-tête v2 sur deux lignes : voir « v2 : en-tête sur deux lignes » en fin de fichier. */
 #app.ui-v2 .fm-v2-list {
   display: flex; flex-direction: column; flex: 0 0 30%; min-width: 300px; max-width: 460px;
   overflow-y: auto; background: var(--bg-secondary); border-right: 1px solid var(--border-color);
@@ -8650,3 +8637,17 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 @media (min-width: 1101px) {
   #app.ui-v2 .header { grid-template-columns: auto minmax(0, 1fr) auto; }
 }
+
+/* Sélecteur de régions dans la ligne 2 : dimensions déterministes (annule les règles .header-center). */
+#app.ui-v2 .fm-v2-tools .header-center { width: auto; flex: none; order: 0; padding: 0; max-width: none; position: static; transform: none; }
+#app.ui-v2 .fm-v2-tools .header-center .region-presets-list { min-width: 0; flex-wrap: nowrap; }
+#app.ui-v2 .fm-v2-tools .region-preset-select { min-width: 0; width: auto; }
+#app.ui-v2 .header-sidebar-toggle { justify-self: auto; }
+@media (max-width: 768px) {
+  #app.ui-v2 .header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; }
+  #app.ui-v2 .header-sidebar-toggle__label { display: none; }
+  #app.ui-v2 .fm-v2-bar { gap: 8px; padding: 6px 10px; }
+  #app.ui-v2 .fm-v2-tools .region-preset-select { max-width: 7.5rem; }
+}
+/* Le bouton ⋯ porte aussi .header-quality-link (masqué ≤ 900 px) : en v2 il reste visible, il contient « Sources & qualité ». */
+#app.ui-v2 .header-overflow-trigger { display: inline-flex; }
