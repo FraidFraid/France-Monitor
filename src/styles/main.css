@@ -8610,6 +8610,10 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
+  #app.ui-v2 .outages-panel-modal,
+  #app.ui-v2 .eolien-panel-modal,
+  #app.ui-v2 .hydraulic-panel-modal,
+  #app.ui-v2 .drom-energy-panel-modal,
   #app.ui-v2 .fm-floating-panel {
     left: auto !important;
     right: calc(var(--v2-fiche-w) + 16px) !important;
