@@ -5,6 +5,7 @@ import {
   ALL_PRESETABLE_LAYER_KEYS,
   DEFAULT_PRESET_ID,
   LAYER_PRESETS,
+  hasPersistedLayers,
   layersForPreset,
   themeLayers,
   v2StartupLayers,
@@ -123,4 +124,11 @@ describe('couches v2 (spec 2026-09-29 § 5)', () => {
     assert.deepEqual(themeLayers(true, 'energy'), layersForPreset('energy'));
     assert.deepEqual(themeLayers(false, 'general'), layersForPreset('general'));
   });
+});
+
+describe('hasPersistedLayers (un rechargement garde la couche Événements seule)', () => {
+  it('events seul : vrai', () => assert.equal(hasPersistedLayers({ events: true, environmental: false }), true));
+  it('tout éteint (events compris) : faux', () => assert.equal(hasPersistedLayers({ events: false, environmental: false, news: false }), false));
+  it('null : faux', () => assert.equal(hasPersistedLayers(null), false));
+  it('une couche des vues active : vrai', () => assert.equal(hasPersistedLayers({ powerGrid: true }), true));
 });

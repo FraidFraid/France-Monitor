@@ -141,3 +141,13 @@ export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers
   const off = Object.fromEntries(ALL_PRESETABLE_LAYER_KEYS.map((key) => [key, false])) as Partial<MapLayers>;
   return { ...off, environmental: true };
 }
+
+/**
+ * Vrai si l'état de couches persisté (URL ou stockage) contient au moins une couche enfant active.
+ * Un état « tout éteint » est traité comme un premier chargement. La couche Événements, hors des
+ * vues, compte aussi : une carte réduite à elle seule se conserve au rechargement (spec 2026-09-29 § 5).
+ */
+export function hasPersistedLayers(persisted: Partial<MapLayers> | null): boolean {
+  if (!persisted) return false;
+  return Boolean(persisted.events) || ALL_PRESETABLE_LAYER_KEYS.some((key) => persisted[key]);
+}

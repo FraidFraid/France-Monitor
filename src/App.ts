@@ -60,7 +60,7 @@ import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
@@ -2332,8 +2332,7 @@ export class App {
     // éteint" (ex. localStorage écrit par une session précédente qui a tout
     // désactivé) est traité comme un premier chargement — sinon la carte est
     // vide (audit UI 2026-09 §5.1/§5.3 point 1).
-    const hasPersistedChildActive = persistedLayers != null
-      && ALL_PRESETABLE_LAYER_KEYS.some((key) => persistedLayers[key]);
+    const hasPersistedChildActive = hasPersistedLayers(persistedLayers);
     if (hasPersistedChildActive) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
       // v1 : les panneaux des couches persistées se rouvrent (comportement historique) ; v2
