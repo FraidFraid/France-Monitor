@@ -7761,7 +7761,7 @@ export class App {
         if (!this.isIntelSurfaceVisible()) return;
         if (this.intelLang() !== lang) return;
         this.franceIntelPanel?.updateBrief(result.brief, result.freshness, situationIds);
-        this.poste?.setBrief(result.brief, result.freshness, situationIds, { at: Date.now(), level: scoreLevel(snapshot.score) });
+        this.poste?.setBrief(result.brief, result.freshness, situationIds, { at: result.generatedAt ?? Date.now(), level: scoreLevel(snapshot.score) });
       });
   }
 

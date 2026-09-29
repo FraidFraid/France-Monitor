@@ -14,6 +14,7 @@ import { splitScoreSentences } from './situation-text.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
+  generatedAt: number | null;
   expiresAt: number;
 }
 
@@ -52,6 +53,8 @@ function buildClientCacheKey(
 export interface FranceBriefResult {
   brief: StructuredBrief;
   freshness: 'fresh' | 'cached';
+  /** Heure réelle de rédaction du brief (ms) ; null si le serveur ne la fournit pas (ancienne entrée de cache). */
+  generatedAt: number | null;
 }
 
 export async function fetchFranceIntelBrief(
@@ -63,7 +66,7 @@ export async function fetchFranceIntelBrief(
   const cacheKey = buildClientCacheKey(ctx, snapshot.situations, events, lang);
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
-    return { brief: cached.brief, freshness: 'cached' };
+    return { brief: cached.brief, freshness: 'cached', generatedAt: cached.generatedAt };
   }
 
   const countryScore   = ctx.score;
@@ -132,11 +135,14 @@ export async function fetchFranceIntelBrief(
     });
 
     if (res.ok) {
-      const payload = await res.json() as { brief: unknown; fromCache: boolean };
+      const payload = await res.json() as { brief: unknown; fromCache: boolean; generatedAt?: unknown };
       const parsed = parseStructuredBrief(payload.brief, 'llm');
       if (parsed) {
-        _cache.set(cacheKey, { brief: parsed, expiresAt: Date.now() + CACHE_TTL_MS });
-        return { brief: parsed, freshness: payload.fromCache ? 'cached' : 'fresh' };
+        const generatedAt = typeof payload.generatedAt === 'string' && Number.isFinite(Date.parse(payload.generatedAt))
+          ? Date.parse(payload.generatedAt)
+          : null;
+        _cache.set(cacheKey, { brief: parsed, generatedAt, expiresAt: Date.now() + CACHE_TTL_MS });
+        return { brief: parsed, freshness: payload.fromCache ? 'cached' : 'fresh', generatedAt };
       }
     }
   } catch {
@@ -147,6 +153,7 @@ export async function fetchFranceIntelBrief(
   return {
     brief: buildDeterministicBrief(snapshot, lang, getDelta24h(), events),
     freshness: 'fresh',
+    generatedAt: Date.now(),
   };
 }
 

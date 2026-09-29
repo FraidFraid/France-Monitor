@@ -31,7 +31,7 @@ describe('brief v14 — appels Groq (relecture finale #14, #15)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const body = { countryScore: 72, events: [EVENT], lang: 'fr' };
     expect((await (await handler(post(body))).json()).brief).toBeNull();
-    expect(await (await handler(post(body))).json()).toEqual({ brief: null, fromCache: true });
+    expect(await (await handler(post(body))).json()).toMatchObject({ brief: null, fromCache: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -42,5 +42,16 @@ describe('brief v14 — appels Groq (relecture finale #14, #15)', () => {
     const again = await (await handler(post({ countryScore: 72, events: [{ ...EVENT, lastSeen: '2026-09-23T07:30:00Z' }], lang: 'fr' }))).json();
     expect(again.fromCache).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('renvoie l’heure de rédaction, et la même depuis le cache', async () => {
+    vi.stubGlobal('fetch', groqReplying({ bluf: BLUF, judgments: [{ priority: 1, text: 'Crue durable en Gironde.', confidence: 'high', evidence: ['E42'] }], watch: [] }));
+    const body = { countryScore: 72, events: [EVENT], lang: 'fr' };
+    const first = await (await handler(post(body))).json();
+    expect(first.fromCache).toBe(false);
+    expect(new Date(first.generatedAt).toISOString()).toBe(first.generatedAt);
+    const again = await (await handler(post(body))).json();
+    expect(again.fromCache).toBe(true);
+    expect(again.generatedAt).toBe(first.generatedAt);
   });
 });
