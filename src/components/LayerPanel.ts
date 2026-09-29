@@ -17,6 +17,7 @@ interface LayerDef {
 
 const LAYER_DEFS: LayerDef[] = [
   { key: 'newsGroup', label: 'ACTUALITÉS', icon: fmIcon('newspaper') },
+  { key: 'events', label: 'ÉVÉNEMENTS EN COURS', icon: fmIcon('map-pin'), sublayerOf: 'newsGroup' },
   { key: 'news', label: 'ACTUALITÉS GÉOLOCALISÉES', icon: fmIcon('newspaper'), sublayerOf: 'newsGroup' },
   { key: 'stability', label: 'INDICE STABILITÉ', icon: fmIcon('bar-chart-3'), sublayerOf: 'newsGroup' },
   { key: 'energySystems', label: 'SYSTÈMES ÉNERGÉTIQUES', icon: fmIcon('zap') },

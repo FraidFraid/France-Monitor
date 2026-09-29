@@ -54,6 +54,7 @@ type ActiveFilterPill =
 const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
   news: false,
+  events: false,
   alerts: false,
   energySystems: false,
   dromEnergy: false,

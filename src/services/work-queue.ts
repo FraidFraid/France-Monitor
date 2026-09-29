@@ -275,7 +275,8 @@ function sameStory(alertTitle: string, eventTitles: readonly string[]): boolean 
   return eventTitles.some((e) => e === a || (a.length >= 20 && e.length >= 20 && (e.startsWith(a) || a.startsWith(e))));
 }
 
-function eventEnters(e: NewsEvent): boolean {
+/** Événement qui entre dans « À traiter » (et donc sur la carte v2 : spec 2026-09-29 § 5). */
+export function eventEnters(e: NewsEvent): boolean {
   if (e.status === 'closed') return false;
   if (unconfirmedPeakLevel(e.severity, e.peakSeverity) !== null) return true;
   const rank = LEVEL_RANK[eventLevel(e.severity)];

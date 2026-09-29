@@ -18,6 +18,7 @@ import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
+import type { EventMapPoint } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
@@ -566,6 +567,10 @@ export class DeckGLMap {
   private globalTrafficVisible = true;  // Controlled by military layer toggle
   private globalTrafficData: AisShipData[] = [];
   private roadTrafficVisible = false;
+  /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
+  private eventPoints: EventMapPoint[] = [];
+  private eventPointsVisible = false;
+  private onEventPointClick: ((id: number) => void) | null = null;
   private airTrafficVisible = false;
   private dayNightVisible = false;
   private dayNightOptions = {
@@ -6113,6 +6118,37 @@ export class DeckGLMap {
           getPosition: [this.threatEvents, this.viewState.zoom],
           getFillColor: [this.threatEvents, this.viewState.zoom],
           getRadius: [this.threatEvents, this.viewState.zoom],
+        },
+      }),
+      new ScatterplotLayer<EventMapPoint>({
+        id: 'deck-news-events',
+        data: this.eventPoints,
+        visible: this.eventPointsVisible,
+        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
+        getPosition: (d: EventMapPoint) => [d.lon, d.lat],
+        radiusUnits: 'pixels',
+        getRadius: (d: EventMapPoint) => d.radius,
+        filled: true,
+        getFillColor: (d: EventMapPoint) => (d.hollow ? [0, 0, 0, 0] : [...d.color, 220]) as [number, number, number, number],
+        stroked: true,
+        lineWidthUnits: 'pixels',
+        getLineWidth: (d: EventMapPoint) => (d.hollow ? 2 : 1),
+        getLineColor: (d: EventMapPoint) => (d.hollow ? [...d.color, 255] : [10, 12, 18, 230]) as [number, number, number, number],
+        pickable: true,
+        onHover: (info) => {
+          const point = info.object as EventMapPoint | undefined;
+          const canvas = this.map?.getCanvas();
+          if (canvas) canvas.title = point ? point.title : '';
+        },
+        onClick: (info) => {
+          const point = info.object as EventMapPoint | undefined;
+          if (point) this.onEventPointClick?.(point.id);
+        },
+        updateTriggers: {
+          getFillColor: this.eventPoints,
+          getLineColor: this.eventPoints,
+          getLineWidth: this.eventPoints,
+          getRadius: this.eventPoints,
         },
       }),
     ];
@@ -11701,6 +11737,15 @@ export class DeckGLMap {
     if (!this.map) return;
   }
 
+  setEventPoints(points: EventMapPoint[]): void {
+    this.eventPoints = points;
+    this.scheduleOverlayUpdate();
+  }
+
+  setOnEventPointClick(handler: ((id: number) => void) | null): void {
+    this.onEventPointClick = handler;
+  }
+
   updateTrafficIncidents(incidents: TrafficIncident[]): void {
     if (!this.map) return;
     this.roadTrafficIncidents = incidents;
@@ -12311,6 +12356,11 @@ export class DeckGLMap {
 
   setLayerVisibility(layers: MapLayers): void {
     this.currentLayers = layers;
+    const eventsVisible = layers.events === true;
+    if (eventsVisible !== this.eventPointsVisible) {
+      this.eventPointsVisible = eventsVisible;
+      this.scheduleOverlayUpdate();
+    }
     // Update DOM overlay immediately to reflect news toggle
     this.updatePulseMarkerPositions();
     if (!this.map) return;

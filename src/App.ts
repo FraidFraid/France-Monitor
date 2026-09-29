@@ -25,6 +25,8 @@ import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
+import { eventMapPoints } from './services/v2-map.ts';
+import type { ThemeId } from './services/themes.ts';
 import { isUiV2, layerActivationOptions, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
@@ -419,6 +421,7 @@ function buildNuclearBriefingContext(state: NuclearState | null): NuclearBriefin
 const DEFAULT_LAYERS: MapLayers = {
   newsGroup: false,
   news: false,
+  events: false,
   alerts: false,
   energySystems: false,
   dromEnergy: false,
@@ -1132,6 +1135,14 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     legend: NEWS_LEGEND,
   },
   {
+    id: 'events',
+    groupId: 'news',
+    role: 'child',
+    // Jamais masquée par le maître du groupe Actualités : c'est la couche de base de la v2.
+    dependsOnGroup: false,
+    label: 'Evenements',
+  },
+  {
     id: 'stability',
     groupId: 'news',
     role: 'child',
@@ -1481,6 +1492,9 @@ export class App {
   private v2Roots: { status: HTMLElement; themes: HTMLElement; list: HTMLElement; fiche: HTMLElement; tabs: HTMLElement } | null = null;
   /** Brief, événements et ligne de base lancés pour la fiche France (équivalent v2 du tiroir ouvert). */
   private v2IntelStarted = false;
+  /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
+  private v2Theme: ThemeId = 'general';
+  private v2EventsState: IntelEventsState | null = null;
   /** Ligne de base de visite figée par startV2Intel ; null avant (aucun enregistrement possible). */
   private v2BaselineSession: VisitBaselineSession | null = null;
   private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
@@ -2297,7 +2311,7 @@ export class App {
     const normalized = { ...layers };
     normalized.cyber = normalized.cyber || normalized.threatMap;
     normalized.threatMap = normalized.cyber;
-    normalized.newsGroup = normalized.news || normalized.stability;
+    normalized.newsGroup = normalized.news || normalized.stability || normalized.events;
     if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
       normalized.trafficRoad = true;
     }
@@ -3652,8 +3666,8 @@ export class App {
         this.activeLayers.outagesInternet ||
         this.activeLayers.outagesCloud;
     }
-    if (key === 'news' || key === 'stability') {
-      this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability;
+    if (key === 'news' || key === 'stability' || key === 'events') {
+      this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability || this.activeLayers.events;
     }
   }
 
@@ -7843,7 +7857,11 @@ export class App {
     if (!roots) return Promise.reject(new Error('Poste de situation : conteneurs absents'));
     this.postePromise = import('./components/poste/PosteSituation.ts').then(({ PosteSituation }) => {
       const poste = new PosteSituation({ app: this.container, ...roots }, {
-        onThemeChange: (theme) => this.applyLayerPreset(theme),
+        onThemeChange: (theme) => {
+          this.v2Theme = theme;
+          this.applyLayerPreset(theme);
+          this.refreshEventPoints();
+        },
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
         onOpenDossier: (situation) => this.openAlertDossier(situation),
@@ -7888,6 +7906,7 @@ export class App {
     // enregistrent la dernière liste vue (relecture finale I5).
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
+    this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
@@ -7941,10 +7960,18 @@ export class App {
   }
 
   /** Remet les événements à la v2 et enregistre la ligne de base, au même moment que l'ancre de visite. */
+  /** Couche Événements de la v2 : les événements du fil, du thème choisi (spec 2026-09-29 § 5). */
+  private refreshEventPoints(): void {
+    if (!this.uiV2) return;
+    this.mapContainer?.setEventPoints(eventMapPoints(this.v2EventsState?.events ?? [], this.v2Theme));
+  }
+
   private deliverV2Events(state: IntelEventsState | null): void {
     const poste = this.poste;
     if (!poste) return;
     poste.setEvents(state);
+    this.v2EventsState = state;
+    this.refreshEventPoints();
     // Les alertes presse suivent les événements tout juste chargés (spec 2026-09-28 § 4.7).
     this.repaintPoste();
     if (state && !state.unavailable) this.recordV2VisitBaseline();

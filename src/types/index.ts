@@ -131,6 +131,8 @@ export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export interface MapLayers {
   newsGroup: boolean;
   news: boolean;
+  /** Événements consolidés en cours (v2, spec 2026-09-29 § 5). */
+  events: boolean;
   alerts: boolean;
   energySystems: boolean;
   dromEnergy: boolean;
