@@ -8462,7 +8462,7 @@ button.header-quality-link {
 /* Ordinateur : trois colonnes, rien ne recouvre la carte. */
 #app.ui-v2 .main-container { flex-direction: row; position: relative; }
 #app.ui-v2 .map-area { min-width: 0; }
-#app.ui-v2 .sidebar { width: 300px; height: auto; }
+#app.ui-v2 .sidebar { width: var(--v2-drawer-w, 300px); height: auto; }
 #app.ui-v2.sidebar-collapsed .sidebar { display: none; }
 #app.ui-v2 .header-sidebar-toggle { display: inline-flex; width: auto; gap: 6px; padding: 0 10px; }
 .header-sidebar-toggle__label { font-size: 12px; }
@@ -8680,7 +8680,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    Seul accès aux panneaux en v2 (cocher une couche ne les ouvre pas) : elles doivent se voir.
    Vert de la marque (#4bfc94 : « Monitor » du logo, bouton de langue actif), distinct du vert de
    vigilance (#34c759) ; surfaces sombres. Libellé toujours visible (plus de mode icône seule). */
-#app.ui-v2 { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; }
+#app.ui-v2 { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --v2-drawer-w: 300px; }
 @media (min-width: 1101px) {
   #app.ui-v2 .floating-panel-switcher {
     top: 12px;
@@ -8689,9 +8689,33 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: 8px;
-    /* Laisse la place au sélecteur Carte | Satellite, en haut à droite. */
-    max-width: calc(100% - 300px);
+    /* Laisse la place au sélecteur Carte | Satellite (≈ 165 px), en haut à droite. */
+    max-width: calc(100% - 24px - 180px);
   }
+  /* Tiroir Couches ouvert (il recouvre le bord gauche de la carte) : puces à sa droite, sous Carte | Satellite. */
+  #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher {
+    top: 60px;
+    left: calc(var(--v2-drawer-w) + 12px);
+    max-width: calc(100% - var(--v2-drawer-w) - 24px);
+  }
+  /* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
+  #app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
+  #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* L'étiquette du baromètre santé (style inline, haut fixe à 70 px) se place sous les puces. */
+  #app.ui-v2 #barometer-fab { top: calc(var(--v2-switcher-bottom, 0px) + 12px) !important; }
+  /* …et passe SOUS le tiroir Couches quand il est ouvert (style inline z-index 900 ; tiroir à 20). */
+  #app.ui-v2:not(.sidebar-collapsed) #barometer-fab {
+    z-index: var(--z-map-widget) !important;
+    /* Centrée sur la partie visible de la carte, à droite du tiroir. */
+    left: calc(50% + var(--v2-drawer-w) / 2) !important;
+  }
+  /* Place trop juste à côté du tiroir : l'étiquette n'a pas la place, elle revient à la fermeture. */
+  #app.ui-v2:not(.sidebar-collapsed) .map-area:has(.floating-panel-switcher.is-icon-only) #barometer-fab { display: none !important; }
+  /* Place trop juste à côté du tiroir (< 150 px) : icône seule, le nom reste en infobulle. */
+  #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
+    width: 36px; padding: 0; justify-content: center;
+  }
+  #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__label { display: none; }
   #app.ui-v2 .floating-panel-switcher__chip,
   #app.ui-v2 .floating-panel-switcher.is-compact .floating-panel-switcher__chip:not(.is-active) {
     height: 36px;
@@ -8733,4 +8757,11 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 }
 @media (min-width: 1101px) and (prefers-reduced-motion: reduce) {
   #app.ui-v2 .floating-panel-switcher__chip { transition: none; }
+}
+
+/* Carte étroite (< 640 px, classe posée par App.layoutFloatingPanelSwitcher d'après la largeur de la
+   carte) : les puces passent sous Carte | Satellite et prennent toute la largeur. */
+@media (min-width: 1101px) {
+  #app.ui-v2 .floating-panel-switcher.is-narrow-map { top: 60px; max-width: calc(100% - 24px); }
+  #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-narrow-map { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }

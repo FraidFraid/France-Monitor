@@ -483,6 +483,11 @@ interface FloatingPanelDef {
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
+/** v2 : largeur de carte sous laquelle les puces des panneaux passent sous Carte | Satellite. */
+const V2_NARROW_MAP_PX = 640;
+/** v2 : largeur du tiroir Couches (main.css --v2-drawer-w). */
+const V2_DRAWER_PX = 300;
+
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
   { id: 'fires', label: 'Feux de forêt', icon: 'flame', layerKeys: ['fires'] },
@@ -2017,6 +2022,8 @@ export class App {
     const apply = (next: boolean, persist: boolean): void => {
       collapsed = next;
       this.container.classList.toggle('sidebar-collapsed', collapsed);
+      // v2 : le tiroir ouvert décale les puces des panneaux (main.css) ; l'étiquette du baromètre suit.
+      this.layoutFloatingPanelSwitcher();
       toggle.setAttribute('aria-expanded', String(!collapsed));
       toggle.setAttribute('aria-label', collapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
       if (!persist) return;
@@ -4559,6 +4566,17 @@ export class App {
     }
     const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
+    if (this.uiV2) {
+      // Carte étroite : les puces passent sous Carte | Satellite (main.css, .is-narrow-map).
+      const mapWidth = el.parentElement?.clientWidth ?? 0;
+      el.classList.toggle('is-narrow-map', mapWidth < V2_NARROW_MAP_PX);
+      // À côté du tiroir Couches ouvert, s'il reste moins de 150 px : icônes seules (nom en infobulle).
+      const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
+      el.classList.toggle('is-icon-only', drawerOpen && mapWidth - V2_DRAWER_PX - 24 < 150);
+      // Bas de la rangée de puces dans la carte : l'étiquette « Baromètre Santé » se place dessous.
+      const bottom = el.hidden ? 0 : el.offsetTop + el.offsetHeight;
+      document.documentElement.style.setProperty('--v2-switcher-bottom', `${bottom}px`);
+    }
     this.syncV2ColumnVars();
   }
 
