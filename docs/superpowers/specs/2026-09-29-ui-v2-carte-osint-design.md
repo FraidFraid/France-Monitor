@@ -40,7 +40,7 @@ Réussite : **en 10 secondes, voir ce qui se passe maintenant en France, où, av
 2. À l'ouverture, rien que deux choses : les événements en cours (un point par événement, couleur = gravité, taille = nombre de sources) et les vigilances officielles en aplat léger par département.
 3. Une seule palette : vert, jaune, orange, rouge, celle de la vigilance officielle. Aucune autre couleur vive nulle part.
 4. Un seul fil, étroit. Chaque ligne donne le titre, le lieu, l'heure et le nombre de sources, avec une étiquette au plus. Tri par gravité puis par fraîcheur.
-5. Un seul panneau de détail à la fois. Il ne recouvre jamais le fil ni les commandes, et se ferme avec Échap.
+5. Un seul panneau de détail à la fois. Un panneau de module prend la place de l’État (colonne de droite) ; il ne recouvre jamais le fil, la carte ni les commandes, et se ferme avec × ou Échap.
    5 bis. La colonne de droite est l'onglet **État de la France**, ouvert par défaut en permanence ; un clic sur un événement affiche sa fiche à la place ; Échap ou × ramène à l'État.
 6. Toute donnée est datée. Au-delà de son délai de fraîcheur, elle est grisée ou masquée, jamais présentée comme « du moment ».
 7. En-tête court : niveau national, heure de mise à jour, état des sources.
@@ -69,9 +69,9 @@ Interdit : panneaux superposés, badges en série, arcs ou trajectoires affiché
   - ligne 2 : thèmes en onglets texte (pastille seulement si le thème est orange ou rouge), sélecteur Régions, bouton Couches, langue, menu ⋯ (qui reçoit « Sources & qualité » et le détail des sources indisponibles).
 - **Colonnes** : fil « À traiter » ~320 px, carte, onglet État ~420 px. Aux largeurs où la v2 passe déjà en onglets (tablette, téléphone), le comportement actuel est gardé (`App.ts` ~2900).
 - **Couches** : le bouton ouvre un tiroir superposé **à la carte seulement**.
-- **Panneaux de module** (Santé, Gaz, Cyber…) : ouverts uniquement par une action explicite (bouton dans Couches, « Voir les indicateurs » d'une bulle de la carte), dans la zone de la carte, un seul à la fois. En v2, `NationalHealthPanel` n'est plus en position fixe à droite.
+- **Panneaux de module** (Santé, Gaz, Énergie, Cyber, Environnement…) : ouverts uniquement par une action explicite (bouton dans Couches, puce du sélecteur de panneaux, « Voir les indicateurs » d’une bulle de la carte), un seul à la fois, **à la place de l’État, dans la colonne de droite** (même position, même largeur et même hauteur que `.fm-v2-fiche`, mesurées par `App.syncV2ColumnVars`) ; la carte reste dégagée. × ou Échap y ramène (l’État ou la fiche réapparaît) ; toute sélection (ligne du fil, point de carte, lien de l’État) ferme d’abord le panneau (`PosteCallbacks.onSelect`) : jamais deux choses empilées. Les puces restent en haut de la carte (clic : ouvre, second clic : ferme). Tablette et téléphone inchangés. En v2, `NationalHealthPanel` n’est plus en position fixe à droite.
 - **Rien ne s'ouvre au chargement.** En v2, l'écouteur de `open-national-health` (`App.ts` ~3074) n'ouvre le panneau que pour un événement marqué explicite (`detail.explicit === true`), posé par les deux déclencheurs utilisateur (panneau des couches, bulle de `DeckGLMap.ts` ~4265) ; les émissions de `ensureHealthPanels()` et `loadHealth()` sont ignorées. Même règle pour tout panneau de couche : l'activation d'une couche ne l'ouvre jamais (`layerActivationOptions`, `src/services/ui-mode.ts`).
-- **Échap** : ferme la fiche ouverte et ramène à l'État, où que soit le focus (carte comprise), sauf dans un champ de saisie ; étend la gestion actuelle limitée au fil et à la fiche (`PosteSituation.ts` ~171).
+- **Échap** : ferme d’abord le panneau de module ouvert (lui seul) ; sinon ferme la fiche ouverte et ramène à l'État, où que soit le focus (carte comprise), sauf dans un champ de saisie ; étend la gestion actuelle limitée au fil et à la fiche (`PosteSituation.ts` ~171).
 
 ## 5. Carte et couches
 

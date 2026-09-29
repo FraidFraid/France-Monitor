@@ -93,7 +93,7 @@ function setup(width = 1440) {
   document.body.appendChild(app);
   const cb = {
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
-    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(), onMapShown: vi.fn(),
+    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
   } satisfies PosteCallbacks;
   const poste = new PosteSituation(roots, cb, { viewportWidth: () => width });
   poste.setEvents(eventsState());
@@ -384,6 +384,17 @@ describe('PosteSituation', () => {
     cb.onFlyTo.mockImplementation(() => { order.push('flyTo'); });
     roots.fiche.querySelector<HTMLButtonElement>('[data-action="map"]')?.click();
     expect(order).toEqual(['resize', 'flyTo']);
+  });
+
+  it('toute sélection appelle onSelect (liste, poste.select), pas la fermeture', () => {
+    const { roots, cb, poste } = setup();
+    roots.list.querySelector<HTMLElement>('.wl-item')?.click();
+    expect(cb.onSelect).toHaveBeenCalledTimes(1);
+    poste.select('france');
+    expect(cb.onSelect).toHaveBeenCalledTimes(2);
+    expect(cb.onSelect).toHaveBeenLastCalledWith('france');
+    poste.select(null);
+    expect(cb.onSelect).toHaveBeenCalledTimes(2);
   });
 
   it('ligne de base : les niveaux affichés, sans les événements', () => {

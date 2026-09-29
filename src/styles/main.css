@@ -8601,7 +8601,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 @media (min-width: 1101px) {
   #app.ui-v2 .fm-v2-list { flex: 0 0 var(--v2-list-w); min-width: 0; max-width: none; }
   #app.ui-v2 .fm-v2-fiche { flex: 0 0 var(--v2-fiche-w); min-width: 0; max-width: none; }
-  /* Panneaux de module : dans la zone de la carte, jamais sur le fil ni sur l'État (§ 4). */
+  /* Panneaux de module : exactement à la place de l'onglet État (colonne .fm-v2-fiche), spec § 4.
+     Géométrie mesurée par App.syncV2ColumnVars (variables sur <html> : valables pour les panneaux
+     attachés à #app comme à <body>). !important : les panneaux posent leur géométrie en style inline. */
   #app.ui-v2 .cyber-panel-modal,
   #app.ui-v2 .defense-panel-modal,
   #app.ui-v2 .energy-panel-modal,
@@ -8614,24 +8616,26 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .eolien-panel-modal,
   #app.ui-v2 .hydraulic-panel-modal,
   #app.ui-v2 .drom-energy-panel-modal,
-  #app.ui-v2 .fm-floating-panel {
-    left: auto !important;
-    right: calc(var(--v2-fiche-w) + 16px) !important;
-    max-width: calc(100vw - var(--v2-list-w) - var(--v2-fiche-w) - 32px) !important;
-    /* Sous la barre de puces (posé par App.layoutFloatingPanelSwitcher) : la puce du panneau ouvert reste cliquable. */
-    top: var(--v2-panel-top, 109px) !important;
-    max-height: calc(100vh - var(--v2-panel-top, 109px) - 56px) !important;
-  }
-  /* Environnement, Incendies et Maritime sont ajoutés à <body>, hors de #app : mêmes règles, valeurs
-     littérales (--v2-list-w et --v2-fiche-w ne sont définies que sur #app). */
+  #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .environment-panel-modal,
   body:has(#app.ui-v2) > .fires-panel-modal,
   body:has(#app.ui-v2) > .fm-floating-panel {
-    left: auto !important;
-    right: 436px !important; /* fiche 420 px + 16 px */
-    max-width: calc(100vw - 320px - 420px - 32px) !important;
-    top: var(--v2-panel-top, 109px) !important;
-    max-height: calc(100vh - var(--v2-panel-top, 109px) - 56px) !important;
+    position: fixed !important;
+    top: var(--v2-col-top, 101px) !important;
+    left: var(--v2-col-left, calc(100vw - 420px)) !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: var(--v2-col-width, 420px) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: var(--v2-col-height, calc(100vh - 101px)) !important;
+    max-height: none !important;
+    margin: 0 !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    resize: none !important;
   }
   /* Tiroir Couches : par-dessus la carte seulement, contre le fil (§ 4). */
   #app.ui-v2 .sidebar {

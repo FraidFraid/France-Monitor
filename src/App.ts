@@ -28,7 +28,7 @@ import { scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
-import { restorePanelPlan, switcherPanelOffsetPx, v2PanelTopPx } from './services/floating-panel-switcher.ts';
+import { restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -2888,6 +2888,14 @@ export class App {
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
+    // v2 : Échap ferme le panneau de module (lui seul). Écouté sur `document`, donc avant le
+    // gestionnaire de PosteSituation (sur `window`) qui ignore un événement déjà traité.
+    this.addGlobalListener(document, 'keydown', (event) => {
+      if (!this.uiV2 || !(event instanceof KeyboardEvent) || event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      if (this.closeV2ModulePanel()) event.preventDefault();
+    });
 
     // ── Disposition A1 (?ui=v2) : liste « À traiter » à gauche de la carte, fiche à droite ──
     let v2List: HTMLElement | null = null;
@@ -4424,6 +4432,7 @@ export class App {
    * activateLayerSilently()).
    */
   private showFloatingPanel(id: keyof MapLayers): void {
+    this.syncV2ColumnVars();
     this.hideAllFloatingPanels(id);
     this.explicitPanelRequest = true;
     try {
@@ -4544,11 +4553,27 @@ export class App {
     }
     const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
-    if (this.uiV2) {
-      const mapTop = el.parentElement?.getBoundingClientRect().top ?? 0;
-      const bottom = el.hidden ? null : el.getBoundingClientRect().bottom;
-      document.documentElement.style.setProperty('--v2-panel-top', `${v2PanelTopPx(bottom, mapTop)}px`);
-    }
+    this.syncV2ColumnVars();
+  }
+
+  /** v2 : pose la géométrie de la colonne État (`.fm-v2-fiche`) en variables CSS ; les panneaux de module s'y placent. */
+  private syncV2ColumnVars(): void {
+    if (!this.uiV2) return;
+    const fiche = this.v2Roots?.fiche;
+    if (!fiche) return;
+    const rect = fiche.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const root = document.documentElement.style;
+    for (const [name, value] of Object.entries(v2ColumnVars(rect))) root.setProperty(name, value);
+  }
+
+  /** v2 : ferme le panneau de module ouvert (l'État ou la fiche réapparaît) ; true s'il y en avait un. */
+  private closeV2ModulePanel(): boolean {
+    if (!FLOATING_PANEL_DEFS.some((def) => this.isFloatingPanelVisible(def.id))) return false;
+    this.currentFloatingPanelId = null;
+    this.hideAllFloatingPanels();
+    this.refreshFloatingPanelSwitcher();
+    return true;
   }
 
   private floatingPanelIsEligible(id: keyof MapLayers): boolean {
@@ -7901,6 +7926,10 @@ export class App {
         },
         // Relecture finale m7 : la carte mobile, créée dans l'onglet masqué, s'ajuste à l'affichage.
         onMapShown: () => this.mapContainer?.resize(),
+        // Une sélection prend la colonne : le panneau de module ouvert se ferme d'abord.
+        onSelect: () => {
+          this.closeV2ModulePanel();
+        },
       });
       this.poste = poste;
       // Revue (correction post-relecture) : premier rendu seul, sans passer par

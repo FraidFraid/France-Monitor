@@ -22,14 +22,16 @@ export function switcherPanelOffsetPx(switcherHeightPx: number, uiV2: boolean): 
 }
 
 /**
- * v2 : haut (px, repère de la fenêtre) des panneaux de module — sous la barre « panneaux ouverts »
- * quand elle est affichée, sinon en haut de la zone carte —, pour qu'un panneau ouvert ne recouvre
- * jamais ses propres commandes (spec 2026-09-29 § 4 : « ne recouvre jamais le fil ni les commandes »).
- * @param switcherBottomPx  bas de la barre, null si elle est masquée
- * @param mapTopPx          haut de la zone carte
+ * v2 : géométrie de la colonne de droite (`.fm-v2-fiche`) sous forme de variables CSS ; les panneaux
+ * de module s'y posent pile (spec 2026-09-29 § 4 : « à la place de l'État »).
  */
-export function v2PanelTopPx(switcherBottomPx: number | null, mapTopPx: number): number {
-  return Math.round((switcherBottomPx ?? mapTopPx) + PANEL_GAP_PX);
+export function v2ColumnVars(rect: { top: number; left: number; width: number; height: number }): Record<string, string> {
+  return {
+    '--v2-col-top': `${Math.round(rect.top)}px`,
+    '--v2-col-left': `${Math.round(rect.left)}px`,
+    '--v2-col-width': `${Math.round(rect.width)}px`,
+    '--v2-col-height': `${Math.round(rect.height)}px`,
+  };
 }
 
 /**

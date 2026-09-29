@@ -87,6 +87,8 @@ export interface PosteCallbacks {
   onFicheRendered: (body: HTMLElement) => void;
   /** Onglet « Carte » affiché (mobile) : la carte, créée masquée, s'ajuste à son conteneur (m7). */
   onMapShown: () => void;
+  /** Toute sélection (ligne, carte, lien) : App ferme d'abord le panneau de module ouvert dans la colonne (v2). */
+  onSelect: (key: string) => void;
 }
 
 export interface PosteRoots {
@@ -270,6 +272,7 @@ export class PosteSituation {
   }
 
   select(key: string | null): void {
+    if (key !== null) this.callbacks.onSelect(key);
     this.selection = key;
     this.render();
     // Tablette et mobile : la fiche s'ouvre en volet, le focus la suit.
