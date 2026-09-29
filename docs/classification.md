@@ -56,6 +56,25 @@ Critères (fixés avant la mesure) :
 
 La colonne « avec LLM » vient du rejeu complet fait avant l'ajout de la clause « menace terroriste » à la grille ; cette clause ne touche que le niveau 3 (elle ne peut créer ni `critical` ni événement étranger au-dessus de `medium`). L'échec du rappel avec la grille précédente venait de deux causes, corrigées le 28/09 par décision de l'analyste : la grille notait 1 un projet terroriste déjoué (« situation maîtrisée ») et « apologie » était traité comme un marqueur judiciaire. La revérification avec la grille finale — un rejeu complet (~52 000 jetons) puis un contrôle ciblé des 3 articles concernés — a buté sur le quota journalier gratuit de Groq (200 000 jetons, consommé en continu par la production) : elle est à faire dès le lendemain ou juste après le déploiement.
 
+## Rattrapage du 29/09/2026
+
+Constat le 29/09 à 08:50 UTC, 16 h après le déploiement : 38 des 40 premiers événements en production étaient encore `high` ou `critical` (Bangkok, Ukraine, Madrid, procès…). Les articles collectés avant le 28/09 16:30 UTC gardaient leur ancienne note, et un événement est recalculé sur **tous** ses articles : les sujets longs restaient rouges tant que la presse en parlait. Le rejeu, lui, renotait toute la fenêtre.
+
+`scripts/reclassify-legacy.mjs` (essai à blanc par défaut, `--apply` pour écrire) :
+- portée : articles sans `reported_severity` collectés depuis 7 jours, ou rattachés à un événement vu depuis 7 jours (la liste n'affiche que les 48 dernières heures) ;
+- méthode de la colonne « mots-clés seuls » du rejeu : `kw-2` pour les articles notés par mots-clés ; pour ceux notés par l'ancienne passe Groq (`groq-1`, invite sans grille), leur note gardée comme gravité signalée et plafonnée par les règles du titre ;
+- `--llm` : les anciennes notes `groq-1` restées `high`/`critical` sont renotées par la passe LLM de production (grille `groq-2`), avec une pause entre les appels et un plafond de jetons (quota partagé avec la production) ;
+- événements recalculés par le code de l'ingestion **sans entrée de journal de gravité** : la situation n'a pas changé, seule la méthode (sinon des centaines d'« atténués » dans le fil des changements) ; les changements de statut dus au temps restent journalisés ;
+- reprenable : ne touche que les lignes encore sans qualification (ou encore en `groq-1`).
+
+| 40 premiers événements | Avant | Mots-clés (09:31 UTC) | + LLM (09:40 UTC) |
+|---|---|---|---|
+| critical | 4 | 0 | 0 |
+| high | 34 | 10 | 2 |
+| medium | 2 | 30 | 38 |
+
+Mots-clés : 18 776 articles renotés (critical 148 → 24, high 693 → 300), 11 610 événements recalculés. LLM : 195 anciennes notes `groq-1` renotées en 20 appels (36 427 jetons), 152 événements recalculés. Les 10 `high` restants après les mots-clés venaient tous d'anciennes notes Groq (13 articles `high` pour une messe du pape à Lourdes) ; restent une menace d'attentat contre un lycée (Haut-Rhin) et une fusillade à Vénissieux. Les articles renotés sont reconnaissables : `reported_severity` renseignée mais collectés avant le 28/09 16:30 UTC.
+
 ## Jeu annoté
 
 `tests/fixtures/classification/labels.json` : 202 articles réels tirés de l'instantané (tous les `critical`, 80 `high`, 90 autres ; graine fixe).
