@@ -57,6 +57,9 @@ export async function ensureEventTables(sql) {
   await ensureClassificationColumns(sql);
 }
 
+/** Entrées de journal dues au temps qui passe, gardées par un recalcul sans journal. */
+const STATUS_KINDS = new Set(['cooling', 'closed', 'reopened']);
+
 const toMs = (v) => (v instanceof Date ? v.getTime() : Date.parse(String(v)));
 const toNum = (v) => (v === null || v === undefined ? null : Number(v));
 
@@ -192,16 +195,12 @@ export async function runEventPass(sql, options = {}) {
 }
 
 /**
- * Recalcule les agrégats des événements touchés et écrit leur journal. Les articles en attente
- * (`assignments`, pas encore rattachés en base) comptent déjà dans l'agrégat. Un événement
- * sans aucune entrée de journal est « créé » : décision reprenable après un passage interrompu.
+ * Articles des événements (articles en attente compris), au format de summarizeEvent.
  * @param {Sql} sql
  * @param {number[]} eventIds
  * @param {Map<number, number>} assignments  article en attente → événement
- * @param {number} now
- * @returns {Promise<{ logged: number, created: number }>}
  */
-async function refreshEvents(sql, eventIds, assignments, now) {
+export async function loadEventArticles(sql, eventIds, assignments) {
   const pendingIds = [...assignments.keys()];
   const rows = await sql`
     SELECT n.id, n.event_id, n.title, n.feed_id, f.name AS feed_name, f.tier,
@@ -210,14 +209,6 @@ async function refreshEvents(sql, eventIds, assignments, now) {
     FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE n.event_id = ANY(${eventIds}::bigint[]) OR n.id = ANY(${pendingIds}::bigint[])
   `;
-  const current = await sql`
-    SELECT e.id, e.severity, e.independent_count, e.status,
-           EXISTS (SELECT 1 FROM news_event_log l WHERE l.event_id = e.id) AS logged
-    FROM news_events e WHERE e.id = ANY(${eventIds}::bigint[])
-  `;
-  const before = new Map(current.map((r) => [Number(r.id), r.logged === true
-    ? { severity: String(r.severity), independentCount: Number(r.independent_count), status: String(r.status) }
-    : null]));
   const byEvent = new Map();
   for (const r of rows) {
     const id = assignments.get(Number(r.id)) ?? Number(r.event_id);
@@ -230,6 +221,33 @@ async function refreshEvents(sql, eventIds, assignments, now) {
       reasons: decodeReasons(r.reasons),
     });
   }
+  return byEvent;
+}
+
+/**
+ * Recalcule les agrégats des événements touchés et écrit leur journal. Les articles en attente
+ * (`assignments`, pas encore rattachés en base) comptent déjà dans l'agrégat. Un événement
+ * sans aucune entrée de journal est « créé » : décision reprenable après un passage interrompu.
+ * `journal: false` (rattrapage de classement, scripts/reclassify-legacy.mjs) : seules les entrées
+ * de statut (refroidissement, clôture) sont écrites ; une gravité qui change vient alors de la
+ * méthode de notation, pas de la situation (sinon « atténué » en masse dans le fil des changements).
+ * @param {Sql} sql
+ * @param {number[]} eventIds
+ * @param {Map<number, number>} assignments  article en attente → événement
+ * @param {number} now
+ * @param {{ journal?: boolean }} [options]
+ * @returns {Promise<{ logged: number, created: number }>}
+ */
+export async function refreshEvents(sql, eventIds, assignments, now, { journal = true } = {}) {
+  const byEvent = await loadEventArticles(sql, eventIds, assignments);
+  const current = await sql`
+    SELECT e.id, e.severity, e.independent_count, e.status,
+           EXISTS (SELECT 1 FROM news_event_log l WHERE l.event_id = e.id) AS logged
+    FROM news_events e WHERE e.id = ANY(${eventIds}::bigint[])
+  `;
+  const before = new Map(current.map((r) => [Number(r.id), r.logged === true
+    ? { severity: String(r.severity), independentCount: Number(r.independent_count), status: String(r.status) }
+    : null]));
   const cols = { id: [], title: [], category: [], severity: [], first: [], last: [], articles: [], sources: [], independent: [], names: [], lat: [], lon: [], status: [], peak: [], temporality: [], zone: [], reasons: [] };
   const log = [];
   let created = 0;
@@ -264,7 +282,7 @@ async function refreshEvents(sql, eventIds, assignments, now) {
            peak_severity, temporality, zone, reasons)
     WHERE e.id = v.id
   `;
-  return { logged: await writeLog(sql, log, now), created };
+  return { logged: await writeLog(sql, journal ? log : log.filter((e) => STATUS_KINDS.has(e.kind)), now), created };
 }
 
 /** @param {Sql} sql @param {Array<{ eventId: number, kind: string, from: string | null, to: string | null }>} entries @param {number} now */
