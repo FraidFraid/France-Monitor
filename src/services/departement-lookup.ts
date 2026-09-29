@@ -3,6 +3,8 @@
 // géométrie que la carte (/data/departements.geojson : 96 départements métropolitains). Pur, sauf
 // loadDepartementIndex.
 
+import { loadDepartementsGeojson } from './departements-geojson.ts';
+
 type Ring = ReadonlyArray<readonly [number, number]>;
 
 interface Shape {
@@ -79,10 +81,9 @@ export function buildDepartementIndex(features: readonly GeoFeature[]): Departem
 
 export async function loadDepartementIndex(fetchImpl: typeof fetch = fetch): Promise<DepartementIndex | null> {
   try {
-    const res = await fetchImpl('/data/departements.geojson');
-    if (!res.ok) return null;
-    const body = (await res.json()) as { features?: unknown };
-    return Array.isArray(body.features) ? buildDepartementIndex(body.features as GeoFeature[]) : null;
+    // Géométrie partagée avec la carte : un seul téléchargement de departements.geojson.
+    const body = await loadDepartementsGeojson(fetchImpl);
+    return body && Array.isArray(body.features) ? buildDepartementIndex(body.features as GeoFeature[]) : null;
   } catch {
     return null;
   }

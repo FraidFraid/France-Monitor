@@ -37,6 +37,7 @@ import { buildDatacenterPopupHtml } from '../utils/infra-network-popup.js';
 import { buildDefaultGibsViirsTileUrl, resolveLatestGibsViirsTileUrl } from '../utils/gibs-imagery.ts';
 import { fetchMtgFrpMetadata, getMtgFrpTileTemplate } from '../services/mtg-frp.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
@@ -473,7 +474,6 @@ export class DeckGLMap {
   // non-nulles pour qu'un refresh santé ultérieur n'efface jamais la couche.
   private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
-  private departmentsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
   // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
   // is created, in parallel with map style/tile loading, instead of only
   // after map.on('load') fires — this fetch has no dependency on the map.
@@ -9693,16 +9693,9 @@ export class DeckGLMap {
 
   // ─── Weather Layer ───
 
-  private async getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
-    this.departmentsGeojsonPromise ??= fetch('/data/departements.geojson')
-      .then((resp) => resp.ok ? resp.json() as Promise<GeoJSON.FeatureCollection> : null)
-      .catch((error) => {
-        this.departmentsGeojsonPromise = null;
-        console.warn('[DeckGLMap] Failed to cache departments GeoJSON', error);
-        return null;
-      });
-
-    return this.departmentsGeojsonPromise;
+  private getDepartmentsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
+    // Chargeur partagé avec l'index des départements du fil (v2) : un seul téléchargement.
+    return loadDepartementsGeojson();
   }
 
   private cloneDepartmentsGeojson(base: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
