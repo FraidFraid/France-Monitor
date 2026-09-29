@@ -27,7 +27,8 @@ import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type Brie
 import { scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { innerLayerOpen } from './services/escape-layers.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -478,6 +479,9 @@ interface FloatingPanelDef {
   icon: IconName;
   layerKeys: ReadonlyArray<keyof MapLayers>;
 }
+
+/** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
+const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
@@ -2891,9 +2895,11 @@ export class App {
     // v2 : Échap ferme le panneau de module (lui seul). Écouté sur `document`, donc avant le
     // gestionnaire de PosteSituation (sur `window`) qui ignore un événement déjà traité.
     this.addGlobalListener(document, 'keydown', (event) => {
-      if (!this.uiV2 || !(event instanceof KeyboardEvent) || event.key !== 'Escape' || event.defaultPrevented) return;
+      if (!moduleInColumn(this.uiV2, window.innerWidth) || !(event instanceof KeyboardEvent) || event.key !== 'Escape' || event.defaultPrevented) return;
       const target = event.target;
       if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+      // Une fenêtre, un menu ou une bulle de carte ouverts reçoivent Échap avant le panneau.
+      if (innerLayerOpen(document, MODULE_PANEL_SELECTOR)) return;
       if (this.closeV2ModulePanel()) event.preventDefault();
     });
 
@@ -7928,7 +7934,7 @@ export class App {
         onMapShown: () => this.mapContainer?.resize(),
         // Une sélection prend la colonne : le panneau de module ouvert se ferme d'abord.
         onSelect: () => {
-          this.closeV2ModulePanel();
+          if (moduleInColumn(this.uiV2, window.innerWidth)) this.closeV2ModulePanel();
         },
       });
       this.poste = poste;

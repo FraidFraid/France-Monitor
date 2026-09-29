@@ -64,3 +64,17 @@ export function legendStatusLabel(uiV2: boolean, status: 'ok' | 'stale' | 'error
   if (status === 'stale') return uiV2 ? 'EN RETARD' : 'CACHE FIGÉ';
   return 'INDISPONIBLE';
 }
+
+export type PosteLayout = 'mobile' | 'tablet' | 'desktop';
+
+/** Disposition selon la largeur (spec §9) : moins de 700 px mobile, 700 à 1 100 px tablette. */
+export function layoutFor(width: number): PosteLayout {
+  if (width < 700) return 'mobile';
+  if (width <= 1100) return 'tablet';
+  return 'desktop';
+}
+
+/** Panneaux de module de la v2 : à la place de l'État seulement en bureau (≥ 1101 px). */
+export function moduleInColumn(uiV2: boolean, width: number): boolean {
+  return uiV2 && layoutFor(width) === 'desktop';
+}

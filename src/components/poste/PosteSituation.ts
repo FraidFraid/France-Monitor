@@ -41,15 +41,11 @@ import { ThemeBar } from './ThemeBar.ts';
 import { WorkList } from './WorkList.ts';
 import { FichePanel } from './FichePanel.ts';
 
-export type PosteLayout = 'mobile' | 'tablet' | 'desktop';
+import { innerLayerOpen } from '../../services/escape-layers.ts';
+import { layoutFor, type PosteLayout } from '../../services/ui-mode.ts';
+export { layoutFor };
+export type { PosteLayout };
 export type PosteTab = 'list' | 'map' | 'fiche';
-
-/** Disposition selon la largeur (spec §9) : moins de 700 px mobile, 700 à 1 100 px tablette. */
-export function layoutFor(width: number): PosteLayout {
-  if (width < 700) return 'mobile';
-  if (width <= 1100) return 'tablet';
-  return 'desktop';
-}
 
 /** Chauffe du démarrage : ce qui apparaît pendant ces 2 min vient des données qui arrivent, pas d'un changement. */
 const WARMUP_MS = 2 * 60 * 1000;
@@ -115,14 +111,6 @@ function durationLabel(ms: number, lang: Lang): string {
 }
 
 /** Champ de saisie : Échap y garde son sens (effacer, fermer une liste déroulante). */
-/** Fenêtre, menu ou bulle de carte affichés : ils reçoivent Échap avant la fiche. */
-function innerLayerOpen(): boolean {
-  const visible = (el: Element): boolean => el.getClientRects().length > 0;
-  const layers = document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="menu"]:not([hidden]), .maplibregl-popup');
-  for (const el of layers) if (visible(el)) return true;
-  return false;
-}
-
 function isTypingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement
     && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');

@@ -8636,6 +8636,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
     box-sizing: border-box !important;
     overflow-y: auto !important;
     resize: none !important;
+    /* Au-dessus de la colonne, sous l'en-tête (20 : menu ⋯, SOURCES), les bulles de carte et les fenêtres ; les composants posent 9999 en inline. */
+    z-index: 15 !important;
   }
   /* Tiroir Couches : par-dessus la carte seulement, contre le fil (§ 4). */
   #app.ui-v2 .sidebar {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layerActivationOptions, layerStateStorage, legendStatusLabel, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
+import { layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
 
 describe('shouldRecordIntelSnapshot (garde : pas d’écriture dans l’historique partagé avec des caches vides)', () => {
   it('v1 : toujours vrai, le tiroir décide seul de sa visibilité', () => {
@@ -69,5 +69,14 @@ describe('legendStatusLabel (spec 2026-09-29 § 8)', () => {
   it('v1 : inchangé', () => {
     expect(legendStatusLabel(false, 'ok')).toBe('TEMPS RÉEL');
     expect(legendStatusLabel(false, 'stale')).toBe('CACHE FIGÉ');
+  });
+});
+
+describe('moduleInColumn — panneaux à la place de l’État seulement en bureau', () => {
+  it('v2 et ≥ 1101 px seulement', () => {
+    expect(moduleInColumn(true, 1101)).toBe(true);
+    expect(moduleInColumn(true, 1100)).toBe(false);
+    expect(moduleInColumn(true, 390)).toBe(false);
+    expect(moduleInColumn(false, 1600)).toBe(false);
   });
 });
