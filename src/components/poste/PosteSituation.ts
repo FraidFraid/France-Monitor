@@ -134,6 +134,8 @@ export class PosteSituation {
   private showAll = false;
   private tab: PosteTab = 'list';
   private readonly whyOpen = new Set<string>();
+  /** Groupe « Hors de France » déplié (état conservé d'un rafraîchissement à l'autre). */
+  private foreignOpen = false;
   private lastTabsHtml = '';
 
   // ── Données ──
@@ -168,6 +170,9 @@ export class PosteSituation {
       this.render();
     });
     this.workList.setOnGuard((theme) => this.setTheme(theme));
+    this.workList.setOnForeignToggle((open) => {
+      this.foreignOpen = open;
+    });
     this.fichePanel.setOnSelect((key) => this.select(key));
     this.fichePanel.setOnAction((action, ficheKey) => this.runAction(action, ficheKey));
     this.fichePanel.setOnWhyToggle((ficheKey, open) => {
@@ -383,7 +388,7 @@ export class PosteSituation {
       lang,
     });
     this.themeBar.update({ selected: this.theme, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
-    this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now });
+    this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now, foreignOpen: this.foreignOpen });
     this.renderTabs(lang);
     this.roots.app.dataset.v2Tab = this.tab;
     this.roots.app.dataset.v2Fiche = this.selection === null ? 'default' : 'open';

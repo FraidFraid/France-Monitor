@@ -184,3 +184,45 @@ describe('ligne de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
     expect(html).toContain('data-key="event:9"');
   });
 });
+
+describe('groupe « Hors de France » (relecture finale I2)', () => {
+  const foreignModel = (now: number, foreignOpen?: boolean): WorkListModel => ({
+    ...model({ events: events({ events: [
+      event({ id: 1, title: 'Explosion à Rouen' }),
+      event({ id: 9, title: 'Inondations à Bangkok', zone: 'etranger' }),
+    ] }) }, 'general', now),
+    ...(foreignOpen === undefined ? {} : { foreignOpen }),
+  });
+
+  it('ouvert, il le reste après une mise à jour 5 minutes plus tard', () => {
+    const { root, list } = mount();
+    let open = false;
+    list.setOnForeignToggle((o) => { open = o; });
+    list.update(foreignModel(NOW));
+    const details = root.querySelector('details.wl-foreign');
+    expect(details).not.toBeNull();
+    details?.setAttribute('open', '');
+    details?.dispatchEvent(new Event('toggle'));
+    expect(open).toBe(true);
+    // Le poste repasse l'état ; la liste est mise à jour (« il y a … » change).
+    list.update(foreignModel(NOW + 5 * 60_000, open));
+    expect(root.querySelector('details.wl-foreign')?.hasAttribute('open')).toBe(true);
+    expect(renderWorkList(foreignModel(NOW, true))).toContain('<details class="wl-foreign" open>');
+  });
+
+  it('flèche bas depuis la dernière ligne visible ne va pas dans le groupe replié', () => {
+    const { root, list } = mount();
+    list.update(foreignModel(NOW));
+    const original = Element.prototype.getClientRects;
+    vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(function (this: Element): DOMRectList {
+      return this.closest('details.wl-foreign:not([open])') ? ([] as unknown as DOMRectList) : original.call(this);
+    });
+    const visible = root.querySelector<HTMLElement>('[data-key="event:1"]');
+    visible?.focus();
+    expect(activeKey()).toBe('event:1');
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    expect(activeKey()).toBe('event:1');
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+    expect(activeKey()).toBe('event:1');
+  });
+});

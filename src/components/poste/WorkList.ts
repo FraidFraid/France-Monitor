@@ -19,6 +19,8 @@ export interface WorkListModel {
   ready: boolean;
   lang: Lang;
   now: number;
+  /** Groupe « Hors de France » déplié : état tenu par le poste, jamais perdu à un rafraîchissement. */
+  foreignOpen?: boolean;
 }
 
 function relative(since: number, now: number, lang: Lang, ongoing: boolean): string {
@@ -93,7 +95,7 @@ export function renderWorkList(model: WorkListModel): string {
       : `Outside this theme: ${view.guard.reds} red (${guardThemes})`)}</button>`
     : '';
   const foreign = view.foreign.length > 0
-    ? `<details class="wl-foreign"><summary class="wl-foreign-title">${escapeHtml(fr ? `Hors de France : ${view.foreign.length}` : `Outside France: ${view.foreign.length}`)}</summary>`
+    ? `<details class="wl-foreign"${model.foreignOpen ? ' open' : ''}><summary class="wl-foreign-title">${escapeHtml(fr ? `Hors de France : ${view.foreign.length}` : `Outside France: ${view.foreign.length}`)}</summary>`
       + `<ul class="wl-list">${view.foreign.map((item) => rowHtml(item, model)).join('')}</ul></details>`
     : '';
   return `<div class="wl-head"><h2 class="wl-title" tabindex="-1">${escapeHtml(title)}</h2></div>`
@@ -121,9 +123,19 @@ export class WorkList {
   private onSelect: ((key: string) => void) | null = null;
   private onShowAll: ((showAll: boolean) => void) | null = null;
   private onGuard: ((theme: ThemeId) => void) | null = null;
+  private onForeignToggle: ((open: boolean) => void) | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
+    // `toggle` ne remonte pas : écoute en capture. L'attribut `open` fait foi.
+    root.addEventListener('toggle', (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement) || !target.matches('details.wl-foreign')) return;
+      const open = target.hasAttribute('open');
+      // Le HTML mémorisé suit l'état du groupe : la mise à jour suivante ne reconstruit pas la liste pour rien.
+      this.lastHtml = this.lastHtml.replace(/<details class="wl-foreign"( open)?>/, `<details class="wl-foreign"${open ? ' open' : ''}>`);
+      this.onForeignToggle?.(open);
+    }, true);
     root.addEventListener('click', (e) => this.handleClick(e));
     root.addEventListener('keydown', (e) => this.handleKeydown(e));
   }
@@ -138,6 +150,10 @@ export class WorkList {
 
   setOnGuard(handler: (theme: ThemeId) => void): void {
     this.onGuard = handler;
+  }
+
+  setOnForeignToggle(handler: (open: boolean) => void): void {
+    this.onForeignToggle = handler;
   }
 
   update(model: WorkListModel): void {
@@ -177,6 +193,7 @@ export class WorkList {
     if (key !== undefined) return () => findByKey(this.root, key);
     if (el.dataset.more !== undefined) return () => this.root.querySelector<HTMLElement>('.wl-more');
     if (el.dataset.guard !== undefined) return () => this.root.querySelector<HTMLElement>('.wl-guard');
+    if (el.classList.contains('wl-foreign-title')) return () => this.root.querySelector<HTMLElement>('.wl-foreign-title');
     return () => this.root.querySelector<HTMLElement>('.wl-title');
   }
 
@@ -199,7 +216,8 @@ export class WorkList {
   }
 
   private handleKeydown(e: KeyboardEvent): void {
-    const items = [...this.root.querySelectorAll<HTMLElement>('.wl-item')];
+    // Seules les lignes affichées : celles du groupe « Hors de France » replié n'ont pas de boîte.
+    const items = [...this.root.querySelectorAll<HTMLElement>('.wl-item')].filter(isDisplayed);
     const index = items.findIndex((el) => el === document.activeElement);
     if (index === -1) return;
     let next: number;
