@@ -1,0 +1,12 @@
+[Unit]
+Description=France Monitor - sauvegarde nocturne de la base Neon (03:15 UTC)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+# Entre deux passages d'ingestion (:00/:30), hors des heures de consultation.
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

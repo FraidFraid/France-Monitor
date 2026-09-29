@@ -25,6 +25,7 @@ Voir aussi `docs/deployment.md` (topologie actuelle Vercel/Railway/Render) et
 10. Bascule des serveurs de noms chez Name.com vers Cloudflare, attendre la propagation, revérifier (§f).
 11. Mettre hors service Vercel, Railway, Render une fois la VM stable (§g).
 12. Connaître le retour arrière si besoin (§h).
+13. Sauvegarde de la base Neon : installée par `setup.sh`, restauration décrite en §i.
 
 ---
 
@@ -292,6 +293,81 @@ Si un problème survient après la bascule DNS (§f) :
 2. Ne PAS supprimer Vercel/Railway/Render avant d'avoir confirmé plusieurs jours de stabilité sur la VM (§g) — c'est précisément pour permettre ce retour arrière que la suppression est une étape séparée et tardive.
 3. Si le problème est repéré avant la bascule DNS (pendant §e), aucun retour arrière n'est nécessaire : Vercel reste l'origine servie au public, la VM n'est testée que via son IP/Cloudflare en parallèle.
 4. Au niveau applicatif seul (pas DNS) : `fm-deploy` revient automatiquement à la release précédente si les contrôles de santé échouent après un déploiement (voir `deploy/oracle/fm-deploy.sh`) — aucune action manuelle n'est nécessaire pour ce cas-là.
+
+---
+
+## (i) Sauvegarde de la base Neon
+
+Mise en place le 29/09/2026. Script `deploy/oracle/fm-backup-db.sh` (installé en
+`/usr/local/bin/fm-backup-db`), lancé chaque nuit à 03:15 UTC par
+`fm-backup-db.timer`, sous l'utilisateur dédié `fmbackup` : `fm` (l'API) ne peut ni
+lire ni effacer les copies. Copies dans `/var/backups/francemonitor/` (700),
+nommées `full-<date UTC>.dump` et `light-<date UTC>.dump` (format personnalisé
+`pg_dump`, compressé). Client : `postgresql-client-17` du dépôt PGDG (même version
+majeure que Neon). Connexion directe (`DATABASE_URL_UNPOOLED`), certificat vérifié
+(`verify-full`), mot de passe transmis par l'environnement, jamais sur la ligne de
+commande.
+
+**Pourquoi deux sortes de copie.** Le palier gratuit Neon plafonne le transfert
+réseau à 5 Go par mois ; au-delà, la base est suspendue jusqu'au mois suivant. Ce
+que `pg_dump` fait transiter est le volume brut des données, pas la taille du
+fichier compressé.
+
+| Copie | Quand | Contenu | Gardées | Fichier | Transfert Neon |
+|---|---|---|---|---|---|
+| complète | dimanche, ou si la dernière a plus de 8 jours | tout | 5 | 50 Mo | 135 Mo |
+| légère | les autres nuits | tout sauf le contenu de `news_items` | 8 | 1,3 Mo | 6 Mo |
+
+Mesures du 29/09/2026 (210 547 articles, 14 288 événements) : environ **0,7 Go de
+transfert par mois**, 15 % du plafond. Pire cas : 7 jours d'articles perdus ;
+événements, journal des événements, flux et compteurs sont sauvegardés chaque
+nuit. Chaque copie est relue (`pg_restore --list`) avant d'être gardée ; une
+copie sans les données attendues est écartée et le service échoue. Pas de
+relance automatique : chaque essai consomme du transfert ; une complète manquée
+le dimanche est refaite la nuit suivante.
+
+**Surveiller**
+
+```bash
+systemctl list-timers fm-backup-db.timer
+sudo journalctl -u fm-backup-db -n 5 -o cat     # une ligne JSON par copie : mode, taille, durée
+sudo ls -l /var/backups/francemonitor
+```
+
+**Lancer une copie à la main** (compte dans le transfert Neon)
+
+```bash
+sudo systemctl start fm-backup-db               # auto : complète si aucune de moins de 8 jours
+sudo systemd-run --quiet --wait --pipe --collect -p User=fmbackup -p Group=fmbackup \
+  -p EnvironmentFile=/etc/francemonitor/francemonitor.env \
+  -p ReadWritePaths=/var/backups/francemonitor /usr/local/bin/fm-backup-db light   # ou full
+```
+
+**Restaurer** dans une base PostgreSQL 17 vide (nouveau projet ou branche Neon,
+ou serveur local) — `<cible>` est sa chaîne de connexion :
+
+```bash
+# 1. Dernière copie légère : schéma complet, événements, journal, flux, compteurs.
+pg_restore --no-owner --no-privileges --exit-on-error -d "<cible>" light-<la plus récente>.dump
+# 2. Articles de la dernière copie complète.
+pg_restore --no-owner --no-privileges --exit-on-error --data-only -t news_items -d "<cible>" full-<la plus récente>.dump
+```
+
+Si la copie complète est la plus récente, l'étape 1 suffit avec elle. La seule
+clé étrangère (`news_items.feed_id` → `feeds`) est satisfaite : les flux sont dans
+la copie légère. Les compteurs d'identifiants viennent de la copie légère : ils
+sont en avance sur les articles restaurés, les nouvelles écritures n'entrent pas
+en collision. Restauration testée le 29/09/2026 sur un serveur PostgreSQL 17
+temporaire de la VM, retiré ensuite : complète en 8 s, puis légère + articles,
+comptes identiques.
+
+Récupérer une copie sur un poste :
+`ssh ubuntu@<vm> 'sudo cat /var/backups/francemonitor/<fichier>.dump' > <fichier>.dump`
+
+**Limite.** Les copies sont sur la même VM que l'API. Perdre la VM ne perd rien
+(Neon garde les données) ; perdre Neon et la VM en même temps n'est pas couvert.
+Une copie hors VM reste possible gratuitement (Oracle Object Storage Always Free,
+20 Go), non faite.
 
 ---
 
