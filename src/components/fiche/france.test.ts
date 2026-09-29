@@ -144,9 +144,28 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     digest.push({ event: low, kinds: ['created'], latestAt: '2026-09-24T07:45:00Z', severityFrom: null, independentFrom: null });
     const { meta, rows } = franceChangeDigest(input({ events: eventsState({ events: [...events, low], digest }) }));
     expect(meta).toContain('Depuis votre visite de');
-    expect(meta).toContain('9 nouveaux');
+    // Le fait mineur n'est pas une ligne du fil : ni compté, ni listé.
+    // 7 événements du fil + la situation active (1 nouvelle) ; l'événement bas ne compte plus (avant : 9).
+    expect(meta).toContain('8 nouveaux');
+    expect(meta).not.toContain('9 nouveaux');
     expect(rows).toHaveLength(5);
     expect(rows.map((r) => r.text)).not.toContain('Nouveau : Fait mineur');
+  });
+
+  it('depuis la visite : un événement étranger du résumé n’apparaît ni dans les lignes ni dans les totaux', () => {
+    const foreign = event({ id: 300, title: 'Inondations à Bangkok', severity: 'critical', zone: 'etranger' });
+    const digest: ChangeDigestItem[] = [{ event: foreign, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }];
+    const { meta, rows } = franceChangeDigest(input({ snapshot: snapshot({ situations: [] }), events: eventsState({ events: [foreign], digest }) }));
+    expect(meta).not.toContain('nouveau');
+    expect(rows.map((r) => r.text).join(' ')).not.toContain('Bangkok');
+  });
+
+  it('première visite : « dernières 24 h » sans totaux, lignes orange ou rouges du fil', () => {
+    const local = event({ id: 301, title: 'Panne à Lyon', severity: 'high' });
+    const digest: ChangeDigestItem[] = [{ event: local, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }];
+    const { meta, rows } = franceChangeDigest(input({ events: eventsState({ events: [local], digest, anchor: { since: NOW - 24 * H, kind: 'default' } }) }));
+    expect(meta).toBe('Première visite : dernières 24 h');
+    expect(rows.map((r) => r.text).join(' ')).toContain('Panne à Lyon');
   });
 
   it('S<n> désigne la situation figée au moment du brief, pas l’instantané courant', () => {

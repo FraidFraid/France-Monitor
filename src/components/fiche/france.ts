@@ -105,6 +105,9 @@ interface EtatChange extends FicheChange {
 function allChanges(input: FranceFicheInput): EtatChange[] {
   const { lang } = input;
   const out: EtatChange[] = [];
+  // Même ensemble que le fil (relecture finale I5) : un événement du résumé serveur n'est compté que
+  // s'il est une ligne de la liste (règle d'entrée, hors étranger).
+  const listed = new Set(input.queue.items.map((i) => i.key));
   for (const item of input.queue.items) {
     if (item.badge === null || item.ref.kind === 'event') continue;
     const text = item.badge === 'nouveau'
@@ -116,6 +119,7 @@ function allChanges(input: FranceFicheInput): EtatChange[] {
     });
   }
   for (const d of input.events?.digest ?? []) {
+    if (!listed.has(`event:${d.event.id}`)) continue;
     const kind = d.kinds.includes('created') ? 'nouveau'
       : d.kinds.includes('escalated') || d.kinds.includes('reopened') ? 'aggrave' : 'autre';
     out.push({
@@ -147,7 +151,8 @@ function totalsText(changes: readonly EtatChange[], lang: Lang): string {
 /** « Depuis votre dernière visite » : ancre et totaux, puis 5 changements orange ou rouges au plus. */
 export function franceChangeDigest(input: FranceFicheInput): { meta: string; rows: FicheChange[] } {
   const all = allChanges(input);
-  const totals = totalsText(all, input.lang);
+  // Première visite (ancre par défaut) : « dernières 24 h » sans totaux — ils comptent depuis une visite qui n'a pas eu lieu.
+  const totals = input.events?.anchor.kind === 'default' ? '' : totalsText(all, input.lang);
   const meta = totals ? `${changesMeta(input)} — ${totals}` : changesMeta(input);
   const rows = all.filter((c) => c.important).slice(0, MAX_ETAT_CHANGES).map(({ at, text, select }) => ({ at, text, select }));
   return { meta, rows };
