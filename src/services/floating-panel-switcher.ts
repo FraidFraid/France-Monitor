@@ -22,6 +22,16 @@ export function switcherPanelOffsetPx(switcherHeightPx: number, uiV2: boolean): 
 }
 
 /**
+ * Barre de puces visible ? v1 : à partir de deux panneaux (cocher une couche ouvre déjà son panneau,
+ * la barre ne sert qu'à passer de l'un à l'autre). v2 : dès un panneau — cocher une couche n'y ouvre
+ * plus rien (spec 2026-09-29 § 4), la puce est le seul accès au panneau (sinon, au démarrage, le
+ * panneau Météo/Crues de la seule couche à panneau allumée était inaccessible).
+ */
+export function showsSwitcher(uiV2: boolean, eligibleCount: number): boolean {
+  return eligibleCount >= (uiV2 ? 1 : 2);
+}
+
+/**
  * v2 : géométrie de la colonne de droite (`.fm-v2-fiche`) sous forme de variables CSS ; les panneaux
  * de module s'y posent pile (spec 2026-09-29 § 4 : « à la place de l'État »).
  */

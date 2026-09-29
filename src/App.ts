@@ -29,7 +29,7 @@ import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
-import { restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
+import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -4498,7 +4498,7 @@ export class App {
 
     const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id));
 
-    if (eligible.length < 2) {
+    if (!showsSwitcher(this.uiV2, eligible.length)) {
       el.hidden = true;
       el.innerHTML = '';
       this.layoutFloatingPanelSwitcher();

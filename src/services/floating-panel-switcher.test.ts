@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWITCHER_TOP_PX, restorePanelPlan, switcherPanelOffsetPx, v2ColumnVars } from './floating-panel-switcher.ts';
+import { SWITCHER_TOP_PX, restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars } from './floating-panel-switcher.ts';
 
 const PANEL: Record<string, string> = {
   environmental: 'environmental',
@@ -59,5 +59,18 @@ describe('v2ColumnVars — un panneau de module prend la place exacte de la colo
     expect(v2ColumnVars({ top: 101.4, left: 1179.6, width: 420, height: 899.2 })).toEqual({
       '--v2-col-top': '101px', '--v2-col-left': '1180px', '--v2-col-width': '420px', '--v2-col-height': '899px',
     });
+  });
+});
+
+describe('showsSwitcher — un panneau doit toujours pouvoir s’ouvrir', () => {
+  it('v2 : la barre s’affiche dès un panneau disponible (cocher une couche n’ouvre plus son panneau)', () => {
+    expect(showsSwitcher(true, 0)).toBe(false);
+    expect(showsSwitcher(true, 1)).toBe(true);
+    expect(showsSwitcher(true, 2)).toBe(true);
+  });
+
+  it('v1 : inchangé, la barre attend deux panneaux (le cochage ouvre déjà le premier)', () => {
+    expect(showsSwitcher(false, 1)).toBe(false);
+    expect(showsSwitcher(false, 2)).toBe(true);
   });
 });
