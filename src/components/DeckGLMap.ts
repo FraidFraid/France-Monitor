@@ -5,6 +5,7 @@
  *           Traffic (axes routiers).
  */
 
+import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -442,6 +443,9 @@ export class DeckGLMap {
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
   private weatherRadarTileTemplate: string | null = null;
   private weatherRadarFetchedAt = 0;
+  private weatherRadarFrame: WeatherRadarFrame | null = null;
+  private weatherRadarStatus: WeatherRadarStatus = 'loading';
+  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
   private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
@@ -8546,6 +8550,16 @@ export class DeckGLMap {
   setOnRawMapClick(h: (lat: number, lon: number) => void): void { this.onRawMapClick = h; }
   setOnItemHover(h: (item: NewsItem | null, x: number, y: number) => void): void { this.onItemHover = h; }
   setOnViewChange(h: (vs: MapViewState) => void): void { this.onViewChange = h; }
+  /** Trame radar affichée (et état de chargement) ; rappelée aussitôt avec l'état courant. */
+  setOnWeatherRadarFrame(h: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
+    this.onWeatherRadarFrame = h;
+    h(this.weatherRadarFrame, this.weatherRadarStatus);
+  }
+  private publishWeatherRadar(frame: WeatherRadarFrame | null, status: WeatherRadarStatus): void {
+    this.weatherRadarFrame = frame;
+    this.weatherRadarStatus = status;
+    this.onWeatherRadarFrame?.(frame, status);
+  }
 
   /**
    * Set callback for cluster hover - receives list of items in the cluster.
@@ -12672,24 +12686,39 @@ export class DeckGLMap {
 
     try {
       const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
+        return;
+      }
       const payload = await response.json() as {
         host?: string;
-        radar?: { past?: Array<{ path?: string }>; nowcast?: Array<{ path?: string }> };
+        radar?: { past?: Array<{ time?: number; path?: string }>; nowcast?: Array<{ time?: number; path?: string }> };
       };
       const host = typeof payload.host === 'string' && payload.host.length > 0
         ? payload.host
         : 'https://tilecache.rainviewer.com';
+      const tagged = (list: Array<{ time?: number; path?: string }> | undefined, kind: 'past' | 'nowcast') =>
+        (Array.isArray(list) ? list : []).map((frame) => ({ ...frame, kind }));
       const frames = [
-        ...(Array.isArray(payload.radar?.past) ? payload.radar!.past : []),
-        ...(Array.isArray(payload.radar?.nowcast) ? payload.radar!.nowcast : []),
-      ].filter((frame): frame is { path: string } => typeof frame?.path === 'string' && frame.path.length > 0);
+        ...tagged(payload.radar?.past, 'past'),
+        ...tagged(payload.radar?.nowcast, 'nowcast'),
+      ].filter((frame): frame is { time?: number; path: string; kind: 'past' | 'nowcast' } =>
+        typeof frame?.path === 'string' && frame.path.length > 0);
       const latest = frames.at(-1);
-      if (!latest) return;
+      if (!latest) {
+        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
+        return;
+      }
 
       const tileTemplate = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
       this.weatherRadarTileTemplate = tileTemplate;
       this.weatherRadarFetchedAt = now;
+      this.publishWeatherRadar(
+        typeof latest.time === 'number' && Number.isFinite(latest.time)
+          ? { time: latest.time * 1000, kind: latest.kind }
+          : null,
+        typeof latest.time === 'number' && Number.isFinite(latest.time) ? 'ready' : 'error',
+      );
 
       for (const region of WEATHER_RADAR_REGIONS) {
         const sourceId = getWeatherRadarSourceId(region.id);
@@ -12728,6 +12757,7 @@ export class DeckGLMap {
       }
     } catch (error) {
       console.warn('[DeckGLMap] Failed to refresh weather radar tiles', error);
+      if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
     }
   }
 

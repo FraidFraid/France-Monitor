@@ -3,6 +3,7 @@
  * Expose toutes les méthodes de calques unifié.
  */
 
+import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
@@ -46,6 +47,7 @@ export class MapContainer {
   private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
   private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
+  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
   private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
   private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
@@ -82,6 +84,7 @@ export class MapContainer {
     if (this.onItemClick) this.deckMap.setOnItemClick(this.onItemClick);
     if (this.onItemHover) this.deckMap.setOnItemHover(this.onItemHover);
     if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);
+    if (this.onWeatherRadarFrame) this.deckMap.setOnWeatherRadarFrame(this.onWeatherRadarFrame);
     if (this.onClusterHover) this.deckMap.setOnClusterHover(this.onClusterHover);
     if (this.onClusterClick) this.deckMap.setOnClusterClick(this.onClusterClick);
     if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
@@ -475,6 +478,11 @@ export class MapContainer {
     this.onItemHover = handler;
     this.deckMap?.setOnItemHover(handler);
     this.svgMap?.setOnItemHover(handler);
+  }
+
+  setOnWeatherRadarFrame(handler: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
+    this.onWeatherRadarFrame = handler;
+    this.deckMap?.setOnWeatherRadarFrame(handler);
   }
 
   setOnViewChange(handler: (vs: MapViewState) => void): void {

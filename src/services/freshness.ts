@@ -3,7 +3,7 @@
 // « du moment »). Une donnée sans date est traitée comme périmée. Pur.
 
 export type FreshnessSource =
-  | 'meteo' | 'vigicrues' | 'ecowatt' | 'fuel' | 'sentinelles' | 'healthAlerts' | 'brief' | 'networkBarometer' | 'markets';
+  | 'meteo' | 'vigicrues' | 'ecowatt' | 'fuel' | 'sentinelles' | 'healthAlerts' | 'brief' | 'networkBarometer' | 'markets' | 'weatherRadar';
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -17,6 +17,8 @@ export const FRESHNESS_MAX_AGE_MS: Record<FreshnessSource, number> = {
   healthAlerts: 14 * D,
   brief: 12 * H,
   networkBarometer: H,
+  // Mosaïque radar : nouvelle image toutes les ~10 min ; au-delà de 30 min elle est trop ancienne.
+  weatherRadar: 30 * 60_000,
   // « 1 jour ouvré » : 72 h couvrent le week-end (cours du vendredi lus le lundi matin).
   markets: 3 * D,
 };

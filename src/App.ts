@@ -54,6 +54,9 @@ import { DayNightPanel } from './components/DayNightPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
 import type { DefensePanel } from './components/DefensePanel.ts';
 import type { NationalHealthPanel } from './components/NationalHealthPanel.ts';
+import type { WeatherRadarPanel } from './components/WeatherRadarPanel.ts';
+import type { WeatherRadarFrame, WeatherRadarStatus } from './services/weather-radar.ts';
+import { WEATHER_RADAR_LEGEND_ITEMS } from './config/weather-radar-legend.ts';
 import type { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
 import type { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
@@ -490,6 +493,7 @@ const V2_MAP_CONTROLS_PX = 180;
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
+  { id: 'weatherRadar', label: 'Radar météo', icon: 'cloud-rain', layerKeys: ['weatherRadar'] },
   { id: 'fires', label: 'Feux de forêt', icon: 'flame', layerKeys: ['fires'] },
   { id: 'dayNight', label: 'Jour / nuit', icon: 'moon', layerKeys: ['dayNight'] },
   { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
@@ -686,12 +690,7 @@ const ENVIRONMENTAL_LEGEND: LegendCategory = {
 const WEATHER_RADAR_LEGEND: LegendCategory = {
   id: 'weatherRadar',
   title: 'Radar météo',
-  items: [
-    { id: 'weather-radar-light', label: 'Précipitations faibles', color: '#4FC3F7', shape: 'square' },
-    { id: 'weather-radar-moderate', label: 'Précipitations modérées', color: '#8BC34A', shape: 'square' },
-    { id: 'weather-radar-heavy', label: 'Précipitations fortes', color: '#FF9800', shape: 'square' },
-    { id: 'weather-radar-intense', label: 'Cellules intenses', color: '#E53935', shape: 'square' },
-  ],
+  items: WEATHER_RADAR_LEGEND_ITEMS,
   source: {
     label: 'RainViewer radar mosaic',
   },
@@ -1445,6 +1444,9 @@ export class App {
   private transportPanel: TransportPanel | null = null;
   private sncfFullCoverageLoaded = false;
   private firesPanel: FiresPanel | null = null;
+  private weatherRadarPanel: WeatherRadarPanel | null = null;
+  private currentWeatherRadarFrame: WeatherRadarFrame | null = null;
+  private currentWeatherRadarStatus: WeatherRadarStatus = 'loading';
   private maritimePanel: MaritimePanel | null = null;
   private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   /** Incidents clusterisés ET géo-résolus — consommés par le dossier (Task 8). */
@@ -1609,6 +1611,7 @@ export class App {
   private eolienPanelPromise: Promise<void> | null = null;
   private healthPanelsPromise: Promise<void> | null = null;
   private firesPanelPromise: Promise<void> | null = null;
+  private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
   private maritimePanelPromise: Promise<void> | null = null;
   private cyberPanelPromise: Promise<void> | null = null;
@@ -3780,6 +3783,7 @@ export class App {
       if (!this.activeLayers.environmentGroup) {
         this.environmentPanel?.hide();
         this.firesPanel?.hide();
+        this.weatherRadarPanel?.hide({ silent: true });
         this.dayNightPanel?.hide();
         this.layoutEnvironmentFloatingPanels();
       }
@@ -3917,6 +3921,9 @@ export class App {
       if (this.activeLayers.fires) this.renderFiresPanel();
       else this.firesPanel?.hide();
       this.layoutEnvironmentFloatingPanels();
+    } else if (key === 'weatherRadar') {
+      if (enabled) this.weatherRadarPanel?.show();
+      else this.weatherRadarPanel?.hide({ silent: true });
     } else if (key === 'dayNight') {
       if (enabled) this.dayNightPanel?.show();
       else this.dayNightPanel?.hide();
@@ -4053,6 +4060,24 @@ export class App {
       }
     });
     return this.healthPanelsPromise;
+  }
+
+  private ensureWeatherRadarPanel(): Promise<void> {
+    if (!this.floatContainerEl) return Promise.resolve();
+    this.weatherRadarPanelPromise ??= import('./components/WeatherRadarPanel.ts').then(({ WeatherRadarPanel }) => {
+      const panel = new WeatherRadarPanel(this.floatContainerEl!);
+      panel.mount();
+      panel.setOnClose(() => this.refreshFloatingPanelSwitcher());
+      panel.update(this.currentWeatherRadarFrame, this.currentWeatherRadarStatus);
+      this.weatherRadarPanel = panel;
+      // Ouverture v1 (bascule de la couche) : le panneau n'existait pas encore au moment du clic.
+      // (sans écraser un autre panneau déjà à l'écran).
+      if (this.activeLayers.weatherRadar && !this.uiV2
+        && !FLOATING_PANEL_DEFS.some((def) => this.isFloatingPanelVisible(def.id))) {
+        this.showFloatingPanel('weatherRadar');
+      }
+    });
+    return this.weatherRadarPanelPromise;
   }
 
   private ensureFiresPanel(): Promise<void> {
@@ -4354,6 +4379,7 @@ export class App {
       case 'hospitals':
         return [this.ensureHealthPanels()];
       case 'fires': return [this.ensureFiresPanel()];
+      case 'weatherRadar': return [this.ensureWeatherRadarPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficMaritime': return [this.ensureMaritimePanel()];
       case 'cyber':
@@ -4393,6 +4419,7 @@ export class App {
     switch (id) {
       case 'environmental': return this.environmentPanel;
       case 'fires': return this.firesPanel;
+      case 'weatherRadar': return this.weatherRadarPanel;
       case 'dayNight': return this.dayNightPanel;
       case 'powerGrid': return this.energyPanel;
       case 'dromEnergy': return this.dromEnergyPanel;
@@ -4780,6 +4807,11 @@ export class App {
     });
 
     // Sync URL when map view changes
+    this.mapContainer.setOnWeatherRadarFrame((frame, status) => {
+      this.currentWeatherRadarFrame = frame;
+      this.currentWeatherRadarStatus = status;
+      this.weatherRadarPanel?.update(frame, status);
+    });
     this.mapContainer.setOnViewChange((vs) => {
       writeUrlState({
         lng: vs.longitude,
