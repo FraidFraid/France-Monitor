@@ -164,15 +164,24 @@ describe('PosteSituation', () => {
     expect(activeKey()).toBe('situation:energy-stress');
   });
 
-  it('un thème filtre la liste, affiche sa fiche et demande sa vue de carte (A5)', () => {
+  it('un thème filtre la liste et demande sa vue de carte, l’État reste affiché (A5, spec 2026-09-29 § 7)', () => {
     const { roots, cb } = setup();
     roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
     expect(cb.onThemeChange).toHaveBeenCalledWith('energy');
     expect(roots.list.textContent).toContain('À traiter · Énergie · 1');
-    expect(ficheKey(roots)).toBe('theme:energy');
+    expect(ficheKey(roots)).toBe('france');
     expect(roots.list.querySelector('.wl-guard')?.textContent).toContain('Hors de ce thème : 1 rouge');
-    // Ordinateur : la fiche du thème est la fiche par défaut, pas un volet (comportement conservé).
+    // Ordinateur : l'État reste la fiche par défaut, pas un volet.
     expect(roots.app.dataset.v2Fiche).toBe('default');
+  });
+
+  it('un thème ne remplace pas l’État ; un second clic sur le thème ouvre sa fiche', () => {
+    const { roots } = setup();
+    const energy = (): HTMLElement | null => roots.themes.querySelector<HTMLElement>('[data-theme="energy"]');
+    energy()?.click();
+    expect(ficheKey(roots)).toBe('france');
+    energy()?.click();
+    expect(ficheKey(roots)).toBe('theme:energy');
   });
 
   for (const [label, width] of [['tablette', 820], ['mobile', 390]] as const) {
@@ -228,7 +237,7 @@ describe('PosteSituation', () => {
 
   it('une preuve E42 ouvre la fiche événement et ne charge ses articles qu’une fois', async () => {
     const { roots, poste } = setup();
-    poste.setBrief(BRIEF, 'fresh', ['energy-stress']);
+    poste.setBrief(BRIEF, 'fresh', ['energy-stress'], { at: NOW, level: 'orange' });
     roots.fiche.querySelector<HTMLButtonElement>('.fiche-judgment [data-select="event:42"]')?.click();
     expect(ficheKey(roots)).toBe('event:42');
     await vi.waitFor(() => expect(roots.fiche.textContent).toContain('Journal indisponible pour le moment.'));
@@ -238,7 +247,7 @@ describe('PosteSituation', () => {
 
   it('une citation ouvre une autre fiche : le focus va au titre de la nouvelle fiche, jamais à <body> (correction)', () => {
     const { roots, poste } = setup();
-    poste.setBrief(BRIEF, 'fresh', ['energy-stress']);
+    poste.setBrief(BRIEF, 'fresh', ['energy-stress'], { at: NOW, level: 'orange' });
     const ref = roots.fiche.querySelector<HTMLButtonElement>('.fiche-judgment [data-select="event:42"]');
     ref?.focus();
     ref?.click();
@@ -394,7 +403,10 @@ describe('PosteSituation', () => {
     expect(roots.fiche.textContent).not.toContain('Indice de stabilité');
     expect(roots.fiche.querySelector('.frintel-gauge, .frintel-pillars')).toBeNull();
     // La fiche thème dit le chargement, jamais « Rien à traiter ».
-    roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
+    const energy = (): HTMLButtonElement | null => roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]');
+    energy()?.click();
+    expect(ficheKey(roots)).toBe('france');
+    energy()?.click();
     expect(ficheKey(roots)).toBe('theme:energy');
     expect(roots.fiche.textContent).toContain('Chargement des données…');
     expect(roots.fiche.textContent).not.toContain('Rien à traiter');

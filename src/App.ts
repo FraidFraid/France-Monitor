@@ -2934,7 +2934,7 @@ export class App {
 
     // Baromètre Pannes Réseau (premier élément de la sidebar, avant les couches)
     this.networkBarometerWidget = new BarometerWidget(sidebarEl);
-    this.networkBarometerWidget.mount({ attach: false });
+    this.networkBarometerWidget.mount({ attach: false, briefing: !this.uiV2 });
 
     // Bouton Intelligence France (juste au-dessus des couches)
     const intelSidebarBtn = document.createElement('button');
@@ -7672,6 +7672,8 @@ export class App {
     this.networkBarometerWidget?.update(result);
     this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
     this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
+    // v2 (spec 2026-09-29 § 7) : pas d'appel à la synthèse ISNR (Groq), son bloc n'est plus affiché.
+    if (this.uiV2) return;
 
     const medium = this.newsItems
       .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
@@ -7766,7 +7768,7 @@ export class App {
         if (!this.isIntelSurfaceVisible()) return;
         if (this.intelLang() !== lang) return;
         this.franceIntelPanel?.updateBrief(result.brief, result.freshness, situationIds);
-        this.poste?.setBrief(result.brief, result.freshness, situationIds);
+        this.poste?.setBrief(result.brief, result.freshness, situationIds, { at: Date.now(), level: scoreLevel(snapshot.score) });
       });
   }
 
@@ -7873,7 +7875,7 @@ export class App {
           this.mapContainer?.flyTo(france.center[0], france.center[1], france.zoom);
         },
         onFicheRendered: (body) => {
-          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Pourquoi ce niveau ? ».
+          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Indicateurs » de l'onglet État.
           const slot = body.querySelector('.fiche-infra-slot');
           if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
         },

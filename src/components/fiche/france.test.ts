@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFranceFiche, type FranceFicheInput, type FranceFicheSnapshot } from './france.ts';
+import { buildFranceFiche, franceChangeDigest, type FranceFicheInput, type FranceFicheSnapshot } from './france.ts';
 import { renderFiche } from './parts.ts';
 import { buildWorkQueue } from '../../services/work-queue.ts';
 import type {
@@ -87,79 +87,77 @@ function input(over: Partial<FranceFicheInput> = {}): FranceFicheInput {
   return {
     snapshot: snap, queue, drivers: ['energy'], brief: { brief: BRIEF, freshness: 'fresh' }, briefSituationIds: ['energy-stress'],
     events, resolved: [], changeTimes: new Map(), score: { delta24h: -4, pillarDeltas: null, series: [81, 70, 43] },
+    briefMeta: { at: NOW - 30 * 60_000, level: 'orange' },
     freshness: '33 sources sur 35 à jour', whyOpen: false, ready: true, lang: 'fr', now: NOW, ...over,
   };
 }
 
-const visibleOf = (html: string): string => html.slice(0, html.indexOf('<details'));
+const sectionTitles = (html: string): string[] => [...html.matchAll(/<h3 class="fiche-part-title">([^<]*)<\/h3>/g)].map((m) => m[1]);
 
-describe('buildFranceFiche (spec §6.3, §14)', () => {
-  it('essentiel = BLUF ; jugements en mots ; preuves cliquables ; indice chiffré seulement dans le volet', () => {
-    const html = renderFiche(buildFranceFiche(input()), 'fr');
-    const visible = visibleOf(html);
-    expect(visible).toContain('France en vigilance rouge, en dégradation sur 24 h.');
-    expect(visible).toContain('<span class="fm-vig fm-vig--rouge">Rouge</span>');
-    expect(visible).toContain('tirée par l’énergie');
-    expect(visible).toContain('confiance élevée');
-    expect(visible).toContain('data-select="event:42"');
-    expect(visible).toContain('data-select="situation:energy-stress"');
-    expect(visible).toContain('6 h');
-    expect(visible).not.toContain('/100');
-    expect(visible).not.toContain('Indice de stabilité');
-    expect(html).toContain('Indice de stabilité 43/100');
-    for (const part of ['frintel-pillars', 'frintel-dom-grid', 'frintel-timeline', 'fiche-infra-slot', 'Événements consolidés ouverts (1)']) {
-      expect(html).toContain(part);
+describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
+  it('Pourquoi replié en tête, puis Situations, Note, Depuis votre visite, Indicateurs', () => {
+    const model = buildFranceFiche(input());
+    expect(model.whyFirst).toBe(true);
+    expect(sectionTitles(renderFiche(model, 'fr'))).toEqual(['Situations (1)', 'Note de situation', 'Depuis votre dernière visite', 'Indicateurs']);
+  });
+
+  it('les graphiques sont visibles, plus cachés dans le volet ; ni événements consolidés, ni chiffres clés', () => {
+    const model = buildFranceFiche(input());
+    for (const part of ['frintel-dom-grid', 'frintel-timeline', 'fiche-infra-slot']) {
+      expect(model.why).not.toContain(part);
+      expect(model.sections.find((s) => s.title === 'Indicateurs')?.html).toContain(part);
     }
+    expect(model.why).toContain('Indice de stabilité 43/100');
+    expect(renderFiche(model, 'fr')).not.toContain('Événements consolidés ouverts');
+    expect(model.figures).toEqual([]);
   });
 
-  it('avant les couches critiques : ni indice, ni jauge, ni piliers dans le volet (relecture finale m1)', () => {
-    const html = renderFiche(buildFranceFiche(input({
-      ready: false, snapshot: snapshot({ score: 95, scoreBreakdown: breakdown(95), situations: [] }),
-    })), 'fr');
-    expect(html).toContain('Calcul du niveau national…');
-    for (const part of ['Indice de stabilité', 'frintel-gauge', 'frintel-pillars', '95/100']) expect(html).not.toContain(part);
+  it('note : évaluation, jugements avec preuves cliquables, à surveiller, heure et niveau de rédaction', () => {
+    const note = buildFranceFiche(input()).sections.find((s) => s.title === 'Note de situation')?.html ?? '';
+    expect(note).toContain('France en vigilance rouge, en dégradation sur 24 h.');
+    expect(note).toContain('data-select="event:42"');
+    expect(note).toContain('6 h');
+    expect(note).toContain('Rédigée à');
+    expect(note).toContain('niveau orange');
   });
 
-  it('brief en attente : l’essentiel l’annonce, jamais « indisponible »', () => {
-    const html = renderFiche(buildFranceFiche(input({ brief: null })), 'fr');
-    expect(html).toContain('Synthèse nationale en cours de préparation…');
-    expect(visibleOf(html)).not.toContain('indisponible');
+  it('note en attente : « en cours de préparation », jamais « indisponible »', () => {
+    const note = buildFranceFiche(input({ brief: null, briefMeta: null })).sections.find((s) => s.title === 'Note de situation')?.html ?? '';
+    expect(note).toContain('Synthèse nationale en cours de préparation…');
+    expect(note).not.toContain('indisponible');
+  });
+
+  it('en-tête : situations actives, heure de mise à jour, sources', () => {
+    expect(buildFranceFiche(input()).freshness).toMatch(/^1 situation active · MAJ \d{2}:\d{2} · 33 sources sur 35 à jour$/);
+  });
+
+  it('depuis la visite : totaux, puis 5 changements orange ou rouges au plus, résolues comprises', () => {
+    const events = Array.from({ length: 7 }, (_, i) => event({ id: 100 + i, title: `Événement ${i}`, severity: 'high' }));
+    const digest: ChangeDigestItem[] = events.map((e) => ({ event: e, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }));
+    const low = event({ id: 200, title: 'Fait mineur', severity: 'low' });
+    digest.push({ event: low, kinds: ['created'], latestAt: '2026-09-24T07:45:00Z', severityFrom: null, independentFrom: null });
+    const { meta, rows } = franceChangeDigest(input({ events: eventsState({ events: [...events, low], digest }) }));
+    expect(meta).toContain('Depuis votre visite de');
+    expect(meta).toContain('9 nouveaux');
+    expect(rows).toHaveLength(5);
+    expect(rows.map((r) => r.text)).not.toContain('Nouveau : Fait mineur');
   });
 
   it('S<n> désigne la situation figée au moment du brief, pas l’instantané courant', () => {
     const html = renderFiche(buildFranceFiche(input({ briefSituationIds: ['cyber-pressure'] })), 'fr');
     expect(html).toContain('data-select="situation:cyber-pressure">S1');
-    expect(html).not.toContain('data-select="situation:energy-stress">S1');
   });
 
-  it('ce qui a changé : badges, fil serveur, situations résolues dans les 24 h (§14)', () => {
-    const digest: ChangeDigestItem[] = [{ event: event(), kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }];
-    const model = buildFranceFiche(input({
-      events: eventsState({ digest }),
-      resolved: [
-        { id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'high', title: 'Crise hydrologique active', affectedZones: [], since: NOW - 2 * H },
-        { id: 'energy-stress', type: 'ENERGY_STRESS', severity: 'high', title: 'Tension énergétique nationale', affectedZones: [], since: NOW - H },
-      ],
-    }));
-    expect(model.changesMeta).toContain('Depuis votre visite de');
-    const rows = model.changes.map((c) => [c.text, c.select]);
-    expect(rows).toContainEqual(['Nouveau : Explosion dans une usine chimique', 'event:42']);
-    expect(rows).toContainEqual(['Nouveau : Tension énergétique nationale', 'situation:energy-stress']);
-    expect(rows).toContainEqual(['Résolue : Crise hydrologique active', null]);
-    expect(rows.filter(([text]) => text === 'Résolue : Tension énergétique nationale')).toHaveLength(0);
-  });
-
-  it('première visite, historique indisponible et chargement sont dits en clair', () => {
-    expect(buildFranceFiche(input({ events: eventsState({ anchor: { since: NOW - 24 * H, kind: 'default' } }) })).changesMeta)
-      .toBe('Première visite : dernières 24 h');
-    expect(buildFranceFiche(input({ events: eventsState({ unavailable: true, events: [] }) })).changesMeta).toContain('Historique serveur indisponible');
-    expect(buildFranceFiche(input({ events: null })).changesMeta).toBe('Chargement de l’historique…');
+  it('avant les couches critiques : ni indice ni piliers dans le volet', () => {
+    const html = renderFiche(buildFranceFiche(input({ ready: false, snapshot: snapshot({ score: 95, scoreBreakdown: breakdown(95), situations: [] }) })), 'fr');
+    expect(html).toContain('Calcul du niveau national…');
+    for (const part of ['Indice de stabilité', 'frintel-pillars', '95/100']) expect(html).not.toContain(part);
   });
 
   it('actions : voir sur la carte et note de situation ; bascule EN', () => {
     const model = buildFranceFiche(input({ lang: 'en' }));
     expect(model.actions.map((a) => a.id)).toEqual(['show-france', 'report']);
-    expect(model.kind).toBe('Country');
+    expect(model.kind).toBe('State of France');
     expect(model.driver).toBe('driven by energy');
   });
 });

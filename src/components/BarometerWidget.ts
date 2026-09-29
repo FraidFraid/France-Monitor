@@ -44,7 +44,7 @@ export class BarometerWidget {
     this.homeContainer = container;
   }
 
-  mount(options?: { attach?: boolean }): void {
+  mount(options?: { attach?: boolean; briefing?: boolean }): void {
     this.el = document.createElement('div');
     this.el.id = 'network-barometer-widget';
     this.el.style.cssText = `
@@ -69,7 +69,8 @@ export class BarometerWidget {
     topRow.appendChild(this._buildLabels());
     this.el.appendChild(topRow);
     this.el.appendChild(this._buildTooltip());
-    this.el.appendChild(this._buildBriefing());
+    // v2 : pas de second briefing IA ni de « stabilité systémique », qui contredisaient le niveau national.
+    if (options?.briefing !== false) this.el.appendChild(this._buildBriefing());
 
     if (options?.attach !== false) {
       this.container.appendChild(this.el);

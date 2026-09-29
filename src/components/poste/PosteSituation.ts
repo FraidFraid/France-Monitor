@@ -19,8 +19,8 @@ import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
 import type { DepartementIndex } from '../../services/departement-lookup.ts';
 import type { VisitBaseline } from '../../services/intel-last-visit.ts';
-import { scoreLevel } from '../../services/vigilance.ts';
-import { SPECIFIC_THEMES, drivenByText, themeLabel, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
+import { scoreLevel, type VigilanceLevel } from '../../services/vigilance.ts';
+import { SPECIFIC_THEMES, drivenByText, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
 import {
   buildWorkQueue,
   drivingThemes,
@@ -141,6 +141,7 @@ export class PosteSituation {
   private queue: WorkQueue | null = null;
   private events: IntelEventsState | null = null;
   private brief: { brief: StructuredBrief; freshness: 'fresh' | 'cached' } | null = null;
+  private briefMeta: { at: number; level: VigilanceLevel } | null = null;
   private briefSituationIds: string[] = [];
   private resolved: BriefSourceSituation[] = [];
   private baseline: VisitBaseline | null = null;
@@ -204,14 +205,16 @@ export class PosteSituation {
     this.rebuild();
   }
 
-  setBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached', situationIds: readonly string[]): void {
+  setBrief(brief: StructuredBrief, freshness: 'fresh' | 'cached', situationIds: readonly string[], meta: { at: number; level: VigilanceLevel }): void {
     this.brief = { brief, freshness };
+    this.briefMeta = meta;
     this.briefSituationIds = [...situationIds];
     this.render();
   }
 
   setBriefPending(): void {
     this.brief = null;
+    this.briefMeta = null;
     this.render();
   }
 
@@ -234,17 +237,18 @@ export class PosteSituation {
     if (theme === this.theme) return;
     this.theme = theme;
     this.showAll = false;
-    this.selection = null; // un thème affiche sa propre fiche
+    this.selection = null; // l'État reste affiché (spec 2026-09-29 § 7)
     if (!opts.silent) this.callbacks.onThemeChange(theme);
     this.render();
   }
 
-  /**
-   * Choix dans la barre de thèmes : filtre la liste (setTheme) ; hors ordinateur, la fiche n'est
-   * visible qu'en volet, donc le thème ouvre aussi sa fiche — même s'il est déjà choisi (relecture
-   * finale I3, §7.4 et §11). « Vue générale » filtre seulement : la fiche France reste au bandeau.
-   */
   private chooseTheme(theme: ThemeId): void {
+    // Second clic sur le thème actif : sa fiche (spec 2026-09-29 § 7). Hors ordinateur, choisir un
+    // thème ouvre aussi sa fiche (la fiche n'y est visible qu'en volet).
+    if (theme === this.theme && theme !== 'general') {
+      this.select(`theme:${theme}`);
+      return;
+    }
     this.setTheme(theme);
     if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
   }
@@ -396,6 +400,7 @@ export class PosteSituation {
       drivers,
       brief: this.brief,
       briefSituationIds: this.briefSituationIds,
+      briefMeta: this.briefMeta,
       events: this.events,
       resolved: this.resolved,
       changeTimes: this.firstSeen,
@@ -408,11 +413,9 @@ export class PosteSituation {
     });
   }
 
-  /** « Vue générale » : la France ; un thème : sa fiche (spec §6.1, §7.3). */
+  /** Fiche par défaut : l'onglet État de la France, quel que soit le thème (spec 2026-09-29 § 7). */
   private defaultFiche(data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel {
-    const theme = this.theme;
-    if (theme === 'general') return this.franceFiche(data, queue, drivers);
-    return this.themeFiche(theme, data, queue);
+    return this.franceFiche(data, queue, drivers);
   }
 
   private themeFiche(theme: SpecificThemeId, data: PosteData, queue: WorkQueue): FicheModel {
@@ -528,7 +531,7 @@ export class PosteSituation {
   }
 
   private renderTabs(lang: Lang): void {
-    const ficheLabel = this.theme === 'general' ? 'France' : themeLabel(this.theme, lang);
+    const ficheLabel = lang === 'fr' ? 'État' : 'State';
     const tabs: Array<[PosteTab, string]> = [
       ['list', lang === 'fr' ? 'À traiter' : 'To handle'],
       ['map', lang === 'fr' ? 'Carte' : 'Map'],

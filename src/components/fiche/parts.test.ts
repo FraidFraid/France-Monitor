@@ -83,3 +83,10 @@ describe('textes communs', () => {
     expect(nothingToHandleText(0, 'en')).toBe('Nothing to handle. 0 tracked items are green.');
   });
 });
+
+describe('whyFirst (spec 2026-09-29 § 7)', () => {
+  it('le volet « Pourquoi ce niveau ? » suit l’en-tête quand whyFirst est vrai', () => {
+    const html = renderFiche(model({ why: '<p>Indice</p>', whyFirst: true, sections: [{ title: 'Situations', html: '<p>S</p>' }] }), 'fr');
+    expect(html.indexOf('fiche-why')).toBeLessThan(html.indexOf('Situations'));
+  });
+});
