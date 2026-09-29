@@ -154,6 +154,7 @@ import type { ExportContext } from './services/data-export.ts';
 import type { ExportMenu } from './components/ExportMenu.ts';
 import { fetchAppVersion, getVersionKey } from './services/version-watch.ts';
 import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
+import { loadDepartementIndex } from './services/departement-lookup.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
 // Cache global des dernières métriques du baromètre santé, partagé avec le handler
@@ -7907,6 +7908,9 @@ export class App {
     poste.setBaseline(this.v2BaselineSession.baseline);
     this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
     this.mapContainer?.setLightVigilance(LIGHT_VIGILANCE);
+    void loadDepartementIndex().then((index) => {
+      if (index) poste.setDepartements(index);
+    });
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();

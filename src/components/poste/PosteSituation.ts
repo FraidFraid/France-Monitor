@@ -17,6 +17,7 @@ import type {
 } from '../../types/index.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
+import type { DepartementIndex } from '../../services/departement-lookup.ts';
 import type { VisitBaseline } from '../../services/intel-last-visit.ts';
 import { scoreLevel } from '../../services/vigilance.ts';
 import { SPECIFIC_THEMES, drivenByText, themeLabel, type SpecificThemeId, type ThemeId } from '../../services/themes.ts';
@@ -143,6 +144,7 @@ export class PosteSituation {
   private briefSituationIds: string[] = [];
   private resolved: BriefSourceSituation[] = [];
   private baseline: VisitBaseline | null = null;
+  private departements: DepartementIndex | null = null;
   private warmupUntil: number | null = null;
   private readonly knownKeys = new Set<string>();
   private readonly firstSeen = new Map<string, number>();
@@ -194,6 +196,11 @@ export class PosteSituation {
   /** null : modules d'événements non chargés → « indisponible », jamais un chargement sans fin. */
   setEvents(state: IntelEventsState | null): void {
     this.events = state ?? unavailableEventsState(Date.now());
+    this.rebuild();
+  }
+
+  setDepartements(index: DepartementIndex): void {
+    this.departements = index;
     this.rebuild();
   }
 
@@ -318,6 +325,7 @@ export class PosteSituation {
       markets: marketLines(data.markets, data.commodities),
       baseline: this.baseline,
       firstSeen: this.firstSeen,
+      departements: this.departements,
       lang: data.lang,
     });
     this.trackAppearances(queue, data.now);

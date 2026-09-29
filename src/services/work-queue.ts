@@ -32,6 +32,7 @@ import {
 import { SPECIFIC_THEMES, THEMES, categoryTheme, inTheme, situationTheme, type SpecificThemeId, type ThemeId } from './themes.ts';
 import type { VisitBaseline } from './intel-last-visit.ts';
 import { splitZoneScore } from './situation-text.ts';
+import type { DepartementIndex } from './departement-lookup.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -102,6 +103,8 @@ export interface WorkQueueInput {
   /** Heure d'apparition pendant la session, par clé (après la chauffe du démarrage). */
   firstSeen: ReadonlyMap<string, number>;
   lang: Lang;
+  /** Départements (lieu des événements, nom des codes) ; null tant que la géométrie n'est pas chargée. */
+  departements?: DepartementIndex | null;
   /** Horodatage de référence (ms epoch) pour les signaux datés (Écowatt…). Défaut : Date.now(). */
   now?: number;
 }
@@ -115,6 +118,8 @@ export interface WorkQueue {
   /** Éléments suivis restés au vert, par thème (arbitrage A10). */
   greenTracked: Record<ThemeId, number>;
   eventsStatus: EventsStatus;
+  /** Événements recoupés hors de France : groupe replié « Hors de France » (spec 2026-09-29 § 6). */
+  foreign: WorkItem[];
 }
 
 const OFFICIAL_THEME: Record<OfficialSource, SpecificThemeId> = {
@@ -255,6 +260,20 @@ function firstZone(zones: readonly string[]): string | null {
   return zones.length > 0 ? splitZoneScore(zones[0]).name : null;
 }
 
+const DEPARTEMENT_CODE = /^(\d{2}|2[AB]|97\d)$/;
+
+/** Un lieu qui est un code de département (« 01 ») prend son nom (« Ain »). */
+function placeName(place: string | null, departements: DepartementIndex | null): string | null {
+  if (place === null || !DEPARTEMENT_CODE.test(place)) return place;
+  return departements?.nameOf(place) ?? place;
+}
+
+/** Lieu d'un événement : son département ; « France » sans coordonnées (sujet national) ; rien hors des départements. */
+function eventPlace(e: NewsEvent, departements: DepartementIndex | null): string | null {
+  if (e.lon === null || e.lat === null) return 'France';
+  return departements?.at(e.lon, e.lat)?.nom ?? null;
+}
+
 function parseTime(iso: string): number | null {
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
@@ -311,16 +330,17 @@ function baselineBadge(identity: string, level: VigilanceLevel, baseline: VisitB
 }
 
 function eventBadge(event: NewsEvent, events: IntelEventsState): WorkBadge {
+  // Première visite : l'ancre est une date fictive (24 h), rien n'est « nouveau » pour l'analyste.
+  if (events.anchor.kind === 'default') return null;
   const item = events.digest.find((d) => d.event.id === event.id);
   if (!item) return null;
   if (item.kinds.includes('created')) return 'nouveau';
   return item.kinds.includes('escalated') || item.kinds.includes('reopened') ? 'aggrave' : null;
 }
 
-/** Tri §7.2 : rouge d'abord, puis nouveau ou aggravé, puis le plus récent ; la clé départage. */
+/** Tri (spec 2026-09-29 § 6) : gravité, puis fraîcheur, puis clé. */
 export function compareWorkItems(a: WorkItem, b: WorkItem): number {
   return LEVEL_RANK[b.level] - LEVEL_RANK[a.level]
-    || Number(b.badge !== null) - Number(a.badge !== null)
     || (b.since ?? 0) - (a.since ?? 0)
     || a.key.localeCompare(b.key);
 }
@@ -329,13 +349,15 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   const { baseline, firstSeen, lang } = input;
   const nowMs = input.now ?? Date.now();
   const seenAt = (key: string): number | null => firstSeen.get(key) ?? null;
+  const departements = input.departements ?? null;
   const items: WorkItem[] = [];
+  const foreign: WorkItem[] = [];
 
   for (const s of input.situations) {
     const key = `situation:${s.id}`;
     const level = situationLevel(s.severity);
     items.push({
-      key, level, title: s.title, place: firstZone(s.affectedZones), since: seenAt(key), independentSources: null,
+      key, level, title: s.title, place: placeName(firstZone(s.affectedZones), departements), since: seenAt(key), independentSources: null,
       theme: situationTheme(s.type), badge: baselineBadge(key, level, baseline), ref: { kind: 'situation', situation: s },
     });
   }
@@ -354,7 +376,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     const since = a.updatedAt.getTime();
     const ref: WorkRef = { kind: 'alert', situation: a };
     items.push({
-      key, level, title: a.title, place: firstZone(a.affectedZones), since: Number.isFinite(since) ? since : null,
+      key, level, title: a.title, place: placeName(firstZone(a.affectedZones), departements), since: Number.isFinite(since) ? since : null,
       independentSources: null, theme: situationTheme(a.type, a.category),
       badge: baselineBadge(baselineIdentity({ key, ref }), level, baseline), ref,
     });
@@ -375,12 +397,15 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     for (const e of events.events) {
       if (!eventEnters(e)) continue;
       const unconfirmedPeak = unconfirmedPeakLevel(e.severity, e.peakSeverity);
-      items.push({
-        key: `event:${e.id}`, level: eventDisplayLevel(e.severity, e.peakSeverity), title: e.title, place: null, since: parseTime(e.firstSeen),
+      const item: WorkItem = {
+        key: `event:${e.id}`, level: eventDisplayLevel(e.severity, e.peakSeverity), title: e.title,
+        place: eventPlace(e, departements), since: parseTime(e.lastSeen),
         ...(unconfirmedPeak ? { unconfirmedPeak } : {}),
         independentSources: e.independentCount, theme: categoryTheme(e.category), badge: eventBadge(e, events),
         ref: { kind: 'event', event: e },
-      });
+      };
+      if (e.zone === 'etranger') foreign.push(item);
+      else items.push(item);
     }
   }
 
@@ -395,6 +420,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   }
 
   items.sort(compareWorkItems);
+  foreign.sort(compareWorkItems);
 
   const official = officialSignals(input.ecowatt, input.meteo, input.floods, nowMs);
   const themeLevel = (theme: SpecificThemeId): VigilanceLevel => maxLevel([
@@ -427,7 +453,7 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     ? 'loading'
     : events.unavailable && events.events.length === 0 ? 'unavailable' : 'ok';
 
-  return { items, official, themeLevels, greenTracked, eventsStatus };
+  return { items, official, themeLevels, greenTracked, eventsStatus, foreign };
 }
 
 /**
@@ -466,6 +492,7 @@ export interface WorkQueueView {
   guard: WorkGuard | null;
   greenTracked: number;
   eventsStatus: EventsStatus;
+  foreign: WorkItem[];
 }
 
 export function viewWorkQueue(queue: WorkQueue, theme: ThemeId, showAll: boolean): WorkQueueView {
@@ -489,6 +516,7 @@ export function viewWorkQueue(queue: WorkQueue, theme: ThemeId, showAll: boolean
     guard,
     greenTracked: queue.greenTracked[theme],
     eventsStatus: queue.eventsStatus,
+    foreign: queue.foreign.filter((i) => inTheme(i.theme, theme)),
   };
 }
 
