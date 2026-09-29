@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 
@@ -7,7 +8,18 @@ import {
   emptyFeatureCollection,
 } from '../../../src/services/drom-energy/static-runtime.js';
 
-const DATA_DIR = resolve(process.cwd(), 'public/data/drom-energy');
+/**
+ * Dossier des fichiers statiques : public/ en développement, dist/ sur la VM de production (l'archive
+ * de déploiement ne contient pas public/ ; Vite y recopie public/ lors du build).
+ * @param {string} cwd
+ * @param {(path: string) => boolean} [exists]
+ */
+export function resolveDromDataDir(cwd, exists = existsSync) {
+  const candidates = ['public/data/drom-energy', 'dist/data/drom-energy'].map((p) => resolve(cwd, p));
+  return candidates.find((dir) => exists(dir)) ?? candidates[0];
+}
+
+const DATA_DIR = resolveDromDataDir(process.cwd());
 
 async function readJson(relativePath, fallback) {
   const filePath = resolve(DATA_DIR, relativePath);

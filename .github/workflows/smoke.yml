@@ -60,6 +60,7 @@ jobs:
             "/api/rte-iip;200"
             "/api/arcep;200"
             "/api/ministers/composition;200"
+            "/api/energy/drom;200"
             "/api/gie/agsi;200"
             "/api/gie/alsi;200"
             "/api/opendata-proxy?url=https%3A%2F%2Fgeo.api.gouv.fr%2Fregions;200"
