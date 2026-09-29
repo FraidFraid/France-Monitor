@@ -203,7 +203,10 @@ export class SentinelModal {
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && this.isVisible) this.hide();
+      if (event.key === 'Escape' && this.isVisible) {
+        event.preventDefault();
+        this.hide();
+      }
     });
   }
 

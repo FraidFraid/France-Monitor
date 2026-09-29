@@ -113,6 +113,14 @@ function durationLabel(ms: number, lang: Lang): string {
 }
 
 /** Champ de saisie : Échap y garde son sens (effacer, fermer une liste déroulante). */
+/** Fenêtre, menu ou bulle de carte affichés : ils reçoivent Échap avant la fiche. */
+function innerLayerOpen(): boolean {
+  const visible = (el: Element): boolean => el.getClientRects().length > 0;
+  const layers = document.querySelectorAll('[aria-modal="true"], [role="dialog"], [role="menu"]:not([hidden]), .maplibregl-popup');
+  for (const el of layers) if (visible(el)) return true;
+  return false;
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement
     && (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT');
@@ -182,9 +190,12 @@ export class PosteSituation {
     this.fichePanel.setOnClose(() => this.close());
 
     // Échap ramène à l'État où que soit le focus — liste, fiche ou carte (spec 2026-09-29 § 4) —,
-    // sauf dans un champ de saisie.
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || this.selection === null || isTypingTarget(e.target)) return;
+    // sauf dans un champ de saisie. Écouté sur `window` (après tous les écouteurs de `document`) :
+    // Échap ne ferme que l'élément le plus intérieur — un gestionnaire qui l'a traité (defaultPrevented),
+    // une fenêtre, un menu ou une bulle de carte ouverts passent avant la fiche.
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || this.selection === null || e.defaultPrevented || !roots.app.isConnected || isTypingTarget(e.target)) return;
+      if (innerLayerOpen()) return;
       e.preventDefault();
       this.close();
     });

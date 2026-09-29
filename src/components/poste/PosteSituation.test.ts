@@ -434,4 +434,44 @@ describe('Échap partout (spec 2026-09-29 § 4)', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(ficheKey(roots)).toBe('event:42');
   });
+
+  it('n’agit pas si un gestionnaire plus intérieur a déjà traité Échap (defaultPrevented)', () => {
+    const { roots, poste } = setup();
+    poste.select('event:42');
+    const inner = (e: KeyboardEvent): void => e.preventDefault();
+    document.addEventListener('keydown', inner);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    document.removeEventListener('keydown', inner);
+    expect(ficheKey(roots)).toBe('event:42');
+  });
+
+  it('laisse Échap à la fenêtre modale ouverte ; sans elle, ferme la fiche', () => {
+    const { roots, poste } = setup();
+    poste.select('event:42');
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(ficheKey(roots)).toBe('event:42');
+    dialog.remove();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(ficheKey(roots)).toBe('france');
+  });
+
+  it('laisse Échap au menu ouvert et à la bulle de carte', () => {
+    const { roots, poste } = setup();
+    poste.select('event:42');
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    document.body.appendChild(menu);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(ficheKey(roots)).toBe('event:42');
+    menu.hidden = true;
+    const popup = document.createElement('div');
+    popup.className = 'maplibregl-popup';
+    document.body.appendChild(popup);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(ficheKey(roots)).toBe('event:42');
+  });
 });

@@ -301,7 +301,7 @@ export class MapPopup {
 
     // ESC key
     this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hideNow(); };
+    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
     this.outsideClickHandler = (e: MouseEvent) => {
       if (!this.element.contains(e.target as Node)) this.hideNow();
     };
@@ -330,7 +330,7 @@ export class MapPopup {
     this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
 
     this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hideNow(); };
+    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
     this.outsideClickHandler = (e: MouseEvent) => {
       if (!this.element.contains(e.target as Node)) this.hideNow();
     };
@@ -488,7 +488,7 @@ export class MapPopup {
     this.visible = true;
     this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
     this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hideNow(); };
+    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
     this.outsideClickHandler = (e: MouseEvent) => {
       if (!this.element.contains(e.target as Node)) this.hideNow();
     };
@@ -562,7 +562,7 @@ export class MapPopup {
     this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
 
     this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hideNow(); };
+    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
     this.outsideClickHandler = (e: MouseEvent) => {
       if (!this.element.contains(e.target as Node)) this.hideNow();
     };
@@ -884,7 +884,7 @@ export class MapPopup {
     this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
 
     this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hideNow(); };
+    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
     this.outsideClickHandler = (e: MouseEvent) => {
       if (!this.element.contains(e.target as Node)) this.hideNow();
     };

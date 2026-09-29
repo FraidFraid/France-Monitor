@@ -2706,6 +2706,7 @@ export class App {
     this.addGlobalListener(document, 'keydown', (event) => {
       if (!(event instanceof KeyboardEvent)) return;
       if (event.key === 'Escape' && aboutModal.getAttribute('aria-hidden') === 'false') {
+        event.preventDefault();
         setAboutModalOpen(false);
       }
     });
