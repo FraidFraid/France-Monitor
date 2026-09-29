@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layerActivationOptions, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
+import { layerActivationOptions, layerStateStorage, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
 
 describe('shouldRecordIntelSnapshot (garde : pas d’écriture dans l’historique partagé avec des caches vides)', () => {
   it('v1 : toujours vrai, le tiroir décide seul de sa visibilité', () => {
@@ -43,5 +43,21 @@ describe('opensModulePanel (spec 2026-09-29 § 4)', () => {
     expect(opensModulePanel(true, undefined)).toBe(false);
     expect(opensModulePanel(true, null)).toBe(false);
     expect(opensModulePanel(true, 'explicit')).toBe(false);
+  });
+});
+
+describe('layerStateStorage (spec 2026-09-29 § 5)', () => {
+  const local = { kind: 'local' } as unknown as Storage;
+  const session = { kind: 'session' } as unknown as Storage;
+
+  it('v2 : la session ; v1 : localStorage', () => {
+    expect(layerStateStorage(true, { localStorage: local, sessionStorage: session })).toBe(session);
+    expect(layerStateStorage(false, { localStorage: local, sessionStorage: session })).toBe(local);
+  });
+
+  it('stockage inaccessible (navigation privée) : null, sans exception', () => {
+    const win = { localStorage: local } as Pick<Window, 'localStorage' | 'sessionStorage'>;
+    Object.defineProperty(win, 'sessionStorage', { get() { throw new Error('SecurityError'); } });
+    expect(layerStateStorage(true, win)).toBeNull();
   });
 });

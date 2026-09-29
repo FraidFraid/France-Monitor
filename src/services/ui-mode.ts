@@ -44,3 +44,16 @@ export function opensModulePanel(uiV2: boolean, detail: unknown): boolean {
   if (!uiV2) return true;
   return typeof detail === 'object' && detail !== null && (detail as { explicit?: unknown }).explicit === true;
 }
+
+/**
+ * Stockage de l'état des couches. v2 : la session — un rechargement le garde, une nouvelle visite
+ * repart des couches de démarrage (spec 2026-09-29 § 5). v1 : localStorage, comme avant. null si
+ * le stockage est inaccessible (navigation privée stricte) : rien n'est gardé.
+ */
+export function layerStateStorage(uiV2: boolean, win: Pick<Window, 'localStorage' | 'sessionStorage'>): Storage | null {
+  try {
+    return uiV2 ? win.sessionStorage : win.localStorage;
+  } catch {
+    return null;
+  }
+}

@@ -27,7 +27,7 @@ import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type Brie
 import { scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
-import { isUiV2, layerActivationOptions, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -60,7 +60,7 @@ import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, layersForPreset, type LayerPresetId } from './config/layer-presets.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
@@ -2289,7 +2289,7 @@ export class App {
 
   private readStoredActiveLayers(): Partial<MapLayers> | null {
     try {
-      const raw = localStorage.getItem(ACTIVE_LAYERS_STORAGE_KEY);
+      const raw = layerStateStorage(this.uiV2, window)?.getItem(ACTIVE_LAYERS_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (!parsed || typeof parsed !== 'object') return null;
@@ -2347,7 +2347,7 @@ export class App {
       // retour d'utilisateur avec de vraies couches persistées, ce chemin ne
       // doit ouvrir AUCUN panneau flottant d'office (restoreActiveLayerPanelsAfterRefresh
       // lit ce flag) — seul un clic explicite ouvre un panneau.
-      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...layersForPreset(DEFAULT_PRESET_ID) });
+      this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...(this.uiV2 ? v2StartupLayers() : layersForPreset(DEFAULT_PRESET_ID)) });
       this.suppressFirstLoadPanelAutoOpen = true;
     }
 
@@ -3549,7 +3549,7 @@ export class App {
 
     // Persist layer state across sessions
     try {
-      localStorage.setItem(ACTIVE_LAYERS_STORAGE_KEY, JSON.stringify(this.activeLayers));
+      layerStateStorage(this.uiV2, window)?.setItem(ACTIVE_LAYERS_STORAGE_KEY, JSON.stringify(this.activeLayers));
     } catch (err) {
       console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
     }
@@ -4550,7 +4550,7 @@ export class App {
    * déjà trafficAir/trafficRoad/trafficMaritime start/stop).
    */
   private applyLayerPreset(id: LayerPresetId): void {
-    const target = layersForPreset(id);
+    const target = themeLayers(this.uiV2, id);
     for (const key of ALL_PRESETABLE_LAYER_KEYS) {
       const wanted = target[key] ?? false;
       if (this.activeLayers[key] === wanted) continue;

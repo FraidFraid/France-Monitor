@@ -18,6 +18,7 @@ export interface UrlState {
 const LAYER_KEYS: (keyof MapLayers)[] = [
     'newsGroup',
     'news',
+    'events',
     'alerts',
     'stability',
     'energySystems',

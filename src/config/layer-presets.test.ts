@@ -6,6 +6,8 @@ import {
   DEFAULT_PRESET_ID,
   LAYER_PRESETS,
   layersForPreset,
+  themeLayers,
+  v2StartupLayers,
   type LayerPresetId,
 } from './layer-presets.ts';
 
@@ -102,5 +104,23 @@ describe('layer-presets', () => {
     for (const key of ALL_PRESETABLE_LAYER_KEYS) {
       assert.equal(result[key], false);
     }
+  });
+});
+
+describe('couches v2 (spec 2026-09-29 § 5)', () => {
+  it('une nouvelle visite v2 démarre avec les événements et les vigilances, rien d’autre', () => {
+    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true });
+  });
+
+  it('v2 : « Vue générale » ne garde que les vigilances parmi les couches des thèmes', () => {
+    const general = themeLayers(true, 'general');
+    assert.equal(general.environmental, true);
+    for (const key of ['news', 'powerGrid', 'military', 'health'] as const) assert.equal(general[key], false, key);
+    assert.equal('events' in general, false); // les thèmes ne touchent pas la couche Événements
+  });
+
+  it('les autres thèmes, et la v1, gardent leurs vues', () => {
+    assert.deepEqual(themeLayers(true, 'energy'), layersForPreset('energy'));
+    assert.deepEqual(themeLayers(false, 'general'), layersForPreset('general'));
   });
 });
