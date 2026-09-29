@@ -25,7 +25,7 @@ import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { eventMapPoints } from './services/v2-map.ts';
+import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, switcherPanelOffsetPx } from './services/floating-panel-switcher.ts';
@@ -5550,7 +5550,7 @@ export class App {
       const segments = await fetchVigicrues();
       this.currentFloodSegments = segments;
       this.environmentLoaded = true;
-      this.mapContainer?.updateFloods(segments);
+      this.mapContainer?.updateFloods(this.uiV2 ? v2FloodSegments(segments) : segments);
       const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
       const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
       const reconstructedOnly = segments.length > 0 && segments.every((segment) => segment.dataSource !== 'live');
@@ -7906,6 +7906,7 @@ export class App {
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
     this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
+    this.mapContainer?.setLightVigilance(LIGHT_VIGILANCE);
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();

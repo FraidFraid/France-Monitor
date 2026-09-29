@@ -1,7 +1,7 @@
 // src/services/v2-map.ts — ce que la carte de la v2 dessine (spec 2026-09-29 § 5). Pur : App.ts
 // passe les données en cache, DeckGLMap dessine le résultat.
 
-import type { NewsEvent } from '../types/index.ts';
+import type { FloodSegment, NewsEvent } from '../types/index.ts';
 import { eventDisplayLevel, levelHex, unconfirmedPeakLevel, type VigilanceLevel } from './vigilance.ts';
 import { categoryTheme, inTheme, type ThemeId } from './themes.ts';
 import { eventEnters } from './work-queue.ts';
@@ -49,3 +49,12 @@ export function eventMapPoints(events: readonly NewsEvent[], theme: ThemeId): Ev
   }
   return out;
 }
+
+/** Vigicrues sur la carte v2 : tronçons orange et rouges seulement (spec 2026-09-29 § 5). */
+export function v2FloodSegments(segments: readonly FloodSegment[]): FloodSegment[] {
+  return segments.filter((s) => s.level === 'orange' || s.level === 'red');
+}
+
+/** Aplat Météo-France de la v2 : léger, le jaune à peine teinté et sans bordure. */
+export const LIGHT_VIGILANCE = { violet: 0.22, red: 0.2, orange: 0.15, yellow: 0.07, highlight: 0.45 } as const;
+export type LightVigilance = typeof LIGHT_VIGILANCE;
