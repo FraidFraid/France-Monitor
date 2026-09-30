@@ -5,11 +5,14 @@
  * Spec : docs/superpowers/specs/2026-09-28-classification-evenements-design.md § 5.3.
  *
  *   node scripts/replay-classification.mjs .superpowers/classification/snapshot-AAAA-MM-JJ.json
- *   node --env-file-if-exists=.env scripts/replay-classification.mjs <instantané> --groq
+ *   node --env-file-if-exists=.env scripts/replay-classification.mjs <instantané> --groq [--budget 20000] [--labels-only]
  *
  * --groq : repasse par le LLM configuré les articles high/critical de groq-1 et les candidats
- * high/critical de kw-2 (~30 appels, ~50 000 jetons) sur le quota GRATUIT partagé avec la
- * production : à lancer UNE fois. Les autres articles gardent leur note (approximation, spec § 5.3).
+ * high/critical de kw-2. Les autres articles gardent leur note (approximation, spec § 5.3).
+ * Quota GRATUIT partagé avec la production (scripts/llm-budget.mjs) : le rejeu complet (26 appels)
+ * ne tient pas dans ce que la production laisse libre ; --budget plafonne la dépense (20 000 jetons
+ * par défaut), --labels-only ne repasse que les articles du jeu annoté (critères de rappel).
+ * Budget ou quota atteint : la passe s'arrête et le rapport est marqué PARTIEL.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -17,7 +20,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { classify, titleQualification, TITLE_REASON_CAP } from '../api/_lib/server-classifier.js';
 import { corroboratedSeverity, qualifyEvent, mediaGroupOf, SEVERITY_RANK } from '../api/_lib/event-model.js';
-import { classifierLlmConfig, classifyBatch, qualifyJudgment, LLM_BATCH_SIZE } from '../api/_lib/llm-classifier.js';
+import { classifierLlmConfig, qualifyJudgment, LLM_BATCH_SIZE } from '../api/_lib/llm-classifier.js';
+import { meteredClassify, TOKENS_PER_CALL } from './llm-budget.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LABELS = path.join(ROOT, 'tests/fixtures/classification/labels.json');
@@ -25,6 +29,7 @@ const LABELS = path.join(ROOT, 'tests/fixtures/classification/labels.json');
 // une seule nouvelle tentative après 60 s sur un 429.
 const LLM_PAUSE_MS = 25_000;
 const LLM_RETRY_MS = 60_000;
+const LLM_DEFAULT_BUDGET = 20_000;
 const SERIOUS = new Set(['high', 'critical']);
 
 /** @param {{ scoredBy: string | null, title: string, description: string | null, category: string, severity: string }} article */
@@ -95,34 +100,62 @@ export function labelMetrics(labels, notesById) {
   };
 }
 
-/** @param {Array<Record<string, any>>} articles @param {Map<number, Record<string, any>>} notes @param {import('../api/_lib/llm-classifier.js').LlmConfig} llm */
-async function replayLlm(articles, notes, llm) {
-  const targets = articles.filter((a) => {
+/**
+ * Articles repassés par le LLM : anciennes notes Groq graves et candidats graves des mots-clés,
+ * restreints aux ids donnés s'il y en a (jeu annoté).
+ * @param {Array<Record<string, any>>} articles @param {Map<number, Record<string, any>>} notes @param {Set<number> | null} only
+ */
+export function llmTargets(articles, notes, only) {
+  return articles.filter((a) => {
+    if (only && !only.has(a.id)) return false;
     const n = notes.get(a.id);
     return (a.scoredBy === 'groq' && SERIOUS.has(a.severity)) || (n?.scoredBy === 'kw-2' && SERIOUS.has(n.severity));
   });
+}
+
+/** @param {unknown} err  refus Groq « tokens per day » (corps de réponse joint par classifyBatch) */
+function isDailyQuota(err) {
+  return /tokens per day/i.test(String(/** @type {{ body?: string }} */ (err)?.body ?? ''));
+}
+
+/**
+ * @param {Array<Record<string, any>>} targets @param {Map<number, Record<string, any>>} notes
+ * @param {import('../api/_lib/llm-classifier.js').LlmConfig} llm
+ * @param {ReturnType<typeof meteredClassify>['classify']} classify
+ * @returns {Promise<{ rated: number, stopped: string | null }>}
+ */
+async function replayLlm(targets, notes, llm, classify) {
   const total = Math.ceil(targets.length / LLM_BATCH_SIZE);
+  let rated = 0;
   for (let s = 0; s < targets.length; s += LLM_BATCH_SIZE) {
     const batch = targets.slice(s, s + LLM_BATCH_SIZE);
     let judgments;
     try {
-      judgments = await classifyBatch(llm, batch);
+      try {
+        judgments = await classify(llm, batch);
+      } catch (err) {
+        // Plafond par minute : une nouvelle tentative ; plafond journalier : inutile d'attendre.
+        if (/** @type {{ status?: number }} */ (err).status !== 429 || isDailyQuota(err)) throw err;
+        console.log(`LLM : quota par minute atteint, nouvelle tentative dans ${LLM_RETRY_MS / 1000} s`);
+        await new Promise((r) => setTimeout(r, LLM_RETRY_MS));
+        judgments = await classify(llm, batch);
+      }
     } catch (err) {
-      if (/** @type {{ status?: number }} */ (err).status !== 429) throw err;
-      console.log(`LLM : quota par minute atteint, nouvelle tentative dans ${LLM_RETRY_MS / 1000} s`);
-      await new Promise((r) => setTimeout(r, LLM_RETRY_MS));
-      judgments = await classifyBatch(llm, batch);
+      const reason = isDailyQuota(err) ? 'quota journalier atteint' : err instanceof Error ? err.message : String(err);
+      return { rated, stopped: `lot ${s / LLM_BATCH_SIZE + 1}/${total} : ${reason}` };
     }
     if (judgments) {
       batch.forEach((a, k) => {
         const j = judgments[k];
-        if (j) notes.set(a.id, { category: j.category, ...qualifyJudgment(j, titleQualification(a.title)), scoredBy: llm.version });
+        if (!j) return;
+        notes.set(a.id, { category: j.category, ...qualifyJudgment(j, titleQualification(a.title)), scoredBy: llm.version });
+        rated += 1;
       });
     }
     console.log(`LLM : lot ${s / LLM_BATCH_SIZE + 1}/${total}${judgments ? '' : ' (illisible, ignoré)'}`);
     if (s + LLM_BATCH_SIZE < targets.length) await new Promise((r) => setTimeout(r, LLM_PAUSE_MS));
   }
-  return targets.length;
+  return { rated, stopped: null };
 }
 
 /** @param {Iterable<string>} severities */
@@ -136,22 +169,43 @@ function countBySeverity(severities) {
 async function main() {
   const file = process.argv[2];
   const withLlm = process.argv.includes('--groq');
-  if (!file) throw new Error('usage : replay-classification.mjs <instantané.json> [--groq]');
+  const labelsOnly = process.argv.includes('--labels-only');
+  const budgetArg = process.argv.indexOf('--budget');
+  const budget = budgetArg > 0 ? Number(process.argv[budgetArg + 1]) : LLM_DEFAULT_BUDGET;
+  if (!file) throw new Error('usage : replay-classification.mjs <instantané.json> [--groq [--budget 20000] [--labels-only]]');
   const snapshot = JSON.parse(await readFile(file, 'utf8'));
   const articles = snapshot.articles;
+  const labels = existsSync(LABELS) ? JSON.parse(await readFile(LABELS, 'utf8')) : null;
 
   /** @type {Map<number, Record<string, any>>} */
   const notes = new Map(articles.map((/** @type {Record<string, any>} */ a) => [a.id, replayKeywords(a)]));
+  /** @type {string | null} */
+  let partial = null;
   if (withLlm) {
     const llm = classifierLlmConfig(process.env);
     if (!llm) throw new Error('aucun LLM configuré : lancer avec node --env-file-if-exists=.env (GROQ_API_KEY)');
-    console.log(`${await replayLlm(articles, notes, llm)} articles repassés par le LLM (${llm.version})`);
+    if (labelsOnly && !labels) throw new Error(`--labels-only : jeu annoté absent (${path.relative(ROOT, LABELS)})`);
+    const only = labelsOnly ? new Set(labels.filter((/** @type {{ expected: unknown }} */ l) => l.expected).map((/** @type {{ id: number }} */ l) => l.id)) : null;
+    // Jeu annoté : les articles annotés graves d'abord, pour que le critère de rappel tienne dans le budget.
+    const expectedRank = new Map((labels ?? []).filter((/** @type {{ expected: unknown }} */ l) => l.expected)
+      .map((/** @type {{ id: number, expected: { severity: string } }} */ l) => [l.id, SEVERITY_RANK[l.expected.severity]]));
+    const targets = llmTargets(articles, notes, only)
+      .sort((a, b) => (labelsOnly ? (expectedRank.get(b.id) ?? 0) - (expectedRank.get(a.id) ?? 0) : 0));
+    const calls = Math.ceil(targets.length / LLM_BATCH_SIZE);
+    console.log(`LLM : ${targets.length} articles → ${calls} appels, ~${calls * TOKENS_PER_CALL} jetons (budget ${budget}, ${llm.model})`);
+    const { classify, state } = meteredClassify({ budget, pauseMs: 0 });
+    const { rated, stopped } = await replayLlm(targets, notes, llm, classify);
+    console.log(`${rated} articles repassés par le LLM (${llm.version}), ${state.tokens} jetons dépensés`);
+    if (stopped) {
+      partial = stopped;
+      console.log(`PASSE LLM ARRÊTÉE (${stopped}) : résultats PARTIELS, les articles non repassés gardent leur note mots-clés.`);
+    }
   }
 
   const feedById = new Map(articles.map((/** @type {Record<string, any>} */ a) => [a.id, a.feedId]));
   const events = replayEvents(snapshot.events, notes, feedById);
 
-  console.log(`\nInstantané ${snapshot.takenAt} — ${articles.length} articles, ${events.length} événements${withLlm ? ' (avec LLM)' : ' (mots-clés seuls)'}`);
+  console.log(`\nInstantané ${snapshot.takenAt} — ${articles.length} articles, ${events.length} événements${withLlm ? ` (avec LLM${labelsOnly ? ' sur le jeu annoté seulement' : ''})` : ' (mots-clés seuls)'}${partial ? ' — PARTIEL' : ''}`);
   console.table({
     'articles avant': countBySeverity(articles.map((/** @type {Record<string, any>} */ a) => a.severity)),
     'articles après': countBySeverity([...notes.values()].map((n) => n.severity)),
@@ -173,8 +227,7 @@ async function main() {
 
   /** @type {Record<string, unknown>} */
   let metrics = {};
-  if (existsSync(LABELS)) {
-    const labels = JSON.parse(await readFile(LABELS, 'utf8'));
+  if (labels) {
     const m = labelMetrics(labels, notes);
     metrics = { ...m, overCritical: m.overCritical.map((l) => l.id), foreignAbove: m.foreignAbove.map((l) => l.id) };
     console.log(`\nJeu annoté : ${m.total} articles présents dans l'instantané`);
@@ -188,7 +241,7 @@ async function main() {
   }
 
   const out = path.join(ROOT, '.superpowers/classification', `replay-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  await writeFile(out, JSON.stringify({ snapshot: file, withLlm, critical, metrics, graves, toConfirm }, null, 2));
+  await writeFile(out, JSON.stringify({ snapshot: file, withLlm, labelsOnly, partial, critical, metrics, graves, toConfirm }, null, 2));
   console.log(`\nRapport → ${path.relative(ROOT, out)}`);
 }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — module JS sans déclaration de types
-import { replayKeywords, replayEvents, labelMetrics } from '../scripts/replay-classification.mjs';
+import { replayKeywords, replayEvents, labelMetrics, llmTargets } from '../scripts/replay-classification.mjs';
 
 describe('replayKeywords', () => {
   it('article mots-clés : note kw-2 qualifiée', () => {
@@ -53,5 +53,24 @@ describe('labelMetrics', () => {
       security: { total: 3, serious: 1, kept: 1, overCritical: 1 },
       health: { total: 1, serious: 1, kept: 0, overCritical: 0 },
     });
+  });
+});
+
+describe('llmTargets', () => {
+  const articles = [
+    { id: 1, scoredBy: 'groq', severity: 'high' },
+    { id: 2, scoredBy: 'groq', severity: 'medium' },
+    { id: 3, scoredBy: 'keywords', severity: 'critical' },
+    { id: 4, scoredBy: 'keywords', severity: 'critical' },
+  ];
+  const notes = new Map<number, Record<string, string>>([
+    [1, { scoredBy: 'groq-1', severity: 'high' }], [2, { scoredBy: 'groq-1', severity: 'medium' }],
+    [3, { scoredBy: 'kw-2', severity: 'high' }], [4, { scoredBy: 'kw-2', severity: 'low' }],
+  ]);
+  it('anciennes notes Groq graves et candidats graves des mots-clés', () => {
+    expect(llmTargets(articles, notes, null).map((a: { id: number }) => a.id)).toEqual([1, 3]);
+  });
+  it('restreint au jeu annoté', () => {
+    expect(llmTargets(articles, notes, new Set([3, 4])).map((a: { id: number }) => a.id)).toEqual([3]);
   });
 });

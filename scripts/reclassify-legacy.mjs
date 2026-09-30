@@ -25,9 +25,12 @@ import { classify } from '../api/_lib/server-classifier.js';
 import { summarizeEvent, SEVERITY_RANK } from '../api/_lib/event-model.js';
 import { encodeReasons } from '../api/_lib/classification-columns.js';
 import { loadEventArticles, refreshEvents } from '../api/_lib/news-events-db.js';
-import { classifierLlmConfig, classifyBatch, LLM_BATCH_SIZE } from '../api/_lib/llm-classifier.js';
+import { classifierLlmConfig, LLM_BATCH_SIZE } from '../api/_lib/llm-classifier.js';
 import { runLlmPass } from '../api/_lib/llm-pass.js';
 import { replayKeywords } from './replay-classification.mjs';
+import { meteredClassify, TOKENS_PER_CALL } from './llm-budget.mjs';
+
+export { meteredClassify };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 2000;
@@ -37,8 +40,6 @@ const LIST_STATUSES = ['active', 'cooling'];
 const LIST_LIMIT = 40;
 const LLM_PAUSE_MS = 25_000;
 const LLM_DEFAULT_BUDGET = 50_000;
-/** Estimation par appel (rejeu du 28/09 : ~52 000 jetons pour ~26 appels). */
-const TOKENS_PER_CALL = 2_000;
 
 /** @typedef {import('../api/_lib/news-events-db.js').Sql} Sql */
 
@@ -204,29 +205,6 @@ export async function selectLegacyGroqSerious(sql, since) {
            OR n.event_id IN (SELECT e.id FROM news_events e WHERE e.last_seen > ${since}))
   `;
   return rows.map((r) => ({ id: Number(r.id), eventId: r.event_id == null ? null : Number(r.event_id) }));
-}
-
-/**
- * Appel LLM de production, espacé et compté ; au-delà du budget, lève une erreur qui arrête la passe.
- * @param {{ budget: number, pauseMs: number }} options
- */
-export function meteredClassify({ budget, pauseMs }) {
-  const state = { tokens: 0, calls: 0 };
-  /** @type {typeof fetch} */
-  const fetchImpl = async (input, init) => {
-    const res = await fetch(input, init);
-    const body = /** @type {{ usage?: { total_tokens?: number } } | null} */ (await res.clone().json().catch(() => null));
-    state.tokens += body?.usage?.total_tokens ?? 0;
-    return res;
-  };
-  /** @type {typeof classifyBatch} */
-  const classify = async (llm, articles) => {
-    if (state.tokens + TOKENS_PER_CALL > budget) throw new Error(`budget de ${budget} jetons atteint (${state.tokens} dépensés)`);
-    if (state.calls > 0) await new Promise((r) => setTimeout(r, pauseMs));
-    state.calls += 1;
-    return classifyBatch(llm, articles, { fetchImpl });
-  };
-  return { classify, state };
 }
 
 /** @param {Sql} sql @param {string} since @param {boolean} apply */
