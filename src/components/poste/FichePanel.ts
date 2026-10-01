@@ -21,6 +21,7 @@ export class FichePanel {
   private onSelect: ((key: string) => void) | null = null;
   private onAction: ((action: string, ficheKey: string) => void) | null = null;
   private onWhyToggle: ((ficheKey: string, open: boolean) => void) | null = null;
+  private onSectionToggle: ((sectionKey: string, open: boolean) => void) | null = null;
   private onClose: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
@@ -47,6 +48,9 @@ export class FichePanel {
       if (target instanceof HTMLElement && target.matches('details.fiche-why')) {
         this.onWhyToggle?.(target.dataset.why ?? '', target.hasAttribute('open'));
       }
+      if (target instanceof HTMLElement && target.matches('details[data-section]')) {
+        this.onSectionToggle?.(target.dataset.section ?? '', target.hasAttribute('open'));
+      }
     }, true);
   }
 
@@ -56,6 +60,10 @@ export class FichePanel {
 
   setOnAction(handler: (action: string, ficheKey: string) => void): void {
     this.onAction = handler;
+  }
+
+  setOnSectionToggle(handler: (sectionKey: string, open: boolean) => void): void {
+    this.onSectionToggle = handler;
   }
 
   setOnWhyToggle(handler: (ficheKey: string, open: boolean) => void): void {
@@ -106,6 +114,13 @@ export class FichePanel {
     // replier directement sur son titre plutôt que de laisser le focus tomber sur <body>.
     if (!sameFiche) return () => this.body.querySelector<HTMLElement>('.fiche-name');
     if (el.matches('.fiche-why > summary')) return () => this.body.querySelector<HTMLElement>('.fiche-why > summary');
+    if (el.matches('details[data-section] > summary')) {
+      const section = el.parentElement?.dataset.section;
+      if (section !== undefined) {
+        return () => [...this.body.querySelectorAll<HTMLElement>('details[data-section]')]
+          .find((d) => d.dataset.section === section)?.querySelector<HTMLElement>(':scope > summary') ?? null;
+      }
+    }
     const select = el.dataset.select;
     if (select !== undefined) return () => findByData(this.body, 'select', select);
     const action = el.dataset.action;

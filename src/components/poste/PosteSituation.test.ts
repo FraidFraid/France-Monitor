@@ -82,7 +82,7 @@ function data(over: Partial<PosteData> = {}): PosteData {
   };
 }
 
-function setup(width = 1440) {
+function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | null = null) {
   const app = document.createElement('div');
   const make = (): HTMLElement => {
     const el = document.createElement('div');
@@ -93,9 +93,9 @@ function setup(width = 1440) {
   document.body.appendChild(app);
   const cb = {
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
-    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
+    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
   } satisfies PosteCallbacks;
-  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width });
+  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width, storage });
   poste.setEvents(eventsState());
   poste.update(data());
   return { roots, cb, poste };
@@ -486,5 +486,45 @@ describe('Échap partout (spec 2026-09-29 § 4)', () => {
     document.body.appendChild(popup);
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(ficheKey(roots)).toBe('event:42');
+  });
+});
+
+describe('sections de la fiche France (spec 2026-10-01 § 3.3)', () => {
+  function memoryStorage(initial: Record<string, boolean> = {}): Pick<Storage, 'getItem' | 'setItem'> & { saved: () => Record<string, boolean> } {
+    let value = JSON.stringify(initial);
+    return {
+      getItem: () => value,
+      setItem: (_key: string, next: string) => { value = next; },
+      saved: () => JSON.parse(value) as Record<string, boolean>,
+    };
+  }
+
+  it('l’ouverture d’une section est retenue, enregistrée, et survit au rafraîchissement', () => {
+    const storage = memoryStorage();
+    const { roots, poste } = setup(1440, storage);
+    const infra = roots.fiche.querySelector<HTMLDetailsElement>('details[data-section="france:infra"]');
+    if (!infra) throw new Error('section Infrastructures absente');
+    infra.open = true;
+    infra.dispatchEvent(new Event('toggle'));
+    expect(storage.saved()).toEqual({ 'france:infra': true });
+    for (let i = 1; i <= 20; i++) poste.update(data({ now: NOW + i * 60_000 }));
+    expect(roots.fiche.querySelector('details[data-section="france:infra"]')?.hasAttribute('open')).toBe(true);
+  });
+
+  it('état enregistré relu au démarrage', () => {
+    const { roots } = setup(1440, memoryStorage({ 'france:note': false }));
+    expect(roots.fiche.querySelector('details[data-section="france:note"]')?.hasAttribute('open')).toBe(false);
+  });
+
+  it('« National n/100 » ouvre le panneau cyber', () => {
+    const { roots, poste } = setup();
+    const listener = vi.fn();
+    document.addEventListener('open-cyber-panel', listener);
+    poste.update(data({
+      infra: { result: { score: 96, status: 'nominal', details: { cyber: 43, cyberNational: 51 }, computedAt: new Date(0), reliable: true }, nuclear: null, eolien: null },
+    }));
+    roots.fiche.querySelector<HTMLElement>('[data-action="open-cyber"]')?.click();
+    expect(listener).toHaveBeenCalledTimes(1);
+    document.removeEventListener('open-cyber-panel', listener);
   });
 });

@@ -63,6 +63,7 @@ import { BarometerWidget } from './components/BarometerWidget.ts';
 import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
+import type { NetworkBarometerResult } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
@@ -1579,6 +1580,8 @@ export class App {
   private currentHydraulicAssets: HydraulicBackboneAsset[] = [];
   private currentHydraulicHydrometry: HydraulicHydrometrySnapshot | null = null;
   private currentEolienLive: EolienLive | null = null;
+  /** Dernier résultat du baromètre des infrastructures (section Infrastructures de l'onglet État v2). */
+  private currentNetworkBarometer: NetworkBarometerResult | null = null;
   private currentEolienPoints: EolienParkSummary[] = [];
   private currentEolienParks: EolienParkSummary[] = [];
   private currentEolienError: string | null = null;
@@ -7776,11 +7779,16 @@ export class App {
 
   private async refreshNetworkBarometerWidget(): Promise<void> {
     const result = await fetchNetworkBarometer();
+    this.currentNetworkBarometer = result;
     this.networkBarometerWidget?.update(result);
     this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
     this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
     // v2 (spec 2026-09-29 § 7) : pas d'appel à la synthèse ISNR (Groq), son bloc n'est plus affiché.
-    if (this.uiV2) return;
+    if (this.uiV2) {
+      // Section Infrastructures de l'onglet État (spec 2026-10-01) : repeinte avec le nouveau résultat.
+      this.repaintPoste();
+      return;
+    }
 
     const medium = this.newsItems
       .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
@@ -7981,11 +7989,6 @@ export class App {
           const france = VIEW_PRESETS.france;
           this.mapContainer?.flyTo(france.center[0], france.center[1], france.zoom);
         },
-        onFicheRendered: (body) => {
-          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Indicateurs » de l'onglet État.
-          const slot = body.querySelector('.fiche-infra-slot');
-          if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
-        },
         // Relecture finale m7 : la carte mobile, créée dans l'onglet masqué, s'ajuste à l'affichage.
         onMapShown: () => this.mapContainer?.resize(),
         // Une sélection prend la colonne : le panneau de module ouvert se ferme d'abord.
@@ -8067,6 +8070,7 @@ export class App {
       markets: this.currentMarketData,
       commodities: this.currentCommodityData,
       sources: this.statusPanel?.getSources() ?? [],
+      infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
       // Revue : pas de niveau national avant les couches critiques (jamais un vert par défaut).
       ready: this.v2IntelStarted,

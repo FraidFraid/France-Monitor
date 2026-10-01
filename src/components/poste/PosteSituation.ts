@@ -33,6 +33,8 @@ import {
 import { fetchEventDetail } from '../../services/news-events.ts';
 import { escapeHtml, unavailableEventsState, type EventDetailState } from '../france-intel-events.ts';
 import { trendText } from '../france-intel-score.ts';
+import type { InfraInput } from '../../services/infra-continuity.ts';
+import { loadSectionState, saveSectionState, sectionsOf, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
@@ -58,6 +60,8 @@ export interface PosteData {
   meteo: readonly MeteoAlert[];
   floods: readonly FloodSegment[];
   markets: readonly MarketData[];
+  /** Baromètre des infrastructures (section Infrastructures de l'État). */
+  infra?: InfraInput | null;
   commodities: readonly CommodityData[];
   sources: readonly DataSourceStatus[];
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
@@ -79,8 +83,6 @@ export interface PosteCallbacks {
   onOpenDossier: (situation: DetectedSituation) => boolean;
   onOpenReport: () => void;
   onShowFrance: () => void;
-  /** Après chaque rendu de fiche : App y rattache le baromètre des infrastructures (§14). */
-  onFicheRendered: (body: HTMLElement) => void;
   /** Onglet « Carte » affiché (mobile) : la carte, créée masquée, s'ajuste à son conteneur (m7). */
   onMapShown: () => void;
   /** Toute sélection (ligne, carte, lien) : App ferme d'abord le panneau de module ouvert dans la colonne (v2). */
@@ -100,6 +102,17 @@ export interface PosteRoots {
 export interface PosteOptions {
   /** Largeur de la fenêtre, injectable pour les tests. */
   viewportWidth?: () => number;
+  /** Stockage de la mémoire des sections ; défaut : localStorage s'il est accessible. */
+  storage?: SectionStorage | null;
+}
+
+/** localStorage s'il est accessible (navigation privée, iframe sans stockage : null). */
+function defaultStorage(): SectionStorage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function durationLabel(ms: number, lang: Lang): string {
@@ -120,6 +133,8 @@ export class PosteSituation {
   private readonly roots: PosteRoots;
   private readonly callbacks: PosteCallbacks;
   private readonly viewportWidth: () => number;
+  private readonly storage: SectionStorage | null;
+  private readonly sectionOpen: Map<string, boolean>;
   private readonly statusBar: StatusBar;
   private readonly themeBar: ThemeBar;
   private readonly workList: WorkList;
@@ -155,6 +170,8 @@ export class PosteSituation {
     this.roots = roots;
     this.callbacks = callbacks;
     this.viewportWidth = options.viewportWidth ?? ((): number => window.innerWidth);
+    this.storage = options.storage !== undefined ? options.storage : defaultStorage();
+    this.sectionOpen = loadSectionState(this.storage);
     this.statusBar = new StatusBar(roots.status);
     this.themeBar = new ThemeBar(roots.themes);
     this.workList = new WorkList(roots.list);
@@ -176,6 +193,11 @@ export class PosteSituation {
     this.fichePanel.setOnWhyToggle((ficheKey, open) => {
       if (open) this.whyOpen.add(ficheKey);
       else this.whyOpen.delete(ficheKey);
+    });
+    this.fichePanel.setOnSectionToggle((sectionKey, open) => {
+      if (this.sectionOpen.get(sectionKey) === open) return;
+      this.sectionOpen.set(sectionKey, open);
+      saveSectionState(this.storage, this.sectionOpen);
     });
     this.fichePanel.setOnClose(() => this.close());
 
@@ -376,7 +398,6 @@ export class PosteSituation {
       model = { ...model, level: null, driver: lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed' };
     }
     this.fichePanel.render(model, lang, this.selection !== null);
-    this.callbacks.onFicheRendered(this.fichePanel.getBody());
     if (vanished && ficheHadFocus) this.restoreFocus(null);
 
     const history = this.events && !(this.events.unavailable && this.events.events.length === 0) ? this.events : null;
@@ -414,8 +435,8 @@ export class PosteSituation {
       changeTimes: this.firstSeen,
       score: data.score,
       freshness: this.freshness(data),
-      infra: null,
-      sectionOpen: new Map(),
+      infra: data.infra ?? null,
+      sectionOpen: sectionsOf(this.sectionOpen, 'france'),
       ready: data.ready,
       lang: data.lang,
       now: data.now,
@@ -496,6 +517,10 @@ export class PosteSituation {
   private runAction(action: string, ficheKey: string): void {
     const data = this.data;
     if (!data) return;
+    if (action === 'open-cyber') {
+      document.dispatchEvent(new CustomEvent('open-cyber-panel'));
+      return;
+    }
     if (action === 'report') {
       this.callbacks.onOpenReport();
       return;

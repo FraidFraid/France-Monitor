@@ -63,4 +63,28 @@ describe('FichePanel', () => {
     panel.render(model({ essentiel: ['Autre phrase.'] }), 'fr', false);
     expect(document.activeElement instanceof HTMLElement ? document.activeElement.dataset.select : undefined).toBe('event:42');
   });
+
+  it('remonte l’ouverture et la fermeture d’une section du kit', async () => {
+    const { root, panel } = mount();
+    const onSection = vi.fn();
+    panel.setOnSectionToggle(onSection);
+    panel.render(model({ sections: [{ id: 'infra', title: 'Infrastructures', html: '<p>x</p>', collapsible: true }] }), 'fr', false);
+    const details = root.querySelector<HTMLDetailsElement>('details[data-section="france:infra"]');
+    if (!details) throw new Error('section absente');
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+    expect(onSection).toHaveBeenLastCalledWith('france:infra', true);
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+    expect(onSection).toHaveBeenLastCalledWith('france:infra', false);
+  });
+
+  it('le focus sur un titre de section survit à une reconstruction', () => {
+    const { root, panel } = mount();
+    const sections = [{ id: 'infra', title: 'Infrastructures', summary: '96/100', html: '<p>x</p>', collapsible: true }];
+    panel.render(model({ sections }), 'fr', false);
+    root.querySelector<HTMLElement>('details[data-section="france:infra"] > summary')?.focus();
+    panel.render(model({ sections: [{ ...sections[0], summary: '95/100' }] }), 'fr', false);
+    expect(document.activeElement?.closest('details')?.getAttribute('data-section')).toBe('france:infra');
+  });
 });
