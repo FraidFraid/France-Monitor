@@ -54,7 +54,6 @@ import {
   t,
   type FicheAction,
   type FicheChange,
-  type FicheFigure,
   type FicheModel,
   type FicheSection,
   type FicheSource,
@@ -98,12 +97,17 @@ function officialSignalText(o: OfficialSignal, lang: Lang): string {
   return t(lang, `Vigicrues ${word}`, `Vigicrues ${word}`);
 }
 
-function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapshot'], lang: Lang): FicheFigure[] {
+interface ThemeFigure {
+  label: string;
+  value: string;
+}
+
+function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapshot'], lang: Lang): ThemeFigure[] {
   const s = snapshot.signals;
   const e = snapshot.energy;
   switch (theme) {
     case 'energy': {
-      const figures: FicheFigure[] = [];
+      const figures: ThemeFigure[] = [];
       if (e?.totalMw != null) figures.push({ label: t(lang, 'Production nationale', 'National output'), value: `${formatNumber(Math.round(e.totalMw), lang)} MW` });
       if (e?.oilStocksDays != null) figures.push({ label: t(lang, 'Stocks de carburant', 'Fuel stocks'), value: `${e.oilStocksDays} ${t(lang, 'j', 'd')}` });
       if (e?.windGw != null) figures.push({ label: t(lang, 'Production éolienne', 'Wind output'), value: `${formatNumber(e.windGw, lang)} GW` });
@@ -205,7 +209,6 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
     freshness: '',
     context: [driverText, input.freshness].filter(Boolean),
     lead: essentiel.slice(0, 3).join(' '),
-    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections,
     actions: [{ id: 'show-theme', label: t(lang, 'Afficher sur la carte', 'Show on map') }],
   };
@@ -391,8 +394,6 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
     freshness: '',
     context,
     lead,
-    // Parties génériques retirées en tâche 6.
-    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections: [
       {
         id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators,
@@ -537,7 +538,6 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
     freshness: '',
     context,
     lead,
-    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections,
     reference: `${s.id} · ${s.title} · ${levelLabel(level, lang)} · ${t(lang, 'mise à jour', 'updated')} ${absoluteTime(updated, now, lang, { withDate: true })}`,
     actions,
@@ -568,7 +568,6 @@ export function buildOfficialFiche(group: OfficialAlertGroup, input: { freshness
     lead: t(lang,
       `${capitalize(levelVigilanceWord(group.level))} (${levelPhrase(group.level)}) : ${shown}${more}.`,
       `${capitalize(levelVigilanceWord(group.level, 'en'))} (${levelPhrase(group.level, 'en')}): ${shown}${more}.`),
-    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections: [
       {
         id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true),
@@ -606,7 +605,6 @@ export function buildMarketFiche(line: MarketLine, input: { sectionOpen: Readonl
     lead: t(lang,
       `${line.name} varie de ${pct} sur la journée, au-delà du seuil de ±${threshold} %.`,
       `${line.name} moved ${pct} today, beyond the ±${threshold} % threshold.`),
-    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections: [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: input.sectionOpen.get('indicators') ?? true, html }],
     actions: [],
   };

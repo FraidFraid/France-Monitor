@@ -125,7 +125,6 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     expect(m.sections[0].html).not.toContain('frintel-card');
     expect(JSON.stringify(m)).not.toContain('fiche-why');
     expect(JSON.stringify(m)).not.toContain('—');
-    expect(m.why).toBe('');
   });
 
   it('évolution : heures absolues, ouverte quand des changements existent, remplacée par sectionOpen', () => {

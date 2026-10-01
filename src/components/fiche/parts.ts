@@ -1,8 +1,8 @@
 // src/components/fiche/parts.ts — fiche unique de la colonne de droite (refonte UI, spec §6) : un
-// modèle commun à tous les types et son rendu HTML, parties toujours dans le même ordre, parties
-// vides omises. Pur (aucun DOM) : tout texte tiers est échappé ici et seuls les liens http(s) sont
-// cliquables. Les parties propres à un type (« Jugements », « Facteurs »…) et le volet « Pourquoi
-// ce niveau ? » arrivent déjà rendus, et échappés, par le rendu de leur type.
+// modèle commun à tous les types et son rendu HTML : en-tête « Instrument » (score) ou en-tête kit,
+// sections du kit, actions. Plus de parties génériques ni de volet « Pourquoi ce niveau ? ». Pur
+// (aucun DOM) : tout texte tiers est échappé ici et seuls les liens http(s) sont cliquables. Les
+// sections arrivent déjà rendues, et échappées, par le constructeur de leur type.
 
 import type { ChangeDigestItem, ThreatLevel } from '../../types/index.ts';
 import { eventLevel, levelColorVar, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -91,16 +91,6 @@ export interface FicheChange {
   select: string | null;
 }
 
-export interface FicheFigure {
-  label: string;
-  value: string;
-}
-
-export interface FicheWatch {
-  text: string;
-  horizon: string | null;
-}
-
 export interface FicheSource {
   label: string;
   /** Lien externe, rendu cliquable seulement s'il est http(s). */
@@ -165,22 +155,8 @@ export interface FicheModel {
   /** Ligne « tiré par … » de l'en-tête. */
   driver: string;
   freshness: string;
-  /** Une à trois phrases. */
-  essentiel: string[];
-  /** Méta de « Ce qui a changé » (ancre de visite, chargement) ; vide et sans ligne → partie omise. */
-  changesMeta: string;
-  changes: FicheChange[];
-  /** Parties propres au type, entre « Ce qui a changé » et « Chiffres clés » (« Jugements », « Facteurs »…). */
+  /** Parties de la fiche, dans l'ordre d'affichage. */
   sections: FicheSection[];
-  figures: FicheFigure[];
-  watch: FicheWatch[];
-  sourcesTitle: string;
-  sources: FicheSource[];
-  /** HTML déjà échappé du volet « Pourquoi ce niveau ? » ; vide → volet omis. */
-  why: string;
-  /** Volet « Pourquoi ce niveau ? » juste sous l'en-tête (onglet État). */
-  whyFirst?: boolean;
-  whyOpen: boolean;
   actions: FicheAction[];
   /** En-tête « Instrument » du kit fmk : remplace l'en-tête simple ; 'pending' avant le premier calcul. */
   score?: FicheScore | 'pending';
@@ -209,14 +185,6 @@ export function renderChangeRows(changes: readonly FicheChange[], lang: Lang, no
   return rows ? `<ul class="fiche-list">${rows}</ul>` : '';
 }
 
-function renderChanges(model: FicheModel, lang: Lang): string {
-  if (model.changes.length === 0 && model.changesMeta === '') return '';
-  const list = renderChangeRows(model.changes, lang, Date.now());
-  const meta = model.changesMeta ? `<div class="fiche-meta">${escapeHtml(model.changesMeta)}</div>` : '';
-  const empty = list ? '' : `<p class="fiche-empty">${t(lang, 'Aucun changement notable.', 'No notable change.')}</p>`;
-  return part('fiche-changes', t(lang, 'Ce qui a changé', 'What changed'), `${meta}${list || empty}`);
-}
-
 /** Étiquettes de sources et de preuves (liens http(s), sélections internes, texte). */
 export function renderSourceChips(sources: readonly FicheSource[]): string {
   const chips = sources.map((s) => {
@@ -227,12 +195,6 @@ export function renderSourceChips(sources: readonly FicheSource[]): string {
     return `<span class="fiche-source">${label}</span>`;
   }).join('');
   return `<div class="fiche-chips">${chips}</div>`;
-}
-
-function renderSources(model: FicheModel, lang: Lang): string {
-  if (model.sources.length === 0) return '';
-  const title = model.sourcesTitle || t(lang, 'Preuves et sources', 'Evidence and sources');
-  return part('fiche-sources', escapeHtml(title), renderSourceChips(model.sources));
 }
 
 const SCALE_ZONES: ReadonlyArray<{ level: VigilanceLevel; width: number }> = [
@@ -302,30 +264,13 @@ function renderSection(model: FicheModel, s: FicheSection): string {
     + `<div class="fmk-sec-body">${s.html}</div></section>`;
 }
 
-/** Fiche complète : en-tête, essentiel, changements, parties du type, chiffres, à surveiller, sources, volet, actions. */
+/** Fiche complète : en-tête, sections du kit, actions. */
 export function renderFiche(model: FicheModel, lang: Lang): string {
   const head = model.score !== undefined ? renderScoreHead(model, model.score, lang) : renderKitHead(model, lang);
-  const essentiel = model.essentiel.length > 0
-    ? part('fiche-essentiel', t(lang, 'L’essentiel', 'Key points'), model.essentiel.map((p) => `<p>${escapeHtml(p)}</p>`).join(''))
-    : '';
   const sections = model.sections.map((s) => renderSection(model, s)).join('');
-  const figures = model.figures.length > 0
-    ? part('fiche-figures', t(lang, 'Chiffres clés', 'Key figures'), `<dl class="fiche-figures-grid">${model.figures.slice(0, 3)
-      .map((f) => `<div><dt>${escapeHtml(f.label)}</dt><dd>${escapeHtml(f.value)}</dd></div>`).join('')}</dl>`)
-    : '';
-  const watch = model.watch.length > 0
-    ? part('fiche-watch', t(lang, 'À surveiller', 'Watch'), `<ul class="fiche-list">${model.watch
-      .map((w) => `<li>${w.horizon ? `<span class="fiche-horizon">${escapeHtml(w.horizon)}</span> ` : ''}${escapeHtml(w.text)}</li>`).join('')}</ul>`)
-    : '';
-  const why = model.why
-    ? `<details class="fiche-why" data-why="${escapeHtml(model.key)}"${model.whyOpen ? ' open' : ''}>`
-      + `<summary>${t(lang, 'Pourquoi ce niveau ?', 'Why this level?')}</summary>`
-      + `<div class="fiche-why-body">${model.why}</div></details>`
-    : '';
-  const whyFirst = model.whyFirst === true;
   const actions = model.actions.length > 0
     ? `<div class="fiche-actions">${model.actions
       .map((a) => `<button type="button" class="fiche-action" data-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`
     : '';
-  return `<article class="fiche fmk" data-fiche="${escapeHtml(model.key)}">${head}${whyFirst ? why : ''}${essentiel}${renderChanges(model, lang)}${sections}${figures}${watch}${renderSources(model, lang)}${whyFirst ? '' : why}${actions}</article>`;
+  return `<article class="fiche fmk" data-fiche="${escapeHtml(model.key)}">${head}${sections}${actions}</article>`;
 }

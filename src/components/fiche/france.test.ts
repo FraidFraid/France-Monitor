@@ -99,7 +99,6 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('en-tête Instrument, puis Situations, Note, Depuis votre visite, indicateurs, Preuves et sources', () => {
     const model = buildFranceFiche(input());
     expect(model.score).not.toBe('pending');
-    expect(model.why).toBe('');
     expect(sectionTitles(renderFiche(model, 'fr'))).toEqual([
       'Situations actives', 'Note de situation', 'Depuis votre dernière visite',
       'Infrastructures', 'Domaines', 'Énergie', 'Chronologie 7 jours', 'Preuves et sources',
@@ -183,7 +182,6 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
 
   it('preuves et sources : section repliable, résumé compté, plus de partie séparée', () => {
     const model = buildFranceFiche(input());
-    expect(model.sources).toEqual([]);
     const sources = model.sections.find((s) => s.id === 'sources');
     expect(sources?.summary).toBe('2 preuves · 1 source');
     expect(sources?.html).toContain('E42 · Explosion dans une usine chimique');
