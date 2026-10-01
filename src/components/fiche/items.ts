@@ -37,9 +37,9 @@ import {
   type WorkBadge,
   type WorkQueue,
 } from '../../services/work-queue.ts';
-import { parseScoreLine, splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
+import { parseScoreLine, splitScoreLines, statusWordLevel, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
 import { escapeHtml, safeHref, type EventDetailState } from '../france-intel-events.ts';
-import { energySection } from './france-indicators.ts';
+import { energySection, fuelSection } from './france-indicators.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { absoluteTime, intensityLevel, kvRow, meterRow, stepCurve, type CurvePoint } from './kit.ts';
 import {
@@ -98,6 +98,7 @@ function officialSignalText(o: OfficialSignal, lang: Lang): string {
 }
 
 interface ThemeFigure {
+  key?: 'total';
   label: string;
   value: string;
 }
@@ -108,7 +109,7 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
   switch (theme) {
     case 'energy': {
       const figures: ThemeFigure[] = [];
-      if (e?.totalMw != null) figures.push({ label: t(lang, 'Production nationale', 'National output'), value: `${formatNumber(Math.round(e.totalMw), lang)} MW` });
+      if (e?.totalMw != null) figures.push({ key: 'total', label: t(lang, 'Production nationale', 'National output'), value: `${formatNumber(Math.round(e.totalMw), lang)} MW` });
       if (e?.oilStocksDays != null) figures.push({ label: t(lang, 'Stocks de carburant', 'Fuel stocks'), value: `${e.oilStocksDays} ${t(lang, 'j', 'd')}` });
       if (e?.windGw != null) figures.push({ label: t(lang, 'Production éolienne', 'Wind output'), value: `${formatNumber(e.windGw, lang)} GW` });
       return figures;
@@ -176,11 +177,13 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
   const itemRows = items.map((i) => `<li>${renderVigilancePill(i.level, lang)} ${escapeHtml(i.title)}</li>`).join('');
 
   const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
-  const figures = themeFigures(theme, input.snapshot, lang).map((f) => kvRow(f.label, escapeHtml(f.value))).join('');
+  // Énergie : « Production totale » de la section énergie remplace la ligne « Production nationale ».
+  const figures = themeFigures(theme, input.snapshot, lang)
+    .filter((f) => !(theme === 'energy' && f.key === 'total')).map((f) => kvRow(f.label, escapeHtml(f.value))).join('');
   const indicators = (figures ? `<div class="fmk-kvs">${figures}</div>` : '')
     + (signalRows ? `<div class="fmk-sub">${t(lang, 'Signaux officiels', 'Official signals')}</div><ul class="fiche-list">${signalRows}</ul>` : '')
     + (itemRows ? `<div class="fmk-sub">${t(lang, 'Éléments à traiter', 'Items to handle')}</div><ul class="fiche-list">${itemRows}</ul>` : '')
-    + (theme === 'energy' ? energySection(input.snapshot.energy, lang).html : '')
+    + (theme === 'energy' ? energySection(input.snapshot.energy, lang).html + (fuelSection(input.snapshot.energy, lang)?.html ?? '') : '')
     + `<p class="fmk-note">${t(lang, 'Le niveau du thème est le plus élevé de ses signaux officiels et de ses éléments à traiter.', 'The theme level is the highest of its official signals and items to handle.')}</p>`;
   const sorted = changes.sort(byTimeDesc);
   const sections: FicheSection[] = [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators }];
@@ -199,7 +202,7 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
     });
   }
 
-  const driverText = n > 0 ? items[0].title : raised.length > 0 ? officialSignalText(raised[0], lang) : t(lang, 'rien à traiter', 'nothing to handle');
+  const driverText = n > 0 ? items[0].title : raised.length > 0 ? officialSignalText(raised[0], lang) : input.ready ? t(lang, 'rien à traiter', 'nothing to handle') : '';
   return {
     key: `theme:${theme}`,
     kind: t(lang, 'Thème', 'Theme'),
@@ -240,6 +243,8 @@ const LOG_LABEL: Record<NewsEventChangeKind, [string, string]> = {
 
 function logText(entry: NewsEventDetail['log'][number], lang: Lang): string {
   const label = LOG_LABEL[entry.kind][lang === 'fr' ? 0 : 1];
+  // Statuts (actif / cooling / closed) : le libellé français suffit, jamais « active → cooling ».
+  if (entry.kind === 'cooling' || entry.kind === 'closed' || entry.kind === 'reopened') return label;
   const severity = entry.kind === 'created' || entry.kind === 'escalated' || entry.kind === 'deescalated';
   const value = (v: string): string => (severity ? severityWord(v, lang) ?? v : v);
   if (entry.from !== null && entry.to !== null) {
@@ -317,7 +322,7 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
   const unconfirmed = unconfirmedPeakLevel(e.severity, e.peakSeverity);
   const loaded = detail !== undefined && detail !== 'loading' && detail !== 'error' ? detail : null;
   const log = loaded ? sortedLog(loaded.log) : null;
-  const firstSeen = parseTime(e.firstSeen) ?? now;
+  const firstSeen = parseTime(e.firstSeen);
   const lastSeen = parseTime(e.lastSeen);
   const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
   const theme = themeLabel(categoryTheme(e.category), lang);
@@ -325,7 +330,7 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
 
   const context = [
     placeText,
-    t(lang, `depuis ${absoluteTime(firstSeen, now, lang)}`, `since ${absoluteTime(firstSeen, now, lang)}`),
+    firstSeen !== null ? t(lang, `depuis ${absoluteTime(firstSeen, now, lang)}`, `since ${absoluteTime(firstSeen, now, lang)}`) : t(lang, 'depuis n.d.', 'since n.d.'),
     statusText(e, log, now, lang),
     unconfirmed ? t(lang, `à confirmer, signalé ${levelLabel(unconfirmed, lang).toLowerCase()}`, `unconfirmed, reported ${levelLabel(unconfirmed, lang).toLowerCase()}`) : null,
   ].filter((c): c is string => c !== null);
@@ -377,7 +382,7 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
       + `${meta ? `<small>${escapeHtml(meta)}</small>` : ''}</li>`;
   }).join('');
   const articlesHtml = articles
-    ? `<ul class="fmk-rows">${articleRows}</ul>`
+    ? articles.length === 0 ? pending('Aucun article disponible.', 'No article available.') : `<ul class="fmk-rows">${articleRows}</ul>`
     : detail === 'error'
       ? pending('Articles indisponibles pour le moment.', 'Articles unavailable right now.')
       : pending('Chargement des articles…', 'Loading articles…');
@@ -401,14 +406,16 @@ export function buildEventFiche(input: EventFicheInput): FicheModel {
       },
       {
         id: 'evolution', title: t(lang, 'Évolution', 'Evolution'), collapsible: true, open: open('evolution', true), html: evolution,
-        summary: log ? escapeHtml(t(lang, `${log.length} changement${plural(log.length)}`, `${log.length} change${plural(log.length)}`)) : '',
+        summary: log ? escapeHtml(log.length > 8
+          ? t(lang, `8 sur ${log.length} changements`, `8 of ${log.length} changes`)
+          : t(lang, `${log.length} changement${plural(log.length)}`, `${log.length} change${plural(log.length)}`)) : '',
       },
       {
         id: 'articles', title: t(lang, 'Articles', 'Articles'), collapsible: true, open: open('articles', false), tone: 'reference', html: articlesHtml,
         summary: escapeHtml(t(lang, `${e.articleCount} articles · ${e.sourceCount} flux`, `${e.articleCount} articles · ${e.sourceCount} feeds`)),
       },
     ],
-    reference: `${e.evidenceId} · ${e.title} · ${levelLabel(level, lang)} · ${t(lang, 'première apparition', 'first seen')} ${absoluteTime(firstSeen, now, lang, { withDate: true })}`,
+    reference: `${e.evidenceId} · ${e.title} · ${levelLabel(level, lang)} · ${t(lang, 'première apparition', 'first seen')} ${firstSeen !== null ? absoluteTime(firstSeen, now, lang, { withDate: true }) : 'n.d.'}`,
     actions,
   };
 }
@@ -445,9 +452,10 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
   const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
   const names = zones.map((z) => z.name);
   const zoneText = names.length > 3 ? `${names.slice(0, 3).join(', ')} + ${names.length - 3}` : names.join(', ');
+  const atText = input.changeAt !== null ? ` (${absoluteTime(input.changeAt, now, lang)})` : '';
   const badgeText = input.badge === 'nouveau'
-    ? t(lang, 'nouveau depuis votre visite', 'new since your visit')
-    : input.badge === 'aggrave' ? t(lang, 'aggravé depuis votre visite', 'escalated since your visit') : null;
+    ? t(lang, `nouveau depuis votre visite${atText}`, `new since your visit${atText}`)
+    : input.badge === 'aggrave' ? t(lang, `aggravé depuis votre visite${atText}`, `escalated since your visit${atText}`) : null;
   const context = [
     levelPhrase(level, lang),
     zoneText || null,
@@ -461,14 +469,21 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
   // Indicateurs (ex-« Pourquoi ce niveau ? », spec 2026-10-01 fiches § 2.3) : une barre par sous-score.
   const meters: string[] = [];
   const notes: string[] = [];
+  const seenLabels = new Set<string>();
+  let trend: string | null = null;
   const pushScore = (line: string): void => {
     const p = parseScoreLine(line);
     if (!p) {
       notes.push(line);
       return;
     }
+    // Une barre par libellé (la synthèse et les facteurs répètent parfois le même sous-score).
+    if (seenLabels.has(p.label)) return;
+    seenLabels.add(p.label);
+    const trendMatch = p.note ? /tendance\s+([^\s,;]+)/i.exec(p.note) : null;
+    if (trendMatch && trend === null) trend = trendMatch[1];
     meters.push(meterRow({
-      label: p.label, value: (p.value / p.max) * 100, level: intensityLevel(p.value, p.max), display: p.display,
+      label: p.label, value: (p.value / p.max) * 100, level: statusWordLevel(p.note) ?? intensityLevel(p.value, p.max), display: p.display,
       noteHtml: p.note ? `<span class="fmk-muted">${escapeHtml(p.note)}</span>` : undefined,
     }));
   };
@@ -477,7 +492,7 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
   const confidence = Math.round(s.confidence * 100);
   meters.push(meterRow({ label: t(lang, 'Confiance', 'Confidence'), value: confidence, level: null, neutral: true, display: `${confidence} %` }));
   const provenance = [
-    s.sourceRefs.length > 0 ? `${t(lang, 'Sources', 'Sources')} : ${s.sourceRefs.join(', ')}` : null,
+    s.sourceRefs.length > 0 ? `${t(lang, 'Sources :', 'Sources:')} ${s.sourceRefs.join(', ')}` : null,
     t(lang, `mise à jour ${absoluteTime(updated, now, lang)}`, `updated ${absoluteTime(updated, now, lang)}`),
   ].filter((c): c is string => c !== null).join(' · ');
   const indicators = `<div class="fmk-meters fmk-meters--score">${meters.join('')}</div>`
@@ -486,7 +501,7 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
 
   const sections: FicheSection[] = [{
     id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true),
-    summary: escapeHtml(confidenceLabel(s.confidence, lang)), html: indicators,
+    summary: escapeHtml(trend ? `${confidenceLabel(s.confidence, lang)} · ${t(lang, 'tendance', 'trend')} ${trend}` : confidenceLabel(s.confidence, lang)), html: indicators,
   }];
   if (s.recommendedActions.length > 0) {
     const items = s.recommendedActions.map((a) => {

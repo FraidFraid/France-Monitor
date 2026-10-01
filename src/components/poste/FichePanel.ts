@@ -18,6 +18,7 @@ export class FichePanel {
   private readonly closeButton: HTMLButtonElement;
   private readonly toast: HTMLElement;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private toastSetTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHtml = '';
   private currentKey: string | null = null;
   private onSelect: ((key: string) => void) | null = null;
@@ -81,12 +82,26 @@ export class FichePanel {
 
   /** Annonce brève (copie, etc.), hors du corps de fiche : survit aux reconstructions, effacée après 2,5 s. */
   announce(text: string): void {
-    this.toast.textContent = text;
     if (this.toastTimer !== null) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => {
+    if (this.toastSetTimer !== null) clearTimeout(this.toastSetTimer);
+    const hide = (): void => {
+      this.toastTimer = setTimeout(() => {
+        this.toast.textContent = '';
+        this.toastTimer = null;
+      }, 2500);
+    };
+    if (this.toast.textContent === text) {
+      // Même message deux fois de suite : vider puis réécrire, sinon le lecteur d'écran ne le relit pas.
       this.toast.textContent = '';
-      this.toastTimer = null;
-    }, 2500);
+      this.toastSetTimer = setTimeout(() => {
+        this.toast.textContent = text;
+        this.toastSetTimer = null;
+        hide();
+      }, 50);
+      return;
+    }
+    this.toast.textContent = text;
+    hide();
   }
 
   getBody(): HTMLElement {

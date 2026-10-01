@@ -109,4 +109,19 @@ describe('FichePanel', () => {
     expect(root.querySelector('.fiche-toast')?.textContent).toBe('');
     vi.useRealTimers();
   });
+
+  it('même annonce deux fois de suite : vidée puis réécrite pour être relue', () => {
+    vi.useFakeTimers();
+    const { root, panel } = mount();
+    panel.render(model(), 'fr', false);
+    const toast = (): string | null | undefined => root.querySelector('.fiche-toast')?.textContent;
+    panel.announce('Référence copiée');
+    panel.announce('Référence copiée');
+    expect(toast()).toBe('');
+    vi.advanceTimersByTime(60);
+    expect(toast()).toBe('Référence copiée');
+    vi.advanceTimersByTime(2500);
+    expect(toast()).toBe('');
+    vi.useRealTimers();
+  });
 });

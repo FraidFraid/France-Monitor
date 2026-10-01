@@ -409,7 +409,7 @@ describe('PosteSituation', () => {
     expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
     expect(roots.fiche.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.textContent).toContain('Chargement des données…');
-    expect(roots.fiche.textContent).not.toContain('Rien à traiter');
+    expect((roots.fiche.textContent ?? '').toLowerCase()).not.toContain('rien à traiter');
   });
 });
 

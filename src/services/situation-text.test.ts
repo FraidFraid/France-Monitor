@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseScoreLine, isScoreText, splitScoreLines, splitScoreSentences, splitZoneScore } from './situation-text.ts';
+import { statusWordLevel, parseScoreLine, isScoreText, splitScoreLines, splitScoreSentences, splitZoneScore } from './situation-text.ts';
 
 describe('sous-scores du moteur (refonte UI étape 2, arbitrage A7)', () => {
   it('reconnaît un sous-score « x/y », pas un pourcentage ni une puissance', () => {
@@ -53,5 +53,24 @@ describe('lignes chiffrées du moteur (spec 2026-10-01 fiches § 4.2)', () => {
   it('phrase sans « libellé : » ou sans fraction : null', () => {
     expect(parseScoreLine('Baromètre cyber consolidé à 65/100, dominé par ransomware.')).toBeNull();
     expect(parseScoreLine('Tension carburant : critique')).toBeNull();
+  });
+});
+
+describe('ponctuation finale et mot de statut', () => {
+  it('une phrase de synthèse ne laisse pas de « . » en note', () => {
+    expect(parseScoreLine('Score national ISNR : 42/100.')).toEqual({ label: 'Score national ISNR', value: 42, max: 100, display: '42/100', note: null });
+    expect(parseScoreLine('Indice : 3/10 (stable) ;')?.note).toBe('stable');
+  });
+  it('statusWordLevel : mots de statut, casse et accents indifférents', () => {
+    expect(statusWordLevel('critiques')).toBe('rouge');
+    expect(statusWordLevel('Sous tension')).toBe('orange');
+    expect(statusWordLevel('tendue')).toBe('orange');
+    expect(statusWordLevel('FORTE')).toBe('orange');
+    expect(statusWordLevel('élevés')).toBe('orange');
+    expect(statusWordLevel('Modérée')).toBe('jaune');
+    expect(statusWordLevel('normaux')).toBe('vert');
+    expect(statusWordLevel('faible')).toBe('vert');
+    expect(statusWordLevel('tendance stable')).toBeNull();
+    expect(statusWordLevel(null)).toBeNull();
   });
 });

@@ -10,7 +10,7 @@ import {
   type ThemeFicheInput,
 } from './items.ts';
 import { renderFiche, type FicheModel } from './parts.ts';
-import { energySection } from './france-indicators.ts';
+import { energySection, fuelSection } from './france-indicators.ts';
 import { buildWorkQueue, officialAlertGroups, type WorkQueueInput } from '../../services/work-queue.ts';
 import type {
   DetectedSituation,
@@ -161,7 +161,20 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
   it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter »', () => {
     const m = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt('green') }) }));
     expect(m.lead).toContain('Chargement des données…');
-    expect(JSON.stringify(m)).not.toContain('Rien à traiter');
+    expect(JSON.stringify(m).toLowerCase()).not.toContain('rien à traiter');
+    expect(m.context?.join(' ').toLowerCase()).not.toContain('rien à traiter');
+  });
+
+  it('énergie : le bloc carburants suit le bloc énergie, production affichée une seule fois', () => {
+    const e = { ...energy(), oilStocksDays: 46, fuelTensionLevel: 'HIGH' as const };
+    const html = buildThemeFiche(themeInput({ snapshot: { signals: signals(), energy: e } })).sections[0].html;
+    const fuel = fuelSection(e, 'fr')?.html ?? '';
+    expect(fuel).not.toBe('');
+    expect(html).toContain(fuel);
+    expect(html).toContain('Stocks nationaux');
+    expect(html.indexOf(fuel)).toBeGreaterThan(html.indexOf('Production totale'));
+    expect(html).not.toContain('Production nationale');
+    expect(html.match(/Production (totale|nationale)/g)).toHaveLength(1);
   });
 });
 
@@ -180,7 +193,7 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
       { id: 2, title: 'Article récent <b>', link: 'https://exemple.fr/b', feedName: 'Le Figaro', publishedAt: '2026-10-01T04:44:00Z' },
     ],
     log: [
-      { at: '2026-10-01T06:30:00Z', kind: 'cooling', from: null, to: null },
+      { at: '2026-10-01T06:30:00Z', kind: 'cooling', from: 'active', to: 'cooling' },
       { at: '2026-09-30T21:00:00Z', kind: 'corroborated', from: '1', to: '2' },
       { at: '2026-10-01T08:30:00Z', kind: 'corroborated', from: '4', to: '5' },
       { at: '2026-10-01T05:00:00Z', kind: 'corroborated', from: '2', to: '3' },
@@ -279,6 +292,45 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
     expect(byId(build({ detail: d })).get('evolution')?.html).toContain('aggravé jaune → orange');
   });
 
+  it('journal des statuts : libellé français seul, jamais de statut anglais ni de flèche', () => {
+    const d: NewsEventDetail = {
+      ...detail,
+      log: [
+        { at: '2026-10-01T05:00:00Z', kind: 'cooling', from: 'active', to: 'cooling' },
+        { at: '2026-10-01T06:00:00Z', kind: 'closed', from: 'cooling', to: 'closed' },
+        { at: '2026-10-01T07:00:00Z', kind: 'reopened', from: 'closed', to: 'active' },
+      ],
+    };
+    const html = byId(build({ detail: d })).get('evolution')?.html ?? '';
+    expect(html).toContain('en refroidissement');
+    expect(html).toContain('clos');
+    expect(html).toContain('rouvert');
+    expect(html).not.toMatch(/cooling|closed|active|→/);
+  });
+
+  it('articles chargés mais vides : « Aucun article disponible. »', () => {
+    const html = byId(build({ detail: { ...detail, articles: [] } })).get('articles')?.html ?? '';
+    expect(html).toContain('Aucun article disponible.');
+    expect(html).not.toContain('<ul');
+  });
+
+  it('évolution : « 8 sur n changements » au-delà de 8 entrées', () => {
+    const many: NewsEventDetail = {
+      ...detail,
+      log: Array.from({ length: 11 }, (_, i) => ({ at: `2026-10-01T0${i % 8}:00:00Z`, kind: 'corroborated' as const, from: String(i), to: String(i + 1) })),
+    };
+    const ev8 = byId(build({ detail: many })).get('evolution');
+    expect(ev8?.summary).toBe('8 sur 11 changements');
+    expect(ev8?.html.match(/<li /g)).toHaveLength(8);
+    expect(byId(build({ detail: { ...detail, log: many.log.slice(0, 8) } })).get('evolution')?.summary).toBe('8 changements');
+  });
+
+  it('première apparition illisible : « depuis n.d. », jamais l’heure actuelle', () => {
+    const m = build({ event: ev({ firstSeen: 'pas une date' }) });
+    expect(m.context).toContain('depuis n.d.');
+    expect(m.reference).toContain('n.d.');
+  });
+
   it('référence copiable et actions', () => {
     const m = build();
     expect(m.reference).toBe('E13516 · Haut-Rhin : menace d’attentat contre un lycée · Jaune · première apparition 30/09 19:11');
@@ -290,6 +342,45 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
     const m = build({ event: ev({ zone: 'etranger' }), place: null });
     expect(m.context?.[0]).toBe('à l’étranger');
     expect(JSON.stringify(m)).not.toContain('—');
+  });
+});
+
+describe('fiche situation : couleurs, doublons, provenance (revue finale)', () => {
+  const NOW_S = Date.parse('2026-10-01T08:30:00Z');
+  const build = (over: Partial<DetectedSituation> = {}, input: Partial<SituationFicheInput> = {}): FicheModel => buildSituationFiche({
+    situation: situation({ updatedAt: new Date('2026-10-01T06:57:00Z'), ...over }),
+    kind: 'situation', badge: null, changeAt: null, hasDossier: false, sectionOpen: new Map(), lang: 'fr', now: NOW_S, ...input,
+  });
+  const indicators = (m: FicheModel): string => m.sections.find((x) => x.id === 'indicators')?.html ?? '';
+
+  it('la barre suit le mot de statut du moteur : « sous tension » est orange, pas vert', () => {
+    const html = indicators(build({ drivers: ['Vigilance stocks pétroliers : sous tension (score 49/100)'] }));
+    expect(html).toContain('width:49%;background:var(--sev-orange)');
+    expect(html).not.toContain('width:49%;background:var(--sev-green)');
+  });
+
+  it('SOCIAL_ESCALATION réel : une barre par libellé, aucune note « . »', () => {
+    const m = build({
+      type: 'SOCIAL_ESCALATION', title: 'Escalade sociale localisée',
+      summary: '5 département(s) avec tensions sociales ou sécuritaires élevées. Score national ISNR : 42/100.',
+      affectedZones: ['Seine-Saint-Denis (72/100)', 'Rhône (61/100)'],
+      drivers: ['5 dept(s) avec dimension sociale/sécurité ≥ 40', 'Score national ISNR : 42/100', '1 dept(s) en situation critique (score ≥ 65)'],
+    });
+    const html = indicators(m);
+    expect(html.match(/Score national ISNR/g)).toHaveLength(1);
+    expect(html).not.toMatch(/>\.</);
+    expect(html).not.toContain('fmk-muted">.');
+  });
+
+  it('provenance anglaise « Sources: », tendance dans le résumé, heure du badge', () => {
+    const over = { drivers: ['Score cyber consolidé : 63/100 (tendance haussière)'], sourceRefs: ['CERT-FR'] };
+    const en = build(over, { lang: 'en' });
+    expect(indicators(en)).toContain('Sources: CERT-FR');
+    expect(indicators(en)).not.toContain('Sources :');
+    const fr = build(over);
+    expect(fr.sections.find((x) => x.id === 'indicators')?.summary).toMatch(/ · tendance haussière$/);
+    const badged = build(over, { badge: 'nouveau', changeAt: Date.parse('2026-10-01T07:15:00Z') });
+    expect(badged.context).toContain('nouveau depuis votre visite (09:15)');
   });
 });
 
@@ -318,7 +409,7 @@ describe('fiche situation (spec 2026-10-01 fiches § 4.2)', () => {
   it('indicateurs ouverts : une barre par sous-score à sa propre intensité, confiance grise, phrase chiffrée en note, provenance', () => {
     const s = byId(build());
     const ind = s.get('indicators');
-    expect(ind).toMatchObject({ collapsible: true, open: true, summary: 'confiance élevée' });
+    expect(ind).toMatchObject({ collapsible: true, open: true, summary: 'confiance élevée · tendance stable' });
     const html = ind?.html ?? '';
     expect(html).toContain('Score cyber consolidé');
     expect(html).toContain('width:65%;background:var(--sev-yellow)');

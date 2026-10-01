@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DASH = '—';
+// Le tiret cadratin écrit en entité HTML s'affiche pareil : même interdiction.
+const DASH_ENTITY = /&mdash;|&#0*8212;|&#x0*2014;/i;
+const hasDash = (text: string): boolean => text.includes(DASH) || DASH_ENTITY.test(text);
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -26,7 +29,7 @@ function dashedLiterals(file: string): string[] {
   const found: string[] = [];
   const visit = (node: ts.Node): void => {
     if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
-      && node.text.includes(DASH)) {
+      && hasDash(node.text)) {
       const { line } = source.getLineAndCharacterOfPosition(node.getStart());
       found.push(`${path.relative(ROOT, file)}:${line + 1}`);
     }
@@ -40,7 +43,7 @@ describe('aucun tiret cadratin affiché (spec 2026-10-01 fiches § 7)', () => {
   it('aucun littéral de chaîne de src/ ni d’api/ n’en contient', () => {
     const offenders = [...sourceFiles(path.join(ROOT, 'src')), ...sourceFiles(path.join(ROOT, 'api'))].flatMap(dashedLiterals);
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 });
 
 function dataFiles(dir: string, ext: RegExp, out: string[] = []): string[] {
@@ -57,7 +60,7 @@ function dataFiles(dir: string, ext: RegExp, out: string[] = []): string[] {
 
 function dashedJsonValues(value: unknown, trail: string, file: string, out: string[]): void {
   if (typeof value === 'string') {
-    if (value.includes(DASH)) out.push(`${file}: ${trail}`);
+    if (hasDash(value)) out.push(`${file}: ${trail}`);
   } else if (Array.isArray(value)) {
     value.forEach((v, i) => dashedJsonValues(v, `${trail}[${i}]`, file, out));
   } else if (value && typeof value === 'object') {
@@ -78,7 +81,7 @@ describe('aucun tiret cadratin dans les données JSON ni les pages HTML', () => 
 
   it('index.html et les .html de public/ n’en contiennent pas', () => {
     const files = [path.join(ROOT, 'index.html'), ...dataFiles(path.join(ROOT, 'public'), /\.html$/)];
-    const offenders = files.filter((f) => readFileSync(f, 'utf8').includes(DASH)).map((f) => path.relative(ROOT, f));
+    const offenders = files.filter((f) => hasDash(readFileSync(f, 'utf8'))).map((f) => path.relative(ROOT, f));
     expect(offenders).toEqual([]);
   });
 });

@@ -54,6 +54,25 @@ export function parseScoreLine(line: string): { label: string; value: number; ma
   const value = Number(match[1].replace(',', '.'));
   const max = Number(match[2]);
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return null;
-  const note = rest.replace(match[0], '').replace(/\bscore\b/i, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+  const note = rest.replace(match[0], '').replace(/\bscore\b/i, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim()
+    .replace(/^[\s.;,·]+|[\s.;,]+$/g, '');
   return { label, value, max, display: `${match[1]}/${match[2]}`, note: note === '' ? null : note };
+}
+
+const STATUS_WORDS: ReadonlyArray<readonly [RegExp, 'rouge' | 'orange' | 'jaune' | 'vert']> = [
+  [/\bcritiques?\b/, 'rouge'],
+  [/\bsous tension\b|\btendu(?:e|s|es)?\b|\bfortes?\b|\belev(?:e|es|s)\b/, 'orange'],
+  [/\bmodere(?:e|s|es)?\b/, 'jaune'],
+  [/\bnormal(?:e|es)?\b|\bnormaux\b|\bfaibles?\b/, 'vert'],
+];
+
+/**
+ * Niveau L1 porté par le mot de statut du moteur dans une note (« sous tension », « critiques »),
+ * insensible à la casse et aux accents ; null sans mot de statut (la barre suit alors son ratio).
+ */
+export function statusWordLevel(note: string | null): 'rouge' | 'orange' | 'jaune' | 'vert' | null {
+  if (!note) return null;
+  const plain = note.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  for (const [pattern, level] of STATUS_WORDS) if (pattern.test(plain)) return level;
+  return null;
 }
