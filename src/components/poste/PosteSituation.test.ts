@@ -223,7 +223,7 @@ describe('PosteSituation', () => {
     expect(document.activeElement?.classList.contains('fiche-name')).toBe(true);
   });
 
-  it('le volet « Pourquoi ce niveau ? » ouvert le reste après vingt mises à jour', () => {
+  it('le volet « Pourquoi ce niveau ? » d’une fiche situation ouvert le reste après vingt mises à jour', () => {
     const { roots, poste } = setup();
     poste.select('situation:energy-stress');
     const details = roots.fiche.querySelector('details.fiche-why');
@@ -419,6 +419,8 @@ describe('PosteSituation', () => {
     expect(ficheKey(roots)).toBe('france');
     energy()?.click();
     expect(ficheKey(roots)).toBe('theme:energy');
+    expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
+    expect(roots.fiche.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.textContent).toContain('Chargement des données…');
     expect(roots.fiche.textContent).not.toContain('Rien à traiter');
   });

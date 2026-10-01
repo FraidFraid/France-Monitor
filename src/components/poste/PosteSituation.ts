@@ -371,7 +371,8 @@ export class PosteSituation {
     const vanished = this.selection !== null && model === null;
     if (vanished) this.selection = null;
     model ??= this.defaultFiche(data, queue, drivers);
-    if (!data.ready && (model.key === 'france' || model.key.startsWith('theme:'))) {
+    // La fiche France affiche son propre en-tête d'attente ; seules les fiches de thème gardent ce pilote.
+    if (!data.ready && model.key.startsWith('theme:')) {
       model = { ...model, level: null, driver: lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed' };
     }
     this.fichePanel.render(model, lang, this.selection !== null);

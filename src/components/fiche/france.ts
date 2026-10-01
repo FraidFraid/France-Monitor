@@ -258,7 +258,7 @@ function sourcesSummary(sources: readonly FicheSource[], lang: Lang): string {
   const named = sources.length - evidence;
   const parts: string[] = [];
   if (evidence > 0) parts.push(lang === 'fr' ? `${evidence} preuve${evidence > 1 ? 's' : ''}` : `${evidence} evidence`);
-  if (named > 0) parts.push(lang === 'fr' ? `${named} source${named > 1 ? 's' : ''}` : `${named} source${named > 1 ? 's' : ''}`);
+  if (named > 0) parts.push(`${named} source${named > 1 ? 's' : ''}`);
   return escapeHtml(parts.join(' · '));
 }
 
