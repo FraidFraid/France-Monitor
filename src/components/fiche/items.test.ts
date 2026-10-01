@@ -10,6 +10,7 @@ import {
   type ThemeFicheInput,
 } from './items.ts';
 import { renderFiche, type FicheModel } from './parts.ts';
+import { energySection } from './france-indicators.ts';
 import { buildWorkQueue, officialAlertGroups, type WorkQueueInput } from '../../services/work-queue.ts';
 import type {
   DetectedSituation,
@@ -24,7 +25,6 @@ import type {
 import { parisDate } from '../../services/ecowatt-official.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
-const visibleOf = (html: string): string => html.slice(0, html.indexOf('<details'));
 
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
   return {
@@ -76,48 +76,81 @@ function queue(over: Partial<WorkQueueInput> = {}): ReturnType<typeof buildWorkQ
 function themeInput(over: Partial<ThemeFicheInput> = {}): ThemeFicheInput {
   return {
     theme: 'energy', queue: queue(), snapshot: { signals: signals(), energy: null }, events: null,
-    changeTimes: new Map(), freshness: '33 sources sur 35 à jour', whyOpen: false, ready: true, lang: 'fr', ...over,
+    changeTimes: new Map(), freshness: '33 sources sur 35 à jour', sectionOpen: new Map(), now: NOW, ready: true, lang: 'fr', ...over,
   };
 }
 
-describe('fiche thème', () => {
-  it('rien à traiter : fiche verte et éléments suivis au vert (§7.4)', () => {
-    const model = buildThemeFiche(themeInput({ queue: queue({ ecowatt: ecowatt('green') }) }));
-    expect(model.kind).toBe('Thème');
-    expect(model.name).toBe('Énergie');
-    expect(model.level).toBe('vert');
-    expect(model.essentiel).toEqual(['Rien à traiter. 1 élément suivi est au vert.']);
+describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
+  const ids = (m: FicheModel): Array<string | undefined> => m.sections.map((s) => s.id);
+  const envInput = (): ThemeFicheInput => themeInput({
+    theme: 'environment',
+    queue: queue({
+      meteo: [{ department: 'Var', departmentCode: '83', level: 'yellow', risks: [] }],
+      situations: [situation({ id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'critical', title: 'Crise hydrologique active' })],
+    }),
+    snapshot: { signals: signals({ meteoAlerts: 3, floodAlerts: 2, fireDetections: 14 }), energy: null },
   });
 
-  it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter » (relecture finale m1)', () => {
-    const model = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt('green') }) }));
-    expect(model.essentiel).toEqual(['Chargement des données…']);
-    expect(renderFiche(model, 'fr')).not.toContain('Rien à traiter');
+  it('rien à traiter : fiche verte, contexte et synthèse', () => {
+    const m = buildThemeFiche(themeInput({ queue: queue({ ecowatt: ecowatt('green') }) }));
+    expect(m.kind).toBe('Thème');
+    expect(m.name).toBe('Énergie');
+    expect(m.level).toBe('vert');
+    expect(m.lead).toBe('Rien à traiter. 1 élément suivi est au vert.');
+    expect(m.context).toEqual(['rien à traiter', '33 sources sur 35 à jour']);
   });
 
-  it('niveau et signaux officiels du thème, chiffres clés, éléments dans le volet', () => {
-    const model = buildThemeFiche(themeInput({
-      theme: 'environment',
-      queue: queue({
-        meteo: [{ department: 'Var', departmentCode: '83', level: 'yellow', risks: [] }],
-        situations: [situation({ id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'critical', title: 'Crise hydrologique active' })],
-      }),
-      snapshot: { signals: signals({ meteoAlerts: 3, floodAlerts: 2, fireDetections: 14 }), energy: null },
-    }));
-    expect(model.level).toBe('rouge');
-    expect(model.driver).toBe('Crise hydrologique active');
-    expect(model.figures.map((f) => f.value)).toEqual(['3', '2', '14']);
-    expect(model.essentiel).toContain('Vigilance météo jaune.');
-    const html = renderFiche(model, 'fr');
-    expect(html).toContain('Météo-France');
-    expect(visibleOf(html)).toContain('1 élément à traiter, dont 1 rouge.');
+  it('niveau, signaux officiels, chiffres et éléments dans la section indicateurs', () => {
+    const m = buildThemeFiche(envInput());
+    expect(m.level).toBe('rouge');
+    expect(m.context?.[0]).toBe('Crise hydrologique active');
+    expect(m.lead).toContain('1 élément à traiter, dont 1 rouge.');
+    expect(m.lead).toContain('Vigilance météo jaune.');
+    expect(ids(m)[0]).toBe('indicators');
+    expect(m.sections[0]).toMatchObject({ collapsible: true, open: true });
+    const html = m.sections[0].html;
+    expect(html).toContain('Départements en vigilance orange ou rouge');
+    expect(html).toContain('Signaux officiels');
+    expect(html).toContain('Éléments à traiter');
+    expect(html).toContain('fm-vig');
+    expect(html).toContain('Le niveau du thème est le plus élevé');
+    const sources = m.sections.find((s) => s.id === 'sources');
+    expect(sources).toMatchObject({ open: false, tone: 'reference' });
+    expect(sources?.html).toContain('Météo-France');
   });
 
-  it('énergie : production, stocks et éolien en chiffres clés, bloc énergie dans le volet', () => {
-    const model = buildThemeFiche(themeInput({ snapshot: { signals: signals(), energy: energy() } }));
-    expect(model.figures.map((f) => f.label)).toEqual(['Production nationale', 'Stocks de carburant', 'Production éolienne']);
-    expect(model.figures[1].value).toBe('46 j');
-    expect(model.why).toContain('frintel-energy-stack');
+  it('énergie : bloc énergie du kit, aucune trace des anciennes cartes', () => {
+    const m = buildThemeFiche(themeInput({ snapshot: { signals: signals(), energy: energy() } }));
+    expect(m.sections[0].html).toContain(energySection(energy(), 'fr').html);
+    expect(m.sections[0].html).not.toContain('frintel-card');
+    expect(JSON.stringify(m)).not.toContain('fiche-why');
+    expect(JSON.stringify(m)).not.toContain('—');
+    expect(m.why).toBe('');
+  });
+
+  it('évolution : heures absolues, ouverte quand des changements existent, remplacée par sectionOpen', () => {
+    const base = envInput();
+    const changeTimes = new Map<string, number>();
+    const first = buildThemeFiche(base).sections;
+    expect(first.find((s) => s.id === 'evolution')).toBeUndefined();
+    const item = base.queue.items.find((i) => i.badge !== null && i.ref.kind !== 'event');
+    if (item) {
+      changeTimes.set(item.key, NOW - 3600_000);
+      const m = buildThemeFiche({ ...base, changeTimes });
+      const ev = m.sections.find((s) => s.id === 'evolution');
+      expect(ev).toMatchObject({ collapsible: true, open: true });
+      expect(ev?.summary).toBe('1 changement');
+      expect(ev?.html).toContain('07:30');
+      const closed = buildThemeFiche({ ...base, changeTimes, sectionOpen: new Map([['evolution', false]]) });
+      expect(closed.sections.find((s) => s.id === 'evolution')?.open).toBe(false);
+    }
+    expect(buildThemeFiche({ ...base, sectionOpen: new Map([['indicators', false]]) }).sections[0].open).toBe(false);
+  });
+
+  it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter »', () => {
+    const m = buildThemeFiche(themeInput({ ready: false, queue: queue({ ecowatt: ecowatt('green') }) }));
+    expect(m.lead).toContain('Chargement des données…');
+    expect(JSON.stringify(m)).not.toContain('Rien à traiter');
   });
 });
 
@@ -336,19 +369,43 @@ describe('fiche situation (spec 2026-10-01 fiches § 4.2)', () => {
   });
 });
 
-describe('fiches alerte officielle et marché', () => {
-  it('alerte officielle : détail par lieu échappé, violet compté rouge et dit dans le volet', () => {
-    const [group] = officialAlertGroups(null, [{ department: '<Var>', departmentCode: '83', level: 'violet', risks: ['heat'] }], []);
-    const html = renderFiche(buildOfficialFiche(group, { freshness: '', whyOpen: false, lang: 'fr' }), 'fr');
-    expect(html).toContain('&lt;Var&gt; : Canicule');
-    expect(html).toContain('<span class="fm-vig fm-vig--rouge">Rouge</span>');
-    expect(html).toContain('Le violet de Météo-France compte comme rouge.');
-    expect(html).toContain('data-action="show-layer"');
+describe('fiches alerte officielle et marché (spec 2026-10-01 fiches § 4.4 et 4.5)', () => {
+  const ids = (m: FicheModel): Array<string | undefined> => m.sections.map((s) => s.id);
+  const officialGroup = (): ReturnType<typeof officialAlertGroups>[number] =>
+    officialAlertGroups(null, [{ department: '<Var>', departmentCode: '83', level: 'violet', risks: ['heat'] }], [])[0];
+  const line = { symbol: 'CAC40', name: 'CAC 40', price: 7212.5, changePercent: -3.42, kind: 'index' } as const;
+
+  it('alerte officielle : émetteur, lieux, niveau repris tel quel, détail par lieu échappé, sources repliées', () => {
+    const m = buildOfficialFiche(officialGroup(), { freshness: '30 sources sur 39 à jour', sectionOpen: new Map(), lang: 'fr' });
+    expect(m.kind).toBe('Alerte officielle · Météo-France');
+    expect(m.context).toEqual(['Météo-France', '30 sources sur 39 à jour']);
+    expect(m.lead).toContain('<Var>');
+    expect(ids(m)).toEqual(['indicators', 'places', 'sources']);
+    expect(m.sections[0]).toMatchObject({ open: true });
+    expect(m.sections[0].html).toContain('Lieux concernés');
+    expect(m.sections[0].html).toContain('Niveau publié par Météo-France, repris tel quel.');
+    expect(m.sections[0].html).toContain('Le violet de Météo-France compte comme rouge.');
+    expect(m.sections[1]).toMatchObject({ title: 'Détail par lieu', open: true, summary: '1' });
+    expect(m.sections[1].html).toContain('&lt;Var&gt; : Canicule');
+    expect(m.sections[2]).toMatchObject({ open: false, tone: 'reference' });
+    expect(m.actions.map((a) => a.id)).toEqual(['show-layer']);
+    expect(JSON.stringify(m)).not.toContain('—');
+    const closed = buildOfficialFiche(officialGroup(), { freshness: '', sectionOpen: new Map([['places', false]]), lang: 'fr' });
+    expect(closed.sections[1].open).toBe(false);
   });
 
-  it('marché : jaune, seuil dit en clair', () => {
-    const model = buildMarketFiche({ symbol: 'CAC40', name: 'CAC 40', price: 7212.5, changePercent: -3.42, kind: 'index' }, { whyOpen: false, lang: 'fr' });
-    expect(model.level).toBe('jaune');
-    expect(model.essentiel[0]).toBe('CAC 40 varie de −3,42 % sur la journée, au-delà du seuil de ±3 %.');
+  it('marché : cours, variation, seuil ; aucune section sources', () => {
+    const m = buildMarketFiche(line, { sectionOpen: new Map(), lang: 'fr' });
+    expect(m.kind).toBe('Marché');
+    expect(m.level).toBe('jaune');
+    expect(m.context).toEqual(['mouvement exceptionnel']);
+    expect(m.lead).toBe('CAC 40 varie de −3,42 % sur la journée, au-delà du seuil de ±3 %.');
+    expect(ids(m)).toEqual(['indicators']);
+    expect(m.sections[0]).toMatchObject({ open: true });
+    expect(m.sections[0].html).toContain('Cours');
+    expect(m.sections[0].html).toContain('Variation');
+    expect(m.sections[0].html).toContain('Seuil d’alerte');
+    expect(JSON.stringify(m)).not.toContain('—');
+    expect(buildMarketFiche(line, { sectionOpen: new Map([['indicators', false]]), lang: 'fr' }).sections[0].open).toBe(false);
   });
 });

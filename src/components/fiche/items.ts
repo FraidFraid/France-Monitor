@@ -39,7 +39,7 @@ import {
 } from '../../services/work-queue.ts';
 import { parseScoreLine, splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
 import { escapeHtml, safeHref, type EventDetailState } from '../france-intel-events.ts';
-import { renderEnergyBlock } from '../france-intel-blocks.ts';
+import { energySection } from './france-indicators.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { absoluteTime, intensityLevel, kvRow, meterRow, stepCurve, type CurvePoint } from './kit.ts';
 import {
@@ -84,7 +84,8 @@ export interface ThemeFicheInput {
   events: IntelEventsState | null;
   changeTimes: ReadonlyMap<string, number>;
   freshness: string;
-  whyOpen: boolean;
+  sectionOpen: ReadonlyMap<string, boolean>;
+  now: number;
   /** Couches critiques chargées : avant, « Chargement des données… », jamais « Rien à traiter » (relecture finale m1). */
   ready: boolean;
   lang: Lang;
@@ -169,32 +170,43 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
     return `<li>${renderVigilancePill(o.level, lang)} ${escapeHtml(officialSourceName(o.source))}${where}</li>`;
   }).join('');
   const itemRows = items.map((i) => `<li>${renderVigilancePill(i.level, lang)} ${escapeHtml(i.title)}</li>`).join('');
-  const why = [
-    signalRows ? `<h4 class="fiche-why-title">${t(lang, 'Signaux officiels', 'Official signals')}</h4><ul class="fiche-list">${signalRows}</ul>` : '',
-    itemRows ? `<h4 class="fiche-why-title">${t(lang, 'Éléments à traiter', 'Items to handle')}</h4><ul class="fiche-list">${itemRows}</ul>` : '',
-    theme === 'energy' ? renderEnergyBlock(input.snapshot.energy, lang) : '',
-    `<p class="fiche-meta">${t(lang,
-      'Le niveau du thème est le plus élevé de ses signaux officiels et de ses éléments à traiter.',
-      'The theme level is the highest of its official signals and items to handle.')}</p>`,
-  ].join('');
 
+  const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
+  const figures = themeFigures(theme, input.snapshot, lang).map((f) => kvRow(f.label, escapeHtml(f.value))).join('');
+  const indicators = (figures ? `<div class="fmk-kvs">${figures}</div>` : '')
+    + (signalRows ? `<div class="fmk-sub">${t(lang, 'Signaux officiels', 'Official signals')}</div><ul class="fiche-list">${signalRows}</ul>` : '')
+    + (itemRows ? `<div class="fmk-sub">${t(lang, 'Éléments à traiter', 'Items to handle')}</div><ul class="fiche-list">${itemRows}</ul>` : '')
+    + (theme === 'energy' ? energySection(input.snapshot.energy, lang).html : '')
+    + `<p class="fmk-note">${t(lang, 'Le niveau du thème est le plus élevé de ses signaux officiels et de ses éléments à traiter.', 'The theme level is the highest of its official signals and items to handle.')}</p>`;
+  const sorted = changes.sort(byTimeDesc);
+  const sections: FicheSection[] = [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators }];
+  if (sorted.length > 0) {
+    sections.push({
+      id: 'evolution', title: t(lang, 'Évolution', 'Evolution'), collapsible: true, open: open('evolution', true),
+      summary: escapeHtml(t(lang, `${sorted.length} changement${plural(sorted.length)}`, `${sorted.length} change${plural(sorted.length)}`)),
+      html: renderChangeRows(sorted, lang, input.now),
+    });
+  }
+  const sources = [...labels].slice(0, 8).map((label) => ({ label, href: null, select: null }));
+  if (sources.length > 0) {
+    sections.push({
+      id: 'sources', title: t(lang, 'Sources', 'Sources'), collapsible: true, open: open('sources', false), tone: 'reference',
+      summary: escapeHtml(`${sources.length} source${plural(sources.length)}`), html: renderSourceChips(sources),
+    });
+  }
+
+  const driverText = n > 0 ? items[0].title : raised.length > 0 ? officialSignalText(raised[0], lang) : t(lang, 'rien à traiter', 'nothing to handle');
   return {
     key: `theme:${theme}`,
     kind: t(lang, 'Thème', 'Theme'),
     name: themeLabel(theme, lang),
     level: queue.themeLevels[theme],
-    driver: n > 0 ? items[0].title : raised.length > 0 ? officialSignalText(raised[0], lang) : t(lang, 'rien à traiter', 'nothing to handle'),
-    freshness: input.freshness,
-    essentiel: essentiel.slice(0, 3),
-    changesMeta: '',
-    changes: changes.sort(byTimeDesc),
-    sections: [],
-    figures: themeFigures(theme, input.snapshot, lang),
-    watch: [],
-    sourcesTitle: t(lang, 'Sources', 'Sources'),
-    sources: [...labels].slice(0, 8).map((label) => ({ label, href: null, select: null })),
-    why,
-    whyOpen: input.whyOpen,
+    driver: '',
+    freshness: '',
+    context: [driverText, input.freshness].filter(Boolean),
+    lead: essentiel.slice(0, 3).join(' '),
+    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
+    sections,
     actions: [{ id: 'show-theme', label: t(lang, 'Afficher sur la carte', 'Show on map') }],
   };
 }
@@ -534,8 +546,9 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
 
 // ─── Alerte officielle et marché ──────────────────────────────────────────────────────────────
 
-export function buildOfficialFiche(group: OfficialAlertGroup, input: { freshness: string; whyOpen: boolean; lang: Lang }): FicheModel {
+export function buildOfficialFiche(group: OfficialAlertGroup, input: { freshness: string; sectionOpen: ReadonlyMap<string, boolean>; lang: Lang }): FicheModel {
   const { lang } = input;
+  const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
   const n = group.places.length;
   const shown = group.places.slice(0, 5).join(', ');
   const more = n > 5 ? t(lang, ` et ${n - 5} autre${plural(n - 5)}`, ` and ${n - 5} more`) : '';
@@ -543,60 +556,58 @@ export function buildOfficialFiche(group: OfficialAlertGroup, input: { freshness
   const violet = group.source === 'meteo'
     ? ` ${t(lang, 'Le violet de Météo-France compte comme rouge.', 'Météo-France purple counts as red.')}`
     : '';
+  const note = `${t(lang, `Niveau publié par ${source}, repris tel quel.`, `Level published by ${source}, shown as is.`)}${violet}`;
   return {
     key: `official:${group.source}:${group.level}`,
-    kind: t(lang, 'Alerte officielle', 'Official alert'),
+    kind: `${t(lang, 'Alerte officielle', 'Official alert')} · ${source}`,
     name: officialTitle(group, lang),
     level: group.level,
-    driver: source,
-    freshness: input.freshness,
-    essentiel: [t(lang,
+    driver: '',
+    freshness: '',
+    context: [source, input.freshness].filter(Boolean),
+    lead: t(lang,
       `${capitalize(levelVigilanceWord(group.level))} (${levelPhrase(group.level)}) : ${shown}${more}.`,
-      `${capitalize(levelVigilanceWord(group.level, 'en'))} (${levelPhrase(group.level, 'en')}): ${shown}${more}.`)],
-    changesMeta: '',
-    changes: [],
-    sections: [{
-      title: t(lang, 'Détail par lieu', 'Detail by place'),
-      html: `<ul class="fiche-list">${group.details.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`,
-    }],
-    figures: [{ label: t(lang, 'Lieux concernés', 'Places concerned'), value: String(n) }],
-    watch: [],
-    sourcesTitle: t(lang, 'Sources', 'Sources'),
-    sources: [{ label: source, href: null, select: null }],
-    why: `<p>${escapeHtml(t(lang, `Niveau publié par ${source}, repris tel quel.`, `Level published by ${source}, shown as is.`))}${violet}</p>`,
-    whyOpen: input.whyOpen,
+      `${capitalize(levelVigilanceWord(group.level, 'en'))} (${levelPhrase(group.level, 'en')}): ${shown}${more}.`),
+    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
+    sections: [
+      {
+        id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true),
+        html: `<div class="fmk-kvs">${kvRow(t(lang, 'Lieux concernés', 'Places concerned'), String(n))}</div><p class="fmk-note">${escapeHtml(note)}</p>`,
+      },
+      {
+        id: 'places', title: t(lang, 'Détail par lieu', 'Detail by place'), collapsible: true, open: open('places', true), summary: String(n),
+        html: `<ul class="fiche-list">${group.details.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`,
+      },
+      {
+        id: 'sources', title: t(lang, 'Sources', 'Sources'), collapsible: true, open: open('sources', false), tone: 'reference',
+        summary: '1', html: renderSourceChips([{ label: source, href: null, select: null }]),
+      },
+    ],
     actions: [{ id: 'show-layer', label: t(lang, 'Afficher la couche', 'Show layer') }],
   };
 }
 
-export function buildMarketFiche(line: MarketLine, input: { whyOpen: boolean; lang: Lang }): FicheModel {
+export function buildMarketFiche(line: MarketLine, input: { sectionOpen: ReadonlyMap<string, boolean>; lang: Lang }): FicheModel {
   const { lang } = input;
   const threshold = MARKET_ALERT_THRESHOLD[line.kind];
   const pct = formatSignedPct(line.changePercent);
+  const html = `<div class="fmk-kvs">${kvRow(t(lang, 'Cours', 'Price'), escapeHtml(formatNumber(line.price, lang)))}${kvRow(t(lang, 'Variation', 'Change'), escapeHtml(pct))}</div>`
+    + `<p class="fmk-note">${t(lang,
+      'Seuil d’alerte : ±3 % sur la journée pour un indice boursier, ±5 % pour le pétrole et le gaz. En deçà, les marchés restent en gris.',
+      'Alert threshold: ±3 % over the day for a stock index, ±5 % for oil and gas. Below it, markets stay grey.')}</p>`;
   return {
     key: `market:${line.symbol}`,
     kind: t(lang, 'Marché', 'Market'),
     name: line.name,
     level: 'jaune',
-    driver: t(lang, 'mouvement exceptionnel', 'exceptional move'),
+    driver: '',
     freshness: '',
-    essentiel: [t(lang,
+    context: [t(lang, 'mouvement exceptionnel', 'exceptional move')],
+    lead: t(lang,
       `${line.name} varie de ${pct} sur la journée, au-delà du seuil de ±${threshold} %.`,
-      `${line.name} moved ${pct} today, beyond the ±${threshold} % threshold.`)],
-    changesMeta: '',
-    changes: [],
-    sections: [],
-    figures: [
-      { label: t(lang, 'Cours', 'Price'), value: formatNumber(line.price, lang) },
-      { label: t(lang, 'Variation', 'Change'), value: pct },
-    ],
-    watch: [],
-    sourcesTitle: '',
-    sources: [],
-    why: `<p>${t(lang,
-      'Seuil d’alerte : ±3 % sur la journée pour un indice boursier, ±5 % pour le pétrole et le gaz. En deçà, les marchés restent en gris.',
-      'Alert threshold: ±3 % over the day for a stock index, ±5 % for oil and gas. Below it, markets stay grey.')}</p>`,
-    whyOpen: input.whyOpen,
+      `${line.name} moved ${pct} today, beyond the ±${threshold} % threshold.`),
+    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
+    sections: [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: input.sectionOpen.get('indicators') ?? true, html }],
     actions: [],
   };
 }

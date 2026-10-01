@@ -393,9 +393,11 @@ export class PosteSituation {
     const vanished = this.selection !== null && model === null;
     if (vanished) this.selection = null;
     model ??= this.defaultFiche(data, queue, drivers);
-    // La fiche France affiche son propre en-tête d'attente ; seules les fiches de thème gardent ce pilote.
+    // La fiche France affiche son propre en-tête d'attente ; seules les fiches de thème gardent ce pilote,
+    // placé devant le contexte (l'en-tête kit n'affiche plus `driver`).
     if (!data.ready && model.key.startsWith('theme:')) {
-      model = { ...model, level: null, driver: lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed' };
+      const notReadyText = lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed';
+      model = { ...model, level: null, context: [notReadyText, ...(model.context ?? [])] };
     }
     this.fichePanel.render(model, lang, this.selection !== null);
     if (vanished && ficheHadFocus) this.restoreFocus(null);
@@ -456,7 +458,8 @@ export class PosteSituation {
       events: this.events,
       changeTimes: this.firstSeen,
       freshness: this.freshness(data),
-      whyOpen: this.whyOpen.has(`theme:${theme}`),
+      sectionOpen: new Map(),
+      now: data.now,
       ready: data.ready,
       lang: data.lang,
     });
@@ -464,7 +467,6 @@ export class PosteSituation {
 
   private ficheFor(key: string, data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel | null {
     const { lang, now } = data;
-    const whyOpen = this.whyOpen.has(key);
     if (key === 'france') return this.franceFiche(data, queue, drivers);
     if (key.startsWith('theme:')) {
       // Fiche thème ouverte en volet (tablette, mobile : relecture finale I3).
@@ -497,8 +499,8 @@ export class PosteSituation {
         hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', sectionOpen: new Map(), lang, now,
       });
     }
-    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), whyOpen, lang });
-    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { whyOpen, lang });
+    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), sectionOpen: new Map(), lang });
+    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { sectionOpen: new Map(), lang });
     return null;
   }
 
