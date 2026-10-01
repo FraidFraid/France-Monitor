@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { digestChangeText, nothingToHandleText, renderFiche, severityWord, type FicheModel } from './parts.ts';
+import { digestChangeText, nothingToHandleText, renderFiche, severityWord, type FicheModel, type FicheScore } from './parts.ts';
 import type { ChangeDigestItem, NewsEvent } from '../../types/index.ts';
 
 function model(over: Partial<FicheModel> = {}): FicheModel {
@@ -88,5 +88,74 @@ describe('whyFirst (spec 2026-09-29 § 7)', () => {
   it('le volet « Pourquoi ce niveau ? » suit l’en-tête quand whyFirst est vrai', () => {
     const html = renderFiche(model({ why: '<p>Indice</p>', whyFirst: true, sections: [{ title: 'Situations', html: '<p>S</p>' }] }), 'fr');
     expect(html.indexOf('fiche-why')).toBeLessThan(html.indexOf('Situations'));
+  });
+});
+
+describe('kit fmk dans la fiche (spec 2026-10-01)', () => {
+  const score: FicheScore = {
+    value: 55, level: 'orange', baseline: 95, delta24h: '—', sparkline: '<svg class="frintel-spark"></svg>',
+    pillars: [
+      { label: 'Continuité', value: 51, level: 'jaune', delta: '—', deduction: '−14,7' },
+      { label: 'Sécurité', value: 34, level: 'vert', delta: '+2 ▲', deduction: '−6,8' },
+    ],
+    factor: 'Continuité — Carburants &amp; pétrole 100', cap: 55,
+  };
+
+  it('section repliable fermée : <details> sans open, titre, résumé et chevron', () => {
+    const html = renderFiche(model({ key: 'france', sections: [{ id: 'infra', title: 'Infrastructures', summary: '96/100', html: '<p>x</p>', collapsible: true }] }), 'fr');
+    expect(html).toContain('<details class="fiche-part fmk-sec" data-section="france:infra"><summary class="fmk-sec-h">');
+    expect(html).toContain('<h3 class="fiche-part-title fmk-eyebrow">Infrastructures</h3><span class="fmk-sum">96/100</span>');
+    expect(html).toContain('class="fmk-chev"');
+    expect(html).toContain('<div class="fmk-sec-body"><p>x</p></div></details>');
+  });
+
+  it('section repliable ouverte : attribut open', () => {
+    const html = renderFiche(model({ key: 'france', sections: [{ id: 'note', title: 'Note', html: '', collapsible: true, open: true }] }), 'fr');
+    expect(html).toContain('data-section="france:note" open>');
+  });
+
+  it('section non repliable : même titre, pas de <details> ni de chevron', () => {
+    const html = renderFiche(model({ key: 'france', sections: [{ id: 'situations', title: 'Situations actives', summary: '5', html: '<ul></ul>' }] }), 'fr');
+    expect(html).toContain('<section class="fiche-part fmk-sec" data-section="france:situations"><div class="fmk-sec-h">');
+    expect(html).not.toContain('<details class="fiche-part fmk-sec"');
+    expect(html).not.toContain('fmk-chev');
+  });
+
+  it('section sans id : rendu historique inchangé', () => {
+    const html = renderFiche(model({ sections: [{ title: 'Facteurs', html: '<ul><li>f</li></ul>' }] }), 'fr');
+    expect(html).toContain('<section class="fiche-part fiche-extra"><h3 class="fiche-part-title">Facteurs</h3><ul><li>f</li></ul></section>');
+    expect(html).toContain('<article class="fiche" data-fiche="event:42">');
+  });
+
+  it('en-tête Instrument : score coloré, pastille, échelle, piliers, facteur, plafond', () => {
+    const html = renderFiche(model({ key: 'france', kind: 'État de la France', driver: 'tirée par l’énergie', freshness: '5 situations actives · MAJ 16:23', score, why: '' }), 'fr');
+    expect(html).toContain('<article class="fiche fmk" data-fiche="france">');
+    expect(html).toContain('<h2 class="fiche-name fmk-eyebrow" tabindex="-1">État de la France</h2>');
+    expect(html).toContain('<span class="fmk-score-value fmk-num" style="color:var(--sev-orange)">55</span>');
+    expect(html).toContain('fm-vig--orange');
+    expect(html).toContain('tirée par l’énergie');
+    expect(html).toContain('class="fmk-scale-marker" style="left:55%"');
+    for (const tick of ['>0<', '>55<', '>70<', '>85<', '>100<']) expect(html).toContain(tick);
+    expect(html).toContain('5 situations actives · MAJ 16:23 · 24 h : —');
+    expect(html).toContain('<svg class="frintel-spark"></svg>');
+    expect(html).toContain('Ce qui retire des points (base 95)');
+    expect(html.match(/class="fmk-meter"/g)).toHaveLength(2);
+    expect(html).toContain('<span class="fmk-meter-x fmk-num">−14,7</span>');
+    expect(html).toContain('Continuité — Carburants &amp; pétrole 100');
+    expect(html).toContain('Plafonné à <b>55</b> tant qu’une situation corrélée est active.');
+    expect(html).not.toContain('fiche-why');
+  });
+
+  it('en-tête Instrument sans plafond ni facteur : ni encart ni ligne', () => {
+    const html = renderFiche(model({ key: 'france', score: { ...score, cap: null, factor: null } }), 'fr');
+    expect(html).not.toContain('fmk-callout');
+    expect(html).not.toContain('fmk-factor');
+  });
+
+  it('avant le calcul : « Calcul du niveau national… », ni score ni échelle', () => {
+    const html = renderFiche(model({ key: 'france', kind: 'État de la France', score: 'pending' }), 'fr');
+    expect(html).toContain('Calcul du niveau national…');
+    expect(html).not.toContain('fmk-scale');
+    expect(html).not.toContain('fmk-score-value');
   });
 });

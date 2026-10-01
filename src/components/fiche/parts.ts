@@ -5,9 +5,10 @@
 // ce niveau ? » arrivent déjà rendus, et échappés, par le rendu de leur type.
 
 import type { ChangeDigestItem, ThreatLevel } from '../../types/index.ts';
-import { eventLevel, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
+import { eventLevel, levelColorVar, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
+import { CHEVRON_SVG, meterRow } from './kit.ts';
 
 export type Lang = 'fr' | 'en';
 
@@ -117,6 +118,40 @@ export interface FicheSection {
   title: string;
   /** HTML déjà échappé par le rendu du type. */
   html: string;
+  /** Kit fmk (spec 2026-10-01) : identifiant stable dans la fiche ; absent → rendu historique. */
+  id?: string;
+  /** HTML échappé affiché à droite du titre. */
+  summary?: string;
+  /** Section repliable (<details>) ; sinon titre simple au même style. */
+  collapsible?: boolean;
+  /** Ouverture d'une section repliable (défaut : fermée). */
+  open?: boolean;
+}
+
+export interface FichePillar {
+  label: string;
+  /** Pression du pilier 0–100 (plus haut = pire). */
+  value: number;
+  level: VigilanceLevel;
+  /** Variation 24 h déjà formatée (« +2 ▲ », « — »). */
+  delta: string;
+  /** Points retirés déjà formatés (« −14,7 »). */
+  deduction: string;
+}
+
+/** En-tête « Instrument » (spec 2026-10-01 § 3.1). */
+export interface FicheScore {
+  value: number;
+  level: VigilanceLevel;
+  baseline: number;
+  /** Variation 24 h du score déjà formatée. */
+  delta24h: string;
+  /** SVG de la courbe 7 jours, '' si trop peu de points. */
+  sparkline: string;
+  pillars: FichePillar[];
+  /** « Facteur principal » déjà échappé ; null si aucun pilier ne pèse. */
+  factor: string | null;
+  cap: number | null;
 }
 
 export interface FicheModel {
@@ -145,6 +180,8 @@ export interface FicheModel {
   whyFirst?: boolean;
   whyOpen: boolean;
   actions: FicheAction[];
+  /** En-tête « Instrument » du kit fmk : remplace l'en-tête simple ; 'pending' avant le premier calcul. */
+  score?: FicheScore | 'pending';
 }
 
 function part(cls: string, title: string, body: string): string {
@@ -172,33 +209,94 @@ function renderChanges(model: FicheModel, lang: Lang): string {
   return part('fiche-changes', t(lang, 'Ce qui a changé', 'What changed'), `${meta}${list || empty}`);
 }
 
-function renderSources(model: FicheModel, lang: Lang): string {
-  if (model.sources.length === 0) return '';
-  const chips = model.sources.map((s) => {
+/** Étiquettes de sources et de preuves (liens http(s), sélections internes, texte). */
+export function renderSourceChips(sources: readonly FicheSource[]): string {
+  const chips = sources.map((s) => {
     const label = escapeHtml(s.label);
     const href = s.href ? safeHref(s.href) : null;
     if (href) return `<a class="fiche-source" href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     if (s.select) return `<button type="button" class="fiche-source fiche-link" data-select="${escapeHtml(s.select)}">${label}</button>`;
     return `<span class="fiche-source">${label}</span>`;
   }).join('');
+  return `<div class="fiche-chips">${chips}</div>`;
+}
+
+function renderSources(model: FicheModel, lang: Lang): string {
+  if (model.sources.length === 0) return '';
   const title = model.sourcesTitle || t(lang, 'Preuves et sources', 'Evidence and sources');
-  return part('fiche-sources', escapeHtml(title), `<div class="fiche-chips">${chips}</div>`);
+  return part('fiche-sources', escapeHtml(title), renderSourceChips(model.sources));
+}
+
+const SCALE_ZONES: ReadonlyArray<{ level: VigilanceLevel; width: number }> = [
+  { level: 'rouge', width: 55 }, { level: 'orange', width: 15 }, { level: 'jaune', width: 15 }, { level: 'vert', width: 15 },
+];
+const SCALE_TICKS: readonly number[] = [0, 55, 70, 85, 100];
+
+/** En-tête « Instrument » (spec 2026-10-01 § 3.1) : score, échelle, fraîcheur, piliers, facteur, plafond. */
+function renderScoreHead(model: FicheModel, score: FicheScore | 'pending', lang: Lang): string {
+  const title = `<h2 class="fiche-name fmk-eyebrow" tabindex="-1">${escapeHtml(model.kind)}</h2>`;
+  const fresh = model.freshness ? escapeHtml(model.freshness) : '';
+  if (score === 'pending') {
+    return `<header class="fiche-head fmk-head">${title}`
+      + `<p class="fmk-pending">${t(lang, 'Calcul du niveau national…', 'Computing the national level…')}</p>`
+      + (fresh ? `<div class="fmk-fresh"><span>${fresh}</span></div>` : '')
+      + `</header>`;
+  }
+  const driver = model.driver ? `<span class="fmk-driver">${escapeHtml(model.driver)}</span>` : '';
+  const zones = SCALE_ZONES.map((z) => `<i style="flex:${z.width};background:${levelColorVar(z.level)}"></i>`).join('');
+  const ticks = SCALE_TICKS.map((v) => `<span style="left:${v}%">${v}</span>`).join('');
+  const marker = Math.max(0, Math.min(100, score.value));
+  const pillars = score.pillars
+    .map((p) => meterRow({ label: p.label, value: p.value, level: p.level, extra: [p.delta, p.deduction] }))
+    .join('');
+  const scaleLabel = t(lang, `Indice ${score.value} sur 100 ; seuils 55, 70 et 85`, `Index ${score.value} out of 100; thresholds 55, 70 and 85`);
+  return `<header class="fiche-head fmk-head">${title}`
+    + `<div class="fmk-score"><span class="fmk-score-value fmk-num" style="color:${levelColorVar(score.level)}">${score.value}</span>`
+    + `<span class="fmk-score-max fmk-num">/100</span>`
+    + `<span class="fmk-score-level">${renderVigilancePill(score.level, lang)}${driver}</span></div>`
+    + `<div class="fmk-scale" role="img" aria-label="${escapeHtml(scaleLabel)}">`
+    + `<div class="fmk-scale-zones">${zones}</div><span class="fmk-scale-marker" style="left:${marker}%"></span>`
+    + `<div class="fmk-scale-ticks fmk-num" aria-hidden="true">${ticks}</div></div>`
+    + `<div class="fmk-fresh"><span>${fresh ? `${fresh} · ` : ''}${t(lang, '24 h : ', '24 h: ')}${escapeHtml(score.delta24h)}</span>${score.sparkline}</div>`
+    + `<div class="fmk-sub fmk-eyebrow">${t(lang, `Ce qui retire des points (base ${score.baseline})`, `What takes points off (baseline ${score.baseline})`)}</div>`
+    + `<div class="fmk-meters fmk-meters--pillars">${pillars}</div>`
+    + (score.factor ? `<p class="fmk-factor"><span class="fmk-muted">${t(lang, 'Facteur principal :', 'Main factor:')}</span> ${score.factor}</p>` : '')
+    + (score.cap !== null
+      ? `<p class="fmk-callout">${t(lang, `Plafonné à <b>${score.cap}</b> tant qu’une situation corrélée est active.`, `Capped at <b>${score.cap}</b> while a correlated situation is active.`)}</p>`
+      : '')
+    + `</header>`;
+}
+
+/** Section du kit (id présent) : repliable en <details>, sinon titre simple ; sans id : rendu historique. */
+function renderSection(model: FicheModel, s: FicheSection): string {
+  if (s.id === undefined) return part('fiche-extra', escapeHtml(s.title), s.html);
+  const title = `<h3 class="fiche-part-title fmk-eyebrow">${escapeHtml(s.title)}</h3>`;
+  const summary = s.summary ? `<span class="fmk-sum">${s.summary}</span>` : '';
+  const key = escapeHtml(`${model.key}:${s.id}`);
+  if (s.collapsible) {
+    return `<details class="fiche-part fmk-sec" data-section="${key}"${s.open ? ' open' : ''}>`
+      + `<summary class="fmk-sec-h">${title}${summary}${CHEVRON_SVG}</summary><div class="fmk-sec-body">${s.html}</div></details>`;
+  }
+  return `<section class="fiche-part fmk-sec" data-section="${key}"><div class="fmk-sec-h">${title}${summary}</div>`
+    + `<div class="fmk-sec-body">${s.html}</div></section>`;
 }
 
 /** Fiche complète : en-tête, essentiel, changements, parties du type, chiffres, à surveiller, sources, volet, actions. */
 export function renderFiche(model: FicheModel, lang: Lang): string {
   const pill = model.level ? renderVigilancePill(model.level, lang) : '';
   const driver = model.driver ? ` <span class="fiche-driver">${escapeHtml(model.driver)}</span>` : '';
-  const head = `<header class="fiche-head">`
-    + `<div class="fiche-kind">${escapeHtml(model.kind)}</div>`
-    + `<h2 class="fiche-name" tabindex="-1">${escapeHtml(model.name)}</h2>`
-    + (pill || driver ? `<div class="fiche-level">${pill}${driver}</div>` : '')
-    + (model.freshness ? `<div class="fiche-fresh">${escapeHtml(model.freshness)}</div>` : '')
-    + `</header>`;
+  const head = model.score !== undefined
+    ? renderScoreHead(model, model.score, lang)
+    : `<header class="fiche-head">`
+      + `<div class="fiche-kind">${escapeHtml(model.kind)}</div>`
+      + `<h2 class="fiche-name" tabindex="-1">${escapeHtml(model.name)}</h2>`
+      + (pill || driver ? `<div class="fiche-level">${pill}${driver}</div>` : '')
+      + (model.freshness ? `<div class="fiche-fresh">${escapeHtml(model.freshness)}</div>` : '')
+      + `</header>`;
   const essentiel = model.essentiel.length > 0
     ? part('fiche-essentiel', t(lang, 'L’essentiel', 'Key points'), model.essentiel.map((p) => `<p>${escapeHtml(p)}</p>`).join(''))
     : '';
-  const sections = model.sections.map((s) => part('fiche-extra', escapeHtml(s.title), s.html)).join('');
+  const sections = model.sections.map((s) => renderSection(model, s)).join('');
   const figures = model.figures.length > 0
     ? part('fiche-figures', t(lang, 'Chiffres clés', 'Key figures'), `<dl class="fiche-figures-grid">${model.figures.slice(0, 3)
       .map((f) => `<div><dt>${escapeHtml(f.label)}</dt><dd>${escapeHtml(f.value)}</dd></div>`).join('')}</dl>`)
@@ -217,5 +315,5 @@ export function renderFiche(model: FicheModel, lang: Lang): string {
     ? `<div class="fiche-actions">${model.actions
       .map((a) => `<button type="button" class="fiche-action" data-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`
     : '';
-  return `<article class="fiche" data-fiche="${escapeHtml(model.key)}">${head}${whyFirst ? why : ''}${essentiel}${renderChanges(model, lang)}${sections}${figures}${watch}${renderSources(model, lang)}${whyFirst ? '' : why}${actions}</article>`;
+  return `<article class="fiche${model.score !== undefined ? ' fmk' : ''}" data-fiche="${escapeHtml(model.key)}">${head}${whyFirst ? why : ''}${essentiel}${renderChanges(model, lang)}${sections}${figures}${watch}${renderSources(model, lang)}${whyFirst ? '' : why}${actions}</article>`;
 }
