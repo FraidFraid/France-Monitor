@@ -239,7 +239,7 @@ function noteHtml(input: FranceFicheInput): string {
 
 function changesHtml(input: FranceFicheInput): string {
   const { meta, rows } = franceChangeDigest(input);
-  const list = renderChangeRows(rows, input.lang);
+  const list = renderChangeRows(rows, input.lang, input.now);
   return `<div class="fiche-meta">${escapeHtml(meta)}</div>${list || `<p class="fiche-empty">${t(input.lang, 'Aucun changement orange ou rouge.', 'No orange or red change.')}</p>`}`;
 }
 

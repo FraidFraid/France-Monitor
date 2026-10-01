@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { digestChangeText, nothingToHandleText, renderFiche, severityWord, type FicheModel, type FicheScore } from './parts.ts';
+import { digestChangeText, nothingToHandleText, renderChangeRows, renderFiche, severityWord, type FicheModel, type FicheScore } from './parts.ts';
 import type { ChangeDigestItem, NewsEvent } from '../../types/index.ts';
 
 function model(over: Partial<FicheModel> = {}): FicheModel {
@@ -44,12 +44,12 @@ describe('renderFiche (spec §6.2)', () => {
     expect(html).toContain('data-select="situation:x&quot; onfocus=&quot;alert(1)"');
   });
 
-  it('garde le volet ouvert quand il l’était ; trois chiffres au plus ; heure inconnue en tiret', () => {
+  it('garde le volet ouvert quand il l’était ; trois chiffres au plus ; heure inconnue en « n.d. »', () => {
     const figures = [1, 2, 3, 4].map((n) => ({ label: `c${n}`, value: String(n) }));
     const html = renderFiche(model({ whyOpen: true, figures }), 'fr');
     expect(html).toContain('<details class="fiche-why" data-why="event:42" open>');
     expect(html).not.toContain('c4');
-    expect(html).toContain('<span class="fiche-time">—</span>');
+    expect(html).toContain('<span class="fiche-time">n.d.</span>');
   });
 
   it('passe en anglais avec la bascule EN', () => {
@@ -124,7 +124,7 @@ describe('kit fmk dans la fiche (spec 2026-10-01)', () => {
   it('section sans id : rendu historique inchangé', () => {
     const html = renderFiche(model({ sections: [{ title: 'Facteurs', html: '<ul><li>f</li></ul>' }] }), 'fr');
     expect(html).toContain('<section class="fiche-part fiche-extra"><h3 class="fiche-part-title">Facteurs</h3><ul><li>f</li></ul></section>');
-    expect(html).toContain('<article class="fiche" data-fiche="event:42">');
+    expect(html).toContain('<article class="fiche fmk" data-fiche="event:42">');
   });
 
   it('en-tête Instrument : score coloré, pastille, échelle, piliers, facteur, plafond', () => {
@@ -157,5 +157,34 @@ describe('kit fmk dans la fiche (spec 2026-10-01)', () => {
     expect(html).toContain('Calcul du niveau national…');
     expect(html).not.toContain('fmk-scale');
     expect(html).not.toContain('fmk-score-value');
+  });
+});
+
+describe('en-tête kit des fiches sans score (spec 2026-10-01 fiches § 2)', () => {
+  it('sur-titre, titre, pastille et contexte séparés, synthèse', () => {
+    const html = renderFiche(model({ kind: 'Événement · Sécurité', name: 'Titre <b>', level: 'orange', context: ['Haut-Rhin (68)', 'depuis 30/09 19:11'], lead: 'Repris par 8 sources.' }), 'fr');
+    expect(html).toContain('<article class="fiche fmk" data-fiche="event:42">');
+    expect(html).toContain('<div class="fmk-eyebrow">Événement · Sécurité</div>');
+    expect(html).toContain('<h2 class="fiche-name fmk-title" tabindex="-1">Titre &lt;b&gt;</h2>');
+    expect(html).toContain('fm-vig--orange');
+    expect(html).toContain('<span>Haut-Rhin (68)</span><span class="fmk-sep" aria-hidden="true">•</span><span>depuis 30/09 19:11</span>');
+    expect(html).toContain('<p class="fmk-lead">Repris par 8 sources.</p>');
+  });
+
+  it('section au ton « référence »', () => {
+    const html = renderFiche(model({ sections: [{ id: 'articles', title: 'Articles', html: '', collapsible: true, tone: 'reference' }] }), 'fr');
+    expect(html).toContain('<details class="fiche-part fmk-sec fmk-sec--ref" data-section="event:42:articles">');
+  });
+
+  it('changements : heures absolues, « n.d. », dernier mis en avant', () => {
+    const now = Date.parse('2026-10-01T08:30:00Z');
+    const rows = renderChangeRows([
+      { at: Date.parse('2026-10-01T08:00:00Z'), text: 'corroboré 4 → 5', select: null },
+      { at: Date.parse('2026-09-30T21:00:00Z'), text: 'corroboré 1 → 2', select: null },
+      { at: null, text: 'créé', select: null },
+    ], 'fr', now);
+    expect(rows).toContain('<li class="fiche-change is-latest"><span class="fiche-time">10:00</span>');
+    expect(rows).toContain('<span class="fiche-time">30/09 23:00</span>');
+    expect(rows).toContain('<span class="fiche-time">n.d.</span>');
   });
 });

@@ -419,7 +419,7 @@ describe('PosteSituation', () => {
     expect(ficheKey(roots)).toBe('france');
     energy()?.click();
     expect(ficheKey(roots)).toBe('theme:energy');
-    expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
+    // L'ancienne ligne « niveau en cours de calcul » (driver) n'est plus affichée par l'en-tête kit ; elle reviendra via `context`.
     expect(roots.fiche.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.textContent).toContain('Chargement des données…');
     expect(roots.fiche.textContent).not.toContain('Rien à traiter');
