@@ -25,7 +25,7 @@ import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { scoreLevel } from './services/vigilance.ts';
-import { eventMapPoints, LIGHT_VIGILANCE, v2FloodSegments } from './services/v2-map.ts';
+import { eventMapPoints, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
@@ -8020,7 +8020,6 @@ export class App {
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
     this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
-    this.mapContainer?.setLightVigilance(LIGHT_VIGILANCE);
     void loadDepartementIndex().then((index) => {
       if (index) poste.setDepartements(index);
     });

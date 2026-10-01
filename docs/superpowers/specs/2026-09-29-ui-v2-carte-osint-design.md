@@ -82,7 +82,7 @@ Interdit : panneaux superposés, badges en série, arcs ou trajectoires affiché
   - un point par événement ; couleur = niveau L1 (`src/services/vigilance.ts`) ; taille selon les sources indépendantes, 3 paliers (1, 2 à 4, 5 et plus) ; « à confirmer » = anneau jaune vide ;
   - survol : titre ; clic : `PosteSituation.select('event:<id>')`, la même fiche que dans le fil ;
   - ajout d'une couche enfant de groupe : les quatre endroits obligatoires d'`App.ts` (`DEFAULT_LAYERS`, `onLayerToggle`, `syncTrafficGroupState`, `getEffectiveLayers`) plus `MapLayers`, `LayerPanel` et le groupe « Actualités ».
-- **Vigilances allégées (v2)** : aplat Météo-France à faible opacité ; le jaune sans bordure, l'orange et le rouge bordés ; stations Vigicrues affichées seulement en orange ou rouge.
+- **Vigilances (v2)** : aplat Météo-France identique à la v1 (jaune bordé compris) — l'allègement initial (jaune à 0,07 sans bordure) rendait les départements en jaune invisibles, retiré le 01/10/2026 à la demande de l'utilisateur ; stations Vigicrues affichées seulement en orange ou rouge.
 - **Thèmes** : choisir un thème active toutes ses couches (décision du 25/09/2026, `layer-presets.ts` inchangé) mais n'ouvre aucun panneau ; il filtre le fil et la carte.
 - **Légende** : elle ne liste que les couches allumées.
 

@@ -19,7 +19,7 @@ import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
-import type { EventMapPoint, LightVigilance } from '../services/v2-map.ts';
+import type { EventMapPoint } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
@@ -402,7 +402,6 @@ export class DeckGLMap {
   private newsItems: NewsItem[] = [];
   private itemsById: Map<string, NewsItem> = new Map();
   private hoveredId: number | null = null;
-  private lightVigilance: LightVigilance | null = null;
   private onItemClick: ((item: NewsItem) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onItemHover:
@@ -1161,7 +1160,6 @@ export class DeckGLMap {
       },
     });
 
-    this.applyLightVigilance();
 
     // NOTE: Weather icons layer is added later (after all fill layers) to ensure visibility
 
@@ -11750,25 +11748,6 @@ export class DeckGLMap {
   setEventPoints(points: EventMapPoint[]): void {
     this.eventPoints = points;
     this.scheduleOverlayUpdate();
-  }
-
-  /** v2 (spec 2026-09-29 § 5) : vigilances en aplat léger ; appliqué dès que les couches météo existent. */
-  setLightVigilance(o: LightVigilance): void {
-    this.lightVigilance = o;
-    this.applyLightVigilance();
-  }
-
-  private applyLightVigilance(): void {
-    const o = this.lightVigilance;
-    if (!o || !this.map?.getLayer(LYR_WEATHER_FILL)) return;
-    this.map.setPaintProperty(LYR_WEATHER_FILL, 'fill-opacity', [
-      'case', ['boolean', ['get', 'hasAlert'], false],
-      ['case', WEATHER_HIGHLIGHT_STATE, o.highlight,
-        ['match', ['get', 'level'], 'violet', o.violet, 'red', o.red, 'orange', o.orange, 'yellow', o.yellow, 0]],
-      0,
-    ]);
-    // Jaune sans bordure (sauf survol) ; orange, rouge et violet gardent la leur.
-    this.map.setPaintProperty(LYR_WEATHER_LINE_YELLOW, 'line-opacity', ['case', WEATHER_HIGHLIGHT_STATE, 1, 0]);
   }
 
   setOnEventPointClick(handler: ((id: number) => void) | null): void {

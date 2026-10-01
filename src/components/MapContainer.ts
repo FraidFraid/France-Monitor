@@ -12,7 +12,7 @@ import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
 import type { TrafficIncident } from '../services/traffic.ts';
-import type { EventMapPoint, LightVigilance } from '../services/v2-map.ts';
+import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
@@ -275,10 +275,6 @@ export class MapContainer {
 
   setEventPoints(points: EventMapPoint[]): void {
     this.deckMap?.setEventPoints(points);
-  }
-
-  setLightVigilance(o: LightVigilance): void {
-    this.deckMap?.setLightVigilance(o);
   }
 
   setOnEventPointClick(handler: ((id: number) => void) | null): void {
