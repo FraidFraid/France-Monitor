@@ -18,6 +18,7 @@ Version : `kw-2` (mots-clés) / `groq-2` (LLM, `llm-2` si un autre fournisseur e
 - Terrorisme sans victime au titre (attentat déjoué, dégâts matériels, enquête) : `high` au plus.
 - Procès, condamnation, mise en examen, hommage, anniversaire → temporalité « passé », `low` au plus. « Apologie » nomme un délit, pas une étape judiciaire : non concerné.
 - Hypothèse (« pas à l'abri », « et si », « faut-il / doit-on craindre ») → « à venir », `low` au plus.
+- Exercice ou simulation de sécurité civile (« exercice de secours », « attentat simulé », « exercice grandeur nature ») : même motif « hypothèse », `low` au plus. Ne comptent pas : l'exercice d'une fonction ou d'un pouvoir (« policier tué dans l'exercice de ses fonctions ») ni les exercices militaires, navals ou nucléaires, signal stratégique. Ajouté le 01/10/2026 : sur 7 jours de production (20 072 articles), la règle plafonne les 4 exercices notés graves (un `critical`, deux `high`, un `medium`) et ne touche aucun fait réel grave.
 - Lieu, gentilé ou acteur étranger sans ancre française → « étranger », `medium` au plus.
 
 **LLM (`api/_lib/llm-classifier.js`, `api/_lib/llm-pass.js`)**

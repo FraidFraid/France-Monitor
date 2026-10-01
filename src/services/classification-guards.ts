@@ -80,13 +80,25 @@ const JUDICIAL_RETROSPECTIVE_RE = new RegExp(
     ].map((p) => `\\b${p}\\b`).join('|'),
 );
 const HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\b(?:faut il|doit on|peut on) (?:craindre|s inquieter|avoir peur)\b|\bscenarios?\b/;
+/**
+ * Exercice ou simulation de sécurité civile (attentat simulé, exercice de secours) : rien n'est
+ * arrivé. Pas l'exercice d'une fonction ou d'un pouvoir, ni les exercices militaires, signal
+ * stratégique (production du 30/09 : « Séisme… un exercice de secours » noté critical).
+ */
+const EXERCISE_RE = new RegExp(
+    '(?<!\\bdans l )\\bexercices?\\b'
+    + '(?! (?:militaires?|nava(?:l|ux|les?)|aerien(?:ne)?s?|nucleaires?|conjoints?)\\b)'
+    + '(?! (?:du (?:pouvoir|droit|culte|metier|mandat)|de (?:ses|son|sa|leurs?) (?:fonctions?|mandats?|metiers?|droits?|pouvoirs?))\\b)'
+    + '|\\bsimul(?:ee?s?|ations?)\\b',
+);
 
 export function isJudicialOrRetrospective(title: string): boolean {
     return JUDICIAL_RETROSPECTIVE_RE.test(normalizeForMatch(title));
 }
 
 export function isHypothetical(title: string): boolean {
-    return HYPOTHETICAL_RE.test(normalizeForMatch(title));
+    const text = normalizeForMatch(title);
+    return HYPOTHETICAL_RE.test(text) || EXERCISE_RE.test(text);
 }
 
 // ─── Terrorisme sans victime (titre) ───

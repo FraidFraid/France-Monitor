@@ -242,7 +242,7 @@ const REASON_LABEL: Record<ClassificationReason, [string, string]> = {
   declencheur_hors_titre: ['mot-clé présent seulement dans le résumé', 'keyword only in the summary'],
   metaphore: ['emploi figuré écarté (« séisme politique »)', 'figurative use ignored'],
   passe: ['procès, enquête ou rappel d’un fait passé', 'trial, inquiry or past event'],
-  hypothetique: ['hypothèse ou risque évoqué', 'hypothesis or possible risk'],
+  hypothetique: ['hypothèse, risque évoqué ou exercice', 'hypothesis, possible risk or drill'],
   etranger: ['à l’étranger, sans effet déclaré sur la France', 'abroad, no stated effect on France'],
   non_confirme: ['niveau le plus grave signalé par une seule source indépendante (à confirmer)', 'highest level reported by a single independent source (unconfirmed)'],
 };

@@ -46,6 +46,32 @@ describe('isHypothetical', () => {
   });
 });
 
+describe('exercices et simulations (production du 30/09)', () => {
+  it.each([
+    'Un attentat va être simulé en pleine nuit dans cette commune près de Nice : 200 personnes mobilisées',
+    'Un exercice attentat dans une salle de spectacle à Mougins : un important dispositif de secours déployé ce jeudi soir',
+    'Haute-Savoie. Séisme, effondrements glaciaires, routes coupées... un exercice de secours hors-norme se prépare entre Chamonix et Aoste',
+    'Coups de feu à Atlantis : un exercice de sécurité dans le centre commercial de Nantes',
+    'Nantes : une tuerie de masse simulée cette semaine dans un centre commercial',
+    'Les membres du GIGN déployés en masse dans ce centre commercial près d’Angers pour une attaque armée simulée',
+    'Incendie dans la sacristie d’une église du Haut-Rhin : les pompiers mobilisés pour un exercice grandeur nature',
+    'Ain. Exercice de gestion de crise ce mercredi à la centrale nucléaire, pourquoi il ne faut pas s’inquiéter',
+  ])('exercice ou simulation → hypothétique : %s', (title) => expect(isHypothetical(title)).toBe(true));
+  it.each([
+    'Un policier tué dans l’exercice de ses fonctions à Marseille',
+    'Gestion du Département : « nous n’avons pas de leçon à recevoir en matière d’exercice du pouvoir »',
+    'Taïwan : la Chine lance des exercices militaires d’ampleur autour de l’île',
+    'Russie : exercices nucléaires près de la frontière de l’Otan',
+    'Marine Le Pen, le RN et l’antisémitisme : une entreprise de dissimulation',
+    'Deux passagers interpellés à l’aéroport de Marseille avec des milliers de paquets de cigarettes dissimulés',
+  ])('pas un exercice de sécurité civile : %s', (title) => expect(isHypothetical(title)).toBe(false));
+  it('le plafond du titre s’applique : retenue low, motif hypothétique', () => {
+    expect(titleQualification('Un exercice attentat dans une salle de spectacle à Mougins')).toMatchObject({
+      maxSeverity: 'low', reasons: ['hypothetique'],
+    });
+  });
+});
+
 describe('titleZone', () => {
   it.each([
     'Royaume-Uni : l’antiterrorisme enquête sur un incident près d’une base militaire',

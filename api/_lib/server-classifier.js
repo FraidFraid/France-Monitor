@@ -923,11 +923,15 @@ var JUDICIAL_RETROSPECTIVE_RE = new RegExp(
   ].map((p) => `\\b${p}\\b`).join("|")
 );
 var HYPOTHETICAL_RE = /\bpas a l abri\b|\bet si\b|\b(?:faut il|doit on|peut on) (?:craindre|s inquieter|avoir peur)\b|\bscenarios?\b/;
+var EXERCISE_RE = new RegExp(
+  "(?<!\\bdans l )\\bexercices?\\b(?! (?:militaires?|nava(?:l|ux|les?)|aerien(?:ne)?s?|nucleaires?|conjoints?)\\b)(?! (?:du (?:pouvoir|droit|culte|metier|mandat)|de (?:ses|son|sa|leurs?) (?:fonctions?|mandats?|metiers?|droits?|pouvoirs?))\\b)|\\bsimul(?:ee?s?|ations?)\\b"
+);
 function isJudicialOrRetrospective(title) {
   return JUDICIAL_RETROSPECTIVE_RE.test(normalizeForMatch(title));
 }
 function isHypothetical(title) {
-  return HYPOTHETICAL_RE.test(normalizeForMatch(title));
+  const text = normalizeForMatch(title);
+  return HYPOTHETICAL_RE.test(text) || EXERCISE_RE.test(text);
 }
 var TERROR_RE = /\b(?:attentats?|terrorisme|terroristes?|antiterroristes?|antiterrorisme)\b/;
 var VICTIM_RE = /\b(?:morts?|mortes?|tuee?s?|victimes?|blessee?s?|otages?|deces|decedee?s?)\b/;

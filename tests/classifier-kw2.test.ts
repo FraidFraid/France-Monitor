@@ -26,6 +26,10 @@ describe('qualifyByKeywords — règles kw-2', () => {
       .toMatchObject({ classification: { level: 'low' }, temporality: 'a_venir', reasons: ['hypothetique'] });
     expect(classifyByKeywords('Risques climatiques : « On n’est pas à l’abri d’un tsunami »')?.level).toBe('low');
   });
+  it('exercice de secours : gravité signalée critical, retenue low (production du 30/09)', () => {
+    expect(qualifyByKeywords('Haute-Savoie. Séisme, effondrements glaciaires, routes coupées... un exercice de secours hors-norme se prépare entre Chamonix et Aoste'))
+      .toMatchObject({ classification: { level: 'low' }, reportedLevel: 'critical', reasons: ['hypothetique'] });
+  });
   it('étranger : retenue medium, zone étranger', () => {
     expect(qualifyByKeywords('Royaume-Uni : l’antiterrorisme enquête sur un incident près d’une base militaire'))
       .toMatchObject({ classification: { level: 'medium' }, reportedLevel: 'high', zone: 'etranger', reasons: ['etranger'] });
