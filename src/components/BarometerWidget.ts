@@ -10,6 +10,7 @@ import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
 import type { NuclearState } from '../types/index.ts';
 import type { EolienLive } from '../services/eolien/types.ts';
 import { infraStatusLevel, levelHex, levelLabel } from '../services/vigilance.ts';
+import { nuclearInfraScore, windInfraScore } from '../services/infra-continuity.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -330,35 +331,17 @@ export class BarometerWidget {
   }
 
   updateNuclear(state: NuclearState | null): void {
-    if (!state || !state.stress) {
+    const nuclear = nuclearInfraScore(state);
+    if (!nuclear) {
       this.currentNuclear = null;
-      this._refreshTooltip();
-      return;
+    } else if (nuclear.score === null) {
+      this.currentNuclear = { label: 'Indisponible', score: null, color: 'var(--text-muted)' };
+    } else {
+      const score = nuclear.score;
+      const color = score >= 85 ? '#34c759' : score >= 60 ? '#ffcc00' : '#ff2d55';
+      const label = nuclear.note ? `${score} / 100 · ${nuclear.note}` : `${score} / 100`;
+      this.currentNuclear = { label, score, color };
     }
-
-    if (!state.rteAvailable) {
-      this.currentNuclear = {
-        label: 'Indisponible',
-        score: null,
-        color: 'var(--text-muted)',
-      };
-      this._refreshTooltip();
-      return;
-    }
-
-    const installed = state.stress.installedCapacityMW;
-    const available = state.stress.availableCapacityMW;
-    const ratio = installed > 0 ? available / installed : 0;
-    const score = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-    const color = score >= 85 ? '#34c759' : score >= 60 ? '#ffcc00' : '#ff2d55';
-    const label =
-      state.unconfirmedSignals.length > 0
-        ? `${score} / 100 · écart REMIT`
-        : state.stress.gridTensionRisk
-          ? `${score} / 100 · sous tension`
-          : `${score} / 100`;
-
-    this.currentNuclear = { label, score, color };
     this._refreshTooltip();
   }
 
@@ -418,11 +401,8 @@ export class BarometerWidget {
   }
 
   private _renderTooltip(details: Record<string, number | null>): string {
-    // Compute wind score directly from live data (avoids barometer cache lag)
-    const eolien = this.currentEolienLive;
-    const windScore: number | null = eolien
-      ? (eolien.alertLevel === 'normal' ? 100 : eolien.alertLevel === 'watch' ? 70 : 40)
-      : (details.wind ?? null);
+    // Éolien calculé sur l'alerte en direct (évite le retard du cache du baromètre).
+    const windScore = windInfraScore(this.currentEolienLive, details.wind ?? null);
     const windColor = windScore !== null
       ? (windScore >= 85 ? '#34c759' : windScore >= 60 ? '#ffcc00' : '#ff2d55')
       : 'var(--text-muted)';
