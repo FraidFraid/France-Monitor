@@ -207,7 +207,7 @@ export class OutagesPanel extends Panel {
         <div style="flex:1;min-width:0;pointer-events:none;">
           <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Infrastructure numérique</div>
           <div style="font-weight:700;font-size:14px;color:var(--text-primary);">Pannes Réseau</div>
-          <div id="outages-header-count" style="font-size:12px;color:var(--text-muted);">n.d.</div>
+          <div id="outages-header-count" style="font-size:12px;color:var(--text-muted);">…</div>
         </div>
       </div>
       <div style="display:flex;gap:0;border-top:1px solid rgba(255,255,255,0.06);">

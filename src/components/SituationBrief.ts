@@ -192,7 +192,7 @@ export class SituationBrief {
     const hiddenOnMobile = items.length - 1;
     this.el.innerHTML = `
       <header class="sit-brief__header">
-        <span class="sit-brief__title">Convergences : 24 h</span>
+        <span class="sit-brief__title">Convergences · 24 h</span>
         <span class="sit-brief__badge">${items.length}</span>
         ${hiddenOnMobile > 0 ? `<span class="sit-brief__more">+${hiddenOnMobile}</span>` : ''}
         ${detailsBtn}

@@ -139,7 +139,7 @@ export class BarometerWidget {
     this.scoreTextEl.setAttribute('font-size', '11');
     this.scoreTextEl.setAttribute('font-weight', '700');
     this.scoreTextEl.setAttribute('font-family', 'monospace');
-    this.scoreTextEl.textContent = 'n.d.';
+    this.scoreTextEl.textContent = '…';
     svg.appendChild(this.scoreTextEl);
 
     return svg;
@@ -161,7 +161,7 @@ export class BarometerWidget {
 
     this.statusLabelEl = document.createElement('div');
     this.statusLabelEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
-    this.statusLabelEl.textContent = 'n.d.';
+    this.statusLabelEl.textContent = '…';
 
     statusRow.appendChild(this.dotEl);
     statusRow.appendChild(this.statusLabelEl);
@@ -221,7 +221,7 @@ export class BarometerWidget {
       font-family: monospace;
       min-height: 28px;
     `;
-    this.briefingTextEl.textContent = 'n.d.';
+    this.briefingTextEl.textContent = '…';
 
     this.briefingTimeEl = document.createElement('div');
     this.briefingTimeEl.style.cssText = `
@@ -424,8 +424,8 @@ export class BarometerWidget {
       const isCyber   = kind === 'cyber';
       const cyberNationalPressure = isCyber ? details.cyberNational ?? null : null;
       const display = isNuclear
-        ? (this.currentNuclear?.label ?? 'n.d.')
-        : val !== null ? `${val} / 100` : 'n.d.';
+        ? (this.currentNuclear?.label ?? '…')
+        : val !== null ? `${val} / 100` : '…';
       const color = isNuclear
         ? (this.currentNuclear?.color ?? 'var(--text-muted)')
         : isWind
