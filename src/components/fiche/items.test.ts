@@ -6,6 +6,7 @@ import {
   buildSituationFiche,
   buildThemeFiche,
   type EventFicheInput,
+  type SituationFicheInput,
   type ThemeFicheInput,
 } from './items.ts';
 import { renderFiche, type FicheModel } from './parts.ts';
@@ -248,79 +249,90 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
   });
 });
 
-describe('fiches situation et alerte (arbitrage A1)', () => {
-  const cyber = situation({
-    id: 'cyber-pressure', type: 'CYBER_PRESSURE', severity: 'high', confidence: 0.82, title: 'Pression cyber multi-source',
-    summary: 'Baromètre cyber consolidé à 63/100, dominé par ransomware.',
-    drivers: ['Score cyber consolidé : 63/100 (tendance stable)', 'Ransomware : 25/25', '2 alerte(s) critique(s) CERT-FR'],
-    recommendedActions: [{ label: 'Consulter les bulletins CERT-FR', ownerHint: 'Analyste cyber', actionType: 'investigate', automatable: true }],
-    sourceRefs: ['CERT-FR'],
+describe('fiche situation (spec 2026-10-01 fiches § 4.2)', () => {
+  const NOW_S = Date.parse('2026-10-01T08:30:00Z');
+  const sit = (over: Partial<DetectedSituation> = {}): DetectedSituation => situation({
+    id: 'cyber-pressure', type: 'CYBER_PRESSURE', severity: 'high', confidence: 0.8, title: 'Pression cyber multi-source',
+    summary: 'Pression cyber soutenue. Baromètre cyber consolidé à 65/100, dominé par ransomware.',
+    affectedZones: ['France'],
+    drivers: ['Score cyber consolidé : 65/100 (tendance stable)', 'Ransomware : 25/25', 'CERT/NVD : 14/20', 'Ransomwares actifs en hausse'],
+    recommendedActions: [{ label: 'Surveiller les revendications', ownerHint: 'Analyste cyber', actionType: 'monitor', automatable: true }],
+    sourceRefs: ['CERT-FR', 'RansomwareLive'], updatedAt: new Date('2026-10-01T06:57:00Z'), ...over,
+  });
+  const build = (over: Partial<SituationFicheInput> = {}): FicheModel => buildSituationFiche({
+    situation: sit(), kind: 'situation', badge: null, changeAt: null, hasDossier: false, sectionOpen: new Map(), lang: 'fr', now: NOW_S, ...over,
+  });
+  const byId = (m: FicheModel) => new Map(m.sections.map((s) => [s.id, s]));
+
+  it('en-tête : sur-titre avec thème, phrase du niveau, zones, mise à jour absolue ; synthèse non chiffrée', () => {
+    const m = build();
+    expect(m.kind).toMatch(/^Situation · /);
+    expect(m.context).toEqual(['soyez très vigilant', 'France', 'mise à jour 08:57']);
+    expect(m.lead).toBe('Pression cyber soutenue.');
   });
 
-  // Fixture réaliste, au format exact de detectSocialEscalation (situation-engine.ts) : zones
-  // « Nom (score/100) », phrase et facteur chiffrés (relecture finale I4).
-  const social = situation({
-    id: 'social-escalation', type: 'SOCIAL_ESCALATION', severity: 'high', confidence: 0.78, title: 'Escalade sociale localisée',
-    summary: '5 département(s) avec tensions sociales ou sécuritaires élevées. Score national ISNR : 41/100.',
-    affectedZones: ['Seine-Saint-Denis (72/100)', 'Bouches-du-Rhône (66/100)', 'Rhône (58/100)'],
-    drivers: [
-      '5 dept(s) avec dimension sociale/sécurité ≥ 40',
-      'Score national ISNR : 41/100',
-      '2 dept(s) en situation critique (score ≥ 65)',
-    ],
-    recommendedActions: [
-      { label: 'Surveiller les flux RSS des PQR locales sur les départements actifs', ownerHint: 'Analyste OSINT', actionType: 'monitor', automatable: true },
-    ],
-    sourceRefs: ['ISNR (PQR + alertes)', 'Vigicrues', 'Vigilance météo'],
+  it('indicateurs ouverts : une barre par sous-score à sa propre intensité, confiance grise, phrase chiffrée en note, provenance', () => {
+    const s = byId(build());
+    const ind = s.get('indicators');
+    expect(ind).toMatchObject({ collapsible: true, open: true, summary: 'confiance élevée' });
+    const html = ind?.html ?? '';
+    expect(html).toContain('Score cyber consolidé');
+    expect(html).toContain('width:65%;background:var(--sev-yellow)');
+    expect(html).toContain('width:100%;background:var(--sev-red)');
+    expect(html).toContain('width:70%;background:var(--sev-orange)');
+    expect(html).toContain('tendance stable');
+    expect(html).toContain('width:80%;background:var(--text-secondary)');
+    expect(html).toContain('Baromètre cyber consolidé à 65/100, dominé par ransomware.');
+    expect(html).toContain('Sources : CERT-FR, RansomwareLive · mise à jour 08:57');
   });
 
-  it('les sous-scores du moteur ne sont visibles que dans « Pourquoi ce niveau ? » (A7)', () => {
-    for (const fixture of [cyber, social]) {
-      const model = buildSituationFiche({
-        situation: fixture, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
-      });
-      expect(visibleOf(renderFiche(model, 'fr')), fixture.type).not.toMatch(/\d+\s*\/\s*\d+/);
-    }
-    const html = renderFiche(buildSituationFiche({
-      situation: cyber, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
-    }), 'fr');
-    const visible = visibleOf(html);
-    expect(visible).toContain('2 alerte(s) critique(s) CERT-FR');
-    expect(visible).toContain('Pression cyber multi-source : vigilance orange.');
-    expect(visible).toContain('Consulter les bulletins CERT-FR');
-    expect(visible).toContain('IA possible');
-    expect(html).toContain('Score cyber consolidé : 63/100 (tendance stable)');
-    expect(html).toContain('Ransomware : 25/25');
-    expect(html).toContain('Confiance élevée (82 %)');
+  it('à faire, facteurs non chiffrés, zones en étiquettes avec scores de zone en barres', () => {
+    const m = build({ situation: sit({ affectedZones: ['Seine-Saint-Denis (72/100)', 'Paris'] }) });
+    const s = byId(m);
+    expect(s.get('todo')).toMatchObject({ open: true, summary: '1 action' });
+    expect(s.get('todo')?.html).toContain('<ol class="fmk-todo">');
+    expect(s.get('todo')?.html).toContain('<small>Analyste cyber · Surveillance · IA possible</small>');
+    expect(s.get('factors')?.html).toContain('Ransomwares actifs en hausse');
+    expect(s.get('factors')?.html).not.toContain('25/25');
+    expect(s.get('zones')?.html).toContain('<span class="fmk-tag">Seine-Saint-Denis</span>');
+    expect(s.get('indicators')?.html).toContain('width:72%');
+    expect(m.context).toContain('Seine-Saint-Denis, Paris');
   });
 
-  it('zones « Nom (n/m) » : le nom seul dans « Zones », les scores dans le volet (relecture finale I4)', () => {
-    const model = buildSituationFiche({
-      situation: social, kind: 'situation', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
-    });
-    expect(model.sections.find((s) => s.title === 'Zones')?.html).toBe('<p>Seine-Saint-Denis · Bouches-du-Rhône · Rhône</p>');
-    expect(model.why).toContain('<li>Seine-Saint-Denis : 72/100</li>');
-    expect(model.why).toContain('<li>Rhône : 58/100</li>');
-    expect(model.why).toContain('<li>Score national ISNR : 41/100</li>');
+  it('sources repliées au ton référence, lien d’origine en tête', () => {
+    const s = byId(build({ situation: sit({ linkUrl: 'https://exemple.fr/x', linkLabel: 'Article' }) }));
+    expect(s.get('sources')).toMatchObject({ collapsible: true, open: false, tone: 'reference', summary: '3 sources' });
+    expect(s.get('sources')?.html.indexOf('Article')).toBeLessThan(s.get('sources')?.html.indexOf('CERT-FR') ?? 0);
+  });
+
+  it('nouveau depuis la visite dans le contexte ; référence copiable ; aucun tiret cadratin', () => {
+    const m = build({ badge: 'nouveau' });
+    expect(m.context).toContain('nouveau depuis votre visite');
+    expect(m.reference).toBe('cyber-pressure · Pression cyber multi-source · Orange · mise à jour 01/10 08:57');
+    expect(m.actions.map((a) => a.id)).toContain('copy-ref');
+    expect(JSON.stringify(m)).not.toContain('—');
   });
 
   it('alerte : lien source http(s) seulement, dossier et carte quand ils existent', () => {
     const alert = situation({
       id: 'news-alert-1', type: 'NEWS_ALERT', linkUrl: 'https://example.org/a', linkLabel: 'Ouvrir l’article', lat: 49.4, lon: 1.1,
     });
-    const model = buildSituationFiche({ situation: alert, kind: 'alert', badge: 'nouveau', changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr' });
-    expect(model.kind).toBe('Alerte');
-    expect(model.sources[0]).toEqual({ label: 'Ouvrir l’article', href: 'https://example.org/a', select: null });
-    expect(model.changes[0].text).toBe('Nouveau depuis votre visite');
-    expect(model.actions.map((a) => a.id)).toEqual(['map']);
-    const unsafe = buildSituationFiche({
-      situation: { ...alert, linkUrl: 'javascript:alert(1)' }, kind: 'alert', badge: null, changeAt: null, hasDossier: false, whyOpen: false, lang: 'fr',
-    });
-    expect(unsafe.sources.some((s) => s.label === 'Ouvrir l’article')).toBe(false);
-    const fire = buildSituationFiche({
-      situation: situation({ id: 'wildfire-7', type: 'WILDFIRE_ESCALATION' }), kind: 'situation', badge: null, changeAt: null, hasDossier: true, whyOpen: false, lang: 'fr',
-    });
+    const model = build({ situation: alert, kind: 'alert', badge: 'nouveau' });
+    expect(model.kind).toMatch(/^Alerte · /);
+    expect(byId(model).get('sources')?.html).toContain('Ouvrir l’article');
+    expect(model.actions.map((a) => a.id)).toEqual(['map', 'copy-ref']);
+    const unsafe = build({ situation: { ...alert, linkUrl: 'javascript:alert(1)' }, kind: 'alert' });
+    expect(byId(unsafe).get('sources')?.html ?? '').not.toContain('Ouvrir l’article');
+    const fire = build({ situation: situation({ id: 'wildfire-7', type: 'WILDFIRE_ESCALATION' }), hasDossier: true });
     expect(fire.actions).toContainEqual({ id: 'dossier', label: 'Ouvrir le dossier d’incident' });
+  });
+
+  it('lignes atypiques du moteur : jamais de barre fausse', () => {
+    const m = build({ situation: sit({ drivers: ['Vigilance stocks pétroliers : sous tension (score 49/100)', 'Phrase sans séparateur 3/10', 'Indice : 3,5/10'] }) });
+    const html = byId(m).get('indicators')?.html ?? '';
+    expect(html).toContain('width:49%');
+    expect(html).toContain('width:35%');
+    expect(html).toContain('Phrase sans séparateur 3/10');
   });
 });
 

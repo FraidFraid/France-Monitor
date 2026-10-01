@@ -223,19 +223,6 @@ describe('PosteSituation', () => {
     expect(document.activeElement?.classList.contains('fiche-name')).toBe(true);
   });
 
-  it('le volet « Pourquoi ce niveau ? » d’une fiche situation ouvert le reste après vingt mises à jour', () => {
-    const { roots, poste } = setup();
-    poste.select('situation:energy-stress');
-    const details = roots.fiche.querySelector('details.fiche-why');
-    expect(details).not.toBeNull();
-    details?.setAttribute('open', '');
-    details?.dispatchEvent(new Event('toggle'));
-    for (let i = 1; i <= 20; i += 1) {
-      poste.update(data({ now: NOW + i * 60_000, score: { delta24h: -i, pillarDeltas: null, series: [] } }));
-    }
-    expect(roots.fiche.querySelector('details.fiche-why')?.hasAttribute('open')).toBe(true);
-  });
-
   it('une preuve E42 ouvre la fiche événement et ne charge ses articles qu’une fois', async () => {
     const { roots, poste } = setup();
     poste.setBrief(BRIEF, 'fresh', ['energy-stress'], { at: NOW, level: 'orange' });

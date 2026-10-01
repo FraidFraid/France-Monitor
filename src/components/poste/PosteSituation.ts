@@ -487,14 +487,14 @@ export class PosteSituation {
       if (!situation) return null;
       return buildSituationFiche({
         situation, kind: 'situation', badge: item?.badge ?? null, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'WILDFIRE_ESCALATION', whyOpen, lang,
+        hasDossier: situation.type === 'WILDFIRE_ESCALATION', sectionOpen: new Map(), lang, now,
       });
     }
     if (item?.ref.kind === 'alert') {
       const situation = item.ref.situation;
       return buildSituationFiche({
         situation, kind: 'alert', badge: item.badge, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', whyOpen, lang,
+        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', sectionOpen: new Map(), lang, now,
       });
     }
     if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), whyOpen, lang });

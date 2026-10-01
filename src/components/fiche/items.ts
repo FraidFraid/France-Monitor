@@ -26,7 +26,7 @@ import {
   situationLevel,
   unconfirmedPeakLevel,
 } from '../../services/vigilance.ts';
-import { categoryTheme, themeLabel, type SpecificThemeId } from '../../services/themes.ts';
+import { categoryTheme, situationTheme, themeLabel, type SpecificThemeId } from '../../services/themes.ts';
 import {
   officialSourceName,
   officialTheme,
@@ -37,19 +37,19 @@ import {
   type WorkBadge,
   type WorkQueue,
 } from '../../services/work-queue.ts';
-import { splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
+import { parseScoreLine, splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
 import { escapeHtml, safeHref, type EventDetailState } from '../france-intel-events.ts';
 import { renderEnergyBlock } from '../france-intel-blocks.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
-import { absoluteTime, kvRow, stepCurve, type CurvePoint } from './kit.ts';
+import { absoluteTime, intensityLevel, kvRow, meterRow, stepCurve, type CurvePoint } from './kit.ts';
 import {
   digestChangeText,
-  formatClock,
   formatNumber,
   labelled,
   nothingToHandleText,
   parseTime,
   renderChangeRows,
+  renderSourceChips,
   severityWord,
   t,
   type FicheAction,
@@ -410,8 +410,9 @@ export interface SituationFicheInput {
   changeAt: number | null;
   /** Un dossier dédié existe (grand feu, vol militaire). */
   hasDossier: boolean;
-  whyOpen: boolean;
+  sectionOpen: ReadonlyMap<string, boolean>;
   lang: Lang;
+  now: number;
 }
 
 const ACTION_TYPE: Record<SituationAction['actionType'], [string, string]> = {
@@ -422,46 +423,85 @@ const ACTION_TYPE: Record<SituationAction['actionType'], [string, string]> = {
 };
 
 export function buildSituationFiche(input: SituationFicheInput): FicheModel {
-  const { situation: s, lang } = input;
+  const { situation: s, lang, now } = input;
   const level = situationLevel(s.severity);
   const summary = splitScoreSentences(s.summary);
   const drivers = splitScoreLines(s.drivers);
-  const essentiel = summary.plain.length > 0
-    ? summary.plain.slice(0, 3)
-    : [t(lang, `${s.title} : ${levelVigilanceWord(level)}.`, `${s.title}: ${levelVigilanceWord(level, 'en')}.`)];
-
-  const sections: FicheSection[] = [];
-  if (drivers.plain.length > 0) {
-    sections.push({
-      title: t(lang, 'Facteurs', 'Drivers'),
-      html: `<ul class="fiche-list">${drivers.plain.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`,
-    });
-  }
-  // Relecture finale I4 : « Seine-Saint-Denis (72/100) » → le nom ici, le score dans le volet.
   const zones = s.affectedZones.map(splitZoneScore);
-  if (zones.length > 0) {
-    sections.push({ title: t(lang, 'Zones', 'Areas'), html: `<p>${escapeHtml(zones.map((z) => z.name).join(' · '))}</p>` });
-  }
-  if (s.recommendedActions.length > 0) {
-    const rows = s.recommendedActions.map((a) => {
-      const auto = a.automatable ? ` · ${t(lang, 'IA possible', 'AI possible')}` : '';
-      return `<li>${escapeHtml(a.label)} <span class="fiche-meta">${escapeHtml(a.ownerHint)} · ${ACTION_TYPE[a.actionType][lang === 'fr' ? 0 : 1]}${auto}</span></li>`;
-    }).join('');
-    sections.push({ title: t(lang, 'Actions recommandées', 'Recommended actions'), html: `<ul class="fiche-list">${rows}</ul>` });
-  }
+  const updated = s.updatedAt.getTime();
+  const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
+  const names = zones.map((z) => z.name);
+  const zoneText = names.length > 3 ? `${names.slice(0, 3).join(', ')} + ${names.length - 3}` : names.join(', ');
+  const badgeText = input.badge === 'nouveau'
+    ? t(lang, 'nouveau depuis votre visite', 'new since your visit')
+    : input.badge === 'aggrave' ? t(lang, 'aggravé depuis votre visite', 'escalated since your visit') : null;
+  const context = [
+    levelPhrase(level, lang),
+    zoneText || null,
+    t(lang, `mise à jour ${absoluteTime(updated, now, lang)}`, `updated ${absoluteTime(updated, now, lang)}`),
+    badgeText,
+  ].filter((c): c is string => c !== null);
+  const lead = summary.plain.length > 0
+    ? summary.plain.slice(0, 3).join(' ')
+    : t(lang, `${s.title} : ${levelVigilanceWord(level)}.`, `${s.title}: ${levelVigilanceWord(level, 'en')}.`);
 
+  // Indicateurs (ex-« Pourquoi ce niveau ? », spec 2026-10-01 fiches § 2.3) : une barre par sous-score.
+  const meters: string[] = [];
+  const notes: string[] = [];
+  const pushScore = (line: string): void => {
+    const p = parseScoreLine(line);
+    if (!p) {
+      notes.push(line);
+      return;
+    }
+    meters.push(meterRow({
+      label: p.label, value: (p.value / p.max) * 100, level: intensityLevel(p.value, p.max), display: p.display,
+      noteHtml: p.note ? `<span class="fmk-muted">${escapeHtml(p.note)}</span>` : undefined,
+    }));
+  };
+  for (const line of [...drivers.scored, ...summary.scored]) pushScore(line);
+  for (const z of zones) if (z.score !== null) pushScore(`${z.name} : ${z.score}`);
+  const confidence = Math.round(s.confidence * 100);
+  meters.push(meterRow({ label: t(lang, 'Confiance', 'Confidence'), value: confidence, level: null, neutral: true, display: `${confidence} %` }));
+  const provenance = [
+    s.sourceRefs.length > 0 ? `${t(lang, 'Sources', 'Sources')} : ${s.sourceRefs.join(', ')}` : null,
+    t(lang, `mise à jour ${absoluteTime(updated, now, lang)}`, `updated ${absoluteTime(updated, now, lang)}`),
+  ].filter((c): c is string => c !== null).join(' · ');
+  const indicators = `<div class="fmk-meters fmk-meters--score">${meters.join('')}</div>`
+    + notes.map((n) => `<p class="fmk-note">${escapeHtml(n)}</p>`).join('')
+    + `<p class="fmk-note">${escapeHtml(provenance)}</p>`;
+
+  const sections: FicheSection[] = [{
+    id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true),
+    summary: escapeHtml(confidenceLabel(s.confidence, lang)), html: indicators,
+  }];
+  if (s.recommendedActions.length > 0) {
+    const items = s.recommendedActions.map((a) => {
+      const meta = [a.ownerHint, ACTION_TYPE[a.actionType][lang === 'fr' ? 0 : 1], a.automatable ? t(lang, 'IA possible', 'AI possible') : null]
+        .filter((x): x is string => x !== null && x !== '').join(' · ');
+      return `<li>${escapeHtml(a.label)}<small>${escapeHtml(meta)}</small></li>`;
+    }).join('');
+    const n = s.recommendedActions.length;
+    sections.push({ id: 'todo', title: t(lang, 'À faire', 'To do'), collapsible: true, open: open('todo', true),
+      summary: escapeHtml(t(lang, `${n} action${plural(n)}`, `${n} action${plural(n)}`)), html: `<ol class="fmk-todo">${items}</ol>` });
+  }
+  if (drivers.plain.length > 0) {
+    sections.push({ id: 'factors', title: t(lang, 'Facteurs', 'Drivers'), collapsible: true, open: open('factors', true),
+      summary: String(drivers.plain.length), html: `<ul class="fiche-list">${drivers.plain.map((d) => `<li>${escapeHtml(d)}</li>`).join('')}</ul>` });
+  }
+  if (names.length > 0) {
+    sections.push({ id: 'zones', title: t(lang, 'Zones', 'Areas'), collapsible: true, open: open('zones', true),
+      summary: escapeHtml(t(lang, `${names.length} zone${plural(names.length)}`, `${names.length} area${plural(names.length)}`)),
+      html: `<div class="fmk-tags">${names.map((z) => `<span class="fmk-tag">${escapeHtml(z)}</span>`).join('')}</div>` });
+  }
   const sources: FicheSource[] = s.sourceRefs.map((label) => ({ label, href: null, select: null }));
-  // Lien source de l'ancienne fiche d'alerte : seulement s'il est http(s).
   if (s.linkUrl && safeHref(s.linkUrl) !== null) {
     sources.unshift({ label: s.linkLabel ?? t(lang, 'Ouvrir la source', 'Open source'), href: s.linkUrl, select: null });
   }
-
-  // Arbitrage A7 : sous-scores et phrases chiffrées du moteur seulement dans le volet.
-  const zoneScores = zones.flatMap((z) => (z.score === null ? [] : [`${z.name} : ${z.score}`]));
-  const whyRows = [...drivers.scored, ...summary.scored, ...zoneScores].map((line) => `<li>${escapeHtml(line)}</li>`).join('');
-  const why = `<ul class="fiche-list">${whyRows}`
-    + `<li>${capitalize(confidenceLabel(s.confidence, lang))} (${Math.round(s.confidence * 100)} %)</li>`
-    + `<li>${t(lang, 'Niveau', 'Level')} : ${levelLabel(level, lang)}, ${levelPhrase(level, lang)}</li></ul>`;
+  if (sources.length > 0) {
+    sections.push({ id: 'sources', title: t(lang, 'Sources', 'Sources'), collapsible: true, open: open('sources', false), tone: 'reference',
+      summary: escapeHtml(t(lang, `${sources.length} source${plural(sources.length)}`, `${sources.length} source${plural(sources.length)}`)), html: renderSourceChips(sources) });
+  }
 
   const actions: FicheAction[] = [];
   if ((s.activateLayers?.length ?? 0) > 0 || (s.lon != null && s.lat != null)) {
@@ -470,39 +510,24 @@ export function buildSituationFiche(input: SituationFicheInput): FicheModel {
   if (input.hasDossier) {
     actions.push({
       id: 'dossier',
-      label: s.type === 'WILDFIRE_ESCALATION'
-        ? t(lang, 'Ouvrir le dossier d’incident', 'Open incident file')
-        : t(lang, 'Voir l’aéronef', 'Show aircraft'),
+      label: s.type === 'WILDFIRE_ESCALATION' ? t(lang, 'Ouvrir le dossier d’incident', 'Open incident file') : t(lang, 'Voir l’aéronef', 'Show aircraft'),
     });
   }
+  actions.push({ id: 'copy-ref', label: t(lang, 'Copier la référence', 'Copy reference') });
 
-  const changes: FicheChange[] = input.badge === null
-    ? []
-    : [{
-        at: input.changeAt,
-        text: input.badge === 'nouveau'
-          ? t(lang, 'Nouveau depuis votre visite', 'New since your visit')
-          : t(lang, 'Aggravé depuis votre visite', 'Escalated since your visit'),
-        select: null,
-      }];
-
+  const kindWord = input.kind === 'alert' ? t(lang, 'Alerte', 'Alert') : t(lang, 'Situation', 'Situation');
   return {
     key: `${input.kind}:${s.id}`,
-    kind: input.kind === 'alert' ? t(lang, 'Alerte', 'Alert') : t(lang, 'Situation', 'Situation'),
+    kind: `${kindWord} · ${themeLabel(situationTheme(s.type, s.category), lang)}`,
     name: s.title,
     level,
-    driver: confidenceLabel(s.confidence, lang),
-    freshness: `${t(lang, 'Mise à jour', 'Updated')} ${formatClock(s.updatedAt.getTime(), lang)}`,
-    essentiel,
-    changesMeta: '',
-    changes,
+    driver: '',
+    freshness: '',
+    context,
+    lead,
+    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
     sections,
-    figures: [],
-    watch: [],
-    sourcesTitle: t(lang, 'Sources', 'Sources'),
-    sources,
-    why,
-    whyOpen: input.whyOpen,
+    reference: `${s.id} · ${s.title} · ${levelLabel(level, lang)} · ${t(lang, 'mise à jour', 'updated')} ${absoluteTime(updated, now, lang, { withDate: true })}`,
     actions,
   };
 }
