@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
 import { innerLayerOpen } from './escape-layers.ts';
 
@@ -6,7 +6,7 @@ function add(html: string): HTMLElement {
   const host = document.createElement('div');
   host.innerHTML = html;
   document.body.appendChild(host);
-  // jsdom ne fait pas de mise en page : on simule « affiché ».
+  // happy-dom ne fait pas de mise en page : on simule « affiché ».
   for (const el of host.querySelectorAll('*')) (el as HTMLElement).getClientRects = () => [{}] as unknown as DOMRectList;
   return host;
 }
