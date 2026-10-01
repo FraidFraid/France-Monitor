@@ -240,7 +240,7 @@ function renderScoreHead(model: FicheModel, score: FicheScore | 'pending', lang:
 /** En-tête kit des fiches sans score : sur-titre, titre, pastille et contexte, synthèse. */
 function renderKitHead(model: FicheModel, lang: Lang): string {
   const pill = model.level ? renderVigilancePill(model.level, lang) : '';
-  const context = (model.context ?? []).map((c) => `<span>${escapeHtml(c)}</span>`).join('<span class="fmk-sep" aria-hidden="true">•</span>');
+  const context = (model.context ?? []).map((c) => `<span class="fmk-ctx">${escapeHtml(c)}</span>`).join('');
   return `<header class="fiche-head fmk-head">`
     + `<div class="fmk-eyebrow">${escapeHtml(model.kind)}</div>`
     + `<h2 class="fiche-name fmk-title" tabindex="-1">${escapeHtml(model.name)}</h2>`

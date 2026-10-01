@@ -142,7 +142,7 @@ describe('en-tête kit des fiches sans score (spec 2026-10-01 fiches § 2)', () 
     expect(html).toContain('<div class="fmk-eyebrow">Événement · Sécurité</div>');
     expect(html).toContain('<h2 class="fiche-name fmk-title" tabindex="-1">Titre &lt;b&gt;</h2>');
     expect(html).toContain('fm-vig--orange');
-    expect(html).toContain('<span>Haut-Rhin (68)</span><span class="fmk-sep" aria-hidden="true">•</span><span>depuis 30/09 19:11</span>');
+    expect(html).toContain('<span class="fmk-ctx">Haut-Rhin (68)</span><span class="fmk-ctx">depuis 30/09 19:11</span>');
     expect(html).toContain('<p class="fmk-lead">Repris par 8 sources.</p>');
   });
 
