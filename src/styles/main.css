@@ -8555,7 +8555,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* ── Kit de panneau v2 « fmk » (spec 2026-10-01) — référence pour restyler les autres panneaux ──
    Fond et filets du panneau ; chiffres tabulaires, jamais de police à chasse fixe ; couleurs de
    niveau pour un niveau seulement, vert de marque pour l'interactif ; aucun cadre dans un cadre. */
-#app.ui-v2 .fiche.fmk { --fmk-rule: var(--border-color); --fmk-track: var(--bg-surface-hover); --fmk-muted: var(--text-secondary); --fmk-faint: var(--text-muted); font-size: 13px; line-height: 1.45; color: var(--text-primary); }
+#app.ui-v2 .fiche.fmk { --fmk-rule: var(--border-color); --fmk-track: var(--bg-surface-hover); --fmk-muted: var(--text-secondary); --fmk-faint: var(--text-muted); --fmk-loss: #ff9f6b; font-size: 13px; line-height: 1.45; color: var(--text-primary); }
 #app.ui-v2 .fmk .fmk-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 #app.ui-v2 .fmk .fmk-eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fmk-faint); }
 #app.ui-v2 .fmk .fmk-muted { color: var(--fmk-muted); }
@@ -8589,10 +8589,11 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .fmk .fmk-meter { display: grid; align-items: center; gap: 4px 10px; padding: 3px 0; }
 #app.ui-v2 .fmk .fmk-meters--pillars .fmk-meter { grid-template-columns: 5.5rem minmax(0, 1fr) 2rem 3.4rem 3rem; }
 #app.ui-v2 .fmk .fmk-meters--infra .fmk-meter { grid-template-columns: 9.5rem minmax(0, 1fr) 7.5rem; }
+#app.ui-v2 .fmk .fmk-meter-label, #app.ui-v2 .fmk .fmk-domain-name { min-width: 0; overflow-wrap: anywhere; }
 #app.ui-v2 .fmk .fmk-bar { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--fmk-track); }
 #app.ui-v2 .fmk .fmk-bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; }
 #app.ui-v2 .fmk .fmk-meter-v, #app.ui-v2 .fmk .fmk-meter-x { text-align: right; white-space: nowrap; }
-#app.ui-v2 .fmk .fmk-meter-x:last-child { color: #ff9f6b; }
+#app.ui-v2 .fmk .fmk-meter-x:last-child { color: var(--fmk-loss); }
 #app.ui-v2 .fmk .fmk-meter-note { grid-column: 1 / -1; font-size: 11.5px; color: var(--fmk-faint); }
 #app.ui-v2 .fmk .fmk-note { margin: 8px 0 0; font-size: 11.5px; color: var(--fmk-faint); }
 
@@ -8633,6 +8634,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .fmk .fmk-domain small { grid-column: 1 / -1; font-size: 11.5px; color: var(--fmk-faint); }
 #app.ui-v2 .fmk .fmk-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 #app.ui-v2 .fmk .fmk-tag { padding: 1px 7px; border-radius: 5px; font-size: 11.5px; background: var(--bg-surface); color: var(--text-secondary); }
+#app.ui-v2 .fmk .fmk-tag--warn { color: var(--sev-orange); }
 #app.ui-v2 .fmk .fmk-tag--crit { color: var(--sev-red); }
 #app.ui-v2 .fmk .fmk-mix { display: flex; height: 8px; overflow: hidden; border-radius: 4px; }
 #app.ui-v2 .fmk .fmk-legend { margin: 4px 0 6px; font-size: 11.5px; color: var(--fmk-faint); }
@@ -8640,7 +8642,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .fmk .fmk-heat { display: grid; gap: 2px; font-size: 11px; }
 #app.ui-v2 .fmk .fmk-heat-day { text-align: center; color: var(--fmk-faint); }
 #app.ui-v2 .fmk .fmk-heat-label { color: var(--fmk-muted); }
-#app.ui-v2 .fmk .fmk-heat-cell { min-height: 14px; border-radius: 2px; background: color-mix(in srgb, var(--c) calc(var(--a) * 100%), var(--bg-surface)); color: #04220f; text-align: center; line-height: 14px; }
+#app.ui-v2 .fmk .fmk-heat-cell { min-height: 14px; border-radius: 2px; background: color-mix(in srgb, var(--c) calc(var(--a) * 100%), var(--bg-surface)); color: var(--text-primary); text-shadow: 0 0 2px rgba(0, 0, 0, 0.85); text-align: center; line-height: 14px; }
 #app.ui-v2 .fmk .fiche-chips { gap: 4px; }
 #app.ui-v2 .fmk .fiche-source { border: 0; background: var(--bg-surface); color: var(--text-secondary); }
 #app.ui-v2 .fmk .fiche-source.fiche-link { color: var(--v2-brand); }
