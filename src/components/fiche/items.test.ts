@@ -130,21 +130,33 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
 
   it('évolution : heures absolues, ouverte quand des changements existent, remplacée par sectionOpen', () => {
     const base = envInput();
-    const changeTimes = new Map<string, number>();
-    const first = buildThemeFiche(base).sections;
-    expect(first.find((s) => s.id === 'evolution')).toBeUndefined();
-    const item = base.queue.items.find((i) => i.badge !== null && i.ref.kind !== 'event');
-    if (item) {
-      changeTimes.set(item.key, NOW - 3600_000);
-      const m = buildThemeFiche({ ...base, changeTimes });
-      const ev = m.sections.find((s) => s.id === 'evolution');
-      expect(ev).toMatchObject({ collapsible: true, open: true });
-      expect(ev?.summary).toBe('1 changement');
-      expect(ev?.html).toContain('07:30');
-      const closed = buildThemeFiche({ ...base, changeTimes, sectionOpen: new Map([['evolution', false]]) });
-      expect(closed.sections.find((s) => s.id === 'evolution')?.open).toBe(false);
-    }
+    expect(buildThemeFiche(base).sections.find((s) => s.id === 'evolution')).toBeUndefined();
+    const withBaseline = themeInput({ ...base, queue: queue({
+      baseline: {},
+      meteo: [{ department: 'Var', departmentCode: '83', level: 'yellow', risks: [] }],
+      situations: [situation({ id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'critical', title: 'Crise hydrologique active' })],
+    }) });
+    const badged = withBaseline.queue.items.filter((i) => i.theme === 'environment' && i.badge !== null && i.ref.kind !== 'event');
+    expect(badged.length).toBeGreaterThan(0);
+    const changeTimes = new Map(badged.map((i) => [i.key, NOW - 3600_000] as [string, number]));
+    const m = buildThemeFiche({ ...withBaseline, changeTimes });
+    const ev = m.sections.find((s) => s.id === 'evolution');
+    expect(ev).toMatchObject({ collapsible: true, open: true });
+    expect(ev?.summary).toBe(badged.length === 1 ? '1 changement' : `${badged.length} changements`);
+    expect(ev?.html).toContain('09:00');
+    const closed = buildThemeFiche({ ...withBaseline, changeTimes, sectionOpen: new Map([['evolution', false]]) });
+    expect(closed.sections.find((s) => s.id === 'evolution')?.open).toBe(false);
     expect(buildThemeFiche({ ...base, sectionOpen: new Map([['indicators', false]]) }).sections[0].open).toBe(false);
+  });
+
+  it('échappe un titre d’élément hostile et n’emploie aucun tiret cadratin', () => {
+    const m = buildThemeFiche(themeInput({
+      theme: 'environment',
+      queue: queue({ situations: [situation({ id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'critical', title: '<img src=x>' })] }),
+    }));
+    expect(m.sections[0].html).toContain('&lt;img');
+    expect(m.sections[0].html).not.toContain('<img src=x>');
+    expect(JSON.stringify(buildThemeFiche(envInput()))).not.toContain('—');
   });
 
   it('avant les couches critiques : « Chargement des données… », jamais « Rien à traiter »', () => {
