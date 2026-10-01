@@ -1,0 +1,344 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > chronologie 1`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Chronologie 7 jours</div>
+        <div class="frintel-card-meta">Lecture par intensité de signal</div>
+      </div>
+      <div class="frintel-timeline-head">
+        <div></div>
+        <div class="frintel-timeline-days">
+          <span>25 sept.</span><span>26 sept.</span>
+        </div>
+      </div>
+      <div class="frintel-timeline">
+        
+    <div class="frintel-timeline-row">
+      <div class="frintel-timeline-label">Météo</div>
+      <div class="frintel-timeline-track">
+        
+          <span
+            class="frintel-timeline-cell"
+            title="Météo: 0"
+            style="--fi-timeline-color:#eab308;--fi-timeline-alpha:0.08;"
+          ></span>
+        
+          <span
+            class="frintel-timeline-cell"
+            title="Météo: 10"
+            style="--fi-timeline-color:#eab308;--fi-timeline-alpha:0.9;"
+          >10</span>
+        
+      </div>
+    </div>
+  
+      </div>
+    </section>
+  "
+`;
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > domaines 1`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Domaines</div>
+        <div class="frintel-card-meta">État par domaine de surveillance</div>
+      </div>
+      <div class="frintel-dom-grid">
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Cyber</span>
+      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">alertes 30j · 20 CVE</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Rail</span>
+      <div class="frintel-dom-value">215 <span class="frintel-dom-meta">159 fortes</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-label">Militaire</span>
+      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">vols actifs</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-green);"></span>
+      <span class="frintel-dom-label">Maritime</span>
+      <div class="frintel-dom-value">0 <span class="frintel-dom-meta">navires zone FR</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Pannes</span>
+      <div class="frintel-dom-value">1339 <span class="frintel-dom-meta">élec 6 · télécom 1333</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Défense</span>
+      <div class="frintel-dom-value">1 <span class="frintel-dom-meta">câbles 0 · GPS 1</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Météo</span>
+      <div class="frintel-dom-value">39 <span class="frintel-dom-meta">vigies 10 · crues 0 · feux 29</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-label">Finance</span>
+      <div class="frintel-dom-value">7 <span class="frintel-dom-meta">lignes sous tension</span></div>
+    </div>
+  </div>
+      <div class="frintel-chip-wrap"><span class="frintel-chip frintel-chip-warn">Orages · Orange ×2</span><span class="frintel-chip frintel-chip-warn">Pluie-inondation · Orange</span><span class="frintel-chip frintel-chip-warn">159 SNCF fortes</span><span class="frintel-chip frintel-chip-crit">2 titres critiques</span></div>
+    </section>
+  "
+`;
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > domaines 2`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Domains</div>
+        <div class="frintel-card-meta">Status by watch domain</div>
+      </div>
+      <div class="frintel-dom-grid">
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Cyber</span>
+      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">30d alerts · 20 CVE</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Rail</span>
+      <div class="frintel-dom-value">215 <span class="frintel-dom-meta">159 severe</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-label">Military</span>
+      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">active flights</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-green);"></span>
+      <span class="frintel-dom-label">Maritime</span>
+      <div class="frintel-dom-value">0 <span class="frintel-dom-meta">ships FR waters</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Outages</span>
+      <div class="frintel-dom-value">1339 <span class="frintel-dom-meta">power 6 · telecom 1333</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Defense</span>
+      <div class="frintel-dom-value">1 <span class="frintel-dom-meta">cables 0 · GPS 1</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-label">Weather</span>
+      <div class="frintel-dom-value">39 <span class="frintel-dom-meta">watches 10 · floods 0 · fires 29</span></div>
+    </div>
+  
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-label">Finance</span>
+      <div class="frintel-dom-value">7 <span class="frintel-dom-meta">stressed lines</span></div>
+    </div>
+  </div>
+      <div class="frintel-chip-wrap"><span class="frintel-chip frintel-chip-warn">Orages · Orange ×2</span><span class="frintel-chip frintel-chip-warn">Pluie-inondation · Orange</span><span class="frintel-chip frintel-chip-warn">159 SNCF severe</span><span class="frintel-chip frintel-chip-crit">2 critical headlines</span></div>
+    </section>
+  "
+`;
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > énergie et carburants 1`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Énergie</div>
+        <div class="frintel-card-meta">Écowatt (national) : signal rouge</div>
+      </div>
+      
+        <div class="frintel-energy-stack">
+          <span style="width:70%;background:#7c3aed;"></span><span style="width:5%;background:#2563eb;"></span><span style="width:10%;background:#38bdf8;"></span><span style="width:8%;background:#60a5fa;"></span><span style="width:4%;background:#facc15;"></span><span style="width:3%;background:#34c759;"></span>
+        </div>
+        <div class="frintel-energy-legend">
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#7c3aed;"></span>
+              <span>Nuclear 70%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#2563eb;"></span>
+              <span>Gas 5%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#38bdf8;"></span>
+              <span>Hydro 10%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#60a5fa;"></span>
+              <span>Wind 8%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#facc15;"></span>
+              <span>Solar 4%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#34c759;"></span>
+              <span>Autre 3%</span>
+            </div>
+          
+        </div>
+        <div class="frintel-energy-meta">
+          <span>Production totale 53600 MW</span>
+          <span>Éolien live 4.2 GW</span>
+          <span>Charge éolienne 18%</span>
+        </div>
+        
+            <div class="frintel-oil-block">
+              <div class="frintel-oil-title">Pétrole & Carburants</div>
+              <div class="frintel-oil-grid">
+                
+                  <div class="frintel-oil-row">
+                    <span class="frintel-oil-label">Stocks nationaux</span>
+                    <span class="frintel-oil-value" style="color:var(--sev-orange);">46j <span class="frintel-oil-badge" style="color:var(--sev-orange);">Sous tension</span></span>
+                  </div>
+                
+                
+                  <div class="frintel-oil-row">
+                    <span class="frintel-oil-label">Tension carburants</span>
+                    <span class="frintel-oil-value">
+                      <span class="fm-vig fm-vig--orange">Orange</span>
+                       <span class="frintel-oil-badge" style="color:var(--sev-orange);">9.2% anomalies</span>
+                    </span>
+                  </div>
+                
+              </div>
+              
+                <div class="frintel-fuel-history">
+                  <div class="frintel-fuel-history-title">Prix moyens carburants · 30 jours</div>
+                  <div class="frintel-fuel-chart">
+    <svg viewBox="0 0 320 92" width="320" height="92" role="img" aria-label="Évolution des prix des carburants">
+      
+      
+      <path d="M 6.00 18.58 L 314.00 71.42" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="314.00" cy="71.42" r="2.1" fill="#f59e0b" />
+    
+      
+    </svg>
+  </div>
+                  <div class="frintel-fuel-legend">
+            <div class="frintel-fuel-row">
+              <span class="frintel-fuel-name">
+                <span class="frintel-fuel-dot" style="background:#f59e0b;"></span>
+                Gazole (B7)
+              </span>
+              <span class="frintel-fuel-value">2,337 €/L</span>
+              <span class="frintel-fuel-delta" style="color:var(--text-secondary);">7j -6,3 c/L</span>
+            </div>
+          </div>
+                </div>
+              
+            </div>
+          
+      
+    </section>
+  "
+`;
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > énergie et carburants 2`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Energy</div>
+        <div class="frintel-card-meta">Partial data</div>
+      </div>
+      
+        <div class="frintel-energy-stack">
+          <span style="width:70%;background:#7c3aed;"></span><span style="width:5%;background:#2563eb;"></span><span style="width:10%;background:#38bdf8;"></span><span style="width:8%;background:#60a5fa;"></span><span style="width:4%;background:#facc15;"></span><span style="width:3%;background:#34c759;"></span>
+        </div>
+        <div class="frintel-energy-legend">
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#7c3aed;"></span>
+              <span>Nuclear 70%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#2563eb;"></span>
+              <span>Gas 5%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#38bdf8;"></span>
+              <span>Hydro 10%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#60a5fa;"></span>
+              <span>Wind 8%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#facc15;"></span>
+              <span>Solar 4%</span>
+            </div>
+          
+            <div class="frintel-energy-row">
+              <span class="frintel-energy-dot" style="background:#34c759;"></span>
+              <span>Other 3%</span>
+            </div>
+          
+        </div>
+        <div class="frintel-energy-meta">
+          <span>Total production 53600 MW</span>
+          <span>Live wind 4.2 GW</span>
+          <span>Wind load factor 18%</span>
+        </div>
+        
+            <div class="frintel-oil-block">
+              <div class="frintel-oil-title">Oil & Fuels</div>
+              <div class="frintel-oil-grid">
+                
+                  <div class="frintel-oil-row">
+                    <span class="frintel-oil-label">National stocks</span>
+                    <span class="frintel-oil-value" style="color:var(--text-secondary);">46j <span class="frintel-oil-badge" style="color:var(--text-secondary);">Unknown</span></span>
+                  </div>
+                
+                
+              </div>
+              
+            </div>
+          
+      
+    </section>
+  "
+`;
+
+exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > énergie et carburants 3`] = `
+"
+    <section class="frintel-card">
+      <div class="frintel-card-top">
+        <div class="frintel-card-title">Énergie</div>
+        <div class="frintel-card-meta">Données partielles</div>
+      </div>
+      <div class="frintel-empty">Aucun profil énergie disponible.</div>
+    </section>
+  "
+`;

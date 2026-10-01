@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { renderDomainsBlock, renderEnergyBlock, renderTimelineBlock } from './france-intel-blocks.ts';
+import {
+  renderDomainsBlock, renderEnergyBlock, renderTimelineBlock,
+  domainTiles, domainChips, DOMAIN_LEVEL, energySegments, oilStatusInfo, timelineIntensity,
+} from './france-intel-blocks.ts';
 import type { FranceCountrySignals, FranceIntelEnergySummary } from '../types/index.ts';
 
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
@@ -46,5 +49,87 @@ describe('blocs du tiroir en rendus purs (refonte UI étape 2)', () => {
     expect(html).not.toContain('<b>');
     expect(html).not.toContain('<i>');
     expect(html).toContain('&lt;i&gt;Social&lt;/i&gt;');
+  });
+});
+
+describe('rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée)', () => {
+  const rich = {
+    signals: signals({
+      cyberAlerts: 24, cyberCritical: 20, railDisruptions: 215, railSevere: 159, militaryFlights: 36,
+      powerOutages: 6, telecomOutages: 1333, meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
+      jammingSignals: 1,
+    }),
+    meteo: [
+      { department: 'Var', departmentCode: '83', level: 'yellow' as const, risks: ['thunderstorm' as const] },
+      { department: 'Gard', departmentCode: '30', level: 'orange' as const, risks: ['thunderstorm' as const, 'rain-flood' as const] },
+    ],
+  };
+  const history = {
+    provider: 'carbu' as const, generatedAt: '2026-10-01T00:00:00Z', sourceLabel: 'test',
+    rangeStart: '2026-09-01T00:00:00Z', rangeEnd: '2026-10-01T00:00:00Z',
+    series: [{
+      fuelType: 'gazole' as const, label: 'Gazole (B7)', color: '#f59e0b', latestPrice: 2.337, delta7dCents: -6.3, delta30dCents: -1,
+      points: [{ timestamp: '2026-09-20T00:00:00Z', price: 2.4 }, { timestamp: '2026-10-01T00:00:00Z', price: 2.337 }],
+    }],
+  };
+
+  it('domaines', () => {
+    expect(renderDomainsBlock(rich, 'fr')).toMatchSnapshot();
+    expect(renderDomainsBlock(rich, 'en')).toMatchSnapshot();
+  });
+
+  it('énergie et carburants', () => {
+    expect(renderEnergyBlock(energy({ fuelPriceHistory: history }), 'fr')).toMatchSnapshot();
+    expect(renderEnergyBlock(energy({ oilVigilanceStatus: 'unknown', fuelTensionLevel: null, ecowattSignal: null }), 'en')).toMatchSnapshot();
+    expect(renderEnergyBlock(null, 'fr')).toMatchSnapshot();
+  });
+
+  it('chronologie', () => {
+    expect(renderTimelineBlock({
+      days: ['25 sept.', '26 sept.'],
+      lanes: [{ key: 'weather', label: 'Météo', color: '#eab308', counts: [0, 10] }],
+    }, 'fr')).toMatchSnapshot();
+  });
+});
+
+describe('données partagées des blocs (spec 2026-10-01)', () => {
+  it('tuiles de domaines : 8, dans l’ordre, avec niveau', () => {
+    const tiles = domainTiles(signals({ cyberAlerts: 24, cyberCritical: 20, militaryFlights: 36 }), 'fr');
+    expect(tiles.map((t) => t.label)).toEqual(['Cyber', 'Rail', 'Militaire', 'Maritime', 'Pannes', 'Défense', 'Météo', 'Finance']);
+    expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes 30j · 20 CVE', level: 'high' });
+    expect(tiles[2]?.level).toBe('medium');
+    expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange' });
+  });
+
+  it('étiquettes : risques météo cumulés, SNCF fortes, titres critiques', () => {
+    const chips = domainChips({
+      signals: signals({ railSevere: 3, criticalNews: 2 }),
+      meteo: [
+        { department: 'Var', departmentCode: '83', level: 'yellow', risks: ['thunderstorm' as const] },
+        { department: 'Gard', departmentCode: '30', level: 'yellow', risks: ['thunderstorm' as const] },
+      ],
+    }, 'fr');
+    expect(chips).toEqual([
+      { text: 'Orages · Jaune ×2', tone: 'warn' },
+      { text: '3 SNCF fortes', tone: 'warn' },
+      { text: '2 titres critiques', tone: 'crit' },
+    ]);
+  });
+
+  it('mix énergétique : segments non nuls seulement', () => {
+    expect(energySegments(energy({ shares: { nuclear: 70, gas: 0, hydro: 10, wind: 8, solar: 4, other: 8 } })).map((s) => s.key))
+      .toEqual(['nuclear', 'hydro', 'wind', 'solar', 'other']);
+  });
+
+  it('statut pétrolier : jamais vert si inconnu', () => {
+    expect(oilStatusInfo('tense', 'fr')).toEqual({ level: 'orange', label: 'Sous tension' });
+    expect(oilStatusInfo('critical', 'fr')).toEqual({ level: 'rouge', label: 'Critique' });
+    expect(oilStatusInfo('normal', 'en')).toEqual({ level: 'vert', label: 'Normal' });
+    expect(oilStatusInfo('unknown', 'fr')).toEqual({ level: null, label: 'Inconnu' });
+    expect(oilStatusInfo(null, 'fr')).toEqual({ level: null, label: 'Inconnu' });
+  });
+
+  it('intensité de la chronologie', () => {
+    expect([0, 1, 2, 3, 9].map(timelineIntensity)).toEqual([0.08, 0.25, 0.45, 0.65, 0.9]);
   });
 });

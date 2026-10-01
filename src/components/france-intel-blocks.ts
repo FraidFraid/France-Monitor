@@ -4,10 +4,12 @@
 // Node. Rendu identique à l'ancien tiroir ; seul l'échappement passe par la version chaîne.
 
 import type {
+  FranceCountrySignals,
   FranceCountrySnapshot,
   FranceIntelEnergySummary,
   FranceIntelTimelineLane,
   MeteoVigilanceLevel,
+  OilVigilanceStatus,
 } from '../types/index.ts';
 import { escapeHtml } from './france-intel-events.ts';
 import {
@@ -16,7 +18,7 @@ import {
   formatFuelPrice,
   renderFuelPriceChartSvg,
 } from '../utils/fuelPriceChart.ts';
-import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel } from '../services/vigilance.ts';
+import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
 
 type Lang = 'fr' | 'en';
@@ -45,7 +47,7 @@ const RISK_LABELS: Record<string, string> = {
   'wave-surge': 'Vagues-submersion',
 };
 
-function intensity(count: number): number {
+export function timelineIntensity(count: number): number {
   if (count <= 0) return 0.08;
   if (count === 1) return 0.25;
   if (count === 2) return 0.45;
@@ -62,7 +64,7 @@ function renderTimelineLane(lane: FranceIntelTimelineLane): string {
           <span
             class="frintel-timeline-cell"
             title="${escapeHtml(`${lane.label}: ${count}`)}"
-            style="--fi-timeline-color:${lane.color};--fi-timeline-alpha:${intensity(count)};"
+            style="--fi-timeline-color:${lane.color};--fi-timeline-alpha:${timelineIntensity(count)};"
           >${count > 0 ? count : ''}</span>
         `).join('')}
       </div>
@@ -70,12 +72,22 @@ function renderTimelineLane(lane: FranceIntelTimelineLane): string {
   `;
 }
 
-export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): string {
-  const s = snapshot.signals;
+export type DomainLevel = 'low' | 'medium' | 'high';
+
+export interface DomainTile {
+  label: string;
+  value: number;
+  meta: string;
+  level: DomainLevel;
+}
+
+/** Niveau L1 d'une tuile de domaine (couleurs du point, inchangées depuis le tiroir v1). */
+export const DOMAIN_LEVEL: Record<DomainLevel, VigilanceLevel> = { low: 'vert', medium: 'jaune', high: 'orange' };
+
+export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
   const outages = s.powerOutages + s.telecomOutages;
   const meteoTotal = s.meteoAlerts + s.floodAlerts + s.fireDetections;
-  type Level = 'low' | 'medium' | 'high';
-  const tiles: Array<{ label: string; value: number; meta: string; level: Level }> = [
+  return [
     {
       label: 'Cyber', value: s.cyberAlerts,
       meta: `${t(lang, 'alertes 30j', '30d alerts')} · ${s.cyberCritical} CVE`,
@@ -117,18 +129,16 @@ export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signal
       level: s.marketStress > 2 ? 'medium' : 'low',
     },
   ];
-  const levelColor: Record<Level, string> = {
-    low: levelColorVar('vert'), medium: levelColorVar('jaune'), high: levelColorVar('orange'),
-  };
-  const tilesHtml = tiles.map((tile) => `
-    <div class="frintel-dom-tile">
-      <span class="frintel-dom-dot" style="background:${levelColor[tile.level]};"></span>
-      <span class="frintel-dom-label">${escapeHtml(tile.label)}</span>
-      <div class="frintel-dom-value">${tile.value} <span class="frintel-dom-meta">${escapeHtml(tile.meta)}</span></div>
-    </div>
-  `).join('');
+}
 
-  // Chips vigilances météo actives (même logique qu'avant, sans emoji)
+export interface DomainChip {
+  text: string;
+  tone: 'warn' | 'crit';
+}
+
+/** Étiquettes sous les domaines : risques météo actifs, SNCF fortes, titres critiques. */
+export function domainChips(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): DomainChip[] {
+  const s = snapshot.signals;
   const riskMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
   for (const alert of snapshot.meteo.filter((item) => item.level !== 'green')) {
     for (const risk of alert.risks) {
@@ -139,12 +149,56 @@ export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signal
       });
     }
   }
-  const chips: string[] = [];
+  const chips: DomainChip[] = [];
   for (const [risk, item] of riskMap.entries()) {
-    chips.push(`<span class="frintel-chip frintel-chip-warn">${escapeHtml(RISK_LABELS[risk] ?? risk)} · ${escapeHtml(VIGILANCE_LABELS[item.level])}${item.count > 1 ? ` ×${item.count}` : ''}</span>`);
+    chips.push({ text: `${RISK_LABELS[risk] ?? risk} · ${VIGILANCE_LABELS[item.level]}${item.count > 1 ? ` ×${item.count}` : ''}`, tone: 'warn' });
   }
-  if (s.railSevere > 0) chips.push(`<span class="frintel-chip frintel-chip-warn">${s.railSevere} SNCF ${t(lang, 'fortes', 'severe')}</span>`);
-  if (s.criticalNews > 0) chips.push(`<span class="frintel-chip frintel-chip-crit">${s.criticalNews} ${t(lang, 'titres critiques', 'critical headlines')}</span>`);
+  if (s.railSevere > 0) chips.push({ text: `${s.railSevere} SNCF ${t(lang, 'fortes', 'severe')}`, tone: 'warn' });
+  if (s.criticalNews > 0) chips.push({ text: `${s.criticalNews} ${t(lang, 'titres critiques', 'critical headlines')}`, tone: 'crit' });
+  return chips;
+}
+
+export type EnergyKey = 'nuclear' | 'gas' | 'hydro' | 'wind' | 'solar' | 'other';
+
+export interface EnergySegment {
+  key: EnergyKey;
+  color: string;
+  value: number;
+}
+
+/** Mix de production (couleurs du tiroir v1), segments non nuls. */
+export function energySegments(energy: FranceIntelEnergySummary): EnergySegment[] {
+  const all: EnergySegment[] = [
+    { key: 'nuclear', color: '#7c3aed', value: energy.shares.nuclear },
+    { key: 'gas', color: '#2563eb', value: energy.shares.gas },
+    { key: 'hydro', color: '#38bdf8', value: energy.shares.hydro },
+    { key: 'wind', color: '#60a5fa', value: energy.shares.wind },
+    { key: 'solar', color: '#facc15', value: energy.shares.solar },
+    { key: 'other', color: '#34c759', value: energy.shares.other },
+  ];
+  return all.filter((segment) => segment.value > 0);
+}
+
+/** Statut des stocks pétroliers : jamais vert pour un statut inconnu. */
+export function oilStatusInfo(status: OilVigilanceStatus | null, lang: Lang): { level: VigilanceLevel | null; label: string } {
+  if (status === 'critical') return { level: 'rouge', label: t(lang, 'Critique', 'Critical') };
+  if (status === 'tense') return { level: 'orange', label: t(lang, 'Sous tension', 'Tense') };
+  if (status === 'normal') return { level: 'vert', label: t(lang, 'Normal', 'Normal') };
+  return { level: null, label: t(lang, 'Inconnu', 'Unknown') };
+}
+
+export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): string {
+  const tiles = domainTiles(snapshot.signals, lang);
+  const levelColor = (level: DomainLevel): string => levelColorVar(DOMAIN_LEVEL[level]);
+  const tilesHtml = tiles.map((tile) => `
+    <div class="frintel-dom-tile">
+      <span class="frintel-dom-dot" style="background:${levelColor(tile.level)};"></span>
+      <span class="frintel-dom-label">${escapeHtml(tile.label)}</span>
+      <div class="frintel-dom-value">${tile.value} <span class="frintel-dom-meta">${escapeHtml(tile.meta)}</span></div>
+    </div>
+  `).join('');
+
+  const chips = domainChips(snapshot, lang).map((c) => `<span class="frintel-chip frintel-chip-${c.tone}">${escapeHtml(c.text)}</span>`);
 
   return `
     <section class="frintel-card">
@@ -159,15 +213,9 @@ export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signal
 }
 
 export function renderEnergyBlock(energy: FranceIntelEnergySummary | null, lang: Lang): string {
-  const energySegments = energy
-    ? [
-        { label: 'Nuclear', color: '#7c3aed', value: energy.shares.nuclear },
-        { label: 'Gas', color: '#2563eb', value: energy.shares.gas },
-        { label: 'Hydro', color: '#38bdf8', value: energy.shares.hydro },
-        { label: 'Wind', color: '#60a5fa', value: energy.shares.wind },
-        { label: 'Solar', color: '#facc15', value: energy.shares.solar },
-        { label: t(lang, 'Autre', 'Other'), color: '#34c759', value: energy.shares.other },
-      ].filter((segment) => segment.value > 0)
+  const V1_ENERGY_LABEL: Record<EnergyKey, string> = { nuclear: 'Nuclear', gas: 'Gas', hydro: 'Hydro', wind: 'Wind', solar: 'Solar', other: '' };
+  const segments = energy
+    ? energySegments(energy).map((seg) => ({ label: seg.key === 'other' ? t(lang, 'Autre', 'Other') : V1_ENERGY_LABEL[seg.key], color: seg.color, value: seg.value }))
     : [];
 
   return `
@@ -178,10 +226,10 @@ export function renderEnergyBlock(energy: FranceIntelEnergySummary | null, lang:
       </div>
       ${energy ? `
         <div class="frintel-energy-stack">
-          ${energySegments.map((segment) => `<span style="width:${segment.value}%;background:${segment.color};"></span>`).join('')}
+          ${segments.map((segment) => `<span style="width:${segment.value}%;background:${segment.color};"></span>`).join('')}
         </div>
         <div class="frintel-energy-legend">
-          ${energySegments.map((segment) => `
+          ${segments.map((segment) => `
             <div class="frintel-energy-row">
               <span class="frintel-energy-dot" style="background:${segment.color};"></span>
               <span>${escapeHtml(segment.label)} ${segment.value}%</span>
@@ -202,14 +250,9 @@ export function renderEnergyBlock(energy: FranceIntelEnergySummary | null, lang:
           const hasFuelHistory = !!fuelHistory && fuelHistory.series.length > 0;
           if (!oilDays && !fuelLevel && !hasFuelHistory) return '';
           // Jamais vert pour un statut inconnu (couleur neutre) ; les autres statuts suivent L1.
-          const oilColor = oilStatus === 'critical' ? levelColorVar('rouge')
-            : oilStatus === 'tense' ? levelColorVar('orange')
-            : oilStatus === 'normal' ? levelColorVar('vert')
-            : 'var(--text-secondary)';
-          const oilLabel = oilStatus === 'critical' ? t(lang, 'Critique', 'Critical')
-            : oilStatus === 'tense' ? t(lang, 'Sous tension', 'Tense')
-            : oilStatus === 'normal' ? t(lang, 'Normal', 'Normal')
-            : t(lang, 'Inconnu', 'Unknown');
+          const oil = oilStatusInfo(oilStatus, lang);
+          const oilColor = oil.level ? levelColorVar(oil.level) : 'var(--text-secondary)';
+          const oilLabel = oil.label;
           const visibleSeries = hasFuelHistory ? filterFuelPriceSeries(fuelHistory, '1m') : [];
           const fuelChart = visibleSeries.length > 0
             ? renderFuelPriceChartSvg(visibleSeries, {
