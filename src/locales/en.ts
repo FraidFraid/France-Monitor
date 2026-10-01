@@ -6,7 +6,7 @@ const en = {
     backToMap: 'Back to map',
     live: 'Live',
     languageSwitcher: 'Language switcher',
-    dashboardHeading: 'France Monitor — situational dashboard',
+    dashboardHeading: 'France Monitor: situational dashboard',
     moreActionsAria: 'More actions',
     sidebarExpandAria: 'Show sidebar',
     sidebarCollapseAria: 'Collapse sidebar',

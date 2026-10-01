@@ -6,7 +6,7 @@ const fr = {
     backToMap: 'Revenir à la carte',
     live: 'En direct',
     languageSwitcher: 'Sélecteur de langue',
-    dashboardHeading: 'France Monitor — tableau de bord situationnel',
+    dashboardHeading: 'France Monitor : tableau de bord situationnel',
     moreActionsAria: 'Plus d’actions',
     sidebarExpandAria: 'Afficher la barre latérale',
     sidebarCollapseAria: 'Réduire la barre latérale',

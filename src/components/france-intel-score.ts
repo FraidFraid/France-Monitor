@@ -63,7 +63,7 @@ export function dominantFactorText(breakdown: FranceScoreBreakdown, lang: Lang):
   const ui = PILLAR_UI.find((p) => p.key === dominant.key);
   const pillarName = ui ? t(lang, ui.fr, ui.en) : escapeHtml(dominant.key);
   const comps = dominant.components.slice(0, 3).map((c) => `${escapeHtml(c.label)} ${c.value}`);
-  return comps.length > 0 ? `${pillarName} — ${comps.join(' · ')}` : pillarName;
+  return comps.length > 0 ? `${pillarName} : ${comps.join(' · ')}` : pillarName;
 }
 
 /** « en dégradation sur 24 h » / « en amélioration sur 24 h » ; vide si stable ou inconnu. */
@@ -82,7 +82,7 @@ export function pillarLevel(value: number): VigilanceLevel {
 }
 
 export function formatDelta(delta: number | null | undefined): string {
-  if (delta == null) return '—';
+  if (delta == null) return 'n.d.';
   if (delta > 0) return `+${delta} ▲`;
   if (delta < 0) return `−${Math.abs(delta)} ▼`;
   return '0 ·';

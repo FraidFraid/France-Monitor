@@ -59,7 +59,7 @@ export class WeatherRadarPanel {
     modal.appendChild(createPremiumIconHeader({
       icon: fmIcon('cloud-rain'),
       title: 'Radar météo',
-      subtitle: 'Précipitations — mosaïque radar RainViewer',
+      subtitle: 'Précipitations : mosaïque radar RainViewer',
       gradientStart: 'rgba(79, 195, 247, 0.16)',
       gradientEnd: 'rgba(59, 130, 246, 0.10)',
       iconGradientStart: 'rgba(79, 195, 247, 0.22)',

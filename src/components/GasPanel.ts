@@ -494,7 +494,7 @@ export class GasPanel extends Panel {
             <canvas id="biogas-sparkline" width="340" height="50" style="width:100%;height:50px;"></canvas>
         </div>
         <div style="font-size:10px;color:rgba(255,255,255,0.35);text-align:right;">
-            ${sitesCount} sites · ${latest?.date ?? '—'} · ${latest?.status ?? ''}
+            ${sitesCount} sites · ${latest?.date ?? 'n.d.'} · ${latest?.status ?? ''}
         </div>
     `;
   }

@@ -424,7 +424,7 @@ export class FiresPanel {
         }, '');
         const latestLabel = latestDate
             ? new Date(latestDate).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-            : '—';
+            : 'n.d.';
 
         // ── 1. À savoir FIRMS ────────────────────────────────────────────────
         this._renderInfoBlock();
@@ -475,7 +475,7 @@ export class FiresPanel {
                 À savoir sur FIRMS <span style="margin-left:auto;font-size:10px;opacity:0.7;">${fmIcon('chevron-right')}</span>
             </summary>
             <div style="margin-top:10px;color:var(--text-muted);font-size:11px;line-height:1.8;display:flex;flex-direction:column;gap:4px;">
-                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> — revisite France <b style="color:var(--text-primary);">${revisit}</b>.</div>
+                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> : revisite France <b style="color:var(--text-primary);">${revisit}</b>.</div>
                 <div>${fmIcon('timer')} Même plan orbital : les passages arrivent groupés (jour et nuit), avec <b style="color:var(--text-primary);">~10 h sans observation</b> entre deux grappes. Un écart de plusieurs heures est normal.</div>
                 ${multiSource ? `<div>${fmIcon('link')} Détections proches (&lt; 3 km) regroupées en <b style="color:var(--text-primary);">incidents DBSCAN</b> avec score de sévérité.</div>` : ''}
                 ${multiSource ? `<div>${fmIcon('check')} Un incident vu par 2+ satellites reçoit le label <b style="color:#ff9500;">multi-satellite</b> (score impact ↑).</div>` : ''}
@@ -600,7 +600,7 @@ export class FiresPanel {
 
         const note = document.createElement('div');
         note.style.cssText = 'margin-top:3px;padding:8px;border-radius:6px;background:rgba(249,115,22,0.08);color:var(--text-muted);font-size:10px;line-height:1.5;';
-        note.innerHTML = `${fmIcon('wind')} <b style="color:var(--text-primary);">Pyroconvection</b> — un panache très développé peut signaler un feu intense et une propagation plus erratique. FranceMonitor ne produit pas encore ce diagnostic.`;
+        note.innerHTML = `${fmIcon('wind')} <b style="color:var(--text-primary);">Pyroconvection</b> : un panache très développé peut signaler un feu intense et une propagation plus erratique. FranceMonitor ne produit pas encore ce diagnostic.`;
         body.appendChild(note);
 
         const links = document.createElement('div');

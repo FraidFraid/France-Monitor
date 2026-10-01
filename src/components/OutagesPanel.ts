@@ -207,7 +207,7 @@ export class OutagesPanel extends Panel {
         <div style="flex:1;min-width:0;pointer-events:none;">
           <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Infrastructure numérique</div>
           <div style="font-weight:700;font-size:14px;color:var(--text-primary);">Pannes Réseau</div>
-          <div id="outages-header-count" style="font-size:12px;color:var(--text-muted);">—</div>
+          <div id="outages-header-count" style="font-size:12px;color:var(--text-muted);">n.d.</div>
         </div>
       </div>
       <div style="display:flex;gap:0;border-top:1px solid rgba(255,255,255,0.06);">
@@ -519,7 +519,7 @@ export class OutagesPanel extends Panel {
     if (title.includes('PDL hors réseau')) {
       const note = document.createElement('div');
       note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:4px;line-height:1.4;';
-      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) — il est affiché à titre d'information (HISTORIQUE). Les zones signalées sont bien en TEMPS RÉEL/prévisionnel. La tension réseau (signal national Écowatt, RTE) est un indicateur distinct, sans lien avec les PDL mesurés.";
+      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) : il est affiché à titre d'information (HISTORIQUE). Les zones signalées sont bien en TEMPS RÉEL/prévisionnel. La tension réseau (signal national Écowatt, RTE) est un indicateur distinct, sans lien avec les PDL mesurés.";
       inner.appendChild(note);
     }
 
@@ -607,7 +607,7 @@ export class OutagesPanel extends Panel {
 
     const note = document.createElement('div');
     note.style.cssText = `font-size:10px;color:var(--text-muted);background:${col}0d;border-left:2px solid ${col};padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;`;
-    note.textContent = 'Signal Écowatt RTE — national, indique une tension sur l\'équilibre offre/demande du réseau électrique. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes.';
+    note.textContent = 'Signal Écowatt RTE : national, indique une tension sur l\'équilibre offre/demande du réseau électrique. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes.';
     inner.appendChild(note);
 
     const row = document.createElement('div');
@@ -667,7 +667,7 @@ export class OutagesPanel extends Panel {
 
     const note = document.createElement('div');
     note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(168,85,247,0.05);border-left:2px solid #A855F7;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Zones géographiques reconstituées à partir de signalements citoyens (coupure-elec.fr, InfoCoupure.fr). Données participatives — non validées par Enedis. La taille de la zone reflète la densité de signalements, pas le périmètre réel de la coupure.';
+    note.textContent = 'Zones géographiques reconstituées à partir de signalements citoyens (coupure-elec.fr, InfoCoupure.fr). Données participatives : non validées par Enedis. La taille de la zone reflète la densité de signalements, pas le périmètre réel de la coupure.';
     inner.appendChild(note);
 
     // Palette violet uniquement pour les zones (cohérence avec la légende)
@@ -762,7 +762,7 @@ export class OutagesPanel extends Panel {
         <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
           <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('satellite-dish', { size: 32 })}</div>
           <div>Aucune panne télécom signalée.</div>
-          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Source ARCEP — mise à jour quotidienne (J-1)</div>
+          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Source ARCEP : mise à jour quotidienne (J-1)</div>
         </div>`;
       return;
     }
@@ -882,12 +882,12 @@ export class OutagesPanel extends Panel {
       ? ` (${this.arcepFetchedDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`
       : '';
     footer.innerHTML = `
-      ${fmStatusDot('stable')} ARCEP — Observatoire qualité mobile
+      ${fmStatusDot('stable')} ARCEP : Observatoire qualité mobile
       <span style="display:inline-block;margin-left:4px;padding:1px 6px;background:rgba(59,130,246,0.15);
         border:1px solid rgba(59,130,246,0.3);border-radius:8px;font-size:9px;font-weight:700;
         color:#60A5FA;">${arcepDateLabel}${arcepDateStr}</span>
       <span style="display:block;margin-top:4px;opacity:0.6;font-style:italic;"
-        >Données jour J ou J-1 — pas de mise à jour infra-journalière</span>
+        >Données jour J ou J-1 : pas de mise à jour infra-journalière</span>
     `;
     frag.appendChild(footer);
 
@@ -1218,7 +1218,7 @@ export class OutagesPanel extends Panel {
     if (ongoing.length > 0) {
       const radTitle = document.createElement('div');
       radTitle.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:8px;';
-      radTitle.textContent = `Cloudflare Radar — Anomalies FR (${ongoing.length})`;
+      radTitle.textContent = `Cloudflare Radar : Anomalies FR (${ongoing.length})`;
       frag.appendChild(radTitle);
 
       const radList = document.createElement('div');
@@ -1300,7 +1300,7 @@ export class OutagesPanel extends Panel {
 
     const note = document.createElement('div');
     note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(99,102,241,0.05);border-left:2px solid #818CF8;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE — publiées au fil des déclarations. Peuvent être des maintenances programmées ou des incidents en cours, pas nécessairement des coupures pour les foyers.';
+    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE : publiées au fil des déclarations. Peuvent être des maintenances programmées ou des incidents en cours, pas nécessairement des coupures pour les foyers.';
     inner.appendChild(note);
 
     const fmtDate = (d: Date | null) => d

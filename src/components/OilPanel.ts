@@ -423,7 +423,7 @@ export class OilPanel extends Panel {
               ${harmonized.crudeImportsKbd != null ? `
                 <tr>
                   <td style="padding:4px 0;color:var(--text-secondary);font-size:11px;">Crude</td>
-                  <td style="padding:4px 0;color:var(--text-muted);font-size:11px;text-align:right;">—</td>
+                  <td style="padding:4px 0;color:var(--text-muted);font-size:11px;text-align:right;">n.d.</td>
                   <td style="padding:4px 0;color:var(--text-primary);font-size:11px;text-align:right;">${this.formatKbd(harmonized.crudeImportsKbd)}</td>
                 </tr>
               ` : ''}
@@ -1110,7 +1110,7 @@ export class OilPanel extends Panel {
   }
 
   private formatKbd(value: number | null): string {
-    if (value == null || Number.isNaN(value)) return '—';
+    if (value == null || Number.isNaN(value)) return 'n.d.';
     return `${value.toFixed(value >= 100 ? 1 : 3)} kbd`;
   }
 

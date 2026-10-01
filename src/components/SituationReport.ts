@@ -93,7 +93,7 @@ function formatGeneratedAt(date: Date): string {
 function formatAge(cacheAgeMs: number | null, lastUpdate: Date | null, now: Date): string {
   let ms = cacheAgeMs;
   if (ms == null && lastUpdate) ms = now.getTime() - lastUpdate.getTime();
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return 'n.d.';
 
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds} s`;

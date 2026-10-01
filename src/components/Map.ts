@@ -93,7 +93,7 @@ export class Map {
             .attr('fill', '#606070')
             .attr('font-size', '10px')
             .attr('font-family', 'monospace')
-            .text('France Monitor — vue mobile');
+            .text('France Monitor : vue mobile');
 
         console.log('[Map] D3/SVG fallback initialized');
     }

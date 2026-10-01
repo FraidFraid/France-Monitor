@@ -192,7 +192,7 @@ function renderObservedBlock(incident: FireIncident): string {
   const labels = incident.score.labels.map(l => `<span class="wf-badge">${escapeHtml(l)}</span>`).join('');
 
   return `
-    <h3 class="wf-modal__section-title">${fmIcon('satellite')} Observé — NASA FIRMS</h3>
+    <h3 class="wf-modal__section-title">${fmIcon('satellite')} Observé : NASA FIRMS</h3>
     <div class="wf-observed__grid">
       <div class="wf-metric"><span class="wf-metric__label">Détections</span><strong>${incident.detectionsCount}</strong></div>
       <div class="wf-metric"><span class="wf-metric__label">FRP total</span><strong>${formatFr(Math.round(incident.frpTotal))} MW</strong></div>
@@ -221,12 +221,12 @@ function renderObservedBlock(incident: FireIncident): string {
 function renderKnownFact(fact: ImpactFact): string | null {
   try {
     if (!isKnownFactKind(fact.kind)) {
-      console.warn(`[WildfireDossierModal] fait ignoré (kind inconnu) — id=${fact?.id ?? '?'}`);
+      console.warn(`[WildfireDossierModal] fait ignoré (kind inconnu) : id=${fact?.id ?? '?'}`);
       return null;
     }
     return renderFactRow(fact);
   } catch (error) {
-    console.warn(`[WildfireDossierModal] fait ignoré (rendu invalide) — id=${fact?.id ?? '?'}`, error);
+    console.warn(`[WildfireDossierModal] fait ignoré (rendu invalide) : id=${fact?.id ?? '?'}`, error);
     return null;
   }
 }
@@ -255,21 +255,21 @@ export function renderDeclaredBlock(facts: ImpactFact[]): string {
     .map(renderKnownFact)
     .filter((html): html is string => html !== null);
   const discardedCount = facts.length - rendered.length;
-  const title = `<h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré — impact humain et matériel</h3>`;
+  const title = `<h3 class="wf-modal__section-title">${fmIcon('megaphone')} Déclaré : impact humain et matériel</h3>`;
 
   if (rendered.length === 0) {
     if (facts.length === 0) {
       return `${title}<p class="wf-modal__empty">Impacts non renseignés.</p>`;
     }
     const errorText = discardedCount === 1
-      ? '1 fait reçu mais invalide — donnée corrompue.'
-      : `${discardedCount} faits reçus mais invalides — donnée corrompue.`;
+      ? '1 fait reçu mais invalide : donnée corrompue.'
+      : `${discardedCount} faits reçus mais invalides : donnée corrompue.`;
     return `${title}<p class="wf-modal__error">${escapeHtml(errorText)}</p>`;
   }
 
   const noticeText = discardedCount === 1
-    ? '1 fait ignoré — donnée invalide'
-    : `${discardedCount} faits ignorés — donnée invalide`;
+    ? '1 fait ignoré : donnée invalide'
+    : `${discardedCount} faits ignorés : donnée invalide`;
   const notice = discardedCount > 0
     ? `<p class="wf-modal__notice">${escapeHtml(noticeText)}</p>`
     : '';
@@ -289,7 +289,7 @@ export function renderDeclaredBlock(facts: ImpactFact[]): string {
 function renderTimelineBlock(areaHaSeries: ImpactFact[]): string {
   if (areaHaSeries.length === 0) return '';
   return `
-    <h3 class="wf-modal__section-title">${fmIcon('trending-up')} Chronologie des révisions — surface brûlée</h3>
+    <h3 class="wf-modal__section-title">${fmIcon('trending-up')} Chronologie des révisions : surface brûlée</h3>
     <ul class="wf-timeline">${areaHaSeries.map(renderAreaTimelineRow).join('')}</ul>
   `;
 }
@@ -375,7 +375,7 @@ export class WildfireDossierModal {
     const depts = dossier.deptCodes.length > 0 ? dossier.deptCodes.join(', ') : 'département non résolu';
     const communesLabel = dossier.communes.length > 0 ? ` · ${dossier.communes.join(', ')}` : '';
 
-    this.titleEl.innerHTML = `${fmIcon('flame')} Dossier grand feu — <span style="color:${sevColor}">${sevLabel}</span>`;
+    this.titleEl.innerHTML = `${fmIcon('flame')} Dossier grand feu : <span style="color:${sevColor}">${sevLabel}</span>`;
     this.subtitleEl.textContent =
       `${depts}${communesLabel} · dernière détection ${formatObservationAge(dossier.incident.endDatetime)}`;
 

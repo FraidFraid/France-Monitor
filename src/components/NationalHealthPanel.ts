@@ -348,7 +348,7 @@ export class NationalHealthPanel extends Panel {
 
     const sentinellesHtml = `
       <div style="margin-bottom:16px;">
-        ${this.renderSectionHeader('Réseau Sentinelles — Incidence', '#bf5af2')}
+        ${this.renderSectionHeader('Réseau Sentinelles : Incidence', '#bf5af2')}
         <div style="color:#9898a8; font-size:10px; margin-bottom:8px;">Semaine : ${data.sentinellesLastWeekAvailable ?? 'n/d'} · France entière</div>
         ${sentIndicatorsHtml}
       </div>`;
@@ -374,7 +374,7 @@ export class NationalHealthPanel extends Panel {
 
     const ansmHtml = `
       <div style="margin-bottom:16px;">
-        ${this.renderSectionHeader('ANSM — Pénuries médicaments', '#ff9f0a')}
+        ${this.renderSectionHeader('ANSM : Pénuries médicaments', '#ff9f0a')}
         <div style="display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:11px; margin-bottom:10px; padding:8px 10px; background:rgba(0,0,0,0.2); border-radius:6px;">
           <span style="color:#9898a8;">Rupture</span><strong style="color:#ff3b30;">${data.drugShortagesByStatus?.rupture ?? 0}</strong>
           <span style="color:#9898a8;">Tension</span><strong style="color:#ff9500;">${data.drugShortagesByStatus?.tension ?? 0}</strong>
@@ -401,7 +401,7 @@ export class NationalHealthPanel extends Panel {
           <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:#5a5a72; letter-spacing:0.6px; margin-bottom:6px;">Fraîcheur SPF / Odissé</div>
           <div style="display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:11px; padding:8px; background:rgba(0,0,0,0.2); border-radius:6px; margin-bottom:12px;">
             <span style="color:#9898a8;">Dernier contrôle</span><strong style="color:#d8d8df;">${checkedAt}</strong>
-            <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness?.staleAfterDays ?? '—'} j</strong>
+            <span style="color:#9898a8;">Seuil obsolescence</span><strong>${data.epidemiologyFreshness?.staleAfterDays ?? 'n.d.'} j</strong>
             <span style="color:#9898a8;">État</span>${staleBadge}
           </div>
         </div>

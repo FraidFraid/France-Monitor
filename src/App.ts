@@ -573,7 +573,7 @@ function hasActiveEnergySystems(layers: Pick<MapLayers, typeof ENERGY_SYSTEM_LAY
 
 const HEALTH_ISS_LEGEND: LegendCategory = {
   id: 'health',
-  title: 'Santé — ISS (Stress Sanitaire)',
+  title: 'Santé : ISS (Stress Sanitaire)',
   type: 'gradient',
   items: [],
   gradientColors: ['#2ECC71', '#F1C40F', '#E67E22', '#E74C3C'],
@@ -590,7 +590,7 @@ const HEALTH_ISS_LEGEND: LegendCategory = {
 
 const HEALTH_APL_LEGEND: LegendCategory = {
   id: 'healthApl',
-  title: 'Santé — APL (Déserts médicaux)',
+  title: 'Santé : APL (Déserts médicaux)',
   items: APL_LEVELS.map(level => ({
     id: level.id,
     label: level.label,
@@ -612,7 +612,7 @@ const HEALTH_APL_LEGEND: LegendCategory = {
 
 const HEALTH_OSCOUR_LEGEND: LegendCategory = {
   id: 'healthOscour',
-  title: 'Santé — Urgences / SOS Médecins',
+  title: 'Santé : Urgences / SOS Médecins',
   items: OSCOUR_LEVELS.map(level => ({
     id: level.id,
     label: level.label,
@@ -781,7 +781,7 @@ const AIR_TRAFFIC_LEGEND: LegendCategory = {
 
 const MILITARY_LEGEND: LegendCategory = {
   id: 'military',
-  title: 'Défense — Activité Militaire',
+  title: 'Défense : Activité Militaire',
   columns: 2,
   items: [
     // Types d'aéronefs (icône avion)
@@ -854,7 +854,7 @@ const CYBER_LEGEND: LegendCategory = {
 // deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
   id: 'powerGrid',
-  title: 'Électricité — solde régional',
+  title: 'Électricité : solde régional',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
@@ -883,7 +883,7 @@ const ENERGY_ECOWATT_LEGEND: LegendCategory = {
 
 const HYDRAULIC_LEGEND: LegendCategory = {
   id: 'hydroBackbone',
-  title: 'Backbone énergétique — Hydraulique',
+  title: 'Backbone énergétique : Hydraulique',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
@@ -903,7 +903,7 @@ const HYDRAULIC_LEGEND: LegendCategory = {
     label: 'Structure statique · score dérivé recalculé ~10 min avec appui Hub’Eau si disponible'
   },
   notes: [
-    'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
+    'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
     'STEP, barrages > 50 MW, grands réservoirs et actifs insulaires structurants uniquement.',
     'Stress hydro-énergétique estimé à partir de signaux hydrométriques Hub’Eau + contexte énergie.',
   ],
@@ -1012,7 +1012,7 @@ const OIL_LEGEND: LegendCategory = {
     label: 'SDES (Chiffres clés de l’énergie 2025, données 2024) + séries mensuelles produits pétroliers data.gouv',
   },
   refresh: {
-    label: 'HYBRID / MONTHLY / STRUCTURAL — pas de télémesure temps réel du raffinage ou du réseau'
+    label: 'HYBRID / MONTHLY / STRUCTURAL : pas de télémesure temps réel du raffinage ou du réseau'
   },
   notes: [
     'Qualité des données : chargement en cours',
@@ -1050,7 +1050,7 @@ const OUTAGES_TELECOM_LEGEND: LegendCategory = {
     { id: 'telecom-hs',  label: 'Antenne HS',         color: '#EF4444', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'telecom-deg', label: 'Antenne dégradée',   color: '#FF8C00', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
   ],
-  source: { label: 'ARCEP — Observatoire qualité mobile' },
+  source: { label: 'ARCEP : Observatoire qualité mobile' },
   refresh: { label: 'Quotidien (J-1)' },
 };
 
@@ -1111,7 +1111,7 @@ function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory
 
 const NUCLEAR_LEGEND: LegendCategory = {
   id: 'nuclearFleet',
-  title: 'Nucléaire — Indisponibilités RTE',
+  title: 'Nucléaire : Indisponibilités RTE',
   items: [
     { id: 'nuc-available',  label: 'Disponible',          color: '#2ECC71', shape: 'circle' },
     { id: 'nuc-reduced',    label: 'Production réduite',  color: '#F59E0B', shape: 'circle' },
@@ -1943,7 +1943,7 @@ export class App {
           'Limite : pas de télémesure EDF barrage par barrage.',
         ]
       : [
-          'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
+          'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
           'Signaux auto-recalculés toutes les 10 minutes quand la couche est active',
           'Chargement des signaux hydrauliques en cours',
         ];
@@ -2193,7 +2193,7 @@ export class App {
         facts = Array.isArray(json.facts) ? json.facts as import('./types/index.ts').ImpactFact[] : [];
       }
     } catch (error) {
-      console.warn('[WildfireDossier] /api/fires/impacts indisponible — dossier détection seule', error);
+      console.warn('[WildfireDossier] /api/fires/impacts indisponible : dossier détection seule', error);
     }
 
     const dossier = buildDossier(incident, facts, incident.deptCodes);
@@ -2856,7 +2856,7 @@ export class App {
     // ── Bouton flottant "Baromètre national Santé" ──
     const barometerBtn = document.createElement('button');
     barometerBtn.id = 'barometer-fab';
-    barometerBtn.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:#888; font-weight:600;">${fmIcon('hourglass')} Chargement...</span>`;
+    barometerBtn.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé : <span style="color:#888; font-weight:600;">${fmIcon('hourglass')} Chargement...</span>`;
     barometerBtn.style.cssText = `
       position: absolute;
       top: 70px;
@@ -6741,7 +6741,7 @@ export class App {
       const fab = document.getElementById('barometer-fab');
       if (fab) {
         const color = metrics.levelColor;
-        fab.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
+        fab.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé : <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
         fab.style.borderColor = `${color}55`;
       }
     }

@@ -314,7 +314,7 @@ export class SituationHistoryPanel {
     const snap = slot as SituationSnapshot;
 
     if (snap.situations.length === 0) {
-      return `<div class="sit-hist__detail"><div class="sit-hist__detail-title">${escapeHtml(slotKeyToLabel(snap.slotKey))} — Aucune situation active</div></div>`;
+      return `<div class="sit-hist__detail"><div class="sit-hist__detail-title">${escapeHtml(slotKeyToLabel(snap.slotKey))} : Aucune situation active</div></div>`;
     }
 
     const items = snap.situations.map(s => {
@@ -325,7 +325,7 @@ export class SituationHistoryPanel {
       return `
         <div class="sit-hist__detail-item">
           <span class="sit-hist__detail-sev" style="background:${color}22;color:${color};border:1px solid ${color}44;">${escapeHtml(sevLbl)}</span>
-          <span>${icon} ${escapeHtml(s.title)}${zones ? ` — <span style="color:var(--text-muted)">${escapeHtml(zones)}</span>` : ''}</span>
+          <span>${icon} ${escapeHtml(s.title)}${zones ? ` : <span style="color:var(--text-muted)">${escapeHtml(zones)}</span>` : ''}</span>
         </div>`;
     }).join('');
 
@@ -342,7 +342,7 @@ export class SituationHistoryPanel {
     const age = Math.round((Date.now() - new Date(r.fetchedAt).getTime()) / 60_000);
     const src = r.source === 'fresh'  ? `Serveur · il y a ${age} min`
               : r.source === 'cached' ? `Cache local · ${age} min`
-              : `Réseau indisponible — données locales`;
+              : `Réseau indisponible : données locales`;
     const warn = r.isDegraded
       ? `<span class="sit-hist__footer-warn">${fmIcon('triangle-alert')} ${r.data.slotCount.missing} slots non capturés</span>`
       : '';
@@ -393,7 +393,7 @@ export class SituationHistoryPanel {
       content = `<div class="sit-hist__tooltip-date">${escapeHtml(slotKeyToLabel(slotKey))}</div><div style="color:var(--text-muted)">Non capturé</div>`;
     } else {
       const snap      = slot as SituationSnapshot;
-      const sevLbl    = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : '—';
+      const sevLbl    = snap.meta.maxSeverity ? SEV_LABEL[snap.meta.maxSeverity] : 'n.d.';
       const sevColor  = snap.meta.maxSeverity ? SEV_COLOR[snap.meta.maxSeverity] : '#22c55e';
       const situations = snap.situations.slice(0, 2).map(s =>
         `<div class="sit-hist__tooltip-situ">${TYPE_ICON[s.type] ?? fmIcon('triangle-alert')} ${escapeHtml(s.title)}</div>`

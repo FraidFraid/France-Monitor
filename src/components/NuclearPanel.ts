@@ -212,7 +212,7 @@ export class NuclearPanel extends Panel {
 
   private _renderStatus(state: NuclearState): string {
     if (!state.rteAvailable) {
-      return this._renderUnavailable('API RTE indisponible — données non chargées.');
+      return this._renderUnavailable('API RTE indisponible : données non chargées.');
     }
 
     const freshnessBadge = this._freshnessBadge(state.stress?.freshness ?? 'unavailable');

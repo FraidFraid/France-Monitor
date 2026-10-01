@@ -46,10 +46,10 @@ export function buildDatacenterPopupHtml(input = {}) {
     const incidents = Array.isArray(input.incidents) ? input.incidents : [];
     const updatedLabel = input.lastUpdated
         ? new Date(String(input.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        : '—';
+        : 'n.d.';
     const coordsLabel = Number.isFinite(input.realLat) && Number.isFinite(input.realLng)
         ? `${Number(input.realLat).toFixed(4)}, ${Number(input.realLng).toFixed(4)}`
-        : '—';
+        : 'n.d.';
     const offsetLabel = Number(input.offsetMeters ?? 0) > 0 ? `${Math.round(Number(input.offsetMeters))} m` : 'Aucun';
     const sourceLabel = input.source || 'Statuspage officielle';
     const siteState = input.operationalState || '';

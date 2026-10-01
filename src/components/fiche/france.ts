@@ -160,7 +160,7 @@ export function franceChangeDigest(input: FranceFicheInput): { meta: string; row
   const all = allChanges(input);
   // Première visite (ancre par défaut) : « dernières 24 h » sans totaux — ils comptent depuis une visite qui n'a pas eu lieu.
   const totals = input.events?.anchor.kind === 'default' ? '' : totalsText(all, input.lang);
-  const meta = totals ? `${changesMeta(input)} — ${totals}` : changesMeta(input);
+  const meta = totals ? `${changesMeta(input)} · ${totals}` : changesMeta(input);
   const rows = all.filter((c) => c.important).slice(0, MAX_ETAT_CHANGES).map(({ at, text, select }) => ({ at, text, select }));
   return { meta, rows };
 }

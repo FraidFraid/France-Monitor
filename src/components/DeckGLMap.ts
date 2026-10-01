@@ -4035,7 +4035,7 @@ export class DeckGLMap {
       const timeLabel = `${rawTime.slice(0, 2)}:${rawTime.slice(2)} UTC`;
       const period = p.daynight === 'D' ? `${fmIcon('sun')} Jour` : `${fmIcon('moon')} Nuit`;
       const temp = Number(p.bright_ti4 ?? 0);
-      const tempLabel = temp > 0 ? `${(temp - 273.15).toFixed(0)} °C` : '—';
+      const tempLabel = temp > 0 ? `${(temp - 273.15).toFixed(0)} °C` : 'n.d.';
 
       const html = `
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:2px;">
@@ -4253,7 +4253,7 @@ export class DeckGLMap {
         <div style="color:#e8e8ec; font-family:sans-serif; min-width:290px;">
           <h4 style="margin:0 0 2px; font-weight:700; font-size:15px; color:#ffffff;">${geoName}</h4>
           <div style="font-size:11px; color:#9898a8; margin-bottom:6px;">${granularityLabel} • ${source}</div>
-          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${fmStatusDot(semio.dotLevel)} Niv. ${semio.level} • ${semio.name} — ${semio.label}</div>
+          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${fmStatusDot(semio.dotLevel)} Niv. ${semio.level} • ${semio.name} · ${semio.label}</div>
 
           <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08);">
             <span style="color:#9898a8;">ISS (0-100)</span><strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>
@@ -4391,13 +4391,13 @@ export class DeckGLMap {
       const radiusKm = Number(p.radiusKm ?? 0).toFixed(1);
       const density = Number(p.density ?? 0).toFixed(2);
       const reports = Number(p.totalReports ?? 0);
-      const updatedAt = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const updatedAt = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'n.d.';
       const areaKm2 = Math.round(Math.PI * Math.pow(Number(p.radiusKm ?? 0), 2));
 
       const html = `
         <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:300px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
-            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures — ${sev.label}</span>
+            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures : ${sev.label}</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;margin-bottom:10px;">
             <div>
@@ -4451,8 +4451,8 @@ export class DeckGLMap {
       const typeColor = p.incidentType === 'transmission' ? '#a0b4ff' : '#6c8cff';
       const statusLabel = p.status === 'active' ? '● Actif' : p.status === 'inactive' ? '◯ Terminé' : '⊘ Retiré';
       const statusColor = p.status === 'active' ? '#f97316' : p.status === 'inactive' ? '#6b7280' : '#6b7280';
-      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
+      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
 
       const html = `
         <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:320px;">
@@ -4605,7 +4605,7 @@ export class DeckGLMap {
       const realLng = Number(p.realLng ?? e.lngLat.lng);
       const realLat = Number(p.realLat ?? e.lngLat.lat);
       const offsetMeters = Number(p.offsetMeters ?? 0);
-      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'n.d.';
       const html = `
         <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;">
           <h4 style="margin:0 0 2px;font-weight:700;font-size:14px;color:#fff;">${p.name ?? 'IXP'}</h4>
@@ -4620,7 +4620,7 @@ export class DeckGLMap {
           </div>
           <div style="display:flex;justify-content:space-between;font-size:13px;">
             <span style="color:#9898a8">Capacité :</span>
-            <span style="font-weight:600">${p.speedGbps ?? '—'} Gbps</span>
+            <span style="font-weight:600">${p.speedGbps ?? 'n.d.'} Gbps</span>
           </div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
             <span style="color:#9898a8">Coord. réelle</span>
@@ -4692,7 +4692,7 @@ export class DeckGLMap {
           <div style="background:${visColor}18;border:1px solid ${visColor}40;border-radius:8px;padding:8px 10px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <span style="font-size:11px;color:${visColor};font-weight:700;text-transform:uppercase;">Statut BGP : ${statusLabel}</span>
-              <span style="font-size:13px;font-weight:800;color:${visColor}">${p.visibility ?? '—'} %</span>
+              <span style="font-size:13px;font-weight:800;color:${visColor}">${p.visibility ?? 'n.d.'} %</span>
             </div>
             <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:5px;overflow:hidden;">
               <div style="height:100%;width:${p.visibility ?? 100}%;background:${visColor};border-radius:2px;"></div>
@@ -5384,7 +5384,7 @@ export class DeckGLMap {
           ${row('Actuelle', fmtMW(s.consumptionMW))}
           ${row('Vs J-1', fmtDelta(s.consumptionDeltaPct), deltaColor)}
           ${sep}
-          ${sectionLabel(`Production — ${fmtMW(p.total)}`)}
+          ${sectionLabel(`Production : ${fmtMW(p.total)}`)}
           ${prodRowsHTML}
           ${row('Bas-carbone', `${s.lowCarbonPct.toFixed(0)} %`, '#34c759')}
           ${sep}
@@ -6875,7 +6875,7 @@ export class DeckGLMap {
             <div style="width:8px;height:8px;border-radius:50%;background:${cardColor};margin-top:5px;flex-shrink:0;"></div>
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-                <div style="font-size:12px;font-weight:700;color:#fff;">${selected.trainNumber ? `${this.escapeHtml(selected.trainNumber)} — ` : ''}${this.escapeHtml(selected.line)}</div>
+                <div style="font-size:12px;font-weight:700;color:#fff;">${selected.trainNumber ? `${this.escapeHtml(selected.trainNumber)} · ` : ''}${this.escapeHtml(selected.line)}</div>
                 <div style="font-size:9px;color:${cardColor};font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">${severityLabel}</div>
               </div>
               <div style="margin-top:3px;font-size:10px;color:#c9d3e6;">${typeLabel} · ${routeLabel}</div>
@@ -7009,7 +7009,7 @@ export class DeckGLMap {
           <div style="font-size:16px;line-height:1;">${typeIcon}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              ${trainNumber ? `${this.escapeHtml(trainNumber)} — ` : ''}${this.escapeHtml(line)}
+              ${trainNumber ? `${this.escapeHtml(trainNumber)} · ` : ''}${this.escapeHtml(line)}
             </div>
             <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">${severityLabel} · ${typeLabel}</div>
           </div>
@@ -7402,7 +7402,7 @@ export class DeckGLMap {
     const sparklineBlock = f.sevenDaySeries.length > 2
       ? `${sep}
          <div>
-           ${sectionLabel('7 derniers jours — solde GWh/j')}
+           ${sectionLabel('7 derniers jours : solde GWh/j')}
            ${buildSparklineSVG(f.sevenDaySeries, { width: 222, height: 44 })}
            <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px;">
              <span>J-7</span><span>↑ export FR · ↓ import FR</span><span>Maintenant</span>
@@ -7746,8 +7746,8 @@ export class DeckGLMap {
         </div>
         ${statItems ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:10px;">${statItems}</div>` : ''}
         ${incident.osintSignals && incident.osintSignals.length > 0 ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Signaux OSINT</span><br><strong>${this.escapeHtml(incident.osintSignals.join(' · '))}</strong></div>` : ''}
-        ${(incident.from || incident.to) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Tronçon</span><br><strong>${this.escapeHtml(incident.from ?? '—')} → ${this.escapeHtml(incident.to ?? '—')}</strong></div>` : ''}
-        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime) ?? '—'} → ${formatDate(incident.endTime) ?? '—'}</strong></div>` : ''}
+        ${(incident.from || incident.to) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Tronçon</span><br><strong>${this.escapeHtml(incident.from ?? 'n.d.')} → ${this.escapeHtml(incident.to ?? 'n.d.')}</strong></div>` : ''}
+        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime) ?? 'n.d.'} → ${formatDate(incident.endTime) ?? 'n.d.'}</strong></div>` : ''}
         ${(incident.lastReportTime || incident.probabilityOfOccurrence) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px;">
           ${incident.lastReportTime ? `<div><span style="color:#71717a;">Dernier signalement</span><br><strong>${formatDate(incident.lastReportTime)}</strong></div>` : ''}
           ${incident.probabilityOfOccurrence ? `<div><span style="color:#71717a;">Probabilité</span><br><strong>${this.escapeHtml(incident.probabilityOfOccurrence)}</strong></div>` : ''}
@@ -7857,7 +7857,7 @@ export class DeckGLMap {
         ${callSign ? row('Callsign', callSign) : ''}
         ${imo ? row('IMO', imo) : ''}
         ${navStatus ? row('Statut', navStatus) : ''}
-        ${cog || heading ? row('COG/HDG', `${cog || '—'} / ${heading || '—'}`) : ''}
+        ${cog || heading ? row('COG/HDG', `${cog || 'n.d.'} / ${heading || 'n.d.'}`) : ''}
         ${draught ? row('Tirant d\'eau', draught) : ''}
         ${dimensions ? row('Dimensions', dimensions) : ''}
         ${eta ? row('ETA (UTC)', eta) : ''}
@@ -10887,7 +10887,7 @@ export class DeckGLMap {
       ? (hydrated.reduce((sum, s) => sum + s.matchConfidence, 0) / hydrated.length).toFixed(2)
       : 'n/a';
     console.info(
-      `[DeckGLMap/Vigicrues] total:${segments.length} — ` +
+      `[DeckGLMap/Vigicrues] total:${segments.length} : ` +
       `matched:${matchedCount} fallback:${corridorCount} raw(pointillés):${rawCount} | confiance moy:${avgConf}`,
     );
   }

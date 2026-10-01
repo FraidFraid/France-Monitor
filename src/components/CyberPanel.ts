@@ -648,7 +648,7 @@ export class CyberPanel extends Panel {
     const filteredEvents = filterThreatEvents(this.threatEvents, this.threatFilters);
 
     if (this.threatEvents.length === 0) {
-      return `<div style="text-align:center;padding:32px 16px;color:rgba(255,255,255,0.3);font-size:12px;">Aucun incident — couche <strong style="color:rgba(255,255,255,0.5);">Carte Menaces</strong> activée ?</div>`;
+      return `<div style="text-align:center;padding:32px 16px;color:rgba(255,255,255,0.3);font-size:12px;">Aucun incident : couche <strong style="color:rgba(255,255,255,0.5);">Carte Menaces</strong> activée ?</div>`;
     }
 
     const totalRecords = filteredEvents.reduce((s,e) => s+(e.metrics?.records||0), 0);

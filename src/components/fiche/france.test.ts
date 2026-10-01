@@ -123,8 +123,8 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     if (score === undefined || score === 'pending') throw new Error('score attendu');
     expect(score).toMatchObject({ value: 43, level: 'rouge', baseline: 95, delta24h: '−4 ▼', cap: 55 });
     expect(score.pillars.map((p) => p.label)).toEqual(['Continuité', 'Sécurité', 'Signal', 'Défense']);
-    expect(score.pillars[0]).toMatchObject({ value: 61, level: 'orange', delta: '—', deduction: '−18,9' });
-    expect(score.factor).toContain('Continuité — Carburants &amp; pétrole 100');
+    expect(score.pillars[0]).toMatchObject({ value: 61, level: 'orange', delta: 'n.d.', deduction: '−18,9' });
+    expect(score.factor).toContain('Continuité : Carburants &amp; pétrole 100');
     expect(score.sparkline).toContain('frintel-spark');
   });
 

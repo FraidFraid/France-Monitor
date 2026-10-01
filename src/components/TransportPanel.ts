@@ -280,7 +280,7 @@ export class TransportPanel extends Panel {
             <div style="padding: 10px 12px; border-left: 3px solid ${color};">
               <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
                 <div style="color: var(--text-primary); font-size: 12px; font-weight: 600; flex: 1;">
-                  ${d.trainNumber ? `<span style="color: ${color};">${fmIcon('train-front')} ${this.escapeHtml(d.trainNumber)}</span> — ` : ''}${this.escapeHtml(d.line)}
+                  ${d.trainNumber ? `<span style="color: ${color};">${fmIcon('train-front')} ${this.escapeHtml(d.trainNumber)}</span> · ` : ''}${this.escapeHtml(d.line)}
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-muted);">
                   ${typeIcon} ${typeLabel}
@@ -375,7 +375,7 @@ export class TransportPanel extends Panel {
             parts.push(`Fin prévue: ${d.endDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.endDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
         }
 
-        return parts.join(' — ');
+        return parts.join(' · ');
     }
 
     private formatRouteInfo(d: TransportDisruption): string {

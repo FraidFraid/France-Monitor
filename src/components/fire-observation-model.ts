@@ -83,7 +83,7 @@ export function buildFireObservationSources(options: {
       timing: 'Mesures 5 min · résolution 1 km',
       status: radar2dStatus,
       observation: formatObservation(options.runtime?.radar2d, now),
-      warning: 'Réflectivité atmosphérique 2D — aide à l’interprétation, sans diagnostic automatique',
+      warning: 'Réflectivité atmosphérique 2D : aide à l’interprétation, sans diagnostic automatique',
     },
     {
       id: 'radar-3d',

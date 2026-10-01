@@ -171,23 +171,23 @@ export class TrafficPanel extends Panel {
             else if (inc.severity === 'medium') badgeColor = 'var(--threat-high)';
 
             const formatDelay = (s: number) => {
-                if (!s) return '—';
+                if (!s) return 'n.d.';
                 if (s < 60) return `${s}s`;
                 const m = Math.floor(s / 60);
                 return `+${m} min`;
             };
             const formatLength = (m: number) => {
-                if (!m) return '—';
+                if (!m) return 'n.d.';
                 if (m < 1000) return `${Math.round(m)}m`;
                 return `${(m / 1000).toFixed(1)}km`;
             };
             const formatDate = (value?: string) => {
-                if (!value) return '—';
+                if (!value) return 'n.d.';
                 const date = new Date(value);
                 if (Number.isNaN(date.getTime())) return value;
                 return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
             };
-            const routeText = inc.roadNumbers && inc.roadNumbers.length > 0 ? this.escapeHtml(inc.roadNumbers.join(', ')) : '—';
+            const routeText = inc.roadNumbers && inc.roadNumbers.length > 0 ? this.escapeHtml(inc.roadNumbers.join(', ')) : 'n.d.';
             const validityText = inc.timeValidity === 'future' ? 'Planifié' : 'En cours';
 
             card.innerHTML = `
@@ -209,7 +209,7 @@ export class TrafficPanel extends Panel {
         </div>
         ${(inc.from || inc.to) ? `
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-          <strong style="color:var(--text-primary)">Tronçon:</strong> ${inc.from ? this.escapeHtml(inc.from) : '—'} → ${inc.to ? this.escapeHtml(inc.to) : '—'}
+          <strong style="color:var(--text-primary)">Tronçon:</strong> ${inc.from ? this.escapeHtml(inc.from) : 'n.d.'} → ${inc.to ? this.escapeHtml(inc.to) : 'n.d.'}
         </div>` : ''}
         ${(inc.startTime || inc.endTime) ? `
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">

@@ -54,7 +54,7 @@ export class HealthBarometerPanel {
     const header = createPremiumIconHeader({
       icon: fmIcon('stethoscope', { size: 30 }),
       title: 'Baromètre national Santé',
-      subtitle: 'ISS · OSCOUR · APL · ANSM — France entière',
+      subtitle: 'ISS · OSCOUR · APL · ANSM : France entière',
       gradientStart: 'rgba(46, 204, 113, 0.16)',
       gradientEnd: 'rgba(59, 130, 246, 0.10)',
       iconGradientStart: 'rgba(46, 204, 113, 0.22)',

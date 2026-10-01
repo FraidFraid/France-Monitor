@@ -365,17 +365,17 @@ export class MapPopup {
     };
     const aircraftType = flight.aircraftType ?? 'unknown';
     const typeLabel = typeShortLabels[aircraftType] ?? 'MILITAIRE';
-    const aircraftModel = flight.aircraftModel ? esc(flight.aircraftModel) : '—';
+    const aircraftModel = flight.aircraftModel ? esc(flight.aircraftModel) : 'n.d.';
     const hexCode = esc(flight.hexCode ?? flight.id.toUpperCase());
-    const registration = flight.registration ? esc(flight.registration) : '—';
+    const registration = flight.registration ? esc(flight.registration) : 'n.d.';
     const altFt = flight.altitude > 0
       ? `FL${Math.round(flight.altitude / 100)}`
       : 'SOL';
     const altDetail = flight.altitude > 0 ? `${flight.altitude.toLocaleString()} ft` : '';
     const speedKts = flight.speed > 0 ? `${flight.speed} kts`
-      : (flight.velocity > 0 ? `${Math.round(flight.velocity * 1.94384)} kts` : '—');
+      : (flight.velocity > 0 ? `${Math.round(flight.velocity * 1.94384)} kts` : 'n.d.');
     const heading = `${Math.round(flight.heading)}°`;
-    const squawk = flight.squawk ? esc(flight.squawk) : '—';
+    const squawk = flight.squawk ? esc(flight.squawk) : 'n.d.';
     const confidence = flight.confidence ?? 'low';
     const confidenceLabel = confidence === 'high' ? 'IDENTIFIÉ' : confidence === 'medium' ? 'PROBABLE' : 'INCONNU';
 
@@ -501,9 +501,9 @@ export class MapPopup {
   private renderMilitaryShipPopup(ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }): string {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const speed = ship.speed != null && ship.speed > 0 ? `${ship.speed} nœuds` : 'À quai';
-    const heading = ship.heading != null && ship.heading > 0 ? `${Math.round(ship.heading)}°` : '—';
-    const mmsi = ship.mmsi ? esc(ship.mmsi) : '—';
-    const port = ship.port ? esc(ship.port) : '—';
+    const heading = ship.heading != null && ship.heading > 0 ? `${Math.round(ship.heading)}°` : 'n.d.';
+    const mmsi = ship.mmsi ? esc(ship.mmsi) : 'n.d.';
+    const port = ship.port ? esc(ship.port) : 'n.d.';
     const liveTag = ship.isLive
       ? `<span class="wm-badge" style="background:#22c55e20;color:#22c55e;border-color:#22c55e40">● AIS LIVE</span>`
       : `<span class="wm-badge" style="background:#9898a820;color:#9898a8;border-color:#9898a840">PORT D'ATTACHE</span>`;
@@ -623,7 +623,7 @@ export class MapPopup {
     // ── Reactor types ─────────────────────────────────────────────────────────
     const reactorTypesHtml = stats.reactorTypes.length > 0
       ? stats.reactorTypes.map(t => esc(t)).join(' · ')
-      : '—';
+      : 'n.d.';
 
     // ── Optional fields ───────────────────────────────────────────────────────
     const outputHtml = stats.currentOutputMW != null

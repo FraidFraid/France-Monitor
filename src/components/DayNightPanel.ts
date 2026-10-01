@@ -173,7 +173,7 @@ export class DayNightPanel {
             <span class="dn-legend__swatch dn-swatch--night"></span>
             <div class="dn-legend__text">
               <span class="dn-legend__name">Nuit totale</span>
-              <span class="dn-legend__desc">Imagerie optique impossible — soleil &lt;−18°</span>
+              <span class="dn-legend__desc">Imagerie optique impossible : soleil &lt;−18°</span>
             </div>
           </div>
           <div class="dn-legend__item">

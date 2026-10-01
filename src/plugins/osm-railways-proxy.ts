@@ -93,7 +93,7 @@ export function osmRailwaysProxyPlugin(): Plugin {
         // Circuit breaker: refuse immediately if Overpass recently rate-limited us
         if (Date.now() < circuitOpenUntil) {
           const waitSec = Math.ceil((circuitOpenUntil - Date.now()) / 1000);
-          console.warn(`[osm-railways-proxy] circuit open — skipping Overpass for ${waitSec}s`);
+          console.warn(`[osm-railways-proxy] circuit open : skipping Overpass for ${waitSec}s`);
           res.statusCode = 503;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ error: `Overpass rate-limited, retry in ${waitSec}s` }));

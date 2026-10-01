@@ -485,7 +485,7 @@ export class MaritimePanel {
         </div>
         <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${ship.type} · ${flagEmoji} ${countryName || 'Inconnu'}</div>
         <div style="color:var(--text-muted);font-size:10px;">
-          ${ship.isLive === false ? 'position de référence' : ship.speed != null ? `${ship.speed.toFixed(1)} kn` : '—'}
+          ${ship.isLive === false ? 'position de référence' : ship.speed != null ? `${ship.speed.toFixed(1)} kn` : 'n.d.'}
           ${ship.maritimeTerritory ? ` · ${ship.maritimeTerritory.name}` : ''}
           ${ship.nearestPort ? ` → ${ship.nearestPort.name} (${ship.nearestPort.distanceKm}km)` : ''}
           ${hasHomonym && ship.mmsi ? ` · MMSI ${ship.mmsi}` : ''}
@@ -562,20 +562,20 @@ export class MaritimePanel {
       });
 
       if (tabName === 'position') {
-        const navStatusLabel = ship.navStatus != null ? (NAV_STATUS_LABELS[ship.navStatus] ?? `Statut ${ship.navStatus}`) : '—';
-        const destStr = ship.destination ?? (ship.nearestPort ? `~ ${ship.nearestPort.name}` : '—');
-        const etaStr = ship.eta ? `${String(ship.eta.day).padStart(2, '0')}/${String(ship.eta.month).padStart(2, '0')} ${String(ship.eta.hour).padStart(2, '0')}:${String(ship.eta.minute).padStart(2, '0')} UTC` : '—';
+        const navStatusLabel = ship.navStatus != null ? (NAV_STATUS_LABELS[ship.navStatus] ?? `Statut ${ship.navStatus}`) : 'n.d.';
+        const destStr = ship.destination ?? (ship.nearestPort ? `~ ${ship.nearestPort.name}` : 'n.d.');
+        const etaStr = ship.eta ? `${String(ship.eta.day).padStart(2, '0')}/${String(ship.eta.month).padStart(2, '0')} ${String(ship.eta.hour).padStart(2, '0')}:${String(ship.eta.minute).padStart(2, '0')} UTC` : 'n.d.';
 
         contentEl.innerHTML = `
           <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;margin-bottom:12px;">
             <span style="color:var(--text-muted);">Statut</span><span style="color:var(--text-primary);">${navStatusLabel}</span>
-            <span style="color:var(--text-muted);">Vitesse</span><span style="color:var(--text-primary);">${ship.speed != null ? ship.speed.toFixed(1) + ' nœuds' : '—'}</span>
-            <span style="color:var(--text-muted);">Cap (COG)</span><span style="color:var(--text-primary);">${ship.cog != null ? ship.cog.toFixed(0) + '°' : '—'}</span>
-            <span style="color:var(--text-muted);">Heading</span><span style="color:var(--text-primary);">${ship.heading != null ? ship.heading.toFixed(0) + '°' : '—'}</span>
+            <span style="color:var(--text-muted);">Vitesse</span><span style="color:var(--text-primary);">${ship.speed != null ? ship.speed.toFixed(1) + ' nœuds' : 'n.d.'}</span>
+            <span style="color:var(--text-muted);">Cap (COG)</span><span style="color:var(--text-primary);">${ship.cog != null ? ship.cog.toFixed(0) + '°' : 'n.d.'}</span>
+            <span style="color:var(--text-muted);">Heading</span><span style="color:var(--text-primary);">${ship.heading != null ? ship.heading.toFixed(0) + '°' : 'n.d.'}</span>
             <span style="color:var(--text-muted);">Destination</span><span style="color:var(--text-primary);">${destStr}</span>
             <span style="color:var(--text-muted);">ETA</span><span style="color:var(--text-primary);">${etaStr}</span>
-            <span style="color:var(--text-muted);">Port proche</span><span style="color:var(--text-primary);">${ship.nearestPort ? `${ship.nearestPort.name} (${ship.nearestPort.distanceKm} km)` : '—'}</span>
-            <span style="color:var(--text-muted);">Territoire maritime</span><span style="color:var(--text-primary);">${ship.maritimeTerritory?.name ?? '—'}</span>
+            <span style="color:var(--text-muted);">Port proche</span><span style="color:var(--text-primary);">${ship.nearestPort ? `${ship.nearestPort.name} (${ship.nearestPort.distanceKm} km)` : 'n.d.'}</span>
+            <span style="color:var(--text-muted);">Territoire maritime</span><span style="color:var(--text-primary);">${ship.maritimeTerritory?.name ?? 'n.d.'}</span>
             <span style="color:var(--text-muted);">Coord.</span><span style="color:var(--text-primary);font-family:monospace;">${ship.lat.toFixed(4)}, ${ship.lon.toFixed(4)}</span>
           </div>
           ${ship.trail && ship.trail.length > 2 ? this._renderTrailSvg(ship.trail) : '<div style="color:var(--text-muted);font-size:10px;">Trail insuffisant</div>'}`;
@@ -585,7 +585,7 @@ export class MaritimePanel {
         contentEl.innerHTML = `
           <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px;">
             <span style="color:var(--text-muted);">Type AIS</span><span style="color:var(--text-primary);">${ship.shipType != null ? `${ship.type} (code ${ship.shipType})` : ship.type}</span>
-            <span style="color:var(--text-muted);">Pavillon</span><span style="color:var(--text-primary);">${flagEmoji} ${ship.country?.split('|')[1] ?? '—'}${ship.flagRisk && ship.flagRisk !== 'none' ? ` ${fmIcon('triangle-alert')} (${ship.flagRisk})` : ''}</span>
+            <span style="color:var(--text-muted);">Pavillon</span><span style="color:var(--text-primary);">${flagEmoji} ${ship.country?.split('|')[1] ?? 'n.d.'}${ship.flagRisk && ship.flagRisk !== 'none' ? ` ${fmIcon('triangle-alert')} (${ship.flagRisk})` : ''}</span>
             ${dims?.length ? `<span style="color:var(--text-muted);">Longueur</span><span style="color:var(--text-primary);">${dims.length} m</span>` : ''}
             ${dims?.width ? `<span style="color:var(--text-muted);">Largeur</span><span style="color:var(--text-primary);">${dims.width} m</span>` : ''}
             ${ship.draught ? `<span style="color:var(--text-muted);">Tirant d'eau</span><span style="color:var(--text-primary);">${ship.draught} m</span>` : ''}

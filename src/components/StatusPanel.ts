@@ -65,7 +65,7 @@ function translateDetail(detail: string): string {
 
 /** Format "dernière mise à jour" */
 function formatLastUpdate(date: Date | null): string {
-    if (!date) return '—';
+    if (!date) return 'n.d.';
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
     if (seconds < 60) return t('status.justNow');
     const minutes = Math.floor(seconds / 60);
@@ -302,7 +302,7 @@ export class StatusPanel {
         this.triggerEl.setAttribute('data-state', state);
         this.triggerEl.setAttribute(
             'aria-label',
-            `${t('status.compactLabel')} — ${summary}`,
+            `${t('status.compactLabel')} : ${summary}`,
         );
     }
 

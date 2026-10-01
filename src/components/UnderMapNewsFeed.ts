@@ -607,7 +607,7 @@ export class UnderMapNewsFeed {
       this.listEl.innerHTML = `
         <div class="under-map-card__empty">
           <div class="under-map-card__empty-title">Aucune actualité notable</div>
-          <div class="under-map-card__empty-text">${noiseItems.length} brève${noiseItems.length > 1 ? 's' : ''} masquée${noiseItems.length > 1 ? 's' : ''} — « Afficher les brèves » pour les voir.</div>
+          <div class="under-map-card__empty-text">${noiseItems.length} brève${noiseItems.length > 1 ? 's' : ''} masquée${noiseItems.length > 1 ? 's' : ''} : « Afficher les brèves » pour les voir.</div>
         </div>
       `;
       if (this.liveMoreEl) this.liveMoreEl.style.display = 'none';
