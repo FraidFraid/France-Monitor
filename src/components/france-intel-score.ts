@@ -22,7 +22,7 @@ function t(lang: Lang, fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
 
-const PILLAR_UI: ReadonlyArray<{ key: FranceScoreBreakdown['pillars'][number]['key']; fr: string; en: string }> = [
+export const PILLAR_UI: ReadonlyArray<{ key: FranceScoreBreakdown['pillars'][number]['key']; fr: string; en: string }> = [
   { key: 'continuity', fr: 'Continuité', en: 'Continuity' },
   { key: 'security', fr: 'Sécurité', en: 'Security' },
   { key: 'signal', fr: 'Signal', en: 'Signal' },
@@ -75,20 +75,20 @@ export function trendText(delta: number | null, lang: Lang): string {
 }
 
 /** Pilier = pression 0–100 (plus haut = pire) ; mêmes seuils que l'ancien affichage. */
-function pillarLevel(value: number): VigilanceLevel {
+export function pillarLevel(value: number): VigilanceLevel {
   if (value >= 55) return 'orange';
   if (value >= 35) return 'jaune';
   return 'vert';
 }
 
-function formatDelta(delta: number | null | undefined): string {
+export function formatDelta(delta: number | null | undefined): string {
   if (delta == null) return '—';
   if (delta > 0) return `+${delta} ▲`;
   if (delta < 0) return `−${Math.abs(delta)} ▼`;
   return '0 ·';
 }
 
-function renderSparkline(series: number[], level: VigilanceLevel, lang: Lang): string {
+export function renderSparkline(series: number[], level: VigilanceLevel, lang: Lang): string {
   if (series.length < 2) return '';
   const W = 200;
   const H = 26;
