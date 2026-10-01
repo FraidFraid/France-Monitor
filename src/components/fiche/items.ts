@@ -98,22 +98,16 @@ function officialSignalText(o: OfficialSignal, lang: Lang): string {
 }
 
 interface ThemeFigure {
-  key?: 'total';
   label: string;
   value: string;
 }
 
 function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapshot'], lang: Lang): ThemeFigure[] {
   const s = snapshot.signals;
-  const e = snapshot.energy;
   switch (theme) {
-    case 'energy': {
-      const figures: ThemeFigure[] = [];
-      if (e?.totalMw != null) figures.push({ key: 'total', label: t(lang, 'Production nationale', 'National output'), value: `${formatNumber(Math.round(e.totalMw), lang)} MW` });
-      if (e?.oilStocksDays != null) figures.push({ label: t(lang, 'Stocks de carburant', 'Fuel stocks'), value: `${e.oilStocksDays} ${t(lang, 'j', 'd')}` });
-      if (e?.windGw != null) figures.push({ label: t(lang, 'Production éolienne', 'Wind output'), value: `${formatNumber(e.windGw, lang)} GW` });
-      return figures;
-    }
+    case 'energy':
+      // Production, éolien et stocks sont portés par les sections énergie et carburants.
+      return [];
     case 'security':
       return [
         { label: t(lang, 'Alertes cyber (30 j)', 'Cyber alerts (30 d)'), value: String(s.cyberAlerts) },
@@ -177,9 +171,7 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
   const itemRows = items.map((i) => `<li>${renderVigilancePill(i.level, lang)} ${escapeHtml(i.title)}</li>`).join('');
 
   const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
-  // Énergie : « Production totale » de la section énergie remplace la ligne « Production nationale ».
-  const figures = themeFigures(theme, input.snapshot, lang)
-    .filter((f) => !(theme === 'energy' && f.key === 'total')).map((f) => kvRow(f.label, escapeHtml(f.value))).join('');
+  const figures = themeFigures(theme, input.snapshot, lang).map((f) => kvRow(f.label, escapeHtml(f.value))).join('');
   const indicators = (figures ? `<div class="fmk-kvs">${figures}</div>` : '')
     + (signalRows ? `<div class="fmk-sub">${t(lang, 'Signaux officiels', 'Official signals')}</div><ul class="fiche-list">${signalRows}</ul>` : '')
     + (itemRows ? `<div class="fmk-sub">${t(lang, 'Éléments à traiter', 'Items to handle')}</div><ul class="fiche-list">${itemRows}</ul>` : '')

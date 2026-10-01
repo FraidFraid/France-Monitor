@@ -165,8 +165,8 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     expect(m.context?.join(' ').toLowerCase()).not.toContain('rien à traiter');
   });
 
-  it('énergie : le bloc carburants suit le bloc énergie, production affichée une seule fois', () => {
-    const e = { ...energy(), oilStocksDays: 46, fuelTensionLevel: 'HIGH' as const };
+  it('énergie : le bloc carburants suit le bloc énergie, production, éolien et stocks affichés une seule fois', () => {
+    const e = { ...energy(), oilStocksDays: 46, fuelTensionLevel: 'HIGH' as const, windGw: 4.2 };
     const html = buildThemeFiche(themeInput({ snapshot: { signals: signals(), energy: e } })).sections[0].html;
     const fuel = fuelSection(e, 'fr')?.html ?? '';
     expect(fuel).not.toBe('');
@@ -175,6 +175,10 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     expect(html.indexOf(fuel)).toBeGreaterThan(html.indexOf('Production totale'));
     expect(html).not.toContain('Production nationale');
     expect(html.match(/Production (totale|nationale)/g)).toHaveLength(1);
+    expect(html).not.toContain('Stocks de carburant');
+    expect(html).not.toContain('Production éolienne');
+    expect(html.match(/Éolien en direct/g)).toHaveLength(1);
+    expect(html.match(/46 j/g)).toHaveLength(1);
   });
 });
 
