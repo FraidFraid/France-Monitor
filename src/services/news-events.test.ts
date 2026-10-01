@@ -25,6 +25,12 @@ describe('parseNewsEvent', () => {
     expect(parseNewsEvent({ ...event(), severity: 'grave' })).toBeNull();
     expect(parseNewsEvent('texte')).toBeNull();
   });
+
+  it('aucun tiret cadratin dans le titre ni les noms de sources', () => {
+    const e = parseNewsEvent({ ...event(), title: 'Grève \u2014 la SNCF annonce un trafic perturbé', sourceNames: ['Presse \u2014 Sud'] });
+    expect(e?.title).toBe('Grève : la SNCF annonce un trafic perturbé');
+    expect(e?.sourceNames).toEqual(['Presse : Sud']);
+  });
 });
 
 describe('roundDownTo5Min', () => {

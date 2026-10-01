@@ -315,7 +315,8 @@ ${headlineList}
 5. "watch": 1-4 concrete indicators with a realistic horizon. Be specific ("Ecowatt D+1 signal at 17:00", not "energy situation").
 6. Calm wording (stable/calm/normal/under control) is ${calmAllowed ? 'allowed' : 'FORBIDDEN'}.
 7. Never quote numeric scores or /100 values. Never invent facts, actors or locations.
-8. If no correlated situation exists, say so honestly in the bluf and focus judgments on the strongest background signals.`;
+8. If no correlated situation exists, say so honestly in the bluf and focus judgments on the strongest background signals.
+9. Never use an em dash: prefer a colon or a comma.`;
   }
 
   return `[SYSTEM]
@@ -345,7 +346,8 @@ ${headlineList}
 5. "watch" : 1-4 indicateurs concrets avec un horizon réaliste. Sois spécifique (« signal Ecowatt J+1 à 17h », pas « situation énergétique »).
 6. Vocabulaire calme (stable/calme/normal/sous contrôle) : ${calmAllowed ? 'autorisé' : 'INTERDIT'}.
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
-8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.`;
+8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.
+9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.`;
 }
 
 export default async function handler(request) {

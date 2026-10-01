@@ -11,6 +11,7 @@ import type {
 import { getDelta24h } from '../utils/stability-history.ts';
 import { levelVigilanceWord, scoreLevel, type VigilanceLevel } from './vigilance.ts';
 import { splitScoreSentences } from './situation-text.ts';
+import { noEmDash } from './typography.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
@@ -207,7 +208,7 @@ export function parseStructuredBrief(
       : [];
     // Le serveur v14 tranche « non étayé » ; à défaut (brief déterministe sérialisé), l'absence de preuve le décide.
     const unsupported = typeof j.unsupported === 'boolean' ? j.unsupported : evidence.length === 0;
-    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
+    judgments.push({ priority, text: noEmDash(j.text.trim()).slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
   }
   judgments.sort((a, b) => a.priority - b.priority);
 
@@ -218,11 +219,11 @@ export function parseStructuredBrief(
       const w = item as Record<string, unknown>;
       if (typeof w.text !== 'string' || w.text.trim().length === 0) continue;
       const horizon = w.horizon === '6h' || w.horizon === '24h' || w.horizon === '48h' ? w.horizon : '24h';
-      watch.push({ text: w.text.trim().slice(0, JUDGMENT_TEXT_MAX), horizon });
+      watch.push({ text: noEmDash(w.text.trim()).slice(0, JUDGMENT_TEXT_MAX), horizon });
     }
   }
 
-  return { bluf: raw.bluf.trim().slice(0, BLUF_MAX), judgments, watch, origin };
+  return { bluf: noEmDash(raw.bluf.trim()).slice(0, BLUF_MAX), judgments, watch, origin };
 }
 
 const PILLAR_LABELS: Record<string, { fr: string; en: string }> = {

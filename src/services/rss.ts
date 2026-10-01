@@ -12,6 +12,7 @@
 import type { NewsItem, Feed, ThreatClassification, ThreatLevel, EventCategory } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 import { dropPlaceholderDrafts } from './rss-dates.ts';
+import { noEmDash } from './typography.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('rss-pqr', {
@@ -222,13 +223,13 @@ function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
         items.push({
             id,
             source: feed.name,
-            title,
+            title: noEmDash(title),
             link,
             pubDate,
             isAlert: false,
             tier: feed.tier,
             feedRegion: feed.region, // propagate region for geocoding fallback
-            summary: description.slice(0, 200) || undefined,
+            summary: noEmDash(description.slice(0, 200)) || undefined,
             // threat, lat, lon, locationName will be filled by classifier + geocoder
         });
     }
@@ -270,13 +271,13 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
         items.push({
             id,
             source: feed.name,
-            title,
+            title: noEmDash(title),
             link,
             pubDate,
             isAlert: false,
             tier: feed.tier,
             feedRegion: feed.region,
-            summary: rawItem.description?.slice(0, 200) || undefined,
+            summary: rawItem.description ? noEmDash(rawItem.description.slice(0, 200)) : undefined,
         });
     }
 
@@ -360,7 +361,7 @@ function buildServerClassification(item: IngestApiItem): ThreatClassification | 
     };
 }
 
-function mapIngestItem(raw: IngestApiItem): NewsItem | null {
+export function mapIngestItem(raw: IngestApiItem): NewsItem | null {
     const title = typeof raw.title === 'string' ? raw.title.trim() : '';
     const link = typeof raw.link === 'string' ? raw.link.trim() : '';
     if (!title || !link) return null;
@@ -374,13 +375,13 @@ function mapIngestItem(raw: IngestApiItem): NewsItem | null {
     return {
         id: `rss-${hashString(link)}`,
         source: raw.feedName ?? raw.feedId ?? 'Ingest',
-        title,
+        title: noEmDash(title),
         link,
         pubDate,
         isAlert: false,
         tier: typeof raw.tier === 'number' ? raw.tier : undefined,
         feedRegion: raw.feedRegion ?? undefined,
-        summary: typeof raw.description === 'string' ? raw.description.slice(0, 200) || undefined : undefined,
+        summary: typeof raw.description === 'string' ? noEmDash(raw.description.slice(0, 200)) || undefined : undefined,
         threat: buildServerClassification(raw),
         lat: hasCoords && typeof raw.lat === 'number' ? raw.lat : undefined,
         lon: hasCoords && typeof raw.lon === 'number' ? raw.lon : undefined,

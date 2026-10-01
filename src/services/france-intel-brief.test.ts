@@ -66,6 +66,18 @@ describe('parseStructuredBrief', () => {
     assert.equal(brief.judgments[0].priority, 1);
   });
 
+  it('aucun tiret cadratin dans le bluf, les jugements et les points à surveiller', () => {
+    const brief = parseStructuredBrief({
+      bluf: 'Situation nationale \u2014 tension énergétique persistante sur le réseau.',
+      judgments: [{ priority: 1, text: 'Risque \u2014 coupures possibles', confidence: 'high', sources: [] }],
+      watch: [{ text: 'Ecowatt \u2014 J+1', horizon: '6h' }],
+    }, 'llm');
+    assert.ok(brief);
+    assert.equal(brief.bluf, 'Situation nationale : tension énergétique persistante sur le réseau.');
+    assert.equal(brief.judgments[0].text, 'Risque : coupures possibles');
+    assert.equal(brief.watch[0].text, 'Ecowatt : J+1');
+  });
+
   it('rejette bluf manquant ou trop court, jugements vides, enums invalides', () => {
     assert.equal(parseStructuredBrief({ ...valid, bluf: 'court' }, 'llm'), null);
     assert.equal(parseStructuredBrief({ ...valid, judgments: [] }, 'llm'), null);
