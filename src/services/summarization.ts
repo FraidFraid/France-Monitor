@@ -5,6 +5,8 @@
  * 3. Browser T5 (@huggingface/transformers) -> ultimate local fallback
  */
 
+import { noEmDash } from './typography.ts';
+
 let messageId = 0;
 type SummarizationPending = { resolve: (val: string) => void; reject: (err: Error) => void };
 const pendingRequests = new Map<number, SummarizationPending>();
@@ -58,7 +60,7 @@ export async function summarizeWithFallback(text: string): Promise<string | unde
     const existing = inFlightSummaries.get(cacheKey);
     if (existing) return existing;
 
-    const promise: Promise<string | undefined> = summarizeWithFallbackUncached(cleanText)
+    const promise: Promise<string | undefined> = summarizeWithFallbackUncached(cleanText).then((r) => (r === undefined ? r : noEmDash(r)))
         .finally(() => {
             // ttlTimer est toujours affecté avant le premier microtask.
             clearTimeout(ttlTimer);

@@ -5,6 +5,7 @@ import { t } from '../services/i18n.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon, type IconName } from './shared/icons.ts';
 import { confidenceBand } from '../services/vigilance.ts';
+import { noEmDash } from '../services/typography.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -41,6 +42,30 @@ const LEVEL_PRIORITY: Record<ThreatLevel, number> = {
   low: 1,
   info: 0,
 };
+
+/** Ligne de /api/news → NewsItem (titre et description sans tiret cadratin). */
+export function apiRowToNewsItem(row: Record<string, unknown>): NewsItem {
+  const severity = String(row['severity'] ?? 'info');
+  return {
+    id: String(row['id'] ?? ''),
+    source: String(row['feedName'] ?? ''),
+    title: noEmDash(String(row['title'] ?? '')),
+    link: String(row['link'] ?? ''),
+    pubDate: new Date(String(row['publishedAt'] ?? '')),
+    isAlert: severity === 'critical',
+    tier: typeof row['tier'] === 'number' ? row['tier'] : undefined,
+    feedRegion: row['feedRegion'] ? String(row['feedRegion']) : undefined,
+    threat: {
+      level: severity as ThreatLevel,
+      category: (row['category'] ?? 'general') as EventCategory,
+      confidence: typeof row['confidence'] === 'number' ? row['confidence'] : 0.5,
+      source: 'keyword',
+    },
+    lat: typeof row['lat'] === 'number' ? row['lat'] : undefined,
+    lon: typeof row['lon'] === 'number' ? row['lon'] : undefined,
+    summary: row['description'] ? noEmDash(String(row['description']).slice(0, 200)) : undefined,
+  };
+}
 
 export type NewsItemClickHandler = (item: NewsItem) => void;
 export type NewsFilterChangeHandler = (filter: FilterState) => void;
@@ -1112,26 +1137,7 @@ export class UnderMapNewsFeed {
   }
 
   private apiRowToNewsItem(row: Record<string, unknown>): NewsItem {
-    const severity = String(row['severity'] ?? 'info');
-    return {
-      id: String(row['id'] ?? ''),
-      source: String(row['feedName'] ?? ''),
-      title: String(row['title'] ?? ''),
-      link: String(row['link'] ?? ''),
-      pubDate: new Date(String(row['publishedAt'] ?? '')),
-      isAlert: severity === 'critical',
-      tier: typeof row['tier'] === 'number' ? row['tier'] : undefined,
-      feedRegion: row['feedRegion'] ? String(row['feedRegion']) : undefined,
-      threat: {
-        level: severity as ThreatLevel,
-        category: (row['category'] ?? 'general') as EventCategory,
-        confidence: typeof row['confidence'] === 'number' ? row['confidence'] : 0.5,
-        source: 'keyword',
-      },
-      lat: typeof row['lat'] === 'number' ? row['lat'] : undefined,
-      lon: typeof row['lon'] === 'number' ? row['lon'] : undefined,
-      summary: row['description'] ? String(row['description']).slice(0, 200) : undefined,
-    };
+    return apiRowToNewsItem(row);
   }
 
   private renderHistoryList(): void {

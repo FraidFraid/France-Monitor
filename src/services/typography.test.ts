@@ -16,4 +16,18 @@ describe('aucun tiret cadratin (spec 2026-10-01 fiches § 7)', () => {
   it('texte sans tiret inchangé', () => {
     expect(noEmDash('Rien à signaler')).toBe('Rien à signaler');
   });
+  it('tiret en fin de texte : retiré', () => {
+    expect(noEmDash(`Texte ${DASH}`)).toBe('Texte');
+    expect(noEmDash(`Texte${DASH}`)).toBe('Texte');
+  });
+  it('tiret demi-cadratin inchangé', () => {
+    expect(noEmDash('2025–2026')).toBe('2025–2026');
+  });
+  it('plusieurs tirets dans un même texte', () => {
+    expect(noEmDash(`A ${DASH} B ${DASH} C 1${DASH}2`)).toBe('A : B : C 1-2');
+  });
+  it('idempotent', () => {
+    const x = `${DASH} A ${DASH} B${DASH}C ${DASH}`;
+    expect(noEmDash(noEmDash(x))).toBe(noEmDash(x));
+  });
 });
