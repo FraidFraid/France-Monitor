@@ -11,6 +11,7 @@
  */
 
 import type { MilitaryBase } from '../types/index.ts';
+import { noEmDash } from './typography.ts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,11 +95,11 @@ export async function loadStaticOsmFeatures(): Promise<OsmMilitaryFeature[]> {
             subtype?: string;
         }) => ({
             id: f.id,
-            name: f.name,
+            name: noEmDash(f.name),
             type: (f.type || 'other') as OsmMilitaryFeature['type'],
             kind: f.kind,
             coordinates: [f.lon, f.lat] as [number, number],
-            description: f.description || TAG_LABELS[f.kind] || 'Installation militaire',
+            description: noEmDash(f.description || TAG_LABELS[f.kind] || 'Installation militaire'),
             operator: f.operator,
             subtype: f.subtype,
             tier: f.tier,
@@ -199,7 +200,7 @@ async function fetchRegion(name: string, bbox: string): Promise<OsmMilitaryFeatu
             type,
             kind: militaryTag,
             coordinates: [lon, lat],
-            description: label + (tags['operator'] ? ` · ${tags['operator']}` : ''),
+            description: label + (tags['operator'] ? ` : ${tags['operator']}` : ''),
             operator: tags['operator'] ?? undefined,
         });
     }

@@ -292,7 +292,7 @@ function enrichFeature(kind, name, operator) {
 
     // Ajouter l'opérateur à la description si disponible
     if (operator && !description.includes(operator)) {
-        description = `${description} — ${operator}`;
+        description = `${description} : ${operator}`;
     }
 
     return { description, subtype, tierOverride };

@@ -173,7 +173,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Sécurité civile",
-    "description": "Caserne / Garnison — Sécurité civile"
+    "description": "Caserne / Garnison : Sécurité civile"
   },
   {
     "id": "way/466001825",
@@ -270,7 +270,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -680,7 +680,7 @@
     "type": "fortification",
     "tier": 3,
     "operator": "Army",
-    "description": "Bunker / Fortification — Army"
+    "description": "Bunker / Fortification : Army"
   },
   {
     "id": "way/115123702",
@@ -3416,7 +3416,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -3982,7 +3982,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -4503,7 +4503,7 @@
     "type": "air",
     "tier": 1,
     "operator": "United States Air Force",
-    "description": "Base aérienne — United States Air Force"
+    "description": "Base aérienne : United States Air Force"
   },
   {
     "id": "way/75044558",
@@ -4575,7 +4575,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Bundespolizei",
-    "description": "Polygone de tir — Bundespolizei"
+    "description": "Polygone de tir : Bundespolizei"
   },
   {
     "id": "way/164002771",
@@ -5278,7 +5278,7 @@
     "type": "army",
     "tier": 1,
     "operator": "U.S. Air Force in Europe",
-    "description": "Zone d'entraînement — U.S. Air Force in Europe"
+    "description": "Zone d'entraînement : U.S. Air Force in Europe"
   },
   {
     "id": "way/329732199",
@@ -5289,7 +5289,7 @@
     "type": "army",
     "tier": 2,
     "operator": "US Army",
-    "description": "Caserne / Garnison — US Army"
+    "description": "Caserne / Garnison : US Army"
   },
   {
     "id": "way/346528364",
@@ -6400,7 +6400,7 @@
     "type": "army",
     "tier": 2,
     "operator": "United States Army",
-    "description": "Caserne / Garnison — United States Army"
+    "description": "Caserne / Garnison : United States Army"
   },
   {
     "id": "way/91154707",
@@ -6431,7 +6431,7 @@
     "type": "air",
     "tier": 1,
     "operator": "Belgian Air Component",
-    "description": "Base aérienne — Belgian Air Component"
+    "description": "Base aérienne : Belgian Air Component"
   },
   {
     "id": "way/159704845",
@@ -6958,7 +6958,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -7083,7 +7083,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Commune de Lutry",
-    "description": "Polygone de tir — Commune de Lutry"
+    "description": "Polygone de tir : Commune de Lutry"
   },
   {
     "id": "way/121142334",
@@ -7517,7 +7517,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -7686,7 +7686,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Saab Bofors Dynamics Schweiz AG",
-    "description": "Installation militaire — Saab Bofors Dynamics Schweiz AG"
+    "description": "Installation militaire : Saab Bofors Dynamics Schweiz AG"
   },
   {
     "id": "way/74667829",
@@ -7857,7 +7857,7 @@
     "type": "fortification",
     "tier": 3,
     "operator": "www.festungsmuseum.ch",
-    "description": "Bunker / Fortification — www.festungsmuseum.ch"
+    "description": "Bunker / Fortification : www.festungsmuseum.ch"
   },
   {
     "id": "way/659312087",
@@ -8123,7 +8123,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Sécurité civile",
-    "description": "Caserne / Garnison — Sécurité civile"
+    "description": "Caserne / Garnison : Sécurité civile"
   },
   {
     "id": "way/201843216",
@@ -8186,7 +8186,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -8312,7 +8312,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -8346,7 +8346,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -8358,7 +8358,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -8455,7 +8455,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Base aérienne",
-    "description": "Caserne / Garnison — Base aérienne"
+    "description": "Caserne / Garnison : Base aérienne"
   },
   {
     "id": "way/69628917",
@@ -8488,7 +8488,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Caserne / Garnison — Gendarmerie nationale"
+    "description": "Caserne / Garnison : Gendarmerie nationale"
   },
   {
     "id": "way/75236167",
@@ -8499,7 +8499,7 @@
     "type": "army",
     "tier": 2,
     "operator": "1er REC",
-    "description": "Polygone de tir — 1er REC"
+    "description": "Polygone de tir : 1er REC"
   },
   {
     "id": "way/83879807",
@@ -8541,7 +8541,7 @@
     "type": "army",
     "tier": 2,
     "operator": "1er REC",
-    "description": "Polygone de tir — 1er REC"
+    "description": "Polygone de tir : 1er REC"
   },
   {
     "id": "way/113796492",
@@ -8552,7 +8552,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Caserne / Garnison — Gendarmerie nationale"
+    "description": "Caserne / Garnison : Gendarmerie nationale"
   },
   {
     "id": "way/130547816",
@@ -8563,7 +8563,7 @@
     "type": "other",
     "tier": 3,
     "operator": "CNRS",
-    "description": "Installation militaire — CNRS"
+    "description": "Installation militaire : CNRS"
   },
   {
     "id": "way/169492675",
@@ -8686,7 +8686,7 @@
     "type": "army",
     "tier": 1,
     "operator": "Bataillon de marins-pompiers de Marseille",
-    "description": "Zone d'entraînement — Bataillon de marins-pompiers de Marseille"
+    "description": "Zone d'entraînement : Bataillon de marins-pompiers de Marseille"
   },
   {
     "id": "way/459610029",
@@ -8771,7 +8771,7 @@
     "type": "army",
     "tier": 1,
     "operator": "Bataillon de marins-pompiers de Marseille",
-    "description": "Zone d'entraînement — Bataillon de marins-pompiers de Marseille"
+    "description": "Zone d'entraînement : Bataillon de marins-pompiers de Marseille"
   },
   {
     "id": "way/564480273",
@@ -8833,7 +8833,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Bataillon de marins-pompiers de Marseille",
-    "description": "École militaire — Bataillon de marins-pompiers de Marseille",
+    "description": "École militaire : Bataillon de marins-pompiers de Marseille",
     "subtype": "ecole"
   },
   {
@@ -8845,7 +8845,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Bataillon de marins-pompiers de Marseille",
-    "description": "École militaire — Bataillon de marins-pompiers de Marseille",
+    "description": "École militaire : Bataillon de marins-pompiers de Marseille",
     "subtype": "ecole"
   },
   {
@@ -9160,7 +9160,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Ministère de l'Intérieur",
-    "description": "Champ de tir — Ministère de l'Intérieur",
+    "description": "Champ de tir : Ministère de l'Intérieur",
     "subtype": "danger"
   },
   {
@@ -9330,7 +9330,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Guardia di Finanza",
-    "description": "Caserne / Garnison — Guardia di Finanza"
+    "description": "Caserne / Garnison : Guardia di Finanza"
   },
   {
     "id": "way/144563498",
@@ -9996,7 +9996,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Guardia di Finanza",
-    "description": "Caserne / Garnison — Guardia di Finanza"
+    "description": "Caserne / Garnison : Guardia di Finanza"
   },
   {
     "id": "way/977494316",
@@ -10594,7 +10594,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -10606,7 +10606,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -10618,7 +10618,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -11623,7 +11623,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -12797,7 +12797,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -13566,7 +13566,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -14781,7 +14781,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -14823,7 +14823,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15074,7 +15074,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Armée Francaise",
-    "description": "État-major / Bureau militaire — Armée Francaise"
+    "description": "État-major / Bureau militaire : Armée Francaise"
   },
   {
     "id": "node/6086660701",
@@ -15085,7 +15085,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15097,7 +15097,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15109,7 +15109,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15235,7 +15235,7 @@
     "type": "other",
     "tier": 3,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15359,7 +15359,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Société du Tir du Volson",
-    "description": "Stand de tir — Société du Tir du Volson",
+    "description": "Stand de tir : Société du Tir du Volson",
     "subtype": "range"
   },
   {
@@ -15382,7 +15382,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Ministère de l'Intérieur",
-    "description": "Caserne / Garnison — Ministère de l'Intérieur"
+    "description": "Caserne / Garnison : Ministère de l'Intérieur"
   },
   {
     "id": "node/11939979605",
@@ -15494,7 +15494,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Police Nationale",
-    "description": "Caserne — Police Nationale",
+    "description": "Caserne : Police Nationale",
     "subtype": "caserne"
   },
   {
@@ -15596,7 +15596,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15669,7 +15669,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15733,7 +15733,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15745,7 +15745,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Gendarmerie — Gendarmerie nationale",
+    "description": "Gendarmerie : Gendarmerie nationale",
     "subtype": "gendarmerie"
   },
   {
@@ -15969,7 +15969,7 @@
     "type": "army",
     "tier": 2,
     "operator": "Guardia di Finanza",
-    "description": "Caserne / Garnison — Guardia di Finanza"
+    "description": "Caserne / Garnison : Guardia di Finanza"
   },
   {
     "id": "node/12592523561",
@@ -16022,7 +16022,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Centre de recrutement — Gendarmerie nationale",
+    "description": "Centre de recrutement : Gendarmerie nationale",
     "subtype": "recrutement"
   },
   {
@@ -16066,7 +16066,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Centre de recrutement — Gendarmerie nationale",
+    "description": "Centre de recrutement : Gendarmerie nationale",
     "subtype": "recrutement"
   },
   {
@@ -16078,7 +16078,7 @@
     "type": "joint",
     "tier": 2,
     "operator": "Gendarmerie nationale",
-    "description": "Centre de recrutement — Gendarmerie nationale",
+    "description": "Centre de recrutement : Gendarmerie nationale",
     "subtype": "recrutement"
   },
   {

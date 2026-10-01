@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "France Monitor — API publique",
+    "title": "France Monitor : API publique",
     "version": "0.1.0",
     "summary": "Signaux de conscience situationnelle temps réel pour la France (énergie, feux, cyber, actualités, santé opérationnelle).",
     "description": "API de lecture exposant les données agrégées par France Monitor, tableau de bord OSINT de conscience situationnelle pour la France.\n\n**Sources ouvertes.** Toutes les données proviennent de sources publiques et ouvertes (RTE/ODRE, NASA FIRMS, ENTSOG, ANSSI/CERT-FR, HaveIBeenPwned, RansomwareLive, presse RSS, etc.). Un signal remonté ici est un **indice**, pas un fait confirmé : les événements peuvent être approximatifs, retardés, dédoublonnés de façon imparfaite ou géolocalisés grossièrement. Ne pas utiliser ces données comme source unique pour une décision critique.\n\n**Stabilité.** Version 0.1.0, stade expérimental. Aucune garantie de stabilité formelle du contrat à ce stade : les schémas de réponse peuvent évoluer sans préavis. Les champs marqués nullables peuvent l'être en pratique.\n\n**Accès.** Endpoints en lecture seule, méthode GET, sans authentification. CORS ouvert en lecture (`Access-Control-Allow-Origin: *`). Réponses JSON en UTF-8.\n\n**Fraîcheur / cache.** Les fonctions positionnent des directives de cache CDN (`s-maxage`) indiquant la cadence de rafraîchissement en amont. En sortie de CDN, l'en-tête `Cache-Control` renvoyé au client peut être normalisé par l'hébergeur (par ex. `public` ou `public, max-age=0, must-revalidate`) : se fier à la cadence documentée par endpoint plutôt qu'à la valeur brute de l'en-tête.\n\n**Licence.** Code et spécification sous licence MIT. Les données restent soumises aux licences de leurs sources amont respectives.",
@@ -18,7 +18,7 @@
   "servers": [
     {
       "url": "https://francemonitor.com",
-      "description": "Domaine racine. Redirige en 308 vers https://www.francemonitor.com — les clients qui ne suivent pas les redirections doivent viser directement le domaine www ci-dessous."
+      "description": "Domaine racine. Redirige en 308 vers https://www.francemonitor.com : les clients qui ne suivent pas les redirections doivent viser directement le domaine www ci-dessous."
     },
     {
       "url": "https://www.francemonitor.com",

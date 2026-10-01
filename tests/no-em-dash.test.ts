@@ -42,3 +42,43 @@ describe('aucun tiret cadratin affiché (spec 2026-10-01 fiches § 7)', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+function dataFiles(dir: string, ext: RegExp, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) {
+      if (name !== 'node_modules') dataFiles(full, ext, out);
+    } else if (ext.test(name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function dashedJsonValues(value: unknown, trail: string, file: string, out: string[]): void {
+  if (typeof value === 'string') {
+    if (value.includes(DASH)) out.push(`${file}: ${trail}`);
+  } else if (Array.isArray(value)) {
+    value.forEach((v, i) => dashedJsonValues(v, `${trail}[${i}]`, file, out));
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) dashedJsonValues(v, trail ? `${trail}.${k}` : k, file, out);
+  }
+}
+
+describe('aucun tiret cadratin dans les données JSON ni les pages HTML', () => {
+  it('aucune valeur de chaîne des .json / .geojson de src/ et public/ n’en contient', () => {
+    const offenders: string[] = [];
+    for (const dir of ['src', 'public']) {
+      for (const file of dataFiles(path.join(ROOT, dir), /\.(json|geojson)$/)) {
+        dashedJsonValues(JSON.parse(readFileSync(file, 'utf8')), '', path.relative(ROOT, file), offenders);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('index.html et les .html de public/ n’en contiennent pas', () => {
+    const files = [path.join(ROOT, 'index.html'), ...dataFiles(path.join(ROOT, 'public'), /\.html$/)];
+    const offenders = files.filter((f) => readFileSync(f, 'utf8').includes(DASH)).map((f) => path.relative(ROOT, f));
+    expect(offenders).toEqual([]);
+  });
+});
