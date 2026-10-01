@@ -21,7 +21,7 @@ Contraintes : v2 seulement, v1 inchangée ; aucune donnée ajoutée ni retirée,
 ### 3.1 En-tête (toujours visible, non repliable)
 
 1. Sur-titre « État de la France ».
-2. Score en grand (46 px, couleur du niveau) suivi de « /100 » ; à droite, la pastille de niveau et « tirée par … » (`scoreDriverText`).
+2. Score en grand (46 px, couleur du niveau) suivi de « /100 » ; à droite, la pastille de niveau et « tirée par … » (texte actuel de l'en-tête, `drivenByText`).
 3. Échelle 0–55–70–85–100 : quatre zones aux couleurs des niveaux, repère blanc au score, graduations.
 4. Ligne de fraîcheur : « n situations actives · x/y sources à jour · MAJ hh:mm · 24 h : <variation> » ; à droite, la courbe 7 jours (80 × 18 px, légende « 7 j »), reprise du volet actuel.
 5. Sous-titre « Ce qui retire des points (base 95) », puis une ligne par pilier (Continuité, Sécurité, Signal, Défense) : libellé · barre de la valeur du pilier (couleur `pillarLevel`) · valeur · variation 24 h du pilier · points retirés.
@@ -33,9 +33,9 @@ Contraintes : v2 seulement, v1 inchangée ; aucune donnée ajoutée ni retirée,
 
 | Section | Ouverte par défaut | Repliable | Résumé sur la ligne de titre |
 |---|---|---|---|
-| Situations actives | oui | non | nombre de situations |
-| Note de situation | oui | oui | « IA · rédigée hh:mm » ou « Repli automatique · hh:mm » ; « au niveau X » si le niveau de rédaction diffère du niveau actuel ; grisé si périmée (`freshness.ts`) |
-| Depuis votre dernière visite | non | oui | « aucun changement orange ou rouge », ou « n changements » ; « première visite · 24 h » à la première visite |
+| Situations actives | oui | non | nombre de situations ; sans situation : « Aucune situation active. » dans le contenu |
+| Note de situation | oui | oui | « IA · rédigée hh:mm » (« IA, en cache » si servie du cache, « Synthèse automatique » pour le repli déterministe) ; « · au niveau X » si le niveau de rédaction diffère du niveau actuel ; grisé si périmée (`freshness.ts`) ; « en préparation » sans note |
+| Depuis votre dernière visite | non | oui | « aucun changement orange ou rouge », ou « n changements orange ou rouges » ; « chargement… » avant les événements. L'ancre (première visite, heure de la visite) reste en tête du contenu |
 | Infrastructures | non | oui | point de couleur + « score/100 · n à surveiller » (lignes sous 85) |
 | Domaines | non | oui | nombre de domaines par niveau (points orange, jaune, vert) |
 | Énergie | non | oui | « Écowatt <couleur> · <production> MW » |
@@ -47,7 +47,7 @@ Puis les boutons « Voir sur la carte » et « Note de situation ».
 
 Contenu des sections :
 - **Situations** : une ligne par situation : pastille de niveau (largeur fixe) · titre cliquable · confiance en mots. Comportement de sélection inchangé.
-- **Note** : « En bref : » + `bluf` ; chaque jugement en paragraphe à filet gauche, sa pastille de preuve (S<n> / E<id>, cliquable comme aujourd'hui) et sa confiance ; « À surveiller » en échéancier (horizon aligné à gauche, texte). Repli déterministe : même rendu. Jamais « indisponible ».
+- **Note** : « En bref : » + `bluf` (les lignes « Rédigée à … » et « Brief : IA … » quittent le contenu, remplacées par le résumé) ; chaque jugement en paragraphe à filet gauche, sa pastille de preuve (S<n> / E<id>, cliquable comme aujourd'hui) et sa confiance ; « À surveiller » en échéancier (horizon aligné à gauche, texte). Repli déterministe : même rendu. Jamais « indisponible ».
 - **Depuis votre dernière visite** : les lignes actuelles (`franceChangeDigest`).
 - **Infrastructures** : une ligne de mesure par source du baromètre (libellé · barre · valeur), « Résilience cyber infra » en dernière ligne, puis la phrase d'explication actuelle en petit texte. Source indisponible : « — » sans barre.
 - **Domaines** : grille de deux colonnes ; par domaine : point de niveau · nom · chiffre principal, détail en petit dessous ; puis les pastilles d'alerte actuelles (« Orages · Jaune × 10 »…).
