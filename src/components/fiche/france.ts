@@ -201,7 +201,7 @@ function franceSources(brief: StructuredBrief, input: FranceFicheInput): FicheSo
 function situationsHtml(input: FranceFicheInput): string {
   const { lang } = input;
   return input.snapshot.situations.map((s) => `<li class="fiche-situation">`
-    + `<button type="button" class="fiche-link" data-select="situation:${escapeHtml(s.id)}">${renderVigilancePill(situationLevel(s.severity), lang)} ${escapeHtml(s.title)}</button>`
+    + `<button type="button" class="fiche-link" data-select="situation:${escapeHtml(s.id)}" title="${escapeHtml(s.title)}">${renderVigilancePill(situationLevel(s.severity), lang)}<span class="fmk-sit-title">${escapeHtml(s.title)}</span></button>`
     + ` <span class="fiche-meta">${confidenceLabel(s.confidence, lang)}</span></li>`).join('');
 }
 

@@ -8614,8 +8614,12 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .fmk .fmk-dot--rouge { background: var(--sev-red); }
 #app.ui-v2 .fmk .fmk-count { display: inline-flex; align-items: center; }
 #app.ui-v2 .fmk .fm-vig { width: 4.4rem; box-sizing: border-box; text-align: center; }
-#app.ui-v2 .fmk .fiche-situation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 8px; }
-#app.ui-v2 .fmk .fiche-situation .fiche-link { display: flex; align-items: baseline; gap: 8px; color: var(--text-primary); }
+#app.ui-v2 .fmk .fiche-situation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+#app.ui-v2 .fmk .fiche-situation .fiche-link { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-primary); }
+/* Une situation par ligne : pastille de largeur fixe, titre coupé par « … » (titre complet au survol). */
+#app.ui-v2 .fmk .fiche-situation .fm-vig { flex: 0 0 4.4rem; }
+#app.ui-v2 .fmk .fmk-sit-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app.ui-v2 .fmk .fiche-situation .fiche-meta { white-space: nowrap; }
 #app.ui-v2 .fmk .fiche-situation .fiche-link:hover { color: var(--v2-brand); }
 #app.ui-v2 .fmk .fmk-bluf { font-size: 14px; line-height: 1.5; }
 #app.ui-v2 .fmk .fiche-judgment { margin: 8px 0; padding: 4px 0 4px 10px; border-left: 2px solid var(--fmk-rule); }
