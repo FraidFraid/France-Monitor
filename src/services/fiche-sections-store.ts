@@ -41,3 +41,11 @@ export function sectionsOf(state: ReadonlyMap<string, boolean>, ficheKey: string
   }
   return out;
 }
+
+/** « <type>:<…>:<section> » → « <type>:<section> » : une section ouverte l'est pour toutes les fiches du même type. */
+export function sectionMemoryKey(sectionKey: string): string {
+  const first = sectionKey.indexOf(':');
+  const last = sectionKey.lastIndexOf(':');
+  if (first < 0) return sectionKey;
+  return `${sectionKey.slice(0, first)}:${sectionKey.slice(last + 1)}`;
+}

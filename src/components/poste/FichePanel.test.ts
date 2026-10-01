@@ -94,4 +94,19 @@ describe('FichePanel', () => {
     details.dispatchEvent(new Event('toggle'));
     expect(onSection).toHaveBeenCalledWith('france:note', false);
   });
+
+  it('annonce brève hors du corps de fiche, effacée après 2,5 s', () => {
+    vi.useFakeTimers();
+    const { root, panel } = mount();
+    panel.render(model(), 'fr', false);
+    panel.announce('Référence copiée');
+    expect(root.querySelector('.fiche-toast')?.textContent).toBe('Référence copiée');
+    expect(root.querySelector('.fiche-toast')?.getAttribute('role')).toBe('status');
+    expect(root.querySelector('.fiche-body .fiche-toast')).toBeNull();
+    panel.render(model({ name: 'Autre' }), 'fr', false);
+    expect(root.querySelector('.fiche-toast')?.textContent).toBe('Référence copiée');
+    vi.advanceTimersByTime(2500);
+    expect(root.querySelector('.fiche-toast')?.textContent).toBe('');
+    vi.useRealTimers();
+  });
 });

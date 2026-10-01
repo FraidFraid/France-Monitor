@@ -6,7 +6,7 @@ vi.mock('../../services/news-events.ts', () => ({
 }));
 
 import { fetchEventDetail } from '../../services/news-events.ts';
-import { PosteSituation, layoutFor, type PosteCallbacks, type PosteData, type PosteRoots } from './PosteSituation.ts';
+import { PosteSituation, layoutFor, type PosteCallbacks, type PosteOptions, type PosteData, type PosteRoots } from './PosteSituation.ts';
 import type {
   DetectedSituation,
   EcowattHourValue,
@@ -82,7 +82,7 @@ function data(over: Partial<PosteData> = {}): PosteData {
   };
 }
 
-function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | null = null) {
+function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | null = null, extra: PosteOptions = {}) {
   const app = document.createElement('div');
   const make = (): HTMLElement => {
     const el = document.createElement('div');
@@ -95,7 +95,7 @@ function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | nul
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
     onOpenReport: vi.fn(), onShowFrance: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
   } satisfies PosteCallbacks;
-  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width, storage });
+  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width, storage, ...extra });
   poste.setEvents(eventsState());
   poste.update(data());
   return { roots, cb, poste };
@@ -520,5 +520,57 @@ describe('sections de la fiche France (spec 2026-10-01 § 3.3)', () => {
     roots.fiche.querySelector<HTMLElement>('[data-action="open-cyber"]')?.click();
     expect(listener).toHaveBeenCalledTimes(1);
     document.removeEventListener('open-cyber-panel', listener);
+  });
+
+  function openSection(roots: PosteRoots, key: string): void {
+    const el = roots.fiche.querySelector<HTMLDetailsElement>(`details[data-section="${key}"]`);
+    if (!el) throw new Error(`section ${key} absente`);
+    el.open = true;
+    el.dispatchEvent(new Event('toggle'));
+  }
+
+  it('une section ouverte sur un événement l’est sur les autres, et après vingt mises à jour', () => {
+    const storage = memoryStorage();
+    const { roots, poste } = setup(1440, storage);
+    poste.setEvents({ ...eventsState(), events: [event(), { ...event(), id: 43, evidenceId: 'E43', title: 'Autre événement' }] });
+    poste.select('event:42');
+    openSection(roots, 'event:42:articles');
+    expect(storage.saved()).toEqual({ 'event:articles': true });
+    poste.select('event:43');
+    expect(ficheKey(roots)).toBe('event:43');
+    expect(roots.fiche.querySelector('details[data-section="event:43:articles"]')?.hasAttribute('open')).toBe(true);
+    for (let i = 1; i <= 20; i++) poste.update(data({ now: NOW + i * 60_000 }));
+    expect(roots.fiche.querySelector('details[data-section="event:43:articles"]')?.hasAttribute('open')).toBe(true);
+  });
+
+  describe('copie de la référence', () => {
+    const select42 = (extra: PosteOptions) => {
+      const s = setup(1440, null, extra);
+      s.poste.select('event:42');
+      return s;
+    };
+    const copy = (roots: PosteRoots): void => roots.fiche.querySelector<HTMLElement>('[data-action="copy-ref"]')?.click();
+    const toast = (roots: PosteRoots): string | undefined => roots.fiche.querySelector('.fiche-toast')?.textContent ?? undefined;
+
+    it('succès : writeText reçoit la référence, « Référence copiée » s’affiche', async () => {
+      const writeText = vi.fn(async (_text: string): Promise<void> => {});
+      const { roots } = select42({ clipboard: { writeText } });
+      copy(roots);
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(writeText.mock.calls[0]?.[0]).toContain('E42');
+      await vi.waitFor(() => expect(toast(roots)).toBe('Référence copiée'));
+    });
+
+    it('rejet : aucune exception, « Copie impossible »', async () => {
+      const { roots } = select42({ clipboard: { writeText: vi.fn(async () => { throw new Error('refusé'); }) } });
+      expect(() => copy(roots)).not.toThrow();
+      await vi.waitFor(() => expect(toast(roots)).toBe('Copie impossible'));
+    });
+
+    it('API absente : « Copie impossible »', () => {
+      const { roots } = select42({ clipboard: null });
+      expect(() => copy(roots)).not.toThrow();
+      expect(toast(roots)).toBe('Copie impossible');
+    });
   });
 });

@@ -16,11 +16,12 @@ function findByData(root: ParentNode, attr: 'select' | 'action', value: string):
 export class FichePanel {
   private readonly body: HTMLElement;
   private readonly closeButton: HTMLButtonElement;
+  private readonly toast: HTMLElement;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHtml = '';
   private currentKey: string | null = null;
   private onSelect: ((key: string) => void) | null = null;
   private onAction: ((action: string, ficheKey: string) => void) | null = null;
-  private onWhyToggle: ((ficheKey: string, open: boolean) => void) | null = null;
   private onSectionToggle: ((sectionKey: string, open: boolean) => void) | null = null;
   /** Ouverture de chaque section telle que rendue : un `toggle` à l'identique vient du rendu, pas de l'utilisateur. */
   private renderedSections = new Map<string, boolean>();
@@ -39,7 +40,11 @@ export class FichePanel {
     this.body.className = 'fiche-body';
     const chrome = document.createElement('div');
     chrome.className = 'fiche-chrome';
-    chrome.appendChild(this.closeButton);
+    this.toast = document.createElement('p');
+    this.toast.className = 'fiche-toast';
+    this.toast.setAttribute('role', 'status');
+    this.toast.setAttribute('aria-live', 'polite');
+    chrome.append(this.closeButton, this.toast);
     root.replaceChildren(chrome, this.body);
 
     this.closeButton.addEventListener('click', () => this.onClose?.());
@@ -47,9 +52,6 @@ export class FichePanel {
     // `toggle` ne remonte pas : écoute en capture sur le conteneur. L'attribut `open` fait foi.
     this.body.addEventListener('toggle', (e) => {
       const target = e.target;
-      if (target instanceof HTMLElement && target.matches('details.fiche-why')) {
-        this.onWhyToggle?.(target.dataset.why ?? '', target.hasAttribute('open'));
-      }
       if (target instanceof HTMLElement && target.matches('details[data-section]')) {
         const key = target.dataset.section ?? '';
         const open = target.hasAttribute('open');
@@ -73,12 +75,18 @@ export class FichePanel {
     this.onSectionToggle = handler;
   }
 
-  setOnWhyToggle(handler: (ficheKey: string, open: boolean) => void): void {
-    this.onWhyToggle = handler;
-  }
-
   setOnClose(handler: () => void): void {
     this.onClose = handler;
+  }
+
+  /** Annonce brève (copie, etc.), hors du corps de fiche : survit aux reconstructions, effacée après 2,5 s. */
+  announce(text: string): void {
+    this.toast.textContent = text;
+    if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      this.toast.textContent = '';
+      this.toastTimer = null;
+    }, 2500);
   }
 
   getBody(): HTMLElement {
@@ -124,7 +132,6 @@ export class FichePanel {
     // (même data-select/data-action) n'a aucune raison d'exister dans la nouvelle fiche ; se
     // replier directement sur son titre plutôt que de laisser le focus tomber sur <body>.
     if (!sameFiche) return () => this.body.querySelector<HTMLElement>('.fiche-name');
-    if (el.matches('.fiche-why > summary')) return () => this.body.querySelector<HTMLElement>('.fiche-why > summary');
     if (el.matches('details[data-section] > summary')) {
       const section = el.parentElement?.dataset.section;
       if (section !== undefined) {

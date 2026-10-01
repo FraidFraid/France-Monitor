@@ -8528,10 +8528,8 @@ button.header-quality-link {
 .fiche-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--text-primary); }
 .fiche-time { display: inline-block; min-width: 40px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .fiche-link { padding: 0; border: 0; background: none; color: var(--text-accent); font: inherit; text-align: left; cursor: pointer; }
-.fiche-figures-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
-.fiche-figures-grid dt { font-size: 11px; color: var(--text-secondary); }
-.fiche-figures-grid dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .fiche-horizon { display: inline-block; min-width: 34px; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.fiche-toast { margin: 0; min-height: 1.4em; font-size: 11.5px; color: var(--text-secondary); }
 .fiche-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .fiche-source { padding: 1px 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 11.5px; color: var(--text-primary); text-decoration: none; }
 a.fiche-source, button.fiche-source { color: var(--text-accent); }
@@ -8539,10 +8537,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .fiche-judgment-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; }
 .fiche-ref { font-size: 11.5px; }
 .fiche-conf, .fiche-meta, .fiche-empty { font-size: 11.5px; color: var(--text-secondary); }
-.fiche-why { margin-top: 14px; }
-.fiche-why > summary { cursor: pointer; font-size: 12.5px; color: var(--text-secondary); }
-.fiche-why-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.fiche-why-title { margin: 6px 0 2px; font-size: 11.5px; color: var(--text-secondary); }
 .fiche-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .fiche-action {
   padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 6px;
@@ -8551,7 +8545,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .fiche-link:focus-visible,
 .fiche-action:focus-visible,
 .fiche-source:focus-visible,
-.fiche-why > summary:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 2px; }
 /* ── Kit de panneau v2 « fmk » (spec 2026-10-01) — référence pour restyler les autres panneaux ──
    Fond et filets du panneau ; chiffres tabulaires, jamais de police à chasse fixe ; couleurs de
    niveau pour un niveau seulement, vert de marque pour l'interactif ; aucun cadre dans un cadre. */

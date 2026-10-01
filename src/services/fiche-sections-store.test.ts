@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SECTIONS_STORAGE_KEY, loadSectionState, saveSectionState, sectionsOf, type SectionStorage } from './fiche-sections-store.ts';
+import { SECTIONS_STORAGE_KEY, loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from './fiche-sections-store.ts';
 
 function memory(initial: string | null = null): SectionStorage & { value: string | null } {
   return {
@@ -35,5 +35,14 @@ describe('mémoire des sections (spec 2026-10-01 § 3.3)', () => {
   it('sections d’une fiche, clés sans préfixe', () => {
     const state = new Map([['france:infra', true], ['theme:energy:x', false], ['france:note', false]]);
     expect(sectionsOf(state, 'france')).toEqual(new Map([['infra', true], ['note', false]]));
+  });
+});
+
+describe('sectionMemoryKey', () => {
+  it('clé de mémoire par type de fiche', () => {
+    expect(sectionMemoryKey('event:42:articles')).toBe('event:articles');
+    expect(sectionMemoryKey('france:note')).toBe('france:note');
+    expect(sectionMemoryKey('official:meteo:orange:places')).toBe('official:places');
+    expect(sectionMemoryKey('situation:cyber-pressure:todo')).toBe('situation:todo');
   });
 });

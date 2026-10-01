@@ -34,7 +34,7 @@ import { fetchEventDetail } from '../../services/news-events.ts';
 import { escapeHtml, unavailableEventsState, type EventDetailState } from '../france-intel-events.ts';
 import { trendText } from '../france-intel-score.ts';
 import type { InfraInput } from '../../services/infra-continuity.ts';
-import { loadSectionState, saveSectionState, sectionsOf, type SectionStorage } from '../../services/fiche-sections-store.ts';
+import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
@@ -104,6 +104,16 @@ export interface PosteOptions {
   viewportWidth?: () => number;
   /** Stockage de la mémoire des sections ; défaut : localStorage s'il est accessible. */
   storage?: SectionStorage | null;
+  /** Presse-papiers (copie de la référence) ; défaut : navigator.clipboard s'il existe. */
+  clipboard?: { writeText(text: string): Promise<void> } | null;
+}
+
+function defaultClipboard(): { writeText(text: string): Promise<void> } | null {
+  try {
+    return typeof navigator !== 'undefined' && navigator.clipboard ? navigator.clipboard : null;
+  } catch {
+    return null;
+  }
 }
 
 /** localStorage s'il est accessible (navigation privée, iframe sans stockage : null). */
@@ -134,6 +144,7 @@ export class PosteSituation {
   private readonly callbacks: PosteCallbacks;
   private readonly viewportWidth: () => number;
   private readonly storage: SectionStorage | null;
+  private readonly clipboard: { writeText(text: string): Promise<void> } | null;
   private readonly sectionOpen: Map<string, boolean>;
   private readonly statusBar: StatusBar;
   private readonly themeBar: ThemeBar;
@@ -146,7 +157,7 @@ export class PosteSituation {
   private selection: string | null = null;
   private showAll = false;
   private tab: PosteTab = 'list';
-  private readonly whyOpen = new Set<string>();
+  private lastModel: FicheModel | null = null;
   /** Groupe « Hors de France » déplié (état conservé d'un rafraîchissement à l'autre). */
   private foreignOpen = false;
   private lastTabsHtml = '';
@@ -171,6 +182,7 @@ export class PosteSituation {
     this.callbacks = callbacks;
     this.viewportWidth = options.viewportWidth ?? ((): number => window.innerWidth);
     this.storage = options.storage !== undefined ? options.storage : defaultStorage();
+    this.clipboard = options.clipboard !== undefined ? options.clipboard : defaultClipboard();
     this.sectionOpen = loadSectionState(this.storage);
     this.statusBar = new StatusBar(roots.status);
     this.themeBar = new ThemeBar(roots.themes);
@@ -190,11 +202,8 @@ export class PosteSituation {
     });
     this.fichePanel.setOnSelect((key) => this.select(key));
     this.fichePanel.setOnAction((action, ficheKey) => this.runAction(action, ficheKey));
-    this.fichePanel.setOnWhyToggle((ficheKey, open) => {
-      if (open) this.whyOpen.add(ficheKey);
-      else this.whyOpen.delete(ficheKey);
-    });
-    this.fichePanel.setOnSectionToggle((sectionKey, open) => {
+    this.fichePanel.setOnSectionToggle((rawKey, open) => {
+      const sectionKey = sectionMemoryKey(rawKey);
       if (this.sectionOpen.get(sectionKey) === open) return;
       this.sectionOpen.set(sectionKey, open);
       saveSectionState(this.storage, this.sectionOpen);
@@ -399,6 +408,7 @@ export class PosteSituation {
       const notReadyText = lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed';
       model = { ...model, level: null, context: [notReadyText, ...(model.context ?? [])] };
     }
+    this.lastModel = model;
     this.fichePanel.render(model, lang, this.selection !== null);
     if (vanished && ficheHadFocus) this.restoreFocus(null);
 
@@ -458,7 +468,7 @@ export class PosteSituation {
       events: this.events,
       changeTimes: this.firstSeen,
       freshness: this.freshness(data),
-      sectionOpen: new Map(),
+      sectionOpen: sectionsOf(this.sectionOpen, 'theme'),
       now: data.now,
       ready: data.ready,
       lang: data.lang,
@@ -481,7 +491,7 @@ export class PosteSituation {
       if (!event) return null;
       this.ensureEventDetail(event.id);
       const place = event.lat !== null && event.lon !== null ? this.departements?.at(event.lon, event.lat) ?? null : null;
-      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), place, sectionOpen: new Map(), lang, now });
+      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), place, sectionOpen: sectionsOf(this.sectionOpen, 'event'), lang, now });
     }
     if (key.startsWith('situation:')) {
       const id = key.slice('situation:'.length);
@@ -489,18 +499,18 @@ export class PosteSituation {
       if (!situation) return null;
       return buildSituationFiche({
         situation, kind: 'situation', badge: item?.badge ?? null, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'WILDFIRE_ESCALATION', sectionOpen: new Map(), lang, now,
+        hasDossier: situation.type === 'WILDFIRE_ESCALATION', sectionOpen: sectionsOf(this.sectionOpen, 'situation'), lang, now,
       });
     }
     if (item?.ref.kind === 'alert') {
       const situation = item.ref.situation;
       return buildSituationFiche({
         situation, kind: 'alert', badge: item.badge, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', sectionOpen: new Map(), lang, now,
+        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', sectionOpen: sectionsOf(this.sectionOpen, 'alert'), lang, now,
       });
     }
-    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), sectionOpen: new Map(), lang });
-    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { sectionOpen: new Map(), lang });
+    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), sectionOpen: sectionsOf(this.sectionOpen, 'official'), lang });
+    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { sectionOpen: sectionsOf(this.sectionOpen, 'market'), lang });
     return null;
   }
 
@@ -520,6 +530,22 @@ export class PosteSituation {
   private runAction(action: string, ficheKey: string): void {
     const data = this.data;
     if (!data) return;
+    if (action === 'copy-ref') {
+      const reference = this.lastModel?.reference;
+      if (!reference) return;
+      const lang = data.lang;
+      const done = (ok: boolean): void => this.fichePanel.announce(
+        ok ? (lang === 'fr' ? 'Référence copiée' : 'Reference copied') : (lang === 'fr' ? 'Copie impossible' : 'Copy failed'),
+      );
+      try {
+        const clip = this.clipboard;
+        if (!clip) { done(false); return; }
+        void clip.writeText(reference).then(() => done(true), () => done(false));
+      } catch {
+        done(false);
+      }
+      return;
+    }
     if (action === 'open-cyber') {
       document.dispatchEvent(new CustomEvent('open-cyber-panel'));
       return;
