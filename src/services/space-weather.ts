@@ -53,7 +53,7 @@ function classifyKp(kp: number): Omit<SpaceWeatherData, 'kpIndex' | 'fetchedAt'>
     if (kp >= 4) return {
         level: 'active',    levelLabel: 'Active',
         color: '#CA8A04',
-        riskFrance: 'Activité géomagnétique modérée — surveillance recommandée',
+        riskFrance: 'Activité géomagnétique modérée : surveillance recommandée',
     };
     if (kp >= 2) return {
         level: 'unsettled', levelLabel: 'Agitée',

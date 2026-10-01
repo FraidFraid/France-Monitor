@@ -288,10 +288,10 @@ export interface SquawkAlert {
 }
 
 export const SPECIAL_SQUAWKS: Record<string, SquawkAlert> = {
-    '7500': { code: '7500', type: 'emergency', severity: 'critical', description: 'HIJACK — Détournement en cours' },
-    '7600': { code: '7600', type: 'emergency', severity: 'high', description: 'RADIO FAILURE — Panne radio' },
-    '7700': { code: '7700', type: 'emergency', severity: 'critical', description: 'EMERGENCY — Urgence générale' },
-    '7777': { code: '7777', type: 'military', severity: 'high', description: 'MILITARY INTERCEPT — Interception militaire' },
+    '7500': { code: '7500', type: 'emergency', severity: 'critical', description: 'HIJACK : Détournement en cours' },
+    '7600': { code: '7600', type: 'emergency', severity: 'high', description: 'RADIO FAILURE : Panne radio' },
+    '7700': { code: '7700', type: 'emergency', severity: 'critical', description: 'EMERGENCY : Urgence générale' },
+    '7777': { code: '7777', type: 'military', severity: 'high', description: 'MILITARY INTERCEPT : Interception militaire' },
     '7000': { code: '7000', type: 'special', severity: 'info', description: 'VFR (Europe)' },
     '1200': { code: '1200', type: 'special', severity: 'info', description: 'VFR (USA)' },
     '2000': { code: '2000', type: 'special', severity: 'info', description: 'IFR sans code assigné' },
@@ -781,14 +781,14 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Fort-de-France (Martinique)',
         type: 'joint',
         coordinates: [-61.0631, 14.6137],
-        description: 'Forces Armées aux Antilles — Régiment du Service Militaire Adapté, marines.'
+        description: 'Forces Armées aux Antilles : Régiment du Service Militaire Adapté, marines.'
     },
     {
         id: 'DROM-GUA-971',
         name: 'Abymes – Pointe-à-Pitre (Guadeloupe)',
         type: 'joint',
         coordinates: [-61.5181, 16.2578],
-        description: 'Forces Armées aux Antilles — détachement Guadeloupe.'
+        description: 'Forces Armées aux Antilles : détachement Guadeloupe.'
     },
 
     // ─── DROM — Guyane ───
@@ -797,7 +797,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Base de Cayenne (Guyane)',
         type: 'air',
         coordinates: [-52.3653, 4.8228],
-        description: 'Forces Armées en Guyane — surveillance espace guyanais, CSG.'
+        description: 'Forces Armées en Guyane : surveillance espace guyanais, CSG.'
     },
 
     // ─── DOM — La Réunion ───
@@ -806,7 +806,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'FAZSOI – La Réunion',
         type: 'joint',
         coordinates: [55.5364, -20.9022],
-        description: 'Forces Armées dans la Zone Sud de l\'Océan Indien — base navale La Réunion.'
+        description: 'Forces Armées dans la Zone Sud de l\'Océan Indien : base navale La Réunion.'
     },
 
     // ─── COM — Mayotte ───
@@ -815,7 +815,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Dzaoudzi (Mayotte)',
         type: 'navy',
         coordinates: [45.2569, -12.7871],
-        description: 'Détachement Marine Nationale Mayotte — patrouilleur, lutte contre l\'immigration.'
+        description: 'Détachement Marine Nationale Mayotte : patrouilleur, lutte contre l\'immigration.'
     },
 
     // ─── COM — Polynésie Française ───
@@ -824,7 +824,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Faa\'a (Polynésie Française)',
         type: 'joint',
         coordinates: [-149.6067, -17.5536],
-        description: 'Forces Armées Polynésie Française — base navale Papeete, patrouilleurs.'
+        description: 'Forces Armées Polynésie Française : base navale Papeete, patrouilleurs.'
     },
 
     // ─── COM — Nouvelle-Calédonie ───
@@ -833,7 +833,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Nouméa (Nouvelle-Calédonie)',
         type: 'joint',
         coordinates: [166.4414, -22.2558],
-        description: 'Forces Armées Nouvelle-Calédonie — base navale Nouméa, patrouilleurs.'
+        description: 'Forces Armées Nouvelle-Calédonie : base navale Nouméa, patrouilleurs.'
     },
 
     // ─── COM — Djibouti ───
@@ -842,7 +842,7 @@ export const MILITARY_BASES: MilitaryBase[] = [
         name: 'Camp Lemonnier (Djibouti)',
         type: 'joint',
         coordinates: [43.1547, 11.5483],
-        description: 'Forces Françaises à Djibouti — base permanente de projection.'
+        description: 'Forces Françaises à Djibouti : base permanente de projection.'
     },
 ];
 

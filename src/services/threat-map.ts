@@ -447,7 +447,7 @@ export async function fetchThreatMapEvents(forceFresh = false): Promise<ThreatMa
   const sources = [apiData.status, ransomwareData.status, certFrData.status, exposureData.status];
 
   if (uniqueEvents.length === 0) {
-    console.warn('[ThreatMap] No events from any source — APIs may be unreachable');
+    console.warn('[ThreatMap] No events from any source : APIs may be unreachable');
   } else {
     console.log(`[ThreatMap] ${uniqueEvents.length} France events loaded`);
   }

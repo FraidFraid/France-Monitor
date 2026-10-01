@@ -52,7 +52,7 @@ export async function fetchCitizenOutageZones(): Promise<CitizenOutageResponse> 
 
     // Circuit breaker : évite de spammer un endpoint défaillant
     if (_failureCount >= CIRCUIT_BREAKER_THRESHOLD && now < _cooldownUntil) {
-        console.warn('[outages-scraper] Circuit breaker open — returning cached or empty data');
+        console.warn('[outages-scraper] Circuit breaker open : returning cached or empty data');
         Watchdog.report('scraping-citoyen', { type: 'fallback', reason: 'circuit breaker ouvert' });
         return _cache?.data ?? buildEmptyResponse();
     }
@@ -204,7 +204,7 @@ export function buildZonePopupHtml(zone: OutageZone): string {
 
     return `
         <div class="popup-outage-zone">
-            <div class="popup-header">${fmStatusDot(meta.level, meta.label)} — Zone de pannes</div>
+            <div class="popup-header">${fmStatusDot(meta.level, meta.label)} : Zone de pannes</div>
             <div class="popup-body">
                 <p><strong>${p.totalReports}</strong> signalements · densité ${p.density.toFixed(1)}/km²</p>
                 <p>Rayon estimé : ~${p.radiusKm} km</p>

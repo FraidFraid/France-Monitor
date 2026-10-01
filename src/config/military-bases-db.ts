@@ -243,7 +243,7 @@ const NAVAL_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'BN-ILE-LONGUE', name: 'Île Longue — SNLE',
+        id: 'BN-ILE-LONGUE', name: 'Île Longue · SNLE',
         type: 'navy',
         coordinates: [-4.5636, 48.3253],
         description: 'Arsenal de l\'Île Longue. Bastion des SNLE (Triomphant, Téméraire, Vigilant, Terrible). Composante mer de la dissuasion nucléaire.',
@@ -276,14 +276,14 @@ const NAVAL_BASES: MilitaryInstallation[] = [
         region: 'Normandie', status: 'active',
     },
     {
-        id: 'BN-LH', name: 'Base navale Amiral Durand-Viel — Le Havre',
+        id: 'BN-LH', name: 'Base navale Amiral Durand-Viel · Le Havre',
         type: 'navy',
         coordinates: [0.1079, 49.4830],
         description: 'Commandement Marine Le Havre. Ponton d\'accueil chasseurs de mines. Soutien forces navales Manche.',
         region: 'Normandie', status: 'active',
     },
     {
-        id: 'DTI-LH', name: 'District de Transit Interarmées — Le Havre',
+        id: 'DTI-LH', name: 'District de Transit Interarmées · Le Havre',
         type: 'joint',
         coordinates: [0.1200, 49.4750],
         description: 'Transit maritime troupes et matériel. ~100 personnels civils et militaires. Implanté depuis 1964.',
@@ -337,16 +337,16 @@ const NAVAL_BASES: MilitaryInstallation[] = [
 const ARMY_BASES: MilitaryInstallation[] = [
     // ─── Légion Étrangère ───
     {
-        id: 'AT-AUBAGNE', name: 'Légion Étrangère — Aubagne',
+        id: 'AT-AUBAGNE', name: 'Légion Étrangère · Aubagne',
         type: 'army',
         coordinates: [5.5697, 43.2958],
-        description: 'Quartier Viénot — Maison Mère de la Légion Étrangère. 1er RE, Musée.',
+        description: 'Quartier Viénot : Maison Mère de la Légion Étrangère. 1er RE, Musée.',
         region: 'Provence-Alpes-Côte d\'Azur',
         units: ['1er Régiment Étranger'],
         status: 'active',
     },
     {
-        id: 'AT-CASTELNAUDARY', name: '4e RE — Castelnaudary',
+        id: 'AT-CASTELNAUDARY', name: '4e RE · Castelnaudary',
         type: 'army',
         coordinates: [1.9578, 43.3131],
         description: 'Centre d\'instruction de la Légion Étrangère. Formation recrues.',
@@ -354,14 +354,14 @@ const ARMY_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'AT-NIMES', name: '1er REC — Nîmes-Laudun',
+        id: 'AT-NIMES', name: '1er REC · Nîmes-Laudun',
         type: 'army',
         coordinates: [4.4642, 44.0833],
         description: '1er Régiment Étranger de Cavalerie. ERC 90 Sagaie, VAB.',
         region: 'Occitanie', status: 'active',
     },
     {
-        id: 'AT-ORANGE', name: '1er REG — Orange',
+        id: 'AT-ORANGE', name: '1er REG · Orange',
         type: 'army',
         coordinates: [4.7975, 44.1500],
         description: '1er Régiment Étranger de Génie. Soutien génie combat.',
@@ -369,21 +369,21 @@ const ARMY_BASES: MilitaryInstallation[] = [
     },
     // ─── Parachutistes ───
     {
-        id: 'AT-PAMIERS', name: '1er RPIMa — Pamiers',
+        id: 'AT-PAMIERS', name: '1er RPIMa · Pamiers',
         type: 'army',
         coordinates: [1.6100, 43.1167],
         description: '1er Régiment Parachutiste d\'Infanterie de Marine. Unité d\'élite.',
         region: 'Occitanie', status: 'active',
     },
     {
-        id: 'AT-TARBES', name: '1er RHP — Tarbes',
+        id: 'AT-TARBES', name: '1er RHP · Tarbes',
         type: 'army',
         coordinates: [0.0878, 43.2328],
         description: '1er Régiment de Hussards Parachutistes. Reconnaissance.',
         region: 'Occitanie', status: 'active',
     },
     {
-        id: 'AT-TOULOUSE-BIPARACHUTE', name: 'ETAP — Pau-Lescar',
+        id: 'AT-TOULOUSE-BIPARACHUTE', name: 'ETAP · Pau-Lescar',
         type: 'army', icao: 'LFBP',
         coordinates: [-0.4186, 43.3803],
         description: 'École des Troupes Aéroportées (ETAP). Formation saut en parachute.',
@@ -391,7 +391,7 @@ const ARMY_BASES: MilitaryInstallation[] = [
     },
     // ─── Blindés / Cavalerie ───
     {
-        id: 'AT-CARPIQUET', name: '12e RC — Caen-Carpiquet',
+        id: 'AT-CARPIQUET', name: '12e RC · Caen-Carpiquet',
         type: 'army',
         coordinates: [-0.4500, 49.1806],
         description: '12e Régiment de Cuirassiers. Leclerc, VBCI.',
@@ -442,77 +442,77 @@ const ARMY_BASES: MilitaryInstallation[] = [
     },
     // ─── Marines / Infanterie de Marine ───
     {
-        id: 'AT-VANNES', name: '1er RIMa — Vannes',
+        id: 'AT-VANNES', name: '1er RIMa · Vannes',
         type: 'army',
         coordinates: [-2.7611, 47.6581],
         description: '1er Régiment d\'Infanterie de Marine. Bretagne.',
         region: 'Bretagne', status: 'active',
     },
     {
-        id: 'AT-MONTLHERY', name: 'Camp de Satory — Versailles',
+        id: 'AT-MONTLHERY', name: 'Camp de Satory · Versailles',
         type: 'army',
         coordinates: [2.0717, 48.8019],
         description: 'DGA essais armements terrestres. Centre d\'expérimentation.',
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'AT-DRAGUIGNAN', name: 'CA — Draguignan',
+        id: 'AT-DRAGUIGNAN', name: 'CA · Draguignan',
         type: 'army',
         coordinates: [6.4647, 43.5353],
         description: 'École d\'artillerie (EA), Centre de doctrine et d\'enseignement du commandement.',
         region: 'Provence-Alpes-Côte d\'Azur', status: 'active',
     },
     {
-        id: 'AT-COETQUIDAN', name: 'Coëtquidan — Saint-Cyr',
+        id: 'AT-COETQUIDAN', name: 'Coëtquidan · Saint-Cyr',
         type: 'army',
         coordinates: [-2.3542, 47.9053],
         description: 'École Spéciale Militaire de Saint-Cyr. École nationale des sous-officiers (ENSOA). Formation élites.',
         region: 'Bretagne', status: 'active',
     },
     {
-        id: 'AT-SAUMUR', name: 'École de Cavalerie — Saumur',
+        id: 'AT-SAUMUR', name: 'École de Cavalerie · Saumur',
         type: 'army',
         coordinates: [-0.0761, 47.2597],
         description: 'École de l\'Arme Blindée Cavalerie. Cadre Noir (équitation). Leclerc, AMX-10RC.',
         region: 'Pays de la Loire', status: 'active',
     },
     {
-        id: 'AT-ANGERS', name: 'ENSOA — Le Mans / Auvours',
+        id: 'AT-ANGERS', name: 'ENSOA · Le Mans / Auvours',
         type: 'army',
         coordinates: [0.2083, 47.9928],
         description: 'École Nationale des Sous-Officiers d\'Active. Camp d\'Auvours.',
         region: 'Pays de la Loire', status: 'active',
     },
     {
-        id: 'AT-VINCENNES', name: 'Fort de Vincennes — CEMA',
+        id: 'AT-VINCENNES', name: 'Fort de Vincennes · CEMA',
         type: 'army',
         coordinates: [2.4350, 48.8475],
         description: 'Fort de Vincennes. 46e RT (transmissions), état-major.',
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'AT-BESANCON', name: 'Caserne Ruty — Besançon',
+        id: 'AT-BESANCON', name: 'Caserne Ruty · Besançon',
         type: 'army',
         coordinates: [6.0256, 47.2378],
         description: '8e BC (Bataillon de Chasseurs Alpins). Jura.',
         region: 'Bourgogne-Franche-Comté', status: 'active',
     },
     {
-        id: 'AT-CHAMBERY', name: 'Caserne Carré — Chambéry',
+        id: 'AT-CHAMBERY', name: 'Caserne Carré · Chambéry',
         type: 'army',
         coordinates: [5.9252, 45.5631],
         description: '13e Bataillon de Chasseurs Alpins. Alpes-Savoie.',
         region: 'Auvergne-Rhône-Alpes', status: 'active',
     },
     {
-        id: 'AT-VARCES', name: 'Camp de Varces — Grenoble',
+        id: 'AT-VARCES', name: 'Camp de Varces · Grenoble',
         type: 'army',
         coordinates: [5.6833, 45.0833],
         description: '27e BCA (Bataillon de Chasseurs Alpins). Grenoble.',
         region: 'Auvergne-Rhône-Alpes', status: 'active',
     },
     {
-        id: 'AT-GAP', name: '4e RAMa — Gap-Ubaye',
+        id: 'AT-GAP', name: '4e RAMa · Gap-Ubaye',
         type: 'army',
         coordinates: [6.0833, 44.5500],
         description: '4e Régiment d\'Artillerie de Montagne. Haute-Savoie/Hautes-Alpes.',
@@ -520,7 +520,7 @@ const ARMY_BASES: MilitaryInstallation[] = [
     },
     // ─── Forces Spéciales ───
     {
-        id: 'AT-PAU', name: '1er RPIMA — Bayone / PAU (COS)',
+        id: 'AT-PAU', name: '1er RPIMA · Bayone / PAU (COS)',
         type: 'joint',
         coordinates: [-0.3706, 43.3128],
         description: 'Commandement des Opérations Spéciales (COS). 13e RDP, 1er BCP.',
@@ -529,7 +529,7 @@ const ARMY_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'AT-LORIENT-FS', name: 'Groupement des Commandos Marine — Lorient',
+        id: 'AT-LORIENT-FS', name: 'Groupement des Commandos Marine · Lorient',
         type: 'navy',
         coordinates: [-3.3764, 47.7375],
         description: 'Commandos Marine (Kieffer, Jaubert, Trepel, de Montfort, Hubert, Penfentenyo).',
@@ -545,7 +545,7 @@ const ARMY_BASES: MilitaryInstallation[] = [
 
 const ALAT_BASES: MilitaryInstallation[] = [
     {
-        id: 'ALAT-DAUX', name: 'Établissement d\'Aviation Légère — Dax',
+        id: 'ALAT-DAUX', name: 'Établissement d\'Aviation Légère · Dax',
         type: 'army', icao: 'LFCD',
         coordinates: [-1.0653, 43.6900],
         description: 'École de l\'ALAT. Formation pilotes hélicoptères militaires. Gazelle, EC120.',
@@ -553,7 +553,7 @@ const ALAT_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'ALAT-PHALSBOURG', name: '1er RHC — Phalsbourg',
+        id: 'ALAT-PHALSBOURG', name: '1er RHC · Phalsbourg',
         type: 'army', icao: 'LFGP',
         coordinates: [7.2075, 48.7683],
         description: '1er Régiment d\'Hélicoptères de Combat. Tigre HAP/HAD, NH90.',
@@ -562,7 +562,7 @@ const ALAT_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'ALAT-RENNES', name: '3e RHC — Rennes-Saint-Jacques',
+        id: 'ALAT-RENNES', name: '3e RHC · Rennes-Saint-Jacques',
         type: 'army', icao: 'LFRN',
         coordinates: [-1.7317, 48.0697],
         description: '3e Régiment d\'Hélicoptères de Combat. Tigre, NH90 Caïman.',
@@ -571,7 +571,7 @@ const ALAT_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'ALAT-VALENCE', name: '5e RHC — Valence',
+        id: 'ALAT-VALENCE', name: '5e RHC · Valence',
         type: 'army', icao: 'LFLU',
         coordinates: [4.9697, 44.9214],
         description: '5e Régiment d\'Hélicoptères de Combat. NH90, Cougar.',
@@ -580,14 +580,14 @@ const ALAT_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'ALAT-ESSEY', name: '1er RHC AZUR — Nancy-Essey',
+        id: 'ALAT-ESSEY', name: '1er RHC AZUR · Nancy-Essey',
         type: 'army', icao: 'LFSN',
         coordinates: [6.2308, 48.6914],
         description: 'Détachement hélicoptères ALAT Est. EC135, Fennec.',
         region: 'Grand Est', status: 'active',
     },
     {
-        id: 'ALAT-CANNET', name: '4e RHFS — Le Cannet-des-Maures',
+        id: 'ALAT-CANNET', name: '4e RHFS · Le Cannet-des-Maures',
         type: 'joint', icao: 'LFMK',
         coordinates: [6.3553, 43.4083],
         description: '4e Régiment d\'Hélicoptères des Forces Spéciales. EC725 Caracal, AS532 Cougar.',
@@ -604,7 +604,7 @@ const ALAT_BASES: MilitaryInstallation[] = [
 
 const GENDARMERIE_BASES: MilitaryInstallation[] = [
     {
-        id: 'GND-NIMES', name: 'Gicat 6 — Nîmes-Garons (Gendarmerie)',
+        id: 'GND-NIMES', name: 'Gicat 6 · Nîmes-Garons (Gendarmerie)',
         type: 'joint', icao: 'LFTW',
         coordinates: [4.4078, 43.7572],
         description: 'Section aérienne de gendarmerie (SAG). EC135, Fennec.',
@@ -643,7 +643,7 @@ const GENDARMERIE_BASES: MilitaryInstallation[] = [
 
 const SECURITE_CIVILE_BASES: MilitaryInstallation[] = [
     {
-        id: 'SC-MARIGNANE', name: 'Sécurité Civile — Marignane',
+        id: 'SC-MARIGNANE', name: 'Sécurité Civile · Marignane',
         type: 'joint', icao: 'LFML',
         coordinates: [5.2214, 43.4353],
         description: 'Base principale bombardiers d\'eau. Canadair CL-415, Dash 8.',
@@ -652,7 +652,7 @@ const SECURITE_CIVILE_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'SC-NIMES', name: 'Sécurité Civile — Nîmes-Garons',
+        id: 'SC-NIMES', name: 'Sécurité Civile · Nîmes-Garons',
         type: 'joint', icao: 'LFTW',
         coordinates: [4.4167, 43.7569],
         description: 'Base secondaire. Pelican, Dragon. Feux de forêt méditerranée.',
@@ -661,7 +661,7 @@ const SECURITE_CIVILE_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'SC-BASTIA', name: 'Sécurité Civile — Bastia-Poretta',
+        id: 'SC-BASTIA', name: 'Sécurité Civile · Bastia-Poretta',
         type: 'joint', icao: 'LFKB',
         coordinates: [9.4833, 42.5522],
         description: 'Détachement estival. Bombardiers d\'eau Corse.',
@@ -677,7 +677,7 @@ const SECURITE_CIVILE_BASES: MilitaryInstallation[] = [
 const OVERSEAS_BASES: MilitaryInstallation[] = [
     // ─── Antilles ───
     {
-        id: 'FAA-971-FDF', name: 'Fort-de-France — FAA Martinique',
+        id: 'FAA-971-FDF', name: 'Fort-de-France · FAA Martinique',
         type: 'joint',
         coordinates: [-61.0631, 14.6137],
         description: 'Forces Armées Antilles. Régiment SMA, Marine, bataillon infanterie.',
@@ -686,7 +686,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
         status: 'active',
     },
     {
-        id: 'FAA-971-PTX', name: 'Pointe-à-Pitre — Guadeloupe (GEN)',
+        id: 'FAA-971-PTX', name: 'Pointe-à-Pitre · Guadeloupe (GEN)',
         type: 'joint', icao: 'TFFR',
         coordinates: [-61.5181, 16.2578],
         description: 'Détachement FAA Guadeloupe. Patrouilleur, hélicoptères Caraïbes.',
@@ -696,7 +696,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Guyane ───
     {
-        id: 'FAG-973-CSG', name: 'FAG — Guyane (3e REI + 9e RIMa)',
+        id: 'FAG-973-CSG', name: 'FAG · Guyane (3e REI + 9e RIMa)',
         type: 'joint',
         coordinates: [-52.3653, 4.8228],
         description: 'Forces Armées en Guyane. Protection CSG (Guiana Space Centre). 3e REI, 9e RIMa.',
@@ -714,7 +714,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── La Réunion ───
     {
-        id: 'FAZSOI-974-REU', name: 'FAZSOI — La Réunion',
+        id: 'FAZSOI-974-REU', name: 'FAZSOI · La Réunion',
         type: 'joint',
         coordinates: [55.5364, -20.9022],
         description: 'Forces Armées Zone Sud Océan Indien. 2e RPIMa, Marine à Port-des-Galets.',
@@ -724,7 +724,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Mayotte ───
     {
-        id: 'DROM-MYT-DZA', name: 'Détachement Marine — Dzaoudzi (Mayotte)',
+        id: 'DROM-MYT-DZA', name: 'Détachement Marine · Dzaoudzi (Mayotte)',
         type: 'navy',
         coordinates: [45.2569, -12.7871],
         description: 'Patrouilleur Mahorais. Lutte contre immigration clandestine.',
@@ -734,7 +734,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Polynésie ───
     {
-        id: 'FAPF-987-TAH', name: 'FAPF — Polynésie Française (Papeete)',
+        id: 'FAPF-987-TAH', name: 'FAPF · Polynésie Française (Papeete)',
         type: 'joint', icao: 'NTAA',
         coordinates: [-149.6067, -17.5536],
         description: 'Forces Armées Polynésie Française. Frégate de surveillance, CSMAR Papeete.',
@@ -745,7 +745,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Nouvelle-Calédonie ───
     {
-        id: 'FANC-988-NOU', name: 'FANC — Nouméa (Nouvelle-Calédonie)',
+        id: 'FANC-988-NOU', name: 'FANC · Nouméa (Nouvelle-Calédonie)',
         type: 'joint',
         coordinates: [166.4414, -22.2558],
         description: 'Forces Armées Nouvelle-Calédonie. Base navale Chaleix, Régiment Pacifique.',
@@ -766,7 +766,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Sénégal ───
     {
-        id: 'EFS-SN-DAK', name: 'Éléments Français au Sénégal — Dakar',
+        id: 'EFS-SN-DAK', name: 'Éléments Français au Sénégal · Dakar',
         type: 'joint', icao: 'GOOY',
         coordinates: [-17.4906, 14.7394],
         description: 'EFS Sénégal. Camp Lat Dior. Base navale partagée Port de Dakar.',
@@ -776,7 +776,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Gabon ───
     {
-        id: 'EFG-GA-LBV', name: 'Éléments Français au Gabon — Libreville',
+        id: 'EFG-GA-LBV', name: 'Éléments Français au Gabon · Libreville',
         type: 'joint', icao: 'FOOL',
         coordinates: [9.4122, 0.4581],
         description: 'EFG Libreville. 6e BIMA, soutien Afrique centrale.',
@@ -786,7 +786,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Côte d'Ivoire ───
     {
-        id: 'FFCI-CI-ABJ', name: 'Forces Françaises en Côte d\'Ivoire — Abidjan',
+        id: 'FFCI-CI-ABJ', name: 'Forces Françaises en Côte d\'Ivoire · Abidjan',
         type: 'joint', icao: 'DIAP',
         coordinates: [-4.0153, 5.2614],
         description: '43e BIMa. Soutien région Afrique de l\'Ouest.',
@@ -796,7 +796,7 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
     },
     // ─── Saint-Pierre-et-Miquelon ───
     {
-        id: 'NAV-975-SPM', name: 'Détachement — Saint-Pierre-et-Miquelon',
+        id: 'NAV-975-SPM', name: 'Détachement · Saint-Pierre-et-Miquelon',
         type: 'navy',
         coordinates: [-56.1833, 46.7667],
         description: 'Petite présence navale. Surveillance maritime Atlantique Nord.',
@@ -810,49 +810,49 @@ const OVERSEAS_BASES: MilitaryInstallation[] = [
 
 const DGA_SITES: MilitaryInstallation[] = [
     {
-        id: 'DGA-ISTRES', name: 'DGA Essais en vol — Istres',
+        id: 'DGA-ISTRES', name: 'DGA Essais en vol · Istres',
         type: 'air', icao: 'LFMI',
         coordinates: [4.9242, 43.5233],
         description: 'CEV Istres. Qualification avions militaires français (Rafale, A400M, MRTT).',
         region: 'Provence-Alpes-Côte d\'Azur', status: 'active',
     },
     {
-        id: 'DGA-CAZAUX', name: 'DGA Essais en vol — Cazaux (EPNER)',
+        id: 'DGA-CAZAUX', name: 'DGA Essais en vol · Cazaux (EPNER)',
         type: 'air', icao: 'LFBC',
         coordinates: [-1.1250, 44.5328],
         description: 'EPNER (École du Personnel Navigant d\'Essais et de Réception).',
         region: 'Nouvelle-Aquitaine', status: 'active',
     },
     {
-        id: 'DGA-SATORY', name: 'DGA Techniques terrestres — Satory',
+        id: 'DGA-SATORY', name: 'DGA Techniques terrestres · Satory',
         type: 'army',
         coordinates: [2.0717, 48.8019],
         description: 'Essais armements terrestres, blindés, munitions.',
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'DGA-TOULON', name: 'DGA Techniques navales — Toulon',
+        id: 'DGA-TOULON', name: 'DGA Techniques navales · Toulon',
         type: 'navy',
         coordinates: [5.8958, 43.1239],
         description: 'Essais systèmes navals, torpilles, armes sous-marines.',
         region: 'Provence-Alpes-Côte d\'Azur', status: 'active',
     },
     {
-        id: 'DGA-BISCAROSSE', name: 'DGA Essais missiles — Biscarosse',
+        id: 'DGA-BISCAROSSE', name: 'DGA Essais missiles · Biscarosse',
         type: 'joint',
         coordinates: [-1.2347, 44.3856],
         description: 'DGA EM Biscarosse. Tirs missiles balistiques (M51, ASMP-A) Landes.',
         region: 'Nouvelle-Aquitaine', status: 'active',
     },
     {
-        id: 'DGA-BREGUET', name: 'DGA MI — Bruz (Rennes)',
+        id: 'DGA-BREGUET', name: 'DGA MI · Bruz (Rennes)',
         type: 'joint',
         coordinates: [-1.6944, 48.0156],
         description: 'Centre de maîtrise de l\'information. Cyber, électronique, guerre électronique.',
         region: 'Bretagne', status: 'active',
     },
     {
-        id: 'DGA-CLAR', name: 'DGA Maîtrise NRBC — La Délégat.',
+        id: 'DGA-CLAR', name: 'DGA Maîtrise NRBC · La Délégat.',
         type: 'joint',
         coordinates: [2.1903, 48.9644],
         description: 'Vert-le-Petit. Essais risques NRBC (nucléaire, radiologique, bactériologique, chimique).',
@@ -922,7 +922,7 @@ const RADAR_STATIONS: MilitaryInstallation[] = [
     },
     // ─── GRAVES — Surveillance spatiale ───
     {
-        id: 'GRAVES-ONERA', name: 'GRAVES — Plateau d\'Albion',
+        id: 'GRAVES-ONERA', name: 'GRAVES · Plateau d\'Albion',
         type: 'air',
         coordinates: [5.4833, 44.0667],
         description: 'Grand Réseau Adapté à la Veille Spatiale. Radar de surveillance des satellites et débris. DGA/CNES.',
@@ -956,7 +956,7 @@ const TRANSMISSION_SITES: MilitaryInstallation[] = [
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'DIRISI-CREIL', name: 'DIRISI — Creil',
+        id: 'DIRISI-CREIL', name: 'DIRISI · Creil',
         type: 'joint',
         coordinates: [2.5192, 49.2536],
         description: 'Direction Interarmées des Réseaux d\'Infrastructure et des Systèmes d\'Information. Hub télécommunications.',
@@ -965,7 +965,7 @@ const TRANSMISSION_SITES: MilitaryInstallation[] = [
         region: 'Hauts-de-France', status: 'active',
     },
     {
-        id: 'SYRACUSE-CESSON', name: 'Station SYRACUSE — Cesson-Sévigné',
+        id: 'SYRACUSE-CESSON', name: 'Station SYRACUSE · Cesson-Sévigné',
         type: 'joint',
         coordinates: [-1.6097, 48.1253],
         description: 'Station sol du système satellite militaire SYRACUSE. Communications stratégiques.',
@@ -1008,7 +1008,7 @@ const AMMO_DEPOTS: MilitaryInstallation[] = [
         region: 'Nouvelle-Aquitaine', status: 'active',
     },
     {
-        id: 'SIMU-GRAMAT', name: 'CEA DAM — Gramat (CESTA)',
+        id: 'SIMU-GRAMAT', name: 'CEA DAM · Gramat (CESTA)',
         type: 'joint',
         coordinates: [1.7167, 44.7833],
         description: 'Centre d\'études scientifiques et techniques d\'Aquitaine. Recherche effets d\'armes.',
@@ -1024,35 +1024,35 @@ const AMMO_DEPOTS: MilitaryInstallation[] = [
 
 const HQ_SITES: MilitaryInstallation[] = [
     {
-        id: 'HQ-PARIS-VAL', name: 'Ministère des Armées — Balard (EMA)',
+        id: 'HQ-PARIS-VAL', name: 'Ministère des Armées · Balard (EMA)',
         type: 'joint',
         coordinates: [2.2840, 48.8428],
         description: 'Pentagone français. État-Major des Armées, DGSÉC, tous commandements centraux.',
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'HQ-ROCQUENCOURT', name: 'SHAPE France — Rocquencourt',
+        id: 'HQ-ROCQUENCOURT', name: 'SHAPE France · Rocquencourt',
         type: 'joint',
         coordinates: [2.0758, 48.8525],
         description: 'NATO HQ SACT (anciennement SHAPE). Commandement OTAN transformation.',
         region: 'Île-de-France', status: 'active',
     },
     {
-        id: 'HQ-CREIL-CDAOA', name: 'CDAOA — Creil',
+        id: 'HQ-CREIL-CDAOA', name: 'CDAOA · Creil',
         type: 'air',
         coordinates: [2.5192, 49.2536],
         description: 'Commandement Défense Aérienne et Opérations Aériennes. Centre opérations Taverny/Creil.',
         region: 'Hauts-de-France', status: 'active',
     },
     {
-        id: 'HQ-BRE-COMAR', name: 'COMAR Atlantique — Brest',
+        id: 'HQ-BRE-COMAR', name: 'COMAR Atlantique · Brest',
         type: 'navy',
         coordinates: [-4.4953, 48.3894],
         description: 'Commandement Maritime Atlantique. Préfecture maritime.',
         region: 'Bretagne', status: 'active',
     },
     {
-        id: 'HQ-TLN-COMAR', name: 'COMAR Méditerranée — Toulon',
+        id: 'HQ-TLN-COMAR', name: 'COMAR Méditerranée · Toulon',
         type: 'navy',
         coordinates: [5.9300, 43.1250],
         description: 'Commandement Maritime Méditerranée. Préfecture maritime.',

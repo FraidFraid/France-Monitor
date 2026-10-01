@@ -662,7 +662,7 @@ async function fetchArea(fetchImpl, area) {
 async function fetchOpenSky(fetchImpl) {
   const source = 'opensky';
   if (isRateLimited(source)) {
-    throw new Error('OpenSky rate-limited (429) — backoff actif');
+    throw new Error('OpenSky rate-limited (429) : backoff actif');
   }
 
   const url = `${OPENSKY_STATES_URL}?lamin=${FRANCE_BOUNDS.minLat}&lomin=${FRANCE_BOUNDS.minLon}&lamax=${FRANCE_BOUNDS.maxLat}&lomax=${FRANCE_BOUNDS.maxLon}`;
@@ -673,7 +673,7 @@ async function fetchOpenSky(fetchImpl) {
 
   if (response.status === 429) {
     markRateLimited(source);
-    throw new Error('OpenSky rate-limited (429) — backoff actif');
+    throw new Error('OpenSky rate-limited (429) : backoff actif');
   }
 
   if (!response.ok) {

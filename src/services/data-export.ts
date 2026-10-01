@@ -85,7 +85,7 @@ export interface ExportContext {
 
 // ─── Provenance ───────────────────────────────────────────────────────────────
 
-export const EXPORT_PROVENANCE = 'France Monitor — données issues de sources ouvertes';
+export const EXPORT_PROVENANCE = 'France Monitor : données issues de sources ouvertes';
 
 // ─── CSV ──────────────────────────────────────────────────────────────────────
 

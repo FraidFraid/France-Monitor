@@ -183,7 +183,7 @@ async function fetchShodanSearch(apiKey) {
   const info = await infoResp.json();
 
   if ((info.query_credits || 0) === 0) {
-    console.log('[Shodan] Plan OSS: 0 query_credits — Search API skipped, InternetDB only');
+    console.log('[Shodan] Plan OSS: 0 query_credits : Search API skipped, InternetDB only');
     return events;
   }
 
@@ -224,7 +224,7 @@ async function fetchShodanSearch(apiKey) {
           geo,
           inferSector(host.ports, host.hostnames),
           cveToSeverity(cves),
-          `${label} — ${total} hôtes similaires en France. Org: ${org}. CVE: ${cves.slice(0, 3).join(', ') || 'N/A'}.`,
+          `${label} : ${total} hôtes similaires en France. Org: ${org}. CVE: ${cves.slice(0, 3).join(', ') || 'N/A'}.`,
           cves,
           [{ name: 'Shodan Search API', url: 'https://shodan.io', observedAt: now }],
           total,
@@ -239,7 +239,7 @@ async function fetchShodanSearch(apiKey) {
           resolveGeo(undefined, undefined),
           sector,
           total > 500 ? 'critical' : total > 100 ? 'high' : 'medium',
-          `${label} — ${total} hôtes exposés agrégés en France (données Shodan).`,
+          `${label} : ${total} hôtes exposés agrégés en France (données Shodan).`,
           [],
           [{ name: 'Shodan Search API', url: 'https://shodan.io', observedAt: now }],
           total,
@@ -273,7 +273,7 @@ async function fetchCensys(apiId, apiSecret) {
   // Certains plans Censys ne supportent pas /account — tenter directement search
   const authFailed = pingResp && !pingResp.ok && pingResp.status === 401;
   if (authFailed) {
-    console.warn('[Censys] Auth failed (401) — skipping');
+    console.warn('[Censys] Auth failed (401) : skipping');
     return events;
   }
 
@@ -316,7 +316,7 @@ async function fetchCensys(apiId, apiSecret) {
         geo,
         sector,
         severity,
-        `${label} — ${total} service(s) exposé(s) en France via Censys. Aucun credential requis pour accès. Données agrégées, aucune IP divulguée.`,
+        `${label} : ${total} service(s) exposé(s) en France via Censys. Aucun credential requis pour accès. Données agrégées, aucune IP divulguée.`,
         [],
         [{ name: 'Censys Search API', url: 'https://censys.io', observedAt: now }],
         total,

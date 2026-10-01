@@ -270,7 +270,7 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
     });
 
     const nRegions = Object.keys(mixes).length;
-    console.log(`[Écowatt] ${nRegions} régions éco2mix — signal officiel: ${official ? official.source : 'indisponible'}`);
+    console.log(`[Écowatt] ${nRegions} régions éco2mix · signal officiel : ${official ? official.source : 'indisponible'}`);
 
     return result;
 }

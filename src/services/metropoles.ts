@@ -154,7 +154,7 @@ export async function fetchMetropoles(): Promise<MetropoleConsumption[]> {
         cache = { data: result, fetchedAt: Date.now() };
 
         const total = result.reduce((s, m) => s + m.consommation, 0);
-        console.log(`[Métropoles] ${result.length} métropoles — total ${total.toLocaleString('fr-FR')} MW`);
+        console.log(`[Métropoles] ${result.length} métropoles : total ${total.toLocaleString('fr-FR')} MW`);
 
         return result;
     } catch (err) {

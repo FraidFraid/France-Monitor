@@ -115,9 +115,9 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
   const confidence = Math.min(0.95, 0.50 + confirmedBy * 0.15 + (level === 'red' ? 0.15 : 0));
 
   const drivers: string[] = [];
-  if (level === 'red') drivers.push('Écowatt rouge — signal national RTE');
-  else drivers.push('Écowatt orange — signal national RTE');
-  if (confirmedByNuclear) drivers.push(`Parc nucléaire dégradé (stress ${nuclear?.level}${nuclear ? ` — ratio ${Math.round(nuclear.stressRatio * 100)}%` : ''})`);
+  if (level === 'red') drivers.push('Écowatt rouge : signal national RTE');
+  else drivers.push('Écowatt orange : signal national RTE');
+  if (confirmedByNuclear) drivers.push(`Parc nucléaire dégradé (stress ${nuclear?.level}${nuclear ? ` · ratio ${Math.round(nuclear.stressRatio * 100)}%` : ''})`);
   if (confirmedByOutages) drivers.push(`${raw.powerOutages.length} pannes électriques signalées`);
   if (confirmedByEolien)  drivers.push(`Production éolienne très faible (< 500 MW)`);
 
@@ -332,7 +332,7 @@ function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Pression cyber multi-source',
-    `Baromètre cyber consolidé à ${score}/100${pressure.dominantFamily ? `, dominé par ${dominantBreakdown[0]?.label.toLowerCase()}` : ''}${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
+    `Baromètre cyber consolidé à ${score}/100${pressure.dominantFamily ? `, dominé par ${dominantBreakdown[0]?.label.toLowerCase()}` : ''}${certCritical > 0 ? ` · ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
     ['France'],
     drivers,
     [
@@ -567,7 +567,7 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Risque d\'approvisionnement carburant',
-    `Tension carburant ${fuelWord}${oilWord ? ` — stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
+    `Tension carburant ${fuelWord}${oilWord ? ` · stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
     topDepts.length > 0 ? topDepts : ['France'],
     [
       `Tension carburant nationale : ${fuelWord}`,

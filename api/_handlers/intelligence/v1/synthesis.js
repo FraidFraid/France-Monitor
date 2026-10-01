@@ -44,7 +44,7 @@ function buildNuclearBlock(nuclear) {
 
 function buildEolienBlock(eolien) {
   if (!eolien) return '';
-  const alertLabels = { normal: 'nominal', watch: 'vent modéré', 'low-production': 'production faible — alerte' };
+  const alertLabels = { normal: 'nominal', watch: 'vent modéré', 'low-production': 'production faible (alerte)' };
   return `
 Éolien France (temps réel éCO2mix) :
 - Production : ${typeof eolien.production_gw === 'number' ? eolien.production_gw.toFixed(1) + ' GW' : 'N/A'} sur ${typeof eolien.puissance_installee === 'number' ? eolien.puissance_installee.toFixed(1) + ' GW installés' : 'N/A installés'}

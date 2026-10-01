@@ -47,7 +47,7 @@ describe('buildSituationReportHtml — données complètes', () => {
       newsCacheAvailable: true,
       sources: [
         { label: 'Écowatt RTE', state: 'ok', ageLabel: '3 min' },
-        { label: 'Vigicrues', state: 'error', ageLabel: '—' },
+        { label: 'Vigicrues', state: 'error', ageLabel: 'n.d.' },
       ],
       version: '1.2.3',
     }),
@@ -55,9 +55,9 @@ describe('buildSituationReportHtml — données complètes', () => {
 
   it('produit un document HTML autonome', () => {
     assert.ok(html.startsWith('<!DOCTYPE html>'));
-    assert.ok(html.includes('<title>Note de situation — France Monitor</title>'));
-    assert.ok(html.includes('NOTE DE SITUATION — France Monitor'));
-    assert.ok(html.includes('Diffusion libre — Sources ouvertes'));
+    assert.ok(html.includes('<title>Note de situation : France Monitor</title>'));
+    assert.ok(html.includes('NOTE DE SITUATION · France Monitor'));
+    assert.ok(html.includes('Diffusion libre · Sources ouvertes'));
   });
 
   it('contient les quatre sections attendues', () => {
@@ -99,7 +99,7 @@ describe('buildSituationReportHtml — données vides/dégradées', () => {
   it('ne lève pas et se génère quand même', () => {
     assert.equal(typeof html, 'string');
     assert.ok(html.length > 0);
-    assert.ok(html.includes('NOTE DE SITUATION — France Monitor'));
+    assert.ok(html.includes('NOTE DE SITUATION · France Monitor'));
   });
 
   it('affiche la mention nominale pour la synthèse sans situation', () => {

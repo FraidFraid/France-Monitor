@@ -253,7 +253,7 @@ const MAX_DETERMINISTIC_JUDGMENTS = 3;
 /** Jugement de repli d'une situation : son titre et son résumé sans phrase chiffrée (sous-scores du moteur, spec §4.3). */
 function situationJudgmentText(s: DetectedSituation): string {
   const plain = splitScoreSentences(s.summary).plain.join(' ');
-  return plain ? `${s.title} — ${plain}` : s.title;
+  return plain ? `${s.title} : ${plain}` : s.title;
 }
 
 /**
@@ -303,8 +303,8 @@ export function buildDeterministicBrief(
     judgments.push({
       priority: EVENT_PRIORITY[e.severity],
       text: (lang === 'fr'
-        ? `${e.title} — repris par ${e.independentCount} sources indépendantes`
-        : `${e.title} — reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
+        ? `${e.title} : repris par ${e.independentCount} sources indépendantes`
+        : `${e.title}: reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
       confidence: e.independentCount >= 3 ? 'moderate' : 'low',
       sources: e.sources.slice(0, MAX_SOURCES),
       evidence: [e.id],
@@ -315,8 +315,8 @@ export function buildDeterministicBrief(
     judgments.push({
       priority: 4,
       text: lang === 'fr'
-        ? 'Aucune corrélation multi-source active — pression diffuse de fond sans point de convergence dominant.'
-        : 'No active multi-source correlation — diffuse background pressure without a dominant convergence point.',
+        ? 'Aucune corrélation multi-source active : pression diffuse de fond sans point de convergence dominant.'
+        : 'No active multi-source correlation: diffuse background pressure without a dominant convergence point.',
       confidence: 'high',
       sources: [lang === 'fr' ? 'Moteur de situations' : 'Situation engine'],
       // Constat du moteur lui-même (absence de corrélation) : rien à citer, rien d'inventé.

@@ -109,27 +109,27 @@ export interface TrafficSegment {
 
 export const MOCK_TRAFFIC_SEGMENTS: TrafficSegment[] = [
   {
-    id: 'traffic-a6-lyon', name: 'A6 — Paris→Lyon',
+    id: 'traffic-a6-lyon', name: 'A6 : Paris→Lyon',
     level: 'dense',
     geometry: { type: 'LineString', coordinates: [[2.35, 48.80], [2.60, 48.30], [3.00, 47.50], [3.50, 46.80], [4.30, 46.20], [4.80, 45.80]] },
   },
   {
-    id: 'traffic-a7-valence', name: 'A7 — Lyon→Valence',
+    id: 'traffic-a7-valence', name: 'A7 : Lyon→Valence',
     level: 'congested',
     geometry: { type: 'LineString', coordinates: [[4.83, 45.76], [4.85, 45.50], [4.87, 45.20], [4.88, 44.93]] },
   },
   {
-    id: 'traffic-a1-lille', name: 'A1 — Paris→Lille',
+    id: 'traffic-a1-lille', name: 'A1 : Paris→Lille',
     level: 'dense',
     geometry: { type: 'LineString', coordinates: [[2.35, 48.92], [2.50, 49.20], [2.70, 49.50], [2.90, 49.85], [3.06, 50.63]] },
   },
   {
-    id: 'traffic-a13-rouen', name: 'A13 — Paris→Rouen',
+    id: 'traffic-a13-rouen', name: 'A13 : Paris→Rouen',
     level: 'fluid',
     geometry: { type: 'LineString', coordinates: [[2.25, 48.87], [1.80, 49.00], [1.40, 49.20], [1.10, 49.44]] },
   },
   {
-    id: 'traffic-a10-bordeaux', name: 'A10 — Paris→Bordeaux',
+    id: 'traffic-a10-bordeaux', name: 'A10 : Paris→Bordeaux',
     level: 'fluid',
     geometry: { type: 'LineString', coordinates: [[2.30, 48.75], [1.50, 47.80], [0.70, 47.00], [0.10, 46.20], [-0.30, 45.50], [-0.58, 44.84]] },
   },

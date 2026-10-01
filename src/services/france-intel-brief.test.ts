@@ -295,7 +295,7 @@ describe('buildDeterministicBrief — sous-scores hors des jugements (refonte UI
     const texts = brief.judgments.map((j) => j.text);
     assert.ok(texts.every((text) => !/\d+\s*\/\s*\d+/.test(text)), texts.join(' | '));
     assert.ok(texts.includes('Pression cyber multi-source'));
-    assert.ok(texts.includes('Escalade sociale localisée — 4 département(s) avec tensions sociales ou sécuritaires élevées.'));
+    assert.ok(texts.includes('Escalade sociale localisée : 4 département(s) avec tensions sociales ou sécuritaires élevées.'));
   });
 });
 

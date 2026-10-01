@@ -19,7 +19,7 @@ const TARGET_HISTORY_DAYS = 7;
 Watchdog.register('fuel-tension', {
   label: 'Carburants temps réel',
   staleAfterMs: 6 * 60_000,
-  detail: 'API prix carburants flux instantané v2 — prix, ruptures, fraîcheur stations',
+  detail: 'API prix carburants flux instantané v2 : prix, ruptures, fraîcheur stations',
   freshness: 'TEMPS_REEL',
 });
 

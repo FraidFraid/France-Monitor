@@ -178,7 +178,7 @@ export function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
         head.includes('<body') ||
         head.includes('<app-root')
     ) {
-        console.warn(`[RSS] ${feed.name}: received HTML instead of XML — likely bot-detection`);
+        console.warn(`[RSS] ${feed.name}: received HTML instead of XML : likely bot-detection`);
         return null;
     }
 

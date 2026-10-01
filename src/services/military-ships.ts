@@ -272,7 +272,7 @@ function _handleAisMessage(raw: string): void {
     if (_wsMessageCount === 1) {
         console.log('[AIS] 📡 Premier message reçu du relais');
     } else if (_wsMessageCount === 50) {
-        console.log(`[AIS] 📡 50 messages reçus — ${livePositions.size} navires en cache`);
+        console.log(`[AIS] 📡 50 messages reçus : ${livePositions.size} navires en cache`);
     }
 
     try {

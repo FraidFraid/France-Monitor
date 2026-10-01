@@ -199,7 +199,7 @@ async function fetchRegion(name: string, bbox: string): Promise<OsmMilitaryFeatu
             type,
             kind: militaryTag,
             coordinates: [lon, lat],
-            description: label + (tags['operator'] ? ` — ${tags['operator']}` : ''),
+            description: label + (tags['operator'] ? ` · ${tags['operator']}` : ''),
             operator: tags['operator'] ?? undefined,
         });
     }

@@ -268,7 +268,7 @@ function formatSituationsBlock(situations, lang) {
     const zones = s.affectedZones.length > 0 ? ` | zones: ${s.affectedZones.join(', ')}` : '';
     const drivers = s.drivers.length > 0 ? `\n   preuves: ${s.drivers.join(' ; ')}` : '';
     const sources = s.sourceRefs.length > 0 ? `\n   sources: ${s.sourceRefs.join(', ')}` : '';
-    return `S${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} — ${s.summary}${zones}${drivers}${sources}`;
+    return `S${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} : ${s.summary}${zones}${drivers}${sources}`;
   }).join('\n');
 }
 
@@ -292,10 +292,10 @@ export function buildPrompt(countryScore, axes, isnrComponents, cyberScore, mete
 You are a senior OSINT analyst writing France's national intelligence brief. Output MUST be a single valid JSON object matching this exact schema, nothing else:
 ${schema}
 
-[CORRELATED SITUATIONS — primary facts, established by a deterministic engine; cite as S1, S2…]
+[CORRELATED SITUATIONS: primary facts, established by a deterministic engine; cite as S1, S2…]
 ${situationsBlock}
 
-[CONSOLIDATED NEWS EVENTS — articles grouped by event, with corroboration; cite as E…]
+[CONSOLIDATED NEWS EVENTS: articles grouped by event, with corroboration; cite as E…]
 ${eventsBlock}
 
 [CONTEXT DATA]
@@ -309,7 +309,7 @@ ${headlineList}
 
 [RULES]
 1. "bluf": 2-3 sentences, ≤ 400 chars. Overall assessment: posture, dominant pressure, whether pressures converge.
-2. "judgments": 2-4 items. Base them PRIMARILY on the correlated situations above. priority 1 = most important. Each text ≤ 280 chars, must state something actionable or falsifiable — no filler.
+2. "judgments": 2-4 items. Base them PRIMARILY on the correlated situations above. priority 1 = most important. Each text ≤ 280 chars, must state something actionable or falsifiable, no filler.
 3. "confidence": derive from the situation confidence values (≥0.75 high, ≥0.55 moderate, else low). Never exceed the engine's confidence.
 4. "evidence": 1-4 identifiers copied from the lists above (E… events, S… situations). A judgment without a valid identifier is shown as UNSUPPORTED with low confidence. Never cite a headline or a source name. An event with a single independent source cannot justify "high" confidence.
 5. "watch": 1-4 concrete indicators with a realistic horizon. Be specific ("Ecowatt D+1 signal at 17:00", not "energy situation").
@@ -323,10 +323,10 @@ ${headlineList}
 Tu es un analyste OSINT senior rédigeant le brief national France. Ta sortie DOIT être un unique objet JSON valide conforme à ce schéma, rien d'autre :
 ${schema}
 
-[SITUATIONS CORRÉLÉES — faits primaires, établis par un moteur déterministe ; à citer S1, S2…]
+[SITUATIONS CORRÉLÉES : faits primaires, établis par un moteur déterministe ; à citer S1, S2…]
 ${situationsBlock}
 
-[ÉVÉNEMENTS CONSOLIDÉS — articles regroupés par événement, avec leur corroboration ; à citer E…]
+[ÉVÉNEMENTS CONSOLIDÉS : articles regroupés par événement, avec leur corroboration ; à citer E…]
 ${eventsBlock}
 
 [DONNÉES DE CONTEXTE]
@@ -340,7 +340,7 @@ ${headlineList}
 
 [CONSIGNES]
 1. "bluf" : 2-3 phrases, ≤ 400 caractères. Évaluation d'ensemble : posture, pression dominante, convergence ou non des pressions.
-2. "judgments" : 2-4 éléments. Fonde-les EN PRIORITÉ sur les situations corrélées ci-dessus. priority 1 = le plus important. Chaque texte ≤ 280 caractères, doit affirmer quelque chose d'actionnable ou de falsifiable — aucun remplissage.
+2. "judgments" : 2-4 éléments. Fonde-les EN PRIORITÉ sur les situations corrélées ci-dessus. priority 1 = le plus important. Chaque texte ≤ 280 caractères, doit affirmer quelque chose d'actionnable ou de falsifiable, aucun remplissage.
 3. "confidence" : dérive-la des confiances du moteur (≥0.75 high, ≥0.55 moderate, sinon low). Ne dépasse jamais la confiance du moteur.
 4. "evidence" : 1 à 4 identifiants recopiés des listes ci-dessus (E… événements, S… situations). Un jugement sans identifiant valide sera affiché NON ÉTAYÉ avec une confiance faible. Ne cite jamais un titre ni un nom de source. Un événement couvert par une seule source indépendante ne peut pas justifier une confiance « high ».
 5. "watch" : 1-4 indicateurs concrets avec un horizon réaliste. Sois spécifique (« signal Ecowatt J+1 à 17h », pas « situation énergétique »).

@@ -75,7 +75,7 @@ export default async function handler(req, res) {
             return res.status(200).json(cached);
         }
 
-        console.log('[Finance] Cache miss — fetching TradingView Scanner');
+        console.log('[Finance] Cache miss : fetching TradingView Scanner');
 
         const tickers = Object.values(INTERNAL_TO_TV);
         const payload = {

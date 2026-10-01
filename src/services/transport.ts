@@ -660,7 +660,7 @@ export async function fetchSncfDisruptions(
 
         disruptionCache.set(mode, { data: disruptions, fetchedAt: Date.now() });
         Watchdog.report('sncf', { type: 'success', responseTimeMs: Date.now() - t0 });
-        console.log(`[SNCF] ${disruptions.length}/${json.pagination?.total_result ?? disruptions.length} perturbations chargées — enrichissement en cours…`);
+        console.log(`[SNCF] ${disruptions.length}/${json.pagination?.total_result ?? disruptions.length} perturbations chargées : enrichissement en cours…`);
 
         if (onEnriched) {
             (async () => {
@@ -716,7 +716,7 @@ export async function fetchSncfDisruptions(
                 const mappedDisruptions = disruptions.filter(
                     (d) => d.coordinates || d.departure?.coordinates || d.arrival?.coordinates
                 ).length;
-                console.log(`[SNCF] Enrichissement terminé — ${mappedDisruptions}/${disruptions.length} géocodées, rendu endpoints`);
+                console.log(`[SNCF] Enrichissement terminé : ${mappedDisruptions}/${disruptions.length} géocodées, rendu endpoints`);
 
                 onEnriched(disruptions);
             })().catch((err) => console.warn('[SNCF] Enrichissement échoué:', err));
