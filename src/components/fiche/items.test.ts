@@ -5,9 +5,10 @@ import {
   buildOfficialFiche,
   buildSituationFiche,
   buildThemeFiche,
+  type EventFicheInput,
   type ThemeFicheInput,
 } from './items.ts';
-import { renderFiche } from './parts.ts';
+import { renderFiche, type FicheModel } from './parts.ts';
 import { buildWorkQueue, officialAlertGroups, type WorkQueueInput } from '../../services/work-queue.ts';
 import type {
   DetectedSituation,
@@ -38,14 +39,6 @@ function situation(over: Partial<DetectedSituation> = {}): DetectedSituation {
     id: 'energy-stress', type: 'ENERGY_STRESS', severity: 'high', confidence: 0.8, title: 'Tension énergétique nationale',
     summary: 'Signal Écowatt orange confirmé.', affectedZones: ['Bretagne'], drivers: [], recommendedActions: [],
     sourceRefs: ['Ecowatt RTE'], updatedAt: new Date(NOW), ...over,
-  };
-}
-
-function event(over: Partial<NewsEvent> = {}): NewsEvent {
-  return {
-    id: 42, evidenceId: 'E42', title: 'Explosion dans une usine chimique', category: 'security', severity: 'critical',
-    status: 'active', firstSeen: '2026-09-24T07:30:00Z', lastSeen: '2026-09-24T07:50:00Z', articleCount: 3,
-    sourceCount: 3, independentCount: 3, sourceNames: ['France Info'], lat: 49.4, lon: 1.1, ...over,
   };
 }
 
@@ -127,40 +120,103 @@ describe('fiche thème', () => {
   });
 });
 
-describe('fiche événement', () => {
-  const detail = (over: Partial<NewsEventDetail> = {}): NewsEventDetail => ({
-    event: event(),
+describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
+  const NOW = Date.parse('2026-10-01T08:30:00Z');
+  const ev = (over: Partial<NewsEvent> = {}): NewsEvent => ({
+    id: 13516, evidenceId: 'E13516', title: 'Haut-Rhin : menace d’attentat contre un lycée', category: 'security', severity: 'medium',
+    status: 'cooling', firstSeen: '2026-09-30T17:11:00Z', lastSeen: '2026-10-01T06:44:00Z', articleCount: 11, sourceCount: 8,
+    independentCount: 5, sourceNames: ['Le Dauphiné', 'Le Progrès', 'DNA'], lat: 47.6, lon: 7.5, peakSeverity: 'medium',
+    zone: 'france', temporality: 'en_cours', reasons: [], ...over,
+  });
+  const detail: NewsEventDetail = {
+    event: ev(),
     articles: [
-      { id: 1, title: '<b>Explosion</b> près de Rouen', link: 'javascript:alert(1)', feedName: 'France Info', publishedAt: '2026-09-24T07:30:00Z' },
-      { id: 2, title: 'Le PPI déclenché', link: 'https://example.org/ppi', feedName: 'Paris-Normandie', publishedAt: null },
+      { id: 1, title: 'Article ancien', link: 'https://exemple.fr/a', feedName: 'DNA', publishedAt: '2026-09-30T17:11:00Z' },
+      { id: 2, title: 'Article récent <b>', link: 'https://exemple.fr/b', feedName: 'Le Figaro', publishedAt: '2026-10-01T04:44:00Z' },
     ],
     log: [
-      { at: '2026-09-24T07:40:00Z', kind: 'escalated', from: 'medium', to: 'high' },
-      { at: '2026-09-24T07:30:00Z', kind: 'created', from: null, to: 'medium' },
+      { at: '2026-10-01T06:30:00Z', kind: 'cooling', from: null, to: null },
+      { at: '2026-09-30T21:00:00Z', kind: 'corroborated', from: '1', to: '2' },
+      { at: '2026-10-01T08:30:00Z', kind: 'corroborated', from: '4', to: '5' },
+      { at: '2026-10-01T05:00:00Z', kind: 'corroborated', from: '2', to: '3' },
+      { at: '2026-10-01T07:00:00Z', kind: 'corroborated', from: '3', to: '4' },
     ],
-    ...over,
+  };
+  const build = (over: Partial<EventFicheInput> = {}): FicheModel => buildEventFiche({
+    event: ev(), detail, place: { code: '68', nom: 'Haut-Rhin' }, sectionOpen: new Map(), lang: 'fr', now: NOW, ...over,
+  });
+  const byId = (m: FicheModel) => new Map(m.sections.map((s) => [s.id, s]));
+
+  it('en-tête : lieu avec numéro, depuis en heure absolue, statut daté, synthèse', () => {
+    const m = build();
+    expect(m.kind).toBe('Événement · Sécurité et défense');
+    expect(m.context).toEqual(['Haut-Rhin (68)', 'depuis 30/09 19:11', 'en refroidissement depuis 08:30']);
+    expect(m.lead).toBe('Repris par 8 sources (Le Dauphiné, Le Progrès, DNA). Dernier article à 08:44.');
   });
 
-  it('articles échappés, seuls les liens http(s) cliquables, journal en mots L1 (revue)', () => {
-    const html = renderFiche(buildEventFiche({ event: event(), detail: detail(), whyOpen: false, lang: 'fr', now: NOW }), 'fr');
-    expect(html).not.toContain('<b>');
-    expect(html).not.toContain('href="javascript:');
-    expect(html).toContain('href="https://example.org/ppi"');
-    expect(html).toContain('aggravé jaune → orange');
-    expect(html).toContain('créé · jaune');
+  it('sections : indicateurs et évolution ouverts, articles repliés au ton référence', () => {
+    const s = byId(build());
+    expect(s.get('indicators')).toMatchObject({ collapsible: true, open: true, summary: '5 groupes indépendants · 11 articles' });
+    expect(s.get('evolution')).toMatchObject({ collapsible: true, open: true, summary: '5 changements' });
+    expect(s.get('articles')).toMatchObject({ collapsible: true, open: false, tone: 'reference', summary: '11 articles · 8 flux' });
+    expect(byId(build({ sectionOpen: new Map([['articles', true], ['indicators', false]]) })).get('articles')?.open).toBe(true);
   });
 
-  it('journal en chargement ou indisponible : dit en clair', () => {
-    expect(buildEventFiche({ event: event(), detail: 'loading', whyOpen: false, lang: 'fr', now: NOW }).changesMeta).toBe('Chargement du journal…');
-    expect(buildEventFiche({ event: event(), detail: 'error', whyOpen: false, lang: 'fr', now: NOW }).changesMeta).toBe('Journal indisponible pour le moment.');
+  it('indicateurs : courbe de corroboration 1 → 5, confirmation, gravité, volume, lieu, preuve', () => {
+    const html = byId(build()).get('indicators')?.html ?? '';
+    expect(html).toContain('class="fmk-curve"');
+    expect(html).toContain('<text x="12" y="12" text-anchor="end">5</text>');
+    expect(html).toContain('confirmé par 5 groupes de presse indépendants');
+    expect(html).toContain('fm-vig--jaune');
+    expect(html).toContain('11 articles · 8 flux');
+    expect(html).toContain('Haut-Rhin (68)');
+    expect(html).toContain('E13516');
   });
 
-  it('aucun code de catégorie du moteur ; « Voir sur la carte » seulement pour un événement localisé', () => {
-    const model = buildEventFiche({ event: event({ category: 'weather' }), detail: undefined, whyOpen: false, lang: 'fr', now: NOW });
-    expect(model.kind).toBe('Événement · Environnement et transports');
-    expect(renderFiche(model, 'fr')).not.toContain('weather');
-    expect(model.actions.map((a) => a.id)).toEqual(['map']);
-    expect(buildEventFiche({ event: event({ lat: null, lon: null }), detail: undefined, whyOpen: false, lang: 'fr', now: NOW }).actions).toEqual([]);
+  it('à confirmer : contexte et gravité signalée au-dessus de la retenue ; motifs en mots', () => {
+    const m = build({ event: ev({ severity: 'medium', peakSeverity: 'high', independentCount: 1, sourceCount: 1, reasons: ['non_confirme'] }) });
+    expect(m.context).toContain('à confirmer, signalé orange');
+    const html = byId(m).get('indicators')?.html ?? '';
+    expect(html).toContain('source unique');
+    expect(html).toContain('niveau le plus grave signalé par une seule source indépendante');
+  });
+
+  it('évolution : heures absolues, la plus récente en tête', () => {
+    const html = byId(build()).get('evolution')?.html ?? '';
+    expect(html.indexOf('10:30')).toBeLessThan(html.indexOf('09:00'));
+    expect(html).toContain('<li class="fiche-change is-latest"><span class="fiche-time">10:30</span>');
+    expect(html).toContain('30/09 23:00');
+  });
+
+  it('articles : lignes simples, du plus récent au plus ancien, échappés, date absolue', () => {
+    const html = byId(build()).get('articles')?.html ?? '';
+    expect(html.indexOf('Article récent')).toBeLessThan(html.indexOf('Article ancien'));
+    expect(html).toContain('Article récent &lt;b&gt;');
+    expect(html).toContain('<small>Le Figaro · 06:44</small>');
+    expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+    expect(html).not.toContain('fiche-source');
+  });
+
+  it('détail absent, en cours ou en erreur : messages, pas de courbe, jamais d’exception', () => {
+    for (const d of [undefined, 'loading', 'error'] as const) {
+      const s = byId(build({ detail: d }));
+      expect(s.get('indicators')?.html).not.toContain('fmk-curve');
+      expect(s.get('evolution')?.html).toContain(d === 'error' ? 'Journal indisponible pour le moment.' : 'Chargement du journal…');
+      expect(s.get('articles')?.html).toContain(d === 'error' ? 'Articles indisponibles pour le moment.' : 'Chargement des articles…');
+    }
+  });
+
+  it('référence copiable et actions', () => {
+    const m = build();
+    expect(m.reference).toBe('E13516 · Haut-Rhin : menace d’attentat contre un lycée · Jaune · première apparition 30/09 19:11');
+    expect(m.actions.map((a) => a.id)).toEqual(['map', 'copy-ref']);
+    expect(build({ event: ev({ lat: null, lon: null }) }).actions.map((a) => a.id)).toEqual(['copy-ref']);
+  });
+
+  it('étranger : lieu « à l’étranger » ; aucun tiret cadratin nulle part', () => {
+    const m = build({ event: ev({ zone: 'etranger' }), place: null });
+    expect(m.context?.[0]).toBe('à l’étranger');
+    expect(JSON.stringify(m)).not.toContain('—');
   });
 });
 
@@ -254,25 +310,5 @@ describe('fiches alerte officielle et marché', () => {
     const model = buildMarketFiche({ symbol: 'CAC40', name: 'CAC 40', price: 7212.5, changePercent: -3.42, kind: 'index' }, { whyOpen: false, lang: 'fr' });
     expect(model.level).toBe('jaune');
     expect(model.essentiel[0]).toBe('CAC 40 varie de −3,42 % sur la journée, au-delà du seuil de ±3 %.');
-  });
-});
-
-describe('buildEventFiche — qualification', () => {
-  it('mono-source signalé critique : « à confirmer » et motifs dans « Pourquoi ce niveau ? »', () => {
-    const fiche = buildEventFiche({
-      event: event({ severity: 'medium', peakSeverity: 'critical', independentCount: 1, sourceCount: 1, zone: 'france', temporality: 'en_cours', reasons: ['non_confirme'] }),
-      detail: undefined, whyOpen: true, lang: 'fr', now: NOW,
-    });
-    expect(fiche.level).toBe('jaune');
-    expect(fiche.driver).toBe('À confirmer — signalé rouge, source unique');
-    expect(fiche.why).toContain('Gravité signalée : rouge → retenue : jaune');
-    expect(fiche.why).toContain('Lieu : en France');
-    expect(fiche.why).toContain('Temporalité : en cours');
-    expect(fiche.why).toContain('niveau le plus grave signalé par une seule source indépendante');
-  });
-  it('événement antérieur au déploiement : ni lieu ni motifs', () => {
-    const fiche = buildEventFiche({ event: event(), detail: undefined, whyOpen: true, lang: 'fr', now: NOW });
-    expect(fiche.why).not.toContain('Lieu');
-    expect(fiche.why).not.toContain('Motifs');
   });
 });

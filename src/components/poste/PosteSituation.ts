@@ -478,7 +478,8 @@ export class PosteSituation {
       const event = item?.ref.kind === 'event' ? item.ref.event : this.events?.events.find((e) => e.id === id);
       if (!event) return null;
       this.ensureEventDetail(event.id);
-      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), whyOpen, lang, now });
+      const place = event.lat !== null && event.lon !== null ? this.departements?.at(event.lon, event.lat) ?? null : null;
+      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), place, sectionOpen: new Map(), lang, now });
     }
     if (key.startsWith('situation:')) {
       const id = key.slice('situation:'.length);

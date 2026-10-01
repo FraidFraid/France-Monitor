@@ -7,7 +7,6 @@ import type {
   ClassificationReason,
   DetectedSituation,
   EventTemporality,
-  EventZone,
   FranceCountrySnapshot,
   IntelEventsState,
   NewsEvent,
@@ -39,9 +38,10 @@ import {
   type WorkQueue,
 } from '../../services/work-queue.ts';
 import { splitScoreLines, splitScoreSentences, splitZoneScore } from '../../services/situation-text.ts';
-import { escapeHtml, formatAge, safeHref, type EventDetailState } from '../france-intel-events.ts';
+import { escapeHtml, safeHref, type EventDetailState } from '../france-intel-events.ts';
 import { renderEnergyBlock } from '../france-intel-blocks.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
+import { absoluteTime, kvRow, stepCurve, type CurvePoint } from './kit.ts';
 import {
   digestChangeText,
   formatClock,
@@ -49,6 +49,7 @@ import {
   labelled,
   nothingToHandleText,
   parseTime,
+  renderChangeRows,
   severityWord,
   t,
   type FicheAction,
@@ -204,7 +205,10 @@ export interface EventFicheInput {
   event: NewsEvent;
   /** Articles et journal, chargés à la demande (undefined tant que la demande n'est pas partie). */
   detail: EventDetailState | undefined;
-  whyOpen: boolean;
+  /** Département sous le point de l'événement (null si inconnu). */
+  place: { code: string; nom: string } | null;
+  /** Ouverture retenue par id de section pour les fiches événement. */
+  sectionOpen: ReadonlyMap<string, boolean>;
   lang: Lang;
   now: number;
 }
@@ -216,12 +220,6 @@ const LOG_LABEL: Record<NewsEventChangeKind, [string, string]> = {
   reopened: ['rouvert', 'reopened'],
   deescalated: ['atténué', 'de-escalated'],
   cooling: ['en refroidissement', 'cooling'],
-  closed: ['clos', 'closed'],
-};
-
-const STATUS_LABEL: Record<NewsEvent['status'], [string, string]> = {
-  active: ['actif', 'active'],
-  cooling: ['refroidit', 'cooling'],
   closed: ['clos', 'closed'],
 };
 
@@ -246,82 +244,159 @@ const REASON_LABEL: Record<ClassificationReason, [string, string]> = {
   etranger: ['à l’étranger, sans effet déclaré sur la France', 'abroad, no stated effect on France'],
   non_confirme: ['niveau le plus grave signalé par une seule source indépendante (à confirmer)', 'highest level reported by a single independent source (unconfirmed)'],
 };
-const ZONE_LABEL: Record<EventZone, [string, string]> = {
-  france: ['en France', 'in France'], etranger: ['à l’étranger', 'abroad'], indeterminee: ['non déterminé', 'undetermined'],
-};
 const TEMPORALITY_LABEL: Record<EventTemporality, [string, string]> = {
   en_cours: ['en cours', 'ongoing'], passe: ['fait passé', 'past event'], a_venir: ['hypothèse, à venir', 'hypothesis, upcoming'],
 };
 
+function confirmationText(e: NewsEvent, lang: Lang): string {
+  const n = e.independentCount;
+  if (n >= 2) return t(lang, `confirmé par ${n} groupes de presse indépendants`, `confirmed by ${n} independent press groups`);
+  if (e.sourceCount > 1) return t(lang, `un seul groupe de presse (${e.sourceCount} titres)`, `a single press group (${e.sourceCount} outlets)`);
+  return t(lang, 'source unique', 'single source');
+}
+
+type EventLog = NewsEventDetail['log'];
+
+/** Journal du plus récent au plus ancien (heure inconnue en dernier). */
+function sortedLog(log: EventLog): EventLog {
+  return [...log].sort((a, b) => (parseTime(b.at) ?? 0) - (parseTime(a.at) ?? 0));
+}
+
+function statusText(e: NewsEvent, log: EventLog | null, now: number, lang: Lang): string {
+  if (e.status === 'active') return t(lang, 'actif', 'active');
+  if (e.status === 'closed') return t(lang, 'clos', 'closed');
+  const cooling = log?.find((entry) => entry.kind === 'cooling');
+  const at = cooling ? parseTime(cooling.at) : null;
+  return at === null
+    ? t(lang, 'en refroidissement', 'cooling')
+    : t(lang, `en refroidissement depuis ${absoluteTime(at, now, lang)}`, `cooling since ${absoluteTime(at, now, lang)}`);
+}
+
+/** Groupes indépendants dans le temps, depuis les changements « corroboré » du journal. */
+function corroborationPoints(e: NewsEvent, log: EventLog | null): CurvePoint[] {
+  if (!log) return [];
+  const steps = log
+    .filter((entry) => entry.kind === 'corroborated' && entry.to !== null)
+    .map((entry) => ({ at: parseTime(entry.at), from: Number(entry.from), to: Number(entry.to) }))
+    .filter((s): s is { at: number; from: number; to: number } => s.at !== null && Number.isFinite(s.to))
+    .sort((a, b) => a.at - b.at);
+  if (steps.length === 0) return [];
+  const start = parseTime(e.firstSeen) ?? steps[0].at;
+  const points: CurvePoint[] = [{ at: Math.min(start, steps[0].at), value: Number.isFinite(steps[0].from) ? steps[0].from : 1 }];
+  for (const s of steps) points.push({ at: s.at, value: s.to });
+  const end = parseTime(e.lastSeen);
+  if (end !== null && end > steps[steps.length - 1].at) points.push({ at: end, value: steps[steps.length - 1].to });
+  return points;
+}
+
+function eventPlaceText(e: NewsEvent, place: EventFicheInput['place'], lang: Lang): string | null {
+  if (e.zone === 'etranger') return t(lang, 'à l’étranger', 'abroad');
+  if (place) return `${place.nom} (${place.code})`;
+  return e.zone === 'france' ? 'France' : null;
+}
+
 export function buildEventFiche(input: EventFicheInput): FicheModel {
   const { event: e, detail, lang, now } = input;
-  const level = eventDisplayLevel(e.severity, e.peakSeverity);
-  const indep = e.independentCount;
-  const baseDriver = indep >= 2
-    ? t(lang, `${indep} sources indépendantes`, `${indep} independent sources`)
-    : e.sourceCount > 1
-      ? t(lang, `${e.sourceCount} titres du même groupe`, `${e.sourceCount} outlets from one group`)
-      : t(lang, 'source unique', 'single source');
-  const unconfirmed = unconfirmedPeakLevel(e.severity, e.peakSeverity);
-  const driver = unconfirmed
-    ? `${t(lang, `À confirmer — signalé ${levelLabel(unconfirmed, lang).toLowerCase()}`, `Unconfirmed — reported ${levelLabel(unconfirmed, lang).toLowerCase()}`)}, ${baseDriver}`
-    : baseDriver;
   const i = lang === 'fr' ? 0 : 1;
-  const reasons = (e.reasons ?? []).map((r) => REASON_LABEL[r][i]);
-  const names = e.sourceNames.slice(0, 4).join(', ');
-  const since = formatClock(parseTime(e.firstSeen) ?? now, lang);
+  const level = eventDisplayLevel(e.severity, e.peakSeverity);
+  const unconfirmed = unconfirmedPeakLevel(e.severity, e.peakSeverity);
   const loaded = detail !== undefined && detail !== 'loading' && detail !== 'error' ? detail : null;
-  const changes: FicheChange[] = loaded
-    ? loaded.log.slice(0, 5).map((entry) => ({ at: parseTime(entry.at), text: logText(entry, lang), select: null }))
-    : [];
-  const changesMeta = loaded
-    ? ''
+  const log = loaded ? sortedLog(loaded.log) : null;
+  const firstSeen = parseTime(e.firstSeen) ?? now;
+  const lastSeen = parseTime(e.lastSeen);
+  const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
+  const theme = themeLabel(categoryTheme(e.category), lang);
+  const placeText = eventPlaceText(e, input.place, lang);
+
+  const context = [
+    placeText,
+    t(lang, `depuis ${absoluteTime(firstSeen, now, lang)}`, `since ${absoluteTime(firstSeen, now, lang)}`),
+    statusText(e, log, now, lang),
+    unconfirmed ? t(lang, `à confirmer, signalé ${levelLabel(unconfirmed, lang).toLowerCase()}`, `unconfirmed, reported ${levelLabel(unconfirmed, lang).toLowerCase()}`) : null,
+  ].filter((c): c is string => c !== null);
+
+  const names = e.sourceNames.slice(0, 4).join(', ');
+  const last = lastSeen !== null ? t(lang, ` Dernier article à ${absoluteTime(lastSeen, now, lang)}.`, ` Last article at ${absoluteTime(lastSeen, now, lang)}.`) : '';
+  const lead = t(lang,
+    `Repris par ${e.sourceCount} source${plural(e.sourceCount)}${names ? ` (${names})` : ''}.${last}`,
+    `Reported by ${e.sourceCount} source${plural(e.sourceCount)}${names ? ` (${names})` : ''}.${last}`);
+
+  const points = corroborationPoints(e, log);
+  const curve = stepCurve(points, {
+    label: t(lang, `Groupes de presse indépendants, de ${points[0]?.value ?? 1} à ${e.independentCount}`, `Independent press groups, from ${points[0]?.value ?? 1} to ${e.independentCount}`),
+    timeLabel: (ms) => absoluteTime(ms, now, lang),
+  });
+  const reasons = (e.reasons ?? []).map((r) => REASON_LABEL[r][i]);
+  const reported = eventLevel(e.peakSeverity ?? e.severity);
+  const rows = [
+    kvRow(t(lang, 'Confirmation', 'Confirmation'), escapeHtml(confirmationText(e, lang))),
+    kvRow(t(lang, 'Gravité', 'Severity'), `${renderVigilancePill(reported, lang)} ${t(lang, 'signalée', 'reported')} → ${renderVigilancePill(level, lang)} ${t(lang, 'retenue', 'kept')}`),
+    reasons.length > 0 ? kvRow(t(lang, 'Motifs', 'Reasons'), escapeHtml(reasons.join(' ; '))) : '',
+    kvRow(t(lang, 'Volume', 'Volume'), escapeHtml(t(lang, `${e.articleCount} articles · ${e.sourceCount} flux`, `${e.articleCount} articles · ${e.sourceCount} feeds`))),
+    placeText ? kvRow(t(lang, 'Lieu', 'Location'), escapeHtml(placeText)) : '',
+    e.temporality ? kvRow(t(lang, 'Temporalité', 'Timing'), escapeHtml(TEMPORALITY_LABEL[e.temporality][i])) : '',
+    kvRow(t(lang, 'Classement', 'Classification'), escapeHtml(theme)),
+    kvRow(t(lang, 'Preuve', 'Evidence'), escapeHtml(e.evidenceId)),
+  ].join('');
+  const indicators = (curve ? `<div class="fmk-sub">${t(lang, 'Corroboration : groupes de presse indépendants', 'Corroboration: independent press groups')}</div>${curve}` : '')
+    + `<div class="fmk-kvs">${rows}</div>`;
+
+  const pending = (fr: string, en: string): string => `<p class="fmk-muted">${t(lang, fr, en)}</p>`;
+  const evolution = log
+    ? (log.length > 0
+      ? renderChangeRows(log.slice(0, 8).map((entry) => ({ at: parseTime(entry.at), text: logText(entry, lang), select: null })), lang, now)
+      : pending('Aucun changement.', 'No change.'))
     : detail === 'error'
-      ? t(lang, 'Journal indisponible pour le moment.', 'Log unavailable right now.')
-      : t(lang, 'Chargement du journal…', 'Loading log…');
-  const sources: FicheSource[] = loaded
-    ? loaded.articles.map((a) => {
-        const at = a.publishedAt ? parseTime(a.publishedAt) : null;
-        return { label: `${a.title} · ${a.feedName ?? '—'}${at !== null ? ` · ${formatClock(at, lang)}` : ''}`, href: a.link, select: null };
-      })
-    : e.sourceNames.map((name) => ({ label: name, href: null, select: null }));
-  const status = STATUS_LABEL[e.status][lang === 'fr' ? 0 : 1];
-  const why = `<ul class="fiche-list">`
-    + `<li>${t(lang, 'Identifiant de preuve', 'Evidence id')} : ${escapeHtml(e.evidenceId)}</li>`
-    + `<li>${t(lang, 'Classement', 'Classification')} : ${escapeHtml(themeLabel(categoryTheme(e.category), lang))}, ${levelLabel(level, lang).toLowerCase()}</li>`
-    + `<li>${t(lang, 'Corroboration', 'Corroboration')} : ${t(lang,
-      `${indep} groupe${plural(indep)} de presse indépendant${plural(indep)} sur ${e.sourceCount} flux`,
-      `${indep} independent press group${plural(indep)} across ${e.sourceCount} feeds`)}</li>`
-    + `<li>${t(lang, 'Gravité signalée', 'Reported severity')} : ${levelLabel(eventLevel(e.peakSeverity ?? e.severity), lang).toLowerCase()} → ${t(lang, 'retenue', 'kept')} : ${levelLabel(level, lang).toLowerCase()}</li>`
-    + (e.zone ? `<li>${t(lang, 'Lieu', 'Location')} : ${ZONE_LABEL[e.zone][i]}</li>` : '')
-    + (e.temporality ? `<li>${t(lang, 'Temporalité', 'Timing')} : ${TEMPORALITY_LABEL[e.temporality][i]}</li>` : '')
-    + (reasons.length > 0 ? `<li>${t(lang, 'Motifs', 'Reasons')} : ${escapeHtml(reasons.join(' ; '))}</li>` : '')
-    + `<li>${t(lang, 'Statut', 'Status')} : ${status}</li>`
-    + `</ul>`;
+      ? pending('Journal indisponible pour le moment.', 'Log unavailable right now.')
+      : pending('Chargement du journal…', 'Loading log…');
+
+  const articles = loaded
+    ? [...loaded.articles].sort((a, b) => (parseTime(b.publishedAt ?? '') ?? 0) - (parseTime(a.publishedAt ?? '') ?? 0))
+    : null;
+  const articleRows = (articles ?? []).map((a) => {
+    const at = a.publishedAt ? parseTime(a.publishedAt) : null;
+    const meta = [a.feedName, at !== null ? absoluteTime(at, now, lang) : null].filter((x): x is string => x !== null && x !== '').join(' · ');
+    const href = safeHref(a.link);
+    const title = escapeHtml(a.title);
+    return `<li class="fmk-row">${href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>` : `<span>${title}</span>`}`
+      + `${meta ? `<small>${escapeHtml(meta)}</small>` : ''}</li>`;
+  }).join('');
+  const articlesHtml = articles
+    ? `<ul class="fmk-rows">${articleRows}</ul>`
+    : detail === 'error'
+      ? pending('Articles indisponibles pour le moment.', 'Articles unavailable right now.')
+      : pending('Chargement des articles…', 'Loading articles…');
+
+  const n = e.independentCount;
+  const actions: FicheAction[] = e.lat !== null && e.lon !== null ? [{ id: 'map', label: t(lang, 'Voir sur la carte', 'Show on map') }] : [];
+  actions.push({ id: 'copy-ref', label: t(lang, 'Copier la référence', 'Copy reference') });
   return {
     key: `event:${e.id}`,
-    kind: `${t(lang, 'Événement', 'Event')} · ${themeLabel(categoryTheme(e.category), lang)}`,
+    kind: `${t(lang, 'Événement', 'Event')} · ${theme}`,
     name: e.title,
     level,
-    driver,
-    freshness: `${t(lang, 'Dernier article', 'Last article')} ${formatAge(e.lastSeen, now, lang)}`,
-    essentiel: [t(lang,
-      `Repris par ${e.sourceCount} source${plural(e.sourceCount)}${names ? ` (${names})` : ''} depuis ${since}.`,
-      `Reported by ${e.sourceCount} source${plural(e.sourceCount)}${names ? ` (${names})` : ''} since ${since}.`)],
-    changesMeta,
-    changes,
-    sections: [],
-    figures: [
-      { label: t(lang, 'Articles', 'Articles'), value: String(e.articleCount) },
-      { label: t(lang, 'Flux', 'Feeds'), value: String(e.sourceCount) },
-      { label: t(lang, 'Groupes indépendants', 'Independent groups'), value: String(indep) },
+    driver: '',
+    freshness: '',
+    context,
+    lead,
+    // Parties génériques retirées en tâche 6.
+    essentiel: [], changesMeta: '', changes: [], figures: [], watch: [], sourcesTitle: '', sources: [], why: '', whyOpen: false,
+    sections: [
+      {
+        id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators,
+        summary: escapeHtml(t(lang, `${n} groupe${plural(n)} indépendant${plural(n)} · ${e.articleCount} articles`, `${n} independent group${plural(n)} · ${e.articleCount} articles`)),
+      },
+      {
+        id: 'evolution', title: t(lang, 'Évolution', 'Evolution'), collapsible: true, open: open('evolution', true), html: evolution,
+        summary: log ? escapeHtml(t(lang, `${log.length} changement${plural(log.length)}`, `${log.length} change${plural(log.length)}`)) : '',
+      },
+      {
+        id: 'articles', title: t(lang, 'Articles', 'Articles'), collapsible: true, open: open('articles', false), tone: 'reference', html: articlesHtml,
+        summary: escapeHtml(t(lang, `${e.articleCount} articles · ${e.sourceCount} flux`, `${e.articleCount} articles · ${e.sourceCount} feeds`)),
+      },
     ],
-    watch: [],
-    sourcesTitle: t(lang, 'Articles', 'Articles'),
-    sources,
-    why,
-    whyOpen: input.whyOpen,
-    actions: e.lat !== null && e.lon !== null ? [{ id: 'map', label: t(lang, 'Voir sur la carte', 'Show on map') }] : [],
+    reference: `${e.evidenceId} · ${e.title} · ${levelLabel(level, lang)} · ${t(lang, 'première apparition', 'first seen')} ${absoluteTime(firstSeen, now, lang, { withDate: true })}`,
+    actions,
   };
 }
 
