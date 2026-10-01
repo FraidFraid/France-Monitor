@@ -207,6 +207,15 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     expect(note).not.toContain('indisponible');
   });
 
+  it('depuis la visite : le résumé compte tous les changements importants, sans plafond', () => {
+    const events = Array.from({ length: 7 }, (_, i) => event({ id: 100 + i, title: `Événement ${i}`, severity: 'high' }));
+    const digest: ChangeDigestItem[] = events.map((e) => ({ event: e, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }));
+    const sec = section('changes')({ events: eventsState({ events, digest }) });
+    // 7 événements listés + la situation active nouvelle = 8, au-delà du plafond de 5 lignes.
+    expect(sec?.summary).toBe('8 changements orange ou rouges');
+    expect(sec?.html.match(/data-select=/g)?.length ?? 0).toBeLessThanOrEqual(5);
+  });
+
   it('en-tête : situations actives, heure de mise à jour, sources', () => {
     expect(buildFranceFiche(input()).freshness).toMatch(/^1 situation active · MAJ \d{2}:\d{2} · 33 sources sur 35 à jour$/);
   });

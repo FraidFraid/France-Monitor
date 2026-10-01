@@ -57,17 +57,17 @@ export function infraSection(infra: InfraInput | null, lang: Lang): IndicatorSec
   }
   const rows = infraRows(infra, lang);
   const watched = rows.filter((r) => r.value !== null && r.value < 85).length;
-  const summary = `${levelDot(infraStatusLevel(result.status))}<span class="fmk-num">${result.score}</span>/100`
+  const summary = `${levelDot(infraStatusLevel(result.status))}<span class="fmk-num">${result.score}/100</span>`
     + (watched > 0 ? escapeHtml(t(lang, ` · ${watched} à surveiller`, ` · ${watched} to watch`)) : '');
   const cyberNational = result.details.cyberNational ?? null;
   const meters = rows.map((r) => meterRow({
     label: r.label,
     value: r.value,
     level: infraValueLevel(r.value),
-    display: r.value === null ? (r.note ?? '—') : r.note ? `${r.value} / 100 · ${r.note}` : `${r.value} / 100`,
+    display: r.value === null ? (r.note ?? '—') : `${r.value} / 100`,
     noteHtml: r.key === 'cyber' && cyberNational !== null
       ? `<button type="button" class="fmk-link" data-action="open-cyber">${t(lang, `National ${cyberNational}/100`, `National ${cyberNational}/100`)}</button>`
-      : undefined,
+      : r.value !== null && r.note ? `<span class="fmk-muted">${escapeHtml(r.note)}</span>` : undefined,
   })).join('');
   return {
     id: 'infra', title, summary,
@@ -101,7 +101,7 @@ export function energySection(energy: FranceIntelEnergySummary | null, lang: Lan
   const parts: string[] = [];
   if (energy.ecowattSignal) parts.push(`Écowatt ${levelLabel(officialLevel(energy.ecowattSignal), lang).toLowerCase()}`);
   if (energy.totalMw != null) parts.push(`${formatNumber(energy.totalMw, lang)} MW`);
-  const summary = escapeHtml(parts.length === 2 ? parts.join(' · ') : t(lang, 'données partielles', 'partial data'));
+  const summary = escapeHtml(parts.length > 0 ? parts.join(' · ') : t(lang, 'données partielles', 'partial data'));
   const segments = energySegments(energy);
   const bar = segments.map((s) => `<i style="flex:${s.value};background:${s.color}"></i>`).join('');
   const legend = segments.map((s) => `${ENERGY_LABEL[s.key][lang]} ${percent(s.value, lang)}`).join(' · ');
@@ -141,7 +141,7 @@ export function fuelSection(energy: FranceIntelEnergySummary | null, lang: Lang)
   return {
     id: 'fuel',
     title: t(lang, 'Carburants', 'Fuels'),
-    summary: summaryParts.join(' '),
+    summary: summaryParts.length > 0 ? summaryParts.join(' ') : escapeHtml(t(lang, 'prix sur 30 jours', '30-day prices')),
     html: rows.join('') + prices
       + (chart ? `<div class="fmk-sub fmk-eyebrow">${t(lang, 'Prix moyens · 30 jours', 'Average prices · 30 days')}</div><div class="fmk-chart">${chart}</div>` : ''),
   };

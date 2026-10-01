@@ -9,7 +9,7 @@ reprend ces jetons, ces composants et ces règles.
 ## Jetons
 | Rôle | Valeur |
 |---|---|
-| Fond de panneau | `--bg-secondary` (#12121a) |
+| Fond de panneau | `--bg-primary` (#0a0a0f), fond de la colonne |
 | Filet | `--border-color` (#2a2a3e) |
 | Piste de barre | `--bg-surface-hover` (#22223a) |
 | Texte principal / secondaire / discret | `--text-primary` / `--text-secondary` / `--text-muted` |
@@ -47,6 +47,7 @@ reprend ces jetons, ces composants et ces règles.
 4. L'essentiel tient dans la première hauteur d'écran ; le détail se déplie.
 5. Jamais « indisponible » pour une donnée qui charge : « en attente », « chargement… », « en préparation ».
 6. Même rendu en colonne de 420 px et en pleine largeur.
+7. Une valeur dans une colonne de largeur fixe reste courte ; tout qualificatif va sur la ligne de note sous la ligne.
 
 ## Restyler un autre panneau
 1. Construire son modèle en `FicheModel` (ou ses blocs avec `kit.ts`).

@@ -23,7 +23,7 @@ Contraintes : v2 seulement, v1 inchangée ; aucune donnée ajoutée ni retirée,
 1. Sur-titre « État de la France ».
 2. Score en grand (46 px, couleur du niveau) suivi de « /100 » ; à droite, la pastille de niveau et « tirée par … » (texte actuel de l'en-tête, `drivenByText`).
 3. Échelle 0–55–70–85–100 : quatre zones aux couleurs des niveaux, repère blanc au score, graduations.
-4. Ligne de fraîcheur : « n situations actives · x/y sources à jour · MAJ hh:mm · 24 h : <variation> » ; à droite, la courbe 7 jours (80 × 18 px, légende « 7 j »), reprise du volet actuel.
+4. Ligne de fraîcheur : « n situations actives · x/y sources à jour · MAJ hh:mm · 24 h : <variation> » ; à droite, la courbe 7 jours (80 × 18 px, légende « 7 jours »), reprise du volet actuel.
 5. Sous-titre « Ce qui retire des points (base 95) », puis une ligne par pilier (Continuité, Sécurité, Signal, Défense) : libellé · barre de la valeur du pilier (couleur `pillarLevel`) · valeur · variation 24 h du pilier · points retirés.
 6. « Facteur principal : … » (`dominantFactorText`), si présent.
 7. Encart de plafond (filet gauche orange, fond teinté) : « Plafonné à N tant qu'une situation corrélée est active », si `situationCap` est défini.
@@ -74,7 +74,7 @@ L'état ouvert ou fermé de chaque section repliable est retenu par clé (`franc
 
 Classes préfixées `fmk-` (kit), écrites une fois dans `src/styles/main.css`, sous `#app.ui-v2` :
 
-- **Surfaces** : fond de panneau `--bg-secondary` (#12121a) ; filets `--border-color` (#2a2a3e) ; piste de barre `--bg-surface-hover` (#22223a).
+- **Surfaces** : fond de panneau `--bg-primary` (#0a0a0f), fond de la colonne ; filets `--border-color` (#2a2a3e) ; piste de barre `--bg-surface-hover` (#22223a).
 - **Texte** : principal #e8e8ec ; secondaire #9898a8 ; discret #8a8a9a.
 - **Typographie** : police système pour le texte ; chiffres en `font-variant-numeric: tabular-nums` (plus de police à chasse fixe) ; sur-titres et titres de section en capitales 11 px, interlettrage 0,06 em ; score 46 px graisse 650.
 - **Couleur** : les quatre teintes de niveau (`levelHex` / `--sev-*`) seulement pour exprimer un niveau ; le vert de marque `--v2-brand` (#4bfc94) seulement pour l'interactif (chevron et titre au survol, pastilles de preuve, boutons).

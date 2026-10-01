@@ -2072,7 +2072,7 @@ Vérifier dans `main.css` que `--v2-brand` et `--v2-brand-rgb` sont définis sur
 
 - [ ] **Step 2: Contrôle visuel**
 
-Lancer `npm run dev` en arrière-plan, puis écrire `.superpowers/sdd/panneau-etat/shots.mjs` (Playwright : `PLAYWRIGHT_MODULE=/Users/fraid/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs`, Chrome `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, sans interface) qui, pour chaque largeur 1600 × 1000, 1280 × 900 et 390 × 844 (onglet « Fiche » au téléphone), ouvre `http://localhost:3001/?ui=v2`, attend 25 s, capture `.fm-v2-fiche` puis :
+Lancer `npm run dev` en arrière-plan, puis écrire `.superpowers/sdd/panneau-etat/shots.mjs` (Playwright : `PLAYWRIGHT_MODULE=<PLAYWRIGHT_MODULE>/index.mjs`, Chrome `<Chrome>`, sans interface) qui, pour chaque largeur 1600 × 1000, 1280 × 900 et 390 × 844 (onglet « Fiche » au téléphone), ouvre `http://localhost:3001/?ui=v2`, attend 25 s, capture `.fm-v2-fiche` puis :
 1. vérifie qu'à 1600 × 1000 l'en-tête (score, échelle, piliers) et la section Situations tiennent sans défiler (`getBoundingClientRect().bottom` de `[data-section="france:situations"]` ≤ hauteur de `.fiche-body`) ;
 2. clique le titre « Infrastructures », attend 5 s (un rafraîchissement), vérifie que `details[data-section="france:infra"]` est toujours `open`, recharge la page, vérifie qu'il l'est encore ;
 3. ouvre `?view=app` et capture : la v1 n'a pas changé (comparer à l'œil avec une capture de `main`).

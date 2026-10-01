@@ -246,7 +246,7 @@ function changesHtml(input: FranceFicheInput): string {
 function changesSummary(input: FranceFicheInput): string {
   const { lang } = input;
   if (input.events === null) return escapeHtml(t(lang, 'chargement…', 'loading…'));
-  const n = franceChangeDigest(input).rows.length;
+  const n = allChanges(input).filter((c) => c.important).length;
   if (n === 0) return escapeHtml(t(lang, 'aucun changement orange ou rouge', 'no orange or red change'));
   return escapeHtml(lang === 'fr'
     ? `${n} changement${n > 1 ? 's' : ''} orange ou rouge${n > 1 ? 's' : ''}`

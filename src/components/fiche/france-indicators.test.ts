@@ -30,7 +30,7 @@ describe('Infrastructures (spec 2026-10-01 § 3.2)', () => {
     expect(s.id).toBe('infra');
     expect(s.title).toBe('Infrastructures');
     expect(s.summary).toContain('fmk-dot--vert');
-    expect(s.summary).toContain('<span class="fmk-num">96</span>/100 · 2 à surveiller');
+    expect(s.summary).toContain('<span class="fmk-num">96/100</span> · 2 à surveiller');
     expect(s.html.match(/class="fmk-meter"/g)).toHaveLength(8);
     expect(s.html).toContain('Score de continuité borné.');
     expect(s.html).toContain('data-action="open-cyber"');
@@ -46,7 +46,9 @@ describe('Infrastructures (spec 2026-10-01 § 3.2)', () => {
         stress: { installedCapacityMW: 100, availableCapacityMW: 84, stressRatio: 0.16, level: 'TENSION', gridTensionRisk: false, updatedAt: new Date(0), freshness: 'quasi-realtime' },
       },
     }, 'fr');
-    expect(s.html).toContain('>84 / 100 · écart REMIT</span>');
+    expect(s.html).toContain('>84 / 100</span>');
+    expect(s.html).not.toContain('84 / 100 ·');
+    expect(s.html).toMatch(/fmk-meter-note"><span class="fmk-muted">[^<]*écart REMIT/);
   });
 
   it('baromètre pas encore reçu : « en attente », jamais « indisponible »', () => {
@@ -94,6 +96,11 @@ describe('Énergie', () => {
     expect(energySection(energy({ totalMw: null, windGw: null, windLoadFactor: null, ecowattSignal: null }), 'fr').summary).toBe('données partielles');
     expect(energySection(energy({ windGw: null }), 'fr').html).toContain('—');
   });
+
+  it('résumé : les parties présentes seulement', () => {
+    expect(energySection(energy({ ecowattSignal: null }), 'fr').summary).toBe('49\u202f305 MW');
+    expect(energySection(energy({ totalMw: null }), 'fr').summary).toBe('Écowatt vert');
+  });
 });
 
 describe('Carburants', () => {
@@ -121,6 +128,17 @@ describe('Carburants', () => {
     expect(s?.html).toContain(`7 j ${formatFuelDeltaCents(-6.3)}`);
     expect(s?.html).toContain('<svg');
     expect(s?.html).toContain('Prix moyens · 30 jours');
+  });
+
+  it('historique seul : résumé de repli « prix sur 30 jours »', () => {
+    const s = fuelSection(energy({
+      oilStocksDays: null, fuelTensionLevel: null,
+      fuelPriceHistory: {
+        provider: 'carbu', generatedAt: '2026-10-01T00:00:00Z', sourceLabel: 'test', rangeStart: '2026-09-01T00:00:00Z', rangeEnd: '2026-10-01T00:00:00Z',
+        series: [{ fuelType: 'gazole', label: 'Gazole (B7)', color: '#f59e0b', latestPrice: 2.337, delta7dCents: -6.3, delta30dCents: -1, points: [{ timestamp: '2026-09-20T00:00:00Z', price: 2.4 }] }],
+      },
+    }), 'fr');
+    expect(s?.summary).toBe('prix sur 30 jours');
   });
 
   it('aucune donnée carburant : pas de section', () => {
