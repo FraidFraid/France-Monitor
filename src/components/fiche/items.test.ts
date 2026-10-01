@@ -206,6 +206,34 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
     }
   });
 
+  it('articles hostiles : lien non http en span, titre, flux et source échappés', () => {
+    const hostile: NewsEventDetail = {
+      ...detail,
+      articles: [{ id: 9, title: '<img src=x onerror=alert(1)>', link: 'javascript:alert(1)', feedName: '<i>flux</i>', publishedAt: '2026-10-01T04:44:00Z' }],
+    };
+    const m = build({ event: ev({ sourceNames: ['<b>X</b>'] }), detail: hostile });
+    const html = byId(m).get('articles')?.html ?? '';
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('<span>&lt;img');
+    expect(html).toContain('&lt;i&gt;flux&lt;/i&gt;');
+    const all = renderFiche(m, 'fr');
+    expect(all).toContain('&lt;b&gt;X&lt;/b&gt;');
+    expect(all).not.toContain('<b>X</b>');
+  });
+
+  it('courbe : première étape sans valeur de départ, la courbe part de 1', () => {
+    const d: NewsEventDetail = { ...detail, log: [{ at: '2026-10-01T05:00:00Z', kind: 'corroborated', from: null, to: '3' }] };
+    const html = byId(build({ detail: d })).get('indicators')?.html ?? '';
+    expect(html).toContain('<text x="12" y="63" text-anchor="end">1</text>');
+  });
+
+  it('un seul groupe de presse ; journal en mots L1', () => {
+    const one = byId(build({ event: ev({ independentCount: 1, sourceCount: 3 }) })).get('indicators')?.html ?? '';
+    expect(one).toContain('un seul groupe de presse (3 titres)');
+    const d: NewsEventDetail = { ...detail, log: [{ at: '2026-10-01T07:00:00Z', kind: 'escalated', from: 'medium', to: 'high' }] };
+    expect(byId(build({ detail: d })).get('evolution')?.html).toContain('aggravé jaune → orange');
+  });
+
   it('référence copiable et actions', () => {
     const m = build();
     expect(m.reference).toBe('E13516 · Haut-Rhin : menace d’attentat contre un lycée · Jaune · première apparition 30/09 19:11');

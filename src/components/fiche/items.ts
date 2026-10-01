@@ -277,7 +277,7 @@ function corroborationPoints(e: NewsEvent, log: EventLog | null): CurvePoint[] {
   if (!log) return [];
   const steps = log
     .filter((entry) => entry.kind === 'corroborated' && entry.to !== null)
-    .map((entry) => ({ at: parseTime(entry.at), from: Number(entry.from), to: Number(entry.to) }))
+    .map((entry) => ({ at: parseTime(entry.at), from: entry.from === null || entry.from === '' ? Number.NaN : Number(entry.from), to: Number(entry.to) }))
     .filter((s): s is { at: number; from: number; to: number } => s.at !== null && Number.isFinite(s.to))
     .sort((a, b) => a.at - b.at);
   if (steps.length === 0) return [];
