@@ -1,7 +1,6 @@
 // src/services/situation-text.ts — sépare, dans les textes du moteur de situations, les sous-scores
 // chiffrés (« Score cyber consolidé : 63/100 », « Ransomware : 25/25 ») du reste. Dans la fiche
-// situation, les premiers rejoignent « Pourquoi ce niveau ? » (spec §4.3 : le nombre seulement
-// dans ce volet ; arbitrage A7). Pur.
+// situation, les premiers alimentent la section « Indicateurs » (spec 2026-10-01 fiches § 4.2). Pur.
 
 const SCORE_PATTERN = /\d+(?:[.,]\d+)?\s*\/\s*\d+/;
 
@@ -37,4 +36,24 @@ export function splitZoneScore(zone: string): { name: string; score: string | nu
   const match = ZONE_SCORE_PATTERN.exec(zone);
   if (!match || match[1].trim() === '') return { name: zone, score: null };
   return { name: match[1].trim(), score: match[2] };
+}
+
+const FRACTION = /(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)/;
+
+/**
+ * « Libellé : n/m (note) » → barre d'indicateur (fiche situation, spec 2026-10-01 fiches § 4.2) ;
+ * null pour une phrase sans « libellé : » ni fraction, qui reste une note texte.
+ */
+export function parseScoreLine(line: string): { label: string; value: number; max: number; display: string; note: string | null } | null {
+  const sep = line.indexOf(' : ');
+  if (sep <= 0) return null;
+  const label = line.slice(0, sep).trim();
+  const rest = line.slice(sep + 3);
+  const match = FRACTION.exec(rest);
+  if (!match) return null;
+  const value = Number(match[1].replace(',', '.'));
+  const max = Number(match[2]);
+  if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return null;
+  const note = rest.replace(match[0], '').replace(/\bscore\b/i, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+  return { label, value, max, display: `${match[1]}/${match[2]}`, note: note === '' ? null : note };
 }

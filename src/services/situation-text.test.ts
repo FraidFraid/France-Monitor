@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isScoreText, splitScoreLines, splitScoreSentences, splitZoneScore } from './situation-text.ts';
+import { parseScoreLine, isScoreText, splitScoreLines, splitScoreSentences, splitZoneScore } from './situation-text.ts';
 
 describe('sous-scores du moteur (refonte UI étape 2, arbitrage A7)', () => {
   it('reconnaît un sous-score « x/y », pas un pourcentage ni une puissance', () => {
@@ -34,5 +34,24 @@ describe('zones du moteur « Nom (n/m) » (relecture finale I4, arbitrage A7)', 
   it('une zone sans sous-score reste telle quelle', () => {
     expect(splitZoneScore('Bretagne')).toEqual({ name: 'Bretagne', score: null });
     expect(splitZoneScore('Zone aérienne (France)')).toEqual({ name: 'Zone aérienne (France)', score: null });
+  });
+});
+
+describe('lignes chiffrées du moteur (spec 2026-10-01 fiches § 4.2)', () => {
+  it('« libellé : n/m »', () => {
+    expect(parseScoreLine('Ransomware : 25/25')).toEqual({ label: 'Ransomware', value: 25, max: 25, display: '25/25', note: null });
+  });
+  it('note entre parenthèses conservée', () => {
+    expect(parseScoreLine('Score cyber consolidé : 65/100 (tendance stable)'))
+      .toEqual({ label: 'Score cyber consolidé', value: 65, max: 100, display: '65/100', note: 'tendance stable' });
+    expect(parseScoreLine('Vigilance stocks pétroliers : sous tension (score 49/100)'))
+      .toEqual({ label: 'Vigilance stocks pétroliers', value: 49, max: 100, display: '49/100', note: 'sous tension' });
+  });
+  it('fraction décimale à la française', () => {
+    expect(parseScoreLine('Indice : 3,5/10')).toEqual({ label: 'Indice', value: 3.5, max: 10, display: '3,5/10', note: null });
+  });
+  it('phrase sans « libellé : » ou sans fraction : null', () => {
+    expect(parseScoreLine('Baromètre cyber consolidé à 65/100, dominé par ransomware.')).toBeNull();
+    expect(parseScoreLine('Tension carburant : critique')).toBeNull();
   });
 });

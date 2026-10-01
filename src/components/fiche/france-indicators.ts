@@ -64,7 +64,7 @@ export function infraSection(infra: InfraInput | null, lang: Lang): IndicatorSec
     label: r.label,
     value: r.value,
     level: infraValueLevel(r.value),
-    display: r.value === null ? (r.note ?? '—') : `${r.value} / 100`,
+    display: r.value === null ? (r.note ?? 'n.d.') : `${r.value} / 100`,
     noteHtml: r.key === 'cyber' && cyberNational !== null
       ? `<button type="button" class="fmk-link" data-action="open-cyber">${t(lang, `National ${cyberNational}/100`, `National ${cyberNational}/100`)}</button>`
       : r.value !== null && r.note ? `<span class="fmk-muted">${escapeHtml(r.note)}</span>` : undefined,
@@ -107,12 +107,12 @@ export function energySection(energy: FranceIntelEnergySummary | null, lang: Lan
   const legend = segments.map((s) => `${ENERGY_LABEL[s.key][lang]} ${percent(s.value, lang)}`).join(' · ');
   const wind = energy.windGw != null
     ? `${formatNumber(Math.round(energy.windGw * 10) / 10, lang)} GW${energy.windLoadFactor != null ? ` · ${t(lang, 'charge', 'load')} ${percent(energy.windLoadFactor, lang)}` : ''}`
-    : '—';
+    : 'n.d.';
   return {
     id: 'energy', title, summary,
     html: `<div class="fmk-mix" role="img" aria-label="${escapeHtml(legend)}">${bar}</div>`
       + `<p class="fmk-legend">${escapeHtml(legend)}</p>`
-      + kvRow(t(lang, 'Production totale', 'Total production'), energy.totalMw != null ? `${formatNumber(energy.totalMw, lang)} MW` : '—')
+      + kvRow(t(lang, 'Production totale', 'Total production'), energy.totalMw != null ? `${formatNumber(energy.totalMw, lang)} MW` : 'n.d.')
       + kvRow(t(lang, 'Éolien en direct', 'Live wind'), escapeHtml(wind)),
   };
 }

@@ -92,9 +92,9 @@ describe('Énergie', () => {
     expect(s.html).toContain('Aucun profil énergie disponible.');
   });
 
-  it('données manquantes : « — »', () => {
+  it('données manquantes : « n.d. »', () => {
     expect(energySection(energy({ totalMw: null, windGw: null, windLoadFactor: null, ecowattSignal: null }), 'fr').summary).toBe('données partielles');
-    expect(energySection(energy({ windGw: null }), 'fr').html).toContain('—');
+    expect(energySection(energy({ windGw: null }), 'fr').html).toContain('n.d.');
   });
 
   it('résumé : les parties présentes seulement', () => {
