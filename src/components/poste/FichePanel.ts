@@ -22,6 +22,8 @@ export class FichePanel {
   private onAction: ((action: string, ficheKey: string) => void) | null = null;
   private onWhyToggle: ((ficheKey: string, open: boolean) => void) | null = null;
   private onSectionToggle: ((sectionKey: string, open: boolean) => void) | null = null;
+  /** Ouverture de chaque section telle que rendue : un `toggle` à l'identique vient du rendu, pas de l'utilisateur. */
+  private renderedSections = new Map<string, boolean>();
   private onClose: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
@@ -49,7 +51,12 @@ export class FichePanel {
         this.onWhyToggle?.(target.dataset.why ?? '', target.hasAttribute('open'));
       }
       if (target instanceof HTMLElement && target.matches('details[data-section]')) {
-        this.onSectionToggle?.(target.dataset.section ?? '', target.hasAttribute('open'));
+        const key = target.dataset.section ?? '';
+        const open = target.hasAttribute('open');
+        if (this.renderedSections.get(key) !== open) {
+          this.renderedSections.set(key, open);
+          this.onSectionToggle?.(key, open);
+        }
       }
     }, true);
   }
@@ -87,6 +94,10 @@ export class FichePanel {
     const restore = this.focusTarget(sameFiche);
     const scrollTop = this.body.scrollTop;
     this.body.innerHTML = html;
+    this.renderedSections = new Map(
+      [...this.body.querySelectorAll<HTMLElement>('details[data-section]')]
+        .map((d): [string, boolean] => [d.dataset.section ?? '', d.hasAttribute('open')]),
+    );
     this.lastHtml = html;
     this.currentKey = model.key;
     // Même fiche mise à jour : garder la position de lecture ; autre fiche : repartir du haut.

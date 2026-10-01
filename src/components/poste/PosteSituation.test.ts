@@ -511,6 +511,13 @@ describe('sections de la fiche France (spec 2026-10-01 § 3.3)', () => {
     expect(roots.fiche.querySelector('details[data-section="france:infra"]')?.hasAttribute('open')).toBe(true);
   });
 
+  it('un toggle émis au rendu n’écrit rien dans le stockage', () => {
+    const storage = memoryStorage();
+    const { roots } = setup(1440, storage);
+    roots.fiche.querySelector('details[data-section="france:note"]')?.dispatchEvent(new Event('toggle'));
+    expect(storage.saved()).toEqual({});
+  });
+
   it('état enregistré relu au démarrage', () => {
     const { roots } = setup(1440, memoryStorage({ 'france:note': false }));
     expect(roots.fiche.querySelector('details[data-section="france:note"]')?.hasAttribute('open')).toBe(false);

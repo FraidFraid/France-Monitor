@@ -5822,6 +5822,7 @@ export class App {
       // Update barometer wind score + widget tooltip immediately
       setBarometerEolienLive(snapshot.live);
       this.networkBarometerWidget?.updateEolien(snapshot.live);
+      this.repaintPoste();
 
       try {
         this.mapContainer?.updateEolien(snapshot.live, [...snapshot.points, ...snapshot.parks]);
@@ -5878,6 +5879,7 @@ export class App {
 
       this.currentNuclearState = nuclearState;
       this.networkBarometerWidget?.updateNuclear(nuclearState);
+      this.repaintPoste();
 
       if (this.activeLayers.nuclearFleet && this.nuclearPanel?.isVisible()) {
         this.nuclearPanel.update(nuclearState, this.currentEcowattResponse);

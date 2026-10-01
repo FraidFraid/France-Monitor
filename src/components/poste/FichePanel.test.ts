@@ -87,4 +87,18 @@ describe('FichePanel', () => {
     panel.render(model({ sections: [{ ...sections[0], summary: '95/100' }] }), 'fr', false);
     expect(document.activeElement?.closest('details')?.getAttribute('data-section')).toBe('france:infra');
   });
+
+  it('un toggle émis au rendu (ouverture inchangée) n’est pas une action de l’utilisateur', () => {
+    const { root, panel } = mount();
+    const onSection = vi.fn();
+    panel.setOnSectionToggle(onSection);
+    panel.render(model({ sections: [{ id: 'note', title: 'Note', html: '<p>x</p>', collapsible: true, open: true }] }), 'fr', false);
+    const details = root.querySelector<HTMLDetailsElement>('details[data-section="france:note"]');
+    if (!details) throw new Error('section absente');
+    details.dispatchEvent(new Event('toggle'));
+    expect(onSection).not.toHaveBeenCalled();
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+    expect(onSection).toHaveBeenCalledWith('france:note', false);
+  });
 });
