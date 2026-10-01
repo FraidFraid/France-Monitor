@@ -424,8 +424,8 @@ export class BarometerWidget {
       const isCyber   = kind === 'cyber';
       const cyberNationalPressure = isCyber ? details.cyberNational ?? null : null;
       const display = isNuclear
-        ? (this.currentNuclear?.label ?? '…')
-        : val !== null ? `${val} / 100` : '…';
+        ? (this.currentNuclear?.label ?? 'n.d.')
+        : val !== null ? `${val} / 100` : 'n.d.';
       const color = isNuclear
         ? (this.currentNuclear?.color ?? 'var(--text-muted)')
         : isWind
