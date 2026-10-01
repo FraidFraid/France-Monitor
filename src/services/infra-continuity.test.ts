@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { INFRA_NOTE, infraRows, infraValueLevel, nuclearInfraScore, windInfraScore, type InfraInput } from './infra-continuity.ts';
 import type { NetworkBarometerResult } from './network-barometer.ts';
-import type { NuclearState } from '../types/index.ts';
+import type { NuclearState, NuclearRemitSignal, UnconfirmedRemitSignal } from '../types/index.ts';
 import type { EolienLive } from './eolien/types.ts';
 
 function nuclear(over: Partial<NuclearState> = {}, stress: Partial<NonNullable<NuclearState['stress']>> = {}): NuclearState {
@@ -24,6 +24,29 @@ function result(details: Record<string, number | null>): NetworkBarometerResult 
   return { score: 96, status: 'nominal', details, computedAt: new Date(0), reliable: true };
 }
 
+function remitSignal(): NuclearRemitSignal {
+  return {
+    id: 'remit-1',
+    plantName: 'Cattenom',
+    unitName: 'Unit 1',
+    classifiedAs: 'UNPLANNED_OUTAGE',
+    capacityMW: 1300,
+    publishedAt: new Date(0),
+    title: 'Unplanned outage',
+    link: 'https://example.com',
+    confirmedByRTE: false,
+    matchConfidence: 0.9,
+  };
+}
+
+function unconfirmedSignal(): UnconfirmedRemitSignal {
+  return {
+    remitSignal: remitSignal(),
+    reason: 'Not yet reflected in RTE data',
+    confidence: 0.85,
+  };
+}
+
 describe("baromètre des infrastructures (spec 2026-10-01 § 3.2)", () => {
   it("score nucléaire = disponible / installé, note REMIT ou tension", () => {
     expect(nuclearInfraScore(nuclear())).toEqual({ score: 84, note: null });
@@ -31,6 +54,18 @@ describe("baromètre des infrastructures (spec 2026-10-01 § 3.2)", () => {
     expect(nuclearInfraScore(nuclear({ rteAvailable: false }))).toEqual({ score: null, note: 'Indisponible' });
     expect(nuclearInfraScore(nuclear({ stress: null }))).toBeNull();
     expect(nuclearInfraScore(null)).toBeNull();
+  });
+
+  it("préséance de l'écart REMIT sur la tension réseau", () => {
+    // Both gridTensionRisk and unconfirmedSignals set: REMIT takes precedence
+    expect(
+      nuclearInfraScore(
+        nuclear(
+          { unconfirmedSignals: [unconfirmedSignal()] },
+          { gridTensionRisk: true }
+        )
+      )
+    ).toEqual({ score: 84, note: 'écart REMIT' });
   });
 
   it("score éolien : alerte en direct, sinon valeur du baromètre", () => {
