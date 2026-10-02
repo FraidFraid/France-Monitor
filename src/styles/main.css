@@ -8903,7 +8903,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-below-controls { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }
 
-.lp { --v2-brand: #4bfc94; }
+.lp { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --fmk-rule: var(--border-color); --fmk-track: var(--bg-surface-hover); --fmk-muted: var(--text-secondary); --fmk-faint: var(--text-muted); --fmk-loss: #ff9f6b; }
 /* ─── Panneaux de couches : cadre commun (spec 2026-10-02 § 4) ─── */
 .lp {
   position: absolute; top: var(--right-panel-top, 70px); right: 20px; z-index: 1000;

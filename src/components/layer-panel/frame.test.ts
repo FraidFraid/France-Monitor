@@ -1,5 +1,6 @@
 // src/components/layer-panel/frame.test.ts
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createLayerPanelShell, freshnessSegment, loadLayerTab, renderLayerHead, renderLayerTabs, renderLayerSections,
@@ -95,5 +96,17 @@ describe('cadre des panneaux de couches', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     shell.destroy();
     expect(container.contains(shell.root)).toBe(false);
+  });
+});
+
+describe('feuille de style des panneaux de couches', () => {
+  it('toute variable du kit utilisée par une règle élargie est définie sur .lp', () => {
+    const css = readFileSync('src/styles/main.css', 'utf8');
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1] ?? '', body: m[2] ?? '' }));
+    const widened = rules.filter((r) => r.sel.includes(':is(#app.ui-v2, .lp)'));
+    const used = new Set(widened.flatMap((r) => [...r.body.matchAll(/var\((--fmk-[a-z-]+|--v2-brand-rgb)/g)].map((m) => m[1] ?? '')));
+    expect(used.size).toBeGreaterThan(0);
+    const defined = rules.filter((r) => /(^|[\s,])\.lp([\s,.:{]|$)/.test(r.sel.trim()) && !r.sel.includes(':is(')).map((r) => r.body).join(';');
+    for (const name of used) expect(defined, name).toContain(`${name}:`);
   });
 });
