@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { EcowattResponse, GridSnapshot, EcowattOfficialDay } from '../../types/index.ts';
-import { buildGridView, consumptionFigure, formatGw, gridLead, hourLevel, importDependencyIndex, importDependencyLevel, rangesText, riskWindow } from './grid.ts';
+import { buildGridView, consumptionFigure, formatGw, gridLead, hourLevel, importDependencyIndex, importDependencyLevel, kpLevel, rangesText, riskWindow } from './grid.ts';
 import { renderLayerView } from './frame.ts';
+import { NBSP, breakableValue, visibleText } from './format.ts';
 
 const NOW = Date.parse('2026-10-02T05:00:00Z'); // 07:00 Paris
 const open = (_id: string, d: boolean): boolean => d;
@@ -59,7 +60,7 @@ describe('vue Réseau électrique', () => {
     expect([0, 5, 6, 10, 11, 15, 16, 20].map(importDependencyLevel)).toEqual(['vert', 'vert', 'jaune', 'jaune', 'orange', 'orange', 'rouge', 'rouge']);
   });
   it('formats et indice de dépendance inchangé', () => {
-    expect(formatGw(30871)).toBe('30,9 GW');
+    expect(formatGw(30871)).toBe('30,9\u00A0GW');
     expect(formatGw(null)).toBe('n.d.');
     expect(importDependencyIndex([{ country: 'A', flowMW: 5000, coordinates: [0, 0] }, { country: 'B', flowMW: -9000, coordinates: [0, 0] }])).toBe(10);
   });
@@ -97,23 +98,23 @@ describe('vue Réseau électrique', () => {
   it('production : barre colorée par filière, légende, bilan', () => {
     const h = html(data());
     expect(h).toContain('var(--mix-nuclear)');
-    expect(h).toMatch(/Nucléaire[^]*30,9 GW/);
-    expect(h).toMatch(/Intensité carbone[^]*50 g CO₂\/kWh/);
-    expect(h).toMatch(/Part bas-carbone[^]*91 %/);
+    expect(h).toMatch(/Nucléaire[^]*30,9\u00A0GW/);
+    expect(h).toMatch(/Intensité carbone[^]*50\u00A0g CO₂\/kWh/);
+    expect(h).toMatch(/Part bas-carbone[^]*91\u00A0%/);
   });
   it('consommation : courbe réalisé et prévision, pic prévu', () => {
     const v = buildGridView({ data: data(), space: null, now: NOW, open });
-    expect(v.sections.find((s) => s.id === 'consumption')?.summary).toBe('40,6 GW · pic prévu 52,3 GW à 19:30');
+    expect(v.sections.find((s) => s.id === 'consumption')?.summary).toBe('40,6\u00A0GW · pic prévu 52,3\u00A0GW à 19:30');
     const h = html(data());
     expect(h).toContain('role="img"');
-    expect(h).toMatch(/Pic prévu[^]*52,3 GW à 19:30/);
+    expect(h).toMatch(/Pic prévu[^]*52,3\u00A0GW à 19:30/);
   });
   it('échanges : import en rouge, export en vert, solde, indice expliqué', () => {
     const v = buildGridView({ data: data(), space: null, now: NOW, open });
-    expect(v.sections.find((s) => s.id === 'exchanges')?.summary).toBe('<span class="lp-exp">export net 3,7 GW</span>');
+    expect(v.sections.find((s) => s.id === 'exchanges')?.summary).toBe('<span class="lp-exp">export net 3,7\u00A0GW</span>');
     const h = html(data());
-    expect(h).toMatch(/Royaume-Uni[^]*import 2,2 GW/);
-    expect(h).toMatch(/Italie[^]*export 2,8 GW/);
+    expect(h).toMatch(/Royaume-Uni[^]*import 2,2\u00A0GW/);
+    expect(h).toMatch(/Italie[^]*export 2,8\u00A0GW/);
     expect(h).toContain('Par frontière, échanges commerciaux');
     // Indice : ligne mise en avant, jauge colorée par niveau (2,2 GW d'import brut → 4/20, vert).
     expect(h).toMatch(/<div class="lp-index"><div class="fmk-meter"><span class="fmk-meter-label">Dépendance aux imports<\/span><span class="fmk-bar"><i style="width:20%;background:var\(--sev-green\)"><\/i><\/span><span class="fmk-meter-v fmk-num">4\/20<\/span>/);
@@ -121,9 +122,9 @@ describe('vue Réseau électrique', () => {
     const exch = v.sections.find((s) => s.id === 'exchanges')?.html ?? '';
     expect(exch).not.toContain('fmk-note');
     expect(v.sections.find((s) => s.id === 'sources')?.html).toContain('import en rouge, export en vert');
-    expect(h).toMatch(/Solde physique[^]*export net 3,7 GW/);
-    expect(h).toContain('<span class="lp-imp">import 2,2 GW</span>');
-    expect(h).toContain('<span class="lp-exp">export 2,8 GW</span>');
+    expect(h).toMatch(/Solde physique[^]*export net 3,7\u00A0GW/);
+    expect(h).toContain('<span class="lp-imp">import 2,2\u00A0GW</span>');
+    expect(h).toContain('<span class="lp-exp">export 2,8\u00A0GW</span>');
   });
   it('échanges : flèche selon la moyenne des 7 jours, rouge si la position de la France se dégrade', () => {
     const series = (mw: number): number[] => Array(96).fill(mw);
@@ -132,12 +133,12 @@ describe('vue Réseau électrique', () => {
     // Royaume-Uni : import 2,2 GW contre 1,0 GW en moyenne → import en hausse, rouge.
     // Italie : export 2,8 GW contre 1,0 GW en moyenne → export en hausse, vert.
     const h = withHistory(new Map([['FR-GB', series(1000)], ['FR-IT', series(-1000)]]));
-    expect(h).toMatch(/import 2,2 GW<\/span><span class="lp-trend lp-trend--bad"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,2 GW\)"[^>]*>▲<\/span>/);
-    expect(h).toMatch(/export 2,8 GW<\/span><span class="lp-trend lp-trend--good"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,8 GW\)"[^>]*>▲<\/span>/);
+    expect(h).toMatch(/import 2,2\u00A0GW<\/span><span class="lp-trend lp-trend--bad"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,2\u00A0GW\)"[^>]*>▲<\/span>/);
+    expect(h).toMatch(/export 2,8\u00A0GW<\/span><span class="lp-trend lp-trend--good"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,8\u00A0GW\)"[^>]*>▲<\/span>/);
     // Import en baisse : vert ▼ ; export en baisse : rouge ▼.
     const down = withHistory(new Map([['FR-GB', series(3000)], ['FR-IT', series(-4000)]]));
-    expect(down).toMatch(/import 2,2 GW<\/span><span class="lp-trend lp-trend--good"[^>]*>▼<\/span>/);
-    expect(down).toMatch(/export 2,8 GW<\/span><span class="lp-trend lp-trend--bad"[^>]*>▼<\/span>/);
+    expect(down).toMatch(/import 2,2\u00A0GW<\/span><span class="lp-trend lp-trend--good"[^>]*>▼<\/span>/);
+    expect(down).toMatch(/export 2,8\u00A0GW<\/span><span class="lp-trend lp-trend--bad"[^>]*>▼<\/span>/);
     // Écart sous 200 MW, ou historique absent ou trop court : pas de flèche.
     expect(withHistory(new Map([['FR-GB', series(2100)], ['FR-IT', series(-2800)]]))).not.toContain('lp-trend');
     expect(withHistory(new Map([['FR-GB', [1000, 1000]]]))).not.toContain('lp-trend');
@@ -175,8 +176,8 @@ describe('vue Réseau électrique', () => {
     const v = buildGridView({ data: d, space: null, now, open });
     const h = renderLayerView('powerGrid', v);
     expect(h).toContain('Écowatt heure par heure : vert de 00:00 à 05:00, orange de 05:00 à 06:00, vert de 06:00 à 24:00');
-    expect(v.sections.find((s) => s.id === 'consumption')?.summary).toContain('pic prévu 47,0 GW');
-    expect(h).not.toContain('51,0 GW');
+    expect(v.sections.find((s) => s.id === 'consumption')?.summary).toContain('pic prévu 47,0\u00A0GW');
+    expect(h).not.toContain('51,0\u00A0GW');
     expect(h).toMatch(/<polyline points="0\.0,[^"]*" fill="none" stroke="var\(--text-muted\)"/);
   });
   it('textes tiers hostiles toujours échappés', () => {
@@ -214,6 +215,20 @@ describe('vue Réseau électrique', () => {
     expect(lead(day('red', red))).toBe('Message RTE. Coupures possibles de 08:00 à 10:00 et de 12:00 à 13:00.');
   });
   it('écart à la prévision avec le signe moins typographique', () => {
-    expect(html(data())).toContain('41,2 GW (écart −1,5 %)');
+    expect(html(data())).toContain('41,2\u00A0GW (écart −1,5\u00A0%)');
+  });
+  it('Kp coloré par son niveau : ≤ 3 vert, 4 jaune, 5 à 6 orange, ≥ 7 rouge (tiers NOAA arrondis)', () => {
+    expect([0, 3, 3.33, 3.67, 4, 4.67, 5, 6, 6.33, 7, 9].map(kpLevel))
+      .toEqual(['vert', 'vert', 'vert', 'jaune', 'jaune', 'orange', 'orange', 'orange', 'orange', 'rouge', 'rouge']);
+    const space = { kpIndex: 5, level: 'storm-g1', levelLabel: 'Tempête G1', riskFrance: 'Risque faible.', color: '#fff', fetchedAt: new Date(NOW) } as const;
+    const s = buildGridView({ data: data(), space, now: NOW, open }).sections.find((x) => x.id === 'space');
+    expect(s?.summary).toContain('<span class="lp-val fmk-num lp-lvl lp-lvl--orange">Kp 5</span>');
+    expect(s?.html).toContain('lp-lvl--orange');
+  });
+  it('R1 : aucune valeur sécable dans tout le panneau', () => {
+    const space = { kpIndex: 2.33, level: 'quiet', levelLabel: 'Calme', riskFrance: 'Aucun risque.', color: '#fff', fetchedAt: new Date(NOW) } as const;
+    const text = visibleText(renderLayerView('powerGrid', buildGridView({ data: data(), space, now: NOW, open })));
+    expect(breakableValue(text)).toBeNull();
+    expect(text).toContain(`30,9${NBSP}GW`);
   });
 });

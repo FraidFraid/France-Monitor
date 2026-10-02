@@ -10,7 +10,7 @@ import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow, levelDot, meterRow, type MeterRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { formatGw } from './grid.ts';
+import { formatGw, formatPct } from './format.ts';
 import { emptyLine, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerTab, type LayerView } from './frame.ts';
 
 export type NuclearTab = 'overview' | 'calendar' | 'remit';
@@ -62,10 +62,6 @@ function plural(n: number, one: string, many: string = `${one}s`): string {
   return n > 1 ? many : one;
 }
 
-function oneDecimal(mw: number): string {
-  return (mw / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
 function ratioPct(part: number | null, whole: number): number | null {
   return part === null || !(whole > 0) ? null : Math.round((part / whole) * 100);
 }
@@ -103,7 +99,7 @@ function productionMw(ecowatt: EcowattResponse | null): number | null {
 function productionSection(state: NuclearState, ecowatt: EcowattResponse | null, installed: number, available: number | null, open: NuclearViewInput['open']): FicheSection {
   const prod = productionMw(ecowatt);
   const share = available === null ? null : ratioPct(prod, available);
-  const summary = prod === null ? 'n.d.' : `${formatGw(prod)}${share === null ? '' : ` · ${share} % du disponible`}`;
+  const summary = prod === null ? 'n.d.' : `${formatGw(prod)}${share === null ? '' : ` · ${formatPct(share)} du disponible`}`;
   const meter = (label: string, mw: number | null, color: Pick<MeterRow, 'level' | 'color'>): string =>
     meterRow({ label, value: ratioPct(mw, installed), display: formatGw(mw), ...color });
   const availLevel = available !== null && installed > 0 ? availabilityLevel(available / installed) : null;
@@ -149,9 +145,9 @@ function sitesSection(outages: UnitOutage[], open: NuclearViewInput['open']): Fi
 }
 
 function methodSection(state: NuclearState, now: number, open: NuclearViewInput['open']): FicheSection {
-  const html = '<p class="fmk-note">Niveau du parc : puissance perdue en arrêts fortuits, vert sous 1 GW, jaune de 1 à 3 GW, orange de 3 à 6 GW, rouge au-delà. '
+  const html = '<p class="fmk-note">Niveau du parc : puissance perdue en arrêts fortuits, vert sous 1\u00A0GW, jaune de 1 à 3\u00A0GW, orange de 3 à 6\u00A0GW, rouge au-delà. '
     + 'Les arrêts programmés ne colorent pas le niveau. '
-    + 'Jauge « Disponible » : vert à partir de 85 % de la puissance installée, jaune de 70 à 85 %, orange de 55 à 70 %, rouge en dessous.</p>'
+    + 'Jauge « Disponible » : vert à partir de 85\u00A0% de la puissance installée, jaune de 70 à 85\u00A0%, orange de 55 à 70\u00A0%, rouge en dessous.</p>'
     + kvRow('Indisponibilités', `${sourceLinkHtml('RTE indisponibilités', RTE_URL)} · lu à ${escapeHtml(absoluteTime(rteAt(state), now, 'fr'))}`)
     + kvRow('Signaux précoces', escapeHtml('REMIT RTE IIP'))
     + kvRow('Production', sourceLinkHtml('ODRÉ éCO2mix', ECO2MIX_URL));
@@ -316,9 +312,9 @@ export function buildNuclearView(input: NuclearViewInput): LayerView {
   const head = {
     theme: 'Énergie', title: 'Parc nucléaire',
     figure: {
-      // L'unité suit le chiffre (espace insécable) ; le reste passe à la ligne dans la légende.
-      value: `${oneDecimal(summary.availableMw)}\u00a0GW`,
-      caption: `disponibles sur ${formatGw(summary.installedMw)} · ${Math.round(summary.ratio * 100)} %`,
+      value: formatGw(summary.availableMw),
+      caption: `disponibles sur ${formatGw(summary.installedMw)} · ${formatPct(summary.ratio * 100)}`,
+      level,
     },
     level,
     status: [

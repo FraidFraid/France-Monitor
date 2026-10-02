@@ -11,7 +11,10 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { absoluteTime, kvRow, meterRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { emptyLine, freshnessSegment, loadingBody, sourceLinkHtml, type LayerView } from './frame.ts';
+import { emptyLine, freshnessSegment, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
+import { formatGw, formatPct, NBSP } from './format.ts';
+
+export { formatGw };
 
 export interface GridViewInput {
   data: EcowattResponse | null;
@@ -29,13 +32,17 @@ const ECO2MIX_LATE_PERIOD_MS = 22.5 * 60_000;
 
 // ── Formats ───────────────────────────────────────────────────────────────────
 
-export function formatGw(mw: number | null): string {
-  if (mw === null || !Number.isFinite(mw)) return 'n.d.';
-  return `${(mw / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GW`;
+/** Niveau de l'indice Kp (spec lot 2 § 1.1) : ≤ 3 vert, 4 jaune, 5 à 6 orange, ≥ 7 rouge ; tiers NOAA arrondis. */
+export function kpLevel(kp: number): VigilanceLevel {
+  const k = Math.round(kp);
+  if (k >= 7) return 'rouge';
+  if (k >= 5) return 'orange';
+  if (k >= 4) return 'jaune';
+  return 'vert';
 }
 
-function pct(value: number): string {
-  return `${Math.round(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} %`.replace(/-/, MINUS);
+function kpText(kp: number): string {
+  return `Kp ${kp.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}`;
 }
 
 function clock(ms: number): string {
@@ -105,8 +112,8 @@ export function gridLead(g: GridSnapshot): string {
   const parts: string[] = [];
   const { total, lowCarbonPct } = mixTotals(g);
   if (total > 0 && lowCarbonPct !== null) {
-    const co2 = g.co2gPerKwh !== null && Number.isFinite(g.co2gPerKwh) ? `, ${Math.round(g.co2gPerKwh)} g CO₂/kWh` : '';
-    parts.push(`Production de ${formatGw(total)}, ${pct(lowCarbonPct)} bas-carbone${co2}.`);
+    const co2 = g.co2gPerKwh !== null && Number.isFinite(g.co2gPerKwh) ? `, ${Math.round(g.co2gPerKwh)}${NBSP}g${NBSP}CO₂/kWh` : '';
+    parts.push(`Production de ${formatGw(total)}, ${formatPct(lowCarbonPct)} bas-carbone${co2}.`);
   }
   const net = g.netImportMw;
   if (net !== null && Number.isFinite(net) && net !== 0) {
@@ -200,7 +207,7 @@ function ecowattSection(input: GridViewInput, todayDay: EcowattOfficialDay | nul
     const cells = todayDay.hours.map((h) => `<i class="lp-hour" style="background:${levelColorVar(hourLevel(h))}"></i>`).join('');
     html += `<h4 class="fmk-eyebrow">Aujourd’hui, heure par heure</h4>`
       + `<div class="lp-hours" role="img" aria-label="${escapeHtml(hoursAria(todayDay.hours))}">${cells}</div>`
-      + `<div class="lp-hlab fmk-num" aria-hidden="true"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>24 h</span></div>`;
+      + `<div class="lp-hlab fmk-num" aria-hidden="true"><span>0${NBSP}h</span><span>6${NBSP}h</span><span>12${NBSP}h</span><span>18${NBSP}h</span><span>24${NBSP}h</span></div>`;
   } else {
     html += emptyLine('Heures du jour non publiées.');
   }
@@ -262,9 +269,9 @@ function consumptionSection(input: GridViewInput, g: GridSnapshot | null): Fiche
     const nowX = x(g.dataTime);
     const txt = (tx: number, ty: number, anchor: string, s: string): string =>
       `<text x="${tx.toFixed(1)}" y="${ty}" text-anchor="${anchor}" font-size="9" fill="var(--text-muted)">${escapeHtml(s)}</text>`;
-    const labels = [txt(0, 102, 'start', '0 h'), txt(W, 102, 'end', '24 h'), txt(nowX, 102, 'middle', clock(g.dataTime))];
+    const labels = [txt(0, 102, 'start', `0${NBSP}h`), txt(W, 102, 'end', `24${NBSP}h`), txt(nowX, 102, 'middle', clock(g.dataTime))];
     if (peak && Math.abs(x(peak.at) - nowX) > 40) labels.push(txt(x(peak.at), 102, 'middle', clock(peak.at)));
-    labels.push(txt(2, top - 2, 'start', `${Math.round(hi / 1000)} GW`), txt(2, bottom + 10, 'start', `${Math.round(lo / 1000)} GW`));
+    labels.push(txt(2, top - 2, 'start', `${Math.round(hi / 1000)}${NBSP}GW`), txt(2, bottom + 10, 'start', `${Math.round(lo / 1000)}${NBSP}GW`));
     const aria = `Consommation du jour : réalisée jusqu’à ${clock(g.dataTime)}, prévue ensuite`
       + (peak ? `, pic ${formatGw(peak.mw)} à ${clock(peak.at)}` : '');
     chart = `<svg viewBox="0 0 ${W} 106" width="100%" role="img" aria-label="${escapeHtml(aria)}">`
@@ -278,7 +285,7 @@ function consumptionSection(input: GridViewInput, g: GridSnapshot | null): Fiche
   let gap = 'n.d.';
   if (g.forecastMw !== null && g.forecastMw !== 0) {
     const text = g.consumptionMw !== null
-      ? ` (écart ${(((g.consumptionMw - g.forecastMw) / g.forecastMw) * 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'exceptZero' }).replace('-', MINUS)} %)`
+      ? ` (écart ${(((g.consumptionMw - g.forecastMw) / g.forecastMw) * 100).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'exceptZero' }).replace('-', MINUS)}${NBSP}%)`
       : '';
     gap = `${formatGw(g.forecastMw)}${text}`;
   }
@@ -298,12 +305,12 @@ function productionSection(input: GridViewInput, g: GridSnapshot | null): FicheS
   const bar = MIX_KEYS.map((m) => ({ m, v: g.mix[m.key] })).filter((e): e is { m: typeof MIX_KEYS[number]; v: number } => e.v !== null && e.v > 0)
     .map((e) => `<i style="width:${((e.v / totals.total) * 100).toFixed(1)}%;background:${e.m.color}"></i>`).join('');
   const legend = MIX_KEYS.map((m) => `<div><span class="lp-swatch" style="background:${m.color}"></span><span>${escapeHtml(m.label)}</span><b class="fmk-num">${escapeHtml(formatGw(g.mix[m.key]))}</b></div>`).join('');
-  const co2 = g.co2gPerKwh !== null && Number.isFinite(g.co2gPerKwh) ? `${Math.round(g.co2gPerKwh)} g CO₂/kWh` : 'n.d.';
+  const co2 = g.co2gPerKwh !== null && Number.isFinite(g.co2gPerKwh) ? `${Math.round(g.co2gPerKwh)}${NBSP}g CO₂/kWh` : 'n.d.';
   const html = `<div class="lp-mix">${bar}</div><div class="lp-leg">${legend}</div>`
     + `<h4 class="fmk-eyebrow">Bilan</h4>`
     + kvRow('Intensité carbone', escapeHtml(co2))
-    + kvRow('Part bas-carbone', escapeHtml(totals.lowCarbonPct !== null ? pct(totals.lowCarbonPct) : 'n.d.'));
-  return { ...base, summary: escapeHtml(`${formatGw(totals.total)} · ${totals.lowCarbonPct !== null ? pct(totals.lowCarbonPct) : 'n.d.'} bas-carbone`), html };
+    + kvRow('Part bas-carbone', escapeHtml(totals.lowCarbonPct !== null ? formatPct(totals.lowCarbonPct) : 'n.d.'));
+  return { ...base, summary: escapeHtml(`${formatGw(totals.total)} · ${totals.lowCarbonPct !== null ? formatPct(totals.lowCarbonPct) : 'n.d.'} bas-carbone`), html };
 }
 
 // ── Échanges ─────────────────────────────────────────────────────────────────
@@ -372,10 +379,12 @@ function spaceSection(input: GridViewInput): FicheSection {
   const base = { id: 'space', title: 'Météo spatiale', collapsible: true, open: input.open('space', false) };
   const s = input.space;
   if (!s) return { ...base, summary: 'n.d.', html: emptyLine('Météo spatiale indisponible.') };
+  const level = kpLevel(s.kpIndex);
   return {
     ...base,
-    summary: escapeHtml(`Kp ${s.kpIndex} · ${s.levelLabel.toLowerCase()}`),
-    html: `<p>${escapeHtml(s.riskFrance)}</p><p class="fmk-note">${escapeHtml(`NOAA SWPC · lu à ${absoluteTime(s.fetchedAt.getTime(), input.now, 'fr')}`)}</p>`,
+    summary: `${valueHtml(kpText(s.kpIndex), level)} · ${escapeHtml(s.levelLabel.toLowerCase())}`,
+    html: kvRow('Indice planétaire', `${valueHtml(kpText(s.kpIndex), level)} · ${escapeHtml(s.levelLabel.toLowerCase())}`)
+      + `<p>${escapeHtml(s.riskFrance)}</p><p class="fmk-note">${escapeHtml(`NOAA SWPC · lu à ${absoluteTime(s.fetchedAt.getTime(), input.now, 'fr')}`)}</p>`,
   };
 }
 
@@ -388,10 +397,10 @@ function sourcesSection(input: GridViewInput, g: GridSnapshot | null): FicheSect
   const published = Number.isFinite(gen) ? absoluteTime(gen, input.now, 'fr') : 'n.d.';
   const html = sourceLine(sourceLinkHtml('RTE Écowatt', 'https://www.monecowatt.fr'), `signal officiel, publié à ${published}`)
     + sourceLine(sourceLinkHtml('ODRÉ éCO2mix temps réel', 'https://odre.opendatasoft.com/explore/dataset/eco2mix-national-tr/'),
-      `pas de 15 min, données de ${g ? absoluteTime(g.dataTime, input.now, 'fr') : 'n.d.'}`)
+      `pas de 15${NBSP}min, données de ${g ? absoluteTime(g.dataTime, input.now, 'fr') : 'n.d.'}`)
     + sourceLine(sourceLinkHtml('NOAA SWPC', 'https://www.swpc.noaa.gov/'), input.space ? `lu à ${absoluteTime(input.space.fetchedAt.getTime(), input.now, 'fr')}` : 'n.d.')
     + '<p class="fmk-note">Échanges : import en rouge, export en vert ; flèche : écart à la moyenne des 7 derniers jours, rouge si la position de la France se dégrade. '
-    + 'Dépendance aux imports : imports bruts aux frontières rapportés à 10 GW, sur 20 (indicatif) ; vert jusqu’à 5, jaune jusqu’à 10, orange jusqu’à 15, rouge au-delà.</p>';
+    + 'Dépendance aux imports : imports bruts aux frontières rapportés à 10\u00A0GW, sur 20 (indicatif) ; vert jusqu’à 5, jaune jusqu’à 10, orange jusqu’à 15, rouge au-delà.</p>';
   return {
     id: 'sources', title: 'Sources', collapsible: true, open: input.open('sources', false), tone: 'reference',
     summary: 'RTE Écowatt · ODRÉ éCO2mix · NOAA', html,

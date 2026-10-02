@@ -4,6 +4,7 @@ import type { EcowattResponse, NuclearRemitSignal, NuclearState, NuclearUnavaila
 import { NUCLEAR_UNITS } from '../../config/infrastructure.ts';
 import { buildNuclearView, kindLevel, kindWord } from './nuclear.ts';
 import { renderLayerView } from './frame.ts';
+import { NBSP, breakableValue, visibleText } from './format.ts';
 import { formatGw } from './grid.ts';
 
 const DAY = 86_400_000;
@@ -36,9 +37,9 @@ describe('vue Parc nucléaire', () => {
     expect(v.head.title).toBe('Parc nucléaire');
     // Gros chiffre avec son unité, insécable ; le reste passe à la ligne dans la légende.
     expect(v.head.figure?.value).toMatch(/^\d+,\d\u00a0GW$/);
-    expect(v.head.figure?.caption).toMatch(/^disponibles sur \d+,\d GW · \d+ %$/);
+    expect(v.head.figure?.caption).toMatch(/^disponibles sur \d+,\d\u00A0GW · \d+\u00A0%$/);
     expect(v.head.level).toBe(ref.nominalPowerMW >= 1000 ? 'jaune' : 'vert');
-    expect(v.head.status[0]).toMatch(/^1 arrêt fortuit \(\d+,\d GW\)$/);
+    expect(v.head.status[0]).toMatch(/^1 arrêt fortuit \(\d+,\d\u00A0GW\)$/);
     expect(v.head.status).toContain('aucun arrêt programmé');
     expect(v.head.status[v.head.status.length - 1]).toBe('RTE lu à 06:50');
   });
@@ -57,7 +58,7 @@ describe('vue Parc nucléaire', () => {
     const h = renderLayerView('nuclearFleet', v);
     expect(h).toMatch(/fortuit[^]*retour prévu le \d\d\/\d\d à \d\d:\d\d/);
     expect(h).toContain('fmk-dot--orange');
-    expect(h).toContain('vert sous 1 GW');
+    expect(h).toContain('vert sous 1\u00A0GW');
   });
   it('arrêt sans fin connue : « fin non communiquée »', () => {
     expect(renderLayerView('nuclearFleet', view(state({ unavailabilities: [u({ endDate: null })] })))).toContain('fin non communiquée');
@@ -184,7 +185,7 @@ describe('vue Parc nucléaire', () => {
       expect(h).toMatch(new RegExp(`Produit[^]*?${formatGw(40_000)}`));
       expect(h).toMatch(new RegExp(`Disponible[^]*?${formatGw(installed)}`));
       expect(h).toMatch(new RegExp(`Installé[^]*?${formatGw(installed)}`));
-      expect(h).toContain(`${formatGw(40_000)} · ${Math.round((40_000 / installed) * 100)} % du disponible`);
+      expect(h).toContain(`${formatGw(40_000)} · ${Math.round((40_000 / installed) * 100)}\u00A0% du disponible`);
     });
     it('jauges en couleur : Produit couleur du nucléaire, Disponible couleur du niveau de disponibilité, Installé teinte pâle', () => {
       const h = overview(eco(40_000));
@@ -216,9 +217,21 @@ describe('vue Parc nucléaire', () => {
     }, reason: 'x', confidence: 0.9 });
     const h = (c: NuclearRemitSignal['classifiedAs']): string =>
       renderLayerView('nuclearFleet', view(state({ unconfirmedSignals: [sig(c)] }), 'remit'));
-    expect(h('RESTART')).toContain('+0,9 GW');
-    expect(h('RESTART')).not.toContain('−0,9 GW');
-    expect(h('UNPLANNED_OUTAGE')).toContain('−0,9 GW');
-    expect(h('PLANNED_MAINTENANCE')).toContain('−0,9 GW');
+    expect(h('RESTART')).toContain('+0,9\u00A0GW');
+    expect(h('RESTART')).not.toContain('−0,9\u00A0GW');
+    expect(h('UNPLANNED_OUTAGE')).toContain('−0,9\u00A0GW');
+    expect(h('PLANNED_MAINTENANCE')).toContain('−0,9\u00A0GW');
+  });
+  it('R3 : gros chiffre (GW disponibles) coloré par le niveau du parc, unité dans la valeur', () => {
+    const v = view(state());
+    expect(v.head.figure?.level).toBe(v.head.level);
+    expect(v.head.figure?.value).toMatch(new RegExp(`^\\d+,\\d${NBSP}GW$`));
+    expect(v.head.figure?.caption).toMatch(new RegExp(`^disponibles sur \\d+,\\d${NBSP}GW · \\d+${NBSP}%$`));
+    expect(view(state({ rteAvailable: false, unavailabilities: [] })).head.figure?.level ?? null).toBeNull();
+  });
+  it('R1 : aucune valeur sécable, trois onglets', () => {
+    for (const tab of ['overview', 'calendar', 'remit'] as const) {
+      expect(breakableValue(visibleText(renderLayerView('nuclearFleet', view(state(), tab))))).toBeNull();
+    }
   });
 });
