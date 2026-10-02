@@ -12,7 +12,7 @@ function ecowatt(level: EcowattSignal | null): EcowattResponse {
     generatedAt: new Date(NOW).toISOString(),
     days: [{ date: parisDate(NOW), level, message: 'Test', hours: Array.from({ length: 24 }, () => 1) }],
   } : null;
-  return { official, mixes: {}, national: mix, interconnections: [] };
+  return { official, mixes: {}, national: mix, interconnections: [], grid: null };
 }
 
 describe('normalizeElec — Écowatt national (green/orange/red), jamais un 100 par défaut', () => {
@@ -31,7 +31,7 @@ describe('normalizeElec — Écowatt national (green/orange/red), jamais un 100 
       official: { source: 'odre', generatedAt: null, days: [{ date: '2026-09-24', level: 'red', message: 'Test', hours: Array.from({ length: 24 }, () => 1) }] },
       mixes: {},
       national: { timestamp: new Date(0), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
-      interconnections: [],
+      interconnections: [], grid: null,
     };
     expect(normalizeElec(yesterday, NOW)).toBeNull();
   });

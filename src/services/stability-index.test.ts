@@ -12,7 +12,7 @@ function ecowatt(level: EcowattSignal | null): EcowattResponse {
     generatedAt: new Date(NOW).toISOString(),
     days: [{ date: parisDate(NOW), level, message: 'Test', hours: Array.from({ length: 24 }, () => 1) }],
   } : null;
-  return { official, mixes: {}, national: mix, interconnections: [] };
+  return { official, mixes: {}, national: mix, interconnections: [], grid: null };
 }
 
 describe('computeInfraFromEcowatt — signal national, même niveau pour tous les départements', () => {

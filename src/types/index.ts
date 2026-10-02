@@ -289,6 +289,33 @@ export interface EcowattResponse {
   mixes: Record<string, EnergyMix>;
   national: EnergyMix;
   interconnections: InterconnectionFlow[];
+  /** Réseau national éCO2mix ; null si indisponible. */
+  grid: GridSnapshot | null;
+}
+
+/** Production par filière, MW ; null si la source ne l'a pas publiée. */
+export interface GridMix {
+  nuclear: number | null;
+  hydro: number | null;
+  wind: number | null;
+  solar: number | null;
+  /** gaz + fioul + charbon */
+  thermal: number | null;
+  bio: number | null;
+}
+export interface GridPoint { at: number; consumptionMw: number | null; forecastMw: number | null }
+/** Réseau national éCO2mix (ODRÉ, pas de 15 min) au dernier quart d'heure mesuré. */
+export interface GridSnapshot {
+  /** Heure de la donnée (ms epoch). */
+  dataTime: number;
+  consumptionMw: number | null;
+  forecastMw: number | null;
+  co2gPerKwh: number | null;
+  /** Solde physique, positif = import (convention éCO2mix). */
+  netImportMw: number | null;
+  mix: GridMix;
+  /** Journée de Paris en cours, ordre croissant ; réalisé null pour les quarts d'heure à venir. */
+  day: GridPoint[];
 }
 
 export interface EnergyMix {

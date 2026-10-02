@@ -26,7 +26,7 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
         generatedAt: new Date(0).toISOString(),
         days: [{ date: parisDate(Date.now()), level: 'red', message: 'Risque de coupures.', hours: Array(24).fill(3) as EcowattHourValue[] }],
       },
-      mixes: {}, national: mix, interconnections: [],
+      mixes: {}, national: mix, interconnections: [], grid: null,
     },
     sncfDisruptions: [],
     trafficIncidents: [],

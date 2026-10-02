@@ -301,7 +301,7 @@ describe('PosteSituation', () => {
           generatedAt: new Date(NOW).toISOString(),
           days: [{ date: parisDate(Date.now()), level: 'red', message: '', hours: Array(24).fill(3) as EcowattHourValue[] }],
         },
-        mixes: {}, national: mix, interconnections: [],
+        mixes: {}, national: mix, interconnections: [], grid: null,
       },
     }));
     simulateLayoutCss(roots, 'mobile');

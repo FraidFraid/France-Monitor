@@ -5591,7 +5591,7 @@ export class App {
         official: null,
         mixes: {},
         national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
-        interconnections: [],
+        interconnections: [], grid: null,
       };
       this.currentEcowattUsesFallback = true;
       await this.mapContainer?.updateEnergy(this.currentEcowattResponse);
@@ -7160,7 +7160,7 @@ export class App {
             official: null,
             mixes: {},
             national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
-            interconnections: [],
+            interconnections: [], grid: null,
           };
           this.mapContainer?.updateEnergy(this.currentEcowattResponse);
           this.statusPanel?.updateSource('Écowatt RTE', { status: 'error', lastUpdate: new Date() });

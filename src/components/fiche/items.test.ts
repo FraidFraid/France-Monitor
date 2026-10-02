@@ -54,7 +54,7 @@ function ecowatt(level: EcowattSignal): EcowattResponse {
       generatedAt: new Date(NOW).toISOString(),
       days: [{ date: parisDate(Date.now()), level, message: '', hours: Array(24).fill(hourValue) as EcowattHourValue[] }],
     },
-    mixes: {}, national: mix, interconnections: [],
+    mixes: {}, national: mix, interconnections: [], grid: null,
   };
 }
 
