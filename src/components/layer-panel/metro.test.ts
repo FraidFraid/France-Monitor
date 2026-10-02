@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { MetropoleConsumption } from '../../services/metropoles.ts';
 import { renderLayerView } from './frame.ts';
 import { NBSP, breakableValue, visibleText } from './format.ts';
-import { buildMetroView, metroDeltaLevel, type MetroViewInput } from './metro.ts';
+import { LATE_MS, buildMetroView, metroDeltaLevel, metroFigureLevel, type MetroViewInput } from './metro.ts';
 
 const NOW = Date.parse('2026-10-02T07:00:00Z'); // 09:00 Paris
 const open = (_: string, d: boolean): boolean => d;
@@ -21,7 +21,7 @@ describe('vue Charge métropolitaine', () => {
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Énergie', title: 'Charge métropolitaine' });
     expect(v.head.level ?? null).toBeNull();
-    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, caption: `5 métropoles · 12${NBSP}% de la consommation nationale` });
+    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, level: null, caption: `5 métropoles · 12${NBSP}% de la consommation nationale` });
     expect(v.head.status).toEqual(['données de 08:00', 'ODRÉ éCO2mix métropoles']);
     expect(v.head.lead).toBe(`Grand Paris 3,1${NBSP}GW (+4${NBSP}% sur la veille à la même heure). Plus forte hausse : Lille (+9${NBSP}%).`);
   });
@@ -54,9 +54,29 @@ describe('vue Charge métropolitaine', () => {
   it('consommation nationale absente : part non inventée', () => {
     expect(view({ nationalMw: null }).head.figure?.caption).toBe('5 métropoles');
   });
-  it('en retard au-delà de 2 h (source en retard d’une heure)', () => {
-    const old = METROS.map((x) => ({ ...x, date_heure: '2026-10-02T04:30:00+00:00' }));
-    expect(view({ metros: old }).head.status[0]).toBe('données de 06:30 (en retard)');
+  it('source par lot quotidien : en retard seulement au-delà de 30 h, des deux côtés du seuil', () => {
+    const at = (ms: number) => METROS.map((x) => ({ ...x, date_heure: new Date(NOW - ms).toISOString() }));
+    expect(LATE_MS).toBe(30 * 3_600_000);
+    expect(view({ metros: at(10 * 3_600_000) }).head.status[0]).not.toContain('en retard');
+    expect(view({ metros: at(29 * 3_600_000) }).head.status[0]).not.toContain('en retard');
+    expect(view({ metros: at(31 * 3_600_000) }).head.status[0]).toMatch(/\(en retard\)$/);
+  });
+  it('couleur du chiffre : orange dès +5 %, vert dès −5 %, sinon texte ; null sans J-1 ou en retard', () => {
+    const r = (loadMW: number, d?: number) => ({ loadMW, deltaVsJ1Pct: d });
+    expect(metroFigureLevel([r(1050, 5), r(1000, 5)], false)).toBe('orange');
+    expect(metroFigureLevel([r(1000, 4.9)], false)).toBeNull();
+    expect(metroFigureLevel([r(950, -5), r(950, -5)], false)).toBe('vert');
+    expect(metroFigureLevel([r(960, -4)], false)).toBeNull();
+    expect(metroFigureLevel([r(1000)], false)).toBeNull();
+    expect(metroFigureLevel([], false)).toBeNull();
+    expect(metroFigureLevel([r(1100, 10)], true)).toBeNull();
+    const up = METROS.map((x) => ({ ...x, deltaVsJ1Pct: 8 }));
+    const html = renderLayerView('metroLoad', view({ metros: up }));
+    expect(html).toMatch(/<b class="fmk-num lp-lvl lp-lvl--orange">5,4/);
+    expect(html).toContain('Couleur du chiffre : écart de la charge totale à la veille, même heure : orange dès +5');
+    expect(renderLayerView('metroLoad', view({ metros: METROS.map((x) => ({ ...x, deltaVsJ1Pct: undefined })) }))).not.toMatch(/<b class="fmk-num lp-lvl/);
+    const late = up.map((x) => ({ ...x, date_heure: new Date(NOW - 31 * 3_600_000).toISOString() }));
+    expect(renderLayerView('metroLoad', view({ metros: late }))).not.toMatch(/<b class="fmk-num lp-lvl/);
   });
   it('chargement, aucune donnée, textes hostiles, R1, aucun tiret cadratin, aucune couleur brute', () => {
     expect(view({ metros: null }).bodyHtml).toContain('Chargement des données…');

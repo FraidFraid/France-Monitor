@@ -5,7 +5,7 @@ import { classifyMetropoles, METRO_LEVEL, type MetropoleDisplayData } from '../.
 import { absoluteTime } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, formatGw, formatMw, formatPct, formatSignedPct } from './format.ts';
-import { barRow, emptyLine, freshnessSegment, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
+import { barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export interface MetroViewInput {
   metros: MetropoleConsumption[] | null;
@@ -18,8 +18,9 @@ const THEME = 'Énergie';
 const TITLE = 'Charge métropolitaine';
 const SOURCE = 'ODRÉ éCO2mix métropoles';
 const SOURCE_URL = 'https://odre.opendatasoft.com/explore/dataset/eco2mix-metropoles-tr/';
-/** Publication toutes les heures : au-delà de deux périodes, la donnée est dite en retard. */
-const PERIOD_MS = 60 * 60_000;
+/** ODRÉ publie un lot par jour (dernier point vers 00:00 UTC, publié vers 00:25 UTC) : la donnée a donc jusqu'à ~25 h normalement, en retard au-delà de 30 h. */
+export const LATE_MS = 30 * 60 * 60_000;
+const FIGURE_THRESHOLD = 5;
 const TOP_DELTAS = 3;
 const DELTA_THRESHOLD = 0.2;
 
@@ -31,13 +32,31 @@ export function metroDeltaLevel(pct: number | undefined): VigilanceLevel | null 
   return null;
 }
 
+/** Couleur du chiffre : écart de la charge totale à la veille (même heure de donnée par métropole) ; null si J-1 manque ou donnée en retard. */
+export function metroFigureLevel(rows: Array<{ loadMW: number; deltaVsJ1Pct?: number }>, late: boolean): VigilanceLevel | null {
+  if (late) return null;
+  let now = 0;
+  let j1 = 0;
+  for (const r of rows) {
+    if (r.deltaVsJ1Pct === undefined || !Number.isFinite(r.deltaVsJ1Pct) || r.deltaVsJ1Pct <= -100) continue;
+    now += r.loadMW;
+    j1 += r.loadMW / (1 + r.deltaVsJ1Pct / 100);
+  }
+  if (j1 <= 0) return null;
+  const pct = (now / j1 - 1) * 100;
+  if (pct >= FIGURE_THRESHOLD) return 'orange';
+  if (pct <= -FIGURE_THRESHOLD) return 'vert';
+  return null;
+}
+
 function sourcesSection(heure: number | null, now: number, open: MetroViewInput['open']): FicheSection {
   const stamp = heure !== null ? `données de ${absoluteTime(heure, now, 'fr')}` : 'aucune donnée reçue';
-  const html = `<p class="fmk-note">Publication en retard possible d’une heure ; écart calculé sur la même heure la veille, à 30 minutes près. `
+  const html = `<p class="fmk-note">Publication par lot quotidien : la donnée a jusqu’à 25${NBSP}h, en retard au-delà de 30${NBSP}h ; écart calculé sur la même heure de donnée la veille. `
+    + `Couleur du chiffre : écart de la charge totale à la veille, même heure : orange dès +5${NBSP}%, vert dès −5${NBSP}%. `
     + `Part nationale rapportée à la consommation nationale éCO2mix. `
     + `Classes de charge relatives au maximum observé : forte au-delà de 60${NBSP}%, moyenne de 20${NBSP}à 60${NBSP}%, faible en dessous.</p>`
     + `<div class="fmk-kv"><span class="fmk-kv-k">${sourceLinkHtml(SOURCE, SOURCE_URL)}</span><span class="fmk-kv-v">${stamp}</span></div>`;
-  return { id: 'sources', title: 'Sources', collapsible: true, open: open('sources', false), tone: 'reference', summary: `ODRÉ · retard possible d’1${NBSP}h`, html };
+  return { id: 'sources', title: 'Sources', collapsible: true, open: open('sources', false), tone: 'reference', summary: `ODRÉ · lot quotidien, retard au-delà de 30${NBSP}h`, html };
 }
 
 function deltaSection(rows: MetropoleDisplayData[], open: MetroViewInput['open']): FicheSection {
@@ -70,6 +89,7 @@ export function buildMetroView(input: MetroViewInput): LayerView {
   const sum = rows.reduce((acc, r) => acc + r.loadMW, 0);
   const heure = Math.max(...rows.map((r) => Date.parse(r.date_heure)).filter(Number.isFinite));
   const hasHeure = Number.isFinite(heure);
+  const late = hasHeure && now - heure > LATE_MS;
   const first = rows[0];
   const rise = rows.filter((r) => (r.deltaVsJ1Pct ?? 0) > 0).sort((a, b) => (b.deltaVsJ1Pct ?? 0) - (a.deltaVsJ1Pct ?? 0))[0];
   const lead = `${first.name} ${formatGw(first.loadMW)}`
@@ -85,8 +105,8 @@ export function buildMetroView(input: MetroViewInput): LayerView {
   return {
     head: {
       theme: THEME, title: TITLE,
-      figure: { value: formatGw(sum), caption: nationalMw ? `${n} métropoles · ${formatPct((sum / nationalMw) * 100)} de la consommation nationale` : `${n} métropoles` },
-      status: [hasHeure ? freshnessSegment(heure, now, PERIOD_MS) : '', SOURCE].filter((s) => s !== ''),
+      figure: { value: formatGw(sum), level: metroFigureLevel(rows, late), caption: nationalMw ? `${n} métropoles · ${formatPct((sum / nationalMw) * 100)} de la consommation nationale` : `${n} métropoles` },
+      status: [hasHeure ? `données de ${absoluteTime(heure, now, 'fr')}${late ? ' (en retard)' : ''}` : '', SOURCE].filter((s) => s !== ''),
       lead,
     },
     sections: [metrosSection, deltaSection(rows, open), sourcesSection(hasHeure ? heure : null, now, open)],
