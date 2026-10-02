@@ -6,7 +6,6 @@
  */
 
 import type { Plugin } from 'vite';
-// @ts-expect-error — module JS partagé avec la fonction de production
 import { fetchAllUnavailabilities } from '../../api/_lib/rte-unavailability-query.js';
 
 const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/token';
