@@ -8,7 +8,7 @@ import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, formatMw, formatPct, frNumber, localClock, zoneMidnight } from './format.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerView } from './frame.ts';
+import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export const DROM_TABS: readonly DromLiveCode[] = ['RE', 'GP', 'MQ', 'GF', 'COR'];
 
@@ -83,6 +83,13 @@ function headStatus(t: DromLiveTerritory, now: number): string[] {
   return [time, who];
 }
 
+/** Couleur du chiffre : part renouvelable (pas de rouge : la dépendance au fioul est structurelle, pas une crise). */
+export function renewableLevel(t: DromLiveTerritory, now: number): 'vert' | 'jaune' | 'orange' | null {
+  const share = t.renewableSharePct;
+  if (share === null || !Number.isFinite(share) || now - (t.dataTime ?? now) > LATE_MS) return null;
+  return share >= 50 ? 'vert' : share >= 25 ? 'jaune' : 'orange';
+}
+
 function lead(t: DromLiveTerritory): string | null {
   const parts = sectorShares(t).filter((s) => s.pct !== null).slice(0, 3)
     .map((s) => `${SECTOR[s.sector].label.toLowerCase()} ${formatPct(s.pct)}`);
@@ -119,19 +126,20 @@ function daySection(t: DromLiveTerritory, open: DromViewInput['open']): FicheSec
   return { ...base, summary: `pic ${formatMw(peak.value)} à ${localClock(peak.at, t.timeZone)}${t.code !== 'COR' ? ' (heure locale)' : ''}`, html: chart };
 }
 
-function allSection(live: DromLiveResponse, open: DromViewInput['open']): FicheSection {
+function allSection(live: DromLiveResponse, now: number, open: DromViewInput['open']): FicheSection {
   const okOnes = live.territories.filter((x) => x.state === 'ok');
   const total = okOnes.reduce((a, x) => a + (x.totalMw ?? 0), 0);
   const rows = live.territories.map((x) => x.state === 'ok'
     ? barRow({
       label: x.name, pct: x.renewableSharePct, value: formatMw(x.totalMw), color: 'var(--cat-renewable)', dot: false,
-      note: `${formatPct(x.renewableSharePct)} renouvelable · données de ${absoluteTime(x.dataTime ?? live.fetchedAt, live.fetchedAt, 'fr')} (${x.utcOffsetLabel})`,
+      note: `${formatPct(x.renewableSharePct)} renouvelable · données de ${absoluteTime(x.dataTime ?? now, now, 'fr')} (${x.utcOffsetLabel})`,
     })
     : listRow({ text: x.name, value: 'n.d.', level: 'gris', note: 'Source injoignable' })).join('');
   return { id: 'all', title: 'Les cinq territoires', collapsible: true, open: open('all', false), summary: `${okOnes.length} sur 5 joignables · ${formatMw(total)}`, html: rows };
 }
 
 function metricLine(m: DromEnergyDashboard['communeMetrics'][number]): string {
+  // Chaque valeur (nombre + unité) est insécable ; la ligne, elle, peut passer à la ligne entre deux valeurs.
   const parts = [
     m.consumptionMwh !== undefined ? `${frNumber(m.consumptionMwh, 0)}${NBSP}MWh` : null,
     m.co2Tons !== undefined ? `${frNumber(m.co2Tons, 0)}${NBSP}t CO₂` : null,
@@ -139,7 +147,7 @@ function metricLine(m: DromEnergyDashboard['communeMetrics'][number]): string {
     m.assetsCount !== undefined ? `${m.assetsCount}${NBSP}actifs` : null,
     m.substationsCount !== undefined ? `${m.substationsCount}${NBSP}postes sources` : null,
   ].filter((x): x is string => x !== null);
-  return escapeHtml(parts.length > 0 ? parts.join(' · ') : 'n.d.');
+  return parts.length > 0 ? parts.map((p) => `<span class="lp-nb">${escapeHtml(p)}</span>`).join(' · ') : 'n.d.';
 }
 
 function infraSection(input: DromViewInput): FicheSection {
@@ -167,6 +175,7 @@ function infraSection(input: DromViewInput): FicheSection {
     color: typeOf(a.type).color,
     note: [typeOf(a.type).label, a.communeName, a.operator].filter(Boolean).join(' · '),
     data: { 'drom-asset': a.id },
+    title: a.coordinates ? `Coordonnées : ${frNumber(a.coordinates[1], 4)} ; ${frNumber(a.coordinates[0], 4)}` : null,
   })).join('');
   const more = filtered.length > MAX_ROWS ? `<p class="fmk-note">${filtered.length - MAX_ROWS} autres actifs</p>` : '';
   const assetsHtml = assets.length === 0 ? '' : `<div class="lp-toolbar"><select class="lp-select" data-drom-filter="type" aria-label="Type d’actif">${options}</select></div>`
@@ -182,13 +191,18 @@ function infraSection(input: DromViewInput): FicheSection {
   return { ...base, summary: `${assets.length} actifs`, html: assetsHtml + metricsHtml + limitsHtml };
 }
 
-function sourcesSection(open: DromViewInput['open']): FicheSection {
+function sourcesSection(input: DromViewInput): FicheSection {
+  const { open, dashboard } = input;
+  const updated = dashboard !== null && Number.isFinite(Date.parse(dashboard.updatedAt))
+    ? `<p class="fmk-note">Inventaire mis à jour le ${escapeHtml(frDate(dashboard.updatedAt))}.</p>` : '';
+  const datasets = dashboard === null ? '' : dashboard.datasets.map((d) => `<p class="fmk-note">${escapeHtml(d.label)}</p>`).join('');
   return {
     id: 'sources', title: 'Sources', collapsible: true, open: open('sources', false), tone: 'reference', summary: `EDF open data, pas de 5${NBSP}min`,
     html: `<p class="fmk-note">${sourceLinkHtml('EDF open data', 'https://opendata.edf.fr')} : production par filière en temps réel, pas de 5${NBSP}min (15${NBSP}min en Corse), statut « estimé ».</p>`
       + '<p class="fmk-note">Mayotte : production non publiée en temps réel.</p>'
-      + '<p class="fmk-note">Part renouvelable : bioénergies, géothermie, hydraulique, photovoltaïque et éolien, rapportés au total publié.</p>'
-      + '<p class="fmk-note">La Réunion UTC+4 · Guadeloupe et Martinique UTC−4 · Guyane UTC−3 · Corse heure de Paris</p>',
+      + `<p class="fmk-note">Part renouvelable : bioénergies, géothermie, hydraulique, photovoltaïque et éolien, rapportés au total publié. Couleur du chiffre : part renouvelable, vert dès 50${NBSP}%, jaune dès 25${NBSP}%, orange en dessous.</p>`
+      + '<p class="fmk-note">La Réunion UTC+4 · Guadeloupe et Martinique UTC−4 · Guyane UTC−3 · Corse heure de Paris</p>'
+      + updated + datasets,
   };
 }
 
@@ -196,7 +210,7 @@ export function buildDromView(input: DromViewInput): LayerView {
   const { live, liveError, now, open } = input;
   const tabs = tabsOf();
   const activeTab = input.territory;
-  const tail = [infraSection(input), sourcesSection(open)];
+  const tail = [infraSection(input), sourcesSection(input)];
   if (live === null && liveError === null) {
     return { head: { theme: THEME, title: TITLE, status: ['chargement…'] }, tabs, activeTab, sections: [], bodyHtml: loadingBody() };
   }
@@ -210,17 +224,21 @@ export function buildDromView(input: DromViewInput): LayerView {
   if (!t || t.state === 'error') {
     return {
       head: { theme: THEME, title: TITLE, figure: { value: 'n.d.', caption: t?.name ?? TERRITORY_NAME[input.territory] }, status: ['EDF SEI injoignable pour ce territoire'] },
-      tabs, activeTab, sections: [allSection(live, open), ...tail], bodyHtml: sourceErrorCallout(null, now),
+      tabs, activeTab, sections: [allSection(live, now, open), ...tail], bodyHtml: sourceErrorCallout(null, now),
     };
   }
+  const level = renewableLevel(t, now);
   return {
     head: {
       theme: THEME, title: TITLE,
-      figure: { value: formatMw(t.totalMw), caption: `${t.name} · ${formatPct(t.renewableSharePct)} renouvelable` },
+      figure: {
+        value: formatMw(t.totalMw), caption: `${t.name} · ${formatPct(t.renewableSharePct)} renouvelable`, level,
+        captionHtml: `${escapeHtml(`${t.name} · `)}${valueHtml(formatPct(t.renewableSharePct), level)}${escapeHtml(' renouvelable')}`,
+      },
       status: headStatus(t, now), lead: lead(t),
     },
     tabs, activeTab,
-    sections: [mixSection(t, open), daySection(t, open), allSection(live, open), ...tail],
+    sections: [mixSection(t, open), daySection(t, open), allSection(live, now, open), ...tail],
     bodyHtml: liveError !== null ? sourceErrorCallout(live.fetchedAt, now) : undefined,
   };
 }

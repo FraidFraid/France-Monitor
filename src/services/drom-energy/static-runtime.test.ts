@@ -26,6 +26,20 @@ describe('données de démonstration DROM', () => {
     expect(buildDromEnergyDashboardFromStaticPayloads(payloads('local_fallback_forced'), { requireFetchedAt: true }).assets).toEqual([]);
     expect(buildDromEnergyDashboardFromStaticPayloads(payloads('remote'), { requireFetchedAt: true }).assets).toHaveLength(1);
   });
+  it('ses métriques communales et limitations de production ne sont jamais servies non plus', () => {
+    const demo = (source: string) => ({
+      ...payloads(source),
+      communeConsumption: [{ territoryCode: 'RE', communeName: 'Saint-Paul', sourceDatasetId: 'postes_sources_reunion', consumptionMwh: 5 },
+        { territoryCode: 'RE', communeName: 'Le Port', sourceDatasetId: 'autre', consumptionMwh: 7 }],
+      productionLimitations: [{ id: 'l1', territoryCode: 'RE', sourceDatasetId: 'postes_sources_reunion' }, { id: 'l2', territoryCode: 'RE', sourceDatasetId: 'autre' }],
+    });
+    const d = buildDromEnergyDashboardFromStaticPayloads(demo('local_fallback_forced'), { requireFetchedAt: true }) as
+      { communeMetrics: Array<{ communeName: string }>; productionLimitations: Array<{ id: string }> };
+    expect(d.communeMetrics.map((m) => m.communeName)).toEqual(['Le Port']);
+    expect(d.productionLimitations.map((l) => l.id)).toEqual(['l2']);
+    const r = buildDromEnergyDashboardFromStaticPayloads(demo('remote'), { requireFetchedAt: true }) as { productionLimitations: unknown[] };
+    expect(r.productionLimitations).toHaveLength(2);
+  });
   it('fichiers du dépôt : aucun enregistrement « Test » servi', () => {
     const d = buildDromEnergyDashboardFromStaticPayloads({
       territories: read('territories.json'), sources: read('sources.json'),

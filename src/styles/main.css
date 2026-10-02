@@ -8955,7 +8955,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Jauges des panneaux de couches : libellé, barre et valeur sur une ligne (les variantes --pillars, --infra, --score l'emportent). */
 .lp .fmk .fmk-meter { grid-template-columns: 6.5rem minmax(0, 1fr) 4.8rem; }
 /* Échanges : import en rouge, export en vert ; flèche d'évolution sur 7 jours. Valeurs insécables (R1). */
-.lp .lp-val, .lp .lp-imp, .lp .lp-exp { white-space: nowrap; }
+.lp .lp-val, .lp .lp-imp, .lp .lp-exp, .lp .lp-nb { white-space: nowrap; }
 .lp .lp-imp { color: var(--sev-red); }
 .lp .lp-exp { color: var(--sev-green); }
 .lp .lp-trend { margin-left: 6px; font-size: 11px; }

@@ -171,8 +171,9 @@ export function buildDromEnergyDashboardFromStaticPayloads(payloads, options = {
       ...(Array.isArray(payloads.co2Emissions) ? payloads.co2Emissions : []),
       ...(Array.isArray(payloads.efficiencyActions) ? payloads.efficiencyActions : []),
       ...buildDerivedCommuneMetrics(assets),
-    ],
-    productionLimitations: Array.isArray(payloads.productionLimitations) ? payloads.productionLimitations : [],
+    ].filter((metric) => !demoIds.has(metric.sourceDatasetId)),
+    productionLimitations: (Array.isArray(payloads.productionLimitations) ? payloads.productionLimitations : [])
+      .filter((limitation) => !demoIds.has(limitation.sourceDatasetId)),
     datasets,
     gridLines: {
       reunionHta: demoIds.has('lines_hta_reunion')

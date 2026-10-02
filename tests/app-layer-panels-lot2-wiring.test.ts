@@ -64,3 +64,22 @@ describe('panneau Charge métropolitaine (spec lot 2 § 3.5)', () => {
     expect(app).toContain('label: METRO_LEGEND_LABELS.small, color: levelHex(METRO_LEVEL.small)');
   });
 });
+
+describe('panneau Énergie DROM (spec lot 2 § 3.6)', () => {
+  it('production en temps réel lue à l’activation, transmise au panneau, erreurs gardées', () => {
+    const body = methodBody('loadDromLive');
+    expect(body).toContain("await import('./services/drom-live.ts')");
+    expect(body).toContain('this.dromEnergyPanel?.setLive(this.currentDromLive, this.currentDromLiveError);');
+    expect(methodBody('_handlePanelVisibility')).toMatch(/key === 'dromEnergy'[^]*void this\.loadDromLive\(\);/);
+    expect(methodBody('ensureDromEnergyPanel')).toContain('panel.setLive(this.currentDromLive, this.currentDromLiveError);');
+  });
+  it('rafraîchie toutes les 5 minutes tant que la couche ou le panneau est actif ; intervalle nettoyé', () => {
+    expect(app).toMatch(/const POLL_DROM_LIVE_MS\s*=\s*5 \* 60_000;/);
+    const poll = methodBody('startDromLivePolling');
+    expect(poll).toContain('this.activeLayers.dromEnergy');
+    expect(poll).toContain('this.dromEnergyPanel?.isVisible() === true');
+    expect(poll).toContain('POLL_DROM_LIVE_MS');
+    expect(app).toContain('this.startDromLivePolling();');
+    expect(app).toContain('if (this._intervalDromLive !== null) { clearInterval(this._intervalDromLive); this._intervalDromLive = null; }');
+  });
+});

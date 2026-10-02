@@ -151,7 +151,7 @@ import { computeSentinellesBarometerFromIndicators } from './services/sentinelle
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -186,6 +186,7 @@ const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed lat
 const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
+const POLL_DROM_LIVE_MS               =  5 * 60_000; //  5 min  (EDF SEI temps réel, pas de 5 min)
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
 const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
 const POLL_MTG_FRP_MS                  = 10 * 60_000; // 10 min  (LSA SAF product cadence)
@@ -1522,6 +1523,8 @@ export class App {
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
   private currentDromEnergyDashboard: DromEnergyDashboard | null = null;
+  private currentDromLive: DromLiveResponse | null = null;
+  private currentDromLiveError: string | null = null;
   private currentDromEnergyError: string | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
@@ -1654,6 +1657,7 @@ export class App {
   private _intervalRadar2d: ReturnType<typeof setInterval> | null = null;
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
+  private _intervalDromLive: ReturnType<typeof setInterval> | null = null;
   private _intervalSncf: ReturnType<typeof setInterval> | null = null;
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
@@ -1696,6 +1700,7 @@ export class App {
     if (this._intervalRadar2d !== null) { clearInterval(this._intervalRadar2d); this._intervalRadar2d = null; }
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
+    if (this._intervalDromLive !== null) { clearInterval(this._intervalDromLive); this._intervalDromLive = null; }
     if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
@@ -2436,6 +2441,7 @@ export class App {
     this.startRadar2dPolling();
     this.startInfraNetworkPolling();
     this.startEolienPolling();
+    this.startDromLivePolling();
     this.startSncfPolling();
 
     // ── Static data — sync, instant
@@ -3859,6 +3865,7 @@ export class App {
       this.layoutEnergyFloatingPanels();
     } else if (key === 'dromEnergy') {
       if (this.activeLayers.dromEnergy) {
+        void this.loadDromLive();
         if (!this.currentDromEnergyDashboard && !this.currentDromEnergyError) {
           this.dromEnergyPanel?.showLoadingState();
           void this.loadDromEnergy();
@@ -4006,6 +4013,7 @@ export class App {
         this.mapContainer?.highlightDromEnergyAsset(asset);
       });
       panel.mount();
+      panel.setLive(this.currentDromLive, this.currentDromLiveError);
       this.dromEnergyPanel = panel;
       if (this.activeLayers.dromEnergy) {
         if (this.currentDromEnergyDashboard) panel.show(this.currentDromEnergyDashboard);
@@ -6251,6 +6259,18 @@ export class App {
     }
   }
 
+  /** Production DROM et Corse en temps réel (EDF SEI) ; un échec garde les dernières données. */
+  private async loadDromLive(): Promise<void> {
+    try {
+      const { fetchDromLive } = await import('./services/drom-live.ts');
+      this.currentDromLive = await fetchDromLive();
+      this.currentDromLiveError = null;
+    } catch (error) {
+      this.currentDromLiveError = error instanceof Error ? error.message : 'Erreur inconnue';
+    }
+    this.dromEnergyPanel?.setLive(this.currentDromLive, this.currentDromLiveError);
+  }
+
   private async loadOil(): Promise<void> {
     console.log('[App/loadOil] Entry');
     const oilStatusDetail = 'OilNetwork : réseau et stocks structurels + carburants quasi-live via API prix carburants';
@@ -7145,6 +7165,20 @@ export class App {
       if (document.hidden) return; // skip tick while tab is hidden
       poll().catch((err) => console.error('[App] Eolien poll error', err));
     }, POLL_EOLIEN_MS);
+  }
+
+  private startDromLivePolling(): void {
+    if (this._intervalDromLive !== null) clearInterval(this._intervalDromLive);
+    let inFlight = false;
+    this._intervalDromLive = setInterval(() => {
+      if (document.hidden || inFlight) return; // onglet masqué ou lecture en cours
+      const shouldRefresh = this.activeLayers.dromEnergy || this.dromEnergyPanel?.isVisible() === true;
+      if (!shouldRefresh) return;
+      inFlight = true;
+      this.loadDromLive()
+        .catch((err) => console.error('[App] DROM live poll error', err))
+        .finally(() => { inFlight = false; });
+    }, POLL_DROM_LIVE_MS);
   }
 
   private async loadHospitals(): Promise<void> {
