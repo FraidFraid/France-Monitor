@@ -185,6 +185,12 @@ describe('vue Pétrole', () => {
     expect(fresh).toContain('fmk-dot--orange');
     expect(fresh).not.toContain('tension non évaluée');
   });
+  it('prix du gazole sans série : repli sur des relevés anciens daté, relevés récents non datés', () => {
+    const noSeries = oilFixture({ fuelPriceHistory: null });
+    const stale = tensionFixture({ generatedAt: new Date(OIL_NOW - 30 * 3_600_000).toISOString() });
+    expect(view({ data: noSeries, tension: stale }).head.figure?.caption).toMatch(/^gazole, moyenne nationale du \d{2}\/\d{2}$/);
+    expect(view({ data: noSeries }).head.figure?.caption).toBe('gazole, moyenne nationale');
+  });
   it('R1, aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute', () => {
     for (const tab of ['overview', 'departments', 'supply'] as const) {
       const h = html({ tab });

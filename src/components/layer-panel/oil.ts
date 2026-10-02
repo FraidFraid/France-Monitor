@@ -167,7 +167,10 @@ function gasolePrice(data: OilDashboard, tension: FuelTensionDashboard | null, n
   if (fresh !== null) return { price: fresh, delta, at: null };
   const last = gazole?.points.at(-1);
   const at = last ? Date.parse(last.timestamp) : NaN;
-  return { price: gazole?.latestPrice ?? tension?.national.avgPrices.gazole ?? null, delta, at: Number.isFinite(at) ? at : null };
+  const price = gazole?.latestPrice ?? tension?.national.avgPrices.gazole ?? null;
+  // Repli sur la moyenne de relevés anciens : on la date par l'heure de ces relevés.
+  const staleAt = gazole?.latestPrice == null && tension !== null && price !== null ? tensionDataTime(tension) : NaN;
+  return { price, delta, at: Number.isFinite(at) ? at : Number.isFinite(staleAt) ? staleAt : null };
 }
 
 function activeRefineries(data: OilDashboard): number {
