@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DromEnergyDashboard } from '../../services/drom-energy/index.ts';
 import { DROM_NOW, dromLiveFixture } from './drom.fixture.ts';
-import { buildDromView, DROM_TABS, sectorShares, type DromViewInput } from './drom.ts';
+import { buildDromView, DROM_TABS, lateAfterMin, sectorShares, type DromViewInput } from './drom.ts';
 import { renderLayerView } from './frame.ts';
 import { NBSP, breakableValue, frNumber, visibleText } from './format.ts';
 
@@ -60,8 +60,23 @@ describe('vue Énergie DROM', () => {
     expect(view({ territory: 'COR' }).head.status[0]).toBe('données de 08:45');
     expect(view({ territory: 'GF' }).head.status[1]).toBe('EDF SEI');
   });
-  it('donnée en retard au-delà de 30 minutes', () => {
-    expect(view({ now: DROM_NOW + 40 * 60_000 }).head.status[0]).toBe('données de 08:55 (10:55 heure locale, en retard)');
+  it('retard par territoire : 25 min au pas de 5 min, 45 min en Corse (pas de 15 min), des deux côtés du seuil', () => {
+    expect([lateAfterMin('RE'), lateAfterMin('GP'), lateAfterMin('MQ'), lateAfterMin('GF'), lateAfterMin('COR')]).toEqual([25, 25, 25, 25, 45]);
+    // La Réunion : données de 08:55 Paris (06:55Z).
+    const re = (min: number) => view({ now: Date.parse('2026-10-02T06:55:00Z') + min * 60_000 });
+    expect(re(25).head.status[0]).toBe('données de 08:55 (10:55 heure locale)');
+    expect(re(26).head.status[0]).toBe('données de 08:55 (10:55 heure locale, en retard)');
+    expect(re(40).head.figure?.level ?? null).toBeNull();
+    // Corse : données de 08:45 Paris (06:45Z) ; à 40 min, toujours dans le rythme de publication (pas de 15 min).
+    const cor = (min: number) => view({ territory: 'COR', now: Date.parse('2026-10-02T06:45:00Z') + min * 60_000 });
+    expect(cor(40).head.status[0]).toBe('données de 08:45');
+    expect(cor(40).head.figure?.level).toBe('orange');
+    expect(cor(45).head.status[0]).toBe('données de 08:45');
+    expect(cor(46).head.status[0]).toBe('données de 08:45 (en retard)');
+    expect(cor(46).head.figure?.level ?? null).toBeNull();
+  });
+  it('sources : dit le seuil de retard par territoire', () => {
+    expect(visibleText(view().sections.find((x) => x.id === 'sources')?.html ?? '')).toContain(`En retard au-delà de 25${NBSP}min (45${NBSP}min en Corse)`);
   });
   it('parts par filière : valeurs positives seulement, triées', () => {
     const t = dromLiveFixture().territories[0];
@@ -95,7 +110,10 @@ describe('vue Énergie DROM', () => {
     const h = s?.html ?? '';
     expect(h).toMatch(new RegExp(`Guadeloupe[^]*width:27%;background:var\\(--cat-renewable\\)[^]*141${NBSP}MW`));
     expect(h).toMatch(/Martinique[^]*Source injoignable/);
-    expect(h).toContain('(UTC−3)');
+    // Heure locale du territoire (pas celle de Paris) : Guyane, 04:00 locale ; Antilles, 02:56 locale.
+    expect(h).toContain(`données de 09:00 (04:00 heure locale, UTC−3)`);
+    expect(h).toContain(`données de 08:56 (02:56 heure locale, UTC−4)`);
+    expect(h).toContain('données de 08:45 (heure de Paris)');
   });
   it('territoire en erreur : chiffre n.d., encadré, autres sections conservées', () => {
     const v = view({ territory: 'MQ' });
@@ -142,6 +160,13 @@ describe('vue Énergie DROM', () => {
     expect(src).toContain('Émissions de CO₂ par commune');
     expect(v.sections.find((x) => x.id === 'infra')?.html).toContain(`title="Coordonnées : ${MINUS}20,8789 ; 55,4481"`);
     expect(view({ dashboard: null }).sections.find((x) => x.id === 'sources')?.html).not.toContain('Inventaire mis à jour');
+  });
+  it('sources : les jeux de démonstration (données masquées) ne sont pas listés', () => {
+    const demo = { id: 'd3', label: 'Pylones HTB - Réunion', family: 'grid_assets' as const, territoryCodes: ['RE' as const], geometry: 'line' as const, source: 'EDF_SEI' as const,
+      ingestion: { status: 'success' as const, testedAt: '2026-04-29T16:00:00Z', source: 'local_fallback_forced' as const } };
+    const src = view({ dashboard: { ...DASH, datasets: [...DASH.datasets, demo] } }).sections.find((x) => x.id === 'sources')?.html ?? '';
+    expect(src).not.toContain('Pylones HTB - Réunion');
+    expect(src).toContain('Postes sources de La Réunion');
   });
   it('les cinq territoires : l’heure se compte à partir de « maintenant » de la vue, pas de la date de lecture', () => {
     const all = (now: number): string => view({ now }).sections.find((x) => x.id === 'all')?.html ?? '';

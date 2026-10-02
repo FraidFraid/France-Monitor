@@ -2,6 +2,7 @@
 // sous vitest : ces tests lisent sa source, comme tests/app-floating-switcher-wiring.test.ts.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { DROM_LIVE_TTL_MS } from '../src/services/drom-live.ts';
 
 const app = readFileSync(new URL('../src/App.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
@@ -45,6 +46,10 @@ describe('panneau Charge métropolitaine (spec lot 2 § 3.5)', () => {
     expect(methodBody('getFloatingPanelInstance')).toContain("case 'metroLoad': return this.metroLoadPanel;");
     expect(methodBody('_handlePanelVisibility')).toMatch(/key === 'metroLoad'[^]*void this\.loadMetropoles\(\);[^]*this\.metroLoadPanel\?\.show\(this\.currentMetropoles\)/);
     expect(methodBody('ensureMetroLoadPanel')).toContain("this.closeEnergyLayer('metroLoad')");
+  });
+  it('relève DROM : intervalle de 5 min, strictement au-dessus du cache client', () => {
+    const minutes = Number(/const POLL_DROM_LIVE_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(app)?.[1]);
+    expect(minutes * 60_000).toBeGreaterThan(DROM_LIVE_TTL_MS);
   });
   it('rafraîchi avec les données ; part nationale portée par chaque métropole (à son propre instant), plus de dénominateur courant', () => {
     const body = methodBody('loadMetropoles');

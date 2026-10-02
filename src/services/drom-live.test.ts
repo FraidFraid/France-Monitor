@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DromLiveResponse } from '../types/index.ts';
-import { fetchDromLive, isDromLiveResponse, resetDromLiveCache } from './drom-live.ts';
+import { DROM_LIVE_TTL_MS, fetchDromLive, isDromLiveResponse, resetDromLiveCache } from './drom-live.ts';
 
 const BODY: DromLiveResponse = {
   fetchedAt: 1,
@@ -14,15 +14,18 @@ const BODY: DromLiveResponse = {
 afterEach(() => { vi.unstubAllGlobals(); resetDromLiveCache(); });
 
 describe('service DROM temps réel', () => {
-  it('lit la route et garde la réponse 5 minutes', async () => {
+  it('lit la route et garde la réponse 4 minutes', async () => {
     const f = vi.fn(async (_url: string) => ({ ok: true, status: 200, json: async () => BODY }));
     vi.stubGlobal('fetch', f);
     expect(await fetchDromLive(0)).toEqual(BODY);
-    await fetchDromLive(4 * 60_000);
+    await fetchDromLive(4 * 60_000 - 1);
     expect(f).toHaveBeenCalledTimes(1);
-    await fetchDromLive(5 * 60_000 + 1);
+    await fetchDromLive(4 * 60_000);
     expect(f).toHaveBeenCalledTimes(2);
     expect(f.mock.calls[0]?.[0]).toBe('/api/energy/drom-live');
+  });
+  it('le cache client est strictement plus court que l’intervalle de relève', () => {
+    expect(DROM_LIVE_TTL_MS).toBeLessThan(5 * 60_000);
   });
   it('HTTP en erreur ou forme inattendue : erreur levée, rien en cache', async () => {
     vi.stubGlobal('fetch', vi.fn(async (_url: string) => ({ ok: false, status: 502, json: async () => ({}) })));

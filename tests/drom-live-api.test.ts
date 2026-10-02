@@ -96,6 +96,13 @@ describe('normalisation EDF SEI sur des lignes réelles enregistrées', () => {
     const re = buildTerritory(cfg('RE'), [{ date: '2026-10-03T00:05:00+04:00', total: 250 }, { date: '2026-10-02T23:55:00+04:00', total: 260 }], vi.fn());
     expect(re.day.map((p: { totalMw: number | null }) => p.totalMw)).toEqual([250]);
   });
+  it('journée locale calculée dans le fuseau du territoire, pas sur le préfixe de la chaîne (dates en UTC)', () => {
+    // EDF passerait à « Z » : 23:58 local le 02/10 s'écrit alors déjà « 2026-10-03 ».
+    const gp = buildTerritory(cfg('GP'), [{ date: '2026-10-03T04:03:00Z', total: 120 }, { date: '2026-10-03T03:58:00Z', total: 130 }], vi.fn());
+    expect(gp.day).toEqual([{ at: Date.parse('2026-10-03T04:03:00Z'), totalMw: 120 }]);
+    const re = buildTerritory(cfg('RE'), [{ date: '2026-10-02T20:05:00Z', total: 250 }, { date: '2026-10-02T19:55:00Z', total: 260 }], vi.fn());
+    expect(re.day.map((p: { totalMw: number | null }) => p.totalMw)).toEqual([250]);
+  });
   it('lignes inexploitables : territoire en erreur, aucune valeur inventée', () => {
     const t = buildTerritory(cfg('MQ'), [{ total: 3 }], vi.fn());
     expect(t).toMatchObject({ state: 'error', totalMw: null, dataTime: null, day: [] });

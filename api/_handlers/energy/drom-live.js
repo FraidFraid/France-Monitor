@@ -57,7 +57,7 @@ function positiveSum(mix) {
 }
 
 /**
- * Une ligne EDF → { at, localDate, status, totalMw, mix }. Filières en MW signés (négatif : stockage en
+ * Une ligne EDF → { at, status, totalMw, mix }. Filières en MW signés (négatif : stockage en
  * charge, export par les liaisons, auxiliaires) ; null = filière non publiée, jamais 0.
  */
 export function normalizeLine(code, line, warn = warnUnknown) {
@@ -72,8 +72,6 @@ export function normalizeLine(code, line, warn = warnUnknown) {
   const at = date ? Date.parse(date) : Number.NaN;
   return {
     at: Number.isFinite(at) ? at : null,
-    // La date EDF porte le décalage local (« 2026-10-02T10:55:00+04:00 ») : ses dix premiers caractères sont le jour local.
-    localDate: date ? date.slice(0, 10) : null,
     status: typeof line?.statut === 'string' ? line.statut : null,
     totalMw: isNum(line?.total) ? line.total : positiveSum(mix),
     mix,
@@ -93,6 +91,11 @@ export function errorTerritory(cfg, message) {
   };
 }
 
+/** Jour local (AAAA-MM-JJ) d'un instant dans le fuseau du territoire : indépendant de la façon dont EDF écrit la date (décalage local ou « Z »). */
+function localDay(ms, timeZone) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone }).format(new Date(ms));
+}
+
 /** Dernière ligne du territoire et courbe de sa journée locale (ordre croissant). */
 export function buildTerritory(cfg, lines, warn = warnUnknown) {
   const rows = (Array.isArray(lines) ? lines : [])
@@ -102,7 +105,7 @@ export function buildTerritory(cfg, lines, warn = warnUnknown) {
   const latest = rows[0];
   if (!latest) return errorTerritory(cfg, 'aucune ligne exploitable');
   const day = rows
-    .filter((row) => row.localDate === latest.localDate)
+    .filter((row) => localDay(row.at, cfg.timeZone) === localDay(latest.at, cfg.timeZone))
     .map((row) => ({ at: row.at, totalMw: row.totalMw }))
     .sort((a, b) => a.at - b.at);
   return {

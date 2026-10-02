@@ -76,6 +76,13 @@ export function zoneMidnight(ms: number, timeZone: string): number {
   return guess - zoneOffsetMs(first, timeZone);
 }
 
+/** Bornes [minuit local, minuit local suivant[ du jour de `ms` dans `timeZone` : 25 h le jour du changement d'heure d'automne, 23 h au printemps. */
+export function zoneDayBounds(ms: number, timeZone: string): { from: number; to: number } {
+  const from = zoneMidnight(ms, timeZone);
+  // 26 h après minuit tombe toujours dans le jour suivant (jour de 23, 24 ou 25 h).
+  return { from, to: zoneMidnight(from + 26 * 3_600_000, timeZone) };
+}
+
 const BREAKABLE = /\d(?:[,.]\d+)? (?:%|€|GW|MW|kW|TWh|GWh|MWh|g CO₂|Mt|kt|kV|hm3|t\b|j\b|h\b|min\b|c\b)/;
 
 /** Premier « nombre, espace sécable, unité » du texte, ou null (contrôle R1 des tests de rendu). */

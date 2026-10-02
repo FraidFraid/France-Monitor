@@ -3,10 +3,11 @@
 // infrastructures statiques. Les enregistrements de démonstration ne parviennent jamais jusqu'ici (static-runtime.js).
 import type { DromLiveCode, DromLiveResponse, DromLiveSector, DromLiveTerritory } from '../../types/index.ts';
 import type { DromEnergyAsset, DromEnergyDashboard } from '../../services/drom-energy/index.ts';
+import { isDemoDataset } from '../../services/drom-energy/static-runtime.js';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { NBSP, formatMw, formatPct, frNumber, localClock, zoneMidnight } from './format.ts';
+import { NBSP, formatMw, formatPct, frNumber, localClock, zoneDayBounds } from './format.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
 import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
@@ -25,8 +26,15 @@ export interface DromViewInput {
 
 const THEME = 'Énergie';
 const TITLE = 'Énergie DROM';
-const DAY_MS = 24 * 3_600_000;
-const LATE_MS = 30 * 60_000;
+/** Période de publication mesurée d'EDF SEI (minutes entre deux points, relevée le 02/10/2026 sur les cinq jeux) : 5 min, 15 min en Corse. */
+export const PUBLICATION_PERIOD_MIN: Readonly<Record<DromLiveCode, number>> = { RE: 5, GP: 5, MQ: 5, GF: 5, COR: 15 };
+/** Marge pour les caches (CDN 5 min + 1 min, client 4 min) et le délai de publication de la source. */
+const CACHE_MARGIN_MIN = 15;
+/** Seuil de retard d'un territoire : deux périodes de publication plus la marge des caches (25 min à 5 min de pas, 45 min en Corse). */
+export function lateAfterMin(code: DromLiveCode): number {
+  return 2 * PUBLICATION_PERIOD_MIN[code] + CACHE_MARGIN_MIN;
+}
+const isLate = (t: DromLiveTerritory, now: number): boolean => now - (t.dataTime ?? now) > lateAfterMin(t.code) * 60_000;
 const MAX_ROWS = 40;
 const TAB_LABEL: Record<DromLiveCode, string> = { RE: 'Réunion', GP: 'Guadeloupe', MQ: 'Martinique', GF: 'Guyane', COR: 'Corse' };
 const TERRITORY_NAME: Record<DromLiveCode, string> = { RE: 'La Réunion', GP: 'Guadeloupe', MQ: 'Martinique', GF: 'Guyane', COR: 'Corse' };
@@ -74,7 +82,7 @@ function frDate(s: string): string {
 
 function headStatus(t: DromLiveTerritory, now: number): string[] {
   const at = t.dataTime ?? now;
-  const late = now - at > LATE_MS;
+  const late = isLate(t, now);
   const base = `données de ${absoluteTime(at, now, 'fr')}`;
   const time = t.code !== 'COR'
     ? `${base} (${localClock(at, t.timeZone)} heure locale${late ? ', en retard' : ''})`
@@ -86,7 +94,7 @@ function headStatus(t: DromLiveTerritory, now: number): string[] {
 /** Couleur du chiffre : part renouvelable (pas de rouge : la dépendance au fioul est structurelle, pas une crise). */
 export function renewableLevel(t: DromLiveTerritory, now: number): 'vert' | 'jaune' | 'orange' | null {
   const share = t.renewableSharePct;
-  if (share === null || !Number.isFinite(share) || now - (t.dataTime ?? now) > LATE_MS) return null;
+  if (share === null || !Number.isFinite(share) || isLate(t, now)) return null;
   return share >= 50 ? 'vert' : share >= 25 ? 'jaune' : 'orange';
 }
 
@@ -115,12 +123,13 @@ function mixSection(t: DromLiveTerritory, open: DromViewInput['open']): FicheSec
 function daySection(t: DromLiveTerritory, open: DromViewInput['open']): FicheSection {
   const base = { id: 'day', title: 'Courbe du jour', collapsible: true, open: open('day', true) };
   const at = t.dataTime ?? 0;
-  const from = zoneMidnight(at, t.timeZone);
+  // Fin de journée = minuit local suivant, calculé dans le fuseau (25 h au changement d'heure d'automne).
+  const { from, to } = zoneDayBounds(at, t.timeZone);
   const points: ChartPoint[] = t.day.filter((p): p is typeof p & { totalMw: number } => p.totalMw !== null).map((p) => ({ at: p.at, value: p.totalMw }));
   if (points.length < 2) return { ...base, summary: 'n.d.', html: emptyLine('Moins de deux mesures depuis minuit, heure locale.') };
   const peak = points.reduce((b, p) => (p.value > b.value ? p : b), points[0]);
   const chart = lineChart(points, {
-    label: `Puissance totale de ${t.name} sur la journée locale`, from, to: from + DAY_MS, stroke: 'var(--text-primary)', nowAt: at, markPeak: true,
+    label: `Puissance totale de ${t.name} sur la journée locale`, from, to, stroke: 'var(--text-primary)', nowAt: at, markPeak: true,
     value: (v) => formatMw(v), tick: (ms) => (ms === from ? `0${NBSP}h` : `24${NBSP}h`),
   });
   return { ...base, summary: `pic ${formatMw(peak.value)} à ${localClock(peak.at, t.timeZone)}${t.code !== 'COR' ? ' (heure locale)' : ''}`, html: chart };
@@ -132,7 +141,7 @@ function allSection(live: DromLiveResponse, now: number, open: DromViewInput['op
   const rows = live.territories.map((x) => x.state === 'ok'
     ? barRow({
       label: x.name, pct: x.renewableSharePct, value: formatMw(x.totalMw), color: 'var(--cat-renewable)', dot: false,
-      note: `${formatPct(x.renewableSharePct)} renouvelable · données de ${absoluteTime(x.dataTime ?? now, now, 'fr')} (${x.utcOffsetLabel})`,
+      note: `${formatPct(x.renewableSharePct)} renouvelable · données de ${absoluteTime(x.dataTime ?? now, now, 'fr')} (${x.code === 'COR' ? x.utcOffsetLabel : `${localClock(x.dataTime ?? now, x.timeZone)} heure locale, ${x.utcOffsetLabel}`})`,
     })
     : listRow({ text: x.name, value: 'n.d.', level: 'gris', note: 'Source injoignable' })).join('');
   return { id: 'all', title: 'Les cinq territoires', collapsible: true, open: open('all', false), summary: `${okOnes.length} sur 5 joignables · ${formatMw(total)}`, html: rows };
@@ -195,10 +204,11 @@ function sourcesSection(input: DromViewInput): FicheSection {
   const { open, dashboard } = input;
   const updated = dashboard !== null && Number.isFinite(Date.parse(dashboard.updatedAt))
     ? `<p class="fmk-note">Inventaire mis à jour le ${escapeHtml(frDate(dashboard.updatedAt))}.</p>` : '';
-  const datasets = dashboard === null ? '' : dashboard.datasets.map((d) => `<p class="fmk-note">${escapeHtml(d.label)}</p>`).join('');
+  const datasets = dashboard === null ? '' : dashboard.datasets.filter((d) => !isDemoDataset(d)).map((d) => `<p class="fmk-note">${escapeHtml(d.label)}</p>`).join('');
   return {
     id: 'sources', title: 'Sources', collapsible: true, open: open('sources', false), tone: 'reference', summary: `EDF open data, pas de 5${NBSP}min`,
     html: `<p class="fmk-note">${sourceLinkHtml('EDF open data', 'https://opendata.edf.fr')} : production par filière en temps réel, pas de 5${NBSP}min (15${NBSP}min en Corse), statut « estimé ».</p>`
+      + `<p class="fmk-note">En retard au-delà de ${lateAfterMin('RE')}${NBSP}min (${lateAfterMin('COR')}${NBSP}min en Corse) : deux périodes de publication plus une marge de ${CACHE_MARGIN_MIN}${NBSP}min pour les caches.</p>`
       + '<p class="fmk-note">Mayotte : production non publiée en temps réel.</p>'
       + `<p class="fmk-note">Part renouvelable : bioénergies, géothermie, hydraulique, photovoltaïque et éolien, rapportés au total publié. Couleur du chiffre : part renouvelable, vert dès 50${NBSP}%, jaune dès 25${NBSP}%, orange en dessous.</p>`
       + '<p class="fmk-note">La Réunion UTC+4 · Guadeloupe et Martinique UTC−4 · Guyane UTC−3 · Corse heure de Paris</p>'

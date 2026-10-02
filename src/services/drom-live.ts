@@ -1,9 +1,10 @@
 // src/services/drom-live.ts : production par filière des DROM et de la Corse (route /api/energy/drom-live,
-// EDF SEI, spec 2026-10-02 lot 2 § 2.2). Cache 5 min, aligné sur le pas EDF et le cache CDN.
+// EDF SEI, spec 2026-10-02 lot 2 § 2.2). Cache client de 4 min, volontairement sous le rythme de relève de 5 min (pas EDF, cache CDN).
 import type { DromLiveResponse } from '../types/index.ts';
 
 const DROM_LIVE_URL = '/api/energy/drom-live';
-const TTL_MS = 5 * 60_000;
+/** Strictement sous l'intervalle de relève de l'application (5 min) : une relève décalée ne retombe pas sur le cache et n'attend pas un cycle de plus. */
+export const DROM_LIVE_TTL_MS = 4 * 60_000;
 let cache: { data: DromLiveResponse; at: number } | null = null;
 
 export function isDromLiveResponse(value: unknown): value is DromLiveResponse {
@@ -17,7 +18,7 @@ export function isDromLiveResponse(value: unknown): value is DromLiveResponse {
 }
 
 export async function fetchDromLive(now: number = Date.now()): Promise<DromLiveResponse> {
-  if (cache && now - cache.at < TTL_MS) return cache.data;
+  if (cache && now - cache.at < DROM_LIVE_TTL_MS) return cache.data;
   const resp = await fetch(DROM_LIVE_URL, { signal: AbortSignal.timeout(12_000) });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const json: unknown = await resp.json();

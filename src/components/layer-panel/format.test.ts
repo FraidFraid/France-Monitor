@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NBSP, breakableValue, dayMonth, formatCents, formatDays, formatEuro, formatGw, formatGwhDay, formatMtYear, formatMw,
-  formatPct, formatSignedPct, formatTons, formatTwh, localClock, visibleText, weekdayOf, zoneMidnight,
+  formatPct, formatSignedPct, formatTons, formatTwh, localClock, visibleText, weekdayOf, zoneDayBounds, zoneMidnight,
 } from './format.ts';
 
 describe('formateurs des panneaux de couches (R1)', () => {
@@ -49,6 +49,15 @@ describe('formateurs des panneaux de couches (R1)', () => {
     expect(weekdayOf('2026-10-04', 'long')).toBe('dimanche');
     expect(weekdayOf('2026-10-03', 'short')).toBe('sam.');
     expect(dayMonth('2026-10-02')).toBe('02/10');
+  });
+  it('bornes du jour local : 25 h le 25/10/2026 et 23 h le 29/03/2026 à Paris, 24 h ailleurs', () => {
+    const h = 3_600_000;
+    const len = (iso: string, tz: string): number => { const b = zoneDayBounds(Date.parse(iso), tz); return (b.to - b.from) / h; };
+    expect(len('2026-10-25T12:00:00Z', 'Europe/Paris')).toBe(25);
+    expect(zoneDayBounds(Date.parse('2026-10-25T12:00:00Z'), 'Europe/Paris').to).toBe(Date.parse('2026-10-25T23:00:00Z'));
+    expect(len('2026-03-29T12:00:00Z', 'Europe/Paris')).toBe(23);
+    expect(len('2026-10-02T12:00:00Z', 'Europe/Paris')).toBe(24);
+    expect(len('2026-10-25T12:00:00Z', 'Indian/Reunion')).toBe(24);
   });
   it('heure locale et minuit local des territoires (fuseaux sans heure d’été et Paris avec)', () => {
     expect(localClock(Date.parse('2026-10-02T10:55:00+04:00'), 'Indian/Reunion')).toBe('10:55');
