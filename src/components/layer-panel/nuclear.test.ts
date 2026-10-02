@@ -1,9 +1,10 @@
 // src/components/layer-panel/nuclear.test.ts
 import { describe, expect, it } from 'vitest';
-import type { NuclearState, NuclearUnavailability } from '../../types/index.ts';
+import type { EcowattResponse, NuclearRemitSignal, NuclearState, NuclearUnavailability } from '../../types/index.ts';
 import { NUCLEAR_UNITS } from '../../config/infrastructure.ts';
 import { buildNuclearView, kindLevel, kindWord } from './nuclear.ts';
 import { renderLayerView } from './frame.ts';
+import { formatGw } from './grid.ts';
 
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-10-02T05:00:00Z');
@@ -93,5 +94,70 @@ describe('vue Parc nucléaire', () => {
   });
   it('sans état : chargement', () => {
     expect(view(null).bodyHtml).toContain('Chargement des données…');
+  });
+
+  describe('texte hostile affiché', () => {
+    const hostile = '<img src=x onerror=1>';
+    const remit = (over: Partial<NuclearRemitSignal> = {}): NuclearRemitSignal => ({
+      id: 'r', plantName: hostile, unitName: null, classifiedAs: 'UNPLANNED_OUTAGE', capacityMW: 900,
+      publishedAt: new Date(NOW - 3600_000), title: 't', link: 'https://example.org/r', confirmedByRTE: false, matchConfidence: 0.6, ...over,
+    });
+    it('signal en attente : nom de site échappé', () => {
+      const h = renderLayerView('nuclearFleet', view(state({ unconfirmedSignals: [{ remitSignal: remit(), reason: 'x', confidence: 0.6 }] }), 'remit'));
+      expect(h).toContain('&lt;img');
+      expect(h).not.toContain('<img');
+    });
+    it('signal confirmé : nom de site échappé', () => {
+      const h = renderLayerView('nuclearFleet', view(state({ remitSignals: [remit({ confirmedByRTE: true })] }), 'remit'));
+      expect(h).toContain('&lt;img');
+      expect(h).not.toContain('<img');
+    });
+  });
+
+  describe('production réelle (Écowatt)', () => {
+    const installed = NUCLEAR_UNITS.reduce((s, r) => s + r.nominalPowerMW, 0);
+    const mixOf = (nuclear: number | null) => ({ nuclear, hydro: 0, wind: 0, solar: 0, thermal: 0, bio: 0 });
+    const eco = (gridNuclear: number | null | 'nogrid', nationalNuclear = 0): EcowattResponse => ({
+      official: null, mixes: {}, interconnections: [],
+      national: { timestamp: new Date(NOW), nuclear: nationalNuclear, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: nationalNuclear },
+      grid: gridNuclear === 'nogrid' ? null : { dataTime: NOW, consumptionMw: null, forecastMw: null, co2gPerKwh: null, netImportMw: null, mix: mixOf(gridNuclear), day: [] },
+    });
+    const overview = (e: EcowattResponse): string => renderLayerView('nuclearFleet', buildNuclearView({
+      state: state({ unavailabilities: [] }), ecowatt: e, tab: 'overview', now: NOW, open }));
+    const NOTE = 'Le parc produit en dessous du disponible';
+
+    it('jauges Produit / Disponible / Installé en GW', () => {
+      const h = overview(eco(40_000));
+      expect(h).toMatch(new RegExp(`Produit[^]*?${formatGw(40_000)}`));
+      expect(h).toMatch(new RegExp(`Disponible[^]*?${formatGw(installed)}`));
+      expect(h).toMatch(new RegExp(`Installé[^]*?${formatGw(installed)}`));
+      expect(h).toContain(`${formatGw(40_000)} · ${Math.round((40_000 / installed) * 100)} % du disponible`);
+    });
+    it('note de modulation sous 80 % du disponible seulement', () => {
+      expect(overview(eco(Math.round(installed * 0.7)))).toContain(NOTE);
+      expect(overview(eco(Math.round(installed * 0.9)))).not.toContain(NOTE);
+    });
+    it('repli sur le national quand grid est null', () => {
+      expect(overview(eco('nogrid', 45_000))).toContain(formatGw(45_000));
+    });
+    it('production 0 : n.d. au résumé, pas de note de modulation', () => {
+      const h = overview(eco(0));
+      expect(h).toMatch(/Production<[^]*?n\.d\./);
+      expect(h).not.toContain(NOTE);
+      expect(h).not.toContain('NaN');
+    });
+  });
+
+  it('signe des puissances REMIT : « + » pour un redémarrage, « − » sinon', () => {
+    const sig = (classifiedAs: NuclearRemitSignal['classifiedAs']) => ({ remitSignal: {
+      id: classifiedAs, plantName: 'Blayais', unitName: null, classifiedAs, capacityMW: 900,
+      publishedAt: new Date(NOW - 3600_000), title: 't', link: 'https://example.org/r', confirmedByRTE: false, matchConfidence: 0.9,
+    }, reason: 'x', confidence: 0.9 });
+    const h = (c: NuclearRemitSignal['classifiedAs']): string =>
+      renderLayerView('nuclearFleet', view(state({ unconfirmedSignals: [sig(c)] }), 'remit'));
+    expect(h('RESTART')).toContain('+0,9 GW');
+    expect(h('RESTART')).not.toContain('−0,9 GW');
+    expect(h('UNPLANNED_OUTAGE')).toContain('−0,9 GW');
+    expect(h('PLANNED_MAINTENANCE')).toContain('−0,9 GW');
   });
 });
