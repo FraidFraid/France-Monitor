@@ -99,6 +99,18 @@ describe('vue Pétrole', () => {
     expect(h).toContain('Données &lt;b&gt;provisoires&lt;/b&gt;.');
     expect(html()).not.toMatch(/STRUCTURAL|HYBRID|MONTHLY|DAILY|PROVISIONAL|QUASI-LIVE|FALLBACK|LOW|HIGH|CRITICAL/);
   });
+  it('méthode et sources épurée comme le nucléaire : un paragraphe, une ligne par source avec lien, détails repliés', () => {
+    const h = section('method')?.html ?? '';
+    const [visible, folded = ''] = h.split('<details class="lp-more">');
+    expect(visible.match(/fmk-note/g)).toHaveLength(1);
+    for (const label of ['Prix et stations', 'Historique des prix', 'Stocks, flux, origines', 'Livraisons', 'Raffineries', 'Vue harmonisée', 'Données pétrole lues à']) {
+      expect(visible).toContain(label);
+    }
+    expect(visible).toMatch(/href="https:\/\/www\.prix-carburants\.gouv\.fr"/);
+    expect(visible).toMatch(/href="https:\/\/www\.jodidata\.org"/);
+    expect(folded).toContain('Détails méthodologiques');
+    expect(folded).toContain('Deux lectures complémentaires');
+  });
   it('départements : recherche, liste triée par tension, bouton de carte', () => {
     const v = view({ tab: 'departments' });
     const h = renderLayerView('oilNetwork', v);
