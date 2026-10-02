@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { EcowattResponse, GridSnapshot, HydraulicBackboneAsset, HydraulicTrend } from '../../types/index.ts';
 import { renderLayerView } from './frame.ts';
 import { NBSP, breakableValue, frNumber, visibleText } from './format.ts';
-import { buildHydroView, hydroLead, trendLevel } from './hydro.ts';
+import { HYDRO_INSTALLED_MW, buildHydroView, hydroLead, hydroUtilizationPct, trendLevel } from './hydro.ts';
 
 const NOW = Date.parse('2026-10-02T07:00:00Z'); // 09:00 Paris
 const open = (_: string, d: boolean): boolean => d;
@@ -46,9 +46,14 @@ describe('vue Stress hydro', () => {
     expect(view(ASSETS.filter((a) => a.signals.hydro_trend !== 'stress')).head.level).toBe('jaune');
     expect(view(ASSETS.filter((a) => a.signals.hydro_trend === 'normal')).head.level).toBe('vert');
   });
-  it('en-tête : production hydraulique non colorée, comptes, dernière mesure Hub’Eau', () => {
+  it('en-tête : production mise en regard du parc installé, comptes, dernière mesure Hub’Eau', () => {
     const v = view();
-    expect(v.head.figure).toEqual({ value: `7,0${NBSP}GW`, caption: 'production hydraulique · éCO2mix 08:30' });
+    expect(v.head.figure?.value).toBe(`7,0${NBSP}GW`);
+    expect(v.head.figure?.caption).toBe(`27${NBSP}% des 25,7${NBSP}GW installés · éCO2mix 08:30`);
+    expect(v.head.figure?.captionHtml).toContain(`lp-lvl--orange">27${NBSP}%</span> des 25,7${NBSP}GW installés`);
+    expect(hydroUtilizationPct(HYDRO_INSTALLED_MW / 2)).toBe(50);
+    expect(hydroUtilizationPct(null)).toBeNull();
+    expect(view(ASSETS, null).head.figure).toEqual({ value: 'n.d.', caption: 'production hydraulique' });
     expect(v.head.status).toEqual(['2 ouvrages en stress', '1 sous pression', 'Hub’Eau 08:20']);
   });
   it('synthèse : cause principale, production et turbinage STEP', () => {
@@ -75,6 +80,7 @@ describe('vue Stress hydro', () => {
     expect(s?.html).toMatch(new RegExp(`Lacs[^]*2,9${NBSP}GW[^]*Fil de l’eau[^]*2,3${NBSP}GW[^]*Turbinage STEP[^]*1,9${NBSP}GW[^]*Pompage STEP[^]*0,0${NBSP}GW`));
     expect(s?.html).not.toMatch(/var\(--sev-|--text-secondary/);
     expect(s?.html).toContain('width:41.4%;background:var(--mix-hydro)');
+    expect(s?.html).toMatch(new RegExp(`Part du parc[^]*27${NBSP}%[^]*Production rapportée aux 25,7${NBSP}GW installés \\(RTE, fin 2025\\)`));
     expect(s?.html).toContain('background:color-mix(in srgb, var(--mix-hydro) 45%, transparent)');
     expect(view(ASSETS, null).sections.find((x) => x.id === 'production')?.html).toContain('Production hydraulique nationale indisponible.');
   });

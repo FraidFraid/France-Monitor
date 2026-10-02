@@ -4,8 +4,8 @@ import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { formatGw, formatMw } from './format.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, type LayerView } from './frame.ts';
+import { formatGw, formatMw, formatPct } from './format.ts';
+import { barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export interface HydroViewInput {
   assets: HydraulicBackboneAsset[];
@@ -23,6 +23,15 @@ const FRESHNESS_WORD = { fresh: 'fraîche', aging: 'à confirmer', stale: 'ancie
 const TREND_RANK: Record<HydraulicTrend, number> = { stress: 3, high: 2, normal: 1, low: 0 };
 const WATCH_ROWS = 14;
 const SUPPORT_WORD = { strong: 'mesures fortes', partial: 'mesures partielles', none: 'dérivé seul' } as const;
+/** Parc hydraulique installé en France continentale, STEP comprises : RTE, ODRÉ « parc de production par filière », au 31/12/2025 (référence annuelle). */
+export const HYDRO_INSTALLED_MW = 25_747;
+const HYDRO_INSTALLED_AS_OF = 'fin 2025';
+const PARC_URL = 'https://odre.opendatasoft.com/explore/dataset/parc-prod-par-filiere/';
+
+/** Production hydraulique rapportée au parc installé, en %. */
+export function hydroUtilizationPct(hydroMw: number | null): number | null {
+  return hydroMw === null || !Number.isFinite(hydroMw) ? null : (hydroMw / HYDRO_INSTALLED_MW) * 100;
+}
 
 /** Stress orange, pression jaune, sinon vert. */
 export function trendLevel(t: HydraulicTrend): VigilanceLevel {
@@ -113,7 +122,9 @@ function productionSection(grid: GridSnapshot | null, open: HydroViewInput['open
   const pct = (v: number | null): number | null => (v === null || hydro <= 0 ? null : (v / hydro) * 100);
   const line = (label: string, v: number | null, color: string): string =>
     barRow({ label, pct: pct(v), value: formatGw(v), color, dot: false });
-  const html = line('Lacs', d.lakes, 'var(--mix-hydro)')
+  const html = barRow({ label: 'Part du parc', pct: hydroUtilizationPct(hydro), value: formatPct(hydroUtilizationPct(hydro)), color: 'var(--mix-hydro)', dot: false })
+    + `<p class="fmk-note">Production rapportée aux ${formatGw(HYDRO_INSTALLED_MW)} installés (RTE, ${HYDRO_INSTALLED_AS_OF}).</p>`
+    + line('Lacs', d.lakes, 'var(--mix-hydro)')
     + line('Fil de l’eau', d.runOfRiver, 'var(--mix-hydro)')
     + line('Turbinage STEP', d.stepTurbine, 'var(--mix-hydro)')
     + line('Pompage STEP', pumping, 'color-mix(in srgb, var(--mix-hydro) 45%, transparent)');
@@ -163,12 +174,14 @@ function methodSection(assets: readonly HydraulicBackboneAsset[], open: HydroVie
     + kvRow('Vérifiés RTE ou ODRÉ', String(verified)) + kvRow('Géolocalisés au site', String(sited))
     + kvRow('DROM et Corse', String(overseas)) + kvRow('Appuyés par Hub’Eau', String(supported))
     + kvRow('Appui fort', String(strong)) + kvRow('Ouvrages de régulation', String(regulation))
-    + kvRow('Référentiel manuel', String(manual)) + kvRow('Puissance installée suivie', formatMw(totalMw))
+    + kvRow('Référentiel manuel', String(manual)) + kvRow('Parc hydraulique installé', `${formatGw(HYDRO_INSTALLED_MW)} (${HYDRO_INSTALLED_AS_OF})`)
+    + kvRow('Puissance installée suivie', formatMw(totalMw))
     + kvRow('Puissance moyenne par ouvrage', formatMw(totalMw / Math.max(assets.length, 1)))
     + source(sourceLinkHtml('Hub’Eau hydrométrie', 'https://hubeau.eaufrance.fr/page/api-hydrometrie'), 'débits mesurés')
     + source(sourceLinkHtml('Vigicrues', 'https://www.vigicrues.gouv.fr/'), 'vigilance crues')
     + source(sourceLinkHtml('Météo-France', 'https://vigilance.meteofrance.fr/'), 'vigilance pluie-inondation')
     + source(sourceLinkHtml('ODRÉ éCO2mix', 'https://odre.opendatasoft.com/explore/dataset/eco2mix-national-tr/'), 'production nationale')
+    + source(sourceLinkHtml('ODRÉ parc de production', PARC_URL), `parc installé ${HYDRO_INSTALLED_AS_OF}`)
     + source('Référentiel', 'RTE/ODRÉ (30/09/2025), géocodage BAN');
   return {
     id: 'method', title: 'Méthode et couverture', collapsible: true, open: open('method', false), tone: 'reference',
@@ -185,11 +198,18 @@ export function buildHydroView(input: HydroViewInput): LayerView {
   const grid = ecowatt?.grid ?? null;
   const hydro = grid?.mix.hydro ?? null;
   const last = lastObservation(assets);
+  const level: VigilanceLevel = stress > 0 ? 'orange' : high > 0 ? 'jaune' : 'vert';
+  // Le chiffre est mis en regard du parc installé : part de la capacité, dans la couleur du chiffre.
+  const share = formatPct(hydroUtilizationPct(hydro));
+  const capacity = `des ${formatGw(HYDRO_INSTALLED_MW)} installés`;
+  const stamp = grid ? ` · éCO2mix ${absoluteTime(grid.dataTime, now, 'fr')}` : '';
   return {
     head: {
       theme: THEME, title: TITLE,
-      level: stress > 0 ? 'orange' : high > 0 ? 'jaune' : 'vert',
-      figure: { value: formatGw(hydro), caption: grid ? `production hydraulique · éCO2mix ${absoluteTime(grid.dataTime, now, 'fr')}` : 'production hydraulique' },
+      level,
+      figure: hydro !== null
+        ? { value: formatGw(hydro), caption: `${share} ${capacity}${stamp}`, captionHtml: `${valueHtml(share, level)} ${escapeHtml(`${capacity}${stamp}`)}` }
+        : { value: formatGw(hydro), caption: 'production hydraulique' },
       status: [
         stress > 0 ? `${stress} ${plural(stress, 'ouvrage')} en stress` : 'aucun ouvrage en stress',
         high > 0 ? `${high} sous pression` : 'aucun ouvrage sous pression',
