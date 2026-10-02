@@ -29,3 +29,10 @@ describe('panneau Réseau gaz (spec lot 2 § 3.1)', () => {
     expect(app).not.toContain('setPipelineCallback');
   });
 });
+
+describe('panneau Éolien (spec lot 2 § 3.4)', () => {
+  it('reçoit la série éCO2mix à la création et à chaque rafraîchissement du réseau', () => {
+    expect(methodBody('loadEcowatt')).toContain('this.eolienPanel?.setGrid(this.currentEcowattResponse.grid);');
+    expect(methodBody('ensureEolienPanel')).toContain('panel.setGrid(this.currentEcowattResponse?.grid ?? null);');
+  });
+});

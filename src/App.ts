@@ -4028,6 +4028,7 @@ export class App {
         this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
       });
       panel.mount();
+      panel.setGrid(this.currentEcowattResponse?.grid ?? null);
       this.eolienPanel = panel;
       if (this.activeLayers.windMonitor) {
         panel.show(this.currentEolienLive, this.currentEolienParks);
@@ -5603,6 +5604,7 @@ export class App {
     }
     // La tension réseau est nationale (Écowatt) : le panneau des pannes l'affiche en une ligne.
     this.outagesPanel?.setEcowattNational(ecowattToday(this.currentEcowattResponse.official, Date.now()));
+    this.eolienPanel?.setGrid(this.currentEcowattResponse.grid);
 
     await this.refreshHydraulicLayer();
     this.refreshEnergyDataLegends();
