@@ -34,6 +34,10 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     for (const m of lpRules) expect(m[2]).not.toContain('fmk-kv-v');
     expect(css).toContain('.lp .lp-lvl--orange { color: var(--sev-orange); }');
   });
+  it('R3 : la légende du gros chiffre ne masque pas la couleur de niveau des valeurs qu’elle contient', () => {
+    expect(css).toContain('.lp .lp-figure > span { color: var(--text-secondary); font-size: 13px; }');
+    expect(css).not.toMatch(/\.lp \.lp-figure span \{/);
+  });
   it('panneaux de couches du lot 2 en feuille basse sur mobile', () => {
     const mobile = /@media \(max-width: 768px\) \{\s*([^{]*)\{\s*position: fixed !important;/.exec(css)?.[1] ?? '';
     for (const c of ['.hydraulic-panel-modal', '.eolien-panel-modal', '.drom-energy-panel-modal']) expect(mobile).toContain(c);
