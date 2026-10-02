@@ -8,6 +8,7 @@ export const ROUTES = {
   '/api/copernicus': () => import('./_handlers/copernicus.js'),
   '/api/energy/biogas-sites': () => import('./_handlers/energy/biogas-sites.js'),
   '/api/energy/biogas': () => import('./_handlers/energy/biogas.js'),
+  '/api/energy/drom-live': () => import('./_handlers/energy/drom-live.js'),
   '/api/energy/drom': () => import('./_handlers/energy/drom.js'),
   '/api/energy/ecowatt-signal': () => import('./_handlers/energy/ecowatt-signal.js'),
   '/api/energy/ecowatt': () => import('./_handlers/energy/ecowatt.js'),

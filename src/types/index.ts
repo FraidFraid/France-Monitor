@@ -2760,3 +2760,31 @@ export interface RadarColumnProfile {
 export type RadarColumnResult =
   | { readonly kind: 'profile'; readonly profile: RadarColumnProfile }
   | { readonly kind: 'hors-couverture' };
+
+// ═══ DROM et Corse : production par filière en temps réel (EDF SEI, spec lot 2 § 2.2) ═══
+export type DromLiveCode = 'RE' | 'GP' | 'MQ' | 'GF' | 'COR';
+export type DromLiveSector = 'coal' | 'oil' | 'turbine' | 'bio' | 'geothermal' | 'hydro' | 'solar' | 'wind' | 'storage' | 'links' | 'other';
+/** MW signés (négatif : stockage en charge, export par les liaisons, auxiliaires) ; null = filière non publiée. */
+export type DromLiveMix = Record<DromLiveSector, number | null>;
+export interface DromLivePoint { at: number; totalMw: number | null }
+export interface DromLiveTerritory {
+  code: DromLiveCode;
+  name: string;
+  /** « UTC+4 », « UTC−4 », « UTC−3 », « heure de Paris ». */
+  utcOffsetLabel: string;
+  /** Fuseau IANA de l'heure locale. */
+  timeZone: string;
+  state: 'ok' | 'error';
+  /** Message interne, jamais affiché. */
+  error: string | null;
+  /** Heure de la donnée (ms epoch) ; null en erreur. */
+  dataTime: number | null;
+  /** Statut publié par EDF (« Estimé ») ; null s'il n'est pas publié (Guyane). */
+  status: string | null;
+  totalMw: number | null;
+  mix: DromLiveMix;
+  renewableSharePct: number | null;
+  /** Journée locale de la dernière donnée, ordre croissant. */
+  day: DromLivePoint[];
+}
+export interface DromLiveResponse { fetchedAt: number; territories: DromLiveTerritory[] }
