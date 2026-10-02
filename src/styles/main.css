@@ -8947,7 +8947,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-index { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--fmk-rule); }
 .lp .lp-index .fmk-meter-label, .lp .lp-index .fmk-meter-v { color: var(--text-primary); font-size: 14.5px; font-weight: 600; }
 .lp .lp-index .fmk-bar { height: 8px; }
-.lp .lp-index .fmk-meter { grid-template-columns: 11rem minmax(0, 1fr) 3.5rem; }
+.lp .lp-index .fmk-meter { grid-template-columns: 13rem minmax(0, 1fr) 3.5rem; }
 .lp .lp-trend--bad { color: var(--sev-red); }
 .lp .lp-trend--good { color: var(--sev-green); }
 .lp .lp-state { padding: 18px 0; color: var(--text-secondary); text-align: center; }

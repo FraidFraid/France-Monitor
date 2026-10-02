@@ -24,6 +24,8 @@ export interface GridViewInput {
 
 const PARIS = 'Europe/Paris';
 const MINUS = '−';
+/** Demi-seuil de retard éCO2mix : freshnessSegment signale « en retard » au-delà de deux fois cette durée (45 min). */
+const ECO2MIX_LATE_PERIOD_MS = 22.5 * 60_000;
 
 // ── Formats ───────────────────────────────────────────────────────────────────
 
@@ -81,20 +83,26 @@ export function keepValuesTogether(text: string): string {
   return text.replace(/(\d) (GW|MW|%|g CO₂\/kWh)/g, (_m, d: string, unit: string) => `${d}\u00a0${unit.replace(' ', '\u00a0')}`);
 }
 
+/** Comparaison de la consommation à la prévision RTE du jour ; seuil sur l'écart brut (2,9 % reste « conforme »). */
+function forecastComparison(conso: number, forecast: number | null): string {
+  if (forecast === null || !Number.isFinite(forecast) || forecast === 0) return '';
+  const rawGap = ((conso - forecast) / forecast) * 100;
+  const gap = Math.abs(Math.round(rawGap));
+  if (Math.abs(rawGap) < 3) return 'conforme à la prévision';
+  return rawGap > 0 ? `supérieure de ${gap} % à la prévision` : `inférieure de ${gap} % à la prévision`;
+}
+
+/** Gros chiffre du panneau : la consommation et son unité ; la comparaison à la prévision passe dessous. */
+export function consumptionFigure(g: GridSnapshot): { value: string; caption: string } {
+  const conso = g.consumptionMw;
+  if (conso === null || !Number.isFinite(conso)) return { value: 'n.d.', caption: 'consommation' };
+  const cmp = forecastComparison(conso, g.forecastMw);
+  const caption = cmp && g.forecastMw !== null ? `consommation · ${cmp} (${formatGw(g.forecastMw)})` : 'consommation';
+  return { value: keepValuesTogether(formatGw(conso)), caption: keepValuesTogether(caption) };
+}
+
 export function gridLead(g: GridSnapshot): string {
   const parts: string[] = [];
-  const conso = g.consumptionMw;
-  if (conso !== null && Number.isFinite(conso)) {
-    let cmp = '';
-    if (g.forecastMw !== null && Number.isFinite(g.forecastMw) && g.forecastMw !== 0) {
-      // Seuil sur l'écart brut : on n'arrondit que pour l'affichage (2,9 % reste « conforme »).
-      const rawGap = ((conso - g.forecastMw) / g.forecastMw) * 100;
-      const gap = Math.round(rawGap);
-      cmp = Math.abs(rawGap) < 3 ? 'conforme à la prévision'
-        : rawGap > 0 ? `supérieure de ${Math.abs(gap)} % à la prévision` : `inférieure de ${Math.abs(gap)} % à la prévision`;
-    }
-    parts.push(cmp ? `Consommation de ${formatGw(conso)}, ${cmp}.` : `Consommation de ${formatGw(conso)}.`);
-  }
   const { total, lowCarbonPct } = mixTotals(g);
   if (total > 0 && lowCarbonPct !== null) {
     const co2 = g.co2gPerKwh !== null && Number.isFinite(g.co2gPerKwh) ? `, ${Math.round(g.co2gPerKwh)} g CO₂/kWh` : '';
@@ -415,7 +423,8 @@ export function buildGridView(input: GridViewInput): LayerView {
     first = 'Écowatt : signal indisponible';
   }
   const status = [first];
-  if (g) status.push(freshnessSegment(g.dataTime, now, 15 * 60_000));
+  // éCO2mix : pas de 15 min publié ~20 min après ; « en retard » au-delà de 45 min (2 × 22,5 min).
+  if (g) status.push(freshnessSegment(g.dataTime, now, ECO2MIX_LATE_PERIOD_MS));
   status.push('RTE, ODRÉ');
 
   let lead: string | null = null;
@@ -428,7 +437,7 @@ export function buildGridView(input: GridViewInput): LayerView {
   }
 
   return {
-    head: { theme: 'Énergie', title: 'Réseau électrique', level, status, lead },
+    head: { theme: 'Énergie', title: 'Réseau électrique', figure: g ? consumptionFigure(g) : null, level, status, lead },
     sections: [
       ecowattSection(input, todayDay, upcoming, lastDay),
       consumptionSection(input, g),

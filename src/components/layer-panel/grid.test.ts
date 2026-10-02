@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EcowattResponse, GridSnapshot, EcowattOfficialDay } from '../../types/index.ts';
-import { buildGridView, formatGw, gridLead, hourLevel, importDependencyIndex, importDependencyLevel, rangesText, riskWindow } from './grid.ts';
+import { buildGridView, consumptionFigure, formatGw, gridLead, hourLevel, importDependencyIndex, importDependencyLevel, rangesText, riskWindow } from './grid.ts';
 import { renderLayerView } from './frame.ts';
 
 const NOW = Date.parse('2026-10-02T05:00:00Z'); // 07:00 Paris
@@ -26,20 +26,24 @@ function data(over: Partial<EcowattResponse> = {}): EcowattResponse {
 const html = (d: EcowattResponse | null): string => renderLayerView('powerGrid', buildGridView({ data: d, space: null, now: NOW, open }));
 
 describe('vue Réseau électrique', () => {
-  it('synthèse : conforme sous 3 % d’écart, production, bas-carbone, CO2, export', () => {
+  it('gros chiffre : consommation avec son unité, comparaison à la prévision en légende (seuil brut 3 %)', () => {
     const NB = '\u00a0';
-    expect(gridLead(GRID)).toBe(`Consommation de 40,6${NB}GW, conforme à la prévision. Production de 44,2${NB}GW, 91${NB}% bas-carbone, 50${NB}g${NB}CO₂/kWh. La France exporte 3,7${NB}GW.`);
+    expect(consumptionFigure(GRID)).toEqual({ value: `40,6${NB}GW`, caption: `consommation · conforme à la prévision (41,2${NB}GW)` });
     // Seuil sur l'écart brut : 2,9 % reste conforme, 3,0 % ne l'est plus.
-    expect(gridLead({ ...GRID, consumptionMw: 41200 * 1.029, forecastMw: 41200 })).toContain('conforme à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 41200 * 1.03, forecastMw: 41200 })).toContain('supérieure de 3\u00a0% à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 42436, forecastMw: 41200 })).toContain('supérieure de 3\u00a0% à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 39964, forecastMw: 41200 })).toContain('inférieure de 3\u00a0% à la prévision');
-    expect(gridLead({ ...GRID, netImportMw: 1500 })).toContain('La France importe 1,5\u00a0GW.');
+    expect(consumptionFigure({ ...GRID, consumptionMw: 41200 * 1.029, forecastMw: 41200 })?.caption).toContain('conforme à la prévision');
+    expect(consumptionFigure({ ...GRID, consumptionMw: 41200 * 1.03, forecastMw: 41200 })?.caption).toContain(`supérieure de 3${NB}% à la prévision`);
+    expect(consumptionFigure({ ...GRID, consumptionMw: 39964, forecastMw: 41200 })?.caption).toContain(`inférieure de 3${NB}% à la prévision`);
+    expect(consumptionFigure({ ...GRID, forecastMw: null })).toEqual({ value: `40,6${NB}GW`, caption: 'consommation' });
+    expect(consumptionFigure({ ...GRID, consumptionMw: null })).toEqual({ value: 'n.d.', caption: 'consommation' });
   });
-  it('synthèse sans prévision ni CO2 : rien d’inventé', () => {
+  it('synthèse : production, bas-carbone, CO2, export ; la consommation est dans le gros chiffre', () => {
+    const NB = '\u00a0';
+    expect(gridLead(GRID)).toBe(`Production de 44,2${NB}GW, 91${NB}% bas-carbone, 50${NB}g${NB}CO₂/kWh. La France exporte 3,7${NB}GW.`);
+    expect(gridLead({ ...GRID, netImportMw: 1500 })).toContain(`La France importe 1,5${NB}GW.`);
+  });
+  it('synthèse sans CO2 : rien d’inventé', () => {
     const lead = gridLead({ ...GRID, forecastMw: null, co2gPerKwh: null });
-    expect(lead).toContain('Consommation de 40,6\u00a0GW.');
-    expect(lead).not.toMatch(/prévision|CO₂|NaN|undefined/);
+    expect(lead).not.toMatch(/Consommation|prévision|CO₂|NaN|undefined/);
   });
   it('fenêtre de risque Écowatt et niveaux horaires', () => {
     const hours = Array(24).fill(1) as Array<0 | 1 | 2 | 3>;
@@ -63,6 +67,12 @@ describe('vue Réseau électrique', () => {
     const v = buildGridView({ data: data(), space: null, now: NOW, open });
     expect(v.head).toMatchObject({ theme: 'Énergie', title: 'Réseau électrique', level: 'vert' });
     expect(v.head.status).toEqual(['Écowatt : pas d’alerte', 'données de 06:45', 'RTE, ODRÉ']);
+    expect(v.head.figure).toEqual({ value: '40,6\u00a0GW', caption: 'consommation · conforme à la prévision (41,2\u00a0GW)' });
+  });
+  it('éCO2mix « en retard » au-delà de 45 min (pas 15 min + délai de publication), pas avant', () => {
+    const at = (ageMin: number) => buildGridView({ data: data({ grid: { ...GRID, dataTime: NOW - ageMin * 60_000 } }), space: null, now: NOW, open }).head.status[1];
+    expect(at(40)).not.toContain('en retard');
+    expect(at(46)).toContain('(en retard)');
   });
   it('repli ODRÉ J-1 : pastille grise et signal différé', () => {
     const v = buildGridView({ data: data({ official: { source: 'odre', generatedAt: null, days: [green('2026-10-01')] } }), space: null, now: NOW, open });
