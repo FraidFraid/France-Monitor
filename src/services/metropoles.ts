@@ -59,7 +59,7 @@ export function latestUrl(offset: number): string {
         '?limit=100' + `&offset=${offset}` +
         '&select=code_insee_epci,libelle_metropole,date_heure,consommation' +
         '&where=consommation%20is%20not%20null' +
-        '&order_by=-date_heure',
+        '&order_by=-date_heure,code_insee_epci',
     );
 }
 
@@ -69,11 +69,19 @@ export function j1Instant(dateHeure: string): string | null {
     return Number.isFinite(t) ? new Date(t - 24 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, 'Z') : null;
 }
 
-/** URL ODRE (via proxy) des valeurs J-1 : un instant exact par heure de donnée distincte (donnée ODRÉ publiée par lot quotidien, heures différentes selon les métropoles). */
-export function buildJ1Url(dataTimes: string[]): string | null {
-    const instants = [...new Set(dataTimes.map(j1Instant).filter((x): x is string => x !== null))];
-    if (instants.length === 0) return null;
-    const where = 'consommation is not null AND (' + instants.map((i) => `date_heure = date'${i}'`).join(' OR ') + ')';
+/** URL ODRE (via proxy) des valeurs J-1 : pour chaque heure de donnée, l'instant exact 24 h plus tôt et les seules métropoles concernées
+ * (donnée publiée par lot quotidien, heures différentes selon les métropoles ; un filtre par instant seul renverrait toutes les métropoles à chaque instant et dépasserait la limite). */
+export function buildJ1Url(latest: ReadonlyArray<{ code: string; dateHeure: string }>): string | null {
+    const codesByInstant = new Map<string, Set<string>>();
+    for (const { code, dateHeure } of latest) {
+        const instant = j1Instant(dateHeure);
+        if (!instant || !/^\d+$/.test(code)) continue;
+        codesByInstant.set(instant, (codesByInstant.get(instant) ?? new Set<string>()).add(code));
+    }
+    if (codesByInstant.size === 0) return null;
+    const clauses = [...codesByInstant].map(([instant, codes]) =>
+        `(date_heure = date'${instant}' AND code_insee_epci in (${[...codes].map((c) => `'${c}'`).join(',')}))`);
+    const where = 'consommation is not null AND (' + clauses.join(' OR ') + ')';
     const upstream = ODRE_BASE +
         '?limit=100' +
         '&select=code_insee_epci,date_heure,consommation' +
@@ -86,7 +94,7 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 /** Fetch silencieux des données J-1 → Map<code, consumptionMW>, chaque métropole comparée à SA propre heure de donnée − 24 h. */
 async function fetchJ1Snapshot(latest: Map<string, { date_heure: string }>, fetchFn: FetchFn): Promise<Map<string, number>> {
     try {
-        const url = buildJ1Url([...latest.values()].map((v) => v.date_heure));
+        const url = buildJ1Url([...latest].map(([code, v]) => ({ code, dateHeure: v.date_heure })));
         if (!url) return new Map();
         const resp = await fetchFn(url, { signal: AbortSignal.timeout(8_000) });
         if (!resp.ok) return new Map();
@@ -130,11 +138,13 @@ export async function fetchMetropoles(): Promise<MetropoleConsumption[]> {
 /** Dernières valeurs puis J-1 à la même heure de donnée (sans cache ; `fetchFn` injectable pour les tests). */
 export async function loadMetropoles(fetchFn: FetchFn): Promise<MetropoleConsumption[]> {
     // Deux pages de 100 : le lot quotidien s'arrête à des heures différentes selon les métropoles (21:45 à 00:00 UTC), 100 records n'atteignent pas toutes les métropoles.
-    const pages = await Promise.all([0, 100].map(async (offset) => {
+    // Seule la première page est indispensable : un échec de la seconde laisse les métropoles déjà reçues.
+    const fetchPage = async (offset: number): Promise<OdreRecord[]> => {
         const resp = await fetchFn(latestUrl(offset), { signal: AbortSignal.timeout(10_000) });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return (await resp.json() as { results: OdreRecord[] }).results ?? [];
-    }));
+    };
+    const pages = await Promise.all([fetchPage(0), fetchPage(100).catch((): OdreRecord[] => [])]);
 
     // Garde uniquement le record le plus récent par métropole
     const latestByCode = new Map<string, { date_heure: string; consommation: number }>();
