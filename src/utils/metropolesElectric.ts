@@ -8,6 +8,7 @@
  */
 
 import type { MetropoleConsumption } from '../services/metropoles.ts';
+import { levelHex, type VigilanceLevel } from '../services/vigilance.ts';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -41,13 +42,22 @@ export interface MetropoleDisplayData {
 const THRESHOLD_LARGE  = 0.6;
 const THRESHOLD_MEDIUM = 0.2;
 
-/**
- * Couleurs RGBA par classe — alpha encodé dans la chaîne couleur.
- */
+/** Classe de charge → niveau (spec lot 2 § 3.5) : faible vert, moyenne orange, forte rouge. */
+export const METRO_LEVEL: Record<MetroleSizeClass, VigilanceLevel> = { small: 'vert', medium: 'orange', large: 'rouge' };
+export const METRO_LEGEND_LABELS: Record<MetroleSizeClass, string> = {
+  small: 'Charge relative faible', medium: 'Charge relative moyenne', large: 'Charge relative forte',
+};
+
+function rgba(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/** Couleurs de la carte, dérivées des jetons de niveau (--sev-*) : MapLibre n'accepte pas var(). */
 export const METROPOLE_COLORS: Record<MetroleSizeClass, { color: string; glowColor: string }> = {
-  large:  { color: 'rgba(255,59,48,0.82)',  glowColor: 'rgba(255,59,48,0.24)' },
-  medium: { color: 'rgba(255,149,0,0.78)',  glowColor: 'rgba(255,149,0,0.22)' },
-  small:  { color: 'rgba(52,199,89,0.74)',  glowColor: 'rgba(52,199,89,0.20)' },
+  large: { color: rgba(levelHex(METRO_LEVEL.large), 0.82), glowColor: rgba(levelHex(METRO_LEVEL.large), 0.24) },
+  medium: { color: rgba(levelHex(METRO_LEVEL.medium), 0.78), glowColor: rgba(levelHex(METRO_LEVEL.medium), 0.22) },
+  small: { color: rgba(levelHex(METRO_LEVEL.small), 0.74), glowColor: rgba(levelHex(METRO_LEVEL.small), 0.2) },
 };
 
 const VISUAL: Record<MetroleSizeClass, { radius: number }> = {

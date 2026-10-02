@@ -6088,6 +6088,7 @@ button.header-quality-link {
   .hydraulic-panel-modal,
   .eolien-panel-modal,
   .drom-energy-panel-modal,
+  .metro-load-panel-modal,
   .fm-floating-panel {
     position: fixed !important;
     top: auto !important;
@@ -6118,6 +6119,7 @@ button.header-quality-link {
   .hydraulic-panel-modal::before,
   .eolien-panel-modal::before,
   .drom-energy-panel-modal::before,
+  .metro-load-panel-modal::before,
   .fm-floating-panel::before {
     content: '';
     flex-shrink: 0;
@@ -8765,6 +8767,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .eolien-panel-modal,
   #app.ui-v2 .hydraulic-panel-modal,
   #app.ui-v2 .drom-energy-panel-modal,
+  #app.ui-v2 .metro-load-panel-modal,
   #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .environment-panel-modal,
   body:has(#app.ui-v2) > .fires-panel-modal,

@@ -25,7 +25,7 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
-import { scoreLevel } from './services/vigilance.ts';
+import { levelHex, scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
@@ -91,7 +91,9 @@ import { ecowattStatusNote, ecowattToday } from './services/ecowatt-official.ts'
 import { fetchBiogasProduction } from './services/biogas.ts';
 import { fetchBiomethaneSites } from './services/biogas-sites.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
-import { fetchMetropoles } from './services/metropoles.ts';
+import { fetchMetropoles, type MetropoleConsumption } from './services/metropoles.ts';
+import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts';
+import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchHospitalsData } from './services/hospitals.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
@@ -505,6 +507,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'hydroBackbone', label: 'Stress hydro', icon: 'droplet', layerKeys: ['hydroBackbone'] },
   { id: 'oilNetwork', label: 'Pétrole', icon: 'fuel', layerKeys: ['oilNetwork'] },
   { id: 'windMonitor', label: 'Éolien', icon: 'wind', layerKeys: ['windMonitor'] },
+  { id: 'metroLoad', label: 'Charge métropolitaine', icon: 'building-2', layerKeys: ['metroLoad'] },
   { id: 'health', label: 'Santé', icon: 'stethoscope', layerKeys: ['health', 'healthOscour', 'healthApl', 'hospitals'] },
   { id: 'trafficRoad', label: 'Trafic routier', icon: 'car-front', layerKeys: ['trafficRoad'] },
   { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
@@ -941,9 +944,9 @@ const METROPOLES_ELECTRIC_LEGEND: LegendCategory = {
   title: 'Charge métropolitaine',
   type: 'categorical',
   items: [
-    { id: 'metro-low', label: 'Consommation relative faible', color: '#34C759', shape: 'circle' },
-    { id: 'metro-medium', label: 'Consommation relative moyenne', color: '#FF9500', shape: 'circle' },
-    { id: 'metro-high', label: 'Consommation relative forte', color: '#FF3B30', shape: 'circle' },
+    { id: 'metro-low', label: METRO_LEGEND_LABELS.small, color: levelHex(METRO_LEVEL.small), shape: 'circle' },
+    { id: 'metro-medium', label: METRO_LEGEND_LABELS.medium, color: levelHex(METRO_LEVEL.medium), shape: 'circle' },
+    { id: 'metro-high', label: METRO_LEGEND_LABELS.large, color: levelHex(METRO_LEVEL.large), shape: 'circle' },
   ],
   source: {
     label: 'ODRE / eco2mix-metropoles-tr',
@@ -1439,6 +1442,8 @@ export class App {
   private dromEnergyPanel: DromEnergyPanel | null = null;
   private hydraulicPanel: HydraulicPanel | null = null;
   private eolienPanel: EolienPanel | null = null;
+  private metroLoadPanel: MetroLoadPanel | null = null;
+  private currentMetropoles: MetropoleConsumption[] | null = null;
   private transportPanel: TransportPanel | null = null;
   private sncfFullCoverageLoaded = false;
   private firesPanel: FiresPanel | null = null;
@@ -1609,6 +1614,7 @@ export class App {
   private dromEnergyPanelPromise: Promise<void> | null = null;
   private hydraulicPanelPromise: Promise<void> | null = null;
   private eolienPanelPromise: Promise<void> | null = null;
+  private metroLoadPanelPromise: Promise<void> | null = null;
   private healthPanelsPromise: Promise<void> | null = null;
   private firesPanelPromise: Promise<void> | null = null;
   private weatherRadarPanelPromise: Promise<void> | null = null;
@@ -1807,6 +1813,7 @@ export class App {
         this.container.querySelector<HTMLElement>('.energy-panel-modal'),
         this.container.querySelector<HTMLElement>('.hydraulic-panel-modal'),
         this.container.querySelector<HTMLElement>('.eolien-panel-modal'),
+        this.container.querySelector<HTMLElement>('.metro-load-panel-modal'),
         this.container.querySelector<HTMLElement>('.gas-panel-modal'),
         this.container.querySelector<HTMLElement>('.oil-panel-modal'),
       ].filter((panel): panel is HTMLElement => this.isPanelVisible(panel));
@@ -3464,6 +3471,7 @@ export class App {
       'hydroBackbone',
       'oilNetwork',
       'windMonitor',
+      'metroLoad',
       'health',
       'healthOscour',
       'healthApl',
@@ -3879,6 +3887,14 @@ export class App {
         this.eolienPanel?.hide();
       }
       this.layoutEnergyFloatingPanels();
+    } else if (key === 'metroLoad') {
+      if (this.activeLayers.metroLoad) {
+        void this.loadMetropoles();
+        this.metroLoadPanel?.show(this.currentMetropoles, this.nationalConsumptionMw());
+      } else {
+        this.metroLoadPanel?.hide();
+      }
+      this.layoutEnergyFloatingPanels();
     } else if (key === 'gasNetwork') {
       if (this.activeLayers.gasNetwork) {
         if (!this.currentGasData) this.loadGas(); // lazy-load on first enable
@@ -4036,6 +4052,27 @@ export class App {
       }
     });
     return this.eolienPanelPromise;
+  }
+
+  private ensureMetroLoadPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.metroLoadPanelPromise ??= import('./components/MetroLoadPanel.ts').then(({ MetroLoadPanel }) => {
+      const panel = new MetroLoadPanel(container);
+      panel.setOnClose(() => this.closeEnergyLayer('metroLoad'));
+      panel.mount();
+      this.metroLoadPanel = panel;
+      if (this.activeLayers.metroLoad) {
+        panel.show(this.currentMetropoles, this.nationalConsumptionMw());
+        this.layoutEnergyFloatingPanels();
+      }
+    });
+    return this.metroLoadPanelPromise;
+  }
+
+  /** Consommation nationale éCO2mix (MW) : dénominateur de la part des métropoles, carte et panneau. */
+  private nationalConsumptionMw(): number | null {
+    return this.currentEcowattResponse?.grid?.consumptionMw ?? null;
   }
 
   private ensureHealthPanels(): Promise<void> {
@@ -4373,6 +4410,7 @@ export class App {
       case 'dromEnergy': return [this.ensureDromEnergyPanel()];
       case 'hydroBackbone': return [this.ensureHydraulicPanel()];
       case 'windMonitor': return [this.ensureEolienPanel()];
+      case 'metroLoad': return [this.ensureMetroLoadPanel()];
       case 'health':
       case 'healthApl':
       case 'healthOscour':
@@ -4428,6 +4466,7 @@ export class App {
       case 'hydroBackbone': return this.hydraulicPanel;
       case 'oilNetwork': return this.oilPanel;
       case 'windMonitor': return this.eolienPanel;
+      case 'metroLoad': return this.metroLoadPanel;
       case 'health': return this.nationalHealthPanel;
       case 'trafficRoad': return this.trafficPanel;
       // MaritimePanel has a private `isVisible` field of its own (unrelated
@@ -6632,13 +6671,14 @@ export class App {
   private async loadMetropoles(): Promise<void> {
     this.statusPanel?.updateSource('Métropoles', { status: 'loading', lastUpdate: null });
     const metropoles = await fetchMetropoles();
+    this.currentMetropoles = metropoles;
     if (metropoles.length > 0) {
-      const nationalLoadMW = this.currentEcowattResponse?.national.total;
-      this.mapContainer?.updateMetropoles(metropoles, nationalLoadMW);
+      this.mapContainer?.updateMetropoles(metropoles, this.nationalConsumptionMw() ?? undefined);
       this.statusPanel?.updateSource('Métropoles', { status: 'ok', lastUpdate: new Date() });
     } else {
       this.statusPanel?.updateSource('Métropoles', { status: 'stale', lastUpdate: new Date() });
     }
+    this.metroLoadPanel?.update(metropoles, this.nationalConsumptionMw());
   }
 
   private async loadOutages(): Promise<void> {
