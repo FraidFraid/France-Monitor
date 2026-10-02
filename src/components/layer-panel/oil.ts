@@ -165,18 +165,36 @@ function activeRefineries(data: OilDashboard): number {
   return data.refineries.filter((r) => r.status === 'active').length;
 }
 
-function tensionSentence(tension: FuelTensionDashboard | null): string | null {
+/** Au-delà de 24 h, des relevés de stations figés ne disent plus rien de la tension (prix non mis à jour = « anomalies »). */
+const STALE_TENSION_MS = 24 * 3_600_000;
+
+/** Heure des données de tension : relevé médian des stations (`generatedAt − médiane`), sinon l'heure de lecture. */
+function tensionDataTime(tension: FuelTensionDashboard): number {
+  const generated = Date.parse(tension.generatedAt);
+  const median = tension.national.medianUpdateAgeMinutes;
+  return median === null || !Number.isFinite(median) ? generated : generated - median * 60_000;
+}
+
+function tensionStale(tension: FuelTensionDashboard, now: number): boolean {
+  const t = tensionDataTime(tension);
+  return Number.isFinite(t) && now - t > STALE_TENSION_MS;
+}
+
+function tensionSentence(tension: FuelTensionDashboard | null, now: number): string | null {
   if (!tension) return null;
   if (tension.degraded) return 'Signal carburants en mode dégradé.';
+  if (tensionStale(tension, now)) {
+    return `Relevés des stations anciens (${absoluteTime(tensionDataTime(tension), now, 'fr')}) : la tension n’est pas évaluée.`;
+  }
   const { tensionLevel: level, anomalyShare } = tension.national;
   if (level === 'LOW') return 'Pas de tension d’approvisionnement.';
   return `Tension ${TENSION_WORD[level]} sur les carburants : ${formatPct(anomalyShare, 1)} de stations en anomalie.`;
 }
 
-function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null): string {
+function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: number): string {
   const active = activeRefineries(data);
   return [
-    tensionSentence(tension),
+    tensionSentence(tension, now),
     `Stocks stratégiques : ${data.stocks.nationalStocksDays} jours.`,
     `${active} ${plural(active, 'raffinerie')} sur ${data.refineries.length} en activité.`,
   ].filter((s): s is string => s !== null).join(' ');
@@ -186,6 +204,9 @@ function statusOf(tension: FuelTensionDashboard | null, now: number): string[] {
   if (!tension) return ['tension carburants : chargement…', 'prix-carburants'];
   const generated = Date.parse(tension.generatedAt);
   const median = tension.national.medianUpdateAgeMinutes;
+  if (tensionStale(tension, now)) {
+    return ['tension non évaluée : relevés anciens', `données de ${absoluteTime(tensionDataTime(tension), now, 'fr')} (en retard)`, 'prix-carburants'];
+  }
   const time = median === null || !Number.isFinite(median)
     ? `lu à ${absoluteTime(generated, now, 'fr')}`
     : `données de ${absoluteTime(generated - median * 60_000, now, 'fr')}`;
@@ -195,7 +216,7 @@ function statusOf(tension: FuelTensionDashboard | null, now: number): string[] {
 function headOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: number): LayerView['head'] {
   const { price, delta } = gasolePrice(data, tension);
   const caption = 'gazole, moyenne nationale';
-  const level = tension === null ? null : tension.degraded ? 'nd' : tensionLevel(tension.national.tensionLevel);
+  const level = tension === null ? null : tension.degraded || tensionStale(tension, now) ? 'nd' : tensionLevel(tension.national.tensionLevel);
   return {
     theme: THEME,
     title: TITLE,
@@ -206,7 +227,7 @@ function headOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: n
     },
     level,
     status: statusOf(tension, now),
-    lead: leadOf(data, tension),
+    lead: leadOf(data, tension, now),
   };
 }
 
@@ -447,14 +468,14 @@ function harmonizedSection(input: OilViewInput, data: OilDashboard): FicheSectio
   const products = h.oilProducts.filter((p) => p.demandKbd !== null || p.importsKbd !== null)
     .map((p) => kvRow(productFr(p.product), `demande ${valueHtml(kbd(p.demandKbd))} · imports ${valueHtml(kbd(p.importsKbd))}`)).join('');
   const lng = h.gasLngSharePct;
-  const html = (months.length > 0 ? kvRow('Mois couverts', escapeHtml(months.join(' · '))) : '')
+  const html = (months.length > 0 ? `<div class="fmk-sub">${escapeHtml(months.join(' · '))}</div>` : '')
     + products
     + (h.crudeImportsKbd !== null ? kvRow('Brut importé', valueHtml(kbd(h.crudeImportsKbd))) : '')
     + (h.gasTotalDemandTj !== null ? kvRow('Gaz', valueHtml(`${frNumber(h.gasTotalDemandTj / 36_000, 1)}${NBSP}Gm³/an`)) : '')
     + (lng !== null
       ? '<div class="fmk-sub">Importations de gaz</div>'
-        + barRow({ label: 'Part du GNL', pct: lng, value: formatPct(lng), color: 'var(--cat-lng)', dot: false })
-        + barRow({ label: 'Part des gazoducs', pct: Math.max(0, 100 - lng), value: formatPct(Math.max(0, 100 - lng)), color: 'color-mix(in srgb, var(--cat-lng) 45%, transparent)', dot: false })
+        + barRow({ label: 'Part du GNL', pct: lng, value: formatPct(lng), color: 'var(--cat-lng)', dot: true })
+        + barRow({ label: 'Part des gazoducs', pct: Math.max(0, 100 - lng), value: formatPct(Math.max(0, 100 - lng)), color: 'color-mix(in srgb, var(--cat-lng) 45%, transparent)', dot: true })
       : '')
     // Une seule note ici ; la mise en garde complète et la fraîcheur détaillée restent dans « Méthode et sources ».
     + note(HARMONIZED_TEXT);

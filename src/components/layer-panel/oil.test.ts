@@ -197,8 +197,21 @@ describe('vue Pétrole', () => {
     expect(html.match(/décembre 2025/g)).toHaveLength(1);
     expect(html).toContain('UFIP août 2026');
     expect(html.match(/fmk-note/g)).toHaveLength(1);
+    expect(html).not.toContain('Mois couverts');
     expect(html).toMatch(/Part des gazoducs[^]*color-mix\(in srgb, var\(--cat-lng\) 45%/);
     const all = renderLayerView('oilNetwork', view({ data })) + renderLayerView('oilNetwork', v);
     expect(all).not.toMatch(/au en |\b2025-12\b|\blive\b/);
+  });
+  it('relevés de stations de plus de 24 h : tension non évaluée, pastille grise, « en retard », pas de « Rouge »', () => {
+    const stale = tensionFixture({ generatedAt: new Date(OIL_NOW - 5 * 86_400_000).toISOString() });
+    const crit = { ...stale, national: { ...stale.national, tensionLevel: 'CRITICAL' as const, anomalyShare: 87 } };
+    const v = view({ tension: crit });
+    expect(v.head.level).toBe('nd');
+    expect(v.head.status[0]).toBe('tension non évaluée : relevés anciens');
+    expect(v.head.status[1]).toMatch(/^données de \d\d\/\d\d \d\d:\d\d \(en retard\)$/);
+    expect(v.head.lead).toContain('la tension n’est pas évaluée');
+    expect(v.head.lead).not.toContain('Tension critique');
+    // Relevés récents : la tension reste évaluée.
+    expect(view({ tension: { ...tensionFixture(), national: { ...tensionFixture().national, tensionLevel: 'CRITICAL' as const } } }).head.level).toBe('rouge');
   });
 });
