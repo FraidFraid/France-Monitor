@@ -567,12 +567,12 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Risque d\'approvisionnement carburant',
-    `Tension carburant ${fuelWord}${oilWord ? ` · stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
+    `Tension carburant ${fuelWord}${oilWord ? ` · stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en rupture temporaire.`,
     topDepts.length > 0 ? topDepts : ['France'],
     [
       `Tension carburant nationale : ${fuelWord}`,
       ...(oilTense && oilWord ? [`Vigilance stocks pétroliers : ${oilWord} (score ${oilVigilance}/100)`] : []),
-      ...(anomalyShare > 5 ? [`${Math.round(anomalyShare)}% des stations en anomalie tarifaire`] : []),
+      ...(anomalyShare > 5 ? [`${Math.round(anomalyShare)}% des stations en rupture temporaire`] : []),
     ],
     [
       action('Surveiller les niveaux de stocks SPE', 'Analyste énergie', 'monitor'),

@@ -69,4 +69,27 @@ describe('tension carburants : ruptures, pas prix stables', () => {
     ], NOW);
     expect(d.national.latestUpdateAt).toBe(new Date(NOW - 0.5 * 3_600_000).toISOString());
   });
+
+  it('département dont tous les prix ont plus de 5 jours, sans rupture : reste LOW', () => {
+    const stations = Array.from({ length: 20 }, () => station('13', { gazole: { ageH: 200 }, e10: { ageH: 250 } }));
+    const d = buildFuelTensionDashboardFromStations(stations, NOW);
+    expect(d.summaries[0].tensionLevel).toBe('LOW');
+    expect(d.national.tensionLevel).toBe('LOW');
+  });
+
+  it('rupture définitive sur un carburant et temporaire sur un autre : une seule anomalie, station dans le dénominateur', () => {
+    const mixed = station('13', { gazole: { rupture: 'temporaire' }, sp95: { rupture: 'definitive' }, e10: { ageH: 1 } });
+    const fine = station('13', { gazole: { ageH: 1 } });
+    const d = buildFuelTensionDashboardFromStations([mixed, fine], NOW);
+    expect(d.national.stationCount).toBe(2);
+    expect(d.national.anomalyShare).toBe(50);
+    expect(d.summaries[0].stationCount).toBe(2);
+    expect(d.summaries[0].anomalyShare).toBe(50);
+    expect(d.signals.find((s) => s.fuelType === 'sp95')?.stationCount).toBe(0);
+  });
+
+  it('latestUpdateAt n’excède jamais l’heure de lecture', () => {
+    const future = station('13', { gazole: { ageH: -5 } });
+    expect(buildFuelTensionDashboardFromStations([future], NOW).national.latestUpdateAt).toBe(new Date(NOW).toISOString());
+  });
 });

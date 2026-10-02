@@ -36,7 +36,6 @@ export const FUEL_TENSION_THRESHOLDS = {
   mediumAnomalyShare: 6,
   highAnomalyShare: 18,
   criticalAnomalyShare: 35,
-  freshnessEscalationMinutes: 5 * 24 * 60,
 } as const;
 
 interface FuelTensionCacheEntry {
@@ -125,7 +124,7 @@ function buildFreshness(ageMinutes: number | null, timestamp: string | null): Fu
   return { timestamp, ageMinutes, badge: 'QUASI-LIVE' };
 }
 
-function getSignalLevel(deltaCents: number | null, anomalyShare: number, avgUpdateAgeMinutes: number | null): FuelTensionLevel {
+function getSignalLevel(deltaCents: number | null, anomalyShare: number): FuelTensionLevel {
   let rank = 1;
 
   if (deltaCents !== null) {
@@ -137,10 +136,6 @@ function getSignalLevel(deltaCents: number | null, anomalyShare: number, avgUpda
   if (anomalyShare > FUEL_TENSION_THRESHOLDS.criticalAnomalyShare) rank = Math.max(rank, 4);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.highAnomalyShare) rank = Math.max(rank, 3);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.mediumAnomalyShare) rank = Math.max(rank, 2);
-
-  if (avgUpdateAgeMinutes !== null && avgUpdateAgeMinutes > FUEL_TENSION_THRESHOLDS.freshnessEscalationMinutes) {
-    rank = Math.min(4, rank + 1);
-  }
 
   return levelFromRank(rank);
 }
@@ -307,13 +302,13 @@ function sellsAnyMonitoredFuel(station: FuelStation): boolean {
 }
 
 /** Dernier relevé de prix du flux : fraîcheur du flux, distincte de l'âge du prix de chaque station. */
-function latestUpdateAt(stations: FuelStation[]): string | null {
+function latestUpdateAt(stations: FuelStation[], now: number): string | null {
   let latest = -Infinity;
   for (const station of stations) {
     for (const fuelType of FUEL_TYPES) {
       const value = station.fuels[fuelType]?.updatedAt;
       const time = value ? Date.parse(value) : NaN;
-      if (Number.isFinite(time) && time > latest) latest = time;
+      if (Number.isFinite(time) && time > latest) latest = Math.min(time, now);
     }
   }
   return Number.isFinite(latest) ? new Date(latest).toISOString() : null;
@@ -346,7 +341,6 @@ function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], station
     tensionLevel: getSignalLevel(
       maxNumber(summaries.map((summary) => summary.maxDeltaPrice7d), 1),
       anomalyShare,
-      avgUpdateAgeMinutes,
     ),
     avgPrices,
     topDepartments: summaries.slice(0, 5),
@@ -431,7 +425,7 @@ export function buildFuelTensionDashboardFromStations(
         stationCount,
         anomalyShare,
         avgUpdateAgeMinutes,
-        tensionLevel: getSignalLevel(null, anomalyShare, avgUpdateAgeMinutes),
+        tensionLevel: getSignalLevel(null, anomalyShare),
         dataFreshness: buildFreshness(avgUpdateAgeMinutes, lastUpdateTimestamp),
       });
     }
@@ -455,7 +449,7 @@ export function buildFuelTensionDashboardFromStations(
       avgUpdateAgeMinutes,
       deltaPrice7d: null,
       maxDeltaPrice7d: null,
-      tensionLevel: getSignalLevel(null, anomalyShare, avgUpdateAgeMinutes),
+      tensionLevel: getSignalLevel(null, anomalyShare),
       freshness: buildFreshness(avgUpdateAgeMinutes, latestTimestamp),
       fuelSignals,
     });
@@ -471,13 +465,13 @@ export function buildFuelTensionDashboardFromStations(
         : null;
 
       signal.deltaPrice7d = deltaPrice7d;
-      signal.tensionLevel = getSignalLevel(deltaPrice7d, signal.anomalyShare, signal.avgUpdateAgeMinutes);
+      signal.tensionLevel = getSignalLevel(deltaPrice7d, signal.anomalyShare);
       signals.push(signal);
     }
 
     summary.deltaPrice7d = average(summary.fuelSignals.map((signal) => signal.deltaPrice7d), 1);
     summary.maxDeltaPrice7d = maxNumber(summary.fuelSignals.map((signal) => signal.deltaPrice7d), 1);
-    summary.tensionLevel = getSignalLevel(summary.maxDeltaPrice7d, summary.anomalyShare, summary.avgUpdateAgeMinutes);
+    summary.tensionLevel = getSignalLevel(summary.maxDeltaPrice7d, summary.anomalyShare);
   }
 
   summaries.sort(compareSummaries);
@@ -487,7 +481,7 @@ export function buildFuelTensionDashboardFromStations(
     departments: scopeDepartmentCodes,
     signals,
     summaries,
-    national: buildNationalSummary(summaries, stationAnomalyCount, latestUpdateAt(stations)),
+    national: buildNationalSummary(summaries, stationAnomalyCount, latestUpdateAt(stations, now)),
     sourceStatus: stations.length > 0 ? 'ok' : 'stale',
     degraded: stations.length === 0,
     sourceLabel: 'API prix des carburants en France – flux instantané v2 (Ministère de l’Économie)',
