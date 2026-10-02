@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EnergyPanel } from './EnergyPanel.ts';
+import { isLayerPanelOpen } from './layer-panel/frame.ts';
 import type { EcowattResponse } from '../types/index.ts';
 
 afterEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
@@ -15,7 +16,7 @@ function data(): EcowattResponse {
 }
 
 describe('EnergyPanel', () => {
-  it('monte un panneau .lp cache, l\'ouvre avec le cadre commun', () => {
+  it('monte un panneau .lp caché, l\'ouvre avec le cadre commun', () => {
     const c = document.createElement('div'); document.body.appendChild(c);
     const p = new EnergyPanel(c); p.mount();
     const root = c.querySelector('.lp.energy-panel-modal') as HTMLElement;
@@ -38,7 +39,7 @@ describe('EnergyPanel', () => {
     p.show(data()); p.hide({ silent: true });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
-  it('rafraichir garde l\'ouverture des sections choisie par l\'utilisateur', () => {
+  it('rafraîchir garde l\'ouverture des sections choisie par l\'utilisateur', () => {
     const c = document.createElement('div'); document.body.appendChild(c);
     const p = new EnergyPanel(c); p.mount(); p.show(data());
     const d = c.querySelector('details[data-section="layer:powerGrid:production"]') as HTMLDetailsElement;
@@ -46,16 +47,26 @@ describe('EnergyPanel', () => {
     p.show(data());
     expect((c.querySelector('details[data-section="layer:powerGrid:production"]') as HTMLDetailsElement).open).toBe(false);
   });
-  it('meteo spatiale avant ou apres les donnees', () => {
+  it('météo spatiale avant ou après les données', () => {
     const c = document.createElement('div'); document.body.appendChild(c);
     const p = new EnergyPanel(c); p.mount();
     p.updateSpaceWeather({ kpIndex: 1, level: 'quiet', levelLabel: 'Calme', riskFrance: 'Aucun risque', color: '#0f0', fetchedAt: new Date() });
     p.show(data());
     expect(c.querySelector('details[data-section="layer:powerGrid:space"]')?.textContent).toContain('Kp 1 · calme');
   });
-  it('sans donnees : chargement, pas d\'erreur', () => {
+  it('sans données : chargement, pas d\'erreur', () => {
     const c = document.createElement('div'); document.body.appendChild(c);
     const p = new EnergyPanel(c); p.mount(); p.show(null);
     expect(c.textContent).toContain('Chargement des données…');
+  });
+  it('visibilité : détectée par isLayerPanelOpen (pour App.ts:layoutEnergyFloatingPanels)', () => {
+    const c = document.createElement('div'); document.body.appendChild(c);
+    const p = new EnergyPanel(c); p.mount();
+    const root = c.querySelector('.lp.energy-panel-modal') as HTMLElement;
+    expect(isLayerPanelOpen(root)).toBe(false);
+    p.show(data());
+    expect(isLayerPanelOpen(root)).toBe(true);
+    p.hide();
+    expect(isLayerPanelOpen(root)).toBe(false);
   });
 });

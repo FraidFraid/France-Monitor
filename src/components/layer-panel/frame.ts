@@ -130,6 +130,14 @@ export function safeStorage(): SectionStorage | null {
   }
 }
 
+/**
+ * Vérifie si un élément est un panneau de couche ouvert.
+ * Utilisé par `App.ts:isPanelVisible` pour éviter les panneaux fermés dans le calcul d'empilement.
+ */
+export function isLayerPanelOpen(el: HTMLElement): boolean {
+  return el.classList.contains('lp') && el.classList.contains('is-open');
+}
+
 export interface LayerPanelShell { root: HTMLElement; render(view: LayerView): void; destroy(): void }
 
 export function createLayerPanelShell(opts: {

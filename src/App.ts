@@ -12,6 +12,7 @@ import { StatusPanel } from './components/StatusPanel.ts';
 import type { SearchModal } from './components/SearchModal.ts';
 import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
+import { isLayerPanelOpen } from './components/layer-panel/frame.ts';
 import { TransportPanel } from './components/TransportPanel.ts';
 import type { FiresPanel } from './components/FiresPanel.ts';
 import type { TrafficPanel } from './components/TrafficPanel.ts';
@@ -1794,7 +1795,9 @@ export class App {
   }
 
   private isPanelVisible(element: HTMLElement | null): boolean {
-    return !!element && element.style.display !== 'none';
+    if (!element) return false;
+    // Layer panels use CSS class `.lp.is-open`; other panels use inline display.
+    return element.classList.contains('lp') ? isLayerPanelOpen(element) : element.style.display !== 'none';
   }
 
   private layoutEnergyFloatingPanels(): void {

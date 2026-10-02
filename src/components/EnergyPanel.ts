@@ -3,7 +3,7 @@
 import type { EcowattResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from '../services/space-weather.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
-import { createLayerPanelShell, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
+import { createLayerPanelShell, safeStorage, sectionOpenOf, isLayerPanelOpen, type LayerPanelShell } from './layer-panel/frame.ts';
 import { buildGridView } from './layer-panel/grid.ts';
 
 const PANEL_ID = 'powerGrid';
@@ -47,8 +47,7 @@ export class EnergyPanel {
   }
 
   isVisible(): boolean {
-    if (!this.shell) return false;
-    return this.shell.root.classList.contains('is-open');
+    return this.shell ? isLayerPanelOpen(this.shell.root) : false;
   }
 
   private render(): void {
