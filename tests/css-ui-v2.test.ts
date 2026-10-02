@@ -34,6 +34,10 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     for (const m of lpRules) expect(m[2]).not.toContain('fmk-kv-v');
     expect(css).toContain('.lp .lp-lvl--orange { color: var(--sev-orange); }');
   });
+  it('en-tête des panneaux de couches : espace sous la synthèse ou les onglets en marge intérieure (jamais écrasé par la marge du kit)', () => {
+    expect(css).toContain('.lp .lp-head { position: sticky; top: 0; z-index: 1; padding: 16px 18px 14px; background: var(--bg-primary); }');
+    expect(css).not.toContain('.lp .lp-head > :last-child');
+  });
   it('R3 : la légende du gros chiffre ne masque pas la couleur de niveau des valeurs qu’elle contient', () => {
     expect(css).toContain('.lp .lp-figure > span { color: var(--text-secondary); font-size: 13px; }');
     expect(css).not.toMatch(/\.lp \.lp-figure span \{/);
