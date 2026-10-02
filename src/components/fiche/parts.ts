@@ -249,19 +249,24 @@ function renderKitHead(model: FicheModel, lang: Lang): string {
     + `</header>`;
 }
 
-/** Section du kit (id présent) : repliable en <details>, sinon titre simple ; sans id : rendu historique. */
-function renderSection(model: FicheModel, s: FicheSection): string {
-  if (s.id === undefined) return part('fiche-extra', escapeHtml(s.title), s.html);
+/** Section du kit, clé « <key>:<id> » (fiches : clé de fiche ; panneaux de couches : « layer:<panneau> »). */
+export function renderKitSection(key: string, s: FicheSection): string {
   const title = `<h3 class="fiche-part-title fmk-eyebrow">${escapeHtml(s.title)}</h3>`;
   const summary = s.summary ? `<span class="fmk-sum">${s.summary}</span>` : '';
-  const key = escapeHtml(`${model.key}:${s.id}`);
+  const dataKey = escapeHtml(`${key}:${s.id ?? ''}`);
   const cls = `fiche-part fmk-sec${s.tone === 'reference' ? ' fmk-sec--ref' : ''}`;
   if (s.collapsible) {
-    return `<details class="${cls}" data-section="${key}"${s.open ? ' open' : ''}>`
+    return `<details class="${cls}" data-section="${dataKey}"${s.open ? ' open' : ''}>`
       + `<summary class="fmk-sec-h">${title}${summary}${CHEVRON_SVG}</summary><div class="fmk-sec-body">${s.html}</div></details>`;
   }
-  return `<section class="${cls}" data-section="${key}"><div class="fmk-sec-h">${title}${summary}</div>`
+  return `<section class="${cls}" data-section="${dataKey}"><div class="fmk-sec-h">${title}${summary}</div>`
     + `<div class="fmk-sec-body">${s.html}</div></section>`;
+}
+
+/** Section d'une fiche (id présent : kit ; sans id : rendu historique). */
+function renderSection(model: FicheModel, s: FicheSection): string {
+  if (s.id === undefined) return part('fiche-extra', escapeHtml(s.title), s.html);
+  return renderKitSection(model.key, s);
 }
 
 /** Fiche complète : en-tête, sections du kit, actions. */
