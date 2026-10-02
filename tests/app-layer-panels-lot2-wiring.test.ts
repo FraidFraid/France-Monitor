@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { DROM_LIVE_TTL_MS } from '../src/services/drom-live.ts';
+import { ECOWATT_TTL_MS } from '../src/services/ecowatt.ts';
 
 const app = readFileSync(new URL('../src/App.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
@@ -46,6 +47,17 @@ describe('panneau Charge métropolitaine (spec lot 2 § 3.5)', () => {
     expect(methodBody('getFloatingPanelInstance')).toContain("case 'metroLoad': return this.metroLoadPanel;");
     expect(methodBody('_handlePanelVisibility')).toMatch(/key === 'metroLoad'[^]*void this\.loadMetropoles\(\);[^]*this\.metroLoadPanel\?\.show\(this\.currentMetropoles\)/);
     expect(methodBody('ensureMetroLoadPanel')).toContain("this.closeEnergyLayer('metroLoad')");
+  });
+  it('relève éCO2mix dédiée : 5 min, au-dessus du cache client, démarrée à l’init, pausée onglet caché, arrêtée au nettoyage', () => {
+    const minutes = Number(/const POLL_ECO2MIX_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(app)?.[1]);
+    expect(minutes).toBe(5);
+    expect(minutes * 60_000).toBeGreaterThan(ECOWATT_TTL_MS);
+    const body = methodBody('startEco2mixPolling');
+    expect(body).toContain('this.registerPausableInterval(');
+    expect(body).toContain('this.loadEcowatt()');
+    expect(body).toContain('POLL_ECO2MIX_MS');
+    expect(app).toContain('this.startEco2mixPolling();');
+    expect(app).toContain('this.removePausableInterval(this._intervalEco2mix); this._intervalEco2mix = null;');
   });
   it('relève DROM : intervalle de 5 min, strictement au-dessus du cache client', () => {
     const minutes = Number(/const POLL_DROM_LIVE_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(app)?.[1]);

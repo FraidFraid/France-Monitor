@@ -124,7 +124,8 @@ interface EcowattMix {
 
 /** Cache simple en mémoire */
 let cache: { data: EcowattResponse; fetchedAt: number } | null = null;
-const CACHE_TTL = 5 * 60_000; // 5 min : sous le seuil « en retard » du panneau (30 min), cache CDN aligné
+/** 4 min : strictement sous la relève de 5 min d'App.ts, sinon une relève sur deux retombe dans ce cache. */
+export const ECOWATT_TTL_MS = 4 * 60_000;
 
 /** Cache localStorage : peint le dernier signal connu au rechargement si < 5 min (même durée que le cache mémoire). */
 const PERSIST_TTL_MS = 5 * 60_000;
@@ -285,7 +286,7 @@ function watchdogDetail(official: EcowattOfficial | null): string {
  * échanges frontaliers). Retourne EcowattResponse.
  */
 export async function fetchEcowatt(): Promise<EcowattResponse> {
-    if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;
+    if (cache && Date.now() - cache.fetchedAt < ECOWATT_TTL_MS) return cache.data;
 
     const fallback: EcowattResponse = {
         official: null,

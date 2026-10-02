@@ -185,6 +185,7 @@ const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
 const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
 const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
+const POLL_ECO2MIX_MS                  =  5 * 60_000; //  5 min  (éCO2mix national, pas de 15 min ; cache client 4 min)
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
 const POLL_DROM_LIVE_MS               =  5 * 60_000; //  5 min  (EDF SEI temps réel, pas de 5 min)
 const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
@@ -1649,6 +1650,7 @@ export class App {
   private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
   private _intervalOil: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: PausableTimer | null = null;
+  private _intervalEco2mix: PausableTimer | null = null;
   private _intervalHealth: ReturnType<typeof setInterval> | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
@@ -1692,6 +1694,7 @@ export class App {
     if (this._intervalOil !== null) { clearInterval(this._intervalOil); this._intervalOil = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     this.removePausableInterval(this._intervalAirTraffic); this._intervalAirTraffic = null;
+    this.removePausableInterval(this._intervalEco2mix); this._intervalEco2mix = null;
     if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
@@ -1751,7 +1754,8 @@ export class App {
    * setInterval qui se met en pause quand l'onglet est caché et reprend
    * (avec un tick immédiat) quand il redevient visible. Réservé aux pollings
    * agressifs (< 1 min) : vols militaires, AIS, trafic aérien, horloge,
-   * terminateur, check version.
+   * terminateur, check version ; et à la relève éCO2mix, dont la donnée doit être
+   * fraîche dès le retour sur l'onglet.
    */
   private registerPausableInterval(fn: () => void, ms: number): PausableTimer {
     this.ensureVisibilityHandler();
@@ -2436,6 +2440,7 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startHydraulicPolling();
+    this.startEco2mixPolling();
     this.startWeatherPolling();
     this.startMtgFrpPolling();
     this.startRadar2dPolling();
@@ -6856,6 +6861,24 @@ export class App {
     if (results.every((result) => result.status === 'rejected')) {
       await this.refreshHydraulicLayer();
     }
+  }
+
+  /**
+   * Relève éCO2mix dédiée : Réseau électrique, Parc nucléaire, Éolien, Stress hydro et le score France lisent
+   * `currentEcowattResponse`, qui n'était rechargé qu'au démarrage et par la relève hydraulique (10 min, couche
+   * hydro active seulement) : la donnée passait « en retard » alors que la source était à jour. Pausée onglet caché,
+   * relève immédiate au retour.
+   */
+  private startEco2mixPolling(): void {
+    if (this._intervalEco2mix !== null) return;
+    let inFlight = false;
+    this._intervalEco2mix = this.registerPausableInterval(() => {
+      if (inFlight) return;
+      inFlight = true;
+      this.loadEcowatt()
+        .catch((err) => console.error('[App] éCO2mix poll error', err))
+        .finally(() => { inFlight = false; });
+    }, POLL_ECO2MIX_MS);
   }
 
   private startHydraulicPolling(): void {
