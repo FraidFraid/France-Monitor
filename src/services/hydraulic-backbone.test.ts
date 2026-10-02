@@ -33,6 +33,8 @@ describe('cause des contraintes hydrauliques', () => {
     expect(withFlood.find((a) => a.id === seed?.id)?.signals.cause).toBe('crue vigilance orange');
     const calm = buildHydraulicBackboneAssets(null, [], [], null, NOW);
     expect(calm.every((a) => a.signals.cause === null)).toBe(true);
-    expect(calm.map((a) => a.signals.hydro_trend)).toEqual(buildHydraulicBackboneAssets(null, [], [], null, NOW).map((a) => a.signals.hydro_trend));
+    // Classification inchangée : valeurs fixes sur une entrée connue.
+    expect(withFlood.find((a) => a.id === seed?.id)?.signals.hydro_trend).toBe('normal');
+    expect(calm.every((a) => a.signals.hydro_trend === 'normal')).toBe(true);
   });
 });

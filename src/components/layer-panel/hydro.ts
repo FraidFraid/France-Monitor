@@ -19,6 +19,9 @@ const TITLE = 'Stress hydro';
 const VISIBLE_ROWS = 8;
 const STEP_ROWS = 6;
 const OVERSEAS = ['Corse', 'Guyane', 'La Réunion', 'Martinique', 'Guadeloupe', 'Mayotte'];
+const FRESHNESS_WORD = { fresh: 'fraîche', aging: 'à confirmer', stale: 'ancienne', unavailable: 'sans mesure' } as const;
+const TREND_RANK: Record<HydraulicTrend, number> = { stress: 3, high: 2, normal: 1, low: 0 };
+const WATCH_ROWS = 14;
 const SUPPORT_WORD = { strong: 'mesures fortes', partial: 'mesures partielles', none: 'dérivé seul' } as const;
 
 /** Stress orange, pression jaune, sinon vert. */
@@ -84,7 +87,9 @@ function constrainedSection(assets: readonly HydraulicBackboneAsset[], now: numb
       value: formatMw(a.capacity_mw),
       level: trendLevel(a.signals.hydro_trend),
       note: [a.river ?? a.location.region, a.signals.cause ?? 'contexte régional',
-        Number.isFinite(obs) ? `mesure Hub’Eau ${absoluteTime(obs, now, 'fr')}` : 'sans mesure directe'].join(' · '),
+        Number.isFinite(obs) ? `mesure Hub’Eau ${absoluteTime(obs, now, 'fr')}` : 'sans mesure directe',
+        `mesure ${FRESHNESS_WORD[a.signals.dataFreshness]}`, `criticité ${a.criticality_score}`].join(' · '),
+      title: a.signals.sourceDetail,
       data: { 'hydraulic-asset': a.id },
       link: true,
     });
@@ -129,12 +134,27 @@ function stepSection(assets: readonly HydraulicBackboneAsset[], open: HydroViewI
   return { id: 'step', title: 'STEP', collapsible: true, open: open('step', false), summary: escapeHtml(summary), html };
 }
 
+function watchSection(assets: readonly HydraulicBackboneAsset[], open: HydroViewInput['open']): FicheSection {
+  const top = [...assets].sort((a, b) => TREND_RANK[b.signals.hydro_trend] - TREND_RANK[a.signals.hydro_trend]
+    || b.criticality_score - a.criticality_score || (b.capacity_mw ?? 0) - (a.capacity_mw ?? 0)).slice(0, WATCH_ROWS);
+  const html = top.map((a) => listRow({
+    text: a.name, value: formatMw(a.capacity_mw), level: trendLevel(a.signals.hydro_trend),
+    note: `${a.location.region} · criticité ${a.criticality_score} · mesure ${FRESHNESS_WORD[a.signals.dataFreshness]}`,
+    title: a.signals.sourceDetail, data: { 'hydraulic-asset': a.id }, link: true,
+  })).join('');
+  return { id: 'watch', title: 'Ouvrages suivis', collapsible: true, open: open('watch', false), summary: `${top.length} sur ${assets.length}`, html };
+}
+
 function methodSection(assets: readonly HydraulicBackboneAsset[], open: HydroViewInput['open']): FicheSection {
   const c = counts(assets);
   const supported = assets.filter((a) => a.signals.signalSource === 'DERIVED_REAL_MEASURE_SUPPORT').length;
   const verified = assets.filter((a) => a.verification_sources?.some((s) => s.includes('RTE/ODRE'))).length;
   const sited = assets.filter((a) => a.location_accuracy === 'site').length;
   const overseas = assets.filter((a) => OVERSEAS.includes(a.location.region)).length;
+  const totalMw = assets.reduce((sum, a) => sum + (a.capacity_mw ?? 0), 0);
+  const strong = assets.filter((a) => a.signals.measuredSupportLevel === 'strong').length;
+  const regulation = assets.filter((a) => a.type === 'water_regulation').length;
+  const manual = assets.length - verified;
   const source = (linkHtml: string, role: string): string =>
     `<div class="fmk-kv"><span class="fmk-kv-k">${linkHtml}</span><span class="fmk-kv-v">${escapeHtml(role)}</span></div>`;
   const html = '<p class="fmk-note">Niveau dérivé : orange si au moins un ouvrage est en stress, jaune s’il n’y a que des ouvrages sous pression, vert sinon. '
@@ -142,6 +162,9 @@ function methodSection(assets: readonly HydraulicBackboneAsset[], open: HydroVie
     + kvRow('Normal', String(c.normal)) + kvRow('Sous pression', String(c.high)) + kvRow('Stress', String(c.stress))
     + kvRow('Vérifiés RTE ou ODRÉ', String(verified)) + kvRow('Géolocalisés au site', String(sited))
     + kvRow('DROM et Corse', String(overseas)) + kvRow('Appuyés par Hub’Eau', String(supported))
+    + kvRow('Appui fort', String(strong)) + kvRow('Ouvrages de régulation', String(regulation))
+    + kvRow('Référentiel manuel', String(manual)) + kvRow('Puissance installée suivie', formatMw(totalMw))
+    + kvRow('Puissance moyenne par ouvrage', formatMw(totalMw / Math.max(assets.length, 1)))
     + source(sourceLinkHtml('Hub’Eau hydrométrie', 'https://hubeau.eaufrance.fr/page/api-hydrometrie'), 'débits mesurés')
     + source(sourceLinkHtml('Vigicrues', 'https://www.vigicrues.gouv.fr/'), 'vigilance crues')
     + source(sourceLinkHtml('Météo-France', 'https://vigilance.meteofrance.fr/'), 'vigilance pluie-inondation')
@@ -174,6 +197,6 @@ export function buildHydroView(input: HydroViewInput): LayerView {
       ],
       lead: hydroLead(assets, grid),
     },
-    sections: [constrainedSection(assets, now, open), productionSection(grid, open), stepSection(assets, open), methodSection(assets, open)],
+    sections: [constrainedSection(assets, now, open), productionSection(grid, open), stepSection(assets, open), watchSection(assets, open), methodSection(assets, open)],
   };
 }

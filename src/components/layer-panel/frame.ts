@@ -123,13 +123,16 @@ export interface ListRow {
   data?: Readonly<Record<string, string>>;
   /** Ligne cliquable (recentrer la carte) : focus clavier, Entrée = clic. */
   link?: boolean;
+  /** Détail secondaire en infobulle (échappé). */
+  title?: string | null;
 }
 
 export function listRow(r: ListRow): string {
   const value = r.valueHtml ?? (r.value !== undefined && r.value !== null ? valueHtml(r.value) : '<span></span>');
   const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
   const link = r.link ? ' is-link" tabindex="0" role="button' : '';
-  return `<div class="lp-row${link}"${dataAttrs(r.data)}>${marker(r.level, r.color)}<span>${escapeHtml(r.text)}</span>${value}`
+  const title = r.title ? ` title="${escapeHtml(r.title)}"` : '';
+  return `<div class="lp-row${link}"${dataAttrs(r.data)}${title}>${marker(r.level, r.color)}<span>${escapeHtml(r.text)}</span>${value}`
     + `${note ? `<small>${note}</small>` : ''}</div>`;
 }
 

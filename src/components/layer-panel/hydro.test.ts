@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EcowattResponse, GridSnapshot, HydraulicBackboneAsset, HydraulicTrend } from '../../types/index.ts';
 import { renderLayerView } from './frame.ts';
-import { NBSP, breakableValue, visibleText } from './format.ts';
+import { NBSP, breakableValue, frNumber, visibleText } from './format.ts';
 import { buildHydroView, hydroLead, trendLevel } from './hydro.ts';
 
 const NOW = Date.parse('2026-10-02T07:00:00Z'); // 09:00 Paris
@@ -57,7 +57,7 @@ describe('vue Stress hydro', () => {
     expect(hydroLead(ASSETS, null)).toBe('2 ouvrages en stress (crue vigilance orange) ; production hydraulique nationale indisponible.');
   });
   it('sections dans l’ordre, ouvertes et repliées comme la spec', () => {
-    expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([['constrained', true], ['production', true], ['step', false], ['method', false]]);
+    expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([['constrained', true], ['production', true], ['step', false], ['watch', false], ['method', false]]);
     expect(view().sections.at(-1)?.tone).toBe('reference');
   });
   it('ouvrages sous contrainte : stress puis pression, puce, puissance, rivière, cause, mesure', () => {
@@ -85,6 +85,26 @@ describe('vue Stress hydro', () => {
     expect(m?.html).toContain('orange si au moins un ouvrage est en stress, jaune s’il n’y a que des ouvrages sous pression, vert sinon');
     expect(m?.html).toMatch(/DROM et Corse[^]*>1</);
     expect(m?.html).toContain('dérivé, appuyé sur des mesures réelles');
+  });
+  it('rien ne disparaît : fraîcheur, criticité, infobulle, ouvrages suivis, couverture', () => {
+    const rich = ASSETS.map((a) => (a.id === 'sp' ? { ...a, signals: { ...a.signals, sourceDetail: 'Dérivé appuyé <sur> mesures réelles', dataFreshness: 'aging' as const } } : a));
+    const v = view(rich);
+    const h = renderLayerView('hydroBackbone', v);
+    expect(h).toContain('crue vigilance orange · mesure Hub’Eau 08:20 · mesure à confirmer · criticité 70');
+    expect(h).toContain('title="Dérivé appuyé &lt;sur&gt; mesures réelles"');
+    expect(v.sections.map((s) => s.id)).toEqual(['constrained', 'production', 'step', 'watch', 'method']);
+    const w = v.sections.find((x) => x.id === 'watch');
+    expect(w?.open ?? false).toBe(false);
+    expect(w?.summary).toBe('13 sur 13');
+    expect(w?.html).toMatch(/Serre-Ponçon[^]*Sainte-Tulle[^]*Grand’Maison[^]*Ouvrage 0/);
+    expect(w?.html).toContain('data-hydraulic-asset="sp"');
+    expect(w?.html).toContain('Auvergne-Rhône-Alpes · criticité 70 · mesure sans mesure');
+    const m = v.sections.find((x) => x.id === 'method')?.html ?? '';
+    expect(m).toContain(`Puissance installée suivie</span><span class="fmk-kv-v fmk-num">${frNumber(380 + 108 + 1800 + 10 * 380, 0)}${NBSP}MW`);
+    expect(m).toMatch(/Appui fort[^]*>0</);
+    expect(m).toMatch(/Ouvrages de régulation[^]*>0</);
+    expect(m).toMatch(/Référentiel manuel[^]*>0</);
+    expect(m).toContain('Puissance moyenne par ouvrage');
   });
   it('Hub’Eau vide : aucune heure inventée, « sans mesure directe », 0 appuyé', () => {
     const none = ASSETS.map((a) => ({ ...a, signals: { ...a.signals, observationTimestamp: null, signalSource: 'DERIVED_CONTEXT_ONLY' as const } }));
