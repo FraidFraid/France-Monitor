@@ -141,7 +141,8 @@ function asOfWords(asOf: string): string {
 
 /** Texte des sources en français (« live » → « en direct »). */
 function frenchDetail(text: string): string {
-  return text.replace(/\blive\b/gi, 'en direct').replace(/\bbackbone\b/gi, 'socle');
+  return text.replace(/\blive\b/gi, 'en direct').replace(/\bbackbone\b/gi, 'socle')
+    .replace(/\bVue STRUCTURAL\b/g, 'Vue structurelle').replace(/\bVue DAILY\b/g, 'Vue quotidienne');
 }
 
 function freshnessText(info: OilFreshnessInfo): string {

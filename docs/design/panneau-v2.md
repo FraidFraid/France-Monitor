@@ -1,4 +1,4 @@
-# Panneau v2 — kit de style « fmk »
+# Panneau v2 : kit de style « fmk »
 
 ![Panneau « État de la France » de la v2 : score, échelle, piliers, situations actives et début de la note](panneau-v2-etat.png)
 
@@ -47,7 +47,7 @@ Spec `docs/superpowers/specs/2026-10-01-fiches-kit-design.md` (fiches construite
 - Retour d'action (« Référence copiée », « Copie impossible ») : `fiche-toast`, en haut à gauche de la fiche.
 
 ## Panneaux de couches
-Cadre commun des panneaux flottants de couche (code : `src/components/layer-panel/frame.ts`, styles : bloc « Panneaux de couches : cadre commun » de `src/styles/main.css`). Panneaux migrés : Réseau électrique (`EnergyPanel`, contenu dans `grid.ts`) et Parc nucléaire (`NuclearPanel`, contenu dans `nuclear.ts`). Les autres panneaux de couche restent à migrer.
+Cadre commun des panneaux flottants de couche (code : `src/components/layer-panel/frame.ts`, styles : bloc « Panneaux de couches : cadre commun » de `src/styles/main.css`). Panneaux migrés : Réseau électrique (`grid.ts`), Parc nucléaire (`nuclear.ts`), Réseau gaz (`gas.ts`), Stress hydro (`hydro.ts`), Pétrole (`oil.ts`), Éolien (`wind.ts`), Charge métropolitaine (`metro.ts`, panneau nouveau) et Énergie DROM (`drom.ts`). Outils communs : formateurs `layer-panel/format.ts`, courbe `layer-panel/chart.ts`, lignes `listRow` et `barRow` (`frame.ts`).
 
 Structure, de haut en bas :
 - En-tête collant (`lp-head`) : sur-titre « Thème · Couche », titre = libellé de la pastille de la couche, gros chiffre facultatif (`lp-figure`, avec sa légende), ligne de niveau (pastille de niveau puis contexte séparé par « · »), synthèse en une ou deux phrases, puis onglets s'il y en a. Le bouton de fermeture rond (28 px) reste visible en haut à droite pendant le défilement.
@@ -62,10 +62,32 @@ Structure, de haut en bas :
 
 Règles :
 1. Pas de dégradé, pas de tuile d'icône, pas de glisser-déposer : le panneau est ancré (à droite en v1, dans la colonne en v2, en feuille basse sous 768 px).
-2. Couleurs : niveaux seulement. Exception unique : les couleurs de filière `--mix-*`, limitées à la répartition de la production (barre et légende du Réseau électrique).
+2. Couleurs : un état ou un seuil prend la palette des niveaux (`levelColorVar`, `levelDot`, `renderVigilancePill`, gris « n.d. ») ; une catégorie prend un jeton `--mix-*` ou `--cat-*` défini dans `:root`. Jamais de couleur brute dans le HTML d'une vue, jamais de jauge grise : chaque barre prend une couleur de niveau ou de catégorie. Jetons de catégorie :
+
+   | Jeton | Usage |
+   |---|---|
+   | `--mix-nuclear`, `--mix-hydro`, `--mix-wind`, `--mix-solar`, `--mix-thermal`, `--mix-bio` | filières de production (Réseau électrique, Parc nucléaire, Stress hydro, Éolien, DROM) |
+   | `--mix-coal`, `--mix-oil`, `--mix-turbine`, `--mix-geo`, `--mix-storage`, `--mix-links`, `--mix-other` | filières des DROM et de la Corse |
+   | `--cat-onshore`, `--cat-offshore` | éolien terrestre et en mer |
+   | `--cat-gazole`, `--cat-sp95`, `--cat-sp98`, `--cat-e10`, `--cat-gpl` | carburants (graphe et légende des prix) |
+   | `--cat-lng` | terminaux GNL (utilisation), part du GNL |
+   | `--cat-crude` | origines du pétrole brut |
+   | `--cat-renewable` | part renouvelable des territoires |
+   | `--cat-substation`, `--cat-pylon`, `--cat-production` | types d'actifs DROM |
 3. Chiffres en `fmk-num`, aucune police à chasse fixe, aucun tiret cadratin.
 4. Tout texte et tout lien venant d'un tiers est échappé ; les liens passent par `safeHref`.
 5. Fermer par la croix éteint la couche (rappel `onClose`, appelé une seule fois) ; le masquage silencieux (`hide({ silent: true })`) ne l'appelle jamais.
+
+Règles du lot 2 (R1 à R4) et préférences de l'utilisateur :
+- R1 : une valeur tient sur une ligne. Espace insécable entre le nombre et l'unité et avant « % », valeurs en `white-space: nowrap`, gros chiffre avec son unité et sa légende dessous ; c'est la légende qui passe à la ligne. Contrôle par `breakableValue` dans le test de chaque vue et à l'écran.
+- R2 : graphes et indicateurs colorés repris au restylage, jamais neutralisés (voir la règle 2 et le tableau des jetons). Les jauges sont toujours en couleur.
+- R3 : le gros chiffre prend la couleur de son propre niveau quand il en a un (Parc nucléaire, Réseau gaz, Éolien selon l'état du vent, Stress hydro, Charge métropolitaine selon l'écart du total à la veille à ±5 %, Énergie DROM selon la part renouvelable : vert dès 50 %, jaune dès 25 %, orange en dessous) ; sinon il hérite du niveau de la pastille du panneau. Un `level: null` explicite (donnée en retard) ou une pastille « n.d. » le laisse en couleur de texte. Une part placée dans la légende du chiffre (facteur de charge éolien, part du parc hydraulique) prend la couleur du chiffre.
+- R4 : aucun tiret cadratin.
+- Toute mesure principale qui est une quantité est le gros chiffre, avec son unité (« 46,4 GW », « 93,4 % », « 1,689 € », « 336 MW »).
+- Échanges (Réseau électrique) : import en rouge, export en vert, avec une flèche ▲ ou ▼ de tendance par rapport à l'historique sur 7 jours.
+- Donnée en retard : la ligne de niveau dit « (en retard) » et les couleurs de niveau disparaissent.
+- Rien ne disparaît à la migration : chaque indicateur, graphe ou note de l'ancien panneau est conservé, ou déplacé dans « Méthode et sources ».
+- Une phrase qui décrit une fraîcheur (et non une valeur) passe à la ligne dans les détails repliés : libellé de largeur fixe, jamais recouvert.
 
 ## Correspondance avec la spec
 - `fmk-chip` : pastille `fm-vig` (`renderVigilancePill`)

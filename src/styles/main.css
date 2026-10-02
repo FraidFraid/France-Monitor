@@ -9012,3 +9012,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-tip { position: absolute; z-index: 3; min-width: 180px; padding: 6px 8px; pointer-events: none; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; }
 .lp .lp-tip[hidden] { display: none; }
 .lp .lp-tip .lp-swatch { display: inline-block; margin-right: 6px; }
+/* Détails méthodologiques : les lignes de fraîcheur portent une phrase, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. */
+:is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+:is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv-v { overflow-wrap: anywhere; }

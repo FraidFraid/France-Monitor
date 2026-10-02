@@ -106,6 +106,18 @@ describe('vue Pétrole', () => {
     expect(h).toContain('Données &lt;b&gt;provisoires&lt;/b&gt;.');
     expect(html()).not.toMatch(/STRUCTURAL|HYBRID|MONTHLY|DAILY|PROVISIONAL|QUASI-LIVE|FALLBACK|LOW|HIGH|CRITICAL/);
   });
+  it('fraîcheurs du service : « Vue STRUCTURAL » et « Vue DAILY » dits en français', () => {
+    const data = oilFixture();
+    const f = data.meta.freshness;
+    const withDetail = { ...data, meta: { ...data.meta, freshness: { ...f,
+      infrastructure: { ...f.infrastructure, detail: 'Vue STRUCTURAL: raffineries, sans état opérationnel live.' },
+      fuelPrices: { ...f.fuelPrices, detail: 'Vue DAILY: prix et ruptures carburants.' } } } };
+    const h = section('method', { data: withDetail })?.html ?? '';
+    expect(h).toContain('Vue structurelle');
+    expect(h).toContain('Vue quotidienne');
+    expect(h).not.toMatch(/STRUCTURAL|DAILY|\blive\b/);
+  });
+
   it('méthode et sources épurée comme le nucléaire : un paragraphe, une ligne par source avec lien, détails repliés', () => {
     const h = section('method')?.html ?? '';
     const [visible, folded = ''] = h.split('<details class="lp-more">');
