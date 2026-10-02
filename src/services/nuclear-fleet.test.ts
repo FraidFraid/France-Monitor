@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NuclearUnavailability, NuclearUnitReference } from '../types/index.ts';
 import {
-  activeOutages, fleetCalendar, fleetLevel, fleetSummary, outageKind, plantRows, remitMatchWords, unitLabel,
+  activeOutages, fleetCalendar, fleetLevel, fleetSummary, outageKind, plantRows, remitMatchWords, shortLabel, unitLabel,
 } from './nuclear-fleet.ts';
 
 const DAY = 86_400_000;
@@ -72,9 +72,43 @@ describe('flotte nucléaire', () => {
     ], UNITS, NOW);
     expect(cal.from).toBe(NOW - 3 * DAY);
     expect(cal.to).toBe(NOW + 14 * DAY);
-    expect(cal.bars.map((b) => [b.unit.id, b.upcoming])).toEqual([['fla-2', false], ['bug-4', true]]);
+    expect(cal.rows.map((r) => [r.unit.id, r.segments.map((x) => x.upcoming)])).toEqual([['fla-2', [false]], ['bug-4', [true]]]);
     expect(cal.returns).toEqual([{ unit: UNITS[1], at: NOW + 3 * DAY, gainMw: 1330 }]);
     expect(cal.upcoming).toEqual([{ unit: UNITS[3], at: NOW + 8 * DAY, lostMw: 880 }]);
+  });
+  it('calendrier : une ligne par tranche, un segment par message', () => {
+    const cal = fleetCalendar([
+      u({ id: 'a', startDate: new Date(NOW - DAY), endDate: new Date(NOW + DAY) }),
+      u({ id: 'b', startDate: new Date(NOW + 5 * DAY), endDate: new Date(NOW + 6 * DAY), type: 'PLANNED', status: 'OUTAGE_PLANNED' }),
+    ], UNITS, NOW);
+    expect(cal.rows).toHaveLength(1);
+    expect(cal.rows[0].segments.map((x) => [x.kind, x.upcoming])).toEqual([['fortuit', false], ['programme', true]]);
+  });
+  it('retours : fin de l\'arrêt en cours seulement, jamais d\'un arrêt pas encore commencé', () => {
+    const cal = fleetCalendar([
+      u({ id: 'a', endDate: new Date(NOW + 2 * DAY) }),
+      u({ id: 'short', unitName: 'BUGEY 4', plantName: 'Bugey', nominalPowerMW: 880, availablePowerMW: 700, type: 'PLANNED', status: 'REDUCED',
+        startDate: new Date(NOW + DAY), endDate: new Date(NOW + DAY + 3600_000) }),
+    ], UNITS, NOW);
+    expect(cal.returns.map((r) => r.unit.id)).toEqual(['fla-2']);
+    expect(cal.upcoming.map((r) => r.unit.id)).toEqual(['bug-4']);
+  });
+  it('à venir : une entrée par tranche, le plus tôt', () => {
+    const mk = (id: string, d: number) => u({ id, unitName: 'BUGEY 4', plantName: 'Bugey', nominalPowerMW: 880, startDate: new Date(NOW + d * DAY), endDate: new Date(NOW + (d + 1) * DAY) });
+    const cal = fleetCalendar([mk('a', 6), mk('b', 3)], UNITS, NOW);
+    expect(cal.upcoming).toEqual([{ unit: UNITS[3], at: NOW + 3 * DAY, lostMw: 880 }]);
+  });
+  it('libellés courts du calendrier, bornés', () => {
+    const r = (plantName: string, unitName: string): NuclearUnitReference => ({ id: 'x', plantId: 'p', plantName, unitName, nominalPowerMW: 900 });
+    expect([
+      shortLabel(r('Belleville-sur-Loire', 'BELLEVILLE 1')), shortLabel(r('Saint-Laurent-des-Eaux', 'SAINT-LAURENT 1')),
+      shortLabel(r('Dampierre-en-Burly', 'DAMPIERRE 3')), shortLabel(r('Nogent-sur-Seine', 'NOGENT 2')),
+      shortLabel(r('Cruas-Meysse', 'CRUAS 4')), shortLabel(r('Saint-Alban', 'SAINT-ALBAN 1')), shortLabel(r('Flamanville', 'FLAMANVILLE 3')),
+    ]).toEqual(['Belleville 1', 'St-Laurent 1', 'Dampierre 3', 'Nogent 2', 'Cruas 4', 'St-Alban 1', 'Flamanville 3']);
+  });
+  it('sites : une tranche en puissance réduite compte comme disponible', () => {
+    const red = plantRows(UNITS, activeOutages([u({ availablePowerMW: 600, type: 'PLANNED', status: 'REDUCED' })], UNITS, NOW));
+    expect(red.find((r) => r.name === 'Flamanville')).toMatchObject({ worst: 'reduit', unitsAvailable: 2, unitsTotal: 2 });
   });
   it('sites : pire nature, tranches disponibles, puissance', () => {
     const rows = plantRows(UNITS, activeOutages([u({})], UNITS, NOW));

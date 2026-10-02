@@ -8919,8 +8919,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-figure { display: flex; align-items: baseline; gap: 6px; margin: 2px 0 8px; }
 .lp .lp-figure b { font-size: 40px; font-weight: 700; line-height: 1; }
 .lp .lp-figure span { color: var(--text-secondary); font-size: 13px; }
-.lp .fmk-level .fmk-ctx + .fmk-ctx::before { content: none !important; }
-.lp .fmk-level .fmk-ctx:not(:last-child)::after { content: '·'; margin-left: 10px; color: var(--text-muted); }
+.lp .fmk-level .fmk-ctx { white-space: nowrap; }
+/* Le séparateur appartient au segment qui suit : il ne peut jamais terminer une ligne. */
+.lp .fmk-level .fmk-ctx + .fmk-ctx::before { content: '·' !important; margin-right: 10px; color: var(--text-muted); }
 .lp .lp-head .fmk-lead { margin: 12px 0 0; }
 .lp .lp-head > :last-child { margin-bottom: 14px; }
 .lp .lp-tabs { display: flex; gap: 18px; margin-top: 14px; border-bottom: 1px solid var(--border-color); }

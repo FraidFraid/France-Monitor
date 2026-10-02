@@ -38,7 +38,7 @@ describe('vue Parc nucléaire', () => {
     expect(v.head.level).toBe(ref.nominalPowerMW >= 1000 ? 'jaune' : 'vert');
     expect(v.head.status[0]).toMatch(/^1 arrêt fortuit \(\d+,\d GW\)$/);
     expect(v.head.status).toContain('aucun arrêt programmé');
-    expect(v.head.status[v.head.status.length - 1]).toBe('RTE 06:50');
+    expect(v.head.status[v.head.status.length - 1]).toBe('RTE lu à 06:50');
   });
   it('onglets : Vue d’ensemble, Calendrier, Signaux REMIT avec compteur', () => {
     const v = view(state({ unconfirmedSignals: [{ remitSignal: {
@@ -65,6 +65,57 @@ describe('vue Parc nucléaire', () => {
     expect(v.head.level).toBeNull();
     expect(v.head.figure?.value).toBe('n.d.');
     expect(v.head.status[0]).toBe('Données RTE indisponibles');
+  });
+  it('Flamanville 3 fait partie du parc', () => {
+    expect(NUCLEAR_UNITS.some((r) => r.unitName === 'FLAMANVILLE 3')).toBe(true);
+  });
+  it('heure RTE : celle de la lecture serveur, « (en retard) » au-delà de 30 min', () => {
+    const fresh = view(state({ rteFetchedAt: new Date(NOW - 5 * 60_000), fetchedAt: new Date(NOW) }));
+    expect(fresh.head.status[fresh.head.status.length - 1]).toBe('RTE lu à 06:55');
+    const late = view(state({ rteFetchedAt: new Date(NOW - 45 * 60_000), fetchedAt: new Date(NOW) }));
+    expect(late.head.status[late.head.status.length - 1]).toBe('RTE lu à 06:15 (en retard)');
+  });
+  it('REMIT : « lu à » est l\'heure IIP, pas celle de la construction de l\'état', () => {
+    const h = renderLayerView('nuclearFleet', view(state({ remitFetchedAt: new Date(NOW - 20 * 60_000), fetchedAt: new Date(NOW) }), 'remit'));
+    expect(h).toContain('Flux REMIT lu à 06:40.');
+  });
+  it('en-tête : arrêts programmés et puissance réduite comptés séparément', () => {
+    const [a, b, c] = NUCLEAR_UNITS;
+    const v = view(state({ unavailabilities: [
+      u({ id: '1', unitName: a.unitName, plantName: a.plantName, type: 'PLANNED', status: 'OUTAGE_PLANNED' }),
+      u({ id: '2', unitName: b.unitName, plantName: b.plantName, type: 'PLANNED', status: 'REDUCED', availablePowerMW: 300 }),
+      u({ id: '3', unitName: c.unitName, plantName: c.plantName, type: 'PLANNED', status: 'OUTAGE_PLANNED' }),
+    ] }));
+    expect(v.head.status).toContain('2 arrêts programmés');
+    expect(v.head.status).toContain('1 en puissance réduite');
+  });
+  it('RTE injoignable : la production et la méthode restent affichées, disponible n.d.', () => {
+    const v = view(state({ rteAvailable: false, unavailabilities: [] }));
+    expect(v.sections.map((s) => s.id)).toEqual(['production', 'method']);
+    const h = renderLayerView('nuclearFleet', v);
+    expect(h).toContain('Source injoignable');
+    expect(h).toMatch(/Disponible[^]*?n\.d\./);
+    expect(h).toContain('Installé');
+  });
+  it('calendrier : une ligne par tranche, libellé complet en infobulle, libellés courts bornés', () => {
+    const [a, b] = NUCLEAR_UNITS;
+    const long = NUCLEAR_UNITS.find((r) => r.plantName === 'Saint-Laurent-des-Eaux') ?? b;
+    const h = renderLayerView('nuclearFleet', view(state({ unavailabilities: [
+      u({ id: '1', unitName: a.unitName, plantName: a.plantName }),
+      u({ id: '2', unitName: a.unitName, plantName: a.plantName, startDate: new Date(NOW + 5 * DAY), endDate: new Date(NOW + 6 * DAY), type: 'PLANNED', status: 'OUTAGE_PLANNED' }),
+      u({ id: '3', unitName: long.unitName, plantName: long.plantName }),
+    ] }), 'calendar'));
+    expect(h.match(/<g><title>/g)).toHaveLength(2);
+    expect(h).toContain(`<title>${long.plantName} ${/(\d+)$/.exec(long.unitName)?.[1]}</title>`);
+    const labels = [...h.matchAll(/<text x="0"[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+    expect(labels).toContain('St-Laurent 1');
+    expect(labels.every((l) => l.length <= 14)).toBe(true);
+  });
+  it('retours et arrêts à venir : 8 lignes puis « n autres »', () => {
+    const units = NUCLEAR_UNITS.slice(0, 11);
+    const list = units.map((r, i) => u({ id: `x${i}`, unitName: r.unitName, plantName: r.plantName, endDate: new Date(NOW + (i + 1) * 3600_000) }));
+    const h = renderLayerView('nuclearFleet', view(state({ unavailabilities: list }), 'calendar'));
+    expect(h).toContain('3 autres');
   });
   it('calendrier : diagramme accessible, retours, vide dit', () => {
     const h = renderLayerView('nuclearFleet', view(state(), 'calendar'));

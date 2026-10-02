@@ -879,6 +879,10 @@ export interface NuclearState {
   remitAvailable: boolean;
   remitStatus: 'ok' | 'empty' | 'html' | 'loading' | 'unavailable';
   fetchedAt: Date;
+  /** Heure de lecture des indisponibilités RTE (serveur ou cache), distincte de la construction de l'état */
+  rteFetchedAt?: Date;
+  /** Heure de lecture du flux REMIT (IIP) */
+  remitFetchedAt?: Date;
 }
 
 // ═══ Military (Def & Sec) ═══

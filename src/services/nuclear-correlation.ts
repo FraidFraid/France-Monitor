@@ -90,6 +90,8 @@ export function buildNuclearState(
     remitAvailable,
     remitStatus,
     fetchedAt: new Date(),
+    rteFetchedAt: rteResult.fetchedAt,
+    remitFetchedAt: iipState.hasEverSucceeded ? iipState.fetchedAt : undefined,
   };
 }
 

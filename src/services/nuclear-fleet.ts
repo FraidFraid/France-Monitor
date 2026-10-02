@@ -24,6 +24,13 @@ export function unitLabel(ref: NuclearUnitReference): string {
   return n ? `${ref.plantName} ${n}` : ref.plantName;
 }
 
+/** Libellé court pour les espaces étroits (calendrier) : « St-Laurent 1 », « Belleville 1 ». */
+export function shortLabel(ref: NuclearUnitReference): string {
+  const n = /(\d+)\s*$/.exec(ref.unitName)?.[1];
+  const site = ref.plantName.replace(/^Saint-/, 'St-').replace(/-(sur|en|des|Meysse)\b.*$/i, '');
+  return n ? `${site} ${n}` : site;
+}
+
 export function outageKind(u: NuclearUnavailability): OutageKind {
   if (u.type === 'UNPLANNED' || u.type === 'FORCE_MAJEURE' || u.status === 'OUTAGE_UNPLANNED') return 'fortuit';
   if (u.availablePowerMW > 0 || u.status === 'REDUCED') return 'reduit';
@@ -88,9 +95,11 @@ export function fleetLevel(lostUnplannedMw: number): VigilanceLevel {
   return 'vert';
 }
 
-export interface CalendarBar { unit: NuclearUnitReference; kind: OutageKind; start: number; end: number | null; upcoming: boolean }
+export interface CalendarSegment { kind: OutageKind; start: number; end: number | null; upcoming: boolean }
+/** Une ligne par tranche, avec un segment par indisponibilité dans la fenêtre. */
+export interface CalendarRow { unit: NuclearUnitReference; segments: CalendarSegment[] }
 export interface FleetCalendar {
-  from: number; to: number; bars: CalendarBar[];
+  from: number; to: number; rows: CalendarRow[];
   returns: Array<{ unit: NuclearUnitReference; at: number; gainMw: number }>;
   upcoming: Array<{ unit: NuclearUnitReference; at: number; lostMw: number }>;
 }
@@ -98,9 +107,8 @@ export interface FleetCalendar {
 export function fleetCalendar(unavailabilities: readonly NuclearUnavailability[], units: readonly NuclearUnitReference[], now: number): FleetCalendar {
   const from = now - 3 * DAY_MS;
   const to = now + 14 * DAY_MS;
-  const bars: CalendarBar[] = [];
-  const returns: FleetCalendar['returns'] = [];
-  const upcoming: FleetCalendar['upcoming'] = [];
+  const perUnit = new Map<string, CalendarRow>();
+  const nextStart = new Map<string, { unit: NuclearUnitReference; at: number; lostMw: number }>();
   for (const u of unavailabilities) {
     const start = u.startDate.getTime();
     const end = u.endDate ? u.endDate.getTime() : null;
@@ -108,15 +116,30 @@ export function fleetCalendar(unavailabilities: readonly NuclearUnavailability[]
     const ref = units.find((r) => matches(r, u.unitName));
     if (!ref) continue;
     const o = toOutage(ref, u);
-    const isUpcoming = start > now;
-    bars.push({ unit: ref, kind: o.kind, start, end, upcoming: isUpcoming });
-    if (end !== null && end > now && end <= to) returns.push({ unit: ref, at: end, gainMw: o.lostMw });
-    if (isUpcoming) upcoming.push({ unit: ref, at: start, lostMw: o.lostMw });
+    const row = perUnit.get(ref.id) ?? { unit: ref, segments: [] };
+    row.segments.push({ kind: o.kind, start, end, upcoming: start > now });
+    perUnit.set(ref.id, row);
+    if (start > now) {
+      const prev = nextStart.get(ref.id);
+      if (!prev || start < prev.at) nextStart.set(ref.id, { unit: ref, at: start, lostMw: o.lostMw });
+    }
   }
-  bars.sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind] || Number(a.upcoming) - Number(b.upcoming) || a.start - b.start);
-  returns.sort((a, b) => a.at - b.at);
-  upcoming.sort((a, b) => a.at - b.at);
-  return { from, to, bars, returns, upcoming };
+  // Tri : arrêts en cours d'abord (plus grave en tête), puis tranches n'ayant que des arrêts à venir.
+  const rank = (r: CalendarRow): number => {
+    const current = r.segments.filter((x) => !x.upcoming);
+    const pool = current.length > 0 ? current : r.segments;
+    return Math.min(...pool.map((x) => KIND_RANK[x.kind])) + (current.length > 0 ? 0 : 3);
+  };
+  const rows = [...perUnit.values()];
+  for (const r of rows) r.segments.sort((a, b) => a.start - b.start);
+  rows.sort((a, b) => rank(a) - rank(b) || a.segments[0].start - b.segments[0].start);
+  // Retours : fin de l'indisponibilité en cours seulement (jamais la fin d'un arrêt pas encore commencé).
+  const returns = activeOutages(unavailabilities, units, now)
+    .filter((o) => o.end !== null && o.end > now && o.end <= to)
+    .map((o) => ({ unit: o.unit, at: o.end as number, gainMw: o.lostMw }))
+    .sort((a, b) => a.at - b.at);
+  const upcoming = [...nextStart.values()].sort((a, b) => a.at - b.at);
+  return { from, to, rows, returns, upcoming };
 }
 
 export interface PlantRow { name: string; worst: OutageKind | null; unitsTotal: number; unitsAvailable: number; availableMw: number; installedMw: number }
@@ -129,8 +152,9 @@ export function plantRows(units: readonly NuclearUnitReference[], outages: reado
     row.unitsTotal += 1;
     row.installedMw += ref.nominalPowerMW;
     row.availableMw += Math.max(0, ref.nominalPowerMW - (o?.lostMw ?? 0));
-    if (!o) row.unitsAvailable += 1;
-    else if (row.worst === null || KIND_RANK[o.kind] < KIND_RANK[row.worst]) row.worst = o.kind;
+    // Une tranche en puissance réduite produit : elle compte comme disponible.
+    if (!o || o.kind === 'reduit') row.unitsAvailable += 1;
+    if (o && (row.worst === null || KIND_RANK[o.kind] < KIND_RANK[row.worst])) row.worst = o.kind;
     rows.set(ref.plantName, row);
   }
   return [...rows.values()].sort((a, b) =>

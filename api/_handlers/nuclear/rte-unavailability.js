@@ -17,7 +17,8 @@ const API_VERSION   = process.env.RTE_API_VERSION ?? 'v7';
 const RTE_UNAV_URL  =
   `https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/${API_VERSION}/generation_unavailabilities`;
 
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min (l'heure de lecture est affichée côté client, seuil « en retard » 30 min)
+const EDGE_MAX_AGE_S = 300;
 let _cache = null; // { data, fetchedAt }
 
 export function __resetRteUnavailabilityForTests() { _cache = null; }
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
 
   // Serve from cache if fresh
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
+    res.setHeader('Cache-Control', `s-maxage=${EDGE_MAX_AGE_S}, stale-while-revalidate=60`);
     res.status(200).json(_cache.data);
     return;
   }
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
     const payload = { items, available: true, fetchedAt: new Date().toISOString() };
     _cache = { data: payload, fetchedAt: Date.now() };
 
-    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
+    res.setHeader('Cache-Control', `s-maxage=${EDGE_MAX_AGE_S}, stale-while-revalidate=60`);
     res.status(200).json(payload);
   } catch (err) {
     console.error('[nuclear-rte] Unexpected error:', err);

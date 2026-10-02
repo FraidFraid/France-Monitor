@@ -26,14 +26,19 @@ const API_URL = import.meta.env.PROD
   ? '/api/nuclear/rte-unavailability'
   : '/api/nuclear/rte-unavailability'; // Vite proxy same path
 
-const CACHE_TTL_MS = 15 * 60_000;
-let _cache: { items: NuclearUnavailability[]; available: boolean; fetchedAt: number } | null = null;
+// Cache client court : l'âge affiché part de la lecture serveur (≤ 10 min) et doit rester sous le seuil « en retard » (30 min).
+const CACHE_TTL_MS = 5 * 60_000;
+/** `fetchedAt` : instant de remplissage côté client (durée de vie du cache) ; `dataAt` : heure de lecture RTE par le serveur. */
+let _cache: { items: NuclearUnavailability[]; available: boolean; fetchedAt: number; dataAt: number } | null = null;
 
 const PERSIST_TTL_MS = 10 * 60_000;
-const PERSIST_KEY = 'nuclear-rte-unavailabilities';
+const PERSIST_KEY = 'nuclear-rte-unavailabilities-v2';
 
-function isNuclearUnavailabilityArray(value: unknown): value is NuclearUnavailability[] {
-    return Array.isArray(value);
+interface PersistedNuclear { items: NuclearUnavailability[]; dataAt: number }
+
+function isPersistedNuclear(value: unknown): value is PersistedNuclear {
+    return !!value && typeof value === 'object' && Array.isArray((value as PersistedNuclear).items)
+        && Number.isFinite((value as PersistedNuclear).dataAt);
 }
 
 /** JSON.parse ne revit pas les `Date` — reconvertir après lecture localStorage. */
@@ -50,7 +55,7 @@ export interface NuclearRTEResult {
   items: NuclearUnavailability[];
   /** true si l'API a répondu avec succès, même si 0 indisponibilités actives */
   available: boolean;
-  /** Date du dernier fetch réussi, pour calculer la fraîcheur */
+  /** Heure de lecture RTE par le serveur (ou des données en cache si RTE a échoué), pour la fraîcheur */
   fetchedAt?: Date;
 }
 
@@ -63,16 +68,15 @@ export interface NuclearRTEResult {
  */
 export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> {
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    return { items: _cache.items, available: _cache.available, fetchedAt: new Date(_cache.fetchedAt) };
+    return { items: _cache.items, available: _cache.available, fetchedAt: new Date(_cache.dataAt) };
   }
 
   // Rechargement de page : peindre la dernière disponibilité connue (< 10 min) avant réseau.
-  const persisted = readPersisted<NuclearUnavailability[]>(PERSIST_KEY, PERSIST_TTL_MS, isNuclearUnavailabilityArray);
+  const persisted = readPersisted<PersistedNuclear>(PERSIST_KEY, PERSIST_TTL_MS, isPersistedNuclear);
   if (persisted) {
-    const items = reviveNuclearDates(persisted);
-    const now = Date.now();
-    _cache = { items, available: true, fetchedAt: now };
-    return { items, available: true, fetchedAt: new Date(now) };
+    const items = reviveNuclearDates(persisted.items);
+    _cache = { items, available: true, fetchedAt: Date.now(), dataAt: persisted.dataAt };
+    return { items, available: true, fetchedAt: new Date(persisted.dataAt) };
   }
 
   Watchdog.report('nuclear-rte', { type: 'loading' });
@@ -84,28 +88,30 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     const json = await dedupe(API_URL, async () => {
       const resp = await fetch(API_URL, { signal: AbortSignal.timeout(20_000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return (await resp.json()) as { available?: boolean; items?: unknown[]; error?: string };
+      return (await resp.json()) as { available?: boolean; items?: unknown[]; error?: string; fetchedAt?: string };
     });
 
     if (json.available === false) {
       console.warn('[nuclear-rte] API reported unavailable:', json.error);
       Watchdog.report('nuclear-rte', { type: 'failure', error: json.error ?? 'API indisponible', isFallback: !!_cache });
-      if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
+      if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.dataAt) };
       return { items: [], available: false };
     }
 
     const rawItems = Array.isArray(json.items) ? json.items : [];
     const items = normalizeNuclearItems(rawItems, Date.now());
     const now = Date.now();
-    _cache = { items, available: true, fetchedAt: now };
-    writePersisted(PERSIST_KEY, items);
+    const serverAt = json.fetchedAt ? Date.parse(json.fetchedAt) : NaN;
+    const dataAt = Number.isFinite(serverAt) ? serverAt : now;
+    _cache = { items, available: true, fetchedAt: now, dataAt };
+    writePersisted(PERSIST_KEY, { items, dataAt });
     Watchdog.report('nuclear-rte', { type: 'success', responseTimeMs: Date.now() - t0 });
-    return { items, available: true, fetchedAt: new Date(now) };
+    return { items, available: true, fetchedAt: new Date(dataAt) };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[nuclear-rte] Fetch failed:', err);
     Watchdog.report('nuclear-rte', { type: 'failure', error: msg, isFallback: !!_cache });
-    if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.fetchedAt) };
+    if (_cache) return { items: _cache.items, available: true, fetchedAt: new Date(_cache.dataAt) };
     return { items: [], available: false };
   }
 }
