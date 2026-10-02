@@ -178,14 +178,13 @@ function activeRefineries(data: OilDashboard): number {
   return data.refineries.filter((r) => r.status === 'active').length;
 }
 
-/** Au-delà de 24 h, des relevés de stations figés ne disent plus rien de la tension (prix non mis à jour = « anomalies »). */
+/** Au-delà de 24 h sans aucun relevé de station dans le flux, la tension n'est plus évaluable (un prix stable n'est pas un relevé ancien). */
 const STALE_TENSION_MS = 24 * 3_600_000;
 
-/** Heure des données de tension : relevé médian des stations (`generatedAt − médiane`), sinon l'heure de lecture. */
+/** Heure des données de tension : fraîcheur du flux (dernier relevé de station), sinon l'heure de lecture. */
 function tensionDataTime(tension: FuelTensionDashboard): number {
-  const generated = Date.parse(tension.generatedAt);
-  const median = tension.national.medianUpdateAgeMinutes;
-  return median === null || !Number.isFinite(median) ? generated : generated - median * 60_000;
+  const latest = tension.national.latestUpdateAt ? Date.parse(tension.national.latestUpdateAt) : NaN;
+  return Number.isFinite(latest) ? latest : Date.parse(tension.generatedAt);
 }
 
 function tensionStale(tension: FuelTensionDashboard, now: number): boolean {
@@ -220,14 +219,10 @@ function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: n
 
 function statusOf(tension: FuelTensionDashboard | null, now: number): string[] {
   if (!tension) return ['tension carburants : chargement…', 'prix-carburants'];
-  const generated = Date.parse(tension.generatedAt);
-  const median = tension.national.medianUpdateAgeMinutes;
   if (tensionStale(tension, now)) {
     return ['tension non évaluée : relevés anciens', `données de ${absoluteTime(tensionDataTime(tension), now, 'fr')} (en retard)`, 'prix-carburants'];
   }
-  const time = median === null || !Number.isFinite(median)
-    ? `lu à ${absoluteTime(generated, now, 'fr')}`
-    : `données de ${absoluteTime(generated - median * 60_000, now, 'fr')}`;
+  const time = `données de ${absoluteTime(tensionDataTime(tension), now, 'fr')}`;
   return [`${formatPct(tension.national.anomalyShare, 1)} de stations en anomalie`, time, 'prix-carburants'];
 }
 

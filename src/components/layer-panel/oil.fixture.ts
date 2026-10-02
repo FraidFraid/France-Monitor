@@ -84,6 +84,7 @@ export function tensionFixture(over: Partial<FuelTensionDashboard> = {}): FuelTe
     generatedAt: new Date(OIL_NOW - 20 * 60_000).toISOString(), departments: ['13', '59', '75'], signals: [], summaries,
     national: {
       stationCount: 9812, departmentCount: 96, anomalyShare: 2.1, avgUpdateAgeMinutes: 50, medianUpdateAgeMinutes: 38,
+      latestUpdateAt: new Date(OIL_NOW - 25 * 60_000).toISOString(),
       tensionLevel: 'LOW', avgPrices: { gazole: 1.689, e10: 1.752 }, topDepartments: summaries.slice(0, 2),
     },
     sourceStatus: 'ok', degraded: false, sourceLabel: 'prix-carburants.gouv.fr', coverageLabel: '96 départements',

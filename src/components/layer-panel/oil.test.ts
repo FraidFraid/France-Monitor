@@ -17,6 +17,13 @@ const view = (over: Partial<OilViewInput> = {}) => buildOilView(input(over));
 const html = (over: Partial<OilViewInput> = {}): string => renderLayerView('oilNetwork', view(over));
 const section = (id: string, over: Partial<OilViewInput> = {}) => view(over).sections.find((s) => s.id === id);
 
+/** Flux dont le dernier relevé de station a l'âge donné (lu à la même heure). */
+function staleFeed(ageMs: number) {
+  const generatedAt = new Date(OIL_NOW - ageMs).toISOString();
+  const base = tensionFixture({ generatedAt });
+  return { ...base, national: { ...base.national, latestUpdateAt: generatedAt } };
+}
+
 describe('vue Pétrole', () => {
   it('seuils : tension, stocks, écart de prix', () => {
     expect((['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map(tensionLevel)).toEqual(['vert', 'jaune', 'orange', 'rouge']);
@@ -24,14 +31,14 @@ describe('vue Pétrole', () => {
     expect([0.6, 0.5, 0.4, -0.4, -0.5, null].map(priceDeltaLevel)).toEqual(['orange', 'orange', null, null, 'vert', null]);
     expect(fuelCatVar('gazole')).toBe('var(--cat-gazole)');
   });
-  it('en-tête : prix du gazole non coloré, écart 7 j coloré, tension, relevé médian, source', () => {
+  it('en-tête : prix du gazole non coloré, écart 7 j coloré, tension, fraîcheur du flux, source', () => {
     const v = view();
     expect(v.head).toMatchObject({ title: 'Pétrole', level: 'vert' });
     expect(v.head.figure?.value).toBe(`1,689${NBSP}€`);
     expect(v.head.figure?.level ?? null).toBeNull();
     expect(v.head.figure?.captionHtml).toBe(`gazole, moyenne nationale · <span class="lp-val fmk-num lp-lvl lp-lvl--vert">−1,2${NBSP}c en 7${NBSP}j</span>`);
-    // relevé médian des stations : 08:10 − 38 min
-    expect(v.head.status).toEqual([`2,1${NBSP}% de stations en anomalie`, 'données de 07:32', 'prix-carburants']);
+    // fraîcheur du flux : dernier relevé de station, 08:30 − 25 min
+    expect(v.head.status).toEqual([`2,1${NBSP}% de stations en anomalie`, 'données de 08:05', 'prix-carburants']);
     expect(v.head.lead).toBe('Pas de tension d’approvisionnement. Stocks stratégiques : 46 jours. 1 raffinerie sur 2 en activité.');
   });
   it('tension modérée : phrase avec la part d’anomalies', () => {
@@ -182,8 +189,24 @@ describe('vue Pétrole', () => {
     expect(dep).toContain('signal quasi direct');
     expect(dep).toContain('tension forte');
   });
+  it('fraîcheur du flux : un prix médian ancien (stations stables) n’est pas un relevé ancien', () => {
+    const base = tensionFixture();
+    const stable = { ...base, national: { ...base.national, medianUpdateAgeMinutes: 80 * 60, avgUpdateAgeMinutes: 70 * 60, tensionLevel: 'HIGH' as const } };
+    const v = view({ tension: stable });
+    expect(v.head.level).not.toBe('nd');
+    expect(v.head.status[0]).toContain('de stations en anomalie');
+    expect(v.head.status[1]).toMatch(/^données de /);
+    expect(v.head.status[1]).not.toContain('retard');
+    expect(html({ tension: stable })).toContain('médiane');
+  });
+  it('fraîcheur du flux : sans latestUpdateAt, l’heure de lecture fait foi ; flux figé > 24 h : non évalué', () => {
+    const noLatest = tensionFixture({ generatedAt: new Date(OIL_NOW - 30 * 3_600_000).toISOString() });
+    noLatest.national.latestUpdateAt = null;
+    expect(view({ tension: noLatest }).head.level).toBe('nd');
+    expect(view({ tension: tensionFixture({ generatedAt: new Date(OIL_NOW - 20 * 60_000).toISOString() }) }).head.level).not.toBe('nd');
+  });
   it('relevés de tension de plus de 24 h : sections sans couleur ni mot de tension', () => {
-    const old = tensionFixture({ generatedAt: new Date(OIL_NOW - 30 * 3_600_000).toISOString() });
+    const old = staleFeed(30 * 3_600_000);
     const over = html({ tension: old });
     expect(over).toContain('Relevés des stations du ');
     expect(over).toContain('tension non évaluée.');
@@ -200,7 +223,7 @@ describe('vue Pétrole', () => {
   });
   it('prix du gazole sans série : repli sur des relevés anciens daté, relevés récents non datés', () => {
     const noSeries = oilFixture({ fuelPriceHistory: null });
-    const stale = tensionFixture({ generatedAt: new Date(OIL_NOW - 30 * 3_600_000).toISOString() });
+    const stale = staleFeed(30 * 3_600_000);
     expect(view({ data: noSeries, tension: stale }).head.figure?.caption).toMatch(/^gazole, moyenne nationale du \d{2}\/\d{2}$/);
     expect(view({ data: noSeries }).head.figure?.caption).toBe('gazole, moyenne nationale');
   });
@@ -238,7 +261,7 @@ describe('vue Pétrole', () => {
     expect(all).not.toMatch(/au en |\b2025-12\b|\blive\b/);
   });
   it('relevés de stations de plus de 24 h : tension non évaluée, pastille grise, « en retard », pas de « Rouge »', () => {
-    const stale = tensionFixture({ generatedAt: new Date(OIL_NOW - 5 * 86_400_000).toISOString() });
+    const stale = staleFeed(5 * 86_400_000);
     const crit = { ...stale, national: { ...stale.national, tensionLevel: 'CRITICAL' as const, anomalyShare: 87 } };
     const v = view({ tension: crit });
     expect(v.head.level).toBe('nd');

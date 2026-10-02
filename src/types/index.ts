@@ -2567,6 +2567,8 @@ export interface FuelTensionNationalSummary {
   anomalyShare: number; // percent
   avgUpdateAgeMinutes: number | null;
   medianUpdateAgeMinutes: number | null;
+  /** Dernier relevé de prix du flux (fraîcheur du flux), ISO ; null si aucun. */
+  latestUpdateAt: string | null;
   tensionLevel: FuelTensionLevel;
   avgPrices: Partial<Record<FuelType, number>>;
   topDepartments: FuelTensionDepartmentSummary[];
