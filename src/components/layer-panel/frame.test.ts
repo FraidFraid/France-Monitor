@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  createLayerPanelShell, freshnessSegment, loadLayerTab, renderLayerHead, renderLayerTabs, renderLayerSections,
+  barRow, createLayerPanelShell, freshnessSegment, listRow, valueHtml, loadLayerTab, renderLayerHead, renderLayerTabs, renderLayerSections,
   saveLayerTab, sectionOpenOf, sourceErrorCallout, sourceLinkHtml, LAYER_TABS_STORAGE_KEY,
 } from './frame.ts';
 
@@ -96,6 +96,53 @@ describe('cadre des panneaux de couches', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     shell.destroy();
     expect(container.contains(shell.root)).toBe(false);
+  });
+  it('R3 : gros chiffre coloré par son niveau, légende en HTML fourni', () => {
+    const html = renderLayerHead({
+      theme: 'É', title: 'T', status: [],
+      figure: { value: '93,4 %', caption: 'x', captionHtml: 'stockages <span class="lp-lvl lp-lvl--vert">ok</span>', level: 'jaune' },
+    }, 't');
+    expect(html).toMatch(/<b class="fmk-num lp-lvl lp-lvl--jaune">93,4 %<\/b>/);
+    expect(html).toContain('stockages <span class="lp-lvl lp-lvl--vert">ok</span>');
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: { value: '7,0 GW', caption: 'c' }, status: [] }, 't'))
+      .toMatch(/<b class="fmk-num">7,0 GW<\/b><span>c<\/span>/);
+  });
+  it('valeur : insécable, colorée par niveau, échappée', () => {
+    expect(valueHtml('30,9\u00A0GW')).toBe('<span class="lp-val fmk-num">30,9\u00A0GW</span>');
+    expect(valueHtml('Kp 5', 'orange')).toBe('<span class="lp-val fmk-num lp-lvl lp-lvl--orange">Kp 5</span>');
+    expect(valueHtml('<b>')).toContain('&lt;b&gt;');
+  });
+  it('ligne de liste : puce de niveau, grise ou de catégorie ; textes et attributs échappés', () => {
+    const r = listRow({ text: '<img src=x>', value: '1,2\u00A0GW', level: 'orange', note: '<i>', data: { 'hydraulic-asset': 'a"b', 'X bad': 'y' } });
+    expect(r).toContain('fmk-dot--orange');
+    expect(r).toContain('data-hydraulic-asset="a&quot;b"');
+    expect(r).not.toContain('X bad');
+    expect(r).not.toMatch(/<img|<i>/);
+    expect(listRow({ text: 'T', level: 'gris' })).toContain('<span class="fmk-dot" aria-hidden="true"></span>');
+    expect(listRow({ text: 'T', color: 'var(--cat-offshore)' })).toContain('background:var(--cat-offshore)');
+    expect(listRow({ text: 'T' })).not.toContain('fmk-dot');
+    expect(listRow({ text: 'T', link: true })).toContain('class="lp-row is-link" tabindex="0" role="button"');
+  });
+  it('ligne à barre : couleur de niveau ou de catégorie, jamais grise ; pourcentage borné ; absent sans barre', () => {
+    expect(barRow({ label: 'Chémery', pct: 96, value: '96\u00A0%', level: 'vert' })).toMatch(/fmk-dot--vert[^]*width:96%;background:var\(--sev-green\)/);
+    const terre = barRow({ label: 'Terre', pct: 140, value: 'x', color: 'var(--cat-onshore)' });
+    expect(terre).toContain('width:100%;background:var(--cat-onshore)');
+    expect(terre).toContain('<span class="lp-swatch" style="background:var(--cat-onshore)"');
+    expect(barRow({ label: 'Utilisation', pct: 54, value: 'x', color: 'var(--cat-lng)', dot: false })).not.toContain('lp-swatch');
+    expect(barRow({ label: 'Part', pct: null, value: 'n.d.', color: 'var(--cat-lng)' })).not.toContain('<i style');
+    expect(barRow({ label: '<b>', pct: 1, value: '<i>', note: '<u>', level: 'jaune' })).not.toMatch(/<b>|<i>|<u>|--text-secondary/);
+  });
+  it('Entrée sur une ligne cliquable déclenche son clic', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const shell = createLayerPanelShell({ container, className: 'x', panelId: 'p', onClose: () => undefined, storage: null });
+    shell.render({ head: { theme: 'É', title: 'T', status: [] }, sections: [], bodyHtml: listRow({ text: 'Parc', link: true, data: { 'eolien-park': 'p1' } }) });
+    const row = shell.root.querySelector('[data-eolien-park]') as HTMLElement;
+    let clicks = 0;
+    row.addEventListener('click', () => { clicks += 1; });
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(clicks).toBe(1);
+    shell.destroy();
   });
 });
 

@@ -1,17 +1,26 @@
 // src/components/layer-panel/frame.ts : cadre commun des panneaux de couches (spec 2026-10-02 § 4).
 // Rendu pur (HTML échappé) + une coquille DOM mince : en-tête collant, onglets, fermeture, sections du kit.
-import type { VigilanceLevel } from '../../services/vigilance.ts';
+import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
 import { loadSectionState, saveSectionState, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { fmLoaderHTML } from '../shared/loader.ts';
-import { absoluteTime } from '../fiche/kit.ts';
+import { absoluteTime, levelDot } from '../fiche/kit.ts';
 import { renderKitSection, type FicheSection } from '../fiche/parts.ts';
+
+export interface LayerFigure {
+  value: string;
+  caption: string;
+  /** HTML déjà échappé qui remplace `caption` (partie colorée, R2). */
+  captionHtml?: string;
+  /** R3 : niveau du chiffre quand il en a un (le chiffre prend sa couleur). */
+  level?: VigilanceLevel | null;
+}
 
 export interface LayerHeadModel {
   theme: string;
   title: string;
-  figure?: { value: string; caption: string } | null;
+  figure?: LayerFigure | null;
   level?: VigilanceLevel | 'nd' | null;
   status: string[];
   lead?: string | null;
@@ -26,8 +35,10 @@ export function renderNdPill(): string {
 export function renderLayerHead(m: LayerHeadModel, titleId: string): string {
   const pill = m.level === 'nd' ? renderNdPill() : m.level ? renderVigilancePill(m.level) : '';
   const status = m.status.filter((s) => s.length > 0).map((s) => `<span class="fmk-ctx">${escapeHtml(s)}</span>`).join('');
-  const figure = m.figure
-    ? `<div class="lp-figure"><b class="fmk-num">${escapeHtml(m.figure.value)}</b><span>${escapeHtml(m.figure.caption)}</span></div>`
+  const f = m.figure;
+  const figure = f
+    ? `<div class="lp-figure"><b class="fmk-num${f.level ? ` lp-lvl lp-lvl--${f.level}` : ''}">${escapeHtml(f.value)}</b>`
+      + `<span>${f.captionHtml ?? escapeHtml(f.caption)}</span></div>`
     : '';
   return `<div class="fmk-eyebrow">${escapeHtml(`${m.theme} · Couche`)}</div>`
     + `<h2 class="lp-title" id="${escapeHtml(titleId)}" tabindex="-1">${escapeHtml(m.title)}</h2>`
@@ -76,6 +87,75 @@ export function sourceErrorCallout(lastDataMs: number | null, now: number): stri
 
 export function emptyLine(text: string): string {
   return `<p class="fiche-empty">${escapeHtml(text)}</p>`;
+}
+
+/** Valeur insécable (R1), colorée par son niveau quand elle en a un (R2, R3). */
+export function valueHtml(text: string, level: VigilanceLevel | null = null): string {
+  return `<span class="lp-val fmk-num${level ? ` lp-lvl lp-lvl--${level}` : ''}">${escapeHtml(text)}</span>`;
+}
+
+function marker(level: VigilanceLevel | 'gris' | null | undefined, color: string | null | undefined): string {
+  if (level === 'gris') return levelDot(null);
+  if (level) return levelDot(level);
+  if (color) return `<span class="lp-swatch" style="background:${escapeHtml(color)}" aria-hidden="true"></span>`;
+  return '<span aria-hidden="true"></span>';
+}
+
+/** Attributs data-* internes : nom en minuscules seulement, valeur échappée. */
+function dataAttrs(data: Readonly<Record<string, string>> | undefined): string {
+  if (!data) return '';
+  return Object.entries(data)
+    .filter(([k]) => /^[a-z][a-z0-9-]*$/.test(k))
+    .map(([k, v]) => ` data-${k}="${escapeHtml(v)}"`).join('');
+}
+
+export interface ListRow {
+  text: string;
+  value?: string | null;
+  /** HTML déjà échappé à la place de `value` (valeur colorée). */
+  valueHtml?: string | null;
+  /** Puce de niveau ; 'gris' = puce grise (arrêt, maintenance, n.d.). */
+  level?: VigilanceLevel | 'gris' | null;
+  /** Puce de catégorie (jeton CSS) quand il n'y a pas de niveau. */
+  color?: string | null;
+  note?: string | null;
+  noteHtml?: string | null;
+  data?: Readonly<Record<string, string>>;
+  /** Ligne cliquable (recentrer la carte) : focus clavier, Entrée = clic. */
+  link?: boolean;
+}
+
+export function listRow(r: ListRow): string {
+  const value = r.valueHtml ?? (r.value !== undefined && r.value !== null ? valueHtml(r.value) : '<span></span>');
+  const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
+  const link = r.link ? ' is-link" tabindex="0" role="button' : '';
+  return `<div class="lp-row${link}"${dataAttrs(r.data)}>${marker(r.level, r.color)}<span>${escapeHtml(r.text)}</span>${value}`
+    + `${note ? `<small>${note}</small>` : ''}</div>`;
+}
+
+interface BarRowBase {
+  label: string;
+  /** 0–100 ; null : pas de barre. */
+  pct: number | null;
+  value: string;
+  /** Puce devant le libellé (défaut : oui). */
+  dot?: boolean;
+  note?: string | null;
+  noteHtml?: string | null;
+  data?: Readonly<Record<string, string>>;
+}
+/** Jamais de jauge grise (demande de l'utilisateur) : un niveau OU une couleur de catégorie, imposé par le type. */
+export type BarRow = BarRowBase & ({ level: VigilanceLevel; color?: undefined } | { color: string; level?: undefined });
+
+/** Ligne libellé · barre · valeur : barre et puce en couleur de niveau ou de catégorie. */
+export function barRow(r: BarRow): string {
+  const fill = r.level !== undefined ? levelColorVar(r.level) : r.color;
+  const width = r.pct === null || !Number.isFinite(r.pct) ? null : Math.max(0, Math.min(100, r.pct));
+  const bar = width === null ? '' : `<i style="width:${Math.round(width * 10) / 10}%;background:${escapeHtml(fill)}"></i>`;
+  const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
+  const dot = r.dot === false ? '<span aria-hidden="true"></span>' : marker(r.level, r.color);
+  return `<div class="lp-bar-row"${dataAttrs(r.data)}>${dot}<span class="lp-bar-label">${escapeHtml(r.label)}</span>`
+    + `<span class="fmk-bar">${bar}</span>${valueHtml(r.value)}${note ? `<small>${note}</small>` : ''}</div>`;
 }
 
 export function freshnessSegment(dataMs: number, now: number, periodMs: number): string {
@@ -159,6 +239,12 @@ export function createLayerPanelShell(opts: {
     if (tab?.dataset['tab']) opts.onTab?.(tab.dataset['tab']);
   };
   const onKey = (e: KeyboardEvent): void => {
+    const link = (e.target as HTMLElement).closest<HTMLElement>('.lp-row.is-link');
+    if (link && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      link.click();
+      return;
+    }
     const tab = (e.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
     if (!tab) return;
     const tabs = [...root.querySelectorAll<HTMLElement>('[role="tab"]')];

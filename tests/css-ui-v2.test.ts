@@ -28,4 +28,19 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \+ \.fmk-ctx::before \{\s*content: '·' !important; position: absolute; left: -7px;/);
     expect(css).not.toMatch(/\.lp \.fmk-level \.fmk-ctx:not\(:last-child\)::after/);
   });
+  it('R1 : valeurs des lignes, des légendes et des clés-valeurs insécables ; niveaux en couleur de texte', () => {
+    expect(css).toContain('.lp .fmk .fmk-kv-v, .lp .lp-leg b, .lp .lp-row > .lp-val, .lp .lp-bar-row > .lp-val { white-space: nowrap; }');
+    expect(css).toContain('.lp .lp-lvl--orange { color: var(--sev-orange); }');
+  });
+  it('panneaux de couches du lot 2 en feuille basse sur mobile', () => {
+    const mobile = /@media \(max-width: 768px\) \{\s*([^{]*)\{\s*position: fixed !important;/.exec(css)?.[1] ?? '';
+    for (const c of ['.hydraulic-panel-modal', '.eolien-panel-modal', '.drom-energy-panel-modal']) expect(mobile).toContain(c);
+  });
+  it('jetons de filière et de catégorie du lot 2 définis', () => {
+    for (const t of ['--mix-coal', '--mix-oil', '--mix-turbine', '--mix-geo', '--mix-storage', '--mix-links', '--mix-other',
+      '--cat-onshore', '--cat-offshore', '--cat-gazole', '--cat-sp95', '--cat-sp98', '--cat-e10', '--cat-gpl',
+      '--cat-substation', '--cat-pylon', '--cat-production', '--cat-lng', '--cat-crude', '--cat-renewable']) {
+      expect(css).toMatch(new RegExp(`${t}: #[0-9a-f]{6};`));
+    }
+  });
 });
