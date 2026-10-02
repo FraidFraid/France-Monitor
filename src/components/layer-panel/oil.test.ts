@@ -39,7 +39,7 @@ describe('vue Pétrole', () => {
     expect(v.head.figure?.captionHtml).toBe(`gazole, moyenne nationale · <span class="lp-val fmk-num lp-lvl lp-lvl--vert">−1,2${NBSP}c en 7${NBSP}j</span>`);
     // fraîcheur du flux : dernier relevé de station, 08:30 − 25 min
     expect(v.head.status).toEqual([`2,1${NBSP}% de stations en anomalie`, 'données de 08:05', 'prix-carburants']);
-    expect(v.head.lead).toBe('Pas de tension d’approvisionnement. Stocks stratégiques : 46 jours. 1 raffinerie sur 2 en activité.');
+    expect(v.head.lead).toBe(`Pas de tension d’approvisionnement. Stocks stratégiques : 46${NBSP}jours. 1 raffinerie sur 2 en activité.`);
   });
   it('tension modérée : phrase avec la part d’anomalies', () => {
     const t = tensionFixture({ national: { ...tensionFixture().national, tensionLevel: 'MEDIUM' } });
@@ -130,6 +130,21 @@ describe('vue Pétrole', () => {
     expect(folded).toContain('Détails méthodologiques');
     expect(folded).toContain('Deux lectures complémentaires');
   });
+  it('méthode : décrit la tension actuelle (rupture temporaire seule, heure du flux), sans ancienne définition ni code anglais', () => {
+    const h = visibleText(section('method')?.html ?? '');
+    expect(h).toContain('part des stations en rupture temporaire sur un carburant principal (gazole, SP95, E10, SP98)');
+    expect(h).toContain('une rupture définitive (carburant non vendu) n’est pas comptée');
+    expect(h).toContain('Heure des données : dernier relevé du flux.');
+    expect(h).not.toMatch(/figés|relevé médian|Vue Daily|Référence FR|[A-Za-zÀ-ÿ]: /);
+    // L'âge du dernier changement de prix reste visible, dit pour ce qu'il est (information, pas anomalie).
+    expect(visibleText(section('tension')?.html ?? '')).toContain('Dernier changement de prix');
+    expect(visibleText(section('tension')?.html ?? '')).not.toContain('Fraîcheur des relevés');
+  });
+  it('vue harmonisée : demande de gaz JODI en Gm³ par MOIS avec son mois, jamais « par an »', () => {
+    const h = visibleText(renderLayerView('oilNetwork', view({ tab: 'supply' })));
+    expect(h).toMatch(new RegExp(`Gaz \\(juin 2026\\)[^]*41,7${NBSP}Gm³/mois`));
+    expect(h).not.toContain('Gm³/an');
+  });
   it('départements : recherche, liste triée par tension, bouton de carte', () => {
     const v = view({ tab: 'departments' });
     const h = renderLayerView('oilNetwork', v);
@@ -137,7 +152,7 @@ describe('vue Pétrole', () => {
     expect(h).toContain('data-oil-map aria-pressed="false">Afficher sur la carte</button>');
     expect(h.indexOf('Bouches-du-Rhône')).toBeLessThan(h.indexOf('Nord'));
     expect(h.indexOf('Nord')).toBeLessThan(h.indexOf('Paris'));
-    expect(h).toMatch(new RegExp(`120 stations · écart 7${NBSP}j <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span> · relevés d’il y a 42${NBSP}min · gazole 1,701${NBSP}€`));
+    expect(h).toMatch(new RegExp(`120 stations · écart 7${NBSP}j <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span> · dernier changement de prix il y a 42${NBSP}min · gazole 1,701${NBSP}€`));
     const searched = renderLayerView('oilNetwork', view({ tab: 'departments', search: 'bouches' }));
     expect(searched).toContain('Bouches-du-Rhône');
     expect(searched).not.toContain('Nord (59)');

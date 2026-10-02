@@ -35,11 +35,11 @@ const TITLE = 'Pétrole';
 const STOCK_BAR_DAYS = 120;
 const STOCK_THRESHOLD_DAYS = 30;
 
-const OIL_PANEL_DESCRIPTION = 'Deux lectures complémentaires: une référence France structurale, et une vue harmonisée plus fraîche mais provisoire.';
-const OIL_PANEL_SOURCES_TEXT = 'Référence FR: SDES, INSEE, CPDP/UFIP, data.gouv';
-const OIL_PANEL_COMPLEMENT_TEXT = 'Complément fraîcheur: JODI Oil, JODI Gas, UFIP mensuel';
-const OIL_PANEL_DAILY_TEXT = 'Vue Daily: prix et ruptures carburants, pas volumes livrés';
-const OIL_PANEL_FRESHNESS_TEXT = 'Vue JODI/UFIP: plus fraîche pour 2025–2026, mais méthodologie mixte et provisoire.';
+const OIL_PANEL_DESCRIPTION = 'Deux lectures complémentaires : une référence France structurale, et une vue harmonisée plus fraîche mais provisoire.';
+const OIL_PANEL_SOURCES_TEXT = 'Référence France : SDES, INSEE, CPDP/UFIP, data.gouv';
+const OIL_PANEL_COMPLEMENT_TEXT = 'Complément de fraîcheur : JODI Oil, JODI Gas, UFIP mensuel';
+const OIL_PANEL_DAILY_TEXT = 'Vue quotidienne : prix et ruptures carburants, pas volumes livrés';
+const OIL_PANEL_FRESHNESS_TEXT = 'Vue JODI/UFIP : plus fraîche pour 2025–2026, mais méthodologie mixte et provisoire.';
 const OIL_PANEL_DISCLAIMER_TEXT = 'Limite : pas de télémesure en direct du raffinage, des oléoducs ni des livraisons en station.';
 const STOCKS_METHOD_TEXT = 'Jours de stock : stocks physiques en France rapportés à la consommation moyenne (méthode France Monitor) ; la méthode de l’AIE rapporte les stocks aux importations nettes.';
 const STRUCTURAL_TEXT = 'Vue France structurale (SDES, CPDP) : référence pour les stocks, les flux, les origines, les capacités et le raffinage.';
@@ -213,7 +213,7 @@ function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: n
   const active = activeRefineries(data);
   return [
     tensionSentence(tension, now),
-    `Stocks stratégiques : ${data.stocks.nationalStocksDays} jours.`,
+    `Stocks stratégiques : ${frNumber(data.stocks.nationalStocksDays, Number.isInteger(data.stocks.nationalStocksDays) ? 0 : 1)}${NBSP}jours.`,
     `${active} ${plural(active, 'raffinerie')} sur ${data.refineries.length} en activité.`,
   ].filter((s): s is string => s !== null).join(' ');
 }
@@ -324,7 +324,7 @@ function tensionSection(input: OilViewInput): FicheSection {
     : '';
   const html = (stale ? staleNote(tension, now) : '')
     + kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), !stale && n.anomalyShare >= 18 ? 'orange' : null))
-    + kvRow('Fraîcheur des relevés', escapeHtml(`moyenne ${formatAge(n.avgUpdateAgeMinutes)} · médiane ${formatAge(n.medianUpdateAgeMinutes)}`))
+    + kvRow('Dernier changement de prix', escapeHtml(`moyenne ${formatAge(n.avgUpdateAgeMinutes)} · médiane ${formatAge(n.medianUpdateAgeMinutes)}`))
     + averages
     + `<h4 class="fmk-eyebrow">${stale ? 'Départements (relevés anciens)' : 'Départements les plus tendus'}</h4>` + rows
     + '<p class="fmk-note">Liste complète dans l’onglet Départements.</p>'
@@ -374,8 +374,9 @@ function shortFreshness(info: OilFreshnessInfo): string {
   return `${FRESHNESS_WORD[info.level]}${last ? ` · ${last}` : ''}`;
 }
 
-const METHOD_TEXT = 'Tension carburants : part des stations aux prix figés ou en rupture, par département ; '
-  + `non évaluée quand les relevés ont plus de 24${NBSP}h. Stocks en jours de consommation, seuil 30${NBSP}jours. `
+const METHOD_TEXT = 'Tension carburants : part des stations en rupture temporaire sur un carburant principal (gazole, SP95, E10, SP98), par département ; '
+  + 'une rupture définitive (carburant non vendu) n’est pas comptée. '
+  + `Non évaluée quand le dernier relevé du flux a plus de 24${NBSP}h. Stocks en jours de consommation, seuil 30${NBSP}jours. `
   + 'Vue harmonisée JODI et UFIP : signal provisoire.';
 
 function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
@@ -397,7 +398,7 @@ function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const details = [OIL_PANEL_DESCRIPTION, STRUCTURAL_TEXT, HARMONIZED_TEXT, OIL_PANEL_SOURCES_TEXT, OIL_PANEL_COMPLEMENT_TEXT, OIL_PANEL_DAILY_TEXT, OIL_PANEL_FRESHNESS_TEXT, STOCKS_METHOD_TEXT].map(note).join('')
     + fresh('Stocks, flux et origines', f.dashboard) + fresh('Livraisons', f.deliveries) + fresh('Raffineries', f.infrastructure)
     + fresh('Vue harmonisée', f.harmonized) + fresh('Prix', f.fuelPrices)
-    + note('Heure des données : relevé médian des stations.')
+    + note('Heure des données : dernier relevé du flux. L’âge du dernier changement de prix de chaque station est une information, pas une anomalie.')
     + (data.fuelPriceHistory?.sourceLabel ? note(`Historique des prix : ${data.fuelPriceHistory.sourceLabel}.`) : '')
     + (data.harmonized?.caveat ? note(data.harmonized.caveat) : '')
     + (t ? note(t.disclaimerFr) : '')
@@ -426,7 +427,7 @@ function departmentsSections(input: OilViewInput): FicheSection[] {
     const prices = d.fuelSignals.filter((s) => s.avgPrice !== null).map((s) => `${FUEL_WORD[s.fuelType]} ${formatEuro(s.avgPrice)}`);
     const before = [...(stale ? [] : [`tension ${TENSION_WORD[d.tensionLevel]}`]), `${d.stationCount} stations`].join(' · ');
     const after = [
-      `relevés d’il y a ${formatAge(d.avgUpdateAgeMinutes)}`, ...(prices.length > 0 ? prices : ['prix indisponibles']), `signal ${BADGE_WORD[d.freshness.badge]}`,
+      `dernier changement de prix il y a ${formatAge(d.avgUpdateAgeMinutes)}`, ...(prices.length > 0 ? prices : ['prix indisponibles']), `signal ${BADGE_WORD[d.freshness.badge]}`,
     ].join(' · ');
     return listRow({
       text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: stale ? 'gris' : tensionLevel(d.tensionLevel),
@@ -514,7 +515,7 @@ function harmonizedSection(input: OilViewInput, data: OilDashboard): FicheSectio
   const html = (months.length > 0 ? `<div class="fmk-sub">${escapeHtml(months.join(' · '))}</div>` : '')
     + products
     + (h.crudeImportsKbd !== null ? kvRow('Brut importé', valueHtml(kbd(h.crudeImportsKbd))) : '')
-    + (h.gasTotalDemandTj !== null ? kvRow('Gaz', valueHtml(`${frNumber(h.gasTotalDemandTj / 36_000, 1)}${NBSP}Gm³/an`)) : '')
+    + (h.gasTotalDemandTj !== null ? kvRow(`Gaz${monthLabel(h.gasDataMonth) ? ` (${monthLabel(h.gasDataMonth)})` : ''}`, valueHtml(`${frNumber(h.gasTotalDemandTj / 36_000, 1)}${NBSP}Gm³/mois`)) : '')
     + (lng !== null
       ? '<div class="fmk-sub">Importations de gaz</div>'
         + barRow({ label: 'Part du GNL', pct: lng, value: formatPct(lng), color: 'var(--cat-lng)', dot: true })
