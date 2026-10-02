@@ -216,12 +216,12 @@ function consumptionSection(input: GridViewInput, g: GridSnapshot | null): Fiche
     const nowX = x(g.dataTime);
     const txt = (tx: number, ty: number, anchor: string, s: string): string =>
       `<text x="${tx.toFixed(1)}" y="${ty}" text-anchor="${anchor}" font-size="9" fill="var(--text-muted)">${escapeHtml(s)}</text>`;
-    const labels = [txt(0, 92, 'start', '0 h'), txt(W, 92, 'end', '24 h'), txt(nowX, 92, 'middle', clock(g.dataTime))];
-    if (peak && Math.abs(x(peak.at) - nowX) > 40) labels.push(txt(x(peak.at), 92, 'middle', clock(peak.at)));
+    const labels = [txt(0, 102, 'start', '0 h'), txt(W, 102, 'end', '24 h'), txt(nowX, 102, 'middle', clock(g.dataTime))];
+    if (peak && Math.abs(x(peak.at) - nowX) > 40) labels.push(txt(x(peak.at), 102, 'middle', clock(peak.at)));
     labels.push(txt(2, top - 2, 'start', `${Math.round(hi / 1000)} GW`), txt(2, bottom + 10, 'start', `${Math.round(lo / 1000)} GW`));
     const aria = `Consommation du jour : réalisée jusqu’à ${clock(g.dataTime)}, prévue ensuite`
       + (peak ? `, pic ${formatGw(peak.mw)} à ${clock(peak.at)}` : '');
-    chart = `<svg viewBox="0 0 ${W} 96" width="100%" role="img" aria-label="${escapeHtml(aria)}">`
+    chart = `<svg viewBox="0 0 ${W} 106" width="100%" role="img" aria-label="${escapeHtml(aria)}">`
       + `<polyline points="${line((p) => p.forecastMw)}" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-dasharray="4 3"/>`
       + `<polyline points="${line((p) => p.consumptionMw)}" fill="none" stroke="var(--text-primary)" stroke-width="2"/>`
       + `<line x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="var(--v2-brand)" stroke-width="1"/>`

@@ -46,6 +46,27 @@ Spec `docs/superpowers/specs/2026-10-01-fiches-kit-design.md` (fiches construite
 - Aucun tiret cadratin dans un texte affiché : séparateur « · » ou « : », valeur absente « n.d. », plage « à ».
 - Retour d'action (« Référence copiée », « Copie impossible ») : `fiche-toast`, en haut à gauche de la fiche.
 
+## Panneaux de couches
+Cadre commun des panneaux flottants de couche (code : `src/components/layer-panel/frame.ts`, styles : bloc « Panneaux de couches : cadre commun » de `src/styles/main.css`). Panneaux migrés : Réseau électrique (`EnergyPanel`, contenu dans `grid.ts`) et Parc nucléaire (`NuclearPanel`, contenu dans `nuclear.ts`). Les autres panneaux de couche restent à migrer.
+
+Structure, de haut en bas :
+- En-tête collant (`lp-head`) : sur-titre « Thème · Couche », titre = libellé de la pastille de la couche, gros chiffre facultatif (`lp-figure`, avec sa légende), ligne de niveau (pastille de niveau puis contexte séparé par « · »), synthèse en une ou deux phrases, puis onglets s'il y en a. Le bouton de fermeture rond (28 px) reste visible en haut à droite pendant le défilement.
+- Corps (`lp-body`) : sections du kit (`FicheSection`), séparées par des filets fins, chacune avec son résumé sur la ligne de titre ; l'essentiel est ouvert, le détail replié ; l'ouverture choisie par l'utilisateur et l'onglet actif survivent au rafraîchissement.
+- Sources : section en ton « référence » (`fmk-sec--ref`), en dernier.
+
+États :
+- Chargement : loader unique (`fmLoaderHTML`) et « Chargement des données… ».
+- Erreur de source : encart (`fmk-callout`) « Source injoignable » avec l'heure des dernières données, jamais « indisponible » pour une donnée qui charge.
+- Vide : une phrase dite (`fiche-empty`), jamais un zéro.
+- En retard : la ligne de niveau dit « données de hh:mm (en retard) » au-delà de deux périodes de rafraîchissement de la source ; l'heure est celle de la donnée, en absolu (heure de Paris).
+
+Règles :
+1. Pas de dégradé, pas de tuile d'icône, pas de glisser-déposer : le panneau est ancré (à droite en v1, dans la colonne en v2, en feuille basse sous 768 px).
+2. Couleurs : niveaux seulement. Exception unique : les couleurs de filière `--mix-*`, limitées à la répartition de la production (barre et légende du Réseau électrique).
+3. Chiffres en `fmk-num`, aucune police à chasse fixe, aucun tiret cadratin.
+4. Tout texte et tout lien venant d'un tiers est échappé ; les liens passent par `safeHref`.
+5. Fermer par la croix éteint la couche (rappel `onClose`, appelé une seule fois) ; le masquage silencieux (`hide({ silent: true })`) ne l'appelle jamais.
+
 ## Correspondance avec la spec
 - `fmk-chip` : pastille `fm-vig` (`renderVigilancePill`)
 - `fmk-ref` : `fiche-ref`

@@ -156,7 +156,7 @@ function legendItem(kind: OutageKind | 'upcoming'): string {
 function calendarSvg(cal: ReturnType<typeof fleetCalendar>, now: number): string {
   const rows = cal.bars.slice(0, MAX_BAR_ROWS);
   const height = 16 + 20 * rows.length + 16;
-  const X0 = 92;
+  const X0 = 64;
   const W = 384;
   const span = cal.to - cal.from;
   const xOf = (t: number): number => X0 + Math.max(0, Math.min(1, (t - cal.from) / span)) * (W - X0);

@@ -44,6 +44,14 @@ describe('NuclearPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onHover).toHaveBeenLastCalledWith(null);
   });
+  it('masquage silencieux : le rappel de fermeture n\'est pas appelé', () => {
+    const { p } = mount();
+    const onClose = vi.fn(); p.setOnClose(onClose);
+    p.show(state());
+    p.hide({ silent: true });
+    expect(p.isVisible()).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
   it("update sur panneau ouvert garde l'onglet ; update sur panneau fermé ne l'ouvre pas", () => {
     const { c, p } = mount();
     p.show(state());

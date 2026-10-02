@@ -6056,9 +6056,9 @@ button.header-quality-link {
 
 /* ═══ Bottom sheets mobile — panneaux flottants « premium modal » (audit UI
    2026-09 §5.4) ═══
-   Avant : ces panneaux (EnvironmentPanel, EnergyPanel, FiresPanel, CyberPanel,
-   DefensePanel, GasPanel, NuclearPanel, OilPanel, MaritimePanel — tous bâtis
-   sur `getPremiumModalStyle()`/`panelHeader.ts`) restent positionnés comme sur
+   Avant : ces panneaux (EnvironmentPanel, FiresPanel, CyberPanel, DefensePanel,
+   GasPanel, OilPanel, MaritimePanel : bâtis sur `getPremiumModalStyle()` et
+   `panelHeader.ts`) restent positionnés comme sur
    desktop (`position:absolute; top:var(--right-panel-top); right:20px`) même
    sur mobile, où ils recouvrent une bonne partie de la carte sans geste de
    fermeture dédié. Ici : ancrés en bas, pleine largeur, hauteur plafonnée à
@@ -8919,6 +8919,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-figure { display: flex; align-items: baseline; gap: 6px; margin: 2px 0 8px; }
 .lp .lp-figure b { font-size: 40px; font-weight: 700; line-height: 1; }
 .lp .lp-figure span { color: var(--text-secondary); font-size: 13px; }
+.lp .fmk-level .fmk-ctx + .fmk-ctx::before { content: none !important; }
+.lp .fmk-level .fmk-ctx:not(:last-child)::after { content: '·'; margin-left: 10px; color: var(--text-muted); }
 .lp .lp-head .fmk-lead { margin: 12px 0 0; }
 .lp .lp-head > :last-child { margin-bottom: 14px; }
 .lp .lp-tabs { display: flex; gap: 18px; margin-top: 14px; border-bottom: 1px solid var(--border-color); }
@@ -8926,7 +8928,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-tab.is-on { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--v2-brand); }
 .lp .lp-tab:focus-visible, .lp .lp-close:focus-visible, .lp .lp-link:focus-visible { outline: 2px solid var(--v2-brand); outline-offset: 2px; }
 .lp .lp-tab-count { margin-left: 4px; color: var(--text-muted); font-size: 11.5px; }
-.lp .lp-close { position: absolute; top: 12px; right: 12px; z-index: 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer; }
+.lp .lp-close { position: sticky; top: 12px; align-self: flex-end; flex: 0 0 28px; margin: 12px 12px -40px 0; z-index: 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--text-secondary); cursor: pointer; }
 .lp .lp-close:hover { color: var(--text-primary); }
 .lp .lp-body { padding: 0 18px 14px; }
 .lp .lp-state { padding: 18px 0; color: var(--text-secondary); text-align: center; }
@@ -8936,6 +8938,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-hlab { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10.5px; color: var(--text-muted); }
 .lp .lp-days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; text-align: center; font-size: 12px; color: var(--text-secondary); }
 .lp .lp-days .fm-vig { display: block; width: 100%; margin-top: 4px; }
+.lp .lp-leg + .fmk-eyebrow { margin-top: 14px !important; }
 .lp .lp-mix { display: flex; gap: 2px; height: 10px; margin: 2px 0 10px; border-radius: 3px; overflow: hidden; }
 .lp .lp-mix i { display: block; height: 100%; }
 .lp .lp-leg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
