@@ -141,15 +141,16 @@ function asOfWords(asOf: string): string {
 
 /** Texte des sources en français (« live » → « en direct »). */
 function frenchDetail(text: string): string {
-  return text.replace(/\blive\b/gi, 'en direct');
+  return text.replace(/\blive\b/gi, 'en direct').replace(/\bbackbone\b/gi, 'socle');
 }
 
 function freshnessText(info: OilFreshnessInfo): string {
   return `${FRESHNESS_WORD[info.level]} · ${frenchDetail(info.detail)}${info.asOf ? ` · ${asOfWords(info.asOf)}` : ''}`;
 }
 
+/** Note de fraîcheur courte sous une section (cadence et dernière date) ; le texte détaillé est dans « Méthode et sources ». */
 function freshnessNote(info: OilFreshnessInfo): string {
-  return `<p class="fmk-note">${escapeHtml(`Fraîcheur : ${freshnessText(info)}`)}</p>`;
+  return `<p class="fmk-note">${escapeHtml(`Fraîcheur : ${shortFreshness(info)}`)}</p>`;
 }
 
 function note(text: string): string {
@@ -370,9 +371,11 @@ function refineriesSection(input: OilViewInput, data: OilDashboard): FicheSectio
   };
 }
 
-/** Fraîcheur courte d'une famille de données : cadence et date, sans le texte détaillé (gardé dans les détails). */
+/** Fraîcheur courte : cadence et dernière date seulement (« mensuel · août 2026 »), le détail reste dans les détails repliés. */
 function shortFreshness(info: OilFreshnessInfo): string {
-  return `${FRESHNESS_WORD[info.level]}${info.asOf ? ` · ${asOfWords(info.asOf)}` : ''}`;
+  const parts = info.asOf ? asOfWords(info.asOf).split(' · ') : [];
+  const last = parts.length > 0 ? parts[parts.length - 1].replace(/^en\s+/, '') : '';
+  return `${FRESHNESS_WORD[info.level]}${last ? ` · ${last}` : ''}`;
 }
 
 const METHOD_TEXT = 'Tension carburants : part des stations aux prix figés ou en rupture, par département ; '
@@ -387,10 +390,10 @@ function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const sourceRow = (label: string, source: string, text: string): string => kvRow(label, `${source} · ${escapeHtml(text)}`);
   const rows = sourceRow('Prix et stations', sourceLinkHtml('prix-carburants', 'https://www.prix-carburants.gouv.fr'),
     t ? `relevé lu à ${absoluteTime(Date.parse(t.generatedAt), now, 'fr')}` : 'n.d.')
-    + sourceRow('Historique des prix', escapeHtml(data.fuelPriceHistory?.sourceLabel ?? 'n.d.'), shortFreshness(f.fuelPrices))
+    + kvRow('Historique des prix', escapeHtml(shortFreshness(f.fuelPrices)))
     + sourceRow('Stocks, flux, origines', sourceLinkHtml('SDES', 'https://www.statistiques.developpement-durable.gouv.fr'), shortFreshness(f.dashboard))
     + sourceRow('Livraisons', sourceLinkHtml('UFIP', 'https://www.ufip.fr'), shortFreshness(f.deliveries))
-    + sourceRow('Raffineries', escapeHtml('SDES, exploitants'), shortFreshness(f.infrastructure))
+    + sourceRow('Raffineries', escapeHtml('SDES'), shortFreshness(f.infrastructure))
     + sourceRow('Vue harmonisée', sourceLinkHtml('JODI', 'https://www.jodidata.org'), shortFreshness(f.harmonized))
     + kvRow('Données pétrole lues à', valueHtml(absoluteTime(Date.parse(data.meta.lastUpdate), now, 'fr')));
   // Rien ne disparaît : les textes méthodologiques complets restent consultables, repliés.
@@ -399,6 +402,7 @@ function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
     + fresh('Stocks, flux et origines', f.dashboard) + fresh('Livraisons', f.deliveries) + fresh('Raffineries', f.infrastructure)
     + fresh('Vue harmonisée', f.harmonized) + fresh('Prix', f.fuelPrices)
     + note('Heure des données : relevé médian des stations.')
+    + (data.fuelPriceHistory?.sourceLabel ? note(`Historique des prix : ${data.fuelPriceHistory.sourceLabel}.`) : '')
     + (data.harmonized?.caveat ? note(data.harmonized.caveat) : '')
     + (t ? note(t.disclaimerFr) : '')
     + note(OIL_PANEL_DISCLAIMER_TEXT)
@@ -406,7 +410,7 @@ function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const html = `<p class="fmk-note">${escapeHtml(METHOD_TEXT)}</p>` + rows
     + `<details class="lp-more"><summary>Détails méthodologiques</summary>${details}</details>`;
   return {
-    id: 'method', title: 'Méthode et sources', summary: 'SDES, CPDP, UFIP, JODI, prix-carburants',
+    id: 'method', title: 'Méthode et sources', summary: '6 sources',
     collapsible: true, open: input.open('method', false), tone: 'reference', html,
   };
 }

@@ -155,7 +155,8 @@ describe('vue Pétrole', () => {
     const o = oilFixture();
     const prices = section('prices')?.html ?? '';
     expect(prices).toContain(`en 30${NBSP}j`);
-    expect(prices).toContain('Fraîcheur : quotidien · Prix quotidiens');
+    expect(prices).toMatch(/Fraîcheur : quotidien( · [^<]+)?<\/p>/);
+    expect(section('method')?.html).toContain('Prix quotidiens');
     const stocks = section('stocks')?.html ?? '';
     expect(stocks).toMatch(/lp-lvl--vert">en hausse/);
     expect(stocks).toMatch(/lp-lvl--orange">en baisse/);
