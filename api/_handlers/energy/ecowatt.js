@@ -46,8 +46,8 @@ export default async function handler(req, res) {
         const jsonNat = await respNat.json();
         const jsonDay = await respDay.json();
 
-        // Instruct Vercel CDN to cache this for 15 minutes
-        res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate');
+        // Cache CDN 5 min : l'âge affiché au panneau doit rester sous le seuil « en retard » (30 min).
+        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
 
         res.status(200).json({
             regional: jsonReg,

@@ -33,6 +33,13 @@ describe('/api/energy/ecowatt', () => {
     expect(day).toContain('order_by=-date_heure');
   });
 
+  it('cache CDN de 5 min, sous le seuil « en retard » du panneau', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ results: [] }) })));
+    const res = fakeRes();
+    await handler({ method: 'GET' }, res);
+    expect(res.headers['Cache-Control']).toBe('s-maxage=300, stale-while-revalidate=60');
+  });
+
   it('502 si une source amont échoue', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })));
     const res = fakeRes();

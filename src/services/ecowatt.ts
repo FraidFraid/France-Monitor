@@ -114,10 +114,10 @@ interface EcowattMix {
 
 /** Cache simple en mémoire */
 let cache: { data: EcowattResponse; fetchedAt: number } | null = null;
-const CACHE_TTL = 15 * 60_000; // 15 min (aligné sur la granularité des données)
+const CACHE_TTL = 5 * 60_000; // 5 min : sous le seuil « en retard » du panneau (30 min), cache CDN aligné
 
-/** Cache localStorage : peint le dernier signal connu au rechargement si < 10 min. */
-const PERSIST_TTL_MS = 10 * 60_000;
+/** Cache localStorage : peint le dernier signal connu au rechargement si < 5 min (même durée que le cache mémoire). */
+const PERSIST_TTL_MS = 5 * 60_000;
 const PERSIST_KEY = 'ecowatt-v2';
 
 function isEcowattResponse(value: unknown): value is EcowattResponse {

@@ -80,9 +80,11 @@ export function gridLead(g: GridSnapshot): string {
   if (conso !== null && Number.isFinite(conso)) {
     let cmp = '';
     if (g.forecastMw !== null && Number.isFinite(g.forecastMw) && g.forecastMw !== 0) {
-      const gap = Math.round(((conso - g.forecastMw) / g.forecastMw) * 100);
-      cmp = Math.abs(gap) < 3 ? 'conforme à la prévision'
-        : gap > 0 ? `supérieure de ${Math.abs(gap)} % à la prévision` : `inférieure de ${Math.abs(gap)} % à la prévision`;
+      // Seuil sur l'écart brut : on n'arrondit que pour l'affichage (2,9 % reste « conforme »).
+      const rawGap = ((conso - g.forecastMw) / g.forecastMw) * 100;
+      const gap = Math.round(rawGap);
+      cmp = Math.abs(rawGap) < 3 ? 'conforme à la prévision'
+        : rawGap > 0 ? `supérieure de ${Math.abs(gap)} % à la prévision` : `inférieure de ${Math.abs(gap)} % à la prévision`;
     }
     parts.push(cmp ? `Consommation de ${formatGw(conso)}, ${cmp}.` : `Consommation de ${formatGw(conso)}.`);
   }
@@ -104,15 +106,35 @@ export function hourLevel(v: EcowattHourValue): 'vert' | 'orange' | 'rouge' {
   return v >= 3 ? 'rouge' : v === 2 ? 'orange' : 'vert';
 }
 
-export function riskWindow(hours: readonly EcowattHourValue[]): { from: number; to: number } | null {
-  let from = -1;
-  let last = -1;
+export interface RiskWindow {
+  /** Plages contiguës d'heures à risque (orange ou rouge), « to » exclu. */
+  ranges: Array<{ from: number; to: number }>;
+  /** Niveau maximal rencontré : orange = système tendu, rouge = coupures possibles. */
+  level: 'orange' | 'rouge';
+}
+
+export function riskWindow(hours: readonly EcowattHourValue[]): RiskWindow | null {
+  const ranges: RiskWindow['ranges'] = [];
+  let max = 0;
   hours.forEach((h, i) => {
     if (h < 2) return;
-    if (from < 0) from = i;
-    last = i;
+    max = Math.max(max, h);
+    const last = ranges[ranges.length - 1];
+    if (last && last.to === i) last.to = i + 1;
+    else ranges.push({ from: i, to: i + 1 });
   });
-  return from < 0 ? null : { from, to: last + 1 };
+  return ranges.length === 0 ? null : { ranges, level: max >= 3 ? 'rouge' : 'orange' };
+}
+
+/** « de 08:00 à 10:00 et de 12:00 à 13:00 » */
+export function rangesText(ranges: RiskWindow['ranges']): string {
+  const parts = ranges.map((r) => `de ${hh(r.from)} à ${hh(r.to)}`);
+  return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}`;
+}
+
+/** Libellé RTE du niveau : orange = système tendu, rouge = coupures possibles. */
+function riskWords(level: RiskWindow['level']): string {
+  return level === 'rouge' ? 'coupures possibles' : 'système tendu';
 }
 
 export function importDependencyIndex(flows: readonly InterconnectionFlow[]): number {
@@ -140,13 +162,13 @@ function ecowattSection(input: GridViewInput, todayDay: EcowattOfficialDay | nul
   }
   const win = todayDay ? riskWindow(todayDay.hours) : null;
   const later = upcoming.filter((d) => d.date > parisDate(input.now));
-  const risky = later.find((d) => d.level !== 'green');
+  const risky = later.find((d) => d.level === 'red') ?? later.find((d) => d.level !== 'green');
   const lastShown = later.length > 0 ? later[later.length - 1] : todayDay ?? lastDay;
   let summary: string;
   if (!todayDay) summary = 'signal du jour non publié';
-  else if (win) summary = `coupures possibles aujourd’hui de ${hh(win.from)} à ${hh(win.to)}`;
+  else if (win) summary = `${riskWords(win.level)} aujourd’hui ${rangesText(win.ranges)}`;
   else if (todayDay.level !== 'green') summary = `${LEVEL_WORD[todayDay.level]} aujourd’hui`;
-  else if (risky) summary = `coupures possibles ${weekdayOf(risky.date, 'long')}`;
+  else if (risky) summary = `${LEVEL_WORD[risky.level]} ${weekdayOf(risky.date, 'long')}`;
   else summary = lastShown ? `aucune coupure envisagée d’ici ${weekdayOf(lastShown.date, 'long')}` : '';
 
   let html = '';
@@ -271,9 +293,13 @@ function exchangesSection(input: GridViewInput, g: GridSnapshot | null): FicheSe
   const base = { id: 'exchanges', title: 'Échanges aux frontières', collapsible: true, open: input.open('exchanges', false) };
   const flows = input.data?.interconnections ?? [];
   const net = g?.netImportMw ?? (flows.length > 0 ? flows.reduce((s, f) => s + f.flowMW, 0) : null);
-  const summary = net === null ? 'n.d.' : net < 0 ? `export net ${formatGw(-net)}` : net > 0 ? `import net ${formatGw(net)}` : 'équilibre';
+  const balanceWord = g?.netImportMw != null ? 'solde physique' : 'solde commercial';
+  const balance = net === null ? 'n.d.' : net < 0 ? `export net ${formatGw(-net)}` : net > 0 ? `import net ${formatGw(net)}` : 'équilibre';
+  const summary = net === null ? 'n.d.' : `${balanceWord} : ${balance}`;
   if (flows.length === 0) return { ...base, summary: escapeHtml(summary), html: emptyLine('Échanges indisponibles.') };
-  const html = flows.map((f) => kvRow(f.country, escapeHtml(flowText(f.flowMW)))).join('')
+  const html = '<h4 class="fmk-eyebrow">Échanges commerciaux par frontière</h4>'
+    + flows.map((f) => kvRow(f.country, escapeHtml(flowText(f.flowMW)))).join('')
+    + kvRow(capitalize(balanceWord), escapeHtml(balance))
     + kvRow('Indice de dépendance aux imports', `${importDependencyIndex(flows)}/20`)
     + '<p class="fmk-note">Imports bruts aux frontières rapportés à 10 GW, sur 20 (indicatif).</p>';
   return { ...base, summary: escapeHtml(summary), html };
@@ -340,7 +366,8 @@ export function buildGridView(input: GridViewInput): LayerView {
   let lead: string | null = null;
   if (todayDay && todayDay.level !== 'green') {
     const win = riskWindow(todayDay.hours);
-    lead = `${noEmDash(todayDay.message).trim()}${win ? ` Coupures possibles de ${hh(win.from)} à ${hh(win.to)}.` : ''}`;
+    const risk = win ? ` ${capitalize(riskWords(win.level))} ${rangesText(win.ranges)}.` : '';
+    lead = `${noEmDash(todayDay.message).trim()}${risk}`;
   } else if (g) {
     lead = gridLead(g) || null;
   }
