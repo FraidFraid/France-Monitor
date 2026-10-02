@@ -9000,6 +9000,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-key { display: inline-flex; align-items: center; gap: 5px; }
 .lp .lp-key i { display: inline-block; width: 10px; height: 8px; border-radius: 2px; }
 .lp .lp-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.lp .lp-select { padding: 5px 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font: inherit; font-size: 12px; }
+.lp .lp-select:focus-visible { outline: 2px solid var(--v2-brand); outline-offset: 2px; }
 .lp .lp-search { flex: 1 1 180px; min-width: 0; padding: 6px 8px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font: inherit; font-size: 12.5px; }
 .lp .lp-seg { display: flex; gap: 6px; margin-bottom: 6px; }
 .lp .lp-toggle { padding: 4px 9px; background: none; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; }
