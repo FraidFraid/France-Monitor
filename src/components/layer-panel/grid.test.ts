@@ -112,4 +112,48 @@ describe('vue Réseau électrique', () => {
     const h = html(data());
     expect(h).not.toMatch(/—|&mdash;|monospace/);
   });
+
+  it('minuit à Paris : bande Écowatt et courbe du jour de Paris, pas de l’UTC', () => {
+    const now = Date.parse('2026-10-02T22:30:00Z'); // 00:30 Paris le 03/10
+    const d02 = green('2026-10-02');
+    const d03: EcowattOfficialDay = { ...green('2026-10-03'), level: 'orange', hours: Array(24).fill(1) as Array<0 | 1 | 2 | 3> };
+    d03.hours[5] = 2;
+    const grid: GridSnapshot = {
+      ...GRID, dataTime: Date.parse('2026-10-02T22:15:00Z'), consumptionMw: 41000, forecastMw: 41000,
+      day: [
+        { at: Date.parse('2026-10-02T10:00:00Z'), consumptionMw: 50000, forecastMw: 51000 },
+        { at: Date.parse('2026-10-02T22:00:00Z'), consumptionMw: 41000, forecastMw: 41000 },
+        { at: Date.parse('2026-10-03T10:00:00Z'), consumptionMw: null, forecastMw: 47000 },
+      ],
+    };
+    const d = data({ grid, official: { source: 'rte', generatedAt: null, days: [d02, d03] } });
+    const v = buildGridView({ data: d, space: null, now, open });
+    const h = renderLayerView('powerGrid', v);
+    expect(h).toContain('Écowatt heure par heure : vert de 00:00 à 05:00, orange de 05:00 à 06:00, vert de 06:00 à 24:00');
+    expect(v.sections.find((s) => s.id === 'consumption')?.summary).toContain('pic prévu 47,0 GW');
+    expect(h).not.toContain('51,0 GW');
+    expect(h).toMatch(/<polyline points="0\.0,[^"]*" fill="none" stroke="var\(--text-muted\)"/);
+  });
+  it('textes tiers hostiles toujours échappés', () => {
+    const d = data({ interconnections: [{ country: '<img src=x onerror=1>', flowMW: 100, coordinates: [0, 0] }] });
+    const space = { kpIndex: 4, level: 'active', levelLabel: '<b>Actif</b>', riskFrance: '<img src=y onerror=2>', color: '#fff', fetchedAt: new Date(NOW) } as const;
+    const h = renderLayerView('powerGrid', buildGridView({ data: d, space, now: NOW, open }));
+    expect(h).not.toContain('<img');
+    expect(h).not.toContain('<b>Actif');
+    expect(h).toContain('&lt;img src=x onerror=1&gt;');
+  });
+  it('résumé Écowatt : fenêtre du jour, risque à venir, aucune coupure, signal du jour non publié', () => {
+    const sum = (days: EcowattOfficialDay[]): string | undefined => buildGridView({
+      data: data({ official: { source: 'rte', generatedAt: null, days } }), space: null, now: NOW, open,
+    }).sections.find((s) => s.id === 'ecowatt')?.summary;
+    const risky = { ...green('2026-10-02'), level: 'orange' as const, hours: Array(24).fill(1) as Array<0 | 1 | 2 | 3> };
+    risky.hours[8] = 2; risky.hours[12] = 2;
+    expect(sum([risky])).toBe('coupures possibles aujourd’hui de 08:00 à 13:00');
+    expect(sum([green('2026-10-02'), green('2026-10-03'), { ...green('2026-10-04'), level: 'red' }])).toBe('coupures possibles dimanche');
+    expect(sum([green('2026-10-02'), green('2026-10-03'), green('2026-10-05')])).toBe('aucune coupure envisagée d’ici lundi');
+    expect(sum([green('2026-10-01')])).toBe('signal du jour non publié');
+  });
+  it('écart à la prévision avec le signe moins typographique', () => {
+    expect(html(data())).toContain('41,2 GW (écart −1,5 %)');
+  });
 });

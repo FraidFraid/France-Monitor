@@ -143,8 +143,9 @@ function ecowattSection(input: GridViewInput, todayDay: EcowattOfficialDay | nul
   const risky = later.find((d) => d.level !== 'green');
   const lastShown = later.length > 0 ? later[later.length - 1] : todayDay ?? lastDay;
   let summary: string;
-  if (win) summary = `coupures possibles aujourd’hui de ${hh(win.from)} à ${hh(win.to)}`;
-  else if (todayDay && todayDay.level !== 'green') summary = `${LEVEL_WORD[todayDay.level]} aujourd’hui`;
+  if (!todayDay) summary = 'signal du jour non publié';
+  else if (win) summary = `coupures possibles aujourd’hui de ${hh(win.from)} à ${hh(win.to)}`;
+  else if (todayDay.level !== 'green') summary = `${LEVEL_WORD[todayDay.level]} aujourd’hui`;
   else if (risky) summary = `coupures possibles ${weekdayOf(risky.date, 'long')}`;
   else summary = lastShown ? `aucune coupure envisagée d’ici ${weekdayOf(lastShown.date, 'long')}` : '';
 
@@ -188,12 +189,15 @@ function parisMidnight(ms: number): number {
 function consumptionSection(input: GridViewInput, g: GridSnapshot | null): FicheSection {
   const base = { id: 'consumption', title: 'Consommation', collapsible: true, open: input.open('consumption', true) };
   if (!g) return { ...base, summary: 'n.d.', html: emptyLine('Courbe du jour indisponible.') };
-  const points = g.day.filter((p) => Number.isFinite(p.at));
+  // Seuls les points du jour de Paris courant (pas de l'UTC) : la série peut chevaucher deux jours.
+  const start = parisMidnight(input.now);
+  const end = parisMidnight(start + 36 * 3_600_000);
+  const points = g.day.filter((p) => Number.isFinite(p.at) && p.at >= start && p.at < end);
   let peak: { at: number; mw: number } | null = null;
   for (const p of points) {
     if (p.forecastMw !== null && (peak === null || p.forecastMw > peak.mw)) peak = { at: p.at, mw: p.forecastMw };
   }
-  const summary = peak ? `${formatGw(g.consumptionMw)} · pic prévu ${formatGw(peak.mw)} à ${clock(peak.at)}` : formatGw(g.consumptionMw);
+  const summary = peak ? `${formatGw(g.consumptionMw)} · pic prévu ${formatGw(peak.mw)} à ${absoluteTime(peak.at, input.now, 'fr')}` : formatGw(g.consumptionMw);
 
   let chart: string;
   const values = points.flatMap((p) => [p.consumptionMw, p.forecastMw]).filter((v): v is number => v !== null && Number.isFinite(v));
@@ -201,8 +205,6 @@ function consumptionSection(input: GridViewInput, g: GridSnapshot | null): Fiche
     chart = emptyLine('Courbe du jour indisponible.');
   } else {
     const W = 384; const top = 12; const bottom = 78;
-    const start = parisMidnight(points[0].at);
-    const end = parisMidnight(start + 36 * 3_600_000);
     const lo = Math.min(...values); const hi = Math.max(...values);
     const pad = (hi - lo || hi || 1) * 0.05;
     const yMin = lo - pad; const yMax = hi + pad;
@@ -235,9 +237,9 @@ function consumptionSection(input: GridViewInput, g: GridSnapshot | null): Fiche
     gap = `${formatGw(g.forecastMw)}${text}`;
   }
   const html = chart
-    + kvRow(`Réalisée à ${clock(g.dataTime)}`, escapeHtml(formatGw(g.consumptionMw)))
+    + kvRow(`Réalisée à ${absoluteTime(g.dataTime, input.now, 'fr')}`, escapeHtml(formatGw(g.consumptionMw)))
     + kvRow('Prévision RTE du jour', escapeHtml(gap))
-    + kvRow('Pic prévu', escapeHtml(peak ? `${formatGw(peak.mw)} à ${clock(peak.at)}` : 'n.d.'));
+    + kvRow('Pic prévu', escapeHtml(peak ? `${formatGw(peak.mw)} à ${absoluteTime(peak.at, input.now, 'fr')}` : 'n.d.'));
   return { ...base, summary: escapeHtml(summary), html };
 }
 
@@ -286,7 +288,7 @@ function spaceSection(input: GridViewInput): FicheSection {
   return {
     ...base,
     summary: escapeHtml(`Kp ${s.kpIndex} · ${s.levelLabel.toLowerCase()}`),
-    html: `<p>${escapeHtml(s.riskFrance)}</p><p class="fmk-note">${escapeHtml(`NOAA SWPC · lu à ${clock(s.fetchedAt.getTime())}`)}</p>`,
+    html: `<p>${escapeHtml(s.riskFrance)}</p><p class="fmk-note">${escapeHtml(`NOAA SWPC · lu à ${absoluteTime(s.fetchedAt.getTime(), input.now, 'fr')}`)}</p>`,
   };
 }
 
@@ -299,8 +301,8 @@ function sourcesSection(input: GridViewInput, g: GridSnapshot | null): FicheSect
   const published = Number.isFinite(gen) ? absoluteTime(gen, input.now, 'fr') : 'n.d.';
   const html = sourceLine(sourceLinkHtml('RTE Écowatt', 'https://www.monecowatt.fr'), `signal officiel, publié à ${published}`)
     + sourceLine(sourceLinkHtml('ODRÉ éCO2mix temps réel', 'https://odre.opendatasoft.com/explore/dataset/eco2mix-national-tr/'),
-      `pas de 15 min, données de ${g ? clock(g.dataTime) : 'n.d.'}`)
-    + sourceLine(sourceLinkHtml('NOAA SWPC', 'https://www.swpc.noaa.gov/'), input.space ? `lu à ${clock(input.space.fetchedAt.getTime())}` : 'n.d.');
+      `pas de 15 min, données de ${g ? absoluteTime(g.dataTime, input.now, 'fr') : 'n.d.'}`)
+    + sourceLine(sourceLinkHtml('NOAA SWPC', 'https://www.swpc.noaa.gov/'), input.space ? `lu à ${absoluteTime(input.space.fetchedAt.getTime(), input.now, 'fr')}` : 'n.d.');
   return {
     id: 'sources', title: 'Sources', collapsible: true, open: input.open('sources', false), tone: 'reference',
     summary: 'RTE Écowatt · ODRÉ éCO2mix · NOAA', html,
