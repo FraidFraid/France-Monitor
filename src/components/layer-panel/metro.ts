@@ -43,15 +43,14 @@ export function metroFigureLevel(rows: Array<{ loadMW: number; deltaVsJ1Pct?: nu
   }
   if (j1 <= 0) return null;
   const pct = (now / j1 - 1) * 100;
-  if (pct >= FIGURE_THRESHOLD) return 'orange';
-  if (pct <= -FIGURE_THRESHOLD) return 'vert';
-  return null;
+  // Hausse marquée sur la veille : orange ; charge stable ou en baisse : vert (état normal, comme les autres panneaux).
+  return pct >= FIGURE_THRESHOLD ? 'orange' : 'vert';
 }
 
 function sourcesSection(heure: number | null, now: number, open: MetroViewInput['open']): FicheSection {
   const stamp = heure !== null ? `données de ${absoluteTime(heure, now, 'fr')}` : 'aucune donnée reçue';
   const html = `<p class="fmk-note">Publication par lot quotidien : la donnée a jusqu’à 25${NBSP}h, en retard au-delà de 30${NBSP}h ; écart calculé sur la même heure de donnée la veille. `
-    + `Couleur du chiffre : écart de la charge totale à la veille, même heure : orange dès +5${NBSP}%, vert dès −5${NBSP}%. `
+    + `Couleur du chiffre : écart de la charge totale à la veille, même heure : orange dès +5${NBSP}% de hausse, vert sinon. `
     + `Part nationale rapportée à la consommation nationale éCO2mix. `
     + `Classes de charge relatives au maximum observé : forte au-delà de 60${NBSP}%, moyenne de 20${NBSP}à 60${NBSP}%, faible en dessous.</p>`
     + `<div class="fmk-kv"><span class="fmk-kv-k">${sourceLinkHtml(SOURCE, SOURCE_URL)}</span><span class="fmk-kv-v">${stamp}</span></div>`;

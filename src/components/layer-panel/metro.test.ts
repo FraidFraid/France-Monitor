@@ -21,7 +21,7 @@ describe('vue Charge métropolitaine', () => {
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Énergie', title: 'Charge métropolitaine' });
     expect(v.head.level ?? null).toBeNull();
-    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, level: null, caption: `5 métropoles · 11,7${NBSP}% de la consommation nationale` });
+    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, level: 'vert', caption: `5 métropoles · 11,7${NBSP}% de la consommation nationale` });
     expect(v.head.status).toEqual(['données de 08:00', 'ODRÉ éCO2mix métropoles']);
     expect(v.head.lead).toBe(`Grand Paris 3,1${NBSP}GW (+4${NBSP}% sur la veille à la même heure). Plus forte hausse : Lille (+9${NBSP}%).`);
   });
@@ -83,12 +83,12 @@ describe('vue Charge métropolitaine', () => {
     expect(view({ metros: at(29 * 3_600_000) }).head.status[0]).not.toContain('en retard');
     expect(view({ metros: at(31 * 3_600_000) }).head.status[0]).toMatch(/\(en retard\)$/);
   });
-  it('couleur du chiffre : orange dès +5 %, vert dès −5 %, sinon texte ; null sans J-1 ou en retard', () => {
+  it('couleur du chiffre : orange dès +5 %, vert sinon (stable ou en baisse) ; null sans J-1 ou en retard', () => {
     const r = (loadMW: number, d?: number) => ({ loadMW, deltaVsJ1Pct: d });
     expect(metroFigureLevel([r(1050, 5), r(1000, 5)], false)).toBe('orange');
-    expect(metroFigureLevel([r(1000, 4.9)], false)).toBeNull();
+    expect(metroFigureLevel([r(1000, 4.9)], false)).toBe('vert');
     expect(metroFigureLevel([r(950, -5), r(950, -5)], false)).toBe('vert');
-    expect(metroFigureLevel([r(960, -4)], false)).toBeNull();
+    expect(metroFigureLevel([r(960, -4)], false)).toBe('vert');
     expect(metroFigureLevel([r(1000)], false)).toBeNull();
     expect(metroFigureLevel([], false)).toBeNull();
     expect(metroFigureLevel([r(1100, 10)], true)).toBeNull();
