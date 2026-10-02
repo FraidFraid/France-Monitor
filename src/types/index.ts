@@ -760,6 +760,8 @@ export interface HydraulicBackboneAsset {
     confidence: number;
     measuredStationCount: number;
     sourceDetail: string | null;
+    /** Cause principale du signal (« crue vigilance orange », « débit en hausse »…) ; null sans cause identifiée. */
+    cause?: string | null;
   };
   selection_reason?: string;
 }

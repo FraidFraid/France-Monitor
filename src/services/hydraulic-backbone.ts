@@ -275,6 +275,36 @@ function computeHydrometrySynergy(
   return 0;
 }
 
+export interface HydroCauseInput {
+  floodLevel: FloodVigilanceLevel | null;
+  weatherPressure: number;
+  ecowattSignal: ReturnType<typeof ecowattToday>;
+  isStep: boolean;
+  observationTrend: HydraulicObservationTrend;
+}
+
+const LEVEL_WORD: Record<'yellow' | 'orange' | 'red', string> = { yellow: 'jaune', orange: 'orange', red: 'rouge' };
+
+/** Cause principale d'un signal hydraulique, en mots (spec lot 2 § 3.2) ; à égalité : crue, pluie, Écowatt, mesures. */
+export function hydroCause(i: HydroCauseInput): string | null {
+  const candidates: Array<{ weight: number; text: string }> = [];
+  if (i.floodLevel && i.floodLevel !== 'green') {
+    candidates.push({ weight: FLOOD_LEVEL_SCORES[i.floodLevel], text: `crue vigilance ${LEVEL_WORD[i.floodLevel]}` });
+  }
+  if (i.weatherPressure > 0) {
+    const level = i.weatherPressure >= 3 ? 'red' : i.weatherPressure >= 2 ? 'orange' : 'yellow';
+    candidates.push({ weight: i.weatherPressure, text: `vigilance pluie-inondation ${LEVEL_WORD[level]}` });
+  }
+  if (i.isStep && (i.ecowattSignal === 'orange' || i.ecowattSignal === 'red')) {
+    candidates.push({ weight: i.ecowattSignal === 'red' ? 3 : 2, text: `Écowatt ${LEVEL_WORD[i.ecowattSignal]}` });
+  }
+  if (i.observationTrend === 'rising') candidates.push({ weight: 1, text: 'débit en hausse' });
+  else if (i.observationTrend === 'falling') candidates.push({ weight: 1, text: 'débit en baisse' });
+  else if (i.observationTrend === 'mixed') candidates.push({ weight: 0.5, text: 'débits contrastés' });
+  // Tri stable : à poids égal, l'ordre d'insertion (crue, pluie, Écowatt, mesures) est conservé.
+  return [...candidates].sort((a, b) => b.weight - a.weight)[0]?.text ?? null;
+}
+
 export function buildHydraulicBackboneAssets(
   ecowatt: EcowattResponse | null,
   floods: FloodSegment[] = [],
@@ -300,6 +330,7 @@ export function buildHydraulicBackboneAssets(
           confidence: 0.25,
           measuredStationCount: 0,
           sourceDetail: null,
+          cause: null,
         },
       };
 
@@ -331,6 +362,13 @@ export function buildHydraulicBackboneAssets(
           confidence: hydrometrySupport?.confidence ?? 0.25,
           measuredStationCount: hydrometrySupport?.observedStationCount ?? 0,
           sourceDetail: hydrometrySupport?.detail ?? hydrometrySupport?.note ?? null,
+          cause: hydroCause({
+            floodLevel: getNearestFloodLevel(baseAsset, floods),
+            weatherPressure: getWeatherPressure(baseAsset, alerts),
+            ecowattSignal: ecowattToday(ecowatt?.official, nowMs),
+            isStep: baseAsset.type === 'step_storage',
+            observationTrend: hydrometrySupport?.hydroTrend ?? 'unavailable',
+          }),
         },
       };
     })
