@@ -240,7 +240,7 @@ export function createLayerPanelShell(opts: {
   };
   const onKey = (e: KeyboardEvent): void => {
     const link = (e.target as HTMLElement).closest<HTMLElement>('.lp-row.is-link');
-    if (link && (e.key === 'Enter' || e.key === ' ')) {
+    if (link && e.target === link && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       link.click();
       return;

@@ -142,7 +142,16 @@ describe('cadre des panneaux de couches', () => {
     row.addEventListener('click', () => { clicks += 1; });
     row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(clicks).toBe(1);
+    const inner = document.createElement('button');
+    row.appendChild(inner);
+    inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(clicks).toBe(1);
     shell.destroy();
+  });
+  it('valeur numérique insécable (lp-val), texte libre de clé-valeur sans nowrap', () => {
+    expect(valueHtml('1,2\u00A0GW')).toContain('lp-val');
+    const css = readFileSync('src/styles/main.css', 'utf8');
+    expect(css).not.toMatch(/\.fmk-kv-v[^{}]*\{[^}]*white-space:\s*nowrap/);
   });
 });
 

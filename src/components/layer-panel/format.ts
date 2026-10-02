@@ -12,7 +12,10 @@ function ok(v: number | null | undefined): v is number {
 
 /** Nombre fr-FR à `digits` décimales ; `signed` ajoute « + » aux positifs (zéro sans signe). */
 export function frNumber(v: number, digits: number, signed = false): string {
-  return v.toLocaleString('fr-FR', {
+  const factor = 10 ** digits;
+  const rounded = Math.round(v * factor) / factor;
+  const n = Object.is(rounded, -0) || rounded === 0 ? 0 : rounded;
+  return n.toLocaleString('fr-FR', {
     minimumFractionDigits: digits, maximumFractionDigits: digits, signDisplay: signed ? 'exceptZero' : 'auto',
   }).replace('-', MINUS);
 }

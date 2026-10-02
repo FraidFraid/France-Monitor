@@ -8965,7 +8965,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-trend--good { color: var(--sev-green); }
 .lp .lp-state { padding: 18px 0; color: var(--text-secondary); text-align: center; }
 /* ─── Panneaux de couches, lot 2 : règles R1 à R3 (spec 2026-10-02 lot 2 § 1) ─── */
-.lp .fmk .fmk-kv-v, .lp .lp-leg b, .lp .lp-row > .lp-val, .lp .lp-bar-row > .lp-val { white-space: nowrap; }
+.lp .lp-leg b, .lp .lp-row > .lp-val, .lp .lp-bar-row > .lp-val { white-space: nowrap; }
 .lp .lp-lvl--vert { color: var(--sev-green); }
 .lp .lp-lvl--jaune { color: var(--sev-yellow); }
 .lp .lp-lvl--orange { color: var(--sev-orange); }

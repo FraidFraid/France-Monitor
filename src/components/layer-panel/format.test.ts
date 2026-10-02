@@ -28,6 +28,12 @@ describe('formateurs des panneaux de couches (R1)', () => {
     expect(formatGwhDay(1020)).toBe(`1\u202F020${NBSP}GWh/j`);
     expect(breakableValue(formatGwhDay(1020))).toBeNull();
   });
+  it('jamais « −0 » : arrondi d’abord, zéro sans signe', () => {
+    expect(formatGw(-40)).toBe(`0,0${NBSP}GW`);
+    expect(formatMw(-0.2)).toBe(`0${NBSP}MW`);
+    expect(formatSignedPct(-0.3)).toBe(`0${NBSP}%`);
+    expect(formatMw(-0.6)).toBe(`−1${NBSP}MW`);
+  });
   it('tonnes : t, kt, Mt', () => {
     expect(formatTons(820)).toBe(`820${NBSP}t`);
     expect(formatTons(154_300)).toBe(`154${NBSP}kt`);

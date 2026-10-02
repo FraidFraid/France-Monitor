@@ -28,8 +28,10 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \+ \.fmk-ctx::before \{\s*content: '·' !important; position: absolute; left: -7px;/);
     expect(css).not.toMatch(/\.lp \.fmk-level \.fmk-ctx:not\(:last-child\)::after/);
   });
-  it('R1 : valeurs des lignes, des légendes et des clés-valeurs insécables ; niveaux en couleur de texte', () => {
-    expect(css).toContain('.lp .fmk .fmk-kv-v, .lp .lp-leg b, .lp .lp-row > .lp-val, .lp .lp-bar-row > .lp-val { white-space: nowrap; }');
+  it('R1 : valeurs des lignes et des légendes insécables, texte libre des clés-valeurs sécable ; niveaux en couleur de texte', () => {
+    expect(css).toContain('.lp .lp-leg b, .lp .lp-row > .lp-val, .lp .lp-bar-row > .lp-val { white-space: nowrap; }');
+    const lpRules = [...css.matchAll(/(^|\n)(\.lp[^{}\n]*)\{([^{}]*)\}/g)].filter((m) => /white-space:\s*nowrap/.test(m[3] ?? ''));
+    for (const m of lpRules) expect(m[2]).not.toContain('fmk-kv-v');
     expect(css).toContain('.lp .lp-lvl--orange { color: var(--sev-orange); }');
   });
   it('panneaux de couches du lot 2 en feuille basse sur mobile', () => {
