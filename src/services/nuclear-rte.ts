@@ -8,6 +8,7 @@
  */
 
 import type { NuclearUnavailability, ReactorAvailabilityStatus } from '../types/index.ts';
+import type { LegendItem } from '../components/MapLegend.ts';
 import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 import { Watchdog } from './watchdog.ts';
 import { dedupe } from '../utils/inflight.ts';
@@ -171,6 +172,15 @@ export const NUCLEAR_STATUS_COLORS: Record<ReactorAvailabilityStatus, string> = 
   OUTAGE_UNPLANNED: levelHex('orange'),
   UNKNOWN: '#3a3a4e',
 };
+
+/** Éléments de légende pour la couche nucléaire, construits à partir des couleurs de statut. */
+export const NUCLEAR_LEGEND_ITEMS: LegendItem[] = [
+  { id: 'nuc-available', label: 'Disponible', color: NUCLEAR_STATUS_COLORS.AVAILABLE, shape: 'circle' },
+  { id: 'nuc-reduced', label: 'Puissance réduite', color: NUCLEAR_STATUS_COLORS.REDUCED, shape: 'circle' },
+  { id: 'nuc-planned', label: 'Arrêt programmé', color: NUCLEAR_STATUS_COLORS.OUTAGE_PLANNED, shape: 'circle' },
+  { id: 'nuc-unplanned', label: 'Arrêt fortuit', color: NUCLEAR_STATUS_COLORS.OUTAGE_UNPLANNED, shape: 'circle' },
+  { id: 'nuc-unknown', label: 'Inconnu', color: NUCLEAR_STATUS_COLORS.UNKNOWN, shape: 'circle' },
+];
 
 /** Couleur pour un signal REMIT non confirmé par RTE */
 export const NUCLEAR_REMIT_UNCONFIRMED_COLOR = '#111827';

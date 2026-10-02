@@ -117,7 +117,7 @@ import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
-import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
+import { fetchNuclearUnavailabilities, buildNuclearColorMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
@@ -1113,12 +1113,8 @@ const NUCLEAR_LEGEND: LegendCategory = {
   id: 'nuclearFleet',
   title: 'Nucléaire : Indisponibilités RTE',
   items: [
-    { id: 'nuc-available',  label: 'Disponible',          color: '#2ECC71', shape: 'circle' },
-    { id: 'nuc-reduced',    label: 'Production réduite',  color: '#F59E0B', shape: 'circle' },
-    { id: 'nuc-planned',    label: 'Arrêt planifié',      color: '#7B8CDE', shape: 'circle' },
-    { id: 'nuc-unplanned',  label: 'Arrêt non planifié',  color: '#E74C3C', shape: 'circle' },
-    { id: 'nuc-unknown',    label: 'Inconnu',             color: '#6B7280', shape: 'circle' },
-    { id: 'nuc-remit',      label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
+    ...NUCLEAR_LEGEND_ITEMS,
+    { id: 'nuc-remit', label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
   ],
   source: {
     label: 'RTE Open Data · IIP REMIT',
