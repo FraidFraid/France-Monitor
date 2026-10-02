@@ -3246,9 +3246,6 @@ export class App {
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
     this.gasPanel.setOnClose(() => this.closeEnergyLayer('gasNetwork'));
-    this.gasPanel.setPipelineCallback((show) => {
-      this.mapContainer?.setGasPipelineVisible(show);
-    });
     this.gasPanel.mount();
 
     // OilPanel/NuclearPanel/OutagesPanel/DefensePanel: lazy-loaded on first
