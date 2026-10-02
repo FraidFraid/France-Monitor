@@ -825,6 +825,10 @@ export interface NuclearUnavailability {
   endDate: Date | null;
   type: 'PLANNED' | 'UNPLANNED' | 'FORCE_MAJEURE';
   updatedAt: Date;
+  /** Version du message RTE (la plus haute fait foi) */
+  version?: number;
+  /** ACTIVE | INACTIVE | DISMISSED (RTE) */
+  eventStatus?: string;
 }
 
 /** Signal REMIT filtré pour le nucléaire (Layer 2 — IIP RSS) */

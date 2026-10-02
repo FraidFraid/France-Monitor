@@ -6,6 +6,8 @@
  */
 
 import type { Plugin } from 'vite';
+// @ts-expect-error — module JS partagé avec la fonction de production
+import { fetchAllUnavailabilities } from '../../api/_lib/rte-unavailability-query.js';
 
 const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/token';
 const API_VERSION   = process.env.RTE_API_VERSION ?? 'v7';
@@ -57,25 +59,15 @@ export function nuclearProxyPlugin(opts: { clientId: string; clientSecret: strin
 
           const { access_token } = (await tokenResp.json()) as { access_token: string };
 
-          const params = new URLSearchParams({ resource_type: 'NUCLEAR', status: 'ACTIVE' });
-          const unavResp = await fetch(`${RTE_UNAV_URL}?${params}`, {
-            headers: { Authorization: `Bearer ${access_token}` },
-            signal: AbortSignal.timeout(15_000),
-          });
-
-          if (!unavResp.ok) {
-            console.error('[nuclear-proxy] API error:', unavResp.status);
+          const result = await fetchAllUnavailabilities(RTE_UNAV_URL, access_token);
+          if (!result.ok) {
+            console.error('[nuclear-proxy]', result.error);
             res.statusCode = 502;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: `RTE API ${unavResp.status}`, available: false }));
+            res.end(JSON.stringify({ error: result.error, available: false }));
             return;
           }
-
-          const raw = await unavResp.json();
-          const items = Array.isArray(raw)
-            ? raw
-            : ((raw as Record<string, unknown>).generation_unavailabilities ??
-              (raw as Record<string, unknown>).unavailabilities ?? []);
+          const items = result.items;
 
           const payload = { items, available: true, fetchedAt: new Date().toISOString() };
           _devCache = { data: payload, fetchedAt: Date.now() };

@@ -95,7 +95,7 @@ export async function fetchNuclearUnavailabilities(): Promise<NuclearRTEResult> 
     }
 
     const rawItems = Array.isArray(json.items) ? json.items : [];
-    const items = rawItems.map(normalizeItem).filter((u): u is NuclearUnavailability => u !== null);
+    const items = normalizeNuclearItems(rawItems, Date.now());
     const now = Date.now();
     _cache = { items, available: true, fetchedAt: now };
     writePersisted(PERSIST_KEY, items);
@@ -121,23 +121,24 @@ export function invalidateNuclearRTECache(): void {
 export function getPlantWorstStatus(
   plantName: string,
   unavailabilities: NuclearUnavailability[],
+  nowMs: number = Date.now(),
 ): ReactorAvailabilityStatus {
   const norm = normalizeText(plantName);
-  const now = Date.now();
+  const now = nowMs;
 
   const active = unavailabilities.filter(
     (u) =>
       normalizeText(u.plantName).includes(norm) &&
       u.startDate.getTime() <= now &&
-      (u.endDate === null || u.endDate.getTime() >= now),
+      (u.endDate === null || u.endDate.getTime() > now),
   );
 
   if (active.length === 0) return 'AVAILABLE';
 
   const priority: ReactorAvailabilityStatus[] = [
     'OUTAGE_UNPLANNED',
-    'OUTAGE_PLANNED',
     'REDUCED',
+    'OUTAGE_PLANNED',
     'AVAILABLE',
     'UNKNOWN',
   ];
@@ -187,19 +188,34 @@ export const NUCLEAR_REMIT_UNCONFIRMED_COLOR = '#111827';
 
 // ── Normalizer ────────────────────────────────────────────────────────────────
 
-function normalizeItem(raw: unknown): NuclearUnavailability | null {
+/**
+ * Normalise la réponse RTE : ignore le non nucléaire et les messages annulés (DISMISSED),
+ * ne garde que la version la plus récente de chaque identifiant (filet de sécurité en plus de
+ * last_version=true), et écarte les indisponibilités dont la dernière version est INACTIVE
+ * (terminées). `now` choisit le segment values[] en cours.
+ */
+export function normalizeNuclearItems(rawItems: unknown[], now: number): NuclearUnavailability[] {
+  const latest = new Map<string, NuclearUnavailability>();
+  for (const raw of rawItems) {
+    const u = normalizeItem(raw, now);
+    if (!u) continue;
+    const prev = latest.get(u.id);
+    if (!prev || (u.version ?? 0) >= (prev.version ?? 0)) latest.set(u.id, u);
+  }
+  return [...latest.values()].filter((u) => u.eventStatus !== 'INACTIVE');
+}
+
+function normalizeItem(raw: unknown, now: number): NuclearUnavailability | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
 
-  // ── Payload v7 (champs observés en production) ────────────────────────────
-  // affected_asset_or_unit_name           → nom de la tranche
-  // affected_asset_or_unit_installed_capacity → puissance installée MW
-  // values[].available_capacity           → puissance disponible MW
-  // identifier                            → id unique
-  // publication_date                      → updatedAt
-  // fuel_type                             → "NUCLEAR" pour filtrage
-  //
-  // Fallbacks v4/v5 conservés pour rétrocompatibilité.
+  const eventStatus = String(r['event_status'] ?? 'ACTIVE').toUpperCase();
+  if (eventStatus === 'DISMISSED') return null;
+  const fuel = r['fuel_type'];
+  if (fuel != null && String(fuel).toUpperCase() !== 'NUCLEAR') return null;
+
+  // Champs v7 : affected_asset_or_unit_name, affected_asset_or_unit_installed_capacity,
+  // values[].available_capacity, identifier, version, publication_date, fuel_type, event_status.
   const unitName = String(
     r['affected_asset_or_unit_name'] ??
     (r['unit'] as Record<string, unknown> | undefined)?.['name'] ??
@@ -220,23 +236,28 @@ function normalizeItem(raw: unknown): NuclearUnavailability | null {
     ref.nominalPowerMW,
   );
 
-  // v7 : la capacité disponible est dans le premier élément du tableau values[]
+  // Segment values[] qui couvre maintenant, à défaut le premier.
   const values = Array.isArray(r['values']) ? r['values'] as Record<string, unknown>[] : [];
-  const availablePowerMW = values.length > 0
+  const seg = values.find((v) => {
+    const a = parseDate(v['start_date'] as string | undefined);
+    const b = parseDate(v['end_date'] as string | undefined);
+    return a !== null && a.getTime() <= now && (b === null || b.getTime() > now);
+  }) ?? values[0];
+  const availablePowerMW = seg
     ? toNumber(
-        values[0]['available_capacity'] ??
-        (values[0]['unavailable_capacity'] != null
-          ? nominalPowerMW - toNumber(values[0]['unavailable_capacity'])
+        seg['available_capacity'] ??
+        (seg['unavailable_capacity'] != null
+          ? nominalPowerMW - toNumber(seg['unavailable_capacity'])
           : nominalPowerMW),
       )
     : toNumber(r['available_capacity'] ?? nominalPowerMW);
 
   const startDate = parseDate(
-    (values[0]?.['start_date'] as string | undefined) ??
-    (r['start_date'] as string | undefined),
+    (r['start_date'] as string | undefined) ??
+    (values[0]?.['start_date'] as string | undefined),
   );
   const endDate = (() => {
-    const s = (values[0]?.['end_date'] as string | undefined) ?? (r['end_date'] as string | undefined);
+    const s = (seg?.['end_date'] as string | undefined) ?? (r['end_date'] as string | undefined);
     return s ? parseDate(s) : null;
   })();
 
@@ -265,6 +286,8 @@ function normalizeItem(raw: unknown): NuclearUnavailability | null {
       (r['creation_date'] as string | undefined) ??
       (r['updated_date'] as string | undefined),
     ) ?? new Date(),
+    version: toNumber(r['version']),
+    eventStatus,
   };
 }
 
@@ -275,7 +298,7 @@ function deriveStatus(
 ): ReactorAvailabilityStatus {
   if (nominal <= 0) return 'UNKNOWN';
   const ratio = available / nominal;
-  if (ratio >= 0.95) return 'AVAILABLE';
+  if (ratio >= 1) return 'AVAILABLE';
   if (ratio > 0) return type === 'UNPLANNED' ? 'OUTAGE_UNPLANNED' : 'REDUCED';
   return type === 'UNPLANNED' ? 'OUTAGE_UNPLANNED' : 'OUTAGE_PLANNED';
 }
