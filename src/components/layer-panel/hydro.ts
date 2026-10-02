@@ -5,7 +5,7 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { formatGw, formatMw, formatPct } from './format.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
+import { ECO2MIX_LATE_MS, barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export interface HydroViewInput {
   assets: HydraulicBackboneAsset[];
@@ -23,7 +23,8 @@ const FRESHNESS_WORD = { fresh: 'fraîche', aging: 'à confirmer', stale: 'ancie
 const TREND_RANK: Record<HydraulicTrend, number> = { stress: 3, high: 2, normal: 1, low: 0 };
 const WATCH_ROWS = 14;
 const SUPPORT_WORD = { strong: 'mesures fortes', partial: 'mesures partielles', none: 'dérivé seul' } as const;
-/** Parc hydraulique installé en France continentale, STEP comprises : RTE, ODRÉ « parc de production par filière », au 31/12/2025 (référence annuelle). */
+/** Parc hydraulique installé en France continentale, STEP comprises : RTE, ODRÉ « parc de production par filière », au 31/12/2025 (référence annuelle).
+ *  À rafraîchir chaque année depuis ODRÉ `parc-prod-par-filiere` (prochaine échéance : valeurs 2026, publiées début 2027). */
 export const HYDRO_INSTALLED_MW = 25_747;
 const HYDRO_INSTALLED_AS_OF = 'fin 2025';
 const PARC_URL = 'https://odre.opendatasoft.com/explore/dataset/parc-prod-par-filiere/';
@@ -202,13 +203,16 @@ export function buildHydroView(input: HydroViewInput): LayerView {
   // Le chiffre est mis en regard du parc installé : part de la capacité, dans la couleur du chiffre.
   const share = formatPct(hydroUtilizationPct(hydro));
   const capacity = `des ${formatGw(HYDRO_INSTALLED_MW)} installés`;
-  const stamp = grid ? ` · éCO2mix ${absoluteTime(grid.dataTime, now, 'fr')}` : '';
+  // Même règle de retard que le panneau Réseau : au-delà de 45 min, l'heure le dit et la couleur du chiffre disparaît.
+  const late = grid !== null && now - grid.dataTime > ECO2MIX_LATE_MS;
+  const figureLevel = late ? null : level;
+  const stamp = grid ? ` · éCO2mix ${absoluteTime(grid.dataTime, now, 'fr')}${late ? ' (en retard)' : ''}` : '';
   return {
     head: {
       theme: THEME, title: TITLE,
       level,
       figure: hydro !== null
-        ? { value: formatGw(hydro), caption: `${share} ${capacity}${stamp}`, captionHtml: `${valueHtml(share, level)} ${escapeHtml(`${capacity}${stamp}`)}` }
+        ? { value: formatGw(hydro), level: figureLevel, caption: `${share} ${capacity}${stamp}`, captionHtml: `${valueHtml(share, figureLevel)} ${escapeHtml(`${capacity}${stamp}`)}` }
         : { value: formatGw(hydro), caption: 'production hydraulique' },
       status: [
         stress > 0 ? `${stress} ${plural(stress, 'ouvrage')} en stress` : 'aucun ouvrage en stress',

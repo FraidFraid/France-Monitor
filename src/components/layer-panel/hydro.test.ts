@@ -37,7 +37,7 @@ const GRID = {
 } satisfies GridSnapshot;
 const ECOWATT = { official: null, mixes: {}, national: { timestamp: new Date(NOW), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
   interconnections: [], grid: GRID } satisfies EcowattResponse;
-const view = (assets = ASSETS, ecowatt: EcowattResponse | null = ECOWATT) => buildHydroView({ assets, ecowatt, now: NOW, open });
+const view = (assets = ASSETS, ecowatt: EcowattResponse | null = ECOWATT, now = NOW) => buildHydroView({ assets, ecowatt, now, open });
 
 describe('vue Stress hydro', () => {
   it('niveau dérivé : orange si un ouvrage en stress, jaune s’il n’y a que de la pression, vert sinon', () => {
@@ -55,6 +55,19 @@ describe('vue Stress hydro', () => {
     expect(hydroUtilizationPct(null)).toBeNull();
     expect(view(ASSETS, null).head.figure).toEqual({ value: 'n.d.', caption: 'production hydraulique' });
     expect(v.head.status).toEqual(['2 ouvrages en stress', '1 sous pression', 'Hub’Eau 08:20']);
+  });
+  it('éCO2mix en retard (règle commune de 45 min) : l’heure le dit et le chiffre perd sa couleur, de part et d’autre du seuil', () => {
+    const at = (min: number) => view(ASSETS, ECOWATT, GRID.dataTime + min * 60_000).head.figure;
+    expect(at(45)?.caption).not.toContain('(en retard)');
+    expect(at(45)?.level).toBe('orange');
+    const late = at(46);
+    expect(late?.caption).toContain('éCO2mix 08:30 (en retard)');
+    expect(late?.level).toBeNull();
+    expect(late?.captionHtml).not.toContain('lp-lvl');
+    expect(renderLayerView('hydroBackbone', view(ASSETS, ECOWATT, GRID.dataTime + 46 * 60_000))).not.toMatch(/<b class="fmk-num lp-lvl/);
+  });
+  it('production n.d. : le gros chiffre n’est jamais coloré, même avec des ouvrages en stress', () => {
+    expect(renderLayerView('hydroBackbone', view(ASSETS, null))).not.toMatch(/<b class="fmk-num lp-lvl/);
   });
   it('synthèse : cause principale, production et turbinage STEP', () => {
     expect(hydroLead(ASSETS, GRID)).toBe(`2 ouvrages en stress (crue vigilance orange) ; production hydraulique 7,0${NBSP}GW, dont 1,9${NBSP}GW de turbinage STEP.`);

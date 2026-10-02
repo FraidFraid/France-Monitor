@@ -5,9 +5,9 @@ import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { NBSP, formatGw, formatMw, formatPct, zoneMidnight } from './format.ts';
+import { NBSP, formatGw, formatMw, formatPct, zoneDayBounds } from './format.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
+import { ECO2MIX_LATE_MS, barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export interface WindViewInput {
   live: EolienLive | null;
@@ -21,10 +21,7 @@ export interface WindViewInput {
 const THEME = 'Énergie';
 const TITLE = 'Éolien';
 const PARIS = 'Europe/Paris';
-const DAY_MS = 24 * 3_600_000;
 const TOP_PARKS = 12;
-/** Cadence de l'éCO2mix suivi : au-delà de deux périodes, la donnée est dite en retard. */
-const LIVE_PERIOD_MS = 30 * 60_000;
 const STATUS_WORD: Partial<Record<EolienParkSummary['status'], string>> = {
   construction: 'en construction', authorized: 'autorisé', project: 'en projet', inactive: 'inactif',
 };
@@ -46,13 +43,12 @@ function splitOf(live: EolienLive, grid: GridSnapshot | null): Split | null {
 }
 
 function isLate(live: EolienLive, now: number): boolean {
-  return now - live.timestamp.getTime() > 2 * LIVE_PERIOD_MS;
+  return now - live.timestamp.getTime() > ECO2MIX_LATE_MS;
 }
 
 function daySection(grid: GridSnapshot | null, now: number, open: WindViewInput['open']): FicheSection {
   const base = { id: 'day', title: 'Production du jour', collapsible: true, open: open('day', true) };
-  const from = zoneMidnight(now, PARIS);
-  const to = from + DAY_MS;
+  const { from, to } = zoneDayBounds(now, PARIS);
   const points: ChartPoint[] = (grid?.day ?? [])
     .filter((p): p is typeof p & { windMw: number } => p.windMw !== null && p.at >= from && p.at < to)
     .map((p) => ({ at: p.at, value: p.windMw }));

@@ -171,5 +171,9 @@ describe('feuille de style des panneaux de couches', () => {
     expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...fig, level: 'orange' }, level: 'vert', status: [] }, 'x')).toMatch(/lp-lvl--orange/);
     expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...fig, level: null }, level: 'rouge', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
     expect(renderLayerHead({ theme: 'É', title: 'T', figure: fig, level: 'nd', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
+    // Valeur « n.d. » : jamais de couleur, ni celle du panneau ni la sienne.
+    const nd = { ...fig, value: 'n.d.' };
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: nd, level: 'orange', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...nd, level: 'vert' }, status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
   });
 });

@@ -38,7 +38,7 @@ export function renderLayerHead(m: LayerHeadModel, titleId: string): string {
   const f = m.figure;
   // R3 : le gros chiffre prend son propre niveau ; à défaut (undefined), celui de la pastille du panneau.
   // `level: null` explicite (donnée en retard…) le laisse en couleur de texte ; « n.d. » ne colore jamais.
-  const figLevel = f ? (f.level !== undefined ? f.level : m.level && m.level !== 'nd' ? m.level : null) : null;
+  const figLevel = f && f.value !== 'n.d.' ? (f.level !== undefined ? f.level : m.level && m.level !== 'nd' ? m.level : null) : null;
   const figure = f
     ? `<div class="lp-figure"><b class="fmk-num${figLevel ? ` lp-lvl lp-lvl--${figLevel}` : ''}">${escapeHtml(f.value)}</b>`
       + `<span>${f.captionHtml ?? escapeHtml(f.caption)}</span></div>`
@@ -163,6 +163,11 @@ export function barRow(r: BarRow): string {
   return `<div class="lp-bar-row"${dataAttrs(r.data)}>${dot}<span class="lp-bar-label">${escapeHtml(r.label)}</span>`
     + `<span class="fmk-bar">${bar}</span>${valueHtml(r.value)}${note ? `<small>${note}</small>` : ''}</div>`;
 }
+
+/** Cadence éCO2mix suivie par les panneaux Réseau, Éolien et Hydro : « en retard » au-delà de deux fois cette durée (45 min). */
+export const ECO2MIX_LATE_PERIOD_MS = 22.5 * 60_000;
+/** Seuil de retard éCO2mix (45 min), commun à tous les panneaux qui lisent cette source. */
+export const ECO2MIX_LATE_MS = 2 * ECO2MIX_LATE_PERIOD_MS;
 
 export function freshnessSegment(dataMs: number, now: number, periodMs: number): string {
   const base = `données de ${absoluteTime(dataMs, now, 'fr')}`;

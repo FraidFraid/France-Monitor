@@ -101,6 +101,21 @@ describe('vue Éolien', () => {
     expect(late.sections.find((x) => x.id === 'split')?.html).not.toContain('fmk-dot--orange');
     expect(late.sections.find((x) => x.id === 'sources')?.html).toContain('(en retard)');
   });
+  it('journée de 25 h (25/10/2026, Paris) : la courbe va jusqu’au minuit local suivant, dernière heure comprise', () => {
+    const grid: GridSnapshot = { ...GRID, dataTime: Date.parse('2026-10-25T22:15:00Z'), day: [
+      { at: Date.parse('2026-10-25T02:00:00Z'), consumptionMw: null, forecastMw: null, windMw: 1000 },
+      { at: Date.parse('2026-10-25T22:15:00Z'), consumptionMw: null, forecastMw: null, windMw: 4200 }, // 23:15 à Paris, après 24 h de minuit
+    ] };
+    const day = view({ grid, now: Date.parse('2026-10-25T22:20:00Z') }).sections.find((x) => x.id === 'day');
+    expect(day?.summary).toContain(`max 4,2${NBSP}GW`);
+  });
+  it('retard éCO2mix : même seuil de 45 min que le panneau Réseau, des deux côtés', () => {
+    const at = (min: number) => view({ now: LIVE.timestamp.getTime() + min * 60_000 });
+    expect(at(45).head.figure?.caption).not.toContain('(en retard)');
+    expect(at(45).head.figure?.level).toBe('orange');
+    expect(at(46).head.figure?.caption).toContain('(en retard)');
+    expect(at(46).head.figure?.level ?? null).toBeNull();
+  });
   it('parcs : l’indication « clic = recentrer la carte » de l’ancien panneau est gardée', () => {
     const h = renderLayerView('windMonitor', view({ open: () => true }));
     expect(h).toContain('Clic sur un parc : recentrer la carte.');

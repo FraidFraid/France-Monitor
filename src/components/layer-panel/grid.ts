@@ -11,7 +11,7 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { absoluteTime, kvRow, meterRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { emptyLine, freshnessSegment, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
+import { ECO2MIX_LATE_PERIOD_MS, emptyLine, freshnessSegment, loadingBody, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import { formatGw, formatPct, NBSP } from './format.ts';
 
 export { formatGw };
@@ -27,8 +27,6 @@ export interface GridViewInput {
 
 const PARIS = 'Europe/Paris';
 const MINUS = '−';
-/** Demi-seuil de retard éCO2mix : freshnessSegment signale « en retard » au-delà de deux fois cette durée (45 min). */
-const ECO2MIX_LATE_PERIOD_MS = 22.5 * 60_000;
 
 // ── Formats ───────────────────────────────────────────────────────────────────
 

@@ -314,7 +314,8 @@ export function buildNuclearView(input: NuclearViewInput): LayerView {
     figure: {
       value: formatGw(summary.availableMw),
       caption: `disponibles sur ${formatGw(summary.installedMw)} · ${formatPct(summary.ratio * 100)}`,
-      level,
+      // Lecture RTE en retard : le chiffre perd sa couleur de niveau (même règle que le « (en retard) » de l'état).
+      level: late ? null : level,
     },
     level,
     status: [

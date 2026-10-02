@@ -78,6 +78,15 @@ describe('vue Parc nucléaire', () => {
     const late = view(state({ rteFetchedAt: new Date(NOW - 45 * 60_000), fetchedAt: new Date(NOW) }));
     expect(late.head.status[late.head.status.length - 1]).toBe('RTE lu à 06:15 (en retard)');
   });
+  it('lecture RTE en retard : le gros chiffre perd sa couleur de niveau, la fraîche la garde', () => {
+    const [a] = NUCLEAR_UNITS;
+    const unplanned = [u({ id: '1', unitName: a.unitName, plantName: a.plantName })];
+    const fresh = view(state({ unavailabilities: unplanned, rteFetchedAt: new Date(NOW - 5 * 60_000), fetchedAt: new Date(NOW) }));
+    const late = view(state({ unavailabilities: unplanned, rteFetchedAt: new Date(NOW - 45 * 60_000), fetchedAt: new Date(NOW) }));
+    expect(fresh.head.figure?.level).toBe(fresh.head.level);
+    expect(fresh.head.figure?.level).not.toBeNull();
+    expect(late.head.figure?.level).toBeNull();
+  });
   it('REMIT : « lu à » est l\'heure IIP, pas celle de la construction de l\'état', () => {
     const h = renderLayerView('nuclearFleet', view(state({ remitFetchedAt: new Date(NOW - 20 * 60_000), fetchedAt: new Date(NOW) }), 'remit'));
     expect(h).toContain('Flux REMIT lu à 06:40.');
