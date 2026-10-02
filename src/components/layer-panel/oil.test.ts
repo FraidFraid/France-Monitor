@@ -4,6 +4,7 @@ import { filterFuelPriceSeries } from '../../utils/fuelPriceChart.ts';
 import { renderLayerView } from './frame.ts';
 import { NBSP, breakableValue, visibleText } from './format.ts';
 import { OIL_NOW, oilFixture, tensionFixture } from './oil.fixture.ts';
+import { formatEuro } from './format.ts';
 import {
   buildOilView, fuelCatVar, fuelTooltipHtml, nearestTimestamp, priceDeltaLevel, stockLevel, tensionLevel, type OilViewInput,
 } from './oil.ts';
@@ -211,6 +212,9 @@ describe('vue Pétrole', () => {
     expect(v.head.status[1]).toMatch(/^données de \d\d\/\d\d \d\d:\d\d \(en retard\)$/);
     expect(v.head.lead).toContain('la tension n’est pas évaluée');
     expect(v.head.lead).not.toContain('Tension critique');
+    // Le prix vient alors de l'historique (plus récent que les relevés figés), daté dans la légende si ce n'est pas aujourd'hui.
+    const gazole = oilFixture().fuelPriceHistory?.series.find((s) => s.fuelType === 'gazole');
+    expect(v.head.figure?.value).toBe(formatEuro(gazole?.latestPrice ?? null));
     // Relevés récents : la tension reste évaluée.
     expect(view({ tension: { ...tensionFixture(), national: { ...tensionFixture().national, tensionLevel: 'CRITICAL' as const } } }).head.level).toBe('rouge');
   });

@@ -156,9 +156,18 @@ function note(text: string): string {
   return `<p class="fmk-note">${escapeHtml(text)}</p>`;
 }
 
-function gasolePrice(data: OilDashboard, tension: FuelTensionDashboard | null): { price: number | null; delta: number | null } {
+/**
+ * Prix du gazole : moyenne nationale de la tension carburants quand ses relevés sont récents, sinon dernier prix de
+ * l'historique (plus récent) ; `at` = date du point d'historique utilisé, pour la légende (null : relevé du jour).
+ */
+function gasolePrice(data: OilDashboard, tension: FuelTensionDashboard | null, now: number): { price: number | null; delta: number | null; at: number | null } {
   const gazole = data.fuelPriceHistory?.series.find((s) => s.fuelType === 'gazole');
-  return { price: tension?.national.avgPrices.gazole ?? gazole?.latestPrice ?? null, delta: gazole?.delta7dCents ?? null };
+  const delta = gazole?.delta7dCents ?? null;
+  const fresh = tension !== null && !tensionStale(tension, now) ? tension.national.avgPrices.gazole ?? null : null;
+  if (fresh !== null) return { price: fresh, delta, at: null };
+  const last = gazole?.points.at(-1);
+  const at = last ? Date.parse(last.timestamp) : NaN;
+  return { price: gazole?.latestPrice ?? tension?.national.avgPrices.gazole ?? null, delta, at: Number.isFinite(at) ? at : null };
 }
 
 function activeRefineries(data: OilDashboard): number {
@@ -214,8 +223,10 @@ function statusOf(tension: FuelTensionDashboard | null, now: number): string[] {
 }
 
 function headOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: number): LayerView['head'] {
-  const { price, delta } = gasolePrice(data, tension);
-  const caption = 'gazole, moyenne nationale';
+  const { price, delta, at } = gasolePrice(data, tension, now);
+  const day = at === null ? null : new Date(at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
+  const today = new Date(now).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
+  const caption = day !== null && day !== today ? `gazole, moyenne nationale du ${day}` : 'gazole, moyenne nationale';
   const level = tension === null ? null : tension.degraded || tensionStale(tension, now) ? 'nd' : tensionLevel(tension.national.tensionLevel);
   return {
     theme: THEME,
@@ -250,7 +261,7 @@ function priceDeltas(s: FuelPriceSeries): string {
 
 function pricesSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const { tension, range, open } = input;
-  const { price } = gasolePrice(data, tension);
+  const { price } = gasolePrice(data, tension, input.now);
   const history = data.fuelPriceHistory;
   const base = { id: 'prices', title: 'Prix à la pompe', summary: escapeHtml(`gazole ${formatEuro(price)}`), collapsible: true, open: open('prices', true) };
   if (!history || history.series.length === 0) {
