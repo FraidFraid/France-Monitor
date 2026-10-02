@@ -189,6 +189,11 @@ function tensionStale(tension: FuelTensionDashboard, now: number): boolean {
   return Number.isFinite(t) && now - t > STALE_TENSION_MS;
 }
 
+/** Relevés anciens : une note en tête de section, aucune couleur de niveau ni mot de tension. */
+function staleNote(tension: FuelTensionDashboard, now: number): string {
+  return note(`Relevés des stations du ${absoluteTime(tensionDataTime(tension), now, 'fr', { withDate: true })} : tension non évaluée.`);
+}
+
 function tensionSentence(tension: FuelTensionDashboard | null, now: number): string | null {
   if (!tension) return null;
   if (tension.degraded) return 'Signal carburants en mode dégradé.';
@@ -293,22 +298,23 @@ function pricesSection(input: OilViewInput, data: OilDashboard): FicheSection {
 }
 
 /** Écart de prix en centimes : seul le nombre est coloré (≥ 0,5 c orange, ≤ −0,5 c vert). */
-function deltaAtom(cents: number | null): string {
-  return valueHtml(formatCents(cents), priceDeltaLevel(cents));
+function deltaAtom(cents: number | null, neutral = false): string {
+  return valueHtml(formatCents(cents), neutral ? null : priceDeltaLevel(cents));
 }
 
-function rankedSummaries(list: readonly FuelTensionDepartmentSummary[]): FuelTensionDepartmentSummary[] {
-  return [...list].sort((a, b) => TENSION_RANK[a.tensionLevel] - TENSION_RANK[b.tensionLevel] || b.anomalyShare - a.anomalyShare);
+function rankedSummaries(list: readonly FuelTensionDepartmentSummary[], stale = false): FuelTensionDepartmentSummary[] {
+  return [...list].sort((a, b) => (stale ? 0 : TENSION_RANK[a.tensionLevel] - TENSION_RANK[b.tensionLevel]) || b.anomalyShare - a.anomalyShare);
 }
 
 function tensionSection(input: OilViewInput): FicheSection {
   const { tension, open, now } = input;
+  const stale = tension !== null && tensionStale(tension, now);
   const base = { id: 'tension', title: 'Tension carburants', collapsible: true, open: open('tension', true) };
   if (!tension) return { ...base, summary: 'chargement…', html: emptyLine('Signal carburants en cours de lecture…') };
   const n = tension.national;
-  const rows = rankedSummaries(n.topDepartments).slice(0, 5).map((d) => listRow({
-    text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: tensionLevel(d.tensionLevel),
-    noteHtml: `${escapeHtml(`tension ${TENSION_WORD[d.tensionLevel]} · écart 7${NBSP}j :`)} ${deltaAtom(d.deltaPrice7d)}`,
+  const rows = rankedSummaries(n.topDepartments, stale).slice(0, 5).map((d) => listRow({
+    text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: stale ? 'gris' : tensionLevel(d.tensionLevel),
+    noteHtml: `${escapeHtml(`${stale ? '' : `tension ${TENSION_WORD[d.tensionLevel]} · `}écart 7${NBSP}j :`)} ${deltaAtom(d.deltaPrice7d, stale)}`,
   })).join('');
   const averages = input.data?.fuelPriceHistory && input.data.fuelPriceHistory.series.length > 0
     ? (['gazole', 'sp95', 'sp98', 'e10'] as const)
@@ -316,10 +322,11 @@ function tensionSection(input: OilViewInput): FicheSection {
       .filter((e): e is readonly [FuelType, number] => e[1] !== undefined)
       .map(([f, v]) => kvRow(`Prix moyen ${FUEL_WORD[f]}`, valueHtml(formatEuro(v)))).join('')
     : '';
-  const html = kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), n.anomalyShare >= 18 ? 'orange' : null))
+  const html = (stale ? staleNote(tension, now) : '')
+    + kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), !stale && n.anomalyShare >= 18 ? 'orange' : null))
     + kvRow('Fraîcheur des relevés', escapeHtml(`moyenne ${formatAge(n.avgUpdateAgeMinutes)} · médiane ${formatAge(n.medianUpdateAgeMinutes)}`))
     + averages
-    + '<h4 class="fmk-eyebrow">Départements les plus tendus</h4>' + rows
+    + `<h4 class="fmk-eyebrow">${stale ? 'Départements (relevés anciens)' : 'Départements les plus tendus'}</h4>` + rows
     + '<p class="fmk-note">Liste complète dans l’onglet Départements.</p>'
     + note(`${tension.sourceLabel} · ${tension.coverageLabel} · relevé lu à ${absoluteTime(Date.parse(tension.generatedAt), now, 'fr')}`);
   return { ...base, summary: escapeHtml(`${n.stationCount.toLocaleString('fr-FR')} stations · ${n.departmentCount} départements`), html };
@@ -383,26 +390,27 @@ function methodSection(input: OilViewInput, data: OilDashboard): FicheSection {
 // ─── Départements ─────────────────────────────────────────────────────────
 
 function departmentsSections(input: OilViewInput): FicheSection[] {
-  const { tension, search, mapVisible } = input;
+  const { tension, search, mapVisible, now } = input;
   const toolbar = `<div class="lp-toolbar"><input type="search" class="lp-search" data-oil-search value="${escapeHtml(search)}" placeholder="Rechercher un département" aria-label="Rechercher un département">`
     + `<button type="button" class="lp-toggle" data-oil-map aria-pressed="${mapVisible}">${mapVisible ? 'Masquer de la carte' : 'Afficher sur la carte'}</button></div>`;
   const base = { id: 'departments', title: 'Départements', collapsible: false };
   if (!tension) return [{ ...base, summary: 'chargement…', html: toolbar + emptyLine('Signal carburants en cours de lecture…') }];
+  const stale = tensionStale(tension, now);
   const query = fold(search.trim());
-  const shown = rankedSummaries(tension.summaries.filter((d) => query === '' || fold(d.departmentName).includes(query) || fold(d.departmentCode).includes(query)));
+  const shown = rankedSummaries(tension.summaries.filter((d) => query === '' || fold(d.departmentName).includes(query) || fold(d.departmentCode).includes(query)), stale);
   const rows = shown.map((d) => {
     const prices = d.fuelSignals.filter((s) => s.avgPrice !== null).map((s) => `${FUEL_WORD[s.fuelType]} ${formatEuro(s.avgPrice)}`);
-    const before = [`tension ${TENSION_WORD[d.tensionLevel]}`, `${d.stationCount} stations`].join(' · ');
+    const before = [...(stale ? [] : [`tension ${TENSION_WORD[d.tensionLevel]}`]), `${d.stationCount} stations`].join(' · ');
     const after = [
       `relevés d’il y a ${formatAge(d.avgUpdateAgeMinutes)}`, ...(prices.length > 0 ? prices : ['prix indisponibles']), `signal ${BADGE_WORD[d.freshness.badge]}`,
     ].join(' · ');
     return listRow({
-      text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: tensionLevel(d.tensionLevel),
-      noteHtml: `${escapeHtml(`${before} · écart 7${NBSP}j`)} ${deltaAtom(d.deltaPrice7d)}${escapeHtml(` · ${after}`)}`,
+      text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: stale ? 'gris' : tensionLevel(d.tensionLevel),
+      noteHtml: `${escapeHtml(`${before} · écart 7${NBSP}j`)} ${deltaAtom(d.deltaPrice7d, stale)}${escapeHtml(` · ${after}`)}`,
     });
   }).join('');
-  const html = toolbar + (rows || emptyLine('Aucun département ne correspond à la recherche.'))
-    + note('Tri : niveau de tension, puis part d’anomalies décroissante. La carte peut être masquée sans couper la synthèse nationale.');
+  const html = toolbar + (stale ? staleNote(tension, now) : '') + (rows || emptyLine('Aucun département ne correspond à la recherche.'))
+    + note(`Tri : ${stale ? 'part d’anomalies décroissante' : 'niveau de tension, puis part d’anomalies décroissante'}. La carte peut être masquée sans couper la synthèse nationale.`);
   return [{ ...base, summary: `${shown.length} sur ${tension.summaries.length}`, html }];
 }
 

@@ -2,9 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { filterFuelPriceSeries } from '../../utils/fuelPriceChart.ts';
 import { renderLayerView } from './frame.ts';
-import { NBSP, breakableValue, visibleText } from './format.ts';
+import { NBSP, breakableValue, formatEuro, visibleText } from './format.ts';
 import { OIL_NOW, oilFixture, tensionFixture } from './oil.fixture.ts';
-import { formatEuro } from './format.ts';
 import {
   buildOilView, fuelCatVar, fuelTooltipHtml, nearestTimestamp, priceDeltaLevel, stockLevel, tensionLevel, type OilViewInput,
 } from './oil.ts';
@@ -169,6 +168,22 @@ describe('vue Pétrole', () => {
     const dep = renderLayerView('oilNetwork', view({ tab: 'departments' }));
     expect(dep).toContain('signal quasi direct');
     expect(dep).toContain('tension forte');
+  });
+  it('relevés de tension de plus de 24 h : sections sans couleur ni mot de tension', () => {
+    const old = tensionFixture({ generatedAt: new Date(OIL_NOW - 30 * 3_600_000).toISOString() });
+    const over = html({ tension: old });
+    expect(over).toContain('Relevés des stations du ');
+    expect(over).toContain('tension non évaluée.');
+    expect(over).toContain('Départements (relevés anciens)');
+    expect(over).not.toContain('Départements les plus tendus');
+    const tens = section('tension', { tension: old })?.html ?? '';
+    expect(tens).not.toMatch(/fmk-dot--(vert|jaune|orange|rouge)|tension (faible|modérée|forte|critique)|lp-lvl--/);
+    const dep = view({ tab: 'departments', tension: old }).sections[0].html;
+    expect(dep).toContain('tension non évaluée.');
+    expect(dep).not.toMatch(/fmk-dot--(vert|jaune|orange|rouge)|tension (faible|modérée|forte|critique)|lp-lvl--/);
+    const fresh = section('tension')?.html ?? '';
+    expect(fresh).toContain('fmk-dot--orange');
+    expect(fresh).not.toContain('tension non évaluée');
   });
   it('R1, aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute', () => {
     for (const tab of ['overview', 'departments', 'supply'] as const) {
