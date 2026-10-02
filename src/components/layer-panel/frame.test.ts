@@ -165,4 +165,11 @@ describe('feuille de style des panneaux de couches', () => {
     const defined = rules.filter((r) => /(^|[\s,])\.lp([\s,.:{]|$)/.test(r.sel.trim()) && !r.sel.includes(':is(')).map((r) => r.body).join(';');
     for (const name of used) expect(defined, name).toContain(`${name}:`);
   });
+  it('R3 : le gros chiffre prend le niveau de la pastille sauf niveau propre, null explicite ou « n.d. »', () => {
+    const fig = { value: '2,9\u00a0GW', caption: 'production' };
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: fig, level: 'vert', status: [] }, 'x')).toMatch(/<b class="fmk-num lp-lvl lp-lvl--vert">/);
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...fig, level: 'orange' }, level: 'vert', status: [] }, 'x')).toMatch(/lp-lvl--orange/);
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...fig, level: null }, level: 'rouge', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
+    expect(renderLayerHead({ theme: 'É', title: 'T', figure: fig, level: 'nd', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
+  });
 });

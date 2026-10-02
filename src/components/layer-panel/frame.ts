@@ -36,8 +36,11 @@ export function renderLayerHead(m: LayerHeadModel, titleId: string): string {
   const pill = m.level === 'nd' ? renderNdPill() : m.level ? renderVigilancePill(m.level) : '';
   const status = m.status.filter((s) => s.length > 0).map((s) => `<span class="fmk-ctx">${escapeHtml(s)}</span>`).join('');
   const f = m.figure;
+  // R3 : le gros chiffre prend son propre niveau ; à défaut (undefined), celui de la pastille du panneau.
+  // `level: null` explicite (donnée en retard…) le laisse en couleur de texte ; « n.d. » ne colore jamais.
+  const figLevel = f ? (f.level !== undefined ? f.level : m.level && m.level !== 'nd' ? m.level : null) : null;
   const figure = f
-    ? `<div class="lp-figure"><b class="fmk-num${f.level ? ` lp-lvl lp-lvl--${f.level}` : ''}">${escapeHtml(f.value)}</b>`
+    ? `<div class="lp-figure"><b class="fmk-num${figLevel ? ` lp-lvl lp-lvl--${figLevel}` : ''}">${escapeHtml(f.value)}</b>`
       + `<span>${f.captionHtml ?? escapeHtml(f.caption)}</span></div>`
     : '';
   return `<div class="fmk-eyebrow">${escapeHtml(`${m.theme} · Couche`)}</div>`
