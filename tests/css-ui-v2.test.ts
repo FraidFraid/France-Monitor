@@ -22,9 +22,10 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     expect(css).toMatch(/@media \(max-width: 699px\)\s*\{[^@]*#app\.ui-v2\[data-v2-tab="map"\] \.map-area/);
   });
 
-  it('ligne de niveau des panneaux de couche : segments insécables, séparateur au début du segment suivant', () => {
-    expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \{ white-space: nowrap; \}/);
-    expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \+ \.fmk-ctx::before \{ content: '·'/);
+  it('ligne de niveau des panneaux de couche : segments insécables, séparateur rogné en début de ligne', () => {
+    expect(css).toMatch(/\.lp \.fmk-level \{ overflow: hidden; \}/);
+    expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \{ position: relative; white-space: nowrap; \}/);
+    expect(css).toMatch(/\.lp \.fmk-level \.fmk-ctx \+ \.fmk-ctx::before \{\s*content: '·' !important; position: absolute; left: -7px;/);
     expect(css).not.toMatch(/\.lp \.fmk-level \.fmk-ctx:not\(:last-child\)::after/);
   });
 });

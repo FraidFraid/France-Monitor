@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NuclearUnavailability, NuclearUnitReference } from '../types/index.ts';
 import {
-  activeOutages, fleetCalendar, fleetLevel, fleetSummary, outageKind, plantRows, remitMatchWords, shortLabel, unitLabel,
+  activeOutages, availabilityLevel, fleetCalendar, fleetLevel, fleetSummary, outageKind, plantRows, remitMatchWords, shortLabel, unitLabel,
 } from './nuclear-fleet.ts';
 
 const DAY = 86_400_000;
@@ -115,6 +115,14 @@ describe('flotte nucléaire', () => {
     const fla = rows.find((r) => r.name === 'Flamanville');
     expect(fla).toEqual({ name: 'Flamanville', worst: 'fortuit', unitsTotal: 2, unitsAvailable: 1, availableMw: 1330, installedMw: 2660 });
     expect(rows.find((r) => r.name === 'Chooz')?.worst).toBeNull();
+  });
+  it('niveau de disponibilité du parc : 85, 70 et 55 %', () => {
+    expect(availabilityLevel(0.85)).toBe('vert');
+    expect(availabilityLevel(0.849)).toBe('jaune');
+    expect(availabilityLevel(0.70)).toBe('jaune');
+    expect(availabilityLevel(0.699)).toBe('orange');
+    expect(availabilityLevel(0.55)).toBe('orange');
+    expect(availabilityLevel(0.49)).toBe('rouge');
   });
   it('mots de correspondance REMIT', () => {
     expect(remitMatchWords(0.8)).toBe('correspondance probable');

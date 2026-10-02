@@ -69,4 +69,13 @@ describe('EnergyPanel', () => {
     p.hide();
     expect(isLayerPanelOpen(root)).toBe(false);
   });
+  it('historique des frontières : flèche d’évolution des échanges', () => {
+    const c = document.createElement('div'); document.body.appendChild(c);
+    const p = new EnergyPanel(c); p.mount();
+    const d = { ...data(), interconnections: [{ country: 'Royaume-Uni', flowMW: 2200, coordinates: [1, 51] as [number, number] }] };
+    p.show(d);
+    expect(c.innerHTML).not.toContain('lp-trend');
+    p.updateBorderHistory(new Map([['FR-GB', Array(96).fill(1000)]]));
+    expect(c.innerHTML).toContain('lp-trend--bad');
+  });
 });

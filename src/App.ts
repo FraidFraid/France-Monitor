@@ -5577,6 +5577,7 @@ export class App {
       fetchBorderHistory(7).catch(() => new Map()),
     ]);
 
+    this.energyPanel?.updateBorderHistory(borderHistory);
     if (Object.keys(ecowatt.mixes).length > 0 || ecowatt.official !== null) {
       this.currentEcowattResponse = ecowatt;
       this.currentEcowattUsesFallback = false;

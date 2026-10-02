@@ -34,7 +34,9 @@ describe('vue Parc nucléaire', () => {
   it('en-tête : GW disponibles, niveau des fortuits, compte des arrêts, heure RTE', () => {
     const v = view(state());
     expect(v.head.title).toBe('Parc nucléaire');
-    expect(v.head.figure?.caption).toMatch(/^GW disponibles sur \d+,\d GW · \d+ %$/);
+    // Gros chiffre avec son unité, insécable ; le reste passe à la ligne dans la légende.
+    expect(v.head.figure?.value).toMatch(/^\d+,\d\u00a0GW$/);
+    expect(v.head.figure?.caption).toMatch(/^disponibles sur \d+,\d GW · \d+ %$/);
     expect(v.head.level).toBe(ref.nominalPowerMW >= 1000 ? 'jaune' : 'vert');
     expect(v.head.status[0]).toMatch(/^1 arrêt fortuit \(\d+,\d GW\)$/);
     expect(v.head.status).toContain('aucun arrêt programmé');
@@ -183,6 +185,14 @@ describe('vue Parc nucléaire', () => {
       expect(h).toMatch(new RegExp(`Disponible[^]*?${formatGw(installed)}`));
       expect(h).toMatch(new RegExp(`Installé[^]*?${formatGw(installed)}`));
       expect(h).toContain(`${formatGw(40_000)} · ${Math.round((40_000 / installed) * 100)} % du disponible`);
+    });
+    it('jauges en couleur : Produit couleur du nucléaire, Disponible couleur du niveau de disponibilité, Installé teinte pâle', () => {
+      const h = overview(eco(40_000));
+      const bar = (label: string): string => new RegExp(`${label}</span><span class="fmk-bar"><i style="([^"]*)"`).exec(h)?.[1] ?? '';
+      expect(bar('Produit')).toContain('background:var(--mix-nuclear)');
+      expect(bar('Disponible')).toContain('background:var(--sev-green)');
+      expect(bar('Installé')).toContain('color-mix(in srgb, var(--mix-nuclear)');
+      expect(h).not.toContain('background:var(--text-secondary)');
     });
     it('note de modulation sous 80 % du disponible seulement', () => {
       expect(overview(eco(Math.round(installed * 0.7)))).toContain(NOTE);

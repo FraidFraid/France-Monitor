@@ -9,7 +9,7 @@ import { levelColorVar, officialLevel, type VigilanceLevel } from '../../service
 import { noEmDash } from '../../services/typography.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
-import { absoluteTime, kvRow } from '../fiche/kit.ts';
+import { absoluteTime, kvRow, meterRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, freshnessSegment, loadingBody, sourceLinkHtml, type LayerView } from './frame.ts';
 
@@ -18,6 +18,8 @@ export interface GridViewInput {
   space: SpaceWeatherData | null;
   now: number;
   open: (sectionId: string, byDefault: boolean) => boolean;
+  /** Séries des 7 derniers jours par frontière (MW, positif = import), clés « FR-GB », « FR-ES »… */
+  borderHistory?: ReadonlyMap<string, readonly number[]> | null;
 }
 
 const PARIS = 'Europe/Paris';
@@ -74,6 +76,11 @@ function mixTotals(g: GridSnapshot): { total: number; lowCarbonPct: number | nul
   return { total, lowCarbonPct: total > 0 ? Math.round((low / total) * 100) : null };
 }
 
+/** Espace insécable entre un nombre et son unité (GW, MW, %, g CO₂/kWh) : la valeur tient sur une ligne. */
+export function keepValuesTogether(text: string): string {
+  return text.replace(/(\d) (GW|MW|%|g CO₂\/kWh)/g, (_m, d: string, unit: string) => `${d}\u00a0${unit.replace(' ', '\u00a0')}`);
+}
+
 export function gridLead(g: GridSnapshot): string {
   const parts: string[] = [];
   const conso = g.consumptionMw;
@@ -97,7 +104,8 @@ export function gridLead(g: GridSnapshot): string {
   if (net !== null && Number.isFinite(net) && net !== 0) {
     parts.push(net < 0 ? `La France exporte ${formatGw(-net)}.` : `La France importe ${formatGw(net)}.`);
   }
-  return parts.join(' ');
+  // R1 : une valeur et son unité ne se séparent jamais (espace insécable).
+  return keepValuesTogether(parts.join(' '));
 }
 
 // ── Écowatt ──────────────────────────────────────────────────────────────────
@@ -135,6 +143,14 @@ export function rangesText(ranges: RiskWindow['ranges']): string {
 /** Libellé RTE du niveau : orange = système tendu, rouge = coupures possibles. */
 function riskWords(level: RiskWindow['level']): string {
   return level === 'rouge' ? 'coupures possibles' : 'système tendu';
+}
+
+/** Couleur de l'indice de dépendance aux imports (sur 20) : vert jusqu'à 5, jaune jusqu'à 10, orange jusqu'à 15, rouge au-delà. */
+export function importDependencyLevel(index: number): VigilanceLevel {
+  if (index <= 5) return 'vert';
+  if (index <= 10) return 'jaune';
+  if (index <= 15) return 'orange';
+  return 'rouge';
 }
 
 export function importDependencyIndex(flows: readonly InterconnectionFlow[]): number {
@@ -289,20 +305,57 @@ function flowText(mw: number): string {
   return mw > 0 ? `import ${formatGw(mw)}` : `export ${formatGw(-mw)}`;
 }
 
+/** Import en rouge, export en vert, valeur insécable. */
+function flowHtml(mw: number, text: string): string {
+  const cls = !Number.isFinite(mw) || mw === 0 ? 'lp-val' : mw > 0 ? 'lp-imp' : 'lp-exp';
+  return `<span class="${cls}">${escapeHtml(text)}</span>`;
+}
+
+const BORDER_ID: Readonly<Record<string, string>> = {
+  'Royaume-Uni': 'FR-GB', Espagne: 'FR-ES', Italie: 'FR-IT', Suisse: 'FR-CH', 'All./Bel.': 'FR-DE/BE',
+};
+const TREND_MIN_POINTS = 24;
+const TREND_THRESHOLD_MW = 200;
+
+/**
+ * Flèche d'évolution d'un échange par rapport à sa moyenne sur 7 jours : ▲ si le flux affiché
+ * (import ou export) grandit, ▼ s'il diminue ; rouge quand la position de la France se dégrade
+ * (plus d'import ou moins d'export), vert sinon. Rien sous 200 MW d'écart ou sans historique.
+ */
+function trendHtml(current: number, history: readonly number[] | undefined): string {
+  const values = (history ?? []).filter((v) => Number.isFinite(v));
+  if (!Number.isFinite(current) || current === 0 || values.length < TREND_MIN_POINTS) return '';
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const delta = current - mean; // > 0 : plus d'import ou moins d'export
+  if (Math.abs(delta) < TREND_THRESHOLD_MW) return '';
+  const change = current > 0 ? delta : -delta; // variation du flux affiché
+  const arrow = change > 0 ? '▲' : '▼';
+  const tone = delta > 0 ? 'bad' : 'good';
+  const title = `${change > 0 ? 'en hausse' : 'en baisse'} par rapport à la moyenne sur 7 jours (${change > 0 ? '+' : MINUS}${formatGw(Math.abs(change))})`;
+  return `<span class="lp-trend lp-trend--${tone}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${arrow}</span>`;
+}
+
 function exchangesSection(input: GridViewInput, g: GridSnapshot | null): FicheSection {
   const base = { id: 'exchanges', title: 'Échanges aux frontières', collapsible: true, open: input.open('exchanges', false) };
   const flows = input.data?.interconnections ?? [];
   const net = g?.netImportMw ?? (flows.length > 0 ? flows.reduce((s, f) => s + f.flowMW, 0) : null);
   const balanceWord = g?.netImportMw != null ? 'solde physique' : 'solde commercial';
   const balance = net === null ? 'n.d.' : net < 0 ? `export net ${formatGw(-net)}` : net > 0 ? `import net ${formatGw(net)}` : 'équilibre';
-  const summary = net === null ? 'n.d.' : `${balanceWord} : ${balance}`;
-  if (flows.length === 0) return { ...base, summary: escapeHtml(summary), html: emptyLine('Échanges indisponibles.') };
-  const html = '<h4 class="fmk-eyebrow">Échanges commerciaux par frontière</h4>'
-    + flows.map((f) => kvRow(f.country, escapeHtml(flowText(f.flowMW)))).join('')
-    + kvRow(capitalize(balanceWord), escapeHtml(balance))
-    + kvRow('Indice de dépendance aux imports', `${importDependencyIndex(flows)}/20`)
-    + '<p class="fmk-note">Imports bruts aux frontières rapportés à 10 GW, sur 20 (indicatif).</p>';
-  return { ...base, summary: escapeHtml(summary), html };
+  // Solde : signe opposé au flux (export net = net négatif) ; couleur comme les lignes.
+  const balanceHtml = net === null ? escapeHtml('n.d.') : flowHtml(net, balance);
+  // Résumé visuel : le solde seul, coloré (le libellé « solde physique » est dans la section).
+  const summary = balanceHtml;
+  if (flows.length === 0) return { ...base, summary, html: emptyLine('Échanges indisponibles.') };
+  const history = input.borderHistory ?? null;
+  const index = importDependencyIndex(flows);
+  const html = '<div class="fmk-sub">Par frontière, échanges commerciaux</div>'
+    + flows.map((f) => {
+      const id = BORDER_ID[f.country];
+      return kvRow(f.country, flowHtml(f.flowMW, flowText(f.flowMW)) + trendHtml(f.flowMW, id ? history?.get(id) : undefined));
+    }).join('')
+    + kvRow(capitalize(balanceWord), balanceHtml)
+    + `<div class="lp-index">${meterRow({ label: 'Dépendance aux imports', value: (index / 20) * 100, level: importDependencyLevel(index), display: `${index}/20` })}</div>`;
+  return { ...base, summary, html };
 }
 
 // ── Météo spatiale et sources ────────────────────────────────────────────────
@@ -328,7 +381,9 @@ function sourcesSection(input: GridViewInput, g: GridSnapshot | null): FicheSect
   const html = sourceLine(sourceLinkHtml('RTE Écowatt', 'https://www.monecowatt.fr'), `signal officiel, publié à ${published}`)
     + sourceLine(sourceLinkHtml('ODRÉ éCO2mix temps réel', 'https://odre.opendatasoft.com/explore/dataset/eco2mix-national-tr/'),
       `pas de 15 min, données de ${g ? absoluteTime(g.dataTime, input.now, 'fr') : 'n.d.'}`)
-    + sourceLine(sourceLinkHtml('NOAA SWPC', 'https://www.swpc.noaa.gov/'), input.space ? `lu à ${absoluteTime(input.space.fetchedAt.getTime(), input.now, 'fr')}` : 'n.d.');
+    + sourceLine(sourceLinkHtml('NOAA SWPC', 'https://www.swpc.noaa.gov/'), input.space ? `lu à ${absoluteTime(input.space.fetchedAt.getTime(), input.now, 'fr')}` : 'n.d.')
+    + '<p class="fmk-note">Échanges : import en rouge, export en vert ; flèche : écart à la moyenne des 7 derniers jours, rouge si la position de la France se dégrade. '
+    + 'Dépendance aux imports : imports bruts aux frontières rapportés à 10 GW, sur 20 (indicatif) ; vert jusqu’à 5, jaune jusqu’à 10, orange jusqu’à 15, rouge au-delà.</p>';
   return {
     id: 'sources', title: 'Sources', collapsible: true, open: input.open('sources', false), tone: 'reference',
     summary: 'RTE Écowatt · ODRÉ éCO2mix · NOAA', html,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EcowattResponse, GridSnapshot, EcowattOfficialDay } from '../../types/index.ts';
-import { buildGridView, formatGw, gridLead, hourLevel, importDependencyIndex, rangesText, riskWindow } from './grid.ts';
+import { buildGridView, formatGw, gridLead, hourLevel, importDependencyIndex, importDependencyLevel, rangesText, riskWindow } from './grid.ts';
 import { renderLayerView } from './frame.ts';
 
 const NOW = Date.parse('2026-10-02T05:00:00Z'); // 07:00 Paris
@@ -27,17 +27,18 @@ const html = (d: EcowattResponse | null): string => renderLayerView('powerGrid',
 
 describe('vue Réseau électrique', () => {
   it('synthèse : conforme sous 3 % d’écart, production, bas-carbone, CO2, export', () => {
-    expect(gridLead(GRID)).toBe('Consommation de 40,6 GW, conforme à la prévision. Production de 44,2 GW, 91 % bas-carbone, 50 g CO₂/kWh. La France exporte 3,7 GW.');
+    const NB = '\u00a0';
+    expect(gridLead(GRID)).toBe(`Consommation de 40,6${NB}GW, conforme à la prévision. Production de 44,2${NB}GW, 91${NB}% bas-carbone, 50${NB}g${NB}CO₂/kWh. La France exporte 3,7${NB}GW.`);
     // Seuil sur l'écart brut : 2,9 % reste conforme, 3,0 % ne l'est plus.
     expect(gridLead({ ...GRID, consumptionMw: 41200 * 1.029, forecastMw: 41200 })).toContain('conforme à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 41200 * 1.03, forecastMw: 41200 })).toContain('supérieure de 3 % à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 42436, forecastMw: 41200 })).toContain('supérieure de 3 % à la prévision');
-    expect(gridLead({ ...GRID, consumptionMw: 39964, forecastMw: 41200 })).toContain('inférieure de 3 % à la prévision');
-    expect(gridLead({ ...GRID, netImportMw: 1500 })).toContain('La France importe 1,5 GW.');
+    expect(gridLead({ ...GRID, consumptionMw: 41200 * 1.03, forecastMw: 41200 })).toContain('supérieure de 3\u00a0% à la prévision');
+    expect(gridLead({ ...GRID, consumptionMw: 42436, forecastMw: 41200 })).toContain('supérieure de 3\u00a0% à la prévision');
+    expect(gridLead({ ...GRID, consumptionMw: 39964, forecastMw: 41200 })).toContain('inférieure de 3\u00a0% à la prévision');
+    expect(gridLead({ ...GRID, netImportMw: 1500 })).toContain('La France importe 1,5\u00a0GW.');
   });
   it('synthèse sans prévision ni CO2 : rien d’inventé', () => {
     const lead = gridLead({ ...GRID, forecastMw: null, co2gPerKwh: null });
-    expect(lead).toContain('Consommation de 40,6 GW.');
+    expect(lead).toContain('Consommation de 40,6\u00a0GW.');
     expect(lead).not.toMatch(/prévision|CO₂|NaN|undefined/);
   });
   it('fenêtre de risque Écowatt et niveaux horaires', () => {
@@ -49,6 +50,9 @@ describe('vue Réseau électrique', () => {
     expect(hourLevel(0)).toBe('vert');
     expect(hourLevel(2)).toBe('orange');
     expect(hourLevel(3)).toBe('rouge');
+  });
+  it('niveau de l’indice de dépendance : 5, 10 et 15 sur 20', () => {
+    expect([0, 5, 6, 10, 11, 15, 16, 20].map(importDependencyLevel)).toEqual(['vert', 'vert', 'jaune', 'jaune', 'orange', 'orange', 'rouge', 'rouge']);
   });
   it('formats et indice de dépendance inchangé', () => {
     expect(formatGw(30871)).toBe('30,9 GW');
@@ -94,15 +98,40 @@ describe('vue Réseau électrique', () => {
     expect(h).toContain('role="img"');
     expect(h).toMatch(/Pic prévu[^]*52,3 GW à 19:30/);
   });
-  it('échanges : texte neutre, solde, indice expliqué', () => {
+  it('échanges : import en rouge, export en vert, solde, indice expliqué', () => {
     const v = buildGridView({ data: data(), space: null, now: NOW, open });
-    expect(v.sections.find((s) => s.id === 'exchanges')?.summary).toBe('solde physique : export net 3,7 GW');
+    expect(v.sections.find((s) => s.id === 'exchanges')?.summary).toBe('<span class="lp-exp">export net 3,7 GW</span>');
     const h = html(data());
     expect(h).toMatch(/Royaume-Uni[^]*import 2,2 GW/);
     expect(h).toMatch(/Italie[^]*export 2,8 GW/);
-    expect(h).toContain('Indice de dépendance aux imports');
-    expect(h).toContain('Échanges commerciaux par frontière');
+    expect(h).toContain('Par frontière, échanges commerciaux');
+    // Indice : ligne mise en avant, jauge colorée par niveau (2,2 GW d'import brut → 4/20, vert).
+    expect(h).toMatch(/<div class="lp-index"><div class="fmk-meter"><span class="fmk-meter-label">Dépendance aux imports<\/span><span class="fmk-bar"><i style="width:20%;background:var\(--sev-green\)"><\/i><\/span><span class="fmk-meter-v fmk-num">4\/20<\/span>/);
+    // Explications déplacées dans Sources : la section reste visuelle.
+    const exch = v.sections.find((s) => s.id === 'exchanges')?.html ?? '';
+    expect(exch).not.toContain('fmk-note');
+    expect(v.sections.find((s) => s.id === 'sources')?.html).toContain('import en rouge, export en vert');
     expect(h).toMatch(/Solde physique[^]*export net 3,7 GW/);
+    expect(h).toContain('<span class="lp-imp">import 2,2 GW</span>');
+    expect(h).toContain('<span class="lp-exp">export 2,8 GW</span>');
+  });
+  it('échanges : flèche selon la moyenne des 7 jours, rouge si la position de la France se dégrade', () => {
+    const series = (mw: number): number[] => Array(96).fill(mw);
+    const withHistory = (h: Map<string, number[]>): string =>
+      renderLayerView('powerGrid', buildGridView({ data: data(), space: null, now: NOW, open, borderHistory: h }));
+    // Royaume-Uni : import 2,2 GW contre 1,0 GW en moyenne → import en hausse, rouge.
+    // Italie : export 2,8 GW contre 1,0 GW en moyenne → export en hausse, vert.
+    const h = withHistory(new Map([['FR-GB', series(1000)], ['FR-IT', series(-1000)]]));
+    expect(h).toMatch(/import 2,2 GW<\/span><span class="lp-trend lp-trend--bad"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,2 GW\)"[^>]*>▲<\/span>/);
+    expect(h).toMatch(/export 2,8 GW<\/span><span class="lp-trend lp-trend--good"[^>]*title="en hausse par rapport à la moyenne sur 7 jours \(\+1,8 GW\)"[^>]*>▲<\/span>/);
+    // Import en baisse : vert ▼ ; export en baisse : rouge ▼.
+    const down = withHistory(new Map([['FR-GB', series(3000)], ['FR-IT', series(-4000)]]));
+    expect(down).toMatch(/import 2,2 GW<\/span><span class="lp-trend lp-trend--good"[^>]*>▼<\/span>/);
+    expect(down).toMatch(/export 2,8 GW<\/span><span class="lp-trend lp-trend--bad"[^>]*>▼<\/span>/);
+    // Écart sous 200 MW, ou historique absent ou trop court : pas de flèche.
+    expect(withHistory(new Map([['FR-GB', series(2100)], ['FR-IT', series(-2800)]]))).not.toContain('lp-trend');
+    expect(withHistory(new Map([['FR-GB', [1000, 1000]]]))).not.toContain('lp-trend');
+    expect(html(data())).not.toContain('lp-trend');
   });
   it('sans données réseau : n.d. et phrases, jamais vide', () => {
     const h = html(data({ grid: null }));

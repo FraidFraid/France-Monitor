@@ -88,6 +88,14 @@ export function fleetSummary(units: readonly NuclearUnitReference[], outages: re
 }
 
 /** Niveau du parc : puissance perdue en arrêts fortuits (décision du 02/10/2026). */
+/** Couleur de la jauge « Disponible » : part de la puissance installée disponible (85, 70 et 55 %). */
+export function availabilityLevel(ratio: number): VigilanceLevel {
+  if (ratio >= 0.85) return 'vert';
+  if (ratio >= 0.7) return 'jaune';
+  if (ratio >= 0.55) return 'orange';
+  return 'rouge';
+}
+
 export function fleetLevel(lostUnplannedMw: number): VigilanceLevel {
   if (lostUnplannedMw >= 6000) return 'rouge';
   if (lostUnplannedMw >= 3000) return 'orange';

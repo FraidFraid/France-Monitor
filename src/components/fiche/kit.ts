@@ -20,6 +20,8 @@ export interface MeterRow {
   level: VigilanceLevel | null;
   /** Barre grise quand aucun niveau ne s'applique (confiance). */
   neutral?: boolean;
+  /** Couleur de catégorie de la barre (expression CSS interne, ex. « var(--mix-nuclear) ») ; prime sur level et neutral. */
+  color?: string;
   /** Texte de la valeur ; défaut : la valeur, ou « n.d. ». */
   display?: string;
   /** Colonnes supplémentaires (variation, points retirés), texte brut. */
@@ -31,7 +33,7 @@ export interface MeterRow {
 /** Ligne de mesure unique du kit : libellé · barre · valeur · colonnes en plus · note. */
 export function meterRow(row: MeterRow): string {
   const width = row.value === null ? 0 : Math.max(0, Math.min(100, row.value));
-  const background = row.level !== null ? levelColorVar(row.level) : row.neutral ? 'var(--text-secondary)' : null;
+  const background = row.color ?? (row.level !== null ? levelColorVar(row.level) : row.neutral ? 'var(--text-secondary)' : null);
   const fill = row.value === null || background === null
     ? ''
     : `<i style="width:${width}%;background:${background}"></i>`;

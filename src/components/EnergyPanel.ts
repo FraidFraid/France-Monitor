@@ -13,6 +13,7 @@ export class EnergyPanel {
   private onClose?: () => void;
   private data: EcowattResponse | null = null;
   private space: SpaceWeatherData | null = null;
+  private borderHistory: ReadonlyMap<string, readonly number[]> | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
 
@@ -35,6 +36,12 @@ export class EnergyPanel {
     this.render();
   }
 
+  /** Séries des 7 derniers jours par frontière (flèches d'évolution des échanges). */
+  updateBorderHistory(history: ReadonlyMap<string, readonly number[]>): void {
+    this.borderHistory = history;
+    if (this.isVisible()) this.render();
+  }
+
   updateSpaceWeather(data: SpaceWeatherData): void {
     this.space = data;
     if (this.isVisible()) this.render();
@@ -53,6 +60,6 @@ export class EnergyPanel {
   private render(): void {
     if (!this.shell) return;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildGridView({ data: this.data, space: this.space, now: Date.now(), open }));
+    this.shell.render(buildGridView({ data: this.data, space: this.space, now: Date.now(), open, borderHistory: this.borderHistory }));
   }
 }
