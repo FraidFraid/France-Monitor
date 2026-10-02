@@ -40,10 +40,19 @@ const OIL_PANEL_SOURCES_TEXT = 'Référence FR: SDES, INSEE, CPDP/UFIP, data.gou
 const OIL_PANEL_COMPLEMENT_TEXT = 'Complément fraîcheur: JODI Oil, JODI Gas, UFIP mensuel';
 const OIL_PANEL_DAILY_TEXT = 'Vue Daily: prix et ruptures carburants, pas volumes livrés';
 const OIL_PANEL_FRESHNESS_TEXT = 'Vue JODI/UFIP: plus fraîche pour 2025–2026, mais méthodologie mixte et provisoire.';
-const OIL_PANEL_DISCLAIMER_TEXT = 'Limite: pas de télémesure live du raffinage, des oléoducs ni des livraisons station.';
+const OIL_PANEL_DISCLAIMER_TEXT = 'Limite : pas de télémesure en direct du raffinage, des oléoducs ni des livraisons en station.';
 const STOCKS_METHOD_TEXT = 'Jours de stock : stocks physiques en France rapportés à la consommation moyenne (méthode France Monitor) ; la méthode de l’AIE rapporte les stocks aux importations nettes.';
 const STRUCTURAL_TEXT = 'Vue France structurale (SDES, CPDP) : référence pour les stocks, les flux, les origines, les capacités et le raffinage.';
-const HARMONIZED_TEXT = 'Vue harmonisée JODI et UFIP : complément plus frais pour 2025–2026. Méthodologie mixte France et international, à lire comme signal provisoire.';
+const HARMONIZED_TEXT = 'Séries JODI et UFIP, plus récentes que la vue France mais de méthodologie mixte : à lire comme un signal provisoire.';
+
+/** Produits JODI en français. */
+const PRODUCT_FR: Readonly<Record<string, string>> = {
+  gasoline: 'Essence', diesel: 'Gazole', 'jet fuel': 'Kérosène', kerosene: 'Kérosène', lpg: 'GPL',
+  'fuel oil': 'Fioul lourd', naphtha: 'Naphta', 'gas/diesel oil': 'Gazole',
+};
+function productFr(name: string): string {
+  return PRODUCT_FR[name.trim().toLowerCase()] ?? name;
+}
 
 const TENSION_LEVEL: Record<FuelTensionLevel, VigilanceLevel> = { LOW: 'vert', MEDIUM: 'jaune', HIGH: 'orange', CRITICAL: 'rouge' };
 const TENSION_WORD: Record<FuelTensionLevel, string> = { LOW: 'faible', MEDIUM: 'modérée', HIGH: 'forte', CRITICAL: 'critique' };
@@ -120,8 +129,23 @@ export function fuelTooltipHtml(series: readonly FuelPriceSeries[], at: number):
   return `<b class="fmk-num">${escapeHtml(date)}</b>${rows}`;
 }
 
+/** « 2025-12 » → « décembre 2025 », « 2026-09-30 » → « 30/09/2026 », « en août 2026 » tel quel : jamais de date brute ni « au en ». */
+function asOfWords(asOf: string): string {
+  return asOf.split(' · ').map((part) => {
+    const t = part.trim();
+    const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+    if (day) return `${day[3]}/${day[2]}/${day[1]}`;
+    return /^\d{4}-\d{2}$/.test(t) ? (monthLabel(t) ?? t) : t;
+  }).filter((t) => t.length > 0).join(' · ');
+}
+
+/** Texte des sources en français (« live » → « en direct »). */
+function frenchDetail(text: string): string {
+  return text.replace(/\blive\b/gi, 'en direct');
+}
+
 function freshnessText(info: OilFreshnessInfo): string {
-  return `${FRESHNESS_WORD[info.level]} · ${info.detail}${info.asOf ? ` · au ${info.asOf}` : ''}`;
+  return `${FRESHNESS_WORD[info.level]} · ${frenchDetail(info.detail)}${info.asOf ? ` · ${asOfWords(info.asOf)}` : ''}`;
 }
 
 function freshnessNote(info: OilFreshnessInfo): string {
@@ -414,25 +438,27 @@ function harmonizedSection(input: OilViewInput, data: OilDashboard): FicheSectio
   if (!h?.available) {
     return { ...base, summary: 'indisponible', html: emptyLine('Vue harmonisée indisponible sur ce cycle.') + note('La vue France structurale reste la référence.') };
   }
+  // Mois couverts, dits une seule fois (« UFIP en août 2026 » → « UFIP août 2026 »).
   const months = [
     monthLabel(h.oilDataMonth) && `pétrole ${monthLabel(h.oilDataMonth)}`,
     monthLabel(h.gasDataMonth) && `gaz ${monthLabel(h.gasDataMonth)}`,
-    h.latestUfipPeriodLabel && `UFIP ${h.latestUfipPeriodLabel}`,
+    h.latestUfipPeriodLabel && `UFIP ${h.latestUfipPeriodLabel.replace(/^en\s+/, '')}`,
   ].filter((s): s is string => Boolean(s));
   const products = h.oilProducts.filter((p) => p.demandKbd !== null || p.importsKbd !== null)
-    .map((p) => kvRow(p.product, escapeHtml(`demande ${kbd(p.demandKbd)} · imports ${kbd(p.importsKbd)}`))).join('');
+    .map((p) => kvRow(productFr(p.product), `demande ${valueHtml(kbd(p.demandKbd))} · imports ${valueHtml(kbd(p.importsKbd))}`)).join('');
   const lng = h.gasLngSharePct;
-  const html = (h.provisional ? note('Données provisoires.') : '')
-    + note(`${h.sourceLabel}${months.length > 0 ? ` · ${months.join(' · ')}` : ''}`)
+  const html = (months.length > 0 ? kvRow('Mois couverts', escapeHtml(months.join(' · '))) : '')
     + products
-    + (h.crudeImportsKbd !== null ? kvRow('Brut importé', escapeHtml(kbd(h.crudeImportsKbd))) : '')
-    + (h.gasTotalDemandTj !== null ? kvRow('Gaz', escapeHtml(`${frNumber(h.gasTotalDemandTj / 36_000, 1)}${NBSP}Gm³/an`)) : '')
-    + (lng !== null ? barRow({ label: 'Part du GNL', pct: lng, value: formatPct(lng), color: 'var(--cat-lng)', dot: false })
-      + kvRow('Part des gazoducs', escapeHtml(formatPct(Math.max(0, 100 - lng)))) : '')
-    + note(HARMONIZED_TEXT)
-    + note(h.caveat)
-    + freshnessNote(data.meta.freshness.harmonized);
-  return { ...base, summary: escapeHtml(months.join(' · ') || h.sourceLabel), html };
+    + (h.crudeImportsKbd !== null ? kvRow('Brut importé', valueHtml(kbd(h.crudeImportsKbd))) : '')
+    + (h.gasTotalDemandTj !== null ? kvRow('Gaz', valueHtml(`${frNumber(h.gasTotalDemandTj / 36_000, 1)}${NBSP}Gm³/an`)) : '')
+    + (lng !== null
+      ? '<div class="fmk-sub">Importations de gaz</div>'
+        + barRow({ label: 'Part du GNL', pct: lng, value: formatPct(lng), color: 'var(--cat-lng)', dot: false })
+        + barRow({ label: 'Part des gazoducs', pct: Math.max(0, 100 - lng), value: formatPct(Math.max(0, 100 - lng)), color: 'color-mix(in srgb, var(--cat-lng) 45%, transparent)', dot: false })
+      : '')
+    // Une seule note ici ; la mise en garde complète et la fraîcheur détaillée restent dans « Méthode et sources ».
+    + note(HARMONIZED_TEXT);
+  return { ...base, summary: escapeHtml(`JODI et UFIP${h.provisional ? ' · provisoire' : ''}`), html };
 }
 
 // ─── Vue ──────────────────────────────────────────────────────────────────

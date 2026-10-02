@@ -176,4 +176,29 @@ describe('vue Pétrole', () => {
       expect(h).not.toMatch(/—|&mdash;|monospace|#[0-9a-fA-F]{6}\b|rgba?\(/);
     }
   });
+  it('vue harmonisée nettoyée : produits en français, mois dits une fois, une seule note, résumé court, pas de « au en »', () => {
+    const o = oilFixture();
+    const data = {
+      ...o,
+      harmonized: o.harmonized ? {
+        ...o.harmonized, provisional: true, oilDataMonth: '2025-12', gasDataMonth: '2026-01', latestUfipPeriodLabel: 'en août 2026',
+        oilProducts: [{ product: 'Gasoline', demandKbd: 306.9, importsKbd: 46.3 }, { product: 'Jet fuel', demandKbd: 164.2, importsKbd: 122 }, { product: 'LPG', demandKbd: 96.5, importsKbd: 90.9 }],
+      } : null,
+      meta: { ...o.meta, freshness: { ...o.meta.freshness, harmonized: { ...o.meta.freshness.harmonized, asOf: '2025-12 · 2026-01 · en août 2026', detail: 'pas de télémesure live' } } },
+    };
+    const v = view({ tab: 'supply', data });
+    const h = v.sections.find((s) => s.id === 'harmonized');
+    expect(h?.summary).toBe('JODI et UFIP · provisoire');
+    const html = h?.html ?? '';
+    expect(html).toContain('Essence');
+    expect(html).toContain('Kérosène');
+    expect(html).toContain('GPL');
+    expect(html).not.toMatch(/Gasoline|Jet fuel|LPG/);
+    expect(html.match(/décembre 2025/g)).toHaveLength(1);
+    expect(html).toContain('UFIP août 2026');
+    expect(html.match(/fmk-note/g)).toHaveLength(1);
+    expect(html).toMatch(/Part des gazoducs[^]*color-mix\(in srgb, var\(--cat-lng\) 45%/);
+    const all = renderLayerView('oilNetwork', view({ data })) + renderLayerView('oilNetwork', v);
+    expect(all).not.toMatch(/au en |\b2025-12\b|\blive\b/);
+  });
 });
