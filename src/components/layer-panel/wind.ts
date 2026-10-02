@@ -99,8 +99,8 @@ function parksSection(parks: readonly EolienParkSummary[], open: WindViewInput['
     note: [p.region ?? 'France', p.commune, p.kind === 'offshore' ? 'mer' : p.kind === 'onshore' ? 'terre' : 'type non précisé',
       STATUS_WORD[p.status], p.estimatedProductionMw != null ? `≈ ${formatMw(p.estimatedProductionMw)} estimés` : null].filter(Boolean).join(' · '),
     data: { 'eolien-park': p.id }, link: true,
-  })).join('');
-  return { id: 'parks', title: 'Parcs', collapsible: true, open: open('parks', false), summary: '12 plus grands · production estimée', html };
+  })).join('') + (top.length > 0 ? '<p class="fmk-note">Clic sur un parc : recentrer la carte.</p>' : '');
+  return { id: 'parks', title: 'Parcs', collapsible: true, open: open('parks', false), summary: `${TOP_PARKS} plus grands · production estimée`, html };
 }
 
 function sourcesSection(live: EolienLive | null, now: number, open: WindViewInput['open']): FicheSection {

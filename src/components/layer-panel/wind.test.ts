@@ -99,4 +99,8 @@ describe('vue Éolien', () => {
     expect(late.sections.find((x) => x.id === 'split')?.html).not.toContain('fmk-dot--orange');
     expect(late.sections.find((x) => x.id === 'sources')?.html).toContain('(en retard)');
   });
+  it('parcs : l’indication « clic = recentrer la carte » de l’ancien panneau est gardée', () => {
+    const h = renderLayerView('windMonitor', view({ open: () => true }));
+    expect(h).toContain('Clic sur un parc : recentrer la carte.');
+  });
 });
