@@ -73,8 +73,8 @@ describe('vue Pétrole', () => {
   it('tension carburants : départements les plus tendus, puce, part d’anomalies, écart 7 j', () => {
     const s = section('tension');
     expect(s?.summary).toBe('9\u202F812 stations · 96 départements');
-    expect(s?.html).toMatch(new RegExp(`fmk-dot--orange[^]*Bouches-du-Rhône \\(13\\)[^]*6,8${NBSP}%[^]*écart 7${NBSP}j : \\+2,1${NBSP}c`));
-    expect(s?.html).toMatch(/fmk-dot--jaune[^]*Nord \(59\)[^]*écart 7\u00A0j : n\.d\./);
+    expect(s?.html).toMatch(new RegExp(`fmk-dot--orange[^]*Bouches-du-Rhône \\(13\\)[^]*6,8${NBSP}%[^]*écart 7${NBSP}j : <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span>`));
+    expect(s?.html).toMatch(/fmk-dot--jaune[^]*Nord \(59\)[^]*écart 7\u00A0j : <span class="lp-val fmk-num">n\.d\.<\/span>/);
   });
   it('stocks stratégiques : une jauge par produit sur 120 jours, couleurs de seuil, total', () => {
     const s = section('stocks');
@@ -106,7 +106,7 @@ describe('vue Pétrole', () => {
     expect(h).toContain('data-oil-map aria-pressed="false">Afficher sur la carte</button>');
     expect(h.indexOf('Bouches-du-Rhône')).toBeLessThan(h.indexOf('Nord'));
     expect(h.indexOf('Nord')).toBeLessThan(h.indexOf('Paris'));
-    expect(h).toMatch(new RegExp(`120 stations · écart 7${NBSP}j \\+2,1${NBSP}c · relevés d’il y a 42${NBSP}min · gazole 1,701${NBSP}€`));
+    expect(h).toMatch(new RegExp(`120 stations · écart 7${NBSP}j <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span> · relevés d’il y a 42${NBSP}min · gazole 1,701${NBSP}€`));
     const searched = renderLayerView('oilNetwork', view({ tab: 'departments', search: 'bouches' }));
     expect(searched).toContain('Bouches-du-Rhône');
     expect(searched).not.toContain('Nord (59)');
@@ -121,7 +121,7 @@ describe('vue Pétrole', () => {
     expect(h).toContain('estimé');
     expect(h).toMatch(/Amérique du Nord[^]*width:23\.4%;background:var\(--cat-crude\)/);
     expect(h).not.toContain('Autres</span>');
-    expect(h).toMatch(new RegExp(`Produits énergétiques[^]*6,42${NBSP}Mt · \\+0,6${NBSP}% sur un an`));
+    expect(h).toMatch(new RegExp(`Produits énergétiques[^]*6,42${NBSP}Mt · <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+0,6${NBSP}% sur un an</span>`));
     expect(h).toContain('provisoire');
     expect(renderLayerView('oilNetwork', view({ tab: 'supply', data: oilFixture({ harmonized: null }) }))).toContain('Vue harmonisée indisponible sur ce cycle.');
   });
@@ -157,6 +157,14 @@ describe('vue Pétrole', () => {
     expect(supply).toContain(`Part des gazoducs`);
     expect(supply).toContain('lp-imp');
     expect(supply).toContain('lp-exp');
+    const falling = tensionFixture();
+    falling.national.topDepartments = [{ ...falling.summaries[0], deltaPrice7d: -0.9 }];
+    expect(section('tension', { tension: falling })?.html).toContain(`lp-lvl--vert">−0,9${NBSP}c`);
+    const calm = oilFixture({ deliveries: [{ ...oilFixture().deliveries[0], totalProductsYoYPct: -1.2, roadFuelYoYPct: 0.2 }] });
+    const ufip = renderLayerView('oilNetwork', view({ tab: 'supply', data: calm }));
+    expect(ufip).toContain(`lp-lvl--vert">−1,2${NBSP}% sur un an`);
+    expect(ufip).toMatch(/lp-val fmk-num">\+0,2\u00A0% sur un an/);
+    expect(renderLayerView('oilNetwork', view({ tab: 'departments' }))).toContain('lp-lvl--orange">+2,1');
     const dep = renderLayerView('oilNetwork', view({ tab: 'departments' }));
     expect(dep).toContain('signal quasi direct');
     expect(dep).toContain('tension forte');

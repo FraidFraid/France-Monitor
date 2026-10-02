@@ -212,7 +212,7 @@ function pricesSection(input: OilViewInput, data: OilDashboard): FicheSection {
     const state = data.sourceStatus.fuelPrices === 'error' ? 'erreur amont' : 'données indisponibles';
     const averages = tension ? (['gazole', 'sp95', 'sp98', 'e10'] as const)
       .map((f) => [f, tension.national.avgPrices[f]] as const)
-      .filter(([, v]) => v !== undefined)
+      .filter((e): e is readonly [FuelType, number] => e[1] !== undefined)
       .map(([f, v]) => kvRow(f === 'gazole' ? 'Gazole' : FUEL_WORD[f], valueHtml(formatEuro(v)))).join('') : '';
     const html = emptyLine('Historique des prix indisponible sur ce cycle.')
       + note('L’historique journalier n’a pas pu être reconstruit, mais les niveaux de prix et de ruptures restent visibles. Ce bloc ne mesure pas des volumes livrés.')
@@ -236,6 +236,11 @@ function pricesSection(input: OilViewInput, data: OilDashboard): FicheSection {
   return { ...base, html };
 }
 
+/** Écart de prix en centimes : seul le nombre est coloré (≥ 0,5 c orange, ≤ −0,5 c vert). */
+function deltaAtom(cents: number | null): string {
+  return valueHtml(formatCents(cents), priceDeltaLevel(cents));
+}
+
 function rankedSummaries(list: readonly FuelTensionDepartmentSummary[]): FuelTensionDepartmentSummary[] {
   return [...list].sort((a, b) => TENSION_RANK[a.tensionLevel] - TENSION_RANK[b.tensionLevel] || b.anomalyShare - a.anomalyShare);
 }
@@ -247,12 +252,12 @@ function tensionSection(input: OilViewInput): FicheSection {
   const n = tension.national;
   const rows = rankedSummaries(n.topDepartments).slice(0, 5).map((d) => listRow({
     text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: tensionLevel(d.tensionLevel),
-    note: `tension ${TENSION_WORD[d.tensionLevel]} · écart 7${NBSP}j : ${formatCents(d.deltaPrice7d)}`,
+    noteHtml: `${escapeHtml(`tension ${TENSION_WORD[d.tensionLevel]} · écart 7${NBSP}j :`)} ${deltaAtom(d.deltaPrice7d)}`,
   })).join('');
   const averages = input.data?.fuelPriceHistory && input.data.fuelPriceHistory.series.length > 0
     ? (['gazole', 'sp95', 'sp98', 'e10'] as const)
       .map((f) => [f, n.avgPrices[f]] as const)
-      .filter(([, v]) => v !== undefined)
+      .filter((e): e is readonly [FuelType, number] => e[1] !== undefined)
       .map(([f, v]) => kvRow(`Prix moyen ${FUEL_WORD[f]}`, valueHtml(formatEuro(v)))).join('')
     : '';
   const html = kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), n.anomalyShare >= 18 ? 'orange' : null))
@@ -331,12 +336,13 @@ function departmentsSections(input: OilViewInput): FicheSection[] {
   const shown = rankedSummaries(tension.summaries.filter((d) => query === '' || fold(d.departmentName).includes(query) || fold(d.departmentCode).includes(query)));
   const rows = shown.map((d) => {
     const prices = d.fuelSignals.filter((s) => s.avgPrice !== null).map((s) => `${FUEL_WORD[s.fuelType]} ${formatEuro(s.avgPrice)}`);
+    const before = [`tension ${TENSION_WORD[d.tensionLevel]}`, `${d.stationCount} stations`].join(' · ');
+    const after = [
+      `relevés d’il y a ${formatAge(d.avgUpdateAgeMinutes)}`, ...(prices.length > 0 ? prices : ['prix indisponibles']), `signal ${BADGE_WORD[d.freshness.badge]}`,
+    ].join(' · ');
     return listRow({
       text: `${d.departmentName} (${d.departmentCode})`, value: formatPct(d.anomalyShare, 1), level: tensionLevel(d.tensionLevel),
-      note: [
-        `tension ${TENSION_WORD[d.tensionLevel]}`, `${d.stationCount} stations`, `écart 7${NBSP}j ${formatCents(d.deltaPrice7d)}`,
-        `relevés d’il y a ${formatAge(d.avgUpdateAgeMinutes)}`, ...(prices.length > 0 ? prices : ['prix indisponibles']), `signal ${BADGE_WORD[d.freshness.badge]}`,
-      ].join(' · '),
+      noteHtml: `${escapeHtml(`${before} · écart 7${NBSP}j`)} ${deltaAtom(d.deltaPrice7d)}${escapeHtml(` · ${after}`)}`,
     });
   }).join('');
   const html = toolbar + (rows || emptyLine('Aucun département ne correspond à la recherche.'))
@@ -375,12 +381,16 @@ function deliveriesSection(input: OilViewInput, data: OilDashboard): FicheSectio
   const base = { id: 'deliveries', title: 'Livraisons mensuelles', collapsible: true, open: input.open('deliveries', true) };
   if (!d) return { ...base, summary: 'n.d.', html: emptyLine('Livraisons UFIP non publiées.') };
   const period = d.periodLabel.replace(/^en\s+/i, '').trim() || d.periodLabel;
-  const withYoy = (volume: string, yoy: number | null): string => (yoy === null ? volume : `${volume} · ${formatSignedPct(yoy, 1)} sur un an`);
+  const withYoy = (volume: string, yoy: number | null): string => {
+    if (yoy === null) return escapeHtml(volume);
+    const level: VigilanceLevel | null = yoy >= 0.5 ? 'orange' : yoy <= -0.5 ? 'vert' : null;
+    return `${escapeHtml(volume)} · ${valueHtml(`${formatSignedPct(yoy, 1)} sur un an`, level)}`;
+  };
   const total = d.totalProductsMillionTons === null ? 'n.d.' : `${frNumber(d.totalProductsMillionTons, 2)}${NBSP}Mt`;
   const road = d.roadFuelMillionM3 === null ? 'n.d.' : `${frNumber(d.roadFuelMillionM3, 3)}${NBSP}Mm³`;
   const html = kvRow('Mois', escapeHtml(period))
-    + kvRow('Produits énergétiques', escapeHtml(withYoy(total, d.totalProductsYoYPct)))
-    + kvRow('Carburants routiers', escapeHtml(withYoy(road, d.roadFuelYoYPct)))
+    + kvRow('Produits énergétiques', withYoy(total, d.totalProductsYoYPct))
+    + kvRow('Carburants routiers', withYoy(road, d.roadFuelYoYPct))
     + kvRow('Publication', escapeHtml(d.publicationDate ?? 'n.d.'))
     + note(`UFIP mensuel : livraisons CPDP de produits pétroliers. ${d.sourceLabel ?? data.meta.freshness.deliveries.detail}`)
     + freshnessNote(data.meta.freshness.deliveries);
