@@ -30,9 +30,9 @@ export interface MetropoleDisplayData {
   color: string;
   /** Couleur RGBA du halo de fond (alpha inclus) */
   glowColor: string;
-  /** Consommation nationale (MW) à l'instant de la métropole — undefined si indisponible */
+  /** Consommation nationale (MW) à l'instant de la métropole ; undefined si indisponible */
   nationalMw?: number;
-  /** Part dans la conso nationale (%) à ce même instant — undefined si nationalMw manque */
+  /** Part dans la conso nationale (%) à ce même instant ; undefined si nationalMw manque */
   nationalSharePct?: number;
   /** Variation vs même heure J-1 (%) — undefined si non disponible */
   deltaVsJ1Pct?: number;
