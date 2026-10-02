@@ -34,10 +34,11 @@ describe('vue Éolien', () => {
   it('état du vent en mots, seuils actuels du suivi', () => {
     expect([windWord('low-production'), windWord('watch'), windWord('normal')]).toEqual(['faible', 'modéré', 'soutenu']);
   });
-  it('en-tête : production en gros chiffre avec unité, non colorée, pas de pastille', () => {
+  it('en-tête : production en gros chiffre avec unité, colorée par l’état du vent (faible : orange), pas de pastille', () => {
     const v = view();
     expect(v.head.title).toBe('Éolien');
-    expect(v.head.figure).toEqual({ value: `2,1${NBSP}GW`, caption: `8${NBSP}% des 26,1${NBSP}GW installés · éCO2mix 08:30` });
+    expect(v.head.figure).toMatchObject({ value: `2,1${NBSP}GW`, level: 'orange', caption: `8${NBSP}% des 26,1${NBSP}GW installés · éCO2mix 08:30` });
+    expect(v.head.figure?.captionHtml).toMatch(/lp-lvl--orange">8\u00a0%<\/span> des 26,1\u00a0GW installés/);
     expect(v.head.level ?? null).toBeNull();
     expect(v.head.status).toEqual(['vent faible', `terre 2,0${NBSP}GW · mer 0,1${NBSP}GW`, 'ODRÉ']);
     expect(v.head.lead).toBe(`Vent faible : 2,1${NBSP}GW, soit 8${NBSP}% de la puissance installée.`);
@@ -48,7 +49,8 @@ describe('vue Éolien', () => {
   });
   it('production du jour : courbe éCO2mix, repère maintenant, min et max', () => {
     const s = view().sections.find((x) => x.id === 'day');
-    expect(s?.summary).toBe(`min 1,6${NBSP}GW à 04:00 · max 2,1${NBSP}GW à 08:30`);
+    expect(s?.summary).toBe(`min 1,6${NBSP}GW · max 2,1${NBSP}GW`);
+    expect(s?.html).toMatch(/Minimum[^]*1,6\u00a0GW à 04:00[^]*Maximum[^]*2,1\u00a0GW à 08:30/);
     expect(s?.html).toContain('role="img"');
     expect(s?.html).toContain('stroke="var(--mix-wind)"');
     expect(s?.html).toContain('stroke="var(--v2-brand)"');

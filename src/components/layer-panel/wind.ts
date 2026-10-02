@@ -3,10 +3,11 @@ import type { GridSnapshot } from '../../types/index.ts';
 import type { EolienAlertLevel, EolienLive, EolienParkSummary } from '../../services/eolien/types.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
+import { escapeHtml } from '../france-intel-events.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, formatGw, formatMw, formatPct, zoneMidnight } from './format.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerView } from './frame.ts';
+import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 
 export interface WindViewInput {
   live: EolienLive | null;
@@ -62,10 +63,13 @@ function daySection(grid: GridSnapshot | null, now: number, open: WindViewInput[
     label: 'Production éolienne du jour, éCO2mix', from, to, stroke: 'var(--mix-wind)', nowAt: grid.dataTime, markPeak: true,
     value: formatGw, tick: (ms) => (ms === from ? `0${NBSP}h` : `24${NBSP}h`),
   });
+  // Résumé court (une ligne) ; les heures du minimum et du maximum restent sous la courbe.
   return {
     ...base,
-    summary: `min ${formatGw(min.value)} à ${absoluteTime(min.at, now, 'fr')} · max ${formatGw(max.value)} à ${absoluteTime(max.at, now, 'fr')}`,
-    html: chart,
+    summary: escapeHtml(`min ${formatGw(min.value)} · max ${formatGw(max.value)}`),
+    html: chart
+      + kvRow('Minimum', valueHtml(`${formatGw(min.value)} à ${absoluteTime(min.at, now, 'fr')}`))
+      + kvRow('Maximum', valueHtml(`${formatGw(max.value)} à ${absoluteTime(max.at, now, 'fr')}`)),
   };
 }
 
@@ -133,9 +137,12 @@ export function buildWindView(input: WindViewInput): LayerView {
   return {
     head: {
       theme: THEME, title: TITLE,
+      // Le chiffre prend la couleur de l'état du vent (vent faible : orange), sauf donnée en retard.
       figure: {
         value: formatGw(live.production_gw * 1000),
+        level: late ? null : WIND_LEVEL[live.alertLevel],
         caption: `${fc} des ${formatGw(live.puissance_installee * 1000)} installés · éCO2mix ${stamp}${late ? ' (en retard)' : ''}`,
+        captionHtml: `${valueHtml(fc, late ? null : WIND_LEVEL[live.alertLevel])} ${escapeHtml(`des ${formatGw(live.puissance_installee * 1000)} installés · éCO2mix ${stamp}${late ? ' (en retard)' : ''}`)}`,
       },
       status: [`vent ${word}${late ? ' (en retard)' : ''}`, split ? `terre ${formatGw(split.onshore)} · mer ${formatGw(split.offshore)}` : '', 'ODRÉ'],
       lead: `Vent ${word} : ${formatGw(live.production_gw * 1000)}, soit ${fc} de la puissance installée.${late ? ` Donnée en retard, relevée à ${stamp}.` : ''}`,
