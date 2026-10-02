@@ -12,6 +12,7 @@ import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 import { Watchdog } from './watchdog.ts';
 import { dedupe } from '../utils/inflight.ts';
 import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
+import { levelHex } from './vigilance.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('nuclear-rte', {
@@ -164,11 +165,11 @@ export function buildNuclearColorMap(
 // ── Color map ─────────────────────────────────────────────────────────────────
 
 export const NUCLEAR_STATUS_COLORS: Record<ReactorAvailabilityStatus, string> = {
-  AVAILABLE: '#2ECC71',
-  REDUCED: '#F59E0B',
-  OUTAGE_PLANNED: '#7B8CDE',
-  OUTAGE_UNPLANNED: '#E74C3C',
-  UNKNOWN: '#6B7280',
+  AVAILABLE: levelHex('vert'),
+  REDUCED: levelHex('jaune'),
+  OUTAGE_PLANNED: '#6e6e80',
+  OUTAGE_UNPLANNED: levelHex('orange'),
+  UNKNOWN: '#3a3a4e',
 };
 
 /** Couleur pour un signal REMIT non confirmé par RTE */
