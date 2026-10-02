@@ -282,8 +282,8 @@ export class MapContainer {
   }
 
   // ─── Métropoles ───
-  updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
-    this.deckMap?.updateMetropoles(data, nationalLoadMW);
+  updateMetropoles(data: MetropoleConsumption[]): void {
+    this.deckMap?.updateMetropoles(data);
   }
 
   // ─── Military ───

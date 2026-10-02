@@ -11,7 +11,6 @@ export class MetroLoadPanel {
   private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
   private metros: MetropoleConsumption[] | null = null;
-  private nationalMw: number | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
 
@@ -28,14 +27,13 @@ export class MetroLoadPanel {
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
 
-  show(metros: MetropoleConsumption[] | null, nationalMw: number | null): void {
+  show(metros: MetropoleConsumption[] | null): void {
     this.shell?.root.classList.add('is-open');
-    this.update(metros, nationalMw);
+    this.update(metros);
   }
 
-  update(metros: MetropoleConsumption[] | null, nationalMw: number | null): void {
+  update(metros: MetropoleConsumption[] | null): void {
     this.metros = metros;
-    this.nationalMw = nationalMw;
     if (this.isVisible()) this.render();
   }
 
@@ -57,6 +55,6 @@ export class MetroLoadPanel {
   private render(): void {
     if (!this.shell) return;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildMetroView({ metros: this.metros, nationalMw: this.nationalMw, now: Date.now(), open }));
+    this.shell.render(buildMetroView({ metros: this.metros, now: Date.now(), open }));
   }
 }

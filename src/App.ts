@@ -3897,7 +3897,7 @@ export class App {
     } else if (key === 'metroLoad') {
       if (this.activeLayers.metroLoad) {
         void this.loadMetropoles();
-        this.metroLoadPanel?.show(this.currentMetropoles, this.nationalConsumptionMw());
+        this.metroLoadPanel?.show(this.currentMetropoles);
       } else {
         this.metroLoadPanel?.hide();
       }
@@ -4071,16 +4071,11 @@ export class App {
       panel.mount();
       this.metroLoadPanel = panel;
       if (this.activeLayers.metroLoad) {
-        panel.show(this.currentMetropoles, this.nationalConsumptionMw());
+        panel.show(this.currentMetropoles);
         this.layoutEnergyFloatingPanels();
       }
     });
     return this.metroLoadPanelPromise;
-  }
-
-  /** Consommation nationale éCO2mix (MW) : dénominateur de la part des métropoles, carte et panneau. */
-  private nationalConsumptionMw(): number | null {
-    return this.currentEcowattResponse?.grid?.consumptionMw ?? null;
   }
 
   private ensureHealthPanels(): Promise<void> {
@@ -6693,12 +6688,12 @@ export class App {
     const metropoles = await fetchMetropoles();
     this.currentMetropoles = metropoles;
     if (metropoles.length > 0) {
-      this.mapContainer?.updateMetropoles(metropoles, this.nationalConsumptionMw() ?? undefined);
+      this.mapContainer?.updateMetropoles(metropoles);
       this.statusPanel?.updateSource('Métropoles', { status: 'ok', lastUpdate: new Date() });
     } else {
       this.statusPanel?.updateSource('Métropoles', { status: 'stale', lastUpdate: new Date() });
     }
-    this.metroLoadPanel?.update(metropoles, this.nationalConsumptionMw());
+    this.metroLoadPanel?.update(metropoles);
   }
 
   private async loadOutages(): Promise<void> {

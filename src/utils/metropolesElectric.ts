@@ -30,7 +30,9 @@ export interface MetropoleDisplayData {
   color: string;
   /** Couleur RGBA du halo de fond (alpha inclus) */
   glowColor: string;
-  /** Part dans la conso nationale (%) — undefined si nationalLoadMW non fourni */
+  /** Consommation nationale (MW) à l'instant de la métropole — undefined si indisponible */
+  nationalMw?: number;
+  /** Part dans la conso nationale (%) à ce même instant — undefined si nationalMw manque */
   nationalSharePct?: number;
   /** Variation vs même heure J-1 (%) — undefined si non disponible */
   deltaVsJ1Pct?: number;
@@ -72,11 +74,9 @@ const VISUAL: Record<MetroleSizeClass, { radius: number }> = {
  * Classe un tableau de MetropoleConsumption et calcule les propriétés visuelles.
  *
  * @param data          - Données temps réel (depuis fetchMetropoles)
- * @param nationalLoadMW - Conso totale nationale en MW (EnergyMix.total) — optionnel
  */
 export function classifyMetropoles(
   data: MetropoleConsumption[],
-  nationalLoadMW?: number,
 ): MetropoleDisplayData[] {
   if (data.length === 0) return [];
 
@@ -93,9 +93,10 @@ export function classifyMetropoles(
     const { radius: circleRadius } = VISUAL[sizeClass];
     const { color, glowColor } = METROPOLE_COLORS[sizeClass];
 
+    // Part sur la consommation nationale au propre instant de la métropole ; sans valeur nationale à cet instant, pas de part.
     const nationalSharePct =
-      nationalLoadMW != null && nationalLoadMW > 0
-        ? Math.round((m.consommation / nationalLoadMW) * 1000) / 10  // 1 décimale
+      m.nationalMw != null && m.nationalMw > 0
+        ? Math.round((m.consommation / m.nationalMw) * 1000) / 10  // 1 décimale
         : undefined;
 
     return {
@@ -110,6 +111,7 @@ export function classifyMetropoles(
       circleRadius,
       color,
       glowColor,
+      nationalMw:      m.nationalMw,
       nationalSharePct,
       deltaVsJ1Pct: m.deltaVsJ1Pct,
     };

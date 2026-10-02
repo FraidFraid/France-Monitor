@@ -43,15 +43,15 @@ describe('panneau Charge métropolitaine (spec lot 2 § 3.5)', () => {
   it('création paresseuse, instance, ouverture avec la couche, fermeture qui coupe la couche', () => {
     expect(methodBody('ensureLazyPanelForLayer')).toContain("case 'metroLoad': return [this.ensureMetroLoadPanel()];");
     expect(methodBody('getFloatingPanelInstance')).toContain("case 'metroLoad': return this.metroLoadPanel;");
-    expect(methodBody('_handlePanelVisibility')).toMatch(/key === 'metroLoad'[^]*void this\.loadMetropoles\(\);[^]*this\.metroLoadPanel\?\.show\(this\.currentMetropoles, this\.nationalConsumptionMw\(\)\)/);
+    expect(methodBody('_handlePanelVisibility')).toMatch(/key === 'metroLoad'[^]*void this\.loadMetropoles\(\);[^]*this\.metroLoadPanel\?\.show\(this\.currentMetropoles\)/);
     expect(methodBody('ensureMetroLoadPanel')).toContain("this.closeEnergyLayer('metroLoad')");
   });
-  it('rafraîchi avec les données ; part nationale sur la consommation éCO2mix (carte et panneau)', () => {
+  it('rafraîchi avec les données ; part nationale portée par chaque métropole (à son propre instant), plus de dénominateur courant', () => {
     const body = methodBody('loadMetropoles');
     expect(body).toContain('this.currentMetropoles = metropoles;');
-    expect(body).toContain('this.mapContainer?.updateMetropoles(metropoles, this.nationalConsumptionMw() ?? undefined);');
-    expect(body).toContain('this.metroLoadPanel?.update(metropoles, this.nationalConsumptionMw());');
-    expect(methodBody('nationalConsumptionMw')).toContain('this.currentEcowattResponse?.grid?.consumptionMw ?? null');
+    expect(body).toContain('this.mapContainer?.updateMetropoles(metropoles);');
+    expect(body).toContain('this.metroLoadPanel?.update(metropoles);');
+    expect(app).not.toContain('nationalConsumptionMw');
   });
   it('empilé, restauré, en colonne v2 et en feuille basse mobile', () => {
     expect(methodBody('layoutEnergyFloatingPanels')).toContain("'.metro-load-panel-modal'");

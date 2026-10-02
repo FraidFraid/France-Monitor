@@ -11696,11 +11696,11 @@ export class DeckGLMap {
 
   // ─── Métropoles Layer ───
 
-  updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
+  updateMetropoles(data: MetropoleConsumption[]): void {
     if (!this.map) return;
     if (data.length === 0) return;
 
-    const classified = classifyMetropoles(data, nationalLoadMW);
+    const classified = classifyMetropoles(data);
 
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',

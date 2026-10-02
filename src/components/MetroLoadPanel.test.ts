@@ -19,7 +19,7 @@ describe('MetroLoadPanel', () => {
   it('panneau .lp de classe metro-load-panel-modal, caché puis ouvert', () => {
     const { c, p } = mount();
     expect(p.isVisible()).toBe(false);
-    p.show(METROS, 46_000);
+    p.show(METROS);
     expect(c.querySelector('.lp.metro-load-panel-modal .lp-title')?.textContent).toBe('Charge métropolitaine');
     expect(p.isVisible()).toBe(true);
   });
@@ -27,12 +27,12 @@ describe('MetroLoadPanel', () => {
     const { c, p } = mount();
     const onClose = vi.fn();
     p.setOnClose(onClose);
-    p.show(METROS, null);
+    p.show(METROS);
     (c.querySelector('.lp-close') as HTMLButtonElement).click();
     expect(onClose).toHaveBeenCalledTimes(1);
-    p.update(METROS, null);
+    p.update(METROS);
     expect(p.isVisible()).toBe(false);
-    p.show(null, null);
+    p.show(null);
     p.hide({ silent: true });
     expect(onClose).toHaveBeenCalledTimes(1);
     p.destroy();

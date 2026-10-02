@@ -7,10 +7,10 @@ import { LATE_MS, buildMetroView, metroDeltaLevel, metroFigureLevel, type MetroV
 
 const NOW = Date.parse('2026-10-02T07:00:00Z'); // 09:00 Paris
 const open = (_: string, d: boolean): boolean => d;
-const m = (code: string, name: string, mw: number, delta?: number, at = '2026-10-02T06:00:00+00:00'): MetropoleConsumption =>
-  ({ code, name, lon: 2, lat: 48, consommation: mw, date_heure: at, deltaVsJ1Pct: delta });
+const m = (code: string, name: string, mw: number, delta?: number, at = '2026-10-02T06:00:00+00:00', nationalMw: number | null = 46_000): MetropoleConsumption =>
+  ({ code, name, lon: 2, lat: 48, consommation: mw, date_heure: at, deltaVsJ1Pct: delta, nationalMw: nationalMw ?? undefined });
 const METROS = [m('gp', 'Grand Paris', 3100, 4.2), m('ly', 'Lyon', 1050, 1.1), m('li', 'Lille', 690, 9), m('ni', 'Nice', 400, -6), m('to', 'Tours', 135, 0.1)];
-const input = (over: Partial<MetroViewInput> = {}): MetroViewInput => ({ metros: METROS, nationalMw: 46_000, now: NOW, open, ...over });
+const input = (over: Partial<MetroViewInput> = {}): MetroViewInput => ({ metros: METROS, now: NOW, open, ...over });
 const view = (over: Partial<MetroViewInput> = {}) => buildMetroView(input(over));
 
 describe('vue Charge métropolitaine', () => {
@@ -21,7 +21,7 @@ describe('vue Charge métropolitaine', () => {
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Énergie', title: 'Charge métropolitaine' });
     expect(v.head.level ?? null).toBeNull();
-    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, level: null, caption: `5 métropoles · 12${NBSP}% de la consommation nationale` });
+    expect(v.head.figure).toEqual({ value: `5,4${NBSP}GW`, level: null, caption: `5 métropoles · 11,7${NBSP}% de la consommation nationale` });
     expect(v.head.status).toEqual(['données de 08:00', 'ODRÉ éCO2mix métropoles']);
     expect(v.head.lead).toBe(`Grand Paris 3,1${NBSP}GW (+4${NBSP}% sur la veille à la même heure). Plus forte hausse : Lille (+9${NBSP}%).`);
   });
@@ -52,7 +52,29 @@ describe('vue Charge métropolitaine', () => {
     expect(h).not.toContain(`0${NBSP}%`);
   });
   it('consommation nationale absente : part non inventée', () => {
-    expect(view({ nationalMw: null }).head.figure?.caption).toBe('5 métropoles');
+    const sans = METROS.map((x) => ({ ...x, nationalMw: undefined }));
+    expect(view({ metros: sans }).head.figure?.caption).toBe('5 métropoles');
+    expect(view({ metros: sans }).sections.find((s) => s.id === 'metros')?.html).not.toContain('de la consommation nationale');
+  });
+  it('part de chaque métropole sur la consommation nationale de SON instant, total = somme des parts', () => {
+    const night = '2026-10-01T22:00:00+00:00';
+    const metros = [m('gp', 'Grand Paris', 3000, 1, night, 30_000), m('ly', 'Lyon', 1000, 1, '2026-10-02T00:00:00+00:00', 40_000)];
+    const v = view({ metros });
+    const h = v.sections.find((s) => s.id === 'metros')?.html ?? '';
+    expect(h).toContain(`10,0${NBSP}% de la consommation nationale`);
+    expect(h).toContain(`2,5${NBSP}% de la consommation nationale`);
+    expect(v.head.figure?.caption).toBe(`2 métropoles · 12,5${NBSP}% de la consommation nationale`);
+  });
+  it('un instant national manquant : cette métropole sans part, pas de total trompeur', () => {
+    const metros = [m('gp', 'Grand Paris', 3000, 1, undefined, 30_000), m('ly', 'Lyon', 1000, 1, undefined, null)];
+    const v = view({ metros });
+    const h = v.sections.find((s) => s.id === 'metros')?.html ?? '';
+    expect(h.match(/de la consommation nationale/g)).toHaveLength(1);
+    expect(v.head.figure?.caption).toBe('2 métropoles');
+  });
+  it('synthèse : plus forte hausse seulement si la valeur arrondie est positive', () => {
+    expect(view({ metros: [m('gp', 'Grand Paris', 3100, -4.2), m('ly', 'Lyon', 1050, 0.1)] }).head.lead).not.toContain('Plus forte hausse');
+    expect(view({ metros: [m('gp', 'Grand Paris', 3100, -4.2), m('ly', 'Lyon', 1050, 1.6)] }).head.lead).toContain(`Plus forte hausse : Lyon (+2${NBSP}%)`);
   });
   it('source par lot quotidien : en retard seulement au-delà de 30 h, des deux côtés du seuil', () => {
     const at = (ms: number) => METROS.map((x) => ({ ...x, date_heure: new Date(NOW - ms).toISOString() }));

@@ -9,7 +9,6 @@ import { barRow, emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, typ
 
 export interface MetroViewInput {
   metros: MetropoleConsumption[] | null;
-  nationalMw: number | null;
   now: number;
   open: (sectionId: string, byDefault: boolean) => boolean;
 }
@@ -75,7 +74,7 @@ function deltaSection(rows: MetropoleDisplayData[], open: MetroViewInput['open']
 }
 
 export function buildMetroView(input: MetroViewInput): LayerView {
-  const { metros, nationalMw, now, open } = input;
+  const { metros, now, open } = input;
   if (metros === null) return { head: { theme: THEME, title: TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   if (metros.length === 0) {
     return {
@@ -84,14 +83,18 @@ export function buildMetroView(input: MetroViewInput): LayerView {
       bodyHtml: emptyLine('Aucune donnée métropolitaine reçue.'),
     };
   }
-  const rows = classifyMetropoles(metros, nationalMw ?? undefined).sort((a, b) => b.loadMW - a.loadMW);
+  const rows = classifyMetropoles(metros).sort((a, b) => b.loadMW - a.loadMW);
   const n = rows.length;
   const sum = rows.reduce((acc, r) => acc + r.loadMW, 0);
   const heure = Math.max(...rows.map((r) => Date.parse(r.date_heure)).filter(Number.isFinite));
   const hasHeure = Number.isFinite(heure);
   const late = hasHeure && now - heure > LATE_MS;
   const first = rows[0];
-  const rise = rows.filter((r) => (r.deltaVsJ1Pct ?? 0) > 0).sort((a, b) => (b.deltaVsJ1Pct ?? 0) - (a.deltaVsJ1Pct ?? 0))[0];
+  // Somme des parts de chaque métropole sur la consommation nationale de son propre instant ; incomplète, elle serait trompeuse : omise.
+  const shares = rows.map((r) => (r.nationalMw && r.nationalMw > 0 ? (r.loadMW / r.nationalMw) * 100 : null));
+  const totalShare = shares.every((x): x is number => x !== null) ? shares.reduce((acc, x) => acc + x, 0) : null;
+  // « Plus forte hausse » seulement si la valeur affichée (arrondie) est positive.
+  const rise = rows.filter((r) => Math.round(r.deltaVsJ1Pct ?? 0) > 0).sort((a, b) => (b.deltaVsJ1Pct ?? 0) - (a.deltaVsJ1Pct ?? 0))[0];
   const lead = `${first.name} ${formatGw(first.loadMW)}`
     + (first.deltaVsJ1Pct !== undefined ? ` (${formatSignedPct(first.deltaVsJ1Pct)} sur la veille à la même heure)` : '') + '.'
     + (rise ? ` Plus forte hausse : ${rise.name} (${formatSignedPct(rise.deltaVsJ1Pct)}).` : '');
@@ -105,7 +108,7 @@ export function buildMetroView(input: MetroViewInput): LayerView {
   return {
     head: {
       theme: THEME, title: TITLE,
-      figure: { value: formatGw(sum), level: metroFigureLevel(rows, late), caption: nationalMw ? `${n} métropoles · ${formatPct((sum / nationalMw) * 100)} de la consommation nationale` : `${n} métropoles` },
+      figure: { value: formatGw(sum), level: metroFigureLevel(rows, late), caption: totalShare !== null ? `${n} métropoles · ${formatPct(totalShare, 1)} de la consommation nationale` : `${n} métropoles` },
       status: [hasHeure ? `données de ${absoluteTime(heure, now, 'fr')}${late ? ' (en retard)' : ''}` : '', SOURCE].filter((s) => s !== ''),
       lead,
     },

@@ -17,6 +17,8 @@ export interface MetropoleConsumption {
     date_heure: string;
     /** Variation vs même heure J-1 (%). undefined si la donnée J-1 n'était pas disponible. */
     deltaVsJ1Pct?: number;
+    /** Consommation nationale éCO2mix (MW) à l'instant de cette métropole (même `date_heure`). undefined si indisponible : pas de part nationale. */
+    nationalMw?: number;
 }
 
 // ─── Coordonnées GPS des 21 métropoles françaises ───
@@ -89,6 +91,26 @@ export function buildJ1Url(latest: ReadonlyArray<{ code: string; dateHeure: stri
     return opendataProxyUrl(upstream);
 }
 
+const ODRE_NATIONAL_BASE =
+    'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records';
+
+/** URL ODRE (via proxy) de la consommation nationale aux instants des métropoles : une seule requête, un instant par heure de donnée distincte (au plus une dizaine). */
+export function buildNationalUrl(dateHeures: ReadonlyArray<string>): string | null {
+    const instants = new Set<string>();
+    for (const d of dateHeures) {
+        const t = Date.parse(d);
+        if (Number.isFinite(t)) instants.add(new Date(t).toISOString().replace(/\.\d+Z$/, 'Z'));
+    }
+    if (instants.size === 0) return null;
+    const where = 'consommation is not null AND (' + [...instants].map((i) => `date_heure = date'${i}'`).join(' OR ') + ')';
+    return opendataProxyUrl(
+        ODRE_NATIONAL_BASE +
+        '?limit=20' +
+        '&select=date_heure,consommation' +
+        `&where=${encodeURIComponent(where)}`,
+    );
+}
+
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** Fetch silencieux des données J-1 → Map<code, consumptionMW>, chaque métropole comparée à SA propre heure de donnée − 24 h. */
@@ -110,6 +132,25 @@ async function fetchJ1Snapshot(latest: Map<string, { date_heure: string }>, fetc
             const inst = j1Instant(v.date_heure);
             const mw = inst ? byKey.get(`${code}|${Date.parse(inst)}`) : undefined;
             if (mw !== undefined) map.set(code, mw);
+        }
+        return map;
+    } catch {
+        return new Map();
+    }
+}
+
+/** Consommation nationale (MW) par instant (ms) : seuls les instants réellement publiés ; échec silencieux, aucune part n'est alors calculée. */
+async function fetchNationalAtInstants(dateHeures: string[], fetchFn: FetchFn): Promise<Map<number, number>> {
+    try {
+        const url = buildNationalUrl(dateHeures);
+        if (!url) return new Map();
+        const resp = await fetchFn(url, { signal: AbortSignal.timeout(8_000) });
+        if (!resp.ok) return new Map();
+        const json = await resp.json() as { results?: Array<{ date_heure: string; consommation: number | null }> };
+        const map = new Map<number, number>();
+        for (const rec of json.results ?? []) {
+            const t = Date.parse(rec.date_heure);
+            if (Number.isFinite(t) && typeof rec.consommation === 'number' && rec.consommation > 0) map.set(t, rec.consommation);
         }
         return map;
     } catch {
@@ -158,7 +199,11 @@ export async function loadMetropoles(fetchFn: FetchFn): Promise<MetropoleConsump
     }
 
     // J-1 calé sur l'heure de la donnée la plus récente de chaque métropole, pas sur « maintenant »
-    const j1Map = await fetchJ1Snapshot(latestByCode, fetchFn);
+    const [j1Map, nationalByInstant] = await Promise.all([
+        fetchJ1Snapshot(latestByCode, fetchFn),
+        // Consommation nationale à l'instant de chaque métropole (jamais celle de « maintenant » : données de nuit contre un dénominateur de jour).
+        fetchNationalAtInstants([...latestByCode.values()].map((v) => v.date_heure), fetchFn),
+    ]);
 
     const result: MetropoleConsumption[] = [];
     for (const [code, val] of latestByCode) {
@@ -168,7 +213,8 @@ export async function loadMetropoles(fetchFn: FetchFn): Promise<MetropoleConsump
         const deltaVsJ1Pct = (j1MW != null && j1MW > 0)
             ? Math.round((val.consommation - j1MW) / j1MW * 1000) / 10  // 1 décimale
             : undefined;
-        result.push({ code, name: geo.name, lon: geo.lon, lat: geo.lat, consommation: val.consommation, date_heure: val.date_heure, deltaVsJ1Pct });
+        const nationalMw = nationalByInstant.get(Date.parse(val.date_heure));
+        result.push({ code, name: geo.name, lon: geo.lon, lat: geo.lat, consommation: val.consommation, date_heure: val.date_heure, deltaVsJ1Pct, nationalMw });
     }
     return result;
 }

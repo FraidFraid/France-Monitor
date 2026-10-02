@@ -1,13 +1,14 @@
 // src/services/metropoles.test.ts : le J-1 est calé sur l'heure de la donnée, jamais sur « maintenant ».
 import { describe, expect, it, vi } from 'vitest';
-import { buildJ1Url, j1Instant, loadMetropoles } from './metropoles.ts';
+import { buildJ1Url, buildNationalUrl, j1Instant, loadMetropoles } from './metropoles.ts';
 
 /** Clause `where` de la requête ODRÉ amont, extraite de l'URL du proxy. */
 const where = (url: string | null): string => {
   const upstream = new URLSearchParams((url ?? '').split('?')[1] ?? '').get('url') ?? '';
   return upstream ? new URL(upstream).searchParams.get('where') ?? '' : '';
 };
-const isJ1 = (url: string): boolean => where(url).includes('date_heure = ');
+const isNational = (url: string): boolean => decodeURIComponent(url).includes('eco2mix-national-tr');
+const isJ1 = (url: string): boolean => !isNational(url) && where(url).includes('date_heure = ');
 const at = (code: string, dateHeure: string): { code: string; dateHeure: string } => ({ code, dateHeure });
 
 describe('J-1 des métropoles', () => {
@@ -85,5 +86,55 @@ describe('J-1 des métropoles', () => {
     };
     const res = await loadMetropoles(fetchFn);
     expect(res.map((m) => m.code)).toEqual(['200054781']);
+  });
+});
+
+describe('consommation nationale à l\u2019instant de chaque métropole', () => {
+  const rec = (code: string, at: string, mw: number) => ({ code_insee_epci: code, libelle_metropole: code, date_heure: at, consommation: mw });
+  const GP = '200054781';
+  const LY = '200046977';
+  const TO = '243100518';
+  const latest = { results: [rec(GP, '2026-10-02T00:00:00+00:00', 4000), rec(LY, '2026-10-01T21:45:00+00:00', 1000), rec(TO, '2026-10-02T00:00:00+00:00', 500)] };
+  const mk = (national: (url: string) => Promise<Response> | Response) => async (url: string): Promise<Response> => {
+    if (isNational(url)) return national(url);
+    if (isJ1(url)) return { ok: true, json: async () => ({ results: [] }) } as Response;
+    return { ok: true, json: async () => (decodeURIComponent(url).includes('offset=0') ? latest : { results: [] }) } as Response;
+  };
+  const nat = (rows: Array<{ date_heure: string; consommation: number | null }>) => ({ ok: true, json: async () => ({ results: rows }) }) as Response;
+
+  it('requête : un instant par heure distincte, consommation non nulle, une seule requête', () => {
+    const url = buildNationalUrl(['2026-10-02T00:00:00+00:00', '2026-10-01T21:45:00+00:00', '2026-10-02T00:00:00+00:00']);
+    const upstream = new URL(new URLSearchParams((url ?? '').split('?')[1] ?? '').get('url') ?? '');
+    expect(upstream.pathname).toContain('eco2mix-national-tr');
+    const w = upstream.searchParams.get('where') ?? '';
+    expect(w).toContain("date_heure = date'2026-10-02T00:00:00Z'");
+    expect(w).toContain("date_heure = date'2026-10-01T21:45:00Z'");
+    expect(w.match(/date_heure = /g)).toHaveLength(2);
+    expect(w).toContain('consommation is not null');
+    expect(upstream.searchParams.get('select')).toBe('date_heure,consommation');
+    expect(upstream.searchParams.get('limit')).toBe('20');
+  });
+  it('part au moment de la métropole : la consommation nationale de CET instant, pas celle de maintenant', async () => {
+    const calls: string[] = [];
+    const res = await loadMetropoles(mk((u) => { calls.push(u); return nat([
+      { date_heure: '2026-10-02T00:00:00+00:00', consommation: 37_622 },
+      { date_heure: '2026-10-01T21:45:00+00:00', consommation: 42_703 },
+    ]); }));
+    expect(calls).toHaveLength(1);
+    expect(res.find((m) => m.code === GP)?.nationalMw).toBe(37_622);
+    expect(res.find((m) => m.code === LY)?.nationalMw).toBe(42_703);
+    expect(res.find((m) => m.code === TO)?.nationalMw).toBe(37_622);
+  });
+  it('instant national manquant : pas de valeur nationale pour cette métropole, jamais une autre heure', async () => {
+    const res = await loadMetropoles(mk(() => nat([{ date_heure: '2026-10-02T00:00:00+00:00', consommation: 37_622 }, { date_heure: '2026-10-01T21:45:00+00:00', consommation: null }])));
+    expect(res.find((m) => m.code === GP)?.nationalMw).toBe(37_622);
+    expect(res.find((m) => m.code === LY)?.nationalMw).toBeUndefined();
+  });
+  it('requête nationale en échec ou HTTP en erreur : métropoles gardées, aucune part', async () => {
+    for (const national of [() => { throw new Error('net'); }, () => ({ ok: false, status: 503, json: async () => ({}) }) as Response]) {
+      const res = await loadMetropoles(mk(national));
+      expect(res).toHaveLength(3);
+      expect(res.every((m) => m.nationalMw === undefined)).toBe(true);
+    }
   });
 });
