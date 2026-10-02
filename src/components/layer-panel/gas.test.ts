@@ -31,6 +31,29 @@ describe('vue Réseau gaz', () => {
     const out = gasFixture({ nationalStats: { ...gasFixture().nationalStats, storageNetFlowGWhDay: -250 } });
     expect(gasLead(out)).toContain(`Stockages en soutirage (−250${NBSP}GWh/j).`);
   });
+  it('pays exportateur net : « Exports nets de X », jamais « Imports nets de −X »', () => {
+    const out = gasFixture({ nationalStats: { ...gasFixture().nationalStats, totalImportGWhDay: 100, totalExportGWhDay: 400 }, terminals: [] });
+    const lead = gasLead(out);
+    expect(lead).toContain(`Exports nets de 300${NBSP}GWh/j.`);
+    expect(lead).not.toMatch(/Imports nets|−\d/);
+  });
+  it('ENTSOG partiel : le point manquant dit n.d., jamais « équilibre » ni 0', () => {
+    const data = gasFixture();
+    const partial = gasFixture({ interconnections: [...data.interconnections, { id: 'i3', name: 'Larrau', country: 'Espagne', direction: 'bidirectional', coordinates: [-1, 43], flowGWhDay: 0, maxCapacityGWhDay: 100, flowMissing: true }] });
+    const h = section('interconnections', { data: partial })?.html ?? '';
+    expect(h).toMatch(/Larrau \(Espagne\)[^]*<span class="lp-val fmk-num">n\.d\.<\/span>/);
+    const larrau = h.slice(h.indexOf('Larrau'), h.indexOf('Solde'));
+    expect(larrau).not.toContain('équilibre');
+    expect(h).toContain('Taisnières');
+  });
+  it('gros chiffre non coloré quand ODRÉ a échoué (valeurs de référence), coloré sinon', () => {
+    const ok = buildGasView(input());
+    expect(ok.head.figure?.level).not.toBeNull();
+    const ref = buildGasView(input({ data: gasFixture({ sourceStatus: { ...gasFixture().sourceStatus, odre: 'error' } }) }));
+    expect(ref.head.figure?.level).toBeNull();
+    expect(ref.head.figure?.caption).toContain('valeurs de référence');
+    expect(renderLayerView('gasNetwork', ref)).not.toMatch(/<b class="fmk-num lp-lvl/);
+  });
   it('flux ENTSOG en repli : n.d., jamais « équilibre » ni imports inventés', () => {
     const stale = { data: gasFixture({ sourceStatus: { ...gasFixture().sourceStatus, grtgaz: 'stale', terega: 'stale' } }) };
     expect(section('interconnections', stale)?.summary).toBe('n.d.');

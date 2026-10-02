@@ -69,7 +69,8 @@ export function gasLead(data: GasNetworkState): string {
   const lng = lngSendOut(data);
   if (pirOk(data)) {
     const imports = data.nationalStats.totalImportGWhDay - data.nationalStats.totalExportGWhDay + (lng ?? 0);
-    parts.push(`Imports nets de ${formatGwhDay(imports)}${lng ? `, dont ${formatGwhDay(lng)} par les terminaux GNL` : ''}.`);
+    // Pays exportateur net : « Exports nets de X », jamais « Imports nets de −X ».
+    parts.push(`${imports < 0 ? 'Exports' : 'Imports'} nets de ${formatGwhDay(Math.abs(imports))}${lng ? `, dont ${formatGwhDay(lng)} par les terminaux GNL` : ''}.`);
   } else if (lng) parts.push(`Terminaux GNL : ${formatGwhDay(lng)} ; flux aux frontières indisponibles.`);
   else parts.push('Flux aux frontières indisponibles.');
   return parts.join(' ');
@@ -136,7 +137,7 @@ function interconnectionsSection(data: GasNetworkState, open: GasViewInput['open
   const total = (label: string, value: string, cls: 'lp-imp' | 'lp-exp'): string =>
     listRow({ text: label, valueHtml: `<span class="${cls}">${escapeHtml(value)}</span>` });
   const html = total('Import', formatGwhDay(imp), 'lp-imp') + total('Export', formatGwhDay(exp), 'lp-exp')
-    + data.interconnections.map((i) => listRow({ text: `${i.name} (${i.country})`, valueHtml: flow(i.flowGWhDay) })).join('')
+    + data.interconnections.map((i) => listRow({ text: `${i.name} (${i.country})`, valueHtml: i.flowMissing === true ? valueHtml('n.d.') : flow(i.flowGWhDay) })).join('')
     + listRow({ text: 'Solde', valueHtml: flow(Math.abs(balance) < 0.5 ? 0 : balance) });
   const summary = Math.abs(balance) < 0.5 ? valueHtml('équilibre') : flow(balance).replace(/>(import|export)/, '>$1 net');
   return { ...base, summary, html };
@@ -226,7 +227,8 @@ export function buildGasView(input: GasViewInput): LayerView {
       figure: {
         value: formatPct(avg, 1),
         caption: `stockages remplis · ${frNumber(data.nationalStats.currentStorageTWh, 1)} sur ${formatTwh(data.nationalStats.totalStorageCapacityTWh)}${reference}`,
-        level: fillLevel(avg),
+        // Valeurs de référence (ODRÉ en échec) : ce n'est pas une mesure, donc aucune couleur de niveau.
+        level: data.sourceStatus.odre === 'ok' ? fillLevel(avg) : null,
       },
       status: [`Ecogaz : ${ecogazWord(data.ecogaz.signal)}`, `journée gazière du ${dayMonth(data.ecogaz.date)}`, 'GRTgaz, Teréga'],
       lead: lead.length > 0 ? lead : null,

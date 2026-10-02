@@ -2132,6 +2132,8 @@ export interface GasInterconnection {
   direction: 'bidirectional' | 'import' | 'export';
   coordinates: [number, number]; // Border point [lng, lat]
   flowGWhDay: number; // Current flow (positive = import, negative = export)
+  /** true : ENTSOG n'a pas publié ce point (réponse partielle) ; flowGWhDay vaut 0 par défaut mais n'est pas une mesure. */
+  flowMissing?: boolean;
   maxCapacityGWhDay: number;
   entsogKey?: string; // ENTSOG connectionpoint key (ITP-XXXXX)
 }

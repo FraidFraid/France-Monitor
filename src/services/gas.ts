@@ -344,6 +344,14 @@ function buildFallbackInterconnections(): GasInterconnection[] {
   }));
 }
 
+/** Interconnexions complétées des flux ENTSOG ; un point non publié (réponse partielle) est marqué `flowMissing`, jamais présenté comme un flux nul. */
+export function applyPirPoints(points: ReadonlyArray<{ pointKey: string; flowGWhDay: number }>): GasInterconnection[] {
+  return GAS_INTERCONNECTIONS.map(ic => {
+    const pirData = points.find(p => p.pointKey === ic.entsogKey);
+    return pirData ? { ...ic, flowGWhDay: pirData.flowGWhDay } : { ...ic, flowGWhDay: 0, flowMissing: true };
+  });
+}
+
 async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]; status: 'ok' | 'stale' | 'error' }> {
   try {
     const resp = await fetch('/api/energy/gas-pir', { signal: AbortSignal.timeout(20_000) });
@@ -352,10 +360,7 @@ async function fetchPirFlows(): Promise<{ interconnections: GasInterconnection[]
     const json = (await resp.json()) as EntsogPirResponse;
     const points = Array.isArray(json.points) ? json.points : [];
 
-    const enriched = GAS_INTERCONNECTIONS.map(ic => {
-      const pirData = points.find(p => p.pointKey === ic.entsogKey);
-      return { ...ic, flowGWhDay: pirData?.flowGWhDay ?? 0 };
-    });
+    const enriched = applyPirPoints(points);
 
     // 'ok' ou 'partial' = données live (même partielles) ; 'error' = stale
     const status: 'ok' | 'stale' = (json.status === 'ok' || json.status === 'partial') ? 'ok' : 'stale';
