@@ -46,4 +46,19 @@ describe('/api/energy/ecowatt', () => {
     await handler({ method: 'GET' }, res);
     expect(res.statusCode).toBe(502);
   });
+
+  it("lit le détail hydraulique et éolien, et l'éolien de la série du jour (spec lot 2 § 2.1)", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url);
+      return { ok: true, json: async () => ({ results: [] }) };
+    }));
+    await handler({ method: 'GET' }, fakeRes());
+    const nat = decodeURIComponent(urls.find((u) => u.includes('eco2mix-national-tr') && u.includes('limit=1&')) ?? '');
+    for (const f of ['hydraulique_fil_eau_eclusee', 'hydraulique_lacs', 'hydraulique_step_turbinage', 'pompage', 'eolien_terrestre', 'eolien_offshore']) {
+      expect(nat).toContain(f);
+    }
+    const day = decodeURIComponent(urls.find((u) => u.includes('eco2mix-national-tr') && u.includes('limit=100')) ?? '');
+    expect(day).toContain('select=date_heure,consommation,prevision_j,eolien');
+  });
 });

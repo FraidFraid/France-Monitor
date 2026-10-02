@@ -34,11 +34,35 @@ describe('parseGridSnapshot', () => {
     ];
     const g = parseGridSnapshot(NAT, series, NOW);
     expect(g?.day.map((p) => p.at)).toEqual([Date.parse('2026-10-01T22:00:00+00:00'), Date.parse('2026-10-02T21:45:00+00:00')]);
-    expect(g?.day[1]).toEqual({ at: Date.parse('2026-10-02T21:45:00+00:00'), consumptionMw: null, forecastMw: 41950 });
+    expect(g?.day[1]).toEqual({ at: Date.parse('2026-10-02T21:45:00+00:00'), consumptionMw: null, forecastMw: 41950, windMw: null });
   });
   it('après minuit à Paris (22:30 UTC), la série est celle du nouveau jour', () => {
     const late = Date.parse('2026-10-02T22:30:00Z'); // 00:30 Paris le 03/10
     const g = parseGridSnapshot(NAT, [day('2026-10-02T21:45:00+00:00', null, 41950), day('2026-10-02T22:15:00+00:00', 40000, 40100)], late);
     expect(g?.day).toHaveLength(1);
+  });
+  it("détail hydraulique (fil de l'eau, lacs, turbinage et pompage STEP) et éolien terre et mer", () => {
+    const NOW = Date.parse('2026-10-02T05:00:00Z');
+    const g = parseGridSnapshot({
+      ...NAT, hydraulique_fil_eau_eclusee: 2186, hydraulique_lacs: 2653, hydraulique_step_turbinage: 1594, pompage: -820,
+      eolien_terrestre: 2006, eolien_offshore: 75,
+    }, [], NOW);
+    expect(g?.hydroDetail).toEqual({ runOfRiver: 2186, lakes: 2653, stepTurbine: 1594, pumping: -820 });
+    expect(g?.windDetail).toEqual({ onshore: 2006, offshore: 75 });
+  });
+  it('détail absent : null, jamais 0', () => {
+    const NOW = Date.parse('2026-10-02T05:00:00Z');
+    const g = parseGridSnapshot({ ...NAT, pompage: null }, [], NOW);
+    expect(g?.hydroDetail).toEqual({ runOfRiver: null, lakes: null, stepTurbine: null, pumping: null });
+    expect(g?.windDetail).toEqual({ onshore: null, offshore: null });
+  });
+  it("série du jour : éolien réalisé par quart d'heure, null pour l'avenir", () => {
+    const NOW = Date.parse('2026-10-02T05:00:00Z');
+    const g = parseGridSnapshot(NAT, [
+      { date_heure: '2026-10-02T04:45:00+00:00', consommation: 40563, prevision_j: 41200, eolien: 1750 },
+      { date_heure: '2026-10-02T17:30:00+00:00', consommation: null, prevision_j: 52300, eolien: null },
+      { date_heure: '2026-10-02T17:45:00+00:00', consommation: null, prevision_j: 52100 },
+    ], NOW);
+    expect(g?.day.map((p) => p.windMw)).toEqual([1750, null, null]);
   });
 });

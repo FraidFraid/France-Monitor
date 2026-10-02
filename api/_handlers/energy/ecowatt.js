@@ -24,11 +24,11 @@ export default async function handler(req, res) {
 
     const NAT_BASE = 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/eco2mix-national-tr/records';
     const NAT_FIELDS = 'date_heure,consommation,prevision_j,prevision_j1,taux_co2,nucleaire,eolien,solaire,hydraulique,gaz,fioul,charbon,bioenergies,pompage,ech_physiques,'
-        + 'ech_comm_angleterre,ech_comm_espagne,ech_comm_italie,ech_comm_suisse,ech_comm_allemagne_belgique';
+        + 'ech_comm_angleterre,ech_comm_espagne,ech_comm_italie,ech_comm_suisse,ech_comm_allemagne_belgique,hydraulique_fil_eau_eclusee,hydraulique_lacs,hydraulique_step_turbinage,eolien_terrestre,eolien_offshore';
     // Dernier quart d'heure mesuré (les échanges commerciaux sont publiés à l'avance : ne pas filtrer sur eux).
     const NAT_ODRE_URL = `${NAT_BASE}?limit=1&select=${NAT_FIELDS}&where=consommation%20is%20not%20null&order_by=-date_heure`;
     // Série de la journée : les 100 derniers quarts d'heure prévus couvrent la journée de Paris en cours ; le client filtre.
-    const DAY_ODRE_URL = `${NAT_BASE}?limit=100&select=date_heure,consommation,prevision_j&where=prevision_j%20is%20not%20null&order_by=-date_heure`;
+    const DAY_ODRE_URL = `${NAT_BASE}?limit=100&select=date_heure,consommation,prevision_j,eolien&where=prevision_j%20is%20not%20null&order_by=-date_heure`;
 
     try {
         const [respReg, respNat, respDay] = await Promise.all([

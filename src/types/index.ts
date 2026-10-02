@@ -303,7 +303,11 @@ export interface GridMix {
   thermal: number | null;
   bio: number | null;
 }
-export interface GridPoint { at: number; consumptionMw: number | null; forecastMw: number | null }
+/** Détail de l'hydraulique éCO2mix (MW) ; pompage tel que publié (≤ 0 quand les STEP pompent). */
+export interface GridHydroDetail { runOfRiver: number | null; lakes: number | null; stepTurbine: number | null; pumping: number | null }
+/** Éolien terrestre et en mer (MW). */
+export interface GridWindDetail { onshore: number | null; offshore: number | null }
+export interface GridPoint { at: number; consumptionMw: number | null; forecastMw: number | null; windMw: number | null }
 /** Réseau national éCO2mix (ODRÉ, pas de 15 min) au dernier quart d'heure mesuré. */
 export interface GridSnapshot {
   /** Heure de la donnée (ms epoch). */
@@ -314,6 +318,8 @@ export interface GridSnapshot {
   /** Solde physique, positif = import (convention éCO2mix). */
   netImportMw: number | null;
   mix: GridMix;
+  hydroDetail: GridHydroDetail;
+  windDetail: GridWindDetail;
   /** Journée de Paris en cours, ordre croissant ; réalisé null pour les quarts d'heure à venir. */
   day: GridPoint[];
 }

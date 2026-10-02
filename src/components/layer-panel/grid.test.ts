@@ -10,10 +10,12 @@ const green = (date: string): EcowattOfficialDay => ({ date, level: 'green', mes
 const GRID: GridSnapshot = {
   dataTime: Date.parse('2026-10-02T04:45:00Z'), consumptionMw: 40563, forecastMw: 41200, co2gPerKwh: 50, netImportMw: -3664,
   mix: { nuclear: 30871, hydro: 6638, wind: 1750, solar: 0, thermal: 3968, bio: 992 },
+  hydroDetail: { runOfRiver: null, lakes: null, stepTurbine: null, pumping: null },
+  windDetail: { onshore: null, offshore: null },
   day: [
-    { at: Date.parse('2026-10-01T22:00:00Z'), consumptionMw: 45000, forecastMw: 45200 },
-    { at: Date.parse('2026-10-02T04:45:00Z'), consumptionMw: 40563, forecastMw: 41200 },
-    { at: Date.parse('2026-10-02T17:30:00Z'), consumptionMw: null, forecastMw: 52300 },
+    { at: Date.parse('2026-10-01T22:00:00Z'), consumptionMw: 45000, forecastMw: 45200, windMw: null },
+    { at: Date.parse('2026-10-02T04:45:00Z'), consumptionMw: 40563, forecastMw: 41200, windMw: null },
+    { at: Date.parse('2026-10-02T17:30:00Z'), consumptionMw: null, forecastMw: 52300, windMw: null },
   ],
 };
 function data(over: Partial<EcowattResponse> = {}): EcowattResponse {
@@ -167,9 +169,9 @@ describe('vue Réseau électrique', () => {
     const grid: GridSnapshot = {
       ...GRID, dataTime: Date.parse('2026-10-02T22:15:00Z'), consumptionMw: 41000, forecastMw: 41000,
       day: [
-        { at: Date.parse('2026-10-02T10:00:00Z'), consumptionMw: 50000, forecastMw: 51000 },
-        { at: Date.parse('2026-10-02T22:00:00Z'), consumptionMw: 41000, forecastMw: 41000 },
-        { at: Date.parse('2026-10-03T10:00:00Z'), consumptionMw: null, forecastMw: 47000 },
+        { at: Date.parse('2026-10-02T10:00:00Z'), consumptionMw: 50000, forecastMw: 51000, windMw: null },
+        { at: Date.parse('2026-10-02T22:00:00Z'), consumptionMw: 41000, forecastMw: 41000, windMw: null },
+        { at: Date.parse('2026-10-03T10:00:00Z'), consumptionMw: null, forecastMw: 47000, windMw: null },
       ],
     };
     const d = data({ grid, official: { source: 'rte', generatedAt: null, days: [d02, d03] } });

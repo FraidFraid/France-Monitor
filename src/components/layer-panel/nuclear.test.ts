@@ -174,7 +174,7 @@ describe('vue Parc nucléaire', () => {
     const eco = (gridNuclear: number | null | 'nogrid', nationalNuclear = 0): EcowattResponse => ({
       official: null, mixes: {}, interconnections: [],
       national: { timestamp: new Date(NOW), nuclear: nationalNuclear, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: nationalNuclear },
-      grid: gridNuclear === 'nogrid' ? null : { dataTime: NOW, consumptionMw: null, forecastMw: null, co2gPerKwh: null, netImportMw: null, mix: mixOf(gridNuclear), day: [] },
+      grid: gridNuclear === 'nogrid' ? null : { dataTime: NOW, consumptionMw: null, forecastMw: null, co2gPerKwh: null, netImportMw: null, mix: mixOf(gridNuclear), hydroDetail: { runOfRiver: null, lakes: null, stepTurbine: null, pumping: null }, windDetail: { onshore: null, offshore: null }, day: [] },
     });
     const overview = (e: EcowattResponse): string => renderLayerView('nuclearFleet', buildNuclearView({
       state: state({ unavailabilities: [] }), ecowatt: e, tab: 'overview', now: NOW, open }));

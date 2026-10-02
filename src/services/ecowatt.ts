@@ -70,8 +70,13 @@ export interface Eco2mixNatRecord {
     ech_comm_italie: number | null;
     ech_comm_suisse: number | null;
     ech_comm_allemagne_belgique: number | null;
+    hydraulique_fil_eau_eclusee?: number | null;
+    hydraulique_lacs?: number | null;
+    hydraulique_step_turbinage?: number | null;
+    eolien_terrestre?: number | null;
+    eolien_offshore?: number | null;
 }
-export interface Eco2mixDayRecord { date_heure: string; consommation: number | null; prevision_j: number | null }
+export interface Eco2mixDayRecord { date_heure: string; consommation: number | null; prevision_j: number | null; eolien?: number | null }
 
 const num = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const sumOrNull = (...vs: Array<number | null>): number | null =>
@@ -84,7 +89,7 @@ export function parseGridSnapshot(nat: Eco2mixNatRecord | undefined, day: readon
     if (!Number.isFinite(dataTime)) return null;
     const today = parisDate(nowMs);
     const points = day
-        .map((r) => ({ at: Date.parse(r.date_heure), consumptionMw: num(r.consommation), forecastMw: num(r.prevision_j) }))
+        .map((r) => ({ at: Date.parse(r.date_heure), consumptionMw: num(r.consommation), forecastMw: num(r.prevision_j), windMw: num(r.eolien) }))
         .filter((p) => Number.isFinite(p.at) && parisDate(p.at) === today)
         .sort((a, b) => a.at - b.at);
     return {
@@ -97,6 +102,11 @@ export function parseGridSnapshot(nat: Eco2mixNatRecord | undefined, day: readon
             nuclear: num(nat.nucleaire), hydro: num(nat.hydraulique), wind: num(nat.eolien), solar: num(nat.solaire),
             thermal: sumOrNull(num(nat.gaz), num(nat.fioul), num(nat.charbon)), bio: num(nat.bioenergies),
         },
+        hydroDetail: {
+            runOfRiver: num(nat.hydraulique_fil_eau_eclusee), lakes: num(nat.hydraulique_lacs),
+            stepTurbine: num(nat.hydraulique_step_turbinage), pumping: num(nat.pompage),
+        },
+        windDetail: { onshore: num(nat.eolien_terrestre), offshore: num(nat.eolien_offshore) },
         day: points,
     };
 }
@@ -118,7 +128,8 @@ const CACHE_TTL = 5 * 60_000; // 5 min : sous le seuil « en retard » du pannea
 
 /** Cache localStorage : peint le dernier signal connu au rechargement si < 5 min (même durée que le cache mémoire). */
 const PERSIST_TTL_MS = 5 * 60_000;
-const PERSIST_KEY = 'ecowatt-v2';
+/** v3 : GridSnapshot gagne hydroDetail et windDetail ; une entrée v2 relue les ignorerait */
+const PERSIST_KEY = 'ecowatt-v3';
 
 function isEcowattResponse(value: unknown): value is EcowattResponse {
     return !!value && typeof value === 'object' && 'official' in value && 'mixes' in value;
