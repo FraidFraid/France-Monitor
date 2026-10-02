@@ -34,6 +34,7 @@ describe('vue Réseau gaz', () => {
   it('flux ENTSOG en repli : n.d., jamais « équilibre » ni imports inventés', () => {
     const stale = { data: gasFixture({ sourceStatus: { ...gasFixture().sourceStatus, grtgaz: 'stale', terega: 'stale' } }) };
     expect(section('interconnections', stale)?.summary).toBe('n.d.');
+    expect(section('interconnections', stale)?.html).not.toMatch(/lp-imp|lp-exp|équilibre/);
     expect(section('interconnections', stale)?.html).toContain('Flux aux frontières indisponibles (ENTSOG) : valeurs de repli non affichées.');
     const lead = buildGasView(input(stale)).head.lead ?? '';
     expect(lead).not.toContain('Imports nets');
@@ -55,7 +56,8 @@ describe('vue Réseau gaz', () => {
   });
   it('stockages : jauge nationale, mouvement net, sites triés par remplissage, trois puis « n autres »', () => {
     const s = section('storage');
-    expect(s?.summary).toBe(`93,4${NBSP}% · injection +412${NBSP}GWh/j`);
+    expect(s?.summary).toContain(`93,4${NBSP}% · `);
+    expect(s?.summary).toContain(`lp-lvl--vert">Remplissage +412${NBSP}GWh/j`);
     const h = s?.html ?? '';
     expect(h).toMatch(/Remplissage[^]*width:93\.4%;background:var\(--sev-green\)/);
     expect(h.indexOf('Chémery')).toBeLessThan(h.indexOf('Lussagnet'));
@@ -67,11 +69,25 @@ describe('vue Réseau gaz', () => {
     expect(buildGasView(input(stale)).head.figure?.caption).toContain('valeurs de référence');
     expect(section('storage', stale)?.html).toContain('Remplissage ODRÉ injoignable : valeurs de référence affichées.');
   });
-  it('interconnexions : une ligne par point, texte neutre, solde en résumé', () => {
+  it('interconnexions : import en rouge, export en vert, totaux et solde colorés', () => {
     const s = section('interconnections');
-    expect(s?.summary).toBe(`import net 410${NBSP}GWh/j`);
-    expect(s?.html).toMatch(new RegExp(`Taisnières \\(Belgique\\)[^]*import 520${NBSP}GWh/j[^]*Oltingue \\(Suisse\\)[^]*export 110${NBSP}GWh/j`));
-    expect(s?.html).not.toMatch(/fmk-dot--|lp-lvl/);
+    expect(s?.summary).toBe(`<span class="lp-imp">import net 410${NBSP}GWh/j</span>`);
+    const h = s?.html ?? '';
+    expect(h).toContain(`<span class="lp-imp">import 520${NBSP}GWh/j</span>`); // total Import
+    expect(h).toContain(`<span class="lp-exp">export 110${NBSP}GWh/j</span>`); // total Export
+    expect(h).toMatch(new RegExp(`Taisnières \\(Belgique\\)[^]*lp-imp">import 520${NBSP}GWh/j[^]*Oltingue \\(Suisse\\)[^]*lp-exp">export 110${NBSP}GWh/j[^]*Solde[^]*lp-imp">import 410${NBSP}GWh/j`));
+    expect(h).not.toMatch(/fmk-dot--|lp-lvl/);
+    const surplus = gasFixture({ nationalStats: { ...gasFixture().nationalStats, totalImportGWhDay: 100, totalExportGWhDay: 300 } });
+    expect(section('interconnections', { data: surplus })?.summary).toBe(`<span class="lp-exp">export net 200${NBSP}GWh/j</span>`);
+  });
+  it('stockages : mouvement net coloré (remplissage vert, soutirage orange, stable et n.d. neutres)', () => {
+    const net = (v: number | undefined) => gasFixture({ nationalStats: { ...gasFixture().nationalStats, storageNetFlowGWhDay: v } });
+    const h = (v: number | undefined): string => section('storage', { data: net(v) })?.html ?? '';
+    expect(h(412)).toContain(`lp-lvl--vert">Remplissage +412${NBSP}GWh/j`);
+    expect(h(-380)).toContain(`lp-lvl--orange">Soutirage −380${NBSP}GWh/j`);
+    expect(section('storage', { data: net(-380) })?.summary).toContain('lp-lvl--orange">Soutirage');
+    expect(h(0)).toContain('<span class="lp-val fmk-num">Stable</span>');
+    expect(section('storage', { data: net(undefined) })?.summary).toContain('<span class="lp-val fmk-num">n.d.</span>');
   });
   it('terminaux GNL : en service puce verte, maintenance puce grise, opérateur, stock, jauge de catégorie', () => {
     const s = section('terminals');

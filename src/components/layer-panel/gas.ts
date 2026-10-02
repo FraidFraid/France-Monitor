@@ -96,33 +96,32 @@ function ecogazSection(data: GasNetworkState, open: GasViewInput['open']): Fiche
   return { id: 'ecogaz', title: 'Ecogaz', summary: escapeHtml(summary), collapsible: true, open: open('ecogaz', true), html };
 }
 
-function movement(data: GasNetworkState): string {
+/** Mouvement net des stockages : mot et valeur colorés (injection vert, soutirage orange), stable et n.d. neutres. */
+function movementHtml(data: GasNetworkState): string {
   const net = data.nationalStats.storageNetFlowGWhDay;
-  if (net === undefined || !Number.isFinite(net)) return 'mouvement n.d.';
-  if (Math.abs(net) < 1) return 'stable';
-  return `${net > 0 ? 'injection' : 'soutirage'} ${formatGwhDay(net, { signed: true })}`;
+  if (net === undefined || !Number.isFinite(net)) return valueHtml('n.d.');
+  if (Math.abs(net) < 1) return valueHtml('Stable');
+  return net > 0 ? valueHtml(`Remplissage ${formatGwhDay(net, { signed: true })}`, 'vert')
+    : valueHtml(`Soutirage ${formatGwhDay(net, { signed: true })}`, 'orange');
 }
 
 function storageSection(data: GasNetworkState, open: GasViewInput['open']): FicheSection {
   const avg = data.nationalStats.averageFillLevel;
-  const net = data.nationalStats.storageNetFlowGWhDay;
   const row = (s: GasNetworkState['storages'][number]): string => {
     const stock = s.currentStockTWh ?? (s.capacityTWh * s.fillLevel) / 100;
     return barRow({ label: `${s.name} (${s.operator})`, pct: s.fillLevel, value: `${formatPct(s.fillLevel)} · ${formatTwh(stock)}`, level: fillLevel(s.fillLevel) });
   };
   const sites = [...data.storages].sort((a, b) => b.fillLevel - a.fillLevel);
   const rest = sites.slice(VISIBLE_SITES);
-  const netText = net === undefined || !Number.isFinite(net) ? valueHtml('n.d.')
-    : Math.abs(net) < 1 ? 'stable' : `${net > 0 ? 'injection' : 'soutirage'} ${valueHtml(formatGwhDay(net, { signed: true }))}`;
   let html = data.sourceStatus.odre !== 'ok' ? '<p class="fmk-callout">Remplissage ODRÉ injoignable : valeurs de référence affichées.</p>' : '';
   html += barRow({ label: 'Remplissage', pct: avg, value: formatPct(avg, 1), level: fillLevel(avg) })
-    + kvRow('Mouvement net', netText)
+    + kvRow('Mouvement net', movementHtml(data))
     + '<h4 class="fmk-eyebrow">Par site</h4>'
     + sites.slice(0, VISIBLE_SITES).map(row).join('');
   if (rest.length > 0) {
     html += `<details class="lp-more"><summary>${rest.length} ${plural(rest.length, 'autre')} ${plural(rest.length, 'site')}</summary>${rest.map(row).join('')}</details>`;
   }
-  return { id: 'storage', title: 'Stockages', summary: escapeHtml(`${formatPct(avg, 1)} · ${movement(data)}`), collapsible: true, open: open('storage', true), html };
+  return { id: 'storage', title: 'Stockages', summary: `${escapeHtml(formatPct(avg, 1))} · ${movementHtml(data)}`, collapsible: true, open: open('storage', true), html };
 }
 
 function interconnectionsSection(data: GasNetworkState, open: GasViewInput['open']): FicheSection {
@@ -130,13 +129,17 @@ function interconnectionsSection(data: GasNetworkState, open: GasViewInput['open
   if (!pirOk(data)) {
     return { ...base, summary: 'n.d.', html: '<p class="fmk-note">Flux aux frontières indisponibles (ENTSOG) : valeurs de repli non affichées.</p>' };
   }
-  const balance = data.nationalStats.totalImportGWhDay - data.nationalStats.totalExportGWhDay;
-  const summary = Math.abs(balance) < 0.5 ? 'équilibre' : balance > 0 ? `import net ${formatGwhDay(balance)}` : `export net ${formatGwhDay(-balance)}`;
-  const html = data.interconnections.map((i) => listRow({
-    text: `${i.name} (${i.country})`,
-    value: i.flowGWhDay > 0 ? `import ${formatGwhDay(i.flowGWhDay)}` : i.flowGWhDay < 0 ? `export ${formatGwhDay(-i.flowGWhDay)}` : 'équilibre',
-  })).join('');
-  return { ...base, summary: escapeHtml(summary), html };
+  const { totalImportGWhDay: imp, totalExportGWhDay: exp } = data.nationalStats;
+  const balance = imp - exp;
+  const flow = (mw: number): string => (mw > 0 ? `<span class="lp-imp">${escapeHtml(`import ${formatGwhDay(mw)}`)}</span>`
+    : mw < 0 ? `<span class="lp-exp">${escapeHtml(`export ${formatGwhDay(-mw)}`)}</span>` : valueHtml('équilibre'));
+  const total = (label: string, value: string, cls: 'lp-imp' | 'lp-exp'): string =>
+    listRow({ text: label, valueHtml: `<span class="${cls}">${escapeHtml(value)}</span>` });
+  const html = total('Import', formatGwhDay(imp), 'lp-imp') + total('Export', formatGwhDay(exp), 'lp-exp')
+    + data.interconnections.map((i) => listRow({ text: `${i.name} (${i.country})`, valueHtml: flow(i.flowGWhDay) })).join('')
+    + listRow({ text: 'Solde', valueHtml: flow(Math.abs(balance) < 0.5 ? 0 : balance) });
+  const summary = Math.abs(balance) < 0.5 ? valueHtml('équilibre') : flow(balance).replace(/>(import|export)/, '>$1 net');
+  return { ...base, summary, html };
 }
 
 const TERMINAL_WORD = { active: 'en service', maintenance: 'maintenance', offline: 'hors service' } as const;
