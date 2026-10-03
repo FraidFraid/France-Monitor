@@ -102,11 +102,11 @@ export function roadLevel(r: RoadNationalResponse): LevelVerdict {
 export function airLevel(a: AirOverviewResponse): LevelVerdict {
   if (a.at === null) return { level: 'nd', reason: 'OpenSky indisponible' };
   const hijack = a.emergencies.find((e) => e.squawk === '7500');
-  if (hijack) return { level: 'rouge', reason: `code 7500 (intervention illicite) : ${hijack.callsign ?? hijack.icao24}` };
+  if (hijack) return { level: 'rouge', reason: `7500\u00a0détournement : ${hijack.callsign ?? hijack.icao24}` };
   const general = a.emergencies.find((e) => e.squawk === '7700' && e.overFrance);
-  if (general) return { level: 'orange', reason: `code 7700 (urgence) au-dessus du territoire : ${general.callsign ?? general.icao24}` };
+  if (general) return { level: 'orange', reason: `7700\u00a0urgence au-dessus du territoire : ${general.callsign ?? general.icao24}` };
   const radio = a.emergencies.find((e) => e.squawk === '7600');
-  if (radio) return { level: 'jaune', reason: `code 7600 (panne radio) : ${radio.callsign ?? radio.icao24}` };
+  if (radio) return { level: 'jaune', reason: `7600\u00a0panne\u00a0radio : ${radio.callsign ?? radio.icao24}` };
   return { level: 'vert', reason: 'aucun aéronef en urgence' };
 }
 

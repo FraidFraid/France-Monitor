@@ -162,6 +162,20 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(breakableValue(text)).toBeNull();
     expect(trafficBreakable(text)).toBeNull();
   });
+  it('serveur de développement : départs volontairement non lus = « Départs non relevés », avis dans la méthode, jamais « Source indisponible »', () => {
+    const overview = withOverview((o) => {
+      for (const a of o.airports) { a.departures = null; a.departuresWindow = null; }
+      o.errors = ['OpenSky : départs non lus sur le serveur de dev (AIR_DEV_DEPARTURES=1 pour les lire)'];
+    });
+    const v = view({ overview });
+    const t = visibleText(v.sections.find((x) => x.id === 'airports')?.html ?? '');
+    expect(t).toContain('Départs non relevés');
+    expect(t).not.toMatch(/Source indisponible/);
+    const method = visibleText(v.sections.find((x) => x.id === 'method')?.html ?? '');
+    expect(method).toContain('départs non relevés');
+    expect(method).toContain('Serveur de développement : les départs ne sont pas lus');
+    expect(method).not.toMatch(/Incidents de lecture|source indisponible/);
+  });
   it('crédits OpenSky illisibles : erreur nommée, départs non lus restent une panne nommée', () => {
     const overview = withOverview((o) => {
       for (const a of o.airports) { a.departures = null; a.departuresWindow = null; }

@@ -39,10 +39,10 @@ describe('formats des trafics (R1)', () => {
     expect(trafficBreakable(`bouchon de 12${NBSP}km, 50${NBSP}km/h, 4 accidents, le 1 mars`)).toBeNull();
   });
   it('raisons de la partie A rendues insécables ; libellés des trajectoires inhabituelles', () => {
-    expect(glueUnits('retard moyen de 57 min : Sud-Est (6 trains)')).toBe(`retard moyen de 57${NBSP}min : Sud-Est (6 trains)`);
-    expect(glueUnits('2 coupures non planifiées de moins de 24 h')).toBe(`2 coupures non planifiées de moins de 24${NBSP}h`);
+    expect(glueUnits('retard moyen de 57 min : Sud-Est (6 trains)')).toBe(`retard moyen de 57${NBSP}min : Sud-Est (6${NBSP}trains)`);
+    expect(glueUnits('2 coupures non planifiées de moins de 24 h')).toBe(`2${NBSP}coupures non planifiées de moins de 24${NBSP}h`);
     expect(trafficBreakable(glueUnits('15 trains grandes lignes à 15 min ou plus'))).toBeNull();
-    expect(glueUnits('4 accidents et 1 coupure en cours')).toBe('4 accidents et 1 coupure en cours');
+    expect(glueUnits('4 accidents et 1 coupure en cours')).toBe(`4${NBSP}accidents et 1${NBSP}coupure en cours`);
     expect([anomalyLabel('holding'), anomalyLabel('go-around'), anomalyLabel('rapid-manoeuvre'), anomalyLabel('reroute-probable')])
       .toEqual(['circuit d’attente', 'approche interrompue', 'manœuvre brusque', 'déroutement probable']);
     expect(anomalyLabel('autre')).toBe('autre');

@@ -8747,7 +8747,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 }
 /* Trafics : les parties de la ligne de niveau (raison de la pastille) peuvent dépasser la largeur d'un téléphone ; elle passe à la ligne
    (valeurs et unités restent insécables) au lieu d'être rognée. */
-:is(.traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal) .fmk-level .fmk-ctx { white-space: normal; }
+:is(.traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
 .lp .lp-head .fmk-lead { margin: 12px 0 0; }
 .lp .lp-tabs { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 14px; border-bottom: 1px solid var(--border-color); }
 .lp .lp-tab { padding: 8px 0 9px; margin-bottom: -1px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; cursor: pointer; }
@@ -8829,7 +8829,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-tbl th[scope="row"], .lp .lp-tbl thead th:first-child { text-align: left; padding-right: 8px; }
 .lp .lp-tbl thead th { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
 .lp .lp-tbl td { white-space: nowrap; padding-left: 8px; }
-.lp .lp-tbl thead th:not(:first-child) { padding-left: 8px; }
+:is(.traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal).lp .lp-tbl thead th:not(:first-child) { padding-left: 8px; }
 .lp .lp-faint { color: var(--text-muted); }
 .lp .lp-key i.lp-dash { background: none; height: 0; border-top: 2px dashed var(--text-muted); }
 .lp .lp-seg { flex-wrap: wrap; }

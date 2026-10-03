@@ -73,6 +73,11 @@ function departuresUnread(o: AirOverviewResponse): boolean {
   return o.airports.length > 0 && o.airports.every((a) => a.departures === null || a.departures === undefined);
 }
 
+/** Avis du serveur de dev : départs volontairement non lus (AIR_DEV_DEPARTURES absent). Un avis, jamais une panne. */
+const DEV_DEPARTURES_NOTICE = /^OpenSky : départs non lus sur le serveur de dev/;
+const isDevNotice = (e: string): boolean => DEV_DEPARTURES_NOTICE.test(e);
+const realErrors = (o: AirOverviewResponse): string[] => o.errors.filter((e) => !isDevNotice(e));
+
 function openskyLate(o: AirOverviewResponse, now: number): boolean {
   return isTrafficDataLate('opensky', o.at, now);
 }
@@ -155,9 +160,9 @@ function airportsSection(o: AirOverviewResponse | null, now: number, open: OpenF
       : barRow({ label: a.name, pct: top && top.departures > 0 ? (a.departures / top.departures) * 100 : 0, value: frNumber(a.departures, 0),
         color: CAT_AIRPORT, dot: false, note: sub });
   }).join('');
-  const body = ranked.length === 0 ? (departuresUnread(o) && o.errors.length === 0
+  const body = ranked.length === 0 ? (departuresUnread(o) && realErrors(o).length === 0
     ? emptyLine('Départs non relevés : le serveur ne les a pas encore lus.')
-    : emptyOrDown(o.errors, 'Aucun départ détecté sur la fenêtre affichée.', 'départs par aéroport (OpenSky)'))
+    : emptyOrDown(realErrors(o), 'Aucun départ détecté sur la fenêtre affichée.', 'départs par aéroport (OpenSky)'))
     : rows + (win && hours !== null
       ? (windowsDiffer(o) ? note('Les fenêtres ne sont pas les mêmes pour tous les aéroports : la plus récente est indiquée.') : '')
       + note(`Départs détectés de ${clockOf(win.begin, now)} à ${clockOf(win.end, now)} (fenêtre de ${hours}${NBSP}h, relue toutes les 4${NBSP}h)${depLate ? ' (en retard)' : ''}. `
@@ -237,7 +242,8 @@ function methodSection(o: AirOverviewResponse | null, error: string | null, now:
   const win = o ? newestWindow(o) : null;
   const depLate = o ? airDeparturesLate(o, now) : false;
   const boards = o ? o.airports.filter((a) => a.board !== null).sort((a, b) => a.name.localeCompare(b.name, 'fr')) : [];
-  const unread = o !== null && departuresUnread(o) && o.errors.length === 0;
+  const unread = o !== null && departuresUnread(o) && realErrors(o).length === 0;
+  const devNotice = o !== null && o.errors.some(isDevNotice);
   const status = (text: string): string => (o ? text : error !== null ? 'source indisponible' : 'chargement…');
   const html = kvRow('Positions et urgences', `${sourceLinkHtml('OpenSky (ADS-B)', OPENSKY_URL)} · ${escapeHtml(status(`états de ${clockOf(o?.at, now)}${late ? ' (en retard)' : ''}`))}`)
     + kvRow('Départs par aéroport', `${sourceLinkHtml('OpenSky, départs', OPENSKY_API_URL)} · ${escapeHtml(status(win
@@ -250,8 +256,9 @@ function methodSection(o: AirOverviewResponse | null, error: string | null, now:
     + note('Pastille : rouge si un 7500 ; orange si un 7700 au-dessus du territoire ou de ses approches ; jaune si un 7600 ; vert sinon ; n.d. si la source est en panne.')
     + note(`Retard : états au-delà de 10${NBSP}min ; départs au-delà de 4${NBSP}h après la fin de leur fenêtre. Une donnée en retard perd ses couleurs.`)
     + note('Collecte du serveur toutes les 2 minutes, départs de 8 aéroports toutes les 4 heures ; si les crédits restants passent sous 500, les départs sont suspendus avant les états.')
-    + note('Carte : avions nets à tous les zooms, sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange au-dessus du territoire ou de ses approches, 7600 jaune, gris au-delà) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
-    + readErrors(o?.errors ?? []);
+    + note('Carte : avions nets à tous les zooms, colorés selon l’altitude (cinq tranches, gris quand l’altitude n’est pas transmise), sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange au-dessus du territoire ou de ses approches, 7600 jaune, gris au-delà) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
+    + (devNotice ? note('Serveur de développement : les départs ne sont pas lus (AIR_DEV_DEPARTURES=1 pour les lire).') : '')
+    + readErrors(o ? realErrors(o) : []);
   return {
     id: 'method', title: 'Méthode et sources', collapsible: true, open: open('method', false), tone: 'reference', html,
     summary: escapeHtml(o === null && error !== null ? 'OpenSky (ADS-B) · indisponible' : 'OpenSky (ADS-B)'),

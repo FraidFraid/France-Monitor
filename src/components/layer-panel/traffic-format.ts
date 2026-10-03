@@ -106,8 +106,10 @@ export function readErrors(errors: readonly string[]): string {
 
 /** Unités des trafics ; l'unité s'arrête là où finit un mot (« 5 mètres » n'est pas « 5 m »). */
 const UNITS = String.raw`(?:km\/h|km|min|milles|nœuds|ft|m|h|%)(?![\p{L}\p{N}])`;
+/** Mots comptés des lignes de niveau (« 6 trains », « 4 accidents ») : collés à leur nombre par `glueUnits` seulement. */
+const COUNTED = String.raw`(?:trains?|accidents?|coupures?|navires?|vols?|départs?)(?![\p{L}\p{N}])`;
 const TRAFFIC_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}`, 'u');
-const GLUE_UNITS = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS})`, 'gu');
+const GLUE_UNITS = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS}|${COUNTED})`, 'gu');
 
 /** Contrôle R1 des unités des trafics, en complément de `breakableValue` (format.ts) : premier « nombre, espace sécable, unité ». */
 export function trafficBreakable(text: string): string | null {
