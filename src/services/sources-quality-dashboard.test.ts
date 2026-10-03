@@ -166,6 +166,19 @@ describe('sources-quality-dashboard — scores calculés', () => {
     assert.equal(health?.quality.observed?.observationDays, 3);
   });
 
+  it('trafic aérien : l’entrée couvre l’aperçu et les positions de la carte ; l’historique des positions est retenu', () => {
+    const entry = getSourceQualityRegistry().find((source) => source.id === 'air-traffic');
+    assert.deepEqual(entry?.watchdogNames, ['Trafic aérien', 'Positions aériennes (carte)']);
+    const data = getSourcesQualityDashboardData({
+      now: new Date('2026-10-03T10:00:00.000Z'),
+      statuses: [],
+      getObserved: (name) => (name === 'Positions aériennes (carte)' ? observed({ samples: 20, observationDays: 3 }) : null),
+    });
+    const air = data.sources.find((source) => source.id === 'air-traffic');
+    assert.equal(air?.quality.qualityProvisional, false);
+    assert.equal(air?.quality.observed?.observationDays, 3);
+  });
+
   it('avec métriques observées injectées : score calculé et non provisoire', () => {
     const data = getSourcesQualityDashboardData({
       now: new Date('2026-07-04T10:00:00.000Z'),

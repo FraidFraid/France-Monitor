@@ -154,7 +154,7 @@ const fr = {
     details: {
       hubeau: 'API publique open data, licence Etalab',
       militaryFlights: 'adsb.fi → airplanes.live → OpenSky',
-      airTraffic: 'OpenSky + airplanes.live · source publique limitée',
+      airTraffic: 'OpenSky (ADS-B), collecte du serveur',
     },
   },
   newsFeed: {

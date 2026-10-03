@@ -15,6 +15,7 @@ import type {
 } from './qualityMeta.ts';
 import { formatQualityDate } from './qualityMeta.ts';
 import { HEALTH_SOURCE_NAMES } from '../config/health-sources.ts';
+import { AIR_POSITIONS_SOURCE } from '../config/traffic-sources.ts';
 
 // natureBaseline : socle de confiance lié à la NATURE de la source, snappé sur la
 // grille {90 API officielle avec clé, 80 API publique, 65 RSS, 50 scraping/communautaire}
@@ -167,7 +168,8 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     domain: 'Aviation',
     sourceType: 'technical',
     natureBaseline: 65,
-    watchdogNames: ['Trafic aérien'],
+    // Lignes du panneau des sources hors Watchdog (aperçu du panneau et positions de la carte) : historique échantillonné par App.ts (recordStatusSamples).
+    watchdogNames: ['Trafic aérien', AIR_POSITIONS_SOURCE],
     mappedIndicators: ['source', 'statut', 'positions'],
     limits: ['Couverture publique limitée'],
   },

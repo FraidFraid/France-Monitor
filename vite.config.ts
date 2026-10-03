@@ -7,14 +7,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 import { rssProxyPlugin } from './src/plugins/rss-proxy';
 import { rssJsonProxyPlugin } from './src/plugins/rss-json-proxy';
-import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
 import { biogasProxyPlugin } from './src/plugins/biogas-proxy';
 import { dromEnergyProxyPlugin } from './src/plugins/drom-energy-proxy';
 import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
-import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
-import { trafficFlowProxyPlugin } from './src/plugins/traffic-flow-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
 import { weatherVigilanceProxyPlugin } from './src/plugins/weather-vigilance-proxy';
 import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
@@ -123,15 +120,12 @@ export default defineConfig(({ mode }) => {
     plugins: [
       rssProxyPlugin(),
       rssJsonProxyPlugin(),
-      sncfProxyPlugin(),
       biogasProxyPlugin(),
       dromEnergyProxyPlugin(),
       gasPirProxyPlugin(),
       eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
-      trafficRoadProxyPlugin(),
-      trafficFlowProxyPlugin(),
       trafficTileProxyPlugin(),
       weatherVigilanceProxyPlugin(),
       militaryFlightsProxyPlugin(),

@@ -1,6 +1,6 @@
 // api/_handlers/transport/rail-overview.js : réseau ferroviaire, perturbations du jour par axe grandes lignes
 // et par région TER (API SNCF ; spec 2026-10-03 panneaux trafic § 2.4). Cache 5 min ; sans réponse SNCF :
-// 502 non mis en cache. /api/transport/disruptions reste pour le panneau actuel jusqu'à la tâche 16.
+// 502 non mis en cache.
 import { buildRailOverview, fetchDisruptions, readCancelledTripStops, sncfAuth } from '../../_lib/sncf-rail.js';
 import { cachedSource, handlePreflight, sendSourceJson, sourceError } from '../../_lib/source-http.js';
 

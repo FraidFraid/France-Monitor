@@ -69,7 +69,7 @@ const SOURCE_NAME_KEYS: Record<string, string> = {
 const SOURCE_DETAIL_KEYS: Record<string, string> = {
     'API publique open data, licence Etalab': 'status.details.hubeau',
     'adsb.fi → airplanes.live → OpenSky': 'status.details.militaryFlights',
-    'OpenSky + airplanes.live · source publique limitée': 'status.details.airTraffic',
+    'OpenSky (ADS-B), collecte du serveur': 'status.details.airTraffic',
 };
 
 function translateSourceName(name: string): string {
@@ -177,7 +177,7 @@ export class StatusPanel {
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
             { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
@@ -244,7 +244,7 @@ export class StatusPanel {
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
             { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);

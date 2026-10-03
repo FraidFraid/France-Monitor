@@ -71,6 +71,6 @@ describe('route orpheline retirée', () => {
   it('/api/transport/osm-railways n’existe plus (ni gestionnaire, ni miroir de dev)', () => {
     expect(Object.keys(ROUTES)).not.toContain('/api/transport/osm-railways');
     expect(readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')).not.toMatch(/osmRailways/);
-    expect(Object.keys(ROUTES)).toEqual(expect.arrayContaining(['/api/transport/rail-overview', '/api/transport/rail-situations', '/api/transport/disruptions']));
+    expect(Object.keys(ROUTES)).toEqual(expect.arrayContaining(['/api/transport/rail-overview', '/api/transport/rail-situations']));
   });
 });

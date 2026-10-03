@@ -10,7 +10,6 @@ import type { FeatureCollection } from 'geojson';
 import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
-import type { TrafficSegment } from '../config/mock-data.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
@@ -263,11 +262,7 @@ export class MapContainer {
     this.deckMap?.highlightDromEnergyAsset(asset);
   }
 
-  // ─── Traffic ───
-  updateTraffic(_segments: TrafficSegment[]): void {
-    // DeckGL map uses TomTom tiles, basemap mask handles France clipping
-    this.deckMap?.updateTraffic();
-  }
+  // ─── Événements consolidés (v2) ───
 
   setEventPoints(points: EventMapPoint[]): void {
     this.deckMap?.setEventPoints(points);

@@ -5,8 +5,6 @@ import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 // @ts-expect-error — module JS sans déclaration de types
 import gasPirHandler from '../api/_handlers/energy/gas-pir.js';
 // @ts-expect-error — module JS sans déclaration de types
-import disruptionsHandler from '../api/_handlers/transport/disruptions.js';
-// @ts-expect-error — module JS sans déclaration de types
 import eolienHandler from '../api/_handlers/energy/eolien.js';
 
 type Headers = Record<string, string>;
@@ -94,51 +92,6 @@ describe('api/_handlers/energy/gas-pir · cache swr', () => {
     assert.equal(body.status, 'error');
     assert.deepEqual(body.points, []);
     assert.match(body.error, /HTTP 503/);
-  });
-});
-
-describe('api/_handlers/transport/disruptions · cache swr par mode', () => {
-  const originalKey = process.env.SNCF_API_KEY;
-
-  afterEach(() => {
-    if (originalKey === undefined) delete process.env.SNCF_API_KEY;
-    else process.env.SNCF_API_KEY = originalKey;
-  });
-
-  it('renvoie 500 sans re-servir le cache si SNCF_API_KEY est absent et rien n\'est en cache', async () => {
-    delete process.env.SNCF_API_KEY;
-    const { req, res } = mockReqRes({ mode: 'active' });
-    await disruptionsHandler(req, res);
-    assert.equal(res.statusCode, 500);
-  });
-
-  it('met en cache par mode (active vs all) indépendamment', async () => {
-    process.env.SNCF_API_KEY = 'test-key';
-    let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      calls += 1;
-      return {
-        ok: true,
-        json: async () => ({ disruptions: [], pagination: { total_result: 0, items_on_page: 0 } }),
-      };
-    }));
-
-    const active1 = mockReqRes({ mode: 'active' });
-    await disruptionsHandler(active1.req, active1.res);
-    assert.equal(active1.res.statusCode, 200);
-    assert.equal(active1.res.headers['x-cache'], 'miss');
-    const callsAfterActive = calls;
-    assert.ok(callsAfterActive >= 1);
-
-    const active2 = mockReqRes({ mode: 'active' });
-    await disruptionsHandler(active2.req, active2.res);
-    assert.equal(active2.res.headers['x-cache'], 'hit');
-    assert.equal(calls, callsAfterActive, 'mode "active" déjà en cache : pas de nouvel appel SNCF');
-
-    const all1 = mockReqRes({ mode: 'all' });
-    await disruptionsHandler(all1.req, all1.res);
-    assert.equal(all1.res.headers['x-cache'], 'miss');
-    assert.ok(calls > callsAfterActive, 'mode "all" est une clé de cache distincte de "active"');
   });
 });
 

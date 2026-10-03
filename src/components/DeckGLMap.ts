@@ -10291,13 +10291,7 @@ export class DeckGLMap {
     src?.setData(fc);
   }
 
-  // ─── Traffic Layer & Incidents ───
-
-  updateTraffic(_trafficData?: Array<{ start: [number, number], end: [number, number], level: string }>): void {
-    // Les tuiles trafic sont chargées automatiquement par MapLibre via le proxy
-    // /api/traffic/tile (clé TomTom côté serveur). Rien à faire côté client ici.
-    if (!this.map) return;
-  }
+  // ─── Événements consolidés (v2) ───
 
   setEventPoints(points: EventMapPoint[]): void {
     this.eventPoints = points;

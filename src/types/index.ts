@@ -600,77 +600,6 @@ export interface WaterLevel {
   trend: 'rising' | 'stable' | 'falling';
 }
 
-// ═══ Transport (SNCF) ═══
-
-export interface TrainStop {
-  name: string;
-  time?: string; // Format HH:MM
-  plannedTime?: string; // Scheduled HH:MM
-  updatedTime?: string; // Realtime HH:MM
-  delayMinutes?: number;
-  coordinates?: [number, number]; // [lon, lat]
-}
-
-export interface TransportDisruption {
-  id: string;
-  type: 'delay' | 'cancellation' | 'works' | 'other';
-  trainNumber?: string;
-  line: string;
-  description: string;
-  causeLabel?: string;
-  effectLabel?: string;
-  impactLabel?: string;
-  sourceMessages?: string[];
-  severity: ThreatLevel;
-  startDate: Date;
-  endDate?: Date;
-  departure?: TrainStop;
-  arrival?: TrainStop;
-  impactedStopPoints?: TrainStop[];
-  affectedStops?: string[];
-  totalDelayMinutes?: number;
-  coordinates?: [number, number]; // Center point for map highlight [lon, lat]
-  routeGeometry?: LineString;
-  rawRouteGeometry?: LineString;
-  geometryFidelity?: 'matched' | 'raw' | 'fallback' | 'synthetic';
-}
-
-export interface RailNetworkData {
-  /** LineString features: disrupted arc between departure and arrival */
-  arcs: GeoJSON.FeatureCollection<GeoJSON.LineString, {
-    id: string;
-    severity: string;
-    type: string;
-    line: string;
-    trainNumber?: string;
-    description: string;
-    causeLabel?: string;
-    effectLabel?: string;
-    impactLabel?: string;
-    departureName?: string;
-    arrivalName?: string;
-    departurePlannedTime?: string;
-    departureUpdatedTime?: string;
-    arrivalPlannedTime?: string;
-    arrivalUpdatedTime?: string;
-    totalDelayMinutes?: number;
-    affectedStopsCount?: number;
-    affectedStopsJson?: string;
-    geometryFidelity?: string;
-  }>;
-  /** Point features: unique departure/arrival stations, worst severity wins */
-  stations: GeoJSON.FeatureCollection<GeoJSON.Point, {
-    name: string;
-    severity: string;
-    count: number;
-    linesJson?: string;
-    trainNumbersJson?: string;
-    affectedStopsJson?: string;
-    disruptionIdsJson?: string;
-    disruptionSummariesJson?: string;
-  }>;
-}
-
 // ═══ Map & Geo ═══
 
 export interface MapViewState {
@@ -993,9 +922,6 @@ export interface AirTrafficFlight {
   nearbyAirportIata?: string;
   nearbyAirportName?: string;
   nearbyAirportDistanceKm?: number;
-  airportScore?: number;
-  airportSeverity?: ThreatLevel;
-  airportSignals?: string[];
 }
 
 export interface AirTrafficAnomaly {
@@ -1004,20 +930,6 @@ export interface AirTrafficAnomaly {
   severity: ThreatLevel;
   details?: string;
   airportIata?: string;
-}
-
-export interface AirTrafficAirportScore {
-  iata: string;
-  icao: string;
-  name: string;
-  city: string;
-  score: number;
-  severity: ThreatLevel;
-  activeFlights: number;
-  terminalFlights: number;
-  anomalyCount: number;
-  signals: string[];
-  reasons: string[];
 }
 
 export interface MilitaryBase {

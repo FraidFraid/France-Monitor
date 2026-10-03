@@ -1,4 +1,4 @@
-import type { AirTrafficFlight, AirTrafficAirportScore } from '../types/index.ts';
+import type { AirTrafficFlight } from '../types/index.ts';
 import { dedupe } from '../utils/inflight.ts';
 
 // Positions de la carte : plus de source Watchdog (elle datait « Trafic aérien » à l'heure de lecture et écrasait toutes les 30 s
@@ -14,8 +14,6 @@ export interface AirTrafficApiResponse {
   sourceCounts?: Record<string, number>;
   errors?: Array<{ area: string; message: string }>;
   anomalyCount?: number;
-  signalCount?: number;
-  topAirports?: AirTrafficAirportScore[];
 }
 
 const AIR_TRAFFIC_ENDPOINT = '/api/traffic/air';
@@ -49,15 +47,13 @@ async function fetchAirTrafficSnapshotUncached(now: number): Promise<AirTrafficA
 
   const data = (await response.json()) as AirTrafficApiResponse;
   const snapshot: AirTrafficApiResponse = {
-    source: data.source || 'airplanes.live+opensky',
+    source: data.source || 'opensky',
     fetchedAt: typeof data.fetchedAt === 'number' && Number.isFinite(data.fetchedAt) ? data.fetchedAt : null,
     ttlMs: data.ttlMs || CLIENT_CACHE_TTL_MS,
     flights: Array.isArray(data.flights) ? data.flights : [],
     sourceCounts: data.sourceCounts && typeof data.sourceCounts === 'object' ? data.sourceCounts : {},
     errors: Array.isArray(data.errors) ? data.errors : [],
     anomalyCount: Number.isFinite(data.anomalyCount) ? data.anomalyCount : 0,
-    signalCount: Number.isFinite(data.signalCount) ? data.signalCount : 0,
-    topAirports: Array.isArray(data.topAirports) ? data.topAirports : [],
   };
 
   if (snapshot.flights.length > 0) {
