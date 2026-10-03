@@ -68,9 +68,11 @@ function isWeatherEvent(e: RoadEvent): boolean {
 
 /**
  * Pastille Trafic routier (§ 3.1), sur les événements en cours (`events` : non planifiés, moins de 24 h) :
- * rouge si des événements météo touchent au moins 2 DIR ou si au moins 10 accidents sont en cours ;
- * orange si un événement météo est en cours, ou au moins 2 coupures non planifiées, ou au moins 5 accidents ;
- * jaune si au moins un accident ou une coupure non planifiée ; vert sinon ; n.d. sans publication DIR.
+ * n.d. sans publication des DIR ;
+ * rouge si des événements météo touchent au moins 2 DIR, ou si au moins 5 coupures non planifiées de moins de 24 h ;
+ * orange si un événement météo est en cours, ou au moins 2 de ces coupures ;
+ * jaune si au moins une de ces coupures, ou au moins 5 accidents ;
+ * vert sinon : les accidents ne dépassent jamais le jaune.
  */
 export function roadLevel(r: RoadNationalResponse): LevelVerdict {
   if (r.publishedAt === null) return { level: 'nd', reason: 'flux des DIR indisponible' };

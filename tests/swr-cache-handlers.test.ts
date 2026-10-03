@@ -5,8 +5,6 @@ import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 // @ts-expect-error — module JS sans déclaration de types
 import gasPirHandler from '../api/_handlers/energy/gas-pir.js';
 // @ts-expect-error — module JS sans déclaration de types
-import osmRailwaysHandler from '../api/_handlers/transport/osm-railways.js';
-// @ts-expect-error — module JS sans déclaration de types
 import disruptionsHandler from '../api/_handlers/transport/disruptions.js';
 // @ts-expect-error — module JS sans déclaration de types
 import eolienHandler from '../api/_handlers/energy/eolien.js';
@@ -96,52 +94,6 @@ describe('api/_handlers/energy/gas-pir · cache swr', () => {
     assert.equal(body.status, 'error');
     assert.deepEqual(body.points, []);
     assert.match(body.error, /HTTP 503/);
-  });
-});
-
-describe('api/_handlers/transport/osm-railways · cache swr par bbox', () => {
-  it('valide le bbox et renvoie 400 si absent/invalide', async () => {
-    const { req, res } = mockReqRes({ bbox: 'not-a-bbox' });
-    await osmRailwaysHandler(req, res);
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('met en cache par bbox et ne réinterroge pas Overpass pour la même zone', async () => {
-    let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      calls += 1;
-      return {
-        ok: true,
-        json: async () => ({
-          elements: [
-            {
-              type: 'way',
-              id: 1,
-              geometry: [{ lat: 48.8, lon: 2.3 }, { lat: 48.9, lon: 2.4 }],
-              tags: { railway: 'rail', name: 'Test' },
-            },
-          ],
-        }),
-      };
-    }));
-
-    const bbox = { bbox: '48.0,2.0,49.0,3.0' };
-    const first = mockReqRes(bbox);
-    await osmRailwaysHandler(first.req, first.res);
-    assert.equal(first.res.statusCode, 200);
-    assert.equal(calls, 1);
-    assert.equal(first.res.headers['x-cache'], 'miss');
-    const geojson = first.res.body as { features: unknown[] };
-    assert.equal(geojson.features.length, 1);
-
-    const second = mockReqRes(bbox);
-    await osmRailwaysHandler(second.req, second.res);
-    assert.equal(calls, 1, 'même bbox → pas de second appel Overpass');
-    assert.equal(second.res.headers['x-cache'], 'hit');
-
-    const otherBbox = mockReqRes({ bbox: '10.0,10.0,11.0,11.0' });
-    await osmRailwaysHandler(otherBbox.req, otherBbox.res);
-    assert.equal(calls, 2, 'un bbox différent doit déclencher un nouvel appel Overpass');
   });
 });
 

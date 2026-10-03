@@ -70,7 +70,8 @@ export const ROUTES = {
   '/api/traffic/road': () => import('./_handlers/traffic/road.js'),
   '/api/traffic/tile': () => import('./_handlers/traffic/tile.js'),
   '/api/transport/disruptions': () => import('./_handlers/transport/disruptions.js'),
-  '/api/transport/osm-railways': () => import('./_handlers/transport/osm-railways.js'),
+  '/api/transport/rail-overview': () => import('./_handlers/transport/rail-overview.js'),
+  '/api/transport/rail-situations': () => import('./_handlers/transport/rail-situations.js'),
   '/api/weather/vigilance': () => import('./_handlers/weather/vigilance.js'),
 };
 

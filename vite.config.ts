@@ -8,7 +8,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { rssProxyPlugin } from './src/plugins/rss-proxy';
 import { rssJsonProxyPlugin } from './src/plugins/rss-json-proxy';
 import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
-import { osmRailwaysProxyPlugin } from './src/plugins/osm-railways-proxy';
 import { biogasProxyPlugin } from './src/plugins/biogas-proxy';
 import { dromEnergyProxyPlugin } from './src/plugins/drom-energy-proxy';
 import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
@@ -125,7 +124,6 @@ export default defineConfig(({ mode }) => {
       rssProxyPlugin(),
       rssJsonProxyPlugin(),
       sncfProxyPlugin(),
-      osmRailwaysProxyPlugin(),
       biogasProxyPlugin(),
       dromEnergyProxyPlugin(),
       gasPirProxyPlugin(),
