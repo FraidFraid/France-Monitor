@@ -47,7 +47,7 @@ Spec `docs/superpowers/specs/2026-10-01-fiches-kit-design.md` (fiches construite
 - Retour d'action (« Référence copiée », « Copie impossible ») : `fiche-toast`, en haut à gauche de la fiche.
 
 ## Panneaux de couches
-Cadre commun des panneaux flottants de couche (code : `src/components/layer-panel/frame.ts`, styles : bloc « Panneaux de couches : cadre commun » de `src/styles/main.css`). Panneaux migrés : Réseau électrique (`grid.ts`), Parc nucléaire (`nuclear.ts`), Réseau gaz (`gas.ts`), Stress hydro (`hydro.ts`), Pétrole (`oil.ts`), Éolien (`wind.ts`), Charge métropolitaine (`metro.ts`, panneau nouveau) et Énergie DROM (`drom.ts`). Outils communs : formateurs `layer-panel/format.ts`, courbe `layer-panel/chart.ts`, lignes `listRow` et `barRow` (`frame.ts`).
+Cadre commun des panneaux flottants de couche (code : `src/components/layer-panel/frame.ts`, styles : bloc « Panneaux de couches : cadre commun » de `src/styles/main.css`). Panneaux migrés : Réseau électrique (`grid.ts`), Parc nucléaire (`nuclear.ts`), Réseau gaz (`gas.ts`), Stress hydro (`hydro.ts`), Pétrole (`oil.ts`), Éolien (`wind.ts`), Charge métropolitaine (`metro.ts`, panneau nouveau), Énergie DROM (`drom.ts`) ; Santé (spec 2026-10-03) : Veille sanitaire (`veille.ts` et `veille-tabs.ts`, onglets France, Outre-mer, International, Produits), Urgences et SOS Médecins (`urgences.ts`), Accès aux soins (`acces-soins.ts`) et Hôpitaux (`hopitaux.ts`), aides communes dans `layer-panel/health-format.ts`, carte dans `deckgl/health-map.ts`. Outils communs : formateurs `layer-panel/format.ts`, courbe `layer-panel/chart.ts`, lignes `listRow` et `barRow` (`frame.ts`).
 
 Structure, de haut en bas :
 - En-tête collant (`lp-head`) : sur-titre « Thème · Couche », titre = libellé de la pastille de la couche, gros chiffre facultatif (`lp-figure`, avec sa légende), ligne de niveau (pastille de niveau puis contexte séparé par « · »), synthèse en une ou deux phrases, puis onglets s'il y en a. Le bouton de fermeture rond (28 px) reste visible en haut à droite pendant le défilement.
@@ -74,6 +74,7 @@ Règles :
    | `--cat-crude` | origines du pétrole brut |
    | `--cat-renewable` | part renouvelable des territoires |
    | `--cat-substation`, `--cat-pylon`, `--cat-production` | types d'actifs DROM |
+   | `--cat-hosp-chu`, `--cat-hosp-ch`, `--cat-hosp-private`, `--cat-hosp-gcs`, `--cat-hosp-army` | catégories d'hôpitaux (CHU et CHR, centres hospitaliers, cliniques privées, groupements, armées ; « autres » prend `--mix-other`) : panneau Hôpitaux, carte et légende (valeurs reprises dans `deckgl/health-map.ts`, vérifiées par test) |
 3. Chiffres en `fmk-num`, aucune police à chasse fixe, aucun tiret cadratin.
 4. Tout texte et tout lien venant d'un tiers est échappé ; les liens passent par `safeHref`.
 5. Fermer par la croix éteint la couche (rappel `onClose`, appelé une seule fois) ; le masquage silencieux (`hide({ silent: true })`) ne l'appelle jamais.
@@ -81,13 +82,22 @@ Règles :
 Règles du lot 2 (R1 à R4) et préférences de l'utilisateur :
 - R1 : une valeur tient sur une ligne. Espace insécable entre le nombre et l'unité et avant « % », valeurs en `white-space: nowrap`, gros chiffre avec son unité et sa légende dessous ; c'est la légende qui passe à la ligne. Contrôle par `breakableValue` dans le test de chaque vue et à l'écran.
 - R2 : graphes et indicateurs colorés repris au restylage, jamais neutralisés (voir la règle 2 et le tableau des jetons). Les jauges sont toujours en couleur.
-- R3 : le gros chiffre prend la couleur de son propre niveau quand il en a un (Parc nucléaire, Réseau gaz, Éolien selon l'état du vent, Charge métropolitaine selon l'écart du total à la veille : orange dès +5 %, vert sinon, Énergie DROM selon la part renouvelable : vert dès 50 %, jaune dès 25 %, orange en dessous) ; sinon il hérite du niveau de la pastille du panneau (c'est le cas de Stress hydro : pas de niveau propre, mais pas de couleur non plus quand l'éCO2mix a plus de 45 min). Un `level: null` explicite (donnée en retard : éCO2mix au-delà de 45 min, lecture RTE au-delà de 30 min, gaz sur valeurs de référence), une valeur « n.d. » ou une pastille « n.d. » le laisse en couleur de texte. Une part placée dans la légende du chiffre (facteur de charge éolien, part du parc hydraulique) prend la couleur du chiffre.
+- R3 : le gros chiffre prend la couleur de son propre niveau quand il en a un (Parc nucléaire, Réseau gaz, Éolien selon l'état du vent, Charge métropolitaine selon l'écart du total à la veille : orange dès +5 %, vert sinon, Énergie DROM selon la part renouvelable : vert dès 50 %, jaune dès 25 %, orange en dessous) ; sinon il hérite du niveau de la pastille du panneau (c'est le cas de Stress hydro : pas de niveau propre, mais pas de couleur non plus quand l'éCO2mix a plus de 45 min). Un `level: null` explicite (donnée en retard : éCO2mix au-delà de 45 min, lecture RTE au-delà de 30 min, gaz sur valeurs de référence), une valeur « n.d. » ou une pastille « n.d. » le laisse en couleur de texte. Une part placée dans la légende du chiffre (facteur de charge éolien, part du parc hydraulique) prend la couleur du chiffre. Santé : Veille sanitaire selon l'activité Sentinelles des IRA, Urgences selon le niveau saisonnier de l'IRA, Accès aux soins selon l'évolution de la part de population sous 2,5 consultations (deux hausses orange, une jaune, aucune vert) ; Hôpitaux sans niveau (couleur du texte).
 - R4 : aucun tiret cadratin.
 - Toute mesure principale qui est une quantité est le gros chiffre, avec son unité (« 46,4 GW », « 93,4 % », « 1,689 € », « 336 MW »).
 - Échanges (Réseau électrique) : import en rouge, export en vert, avec une flèche ▲ ou ▼ de tendance par rapport à l'historique sur 7 jours.
 - Donnée en retard : la ligne de niveau dit « (en retard) » et les couleurs de niveau disparaissent.
 - Rien ne disparaît à la migration : chaque indicateur, graphe ou note de l'ancien panneau est conservé, ou déplacé dans « Méthode et sources ».
 - Une phrase qui décrit une fraîcheur (et non une valeur) passe à la ligne dans les détails repliés : libellé de largeur fixe, jamais recouvert.
+
+Règles des panneaux Santé (spec 2026-10-03) :
+- Hausse d'un indicateur sanitaire en rouge, baisse en vert ; le seuil de ±10 % s'applique à l'évolution affichée (arrondie).
+- Niveau saisonnier : comparaison au maximum de la même semaine des trois saisons précédentes ; vert au plus ce maximum, jaune au-dessus, orange dès 1,15 fois, rouge dès 1,5 fois ; moins de deux saisons de référence : « n.d. ».
+- Données hebdomadaires ou annuelles, jamais « temps réel » : la ligne de niveau dit la semaine (« S39 ») et la date de publication ; le panneau des sources reçoit la date de la donnée, jamais l'heure de lecture.
+- Source en retard : « (en retard) », couleurs retirées, entrée écartée du niveau national et nommée. Une alerte épidémique dont la dernière ligne a plus de trois semaines est « hors saison » (gris clair sur la carte), jamais « niveau 1 ».
+- Sélecteurs de carte (syndrome des urgences, profession de l'APL) : boutons `lp-seg` en tête du corps du panneau, mémorisés avec les onglets (`fm.layer.tabs`) ; la carte change de propriété peinte sans nouvelle requête.
+- Niveau national de santé : plus haut niveau des entrées non en retard (alertes épidémiques, médecine générale, urgences, eaux usées) ; repris dans la fiche thème Santé de la v2 avec les liens d'ouverture des quatre panneaux.
+- Infobulles de la carte (`hm-tip` dans `.dark-popup`) : titre, sous-titre, lignes libellé et valeur, puce de niveau ; même texte que les panneaux, valeurs insécables.
 
 ## Correspondance avec la spec
 - `fmk-chip` : pastille `fm-vig` (`renderVigilancePill`)
