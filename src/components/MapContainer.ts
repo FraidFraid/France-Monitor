@@ -7,11 +7,10 @@ import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
-import type { TrafficIncident } from '../services/traffic.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
@@ -268,10 +267,6 @@ export class MapContainer {
   updateTraffic(_segments: TrafficSegment[]): void {
     // DeckGL map uses TomTom tiles, basemap mask handles France clipping
     this.deckMap?.updateTraffic();
-  }
-
-  updateTrafficIncidents(incidents: TrafficIncident[]): void {
-    this.deckMap?.updateTrafficIncidents(incidents);
   }
 
   setEventPoints(points: EventMapPoint[]): void {
@@ -619,12 +614,30 @@ export class MapContainer {
     this.deckMap?.highlightISNRDepartment(departmentCode);
   }
 
-  highlightTrainRoute(disruption: TransportDisruption | null): void {
-    this.deckMap?.highlightTrainRoute(disruption);
+  // ─── Trafics (spec 2026-10-03 trafics § 3) ───
+  updateRoadTraffic(national: RoadNationalResponse | null, urban: RoadUrbanResponse | null, now: number): void {
+    this.deckMap?.updateRoadTraffic(national, urban, now);
   }
 
-  updateRailNetwork(data: RailNetworkData): void {
-    this.deckMap?.updateRailNetwork(data);
+  updateAirOverview(overview: AirOverviewResponse | null, now: number): void {
+    this.deckMap?.updateAirOverview(overview, now);
+  }
+
+  updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
+    this.deckMap?.updateRailTraffic(overview, now);
+  }
+
+  updateMaritimeSnapshot(snapshot: MaritimeSnapshot | null, now: number): void {
+    this.deckMap?.updateMaritimeSnapshot(snapshot, now);
+  }
+
+  highlightTrainRoute(train: RailTrain | null): void {
+    this.deckMap?.highlightTrainRoute(train);
+  }
+
+  /** Survol d'un train dans le panneau ferroviaire : trajet provisoire ; null rend celui du train choisi. */
+  previewTrainRoute(train: RailTrain | null): void {
+    this.deckMap?.previewTrainRoute(train);
   }
 
   destroy(): void {

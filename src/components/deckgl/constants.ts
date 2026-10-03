@@ -26,7 +26,6 @@ export const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
 export const SRC_WIND_TURBINES = 'wind-turbines-src';
 export const SRC_WIND_PARKS = 'wind-parks-src';
 export const SRC_TRAFFIC = 'traffic-flow-src';
-export const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 export const SRC_TRAIN_ROUTE = 'train-route-src';
 
 export const LYR_GLOW = 'news-glow';
@@ -166,9 +165,6 @@ export const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
 export const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
 export const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
 export const LYR_TRAFFIC = 'traffic-flow';
-export const LYR_TRAFFIC_CLUSTER = 'traffic-incidents-cluster';
-export const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
-export const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
 export const LYR_TRAIN_ROUTE = 'train-route-line';
 export const LYR_TRAIN_STATIONS = 'train-stations';
 export const LYR_TRAIN_STATION_LABELS = 'train-station-labels';
@@ -199,7 +195,6 @@ export const LYR_MILITARY_BASES_LABEL = 'military-bases-label';
 export const LYR_MILITARY_FLIGHT_TRAILS = 'military-flight-trails';
 export const LYR_MILITARY_FLIGHTS = 'military-flights';
 export const LYR_MILITARY_FLIGHTS_LABEL = 'military-flights-label';
-export const LYR_AIR_TRAFFIC_LABEL = 'air-traffic-label';
 export const LYR_MILITARY_SHIPS = 'military-ships';
 export const LYR_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight';
 export const LYR_MILITARY_SHIPS_SELECTED = 'military-ships-selected';
@@ -249,41 +244,27 @@ export const SRC_MAIRES_POL = 'maires-pol-src';
 export const LYR_MAIRES_POL = 'maires-pol';
 export const LYR_MAIRES_POL_LABEL = 'maires-pol-label';
 
-// ─── Rail disruptions (SNCF) ───
-export const SRC_RAIL_ARCS = 'rail-disruptions-arcs-src';
-export const SRC_RAIL_STATIONS = 'rail-disruptions-stations-src';
-export const LYR_RAIL_ARC_GLOW = 'rail-arc-glow';
-export const LYR_RAIL_ARC = 'rail-arc';
-export const LYR_RAIL_ARC_HIT = 'rail-arc-hit';
-export const LYR_RAIL_STATION_GLOW = 'rail-station-glow';
+// ─── Trafics (spec 2026-10-03 trafics § 3) : couches MapLibre de deckgl/traffic-map.ts ───
+export const SRC_ROAD_SECTIONS = 'road-sections-src';
+export const SRC_ROAD_JAMS = 'road-jams-src';
+export const SRC_ROAD_EVENTS = 'road-events-src';
+export const LYR_ROAD_SECTIONS = 'road-sections';
+export const LYR_ROAD_JAMS = 'road-jams-line';
+export const LYR_ROAD_JAM_POINTS = 'road-jams-point';
+export const LYR_ROAD_EVENTS = 'road-events';
+export const SRC_AIRPORTS = 'airports-src';
+export const SRC_AIR_EMERGENCIES = 'air-emergencies-src';
+export const LYR_AIR_DENSITY = 'air-traffic-density';
+export const LYR_AIRPORTS = 'airports-departures';
+export const LYR_AIR_EMERGENCIES = 'air-emergencies';
+export const LYR_AIR_EMERGENCY_LABEL = 'air-emergencies-label';
+export const SRC_RAIL_STATIONS = 'rail-stations-src';
 export const LYR_RAIL_STATION = 'rail-stations-disrupted';
 export const LYR_RAIL_STATION_LABEL = 'rail-station-label';
-
-/** MapLibre match expression: ThreatLevel → hex color */
-export const RAIL_SEVERITY_COLOR: maplibregl.ExpressionSpecification = [
-  'match', ['get', 'severity'],
-  'critical', '#ff2d55',
-  'high',     '#ff6b35',
-  'medium',   '#ffcc00',
-  'low',      '#34c759',
-  /* info default */ '#5ac8fa',
-];
-
-export const RAIL_SEVERITY_HEX: Record<string, string> = {
-  critical: '#ff2d55',
-  high: '#ff6b35',
-  medium: '#ffcc00',
-  low: '#34c759',
-  info: '#5ac8fa',
-};
-
-export const RAIL_SEVERITY_TINT: Record<string, string> = {
-  critical: 'rgba(255,45,85,0.14)',
-  high: 'rgba(255,107,53,0.14)',
-  medium: 'rgba(255,204,0,0.12)',
-  low: 'rgba(52,199,89,0.12)',
-  info: 'rgba(90,200,250,0.12)',
-};
+export const SRC_ANCHORAGES = 'ais-anchorages-src';
+export const LYR_ANCHORAGES = 'ais-anchorages';
+export const SRC_AIS_SIGNALS = 'ais-signals-src';
+export const LYR_AIS_SIGNALS = 'ais-signals';
 
 // ─── Solde régional production/consommation éco2mix → couleur des régions sur la carte ───
 // PAS une vigilance : Écowatt est un signal national (voir src/services/ecowatt-official.ts).

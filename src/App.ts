@@ -117,6 +117,9 @@ import type { AirOverviewState } from './services/traffic-air.ts';
 import type { RailTrafficState } from './services/traffic-rail.ts';
 import type { MaritimeState } from './services/traffic-maritime.ts';
 import { TRAFFIC_SOURCE_NAMES, trafficReportSources } from './config/traffic-sources.ts';
+import {
+  AIR_TRAFFIC_LEGEND, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, airLegend, maritimeLegend, railLegend, roadLegend,
+} from './components/layer-panel/traffic-legend.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
@@ -665,23 +668,6 @@ const HOSPITALS_LEGEND: LegendCategory = {
   refresh: { label: 'Annuelle' },
 };
 
-const ROAD_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficRoad',
-  title: 'Trafic routier',
-  items: [
-    { id: 'road-high', label: 'Incident fort', color: '#ff5050', shape: 'circle' },
-    { id: 'road-medium', label: 'Incident modéré', color: '#ffaa00', shape: 'circle' },
-    { id: 'road-low', label: 'Incident faible', color: '#ffdc50', shape: 'circle' },
-  ],
-  source: {
-    label: 'TomTom',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Environ 5 min'
-  }
-};
-
 const ENVIRONMENTAL_LEGEND: LegendCategory = {
   id: 'environmental',
   title: 'Météo / Crues',
@@ -754,49 +740,6 @@ const NEWS_LEGEND: LegendCategory = {
     'Couleur = niveau de gravite.',
     'Taille du cluster = nombre d articles agreges.',
   ],
-};
-
-const MARITIME_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficMaritime',
-  title: 'Trafic maritime',
-  columns: 2,
-  items: [
-    { id: 'sea-cargo',     label: 'Cargo',          color: '#4ade80', shape: 'vessel' },
-    { id: 'sea-tanker',    label: 'Pétrolier',      color: '#60a5fa', shape: 'vessel' },
-    { id: 'sea-passenger', label: 'Passagers',      color: '#f97316', shape: 'vessel' },
-    { id: 'sea-fishing',   label: 'Pêche',          color: '#facc15', shape: 'vessel' },
-    { id: 'sea-tug',       label: 'Remorqueur/SAR', color: '#a855f7', shape: 'vessel' },
-    { id: 'sea-sailing',   label: 'Voilier',        color: '#06b6d4', shape: 'vessel' },
-    { id: 'sea-highspeed', label: 'Grande vitesse', color: '#f472b6', shape: 'vessel' },
-    { id: 'sea-unknown',   label: 'Inconnu',        color: '#94a3b8', shape: 'vessel' },
-  ],
-  source: {
-    label: 'AIS · aisstream.io',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Temps réel WebSocket'
-  }
-};
-
-const AIR_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficAir',
-  title: 'Trafic aérien civil',
-  columns: 2,
-  items: [
-    { id: 'air-low', label: 'Très bas (< 5k ft)', color: '#ff7832', icon: fmIcon('plane') },
-    { id: 'air-mid', label: 'Bas / montée (5–15k)', color: '#ffd232', icon: fmIcon('plane') },
-    { id: 'air-upper-mid', label: 'Intermédiaire (15–25k)', color: '#82e650', icon: fmIcon('plane') },
-    { id: 'air-cruise', label: 'Croisière (25–35k)', color: '#32c8ff', icon: fmIcon('plane') },
-    { id: 'air-high', label: 'Très haut (> 35k)', color: '#8264ff', icon: fmIcon('plane') },
-  ],
-  source: {
-    label: 'OpenSky / airplanes.live',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Quasi temps réel'
-  }
 };
 
 
@@ -1213,6 +1156,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Réseau ferroviaire',
+    legend: RAIL_TRAFFIC_LEGEND,
   },
   // ─── Energy Group ───
   {
@@ -1935,7 +1879,7 @@ export class App {
     this.mapLegend.setCategoryVisibility('trafficRoad', this.activeLayers.traffic && this.activeLayers.trafficRoad);
     this.mapLegend.setCategoryVisibility('trafficMaritime', this.activeLayers.traffic && this.activeLayers.trafficMaritime);
     this.mapLegend.setCategoryVisibility('trafficAir', this.activeLayers.traffic && this.activeLayers.trafficAir);
-    // Rail legend lives in TransportPanel — no mapLegend entry to toggle
+    this.mapLegend.setCategoryVisibility('trafficRail', this.activeLayers.traffic && this.activeLayers.trafficRail);
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
@@ -4201,8 +4145,9 @@ export class App {
     this.layerPanel?.updateLayers(this.activeLayers);
   }
 
-  /** Train choisi dans le panneau ferroviaire : la carte se centre sur son trajet. */
+  /** Train choisi dans le panneau ferroviaire : son trajet tracé par ses arrêts, puis la carte se centre dessus. */
   private focusTrain(train: RailTrain): void {
+    this.mapContainer?.highlightTrainRoute(train);
     const first = train.stops[0];
     const last = train.stops[train.stops.length - 1];
     if (!first || !last) return;
@@ -4884,7 +4829,7 @@ export class App {
     this.mapLegend.addCategory(ROAD_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
-    // Rail legend is embedded in TransportPanel — not in the bottom map legend
+    this.mapLegend.addCategory(RAIL_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(HEALTH_ALERTS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
     this.mapLegend.addCategory(HEALTH_URGENCES_LEGEND);
@@ -5914,6 +5859,8 @@ export class App {
     const state = await fetchRoadTraffic(this.currentRoadTraffic, now);
     this.currentRoadTraffic = state;
     this.trafficPanel?.update(state);
+    this.mapContainer?.updateRoadTraffic(state.national.data, state.urban.data, now);
+    this.mapLegend?.addCategory(roadLegend(state.national.data, state.urban.data, now));
     this.statusPanel?.updateSource('Trafic', roadStatus(state, 'national', now));
     this.statusPanel?.updateSource('TomTom agglomérations', roadStatus(state, 'urban', now));
     this.recordTrafficSamples(now);
@@ -5944,6 +5891,8 @@ export class App {
     const state = await fetchAirOverview(this.currentAirOverview, now);
     this.currentAirOverview = state;
     this.airTrafficPanel?.update(state);
+    this.mapContainer?.updateAirOverview(state.overview.data, now);
+    this.mapLegend?.addCategory(airLegend(state.overview.data, now));
     this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
   }
 
@@ -6379,6 +6328,8 @@ export class App {
     const state = await fetchRailTraffic(this.currentRailTraffic, now);
     this.currentRailTraffic = state;
     this.transportPanel?.update(state);
+    this.mapContainer?.updateRailTraffic(state.overview.data, now);
+    this.mapLegend?.addCategory(railLegend(state.overview.data, state.situations.data, now));
     this.statusPanel?.updateSource('SNCF', railStatus(state, 'overview', now));
     this.statusPanel?.updateSource('SIRI SX', railStatus(state, 'situations', now));
     this.recordTrafficSamples(now);
@@ -6403,6 +6354,8 @@ export class App {
     const state = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
     this.currentMaritimeSnapshot = state;
     this.maritimePanel?.update(state);
+    this.mapContainer?.updateMaritimeSnapshot(state.snapshot.data, now);
+    this.mapLegend?.addCategory(maritimeLegend(state.snapshot.data, now));
     this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
     this.recordTrafficSamples(now);
   }

@@ -13,7 +13,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -27,7 +27,16 @@ import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
-import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
+import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
+import {
+  AIR_ICON_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
+  airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
+  railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
+  urbanJamFeatures,
+} from './deckgl/traffic-map.ts';
+import {
+  AIR_ICON_HEX, VESSEL_TYPE_HEX, type VesselCategory, vesselCategory, vesselHex, vesselTypeLabel,
+} from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
 import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
@@ -71,7 +80,7 @@ import {
   ECHO_TOPS_LAYER_ID,
   ECHO_TOPS_SOURCE_ID,
 } from './deckgl/format-utils.ts';
-import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
+import { fmIcon, fmStatusDot, type FmDotLevel, type IconName } from './shared/icons.ts';
 import {
   buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
@@ -100,7 +109,6 @@ import {
   SRC_WIND_TURBINES,
   SRC_WIND_PARKS,
   SRC_TRAFFIC,
-  SRC_TRAFFIC_INCIDENTS,
   SRC_TRAIN_ROUTE,
   LYR_GLOW,
   LYR_POINTS,
@@ -221,9 +229,6 @@ import {
   LYR_OIL_FLOW_ARC_HIT,
   LYR_OIL_FLOW_MARKER_HIT,
   LYR_TRAFFIC,
-  LYR_TRAFFIC_CLUSTER,
-  LYR_TRAFFIC_CLUSTER_COUNT,
-  LYR_TRAFFIC_INCIDENTS,
   LYR_TRAIN_ROUTE,
   LYR_TRAIN_STATIONS,
   LYR_TRAIN_STATION_LABELS,
@@ -252,7 +257,6 @@ import {
   LYR_MILITARY_FLIGHT_TRAILS,
   LYR_MILITARY_FLIGHTS,
   LYR_MILITARY_FLIGHTS_LABEL,
-  LYR_AIR_TRAFFIC_LABEL,
   LYR_MILITARY_SHIPS,
   LYR_MILITARY_SHIPS_HIGHLIGHT,
   LYR_MILITARY_SHIPS_SELECTED,
@@ -300,17 +304,14 @@ import {
   SRC_MAIRES_POL,
   LYR_MAIRES_POL,
   LYR_MAIRES_POL_LABEL,
-  SRC_RAIL_ARCS,
   SRC_RAIL_STATIONS,
-  LYR_RAIL_ARC_GLOW,
-  LYR_RAIL_ARC,
-  LYR_RAIL_ARC_HIT,
-  LYR_RAIL_STATION_GLOW,
-  LYR_RAIL_STATION,
-  LYR_RAIL_STATION_LABEL,
-  RAIL_SEVERITY_COLOR,
-  RAIL_SEVERITY_HEX,
-  RAIL_SEVERITY_TINT,
+  SRC_ROAD_SECTIONS,
+  SRC_ROAD_JAMS,
+  SRC_ROAD_EVENTS,
+  SRC_AIRPORTS,
+  SRC_AIR_EMERGENCIES,
+  SRC_ANCHORAGES,
+  SRC_AIS_SIGNALS,
   REGION_BALANCE_COLORS,
   REGION_BALANCE_LINE_COLORS,
   regionEnergyBalance,
@@ -438,6 +439,16 @@ export class DeckGLMap {
   private aisHoverTooltip: maplibregl.Popup | null = null;
   private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
+  /** Trafics (spec 2026-10-03 trafics § 3) : survol, fiche d'un bouchon, icônes d'avions selon le zoom, retard SNCF du trajet tracé. */
+  private trafficHoverPopup: maplibregl.Popup | null = null;
+  private trafficHoverShown = false;
+  private trafficPointer = false;
+  private trafficJamPopup: maplibregl.Popup | null = null;
+  private airIconsShown = false;
+  private railTrafficLate = false;
+  /** Trajet tracé : train choisi dans le panneau ; un train survolé le remplace le temps du survol. */
+  private chosenTrain: RailTrain | null = null;
+  private previewTrain: RailTrain | null = null;
   private weatherHoverPopup: maplibregl.Popup | null = null;
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
   private weatherRadarTileTemplate: string | null = null;
@@ -462,10 +473,7 @@ export class DeckGLMap {
   private radar2dDestroyed = false;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
-  private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
-  private railStationPanel: HTMLElement | null = null;
-  private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
@@ -576,7 +584,6 @@ export class DeckGLMap {
   private deckOverlay: MapboxOverlay | null = null;
   private globalTrafficVisible = true;  // Controlled by military layer toggle
   private globalTrafficData: AisShipData[] = [];
-  private roadTrafficVisible = false;
   /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
   private eventPoints: EventMapPoint[] = [];
   private eventPointsVisible = false;
@@ -589,8 +596,6 @@ export class DeckGLMap {
     showSunIcon: true,
     timestamp: 0, // 0 = utilise Date.now() à chaque rendu
   };
-  private roadTrafficIncidents: TrafficIncident[] = [];
-  private trafficClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
 
@@ -843,12 +848,8 @@ export class DeckGLMap {
       bounds: [-5.2, 41.3, 9.6, 51.1] // Tighter bounding box for France métropolitaine
     });
 
-    // Traffic Incidents (TomTom temps réel) — source alimentée par un index supercluster JS
-    this.map.addSource(SRC_TRAFFIC_INCIDENTS, { type: 'geojson', data: emptyFC() });
-
-    // Rail disruptions network (arcs + stations, updated from SNCF data)
-    this.map.addSource(SRC_RAIL_ARCS, { type: 'geojson', data: emptyFC(), promoteId: 'id' });
-    this.map.addSource(SRC_RAIL_STATIONS, { type: 'geojson', data: emptyFC() });
+    // Trafics (spec 2026-10-03 trafics § 3) : sections, bouchons, événements, aéroports, urgences, gares, mouillages, signalements.
+    for (const id of TRAFFIC_SOURCE_IDS) this.map.addSource(id, trafficSourceSpec());
 
     // Train route highlight
     this.map.addSource(SRC_TRAIN_ROUTE, { type: 'geojson', data: emptyFC() });
@@ -1328,169 +1329,8 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Traffic Incident Clusters (TomTom / Supercluster JS) ───
-    this.map.addLayer({
-      id: LYR_TRAFFIC_CLUSTER,
-      type: 'circle',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': ['case',
-          ['>=', ['get', 'maxSeverity'], 2], 'rgba(255,59,48,0.92)',
-          ['>=', ['get', 'maxSeverity'], 1], 'rgba(255,149,0,0.92)',
-          'rgba(255,204,0,0.88)',
-        ],
-        'circle-radius': [
-          'step', ['get', 'point_count'],
-          20,
-          5, 28,
-          15, 36,
-          50, 46,
-        ],
-        'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(255,255,255,0.85)',
-        'circle-opacity': 0.95,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_TRAFFIC_CLUSTER_COUNT,
-      type: 'symbol',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-size': 12,
-        'text-font': ['Open Sans Bold'],
-      },
-      paint: {
-        'text-color': '#ffffff',
-      },
-    });
-
-    // ─── Traffic Incidents (TomTom) ───
-    this.map.addLayer({
-      id: LYR_TRAFFIC_INCIDENTS,
-      type: 'circle',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 6, 3, 8, 5, 10, 8, 12, 10],
-        'circle-color': [
-          'match',
-          ['get', 'severity'],
-          'high', '#ff3b30',
-          'medium', '#ff9500',
-          '#ffcc00'
-        ],
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#111',
-        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.45, 6, 0.6, 8, 0.75, 10, 0.88, 12, 0.92],
-      }
-    });
-
-    // ─── Rail disruptions network (persistent layer, toggle via trafficRail) ───
-    // Glow halo: fat semi-transparent line — brightens on hover via feature-state
-    this.map.addLayer({
-      id: LYR_RAIL_ARC_GLOW,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 14, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 5, 8]],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 22, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 9, 14]],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 32, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 13, 20]],
-        ],
-        'line-opacity': ['case',
-          ['boolean', ['feature-state', 'hover'], false], 0.35,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.10,
-          0.18,
-        ],
-        'line-blur': ['case', ['boolean', ['feature-state', 'hover'], false], 6, 4],
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Main arc — thicker + fully opaque on hover
-    this.map.addLayer({
-      id: LYR_RAIL_ARC,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 4, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 1.3, 2.2]],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 6, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 2.1, 3.6]],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 9, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 3.2, 5.6]],
-        ],
-        'line-opacity': ['case',
-          ['boolean', ['feature-state', 'hover'], false], 1.0,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.68,
-          0.92,
-        ],
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Invisible wide hit zone — makes rail arcs easier to hover
-    this.map.addLayer({
-      id: LYR_RAIL_ARC_HIT,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': 'rgba(0,0,0,0)',
-        'line-width': 20,
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Station glow halo
-    this.map.addLayer({
-      id: LYR_RAIL_STATION_GLOW,
-      type: 'circle',
-      source: SRC_RAIL_STATIONS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14, 12, 20],
-        'circle-color': RAIL_SEVERITY_COLOR,
-        'circle-opacity': 0.20,
-        'circle-blur': 1,
-        'circle-stroke-width': 0,
-      },
-      layout: { visibility: 'none' },
-    });
-    // Station circle
-    this.map.addLayer({
-      id: LYR_RAIL_STATION,
-      type: 'circle',
-      source: SRC_RAIL_STATIONS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
-        'circle-color': RAIL_SEVERITY_COLOR,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#1a1a2e',
-        'circle-opacity': 0.95,
-      },
-      layout: { visibility: 'none' },
-    });
-    // Station label (appears from zoom 8)
-    this.map.addLayer({
-      id: LYR_RAIL_STATION_LABEL,
-      type: 'symbol',
-      source: SRC_RAIL_STATIONS,
-      minzoom: 8,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 11,
-        'text-offset': [0, -1.4],
-        'text-anchor': 'bottom',
-        'text-font': ['Noto Sans Regular'],
-        visibility: 'none',
-      },
-      paint: {
-        'text-color': '#f0f0f0',
-        'text-halo-color': '#1a1a2e',
-        'text-halo-width': 1.5,
-        'text-opacity': 0.9,
-      },
-    });
+    // ─── Trafics (spec 2026-10-03 trafics § 3) : couches de deckgl/traffic-map.ts, masquées jusqu'à setLayerVisibility ───
+    for (const layer of TRAFFIC_LAYERS) this.map.addLayer(layer);
 
     // ─── Train route highlight ───
     this.map.addLayer({
@@ -1499,7 +1339,7 @@ export class DeckGLMap {
       source: SRC_TRAIN_ROUTE,
       filter: ['==', ['geometry-type'], 'LineString'],
       paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
+        'line-color': TRAFFIC_COLOR,
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 6, 12, 8],
         'line-opacity': 0.96,
       },
@@ -1516,7 +1356,7 @@ export class DeckGLMap {
       filter: ['==', ['geometry-type'], 'Point'],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 15, 12, 20],
-        'circle-color': RAIL_SEVERITY_COLOR,
+        'circle-color': TRAFFIC_COLOR,
         'circle-stroke-width': 4,
         'circle-stroke-color': '#ffffff',
         'circle-opacity': 1,
@@ -2947,31 +2787,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Civil Air Traffic (free airplanes.live sampling) ───
-    // Icon rendering is now handled by DeckGL (IconLayer 'deck-air-traffic')
-    // MapLibre is only responsible for rendering the text labels.
-    this.map.addLayer({
-      id: LYR_AIR_TRAFFIC_LABEL,
-      type: 'symbol',
-      source: SRC_AIR_TRAFFIC,
-      minzoom: 6,
-      layout: {
-        'text-field': ['get', 'callsign'],
-        'text-size': 10,
-        'text-offset': [0, 1.6],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': '#7dd3fc',
-        'text-halo-color': '#0a0a0f',
-        'text-halo-width': 2,
-        'text-opacity': 0.85,
-      },
-    });
-
-
     // ─── Global AIS Traffic (civils/étrangers) ───
     // NOW RENDERED VIA DECK.GL TextLayer (see getDeckLayers())
     // Commented out MapLibre symbol layer:
@@ -3971,6 +3786,9 @@ export class DeckGLMap {
 
     // Couches santé : infobulle au survol et fiche de site au clic (initHealthInteractions).
     this.initHealthInteractions();
+
+    // Couches Trafics : infobulle au survol, vitesse du tronçon au clic sur un bouchon (initTrafficInteractions).
+    this.initTrafficInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -5136,140 +4954,6 @@ export class DeckGLMap {
     });
     this.map.on('mousemove', LYR_INTERCONN_HITAREA, showFlowHover);
 
-    // ─── Traffic Incidents Interactions ───
-    this.map.on('mouseenter', LYR_TRAFFIC_INCIDENTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_TRAFFIC_INCIDENTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-    });
-    this.map.on('mouseenter', LYR_TRAFFIC_CLUSTER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_TRAFFIC_CLUSTER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-    });
-    this.map.on('click', LYR_TRAFFIC_CLUSTER, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const clusterId = e.features[0].properties?.cluster_id as number | undefined;
-      const geom = e.features[0].geometry as GeoJSON.Point;
-      if (clusterId == null || !geom?.coordinates) return;
-
-      const center = geom.coordinates as [number, number];
-      const index = this.trafficClusterIndex;
-      if (!index) return;
-
-      const zoom = index.getClusterExpansionZoom(clusterId);
-      this.map.flyTo({
-        center,
-        zoom: zoom + 0.5,
-        curve: 1.2,
-        speed: 1.5,
-        essential: true,
-      });
-    });
-    this.map.on('click', LYR_TRAFFIC_INCIDENTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const coords = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
-      const roadNumbers = typeof p.roadNumbers === 'string'
-        ? (() => { try { return JSON.parse(p.roadNumbers) as string[]; } catch { return []; } })()
-        : Array.isArray(p.roadNumbers) ? p.roadNumbers as string[] : [];
-      const incident: TrafficIncident = {
-        id: String(p.id ?? ''),
-        lon: coords[0],
-        lat: coords[1],
-        type: String(p.type ?? 'Incident'),
-        severity: String(p.severity ?? 'low'),
-        delay: Number(p.delay ?? 0),
-        length: Number(p.length ?? 0),
-        description: String(p.description ?? ''),
-        startTime: p.startTime ? String(p.startTime) : undefined,
-        endTime: p.endTime ? String(p.endTime) : undefined,
-        from: p.from ? String(p.from) : undefined,
-        to: p.to ? String(p.to) : undefined,
-        roadNumbers,
-        timeValidity: p.timeValidity ? String(p.timeValidity) : undefined,
-        probabilityOfOccurrence: p.probabilityOfOccurrence ? String(p.probabilityOfOccurrence) : undefined,
-        numberOfReports: p.numberOfReports != null ? Number(p.numberOfReports) : null,
-        lastReportTime: p.lastReportTime ? String(p.lastReportTime) : null,
-      };
-
-      void this.showTrafficIncidentPopupResolved(coords, incident);
-    });
-
-    // ─── Rail Disruptions interactions ───
-    // Only LYR_RAIL_ARC_HIT and LYR_RAIL_STATION are interactive.
-    // Hover highlight is done via feature-state on SRC_RAIL_ARCS (no second geometry is drawn).
-    const railHoverLayers = [LYR_RAIL_ARC_HIT, LYR_RAIL_STATION];
-    let _hoveredRailArcId: string | number | null = null;
-    const setRailCursor = () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    };
-    const clearRailCursor = () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.hideEnrichedHoverPopup();
-      // Clear feature-state hover
-      if (_hoveredRailArcId !== null && this.map) {
-        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-        _hoveredRailArcId = null;
-      }
-    };
-    const showRailHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      if (this.railStationPanel) {
-        this.hideEnrichedHoverPopup();
-        return;
-      }
-      const feat = e.features[0];
-      const props = (feat.properties ?? {}) as Record<string, unknown>;
-      const layerId = feat.layer?.id;
-
-      // Station dot → station summary tooltip; arc hit zone → train/disruption tooltip
-      const html = layerId === LYR_RAIL_STATION
-        ? this.buildRailStationHoverHtml(props)
-        : this.buildRailArcHoverHtml(props);
-      this.showEnrichedHoverPopup(e.lngLat, html);
-
-      // Feature-state highlight on the arc itself (no second geometry)
-      if (layerId === LYR_RAIL_ARC_HIT && feat.id !== undefined) {
-        if (_hoveredRailArcId !== null && _hoveredRailArcId !== feat.id) {
-          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-        }
-        _hoveredRailArcId = feat.id;
-        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: feat.id }, { hover: true });
-      } else if (layerId === LYR_RAIL_STATION) {
-        // Clear arc highlight when hovering a station
-        if (_hoveredRailArcId !== null) {
-          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-          _hoveredRailArcId = null;
-        }
-      }
-    };
-    const showRailPopup = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const props = (feat.properties ?? {}) as Record<string, unknown>;
-      const layerId = feat.layer?.id;
-      this.hideEnrichedHoverPopup();
-      if (layerId === LYR_RAIL_STATION) {
-        this.openRailStationPopup(e.lngLat, props);
-        return;
-      }
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(this.buildRailArcHoverHtml(props))
-        .addTo(this.map);
-    };
-
-    for (const layerId of railHoverLayers) {
-      this.map.on('mouseenter', layerId, setRailCursor);
-      this.map.on('mousemove', layerId, showRailHover);
-      this.map.on('mouseleave', layerId, clearRailCursor);
-      this.map.on('click', layerId, showRailPopup);
-    }
-
     // ─── Military Bases interactions ───
     this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, (e) => {
       if (!this.map) return;
@@ -5417,7 +5101,12 @@ export class DeckGLMap {
         longitude: c.lng, latitude: c.lat,
         zoom: this.map.getZoom(), pitch: this.map.getPitch(), bearing: this.map.getBearing(),
       };
-      this.syncTrafficIncidentSource();
+      // Avions : densité sous le zoom 7, icônes au-delà (spec trafics § 3.2).
+      const airIcons = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
+      if (airIcons !== this.airIconsShown) {
+        this.airIconsShown = airIcons;
+        if (this.airTrafficVisible) this.scheduleOverlayUpdate();
+      }
       if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
         this.scheduleOverlayUpdate();
       }
@@ -5484,15 +5173,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficMaritime'
           ? 1
-          : ['trafficRoad', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
-            ? 0.15
-            : 1;
-    const roadDeckOpacity =
-      this.legendHoverCategory == null
-        ? 1
-        : this.legendHoverCategory === 'trafficRoad'
-          ? 1
-          : ['trafficMaritime', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficAir', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
     const airDeckOpacity =
@@ -5500,7 +5181,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficAir'
           ? 1
-          : ['trafficRoad', 'trafficMaritime', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficMaritime', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
 
@@ -5509,19 +5190,18 @@ export class DeckGLMap {
       const value = raw == null ? NaN : Number(raw);
       return Number.isFinite(value) ? value : 0;
     };
+    // Teinte d'un navire : son type déclaré, même classement que les comptes du serveur et la légende (traffic-legend.ts) ;
+    // navire survolé ou choisi : teintes propres.
     const getAisIconColor = (d: AisShipData): string => {
       if (d.mmsi && d.mmsi === this._highlightedMmsi) return '#ffffff';
       if (d.mmsi && d.mmsi === this._selectedShipMmsi) return '#5ac8fa';
-      const t = getShipTypeNumber(d);
-      if (t >= 80 && t <= 89) return '#60a5fa';      // Tanker — bleu clair
-      if (t >= 70 && t <= 79) return '#4ade80';      // Cargo — vert
-      if (t >= 60 && t <= 69) return '#f97316';      // Passagers — orange
-      if (t === 55 || t === 51 || t === 52 || t === 53) return '#a855f7'; // Remorqueur/SAR/pilote — violet
-      if (t === 36 || t === 37) return '#06b6d4';    // Voilier/plaisance — cyan
-      if (t >= 40 && t <= 49) return '#f472b6';      // Grande vitesse — rose
-      if (t === 30 || t === 31 || t === 32 || t === 33 || t === 34) return '#facc15'; // Pêche — jaune
-      if (d.navStatus === 7) return '#facc15';        // Pêche par statut — jaune
-      return '#94a3b8';                              // Inconnu — gris
+      return vesselHex(getShipTypeNumber(d), d.navStatus);
+    };
+    // Sillage : teinte du type, plus discrète ; type inconnu en gris léger.
+    const getAisTrailColor = (d: AisShipData): [number, number, number, number] => {
+      const hex = vesselHex(getShipTypeNumber(d), d.navStatus);
+      const alpha = hex === VESSEL_TYPE_HEX.inconnu ? 120 : 180;
+      return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), alpha];
     };
     const getAisSize = (d: AisShipData): number => {
       if (d.mmsi && d.mmsi === this._highlightedMmsi) return 22;
@@ -5554,14 +5234,7 @@ export class DeckGLMap {
         opacity: maritimeDeckOpacity * 0.5,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPath: (d: AisShipData) => (d.trail ?? []) as [number, number][],
-        getColor: (d: AisShipData) => {
-          const t = d.shipType ?? 0;
-          if (t >= 80 && t <= 89) return [96, 165, 250, 180];   // Tanker bleu
-          if (t >= 70 && t <= 79) return [74, 222, 128, 180];   // Cargo vert
-          if (t >= 60 && t <= 69) return [249, 115, 22, 180];   // Passagers orange
-          if (t === 30 || t === 31 || t === 32 || t === 33 || t === 34) return [250, 204, 21, 180]; // Pêche jaune
-          return [148, 163, 184, 120];                           // Défaut gris
-        },
+        getColor: getAisTrailColor,
         getWidth: 1.5,
         widthUnits: 'pixels',
         widthMinPixels: 1,
@@ -5627,56 +5300,16 @@ export class DeckGLMap {
           getSize: [maritimeLabelData, this._highlightedMmsi, this._selectedShipMmsi, this.viewState.zoom],
         },
       }),
-      new ScatterplotLayer<TrafficIncident>({
-        id: 'deck-road-incidents',
-        data: this.roadTrafficIncidents,
-        visible: this.roadTrafficVisible,
-        opacity: roadDeckOpacity,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: TrafficIncident) => [d.lon, d.lat],
-        getRadius: (d: TrafficIncident) => {
-          if (d.severity === 'high' || d.type === 'Route barrée') return 22000;
-          if (d.severity === 'medium') return 18500;
-          return 11000;
-        },
-        getFillColor: (d: TrafficIncident) => {
-          if (d.severity === 'high' || d.type === 'Route barrée') return [255, 80, 80, 225] as [number, number, number, number];
-          if (d.severity === 'medium') return [255, 149, 0, 235] as [number, number, number, number];
-          return [255, 220, 80, 185] as [number, number, number, number];
-        },
-        radiusMinPixels: 6,
-        radiusMaxPixels: 20,
-        stroked: true,
-        getLineColor: (d: TrafficIncident) => (
-          d.severity === 'medium'
-            ? [255, 245, 214, 230] as [number, number, number, number]
-            : [255, 255, 255, 170] as [number, number, number, number]
-        ),
-        lineWidthMinPixels: 1.5,
-        pickable: true,
-        onHover: (info) => {
-          void this.handleRoadIncidentHover(info);
-        },
-        onClick: (info) => {
-          void this.handleRoadIncidentClick(info);
-        },
-        updateTriggers: {
-          getPosition: this.roadTrafficIncidents,
-          getFillColor: this.roadTrafficIncidents,
-          getRadius: this.roadTrafficIncidents,
-          getLineColor: this.roadTrafficIncidents,
-        },
-      }),
       // OSINT: Civil air traffic only (military flights shown in DÉFENSE layer)
       // Uses tweened positions for smooth animation between snapshots
       new IconLayer<AirTrafficFlight>({
         id: 'deck-air-traffic',
         data: this.civilAirTrafficFlights,
-        visible: this.airTrafficVisible,
+        visible: this.airTrafficVisible && this.airIconsShown,
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
-        getIcon: (d: AirTrafficFlight) => this.getAirTrafficIconDef(this.getAirTrafficColorHex(d)),
+        getIcon: () => this.getAirTrafficIconDef(AIR_ICON_HEX),
         getColor: () => [255, 255, 255, 255],
         getSize: (d: AirTrafficFlight) => (d.altitude > 30000 ? 20 : d.altitude > 15000 ? 18 : 16),
         getAngle: (d: AirTrafficFlight) => this.headingToDeckAngle(this.getTweenedHeading(d)),
@@ -6009,25 +5642,6 @@ export class DeckGLMap {
     return data;
   }
 
-  private getAirTrafficColorHex(flight: AirTrafficFlight): string {
-    const alt = flight.altitude ?? 0;
-
-    // Low altitude flights (< 5000ft): warm/orange
-    if (alt < 5000) return '#ff7832'; // [255, 120, 50]
-
-    // Climbing/Descending mid-level (< 15000ft): yellow
-    if (alt < 15000) return '#ffd232'; // [255, 210, 50]
-
-    // High-mid level (< 25000ft): greenish
-    if (alt < 25000) return '#82e650'; // [130, 230, 80]
-
-    // Crusing (< 35000ft): light blue
-    if (alt < 35000) return '#32c8ff'; // [50, 200, 255]
-
-    // High crusing (> 35000ft): violet / indigo
-    return '#8264ff'; // [130, 100, 255]
-  }
-
   private normalizeFlightHeading(heading?: number): number {
     if (!Number.isFinite(heading)) return 0;
     const normalized = (heading ?? 0) % 360;
@@ -6173,25 +5787,7 @@ export class DeckGLMap {
         ? new maplibregl.LngLat(coord[0], coord[1])
         : this.map.unproject([info.x ?? 0, info.y ?? 0]);
 
-    const altitude = flight.altitude > 0 ? `FL${Math.round(flight.altitude / 100)}` : 'Niveau inconnu';
-    const speed = flight.speed > 0 ? `${flight.speed} kts` : 'Vitesse inconnue';
-    const registration = flight.registration ? `<br><span style="color:#cbd5e1;font-size:10px">Immat: ${flight.registration}</span>` : '';
-    const aircraft = flight.aircraftModel || flight.aircraftType || 'Vol civil';
-    const operator = flight.operator ? `<br><span style="color:#94a3b8;font-size:10px">${flight.operator}</span>` : '';
-    const origin = flight.originAirport ? `<br><span style="color:#cbd5e1;font-size:10px">Origine: ${flight.originAirport}</span>` : '';
-    const destination = flight.destinationAirport ? `<br><span style="color:#cbd5e1;font-size:10px">Arrivée: ${flight.destinationAirport}</span>` : '';
-    const eta = flight.eta
-      ? `<br><span style="color:#cbd5e1;font-size:10px">ETA: ${new Date(flight.eta).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>`
-      : '';
-    const source = flight.source ? `<br><span style="color:#64748b;font-size:10px">Source: ${flight.source}</span>` : '';
-    const anomalies = Array.isArray(flight.anomalies) && flight.anomalies.length > 0
-      ? `<br><span style="color:#fda4af;font-size:10px">Anomalies: ${flight.anomalies.map((anomaly) => anomaly.label).join(' · ')}</span>`
-      : '';
-
-    this.showMilitaryTooltip(
-      lngLat,
-      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
-    );
+    this.showMilitaryTooltip(lngLat, airFlightTooltipHtml(flight));
   }
 
   private showAisHoverTooltip(lngLat: maplibregl.LngLat, html: string): void {
@@ -6214,61 +5810,6 @@ export class DeckGLMap {
   private hideAisHoverTooltip(): void {
     this.aisHoverTooltip?.remove();
     this.aisHoverTooltip = null;
-  }
-
-  private handleRoadIncidentHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): void {
-    if (!this.map) return;
-    const incident = info.object as TrafficIncident | undefined;
-    this.map.getCanvas().style.cursor = incident ? 'pointer' : '';
-
-    if (this.trafficIncidentHoverTimer) {
-      clearTimeout(this.trafficIncidentHoverTimer);
-      this.trafficIncidentHoverTimer = null;
-    }
-
-    if (!incident) {
-      this.hideTrafficIncidentPopup();
-      return;
-    }
-
-    const coord = info.coordinate;
-    const lngLat =
-      coord && coord.length >= 2
-        ? new maplibregl.LngLat(coord[0], coord[1])
-        : this.map.unproject([info.x ?? 0, info.y ?? 0]);
-
-    // Instant static popup — no deferred flow enrichment on hover (never returns data, causes tooltip jump)
-    const popup = this.getTrafficIncidentPopup();
-    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident)).addTo(this.map);
-    const popupEl = popup.getElement();
-    popupEl.style.pointerEvents = 'none';
-    popupEl.style.zIndex = '2000';
-  }
-
-  private async handleRoadIncidentClick(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): Promise<void> {
-    if (!this.map) return;
-    const incident = info.object as TrafficIncident | undefined;
-    if (!incident) return;
-
-    const coord = info.coordinate;
-    const lngLat =
-      coord && coord.length >= 2
-        ? new maplibregl.LngLat(coord[0], coord[1])
-        : this.map.unproject([info.x ?? 0, info.y ?? 0]);
-    await this.showTrafficIncidentPopupResolved(lngLat, incident);
-  }
-
-  private getTrafficIncidentPopup(): maplibregl.Popup {
-    if (!this.trafficIncidentPopup) {
-      this.trafficIncidentPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        maxWidth: '340px',
-        className: 'dark-popup',
-        offset: 8,
-      });
-    }
-    return this.trafficIncidentPopup;
   }
 
   private getEnrichedHoverPopup(): maplibregl.Popup {
@@ -6298,432 +5839,6 @@ export class DeckGLMap {
 
   private hideEnrichedHoverPopup(): void {
     this.enrichedHoverPopup?.remove();
-  }
-
-  private openRailStationPopup(_lngLat: maplibregl.LngLatLike, properties: Record<string, unknown>): void {
-    if (!this.map) return;
-    this.hideEnrichedHoverPopup();
-    if (!this.railStationPanel) {
-      this.railStationPanel = document.createElement('div');
-      this.railStationPanel.className = 'rail-station-detail-panel';
-      this.container.appendChild(this.railStationPanel);
-    }
-    this.renderRailStationPopupPage(this.railStationPanel, properties, 0);
-  }
-
-  private parseRailStationDisruptionSummaries(properties: Record<string, unknown>): Array<{
-    id: string;
-    severity: string;
-    type: string;
-    line: string;
-    trainNumber?: string;
-    description: string;
-    causeLabel?: string;
-    effectLabel?: string;
-    impactLabel?: string;
-    sourceMessages?: string[];
-    totalDelayMinutes?: number;
-    departureName?: string;
-    arrivalName?: string;
-    departurePlannedTime?: string;
-    departureUpdatedTime?: string;
-    arrivalPlannedTime?: string;
-    arrivalUpdatedTime?: string;
-    startDate: string;
-    endDate?: string;
-    affectedStops?: string[];
-    stopDetails?: Array<{
-      name: string;
-      plannedTime?: string;
-      updatedTime?: string;
-      delayMinutes?: number;
-    }>;
-  }> {
-    try {
-      const parsed = JSON.parse(String(properties.disruptionSummariesJson ?? '[]'));
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private getRailDisruptionTemporalState(startDate?: string, endDate?: string): { label: string; color: string; bg: string } {
-    const now = Date.now();
-    const start = startDate ? new Date(startDate).getTime() : Number.NaN;
-    const end = endDate ? new Date(endDate).getTime() : Number.NaN;
-
-    if (Number.isFinite(start) && start > now) {
-      return { label: 'À venir', color: '#7DD3FC', bg: 'rgba(125,211,252,0.14)' };
-    }
-    if (Number.isFinite(end) && end < now) {
-      return { label: 'Terminée', color: '#94A3B8', bg: 'rgba(148,163,184,0.14)' };
-    }
-    return { label: 'En cours', color: '#34D399', bg: 'rgba(52,211,153,0.14)' };
-  }
-
-  private formatRailDateTime(value?: string): string {
-    if (!value) return 'n/d';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'n/d';
-    return date.toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
-  private renderRailStationPopupPage(
-    root: HTMLElement,
-    properties: Record<string, unknown>,
-    requestedIndex: number,
-  ): void {
-    const severity = String(properties.severity ?? 'info');
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-    const name = String(properties.name ?? 'Gare');
-    const count = Number(properties.count ?? 0);
-    const disruptions = this.parseRailStationDisruptionSummaries(properties);
-    const lines = (() => {
-      try {
-        const parsed = JSON.parse(String(properties.linesJson ?? '[]'));
-        return Array.isArray(parsed) ? parsed as string[] : [];
-      } catch {
-        return [];
-      }
-    })();
-
-    const safeIndex = Math.max(0, Math.min(requestedIndex, Math.max(0, disruptions.length - 1)));
-    const selected = disruptions[safeIndex];
-    const headerStats = `
-      <div class="rail-detail-stats">
-        <div class="rail-detail-stat">
-          <div class="rail-detail-stat-value">${count}</div>
-          <div class="rail-detail-stat-label">perturbation${count > 1 ? 's' : ''}</div>
-        </div>
-        <div class="rail-detail-stat">
-          <div class="rail-detail-stat-value">${lines.length}</div>
-          <div class="rail-detail-stat-label">ligne${lines.length > 1 ? 's' : ''}</div>
-        </div>
-      </div>
-    `;
-
-    if (!selected) {
-      root.innerHTML = `
-        <div class="rail-station-detail-shell">
-          <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-            <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
-            <div class="rail-detail-title-wrap">
-              <div class="rail-detail-title">${this.escapeHtml(name)}</div>
-              <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
-            </div>
-            <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
-          </div>
-          ${headerStats}
-          <div class="rail-detail-empty">Aucun detail de perturbation disponible.</div>
-        </div>
-      `;
-      root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
-        this.railStationPanel?.remove();
-        this.railStationPanel = null;
-      });
-      return;
-    }
-
-    const cardColor = RAIL_SEVERITY_HEX[selected.severity] ?? RAIL_SEVERITY_HEX.info;
-    const cardBg = RAIL_SEVERITY_TINT[selected.severity] ?? RAIL_SEVERITY_TINT.info;
-    const routeLabel = selected.departureName && selected.arrivalName
-      ? `${this.escapeHtml(selected.departureName)} → ${this.escapeHtml(selected.arrivalName)}`
-      : selected.departureName
-        ? this.escapeHtml(selected.departureName)
-        : selected.arrivalName
-          ? this.escapeHtml(selected.arrivalName)
-          : 'Trajet non precise';
-    const sourceMessages = (selected.sourceMessages ?? []).slice(0, 4);
-    const affectedStops = (selected.affectedStops ?? []).slice(0, 12);
-    const stopDetails = (selected.stopDetails ?? []).slice(0, 18);
-    const causeLabel = selected.causeLabel || selected.description || 'Cause non précisée';
-    const effectLabel = selected.effectLabel || 'Impact non qualifié par SNCF';
-    const impactLabel = selected.impactLabel || 'Impact horaire à confirmer dans le flux SNCF';
-    const severityLabel =
-      selected.severity === 'critical' ? 'Critique'
-        : selected.severity === 'high' ? 'Important'
-          : selected.severity === 'medium' ? 'Modere'
-            : selected.severity === 'low' ? 'Faible'
-              : 'Info';
-    const typeLabel =
-      selected.type === 'cancellation' ? 'Suppression'
-        : selected.type === 'delay' ? 'Retard'
-          : selected.type === 'works' ? 'Travaux'
-            : 'Perturbation';
-    const formatTimeCell = (planned?: string, updated?: string): string => {
-      if (updated && planned && updated !== planned) {
-        return `${this.escapeHtml(planned)} → <span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
-      }
-      if (updated) return `<span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
-      if (planned) return this.escapeHtml(planned);
-      return 'n/d';
-    };
-    const temporalState = this.getRailDisruptionTemporalState(selected.startDate, selected.endDate);
-    const itineraryHtml = stopDetails.length > 0
-      ? stopDetails.map((stop, index) => {
-        const isFirst = index === 0;
-        const isLast = index === stopDetails.length - 1;
-        const planned = stop.plannedTime ? this.escapeHtml(stop.plannedTime) : '';
-        const updated = stop.updatedTime ? this.escapeHtml(stop.updatedTime) : '';
-        const hasChange = planned && updated && planned !== updated;
-        const timeHtml = hasChange
-          ? `<span style="color:#7c8aa5;text-decoration:line-through;">${planned}</span><span style="color:${cardColor};font-weight:750;margin-left:4px;">${updated}</span>`
-          : updated
-            ? `<span style="color:#dce4f4;font-weight:650;">${updated}</span>`
-            : planned
-              ? `<span style="color:#c9d3e6;">${planned}</span>`
-              : '<span style="color:#5f6c82;">n/d</span>';
-        return `
-          <div style="display:grid;grid-template-columns:14px 1fr auto;gap:7px;align-items:center;padding:4px 0;border-bottom:${index < stopDetails.length - 1 ? '1px solid rgba(255,255,255,0.045)' : '0'};">
-            <span style="width:7px;height:7px;border-radius:50%;background:${isFirst || isLast ? cardColor : 'rgba(156,172,199,0.55)'};justify-self:center;"></span>
-            <span style="font-size:10px;color:${isFirst || isLast ? '#fff' : '#c9d3e6'};font-weight:${isFirst || isLast ? '700' : '500'};line-height:1.3;">${this.escapeHtml(stop.name)}</span>
-            <span style="font-size:10px;white-space:nowrap;">${timeHtml}</span>
-          </div>
-        `;
-      }).join('')
-      : '';
-
-    const trainButtons = disruptions.map((entry, index) => {
-      const active = index === safeIndex;
-      const label = entry.trainNumber ? `Train ${this.escapeHtml(entry.trainNumber)}` : this.escapeHtml(entry.line);
-      return `
-        <button type="button" class="rail-train-chip ${active ? 'active' : ''}" data-rail-index="${index}" style="border-color:${active ? `${cardColor}66` : 'rgba(255,255,255,0.12)'};background:${active ? cardBg : 'rgba(255,255,255,0.06)'};color:${active ? '#fff' : '#c9d3e6'};">
-          ${label}
-        </button>
-      `;
-    }).join('');
-
-    root.innerHTML = `
-      <div class="rail-station-detail-shell">
-        <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-          <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
-          <div class="rail-detail-title-wrap">
-            <div class="rail-detail-title">${this.escapeHtml(name)}</div>
-            <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
-          </div>
-          <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
-        </div>
-        ${headerStats}
-        <div class="rail-detail-trains">
-          <div class="rail-detail-section-label">Train impacte</div>
-          <div class="rail-detail-train-list">${trainButtons}</div>
-        </div>
-        <div class="rail-detail-nav">
-          <button type="button" data-rail-nav="prev" ${safeIndex === 0 ? 'disabled' : ''}>Précédente</button>
-          <div class="rail-detail-page">${safeIndex + 1} / ${disruptions.length}</div>
-          <button type="button" data-rail-nav="next" ${safeIndex >= disruptions.length - 1 ? 'disabled' : ''}>Suivante</button>
-        </div>
-        <div class="rail-station-detail-body">
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <div style="width:8px;height:8px;border-radius:50%;background:${cardColor};margin-top:5px;flex-shrink:0;"></div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-                <div style="font-size:12px;font-weight:700;color:#fff;">${selected.trainNumber ? `${this.escapeHtml(selected.trainNumber)} · ` : ''}${this.escapeHtml(selected.line)}</div>
-                <div style="font-size:9px;color:${cardColor};font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">${severityLabel}</div>
-              </div>
-              <div style="margin-top:3px;font-size:10px;color:#c9d3e6;">${typeLabel} · ${routeLabel}</div>
-              <div style="margin-top:6px;display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:${temporalState.bg};color:${temporalState.color};font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${temporalState.label}</div>
-              <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Depart</div>
-                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.departurePlannedTime, selected.departureUpdatedTime)}</div>
-                </div>
-                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Arrivee</div>
-                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.arrivalPlannedTime, selected.arrivalUpdatedTime)}</div>
-                </div>
-              </div>
-              <div style="margin-top:6px;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#9aa7bf;">
-                <span>Debut: ${this.formatRailDateTime(selected.startDate)}</span>
-                <span>${selected.endDate ? `Fin: ${this.formatRailDateTime(selected.endDate)}` : ''}</span>
-              </div>
-              <div style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:5px;">
-                <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Origine / cause</div>
-                  <div style="margin-top:2px;font-size:10px;color:#eef4ff;line-height:1.4;font-weight:650;">${this.escapeHtml(causeLabel)}</div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
-                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact train</div>
-                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(effectLabel)}</div>
-                  </div>
-                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
-                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact horaires</div>
-                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(impactLabel)}</div>
-                  </div>
-                </div>
-              </div>
-              ${typeof selected.totalDelayMinutes === 'number' && selected.totalDelayMinutes > 0 ? `<div style="margin-top:6px;font-size:10px;color:${cardColor};font-weight:700;">Retard estime: +${selected.totalDelayMinutes} min</div>` : ''}
-              <div style="margin-top:6px;font-size:10px;color:#b4bfd4;line-height:1.45;">${this.escapeHtml(selected.description)}</div>
-              ${itineraryHtml ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Itineraire horaire</div><div style="background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:5px 7px;">${itineraryHtml}</div></div>` : ''}
-              ${sourceMessages.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Messages SNCF</div>${sourceMessages.map((message) => `<div style="font-size:10px;color:#dce4f4;line-height:1.45;margin-bottom:3px;">• ${this.escapeHtml(message)}</div>`).join('')}</div>` : ''}
-              ${affectedStops.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Arrets impactes</div><div style="font-size:10px;color:#c9d3e6;line-height:1.5;">${this.escapeHtml(affectedStops.join(' • '))}</div></div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    root.querySelectorAll<HTMLElement>('[data-rail-index]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        const nextIndex = Number(button.dataset.railIndex ?? safeIndex);
-        this.renderRailStationPopupPage(root, properties, nextIndex);
-      });
-    });
-    root.querySelectorAll<HTMLElement>('[data-rail-nav]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        if (button.getAttribute('disabled') !== null) return;
-        const direction = button.dataset.railNav;
-        const nextIndex = direction === 'prev' ? safeIndex - 1 : safeIndex + 1;
-        this.renderRailStationPopupPage(root, properties, nextIndex);
-      });
-    });
-    root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
-      this.railStationPanel?.remove();
-      this.railStationPanel = null;
-    });
-  }
-
-  private buildRailArcHoverHtml(properties: Record<string, unknown>): string {
-    const severity = String(properties.severity ?? 'info');
-    const severityLabel =
-      severity === 'critical' ? 'Supprimé'
-        : severity === 'high' ? 'Retards importants'
-          : severity === 'medium' ? 'Service réduit'
-            : severity === 'low' ? 'Perturbation mineure'
-              : 'Info';
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-
-    const type = String(properties.type ?? 'other');
-    const typeIcon =
-      type === 'cancellation' ? fmIcon('ban', { size: 16 })
-        : type === 'delay' ? fmIcon('timer', { size: 16 })
-          : type === 'works' ? fmIcon('construction', { size: 16 })
-            : fmIcon('triangle-alert', { size: 16 });
-    const typeLabel =
-      type === 'cancellation' ? 'Suppression'
-        : type === 'delay' ? 'Retard'
-          : type === 'works' ? 'Travaux'
-            : 'Perturbation';
-
-    const line = String(properties.line ?? 'Train');
-    const trainNumber = String(properties.trainNumber ?? '').trim();
-    const departureName = String(properties.departureName ?? '').trim();
-    const arrivalName = String(properties.arrivalName ?? '').trim();
-    const departurePlannedTime = String(properties.departurePlannedTime ?? '').trim();
-    const departureUpdatedTime = String(properties.departureUpdatedTime ?? '').trim();
-    const arrivalPlannedTime = String(properties.arrivalPlannedTime ?? '').trim();
-    const arrivalUpdatedTime = String(properties.arrivalUpdatedTime ?? '').trim();
-    const desc = String(properties.description ?? '').trim();
-    const totalDelayMinutes = Number(properties.totalDelayMinutes ?? 0);
-    const affectedStopsCount = Number(properties.affectedStopsCount ?? 0);
-    let affectedStops: string[];
-    try { affectedStops = JSON.parse(String(properties.affectedStopsJson ?? '[]')); } catch { affectedStops = []; }
-
-    // Full station list — use affectedStops if available, else fall back to dep/arr pair
-    const allStops: string[] = affectedStops.length > 0
-      ? affectedStops
-      : [...(departureName ? [departureName] : []), ...(arrivalName ? [arrivalName] : [])];
-
-    const stationRows = allStops.map((stop, i) => {
-      const isFirst = i === 0;
-      const isLast = i === allStops.length - 1;
-      const weight = (isFirst || isLast) ? '600' : '400';
-      const color = (isFirst || isLast) ? '#ffffff' : '#b0b0c0';
-      const depTime = isFirst && departureUpdatedTime ? departureUpdatedTime
-        : isFirst && departurePlannedTime ? departurePlannedTime : '';
-      const arrTime = isLast && arrivalUpdatedTime ? arrivalUpdatedTime
-        : isLast && arrivalPlannedTime ? arrivalPlannedTime : '';
-      const time = depTime || arrTime;
-      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? severityColor : '#8a8a9a';
-      return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
-        <span style="font-size:11px;color:${color};font-weight:${weight};">${this.escapeHtml(stop)}</span>
-        ${time ? `<span style="font-size:10px;color:${timeColor};flex-shrink:0;margin-left:8px;">${this.escapeHtml(time)}</span>` : ''}
-      </div>`;
-    }).join('');
-
-    return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:260px;max-width:340px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
-        <!-- Header -->
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${severityBg};border-bottom:2px solid ${severityColor};">
-          <div style="font-size:16px;line-height:1;">${typeIcon}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              ${trainNumber ? `${this.escapeHtml(trainNumber)} · ` : ''}${this.escapeHtml(line)}
-            </div>
-            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">${severityLabel} · ${typeLabel}</div>
-          </div>
-          ${totalDelayMinutes > 0 ? `<div style="background:${severityBg};border:1px solid ${severityColor}66;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:${severityColor};white-space:nowrap;">+${totalDelayMinutes} min</div>` : ''}
-        </div>
-        <!-- Station list -->
-        ${stationRows ? `
-          <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
-              Gares concernées${affectedStopsCount > 0 ? ` (${affectedStopsCount})` : ''}
-            </div>
-            ${stationRows}
-          </div>
-        ` : ''}
-        <!-- Description -->
-        ${desc ? `<div style="padding:8px 12px;font-size:11px;color:#9898a8;line-height:1.5;">${this.escapeHtml(desc.length > 140 ? desc.slice(0, 140) + '…' : desc)}</div>` : ''}
-      </div>
-    `;
-  }
-
-  private buildRailStationHoverHtml(properties: Record<string, unknown>): string {
-    const severity = String(properties.severity ?? 'info');
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-
-    const name = String(properties.name ?? 'Gare');
-    const count = Number(properties.count ?? 0);
-    let lines: string[];
-    let trains: string[];
-    try { lines = JSON.parse(String(properties.linesJson ?? '[]')); } catch { lines = []; }
-    try { trains = JSON.parse(String(properties.trainNumbersJson ?? '[]')); } catch { trains = []; }
-
-    const lineChips = lines.slice(0, 6).map((l: string) =>
-      `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid ${severityColor}33;font-size:10px;color:#d8d8df;white-space:nowrap;">${this.escapeHtml(l)}</span>`
-    ).join('');
-    const trainPreview = trains.slice(0, 5).join(', ');
-    const hiddenTrainCount = Math.max(0, trains.length - 5);
-
-    return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;width:260px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:${severityBg};">
-          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${fmIcon('train-front', { size: 18 })}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
-            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,0.07);">
-          <div style="padding:9px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.07);">
-            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${count}</div>
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Perturbation${count > 1 ? 's' : ''}</div>
-          </div>
-          <div style="padding:9px 12px;text-align:center;">
-            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${lines.length}</div>
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Ligne${lines.length > 1 ? 's' : ''}</div>
-          </div>
-        </div>
-        <div style="padding:10px 12px;">
-          ${lineChips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${lineChips}</div>` : ''}
-          ${trains.length ? `<div style="font-size:10px;color:#7c8aa5;line-height:1.45;">Trains: <span style="color:#c9d3e6;">${this.escapeHtml(trainPreview)}${hiddenTrainCount > 0 ? ` +${hiddenTrainCount}` : ''}</span></div>` : ''}
-        </div>
-      </div>
-    `;
-
   }
 
   private buildInfrastructureHoverHtml(properties: Record<string, unknown>): string {
@@ -7314,121 +6429,14 @@ export class DeckGLMap {
     `;
   }
 
-  private hideTrafficIncidentPopup(): void {
-    this.trafficIncidentPopup?.remove();
-  }
-
-  private async showTrafficIncidentPopupResolved(
-    lngLat: maplibregl.LngLatLike,
-    incident: TrafficIncident,
-  ): Promise<void> {
-    if (!this.map) return;
-    let flow: TrafficFlowSegment | null;
-    try {
-      flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
-    } catch {
-      flow = null;
-    }
-
-    const popup = this.getTrafficIncidentPopup();
-    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident, flow)).addTo(this.map);
-  }
-
-  private buildTrafficIncidentPopupHtml(incident: TrafficIncident, flow?: TrafficFlowSegment | null): string {
-    const delayMin = Math.round((incident.delay || 0) / 60);
-    const delayText = delayMin > 0 ? `${delayMin} min` : null;
-    const lengthText = incident.length > 0 ? `${(incident.length / 1000).toFixed(1)} km` : null;
-    const sevColors: Record<string, string> = {
-      critical: '#ff3b30',
-      high: '#ff3b30',
-      medium: '#ff9500',
-      low: '#ffcc00',
-    };
-    const sevColor = sevColors[incident.severity] || '#ffcc00';
-    const sevText = incident.severity === 'critical' ? 'Critique'
-      : incident.severity === 'high' ? 'Fort'
-        : incident.severity === 'medium' ? 'Modéré'
-          : 'Faible';
-    const typeIcons: Record<string, string> = {
-      Accident: fmIcon('siren', { size: 20 }),
-      Bouchon: fmIcon('car-front', { size: 20 }),
-      Travaux: fmIcon('construction', { size: 20 }),
-      'Voie fermée': fmIcon('ban', { size: 20 }),
-      'Route barrée': fmIcon('circle-off', { size: 20 }),
-      'Vent fort': fmIcon('wind', { size: 20 }),
-      Inondation: fmIcon('waves', { size: 20 }),
-    };
-    const emoji = typeIcons[incident.type] || fmIcon('triangle-alert', { size: 20 });
-    const routeText = incident.roadNumbers && incident.roadNumbers.length > 0 ? incident.roadNumbers.join(', ') : null;
-    const validityText = incident.timeValidity === 'future' ? 'Planifié' : 'En cours';
-    const formatDate = (value?: string | null) => {
-      if (!value) return null;
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return this.escapeHtml(value);
-      return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    };
-    const statItems = [
-      delayText ? `<div><span style="color:#71717a;">Retard</span><br><strong>${delayText}</strong></div>` : '',
-      lengthText ? `<div><span style="color:#71717a;">Longueur</span><br><strong>${lengthText}</strong></div>` : '',
-      routeText ? `<div><span style="color:#71717a;">Route</span><br><strong>${this.escapeHtml(routeText)}</strong></div>` : '',
-      incident.numberOfReports != null ? `<div><span style="color:#71717a;">Signalements</span><br><strong>${incident.numberOfReports}</strong></div>` : '',
-    ].filter(Boolean).join('');
-
-    const flowHtml = flow === undefined
-      ? ''
-      : flow
-        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
-            <div><span style="color:#71717a;">Vitesse</span><br><strong>${flow.currentSpeed} km/h</strong></div>
-            <div><span style="color:#71717a;">Vitesse libre</span><br><strong>${flow.freeFlowSpeed} km/h</strong></div>
-            <div><span style="color:#71717a;">Temps courant</span><br><strong>${flow.currentTravelTime}s</strong></div>
-            <div><span style="color:#71717a;">Fermeture</span><br><strong>${flow.roadClosure ? 'Oui' : 'Non'}</strong></div>
-          </div>`
-        : `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:#71717a;">Données flow non disponibles.</div>`;
-
-    return `
-      <div style="padding:14px; min-width:280px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-          <span style="font-size:20px;">${emoji}</span>
-          <div style="flex:1;">
-            <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(incident.type)}</div>
-            <div style="font-size:11px; color:${sevColor}; font-weight:600;">${sevText} · ${validityText}</div>
-          </div>
-        </div>
-        ${statItems ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:10px;">${statItems}</div>` : ''}
-        ${incident.osintSignals && incident.osintSignals.length > 0 ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Signaux OSINT</span><br><strong>${this.escapeHtml(incident.osintSignals.join(' · '))}</strong></div>` : ''}
-        ${(incident.from || incident.to) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Tronçon</span><br><strong>${this.escapeHtml(incident.from ?? 'n.d.')} → ${this.escapeHtml(incident.to ?? 'n.d.')}</strong></div>` : ''}
-        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime) ?? 'n.d.'} → ${formatDate(incident.endTime) ?? 'n.d.'}</strong></div>` : ''}
-        ${(incident.lastReportTime || incident.probabilityOfOccurrence) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px;">
-          ${incident.lastReportTime ? `<div><span style="color:#71717a;">Dernier signalement</span><br><strong>${formatDate(incident.lastReportTime)}</strong></div>` : ''}
-          ${incident.probabilityOfOccurrence ? `<div><span style="color:#71717a;">Probabilité</span><br><strong>${this.escapeHtml(incident.probabilityOfOccurrence)}</strong></div>` : ''}
-        </div>` : ''}
-        ${incident.description && incident.description.trim() !== '' ? `<p style="margin:0; font-size:11px; color:#a1a1aa;">${this.escapeHtml(incident.description)}</p>` : ''}
-        ${flowHtml}
-      </div>
-    `;
-  }
-
   private getAisTooltipHtml(ship: AisShipData): string {
     const shipType = Number.isFinite(ship.shipType) ? ship.shipType : 0;
-    const fishingByStatus = shipType === 0 && ship.navStatus === 7;
+    const category = vesselCategory(shipType);
+    const fishingByStatus = category === 'inconnu' && ship.navStatus === 7;
 
-    // Get readable ship type label
-    const typeLabel = fishingByStatus ? 'Pêche (statut)' : this.getShipTypeLabel(shipType);
-
-    // Ship type icons based on AIS code
-    const getTypeIcon = (t: number): string => {
-      if (t >= 80 && t <= 89) return fmIcon('fuel');       // Tanker
-      if (t >= 70 && t <= 79) return fmIcon('package');    // Cargo
-      if (t >= 60 && t <= 69) return fmIcon('ship');       // Passagers
-      if (t === 55) return fmIcon('shield');               // Police/SAR
-      if (t === 51) return fmIcon('life-buoy');            // SAR
-      if (t === 52 || t === 53) return fmIcon('anchor');   // Remorqueur/pilote
-      if (t === 36 || t === 37 || (t >= 20 && t <= 29)) return fmIcon('waves'); // Voilier/plaisance
-      if (t >= 40 && t <= 49) return fmIcon('zap');        // Grande vitesse
-      if (t >= 30 && t <= 34) return fmIcon('fish');        // Pêche
-      return fmIcon('ship');                                // Inconnu/divers
-    };
-    const typeIcon = fishingByStatus ? fmIcon('fish') : getTypeIcon(shipType);
+    // Libellé et icône du type : même classement que la teinte de la carte, la légende et les comptes du serveur (traffic-legend.ts).
+    const typeLabel = fishingByStatus ? 'Pêche (statut)' : vesselTypeLabel(category);
+    const typeIcon = fmIcon(fishingByStatus ? 'fish' : this.getShipTypeIcon(category));
 
     const nameColor = '#fff';
     const typeColor = '#9898a8';
@@ -8052,7 +7060,7 @@ export class DeckGLMap {
       LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
       LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
       LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
-      LYR_TRAFFIC, LYR_AIR_TRAFFIC_LABEL,
+      LYR_TRAFFIC, ...Object.values(TRAFFIC_LAYER_KEYS).flat(), LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS,
     ];
 
     let activeLayers: string[] = [];
@@ -8079,11 +7087,13 @@ export class DeckGLMap {
         LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       ];
     } else if (categoryId === 'trafficRoad') {
-      activeLayers = [LYR_TRAFFIC, LYR_TRAFFIC_CLUSTER, LYR_TRAFFIC_CLUSTER_COUNT, LYR_TRAFFIC_INCIDENTS];
+      activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
-      activeLayers = [LYR_AIR_TRAFFIC_LABEL];
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficAir];
+    } else if (categoryId === 'trafficRail') {
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];
     } else if (categoryId === 'trafficMaritime') {
-      activeLayers = [];
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];
     }
 
     allLegendLayers.forEach(layerId => {
@@ -9815,140 +8825,123 @@ export class DeckGLMap {
   }
   private _lastHoveredISNRDeptId: number | null = null;
 
-  // ─── Rail Network (SNCF disruptions) ───
+  // ─── Trafics (spec 2026-10-03 trafics § 3) ───
 
-  /**
-   * Update the persistent rail disruption layer.
-   * Call with the result of buildRailNetworkData(disruptions).
-   * Pass empty FeatureCollections to clear the layer.
-   */
-  updateRailNetwork(data: RailNetworkData): void {
-    if (!this.map) return;
-
-    const arcSrc = this.map.getSource(SRC_RAIL_ARCS) as maplibregl.GeoJSONSource | undefined;
-    const staSrc = this.map.getSource(SRC_RAIL_STATIONS) as maplibregl.GeoJSONSource | undefined;
-
-    arcSrc?.setData(data.arcs);
-    staSrc?.setData(data.stations);
+  /** Route : sections Traficolor, bouchons TomTom et événements DIR ; `now` sert au retard (S2 : couleurs retirées). */
+  updateRoadTraffic(national: RoadNationalResponse | null, urban: RoadUrbanResponse | null, now: number): void {
+    this.setTrafficSource(SRC_ROAD_SECTIONS, traficolorFeatures(national, now));
+    this.setTrafficSource(SRC_ROAD_JAMS, urbanJamFeatures(urban, now));
+    this.setTrafficSource(SRC_ROAD_EVENTS, roadEventFeatures(national, now));
   }
 
-  // ─── Train Route Highlight ───
+  /** Aérien : aéroports (surface selon les départs) et urgences en vol ; les positions des avions passent par updateAirTraffic. */
+  updateAirOverview(overview: AirOverviewResponse | null, now: number): void {
+    this.setTrafficSource(SRC_AIRPORTS, airportFeatures(overview, now));
+    this.setTrafficSource(SRC_AIR_EMERGENCIES, airEmergencyFeatures(overview, now));
+  }
+
+  /** Rail : gares des trains perturbés en cours ; le retard des données SNCF retire aussi la couleur du trajet tracé. */
+  updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
+    this.railTrafficLate = railOverviewLate(overview, now);
+    this.setTrafficSource(SRC_RAIL_STATIONS, railStationFeatures(overview, now));
+    // Trajet tracé : retard relu dans la nouvelle donnée quand le train y figure encore.
+    const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? t : null);
+    this.chosenTrain = fresh(this.chosenTrain);
+    this.previewTrain = fresh(this.previewTrain);
+    this.drawTrainRoute();
+  }
+
+  /** Maritime : mouillages devant les ports et signalements croisés (T3) ; les navires restent dans la couche Deck.gl du WebSocket. */
+  updateMaritimeSnapshot(snapshot: MaritimeSnapshot | null, now: number): void {
+    this.setTrafficSource(SRC_ANCHORAGES, anchorageFeatures(snapshot, now));
+    this.setTrafficSource(SRC_AIS_SIGNALS, maritimeSignalFeatures(snapshot, now));
+  }
+
+  /** Train choisi dans le panneau ferroviaire : trajet par ses arrêts, couleur de son retard ; null efface. */
+  highlightTrainRoute(train: RailTrain | null): void {
+    this.chosenTrain = train;
+    this.drawTrainRoute();
+  }
+
+  /** Train survolé dans le panneau : son trajet le temps du survol ; null rend le trajet du train choisi (ou rien). */
+  previewTrainRoute(train: RailTrain | null): void {
+    this.previewTrain = train;
+    this.drawTrainRoute();
+  }
+
+  private drawTrainRoute(): void {
+    const train = this.previewTrain ?? this.chosenTrain;
+    const src = this.map?.getSource(SRC_TRAIN_ROUTE) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(trainRouteFeatures(train, this.railTrafficLate));
+  }
+
+  private setTrafficSource(id: string, data: GeoJSON.FeatureCollection): void {
+    this.hideTrafficHover();
+    const src = this.map?.getSource(id) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(data);
+  }
+
+  /** Ferme l'infobulle de survol des Trafics (souris hors de la carte, nouvelles données, couches changées). */
+  private hideTrafficHover(): void {
+    if (!this.trafficHoverShown) return;
+    this.trafficHoverShown = false;
+    this.trafficHoverPopup?.remove();
+  }
+
+  /** Curseur main sur un bouchon (cliquable) seulement ; remis à zéro uniquement s'il a été posé ici. */
+  private setTrafficPointer(on: boolean): void {
+    if (!this.map || on === this.trafficPointer) return;
+    this.trafficPointer = on;
+    this.map.getCanvas().style.cursor = on ? 'pointer' : '';
+  }
 
   /**
-   * Draw a train route between two stations on the map.
-   * Pass null to clear the route.
+   * Couches Trafics : une infobulle au survol, celle de la couche dessinée au-dessus (préparée avec la donnée, texte échappé) ;
+   * clic sur un bouchon TomTom : vitesse du tronçon (/api/traffic/flow, budget serveur du jour).
    */
-  highlightTrainRoute(
-    disruption: TransportDisruption | null,
-  ): void {
-    if (!this.map) return;
-
-    const src = this.map.getSource(SRC_TRAIN_ROUTE) as maplibregl.GeoJSONSource;
-    if (!src) return;
-
-    // Clear route if no coordinates
-    if (!disruption) {
-      src.setData(emptyFC());
-      return;
-    }
-
-    const severity = disruption.severity;
-    const routeCoords = disruption.routeGeometry?.coordinates ?? null;
-    const fallbackDeparture = routeCoords?.[0] as [number, number] | undefined;
-    const fallbackArrival = routeCoords?.[routeCoords.length - 1] as [number, number] | undefined;
-    const departure = disruption.departure?.coordinates ?? disruption.coordinates ?? fallbackDeparture ?? null;
-    const arrival = disruption.arrival?.coordinates ?? fallbackArrival ?? null;
-    const primaryPoint = departure ?? arrival;
-
-    if (!primaryPoint) {
-      src.setData(emptyFC());
-      return;
-    }
-
-    const features: GeoJSON.Feature[] = [];
-    const departurePoint = departure ?? primaryPoint;
-
-    // Add departure station point
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: departurePoint },
-      properties: {
-        role: departure ? 'departure' : 'localized',
-        severity: severity ?? 'medium',
-        name: departure ? (disruption.departure?.name ?? 'Départ') : (disruption.arrival?.name ?? 'Point localisé'),
-        line: disruption.line,
-        trainNumber: disruption.trainNumber,
-        departureName: disruption.departure?.name,
-        arrivalName: disruption.arrival?.name,
-        departurePlannedTime: disruption.departure?.plannedTime,
-        departureUpdatedTime: disruption.departure?.updatedTime,
-        arrivalPlannedTime: disruption.arrival?.plannedTime,
-        arrivalUpdatedTime: disruption.arrival?.updatedTime,
-        totalDelayMinutes: disruption.totalDelayMinutes,
-        affectedStopsCount: disruption.affectedStops?.length ?? 0,
-        affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-        description: disruption.description,
-        geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
-      },
+  private initTrafficInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const visible = TRAFFIC_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topTrafficHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      this.setTrafficPointer(hit !== undefined && TRAFFIC_JAM_LAYERS.includes(hit.layer.id));
+      const html = hit ? trafficTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideTrafficHover();
+        return;
+      }
+      this.trafficHoverShown = true;
+      const popup = this.trafficHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.trafficHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-
-    if (arrival && (!departure || arrival[0] !== departure[0] || arrival[1] !== departure[1])) {
-      // Add arrival station point
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: arrival },
-        properties: {
-          role: 'arrival',
-          severity: severity ?? 'medium',
-          name: disruption.arrival?.name ?? 'Arrivée',
-          line: disruption.line,
-          trainNumber: disruption.trainNumber,
-          departureName: disruption.departure?.name,
-          arrivalName: disruption.arrival?.name,
-          departurePlannedTime: disruption.departure?.plannedTime,
-          departureUpdatedTime: disruption.departure?.updatedTime,
-          arrivalPlannedTime: disruption.arrival?.plannedTime,
-          arrivalUpdatedTime: disruption.arrival?.updatedTime,
-          totalDelayMinutes: disruption.totalDelayMinutes,
-          affectedStopsCount: disruption.affectedStops?.length ?? 0,
-          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-          description: disruption.description,
-          geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
-        },
-      });
-
-    }
-
-    if (departure && arrival) {
-      const useFocusGeometry = !!disruption.routeGeometry?.coordinates?.length;
-      const lineCoords = useFocusGeometry
-        ? disruption.routeGeometry!.coordinates
-        : this.generateCurvedLine(departure, arrival);
-      const focusFidelity =
-        useFocusGeometry ? (disruption.geometryFidelity ?? 'matched') : 'fallback';
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: lineCoords },
-        properties: {
-          severity: severity ?? 'medium',
-          line: disruption.line,
-          trainNumber: disruption.trainNumber,
-          departureName: disruption.departure?.name,
-          arrivalName: disruption.arrival?.name,
-          departurePlannedTime: disruption.departure?.plannedTime,
-          departureUpdatedTime: disruption.departure?.updatedTime,
-          arrivalPlannedTime: disruption.arrival?.plannedTime,
-          arrivalUpdatedTime: disruption.arrival?.updatedTime,
-          totalDelayMinutes: disruption.totalDelayMinutes,
-          affectedStopsCount: disruption.affectedStops?.length ?? 0,
-          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-          description: disruption.description,
-          geometryFidelity: focusFidelity,
-        },
+    map.on('mouseout', () => {
+      this.setTrafficPointer(false);
+      this.hideTrafficHover();
+    });
+    for (const id of TRAFFIC_JAM_LAYERS) {
+      map.on('click', id, (e) => {
+        const props = e.features?.[0]?.properties ?? {};
+        const body = typeof props['body'] === 'string' ? props['body'] : '';
+        const lat = Number(props['lat']);
+        const lon = Number(props['lon']);
+        if (body !== '' && Number.isFinite(lat) && Number.isFinite(lon)) void this.openJamPopup(e.lngLat, body, lat, lon);
       });
     }
+  }
 
-    src.setData({ type: 'FeatureCollection', features });
+  /** Fiche d'un bouchon : son infobulle et la vitesse du tronçon (ou « indisponible », budget du jour atteint compris). */
+  private async openJamPopup(at: maplibregl.LngLat, body: string, lat: number, lon: number): Promise<void> {
+    const flow = await fetchTrafficFlowSegment(lat, lon, this.map?.getZoom() ?? 10);
+    if (!this.map) return;
+    this.hideTrafficHover();
+    this.trafficJamPopup?.remove();
+    this.trafficJamPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
+      .setLngLat(at)
+      .setHTML(jamPopupHtml(body, flow))
+      .addTo(this.map);
   }
 
   // ─── Outages (Telecom & Power) ───
@@ -10354,52 +9347,6 @@ export class DeckGLMap {
     if (count >= 5000) return 'high';
     if (count >= 1000) return 'medium';
     return 'low';
-  }
-
-  /**
-   * Generate a curved line between two points (arc-like effect).
-   */
-  private generateCurvedLine(
-    start: [number, number],
-    end: [number, number],
-    numPoints: number = 50
-  ): [number, number][] {
-    const coords: [number, number][] = [];
-    const [x1, y1] = start;
-    const [x2, y2] = end;
-
-    // Calculate distance for curve height
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    // Perpendicular offset for curve (proportional to distance)
-    const curveHeight = dist * 0.15;
-
-    // Midpoint
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
-
-    // Perpendicular direction (rotated 90 degrees)
-    const px = -dy / dist;
-    const py = dx / dist;
-
-    // Control point for quadratic bezier
-    const cx = mx + px * curveHeight;
-    const cy = my + py * curveHeight;
-
-    // Generate points along quadratic bezier curve
-    for (let i = 0; i <= numPoints; i++) {
-      const t = i / numPoints;
-      const u = 1 - t;
-
-      // Quadratic bezier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-      const x = u * u * x1 + 2 * u * t * cx + t * t * x2;
-      const y = u * u * y1 + 2 * u * t * cy + t * t * y2;
-      coords.push([x, y]);
-    }
-
-    return coords;
   }
 
   // ─── Topage visual Layer ───
@@ -11322,62 +10269,6 @@ export class DeckGLMap {
     this.onEventPointClick = handler;
   }
 
-  updateTrafficIncidents(incidents: TrafficIncident[]): void {
-    if (!this.map) return;
-    this.roadTrafficIncidents = incidents;
-    const features = incidents.map((incident) => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [incident.lon, incident.lat] as [number, number] },
-      properties: {
-        ...incident,
-        maxSeverity:
-          incident.severity === 'critical' || incident.severity === 'high' ? 2
-            : incident.severity === 'medium' ? 1
-              : 0,
-      },
-    }));
-
-    this.trafficClusterIndex = new Supercluster<Supercluster.AnyProps, Supercluster.AnyProps>({
-      radius: 140,
-      maxZoom: 14,
-      minZoom: 3,
-      map: (props) => ({ maxSeverity: props.maxSeverity ?? 0 }),
-      reduce: (accumulated, props) => {
-        accumulated.maxSeverity = Math.max(accumulated.maxSeverity ?? 0, props.maxSeverity ?? 0);
-      },
-    });
-    this.trafficClusterIndex.load(features);
-    this.syncTrafficIncidentSource();
-  }
-
-  private syncTrafficIncidentSource(): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_TRAFFIC_INCIDENTS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    if (!this.trafficClusterIndex || this.roadTrafficIncidents.length === 0) {
-      src.setData(emptyFC());
-      return;
-    }
-
-    // Use the current map view if available, otherwise use a full-France bbox fallback
-    let bbox: [number, number, number, number];
-    if (this.map) {
-      const bounds = this.map.getBounds();
-      bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
-    } else {
-      bbox = [-5.5, 41.0, 10.0, 51.5]; // France métropolitaine
-    }
-    const zoom = this.map ? Math.round(this.map.getZoom()) : 6;
-    const clusters = this.trafficClusterIndex.getClusters(bbox, zoom);
-    src.setData({
-      type: 'FeatureCollection',
-      features: clusters,
-    });
-
-    this.refreshAisLayers();
-  }
-
   // ─── Military Layers ───
 
   updateMilitaryZones(zones: RestrictedZone[]): void {
@@ -11871,21 +10762,19 @@ export class DeckGLMap {
     return 'other';
   }
 
-  /**
-   * Returns human-readable ship type label from AIS type code.
-   */
-  private getShipTypeLabel(shipType: number): string {
-    if (shipType >= 70 && shipType <= 79) return 'Cargo';
-    if (shipType >= 80 && shipType <= 89) return 'Pétrolier';
-    if (shipType >= 60 && shipType <= 69) return 'Passagers';
-    if (shipType === 30) return 'Pêche';
-    if (shipType === 35) return 'Militaire';
-    if (shipType >= 31 && shipType <= 32) return 'Remorqueur';
-    if (shipType >= 50 && shipType <= 59) return 'Plaisance';
-    if (shipType >= 40 && shipType <= 49) return 'Haute vitesse';
-    if (shipType === 52) return 'Remorqueur';
-    if (shipType === 53) return 'Drague';
-    return shipType > 0 ? `Type ${shipType}` : 'Inconnu';
+  /** Icône du type d'un navire, par catégorie (classement de traffic-legend.ts). */
+  private getShipTypeIcon(category: VesselCategory): IconName {
+    switch (category) {
+      case 'petrolier': return 'fuel';
+      case 'cargo': return 'package';
+      case 'peche': return 'fish';
+      case 'remorqueur': return 'anchor';
+      case 'plaisance': return 'waves';
+      case 'grande-vitesse': return 'zap';
+      case 'service': return 'life-buoy';
+      case 'militaire': return 'shield';
+      default: return 'ship';
+    }
   }
 
 
@@ -12093,19 +10982,13 @@ export class DeckGLMap {
     this.setVis(LYR_FUEL_TENSION_FILL, oilVis);
     this.setVis(LYR_FUEL_TENSION_LINE, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
-    const roadVis = vis(layers.trafficRoad);
-    this.setVis(LYR_TRAFFIC_CLUSTER, roadVis);
-    this.setVis(LYR_TRAFFIC_CLUSTER_COUNT, roadVis);
-    this.setVis(LYR_TRAFFIC_INCIDENTS, roadVis);
-    // Sync cluster data whenever the layer becomes visible (may not have been triggered by moveend)
-    if (layers.trafficRoad) this.syncTrafficIncidentSource();
+    // Trafics (spec 2026-10-03 trafics § 3) : couches de deckgl/traffic-map.ts, par couche.
+    for (const id of TRAFFIC_LAYER_KEYS.trafficRoad) this.setVis(id, vis(layers.trafficRoad));
+    for (const id of TRAFFIC_LAYER_KEYS.trafficAir) this.setVis(id, vis(layers.trafficAir));
+    for (const id of TRAFFIC_LAYER_KEYS.trafficMaritime) this.setVis(id, vis(layers.trafficMaritime));
     const railVis = vis(layers.trafficRail ?? false);
-    this.setVis(LYR_RAIL_ARC_GLOW,      railVis);
-    this.setVis(LYR_RAIL_ARC,           railVis);
-    this.setVis(LYR_RAIL_ARC_HIT,       railVis);
-    this.setVis(LYR_RAIL_STATION_GLOW,  railVis);
-    this.setVis(LYR_RAIL_STATION,       railVis);
-    this.setVis(LYR_RAIL_STATION_LABEL, railVis);
+    for (const id of TRAFFIC_LAYER_KEYS.trafficRail) this.setVis(id, railVis);
+    this.hideTrafficHover();
     this.setVis(LYR_TRAIN_ROUTE,        railVis);
     this.setVis(LYR_TRAIN_STATIONS,     railVis);
     this.setVis(LYR_TRAIN_STATION_LABELS, railVis);
@@ -12121,14 +11004,13 @@ export class DeckGLMap {
     this.setVis(LYR_MILITARY_FLIGHT_TRAILS, vis(layers.military));
     this.setVis(LYR_MILITARY_FLIGHTS, vis(layers.military));
     this.setVis(LYR_MILITARY_FLIGHTS_LABEL, vis(layers.military));
-    this.setVis(LYR_AIR_TRAFFIC_LABEL, vis(layers.trafficAir));
     this.setVis(LYR_MILITARY_SHIPS, vis(layers.military));
     this.setVis(`${LYR_MILITARY_SHIPS}-label`, vis(layers.military));
     this.setVis(LYR_MILITARY_SHIPS_HIGHLIGHT, vis(layers.trafficMaritime || layers.military));
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
     this.globalTrafficVisible = layers.trafficMaritime;
-    this.roadTrafficVisible = false;
+    this.airIconsShown = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
     this.airTrafficVisible = layers.trafficAir;
     this.dayNightVisible = layers.dayNight ?? false;
     this.refreshAisLayers();
@@ -12390,6 +11272,8 @@ export class DeckGLMap {
     this.gasFlowPopup?.remove();
     this.dromEnergyHoverPopup?.remove();
     this.dromEnergyHoverPopup = null;
+    this.trafficHoverPopup?.remove();
+    this.trafficJamPopup?.remove();
 
     // Cleanup interconnection animation
     this.stopInterconnAnimation();
