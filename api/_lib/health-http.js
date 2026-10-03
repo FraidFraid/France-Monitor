@@ -69,16 +69,19 @@ async function readBody(resp, url, timeoutMs) {
 }
 
 /**
- * Corps texte d'une URL, lu strictement.
+ * Réponse d'une URL, lue strictement : corps texte, statut et lecture d'en-tête (`header('x-rate-limit-remaining')`).
+ * `headers` complète les en-têtes envoyés (Authorization, Content-Type…) ; le User-Agent reste fixe.
  * @param {string} url
- * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number }} [options]
- * @returns {Promise<string>}
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit }} [options]
+ * @returns {Promise<{ text: string, status: number, header(name: string): string | null }>}
  */
-export async function fetchStrictText(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body } = {}) {
   let resp;
   try {
     resp = await fetch(url, {
-      headers: { 'User-Agent': HEALTH_USER_AGENT, Accept: ACCEPT[expect] ?? ACCEPT.text },
+      method,
+      body,
+      headers: { Accept: ACCEPT[expect] ?? ACCEPT.text, ...headers, 'User-Agent': HEALTH_USER_AGENT },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -91,8 +94,8 @@ export async function fetchStrictText(url, { expect = 'text', timeoutMs = DEFAUL
   if (!resp.ok) {
     // Défi anti-robot servi en 403 ou 429 : nommé comme tel ; corps illisible : l'erreur HTTP suffit.
     if (resp.status === 403 || resp.status === 429) {
-      const body = await readBody(resp, url, timeoutMs).catch(() => '');
-      if (isChallengePage(body)) {
+      const errorBody = await readBody(resp, url, timeoutMs).catch(() => '');
+      if (isChallengePage(errorBody)) {
         throw new HealthFetchError(`page de contrôle anti-robot (HTTP ${resp.status})`, { url, status: resp.status, kind: 'challenge' });
       }
     }
@@ -105,12 +108,27 @@ export async function fetchStrictText(url, { expect = 'text', timeoutMs = DEFAUL
   }
   if (!text.trim()) throw new HealthFetchError('réponse vide', { url, status: resp.status, kind: 'empty' });
   if (expect === 'xml' && !looksLikeXml(text)) throw new HealthFetchError('XML attendu', { url, status: resp.status, kind: 'parse' });
-  return text;
+  const responseHeaders = resp.headers;
+  return {
+    text,
+    status: resp.status,
+    header: (name) => (responseHeaders && typeof responseHeaders.get === 'function' ? responseHeaders.get(name) : null),
+  };
 }
 
-/** JSON d'une URL, lu strictement. */
-export async function fetchStrictJson(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const text = await fetchStrictText(url, { expect: 'json', timeoutMs });
+/**
+ * Corps texte d'une URL, lu strictement.
+ * @param {string} url
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit }} [options]
+ * @returns {Promise<string>}
+ */
+export async function fetchStrictText(url, options = {}) {
+  return (await fetchStrictResponse(url, options)).text;
+}
+
+/** JSON d'une URL, lu strictement (options : timeoutMs, headers, method, body). */
+export async function fetchStrictJson(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers, method, body } = {}) {
+  const text = await fetchStrictText(url, { expect: 'json', timeoutMs, headers, method, body });
   try {
     return JSON.parse(text);
   } catch {
@@ -118,14 +136,14 @@ export async function fetchStrictJson(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = 
   }
 }
 
-/** XML (RSS) d'une URL, lu strictement. */
-export function fetchStrictXml(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  return fetchStrictText(url, { expect: 'xml', timeoutMs });
+/** XML (RSS, DATEX II, SIRI) d'une URL, lu strictement. */
+export function fetchStrictXml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers } = {}) {
+  return fetchStrictText(url, { expect: 'xml', timeoutMs, headers });
 }
 
 /** Page HTML d'une URL, lue strictement (page de défi refusée). */
-export function fetchStrictHtml(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  return fetchStrictText(url, { expect: 'html', timeoutMs });
+export function fetchStrictHtml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers } = {}) {
+  return fetchStrictText(url, { expect: 'html', timeoutMs, headers });
 }
 
 /** Message d'erreur d'une source pour `errors[]` : « Odissé, IRA France : HTTP 429 ». */
@@ -133,15 +151,21 @@ export function sourceError(label, err) {
   return `${label} : ${err instanceof Error ? err.message : String(err)}`;
 }
 
+/** Client clé-valeur vide : cache gardé en mémoire du processus seulement (option `shared: false`). */
+const MEMORY_ONLY = { get: async () => null, set: async () => {} };
+
 /**
  * Valeur d'une source mise en cache (mémoire et Redis, api/_utils/swr-cache.js) : fraîche pendant ttlSec ;
  * au-delà, nouvelle lecture, et la dernière valeur connue est servie si elle échoue. Lève si la source
  * échoue sans valeur connue. Une valeur servie périmée garde sa propre date (S1) : le retard se voit.
  * Le producteur lit ET analyse (arbitrage 2 de la phase A) : il lève sur un résultat vide ou illisible, qui
  * n'est donc jamais mis en cache. Un échec est mémorisé FAILURE_MEMO_SEC secondes : l'amont n'est pas relancé.
+ * `shared: false` garde la valeur dans la mémoire du processus seulement (sources à cadence courte : pas
+ * d'écriture Redis toutes les 2 à 5 minutes).
  */
-export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400 }, producer) {
-  const { value } = await getOrRefresh(`health:${key}`, { ttlSec, staleSec, timeoutMs: 8_000, negativeTtlSec: FAILURE_MEMO_SEC }, producer);
+export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400, shared = true }, producer) {
+  const options = { ttlSec, staleSec, timeoutMs: 8_000, negativeTtlSec: FAILURE_MEMO_SEC };
+  const { value } = await getOrRefresh(`health:${key}`, shared ? options : { ...options, redis: MEMORY_ONLY }, producer);
   return value;
 }
 
