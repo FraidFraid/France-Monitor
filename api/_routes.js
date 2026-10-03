@@ -29,6 +29,7 @@ export const ROUTES = {
   '/api/geo/communes': () => import('./_handlers/geo/communes.js'),
   '/api/gie/agsi': () => import('./_handlers/gie/agsi.js'),
   '/api/gie/alsi': () => import('./_handlers/gie/alsi.js'),
+  '/api/health/alert-levels': () => import('./_handlers/health/alert-levels.js'),
   '/api/health/apl': () => import('./_handlers/health/apl.js'),
   '/api/health/departmental': () => import('./_handlers/health/departmental.js'),
   '/api/health/drug-shortages': () => import('./_handlers/health/drug-shortages.js'),
