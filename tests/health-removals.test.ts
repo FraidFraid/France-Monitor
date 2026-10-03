@@ -36,11 +36,11 @@ describe('retraits Santé (spec 2026-10-03 § 2.9)', () => {
     const types = read('src/types/index.ts');
     for (const gone of ['ISSLevel', 'ISS_LEVELS', 'APLCategory', 'APL_LEVELS', 'OSCOUR_LEVELS', 'HealthDataSource', 'HealthDepartmentMetric',
       'HealthRegionMetric', 'HealthFeatures', 'LegacySentinellesIndicator', 'AlerteEpidemique', 'StatutEpidemique', 'PathologieEpidemique',
-      'HantavirusEvent', 'HantavirusSource', 'TerritoireNiveau']) {
+      'HantavirusEvent', 'HantavirusSource', 'TerritoireNiveau', 'HeatmapPoint']) {
       expect(types).not.toMatch(new RegExp(`\\b${gone}\\b`));
     }
     for (const kept of ['interface SyndromicResponse', 'interface AlertLevelsResponse', 'interface SentinellesIndicator', 'interface DrugShortagesV2',
-      'interface AplDataset', 'interface HospitalsDataset', 'type DataFreshness', 'interface HeatmapPoint']) {
+      'interface AplDataset', 'interface HospitalsDataset', 'type DataFreshness']) {
       expect(types).toContain(kept);
     }
     expect(types).not.toContain('tâche 19');

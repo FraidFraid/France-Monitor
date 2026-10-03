@@ -1269,15 +1269,6 @@ export interface CyberState {
   };
 }
 
-export interface HeatmapPoint {
-  eventId: string;
-  lat: number;
-  lon: number;
-  weight: number;
-  type: 'cluster' | 'zone_historique';
-  label: string;
-}
-
 // ═══ France Intelligence Card ═══
 
 export interface FranceCountrySignals {

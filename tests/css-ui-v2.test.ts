@@ -38,6 +38,17 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     expect(css).toContain('.lp .lp-head { position: sticky; top: 0; z-index: 1; padding: 16px 18px 14px; background: var(--bg-primary); }');
     expect(css).not.toContain('.lp .lp-head > :last-child');
   });
+  it('feuille basse (mobile, 768 px comme l’application) : l’en-tête de tous les panneaux de couches défile avec le corps', () => {
+    expect(css).toContain('@media (max-width: 768px) { .lp .lp-head { position: static; } }');
+    expect(css).not.toContain('@media (max-width: 700px) { .lp .lp-head');
+  });
+  it('« Méthode et sources » en phrases (libellé fixe, valeur qui passe à la ligne) : les quatre panneaux Santé seulement', () => {
+    const health = '#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal) .fmk .fmk-sec--ref';
+    expect(css).toContain(`${health} .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }`);
+    expect(css).toContain(`${health} .fmk-kv-v { overflow-wrap: anywhere; }`);
+    // Les panneaux Énergie gardent leurs valeurs alignées à droite dans « Méthode et sources ».
+    expect(css).not.toMatch(/:is\(#app\.ui-v2, \.lp\) \.fmk \.fmk-sec--ref \.fmk-kv/);
+  });
   it('R3 : la légende du gros chiffre ne masque pas la couleur de niveau des valeurs qu’elle contient', () => {
     expect(css).toContain('.lp .lp-figure > span { color: var(--text-secondary); font-size: 13px; }');
     expect(css).not.toMatch(/\.lp \.lp-figure span \{/);

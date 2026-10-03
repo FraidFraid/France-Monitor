@@ -8921,8 +8921,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Espace sous l'en-tête en marge intérieure : la marge du dernier enfant était écrasée par la règle du kit sur .fmk-lead
    (spécificité d'identifiant) et la synthèse touchait le trait de la première section ; le fond collant couvre aussi l'espace. */
 .lp .lp-head { position: sticky; top: 0; z-index: 1; padding: 16px 18px 14px; background: var(--bg-primary); }
-/* Feuille basse (mobile) : l'en-tête des panneaux Santé (chiffre, niveau, synthèse, sélecteurs) occupe près de toute la feuille ; collant, il ne laisse que ~100 px au corps. Il défile avec lui, la croix reste collante. */
-@media (max-width: 700px) { .lp .lp-head { position: static; } }
+/* Feuille basse (mobile, seuil de l'application et des feuilles basses : 768 px) : l'en-tête de tous les panneaux de couches (chiffre, niveau, synthèse, sélecteurs ; près de toute la feuille pour les panneaux Santé) défile avec le corps au lieu de rester collant ; la croix reste collante. */
+@media (max-width: 768px) { .lp .lp-head { position: static; } }
 .lp .lp-title { margin: 4px 40px 10px 0; font-size: 19px; font-weight: 700; line-height: 1.28; }
 .lp .lp-figure { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 2px 0 10px; }
 .lp .lp-figure b { font-size: 40px; font-weight: 700; line-height: 1; white-space: nowrap; }
@@ -9006,9 +9006,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Détails méthodologiques : les lignes de fraîcheur portent une phrase, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. */
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv-v { overflow-wrap: anywhere; }
-/* Méthode et sources (sections de référence) : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. */
-:is(#app.ui-v2, .lp) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
-:is(#app.ui-v2, .lp) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+/* Méthode et sources des quatre panneaux Santé : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .lp .lp-tbl th, .lp .lp-tbl td { padding: 3px 0; text-align: right; font-weight: 400; vertical-align: baseline; }
