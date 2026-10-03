@@ -178,4 +178,15 @@ describe('veille sanitaire : lecture client (spec 2026-10-03 § 2, S3)', () => {
     expect(surveillanceStatus({ ...s, recalls: { data: null, error: 'HTTP 502', fetchedAt: null } }, 'recalls', HEALTH_NOW))
       .toEqual({ status: 'error', lastUpdate: null, error: 'HTTP 502' });
   });
+  it('panne partielle (réponse 200 avec errors[]) : « stale », parties en échec nommées, jamais « à jour »', () => {
+    const s = surveillanceFixture();
+    const intl = s.international.data;
+    if (!intl) throw new Error('fixture');
+    const partial = { ...s, international: { ...s.international, data: { ...intl, who: [], errors: ['OMS, Disease Outbreak News : HTTP 503'] } } };
+    expect(surveillanceStatus(partial, 'international', HEALTH_NOW)).toEqual({
+      status: 'stale', lastUpdate: new Date('2026-10-02T12:00:00Z'), error: 'OMS, Disease Outbreak News : HTTP 503',
+    });
+    const both = { ...partial, international: { ...partial.international, error: 'délai dépassé' } };
+    expect(surveillanceStatus(both, 'international', HEALTH_NOW).error).toBe('délai dépassé ; OMS, Disease Outbreak News : HTTP 503');
+  });
 });

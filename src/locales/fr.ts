@@ -119,6 +119,8 @@ const fr = {
     loading: 'Chargement…',
     realtime: 'TEMPS RÉEL',
     upToDatePeriod: 'À JOUR · {{period}}',
+    latePeriod: 'EN RETARD · {{period}}',
+    incompletePeriod: 'LECTURE INCOMPLÈTE · {{period}}',
     stale: 'CACHE FIGÉ',
     unavailable: 'INDISPONIBLE',
     justNow: "à l'instant",

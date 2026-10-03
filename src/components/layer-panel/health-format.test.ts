@@ -4,9 +4,10 @@ import { HEALTH_NOW, surveillanceFixture, syndromicFixture } from './health.fixt
 import { HEALTH_SURVEILLANCE_URLS, type HealthSurveillanceKey } from '../../services/health-surveillance.ts';
 import { NBSP } from './format.ts';
 import {
-  APL_PROFESSIONS, APL_UNIT, HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
+  APL_PROFESSIONS, APL_UNIT, HEALTH_PART, HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
   seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourcePeriod, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
-  weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
+  weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL, failedPillSyndromes, partFailed, spfPagePart, syndromeDepartmentsPart,
+  syndromeFrancePart,
 } from './health-format.ts';
 
 const serie = (key: 'ira' | 'gastro') => {
@@ -121,5 +122,32 @@ describe('panneau des sources : période réelle de la donnée (spec 2026-10-03 
     const s = surveillanceFixture();
     expect(sourcePeriod(s, 'sentinelles', Date.parse('2026-10-20T12:00:00Z'))).toBe('S39 provisoire (en retard)');
     expect(sourcePeriod({ ...s, alerts: { data: null, error: 'HTTP 502', fetchedAt: null } }, 'alerts', HEALTH_NOW)).toBeUndefined();
+  });
+  it('donnée reçue sans période lisible (Odissé en échec, pages régionales lues) : « n.d. », jamais undefined ni « temps réel »', () => {
+    const s = surveillanceFixture();
+    const alerts = s.alerts.data;
+    if (!alerts) throw new Error('fixture');
+    const partial = { ...s, alerts: { ...s.alerts, data: { ...alerts, levels: [], latestWeek: null, errors: ['Odissé, niveaux d’alerte : HTTP 429'] } } };
+    expect(sourcePeriod(partial, 'alerts', HEALTH_NOW)).toBe('n.d.');
+  });
+});
+
+describe('pannes partielles (S3) : parties nommées par les libellés d’erreur des gestionnaires', () => {
+  it('partFailed : libellé de la partie suivi de « : » ; aucune confusion entre parties voisines', () => {
+    const errors = ['Odissé, niveaux d’alerte : HTTP 429', 'Odissé, IRA départements : HTTP 500', 'Santé publique France, page Océan Indien : HTTP 503'];
+    expect(partFailed(errors, HEALTH_PART.alerts)).toBe(true);
+    expect(partFailed(errors, syndromeDepartmentsPart('ira'))).toBe(true);
+    expect(partFailed(errors, syndromeFrancePart('ira'))).toBe(false);
+    expect(partFailed(errors, spfPagePart('Océan Indien'))).toBe(true);
+    expect(partFailed(errors, spfPagePart('Antilles'))).toBe(false);
+    expect(partFailed(errors, HEALTH_PART.who)).toBe(false);
+    expect(partFailed([], HEALTH_PART.alerts)).toBe(false);
+    expect([syndromeFrancePart('bronchio'), syndromeDepartmentsPart('gastro')]).toEqual(['Odissé, Bronchiolite France', 'Odissé, Gastro-entérite départements']);
+  });
+  it('syndromes de la pastille des urgences dont l’export France a échoué', () => {
+    const d = syndromicFixture();
+    expect(failedPillSyndromes(d)).toEqual([]);
+    d.errors = ['Odissé, Asthme France : HTTP 500', 'Odissé, IRA France : HTTP 500', 'Odissé, Gastro-entérite départements : HTTP 500'];
+    expect(failedPillSyndromes(d)).toEqual(['ira']);
   });
 });

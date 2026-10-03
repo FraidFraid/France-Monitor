@@ -167,6 +167,33 @@ describe('vue Veille sanitaire, onglet France (spec 2026-10-03 § 3.1)', () => {
     expect(visibleText(method?.html ?? '')).toMatch(/Réseau Sentinelles · source indisponible/);
     expect(method?.summary).toBe('8 sources · 1 indisponible');
   });
+  it('panne partielle, Odissé en échec et pages régionales lues : entrée n.d. nommée et écartée, jamais verte ; section indisponible (S3)', () => {
+    const state = withState((s) => {
+      if (s.alerts.data) s.alerts.data = { ...s.alerts.data, levels: [], latestWeek: null, errors: ['Odissé, niveaux d’alerte : HTTP 429'] };
+    });
+    const n = nationalSummary(state, HEALTH_NOW);
+    expect(n.inputs[0]).toMatchObject({ key: 'alerts', level: 'nd', value: 'n.d.', period: 'n.d.', note: 'source indisponible', unavailable: true });
+    expect(n.level).toBe('jaune');
+    const v = view({ state });
+    const national = v.sections.find((x) => x.id === 'national');
+    expect(visibleText(national?.summary ?? '')).toBe('Jaune2 Vert1 · 1 indisponible');
+    expect(visibleText(national?.html ?? '')).toContain('source indisponible : écartée du niveau national');
+    const alerts = v.sections.find((x) => x.id === 'alerts');
+    expect(alerts?.summary).toBe('n.d.');
+    expect(alerts?.html).toContain('Source indisponible : niveaux d’alerte Odissé.');
+    expect(alerts?.html).not.toContain('Aucun niveau d’alerte publié');
+  });
+  it('panne partielle, export France de l’IRA en échec : entrée Urgences n.d. nommée (jamais calculée sur les autres syndromes)', () => {
+    const state = withState((s) => {
+      const d = s.syndromic.data;
+      if (!d) return;
+      d.errors = ['Odissé, IRA France : HTTP 500'];
+      for (const x of d.syndromes) if (x.key === 'ira') { x.france = []; x.ages = {}; }
+    });
+    expect(nationalSummary(state, HEALTH_NOW).inputs[2]).toMatchObject({
+      key: 'urgences', level: 'nd', value: 'n.d.', note: 'source indisponible (IRA)', unavailable: true,
+    });
+  });
   it('toutes les sources en échec : pastille n.d., encadré, aucune synthèse inventée', () => {
     const state = withState((s) => {
       for (const k of Object.keys(s) as Array<keyof HealthSurveillanceState>) s[k] = { data: null, error: 'HTTP 502', fetchedAt: null };

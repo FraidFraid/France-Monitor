@@ -23,9 +23,9 @@ import {
   type LayerFigure, type LayerHeadModel, type LayerTab, type LayerView,
 } from './frame.ts';
 import {
-  PER_100K, SYNDROME_LABEL, capitalize, changeHtml, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText,
-  regionIn, seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver,
-  weekNumber, weekShort, weekYear,
+  HEALTH_PART, PER_100K, SYNDROME_LABEL, capitalize, changeHtml, changePct, failedPillSyndromes, inSentence, isoWeekId, joinFr, parisDay,
+  partFailed, positionWords, ratioText, regionIn, seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable,
+  trendArrowHtml, trendOf, urgencesDriver, weekNumber, weekShort, weekYear,
 } from './health-format.ts';
 
 export type VeilleTab = 'france' | 'outremer' | 'international' | 'produits';
@@ -132,14 +132,21 @@ export function alertsSummary(levels: readonly RegionalAlertLevel[], now: number
 
 // ─── Entrées du niveau national (spec § 3.1) ───
 
-function unavailable(key: NationalInput['key'], label: string): NationalInput {
-  return { key, level: 'nd', late: false, label, value: 'n.d.', period: 'n.d.', note: 'source indisponible' };
+/** Entrée d'une source indisponible, en tout ou en partie (S3) : n.d., jamais verte, écartée de la pastille et nommée. */
+function unavailable(key: NationalInput['key'], label: string, what?: string): NationalInput {
+  return { key, level: 'nd', late: false, label, value: 'n.d.', period: 'n.d.', note: `source indisponible${what ? ` (${what})` : ''}`, unavailable: true };
+}
+
+/** Odissé en échec : réponse lue (pages régionales) mais niveaux d'alerte absents ; jamais lue comme « rien à signaler ». */
+export function alertsDown(state: HealthSurveillanceState): boolean {
+  const d = state.alerts.data;
+  return d === null || partFailed(d.errors, HEALTH_PART.alerts);
 }
 
 function alertsInput(state: HealthSurveillanceState, now: number): NationalInput {
   const label = 'Alertes épidémiques (grippe, bronchiolite)';
   const d = state.alerts.data;
-  if (!d) return unavailable('alerts', label);
+  if (!d || alertsDown(state)) return unavailable('alerts', label);
   const metroIn = d.levels.filter((l) => isMetropoleRegion(l.region) && alertInSeason(l, now));
   return {
     key: 'alerts', level: alertsInputLevel(d.levels, now), late: false, label,
@@ -168,6 +175,9 @@ function sentinellesInput(state: HealthSurveillanceState, now: number): National
 function urgencesInput(state: HealthSurveillanceState, now: number): NationalInput {
   const d = state.syndromic.data;
   if (!d || !d.week) return unavailable('urgences', 'Urgences');
+  // Un syndrome de la pastille sans série France : le niveau calculé sur les autres pourrait être trop bas (S3).
+  const failed = failedPillSyndromes(d);
+  if (failed.length > 0) return unavailable('urgences', 'Urgences', joinFr(failed.map((k) => SYNDROME_LABEL[k])));
   const { level } = urgencesLevel(d);
   const key = urgencesDriver(d, level);
   const series = d.syndromes.find((s) => s.key === key);
@@ -286,17 +296,18 @@ export function internationalCount(state: HealthSurveillanceState, now: number):
   return (state.international.data?.who ?? []).filter((n) => (dataDateMs(n.date) ?? 0) >= now - 30 * DAY_MS).length;
 }
 
-/** Situations actives ANSM : ruptures et tensions. */
+/** Situations actives ANSM : ruptures et tensions ; null si la liste n'a pas été lue (S3). */
 export function produitsCount(state: HealthSurveillanceState): number | null {
-  const c = state.drugs.data?.counts;
-  return c ? c.rupture + c.tension : null;
+  const d = state.drugs.data;
+  return d && !partFailed(d.errors, HEALTH_PART.drugs) ? d.counts.rupture + d.counts.tension : null;
 }
 
 export function veilleTabs(state: HealthSurveillanceState | null, now: number): LayerTab[] {
+  const intl = state?.international.data ?? null;
   return [
     { id: 'france', label: 'France' },
     { id: 'outremer', label: 'Outre-mer', count: state && (state.alerts.data || state.syndromic.data) ? outreMerCount(state, now) : null },
-    { id: 'international', label: 'International', count: state?.international.data ? internationalCount(state, now) : null },
+    { id: 'international', label: 'International', count: state && intl && !partFailed(intl.errors, HEALTH_PART.who) ? internationalCount(state, now) : null },
     { id: 'produits', label: 'Produits', count: state ? produitsCount(state) : null },
   ];
 }
@@ -390,22 +401,25 @@ type OpenFn = VeilleViewInput['open'];
 function nationalSection(summary: NationalHealthSummary, open: OpenFn): FicheSection {
   const rows = summary.inputs.map((i) => {
     const level: VigilanceLevel | 'gris' = i.late || i.level === 'nd' ? 'gris' : i.level;
-    const text = `${i.note}${i.period !== 'n.d.' ? ` · ${i.period}` : ''}${i.late ? ' · en retard : écartée du niveau national' : ''}`;
+    const off = i.late ? ' · en retard : écartée du niveau national' : i.unavailable ? ' : écartée du niveau national' : '';
+    const text = `${i.note}${i.period !== 'n.d.' ? ` · ${i.period}` : ''}${off}`;
     return listRow({ text: i.label, value: i.value, level, noteHtml: `${escapeHtml(text)}<br>${escapeHtml(`Règle : ${RULES[i.key]}`)}` });
   }).join('');
   const counted = summary.inputs.flatMap((i) => (!i.late && i.level !== 'nd' ? [i.level] : []));
   const late = summary.inputs.filter((i) => i.late).length;
+  const down = summary.inputs.filter((i) => i.unavailable).length;
+  const tail = `${late > 0 ? ` · ${late} en retard` : ''}${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`;
   return {
     id: 'national', title: 'Niveau national', collapsible: true, open: open('national', true),
-    summary: levelCounts(counted, 'fr') + (late > 0 ? escapeHtml(` · ${late} en retard`) : ''),
-    html: rows + note('Niveau national : le plus haut des quatre entrées ; une entrée en retard est écartée et nommée ici, une source indisponible n’y entre pas.'),
+    summary: levelCounts(counted, 'fr') + escapeHtml(tail),
+    html: rows + note('Niveau national : le plus haut des quatre entrées ; une entrée en retard est écartée et nommée ici, de même qu’une entrée dont la source est indisponible.'),
   };
 }
 
 function alertsSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
   const base = { id: 'alerts', title: 'Alertes épidémiques', collapsible: true, open: open('alerts', false) };
   const d = state.alerts.data;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('niveaux d’alerte Odissé') };
+  if (!d || alertsDown(state)) return { ...base, summary: 'n.d.', html: sourceUnavailable('niveaux d’alerte Odissé') };
   if (d.levels.length === 0) return { ...base, summary: 'aucune publication', html: emptyLine('Aucun niveau d’alerte publié.') };
   const byRegion = new Map<string, RegionalAlertLevel[]>();
   for (const l of d.levels) byRegion.set(l.region, [...(byRegion.get(l.region) ?? []), l]);

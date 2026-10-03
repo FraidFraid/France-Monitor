@@ -143,7 +143,8 @@ function healthIndicators(summary: NationalHealthSummary | null, lang: Lang): st
   if (!summary) return `${title}<p class="fiche-empty">${t(lang, 'Données de santé en chargement…', 'Health data loading…')}</p>${links}`;
   const pill = summary.level === 'nd' ? renderNdPill() : renderVigilancePill(summary.level, lang);
   const rows = summary.inputs.map((i) => {
-    const late = i.late ? t(lang, ' · en retard, écartée', ' · late, excluded') : '';
+    const late = i.late ? t(lang, ' · en retard, écartée', ' · late, excluded')
+      : i.unavailable ? t(lang, ' · source indisponible, écartée', ' · source unavailable, excluded') : '';
     return `<li>${levelDot(i.late || i.level === 'nd' ? null : i.level)}${escapeHtml(`${i.label} : ${i.value} · ${i.period}${late}`)}</li>`;
   }).join('');
   return `${title}<p>${pill} ${escapeHtml(summary.driverPhrase)}</p><ul class="fiche-list">${rows}</ul>${links}`;

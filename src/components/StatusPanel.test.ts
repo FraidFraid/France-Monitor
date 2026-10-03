@@ -45,6 +45,19 @@ describe('StatusPanel : sources hebdomadaires ou annuelles datées par leur pér
     expect(r.text).toContain('il y a 3min');
     expect(r.title).toBe('TEMPS RÉEL');
   });
+  it('source datée en retard : « EN RETARD », jamais « CACHE FIGÉ » ; panne partielle : lecture incomplète, partie nommée', () => {
+    const host = document.createElement('div');
+    const panel = new StatusPanel(host);
+    panel.mount();
+    panel.updateSource('Sentinelles', { status: 'stale', lastUpdate: new Date('2026-09-27T12:00:00Z'), period: 'S39 provisoire (en retard)' });
+    expect(row(host, 'Sentinelles').title).toBe('EN RETARD · S39 provisoire');
+    panel.updateSource('OMS / ECDC', {
+      status: 'stale', lastUpdate: new Date('2026-10-02T12:00:00Z'), period: 'message du 02/10', error: 'OMS, Disease Outbreak News : HTTP 503',
+    });
+    expect(row(host, 'OMS / ECDC').title).toBe('LECTURE INCOMPLÈTE · message du 02/10 · OMS, Disease Outbreak News : HTTP 503');
+    panel.updateSource('Vigicrues', { status: 'stale', lastUpdate: new Date(Date.now() - 3 * 60_000) });
+    expect(row(host, 'Vigicrues').title).toBe('CACHE FIGÉ');
+  });
   it('période retirée quand la source perd sa donnée', () => {
     const host = document.createElement('div');
     const panel = new StatusPanel(host);

@@ -118,6 +118,8 @@ const en = {
     loading: 'Loading…',
     realtime: 'REAL TIME',
     upToDatePeriod: 'UP TO DATE · {{period}}',
+    latePeriod: 'LATE · {{period}}',
+    incompletePeriod: 'INCOMPLETE READ · {{period}}',
     stale: 'STALE CACHE',
     unavailable: 'UNAVAILABLE',
     justNow: 'just now',

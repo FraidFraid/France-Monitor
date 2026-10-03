@@ -137,18 +137,55 @@ function rawSourcePeriod(state: HealthSurveillanceState, key: HealthSurveillance
 
 /**
  * Panneau des sources (S1) : période réelle de la donnée (semaine et publication, date du dernier message, de la liste ou du
- * dernier rappel), affichée à la place de l'âge relatif et du libellé « temps réel » ; « (en retard) » selon S2 ; undefined
- * sans donnée.
+ * dernier rappel), affichée à la place de l'âge relatif et du libellé « temps réel » ; « (en retard) » selon S2 ; « n.d. » quand
+ * la donnée reçue n'a pas de période lisible (panne partielle) ; undefined sans donnée.
  */
 export function sourcePeriod(state: HealthSurveillanceState, key: HealthSurveillanceKey, now: number): string | undefined {
   if (state[key].data === null) return undefined;
-  const period = rawSourcePeriod(state, key);
-  return period === undefined ? undefined : `${period}${surveillanceLate(state, key, now) ? ' (en retard)' : ''}`;
+  return `${rawSourcePeriod(state, key) ?? 'n.d.'}${surveillanceLate(state, key, now) ? ' (en retard)' : ''}`;
 }
 
 /** Section d'une source en échec sans donnée antérieure (S3) : jamais une liste vide silencieuse. */
 export function sourceUnavailable(name: string): string {
   return emptyLine(`Source indisponible : ${name}.`);
+}
+
+// ─── Pannes partielles (S3) : une partie d'une réponse 200 a échoué, nommée dans `errors[]` ───
+// Libellés repris à l'identique des gestionnaires api/_handlers/health/* (sourceError : « <libellé> : <message> ») ;
+// tests/health-partial-labels.test.ts vérifie qu'ils restent alignés.
+
+/** Parties à libellé fixe. */
+export const HEALTH_PART = {
+  alerts: 'Odissé, niveaux d’alerte',
+  who: 'OMS, Disease Outbreak News',
+  ecdc: 'ECDC, rapport hebdomadaire des menaces',
+  drugs: 'ANSM, disponibilités des médicaments',
+  recalls: 'RappelConso',
+} as const;
+
+/** Page régionale Santé publique France d'un bassin (« Océan Indien », « Guyane », « Antilles »). */
+export function spfPagePart(basin: string): string {
+  return `Santé publique France, page ${basin}`;
+}
+
+/** Export France d'un syndrome Odissé (« Odissé, IRA France »). */
+export function syndromeFrancePart(key: SyndromeKey): string {
+  return `Odissé, ${SYNDROME_LABEL[key]} France`;
+}
+
+/** Export départemental d'un syndrome Odissé (« Odissé, IRA départements »). */
+export function syndromeDepartmentsPart(key: SyndromeKey): string {
+  return `Odissé, ${SYNDROME_LABEL[key]} départements`;
+}
+
+/** Vrai si la partie `prefix` de la réponse a échoué : un message d'erreur commence par son libellé suivi de « : ». */
+export function partFailed(errors: readonly string[], prefix: string): boolean {
+  return errors.some((e) => e.startsWith(`${prefix} : `));
+}
+
+/** Syndromes de la pastille des urgences (IRA, bronchiolite, gastro-entérite) dont l'export France a échoué. */
+export function failedPillSyndromes(d: SyndromicResponse): SyndromeKey[] {
+  return URGENCES_PILL_SYNDROMES.filter((k) => partFailed(d.errors, syndromeFrancePart(k)));
 }
 
 /** Rapport « ×2 » : entier quand l'arrondi est à moins de 0,05 près, sinon une décimale. */

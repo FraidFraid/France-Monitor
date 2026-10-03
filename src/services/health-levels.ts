@@ -179,7 +179,11 @@ export function urgencesLevel(data: SyndromicResponse): { level: HealthLevel; dr
   return best ? { level: best.level, driver: best.driver } : { level: 'nd', driver: null };
 }
 
-export interface NationalInput { key: 'alerts' | 'sentinelles' | 'urgences' | 'wastewater'; level: HealthLevel; late: boolean; label: string; value: string; period: string; note: string }
+export interface NationalInput {
+  key: 'alerts' | 'sentinelles' | 'urgences' | 'wastewater'; level: HealthLevel; late: boolean; label: string; value: string; period: string; note: string;
+  /** Source indisponible, en tout ou en partie (S3) : entrée n.d., écartée de la pastille et nommée comme une entrée en retard. */
+  unavailable?: boolean;
+}
 
 /**
  * Niveau national (spec § 3.1) : plus haut niveau des entrées ni en retard ni nd ; à égalité, la première

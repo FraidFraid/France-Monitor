@@ -9,9 +9,11 @@ import { kvRow, levelDot } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { formatPct, frNumber } from './format.ts';
 import { emptyLine, listRow, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
-import { SYNDROME_LABEL, capitalize, inSentence, parisDay, sourceUnavailable, weekShort } from './health-format.ts';
 import {
-  DROM_TERRITORIES, activeAlertPhrases, allSourcesFailed, buildVeilleFranceView, methodSection, nationalSummary, territoryLevel,
+  HEALTH_PART, SYNDROME_LABEL, capitalize, inSentence, parisDay, partFailed, sourceUnavailable, spfPagePart, syndromeDepartmentsPart, weekShort,
+} from './health-format.ts';
+import {
+  DROM_TERRITORIES, activeAlertPhrases, alertsDown, allSourcesFailed, buildVeilleFranceView, methodSection, nationalSummary, territoryLevel,
   veilleHead, veilleLoadingView, veilleTabs, type Territory, type VeilleViewInput,
 } from './veille.ts';
 
@@ -34,6 +36,8 @@ const DROM_ROWS: ReadonlyArray<readonly [SyndromeKey, string]> = [
 const BASIN: Readonly<Record<string, readonly string[]>> = {
   '01': ['guadeloupe', 'antilles'], '02': ['martinique', 'antilles'], '03': ['guyane'], '04': ['reunion', 'ocean indien'], '06': ['mayotte', 'ocean indien'],
 };
+/** Page régionale Santé publique France qui publie les bulletins d'un territoire (libellés des gestionnaires). */
+const BASIN_PAGE: Readonly<Record<string, string>> = { '01': 'Antilles', '02': 'Antilles', '03': 'Guyane', '04': 'Océan Indien', '06': 'Océan Indien' };
 
 /** Bulletins d'un territoire : son nom ou celui de son bassin dans le territoire ou le titre du bulletin, du plus récent au plus ancien. */
 export function bulletinsFor(region: string, bulletins: readonly HealthBulletin[]): HealthBulletin[] {
@@ -67,7 +71,7 @@ function territorySection(state: HealthSurveillanceState, t: Territory, now: num
   const syn = state.syndromic.data;
   const lateSyn = surveillanceLate(state, 'syndromic', now);
   const dep = syn?.departments.find((d) => d.code === t.dept) ?? null;
-  const alertRows = state.alerts.data === null ? sourceUnavailable('niveaux d’alerte Odissé')
+  const alertRows = alertsDown(state) ? sourceUnavailable('niveaux d’alerte Odissé')
     : (['grippe', 'bronchiolite'] as const).map((p) => {
       const l = alerts.find((x) => x.pathology === p);
       if (!l) return listRow({ text: capitalize(p), value: 'n.d.', level: 'gris', note: 'aucune publication' });
@@ -79,6 +83,7 @@ function territorySection(state: HealthSurveillanceState, t: Territory, now: num
     }).join('');
   const urgRows = syn === null ? sourceUnavailable('surveillance des urgences (Odissé)')
     : DROM_ROWS.map(([k, label]) => {
+      if (partFailed(syn.errors, syndromeDepartmentsPart(k))) return listRow({ text: label, value: 'n.d.', level: 'gris', note: 'source indisponible' });
       const v = dep?.values[k];
       if (!v || v.er === null) return listRow({ text: label, value: 'n.d.', level: 'gris', note: 'pas de donnée publiée' });
       const lv = lateSyn ? 'nd' : seasonalLevel(v.er, v.refEr);
@@ -87,12 +92,17 @@ function territorySection(state: HealthSurveillanceState, t: Territory, now: num
         note: `des passages aux urgences · ${v.sos === null ? 'pas d’association SOS Médecins' : `SOS Médecins ${formatPct(v.sos, 1)} des actes`}`,
       });
     }).join('');
-  const bulletins = state.alerts.data ? bulletinsFor(t.region, state.alerts.data.bulletins) : [];
-  const bulletinRows = bulletins.length === 0 ? emptyLine('Aucun bulletin régional publié depuis 45 jours.')
-    : bulletins.map((b) => listRow({
-      text: b.title, value: parisDay(b.date), level: alertLevel ?? 'gris',
-      noteHtml: `${b.summary ? `${escapeHtml(b.summary)} · ` : ''}${sourceLinkHtml('bulletin Santé publique France', b.url)}`,
-    })).join('');
+  const alertsData = state.alerts.data;
+  const basin = BASIN_PAGE[t.region] ?? t.name;
+  // Page régionale en échec (ou réponse absente) : jamais « aucun bulletin » (S3).
+  const bulletinsDown = alertsData === null || partFailed(alertsData.errors, spfPagePart(basin));
+  const bulletins = alertsData ? bulletinsFor(t.region, alertsData.bulletins) : [];
+  const listed = bulletins.map((b) => listRow({
+    text: b.title, value: parisDay(b.date), level: alertLevel ?? 'gris',
+    noteHtml: `${b.summary ? `${escapeHtml(b.summary)} · ` : ''}${sourceLinkHtml('bulletin Santé publique France', b.url)}`,
+  })).join('');
+  const bulletinRows = bulletinsDown ? sourceUnavailable(`bulletins Santé publique France (${basin})`) + listed
+    : listed || emptyLine('Aucun bulletin régional publié depuis 45 jours.');
   const week = syn?.week ? `, ${weekShort(syn.week.id)}` : '';
   const html = `<h4 class="fmk-eyebrow">Niveaux d’alerte</h4>${alertRows}<h4 class="fmk-eyebrow">Urgences${week}</h4>${urgRows}`
     + `<h4 class="fmk-eyebrow">Bulletins régionaux</h4>${bulletinRows}`;
@@ -111,7 +121,7 @@ function outbreakKey(n: OutbreakNews): string {
 function whoSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
   const base = { id: 'who', title: 'Alertes OMS', collapsible: true, open: open('who', true) };
   const d = state.international.data;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('OMS, Disease Outbreak News') };
+  if (!d || partFailed(d.errors, HEALTH_PART.who)) return { ...base, summary: 'n.d.', html: sourceUnavailable('OMS, Disease Outbreak News') };
   const sorted = [...d.who].sort((a, b) => b.date.localeCompare(a.date));
   const newest = sorted[0];
   if (!newest) return { ...base, summary: 'aucun message', html: emptyLine('Aucun message de l’OMS reçu.') };
@@ -137,7 +147,7 @@ function whoSection(state: HealthSurveillanceState, now: number, open: OpenFn): 
 function ecdcSection(state: HealthSurveillanceState, open: OpenFn): FicheSection {
   const base = { id: 'ecdc', title: 'ECDC', collapsible: true, open: open('ecdc', true) };
   const d = state.international.data;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('ECDC, rapport hebdomadaire des menaces') };
+  if (!d || partFailed(d.errors, HEALTH_PART.ecdc)) return { ...base, summary: 'n.d.', html: sourceUnavailable('ECDC, rapport hebdomadaire des menaces') };
   const reports = [...d.ecdc].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
   const first = reports[0];
   if (!first) return { ...base, summary: 'aucun rapport', html: emptyLine('Aucun rapport hebdomadaire de l’ECDC reçu.') };
@@ -165,7 +175,7 @@ const isActive = (s: ShortageStatus): boolean => s === 'rupture' || s === 'tensi
 function drugsSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
   const base = { id: 'drugs', title: 'Médicaments (ANSM)', collapsible: true, open: open('drugs', true) };
   const d = state.drugs.data;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('ANSM, disponibilité des médicaments') };
+  if (!d || partFailed(d.errors, HEALTH_PART.drugs)) return { ...base, summary: 'n.d.', html: sourceUnavailable('ANSM, disponibilité des médicaments') };
   const late = surveillanceLate(state, 'drugs', now);
   const { rupture, tension, remise, arret } = d.counts;
   const active = rupture + tension;
@@ -216,7 +226,7 @@ const RISK_ORDER = Object.keys(RISK) as RecallRisk[];
 function recallsSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
   const base = { id: 'recalls', title: 'Rappels de produits', collapsible: true, open: open('recalls', true) };
   const d = state.recalls.data;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('RappelConso') };
+  if (!d || partFailed(d.errors, HEALTH_PART.recalls)) return { ...base, summary: 'n.d.', html: sourceUnavailable('RappelConso') };
   const late = surveillanceLate(state, 'recalls', now);
   const byRisk = RISK_ORDER.map((k): [RecallRisk, number] => [k, d.byRisk[k] ?? 0]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   const legend = byRisk.length === 0 ? '' : `<div class="lp-leg">${byRisk.map(([k, n]) =>

@@ -136,6 +136,62 @@ describe('vue Veille sanitaire : onglets Outre-mer, International, Produits (spe
     expect(view({ tab: 'international', state }).tabs?.find((t) => t.id === 'international')?.count ?? null).toBeNull();
     expect(view({ tab: 'produits', state }).tabs?.find((t) => t.id === 'produits')?.count ?? null).toBeNull();
   });
+  it('panne partielle, OMS en échec et ECDC lu : section OMS indisponible (jamais « aucun message »), compteur n.d., ECDC listé', () => {
+    const state = withState((s) => {
+      if (s.international.data) s.international.data = { ...s.international.data, who: [], errors: ['OMS, Disease Outbreak News : HTTP 503'] };
+    });
+    const who = sectionOf('international', 'who', state);
+    expect(who?.summary).toBe('n.d.');
+    expect(who?.html).toContain('Source indisponible : OMS, Disease Outbreak News.');
+    expect(who?.html).not.toContain('Aucun message');
+    expect(sectionOf('international', 'ecdc', state)?.html).toContain('Semaine 40');
+    expect(view({ tab: 'international', state }).tabs?.find((t) => t.id === 'international')?.count ?? null).toBeNull();
+  });
+  it('panne partielle, ECDC en échec et OMS lu : section ECDC indisponible', () => {
+    const state = withState((s) => {
+      if (s.international.data) s.international.data = { ...s.international.data, ecdc: [], errors: ['ECDC, rapport hebdomadaire des menaces : HTTP 500'] };
+    });
+    expect(sectionOf('international', 'ecdc', state)?.html).toContain('Source indisponible : ECDC, rapport hebdomadaire des menaces.');
+    expect(sectionOf('international', 'ecdc', state)?.html).not.toContain('Aucun rapport');
+    expect(sectionOf('international', 'who', state)?.html).toContain('OMS, DON618');
+  });
+  it('panne partielle outre-mer : alertes Odissé, page régionale d’un bassin, valeurs départementales d’un syndrome dites indisponibles', () => {
+    const state = withState((s) => {
+      if (s.alerts.data) {
+        s.alerts.data = {
+          ...s.alerts.data, levels: [], latestWeek: null, bulletins: s.alerts.data.bulletins.filter((b) => b.territory !== 'Océan Indien'),
+          errors: ['Odissé, niveaux d’alerte : HTTP 429', 'Santé publique France, page Océan Indien : HTTP 503'],
+        };
+      }
+      const syn = s.syndromic.data;
+      if (syn) {
+        syn.errors = ['Odissé, Grippe départements : HTTP 500'];
+        for (const dep of syn.departments) delete dep.values.grippe;
+      }
+    });
+    const reunion = sectionOf('outremer', 'drom-974', state)?.html ?? '';
+    expect(reunion).toContain('Source indisponible : niveaux d’alerte Odissé.');
+    expect(reunion).toContain('Source indisponible : bulletins Santé publique France (Océan Indien).');
+    expect(reunion).not.toContain('Aucun bulletin régional');
+    expect(reunion).toMatch(/<span>Grippe<\/span>[^]*n\.d\.[^]*source indisponible/);
+    expect(reunion).not.toContain('aucune publication');
+    const guadeloupe = sectionOf('outremer', 'drom-971', state)?.html ?? '';
+    expect(guadeloupe).toContain('Dengue aux Antilles : situation au 10 septembre');
+    expect(guadeloupe).not.toContain('bulletins Santé publique France (');
+  });
+  it('panne partielle produits : ANSM ou RappelConso nommés en échec, section indisponible, compteur n.d.', () => {
+    const state = withState((s) => {
+      if (s.drugs.data) {
+        s.drugs.data = { ...s.drugs.data, items: [], counts: { rupture: 0, tension: 0, remise: 0, arret: 0 }, latestUpdate: null,
+          errors: ['ANSM, disponibilités des médicaments : aucun statut reconnu'] };
+      }
+      if (s.recalls.data) s.recalls.data = { ...s.recalls.data, total: 0, healthRisk: 0, byRisk: {}, latest: [], errors: ['RappelConso : HTTP 500'] };
+    });
+    expect(sectionOf('produits', 'drugs', state)?.html).toContain('Source indisponible : ANSM, disponibilité des médicaments.');
+    expect(sectionOf('produits', 'recalls', state)?.html).toContain('Source indisponible : RappelConso.');
+    expect(sectionOf('produits', 'recalls', state)?.html).not.toContain('Aucun rappel');
+    expect(view({ tab: 'produits', state }).tabs?.find((t) => t.id === 'produits')?.count ?? null).toBeNull();
+  });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute', () => {
     const evil = '<img src=x onerror=1>';
     const state = withState((s) => {

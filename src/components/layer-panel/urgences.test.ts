@@ -137,6 +137,40 @@ describe('vue Urgences et SOS Médecins (spec 2026-10-03 § 3.2)', () => {
     expect(renderLayerView('healthOscour', v)).not.toMatch(/lp-lvl|fmk-dot--/);
     expect(view({ now: Date.parse('2026-10-12T00:00:00Z') }).head.level).toBe('jaune');
   });
+  it('panne partielle, export départemental du syndrome affiché en échec : section indisponible, jamais « aucune valeur publiée »', () => {
+    const data = withData((d) => {
+      d.errors = ['Odissé, IRA départements : HTTP 500'];
+      for (const dep of d.departments) delete dep.values.ira;
+    });
+    const s = sectionOf('departments', { data });
+    expect(s?.summary).toBe('IRA · n.d.');
+    expect(s?.html).toContain('Source indisponible : valeurs départementales Odissé (IRA).');
+    expect(s?.html).not.toContain('Aucune valeur départementale');
+    expect(sectionOf('departments', { data, syndrome: 'gastro' })?.summary).toBe(`Gastro-entérite · Mayotte 3,8${NBSP}%`);
+  });
+  it('panne partielle, export France de l’IRA en échec : ligne « source indisponible », pastille et série IRA n.d.', () => {
+    const data = withData((d) => {
+      d.errors = ['Odissé, IRA France : HTTP 500'];
+      for (const s of d.syndromes) if (s.key === 'ira') { s.france = []; s.ages = {}; }
+    });
+    const v = view({ data });
+    expect(v.head.level).toBe('nd');
+    expect(v.head.status?.[0]).toBe('niveau saisonnier suspendu : source indisponible (IRA)');
+    expect(v.sections.find((x) => x.id === 'syndromes')?.html).toMatch(/IRA<\/th><td colspan="3" class="lp-faint">source indisponible<\/td>/);
+    expect(v.sections.find((x) => x.id === 'ira12')?.html).toContain('Source indisponible : série IRA (Odissé).');
+  });
+  it('en retard : départements, hospitalisations et âges sans couleur, comparaison saisonnière n.d.', () => {
+    const now = Date.parse('2026-10-20T00:00:00Z');
+    const deps = sectionOf('departments', { now })?.html ?? '';
+    expect(deps.match(/class="lp-row"/g)).toHaveLength(5);
+    expect(deps).not.toMatch(/fmk-dot--(vert|jaune|orange|rouge)/);
+    const hosp = sectionOf('hosp', { now });
+    expect(hosp?.html).not.toMatch(/fmk-dot--(vert|jaune|orange|rouge)/);
+    expect(hosp?.summary).toBe(`IRA 4,7${NBSP}% · comparaison saisonnière n.d.`);
+    const ages = sectionOf('ages', { now })?.html ?? '';
+    expect(ages).toMatch(new RegExp(`IRA, 0-4 ans[^]*sur S38 : <span class="lp-val fmk-num">\\+14${NBSP}%`));
+    expect(ages).not.toContain('lp-lvl');
+  });
   it('erreur, vide, chargement : jamais une liste vide silencieuse', () => {
     const failed = view({ data: null, error: 'HTTP 500' });
     expect(failed.head).toMatchObject({ level: 'nd', figure: { value: 'n.d.' }, status: ['Odissé injoignable', 'Santé publique France'] });

@@ -37,6 +37,12 @@ describe('fiche thème Santé (spec 2026-10-03 § 3.5)', () => {
     for (const key of ['health', 'healthOscour', 'healthApl', 'hospitals']) expect(html).toContain(`data-action="open-layer:${key}"`);
     expect(html).not.toMatch(/\u2014|&mdash;/);
   });
+  it('source indisponible (panne partielle d’Odissé) : entrée n.d. nommée et écartée, comme une entrée en retard', () => {
+    const state = surveillanceFixture();
+    if (state.alerts.data) state.alerts.data = { ...state.alerts.data, levels: [], latestWeek: null, errors: ['Odissé, niveaux d’alerte : HTTP 429'] };
+    const html = buildThemeFiche(input({ health: nationalSummary(state, HEALTH_NOW) })).sections[0].html;
+    expect(html).toMatch(/<span class="fmk-dot" aria-hidden="true"><\/span>Alertes épidémiques \(grippe, bronchiolite\) : n\.d\. · n\.d\. · source indisponible, écartée/);
+  });
   it('veille pas encore chargée : chargement dit, liens présents ; les autres thèmes n’ont pas ces liens', () => {
     const html = buildThemeFiche(input()).sections[0].html;
     expect(html).toContain('Données de santé en chargement…');

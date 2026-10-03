@@ -16,8 +16,9 @@ import { lineChart } from './chart.ts';
 import { NBSP, formatPct, formatSignedPct } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  PER_100K, SYNDROME_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL, changeHtml, changeLevel, changePct, inSentence, isoWeekId,
-  parisDay, positionWords, seasonalReading, shiftDate, urgencesDriver, weekNumber, weekShort, weekYear, type UrgencesSyndrome,
+  PER_100K, SYNDROME_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL, changeHtml, changeLevel, changePct, failedPillSyndromes, inSentence,
+  isoWeekId, joinFr, parisDay, partFailed, positionWords, seasonalReading, shiftDate, sourceUnavailable, syndromeDepartmentsPart,
+  syndromeFrancePart, urgencesDriver, weekNumber, weekShort, weekYear, type UrgencesSyndrome,
 } from './health-format.ts';
 
 export interface UrgencesViewInput {
@@ -88,7 +89,12 @@ function headOf(d: SyndromicResponse, week: EpiWeek, late: boolean): LayerView['
   const base = `des passages aux urgences pour IRA · ${weekShort(week.id)}`;
   const change = pct === null ? null : `${formatSignedPct(pct, 0)} sur ${weekShort(isoWeekId(shiftDate(week.start, -7)))}`;
   const tail = late ? ' (en retard)' : '';
-  const level: HealthLevel = late ? 'nd' : urgencesLevel(d).level;
+  // Un syndrome de la pastille sans série France : niveau suspendu, jamais calculé sur les autres seuls (S3).
+  const failed = failedPillSyndromes(d);
+  const level: HealthLevel = late || failed.length > 0 ? 'nd' : urgencesLevel(d).level;
+  const statusHead = late ? 'niveau saisonnier suspendu : données en retard'
+    : failed.length > 0 ? `niveau saisonnier suspendu : source indisponible (${joinFr(failed.map((k) => SYNDROME_LABEL[k]))})`
+    : statusPosition(d, level);
   return {
     theme: THEME, title: TITLE,
     figure: {
@@ -100,7 +106,7 @@ function headOf(d: SyndromicResponse, week: EpiWeek, late: boolean): LayerView['
     },
     level,
     status: [
-      late ? 'niveau saisonnier suspendu : données en retard' : statusPosition(d, level),
+      statusHead,
       `${weekShort(week.id)}${d.publishedAt ? ` · publiée le ${parisDay(d.publishedAt)}` : ''}${tail}`,
       SOURCE,
     ],
@@ -116,6 +122,9 @@ function syndromesSection(d: SyndromicResponse, week: EpiWeek, late: boolean, op
   const series = seriesInOrder(d);
   const readings = series.map((s) => ({ s, r: seasonalReading(s, week.id), sos: s.france.find((p) => p.week === week.id)?.sos ?? null }));
   const rows = readings.map(({ s, r, sos }) => {
+    if (partFailed(d.errors, syndromeFrancePart(s.key))) {
+      return `<tr><th scope="row">${levelDot(null)}${escapeHtml(ROW_LABEL[s.key])}</th><td colspan="3" class="lp-faint">source indisponible</td></tr>`;
+    }
     const er = r.value === null ? 'n.d.' : formatPct(r.value, 1);
     const erHtml = s.key === 'ira' ? `<b class="lp-val fmk-num">${er}</b>` : valueHtml(er);
     return `<tr><th scope="row">${levelDot(late || r.level === 'nd' ? null : r.level)}${escapeHtml(ROW_LABEL[s.key])}</th>`
@@ -139,6 +148,7 @@ function ira12Section(d: SyndromicResponse, week: EpiWeek, late: boolean, open: 
   const base = { id: 'ira12', title: 'IRA, 12 semaines', collapsible: true, open: open('ira12', true) };
   const ira = d.syndromes.find((s) => s.key === 'ira');
   const end = dataDateMs(week.start);
+  if (partFailed(d.errors, syndromeFrancePart('ira'))) return { ...base, summary: 'n.d.', html: sourceUnavailable('série IRA (Odissé)') };
   if (!ira || end === null) return { ...base, summary: 'n.d.', html: emptyLine('Série IRA indisponible.') };
   const from = end - 77 * DAY_MS;
   const points = (shift: number): Array<{ at: number; value: number }> => ira.france.flatMap((p) => {
@@ -191,6 +201,9 @@ function departmentsSection(input: UrgencesViewInput, d: SyndromicResponse, late
     })
     .sort((a, b) => b.er - a.er).slice(0, 5);
   const label = URGENCES_SYNDROME_LABEL[k];
+  if (partFailed(d.errors, syndromeDepartmentsPart(k))) {
+    return { ...base, summary: escapeHtml(`${label} · n.d.`), html: sourceUnavailable(`valeurs départementales Odissé (${label})`) };
+  }
   const top = ranked[0];
   if (!top) return { ...base, summary: escapeHtml(`${label} · n.d.`), html: emptyLine('Aucune valeur départementale publiée pour ce syndrome.') };
   const rows = ranked.map(({ dep, v, er }) => {

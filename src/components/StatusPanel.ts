@@ -33,9 +33,22 @@ const STATUS_LABELS: Record<string, string> = {
     loading: 'status.loading',
 };
 
-/** Infobulle de la pastille : une source datée par sa période (semaine, millésime) ne se dit jamais « temps réel » (S1). */
+/** Suffixe de retard des périodes santé (« S39 provisoire (en retard) », spec 2026-10-03 S2). */
+const LATE_SUFFIX = /\s*\(en retard\)$/;
+
+/**
+ * Infobulle de la pastille : une source datée par sa période (semaine, millésime) ne se dit jamais « temps réel » (S1) ;
+ * en retard, elle se dit « en retard » (jamais « cache figé ») ; une lecture en échec ou incomplète nomme la partie en échec (S3).
+ */
 function statusTitle(src: DataSourceStatus): string {
-    if (src.period !== undefined && src.status === 'ok') return t('status.upToDatePeriod', { period: src.period });
+    const period = src.period;
+    if (period !== undefined && src.status === 'ok') return t('status.upToDatePeriod', { period });
+    if (period !== undefined && src.status === 'stale') {
+        const label = LATE_SUFFIX.test(period)
+            ? t('status.latePeriod', { period: period.replace(LATE_SUFFIX, '') })
+            : t('status.incompletePeriod', { period });
+        return src.error ? `${label} · ${src.error}` : label;
+    }
     return t(STATUS_LABELS[src.status] ?? src.status);
 }
 

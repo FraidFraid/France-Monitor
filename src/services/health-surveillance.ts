@@ -270,16 +270,20 @@ export function surveillanceLate(state: HealthSurveillanceState, key: HealthSurv
   }
 }
 
-/** Panneau des sources : date de la donnée (S1) ; « stale » en retard ou après un échec avec données ; « error » sans donnée. */
+/**
+ * Panneau des sources : date de la donnée (S1) ; « stale » en retard, après un échec avec données ou quand une partie de la
+ * réponse a échoué (`errors[]` non vide, S3), les parties en échec nommées ; « error » sans donnée.
+ */
 export function surveillanceStatus(
   state: HealthSurveillanceState, key: HealthSurveillanceKey, now: number,
 ): Pick<DataSourceStatus, 'status' | 'lastUpdate' | 'error'> {
   const slot = state[key];
   if (slot.data === null) return { status: slot.error !== null ? 'error' : 'loading', lastUpdate: null, error: slot.error ?? undefined };
   const ms = dataDateMs(surveillanceDataDate(state, key));
+  const errors = [...(slot.error !== null ? [slot.error] : []), ...slot.data.errors];
   return {
-    status: slot.error !== null || surveillanceLate(state, key, now) ? 'stale' : 'ok',
+    status: errors.length > 0 || surveillanceLate(state, key, now) ? 'stale' : 'ok',
     lastUpdate: ms === null ? null : new Date(ms),
-    error: slot.error ?? undefined,
+    error: errors.length > 0 ? errors.join(' ; ') : undefined,
   };
 }
