@@ -21,6 +21,7 @@ import type {
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
 
@@ -391,20 +392,55 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
 
 // ─── Règle 7 : TELECOM_DISRUPTION ────────────────────────────────────────────
 
-function detectTelecomDisruption(raw: FranceRawData): DetectedSituation | null {
-  const telecomCount = raw.telecomOutages.length;
-  const powerCount   = raw.powerOutages.length;
+const NBSP = '\u00a0';
+const TELECOM_RECENT_MS = 24 * 3_600_000;
 
-  if (telecomCount < 2) return null;
+function fmtInt(n: number): string {
+  return n.toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, NBSP);
+}
 
-  const combined = telecomCount + (powerCount >= 3 ? 1 : 0);
-  const severity: SituationSeverity = telecomCount >= 5 ? 'critical'
-    : combined >= 4 ? 'high'
-    : 'medium';
+function telecomDeptLabel(code: string): string {
+  const name = DEPARTMENTS[code]?.name;
+  return name ? `${name} (${code})` : code;
+}
 
-  const confidence = Math.min(0.88, 0.55 + (telecomCount / 10) * 0.25 + (powerCount >= 3 ? 0.10 : 0));
+/**
+ * Le fichier ARCEP est un STOCK de sites hors service (pannes de plusieurs mois comprises), pas un
+ * flux d'événements : seules les pannes débutées dans les dernières 24 h (`since`) comptent.
+ * Sans date ou plus anciennes, elles ne déclenchent rien.
+ */
+function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
+  const stock = raw.telecomOutages.length;
+  const powerCount = raw.powerOutages.length;
 
-  const zones = [...new Set(raw.telecomOutages.map(o => o.department ?? o.operator ?? 'France'))].slice(0, 3);
+  const byDept = new Map<string, number>();
+  let recent = 0;
+  for (const o of raw.telecomOutages) {
+    const t = o.since ? Date.parse(o.since) : NaN;
+    if (Number.isNaN(t) || t > nowMs || nowMs - t > TELECOM_RECENT_MS) continue;
+    recent += 1;
+    const dept = o.department?.trim() || 'Inconnu';
+    byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
+  }
+
+  const ranked = [...byDept.entries()].sort((a, b) => b[1] - a[1]);
+  const [topDept, topCount] = ranked[0] ?? ['', 0];
+
+  const severity: SituationSeverity | null =
+    topCount >= 100 || recent >= 600 ? 'critical'
+    : topCount >= 50 || recent >= 300 ? 'high'
+    : topCount >= 20 ? 'medium'
+    : null;
+  if (!severity) return null;
+
+  // Les pannes électriques ne font que confirmer : elles ne changent pas la sévérité.
+  const powerConfirms = powerCount >= 3;
+  const confidence = Math.min(0.88, 0.55 + Math.min(0.25, topCount / 400) + (powerConfirms ? 0.05 : 0));
+
+  const zones = ranked.slice(0, 3).map(([d]) => telecomDeptLabel(d));
+  const plural = recent > 1;
+  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h, dont ${fmtInt(topCount)} dans le département ${telecomDeptLabel(topDept)}`;
+  const stockText = `${fmtInt(stock)}${NBSP}site${stock > 1 ? 's' : ''} hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises`;
 
   return situation(
     'telecom-disruption',
@@ -412,11 +448,12 @@ function detectTelecomDisruption(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Perturbation télécom significative',
-    `${telecomCount} incident(s) télécom actif(s)${powerCount >= 3 ? ` avec ${powerCount} pannes électriques associées` : ''}.`,
+    `${recentText}. ${stockText}.`,
     zones.length > 0 ? zones : ['France'],
     [
-      `${telecomCount} panne(s) télécom actives`,
-      ...(powerCount >= 3 ? [`${powerCount} pannes électriques corrélées (risque cascade)`] : []),
+      recentText,
+      stockText,
+      ...(powerConfirms ? [`${powerCount} pannes électriques en parallèle (confirmation, risque cascade)`] : []),
     ],
     [
       action('Vérifier le tableau de bord ARCEP pour les incidents opérateurs', 'Analyste télécom', 'investigate', true),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectPowerOutages } from './outages.ts';
+import { selectPowerOutages, arcepFeatureToOutage, arcepReasonLabel, type ArcepFeature } from './outages.ts';
 import type { PowerOutage } from '../types/index.ts';
 
 function powerOutage(over: Partial<PowerOutage> = {}): PowerOutage {
@@ -50,5 +50,36 @@ describe('selectPowerOutages — plus d’injection par Écowatt (signal nationa
     ];
     const results = selectPowerOutages(computed);
     expect(results.map((r) => r.departmentCode)).toEqual(['02', '03', '01']);
+  });
+});
+
+describe('ARCEP : debut et libellés de cause', () => {
+  const feature = (props: Partial<ArcepFeature['properties']>): ArcepFeature => ({
+    properties: { operateur: 'Orange', departement: '59 ', commune: 'Lille', station_anfr: '1', ...props },
+    geometry: { coordinates: [3.06, 50.63] },
+  });
+
+  it('debut d\'été et d\'hiver converti en ISO UTC', () => {
+    expect(arcepFeatureToOutage(feature({ debut: '2026-09-15 15:42:13' }), 0).since).toBe('2026-09-15T13:42:13.000Z');
+    expect(arcepFeatureToOutage(feature({ debut: '2026-01-23 18:06:16' }), 1).since).toBe('2026-01-23T17:06:16.000Z');
+  });
+
+  it('since reste null sans debut ou avec un debut illisible', () => {
+    expect(arcepFeatureToOutage(feature({ debut: null }), 0).since).toBeNull();
+    expect(arcepFeatureToOutage(feature({}), 0).since).toBeNull();
+    expect(arcepFeatureToOutage(feature({ debut: 'n/a' }), 0).since).toBeNull();
+  });
+
+  it('département nettoyé', () => {
+    expect(arcepFeatureToOutage(feature({}), 0).department).toBe('59');
+  });
+
+  it('libellés : INT incident, MAINT maintenance, repli sur le détail', () => {
+    expect(arcepReasonLabel('INT', 'Incident en cours')).toBe('Incident');
+    expect(arcepReasonLabel('MAINT', 'Maintenance en cours')).toBe('Maintenance');
+    expect(arcepReasonLabel('MNT', undefined)).toBe('Maintenance');
+    expect(arcepReasonLabel('INC', undefined)).toBe('Incident technique');
+    expect(arcepReasonLabel(undefined, 'Détail libre')).toBe('Détail libre');
+    expect(arcepReasonLabel(undefined, undefined)).toBe('Incident');
   });
 });

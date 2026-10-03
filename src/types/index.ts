@@ -985,6 +985,8 @@ export interface TelecomOutage {
   voiceStatus: 'OK' | 'HS' | 'Degraded';
   dataStatus: 'OK' | 'HS' | 'Degraded';
   reason: string;
+  /** Début de la panne (ISO UTC), issu du champ ARCEP `debut` (heure de Paris) ; null si absent ou illisible. */
+  since?: string | null;
   coordinates: [number, number]; // [lon, lat]
 }
 

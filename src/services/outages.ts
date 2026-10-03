@@ -31,6 +31,7 @@ import {
     type DataFairFrequencyRecord,
 } from './adapters/enedis-adapter.ts';
 import { Watchdog } from './watchdog.ts';
+import { parisLocalToIso } from '../utils/paris-time.ts';
 
 Watchdog.register('arcep', {
     label: 'ARCEP Réseau Mobile',
@@ -49,15 +50,51 @@ Watchdog.register('enedis-power', {
 // ═══ ARCEP Mobile Network Outages ═══
 
 // Forme minimale d'une feature GeoJSON ARCEP (champs réellement lus)
-interface ArcepFeature {
+export interface ArcepFeature {
     properties: {
         voix2g?: string; voix3g?: string; voix4g?: string;
         data3g?: string; data4g?: string; data5g?: string;
         detail?: string; raison?: string;
         station_anfr?: string | number;
         operateur?: string; departement?: string; commune?: string;
+        debut?: string | null;
     };
     geometry?: { coordinates?: number[] };
+}
+
+/** Libellé de la cause d'une panne ARCEP : INT = incident, MAINT/MNT = maintenance, sinon le détail. */
+export function arcepReasonLabel(raison: string | undefined, detail: string | undefined): string {
+    if (raison === 'INT') return 'Incident';
+    if (raison === 'MAINT' || raison === 'MNT') return 'Maintenance';
+    if (raison === 'INC') return 'Incident technique';
+    return detail || 'Incident';
+}
+
+/** Convertit une feature ARCEP en panne ; `since` vient de `debut` (heure de Paris). */
+export function arcepFeatureToOutage(f: ArcepFeature, index: number): TelecomOutage {
+    const props = f.properties;
+    const coords = f.geometry?.coordinates;
+
+    // voix/data aggregate = 'HS' when ANY sub-tech is HS (not all).
+    const allVoiceHS = props.voix2g === 'HS' && props.voix3g === 'HS' && props.voix4g === 'HS';
+    const anyVoiceHS = props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS';
+    const voice: 'OK' | 'HS' | 'Degraded' = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
+
+    const allDataHS = props.data3g === 'HS' && props.data4g === 'HS' && props.data5g === 'HS';
+    const anyDataHS = props.data3g === 'HS' || props.data4g === 'HS' || props.data5g === 'HS';
+    const dataStatus: 'OK' | 'HS' | 'Degraded' = allDataHS ? 'HS' : anyDataHS ? 'Degraded' : 'OK';
+
+    return {
+        id: `telecom-${index}-${props.station_anfr}`,
+        operator: props.operateur || 'Inconnu',
+        department: props.departement?.trim() || 'Inconnu',
+        city: props.commune || 'Inconnue',
+        voiceStatus: voice,
+        dataStatus: dataStatus,
+        reason: arcepReasonLabel(props.raison, props.detail),
+        since: parisLocalToIso(props.debut),
+        coordinates: coords ? [coords[0], coords[1]] : [0, 0]
+    };
 }
 
 /**
@@ -107,35 +144,7 @@ export async function fetchTelecomOutages(): Promise<TelecomOutage[]> {
             detail: `${sitesHS} sites HS${dataDateHeader ? ` · ${dataDateHeader}` : ''}`,
         });
 
-        return json.features.map((f: ArcepFeature, index: number): TelecomOutage => {
-            const props = f.properties;
-            const coords = f.geometry?.coordinates;
-
-            // voix/data aggregate = 'HS' when ANY sub-tech is HS (not all).
-            const allVoiceHS = props.voix2g === 'HS' && props.voix3g === 'HS' && props.voix4g === 'HS';
-            const anyVoiceHS = props.voix2g === 'HS' || props.voix3g === 'HS' || props.voix4g === 'HS';
-            const voice: 'OK' | 'HS' | 'Degraded' = allVoiceHS ? 'HS' : anyVoiceHS ? 'Degraded' : 'OK';
-
-            const allDataHS = props.data3g === 'HS' && props.data4g === 'HS' && props.data5g === 'HS';
-            const anyDataHS = props.data3g === 'HS' || props.data4g === 'HS' || props.data5g === 'HS';
-            const dataStatus: 'OK' | 'HS' | 'Degraded' = allDataHS ? 'HS' : anyDataHS ? 'Degraded' : 'OK';
-
-            let reason = props.detail || 'Incident';
-            if (props.raison === 'INT') reason = 'Intempéries';
-            else if (props.raison === 'MNT') reason = 'Maintenance';
-            else if (props.raison === 'INC') reason = 'Incident technique';
-
-            return {
-                id: `telecom-${index}-${props.station_anfr}`,
-                operator: props.operateur || 'Inconnu',
-                department: props.departement?.trim() || 'Inconnu',
-                city: props.commune || 'Inconnue',
-                voiceStatus: voice,
-                dataStatus: dataStatus,
-                reason: reason,
-                coordinates: coords ? [coords[0], coords[1]] : [0, 0]
-            };
-        }).filter((o: TelecomOutage) => o.coordinates[0] !== 0 && o.coordinates[1] !== 0);
+        return (json.features as ArcepFeature[]).map(arcepFeatureToOutage).filter((o: TelecomOutage) => o.coordinates[0] !== 0 && o.coordinates[1] !== 0);
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.warn('[Outages] ARCEP fetch error', error);

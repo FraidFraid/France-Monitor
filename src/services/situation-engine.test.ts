@@ -188,19 +188,25 @@ function socialFixture(): FranceRawData {
   });
 }
 
-function telecomFixture(): FranceRawData {
+type Telecom = FranceRawData['telecomOutages'][number];
+
+/** `count` pannes du département `dept`, débutées `ageH` heures avant NOW (null = sans date). */
+function telecomBatch(dept: string, count: number, ageH: number | null): Telecom[] {
+  const since = ageH === null ? null : new Date(NOW - ageH * 3_600_000).toISOString();
+  return Array.from({ length: count }, (_, i) =>
+    typed<Telecom>({ id: `tel-${dept}-${ageH}-${i}`, department: dept, operator: 'Orange', since }));
+}
+
+function telecomRaw(outages: Telecom[], powerCount = 0): FranceRawData {
   return baseRawData({
-    telecomOutages: [
-      typed<FranceRawData['telecomOutages'][number]>({ id: 'tel-1', department: 'Nord', operator: 'Orange' }),
-      typed<FranceRawData['telecomOutages'][number]>({ id: 'tel-2', department: 'Pas-de-Calais', operator: 'SFR' }),
-      typed<FranceRawData['telecomOutages'][number]>({ id: 'tel-3', department: 'Somme', operator: 'Free' }),
-    ],
-    powerOutages: [
-      typed<FranceRawData['powerOutages'][number]>({ id: 'pow-1' }),
-      typed<FranceRawData['powerOutages'][number]>({ id: 'pow-2' }),
-      typed<FranceRawData['powerOutages'][number]>({ id: 'pow-3' }),
-    ],
+    telecomOutages: outages,
+    powerOutages: Array.from({ length: powerCount }, (_, i) =>
+      typed<FranceRawData['powerOutages'][number]>({ id: `pow-${i}` })),
   });
+}
+
+function telecomSituation(raw: FranceRawData) {
+  return detectSituations(raw, NOW).find((s) => s.type === 'TELECOM_DISRUPTION');
 }
 
 function maritimeFixture(): FranceRawData {
@@ -290,8 +296,54 @@ describe('situation-engine · detectSituations', () => {
     assertHasSituation(socialFixture(), 'SOCIAL_ESCALATION');
   });
 
-  it('telecom fixture emits TELECOM_DISRUPTION', () => {
-    assertHasSituation(telecomFixture(), 'TELECOM_DISRUPTION');
+  it('telecom : seuils par département (20 medium, 50 high, 100 critical)', () => {
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 19, 2))), undefined);
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 20, 2)))?.severity, 'medium');
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 49, 2)))?.severity, 'medium');
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 50, 2)))?.severity, 'high');
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 99, 2)))?.severity, 'high');
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 100, 2)))?.severity, 'critical');
+  });
+
+  it('telecom : seuils nationaux (300 high, 600 critical) sans concentration', () => {
+    const spread = (total: number): Telecom[] =>
+      Array.from({ length: total / 10 }, (_, i) => telecomBatch(String(i + 1).padStart(2, '0'), 10, 3)).flat();
+    assert.equal(telecomSituation(telecomRaw(spread(290))), undefined);
+    assert.equal(telecomSituation(telecomRaw(spread(300)))?.severity, 'high');
+    assert.equal(telecomSituation(telecomRaw(spread(600)))?.severity, 'critical');
+  });
+
+  it('telecom : frontière des 24 h', () => {
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 20, 24)))?.severity, 'medium');
+    const justOver = telecomBatch('59', 20, 24).map((o) => ({ ...o, since: new Date(NOW - 24 * 3_600_000 - 1).toISOString() }));
+    assert.equal(telecomSituation(telecomRaw(justOver)), undefined);
+  });
+
+  it('telecom : sans date, ne compte pas', () => {
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 500, null))), undefined);
+  });
+
+  it('telecom : un gros stock ancien seul ne donne aucune situation', () => {
+    const old = [...telecomBatch('59', 400, 30), ...telecomBatch('34', 300, 24 * 10), ...telecomBatch('75', 300, 24 * 60)];
+    assert.equal(telecomSituation(telecomRaw(old)), undefined);
+  });
+
+  it('telecom : résumé avec récent, département et stock, sans tiret cadratin', () => {
+    const raw = telecomRaw([...telecomBatch('59', 43, 5), ...telecomBatch('34', 10, 5), ...telecomBatch('75', 6, 400)]);
+    const s = telecomSituation(raw);
+    assert.ok(s);
+    assert.ok(s.summary.includes('53\u00a0sites mobiles tombés en 24\u00a0h, dont 43 dans le département Nord (59)'), s.summary);
+    assert.ok(s.summary.includes('59\u00a0sites hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises'), s.summary);
+    assert.deepEqual(s.affectedZones.slice(0, 2), ['Nord (59)', 'Herault (34)']);
+    assert.ok(!s.summary.includes('\u2014'));
+  });
+
+  it('telecom : les pannes électriques confirment sans escalader', () => {
+    const base = telecomSituation(telecomRaw(telecomBatch('59', 20, 2)));
+    const withPower = telecomSituation(telecomRaw(telecomBatch('59', 20, 2), 5));
+    assert.equal(withPower?.severity, 'medium');
+    assert.ok((withPower?.confidence ?? 0) > (base?.confidence ?? 1));
+    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 19, 2), 9)), undefined);
   });
 
   it('AIS anomaly fixture emits MARITIME_ANOMALY', () => {
