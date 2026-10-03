@@ -2,7 +2,7 @@
 // ni DOM. Perturbations SNCF agrégées par axe grandes lignes et par région TER, situations SIRI SX avec leur cause, plus gros retards,
 // détail train par train (en cours et à venir séparés, filtre, pagination). Périmètre : trains signalés par la SNCF (T1).
 import type { RailGroupStats, RailOverviewResponse, RailSituation, RailSituationsResponse, RailTrain } from '../../types/index.ts';
-import { isTrafficDataLate, railLevel } from '../../services/traffic-levels.ts';
+import { isTrafficDataLate, railLevel, worstGroup } from '../../services/traffic-levels.ts';
 import { LEVEL_RANK } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow, levelDot } from '../fiche/kit.ts';
@@ -38,9 +38,9 @@ const SIRI_URL = 'https://transport.data.gouv.fr/datasets/horaires-sncf';
 const MAX_REGIONS = 5;
 const MAX_SITUATIONS = 6;
 const MAX_TOP = 5;
-const MIN_GROUP = 3;
 const AXES_NOTE = 'Axe : gare terminale à Paris (Gare de Lyon : Sud-Est ; Montparnasse : Atlantique ; Nord ; Est ; Bercy : Intercités Bercy ; '
-  + 'Saint-Lazare : Normandie), sinon province et transversales.';
+  + 'Saint-Lazare : Normandie), sinon province et transversales. Le groupe « Grandes lignes non rattachées » réunit les trains grandes lignes '
+  + 'dont l’axe n’est pas connu ; il ne se confond pas avec la région TER « Non rattaché ».';
 
 function overviewLate(o: RailOverviewResponse, now: number): boolean {
   return isTrafficDataLate('sncf', o.updatedAt, now);
@@ -56,19 +56,14 @@ function sortGroups(groups: readonly RailGroupStats[]): RailGroupStats[] {
   return [...groups].sort((a, b) => groupRank(b) - groupRank(a) || (b.avgDelayMin ?? -1) - (a.avgDelayMin ?? -1) || b.trains - a.trains);
 }
 
-/** Groupe d'au moins 3 trains au plus fort retard moyen (règle de la pastille). */
-function worstGroup(groups: readonly RailGroupStats[]): RailGroupStats | null {
-  return groups.filter((g) => g.trains >= MIN_GROUP && g.avgDelayMin !== null)
-    .sort((a, b) => (b.avgDelayMin ?? 0) - (a.avgDelayMin ?? 0))[0] ?? null;
-}
-
 function sortedSituations(s: RailSituationsResponse): RailSituation[] {
   return [...s.situations].sort((a, b) => b.trains - a.trains || (dataMs(b.start) ?? 0) - (dataMs(a.start) ?? 0));
 }
 
 /** Groupe « Non rattaché » des axes : grandes lignes sans axe (distinct de la région TER du même nom). */
 const UNATTACHED = 'non-rattache';
-const UNATTACHED_LONG = 'grandes lignes non rattachées';
+const UNATTACHED_LABEL = 'Grandes lignes non rattachées';
+const UNATTACHED_LONG = UNATTACHED_LABEL.toLowerCase();
 
 function groupLabel(t: RailTrain, o: RailOverviewResponse): string | null {
   if (t.axis !== null) return `axe ${o.axes.find((g) => g.key === t.axis)?.label ?? RAIL_AXIS_LABEL[t.axis]}`;
@@ -83,7 +78,7 @@ function groupLabel(t: RailTrain, o: RailOverviewResponse): string | null {
 function lead(o: RailOverviewResponse, s: RailSituationsResponse | null, now: number): string | null {
   const parts: string[] = [];
   const axis = worstGroup(o.axes);
-  if (axis) parts.push(`${axis.key === UNATTACHED ? 'Grandes lignes non rattachées' : `Axe ${axis.label}`} le plus touché (${plural(axis.trains, 'train')}, ${formatMinutes(axis.avgDelayMin, { signed: true })} en moyenne).`);
+  if (axis) parts.push(`${axis.key === UNATTACHED ? UNATTACHED_LABEL : `Axe ${axis.label}`} le plus touché (${plural(axis.trains, 'train')}, ${formatMinutes(axis.avgDelayMin, { signed: true })} en moyenne).`);
   const region = worstGroup(o.regions);
   if (region) parts.push(`TER ${region.label} : ${formatMinutes(region.avgDelayMin, { signed: true })} en moyenne sur ${plural(region.trains, 'train')}.`);
   const top = s && !isTrafficDataLate('siri-sx', s.at, now) ? sortedSituations(s)[0] : undefined;
@@ -217,7 +212,7 @@ function topSection(o: RailOverviewResponse | null, canFocus: boolean, now: numb
 export function railFilterOptions(o: RailOverviewResponse): Array<{ value: string; label: string }> {
   return [
     { value: 'all', label: 'Tous les axes et régions' },
-    ...o.axes.map((g) => ({ value: `axis:${g.key}`, label: g.key === UNATTACHED ? 'Grandes lignes non rattachées' : `Axe ${g.label}` })),
+    ...o.axes.map((g) => ({ value: `axis:${g.key}`, label: g.key === UNATTACHED ? UNATTACHED_LABEL : `Axe ${g.label}` })),
     ...o.regions.map((g) => ({ value: `region:${g.key}`, label: `TER ${g.label}` })),
   ];
 }
@@ -254,7 +249,7 @@ function trainsSection(o: RailOverviewResponse | null, filter: string, pages: nu
   const html = toolbar
     + `<h4 class="fmk-eyebrow">En cours (${current.length})</h4>${list(shownCurrent, 'Aucun train perturbé en cours pour ce choix.')}`
     + `<h4 class="fmk-eyebrow">À venir (${upcoming.length})</h4>${list(shownUpcoming, upcoming.length > 0 ? 'Affichés après les trains en cours.' : 'Aucun train perturbé à venir pour ce choix.')}`
-    + (rest > 0 ? `<button type="button" class="lp-toggle" data-rail-more>Afficher ${Math.min(RAIL_PAGE_SIZE, rest)} de plus (${rest} restants)</button>` : '');
+    + (rest > 0 ? `<button type="button" class="lp-toggle" data-rail-more>Afficher ${Math.min(RAIL_PAGE_SIZE, rest)} de plus (${plural(rest, 'restant')})</button>` : '');
   return { ...base, summary: escapeHtml(`${current.length} en cours · ${upcoming.length} à venir`), html };
 }
 
@@ -263,8 +258,9 @@ function trainsSection(o: RailOverviewResponse | null, filter: string, pages: nu
 function methodSection(input: RailViewInput): FicheSection {
   const { overview: o, overviewError, situations: s, situationsError, now, open } = input;
   const state = (has: boolean, failed: boolean, text: string): string => (has ? text : failed ? 'source indisponible' : 'chargement…');
-  const html = kvRow('Perturbations', `${sourceLinkHtml('API SNCF (perturbations du jour)', SNCF_URL)} · ${escapeHtml(state(o !== null, overviewError !== null,
-    o ? `mise à jour de ${clockOf(o.updatedAt, now)}${overviewLate(o, now) ? ' (en retard)' : ''}` : ''))}`)
+  const sncfDown = o !== null && o.updatedAt === null;
+  const html = kvRow('Perturbations', `${sourceLinkHtml('API SNCF (perturbations du jour)', SNCF_URL)} · ${escapeHtml(state(o !== null && !sncfDown, overviewError !== null || sncfDown,
+    o ? `réponse de ${clockOf(o.updatedAt, now)}${overviewLate(o, now) ? ' (en retard)' : ''}` : ''))}`)
     + kvRow('Situations', `${sourceLinkHtml('SIRI SX (point d’accès national)', SIRI_URL)} · ${escapeHtml(state(s !== null, situationsError !== null,
       s ? `réponse de ${clockOf(s.at, now)}${isTrafficDataLate('siri-sx', s.at, now) ? ' (en retard)' : ''}` : ''))}`)
     + note(`Périmètre : trains signalés par la SNCF (pas le plan de transport complet), retards signalés à partir de 5${NBSP}min ; aucun taux de régularité.`)
@@ -273,11 +269,12 @@ function methodSection(input: RailViewInput): FicheSection {
     + note(AXES_NOTE)
     + note('Effets : retard (SIGNIFICANT_DELAYS), supprimé (NO_SERVICE), service réduit (REDUCED_SERVICE), détour (DETOUR), service modifié '
       + '(MODIFIED_SERVICE), train ajouté (ADDITIONAL_SERVICE) ; trains en cours et à venir séparés.')
+    + (sncfDown ? note('API SNCF indisponible : aucune réponse du serveur, aucun chiffre affiché.') : '')
     + note(`Retard : perturbations et situations au-delà de 20${NBSP}min sans mise à jour. Une donnée en retard perd ses couleurs.`)
     + note(`Couleurs d’un train : retard de 15${NBSP}min ou plus jaune, 45${NBSP}min orange, 90${NBSP}min rouge ; supprimé rouge.`)
     + note('Carte : gares des trains perturbés en cours, couleur selon le plus fort retard à l’arrêt ; les situations SIRI SX ne sont pas placées (le flux ne publie pas de lieu) ; trajet du train choisi dans le panneau.')
     + readErrors([...(o?.errors ?? []), ...(s?.errors ?? [])]);
-  const down = [o === null && overviewError !== null, s === null && situationsError !== null].filter(Boolean).length;
+  const down = [(o === null && overviewError !== null) || sncfDown, s === null && situationsError !== null].filter(Boolean).length;
   return {
     id: 'method', title: 'Méthode et sources', collapsible: true, open: open('method', false), tone: 'reference', html,
     summary: escapeHtml(`SNCF · SIRI SX${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`),
@@ -291,10 +288,19 @@ export function buildRailView(input: RailViewInput): LayerView {
   if (o === null && overviewError === null) {
     return { head: { theme: TRAFFIC_THEME, title: TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }
+  // Réponse sans horodatage : le serveur n'a pas pu joindre la SNCF, aucun chiffre n'est une donnée.
+  const sncfDown = o !== null && o.updatedAt === null;
+  const usable = sncfDown ? null : o;
   const sections = [
-    axesSection(o, now, open), regionsSection(o, now, open), situationsSection(s, situationsError, now, open), topSection(o, canFocus, now, open),
-    trainsSection(o, filter, pages, canFocus, now, open), methodSection(input),
+    axesSection(usable, now, open), regionsSection(usable, now, open), situationsSection(s, situationsError, now, open), topSection(usable, canFocus, now, open),
+    trainsSection(usable, filter, pages, canFocus, now, open), methodSection(input),
   ];
+  if (o !== null && sncfDown) {
+    return {
+      head: { theme: TRAFFIC_THEME, title: TITLE, level: 'nd', status: [railLevel(o).reason, siriStamp(s, situationsError, now)] },
+      sections, bodyHtml: sourceErrorCallout(null, now),
+    };
+  }
   if (o === null) {
     return {
       head: {

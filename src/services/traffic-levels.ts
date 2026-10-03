@@ -111,7 +111,7 @@ export function airLevel(a: AirOverviewResponse): LevelVerdict {
 }
 
 /** Groupe (axe ou région) d'au moins 3 trains au plus fort retard moyen, ou null. */
-function worstGroup(groups: readonly RailGroupStats[]): RailGroupStats | null {
+export function worstGroup(groups: readonly RailGroupStats[]): RailGroupStats | null {
   let worst: RailGroupStats | null = null;
   for (const g of groups) {
     if (g.trains < 3 || g.avgDelayMin === null) continue;

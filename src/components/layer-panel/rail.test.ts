@@ -125,7 +125,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
   });
   it('méthode et sources : périmètre (T1), règle de la pastille, axes, effets exacts, retards', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
-    for (const part of ['mise à jour de 15:10', 'réponse de 15:10', 'trains signalés par la SNCF (pas le plan de transport complet)',
+    for (const part of ['réponse de 15:10', 'trains signalés par la SNCF (pas le plan de transport complet)',
       `à partir de 5${NBSP}min`, 'au moins 3 trains', `90${NBSP}min de retard moyen ou plus`, 'au moins 10 trains supprimés',
       'au moins 15 trains grandes lignes', 'service réduit (REDUCED_SERVICE)', 'train ajouté (ADDITIONAL_SERVICE)', `au-delà de 20${NBSP}min`]) {
       expect(t).toContain(part);
@@ -220,5 +220,35 @@ describe('vue Réseau ferroviaire : arbitrages du serveur', () => {
     const h = sectionOf('axes', { overview: calm })?.html ?? '';
     expect(h).toContain('Aucun train grandes lignes perturbé en cours.');
     expect(h).not.toContain('<table');
+  });
+});
+
+describe('vue Réseau ferroviaire : corrections de la relecture', () => {
+  const zeroAxes = (o: RailOverviewResponse): void => { o.axes = o.axes.map((g) => ({ ...g, trains: 0, avgDelayMin: null, maxDelayMin: null })); };
+  it('SNCF injoignable côté serveur (updatedAt nul, erreurs) : panne nommée, aucun chiffre, jamais « en retard »', () => {
+    const down = withOverview((o) => { o.updatedAt = null; o.errors = ['SNCF : HTTP 503']; o.longDistance = { active: 0, delayed15: 0 }; o.axes = []; o.regions = []; o.trains = []; o.topDelays = []; });
+    const v = view({ overview: down });
+    expect(v.head.level).toBe('nd');
+    expect(v.head.figure).toBeUndefined();
+    expect(v.head.status[0]).toBe('API SNCF indisponible');
+    expect(v.sections.find((s) => s.id === 'axes')?.html).toContain('Source indisponible : perturbations SNCF.');
+    expect(v.bodyHtml).toContain('Source injoignable');
+    const text = visibleText(renderLayerView('trafficRail', v));
+    expect(text).not.toMatch(/données SNCF en retard|\(en retard\)|Aucun train grandes lignes/);
+    expect(text).toContain('API SNCF indisponible : aucune réponse du serveur');
+    expect(text).toContain('source indisponible');
+    expect(text).toContain('Incidents de lecture : SNCF : HTTP 503.');
+  });
+  it('7 axes à zéro train alors que longDistance est non nul : « aucun », jamais n.d.', () => {
+    const o = withOverview((x) => zeroAxes(x));
+    expect(sectionOf('axes', { overview: o })?.summary).toBe('aucun');
+  });
+  it('« 1 restant » au singulier ; le groupe non rattaché est expliqué', () => {
+    const many = withOverview((o) => {
+      const base = o.trains[0];
+      o.trains = Array.from({ length: 21 }, (_, i): RailTrain => ({ ...base, id: `t-${i}`, number: String(1000 + i), delayMin: 30 + i }));
+    });
+    expect(sectionOf('trains', { overview: many })?.html).toContain('Afficher 1 de plus (1 restant)</button>');
+    expect(visibleText(sectionOf('method')?.html ?? '')).toContain('Grandes lignes non rattachées');
   });
 });
