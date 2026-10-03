@@ -203,3 +203,10 @@ export function urgencesDriver(d: SyndromicResponse, level: HealthLevel): Syndro
     return s !== undefined && seasonalReading(s, week.id).level === level;
   }) ?? 'ira';
 }
+
+// ─── Urgences et SOS Médecins : sélecteur de la carte et des départements (spec § 3.2) ───
+
+export type UrgencesSyndrome = 'ira' | 'bronchio' | 'gastro';
+/** Syndromes du sélecteur, IRA par défaut (premier). */
+export const URGENCES_SYNDROMES: readonly UrgencesSyndrome[] = ['ira', 'bronchio', 'gastro'];
+export const URGENCES_SYNDROME_LABEL: Readonly<Record<UrgencesSyndrome, string>> = { ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite' };

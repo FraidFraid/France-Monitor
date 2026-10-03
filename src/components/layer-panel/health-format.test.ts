@@ -5,7 +5,7 @@ import { NBSP } from './format.ts';
 import {
   PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
   seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
-  weekShort, weekYear,
+  weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
 } from './health-format.ts';
 
 const serie = (key: 'ira' | 'gastro') => {
@@ -80,5 +80,9 @@ describe('aides des panneaux Santé', () => {
     ]);
     expect(urgencesDriver(syndromicFixture(), 'jaune')).toBe('gastro');
     expect(urgencesDriver(syndromicFixture(), 'vert')).toBe('ira');
+  });
+  it('sélecteur des urgences : IRA, bronchiolite, gastro-entérite, IRA par défaut (spec § 3.2)', () => {
+    expect(URGENCES_SYNDROMES).toEqual(['ira', 'bronchio', 'gastro']);
+    expect(URGENCES_SYNDROME_LABEL).toEqual({ ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite' });
   });
 });
