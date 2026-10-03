@@ -4,6 +4,10 @@
 // plus le journal des fichiers numérotés publiés depuis (`<n>.xml`, un par mise à jour de situation, environ
 // un par minute ; `index.txt` donne le prochain numéro, `feedType` de l'instantané le dernier numéro inclus).
 // Le journal est appliqué en mémoire du processus : la donnée a une à deux minutes de retard, pas une heure.
+// L'index est publié avant le fichier (vu le 03/10/2026) : un 404 sur les derniers fichiers annoncés arrête la lecture sans
+// erreur (relus à la suivante) ; un 404 suivi d'un fichier publié est un trou, sauté et nommé. La nuit, le plus long écart
+// mesuré entre deux fichiers est de 13 min 30 s (nuit du 2 au 3/10/2026, de 1 h à 6 h 30) : la date de publication ne dépasse
+// pas le seuil de retard de 30 minutes sans panne.
 // Analyse par expressions régulières (préfixe d'espace de noms facultatif : `ns2:` dans l'instantané, aucun
 // dans le journal) ; aucune dépendance XML.
 import { cleanText, fetchStrictText, fetchStrictXml } from './source-http.js';
@@ -160,12 +164,12 @@ function comments(inner) {
   }));
 }
 
-/** Noms de lieux d'un enregistrement : communes (`townName`) et noms de route (`linkName`), dans l'ordre. */
+/** Noms de lieux d'un enregistrement : communes (`townName`) et noms de route (`linkName`), dans l'ordre, nettoyés (texte tiers). */
 function placeNames(inner) {
   const towns = [];
   const links = [];
   for (const n of blocks(inner, 'name')) {
-    const value = (first(n.inner, 'value') ?? '').trim();
+    const value = cleanText(first(n.inner, 'value') ?? '');
     const type = first(n.inner, 'tpegOtherPointDescriptorType');
     if (!value) continue;
     if (type === 'townName' && !towns.includes(value)) towns.push(value);
@@ -175,7 +179,8 @@ function placeNames(inner) {
 }
 
 /**
- * Enregistrement brut d'une situation.
+ * Enregistrement d'une situation ; textes tiers affichés (communes, noms de route et de point, organisme) passés par
+ * cleanText : entités XML décodées, tiret cadratin remplacé.
  * @returns {{ id: string, type: string, subtype: string, constriction: string | null, creation: string | null, start: string | null,
  *   end: string | null, status: string | null, probability: string | null, recurring: boolean, source: string, comments: Array<{ type: string, text: string }>,
  *   towns: string[], links: string[], roadNumber: string | null, alertName: string | null, lat: number | null, lon: number | null, safety: boolean }}
@@ -198,12 +203,12 @@ function parseRecord(attrs, inner) {
     status: first(inner, 'validityStatus'),
     probability: first(inner, 'probabilityOfOccurrence'),
     recurring: new RegExp(`<${NS}validPeriod[\\s>]`).test(inner),
-    source: first(inner, 'sourceIdentification') ?? '',
+    source: cleanText(first(inner, 'sourceIdentification') ?? ''),
     comments: comments(inner),
     towns,
     links,
     roadNumber: first(inner, 'roadNumber'),
-    alertName: alertBlock ? (first(alertBlock.inner, 'value') ?? '').trim() || null : null,
+    alertName: alertBlock ? cleanText(first(alertBlock.inner, 'value') ?? '') || null : null,
     lat: first(inner, 'latitude') !== null && Number.isFinite(lat) ? lat : null,
     lon: first(inner, 'longitude') !== null && Number.isFinite(lon) ? lon : null,
     safety: first(inner, 'safetyRelatedMessage') === 'true',
@@ -355,6 +360,10 @@ export function buildRoadNational(situations, now) {
   };
 }
 
+function isNotFound(err) {
+  return Boolean(err && typeof err === 'object' && 'status' in err && err.status === 404);
+}
+
 /** État du flux gardé en mémoire du processus entre deux lectures. */
 let state = null;
 
@@ -395,6 +404,7 @@ export async function loadDirSituations(now = Date.now()) {
     const next = Number((await fetchStrictText(INDEX_URL, { timeoutMs: 10_000 })).trim());
     if (!Number.isInteger(next) || next <= 0) throw new SyntaxError('index du journal illisible');
     let from = state.lastApplied + 1;
+    let missing = [];
     if (next - from > MAX_INCREMENTS) {
       errors.push(`DIR, journal : ${next - from} fichiers en attente, seuls les ${MAX_INCREMENTS} derniers sont lus`);
       from = next - MAX_INCREMENTS;
@@ -404,13 +414,24 @@ export async function loadDirSituations(now = Date.now()) {
       const results = await Promise.allSettled(numbers.map((k) => fetchStrictXml(incrementUrl(k), { timeoutMs: 10_000 })));
       for (let i = 0; i < results.length; i += 1) {
         const r = results[i];
-        if (r.status === 'rejected') throw new Error(`fichier ${numbers[i]} : ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+        if (r.status === 'rejected') {
+          // HTTP 404 : fichier pas encore publié (l'index l'annonce avant) ou trou du journal ; tranché par la suite.
+          if (isNotFound(r.reason)) { missing.push(numbers[i]); continue; }
+          throw new Error(`fichier ${numbers[i]} : ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+        }
+        if (missing.length > 0) {
+          // Un fichier publié après un 404 : trou au milieu du journal, sauté et nommé (jamais relu).
+          errors.push(`DIR, journal : ${missing.length > 1 ? `fichiers ${missing.join(', ')} absents (HTTP 404), sautés` : `fichier ${missing[0]} absent (HTTP 404), sauté`}`);
+          missing = [];
+        }
         const parsed = parseDatex(r.value);
         mergeSituations(state.situations, parsed.situations);
         state.lastApplied = numbers[i];
         if (parsed.publishedAt) state.publishedAt = parsed.publishedAt;
       }
     }
+    // Derniers fichiers annoncés par l'index mais pas encore publiés (404 sans fichier publié après) : arrêt silencieux,
+    // `lastApplied` reste avant eux, ils sont relus à la lecture suivante.
   } catch (err) {
     errors.push(`DIR, journal : ${err instanceof Error ? err.message : String(err)}`);
   }

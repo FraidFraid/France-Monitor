@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests, kvSetJson } from '../api/_lib/kv-history.js';
 import {
-  AGGLO_ORDER, INCIDENT_BUDGET, URBAN_FRAMES, aggregateAgglo, collectUrban, ensureUrbanFresh, incidentsUrl, isUrbanDue, readQuota, reserveFlowCall,
+  AGGLO_ORDER, DEV_URBAN_INTERVAL_MS, INCIDENT_BUDGET, URBAN_FRAMES, aggregateAgglo, collectUrban, ensureUrbanFresh, incidentsUrl, isUrbanDue, readQuota, reserveFlowCall,
   toUrbanJam, urbanCadenceMs,
 } from '../api/_lib/tomtom-urban.js';
 import { startTrafficCollectors } from '../server/prod/traffic-collectors.mjs';
@@ -196,6 +196,22 @@ async function simulate(startMs: number, durationMs: number) {
 
 describe('cadence réelle de la relève (horloge simulée)', () => {
   afterEach(() => { vi.useRealTimers(); });
+
+  it('serveur de dev (même clé que la production) : une collecte toutes les 60 min au plus, de jour comme de nuit', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(DEV_URBAN_INTERVAL_MS).toBe(60 * 60_000);
+    expect(urbanCadenceMs(DAY)).toBe(60 * 60_000);
+    expect(urbanCadenceMs(Date.parse('2026-10-03T23:00:00+02:00'))).toBe(60 * 60_000);
+    expect(isUrbanDue(new Date(DAY - 59 * 60_000).toISOString(), DAY)).toBe(false);
+    expect(isUrbanDue(new Date(DAY - 60 * 60_000).toISOString(), DAY)).toBe(true);
+    // Un jour de Paris (0 h à 23 h 59) : 24 cycles de 14 appels au plus, 336 appels, ajoutés aux 1 134 de la production,
+    // sous les 2 500 de la clé partagée.
+    const { calls, cycles } = await simulate(parisWallTime(2026, 10, 3, 0, 0, 0), 24 * 3_600_000 - 60_000);
+    const gaps = cycles.slice(1).map((t, i) => (t - cycles[i]) / 60_000);
+    expect(gaps.every((g) => g >= 60)).toBe(true);
+    expect(calls).toBeLessThanOrEqual(24 * URBAN_FRAMES.length);
+    expect(calls + 1134).toBeLessThan(2500);
+  });
 
   it('24 h ordinaires : environ 1 130 appels (cycle toutes les 14 min le jour, 29 min la nuit), sous les 2 500', async () => {
     const { calls } = await simulate(parisWallTime(2026, 10, 3, 0, 0, 0), 24 * 3_600_000);

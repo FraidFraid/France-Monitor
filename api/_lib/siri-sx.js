@@ -169,9 +169,3 @@ export function parseSiriSx(xml, now) {
 export async function loadRailSituationEntries(now) {
   return parseSiriSxEntries(await fetchStrictXml(SIRI_SX_URL, { timeoutMs: 30_000 }), now);
 }
-
-/** Lecture du flux et situations en vigueur à `now`. */
-export async function loadRailSituations(now) {
-  const { at, entries } = await loadRailSituationEntries(now);
-  return { at, situations: situationsAt(entries, now) };
-}

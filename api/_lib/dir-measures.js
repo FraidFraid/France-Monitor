@@ -322,11 +322,6 @@ export async function loadTraficolorFile(network) {
   return { summary: summarizeTraficolor(network, parsed), parsed };
 }
 
-/** Dernier fichier d'un réseau Traficolor, agrégé. */
-export async function loadTraficolorNetwork(network) {
-  return (await loadTraficolorFile(network)).summary;
-}
-
 /** Bouchons des autoroutes concédées (CNIR). */
 export async function loadConceded() {
   return parseCnir(await fetchStrictHtml(CNIR_URL, { timeoutMs: 15_000 }));

@@ -5,6 +5,7 @@
 // Une source en panne n'empêche jamais les autres ; aucune source exploitable : 502 non mis en cache.
 import { buildRoadNational, loadDirSituations } from '../../_lib/datex-dir.js';
 import { buildSections, loadConceded, loadRefDir, loadSpeeds, loadTraficolorFile, loadTraficolorNetworks } from '../../_lib/dir-measures.js';
+import { mapLimit } from '../../_lib/map-limit.js';
 import { cachedSource, handlePreflight, sendSourceJson, sourceError } from '../../_lib/source-http.js';
 
 export const CACHE_CONTROL = 's-maxage=300, stale-while-revalidate=600';
@@ -16,19 +17,6 @@ const EMPTY_NATIONAL = { events: [], longTerm: [], counts: { incidents: 0, accid
 /** Cache mémoire du processus (cadences courtes : pas d'écriture Redis toutes les 5 min). */
 function memo(key, ttlSec, producer) {
   return cachedSource(key, { ttlSec, staleSec: 3600, shared: false }, producer);
-}
-
-async function mapLimit(items, limit, fn) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const i = cursor;
-      cursor += 1;
-      results[i] = await fn(items[i]).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error }));
-    }
-  }));
-  return results;
 }
 
 async function loadAgglos(errors, readRef) {

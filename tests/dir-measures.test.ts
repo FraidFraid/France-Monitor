@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import proj4 from 'proj4';
 import {
-  CNIR_URL, QTV_URL, REFDIR_URL, TRAFICOLOR_BASE, lambert93ToWgs84, latestDataFile, loadTraficolorNetwork, parseCnir, parseListing,
+  CNIR_URL, QTV_URL, REFDIR_URL, TRAFICOLOR_BASE, lambert93ToWgs84, latestDataFile, loadTraficolorFile, parseCnir, parseListing,
   parseQtv, parseRefDir, parseRefDirPaths, buildSections, parseTraficolor, summarizeSpeeds, summarizeTraficolor,
 } from '../api/_lib/dir-measures.js';
 import { parisLocalToIso } from '../api/_lib/paris-time.js';
@@ -99,7 +99,9 @@ describe('Traficolor (fichiers réels de 15 h 44 à 15 h 48)', () => {
     const log = stubFetch((url) => (url.endsWith('/TraficLille/?C=M;O=D')
       ? respond(fixtureText('traficolor-listing-TraficLille.html'))
       : respond(fixtureText('traficolor-TraficLille.xml'))));
-    expect(await loadTraficolorNetwork('TraficLille')).toMatchObject({ label: 'Lille', heavy: 10, congested: 1, congestedPct: 4.2 });
+    const lille = await loadTraficolorFile('TraficLille');
+    expect(lille.summary).toMatchObject({ label: 'Lille', heavy: 10, congested: 1, congestedPct: 4.2 });
+    expect(lille.parsed.statuses.length).toBeGreaterThan(0);
     expect(log.urls).toEqual([`${TRAFICOLOR_BASE}/TraficLille/?C=M;O=D`, `${TRAFICOLOR_BASE}/TraficLille/TraficLille_DataTRT_20261003_154826.xml`]);
   });
 });

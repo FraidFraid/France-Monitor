@@ -229,6 +229,17 @@ export function __resetSncfStateForTests() {
   tripFailures.clear();
 }
 
+/** Réservé aux tests : taille des mémoires d'itinéraires. */
+export function __sncfStateSizesForTests() {
+  return { trips: tripCache.size, failures: tripFailures.size };
+}
+
+/** Oublie les itinéraires de plus de 6 h et les échecs de plus de 30 min (jamais relus) : la mémoire du processus reste bornée. */
+function pruneTripMemory(now) {
+  for (const [id, entry] of tripCache) if (now - entry.at >= TRIP_CACHE_MS) tripCache.delete(id);
+  for (const [id, at] of tripFailures) if (now - at >= TRIP_FAILURE_MEMO_MS) tripFailures.delete(id);
+}
+
 /**
  * Arrêts des trains supprimés publiés sans arrêt (itinéraire gardé 6 h ; échec mémorisé 30 min pour ne pas
  * redemander à chaque lecture). Quatre lectures à la fois, 25 s au plus.
@@ -236,6 +247,7 @@ export function __resetSncfStateForTests() {
  * faute de place (au-delà de 40).
  */
 export async function readCancelledTripStops(disruptions, auth, now) {
+  pruneTripMemory(now);
   const stops = new Map();
   let failures = 0;
   const ids = [];

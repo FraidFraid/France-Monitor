@@ -3,13 +3,13 @@
 // fenêtre de jour à Paris, périodes de validité SIRI, bruit sur le titre seulement, refiltrage à l'heure courante.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
-import { __resetSncfStateForTests, buildRailOverview, disruptionsUrl, toRailTrain } from '../api/_lib/sncf-rail.js';
+import { __resetSncfStateForTests, __sncfStateSizesForTests, buildRailOverview, disruptionsUrl, toRailTrain, tripUrl } from '../api/_lib/sncf-rail.js';
 import { isNoise, parseSiriSx, parseSiriSxEntries, situationsAt } from '../api/_lib/siri-sx.js';
 import overviewHandler from '../api/_handlers/transport/rail-overview.js';
 import situationsHandler from '../api/_handlers/transport/rail-situations.js';
 import { SIRI_SX_URL } from '../api/_lib/siri-sx.js';
 import type { RailOverviewResponse, RailSituationsResponse } from '../src/types/index.ts';
-import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
+import { callHandler, fixtureText, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 interface Impacted { pt_object: { id: string; name?: string; trip?: { name: string }; embedded_type: string }; impacted_stops?: unknown[] }
 interface Disruption { id: string; status: string; updated_at: string; severity: { effect: string }; impacted_objects: Impacted[] }
@@ -131,6 +131,26 @@ describe('/api/transport/rail-overview : réponse de l’API, pages, plafonds, �
     vi.setSystemTime(NOW + 6 * 60_000);
     await callHandler<RailOverviewResponse>(overviewHandler);
     expect(log.urls.filter((u) => u.includes('/trips/'))).toHaveLength(40);
+  });
+  it('mémoire des itinéraires bornée : échecs oubliés après 30 min, itinéraires après 6 h, rien ne s’accumule', async () => {
+    const list = Array.from({ length: 3 }, (_v, i) => disruption(`c${i}`, 100 + i, 'NO_SERVICE', '20261003T150000'));
+    let found = false;
+    stubFetch((url) => (url.includes('/disruptions?') ? respond({ disruptions: list, pagination: { total_result: 3 } })
+      : found && url === tripUrl(tripId(100)) ? respond(fixtureText('sncf-trip-4762.json')) : respond('{"error":"x"}', 404)));
+    await callHandler<RailOverviewResponse>(overviewHandler);
+    expect(__sncfStateSizesForTests()).toEqual({ trips: 0, failures: 3 });
+    // 31 min plus tard : échecs expirés, oubliés ; un itinéraire relu et gardé.
+    found = true;
+    __resetSwrCacheForTests();
+    vi.setSystemTime(NOW + 31 * 60_000);
+    await callHandler<RailOverviewResponse>(overviewHandler);
+    expect(__sncfStateSizesForTests()).toEqual({ trips: 1, failures: 2 });
+    // Plus aucune perturbation, 7 h plus tard : tout est oublié.
+    stubFetch(() => respond({ disruptions: [], pagination: { total_result: 0 } }));
+    __resetSwrCacheForTests();
+    vi.setSystemTime(NOW + 7 * 3_600_000);
+    await callHandler<RailOverviewResponse>(overviewHandler);
+    expect(__sncfStateSizesForTests()).toEqual({ trips: 0, failures: 0 });
   });
 });
 

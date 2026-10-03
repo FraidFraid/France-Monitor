@@ -5,7 +5,10 @@
 // effective de 14 min le jour et 29 min la nuit, mesurée par tests/tomtom-urban.test.ts). Seule la catégorie 6
 // (embouteillage, magnitude 1 à 3) est demandée et gardée ; jamais la catégorie 8 (route fermée durable).
 // Clé côté serveur ; budget du jour compté dans le stockage clé-valeur (kv-history), jamais par navigateur.
-import { incrementCounter, kvGetJson, kvSetJson } from './kv-history.js';
+// Serveur de dev (même clé que la production, compteurs séparés par le préfixe « dev: ») : une collecte toutes les 60 min au
+// plus (24 cycles, 336 appels par jour au pire), pour tenir le palier gratuit partagé ; même discriminant que la collecte OpenSky.
+import { incrementCounter, isDevServer, kvGetJson, kvSetJson } from './kv-history.js';
+import { mapLimit } from './map-limit.js';
 import { parisDay, parisHour } from './paris-time.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
 
@@ -20,6 +23,8 @@ const KEEP_SEC = 2 * 86_400;
 const FRAME_CONCURRENCY = 4;
 const MAX_PATH_POINTS = 30;
 const MINUTE_MS = 60_000;
+/** Serveur de dev : une collecte toutes les 60 min au plus (clé partagée avec la production). */
+export const DEV_URBAN_INTERVAL_MS = 60 * MINUTE_MS;
 
 /** Ordre d'affichage des agglomérations. */
 export const AGGLO_ORDER = ['Paris', 'Lyon', 'Marseille', 'Lille', 'Bordeaux', 'Toulouse', 'Nice', 'Strasbourg', 'Nantes', 'Rennes', 'Montpellier', 'Grenoble'];
@@ -57,16 +62,20 @@ export function incidentsUrl(bbox, key) {
   return `${TOMTOM_INCIDENTS_URL}?${params.toString()}`;
 }
 
-/** Cadence : 15 min de 7 h à 21 h (heure de Paris), 30 min la nuit. */
+/** Cadence : 15 min de 7 h à 21 h (heure de Paris), 30 min la nuit ; 60 min sur le serveur de dev. */
 export function urbanCadenceMs(now) {
+  if (isDevServer()) return DEV_URBAN_INTERVAL_MS;
   const h = parisHour(now);
   return (h >= 7 && h < 21 ? 15 : 30) * MINUTE_MS;
 }
 
-/** Collecte due : aucune tentative, ou dernière tentative plus vieille que la cadence (une minute de tolérance). */
+/**
+ * Collecte due : aucune tentative, ou dernière tentative plus vieille que la cadence (une minute de tolérance pour la relève
+ * de la production ; aucune sur le serveur de dev : jamais plus d'une collecte par heure).
+ */
 export function isUrbanDue(lastAttemptAt, now) {
   const t = lastAttemptAt ? Date.parse(lastAttemptAt) : Number.NaN;
-  return !Number.isFinite(t) || now - t >= urbanCadenceMs(now) - MINUTE_MS;
+  return !Number.isFinite(t) || now - t >= urbanCadenceMs(now) - (isDevServer() ? 0 : MINUTE_MS);
 }
 
 function round(v, digits) {
@@ -148,19 +157,6 @@ export function reserveFlowCall(now = Date.now()) {
   });
   flowQueue = turn.then(() => undefined, () => undefined);
   return turn;
-}
-
-async function mapLimit(items, limit, fn) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const i = cursor;
-      cursor += 1;
-      results[i] = await fn(items[i]).then((value) => ({ ok: true, value }), (error) => ({ ok: false, error }));
-    }
-  }));
-  return results;
 }
 
 async function withQuota(stored, errors, now) {

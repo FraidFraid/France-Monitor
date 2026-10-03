@@ -151,16 +151,63 @@ describe('lecture du flux (instantané horaire et journal)', () => {
     await loadDirSituations(NOW + 66 * 60_000);
     expect(log.urls.slice(7, 9)).toEqual([SNAPSHOT_URL, INDEX_URL]);
   });
-  it('fichier du journal en HTTP 404 : arrêt à ce fichier, erreur nommée, repris à la lecture suivante', async () => {
-    let broken = true;
-    const log = stubDir(3566873, (url) => (broken && url === incrementUrl(3566871) ? respond('absent', 404) : null));
+  it('dernier fichier annoncé par l’index pas encore publié (HTTP 404) : arrêt silencieux, relu à la lecture suivante', async () => {
+    // L'index est publié avant le fichier (vu le 03/10 à 20 h 54 : 404 puis 200 une minute plus tard).
+    let published = false;
+    const log = stubDir(3566873, (url) => (!published && url === incrementUrl(3566872) ? respond('absent', 404) : null));
     const first = await loadDirSituations(NOW);
-    expect(first.errors).toEqual(['DIR, journal : fichier 3566871 : HTTP 404']);
+    expect(first.errors).toEqual([]);
+    expect(first.publishedAt).toBe('2026-10-03T15:03:05.610+02:00');
+    published = true;
+    const second = await loadDirSituations(NOW + 60_000);
+    expect(second.errors).toEqual([]);
+    expect(second.publishedAt).toBe('2026-10-03T15:03:35.704+02:00');
+    expect(log.urls.slice(-2)).toEqual([INDEX_URL, incrementUrl(3566872)]);
+  });
+  it('plusieurs derniers fichiers pas encore publiés : arrêt silencieux au premier, tous relus ensuite', async () => {
+    let published = false;
+    const log = stubDir(3566873, (url) => (!published && (url === incrementUrl(3566871) || url === incrementUrl(3566872)) ? respond('absent', 404) : null));
+    const first = await loadDirSituations(NOW);
+    expect([first.errors, first.publishedAt]).toEqual([[], '2026-10-03T15:01:41.973+02:00']);
+    published = true;
+    const second = await loadDirSituations(NOW + 60_000);
+    expect(second.errors).toEqual([]);
+    expect(log.urls.slice(-3)).toEqual([INDEX_URL, incrementUrl(3566871), incrementUrl(3566872)]);
+  });
+  it('trou au milieu du journal (HTTP 404 suivi d’un fichier publié) : fichier sauté et nommé, la suite appliquée, jamais relu', async () => {
+    const log = stubDir(3566873, (url) => (url === incrementUrl(3566871) ? respond('absent', 404) : null));
+    const first = await loadDirSituations(NOW);
+    expect(first.errors).toEqual(['DIR, journal : fichier 3566871 absent (HTTP 404), sauté']);
+    expect(first.publishedAt).toBe('2026-10-03T15:03:35.704+02:00');
+    const before = log.urls.length;
+    const second = await loadDirSituations(NOW + 60_000);
+    expect(second.errors).toEqual([]);
+    expect(log.urls.slice(before)).toEqual([INDEX_URL]);
+  });
+  it('autre panne d’un fichier (HTTP 500) : arrêt à ce fichier, erreur nommée, repris à la lecture suivante', async () => {
+    let broken = true;
+    const log = stubDir(3566873, (url) => (broken && url === incrementUrl(3566871) ? respond('erreur', 500) : null));
+    const first = await loadDirSituations(NOW);
+    expect(first.errors).toEqual(['DIR, journal : fichier 3566871 : HTTP 500']);
     expect(first.publishedAt).toBe('2026-10-03T15:01:41.973+02:00');
     broken = false;
     const second = await loadDirSituations(NOW + 60_000);
     expect(second.errors).toEqual([]);
     expect(log.urls.slice(-2)).toEqual([incrementUrl(3566871), incrementUrl(3566872)]);
+  });
+  it('lieu, DIR et nom de point d’un texte tiers nettoyés : entités XML décodées, tiret cadratin remplacé', () => {
+    const xml = fixtureText('datex-inc-3566872.xml')
+      .replace('<value lang="fr">Marcq-en-Barœul</value>', '<value lang="fr">Marcq-en-Bar&#339;ul &amp; Wasquehal \u2014 ZI</value>')
+      .replace('Direction interdépartementale des routes/DIR Nord<', 'Direction interdépartementale des routes/DIR Nord &#8212; CIGT<');
+    const e = buildRoadNational(parseDatex(xml).situations, NOW).events.find((x) => x.id === '261003-001061-1');
+    expect(e?.place).toBe('Marcq-en-Barœul & Wasquehal : ZI');
+    expect(e?.dir).toBe('DIR Nord : CIGT');
+    // Sans commune : le lieu vient du nom de point alertC, nettoyé lui aussi.
+    const pointOnly = fixtureText('datex-inc-3566872.xml')
+      .replace('<value lang="fr">Marcq-en-Barœul</value>', '<value lang="fr"></value>')
+      .replace('<value lang="fr">Marcq-en-Barœul Z.I. Pilaterie</value></values></alertCLocationName>',
+        '<value lang="fr">Échangeur &amp; rocade \u2014 nord</value></values></alertCLocationName>');
+    expect(buildRoadNational(parseDatex(pointOnly).situations, NOW).events.find((x) => x.id === '261003-001061-1')?.place).toBe('Échangeur & rocade : nord');
   });
   it('index injoignable : instantané seul, erreur nommée', async () => {
     stubDir(3566873, (url) => (url === INDEX_URL ? respond('erreur', 503) : null));
