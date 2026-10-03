@@ -317,11 +317,12 @@ export function veilleTabs(state: HealthSurveillanceState | null, now: number): 
 function sentinellesFigure(state: HealthSurveillanceState, now: number): LayerFigure {
   const d = state.sentinelles.data;
   const ira = sentinellesIra(d);
-  if (!d || !d.week || !ira || ira.rate === null) return { value: 'n.d.', caption: `cas d’IRA ${PER_100K} · médecine générale` };
+  // Taux nationaux du réseau Sentinelles : France hexagonale (les DROM n'y sont pas).
+  if (!d || !d.week || !ira || ira.rate === null) return { value: 'n.d.', caption: `cas d’IRA ${PER_100K} · médecine générale, France hexagonale` };
   const late = surveillanceLate(state, 'sentinelles', now);
   const dir = trendOf(ira.trend);
   const trend = dir === 'up' ? 'en hausse' : dir === 'down' ? 'en baisse' : dir === 'stable' ? 'stable' : null;
-  const base = `cas d’IRA ${PER_100K} · médecine générale, ${epiWeekLabel(d.week)}`;
+  const base = `cas d’IRA ${PER_100K} · médecine générale, France hexagonale, ${epiWeekLabel(d.week)}`;
   const tail = late ? ' (en retard)' : '';
   const trendLevel: VigilanceLevel | null = late ? null : dir === 'up' ? 'rouge' : dir === 'down' ? 'vert' : null;
   const activity = sentinellesActivityLevel(ira.activity);

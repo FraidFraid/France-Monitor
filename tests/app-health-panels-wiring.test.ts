@@ -55,6 +55,16 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
     expect(vis).toMatch(/key === 'hospitals'\)[^]*this\.loadHealthOffer\(\)[^]*this\.hopitauxPanel\?\.show\(this\.currentHealthOffer\);/);
     expect(methodBody('closeHealthLayer')).toContain('this.onLayerToggle(key, false);');
   });
+  it('relève santé : fiche thème Santé visible sans couche santé active, ses quatre sources nationales relues', () => {
+    const keys = methodBody('healthSurveillanceKeys');
+    expect(keys).toContain('if (this.healthThemeFicheVisible()) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);');
+    expect(methodBody('healthThemeFicheVisible')).toContain("this.uiV2 && this.poste?.selectedKey() === 'theme:health'");
+  });
+  it('échec du module santé au démarrage : les dix sources santé passent en erreur, sans période', () => {
+    const optional = methodBody('loadOptionalLayers');
+    expect(optional).toContain("for (const [, name] of HEALTH_STATUS_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });");
+    expect(optional).toContain("for (const [, name] of HEALTH_OFFER_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });");
+  });
   it('relève santé : 30 min, au-dessus du cache client de 25 min, pausée onglet caché, immédiate au retour, nettoyée', () => {
     const minutes = Number(/const POLL_HEALTH_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(app)?.[1]);
     expect(minutes).toBe(30);
@@ -101,8 +111,10 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
       expect(app).not.toContain(gone);
     }
   });
-  it('fiche thème Santé (v2) : niveau national transmis, liens d’ouverture des panneaux', () => {
-    expect(methodBody('updatePoste')).toContain('health: this.currentHealthNational,');
+  it('fiche thème Santé (v2) : niveau national transmis, retard recalculé à chaque rendu, liens d’ouverture des panneaux', () => {
+    expect(methodBody('updatePoste')).toContain('health: this.healthNationalNow(now),');
+    expect(methodBody('healthNationalNow')).toContain('this.currentHealthNational = this.healthNationalOf(this.currentHealth, now);');
+    expect(methodBody('loadHealthSurveillance')).toContain('this.healthNationalOf = nationalSummary;');
     expect(app).toContain('onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),');
     expect(methodBody('openLayerPanelFromFiche')).toContain('this.showFloatingPanel(def.id)');
   });

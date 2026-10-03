@@ -295,6 +295,11 @@ export class PosteSituation {
     if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
   }
 
+  /** Clé de la fiche ouverte (« theme:health », « event:42 »…) ; null : fiche par défaut. */
+  selectedKey(): string | null {
+    return this.selection;
+  }
+
   select(key: string | null): void {
     if (key !== null) this.callbacks.onSelect(key);
     this.selection = key;

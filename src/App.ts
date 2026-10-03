@@ -157,7 +157,7 @@ import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingCon
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
 import { recordStatusSamples, startQualityHistoryTracking } from './services/source-quality-history.ts';
-import { HEALTH_OFFER_SOURCES, HEALTH_STATUS_SOURCES, healthReportSources } from './config/health-sources.ts';
+import { HEALTH_NATIONAL_KEYS, HEALTH_OFFER_SOURCES, HEALTH_STATUS_SOURCES, healthReportSources } from './config/health-sources.ts';
 import type { SituationReportContext } from './components/SituationReport.ts';
 import type { ExportContext } from './services/data-export.ts';
 import type { ExportMenu } from './components/ExportMenu.ts';
@@ -1562,8 +1562,10 @@ export class App {
   private rightSidebarPromise: Promise<RightSidebar> | null = null;
   private currentHealth: HealthSurveillanceState | null = null;
   private currentHealthOffer: HealthOfferState | null = null;
-  /** Niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5), recalculé à chaque relève. */
+  /** Niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5), recalculé à chaque relève et à chaque rendu. */
   private currentHealthNational: NationalHealthSummary | null = null;
+  /** Calcul du niveau national (vue Veille, chargée à la demande), gardé après le premier chargement de la veille sanitaire. */
+  private healthNationalOf: ((state: HealthSurveillanceState, now: number) => NationalHealthSummary) | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
   private searchModalPromise: Promise<SearchModal> | null = null;
@@ -4008,10 +4010,29 @@ export class App {
     void Promise.all(this.ensureLazyPanelForLayer(def.id)).then(() => this.showFloatingPanel(def.id));
   }
 
-  /** Sources de veille à relire : toutes pour Veille sanitaire, urgences et alertes pour Urgences seule, aucune sinon. */
+  /**
+   * Sources de veille à relire : toutes pour Veille sanitaire, urgences et alertes pour Urgences ; en v2, fiche thème Santé à
+   * l'écran sans couche santé active, les quatre sources de son niveau national ; aucune sinon.
+   */
   private healthSurveillanceKeys(): readonly HealthSurveillanceKey[] | 'all' {
     if (this.activeLayers.health) return 'all';
-    return this.activeLayers.healthOscour ? ['syndromic', 'alerts'] : [];
+    const keys = new Set<HealthSurveillanceKey>(this.activeLayers.healthOscour ? ['syndromic', 'alerts'] : []);
+    if (this.healthThemeFicheVisible()) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);
+    return [...keys];
+  }
+
+  /** v2 : fiche du thème Santé ouverte (niveau national de santé à l'écran). */
+  private healthThemeFicheVisible(): boolean {
+    return this.uiV2 && this.poste?.selectedKey() === 'theme:health';
+  }
+
+  /**
+   * Niveau national de santé de la fiche thème, recalculé à l'instant du rendu (retard S2 réévalué entre deux relèves) une fois
+   * la vue Veille chargée ; avant, la dernière valeur connue.
+   */
+  private healthNationalNow(now: number): NationalHealthSummary | null {
+    if (this.currentHealth && this.healthNationalOf) this.currentHealthNational = this.healthNationalOf(this.currentHealth, now);
+    return this.currentHealthNational;
   }
 
   private ensureWeatherRadarPanel(): Promise<void> {
@@ -6668,6 +6689,7 @@ export class App {
     // Lectures concurrentes (démarrage et couche restaurée, relève) : seules les sources lues remplacent l'état courant.
     const state = mergeSurveillance(this.currentHealth, read, keys);
     this.currentHealth = state;
+    this.healthNationalOf = nationalSummary;
     this.currentHealthNational = nationalSummary(state, now);
     this.veillePanel?.update(state);
     this.urgencesPanel?.update(state);
@@ -7231,13 +7253,14 @@ export class App {
         })
       },
       {
+        // Module santé en échec (chunk injoignable) : les huit sources de veille en erreur, jamais « en chargement » (S3).
         name: 'health', task: this.loadHealthSurveillance('all').catch(() => {
-          this.statusPanel?.updateSource('Santé publique France', { status: 'error', lastUpdate: null });
+          for (const [, name] of HEALTH_STATUS_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
         name: 'health-offer', task: this.loadHealthOffer().catch(() => {
-          this.statusPanel?.updateSource('DREES APL', { status: 'error', lastUpdate: null });
+          for (const [, name] of HEALTH_OFFER_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
@@ -8012,6 +8035,7 @@ export class App {
 
   /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
   private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en'): void {
+    const now = Date.now();
     this.poste?.update({
       snapshot,
       alerts,
@@ -8022,12 +8046,12 @@ export class App {
       commodities: this.currentCommodityData,
       sources: this.statusPanel?.getSources() ?? [],
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
-      health: this.currentHealthNational,
+      health: this.healthNationalNow(now),
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
       // Revue : pas de niveau national avant les couches critiques (jamais un vert par défaut).
       ready: this.v2IntelStarted,
       lang,
-      now: Date.now(),
+      now,
     });
   }
 

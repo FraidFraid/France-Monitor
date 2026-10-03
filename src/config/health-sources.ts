@@ -13,6 +13,9 @@ export const HEALTH_STATUS_SOURCES: ReadonlyArray<readonly [HealthSurveillanceKe
 /** Offre de soins (fichiers annuels) : source et nom dans le panneau des sources. */
 export const HEALTH_OFFER_SOURCES: ReadonlyArray<readonly ['apl' | 'hospitals', string]> = [['apl', 'DREES APL'], ['hospitals', 'DREES SAE / FINESS']];
 
+/** Sources des quatre entrées du niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5). */
+export const HEALTH_NATIONAL_KEYS: readonly HealthSurveillanceKey[] = ['syndromic', 'alerts', 'sentinelles', 'wastewater'];
+
 /** Les dix sources santé, dans l'ordre du panneau. */
 export const HEALTH_SOURCE_NAMES: readonly string[] = [...HEALTH_STATUS_SOURCES, ...HEALTH_OFFER_SOURCES].map(([, name]) => name);
 

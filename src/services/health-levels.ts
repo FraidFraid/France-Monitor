@@ -61,13 +61,15 @@ function weekParts(id: string): { year: number; week: number } | null {
 }
 
 /**
- * Parts aux urgences (er) de la même semaine ISO pour les `seasons` années précédentes, de la plus
- * récente à la plus ancienne ; valeurs absentes omises. Semaine 53 : repli sur la semaine 52.
+ * Valeurs (parts aux urgences par défaut, ou autre champ via `field`) de la même semaine ISO pour les `seasons`
+ * années précédentes, de la plus récente à la plus ancienne ; valeurs absentes omises. Semaine 53 : repli sur la semaine 52.
  */
-export function franceRefs(points: readonly SyndromicWeekPoint[], weekId: string, seasons = 3): number[] {
+export function franceRefs(
+  points: readonly SyndromicWeekPoint[], weekId: string, seasons = 3, field: (p: SyndromicWeekPoint) => number | null = (p) => p.er,
+): number[] {
   const parts = weekParts(weekId);
   if (!parts) return [];
-  const byWeek = new Map<string, number | null>(points.map((p) => [p.week, p.er]));
+  const byWeek = new Map<string, number | null>(points.map((p) => [p.week, field(p)]));
   const ww = String(parts.week).padStart(2, '0');
   const out: number[] = [];
   for (let k = 1; k <= seasons; k += 1) {

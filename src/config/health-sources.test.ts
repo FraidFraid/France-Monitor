@@ -1,7 +1,7 @@
 // src/config/health-sources.test.ts
 import { describe, expect, it } from 'vitest';
 import type { DataSourceStatus } from '../types/index.ts';
-import { HEALTH_SOURCE_NAMES, healthReportSources } from './health-sources.ts';
+import { HEALTH_NATIONAL_KEYS, HEALTH_SOURCE_NAMES, healthReportSources } from './health-sources.ts';
 
 const st = (name: string, period?: string): DataSourceStatus => ({ name, status: 'ok', lastUpdate: null, period });
 
@@ -11,6 +11,9 @@ describe('sources santé du panneau des sources (spec 2026-10-03 S1)', () => {
       'Santé publique France', 'Odissé alertes', 'Sentinelles', 'SUM’eau', 'OMS / ECDC', 'DGS-Urgent (PEPS)', 'ANSM Médicaments', 'RappelConso',
       'DREES APL', 'DREES SAE / FINESS',
     ]);
+  });
+  it('sources des quatre entrées du niveau national (fiche thème Santé)', () => {
+    expect(HEALTH_NATIONAL_KEYS).toEqual(['syndromic', 'alerts', 'sentinelles', 'wastewater']);
   });
   it('lignes de la note de situation : sources santé connues du panneau, identifiées, période gardée ; les autres ignorées', () => {
     const rows = healthReportSources([st('Vigicrues'), st('DREES APL', 'millésime 2024'), st('Santé publique France', 'S39 · publiée le 30/09')]);

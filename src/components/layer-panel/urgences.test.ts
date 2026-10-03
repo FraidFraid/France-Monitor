@@ -113,6 +113,18 @@ describe('vue Urgences et SOS Médecins (spec 2026-10-03 § 3.2)', () => {
     expect(s?.summary).toBe(`IRA 4,7${NBSP}% · toutes sous les saisons précédentes`);
     expect((s?.html ?? '').match(/fmk-dot--vert/g)).toHaveLength(7);
   });
+  it('hospitalisations après passage, semaine 53 : références de la semaine 52 des saisons précédentes (comme les urgences)', () => {
+    const data = withData((d) => {
+      d.week = { id: '2026-S53', start: '2026-12-28', end: '2027-01-03' };
+      for (const s of d.syndromes) {
+        s.france = [
+          { week: '2023-S52', start: '2023-12-25', er: 1, hosp: 3, sos: null }, { week: '2024-S52', start: '2024-12-23', er: 1, hosp: 3.5, sos: null },
+          { week: '2025-S52', start: '2025-12-22', er: 1, hosp: 4, sos: null }, { week: '2026-S53', start: '2026-12-28', er: 1, hosp: 3.8, sos: null },
+        ];
+      }
+    });
+    expect(sectionOf('hosp', { data, now: Date.parse('2027-01-08T00:00:00Z') })?.summary).toBe(`IRA 3,8${NBSP}% · toutes sous les saisons précédentes`);
+  });
   it('méthode et sources : définition du taux, couverture, départements non agrégeables, retard', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
     for (const part of ['S39 (21-27 sept.), publiée le 30/09', `ce n’est pas un taux ${PER_100K}`, 'environ 700 structures d’urgences',

@@ -40,8 +40,8 @@ describe('vue Veille sanitaire, onglet France (spec 2026-10-03 § 3.1)', () => {
   it('en-tête S39 : gros chiffre Sentinelles vert, hausse en rouge, pastille Jaune, ligne de niveau, synthèse', () => {
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Santé', title: 'Veille sanitaire', level: 'jaune' });
-    expect(v.head.figure).toMatchObject({ value: '151', level: 'vert', caption: `cas d’IRA ${PER_100K} · médecine générale, S39 (21-27 sept.) · en hausse` });
-    expect(v.head.figure?.captionHtml).toBe(`cas d’IRA ${PER_100K} · médecine générale, S39 (21-27 sept.) · <span class="lp-val fmk-num lp-lvl lp-lvl--rouge">en hausse</span>`);
+    expect(v.head.figure).toMatchObject({ value: '151', level: 'vert', caption: `cas d’IRA ${PER_100K} · médecine générale, France hexagonale, S39 (21-27 sept.) · en hausse` });
+    expect(v.head.figure?.captionHtml).toBe(`cas d’IRA ${PER_100K} · médecine générale, France hexagonale, S39 (21-27 sept.) · <span class="lp-val fmk-num lp-lvl lp-lvl--rouge">en hausse</span>`);
     expect(v.head.status).toEqual(['eaux usées en forte hausse', 'S39 · publiée le 30/09', 'Santé publique France, Sentinelles']);
     expect(v.head.lead).toBe('Infections respiratoires en hausse de rentrée, encore sous le niveau des saisons précédentes. '
       + 'COVID-19 en forte hausse dans les eaux usées (×2 en 2 semaines). Grippe en pré-épidémie à Mayotte.');
@@ -136,7 +136,7 @@ describe('vue Veille sanitaire, onglet France (spec 2026-10-03 § 3.1)', () => {
     const state = withState((s) => { if (s.sentinelles.data) s.sentinelles.data.week = late; });
     const v = view({ state });
     expect(v.head.figure?.level ?? null).toBeNull();
-    expect(v.head.figure?.caption).toBe(`cas d’IRA ${PER_100K} · médecine générale, ${epiWeekLabel(late)} · en hausse (en retard)`);
+    expect(v.head.figure?.caption).toBe(`cas d’IRA ${PER_100K} · médecine générale, France hexagonale, ${epiWeekLabel(late)} · en hausse (en retard)`);
     expect(v.head.figure?.captionHtml).not.toContain('lp-lvl');
     const n = nationalSummary(state, HEALTH_NOW);
     expect(n.inputs[1]).toMatchObject({ key: 'sentinelles', late: true, period: 'S35' });
@@ -160,7 +160,7 @@ describe('vue Veille sanitaire, onglet France (spec 2026-10-03 § 3.1)', () => {
   it('source en échec sans donnée : « source indisponible » dans la section et dans « Méthode et sources », entrée n.d. (S3)', () => {
     const state = withState((s) => { s.sentinelles = { data: null, error: 'HTTP 429', fetchedAt: null }; });
     const v = view({ state });
-    expect(v.head.figure).toEqual({ value: 'n.d.', caption: `cas d’IRA ${PER_100K} · médecine générale` });
+    expect(v.head.figure).toEqual({ value: 'n.d.', caption: `cas d’IRA ${PER_100K} · médecine générale, France hexagonale` });
     expect(nationalSummary(state, HEALTH_NOW).inputs[1]).toMatchObject({ level: 'nd', value: 'n.d.', note: 'source indisponible' });
     expect(v.sections.find((x) => x.id === 'sentinelles')?.html).toContain('Source indisponible : réseau Sentinelles.');
     const method = v.sections.find((x) => x.id === 'method');

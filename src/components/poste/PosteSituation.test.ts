@@ -206,7 +206,9 @@ describe('PosteSituation', () => {
 
   it('tablette : « Vue générale » filtre sans ouvrir de volet ; une clé theme:<id> ouvre la fiche du thème (I3)', () => {
     const { roots, poste } = setup(820);
+    expect(poste.selectedKey()).toBeNull();
     poste.select('theme:security');
+    expect(poste.selectedKey()).toBe('theme:security');
     expect(ficheKey(roots)).toBe('theme:security');
     expect(roots.app.dataset.v2Fiche).toBe('open');
     roots.themes.querySelector<HTMLButtonElement>('[data-theme="general"]')?.click();

@@ -5,7 +5,7 @@ import type {
   SyndromicWeekPoint,
 } from '../../types/index.ts';
 import {
-  alertInSeason, epiWeekLabel, isHealthDataLate, phaseLabel, seasonalLevel, urgencesLevel, type HealthLevel,
+  alertInSeason, epiWeekLabel, franceRefs, isHealthDataLate, phaseLabel, seasonalLevel, urgencesLevel, type HealthLevel,
 } from '../../services/health-levels.ts';
 import { dataDateMs } from '../../services/health-surveillance.ts';
 import { LEVEL_RANK, levelColorVar } from '../../services/vigilance.ts';
@@ -241,15 +241,9 @@ function agesSection(d: SyndromicResponse, week: EpiWeek, late: boolean, open: O
   };
 }
 
-/** Hospitalisations après passage de la même semaine ISO des trois saisons précédentes, de la plus récente à la plus ancienne. */
+/** Hospitalisations après passage de la même semaine ISO des trois saisons précédentes (S53 : repli sur S52, comme franceRefs). */
 function hospRefs(series: SyndromicSeries, weekId: string): number[] {
-  const year = weekYear(weekId);
-  const wk = weekNumber(weekId);
-  if (year === null || wk === null) return [];
-  return [1, 2, 3].flatMap((k) => {
-    const v = series.france.find((p) => weekYear(p.week) === year - k && weekNumber(p.week) === wk)?.hosp;
-    return v === null || v === undefined || !Number.isFinite(v) ? [] : [v];
-  });
+  return franceRefs(series.france, weekId, 3, (p) => p.hosp);
 }
 
 function hospSection(d: SyndromicResponse, week: EpiWeek, late: boolean, open: OpenFn): FicheSection {

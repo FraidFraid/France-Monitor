@@ -71,6 +71,12 @@ describe('niveau saisonnier', () => {
     expect(franceRefs([point('2025-S52', '2025-12-22', 1.5)], '2026-S53')).toEqual([1.5]);
     expect(franceRefs(SYNDROMIC.syndromes[0].france, 'S39')).toEqual([]);
   });
+  it('autre champ de la série (hospitalisations après passage) : même semaine ISO, même repli S53 sur S52', () => {
+    const s39 = [2023, 2024, 2025].map((y, i) => ({ ...point(`${y}-S39`, `${y}-09-2${i}`, 2), hosp: 5 + i / 10 }));
+    expect(franceRefs(s39, '2026-S39', 3, (p) => p.hosp)).toEqual([5.2, 5.1, 5]);
+    const s53 = [{ ...point('2025-S52', '2025-12-22', 1.5), hosp: 4.4 }, { ...point('2024-S52', '2024-12-23', 1.2), hosp: 3.9 }];
+    expect(franceRefs(s53, '2026-S53', 3, (p) => p.hosp)).toEqual([4.4, 3.9]);
+  });
 });
 
 describe('échelle d’alerte Odissé', () => {
