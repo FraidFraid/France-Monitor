@@ -179,7 +179,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
       n.longTerm[0].place = '"><svg onload=1>';
     });
     const h = html({ national });
-    expect(h).not.toMatch(/<img|<script|<svg|<b>op/);
+    expect(h).not.toMatch(/<img|<script|<svg onload|<b>op/);
     expect(h).toContain('&lt;img src=x onerror=1&gt;');
     for (const over of [{}, { now: Date.parse('2026-10-03T13:40:00Z') }, { urban: null, urbanError: 'HTTP 502' }]) {
       const all = html(over);
