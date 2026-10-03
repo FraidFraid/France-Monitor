@@ -146,7 +146,22 @@ describe('panneau Trafic maritime : onglets, Marine nationale, Alertes, fiche na
   });
   it('pavillons : résumé dérivé des millésimes ; Marine nationale nomme le filtre remplacé', () => {
     expect(sectionOf('flags')?.summary).toBe('rapport annuel Paris MOU 2024 · OFAC, liste saisie le 27/03/2026');
-    expect(visibleText(sectionOf('navy', { tab: 'marine' })?.html ?? '')).toContain('Remplace le filtre « Militaire »');
+    expect(visibleText(sectionOf('navy', { tab: 'marine' })?.html ?? '')).not.toContain('Remplace');
+  });
+  it('filtre Militaire : navires militaires français et étrangers, quel que soit le risque ; puce présente', () => {
+    const french = ship({ id: 'fr-1', name: 'FREGATE FR', mmsi: '227500001', type: 'Frégate DA', role: 'Défense aérienne', riskLevel: 'none' });
+    const low = ship({ id: 'ru-1', name: 'RU PATROL', mmsi: '273000001', type: 'Militaire', riskLevel: 'low' });
+    const med = ship({ id: 'cn-1', name: 'CN ESCORT', mmsi: '412000001', type: 'Militaire', riskLevel: 'medium' });
+    const cargo = ship({ id: 'c-1', name: 'CARGO CIVIL', mmsi: '229000001', riskLevel: 'medium' });
+    const s = sectionOf('alerts', { live: live({ filter: 'militaire', traffic: [...TRAFFIC, french, low, med, cargo] }) });
+    const t = visibleText(s?.html ?? '');
+    for (const n of ['FREGATE FR', 'RU PATROL', 'CN ESCORT', 'NORD EXPRESS']) expect(t).toContain(n);
+    for (const n of ['CARGO CIVIL', 'OCEAN STAR']) expect(t).not.toContain(n);
+    expect(s?.summary).toBe('4 navires militaires');
+    expect(s?.html).toContain('<button type="button" class="lp-toggle" data-mar-filter="militaire" aria-pressed="true">Militaire</button>');
+    expect(sectionOf('alerts')?.html).toContain('data-mar-filter="militaire" aria-pressed="false">Militaire</button>');
+    expect(visibleText(sectionOf('alerts', { live: live({ filter: 'militaire', traffic: [cargo] }) })?.html ?? '')).toContain('Aucun navire militaire parmi 1 navire suivi.');
+    expect(maritimeTabs(maritimeSnapshotFixture(), live({ traffic: [low, med] })).find((x) => x.id === 'alertes')?.count).toBe(1);
   });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune couleur brute', () => {
     const hostile = [ship({ id: 'h', name: '<img src=x>', mmsi: '667000001', riskLevel: 'high', riskReasons: ['<script>r</script>'], destination: '"><svg onload=1>' })];

@@ -16,8 +16,8 @@ import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, va
 import { maritimeHead, maritimeMethodSection, veilleSections, type MaritimeTab, type MaritimeVeilleInput } from './maritime.ts';
 import { CAT_PORT, coordText, dataMs, fold, formatKm, formatKnots, formatMeters, note, plural } from './traffic-format.ts';
 
-export type MaritimeAlertFilter = 'alertes' | 'risque-eleve' | 'pavillon' | 'tous';
-export const MARITIME_ALERT_FILTERS: readonly MaritimeAlertFilter[] = ['alertes', 'risque-eleve', 'pavillon', 'tous'];
+export type MaritimeAlertFilter = 'alertes' | 'risque-eleve' | 'pavillon' | 'militaire' | 'tous';
+export const MARITIME_ALERT_FILTERS: readonly MaritimeAlertFilter[] = ['alertes', 'risque-eleve', 'pavillon', 'militaire', 'tous'];
 export const MARITIME_PAGE_SIZE = 20;
 
 /** Risque d'un navire (critères de military-ships.ts) dans la palette des niveaux : aucun vert, faible jaune, modéré orange, élevé et critique rouge. */
@@ -25,7 +25,7 @@ export const RISK_LEVEL: Readonly<Record<RiskLevel, VigilanceLevel>> = { none: '
 const RISK_WORD: Readonly<Record<RiskLevel, string>> = { none: 'nul', low: 'faible', medium: 'modéré', high: 'élevé', critical: 'critique' };
 const RISK_ORDER: Readonly<Record<RiskLevel, number>> = { none: 0, low: 1, medium: 2, high: 3, critical: 4 };
 const FILTER_LABEL: Readonly<Record<MaritimeAlertFilter, string>> = {
-  alertes: 'Alertes', 'risque-eleve': 'Risque élevé', pavillon: 'Pavillon suspect', tous: 'Tous les navires',
+  alertes: 'Alertes', 'risque-eleve': 'Risque élevé', pavillon: 'Pavillon suspect', militaire: 'Militaire', tous: 'Tous les navires',
 };
 const FLAG_WORD: Readonly<Record<FlagRisk, string | null>> = {
   blacklist: 'liste noire Paris MOU', greylist: 'liste grise Paris MOU', sanctioned: 'registre sous sanctions (OFAC)', none: null,
@@ -62,6 +62,11 @@ export interface MaritimeViewInput {
 }
 type OpenFn = MaritimeViewInput['open'];
 
+/** Navire identifié comme militaire (critère de l'ancienne puce « Militaire ») : type AIS militaire ou rôle de la base de la Marine nationale ; français ou étranger, quel que soit son risque. */
+export function isMilitaryShip(s: MilitaryShip): boolean {
+  return s.type === 'Militaire' || (s.role !== undefined && s.role !== 'Civil/Inconnu');
+}
+
 export function isAlertShip(s: MilitaryShip): boolean {
   return RISK_ORDER[s.riskLevel ?? 'none'] >= RISK_ORDER.medium;
 }
@@ -78,7 +83,7 @@ function flagged(s: MilitaryShip): boolean {
 }
 
 const FILTERS: Readonly<Record<MaritimeAlertFilter, (s: MilitaryShip) => boolean>> = {
-  alertes: isAlertShip, 'risque-eleve': (s) => s.riskLevel === 'high' || s.riskLevel === 'critical', pavillon: flagged, tous: () => true,
+  alertes: isAlertShip, 'risque-eleve': (s) => s.riskLevel === 'high' || s.riskLevel === 'critical', pavillon: flagged, militaire: isMilitaryShip, tous: () => true,
 };
 
 function aisStale(live: MaritimeLiveInput): boolean {
@@ -158,7 +163,7 @@ function navySection(live: MaritimeLiveInput, now: number, open: OpenFn): FicheS
     id: 'navy', title: 'Marine nationale', collapsible: true, open: open('navy', true),
     summary: escapeHtml(`${plural(atSea, 'en mer suivi', 'en mer suivis')} · ${plural(live.navy.length, 'navire')}`),
     html: toolbar(live, false) + paged(ships, live, now, 'Aucun navire de la Marine nationale pour ce choix.')
-      + note('Navires de la Marine nationale identifiés par leur MMSI ; sans position AIS depuis 10 minutes, position de référence au port d’attache. Remplace le filtre « Militaire » de l’ancienne liste : les navires militaires étrangers se trouvent dans Alertes (risque élevé).'),
+      + note('Navires de la Marine nationale identifiés par leur MMSI ; sans position AIS depuis 10 minutes, position de référence au port d’attache.'),
   };
 }
 
@@ -172,13 +177,14 @@ function alertsSection(live: MaritimeLiveInput, now: number, open: OpenFn): Fich
   const n = ships.length;
   const stale = aisStale(live);
   const counted = live.filter === 'alertes' ? plural(n, 'alerte') : live.filter === 'risque-eleve' ? `${frNumber(n, 0)} à risque élevé`
-    : live.filter === 'pavillon' ? `${frNumber(n, 0)} sous pavillon à risque` : plural(n, 'navire suivi', 'navires suivis');
+    : live.filter === 'pavillon' ? `${frNumber(n, 0)} sous pavillon à risque` : live.filter === 'militaire' ? plural(n, 'navire militaire', 'navires militaires') : plural(n, 'navire suivi', 'navires suivis');
   // Flux figé : une absence d'alerte calculée sur des positions figées n'est jamais un fait (T3).
-  const summary = !stale ? counted : live.filter !== 'tous' && n === 0 ? 'alertes non évaluées' : `${counted} (AIS indisponible)`;
+  const summary = !stale ? counted : (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') && n === 0 ? 'alertes non évaluées' : `${counted} (AIS indisponible)`;
   const empty = stale && live.traffic.length === 0 ? 'AIS indisponible : aucune position reçue.'
-    : stale && live.filter !== 'tous' ? 'AIS indisponible : alertes non évaluées.'
+    : stale && (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') ? 'AIS indisponible : alertes non évaluées.'
     : live.status === 'connecting' && live.traffic.length === 0 ? 'Connexion au relais AIS…'
     : live.filter === 'tous' ? 'Aucun navire suivi pour ce choix.'
+    : live.filter === 'militaire' ? `Aucun navire militaire parmi ${plural(inScope.length, 'navire suivi', 'navires suivis')}.`
     : `Aucune ${live.filter === 'alertes' ? 'alerte' : 'correspondance'} parmi ${plural(inScope.length, 'navire suivi', 'navires suivis')}.`;
   return {
     id: 'alerts', title: 'Alertes', collapsible: true, open: open('alerts', true), summary: escapeHtml(summary),
