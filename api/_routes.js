@@ -39,6 +39,7 @@ export const ROUTES = {
   '/api/health/hantavirus': () => import('./_handlers/health/hantavirus.js'),
   '/api/health/oscour-sos': () => import('./_handlers/health/oscour-sos.js'),
   '/api/health/sentinelles-ingestion': () => import('./_handlers/health/sentinelles-ingestion.js'),
+  '/api/health/sentinelles-national': () => import('./_handlers/health/sentinelles-national.js'),
   '/api/health/sentinelles': () => import('./_handlers/health/sentinelles.js'),
   '/api/health/syndromic': () => import('./_handlers/health/syndromic.js'),
   '/api/health-check': () => import('./_handlers/health-check.js'),
