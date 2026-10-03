@@ -4,7 +4,7 @@
 import type { RoadNationalResponse, RoadUrbanResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  isBool, isNum, isNumOrNull, isPoint, isStr, isStrOrNull, listOf, loadSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+  isBool, isNum, isNumOrNull, isPoint, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
 } from './traffic-source.ts';
 
 export const ROAD_NATIONAL_URL = '/api/traffic/road-national';
@@ -60,6 +60,11 @@ export async function fetchRoadTraffic(previous: RoadTrafficState | null, now: n
     loadSlot(ROAD_URBAN_URL, ROAD_TTL_MS, previous?.urban, now, isRoadUrbanResponse, 'TomTom'),
   ]);
   return { national, urban };
+}
+
+/** Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : une route en échec garde ses données actuelles. */
+export function mergeRoadTraffic(current: RoadTrafficState | null, incoming: RoadTrafficState): RoadTrafficState {
+  return { national: mergeSlot(current?.national, incoming.national), urban: mergeSlot(current?.urban, incoming.urban) };
 }
 
 /** Panneau des sources : publication DIR (« Trafic ») ou collecte TomTom (« TomTom agglomérations »). */

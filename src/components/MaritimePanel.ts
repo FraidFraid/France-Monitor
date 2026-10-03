@@ -1,7 +1,8 @@
 // src/components/MaritimePanel.ts : panneau de couche « Trafic maritime » (spec 2026-10-03 trafics § 3.4) : onglets Veille,
 // Marine nationale et Alertes, fiche d'un navire. Coquille DOM : contenu de buildMaritimeView (pur), cadre commun ; onglet mémorisé
-// dans fm.layer.tabs ; positions AIS vivantes lues à chaque rendu (getters de military-ships.ts, injectables en test) ; le focus
-// et le curseur de la recherche survivent au rendu.
+// dans fm.layer.tabs ; positions AIS vivantes lues à chaque rendu (getters de military-ships.ts, injectables en test). Chaque rendu,
+// relève AIS de 5 s comprise, met à jour le panneau sans reconstruire ce qui n'a pas changé (shell.patch) : barre d'outils, menu
+// des territoires ouvert, focus et curseur de la recherche gardés ; recherche appliquée 150 ms après la dernière frappe.
 import { FRENCH_MARITIME_TERRITORIES, type FrenchMaritimeTerritoryCode } from '../config/french-ports.ts';
 import type { AisConnectionStatus } from '../services/ais-connection.ts';
 import { getAisConnectionState, getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
@@ -14,6 +15,8 @@ import { MARITIME_TABS, type MaritimeTab } from './layer-panel/maritime.ts';
 import { MARITIME_ALERT_FILTERS, buildMaritimeView, type MaritimeAlertFilter } from './layer-panel/maritime-tabs.ts';
 
 const PANEL_ID = 'trafficMaritime';
+/** Délai entre la dernière frappe et le filtrage de la liste (ancien panneau : 150 ms). */
+export const SEARCH_DEBOUNCE_MS = 150;
 
 export interface MaritimeLiveSource {
   navy(): MilitaryShip[];
@@ -43,6 +46,7 @@ export class MaritimePanel {
   private filter: MaritimeAlertFilter = 'alertes';
   private pages = 1;
   private selected: MilitaryShip | null = null;
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
   private readonly live: MaritimeLiveSource;
@@ -111,6 +115,8 @@ export class MaritimePanel {
   }
 
   destroy(): void {
+    if (this.searchTimer !== null) clearTimeout(this.searchTimer);
+    this.searchTimer = null;
     this.shell?.destroy();
     this.shell = null;
   }
@@ -151,8 +157,12 @@ export class MaritimePanel {
     const input = e.target;
     if (!(input instanceof HTMLInputElement) || !input.matches('[data-mar-search]')) return;
     this.search = input.value;
-    this.pages = 1;
-    this.render();
+    if (this.searchTimer !== null) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      this.searchTimer = null;
+      this.pages = 1;
+      if (this.isVisible()) this.render();
+    }, SEARCH_DEBOUNCE_MS);
   }
 
   private onChange(e: Event): void {
@@ -172,15 +182,12 @@ export class MaritimePanel {
 
   private render(): void {
     if (!this.shell) return;
-    const root = this.shell.root;
-    const active = document.activeElement;
-    const searching = active instanceof HTMLInputElement && active.matches('[data-mar-search]') && root.contains(active);
-    const caret = searching ? active.selectionStart : null;
     const connection = this.live.connection();
     // Fiche ouverte : la dernière position connue du navire, relue dans le flux vivant.
     const selected = this.selected ? this.findShip(this.selected.mmsi ?? this.selected.id) ?? this.selected : null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildMaritimeView({
+    // Mise à jour sans reconstruire les nœuds inchangés : la barre d'outils (recherche, territoire, filtres) reste en place.
+    this.shell.patch(buildMaritimeView({
       snapshot: this.state?.snapshot.data ?? null, error: this.state?.snapshot.error ?? null, tab: this.tab,
       live: {
         status: connection.status, lastMessageAt: connection.lastMessageAt, navy: this.live.navy(), traffic: this.live.traffic(),
@@ -188,13 +195,5 @@ export class MaritimePanel {
       },
       now: Date.now(), open,
     }));
-    if (!searching) return;
-    const next = root.querySelector<HTMLInputElement>('[data-mar-search]');
-    next?.focus();
-    try {
-      if (next && caret !== null) next.setSelectionRange(caret, caret);
-    } catch {
-      // Champ sans sélection de texte : le focus suffit.
-    }
   }
 }

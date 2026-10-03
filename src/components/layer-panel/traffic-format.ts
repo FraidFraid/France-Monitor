@@ -1,7 +1,7 @@
 // src/components/layer-panel/traffic-format.ts : formats, heures et couleurs communs des quatre panneaux Trafics et de leur carte
 // (spec 2026-10-03 trafics § 1, § 3) ; pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) : espace insécable entre le
 // nombre et l'unité, « n.d. » pour une valeur absente, jamais 0. Couleurs sans règle dans la spec : maquette validée (arbitrage 7).
-import type { RailAxis, RailEffect, RailGroupStats, RoadEventKind, Squawk } from '../../types/index.ts';
+import type { RailAxis, RailEffect, RailGroupStats, RoadEvent, RoadEventKind, Squawk } from '../../types/index.ts';
 import { dataMs } from '../../services/traffic-source.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { absoluteTime } from '../fiche/kit.ts';
@@ -139,6 +139,15 @@ export function coordText(lat: number, lon: number): string {
 /** Puce d'un événement routier (maquette) : accident rouge ; bouchon, coupure, météo orange ; obstacle, voie jaune ; travaux et information gris. */
 export const ROAD_EVENT_LEVEL: Readonly<Record<RoadEventKind, VigilanceLevel | 'gris'>> = {
   accident: 'rouge', queue: 'orange', closure: 'orange', weather: 'orange', obstruction: 'jaune', lane: 'jaune', works: 'gris', info: 'gris',
+};
+/** Nature d'un événement routier en français (export CSV, textes) ; jamais la clé anglaise du contrat. */
+export const ROAD_KIND_WORD: Readonly<Record<RoadEventKind, string>> = {
+  accident: 'accident', queue: 'bouchon', closure: 'coupure', weather: 'météo', obstruction: 'obstacle', lane: 'voie fermée', works: 'travaux',
+  info: 'information',
+};
+/** Gravité DATEX II d'un événement routier en français (export CSV). */
+export const ROAD_SEVERITY_WORD: Readonly<Record<NonNullable<RoadEvent['severity']>, string>> = {
+  low: 'faible', medium: 'moyenne', high: 'élevée', highest: 'très élevée',
 };
 /** Ordre des événements en cours (maquette) : accidents, bouchons, coupures, météo, obstacles, voies, travaux, information. */
 export const ROAD_KIND_ORDER: Readonly<Record<RoadEventKind, number>> = {

@@ -7,6 +7,7 @@ import { renderVigilancePill } from '../shared/vigilancePill.ts';
 import { fmLoaderHTML } from '../shared/loader.ts';
 import { absoluteTime, levelDot } from '../fiche/kit.ts';
 import { renderKitSection, type FicheSection } from '../fiche/parts.ts';
+import { morphInto } from './morph.ts';
 
 export interface LayerFigure {
   value: string;
@@ -231,7 +232,13 @@ export function isLayerPanelOpen(el: HTMLElement): boolean {
   return el.classList.contains('lp') && el.classList.contains('is-open');
 }
 
-export interface LayerPanelShell { root: HTMLElement; render(view: LayerView): void; destroy(): void }
+export interface LayerPanelShell {
+  root: HTMLElement;
+  render(view: LayerView): void;
+  /** Même contenu que render, sans reconstruire les nœuds inchangés (focus, menu déroulant ouvert, saisie et défilement gardés). */
+  patch(view: LayerView): void;
+  destroy(): void;
+}
 
 export function createLayerPanelShell(opts: {
   container: HTMLElement; className: string; panelId: string;
@@ -292,6 +299,9 @@ export function createLayerPanelShell(opts: {
       const scroll = root.scrollTop;
       viewEl.innerHTML = renderLayerView(opts.panelId, view);
       root.scrollTop = scroll;
+    },
+    patch(view: LayerView): void {
+      if (viewEl) morphInto(viewEl, renderLayerView(opts.panelId, view));
     },
     destroy(): void {
       root.removeEventListener('click', onClick);

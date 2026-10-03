@@ -1,6 +1,7 @@
 // src/components/TransportPanel.ts : panneau de couche « Réseau ferroviaire » (spec 2026-10-03 trafics § 3.3).
 // Coquille DOM : contenu de buildRailView (pur), cadre de createLayerPanelShell ; filtre « axe ou région » et pages de « Trains un
-// par un » gardés pour la session ; un train cliqué (ou Entrée) est transmis à la carte (trajet surligné).
+// par un » gardés pour la session ; un train survolé est prévisualisé sur la carte (son trajet, effacé quand la souris quitte la
+// ligne), un train cliqué (ou Entrée) y est transmis (trajet surligné et carte centrée).
 import type { RailTrain } from '../types/index.ts';
 import type { RailTrafficState } from '../services/traffic-rail.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
@@ -13,6 +14,8 @@ export class TransportPanel {
   private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
   private onSelectTrain?: (train: RailTrain) => void;
+  private onPreviewTrain?: (train: RailTrain | null) => void;
+  private previewedId: string | null = null;
   private state: RailTrafficState | null = null;
   private filter = 'all';
   private pages = 1;
@@ -35,10 +38,14 @@ export class TransportPanel {
         return;
       }
       const id = target.closest<HTMLElement>('[data-rail-train]')?.dataset['railTrain'];
-      const o = this.state?.overview.data;
-      const train = id && o ? [...o.trains, ...o.topDelays].find((t) => t.id === id) : undefined;
+      const train = id ? this.findTrain(id) : undefined;
       if (train) this.onSelectTrain?.(train);
     });
+    // Survol d'une ligne de train : son trajet prévisualisé sur la carte ; hors d'une ligne ou hors du panneau : prévisualisation effacée.
+    shell.root.addEventListener('mouseover', (e) => {
+      this.preview((e.target as HTMLElement).closest<HTMLElement>('[data-rail-train]')?.dataset['railTrain'] ?? null);
+    });
+    shell.root.addEventListener('mouseleave', () => this.preview(null));
     shell.root.addEventListener('change', (e) => {
       const select = e.target;
       if (!(select instanceof HTMLSelectElement) || !select.matches('[data-rail-filter]')) return;
@@ -52,6 +59,8 @@ export class TransportPanel {
   setOnClose(handler: () => void): void { this.onClose = handler; }
   /** Lignes de trains cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
   setOnSelectTrain(handler: (train: RailTrain) => void): void { this.onSelectTrain = handler; }
+  /** Survol d'un train : trajet prévisualisé sur la carte, null à la sortie (carte WebGL, posé par App.ts). */
+  setOnPreviewTrain(handler: (train: RailTrain | null) => void): void { this.onPreviewTrain = handler; }
 
   show(state: RailTrafficState | null): void {
     this.shell?.root.classList.add('is-open');
@@ -65,6 +74,7 @@ export class TransportPanel {
 
   hide(opts: { silent?: boolean } = {}): void {
     this.shell?.root.classList.remove('is-open');
+    this.preview(null);
     // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
     if (!opts.silent) this.onClose?.();
   }
@@ -76,6 +86,18 @@ export class TransportPanel {
   destroy(): void {
     this.shell?.destroy();
     this.shell = null;
+  }
+
+  private findTrain(id: string): RailTrain | undefined {
+    const o = this.state?.overview.data;
+    return o ? [...o.trains, ...o.topDelays].find((t) => t.id === id) : undefined;
+  }
+
+  /** Prévisualisation sur la carte : appelée seulement quand le train survolé change (null : aucun). */
+  private preview(id: string | null): void {
+    if (id === this.previewedId) return;
+    this.previewedId = id;
+    this.onPreviewTrain?.(id !== null ? this.findTrain(id) ?? null : null);
   }
 
   private render(): void {

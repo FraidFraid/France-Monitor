@@ -3,7 +3,7 @@
 import type { MaritimeSnapshot } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  isBool, isNum, isStr, isStrOrNull, listOf, loadSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+  isBool, isNum, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
 } from './traffic-source.ts';
 
 /** Cache client : 90 s, sous la relève de l'instantané de 2 min (App.ts). */
@@ -58,6 +58,11 @@ export async function fetchMaritimeSnapshot(
     return { snapshot: { data: previous?.snapshot.data ?? null, error: 'relais AIS non configuré', fetchedAt: previous?.snapshot.fetchedAt ?? null } };
   }
   return { snapshot: await loadSlot(url, MARITIME_SNAPSHOT_TTL_MS, previous?.snapshot, now, isMaritimeSnapshot, 'AIS') };
+}
+
+/** Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : un échec garde l'instantané actuel et sa date. */
+export function mergeMaritimeState(current: MaritimeState | null, incoming: MaritimeState): MaritimeState {
+  return { snapshot: mergeSlot(current?.snapshot, incoming.snapshot) };
 }
 
 /** Panneau des sources (« AIS instantané ») : date du dernier message AIS reçu par le relais. */

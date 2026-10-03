@@ -52,6 +52,30 @@ describe('TransportPanel', () => {
     (c.querySelector('[data-rail-train="SNCF:2026-10-03:9713"]') as HTMLElement).click();
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ number: '9713' }));
   });
+  it('survol d’un train : trajet prévisualisé sur la carte, effacé à la sortie de la ligne ou du panneau ; clic : train choisi (carte factice)', () => {
+    const map = { previewTrainRoute: vi.fn(), highlightTrainRoute: vi.fn() };
+    const { c, p } = mount((train) => map.highlightTrainRoute(train));
+    p.setOnPreviewTrain((train) => map.previewTrainRoute(train));
+    p.show(railStateFixture());
+    const row = c.querySelector('[data-rail-train="SNCF:2026-10-03:9713"]') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(map.previewTrainRoute).toHaveBeenLastCalledWith(expect.objectContaining({ number: '9713' }));
+    // Survol d'un élément de la même ligne : pas de nouvel appel.
+    (row.firstElementChild ?? row).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(map.previewTrainRoute).toHaveBeenCalledTimes(1);
+    // Sortie de la ligne vers le reste du panneau : prévisualisation effacée.
+    (c.querySelector('.lp-head') as HTMLElement).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    expect(map.previewTrainRoute).toHaveBeenLastCalledWith(null);
+    row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    (c.querySelector('.lp') as HTMLElement).dispatchEvent(new MouseEvent('mouseleave'));
+    expect(map.previewTrainRoute).toHaveBeenLastCalledWith(null);
+    expect(map.previewTrainRoute).toHaveBeenCalledTimes(4);
+    row.click();
+    expect(map.highlightTrainRoute).toHaveBeenCalledWith(expect.objectContaining({ number: '9713' }));
+    row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    p.hide({ silent: true });
+    expect(map.previewTrainRoute).toHaveBeenLastCalledWith(null);
+  });
   it('fermer une seule fois ; silencieux sans rappel ; destroy retire', () => {
     const { c, p } = mount();
     const onClose = vi.fn();

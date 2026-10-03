@@ -33,6 +33,16 @@ export async function loadSlot<T>(
   }
 }
 
+/**
+ * Fusion à l'écriture (S3) : une lecture réussie remplace la source ; une lecture en échec garde les données ACTUELLEMENT en
+ * mémoire avec leur date (jamais l'état capturé au départ de l'appel, qu'une lecture concurrente réussie a pu remplacer) et porte
+ * son message.
+ */
+export function mergeSlot<T>(current: SourceSlot<T> | null | undefined, incoming: SourceSlot<T>): SourceSlot<T> {
+  if (incoming.error === null || !current || current.data === null) return incoming;
+  return { data: current.data, error: incoming.error, fetchedAt: current.fetchedAt };
+}
+
 // ─── Petits prédicats de forme, partagés par les gardes des quatre services ───
 
 export const isStr = (v: unknown): v is string => typeof v === 'string';

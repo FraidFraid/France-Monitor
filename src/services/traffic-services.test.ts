@@ -8,13 +8,17 @@ import { resetHealthSurveillanceCache } from './health-surveillance.ts';
 import { resetTrafficSourceCache } from './traffic-source.ts';
 import {
   LEGACY_TOMTOM_KEYS, ROAD_NATIONAL_URL, ROAD_TTL_MS, ROAD_URBAN_URL, clearLegacyTomTomStorage, fetchRoadTraffic, fetchTrafficFlowSegment,
-  isRoadNationalResponse, isRoadUrbanResponse, resetTrafficFlowCache, roadStatus,
+  isRoadNationalResponse, isRoadUrbanResponse, mergeRoadTraffic, resetTrafficFlowCache, roadStatus,
 } from './traffic-road.ts';
-import { AIR_OVERVIEW_TTL_MS, AIR_OVERVIEW_URL, airDeparturesEnd, airDeparturesLate, airStatus, fetchAirOverview, isAirOverviewResponse } from './traffic-air.ts';
 import {
-  RAIL_OVERVIEW_URL, RAIL_SITUATIONS_URL, RAIL_TTL_MS, fetchRailTraffic, isRailOverviewResponse, isRailSituationsResponse, railStatus,
+  AIR_OVERVIEW_TTL_MS, AIR_OVERVIEW_URL, airDeparturesEnd, airDeparturesLate, airStatus, fetchAirOverview, isAirOverviewResponse, mergeAirOverview,
+} from './traffic-air.ts';
+import {
+  RAIL_OVERVIEW_URL, RAIL_SITUATIONS_URL, RAIL_TTL_MS, fetchRailTraffic, isRailOverviewResponse, isRailSituationsResponse, mergeRailTraffic, railStatus,
 } from './traffic-rail.ts';
-import { MARITIME_SNAPSHOT_TTL_MS, fetchMaritimeSnapshot, isMaritimeSnapshot, maritimeSnapshotUrl, maritimeStatus } from './traffic-maritime.ts';
+import {
+  MARITIME_SNAPSHOT_TTL_MS, fetchMaritimeSnapshot, isMaritimeSnapshot, maritimeSnapshotUrl, maritimeStatus, mergeMaritimeState,
+} from './traffic-maritime.ts';
 
 const SNAPSHOT_URL = 'https://www.francemonitor.com/relay/snapshot';
 const BODIES: Record<string, unknown> = {
@@ -277,5 +281,39 @@ describe('flux d\u2019un tronçon : jamais de zéro inventé', () => {
     expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toBeNull();
     reply({ flowSegmentData: { currentSpeed: 16, freeFlowSpeed: 24, currentTravelTime: 100, freeFlowTravelTime: 90, confidence: 0.9 } });
     expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toMatchObject({ currentSpeed: 16, roadClosure: false });
+  });
+});
+
+describe('lectures concurrentes : fusion à l’écriture (S3)', () => {
+  it('deux lectures parties du même état vide se chevauchent, la première réussit, la seconde échoue : la bonne donnée reste avec sa date', async () => {
+    const started = null; // état capturé au départ des deux appels, avant toute écriture
+    stubFetch();
+    const ok = await fetchRoadTraffic(started, TRAFFIC_NOW);
+    resetTrafficSourceCache();
+    stubFetch({ [ROAD_NATIONAL_URL]: { status: 503 }, [ROAD_URBAN_URL]: { status: 503 } });
+    const failed = await fetchRoadTraffic(started, TRAFFIC_NOW + 1000);
+    // Sans fusion, la seconde écriture remplaçait la bonne donnée par « aucune donnée ».
+    expect(failed.national.data).toBeNull();
+    const current = mergeRoadTraffic(mergeRoadTraffic(null, ok), failed);
+    expect(current.national.data).toEqual(roadNationalFixture());
+    expect(current.national.fetchedAt).toBe(TRAFFIC_NOW);
+    expect(current.national.error).not.toBeNull();
+    expect(current.urban.data).toEqual(roadUrbanFixture());
+    expect(roadStatus(current, 'national', TRAFFIC_NOW + 2000).status).toBe('stale');
+    // Ordre inverse : la réussite écrite après l'échec remplace tout.
+    expect(mergeRoadTraffic(mergeRoadTraffic(null, failed), ok)).toEqual(ok);
+  });
+  it('air, rail, maritime : un échec écrit après une réussite garde les données actuelles et leur date', () => {
+    const fail = { data: null, error: 'HTTP 503', fetchedAt: null };
+    const air = mergeAirOverview(airStateFixture(), { overview: fail });
+    expect(air.overview.data).toEqual(airStateFixture().overview.data);
+    expect(air.overview.error).toBe('HTTP 503');
+    const rail = mergeRailTraffic(railStateFixture(), { overview: fail, situations: railStateFixture().situations });
+    expect(rail.overview.data).toEqual(railStateFixture().overview.data);
+    expect(rail.overview.fetchedAt).toBe(railStateFixture().overview.fetchedAt);
+    expect(rail.situations.error).toBeNull();
+    const sea = mergeMaritimeState(maritimeStateFixture(), { snapshot: fail });
+    expect(sea.snapshot.data).toEqual(maritimeStateFixture().snapshot.data);
+    expect(mergeMaritimeState(null, { snapshot: fail }).snapshot).toEqual(fail);
   });
 });

@@ -260,6 +260,11 @@ describe('serializeRoadEvents', () => {
     expect(columns.map((c) => c.key)).toEqual(['type', 'nature', 'route', 'lieu', 'sens', 'dir', 'debut', 'fin', 'gravite', 'securite', 'detail', 'lat', 'lon']);
     expect(rows).toHaveLength(65);
     assert.equal(rows[0].type, 'Accident');
+    // Nature et gravité en français, jamais les clés anglaises du contrat (accident, closure, highest…).
+    assert.equal(rows[0].nature, 'accident');
+    assert.equal(rows[0].gravite, 'moyenne');
+    expect(new Set(rows.map((r) => r.nature))).not.toContain('closure');
+    expect(rows.find((r) => r.route === 'A63')?.nature).toBe('coupure');
     assert.equal(rows[0].route, 'A55');
     assert.equal(rows[0].dir, 'DIR Méditerranée');
     assert.equal(rows[0].securite, 'oui');

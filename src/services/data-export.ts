@@ -24,6 +24,7 @@ import {
   type RoadEvent,
   type TelecomOutage,
 } from '../types/index.ts';
+import { ROAD_KIND_WORD, ROAD_SEVERITY_WORD } from '../components/layer-panel/traffic-format.ts';
 
 // ─── Types de sérialisation ───────────────────────────────────────────────────
 
@@ -468,7 +469,7 @@ export function serializeOutages(power: PowerOutage[], telecom: TelecomOutage[])
   return { rows, columns, features };
 }
 
-/** Événements routiers en cours du réseau national (DIR, spec 2026-10-03 trafics § 2.1). */
+/** Événements routiers en cours du réseau national (DIR, spec 2026-10-03 trafics § 2.1) ; nature et gravité en français. */
 export function serializeRoadEvents(items: RoadEvent[]): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'type', label: 'type' },
@@ -489,8 +490,8 @@ export function serializeRoadEvents(items: RoadEvent[]): SerializedLayer {
   const features: ExportFeatureInput[] = [];
   for (const e of items) {
     rows.push({
-      type: e.label, nature: e.kind, route: e.road, lieu: e.place, sens: e.direction, dir: e.dir, debut: e.start, fin: e.end,
-      gravite: e.severity, securite: e.safety ? 'oui' : 'non', detail: e.detail, lat: e.lat, lon: e.lon,
+      type: e.label, nature: ROAD_KIND_WORD[e.kind], route: e.road, lieu: e.place, sens: e.direction, dir: e.dir, debut: e.start, fin: e.end,
+      gravite: e.severity !== null ? ROAD_SEVERITY_WORD[e.severity] : null, securite: e.safety ? 'oui' : 'non', detail: e.detail, lat: e.lat, lon: e.lon,
     });
     if (e.lat !== null && e.lon !== null && Number.isFinite(e.lat) && Number.isFinite(e.lon)) {
       features.push({ lat: e.lat, lon: e.lon, properties: { type: e.label, route: e.road, lieu: e.place, dir: e.dir, debut: e.start } });

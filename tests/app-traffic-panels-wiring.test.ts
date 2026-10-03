@@ -9,6 +9,7 @@ import { RAIL_TTL_MS } from '../src/services/traffic-rail.ts';
 import { MARITIME_SNAPSHOT_TTL_MS } from '../src/services/traffic-maritime.ts';
 
 const app = readFileSync(new URL('../src/App.ts', import.meta.url), 'utf8');
+const airTraffic = readFileSync(new URL('../src/services/air-traffic.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
 const layerPanel = readFileSync(new URL('../src/components/LayerPanel.ts', import.meta.url), 'utf8');
 const mapContainer = readFileSync(new URL('../src/components/MapContainer.ts', import.meta.url), 'utf8');
@@ -49,14 +50,25 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
   });
   it('création paresseuse, instance, ouverture avec la couche, fermeture qui coupe la couche, masquage silencieux', () => {
     const vis = methodBody('_handlePanelVisibility');
+    const open = methodBody('openTrafficPanel');
+    const source = methodBody('loadTrafficSource');
     for (const [id, , , field, ensure, , load, current] of PANELS) {
       expect(methodBody('ensureLazyPanelForLayer')).toContain(`case '${id}': return [this.${ensure}()];`);
       expect(methodBody('getFloatingPanelInstance')).toContain(`case '${id}': return this.${field};`);
       expect(methodBody(ensure)).toContain(`this.closeTrafficLayer('${id}')`);
       expect(methodBody(ensure)).toContain(`panel.show(this.${current})`);
-      expect(vis).toMatch(new RegExp(`key === '${id}'\\)[^]*this\\.${load.replace('()', '\\(\\)')}[^]*this\\.${field}\\?\\.show\\(this\\.${current}\\);[^]*this\\.${field}\\?\\.hide\\(\\{ silent: true \\}\\)`));
+      expect(vis).toContain(`key === '${id}'`);
+      expect(open).toContain(`case '${id}': this.${field}?.show(this.${current}); break;`);
+      expect(source).toContain(`case '${id}': return this.${load};`);
     }
+    // Ouverture : panneau montré, source lue, relève réglée ; extinction : masquage silencieux, relève arrêtée si plus voulue.
+    expect(vis).toContain('this.openTrafficPanel(key);');
+    expect(vis).toContain('this.getFloatingPanelInstance(key)?.hide({ silent: true });');
+    expect(vis).toContain('this.syncTrafficPolling(key);');
+    expect(open).toContain('this.loadTrafficSource(key).catch(');
+    expect(open).toContain('this.syncTrafficPolling(key);');
     expect(methodBody('closeTrafficLayer')).toContain('this.onLayerToggle(key, false);');
+    expect(methodBody('closeTrafficLayer')).toContain('this.syncTrafficPolling(key);');
     // Créé à la demande seulement (ensureTransportPanel), plus au rendu de la coquille (renderShell).
     expect(app.split('new TransportPanel(').length - 1).toBe(1);
     expect(methodBody('ensureTransportPanel')).toContain('new TransportPanel(container)');
@@ -71,47 +83,71 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
     expect(AIR_OVERVIEW_TTL_MS).toBeLessThan(pollMinutes('POLL_AIR_OVERVIEW_MS') * 60_000);
     expect(RAIL_TTL_MS).toBeLessThan(pollMinutes('POLL_SNCF_MS') * 60_000);
     expect(MARITIME_SNAPSHOT_TTL_MS).toBeLessThan(pollMinutes('POLL_MARITIME_SNAPSHOT_MS') * 60_000);
-    const polls: Array<[string, string, string, string]> = [
-      ['startRoadPolling', 'POLL_ROAD_MS', 'trafficRoad', 'loadRoadTraffic'], ['startAirOverviewPolling', 'POLL_AIR_OVERVIEW_MS', 'trafficAir', 'loadAirOverview'],
-      ['startRailPolling', 'POLL_SNCF_MS', 'trafficRail', 'loadRailTraffic'], ['startMaritimePolling', 'POLL_MARITIME_SNAPSHOT_MS', 'trafficMaritime', 'loadMaritimeSnapshot'],
-      ['startAirTrafficPolling', 'POLL_AIR_TRAFFIC_MS', 'trafficAir', 'pollAirTraffic'],
-    ];
-    for (const [method, constant, layer, load] of polls) {
-      const body = methodBody(method);
-      expect(body).toContain('this.registerPausableInterval(');
-      expect(body).toContain(constant);
-      expect(body).toContain(`this.activeLayers.${layer}`);
-      expect(body).toContain(`this.${load}(`);
-      expect(app).toContain(`this.${method}();`);
-    }
-    for (const field of ['_intervalRoad', '_intervalAirOverview', '_intervalSncf', '_intervalMaritime']) {
-      expect(app).toContain(`this.removePausableInterval(this.${field}); this.${field} = null;`);
-    }
+    // Une table de cadences, une relève pausable par couche, active tant que la couche est allumée OU que son panneau est ouvert (I3).
+    expect(app).toContain('trafficRoad: POLL_ROAD_MS, trafficAir: POLL_AIR_OVERVIEW_MS, trafficRail: POLL_SNCF_MS, trafficMaritime: POLL_MARITIME_SNAPSHOT_MS,');
+    expect(methodBody('trafficPollWanted')).toContain('this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false)');
+    const sync = methodBody('syncTrafficPolling');
+    expect(sync).toContain('this.registerPausableInterval(');
+    expect(sync).toContain('TRAFFIC_POLL_MS[key]');
+    expect(sync).toContain('this.loadTrafficSource(key)');
+    // Arrêt quand couche et panneau sont éteints : immédiat, ou au tour suivant (masquage silencieux).
+    expect(sync).toContain('this.removePausableInterval(timer);');
+    expect(sync).toMatch(/registerPausableInterval\(\(\) => \{\s*if \(!this\.trafficPollWanted\(key\)\) \{\s*this\.syncTrafficPolling\(key\);/);
+    expect(app).toContain('for (const key of TRAFFIC_LAYER_KEYS) this.syncTrafficPolling(key);');
+    expect(app).toContain('for (const key of TRAFFIC_LAYER_KEYS) this.removePausableInterval(this.trafficPolls[key] ?? null);');
+    // Carte aérienne : relève de 12 s des positions, couche active seulement.
+    const air = methodBody('startAirTrafficPolling');
+    for (const part of ['this.registerPausableInterval(', 'POLL_AIR_TRAFFIC_MS', 'this.activeLayers.trafficAir', 'this.pollAirTraffic(']) expect(air).toContain(part);
+    expect(app).toContain('this.startAirTrafficPolling();');
+    expect(app).not.toMatch(/startRoadPolling|startRailPolling|startMaritimePolling|startAirOverviewPolling|_intervalSncf|_intervalRoad/);
     expect(app).not.toMatch(/sncfFullCoverageLoaded|loadSncfFullCoverage|setInterval\(\(\) => \{\s*if \(document\.hidden\) return; \/\/ skip tick while tab is hidden\s*if \(!this\.activeLayers\.trafficRail/);
   });
   it('chargeurs : services chargés à la demande, panneaux mis à jour, panneau des sources sur la date de la donnée, jamais new Date()', () => {
     const loaders: Array<[string, string, string[]]> = [
-      ['loadRoadTraffic', "import('./services/traffic-road.ts')", ['this.trafficPanel?.update(state);', "roadStatus(state, 'national', now)", "roadStatus(state, 'urban', now)", 'clearLegacyTomTomStorage(']],
-      ['loadAirOverview', "import('./services/traffic-air.ts')", ['this.airTrafficPanel?.update(state);', "this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));"]],
-      ['loadRailTraffic', "import('./services/traffic-rail.ts')", ['this.transportPanel?.update(state);', "railStatus(state, 'overview', now)", "railStatus(state, 'situations', now)"]],
-      ['loadMaritimeSnapshot', "import('./services/traffic-maritime.ts')", ['this.maritimePanel?.update(state);', 'fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now)', "maritimeStatus(state, now)"]],
+      ['loadRoadTraffic', "import('./services/traffic-road.ts')", ['this.trafficPanel?.update(state);', "roadStatus(state, 'national', now)", "roadStatus(state, 'urban', now)", 'clearLegacyTomTomStorage(',
+        "this.readTraffic('trafficRoad',", 'const state = mergeRoadTraffic(this.currentRoadTraffic, read);']],
+      ['loadAirOverview', "import('./services/traffic-air.ts')", ['this.airTrafficPanel?.update(state);', "this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));",
+        "this.readTraffic('trafficAir',", 'const state = mergeAirOverview(this.currentAirOverview, read);']],
+      ['loadRailTraffic', "import('./services/traffic-rail.ts')", ['this.transportPanel?.update(state);', "railStatus(state, 'overview', now)", "railStatus(state, 'situations', now)",
+        "this.readTraffic('trafficRail',", 'const state = mergeRailTraffic(this.currentRailTraffic, read);']],
+      ['loadMaritimeSnapshot', "import('./services/traffic-maritime.ts')", ['this.maritimePanel?.update(state);', 'fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now)', "maritimeStatus(state, now)",
+        "this.readTraffic('trafficMaritime',", 'const state = mergeMaritimeState(this.currentMaritimeSnapshot, read);']],
     ];
     for (const [method, imp, parts] of loaders) {
       const body = methodBody(method);
       expect(body).toContain(imp);
       for (const p of parts) expect(body).toContain(p);
       expect(body).not.toContain('new Date()');
+      // Fusion à l'écriture sur l'état relu après la lecture, jamais `merge…(this.current…, await …)` (argument évalué au départ).
+      expect(body).not.toMatch(/merge\w+\(this\.current\w+, await/);
     }
+  });
+  it('lecture unique en cours par couche ; échec du service : toutes les lignes de la couche le disent, quel que soit l’appelant (I2, m2)', () => {
+    const read = methodBody('readTraffic');
+    expect(read).toContain('dedupe(`traffic:${key}`,');
+    expect(read).toContain('this.markTrafficSourcesFailed(key, err);');
+    const failed = methodBody('markTrafficSourcesFailed');
+    expect(failed).toContain('for (const name of TRAFFIC_LAYER_SOURCES[key])');
+    expect(failed).toContain("{ status: 'error', lastUpdate: null, period: undefined, error }");
+    expect(failed).not.toContain('new Date()');
+  });
+  it('trafic aérien : « Trafic aérien » daté par l’aperçu ; positions de la carte sur leur propre ligne, datées par les états OpenSky (I1)', () => {
+    expect(airTraffic).not.toMatch(/Watchdog\.(register|report)\(|label: 'Trafic aérien'/);
     const air = methodBody('loadAirTraffic');
     expect(air).toContain('this.mapContainer?.updateAirTraffic(snapshot.flights);');
-    expect(air).not.toMatch(/statusPanel|airplanes\.live|new Date\(\)/);
+    expect(air).toContain('read: { at: snapshot.fetchedAt,');
+    expect(air).toContain('this.statusPanel?.updateSource(AIR_POSITIONS_SOURCE, airPositionsStatus(this.airPositions.read, this.airPositions.failure, now));');
+    expect(air).not.toMatch(/'Trafic aérien'|airplanes\.live|new Date\(\)/);
     expect(methodBody('pollAirTraffic')).not.toMatch(/statusPanel|new Date\(\)/);
+    expect(app).toContain('[AIR_POSITIONS_SOURCE]: \'trafficAir\',');
   });
   it('AIS : panneau des sources daté par le dernier message, panneau maritime rafraîchi à chaque tour', () => {
     const ships = methodBody('startMilitaryPolling');
     expect(ships).toContain('const aisState = getAisConnectionState();');
-    expect(ships).toContain('lastUpdate: aisState.lastMessageAt !== null ? new Date(aisState.lastMessageAt) : null,');
+    // Date du dernier message, « (en retard) » selon la source AIS : connecté ne veut jamais dire à jour (m1).
+    expect(ships).toContain('...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),');
     expect(ships).not.toContain('lastUpdate: aisStatus.connected ? new Date() : null');
+    expect(ships).not.toContain('toLocaleTimeString');
     expect(ships).toContain('this.maritimePanel?.refreshLive();');
     expect(app).not.toContain('maritimeHasData');
   });
@@ -142,15 +178,20 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
   });
   it('sources Trafics cliquées : panneau créé à la demande', () => {
     const click = methodBody('handleSourcePanelClick');
-    expect(click).toContain("void this.ensureTransportPanel().then(() => this.transportPanel?.show(this.currentRailTraffic));");
-    expect(click).toContain("void this.ensureTrafficPanel().then(() => this.trafficPanel?.show(this.currentRoadTraffic));");
-    expect(click).toContain("void this.ensureAirTrafficPanel().then(() => this.airTrafficPanel?.show(this.currentAirOverview));");
-    expect(click).toContain("void this.ensureMaritimePanel().then(() => this.maritimePanel?.show(this.currentMaritimeSnapshot));");
+    // Couche éteinte : le panneau ouvert lit aussitôt sa source et la relève tant qu'il reste ouvert (I3, openTrafficPanel).
+    expect(click).toContain("void this.ensureTransportPanel().then(() => this.openTrafficPanel('trafficRail'));");
+    expect(click).toContain("void this.ensureTrafficPanel().then(() => this.openTrafficPanel('trafficRoad'));");
+    expect(click).toContain("void this.ensureAirTrafficPanel().then(() => this.openTrafficPanel('trafficAir'));");
+    expect(click).toContain("} else if (name === 'AIS maritime' || name === 'AIS instantané') {\n      void this.ensureMaritimePanel().then(() => this.openTrafficPanel('trafficMaritime'));");
   });
   it('carte WebGL seulement : lignes cliquables (événements, trains, navires)', () => {
     expect(mapContainer).toContain('canFocusMap(): boolean');
     expect(methodBody('ensureTrafficPanel')).toContain('if (this.mapContainer?.canFocusMap()) panel.setOnFocusEvent(');
-    expect(methodBody('ensureTransportPanel')).toContain('if (this.mapContainer?.canFocusMap()) panel.setOnSelectTrain((train) => this.focusTrain(train));');
+    const rail = methodBody('ensureTransportPanel');
+    expect(rail).toContain('panel.setOnSelectTrain((train) => this.focusTrain(train));');
+    // Survol d'un train : trajet prévisualisé (m10), clic : train choisi.
+    expect(rail).toContain('panel.setOnPreviewTrain((train) => this.mapContainer?.previewTrainRoute(train));');
+    expect(rail).toMatch(/if \(this\.mapContainer\?\.canFocusMap\(\)\) \{\s*panel\.setOnSelectTrain/);
   });
   it('aide des couches : plus d’airplanes.live ni de « temps réel » TomTom ; libellés inchangés', () => {
     expect(layerPanel).not.toMatch(/airplanes\.live|TomTom Traffic API|Incidents routiers temps réel/);

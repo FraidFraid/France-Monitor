@@ -116,7 +116,11 @@ import type { RoadTrafficState } from './services/traffic-road.ts';
 import type { AirOverviewState } from './services/traffic-air.ts';
 import type { RailTrafficState } from './services/traffic-rail.ts';
 import type { MaritimeState } from './services/traffic-maritime.ts';
-import { TRAFFIC_SOURCE_NAMES, trafficReportSources } from './config/traffic-sources.ts';
+import {
+  AIR_POSITIONS_SOURCE, TRAFFIC_LAYER_KEYS, TRAFFIC_LAYER_SOURCES, TRAFFIC_SOURCE_NAMES, aisLiveStatus, airPositionsStatus, trafficReportSources,
+  type TrafficLayerKey,
+} from './config/traffic-sources.ts';
+import { dedupe } from './utils/inflight.ts';
 import {
   AIR_TRAFFIC_LEGEND, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, airLegend, maritimeLegend, railLegend, roadLegend,
 } from './components/layer-panel/traffic-legend.ts';
@@ -205,6 +209,10 @@ const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (perturbations 
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
 const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
+/** Relève de chaque panneau Trafics, tant que sa couche est active ou son panneau ouvert (syncTrafficPolling). */
+const TRAFFIC_POLL_MS: Readonly<Record<TrafficLayerKey, number>> = {
+  trafficRoad: POLL_ROAD_MS, trafficAir: POLL_AIR_OVERVIEW_MS, trafficRail: POLL_SNCF_MS, trafficMaritime: POLL_MARITIME_SNAPSHOT_MS,
+};
 
 // Cap on news items kept in memory / pushed to map & panels (after date sort).
 const MAX_NEWS_ITEMS = 500;
@@ -549,6 +557,7 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Trafic': 'trafficRoad',
   'TomTom agglomérations': 'trafficRoad',
   'Trafic aérien': 'trafficAir',
+  [AIR_POSITIONS_SOURCE]: 'trafficAir',
   'SIRI SX': 'trafficRail',
   'AIS maritime': 'trafficMaritime',
   'AIS instantané': 'trafficMaritime',
@@ -576,9 +585,6 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
 
 /** Couches santé, un panneau chacune (spec 2026-10-03 § 3). */
 type HealthLayerKey = 'health' | 'healthOscour' | 'healthApl' | 'hospitals';
-
-/** Couches Trafics, un panneau chacune (spec 2026-10-03 trafics § 3). */
-type TrafficLayerKey = 'trafficRoad' | 'trafficAir' | 'trafficRail' | 'trafficMaritime';
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -1564,6 +1570,8 @@ export class App {
   private currentAirOverview: AirOverviewState | null = null;
   private currentRailTraffic: RailTrafficState | null = null;
   private currentMaritimeSnapshot: MaritimeState | null = null;
+  /** Positions de la carte : dernière lecture réussie (heure des états OpenSky, incidents) et dernier échec, pour leur ligne datée. */
+  private airPositions: { read: { at: number | null; errors: string[] } | null; failure: string | null } = { read: null, failure: null };
   private legacyTomTomCleared = false;
   private currentFloodSegments: FloodSegment[] = [];
   /** Menu d'export CSV / GeoJSON, instancié à la demande au premier clic. */
@@ -1628,10 +1636,8 @@ export class App {
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalDromLive: ReturnType<typeof setInterval> | null = null;
-  private _intervalSncf: PausableTimer | null = null;
-  private _intervalRoad: PausableTimer | null = null;
-  private _intervalAirOverview: PausableTimer | null = null;
-  private _intervalMaritime: PausableTimer | null = null;
+  /** Relèves des panneaux Trafics, présentes tant que la couche est active ou le panneau ouvert (syncTrafficPolling). */
+  private trafficPolls: Partial<Record<TrafficLayerKey, PausableTimer>> = {};
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -1675,10 +1681,8 @@ export class App {
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalDromLive !== null) { clearInterval(this._intervalDromLive); this._intervalDromLive = null; }
-    this.removePausableInterval(this._intervalSncf); this._intervalSncf = null;
-    this.removePausableInterval(this._intervalRoad); this._intervalRoad = null;
-    this.removePausableInterval(this._intervalAirOverview); this._intervalAirOverview = null;
-    this.removePausableInterval(this._intervalMaritime); this._intervalMaritime = null;
+    for (const key of TRAFFIC_LAYER_KEYS) this.removePausableInterval(this.trafficPolls[key] ?? null);
+    this.trafficPolls = {};
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -2368,10 +2372,8 @@ export class App {
     this.startInfraNetworkPolling();
     this.startEolienPolling();
     this.startDromLivePolling();
-    this.startRailPolling();
-    this.startRoadPolling();
-    this.startAirOverviewPolling();
-    this.startMaritimePolling();
+    // Relèves Trafics : couches actives au démarrage ; les autres démarrent à l'ouverture de leur panneau ou de leur couche.
+    for (const key of TRAFFIC_LAYER_KEYS) this.syncTrafficPolling(key);
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -3225,17 +3227,18 @@ export class App {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       this.layoutEnergyFloatingPanels();
     } else if (name === 'SNCF' || name === 'SIRI SX') {
-      // Panneaux Trafics créés à la demande : la source peut être cliquée avant toute activation de couche.
-      void this.ensureTransportPanel().then(() => this.transportPanel?.show(this.currentRailTraffic));
+      // Panneaux Trafics créés à la demande : la source peut être cliquée couche éteinte ; le panneau lit alors sa source et la
+      // relève tant qu'il reste ouvert (openTrafficPanel).
+      void this.ensureTransportPanel().then(() => this.openTrafficPanel('trafficRail'));
     } else if (name === 'NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
       this.layoutEnvironmentFloatingPanels();
     } else if (name === 'Trafic' || name === 'TomTom agglomérations') {
-      void this.ensureTrafficPanel().then(() => this.trafficPanel?.show(this.currentRoadTraffic));
-    } else if (name === 'Trafic aérien') {
-      void this.ensureAirTrafficPanel().then(() => this.airTrafficPanel?.show(this.currentAirOverview));
+      void this.ensureTrafficPanel().then(() => this.openTrafficPanel('trafficRoad'));
+    } else if (name === 'Trafic aérien' || name === AIR_POSITIONS_SOURCE) {
+      void this.ensureAirTrafficPanel().then(() => this.openTrafficPanel('trafficAir'));
     } else if (name === 'AIS maritime' || name === 'AIS instantané') {
-      void this.ensureMaritimePanel().then(() => this.maritimePanel?.show(this.currentMaritimeSnapshot));
+      void this.ensureMaritimePanel().then(() => this.openTrafficPanel('trafficMaritime'));
     } else if (name === 'Cyber') {
       this.cyberPanel?.show(this.currentCyberData);
     } else if (name === 'Écowatt RTE') {
@@ -3530,37 +3533,14 @@ export class App {
   }
 
   private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
-    // Panneaux Trafics (spec 2026-10-03 trafics § 3) : données lues à l'ouverture, masquage silencieux à l'extinction.
-    if (key === 'trafficRoad') {
+    // Panneaux Trafics (spec 2026-10-03 trafics § 3) : à l'ouverture (case, puce, restauration), source lue et relève réglée ; à
+    // l'extinction, masquage silencieux et relève arrêtée si le panneau n'est plus ouvert.
+    if (key === 'trafficRoad' || key === 'trafficAir' || key === 'trafficRail' || key === 'trafficMaritime') {
       if (enabled) {
-        this.loadRoadTraffic().catch((err) => console.error('[App] Trafic routier indisponible', err));
-        this.trafficPanel?.show(this.currentRoadTraffic);
+        this.openTrafficPanel(key);
       } else {
-        this.trafficPanel?.hide({ silent: true });
-      }
-    }
-    if (key === 'trafficAir') {
-      if (enabled) {
-        this.loadAirOverview().catch((err) => console.error('[App] Aperçu aérien indisponible', err));
-        this.airTrafficPanel?.show(this.currentAirOverview);
-      } else {
-        this.airTrafficPanel?.hide({ silent: true });
-      }
-    }
-    if (key === 'trafficRail') {
-      if (enabled) {
-        this.loadRailTraffic().catch((err) => console.error('[App] Réseau ferroviaire indisponible', err));
-        this.transportPanel?.show(this.currentRailTraffic);
-      } else {
-        this.transportPanel?.hide({ silent: true });
-      }
-    }
-    if (key === 'trafficMaritime') {
-      if (enabled) {
-        this.loadMaritimeSnapshot().catch((err) => console.error('[App] Instantané AIS indisponible', err));
-        this.maritimePanel?.show(this.currentMaritimeSnapshot);
-      } else {
-        this.maritimePanel?.hide({ silent: true });
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncTrafficPolling(key);
       }
     }
 
@@ -4112,7 +4092,11 @@ export class App {
     this.transportPanelPromise ??= import('./components/TransportPanel.ts').then(({ TransportPanel }) => {
       const panel = new TransportPanel(container);
       panel.setOnClose(() => this.closeTrafficLayer('trafficRail'));
-      if (this.mapContainer?.canFocusMap()) panel.setOnSelectTrain((train) => this.focusTrain(train));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnSelectTrain((train) => this.focusTrain(train));
+        // Survol d'un train : son trajet prévisualisé ; sortie : retour au train choisi ou carte effacée (previewTrainRoute).
+        panel.setOnPreviewTrain((train) => this.mapContainer?.previewTrainRoute(train));
+      }
       panel.mount();
       this.transportPanel = panel;
       if (this.activeLayers.trafficRail) panel.show(this.currentRailTraffic);
@@ -4138,11 +4122,93 @@ export class App {
     return this.maritimePanelPromise;
   }
 
-  /** Croix d'un panneau Trafics : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux). */
+  /**
+   * Croix d'un panneau Trafics : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux) ;
+   * panneau ouvert depuis le panneau des sources, couche éteinte : sa relève s'arrête avec lui.
+   */
   private closeTrafficLayer(key: TrafficLayerKey): void {
-    if (!this.activeLayers[key]) return;
-    this.onLayerToggle(key, false);
-    this.layerPanel?.updateLayers(this.activeLayers);
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncTrafficPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Trafics sur ses dernières données (chargement au premier affichage), lit aussitôt sa source et
+   * règle sa relève : case cochée, puce, restauration ou ligne du panneau des sources cliquée couche éteinte.
+   */
+  private openTrafficPanel(key: TrafficLayerKey): void {
+    switch (key) {
+      case 'trafficRoad': this.trafficPanel?.show(this.currentRoadTraffic); break;
+      case 'trafficAir': this.airTrafficPanel?.show(this.currentAirOverview); break;
+      case 'trafficRail': this.transportPanel?.show(this.currentRailTraffic); break;
+      case 'trafficMaritime': this.maritimePanel?.show(this.currentMaritimeSnapshot); break;
+    }
+    this.loadTrafficSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncTrafficPolling(key);
+  }
+
+  /** Source du panneau d'une couche Trafics (route, aperçu aérien, rail, instantané AIS). */
+  private loadTrafficSource(key: TrafficLayerKey): Promise<void> {
+    switch (key) {
+      case 'trafficRoad': return this.loadRoadTraffic();
+      case 'trafficAir': return this.loadAirOverview();
+      case 'trafficRail': return this.loadRailTraffic();
+      case 'trafficMaritime': return this.loadMaritimeSnapshot();
+    }
+  }
+
+  /** Relève voulue : couche active OU panneau ouvert (ligne du panneau des sources cliquée couche éteinte). */
+  private trafficPollWanted(key: TrafficLayerKey): boolean {
+    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false);
+  }
+
+  /**
+   * Démarre ou arrête la relève pausable d'une couche Trafics (TRAFFIC_POLL_MS) : elle tourne tant que la couche est active ou que
+   * son panneau est ouvert, et s'arrête quand les deux sont éteints (ici, ou au tour suivant après un masquage silencieux).
+   */
+  private syncTrafficPolling(key: TrafficLayerKey): void {
+    const timer = this.trafficPolls[key];
+    if (!this.trafficPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.trafficPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.trafficPolls[key] = this.registerPausableInterval(() => {
+      if (!this.trafficPollWanted(key)) {
+        this.syncTrafficPolling(key);
+        return;
+      }
+      this.loadTrafficSource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, TRAFFIC_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une source Trafics : une seule à la fois par couche (démarrage, restauration, ouverture, relève : un second appelant
+   * rejoint la lecture en cours) ; si le service ne se charge pas, toutes les lignes de la couche le disent (S3), quel que soit
+   * l'appelant.
+   */
+  private readTraffic(key: TrafficLayerKey, read: () => Promise<void>): Promise<void> {
+    return dedupe(`traffic:${key}`, () => read().catch((err: unknown) => {
+      this.markTrafficSourcesFailed(key, err);
+      throw err;
+    }));
+  }
+
+  /**
+   * Toutes les lignes d'une couche Trafics (TRAFFIC_LAYER_SOURCES : « TomTom agglomérations » et « SIRI SX » comprises) quand son
+   * service ne se charge pas : une ligne déjà datée garde sa date et passe « stale », sinon « error » sans heure inventée.
+   */
+  private markTrafficSourcesFailed(key: TrafficLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of TRAFFIC_LAYER_SOURCES[key]) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
   }
 
   /** Train choisi dans le panneau ferroviaire : son trajet tracé par ses arrêts, puis la carte se centre dessus. */
@@ -5077,14 +5143,11 @@ export class App {
         const aisStatus = getAisStatus();
         const aisRelayLabel = AIS_RELAY_URL ?? 'Non configuré';
         const aisDetail = `${aisRelayLabel} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
-        // Date du dernier message reçu du relais (S1), jamais l'heure de lecture.
+        // Date du dernier message reçu du relais (S1), jamais l'heure de lecture ; message trop ancien : en retard même connecté (S2).
         const aisState = getAisConnectionState();
         this.statusPanel?.updateSource('AIS maritime', {
-          status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'error',
-          lastUpdate: aisState.lastMessageAt !== null ? new Date(aisState.lastMessageAt) : null,
-          period: aisState.lastMessageAt !== null ? new Date(aisState.lastMessageAt).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }) : undefined,
+          ...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),
           detail: aisStatus.connected ? aisDetail : aisRelayLabel,
-          error: aisStatus.connected ? undefined : 'relais déconnecté',
         });
 
         // Navires Marine Nationale pour l'affichage sur la carte (icônes dédiées)
@@ -5844,68 +5907,71 @@ export class App {
     }
   }
 
-  /** Trafic routier (spec trafics § 2.1, § 2.2) : DIR et TomTom collectés par le serveur ; panneau, score, sources datées (S1). */
-  private async loadRoadTraffic(): Promise<void> {
-    const { fetchRoadTraffic, roadStatus, clearLegacyTomTomStorage } = await import('./services/traffic-road.ts');
-    if (!this.legacyTomTomCleared) {
-      this.legacyTomTomCleared = true;
-      try {
-        clearLegacyTomTomStorage(window.localStorage);
-      } catch {
-        // Stockage refusé : rien à effacer.
+  /**
+   * Trafic routier (spec trafics § 2.1, § 2.2) : DIR et TomTom collectés par le serveur ; panneau, carte, score, sources datées (S1).
+   * Lecture unique en cours partagée (readTraffic) ; fusion à l'écriture : une route en échec garde les données actuelles.
+   */
+  private loadRoadTraffic(): Promise<void> {
+    return this.readTraffic('trafficRoad', async () => {
+      const { fetchRoadTraffic, mergeRoadTraffic, roadStatus, clearLegacyTomTomStorage } = await import('./services/traffic-road.ts');
+      if (!this.legacyTomTomCleared) {
+        this.legacyTomTomCleared = true;
+        try {
+          clearLegacyTomTomStorage(window.localStorage);
+        } catch {
+          // Stockage refusé : rien à effacer.
+        }
       }
-    }
-    const now = Date.now();
-    const state = await fetchRoadTraffic(this.currentRoadTraffic, now);
-    this.currentRoadTraffic = state;
-    this.trafficPanel?.update(state);
-    this.mapContainer?.updateRoadTraffic(state.national.data, state.urban.data, now);
-    this.mapLegend?.addCategory(roadLegend(state.national.data, state.urban.data, now));
-    this.statusPanel?.updateSource('Trafic', roadStatus(state, 'national', now));
-    this.statusPanel?.updateSource('TomTom agglomérations', roadStatus(state, 'urban', now));
-    this.recordTrafficSamples(now);
-    this.refreshFranceIntelPanel();
+      const now = Date.now();
+      const read = await fetchRoadTraffic(this.currentRoadTraffic, now);
+      // État relu APRÈS la lecture, jamais celui capturé à son départ.
+      const state = mergeRoadTraffic(this.currentRoadTraffic, read);
+      this.currentRoadTraffic = state;
+      this.trafficPanel?.update(state);
+      this.mapContainer?.updateRoadTraffic(state.national.data, state.urban.data, now);
+      this.mapLegend?.addCategory(roadLegend(state.national.data, state.urban.data, now));
+      this.statusPanel?.updateSource('Trafic', roadStatus(state, 'national', now));
+      this.statusPanel?.updateSource('TomTom agglomérations', roadStatus(state, 'urban', now));
+      this.recordTrafficSamples(now);
+      this.refreshFranceIntelPanel();
+    });
   }
 
-  /** Relève routière : 5 min tant que la couche est active ; pausée onglet caché, immédiate au retour (registerPausableInterval). */
-  private startRoadPolling(): void {
-    if (this._intervalRoad !== null) return;
-    let inFlight = false;
-    this._intervalRoad = this.registerPausableInterval(() => {
-      if (inFlight || !this.activeLayers.trafficRoad) return;
-      inFlight = true;
-      this.loadRoadTraffic().catch((err) => console.error('[App] Road poll error', err)).finally(() => { inFlight = false; });
-    }, POLL_ROAD_MS);
-  }
-
-  /** Positions des avions pour la carte (/api/traffic/air, 12 s) ; le panneau et le panneau des sources lisent l'aperçu. */
+  /**
+   * Positions des avions pour la carte (/api/traffic/air, 12 s) ; ligne « Positions aériennes (carte) » datée par l'heure des états
+   * OpenSky servis, jamais l'heure de lecture ; un échec garde cette date. « Trafic aérien » reste à l'aperçu du panneau.
+   */
   private async loadAirTraffic(): Promise<void> {
-    const snapshot = await fetchAirTrafficSnapshot();
-    this.mapContainer?.updateAirTraffic(snapshot.flights);
+    try {
+      const snapshot = await fetchAirTrafficSnapshot();
+      this.mapContainer?.updateAirTraffic(snapshot.flights);
+      this.airPositions = { read: { at: snapshot.fetchedAt, errors: (snapshot.errors ?? []).map((e) => e.message) }, failure: null };
+    } catch (err) {
+      this.airPositions = { read: this.airPositions.read, failure: err instanceof Error ? err.message : 'lecture impossible' };
+      throw err;
+    } finally {
+      const now = Date.now();
+      this.statusPanel?.updateSource(AIR_POSITIONS_SOURCE, airPositionsStatus(this.airPositions.read, this.airPositions.failure, now));
+      this.recordTrafficSamples(now);
+    }
   }
 
-  /** Trafic aérien (spec trafics § 2.3) : aperçu OpenSky du serveur ; panneau, sources datées par l'état OpenSky (S1). */
-  private async loadAirOverview(): Promise<void> {
-    const { fetchAirOverview, airStatus } = await import('./services/traffic-air.ts');
-    const now = Date.now();
-    const state = await fetchAirOverview(this.currentAirOverview, now);
-    this.currentAirOverview = state;
-    this.airTrafficPanel?.update(state);
-    this.mapContainer?.updateAirOverview(state.overview.data, now);
-    this.mapLegend?.addCategory(airLegend(state.overview.data, now));
-    this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
+  /** Trafic aérien (spec trafics § 2.3) : aperçu OpenSky du serveur ; panneau, carte, sources datées par l'état OpenSky (S1). */
+  private loadAirOverview(): Promise<void> {
+    return this.readTraffic('trafficAir', async () => {
+      const { fetchAirOverview, mergeAirOverview, airStatus } = await import('./services/traffic-air.ts');
+      const now = Date.now();
+      const read = await fetchAirOverview(this.currentAirOverview, now);
+      const state = mergeAirOverview(this.currentAirOverview, read);
+      this.currentAirOverview = state;
+      this.airTrafficPanel?.update(state);
+      this.mapContainer?.updateAirOverview(state.overview.data, now);
+      this.mapLegend?.addCategory(airLegend(state.overview.data, now));
+      this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
+      this.recordTrafficSamples(now);
+    });
   }
 
-  /** Relève du panneau aérien : 2 min tant que la couche est active (la carte garde sa relève de 12 s). */
-  private startAirOverviewPolling(): void {
-    if (this._intervalAirOverview !== null) return;
-    let inFlight = false;
-    this._intervalAirOverview = this.registerPausableInterval(() => {
-      if (inFlight || !this.activeLayers.trafficAir) return;
-      inFlight = true;
-      this.loadAirOverview().catch((err) => console.error('[App] Air overview poll error', err)).finally(() => { inFlight = false; });
-    }, POLL_AIR_OVERVIEW_MS);
-  }
   private async loadCyber(): Promise<void> {
     console.log('[App/loadCyber] ========== ENTRY ==========');
     console.log('[App/loadCyber] isCyberPanelEnabled():', isCyberPanelEnabled());
@@ -6321,54 +6387,41 @@ export class App {
     };
   }
 
-  /** Réseau ferroviaire (spec trafics § 2.4) : perturbations SNCF et situations SIRI SX ; panneau, score, note, sources datées (S1). */
-  private async loadRailTraffic(): Promise<void> {
-    const { fetchRailTraffic, railStatus } = await import('./services/traffic-rail.ts');
-    const now = Date.now();
-    const state = await fetchRailTraffic(this.currentRailTraffic, now);
-    this.currentRailTraffic = state;
-    this.transportPanel?.update(state);
-    this.mapContainer?.updateRailTraffic(state.overview.data, now);
-    this.mapLegend?.addCategory(railLegend(state.overview.data, state.situations.data, now));
-    this.statusPanel?.updateSource('SNCF', railStatus(state, 'overview', now));
-    this.statusPanel?.updateSource('SIRI SX', railStatus(state, 'situations', now));
-    this.recordTrafficSamples(now);
-    this.refreshFranceIntelPanel();
+  /**
+   * Réseau ferroviaire (spec trafics § 2.4) : perturbations SNCF et situations SIRI SX ; panneau, carte, score, note, sources datées
+   * (S1). Lecture unique en cours partagée (readTraffic) ; fusion à l'écriture : une route en échec garde les données actuelles.
+   */
+  private loadRailTraffic(): Promise<void> {
+    return this.readTraffic('trafficRail', async () => {
+      const { fetchRailTraffic, mergeRailTraffic, railStatus } = await import('./services/traffic-rail.ts');
+      const now = Date.now();
+      const read = await fetchRailTraffic(this.currentRailTraffic, now);
+      const state = mergeRailTraffic(this.currentRailTraffic, read);
+      this.currentRailTraffic = state;
+      this.transportPanel?.update(state);
+      this.mapContainer?.updateRailTraffic(state.overview.data, now);
+      this.mapLegend?.addCategory(railLegend(state.overview.data, state.situations.data, now));
+      this.statusPanel?.updateSource('SNCF', railStatus(state, 'overview', now));
+      this.statusPanel?.updateSource('SIRI SX', railStatus(state, 'situations', now));
+      this.recordTrafficSamples(now);
+      this.refreshFranceIntelPanel();
+    });
   }
 
-  /** Relève ferroviaire : 5 min tant que la couche est active, sans arrêt (plus de « couverture complète » qui la coupait). */
-  private startRailPolling(): void {
-    if (this._intervalSncf !== null) return;
-    let inFlight = false;
-    this._intervalSncf = this.registerPausableInterval(() => {
-      if (inFlight || !this.activeLayers.trafficRail) return;
-      inFlight = true;
-      this.loadRailTraffic().catch((err) => console.error('[App] SNCF poll error', err)).finally(() => { inFlight = false; });
-    }, POLL_SNCF_MS);
-  }
-
-  /** Trafic maritime (spec trafics § 2.5) : instantané du relais AIS ; panneau, sources datées par le dernier message (S1). */
-  private async loadMaritimeSnapshot(): Promise<void> {
-    const { fetchMaritimeSnapshot, maritimeStatus } = await import('./services/traffic-maritime.ts');
-    const now = Date.now();
-    const state = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
-    this.currentMaritimeSnapshot = state;
-    this.maritimePanel?.update(state);
-    this.mapContainer?.updateMaritimeSnapshot(state.snapshot.data, now);
-    this.mapLegend?.addCategory(maritimeLegend(state.snapshot.data, now));
-    this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
-    this.recordTrafficSamples(now);
-  }
-
-  /** Relève de l'instantané maritime : 2 min tant que la couche est active (la carte garde le WebSocket du relais). */
-  private startMaritimePolling(): void {
-    if (this._intervalMaritime !== null) return;
-    let inFlight = false;
-    this._intervalMaritime = this.registerPausableInterval(() => {
-      if (inFlight || !this.activeLayers.trafficMaritime) return;
-      inFlight = true;
-      this.loadMaritimeSnapshot().catch((err) => console.error('[App] Maritime snapshot poll error', err)).finally(() => { inFlight = false; });
-    }, POLL_MARITIME_SNAPSHOT_MS);
+  /** Trafic maritime (spec trafics § 2.5) : instantané du relais AIS ; panneau, carte, sources datées par le dernier message (S1). */
+  private loadMaritimeSnapshot(): Promise<void> {
+    return this.readTraffic('trafficMaritime', async () => {
+      const { fetchMaritimeSnapshot, mergeMaritimeState, maritimeStatus } = await import('./services/traffic-maritime.ts');
+      const now = Date.now();
+      const read = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
+      const state = mergeMaritimeState(this.currentMaritimeSnapshot, read);
+      this.currentMaritimeSnapshot = state;
+      this.maritimePanel?.update(state);
+      this.mapContainer?.updateMaritimeSnapshot(state.snapshot.data, now);
+      this.mapLegend?.addCategory(maritimeLegend(state.snapshot.data, now));
+      this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
+      this.recordTrafficSamples(now);
+    });
   }
 
   /** Historique de qualité des sources Trafics hors Watchdog (même store que la santé). */
@@ -6980,16 +7033,14 @@ export class App {
           this.statusPanel?.updateSource('Éolien France', { status: 'error', lastUpdate: new Date() });
         })
       },
+      // Échec d'un service Trafics : toutes les lignes de sa couche (« TomTom agglomérations », « SIRI SX » comprises) sont mises
+      // en erreur par readTraffic, pour chaque appelant ; ici, seulement la trace.
       ...(this.activeLayers.trafficRoad ? [{
-        name: 'traffic', task: this.loadRoadTraffic().catch(() => {
-          this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: null, period: undefined });
-        })
+        name: 'traffic', task: this.loadRoadTraffic().catch((err) => console.error('[App] Trafic routier indisponible', err))
       }] : []),
       {
         // Score France et note de situation : perturbations SNCF lues au démarrage, même couche éteinte (comme avant).
-        name: 'sncf', task: this.loadRailTraffic().catch(() => {
-          this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: null, period: undefined });
-        })
+        name: 'sncf', task: this.loadRailTraffic().catch((err) => console.error('[App] Réseau ferroviaire indisponible', err))
       },
       {
         name: 'metropoles', task: this.loadMetropoles().catch(() => {
@@ -7015,9 +7066,8 @@ export class App {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
         // Panneau des sources : aperçu aérien lu au démarrage ; les positions de la carte attendent l'activation de la couche.
-        name: 'air-overview', task: this.loadAirOverview().catch(() => {
-          this.statusPanel?.updateSource('Trafic aérien', { status: 'error', lastUpdate: null, period: undefined });
-        })
+        // Échec du service : ligne « Trafic aérien » mise en erreur par readTraffic.
+        name: 'air-overview', task: this.loadAirOverview().catch((err) => console.error('[App] Aperçu aérien indisponible', err))
       },
       {
         // Module santé en échec (chunk injoignable) : les huit sources de veille en erreur, jamais « en chargement » (S3).
