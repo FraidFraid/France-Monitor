@@ -158,7 +158,7 @@ function navySection(live: MaritimeLiveInput, now: number, open: OpenFn): FicheS
     id: 'navy', title: 'Marine nationale', collapsible: true, open: open('navy', true),
     summary: escapeHtml(`${plural(atSea, 'en mer suivi', 'en mer suivis')} · ${plural(live.navy.length, 'navire')}`),
     html: toolbar(live, false) + paged(ships, live, now, 'Aucun navire de la Marine nationale pour ce choix.')
-      + note('Navires de la Marine nationale identifiés par leur MMSI ; sans position AIS depuis 10 minutes, position de référence au port d’attache.'),
+      + note('Navires de la Marine nationale identifiés par leur MMSI ; sans position AIS depuis 10 minutes, position de référence au port d’attache. Remplace le filtre « Militaire » de l’ancienne liste : les navires militaires étrangers se trouvent dans Alertes (risque élevé).'),
   };
 }
 
@@ -170,16 +170,20 @@ function alertsSection(live: MaritimeLiveInput, now: number, open: OpenFn): Fich
     .sort((a, b) => (live.filter === 'tous' ? 0 : RISK_ORDER[b.riskLevel ?? 'none'] - RISK_ORDER[a.riskLevel ?? 'none'])
       || (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
   const n = ships.length;
-  const summary = live.filter === 'alertes' ? plural(n, 'alerte') : live.filter === 'risque-eleve' ? `${frNumber(n, 0)} à risque élevé`
+  const stale = aisStale(live);
+  const counted = live.filter === 'alertes' ? plural(n, 'alerte') : live.filter === 'risque-eleve' ? `${frNumber(n, 0)} à risque élevé`
     : live.filter === 'pavillon' ? `${frNumber(n, 0)} sous pavillon à risque` : plural(n, 'navire suivi', 'navires suivis');
-  const empty = aisStale(live) && live.traffic.length === 0 ? 'AIS indisponible : aucune position reçue.'
+  // Flux figé : une absence d'alerte calculée sur des positions figées n'est jamais un fait (T3).
+  const summary = !stale ? counted : live.filter !== 'tous' && n === 0 ? 'alertes non évaluées' : `${counted} (AIS indisponible)`;
+  const empty = stale && live.traffic.length === 0 ? 'AIS indisponible : aucune position reçue.'
+    : stale && live.filter !== 'tous' ? 'AIS indisponible : alertes non évaluées.'
     : live.status === 'connecting' && live.traffic.length === 0 ? 'Connexion au relais AIS…'
     : live.filter === 'tous' ? 'Aucun navire suivi pour ce choix.'
     : `Aucune ${live.filter === 'alertes' ? 'alerte' : 'correspondance'} parmi ${plural(inScope.length, 'navire suivi', 'navires suivis')}.`;
   return {
     id: 'alerts', title: 'Alertes', collapsible: true, open: open('alerts', true), summary: escapeHtml(summary),
     html: toolbar(live, true) + paged(ships, live, now, empty)
-      + note(`Risque calculé sur les positions AIS : pavillon sous sanctions (OFAC) ou sur les listes noire et grise du Paris MOU, cargo au-delà de 22${NBSP}nœuds, navire militaire étranger.`),
+      + note(`Risque calculé sur les positions AIS : pavillon sous sanctions (OFAC) ou sur les listes noire et grise du Paris MOU, cargo au-delà de 22${NBSP}nœuds, navire militaire étranger. Listes : ${RISK_FLAGS_VINTAGE.parisMou} ; ${RISK_FLAGS_VINTAGE.sanctions}.`),
   };
 }
 
@@ -188,7 +192,7 @@ function flagsSection(open: OpenFn): FicheSection {
   const list = (codes: ReadonlySet<string>): string => [...codes].map((c) => names.of(c) ?? c).sort((a, b) => a.localeCompare(b, 'fr')).join(', ');
   return {
     id: 'flags', title: 'Pavillons à risque', collapsible: true, open: open('flags', false),
-    summary: escapeHtml(`Paris MOU 2024 · OFAC`),
+    summary: escapeHtml(`${RISK_FLAGS_VINTAGE.parisMou} · ${RISK_FLAGS_VINTAGE.sanctions}`),
     html: listRow({ text: `Liste noire (${RISK_FLAGS_VINTAGE.parisMou})`, level: 'rouge', note: list(BLACK_LIST_FLAGS) })
       + listRow({ text: `Liste grise (${RISK_FLAGS_VINTAGE.parisMou})`, level: 'orange', note: list(GREY_LIST_FLAGS) })
       + listRow({ text: `Registres sous sanctions (${RISK_FLAGS_VINTAGE.sanctions})`, level: 'rouge', note: list(SANCTIONED_FLAGS) })

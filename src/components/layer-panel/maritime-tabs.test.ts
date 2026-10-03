@@ -136,6 +136,18 @@ describe('panneau Trafic maritime : onglets, Marine nationale, Alertes, fiche na
     expect(v.sections[3].html).toContain('Equasis (IMO)');
     expect(renderLayerView('trafficMaritime', v)).not.toMatch(/monospace|font-family/);
   });
+  it('flux figé avec positions figées : aucune alerte lue comme calme (T3), résumé sans « 0 alerte »', () => {
+    const frozen = live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000, traffic: [TRAFFIC[0]] });
+    const s = sectionOf('alerts', { live: frozen });
+    expect(s?.summary).toBe('alertes non évaluées');
+    expect(visibleText(s?.html ?? '')).toContain('AIS indisponible : alertes non évaluées.');
+    expect(visibleText(s?.html ?? '')).not.toMatch(/Aucune alerte/);
+    expect(sectionOf('alerts', { live: { ...frozen, traffic: TRAFFIC } })?.summary).toBe('2 alertes (AIS indisponible)');
+  });
+  it('pavillons : résumé dérivé des millésimes ; Marine nationale nomme le filtre remplacé', () => {
+    expect(sectionOf('flags')?.summary).toBe('rapport annuel Paris MOU 2024 · OFAC, liste saisie le 27/03/2026');
+    expect(visibleText(sectionOf('navy', { tab: 'marine' })?.html ?? '')).toContain('Remplace le filtre « Militaire »');
+  });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune couleur brute', () => {
     const hostile = [ship({ id: 'h', name: '<img src=x>', mmsi: '667000001', riskLevel: 'high', riskReasons: ['<script>r</script>'], destination: '"><svg onload=1>' })];
     const variants: Array<Partial<MaritimeViewInput>> = [

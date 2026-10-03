@@ -155,6 +155,18 @@ describe('vue Trafic maritime, onglet Veille (spec 2026-10-03 trafics § 3.4)', 
     const empty = withSnapshot((s) => { s.zones = []; s.ports = []; s.vessels = 0; });
     expect(sectionOf('zones', { snapshot: empty })?.html).toContain('Aucun navire dans les eaux couvertes.');
   });
+  it('lastMessageAt absent : « aucun message reçu », jamais « depuis n.d. » ; panne partielle sur zones vides et ports', () => {
+    const never = withSnapshot((s) => { s.lastMessageAt = null; });
+    const h = maritimeHead(never, null, TRAFFIC_NOW);
+    expect(h.status).toEqual(['AIS indisponible (aucun message reçu)']);
+    expect(h.figure?.caption).toContain('AIS : aucun message reçu');
+    expect(visibleText(html({ snapshot: never }))).not.toContain('depuis n.d.');
+    const msg = 'flux AIS partiel : lot 2 sur 3 coupé (Atlantique, golfe du Lion)';
+    const part = withSnapshot((s) => { s.errors = [msg]; s.zones = []; });
+    expect(sectionOf('zones', { snapshot: part })?.html).toContain('lp-callout');
+    expect(visibleText(sectionOf('ports', { snapshot: part })?.html ?? '')).toContain('comptes des ports concernés sont des minimums');
+    expect(maritimeHead(part, null, TRAFFIC_NOW).status[0]).toMatch(/\(flux partiel\)$/);
+  });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute', () => {
     const snapshot = withSnapshot((s) => {
       s.signals = [signal({ name: '<img src=x>' })];

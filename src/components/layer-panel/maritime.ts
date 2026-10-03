@@ -65,16 +65,19 @@ export function maritimeHead(s: MaritimeSnapshot | null, error: string | null, n
     };
   }
   const late = aisLate(s, now);
+  const never = s.lastMessageAt === null;
+  const partial = partialOutages(s.errors).length > 0;
   const verdict = maritimeLevel(s);
   return {
     theme: TRAFFIC_THEME, title: MARITIME_TITLE,
     figure: {
       value: frNumber(s.vessels, 0),
-      caption: `${caption} · dont ${frNumber(s.frenchFlag, 0)} sous pavillon français · AIS, ${clockOf(s.lastMessageAt, now)}${late ? ' (en retard)' : ''}`,
+      caption: `${caption} · dont ${frNumber(s.frenchFlag, 0)} sous pavillon français · ${never ? 'AIS : aucun message reçu' : `AIS, ${clockOf(s.lastMessageAt, now)}${late ? ' (en retard)' : ''}`}`,
       level: null,
     },
     level: late ? 'nd' : verdict.level,
-    status: [late ? `AIS indisponible depuis ${clockOf(s.lastMessageAt, now)}` : glueUnits(verdict.reason), stamp('AIS', s.lastMessageAt, late, now)],
+    status: [late ? (never ? 'AIS indisponible (aucun message reçu)' : `AIS indisponible depuis ${clockOf(s.lastMessageAt, now)}`)
+        : glueUnits(partial ? `${verdict.reason} (flux partiel)` : verdict.reason), ...(never ? [] : [stamp('AIS', s.lastMessageAt, late, now)])],
     lead: late ? null : lead(s),
   };
 }
@@ -118,7 +121,7 @@ function zonesSection(input: MaritimeVeilleInput): FicheSection {
   const outage = outages.length > 0
     ? `<p class="fmk-callout lp-callout">${escapeHtml(`${outages.join(' ; ')}. Les zones concernées ne se lisent pas comme calmes : leurs comptes sont des minimums.`)}</p>` : '';
   const top = zones[0];
-  if (!top) return { ...base, summary: 'n.d.', html: emptyOrDown(s.errors, 'Aucun navire dans les eaux couvertes.', 'zones (instantané AIS)') };
+  if (!top) return { ...base, summary: 'n.d.', html: outage + emptyOrDown(s.errors, 'Aucun navire dans les eaux couvertes.', 'zones (instantané AIS)') };
   const rows = zones.map((z) => `<tr><th scope="row">${escapeHtml(z.label)}</th><td>${valueHtml(frNumber(z.vessels, 0))}</td>`
     + `<td>${valueHtml(frNumber(z.atAnchor, 0))}</td><td>${valueHtml(frNumber(z.underWay, 0))}</td></tr>`).join('');
   return {
@@ -136,10 +139,12 @@ function portsSection(input: MaritimeVeilleInput): FicheSection {
   const { snapshot: s, now, open } = input;
   const base = { id: 'ports', title: 'Ports', collapsible: true, open: open('ports', true) };
   if (!s) return { ...base, summary: 'n.d.', html: sourceDown(SNAPSHOT_DOWN) };
+  const outages = partialOutages(s.errors);
+  const partialNote = outages.length > 0 ? note(`${outages.join(' ; ')} : les comptes des ports concernés sont des minimums.`) : '';
   const received = (p: MaritimePortStats): boolean => p.lastSeenAt !== null;
   const ports = [...s.ports].sort((a, b) => Number(received(b)) - Number(received(a)) || b.vessels - a.vessels || a.port.localeCompare(b.port, 'fr'));
   const top = ports.find(received);
-  if (ports.length === 0) return { ...base, summary: 'n.d.', html: emptyOrDown(s.errors, 'Aucun port renseigné.', 'ports (instantané AIS)') };
+  if (ports.length === 0) return { ...base, summary: 'n.d.', html: partialNote + emptyOrDown(s.errors, 'Aucun port renseigné.', 'ports (instantané AIS)') };
   const rows = ports.map((p) => {
     // Aucune réception en 24 h : couverture absente, jamais un 0 factuel ni une jauge.
     if (p.lastSeenAt === null) return listRow({ text: p.port, value: 'n.d.', level: 'gris', note: 'aucune réception AIS depuis 24 h' });
@@ -152,7 +157,7 @@ function portsSection(input: MaritimeVeilleInput): FicheSection {
   const summary = top ? `${top.port} ${frNumber(top.vessels, 0)}${top.atAnchor > 0 ? ` · ${frNumber(top.atAnchor, 0)} au mouillage` : ''}` : 'aucune réception AIS depuis 24 h';
   return {
     ...base, summary: escapeHtml(summary),
-    html: rows + note(`Présents : à moins de 25${NBSP}km du port ; au mouillage : à moins de 40${NBSP}km. Dunkerque, Calais et la Gironde sont couverts par le relais depuis cette version.`)
+    html: partialNote + rows + note(`Présents : à moins de 25${NBSP}km du port ; au mouillage : à moins de 40${NBSP}km. Dunkerque, Calais et la Gironde sont couverts par le relais depuis cette version.`)
       + note(PORT_FLOOR_NOTE),
   };
 }
