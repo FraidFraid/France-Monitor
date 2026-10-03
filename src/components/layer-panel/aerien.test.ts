@@ -79,6 +79,10 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(h).toContain('<span class="lp-bar-label">Paris-Orly</span><span class="fmk-bar"><i style="width:47.9%;background:var(--cat-airport)"></i>');
     const names = ['Paris-CDG', 'Paris-Orly', 'Nice', 'Lyon', 'Marseille', 'Nantes', 'Toulouse', 'Bordeaux'].map((n) => h.indexOf(`>${n}<`));
     expect([...names].sort((a, b) => a - b)).toEqual(names);
+    // Beauvais (annuaire seulement, départs non relevés) : au sol et en approche dits quand même, après les jauges.
+    expect(h).toContain('<div class="lp-row"><span aria-hidden="true"></span><span>Beauvais-Tillé</span><span class="lp-val fmk-num">n.d.</span>'
+      + '<small>au sol 2 · en approche 1 · départs non relevés</small></div>');
+    expect(h.indexOf('<span>Beauvais-Tillé</span><span class="lp-val fmk-num">n.d.</span><small>au sol')).toBeGreaterThan(names[names.length - 1]);
     const t = visibleText(h);
     expect(t).toContain(`Départs détectés de 13:09 à 15:09 (fenêtre de 2${NBSP}h, relue toutes les 4${NBSP}h).`);
     expect(t).toContain('Les arrivées ne sont publiées par la source qu’en différé : elles ne sont pas reprises.');
@@ -109,7 +113,8 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
   it('méthode et sources : sources datées, zone suivie (T1), règle de la pastille, retards, crédits', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
     for (const part of ['états de 15:09', 'fenêtre de 13:09 à 15:09', 'Beauvais-Tillé 14:55', 'Bordeaux 15:00', '2\u202F140 restants',
-      'déborde sur les pays voisins', 'rouge si un 7500', 'orange si un 7700 au-dessus du territoire ou de ses approches', 'jaune si un 7600',
+      'déborde sur les pays voisins', `sur les urgences au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) vues sur au moins deux relevés des états`,
+      'rouge si un 7500', 'orange si un 7700', 'jaune si un 7600', 'un aéronef au sol n’est jamais compté',
       `au-delà de 10${NBSP}min`, `au-delà de 4${NBSP}h`, 'sous 500', 'sans libellé d’indicatif']) expect(t).toContain(part);
     expect(sectionOf('method')?.summary).toBe('OpenSky (ADS-B)');
     const low = withOverview((o) => { o.credits = { remaining: 320 }; });
@@ -149,6 +154,10 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(t).toContain('Départs non relevés : le serveur ne les a pas encore lus.');
     expect(t).not.toMatch(/Source indisponible|Aucun départ/);
     expect(a?.html).not.toContain('lp-bar-row');
+    // Au sol et en approche (états OpenSky) restent dits pour chaque aéroport, départs non relevés.
+    expect(a?.html).toContain('<span>Paris-CDG</span><span class="lp-val fmk-num">n.d.</span><small>au sol 3 · en approche 23 · départs non relevés</small>');
+    expect(a?.html?.match(/départs non relevés<\/small>/g)).toHaveLength(9);
+    expect(t).toContain(`Au sol : à moins de 4${NBSP}km ; en approche : à moins de 40${NBSP}km et sous 3\u202F000${NBSP}m.`);
     expect(a?.summary).toBe('n.d.');
     expect(a?.html).toMatch(/<span>Beauvais-Tillé<\/span><span class="lp-val fmk-num">n\.d\.<\/span><small>tableau non relevé<\/small>/);
     expect(a?.html).toMatch(/<span>Bordeaux<\/span><span class="lp-val fmk-num">n\.d\.<\/span><small>tableau non relevé<\/small>/);
@@ -213,12 +222,51 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     const v = view({ overview });
     expect(v.head.level).toBe('vert');
     expect(v.head.figure?.value).toBe('1');
+    expect(v.head.figure?.caption).toBe('aéronef en urgence · dont 1 hors territoire · 1\u202F301 en vol dans la zone suivie · OpenSky, 15:09');
     expect(v.head.status[0]).toBe(glueUnits(airLevel(overview).reason));
+    expect(v.head.status[0]).toBe('aucune urgence confirmée au-dessus du territoire ou de ses approches');
+    expect(v.head.lead).toBe(`1 aéronef en urgence : DLH4AB (7700, urgence, hors territoire). Paris-CDG : 71 départs en 2${NBSP}h.`);
     const h = v.sections.find((x) => x.id === 'emergencies')?.html ?? '';
     expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>DLH4AB · 7700 (urgence)</span>');
     expect(h).not.toMatch(/fmk-dot--(?:orange|rouge|jaune)/);
     expect(visibleText(h)).toContain('hors territoire et approches : ne colore pas la pastille');
     expect(renderLayerView('trafficAir', v)).toContain('<b class="fmk-num lp-lvl lp-lvl--vert">1</b>');
+  });
+  it('I2 : un 7500 ou un 7600 hors du territoire ne colore ni la pastille ni le chiffre, comme sa ligne, la carte et la légende', () => {
+    for (const squawk of ['7500', '7600'] as const) {
+      const overview = withOverview((o) => { o.emergencies = [emergency({ squawk, callsign: 'AWAY1', lat: 50.9, lon: 4.4, overFrance: false })]; });
+      const v = view({ overview });
+      expect(v.head.level).toBe('vert');
+      expect(v.head.status[0]).toBe('aucune urgence confirmée au-dessus du territoire ou de ses approches');
+      expect(v.head.figure?.caption).toContain('dont 1 hors territoire');
+      const all = renderLayerView('trafficAir', v);
+      expect(all).toContain('<b class="fmk-num lp-lvl lp-lvl--vert">1</b>');
+      expect(all).not.toMatch(/fm-vig--(?:rouge|jaune)|lp-lvl--(?:rouge|jaune)|fmk-dot--(?:rouge|jaune)/);
+      expect(visibleText(v.sections[0].html)).toContain('hors territoire et approches : ne colore pas la pastille');
+    }
+  });
+  it('I3 : un code vu sur une seule lecture des états est listé en gris, « vu une fois, à confirmer », sans colorer ; confirmé : coloré', () => {
+    const once = withOverview((o) => { o.emergencies = [emergency({ squawk: '7500', firstSeen: paris('15:09'), lastSeen: paris('15:09') })]; });
+    const v = view({ overview: once });
+    expect(v.head.level).toBe('vert');
+    expect(v.head.status[0]).toBe('aucune urgence confirmée au-dessus du territoire ou de ses approches');
+    expect(v.head.figure?.caption).toBe('aéronef en urgence · dont 1 à confirmer · 1\u202F301 en vol dans la zone suivie · OpenSky, 15:09');
+    expect(v.head.lead).toBe(`1 aéronef en urgence : DLH4AB (7500, détournement, à confirmer). Paris-CDG : 71 départs en 2${NBSP}h.`);
+    const h = v.sections[0].html;
+    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>DLH4AB · 7500 (détournement)</span><span class="lp-val fmk-num">15:09</span>'
+      + `<small>47,200${NBSP}N${NBSP}2,100${NBSP}E · 3\u202F200${NBSP}m · au-dessus du territoire ou de ses approches · vu une fois, à confirmer</small>`);
+    expect(renderLayerView('trafficAir', v)).not.toMatch(/lp-lvl--rouge|fm-vig--rouge|fmk-dot--rouge/);
+    expect(visibleText(h)).toContain('vu sur au moins deux relevés');
+    // Deuxième lecture (15:11) : confirmé, rouge.
+    const twice = withOverview((o) => { o.emergencies = [emergency({ squawk: '7500', firstSeen: paris('15:09'), lastSeen: paris('15:11') })]; });
+    const w = view({ overview: twice, now: Date.parse(paris('15:12')) });
+    expect(w.head.level).toBe('rouge');
+    expect(w.head.figure?.caption).toBe('aéronef en urgence · 1\u202F301 en vol dans la zone suivie · OpenSky, 15:09');
+    expect(renderLayerView('trafficAir', w)).toContain('<b class="fmk-num lp-lvl lp-lvl--rouge">1</b>');
+    expect(w.sections[0].html).toContain('fmk-dot--rouge');
+    // Journal : une vue unique y reste dite.
+    const logged = withOverview((o) => { o.emergencyLog = [emergency({ firstSeen: paris('11:00'), lastSeen: paris('11:00') })]; });
+    expect(visibleText(view({ overview: logged }).sections[0].html)).toContain('vu une fois, non confirmé');
   });
   it('erreur sans donnée, erreur avec données, vide, chargement', () => {
     const failed = view({ overview: null, error: 'HTTP 502' });

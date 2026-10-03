@@ -156,4 +156,18 @@ describe('textes, cache et réponses', () => {
     sendHealthJson(partial, { a: 1, errors: ['OMS, Disease Outbreak News : HTTP 500'] }, { ok: true, cacheControl: 's-maxage=3600' });
     expect([partial.statusCode, partial.headers['Cache-Control']]).toEqual([200, 's-maxage=300, stale-while-revalidate=600']);
   });
+  it('réponse partielle d’une route au cache déjà plus court (panneau aérien, 60 s) : son cache est gardé, jamais allongé à 5 min', () => {
+    const air = fakeRes();
+    sendHealthJson(air, { a: 1, errors: ['Annuaire Bordeaux Mérignac : HTTP 503'] }, { ok: true, cacheControl: 's-maxage=60, stale-while-revalidate=120' });
+    expect(air.headers['Cache-Control']).toBe('s-maxage=60, stale-while-revalidate=120');
+    // Routes Santé (1800 s et plus) : inchangées, la réponse partielle passe à 5 min.
+    for (const cacheControl of ['s-maxage=1800, stale-while-revalidate=300', 's-maxage=21600, stale-while-revalidate=86400']) {
+      const res = fakeRes();
+      sendHealthJson(res, { errors: ['x'] }, { ok: true, cacheControl });
+      expect(res.headers['Cache-Control']).toBe('s-maxage=300, stale-while-revalidate=600');
+    }
+    const complete = fakeRes();
+    sendHealthJson(complete, { errors: [] }, { ok: true, cacheControl: 's-maxage=60, stale-while-revalidate=120' });
+    expect(complete.headers['Cache-Control']).toBe('s-maxage=60, stale-while-revalidate=120');
+  });
 });

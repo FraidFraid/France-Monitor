@@ -76,8 +76,9 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
     expect([color(l, 'air-emergency-7500'), color(l, 'air-emergency-7700'), color(l, 'air-emergency-7600'), color(l, 'air-emergency-away')])
       .toEqual([levelHex(SQUAWK_LEVEL['7500']), levelHex(SQUAWK_LEVEL['7700']), levelHex(SQUAWK_LEVEL['7600']), TRAFFIC_NEUTRAL_HEX]);
-    expect(label(l, 'air-emergency-away')).toBe('Urgence hors territoire et approches');
+    expect(label(l, 'air-emergency-away')).toBe('Urgence hors territoire et approches, ou vue une fois');
     expect(t).toContain(`moins de 40${NBSP}km`);
+    expect(t).toContain('vues sur au moins deux relevés ; sinon gris (hors territoire, ou « vu une fois, à confirmer »)');
     expect(color(l, 'air-airport')).toBe(CAT_AIRPORT_HEX);
     expect(airLegend(null, TRAFFIC_NOW).notes?.[0]).toBe('Données : OpenSky indisponible.');
   });

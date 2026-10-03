@@ -91,6 +91,31 @@ describe('/api/traffic/air-overview (OpenSky réel de 15 h 09, annuaires réels)
     expect(body.volume.samples).toHaveLength(1);
     expect(body.volume.sameHourPrevDays).toEqual([]);
   });
+  it('urgences : épisode repris du journal ; une lecture : vu une fois (première vue = dernière) ; deux lectures : confirmé', async () => {
+    const withCode = (raw: typeof STATES, sec: number) => ({
+      time: raw.time + sec,
+      states: raw.states.map((s) => s.map((v, i) => (i === 14 && s[0] === '440202' ? '7700' : (i === 3 || i === 4) && typeof v === 'number' ? v + sec : v))),
+    });
+    stubAll(respond(withCode(STATES, 0), 200, { 'X-Rate-Limit-Remaining': '3619' }));
+    await warmUp();
+    const once = await loadAirOverview(NOW);
+    expect(once.emergencies.map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:09:39.000Z']]);
+    stubAll(respond(withCode(STATES, 120), 200, { 'X-Rate-Limit-Remaining': '3619' }));
+    vi.setSystemTime(NOW + 120_000);
+    const twice = await loadAirOverview(NOW + 120_000);
+    expect(twice.emergencies.map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:11:39.000Z']]);
+    expect(twice.emergencyLog.map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:11:39.000Z']]);
+  });
+  it('réponse partielle (une partie en échec) : cache CDN de 1 min gardé, jamais 5 min (urgences servies fraîches)', async () => {
+    __setKvClientForTests({ get: async (k: string) => (k === EMERGENCY_LOG_KEY ? '[null]' : null), set: async () => {} });
+    stubAll();
+    await warmUp();
+    const { status, body, cache } = await callHandler<AirOverviewResponse>(handler);
+    expect(status).toBe(200);
+    expect(body.errors.length).toBeGreaterThan(0);
+    expect(cache).toBe(CACHE_CONTROL);
+    expect(CACHE_CONTROL).toBe('s-maxage=60, stale-while-revalidate=120');
+  });
   it('OpenSky en HTTP 500 sans collecte antérieure : 502 non mis en cache ; la carte aussi', async () => {
     stubAll(respond('erreur', 500));
     const { status, body, cache } = await callHandler<AirOverviewResponse>(handler);

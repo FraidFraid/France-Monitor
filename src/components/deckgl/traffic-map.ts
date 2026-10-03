@@ -7,7 +7,7 @@ import type {
   AirEmergency, AirOverviewResponse, AirTrafficFlight, AirportActivity, MaritimePortStats, MaritimeSignal, MaritimeSnapshot,
   RailOverviewResponse, RailTrain, RoadEvent, RoadEventKind, RoadNationalResponse, RoadUrbanResponse, UrbanJam,
 } from '../../types/index.ts';
-import { isTrafficDataLate } from '../../services/traffic-levels.ts';
+import { emergencyColoursPill, isEmergencyConfirmed, isTrafficDataLate } from '../../services/traffic-levels.ts';
 import type { TrafficFlowSegment } from '../../services/traffic-road.ts';
 import { LEVEL_RANK, levelHex, type VigilanceLevel } from '../../services/vigilance.ts';
 import { NBSP, frNumber } from '../layer-panel/format.ts';
@@ -187,15 +187,16 @@ function airEmergencyBody(e: AirEmergency, late: boolean, now: number): string {
     + row('Vu depuis', clockOf(e.firstSeen, now))
     + row('Dernière position', clockOf(e.lastSeen, now))
     + (e.overFrance ? '' : note('Hors territoire et approches : couleur retirée, ne colore pas la pastille.'))
+    + (isEmergencyConfirmed(e) ? '' : note('Vu une fois, à confirmer : couleur retirée, ne colore pas la pastille.'))
     + (late ? note('Données OpenSky en retard : couleur retirée.') : '');
 }
 
 /**
- * Couleur d'une urgence, comme la ligne du panneau et la pastille (R3, T3) : au-dessus du territoire ou de ses approches, 7500 rouge,
- * 7700 orange, 7600 jaune ; hors territoire et approches : gris.
+ * Couleur d'une urgence, comme la ligne du panneau et la pastille (R3, T3, même prédicat emergencyColoursPill) : au-dessus du
+ * territoire ou de ses approches et vue sur au moins deux relevés, 7500 rouge, 7700 orange, 7600 jaune ; sinon gris.
  */
-export function airEmergencyLevel(e: Pick<AirEmergency, 'squawk' | 'overFrance'>): VigilanceLevel | 'gris' {
-  return e.overFrance ? SQUAWK_LEVEL[e.squawk] : 'gris';
+export function airEmergencyLevel(e: Pick<AirEmergency, 'squawk' | 'overFrance' | 'firstSeen' | 'lastSeen'>): VigilanceLevel | 'gris' {
+  return emergencyColoursPill(e) ? SQUAWK_LEVEL[e.squawk] : 'gris';
 }
 
 /** Urgences en vol (7500, 7600, 7700) : symbole et indicatif (spec § 3.2), couleur du panneau (airEmergencyLevel). */

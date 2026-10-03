@@ -158,14 +158,14 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'air-emergency-7500', label: `7500${NBSP}détournement`, color: levelHex('rouge'), shape: 'circle' },
     { id: 'air-emergency-7700', label: `7700${NBSP}urgence`, color: levelHex('orange'), shape: 'circle' },
     { id: 'air-emergency-7600', label: `7600${NBSP}panne${NBSP}radio`, color: levelHex('jaune'), shape: 'circle' },
-    { id: 'air-emergency-away', label: 'Urgence hors territoire et approches', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
+    { id: 'air-emergency-away', label: 'Urgence hors territoire et approches, ou vue une fois', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
     { id: 'air-airport', label: 'Aéroport : surface selon les départs détectés', color: CAT_AIRPORT_HEX, shape: 'circle' },
   ],
   source: { label: 'OpenSky Network (ADS-B, compte authentifié)' },
   refresh: { label: `Positions toutes les 12${NBSP}s, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Zone suivie : France métropolitaine et ses approches ; vols militaires dans la couche Défense.',
-    `Urgences en vol (7500${NBSP}détournement, 7600${NBSP}panne${NBSP}radio, 7700${NBSP}urgence) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) ; au-delà, gris.`,
+    `Urgences en vol (7500${NBSP}détournement, 7600${NBSP}panne${NBSP}radio, 7700${NBSP}urgence) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) et vues sur au moins deux relevés ; sinon gris (hors territoire, ou « vu une fois, à confirmer »).`,
     `Départs : 8 aéroports, fenêtre de 2${NBSP}h relevée toutes les 4${NBSP}h ; Beauvais et Bordeaux : annuaires officiels ; arrivées publiées par la source seulement en différé.`,
   ],
 };

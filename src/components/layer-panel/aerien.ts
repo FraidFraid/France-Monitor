@@ -2,7 +2,7 @@
 // accès réseau ni DOM. Collecte OpenSky du serveur : urgences (7500, 7600, 7700) et journal de 7 jours, départs par aéroport,
 // volume comparé aux jours précédents, trajectoires inhabituelles (détection automatique, information).
 import type { AirEmergency, AirOverviewResponse, AirportActivity, Squawk } from '../../types/index.ts';
-import { airLevel, isTrafficDataLate } from '../../services/traffic-levels.ts';
+import { airLevel, emergencyColoursPill, isEmergencyConfirmed, isTrafficDataLate } from '../../services/traffic-levels.ts';
 import { airDeparturesEnd, airDeparturesLate } from '../../services/traffic-air.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
@@ -37,6 +37,7 @@ const MAX_LOG = 10;
 const MAX_ANOMALIES = 10;
 const CREDITS_FLOOR = 500;
 const HOUR_MS = 3_600_000;
+const GROUND_WORDS = `Au sol : à moins de 4${NBSP}km ; en approche : à moins de 40${NBSP}km et sous ${frNumber(3000, 0)}${NBSP}m.`;
 
 function sortEmergencies(list: readonly AirEmergency[]): AirEmergency[] {
   return [...list].sort((a, b) => SQUAWK_ORDER[a.squawk] - SQUAWK_ORDER[b.squawk] || (dataMs(b.lastSeen) ?? 0) - (dataMs(a.lastSeen) ?? 0));
@@ -82,12 +83,29 @@ function openskyLate(o: AirOverviewResponse, now: number): boolean {
   return isTrafficDataLate('opensky', o.at, now);
 }
 
+/** Raison pour laquelle une urgence en cours ne colore pas (emergencyColoursPill) : « à confirmer » d'abord, puis « hors territoire » ; null si elle colore. */
+function greyReason(e: AirEmergency): 'à confirmer' | 'hors territoire' | null {
+  if (!isEmergencyConfirmed(e)) return 'à confirmer';
+  return e.overFrance ? null : 'hors territoire';
+}
+
+/** « dont 1 hors territoire, 1 à confirmer » : urgences en cours montrées en gris, dites à côté du gros chiffre. */
+function greyCaption(list: readonly AirEmergency[]): string {
+  const away = list.filter((e) => greyReason(e) === 'hors territoire').length;
+  const once = list.filter((e) => greyReason(e) === 'à confirmer').length;
+  const parts = [away > 0 ? `${away} hors territoire` : '', once > 0 ? `${once} à confirmer` : ''].filter(Boolean);
+  return parts.length > 0 ? ` · dont ${parts.join(', ')}` : '';
+}
+
 // ─── En-tête ───
 
 function lead(o: AirOverviewResponse, now: number): string {
   const current = sortEmergencies(o.emergencies);
   const parts = [current.length === 0 ? 'Aucun code d’urgence en vol.'
-    : `${plural(current.length, 'aéronef')} en urgence : ${current.slice(0, 3).map((e) => `${e.callsign ?? e.icao24} (${e.squawk}, ${SQUAWK_WORD[e.squawk]})`).join(', ')}.`];
+    : `${plural(current.length, 'aéronef')} en urgence : ${current.slice(0, 3).map((e) => {
+      const grey = greyReason(e);
+      return `${e.callsign ?? e.icao24} (${e.squawk}, ${SQUAWK_WORD[e.squawk]}${grey ? `, ${grey}` : ''})`;
+    }).join(', ')}.`];
   const top = departuresRanked(o)[0];
   const hours = windowHours(newestWindow(o));
   if (top && hours !== null) parts.push(`${top.name} : ${plural(top.departures, 'départ')} en ${hours}${NBSP}h${airDeparturesLate(o, now) ? ' (en retard)' : ''}.`);
@@ -102,7 +120,7 @@ function headOf(o: AirOverviewResponse, now: number): LayerHeadModel {
     theme: TRAFFIC_THEME, title: TITLE,
     figure: {
       value: frNumber(n, 0),
-      caption: `${n > 1 ? 'aéronefs' : 'aéronef'} en urgence · ${frNumber(o.airborneZone, 0)} en vol dans la zone suivie · OpenSky, ${clockOf(o.at, now)}${late ? ' (en retard)' : ''}`,
+      caption: `${n > 1 ? 'aéronefs' : 'aéronef'} en urgence${greyCaption(o.emergencies)} · ${frNumber(o.airborneZone, 0)} en vol dans la zone suivie · OpenSky, ${clockOf(o.at, now)}${late ? ' (en retard)' : ''}`,
       level: late ? null : undefined,
     },
     level: late ? 'nd' : verdict.level,
@@ -114,13 +132,16 @@ function headOf(o: AirOverviewResponse, now: number): LayerHeadModel {
 // ─── Urgences ───
 
 function emergencyRow(e: AirEmergency, late: boolean, current: boolean, now: number): string {
+  const confirmed = isEmergencyConfirmed(e);
+  const seen = current ? (confirmed ? `vu depuis ${clockOf(e.firstSeen, now)}` : 'vu une fois, à confirmer')
+    : (confirmed ? `vu jusqu’à ${clockOf(e.lastSeen, now)}` : 'vu une fois, non confirmé');
   return listRow({
     text: `${e.callsign ?? `transpondeur ${e.icao24}`} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`,
     value: clockOf(current ? e.lastSeen : e.firstSeen, now),
-    level: late || !current || !e.overFrance ? 'gris' : SQUAWK_LEVEL[e.squawk],
+    level: late || !current || !emergencyColoursPill(e) ? 'gris' : SQUAWK_LEVEL[e.squawk],
     note: [coordText(e.lat, e.lon), e.altitudeM !== null ? formatMeters(e.altitudeM) : 'altitude n.d.',
       e.overFrance ? 'au-dessus du territoire ou de ses approches' : current ? 'hors territoire et approches : ne colore pas la pastille' : 'hors du territoire : ne colore pas la pastille',
-      current ? `vu depuis ${clockOf(e.firstSeen, now)}` : `vu jusqu’à ${clockOf(e.lastSeen, now)}`].join(' · '),
+      seen].join(' · '),
   });
 }
 
@@ -140,7 +161,8 @@ function emergenciesSection(o: AirOverviewResponse | null, now: number, open: Op
   return {
     ...base, summary: escapeHtml(current.length === 0 ? `aucune en cours${late ? ' (en retard)' : ''}` : `${current.length} en cours (${codes})`),
     html: rows + logHtml + note(`Journal tenu par le serveur : chaque code (${SQUAWK_PAIRS.join(', ')}) vu en vol y reste 7 jours avec son heure, son indicatif et sa position. `
-      + 'Un 7700 hors du territoire et de ses approches est montré sans colorer la pastille.'),
+      + `Un code ne colore la pastille qu’au-dessus du territoire ou de ses approches et vu sur au moins deux relevés des états (2${NBSP}min) ; `
+      + 'sinon il est montré en gris (hors territoire, ou « vu une fois, à confirmer »). Un aéronef au sol n’est jamais compté.'),
   };
 }
 
@@ -154,19 +176,22 @@ function airportsSection(o: AirOverviewResponse | null, now: number, open: OpenF
   const win = newestWindow(o);
   const hours = windowHours(win);
   const depLate = airDeparturesLate(o, now);
-  const rows = ranked.map((a) => {
-    const sub = `au sol ${frNumber(a.onGround, 0)} · en approche ${frNumber(a.approaching, 0)}`;
-    return depLate ? listRow({ text: a.name, value: frNumber(a.departures, 0), level: 'gris', note: sub })
-      : barRow({ label: a.name, pct: top && top.departures > 0 ? (a.departures / top.departures) * 100 : 0, value: frNumber(a.departures, 0),
-        color: CAT_AIRPORT, dot: false, note: sub });
-  }).join('');
+  const ground = (a: AirportActivity): string => `au sol ${frNumber(a.onGround, 0)} · en approche ${frNumber(a.approaching, 0)}`;
+  const rows = ranked.map((a) => (depLate ? listRow({ text: a.name, value: frNumber(a.departures, 0), level: 'gris', note: ground(a) })
+    : barRow({ label: a.name, pct: top && top.departures > 0 ? (a.departures / top.departures) * 100 : 0, value: frNumber(a.departures, 0),
+      color: CAT_AIRPORT, dot: false, note: ground(a) }))).join('');
+  // Départs non relevés (tâche de fond pas encore passée, panne, ou Beauvais, hors des 8 aéroports des départs) : au sol et en
+  // approche, lus sur les états OpenSky, restent dits (spec § 3.2), après les jauges.
+  const unreadRows = o.airports.filter((a) => a.departures === null || a.departures === undefined)
+    .map((a) => listRow({ text: a.name, value: 'n.d.', note: `${ground(a)} · départs non relevés` })).join('');
   const body = ranked.length === 0 ? (departuresUnread(o) && realErrors(o).length === 0
     ? emptyLine('Départs non relevés : le serveur ne les a pas encore lus.')
     : emptyOrDown(realErrors(o), 'Aucun départ détecté sur la fenêtre affichée.', 'départs par aéroport (OpenSky)'))
-    : rows + (win && hours !== null
+      + unreadRows + (unreadRows ? note(GROUND_WORDS) : '')
+    : rows + unreadRows + (win && hours !== null
       ? (windowsDiffer(o) ? note('Les fenêtres ne sont pas les mêmes pour tous les aéroports : la plus récente est indiquée.') : '')
       + note(`Départs détectés de ${clockOf(win.begin, now)} à ${clockOf(win.end, now)} (fenêtre de ${hours}${NBSP}h, relue toutes les 4${NBSP}h)${depLate ? ' (en retard)' : ''}. `
-        + `Au sol : à moins de 4${NBSP}km ; en approche : à moins de 40${NBSP}km et sous ${frNumber(3000, 0)}${NBSP}m.`) : '');
+        + GROUND_WORDS) : '');
   const suspended = o.credits.remaining !== null && o.credits.remaining < CREDITS_FLOOR ? note('Départs suspendus : crédits OpenSky du jour sous 500.') : '';
   const boards = o.airports.filter((a) => a.board !== null || BOARD_IATA.has(a.iata)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const boardsHtml = boards.length === 0 ? '' : '<h4 class="fmk-eyebrow">Retards et annulations (annuaires officiels)</h4>'
@@ -253,10 +278,12 @@ function methodSection(o: AirOverviewResponse | null, error: string | null, now:
       : o !== null && o.errors.length === 0 ? 'tableau non relevé' : 'source indisponible')))
     + kvRow('Crédits OpenSky du jour', valueHtml(o && o.credits.remaining !== null ? `${frNumber(o.credits.remaining, 0)} restants` : 'n.d.'))
     + note(`Périmètre : ${ZONE_WORDS} ; jamais un nombre d’avions au-dessus de la seule France.`)
-    + note('Pastille : rouge si un 7500 ; orange si un 7700 au-dessus du territoire ou de ses approches ; jaune si un 7600 ; vert sinon ; n.d. si la source est en panne.')
+    + note(`Pastille, sur les urgences au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) vues sur au moins deux relevés des états : rouge si un 7500 ; `
+      + 'orange si un 7700 ; jaune si un 7600 ; vert sinon ; n.d. si la source est en panne. Un code vu une seule fois, ou hors territoire, est montré en gris ; '
+      + 'un aéronef au sol n’est jamais compté.')
     + note(`Retard : états au-delà de 10${NBSP}min ; départs au-delà de 4${NBSP}h après la fin de leur fenêtre. Une donnée en retard perd ses couleurs.`)
     + note('Collecte du serveur toutes les 2 minutes, départs de 8 aéroports toutes les 4 heures ; si les crédits restants passent sous 500, les départs sont suspendus avant les états.')
-    + note('Carte : avions nets à tous les zooms, colorés selon l’altitude (cinq tranches, gris quand l’altitude n’est pas transmise), sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange au-dessus du territoire ou de ses approches, 7600 jaune, gris au-delà) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
+    + note('Carte : avions nets à tous les zooms, colorés selon l’altitude (cinq tranches, gris quand l’altitude n’est pas transmise), sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange, 7600 jaune, au-dessus du territoire ou de ses approches et confirmées ; gris sinon) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
     + (devNotice ? note('Serveur de développement : les départs ne sont pas lus (AIR_DEV_DEPARTURES=1 pour les lire).') : '')
     + readErrors(o ? realErrors(o) : []);
   return {

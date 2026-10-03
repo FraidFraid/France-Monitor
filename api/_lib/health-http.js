@@ -223,9 +223,17 @@ export function handlePreflight(req, res) {
   return false;
 }
 
+/** Durée `s-maxage` (secondes) d'un en-tête Cache-Control ; Infinity sans directive lisible. */
+function sMaxAge(cacheControl) {
+  const m = /s-maxage=(\d+)/.exec(String(cacheControl ?? ''));
+  return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+}
+
 /**
- * Réponse JSON d'un gestionnaire santé : 200 avec `cacheControl` si au moins une source a répondu (cache court,
- * PARTIAL_CACHE_CONTROL, si une partie a échoué), sinon 502 non mis en cache (le corps garde `errors[]`).
+ * Réponse JSON d'un gestionnaire santé ou trafic : 200 avec `cacheControl` si au moins une source a répondu, sinon 502 non mis
+ * en cache (le corps garde `errors[]`). Une partie en échec raccourcit le cache CDN (PARTIAL_CACHE_CONTROL, 5 min) sans
+ * jamais l'allonger : une route au cache déjà plus court (panneau aérien, 60 s) garde le sien. Routes Santé (30 min et plus) :
+ * inchangées.
  */
 export function sendHealthJson(res, body, { ok, cacheControl }) {
   if (!ok) {
@@ -234,6 +242,7 @@ export function sendHealthJson(res, body, { ok, cacheControl }) {
     return;
   }
   const partial = Array.isArray(body?.errors) && body.errors.length > 0;
-  res.setHeader('Cache-Control', partial ? PARTIAL_CACHE_CONTROL : cacheControl);
+  const shorter = sMaxAge(cacheControl) <= sMaxAge(PARTIAL_CACHE_CONTROL) ? cacheControl : PARTIAL_CACHE_CONTROL;
+  res.setHeader('Cache-Control', partial ? shorter : cacheControl);
   res.status(200).json(body);
 }

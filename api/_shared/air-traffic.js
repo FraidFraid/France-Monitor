@@ -13,7 +13,7 @@
 // Le « score » d'aéroport par densité est supprimé.
 import { FRANCE_AIRPORTS, matchFranceAirport } from './airports-fr.js';
 import { distanceToMetropoleKm, haversineKm, insideMetropole } from '../_lib/geo-fr.js';
-import { appendSample, isDevServer, kvReadJson, kvSetJson, upsertLogEntry } from '../_lib/kv-history.js';
+import { appendSample, isDevServer, kvReadJson, kvSetJson, readLog } from '../_lib/kv-history.js';
 import { parisParts } from '../_lib/paris-time.js';
 import { cleanText, fetchStrictHtml, fetchStrictJson, fetchStrictResponse, sourceError } from '../_lib/source-http.js';
 
@@ -36,6 +36,11 @@ export const EMERGENCY_SQUAWKS = ['7500', '7600', '7700'];
 /** Un 7700 compte s'il est au-dessus du territoire ou à moins de 40 km (approches). */
 export const APPROACH_KM = 40;
 export const EMERGENCY_LOG_KEY = 'traffic:air:emergencies';
+/**
+ * Un code revu au plus 15 min après sa dernière vue prolonge l'épisode du journal (première vue gardée) ; au-delà, nouvel
+ * épisode, vu une fois (T3 : une urgence ne colore qu'une fois vue sur deux lectures, voir src/services/traffic-levels.ts).
+ */
+export const EMERGENCY_EPISODE_GAP_MS = 15 * 60_000;
 export const VOLUME_KEY = 'traffic:air:volume';
 export const DEPARTURES_KEY = 'traffic:air:departures';
 const EMERGENCY_KEEP_MS = 7 * 86_400_000;
@@ -479,10 +484,13 @@ function inZone(s) {
   return s.lat >= b.minLat && s.lat <= b.maxLat && s.lon >= b.minLon && s.lon <= b.maxLon;
 }
 
-/** Urgences en cours (squawk 7500, 7600, 7700) ; `overFrance` : territoire ou moins de 40 km (approches). */
+/**
+ * Urgences en cours en vol (squawk 7500, 7600, 7700) ; un aéronef au sol (`on_ground`, posé avec son code) n'en est jamais une (T3).
+ * `overFrance` : territoire ou moins de 40 km (approches). Première et dernière vue : cette lecture (le journal donne l'épisode).
+ */
 export function emergenciesFrom(states, atIso) {
   return states
-    .filter((s) => EMERGENCY_SQUAWKS.includes(s.squawk ?? ''))
+    .filter((s) => !s.onGround && EMERGENCY_SQUAWKS.includes(s.squawk ?? ''))
     .map((s) => ({
       icao24: s.icao24, callsign: s.callsign, squawk: s.squawk, lat: s.lat, lon: s.lon,
       altitudeM: s.baroAltitudeM ?? s.geoAltitudeM, firstSeen: atIso, lastSeen: atIso,
@@ -496,17 +504,27 @@ export function volumeSample(states, atIso) {
   return { at: atIso, airborneZone: airborne.length, airborneFrance: airborne.filter((s) => insideMetropole(s.lat, s.lon)).length };
 }
 
-/** Journal des urgences : première vue gardée, dernière vue et position mises à jour. */
+/** Vrai si l'entrée du journal est l'épisode en cours de l'urgence `e` : même aéronef, même code, revu dans l'intervalle de 15 min. */
+export function sameEmergencyEpisode(entry, e) {
+  if (!entry || entry.icao24 !== e.icao24 || entry.squawk !== e.squawk) return false;
+  const gap = Date.parse(e.lastSeen) - Date.parse(entry.lastSeen);
+  return Number.isFinite(gap) && gap <= EMERGENCY_EPISODE_GAP_MS;
+}
+
+/**
+ * Journal des urgences (7 jours), une écriture par lecture des états : l'épisode en cours garde sa première vue, sa dernière vue
+ * et sa position sont mises à jour ; un code revu après plus de 15 min ouvre un nouvel épisode, l'ancien reste au journal.
+ */
 export async function recordEmergencies(emergencies, now) {
+  if (emergencies.length === 0) return;
+  const log = await readLog(EMERGENCY_LOG_KEY, { dateOf: (x) => x.lastSeen, maxAgeMs: EMERGENCY_KEEP_MS, now });
   for (const e of emergencies) {
-    await upsertLogEntry(EMERGENCY_LOG_KEY, e, {
-      idOf: (x) => `${x.icao24}:${x.squawk}`,
-      dateOf: (x) => x.lastSeen,
-      merge: (old, next) => ({ ...next, firstSeen: old.firstSeen }),
-      maxAgeMs: EMERGENCY_KEEP_MS,
-      now,
-    });
+    const i = log.findIndex((x) => sameEmergencyEpisode(x, e));
+    if (i >= 0) log[i] = { ...e, firstSeen: log[i].firstSeen };
+    else log.push(e);
   }
+  log.sort((a, b) => Date.parse(b.lastSeen) - Date.parse(a.lastSeen));
+  await kvSetJson(EMERGENCY_LOG_KEY, log, Math.ceil(EMERGENCY_KEEP_MS / 1000), now);
 }
 
 // ── Tâches de fond : annuaires et départs (jamais attendues par la carte ni le panneau) ──
@@ -556,6 +574,8 @@ async function runDepartures(now, remaining) {
     }
     departures.value = stored.value;
     departures.loaded = true;
+    // Départs relus : l'erreur d'une panne passagère de Redis ne reste pas affichée jusqu'au prochain cycle (4 h).
+    departures.errors = [];
   }
   const lastAt = Date.parse(departures.value?.at);
   if (now - lastAt < DEPARTURES_INTERVAL_MS) return;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests, readLog, readSeries } from '../api/_lib/kv-history.js';
 import {
-  CREDIT_FLOOR, DEPARTURES_KEY, DEPARTURE_AIRPORTS, DEV_STATES_INTERVAL_MS, EMERGENCY_LOG_KEY, VOLUME_KEY, __airJobsForTests, __resetAirStateForTests,
+  CREDIT_FLOOR, DEPARTURES_KEY, DEPARTURE_AIRPORTS, DEV_STATES_INTERVAL_MS, EMERGENCY_EPISODE_GAP_MS, EMERGENCY_LOG_KEY, VOLUME_KEY, __airJobsForTests, __resetAirStateForTests,
   boardCounts, departuresUrl, emergenciesFrom, ensureAirFresh, fetchAirTrafficSnapshot, normalizeOpenSkyState, parseBeauvaisDirectory, parseBordeauxDirectory,
   statesUrl, toMapFlight, volumeSample,
 } from '../api/_shared/air-traffic.js';
@@ -18,6 +18,11 @@ const NO_DEPARTURES = Object.fromEntries(DEPARTURE_AIRPORTS.map((icao) => [icao,
 /** États réels de 15 h 09 dont certains codes transpondeur sont remplacés pour simuler une urgence. */
 function statesWith(squawks: Record<string, string> = {}): Raw {
   return { time: STATES.time, states: STATES.states.map((s) => (squawks[String(s[0])] ? [...s.slice(0, 14), squawks[String(s[0])], ...s.slice(15)] : s)) };
+}
+
+/** Même réponse, `sec` secondes plus tard (heure de la réponse et derniers contacts décalés : aucun état écarté comme ancien). */
+function later(raw: Raw, sec: number): Raw {
+  return { time: raw.time + sec, states: raw.states.map((s) => s.map((v, i) => ((i === 3 || i === 4) && typeof v === 'number' ? v + sec : v))) };
 }
 
 /** OpenSky et annuaires simulés ; `remaining: null` : réponse des états sans en-tête de crédits. */
@@ -90,6 +95,13 @@ describe('états OpenSky (réponse réelle de 15 h 09, extended=1)', () => {
   it('volume : en vol dans la zone suivie et au-dessus du territoire', () => {
     const states = STATES.states.map((s) => normalizeOpenSkyState(s, STATES.time)).filter((s): s is NonNullable<typeof s> => s !== null);
     expect(volumeSample(states, '2026-10-03T13:09:39.000Z')).toEqual({ at: '2026-10-03T13:09:39.000Z', airborneZone: 166, airborneFrance: 114 });
+  });
+  it('urgences « en vol » : un aéronef au sol (posé avec son code) n’est jamais une urgence (T3)', () => {
+    const raw = statesWith({ '440202': '7700', '3c5ee2': '7600' });
+    const grounded = { ...raw, states: raw.states.map((s) => (s[0] === '440202' ? [...s.slice(0, 8), true, ...s.slice(9)] : s)) };
+    const states = grounded.states.map((s) => normalizeOpenSkyState(s, grounded.time)).filter((s): s is NonNullable<typeof s> => s !== null);
+    expect(states.find((s) => s.icao24 === '440202')?.onGround).toBe(true);
+    expect(emergenciesFrom(states, '2026-10-03T13:09:39.000Z').map((e) => e.icao24)).toEqual(['3c5ee2']);
   });
   it('urgences : 7700 au-dessus de l’Aube compté, 7700 au-dessus de l’Allemagne non, 7600 à 24 km de la côte compté (approches)', () => {
     const raw = statesWith({ '440202': '7700', '3ffc67': '7700', '3c5ee2': '7600' });
@@ -241,6 +253,24 @@ describe('collecte serveur unique (2 min)', () => {
     const entries = await readLog<{ icao24: string; firstSeen: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * 86_400_000, now: T0 + 120_000 });
     expect(entries.map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:11:39.000Z']]);
   });
+  it('journal des urgences : dernière vue mise à jour à chaque lecture ; revu plus de 15 min après, nouvel épisode (à confirmer), l’ancien gardé', async () => {
+    const raw = statesWith({ '440202': '7700' });
+    stubOpenSky({ states: raw });
+    await ensureAirFresh(T0);
+    stubOpenSky({ states: later(raw, 120) });
+    await ensureAirFresh(T0 + 120_000);
+    stubOpenSky({ states: later(raw, 240) });
+    await ensureAirFresh(T0 + 240_000);
+    const read = (now: number) => readLog<{ icao24: string; firstSeen: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * 86_400_000, now });
+    expect((await read(T0 + 240_000)).map((e) => [e.firstSeen, e.lastSeen])).toEqual([['2026-10-03T13:09:39.000Z', '2026-10-03T13:13:39.000Z']]);
+    expect(EMERGENCY_EPISODE_GAP_MS).toBe(15 * 60_000);
+    // Silence de 30 min puis le même code : vu une fois, nouvel épisode ; l'épisode précédent reste dans le journal.
+    stubOpenSky({ states: later(raw, 240 + 1800) });
+    await ensureAirFresh(T0 + (240 + 1800) * 1000);
+    expect((await read(T0 + (240 + 1800) * 1000)).map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([
+      ['440202', '2026-10-03T13:43:39.000Z', '2026-10-03T13:43:39.000Z'], ['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:13:39.000Z'],
+    ]);
+  });
   it('journal des urgences illisible dans le stockage clé-valeur : positions servies quand même, erreur nommée', async () => {
     __setKvClientForTests({ get: async (k: string) => (k === EMERGENCY_LOG_KEY ? '[null]' : null), set: async () => {} });
     stubOpenSky({ states: statesWith({ '440202': '7700' }) });
@@ -272,7 +302,7 @@ describe('collecte serveur unique (2 min)', () => {
     expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
     expect(redis.writes.filter((k) => k === DEPARTURES_KEY)).toHaveLength(1);
     expect(redis.writes.filter((k) => k === VOLUME_KEY)).toHaveLength(1);
-    expect(redis.writes.filter((k) => k === EMERGENCY_LOG_KEY)).toHaveLength(2);
+    expect(redis.writes.filter((k) => k === EMERGENCY_LOG_KEY)).toHaveLength(1);
     __resetKvForTests();
     const entries = await readLog<{ icao24: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 86_400_000, now: T0 });
     expect(entries.map((e) => e.icao24).sort()).toEqual(['3c5ee2', '440202']);
@@ -303,6 +333,26 @@ describe('collecte serveur unique (2 min)', () => {
     log = stubOpenSky({ states: { ...STATES, time: STATES.time + 120 } });
     await collectAll(T0 + 2 * 60_000);
     expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+  });
+  it('Redis en panne passagère au redémarrage, départs gardés de moins de 4 h : erreur effacée dès qu’ils sont relus, aucun cycle', async () => {
+    const redis = fakeRedis();
+    __setKvClientForTests(redis.client);
+    stubOpenSky();
+    await collectAll(T0);
+    // Redémarrage : Redis illisible à la première lecture des départs.
+    __resetKvForTests();
+    __resetAirStateForTests();
+    let down = true;
+    __setKvClientForTests({ ...redis.client, get: async (k: string) => { if (down && k === DEPARTURES_KEY) throw new Error('Upstash injoignable'); return redis.store.get(k) ?? null; } });
+    let log = stubOpenSky({ states: later(STATES, 120) });
+    const failed = await collectAll(T0 + 2 * 60_000);
+    expect(failed.errors).toEqual(['OpenSky : départs non relancés (stockage clé-valeur illisible)']);
+    down = false;
+    log = stubOpenSky({ states: later(STATES, 240) });
+    const back = await collectAll(T0 + 4 * 60_000);
+    expect(departureCalls(log)).toBe(0);
+    expect(back.departures?.counts.LFPG).toBe(25);
+    expect(back.errors).toEqual([]);
   });
   it('serveur de dev (même compte OpenSky) : états toutes les 5 min au plus, départs coupés sauf AIR_DEV_DEPARTURES=1', async () => {
     vi.stubEnv('NODE_ENV', 'development');

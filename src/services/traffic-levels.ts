@@ -1,7 +1,7 @@
 // src/services/traffic-levels.ts : retards et niveaux des quatre panneaux Trafics (spec 2026-10-03
 // panneaux trafic § 1 et § 3). Fonctions pures, sans DOM ni réseau, partagées par les services clients
 // et les vues ; « n.d. » quand la source manque, jamais une couleur inventée (S4).
-import type { AirOverviewResponse, MaritimeSnapshot, RailGroupStats, RailOverviewResponse, RoadEvent, RoadNationalResponse } from '../types/index.ts';
+import type { AirEmergency, AirOverviewResponse, MaritimeSnapshot, RailGroupStats, RailOverviewResponse, RoadEvent, RoadNationalResponse } from '../types/index.ts';
 import type { HealthLevel } from './health-levels.ts';
 
 /** Échelle L1 plus « nd », partagée avec les panneaux Santé. */
@@ -96,18 +96,38 @@ export function roadLevel(r: RoadNationalResponse): LevelVerdict {
 }
 
 /**
- * Pastille Trafic aérien (§ 3.2) sur les urgences en cours : rouge si un 7500 ; orange si un 7700 au-dessus du
- * territoire ou de ses approches (`overFrance`) ; jaune si un 7600 ; vert sinon ; n.d. sans collecte OpenSky.
+ * Urgence confirmée (T3) : code vu sur au moins deux lectures des états, donc dernière vue postérieure à la première.
+ * Le journal du serveur garde la première vue d'un épisode et met à jour la dernière à chaque lecture.
+ */
+export function isEmergencyConfirmed(e: Pick<AirEmergency, 'firstSeen' | 'lastSeen'>): boolean {
+  const first = Date.parse(e.firstSeen);
+  const last = Date.parse(e.lastSeen);
+  return Number.isFinite(first) && Number.isFinite(last) && last > first;
+}
+
+/**
+ * Seul prédicat des urgences qui colorent (pastille, gros chiffre, ligne du panneau, carte, légende) : au-dessus du
+ * territoire ou de ses approches (`overFrance`, moins de 40 km) et confirmée, pour les trois codes. Les autres sont
+ * montrées en gris (hors territoire ; « vu une fois, à confirmer »).
+ */
+export function emergencyColoursPill(e: Pick<AirEmergency, 'overFrance' | 'firstSeen' | 'lastSeen'>): boolean {
+  return e.overFrance && isEmergencyConfirmed(e);
+}
+
+/**
+ * Pastille Trafic aérien (§ 3.2) sur les urgences en cours qui colorent (emergencyColoursPill) : rouge si un 7500 ;
+ * orange si un 7700 ; jaune si un 7600 ; vert sinon ; n.d. sans collecte OpenSky.
  */
 export function airLevel(a: AirOverviewResponse): LevelVerdict {
   if (a.at === null) return { level: 'nd', reason: 'OpenSky indisponible' };
-  const hijack = a.emergencies.find((e) => e.squawk === '7500');
+  const counted = a.emergencies.filter(emergencyColoursPill);
+  const hijack = counted.find((e) => e.squawk === '7500');
   if (hijack) return { level: 'rouge', reason: `7500\u00a0détournement : ${hijack.callsign ?? hijack.icao24}` };
-  const general = a.emergencies.find((e) => e.squawk === '7700' && e.overFrance);
+  const general = counted.find((e) => e.squawk === '7700');
   if (general) return { level: 'orange', reason: `7700\u00a0urgence au-dessus du territoire : ${general.callsign ?? general.icao24}` };
-  const radio = a.emergencies.find((e) => e.squawk === '7600');
+  const radio = counted.find((e) => e.squawk === '7600');
   if (radio) return { level: 'jaune', reason: `7600\u00a0panne\u00a0radio : ${radio.callsign ?? radio.icao24}` };
-  return { level: 'vert', reason: 'aucun aéronef en urgence' };
+  return { level: 'vert', reason: a.emergencies.length === 0 ? 'aucun aéronef en urgence' : 'aucune urgence confirmée au-dessus du territoire ou de ses approches' };
 }
 
 /** Groupe (axe ou région) d'au moins 3 trains au plus fort retard moyen, ou null. */

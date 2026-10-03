@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type {
   AirEmergency, AirOverviewResponse, MaritimeSignal, MaritimeSnapshot, RailGroupStats, RailOverviewResponse, RoadEvent, RoadNationalResponse,
 } from '../types/index.ts';
-import { airLevel, isParisDaytime, isTrafficDataLate, maritimeLevel, railLevel, roadLevel } from './traffic-levels.ts';
+import {
+  airLevel, emergencyColoursPill, isEmergencyConfirmed, isParisDaytime, isTrafficDataLate, maritimeLevel, railLevel, roadLevel,
+} from './traffic-levels.ts';
 
 const T = (iso: string): number => Date.parse(iso);
 
@@ -22,8 +24,12 @@ function road(events: RoadEvent[], publishedAt: string | null = '2026-10-03T14:5
   };
 }
 
-function emergency(squawk: AirEmergency['squawk'], overFrance: boolean): AirEmergency {
-  return { icao24: '39de4f', callsign: 'TVF89FS', squawk, lat: 45.66, lon: -2.27, altitudeM: 10972, firstSeen: '2026-10-03T13:09:39.000Z', lastSeen: '2026-10-03T13:09:39.000Z', overFrance };
+/** Urgence vue sur deux lectures des états (13 h 07 puis 13 h 09) ; `confirmed: false` : vue une seule fois. */
+function emergency(squawk: AirEmergency['squawk'], overFrance: boolean, confirmed = true): AirEmergency {
+  return {
+    icao24: '39de4f', callsign: 'TVF89FS', squawk, lat: 45.66, lon: -2.27, altitudeM: 10972,
+    firstSeen: confirmed ? '2026-10-03T13:07:39.000Z' : '2026-10-03T13:09:39.000Z', lastSeen: '2026-10-03T13:09:39.000Z', overFrance,
+  };
 }
 
 function air(emergencies: AirEmergency[], at: string | null = '2026-10-03T13:09:39.000Z'): AirOverviewResponse {
@@ -121,16 +127,29 @@ describe('roadLevel (§ 3.1)', () => {
 });
 
 describe('airLevel (§ 3.2)', () => {
-  it('rouge 7500, orange 7700 au-dessus du territoire, jaune 7600, vert sinon', () => {
-    expect(airLevel(air([emergency('7500', false)])).level).toBe('rouge');
+  it('au-dessus du territoire ou de ses approches et confirmé : rouge 7500, orange 7700, jaune 7600, vert sinon', () => {
+    expect(airLevel(air([emergency('7500', true)]))).toEqual({ level: 'rouge', reason: '7500\u00a0détournement : TVF89FS' });
     expect(airLevel(air([emergency('7700', true)]))).toEqual({ level: 'orange', reason: '7700\u00a0urgence au-dessus du territoire : TVF89FS' });
-    expect(airLevel(air([emergency('7600', false)])).reason).toBe('7600\u00a0panne\u00a0radio : TVF89FS');
-    expect(airLevel(air([emergency('7600', false)])).level).toBe('jaune');
+    expect(airLevel(air([emergency('7600', true)]))).toEqual({ level: 'jaune', reason: '7600\u00a0panne\u00a0radio : TVF89FS' });
     expect(airLevel(air([]))).toEqual({ level: 'vert', reason: 'aucun aéronef en urgence' });
   });
-  it('un 7700 hors du territoire et de ses approches ne colore pas ; source absente : n.d.', () => {
-    expect(airLevel(air([emergency('7700', false)])).level).toBe('vert');
+  it('hors du territoire et de ses approches : aucun code ne colore (7500, 7600, 7700), la phrase le dit ; source absente : n.d.', () => {
+    for (const squawk of ['7500', '7600', '7700'] as const) {
+      expect(airLevel(air([emergency(squawk, false)]))).toEqual({ level: 'vert', reason: 'aucune urgence confirmée au-dessus du territoire ou de ses approches' });
+    }
+    expect(airLevel(air([emergency('7500', false), emergency('7600', true)])).level).toBe('jaune');
     expect(airLevel(air([], null))).toEqual({ level: 'nd', reason: 'OpenSky indisponible' });
+  });
+  it('T3 : un code vu sur une seule lecture des états ne colore pas, quel qu’il soit ; confirmé à la deuxième lecture', () => {
+    for (const squawk of ['7500', '7600', '7700'] as const) {
+      expect(airLevel(air([emergency(squawk, true, false)]))).toEqual({ level: 'vert', reason: 'aucune urgence confirmée au-dessus du territoire ou de ses approches' });
+    }
+    expect(isEmergencyConfirmed(emergency('7500', true, false))).toBe(false);
+    expect(isEmergencyConfirmed(emergency('7500', true))).toBe(true);
+    expect(isEmergencyConfirmed({ ...emergency('7500', true), firstSeen: 'n.d.' })).toBe(false);
+    expect(emergencyColoursPill(emergency('7700', true))).toBe(true);
+    expect(emergencyColoursPill(emergency('7700', false))).toBe(false);
+    expect(emergencyColoursPill(emergency('7700', true, false))).toBe(false);
   });
 });
 

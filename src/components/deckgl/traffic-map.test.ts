@@ -1,6 +1,7 @@
 // src/components/deckgl/traffic-map.test.ts
 import { describe, expect, it } from 'vitest';
 import type { AirEmergency, AirTrafficFlight, MaritimeSignal } from '../../types/index.ts';
+import { emergencyColoursPill } from '../../services/traffic-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { NBSP, visibleText } from '../layer-panel/format.ts';
 import { SQUAWK_LEVEL, trafficBreakable } from '../layer-panel/traffic-format.ts';
@@ -98,13 +99,15 @@ describe('aérien (§ 3.2)', () => {
       emergency({ callsign: '<b>X</b>' }), emergency({ callsign: null, squawk: '7600', icao24: 'abc123' }),
       emergency({ callsign: 'HIJ1', squawk: '7500' }), emergency({ callsign: 'AWAY1', overFrance: false }),
       emergency({ callsign: 'AWAY2', squawk: '7500', overFrance: false }),
+      emergency({ callsign: 'ONCE1', squawk: '7500', firstSeen: paris('15:09') }),
     ];
     const fc = airEmergencyFeatures(o, TRAFFIC_NOW);
     expect(fc.features.map((f) => [props(f)['label'], props(f)['color']])).toEqual([
       ['<b>X</b>', levelHex('orange')], ['ABC123', levelHex('jaune')], ['HIJ1', levelHex('rouge')], ['AWAY1', TRAFFIC_NEUTRAL_HEX],
-      ['AWAY2', TRAFFIC_NEUTRAL_HEX],
+      ['AWAY2', TRAFFIC_NEUTRAL_HEX], ['ONCE1', TRAFFIC_NEUTRAL_HEX],
     ]);
-    for (const e of o.emergencies) expect(airEmergencyLevel(e)).toBe(e.overFrance ? SQUAWK_LEVEL[e.squawk] : 'gris');
+    // Même prédicat que la pastille et la ligne du panneau (emergencyColoursPill).
+    for (const e of o.emergencies) expect(airEmergencyLevel(e)).toBe(emergencyColoursPill(e) ? SQUAWK_LEVEL[e.squawk] : 'gris');
     const html = body(fc.features[0]);
     expect(html).toContain('&lt;b&gt;X&lt;/b&gt;');
     expect(html).toContain('7700 · urgence');
@@ -112,6 +115,8 @@ describe('aérien (§ 3.2)', () => {
     expect(html).not.toMatch(/hors territoire/i);
     expect(body(fc.features[1])).toContain('7600 · panne radio');
     expect(body(fc.features[3])).toContain('Hors territoire et approches');
+    expect(body(fc.features[5])).toContain('Vu une fois, à confirmer : couleur retirée, ne colore pas la pastille.');
+    expect(body(fc.features[0])).not.toMatch(/à confirmer/);
     expect(allNeutral(airEmergencyFeatures(o, LATE))).toBe(true);
   });
   it('animation des positions des avions : couche active, zoom 7 ou plus et relevé précédent ; sous le zoom 7, positions posées', () => {
