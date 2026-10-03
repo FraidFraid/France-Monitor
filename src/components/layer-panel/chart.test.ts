@@ -34,4 +34,15 @@ describe('courbe des panneaux de couches', () => {
   it('valeurs non finies ignorées', () => {
     expect(lineChart([{ at: T0, value: Number.NaN }, { at: T0 + H, value: 2 }], opts)).toBe('');
   });
+  it('série de comparaison en pointillé et valeur de référence, comprises dans l’échelle, tracées sous la courbe', () => {
+    const svg = lineChart([{ at: T0, value: 10 }, { at: T0 + 12 * H, value: 20 }], {
+      ...opts, dashed: [{ at: T0, value: 5 }, { at: T0 + 12 * H, value: 8 }], refValue: 30,
+    });
+    expect(svg).toMatch(/<line x1="0" x2="384" y1="[\d.]+" y2="[\d.]+" stroke="var\(--text-muted\)" stroke-width="1" stroke-dasharray="4 3"\/>/);
+    expect(svg).toMatch(/<polyline points="0\.0,[\d.]+ 192\.0,[\d.]+" fill="none" stroke="var\(--text-muted\)" stroke-width="1\.5" stroke-dasharray="4 3"\/>/);
+    expect(svg).toContain('>30<');
+    expect(svg).toContain('>5<');
+    expect(svg.indexOf('stroke-dasharray')).toBeLessThan(svg.indexOf('stroke="var(--sev-green)"'));
+    expect(lineChart([{ at: T0, value: 10 }, { at: T0 + H, value: 20 }], opts)).not.toContain('stroke-dasharray');
+  });
 });

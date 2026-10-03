@@ -9016,3 +9016,11 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Détails méthodologiques : les lignes de fraîcheur portent une phrase, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. */
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv-v { overflow-wrap: anywhere; }
+/* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
+.lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.lp .lp-tbl th, .lp .lp-tbl td { padding: 3px 0; text-align: right; font-weight: 400; vertical-align: baseline; }
+.lp .lp-tbl th[scope="row"], .lp .lp-tbl thead th:first-child { text-align: left; padding-right: 8px; }
+.lp .lp-tbl thead th { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.lp .lp-tbl td { white-space: nowrap; padding-left: 8px; }
+.lp .lp-faint { color: var(--text-muted); }
+.lp .lp-key i.lp-dash { background: none; height: 0; border-top: 2px dashed var(--text-muted); }
