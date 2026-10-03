@@ -1,7 +1,8 @@
 // api/_lib/tomtom-urban.js : congestion urbaine par collecte serveur TomTom (spec 2026-10-03 panneaux trafic
 // § 2.2, T4). Une seule collecte pour tous les visiteurs : 14 appels `incidentDetails` par cycle (Paris et
 // Lyon en deux cadres, dix autres agglomérations en un), toutes les 15 min de 7 h à 21 h (heure de Paris),
-// toutes les 30 min la nuit, soit environ 1 060 appels par jour sur 2 500 gratuits. Seule la catégorie 6
+// toutes les 30 min la nuit, soit environ 1 130 appels par jour (45 % des 2 500 gratuits ; la relève d'une minute rend la cadence
+// effective de 14 min le jour et 29 min la nuit, mesurée par tests/tomtom-urban.test.ts). Seule la catégorie 6
 // (embouteillage, magnitude 1 à 3) est demandée et gardée ; jamais la catégorie 8 (route fermée durable).
 // Clé côté serveur ; budget du jour compté dans le stockage clé-valeur (kv-history), jamais par navigateur.
 import { incrementCounter, kvGetJson, kvSetJson } from './kv-history.js';
@@ -227,15 +228,19 @@ export async function collectUrban(now = Date.now()) {
   return withQuota(stored, errors, now);
 }
 
-let inflight = null;
+let queue = Promise.resolve();
 
 /**
  * Dernière collecte, après un nouveau cycle s'il est dû (appelé par la route et par la relève serveur
- * toutes les minutes ; un seul cycle à la fois par processus).
+ * toutes les minutes). Les appels sont mis en file : le marqueur du dernier cycle est relu à son tour de
+ * passage, donc deux déclenchements simultanés ne lancent jamais deux cycles.
  */
-export async function ensureUrbanFresh(now = Date.now()) {
-  const last = await kvGetJson(LAST_KEY, now);
-  if (last && !isUrbanDue(last.attemptedAt ?? null, now)) return withQuota(last, Array.isArray(last.errors) ? last.errors : [], now);
-  inflight ??= collectUrban(now).finally(() => { inflight = null; });
-  return inflight;
+export function ensureUrbanFresh(now = Date.now()) {
+  const turn = queue.then(async () => {
+    const last = await kvGetJson(LAST_KEY, now);
+    if (last && !isUrbanDue(last.attemptedAt ?? null, now)) return withQuota(last, Array.isArray(last.errors) ? last.errors : [], now);
+    return collectUrban(now);
+  });
+  queue = turn.then(() => undefined, () => undefined);
+  return turn;
 }

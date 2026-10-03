@@ -28,4 +28,19 @@ describe('relève serveur des collectes à quota', () => {
     await vi.advanceTimersByTimeAsync(120_000);
     expect(calls).toHaveLength(4);
   });
+  it('un tick qui tombe pendant un cycle encore en cours ne lance pas un second cycle', async () => {
+    vi.useFakeTimers();
+    let started = 0;
+    let release: () => void = () => {};
+    const stop = startTrafficCollectors({
+      collectors: [{ name: 'lent', run: () => new Promise<void>((resolve) => { started += 1; release = resolve; }) }],
+      log: { error: () => {} },
+    });
+    await vi.advanceTimersByTimeAsync(3 * 60_000);
+    expect(started).toBe(1);
+    release();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(started).toBe(2);
+    stop();
+  });
 });

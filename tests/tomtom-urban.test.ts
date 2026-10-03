@@ -4,6 +4,8 @@ import {
   AGGLO_ORDER, INCIDENT_BUDGET, URBAN_FRAMES, aggregateAgglo, collectUrban, ensureUrbanFresh, incidentsUrl, isUrbanDue, readQuota, reserveFlowCall,
   toUrbanJam, urbanCadenceMs,
 } from '../api/_lib/tomtom-urban.js';
+import { startTrafficCollectors } from '../server/prod/traffic-collectors.mjs';
+import { parisHour, parisWallTime } from '../api/_lib/paris-time.js';
 import { type FakeResponse, fixtureJson, fixtureText, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
 type Incident = { properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } };
@@ -65,10 +67,9 @@ describe('fonctions pures', () => {
     expect(isUrbanDue(new Date(DAY - 13 * 60_000).toISOString(), DAY)).toBe(false);
     expect(isUrbanDue(new Date(DAY - 14 * 60_000).toISOString(), DAY)).toBe(true);
   });
-  it('14 cadres, 12 agglomérations, environ 1 064 appels par jour (56 cycles de jour, 20 de nuit)', () => {
+  it('14 cadres et 12 agglomérations', () => {
     expect(URBAN_FRAMES).toHaveLength(14);
     expect(new Set(URBAN_FRAMES.map((f) => f.agglo))).toEqual(new Set(AGGLO_ORDER));
-    expect(56 * 14 + 20 * 14).toBe(1064);
   });
   it('URL : catégorie 6 seulement, incidents présents, en français', () => {
     const u = new URL(incidentsUrl('4.70,45.62,4.86,45.86', 'k'));
@@ -144,7 +145,7 @@ describe('collecte serveur', () => {
     await collectUrban(DAY);
     expect((await readQuota(Date.parse('2026-10-04T00:05:00+02:00'))).callsToday).toBe(0);
   });
-  it('14 réponses qui arrivent en même temps : le compteur du jour finit à exactement 14', async () => {
+  it('cycle à réponses lentes : le compteur du jour est incrémenté une fois de 14, pas perdu en route', async () => {
     const log = stubTomTom();
     const slow = vi.fn(async (url: string) => {
       log.urls.push(url);
@@ -156,9 +157,65 @@ describe('collecte serveur', () => {
     expect(slow).toHaveBeenCalledTimes(14);
     expect(r.quota.callsToday).toBe(14);
   });
+  it('deux déclenchements simultanés : un seul cycle (14 appels), le second relit le marqueur du premier', async () => {
+    const log = stubTomTom();
+    await Promise.all([ensureUrbanFresh(DAY), ensureUrbanFresh(DAY)]);
+    expect(log.urls).toHaveLength(14);
+    expect((await readQuota(DAY)).callsToday).toBe(14);
+  });
   it('survols simultanés : le compteur compte chaque appel réservé, sans mise à jour perdue', async () => {
     const results = await Promise.all(Array.from({ length: 14 }, () => reserveFlowCall(DAY)));
     expect(results.every(Boolean)).toBe(true);
     expect((await readQuota(DAY)).callsToday).toBe(14);
+  });
+});
+
+/**
+ * Simulation de la vraie relève (une minute) sous horloge simulée : seuls les appels `incidentDetails`
+ * réellement émis sont comptés (fetch simulé, aucun appel TomTom réel).
+ */
+async function simulate(startMs: number, durationMs: number) {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  vi.setSystemTime(startMs);
+  const cycles: number[] = [];
+  let calls = 0;
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (calls % URBAN_FRAMES.length === 0) cycles.push(Date.now());
+    calls += 1;
+    return respond({ incidents: [] });
+  }));
+  const stop = startTrafficCollectors({
+    collectors: [{ name: 'tomtom', run: ensureUrbanFresh }],
+    now: () => Date.now(),
+    log: { error: () => {} },
+  });
+  await vi.advanceTimersByTimeAsync(durationMs);
+  stop();
+  return { calls, cycles };
+}
+
+describe('cadence réelle de la relève (horloge simulée)', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('24 h ordinaires : environ 1 130 appels (cycle toutes les 14 min le jour, 29 min la nuit), sous les 2 500', async () => {
+    const { calls } = await simulate(parisWallTime(2026, 10, 3, 0, 0, 0), 24 * 3_600_000);
+    // Le cycle est dû à cadence moins une minute (tolérance) et la relève passe chaque minute : 14 min de
+    // 7 h à 21 h (60 cycles) et 29 min la nuit (21 cycles), soit 81 cycles ; mesuré : 1 134 appels.
+    expect(calls % URBAN_FRAMES.length).toBe(0);
+    expect(calls).toBeGreaterThanOrEqual(1120);
+    expect(calls).toBeLessThanOrEqual(1150);
+    expect(calls).toBeLessThan(2500);
+  });
+  it('25/10/2026 (retour à l’heure d’hiver, 25 h) : cadence suivie sur l’heure murale de Paris, rien de sauté ni de doublé', async () => {
+    const { calls, cycles } = await simulate(parisWallTime(2026, 10, 25, 0, 0, 0), 25 * 3_600_000);
+    const gaps = cycles.slice(1).map((t, i) => ({ gap: (t - cycles[i]) / 60_000, from: parisHour(cycles[i]), to: parisHour(t) }));
+    expect(gaps.every((g) => g.gap >= 14 && g.gap <= 30)).toBe(true);
+    // Jour (7 h à 21 h, heure murale) : 14 min exactement ; nuit, y compris les deux passages de 2 h : 29 min.
+    expect(gaps.filter((g) => g.from >= 7 && g.to < 21).every((g) => g.gap === 14)).toBe(true);
+    const night = (h: number) => h < 7 || h >= 21;
+    expect(gaps.filter((g) => night(g.from) && night(g.to)).every((g) => g.gap === 29)).toBe(true);
+    // 25 h = 14 h de jour (60 cycles) + 11 h de nuit (23 cycles) : 83 cycles mesurés (1 162 appels).
+    expect(calls).toBeGreaterThanOrEqual(82 * URBAN_FRAMES.length);
+    expect(calls).toBeLessThanOrEqual(84 * URBAN_FRAMES.length);
   });
 });
