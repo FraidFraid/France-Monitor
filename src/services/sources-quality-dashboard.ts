@@ -14,6 +14,7 @@ import type {
   SourcesQualityDashboardOptions,
 } from './qualityMeta.ts';
 import { formatQualityDate } from './qualityMeta.ts';
+import { HEALTH_SOURCE_NAMES } from '../config/health-sources.ts';
 
 // natureBaseline : socle de confiance lié à la NATURE de la source, snappé sur la
 // grille {90 API officielle avec clé, 80 API publique, 65 RSS, 50 scraping/communautaire}
@@ -196,7 +197,8 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     domain: 'Santé',
     sourceType: 'official',
     natureBaseline: 90,
-    watchdogNames: ['Santé publique France'],
+    // Sources santé hors Watchdog (panneau des sources) : leur historique est échantillonné par App.ts (recordStatusSamples).
+    watchdogNames: [...HEALTH_SOURCE_NAMES],
     mappedIndicators: ['source', 'date', 'indicateurs santé'],
     limits: ['Données agrégées, pas diagnostic médical'],
   },

@@ -83,6 +83,14 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
     expect(o).not.toContain('new Date()');
     expect(methodBody('loadOptionalLayers')).toContain("this.loadHealthSurveillance('all')");
   });
+  it('note de situation et historique de qualité : sources santé lues dans le panneau des sources, jamais réenregistrées au Watchdog', () => {
+    expect(methodBody('buildSituationReportContext'))
+      .toContain('sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],');
+    expect(methodBody('loadHealthSurveillance')).toContain('this.recordHealthSamples(updated, now);');
+    expect(methodBody('loadHealthOffer')).toContain('this.recordHealthSamples(HEALTH_OFFER_SOURCES.map(([, name]) => name), Date.now());');
+    expect(methodBody('recordHealthSamples')).toContain('recordStatusSamples(');
+    expect(app).not.toMatch(/Watchdog\.register\('health/);
+  });
   it('ancien panneau national, baromètre et pastille retirés du câblage', () => {
     for (const gone of ['NationalHealthPanel', 'HealthBarometerPanel', 'barometer-fab', 'open-national-health', 'open-health-barometer',
       'computeHealthBarometer', '__healthBarometerMetrics', 'updateBarometerFabVisibility', 'loadAplData', 'fetchHospitalsData',

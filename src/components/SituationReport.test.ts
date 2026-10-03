@@ -50,6 +50,14 @@ describe('collectSituationReportData — langage commun L1 (refonte UI étape 2)
       .toBe('vigilance rouge');
   });
 
+  it('sources santé (hors Watchdog) : période réelle de la donnée à la place de l’âge (S1)', () => {
+    const data = collectSituationReportData(ctx({ sources: [{
+      sourceId: 'health:syndromic',
+      status: { name: 'Santé publique France', status: 'ok', lastUpdate: new Date('2026-09-30T10:01:00Z'), period: 'S39 · publiée le 30/09' },
+    }] }));
+    expect(data.sources).toEqual([{ label: 'Santé publique France', state: 'ok', ageLabel: 'S39 · publiée le 30/09' }]);
+  });
+
   it('les signaux officiels rouges sont rouges, violet Météo compris', () => {
     const data = collectSituationReportData(ctx());
     expect(data.domainSignals.find((d) => d.domain.startsWith('Écowatt'))?.level).toBe('rouge');

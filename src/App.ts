@@ -156,7 +156,8 @@ import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, Map
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
-import { startQualityHistoryTracking } from './services/source-quality-history.ts';
+import { recordStatusSamples, startQualityHistoryTracking } from './services/source-quality-history.ts';
+import { HEALTH_OFFER_SOURCES, HEALTH_STATUS_SOURCES, healthReportSources } from './config/health-sources.ts';
 import type { SituationReportContext } from './components/SituationReport.ts';
 import type { ExportContext } from './services/data-export.ts';
 import type { ExportMenu } from './components/ExportMenu.ts';
@@ -558,12 +559,6 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
 
 /** Couches santé, un panneau chacune (spec 2026-10-03 § 3). */
 type HealthLayerKey = 'health' | 'healthOscour' | 'healthApl' | 'hospitals';
-
-/** Sources santé du panneau des sources : date de la donnée, jamais l'heure de lecture (spec 2026-10-03 S1). */
-const HEALTH_STATUS_SOURCES: ReadonlyArray<readonly [HealthSurveillanceKey, string]> = [
-  ['syndromic', 'Santé publique France'], ['alerts', 'Odissé alertes'], ['sentinelles', 'Sentinelles'], ['wastewater', 'SUM’eau'],
-  ['international', 'OMS / ECDC'], ['ministry', 'DGS-Urgent (PEPS)'], ['drugs', 'ANSM Médicaments'], ['recalls', 'RappelConso'],
-];
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -6679,12 +6674,23 @@ export class App {
     this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null, now);
     // Légende Urgences datée (S1) ; en retard, « (en retard) » et couleurs retirées de la carte (S2).
     this.mapLegend?.addCategory(urgencesLegend(HEALTH_URGENCES_LEGEND, state.syndromic.data, now));
+    const updated: string[] = [];
     for (const [key, name] of HEALTH_STATUS_SOURCES) {
       if (keys === 'all' || keys.includes(key)) {
         this.statusPanel?.updateSource(name, { ...surveillanceStatus(state, key, now), period: sourcePeriod(state, key, now) });
+        updated.push(name);
       }
     }
+    this.recordHealthSamples(updated, now);
     this.repaintPoste();
+  }
+
+  /**
+   * Historique local de qualité des sources santé (hors Watchdog, spec 2026-10-03) : statuts du panneau des sources, datés par la
+   * donnée. Jamais réenregistrées au Watchdog, qui les daterait de la lecture et les passerait « en cache figé » au bout de 10 min.
+   */
+  private recordHealthSamples(names: readonly string[], now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => names.includes(s.name)) ?? [], now);
   }
 
   /** Offre de soins (APL, hôpitaux) : fichiers annuels, panneaux, panneau des sources sur la date de publication (S1). */
@@ -6698,6 +6704,7 @@ export class App {
     this.mapContainer?.updateHospitals(offer.hospitals.data);
     this.statusPanel?.updateSource('DREES APL', offerStatus(offer, 'apl'));
     this.statusPanel?.updateSource('DREES SAE / FINESS', offerStatus(offer, 'hospitals'));
+    this.recordHealthSamples(HEALTH_OFFER_SOURCES.map(([, name]) => name), Date.now());
   }
 
   /**
@@ -7684,7 +7691,8 @@ export class App {
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
       newsItems: this.newsItems,
-      sources: Watchdog.getSnapshot(),
+      // Sources santé : hors Watchdog, lues dans le panneau des sources avec leur période (spec 2026-10-03 S1).
+      sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
       version: null,
     };
   }

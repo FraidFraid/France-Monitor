@@ -237,7 +237,8 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
     .map((snap) => ({
       label: snap.status.name,
       state: snap.status.status,
-      ageLabel: formatAge(
+      // Source hebdomadaire ou annuelle (santé) : sa période réelle, jamais un âge relatif (spec 2026-10-03 S1).
+      ageLabel: snap.status.period ?? formatAge(
         snap.status.cacheAgeMs ?? null,
         snap.status.lastUpdate ?? snap.status.lastSuccess ?? null,
         ctx.generatedAt,

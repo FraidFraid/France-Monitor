@@ -8,6 +8,7 @@ import {
   getSourceQualityRegistry,
 } from './sources-quality-dashboard.ts';
 import { computeSourceQualityScore } from './qualityMappers.ts';
+import { HEALTH_SOURCE_NAMES } from '../config/health-sources.ts';
 
 function observed(overrides: Partial<ObservedMetrics> = {}): ObservedMetrics {
   return {
@@ -150,6 +151,19 @@ describe('sources-quality-dashboard — scores calculés', () => {
     assert.equal(meteo.quality.natureBaseline, 90);
     assert.equal(meteo.quality.reliabilityScore, 90);
     assert.equal(meteo.quality.confidenceScore, 90);
+  });
+
+  it('santé : l’entrée couvre les dix sources santé ; l’historique de l’une d’elles est retenu', () => {
+    const entry = getSourceQualityRegistry().find((source) => source.id === 'health');
+    assert.deepEqual(entry?.watchdogNames, [...HEALTH_SOURCE_NAMES]);
+    const data = getSourcesQualityDashboardData({
+      now: new Date('2026-10-03T10:00:00.000Z'),
+      statuses: [],
+      getObserved: (name) => (name === 'Odissé alertes' ? observed({ samples: 20, observationDays: 3 }) : null),
+    });
+    const health = data.sources.find((source) => source.id === 'health');
+    assert.equal(health?.quality.qualityProvisional, false);
+    assert.equal(health?.quality.observed?.observationDays, 3);
   });
 
   it('avec métriques observées injectées : score calculé et non provisoire', () => {
