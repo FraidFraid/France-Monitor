@@ -153,6 +153,11 @@ describe('cadre des panneaux de couches', () => {
     const css = readFileSync('src/styles/main.css', 'utf8');
     expect(css).not.toMatch(/\.fmk-kv-v[^{}]*\{[^}]*white-space:\s*nowrap/);
   });
+  it('barRow : valeur en HTML déjà échappé (flèche colorée) à la place du texte', () => {
+    const h = barRow({ label: 'Médecins', pct: 50, value: '3,72', valueHtml: '<span class="lp-val fmk-num">3,72</span><span class="lp-trend">▼</span>', level: 'orange' });
+    expect(h).toContain('<span class="fmk-bar"><i style="width:50%;background:var(--sev-orange)"></i></span><span class="lp-val fmk-num">3,72</span><span class="lp-trend">▼</span>');
+    expect(barRow({ label: 'x', pct: 10, value: '1', level: 'vert' })).toContain('<span class="lp-val fmk-num">1</span>');
+  });
 });
 
 describe('feuille de style des panneaux de couches', () => {

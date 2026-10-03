@@ -1,6 +1,6 @@
 // src/components/layer-panel/health-format.ts : formats et lectures communs des panneaux Santé (spec 2026-10-03 § 1 et § 3) ;
 // pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) ; hausse d'un indicateur sanitaire en rouge, baisse en vert.
-import type { SyndromeKey, SyndromicResponse, SyndromicSeries } from '../../types/index.ts';
+import type { AplProfession, SyndromeKey, SyndromicResponse, SyndromicSeries } from '../../types/index.ts';
 import { URGENCES_PILL_SYNDROMES, franceRefs, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
 import { dataDateMs } from '../../services/health-surveillance.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
@@ -210,3 +210,37 @@ export type UrgencesSyndrome = 'ira' | 'bronchio' | 'gastro';
 /** Syndromes du sélecteur, IRA par défaut (premier). */
 export const URGENCES_SYNDROMES: readonly UrgencesSyndrome[] = ['ira', 'bronchio', 'gastro'];
 export const URGENCES_SYNDROME_LABEL: Readonly<Record<UrgencesSyndrome, string>> = { ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite' };
+
+// ─── Accès aux soins : professions et seuils (spec § 3.3) ───
+
+export const APL_PROFESSIONS: readonly AplProfession[] = ['mg', 'inf', 'kine', 'sf', 'dent'];
+export const APL_PROFESSION_LABEL: Readonly<Record<AplProfession, string>> = {
+  mg: 'Médecins généralistes', inf: 'Infirmiers', kine: 'Kinésithérapeutes', sf: 'Sages-femmes', dent: 'Chirurgiens-dentistes',
+};
+export const APL_PROFESSION_SHORT: Readonly<Record<AplProfession, string>> = {
+  mg: 'Généralistes', inf: 'Infirmiers', kine: 'Kinés', sf: 'Sages-femmes', dent: 'Dentistes',
+};
+/** Unités DREES : consultations par habitant standardisé (généralistes), ETP pour 100 000 habitants (sages-femmes : femmes). */
+export const APL_UNIT: Readonly<Record<AplProfession, string>> = {
+  mg: 'consultations par an et par habitant', inf: `ETP ${PER_100K}`, kine: `ETP ${PER_100K}`,
+  sf: `ETP pour ${frNumber(100_000, 0)} femmes`, dent: `ETP ${PER_100K}`,
+};
+export const APL_DIGITS: Readonly<Record<AplProfession, number>> = { mg: 2, inf: 1, kine: 1, sf: 1, dent: 1 };
+
+/** Généralistes (spec § 3.3) : rouge sous 2,5, orange de 2,5 à 3,5, jaune de 3,5 à 4, vert au-delà. */
+export function aplMgLevel(apl: number): VigilanceLevel {
+  return apl < 2.5 ? 'rouge' : apl < 3.5 ? 'orange' : apl < 4 ? 'jaune' : 'vert';
+}
+
+/** Autres professions : rapport à la moyenne nationale, rouge sous 0,5, orange sous 0,75, jaune sous 1, vert au-delà. */
+export function aplRatioLevel(value: number, national: number): VigilanceLevel | null {
+  if (!(national > 0) || !Number.isFinite(value)) return null;
+  const r = value / national;
+  return r < 0.5 ? 'rouge' : r < 0.75 ? 'orange' : r < 1 ? 'jaune' : 'vert';
+}
+
+export function aplProfessionLevel(p: AplProfession, value: number | null, national: number | null): VigilanceLevel | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  if (p === 'mg') return aplMgLevel(value);
+  return national === null ? null : aplRatioLevel(value, national);
+}

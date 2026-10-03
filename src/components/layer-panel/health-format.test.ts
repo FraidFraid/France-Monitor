@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { syndromicFixture } from './health.fixture.ts';
 import { NBSP } from './format.ts';
 import {
-  PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
+  APL_PROFESSIONS, APL_UNIT, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
   seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
   weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
 } from './health-format.ts';
@@ -84,5 +84,15 @@ describe('aides des panneaux Santé', () => {
   it('sélecteur des urgences : IRA, bronchiolite, gastro-entérite, IRA par défaut (spec § 3.2)', () => {
     expect(URGENCES_SYNDROMES).toEqual(['ira', 'bronchio', 'gastro']);
     expect(URGENCES_SYNDROME_LABEL).toEqual({ ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite' });
+  });
+  it('APL : cinq professions ; généralistes rouge sous 2,5, orange de 2,5 à 3,5, jaune de 3,5 à 4 ; autres en rapport à la moyenne nationale', () => {
+    expect(APL_PROFESSIONS).toEqual(['mg', 'inf', 'kine', 'sf', 'dent']);
+    expect([2.49, 2.5, 3.49, 3.5, 3.99, 4].map(aplMgLevel)).toEqual(['rouge', 'orange', 'orange', 'jaune', 'jaune', 'vert']);
+    expect([49, 50, 74, 75, 99, 100].map((v) => aplRatioLevel(v, 100))).toEqual(['rouge', 'orange', 'orange', 'jaune', 'jaune', 'vert']);
+    expect(aplRatioLevel(10, 0)).toBeNull();
+    expect([aplProfessionLevel('mg', 2.37, 3.72), aplProfessionLevel('inf', 67.9, 154.8), aplProfessionLevel('kine', null, 123.2), aplProfessionLevel('sf', 20, null)])
+      .toEqual(['rouge', 'rouge', null, null]);
+    expect(APL_UNIT.sf).toBe('ETP pour 100 000 femmes');
+    expect(APL_UNIT.inf).toBe('ETP pour 100 000 habitants');
   });
 });

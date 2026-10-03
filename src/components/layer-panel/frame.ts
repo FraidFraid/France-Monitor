@@ -144,6 +144,8 @@ interface BarRowBase {
   /** 0–100 ; null : pas de barre. */
   pct: number | null;
   value: string;
+  /** HTML déjà échappé à la place de `value` (valeur suivie d'une flèche colorée). */
+  valueHtml?: string | null;
   /** Puce devant le libellé (défaut : oui). */
   dot?: boolean;
   note?: string | null;
@@ -161,7 +163,7 @@ export function barRow(r: BarRow): string {
   const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
   const dot = r.dot === false ? '<span aria-hidden="true"></span>' : marker(r.level, r.color);
   return `<div class="lp-bar-row"${dataAttrs(r.data)}>${dot}<span class="lp-bar-label">${escapeHtml(r.label)}</span>`
-    + `<span class="fmk-bar">${bar}</span>${valueHtml(r.value)}${note ? `<small>${note}</small>` : ''}</div>`;
+    + `<span class="fmk-bar">${bar}</span>${r.valueHtml ?? valueHtml(r.value)}${note ? `<small>${note}</small>` : ''}</div>`;
 }
 
 /** Cadence éCO2mix suivie par les panneaux Réseau, Éolien et Hydro : « en retard » au-delà de deux fois cette durée (45 min). */
