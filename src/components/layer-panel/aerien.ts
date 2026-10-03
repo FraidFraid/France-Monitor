@@ -29,6 +29,9 @@ const TITLE = 'Trafic aérien';
 const OPENSKY_URL = 'https://opensky-network.org';
 const OPENSKY_API_URL = 'https://openskynetwork.github.io/opensky-api/rest.html';
 const ZONE_WORDS = 'zone suivie de 41° N à 51,8° N et de 5,8° O à 10,2° E, qui déborde sur les pays voisins';
+/** Codes en urgence avec leur sens : chaque paire insécable ; la liste complète tient sur une ligne. */
+const SQUAWK_PAIRS = [`7500${NBSP}détournement`, `7600${NBSP}panne${NBSP}radio`, `7700${NBSP}urgence`];
+const SQUAWK_ONE_LINE = SQUAWK_PAIRS.join(`${NBSP}·${NBSP}`);
 const SQUAWK_ORDER: Readonly<Record<Squawk, number>> = { '7500': 0, '7700': 1, '7600': 2 };
 const MAX_LOG = 10;
 const MAX_ANOMALIES = 10;
@@ -123,7 +126,7 @@ function emergenciesSection(o: AirOverviewResponse | null, now: number, open: Op
   const current = sortEmergencies(o.emergencies);
   const rows = current.length > 0 ? current.map((e) => emergencyRow(e, late, true, now)).join('')
     : listRow({ text: 'Aucun aéronef en urgence', value: clockOf(o.at, now), level: late ? 'gris' : 'vert',
-      note: 'codes 7500 (détournement), 7600 (panne radio), 7700 (urgence) : 0' });
+      note: SQUAWK_ONE_LINE });
   const log = [...o.emergencyLog].sort((a, b) => (dataMs(b.lastSeen) ?? 0) - (dataMs(a.lastSeen) ?? 0));
   const logHtml = '<h4 class="fmk-eyebrow">7 derniers jours</h4>' + (log.length === 0 ? emptyLine('Aucune urgence dans le journal des 7 derniers jours.')
     : log.slice(0, MAX_LOG).map((e) => emergencyRow(e, late, false, now)).join('')
@@ -131,7 +134,7 @@ function emergenciesSection(o: AirOverviewResponse | null, now: number, open: Op
   const codes = [...new Set(current.map((e) => e.squawk))].join(', ');
   return {
     ...base, summary: escapeHtml(current.length === 0 ? `aucune en cours${late ? ' (en retard)' : ''}` : `${current.length} en cours (${codes})`),
-    html: rows + logHtml + note('Journal tenu par le serveur : chaque code 7500, 7600 ou 7700 vu en vol y reste 7 jours avec son heure, son indicatif et sa position. '
+    html: rows + logHtml + note(`Journal tenu par le serveur : chaque code (${SQUAWK_PAIRS.join(', ')}) vu en vol y reste 7 jours avec son heure, son indicatif et sa position. `
       + 'Un 7700 hors du territoire et de ses approches est montré sans colorer la pastille.'),
   };
 }
@@ -247,7 +250,7 @@ function methodSection(o: AirOverviewResponse | null, error: string | null, now:
     + note('Pastille : rouge si un 7500 ; orange si un 7700 au-dessus du territoire ou de ses approches ; jaune si un 7600 ; vert sinon ; n.d. si la source est en panne.')
     + note(`Retard : états au-delà de 10${NBSP}min ; départs au-delà de 4${NBSP}h après la fin de leur fenêtre. Une donnée en retard perd ses couleurs.`)
     + note('Collecte du serveur toutes les 2 minutes, départs de 8 aéroports toutes les 4 heures ; si les crédits restants passent sous 500, les départs sont suspendus avant les états.')
-    + note('Carte : avions en densité, sans libellé d’indicatif (indicatif au survol) ; urgences en symbole rouge avec leur indicatif ; aéroports dimensionnés par leurs départs.')
+    + note('Carte : avions nets à tous les zooms, sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange au-dessus du territoire ou de ses approches, 7600 jaune, gris au-delà) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
     + readErrors(o?.errors ?? []);
   return {
     id: 'method', title: 'Méthode et sources', collapsible: true, open: open('method', false), tone: 'reference', html,

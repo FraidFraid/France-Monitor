@@ -45,7 +45,7 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(s?.summary).toBe('aucune en cours');
     const h = s?.html ?? '';
     expect(h).toContain('<span class="fmk-dot fmk-dot--vert" aria-hidden="true"></span><span>Aucun aéronef en urgence</span><span class="lp-val fmk-num">15:09</span>'
-      + '<small>codes 7500 (détournement), 7600 (panne radio), 7700 (urgence) : 0</small>');
+      + '<small>7500\u00a0détournement\u00a0·\u00a07600\u00a0panne\u00a0radio\u00a0·\u00a07700\u00a0urgence</small>');
     expect(visibleText(h)).toContain('7 derniers jours');
     expect(visibleText(h)).toContain('Aucune urgence dans le journal des 7 derniers jours.');
   });
