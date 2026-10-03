@@ -595,7 +595,6 @@ const HEALTH_ALERTS_LEGEND: LegendCategory = {
     { id: 'health-alert-pre-post', label: 'Pré-épidémie ou post-épidémie', color: levelHex('jaune'), shape: 'square' },
     { id: 'health-alert-none', label: 'Pas d’alerte', color: levelHex('vert'), shape: 'square' },
     { id: 'health-alert-off', label: 'Hors saison', color: '#c7c7cc', shape: 'square' },
-    { id: 'health-hantavirus', label: 'Zone d’endémie historique du hantavirus', color: '#f2f2f7', shape: 'ring', note: 'Cas recensés de 2005 à 2024' },
   ],
   source: { label: 'Santé publique France (Odissé)', url: 'https://odisse.santepubliquefrance.fr' },
   refresh: { label: 'Hebdomadaire, publié le mercredi' },

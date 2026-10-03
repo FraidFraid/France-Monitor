@@ -1,6 +1,6 @@
 // src/components/deckgl/health-map.ts : couches santé de la carte (spec 2026-10-03 § 3.1 à 3.4), parties pures.
 // Régions colorées par les alertes Odissé en saison, départements par le niveau saisonnier des urgences ou par l'APL,
-// marqueurs des zones d'endémie historiques du hantavirus, sites d'urgences ; infobulles et fiche de site.
+// sites d'urgences ; infobulles et fiche de site.
 // MapLibre ne lit pas les variables CSS : niveaux en levelHex (palette L1), catégories d'hôpitaux copiées des jetons
 // --cat-hosp-* de main.css (vérifié par test). Aucun import de vue : la carte ne charge pas les panneaux.
 import type { ExpressionSpecification } from 'maplibre-gl';
@@ -10,7 +10,6 @@ import type {
 } from '../../types/index.ts';
 import { alertInSeason, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
 import { LEVEL_RANK, levelColorVar, levelHex, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
-import { HANTAVIRUS_HISTORICAL_DEPARTMENTS, HANTAVIRUS_HISTORICAL_REFERENCE } from '../../config/hantavirus.ts';
 import { NBSP, formatPct, frNumber } from '../layer-panel/format.ts';
 import {
   APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, APL_UNIT, HOSPITAL_CATEGORY_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
@@ -18,15 +17,12 @@ import {
 } from '../layer-panel/health-format.ts';
 import { urgencesLate } from '../layer-panel/urgences-legend.ts';
 import {
-  LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL,
-  LYR_HEALTH_URG_LINE, LYR_HOSPITALS,
+  LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE, LYR_HOSPITALS,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
 /** Hors saison (régions) : gris clair, distinct du vert « pas d'alerte » (spec § 3.1). */
 export const HEALTH_OFF_SEASON_HEX = '#c7c7cc';
-/** Anneau des zones d'endémie historiques du hantavirus (repère, pas un niveau). */
-export const HANTAVIRUS_RING_HEX = '#f2f2f7';
 /** Jetons --cat-hosp-* de main.css ; « autres » : --mix-other. */
 export const HOSPITAL_CATEGORY_HEX: Readonly<Record<HospitalCategory, string>> = {
   chu: '#64d2ff', ch: '#bf5af2', private: '#5e5ce6', gcs: '#30b0c7', army: '#ac8e68', other: '#71717a',
@@ -228,27 +224,6 @@ export function aplTooltipHtml(name: string, code: string, apl: AplDataset | nul
     + row('Niveau', level ? `${dot(level)}${escapeHtml(levelLabel(level))}` : 'n.d.'));
 }
 
-// ─── Zones d'endémie historiques du hantavirus (§ 2.9 : le jeu « seed » part, les zones restent) ───
-
-export function hantavirusFeatures(): GeoJSON.FeatureCollection<GeoJSON.Point> {
-  return {
-    type: 'FeatureCollection',
-    features: Object.values(HANTAVIRUS_HISTORICAL_DEPARTMENTS).map((z): GeoJSON.Feature<GeoJSON.Point> => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [z.center[0], z.center[1]] },
-      properties: { code: z.code, name: z.name, risk: z.risk },
-    })),
-  };
-}
-
-export function hantavirusTooltipHtml(props: Readonly<Record<string, unknown>>): string {
-  const name = typeof props['name'] === 'string' ? props['name'] : 'n.d.';
-  const from = HANTAVIRUS_HISTORICAL_REFERENCE.circulationPeriodStart.slice(0, 4);
-  const to = HANTAVIRUS_HISTORICAL_REFERENCE.circulationPeriodEnd.slice(0, 4);
-  const kind = props['risk'] === 'extended' ? 'Zone d’endémie historique du hantavirus (extension)' : 'Zone d’endémie historique du hantavirus';
-  return tip(head(name, kind) + note(`Cas recensés de ${from} à ${to} (Santé publique France). Repère historique, sans lien avec un épisode en cours.`));
-}
-
 // ─── Sites d'urgences (Hôpitaux, § 3.4) ───
 
 /** Sites placés (coordonnées connues), les plus fréquentés d'abord : les petits disques sont dessinés par-dessus. */
@@ -327,13 +302,13 @@ export interface HealthMapData {
 /** Ordre de dessin des couches santé, du bas vers le haut (moveLayer à l'initialisation de la carte). */
 export const HEALTH_LAYER_ORDER: readonly string[] = [
   LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
-  LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HOSPITALS,
+  LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HOSPITALS,
 ];
-const HOVERABLE: ReadonlySet<string> = new Set([LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
+const HOVERABLE: ReadonlySet<string> = new Set([LYR_HOSPITALS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
 
 /**
- * Couches santé sous la souris, dans l'ordre inverse du dessin : celle qu'on voit au-dessus répond (un site, un marqueur,
- * l'APL dessinée au-dessus des urgences, une région).
+ * Couches santé sous la souris, dans l'ordre inverse du dessin : celle qu'on voit au-dessus répond (un site, l'APL dessinée
+ * au-dessus des urgences, une région).
  */
 export const HEALTH_HOVER_LAYERS: readonly string[] = [...HEALTH_LAYER_ORDER].reverse().filter((id) => HOVERABLE.has(id));
 
@@ -354,7 +329,6 @@ export function healthTooltipHtml(layerId: string, props: Readonly<Record<string
       const site = d.hospitals.get(String(props['finess'] ?? ''));
       return site ? hospitalTooltipHtml(site, d.hospitalsVintage) : null;
     }
-    case LYR_HEALTH_HANTAVIRUS: return hantavirusTooltipHtml(props);
     case LYR_HEALTH_URG_FILL: return urgencesTooltipHtml(name, code, d.syndromic, d.syndrome, d.now);
     case LYR_HEALTH_APL_FILL: return aplTooltipHtml(name, code, d.apl, d.profession);
     case LYR_HEALTH_ALERT_FILL: return regionAlertTooltipHtml(name, code, d.alerts, d.now);

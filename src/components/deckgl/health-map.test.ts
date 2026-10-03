@@ -8,10 +8,10 @@ import { NBSP } from '../layer-panel/format.ts';
 import type { LegendCategory } from '../MapLegend.ts';
 import { HOSPITAL_CATEGORY_LABEL } from '../layer-panel/health-format.ts';
 import { urgencesLate, urgencesLegend } from '../layer-panel/urgences-legend.ts';
-import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
+import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
 import {
   HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX, HOSPITAL_COLOR, aplProp, aplTooltipHtml, colorFromProp,
-  departmentHealthFeatures, hantavirusFeatures, hantavirusTooltipHtml, healthTooltipHtml, hospitalAuthorizations, hospitalFeatures,
+  departmentHealthFeatures, healthTooltipHtml, hospitalAuthorizations, hospitalFeatures,
   hospitalPopupHtml, hospitalTooltipHtml, regionAlert, regionAlertFeatures, regionAlertTooltipHtml, topHealthHit, urgencesProp,
   urgencesTooltipHtml,
   type HealthMapData,
@@ -178,21 +178,6 @@ describe('S2 : données en retard, couleurs retirées', () => {
   });
 });
 
-describe('zones d’endémie historiques du hantavirus (spec § 2.9)', () => {
-  it('seize départements en marqueurs [lng, lat], noms accentués, infobulle datée', () => {
-    const fc = hantavirusFeatures();
-    expect(fc.features).toHaveLength(16);
-    const doubs = fc.features.find((f) => f.properties?.['code'] === 'DEP-25');
-    expect(doubs?.geometry.coordinates).toEqual([6.02, 47.24]);
-    expect(fc.features.map((f) => f.properties?.['name'])).toEqual(expect.arrayContaining(['Côte-d’Or', 'Rhône', 'Haute-Saône']));
-    const h = hantavirusTooltipHtml({ name: 'Ardennes', risk: 'historic' });
-    expect(h).toContain('<b>Ardennes</b>');
-    expect(h).toContain('Zone d’endémie historique du hantavirus');
-    expect(h).toContain('Cas recensés de 2005 à 2024 (Santé publique France)');
-    expect(hantavirusTooltipHtml({ name: 'Aube', risk: 'extended' })).toContain('(extension)');
-  });
-});
-
 describe('sites d’urgences (spec § 3.4)', () => {
   it('616 sites placés, [lng, lat], les plus fréquentés dessinés d’abord (les petits restent visibles)', () => {
     const fc = hospitalFeatures(hospitalsFixture());
@@ -240,8 +225,8 @@ describe('infobulle au survol : la couche la plus précise d’abord', () => {
     alerts: alertLevelsFixture().levels, now: HEALTH_NOW, syndromic: syndromicFixture(), apl: aplFixture(),
     hospitals: new Map(hospitalsFixture().sites.map((s) => [s.finess, s] as const)), hospitalsVintage: 2025, syndrome: 'gastro', profession: 'kine',
   });
-  it('ordre : inverse du dessin (site, marqueur hantavirus, APL dessinée au-dessus des urgences, région)', () => {
-    expect(HEALTH_HOVER_LAYERS).toEqual([LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
+  it('ordre : inverse du dessin (site, APL dessinée au-dessus des urgences, région)', () => {
+    expect(HEALTH_HOVER_LAYERS).toEqual([LYR_HOSPITALS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
     const drawn = HEALTH_HOVER_LAYERS.map((id) => HEALTH_LAYER_ORDER.indexOf(id));
     expect(drawn.every((i, k) => i >= 0 && (k === 0 || i < drawn[k - 1]))).toBe(true);
   });
@@ -258,7 +243,6 @@ describe('infobulle au survol : la couche la plus précise d’abord', () => {
     expect(healthTooltipHtml(LYR_HEALTH_APL_FILL, { code: '95' }, data())).toContain('<b>Val-d’Oise (95)</b>');
     expect(healthTooltipHtml(LYR_HEALTH_APL_FILL, { code: '95' }, data())).toContain('Kinésithérapeutes · APL 2024');
     expect(healthTooltipHtml(LYR_HEALTH_ALERT_FILL, { code: '06', nom: 'Mayotte' }, data())).toContain('pré-épidémie · S39');
-    expect(healthTooltipHtml(LYR_HEALTH_HANTAVIRUS, { name: 'Jura', risk: 'historic' }, data())).toContain('<b>Jura</b>');
     expect(healthTooltipHtml('autre-couche', {}, data())).toBeNull();
   });
 });

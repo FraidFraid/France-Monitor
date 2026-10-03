@@ -19,8 +19,8 @@ import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 import {
-  HANTAVIRUS_RING_HEX, HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp,
-  departmentHealthFeatures, hantavirusFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, topHealthHit,
+  HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp,
+  departmentHealthFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, topHealthHit,
   urgencesProp, type HealthMapData,
 } from './deckgl/health-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
@@ -87,7 +87,6 @@ import {
   SRC_WEATHER,
   SRC_HEALTH_REGIONS,
   SRC_HEALTH_DEPTS,
-  SRC_HEALTH_HANTAVIRUS,
   SRC_FLOODS,
   SRC_FLOODS_HIGHLIGHT,
   SRC_TOPAGE_VIS,
@@ -129,7 +128,6 @@ import {
   LYR_WEATHER_ICONS,
   LYR_HEALTH_ALERT_FILL,
   LYR_HEALTH_ALERT_LINE,
-  LYR_HEALTH_HANTAVIRUS,
   LYR_HEALTH_URG_FILL,
   LYR_HEALTH_URG_LINE,
   LYR_HEALTH_APL_FILL,
@@ -741,10 +739,9 @@ export class DeckGLMap {
       data: emptyFC(),
     });
 
-    // Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL), zones hantavirus historiques.
+    // Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL).
     this.map.addSource(SRC_HEALTH_REGIONS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_HEALTH_DEPTS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_HEALTH_HANTAVIRUS, { type: 'geojson', data: hantavirusFeatures() });
 
     // ISNR stability departments
     this.map.addSource(SRC_ISNR, {
@@ -1205,19 +1202,6 @@ export class DeckGLMap {
       source: SRC_HEALTH_DEPTS,
       paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
     });
-    // Zones d'endémie historiques du hantavirus : anneau (repère daté, pas un niveau).
-    this.map.addLayer({
-      id: LYR_HEALTH_HANTAVIRUS,
-      type: 'circle',
-      source: SRC_HEALTH_HANTAVIRUS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7],
-        'circle-color': 'rgba(0, 0, 0, 0)',
-        'circle-stroke-color': HANTAVIRUS_RING_HEX,
-        'circle-stroke-width': ['match', ['get', 'risk'], 'extended', 1, 2],
-      },
-    });
-
     // ─── ISNR: stability department fill ───
     this.map.addLayer({
       id: LYR_ISNR_FILL,
@@ -8057,7 +8041,7 @@ export class DeckGLMap {
     ];
 
     const allLegendLayers = [
-      LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_HANTAVIRUS,
+      LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE,
       LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HOSPITALS,
@@ -8073,7 +8057,7 @@ export class DeckGLMap {
 
     let activeLayers: string[] = [];
     if (categoryId === 'health') {
-      activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_HANTAVIRUS];
+      activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
     } else if (categoryId === 'healthOscour') {
@@ -8116,7 +8100,7 @@ export class DeckGLMap {
         }
         if (layer.type === 'heatmap') prop = 'heatmap-opacity';
         if (layer.type === 'raster') prop = 'raster-opacity';
-        if (layerId === LYR_NET_ISP_RING || layerId === LYR_HEALTH_HANTAVIRUS) prop = 'circle-stroke-opacity';
+        if (layerId === LYR_NET_ISP_RING) prop = 'circle-stroke-opacity';
 
         const orig = this.map!.getPaintProperty(layerId, prop) ?? 1;
         this.originalOpacities.set(layerId, { prop, orig });
@@ -9727,9 +9711,9 @@ export class DeckGLMap {
   }
 
   /**
-   * Couches santé : une infobulle au survol, celle de la couche dessinée au-dessus (site, marqueur hantavirus, APL, urgences,
-   * région) ; clic sur un site : sa fiche, sans infobulle par-dessus. Seules les couches visibles sont interrogées ;
-   * l'infobulle se ferme quand la souris quitte la carte (panneau, légende, en-tête).
+   * Couches santé : une infobulle au survol, celle de la couche dessinée au-dessus (site, APL, urgences, région) ; clic sur un
+   * site : sa fiche, sans infobulle par-dessus. Seules les couches visibles sont interrogées ; l'infobulle se ferme quand la
+   * souris quitte la carte (panneau, légende, en-tête).
    */
   private initHealthInteractions(): void {
     const map = this.map;
@@ -12014,7 +11998,6 @@ export class DeckGLMap {
     // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
     this.setVis(LYR_HEALTH_ALERT_FILL, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_ALERT_LINE, vis(layers.health ?? false));
-    this.setVis(LYR_HEALTH_HANTAVIRUS, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_URG_FILL, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_URG_LINE, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_APL_FILL, vis(layers.healthApl ?? false));

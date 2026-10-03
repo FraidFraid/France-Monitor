@@ -10,10 +10,9 @@ export const SRC_SEL = 'news-sel-src';
 export const SRC_POWER_REGIONS = 'power-regions-src';
 export const SRC_INTERCONN = 'interconn-src';
 export const SRC_WEATHER = 'weather-depts-src';
-// Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL), zones hantavirus historiques.
+// Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL).
 export const SRC_HEALTH_REGIONS = 'health-regions-src';
 export const SRC_HEALTH_DEPTS = 'health-depts-src';
-export const SRC_HEALTH_HANTAVIRUS = 'health-hantavirus-src';
 export const SRC_FLOODS = 'flood-segments-src';
 export const SRC_FLOODS_HIGHLIGHT = 'flood-segments-highlight-src';
 export const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fond)
@@ -56,7 +55,6 @@ export const SRC_WEATHER_ICONS = 'weather-icons-src';
 export const LYR_WEATHER_ICONS = 'weather-icons';
 export const LYR_HEALTH_ALERT_FILL = 'health-alert-fill';
 export const LYR_HEALTH_ALERT_LINE = 'health-alert-line';
-export const LYR_HEALTH_HANTAVIRUS = 'health-hantavirus';
 export const LYR_HEALTH_URG_FILL = 'health-urg-fill';
 export const LYR_HEALTH_URG_LINE = 'health-urg-line';
 export const LYR_HEALTH_APL_FILL = 'health-apl-fill';

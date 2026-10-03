@@ -3,7 +3,7 @@
 // ces tests lisent leur source, comme tests/app-layer-panels-lot2-wiring.test.ts.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { HANTAVIRUS_RING_HEX, HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX } from '../src/components/deckgl/health-map.ts';
+import { HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX } from '../src/components/deckgl/health-map.ts';
 import { HOSPITAL_CATEGORY_LABEL } from '../src/components/layer-panel/health-format.ts';
 import type { HospitalCategory } from '../src/types/index.ts';
 
@@ -28,9 +28,11 @@ describe('DeckGLMap : couches santé réécrites', () => {
     expect(formatUtils).not.toMatch(/ISS_LEVELS|issTo|getISSSemio|getHealthSourceLabel/);
   });
   it('sources et couches ajoutées ; peinture par la propriété du syndrome et de la profession choisis', () => {
-    for (const src of ['SRC_HEALTH_REGIONS', 'SRC_HEALTH_DEPTS', 'SRC_HEALTH_HANTAVIRUS']) expect(deck).toContain(`this.map.addSource(${src},`);
+    for (const src of ['SRC_HEALTH_REGIONS', 'SRC_HEALTH_DEPTS']) expect(deck).toContain(`this.map.addSource(${src},`);
     for (const lyr of ['LYR_HEALTH_ALERT_FILL', 'LYR_HEALTH_ALERT_LINE', 'LYR_HEALTH_URG_FILL', 'LYR_HEALTH_URG_LINE', 'LYR_HEALTH_APL_FILL',
-      'LYR_HEALTH_APL_LINE', 'LYR_HEALTH_HANTAVIRUS', 'LYR_HOSPITALS']) expect(deck).toContain(`id: ${lyr},`);
+      'LYR_HEALTH_APL_LINE', 'LYR_HOSPITALS']) expect(deck).toContain(`id: ${lyr},`);
+    // Zones historiques du hantavirus retirées (demande utilisateur) : ni source, ni couche, ni infobulle.
+    expect(`${deck}${constants}`).not.toMatch(/HANTAVIRUS/);
     expect(deck).toContain("'fill-color': colorFromProp(urgencesProp(this.healthUrgencesSyndrome))");
     expect(deck).toContain("'fill-color': colorFromProp(aplProp(this.healthAplProfession))");
     expect(deck).toContain("this.map.setPaintProperty(LYR_HEALTH_URG_FILL, 'fill-color', colorFromProp(urgencesProp(syndrome)))");
@@ -39,7 +41,7 @@ describe('DeckGLMap : couches santé réécrites', () => {
     expect(deck).toContain("'circle-radius': HOSPITAL_RADIUS,");
   });
   it('visibilité par couche, relecture différée des géométries, survol et fiche de site', () => {
-    for (const [lyr, key] of [['LYR_HEALTH_ALERT_FILL', 'health'], ['LYR_HEALTH_ALERT_LINE', 'health'], ['LYR_HEALTH_HANTAVIRUS', 'health'],
+    for (const [lyr, key] of [['LYR_HEALTH_ALERT_FILL', 'health'], ['LYR_HEALTH_ALERT_LINE', 'health'],
       ['LYR_HEALTH_URG_FILL', 'healthOscour'], ['LYR_HEALTH_URG_LINE', 'healthOscour'], ['LYR_HEALTH_APL_FILL', 'healthApl'],
       ['LYR_HEALTH_APL_LINE', 'healthApl'], ['LYR_HOSPITALS', 'hospitals']] as const) {
       expect(deck).toContain(`this.setVis(${lyr}, vis(layers.${key} ?? false));`);
@@ -52,7 +54,7 @@ describe('DeckGLMap : couches santé réécrites', () => {
     expect(deck).toContain('.setHTML(hospitalPopupHtml(site, this.hospitalsVintage))');
   });
   it('survol de légende : une catégorie par couche santé', () => {
-    expect(deck).toContain('activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_HANTAVIRUS];');
+    expect(deck).toContain('activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];');
     expect(deck).toContain('activeLayers = [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];');
     expect(deck).toContain('activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];');
     expect(deck).toContain('activeLayers = [LYR_HOSPITALS];');
@@ -65,12 +67,12 @@ describe('DeckGLMap : couches santé réécrites', () => {
 });
 
 describe('App : légendes réécrites et données transmises à la carte', () => {
-  it('légendes : niveaux L1, hors saison en gris clair, anneau hantavirus, catégories d’hôpitaux aux couleurs de la carte', () => {
+  it('légendes : niveaux L1, hors saison en gris clair, catégories d’hôpitaux aux couleurs de la carte ; plus d’anneau hantavirus', () => {
     for (const gone of ['HEALTH_ISS_LEGEND', 'HEALTH_OSCOUR_LEGEND', 'Stress Sanitaire', 'APL_LEVELS', 'OSCOUR_LEVELS', 'Données quotidiennes (J-1)']) expect(app).not.toContain(gone);
     expect(app).toContain('legend: HEALTH_ALERTS_LEGEND,');
     expect(app).toContain('legend: HEALTH_URGENCES_LEGEND,');
     expect(app).toContain(`color: '${HEALTH_OFF_SEASON_HEX}'`);
-    expect(app).toContain(`color: '${HANTAVIRUS_RING_HEX}', shape: 'ring'`);
+    expect(app).not.toMatch(/health-hantavirus|endémie historique/);
     for (const c of Object.keys(HOSPITAL_CATEGORY_LABEL) as HospitalCategory[]) {
       expect(app).toContain(`label: '${HOSPITAL_CATEGORY_LABEL[c]}', color: '${HOSPITAL_CATEGORY_HEX[c]}', shape: 'circle'`);
     }
@@ -126,8 +128,8 @@ describe('relecture de la tâche 18 : survol, fiche de site, légende, morceaux 
     expect(deck).toContain('for (const id of HEALTH_LAYER_ORDER) this.map.moveLayer(id);');
     expect(body('private initHealthInteractions(): void {')).toContain('topHealthHit(');
   });
-  it('survol de légende : l’anneau hantavirus s’atténue par son contour', () => {
-    expect(deck).toContain("if (layerId === LYR_NET_ISP_RING || layerId === LYR_HEALTH_HANTAVIRUS) prop = 'circle-stroke-opacity';");
+  it('survol de légende : seul l’anneau des fournisseurs internet s’atténue par son contour', () => {
+    expect(deck).toContain("if (layerId === LYR_NET_ISP_RING) prop = 'circle-stroke-opacity';");
   });
   it('légende Urgences hors de deckgl/ : App ne charge ni la carte ni maplibre-gl pour elle', () => {
     expect(app).toContain("import('./components/layer-panel/urgences-legend.ts')");

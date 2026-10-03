@@ -15,6 +15,7 @@ const REMOVED_FILES = [
   'api/_handlers/health/sentinelles-ingestion.js', 'api/_handlers/health/hantavirus.js', 'api/_handlers/health/apl.js',
   'api/_shared/apl-departements-snapshot.js', 'api/_shared/health-utils.js', 'public/data/apl-departements.json',
   'scripts/fetch-apl.mjs', 'scripts/generate-apl-snapshot.mjs', 'tests/hantavirus-api.test.ts', 'tests/hantavirus-freshness.test.ts',
+  'src/config/hantavirus.ts',
 ];
 const OLD_ROUTES = ['oscour-sos', 'departmental', 'epidemiology', 'epidemic-alerts', 'epidemiology-monitor', 'sentinelles', 'sentinelles-ingestion', 'hantavirus', 'apl'];
 const NEW_ROUTES = ['syndromic', 'alert-levels', 'sentinelles-national', 'wastewater', 'international', 'dgs-messages', 'drug-shortages', 'recalls'];
@@ -60,10 +61,10 @@ describe('retraits Santé (spec 2026-10-03 § 2.9)', () => {
     expect(read('src/services/ui-mode.ts')).not.toContain('opensModulePanel');
     expect(read('src/components/deckgl/format-utils.ts')).not.toContain('SPF / DREES');
   });
-  it('hantavirus : zones historiques gardées en configuration, épisode 2026 (établissements, navire) retiré', () => {
-    const cfg = read('src/config/hantavirus.ts');
-    expect(cfg).toContain('HANTAVIRUS_HISTORICAL_DEPARTMENTS');
-    expect(cfg).toContain('HANTAVIRUS_HISTORICAL_REFERENCE');
-    expect(cfg).not.toMatch(/HANTAVIRUS_NAVIRES|HANTAVIRUS_REFERENCE_FACILITIES|resolveHantavirusTerritoryCenter|Hondius/);
+  it('hantavirus : zones historiques retirées de la carte (demande utilisateur du 03/10/2026) ; l’épisode reste un message de l’OMS', () => {
+    for (const f of ['src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts', 'src/components/deckgl/constants.ts',
+      'src/components/deckgl/health-map.ts', 'docs/design/panneau-v2.md']) {
+      expect(read(f), f).not.toMatch(/hantavirus/i);
+    }
   });
 });
