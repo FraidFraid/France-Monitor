@@ -58,7 +58,7 @@ describe('DeckGLMap : couches santé réécrites', () => {
     expect(deck).toContain('activeLayers = [LYR_HOSPITALS];');
   });
   it('MapContainer relaie les six méthodes', () => {
-    for (const call of ['this.deckMap?.updateHealthAlerts(alerts, now);', 'this.deckMap?.updateHealthDepartments(syndromic, apl);',
+    for (const call of ['this.deckMap?.updateHealthAlerts(alerts, now);', 'this.deckMap?.updateHealthDepartments(syndromic, apl, now);',
       'this.deckMap?.setHealthUrgencesSyndrome(syndrome);', 'this.deckMap?.setHealthAplProfession(profession);',
       'this.deckMap?.updateHospitals(data);', 'this.deckMap?.focusHospital(site);']) expect(container).toContain(call);
   });
@@ -78,8 +78,9 @@ describe('App : légendes réécrites et données transmises à la carte', () =>
   });
   it('relève : alertes, urgences et APL, sites ; sélecteurs des panneaux ; site choisi dans le panneau', () => {
     expect(app).toContain('this.mapContainer?.updateHealthAlerts(state.alerts.data, now);');
-    expect(app).toContain('this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null);');
-    expect(app).toContain('this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data);');
+    expect(app).toContain('this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null, now);');
+    expect(app).toContain('this.mapLegend?.addCategory(urgencesLegend(HEALTH_URGENCES_LEGEND, state.syndromic.data, now));');
+    expect(app).toContain('this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data, Date.now());');
     expect(app).toContain('this.mapContainer?.updateHospitals(offer.hospitals.data);');
     expect(app).toContain('panel.setOnSyndrome((syndrome) => this.mapContainer?.setHealthUrgencesSyndrome(syndrome));');
     expect(app).toContain('this.mapContainer?.setHealthUrgencesSyndrome(panel.getSyndrome());');

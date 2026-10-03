@@ -8,7 +8,7 @@ import type {
   AplDataset, AplDepartment, AplProfession, EmergencySite, HospitalCategory, HospitalsDataset, RegionalAlertLevel,
   SyndromicDepartment, SyndromicResponse,
 } from '../../types/index.ts';
-import { alertInSeason, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
+import { alertInSeason, epiWeekLabel, isHealthDataLate, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
 import { LEVEL_RANK, levelColorVar, levelHex, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { HANTAVIRUS_HISTORICAL_DEPARTMENTS, HANTAVIRUS_HISTORICAL_REFERENCE } from '../../config/hantavirus.ts';
 import { NBSP, formatPct, frNumber } from '../layer-panel/format.ts';
@@ -16,6 +16,7 @@ import {
   APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, APL_UNIT, HOSPITAL_CATEGORY_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
   aplProfessionLevel, capitalize, departementName, joinFr, parisDay, weekShort, type UrgencesSyndrome,
 } from '../layer-panel/health-format.ts';
+import type { LegendCategory } from '../MapLegend.ts';
 import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
@@ -132,9 +133,19 @@ function urgencesLevelOf(d: SyndromicDepartment | undefined, s: UrgencesSyndrome
   return v ? seasonalLevel(v.er, v.refEr) : 'nd';
 }
 
-function departmentProps(d: SyndromicDepartment | undefined, a: AplDepartment | undefined, apl: AplDataset | null): Record<string, string> {
+/**
+ * S2 : urgences en retard quand la fin de la dernière semaine publiée + 17 jours est dépassée (même règle que le panneau) ;
+ * sans semaine publiée, rien à dater.
+ */
+export function urgencesLate(syndromic: SyndromicResponse | null, now: number): boolean {
+  const week = syndromic?.week;
+  return week ? isHealthDataLate('syndromic', week.end, now) : false;
+}
+
+/** Couleurs d'un département ; urgences en retard : aucune couleur de niveau (S2), l'APL annuelle n'est jamais en retard. */
+function departmentProps(d: SyndromicDepartment | undefined, a: AplDepartment | undefined, apl: AplDataset | null, urgLate: boolean): Record<string, string> {
   const props: Record<string, string> = {};
-  for (const s of URGENCES_SYNDROMES) {
+  for (const s of urgLate ? [] : URGENCES_SYNDROMES) {
     const level = urgencesLevelOf(d, s);
     if (level !== 'nd') props[urgencesProp(s)] = levelHex(level);
   }
@@ -145,14 +156,17 @@ function departmentProps(d: SyndromicDepartment | undefined, a: AplDepartment | 
   return props;
 }
 
-export function departmentHealthFeatures(base: GeoJSON.FeatureCollection, syndromic: SyndromicResponse | null, apl: AplDataset | null): GeoJSON.FeatureCollection {
+export function departmentHealthFeatures(
+  base: GeoJSON.FeatureCollection, syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number,
+): GeoJSON.FeatureCollection {
+  const urgLate = urgencesLate(syndromic, now);
   const synd = new Map((syndromic?.departments ?? []).map((d): [string, SyndromicDepartment] => [d.code, d]));
   const aplBy = new Map((apl?.departments ?? []).map((d): [string, AplDepartment] => [d.code, d]));
   return {
     type: 'FeatureCollection',
     features: base.features.map((f): GeoJSON.Feature => {
       const code = String(f.properties?.['code'] ?? '');
-      return { ...f, properties: { ...(f.properties ?? {}), ...departmentProps(synd.get(code), aplBy.get(code), apl) } };
+      return { ...f, properties: { ...(f.properties ?? {}), ...departmentProps(synd.get(code), aplBy.get(code), apl, urgLate) } };
     }),
   };
 }
@@ -165,21 +179,38 @@ const LEVEL_WORDS: Readonly<Record<HealthLevel, string>> = {
   nd: 'moins de deux saisons de référence',
 };
 
-/** Survol d'un département (Urgences) : part aux urgences, part SOS Médecins, niveau saisonnier, semaine. */
-export function urgencesTooltipHtml(name: string, code: string, syndromic: SyndromicResponse | null, syndrome: UrgencesSyndrome): string {
+/**
+ * Survol d'un département (Urgences) : part aux urgences, part SOS Médecins, niveau saisonnier, semaine.
+ * En retard (S2) : valeurs gardées avec leur semaine suivie de « (en retard) », niveau suspendu, aucune puce de couleur.
+ */
+export function urgencesTooltipHtml(name: string, code: string, syndromic: SyndromicResponse | null, syndrome: UrgencesSyndrome, now: number): string {
   const d = syndromic?.departments.find((x) => x.code === code);
   const v = d?.values[syndrome];
   const er = v?.er ?? null;
   const sos = v?.sos ?? null;
-  const level = urgencesLevelOf(d, syndrome);
+  const late = urgencesLate(syndromic, now);
+  const level: HealthLevel = late ? 'nd' : urgencesLevelOf(d, syndrome);
   const max = v && v.refEr.length > 0 ? Math.max(...v.refEr) : null;
-  const week = syndromic?.week ? weekShort(syndromic.week.id) : 'n.d.';
+  const week = syndromic?.week ? `${weekShort(syndromic.week.id)}${late ? ' (en retard)' : ''}` : 'n.d.';
   return tip(head(`${name} (${code})`, `${URGENCES_SYNDROME_LABEL[syndrome]} · ${week}`)
     + row('Urgences', er === null ? 'n.d.' : escapeHtml(`${formatPct(er, 1)} des passages`))
     + row('SOS Médecins', sos === null ? 'n.d.' : escapeHtml(`${formatPct(sos, 1)} des actes`))
     + row('Niveau', level === 'nd' ? 'n.d.' : `${dot(level)}${escapeHtml(levelLabel(level))}`)
     + (max === null ? '' : row('Maximum des 3 saisons précédentes', escapeHtml(formatPct(max, 1))))
-    + note(`${capitalize(LEVEL_WORDS[level])}.`));
+    + note(late ? 'Niveau saisonnier suspendu : données en retard.' : `${capitalize(LEVEL_WORDS[level])}.`));
+}
+
+/**
+ * Légende Urgences datée (S1) : semaine épidémiologique et date de publication ; en retard (S2), « (en retard) » et
+ * couleurs de niveau retirées de la carte. Sans semaine publiée : la légende de base.
+ */
+export function urgencesLegend(base: LegendCategory, syndromic: SyndromicResponse | null, now: number): LegendCategory {
+  const week = syndromic?.week;
+  if (!syndromic || !week) return base;
+  const published = syndromic.publishedAt ? `, publiées le ${parisDay(syndromic.publishedAt)}` : '';
+  const period = `Données : ${epiWeekLabel(week)}${published}`;
+  const line = urgencesLate(syndromic, now) ? `${period} (en retard) : couleurs de niveau retirées.` : `${period}.`;
+  return { ...base, notes: [line, ...(base.notes ?? [])] };
 }
 
 /** Survol d'un département (Accès aux soins) : APL de la profession choisie, France, rapport à la moyenne, niveau, millésime. */
@@ -284,7 +315,8 @@ export function hospitalPopupHtml(s: EmergencySite, vintage: number | null): str
 
 export interface HealthMapData {
   alerts: readonly RegionalAlertLevel[];
-  alertsNow: number;
+  /** Instant de la dernière relève : règle « en saison » des alertes et retard des urgences (S2). */
+  now: number;
   syndromic: SyndromicResponse | null;
   apl: AplDataset | null;
   hospitals: ReadonlyMap<string, EmergencySite>;
@@ -305,9 +337,9 @@ export function healthTooltipHtml(layerId: string, props: Readonly<Record<string
       return site ? hospitalTooltipHtml(site, d.hospitalsVintage) : null;
     }
     case LYR_HEALTH_HANTAVIRUS: return hantavirusTooltipHtml(props);
-    case LYR_HEALTH_URG_FILL: return urgencesTooltipHtml(name, code, d.syndromic, d.syndrome);
+    case LYR_HEALTH_URG_FILL: return urgencesTooltipHtml(name, code, d.syndromic, d.syndrome, d.now);
     case LYR_HEALTH_APL_FILL: return aplTooltipHtml(name, code, d.apl, d.profession);
-    case LYR_HEALTH_ALERT_FILL: return regionAlertTooltipHtml(name, code, d.alerts, d.alertsNow);
+    case LYR_HEALTH_ALERT_FILL: return regionAlertTooltipHtml(name, code, d.alerts, d.now);
     default: return null;
   }
 }

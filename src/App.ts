@@ -6666,8 +6666,8 @@ export class App {
   /** Veille sanitaire (spec 2026-10-03 § 2, § 3.1, § 3.2) : panneaux, niveau national de la fiche thème, panneau des sources daté (S1). */
   private async loadHealthSurveillance(keys: readonly HealthSurveillanceKey[] | 'all'): Promise<void> {
     if (keys !== 'all' && keys.length === 0) return;
-    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }] = await Promise.all([
-      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'),
+    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }, { urgencesLegend }] = await Promise.all([
+      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'), import('./components/deckgl/health-map.ts'),
     ]);
     const now = Date.now();
     const read = await fetchHealthSurveillance(this.currentHealth, now, keys);
@@ -6678,7 +6678,9 @@ export class App {
     this.veillePanel?.update(state);
     this.urgencesPanel?.update(state);
     this.mapContainer?.updateHealthAlerts(state.alerts.data, now);
-    this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null);
+    this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null, now);
+    // Légende Urgences datée (S1) ; en retard, « (en retard) » et couleurs retirées de la carte (S2).
+    this.mapLegend?.addCategory(urgencesLegend(HEALTH_URGENCES_LEGEND, state.syndromic.data, now));
     for (const [key, name] of HEALTH_STATUS_SOURCES) {
       if (keys === 'all' || keys.includes(key)) this.statusPanel?.updateSource(name, surveillanceStatus(state, key, now));
     }
@@ -6692,7 +6694,7 @@ export class App {
     this.currentHealthOffer = offer;
     this.accesSoinsPanel?.update(offer);
     this.hopitauxPanel?.update(offer);
-    this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data);
+    this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data, Date.now());
     this.mapContainer?.updateHospitals(offer.hospitals.data);
     this.statusPanel?.updateSource('DREES APL', offerStatus(offer, 'apl'));
     this.statusPanel?.updateSource('DREES SAE / FINESS', offerStatus(offer, 'hospitals'));

@@ -5,12 +5,14 @@ import type { EpidemicPhase, HospitalCategory, RegionalAlertLevel } from '../../
 import { levelHex } from '../../services/vigilance.ts';
 import { HEALTH_NOW, alertLevelsFixture, aplFixture, hospitalsFixture, syndromicFixture } from '../layer-panel/health.fixture.ts';
 import { NBSP } from '../layer-panel/format.ts';
+import type { LegendCategory } from '../MapLegend.ts';
 import { HOSPITAL_CATEGORY_LABEL } from '../layer-panel/health-format.ts';
 import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
 import {
   HEALTH_HOVER_LAYERS, HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX, HOSPITAL_COLOR, aplProp, aplTooltipHtml, colorFromProp,
   departmentHealthFeatures, hantavirusFeatures, hantavirusTooltipHtml, healthTooltipHtml, hospitalAuthorizations, hospitalFeatures,
-  hospitalPopupHtml, hospitalTooltipHtml, regionAlert, regionAlertFeatures, regionAlertTooltipHtml, urgencesProp, urgencesTooltipHtml,
+  hospitalPopupHtml, hospitalTooltipHtml, regionAlert, regionAlertFeatures, regionAlertTooltipHtml, urgencesLate, urgencesLegend, urgencesProp,
+  urgencesTooltipHtml,
   type HealthMapData,
 } from './health-map.ts';
 
@@ -49,7 +51,7 @@ describe('régions : alertes épidémiques en saison (spec § 3.1)', () => {
 
 describe('départements : urgences (spec § 3.2) et APL (§ 3.3)', () => {
   const fc = departmentHealthFeatures(
-    geo([['13', 'Bouches-du-Rhône'], ['75', 'Paris'], ['95', 'Val-d’Oise'], ['48', 'Lozère'], ['2A', 'Corse-du-Sud']]), syndromicFixture(), aplFixture());
+    geo([['13', 'Bouches-du-Rhône'], ['75', 'Paris'], ['95', 'Val-d’Oise'], ['48', 'Lozère'], ['2A', 'Corse-du-Sud']]), syndromicFixture(), aplFixture(), HEALTH_NOW);
   const p = (i: number): Record<string, unknown> => fc.features[i].properties ?? {};
   it('niveau saisonnier par syndrome ; sans valeur : propriété absente (transparent), jamais une couleur de niveau', () => {
     expect(p(0)[urgencesProp('ira')]).toBe(levelHex('jaune'));      // 2,415 contre un maximum de 2,3
@@ -72,7 +74,7 @@ describe('départements : urgences (spec § 3.2) et APL (§ 3.3)', () => {
     expect(colorFromProp(aplProp('sf'))).toEqual(['coalesce', ['get', 'apl_sf'], 'rgba(0, 0, 0, 0)']);
   });
   it('infobulle urgences : département, part aux urgences, part SOS Médecins, niveau, semaine, maximum de référence', () => {
-    const h = urgencesTooltipHtml('Bouches-du-Rhône', '13', syndromicFixture(), 'ira');
+    const h = urgencesTooltipHtml('Bouches-du-Rhône', '13', syndromicFixture(), 'ira', HEALTH_NOW);
     expect(h).toContain('<b>Bouches-du-Rhône (13)</b>');
     expect(h).toContain('IRA · S39');
     expect(h).toContain(`<span>Urgences</span><span>2,4${NBSP}% des passages</span>`);
@@ -80,12 +82,12 @@ describe('départements : urgences (spec § 3.2) et APL (§ 3.3)', () => {
     expect(h).toContain('<span>Niveau</span><span><i class="hm-dot" style="background:var(--sev-yellow)"></i>Jaune</span>');
     expect(h).toContain(`<span>Maximum des 3 saisons précédentes</span><span>2,3${NBSP}%</span>`);
     expect(h).toContain(`Au-dessus de ce maximum, de moins de 15${NBSP}%.`);
-    expect(urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'ira')).toContain('<span>SOS Médecins</span><span>n.d.</span>');
-    const nd = urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'bronchio');
+    expect(urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'ira', HEALTH_NOW)).toContain('<span>SOS Médecins</span><span>n.d.</span>');
+    const nd = urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'bronchio', HEALTH_NOW);
     expect(nd).toContain('<span>Urgences</span><span>n.d.</span>');
     expect(nd).toContain('<span>Niveau</span><span>n.d.</span>');
     expect(nd).toContain('Moins de deux saisons de référence.');
-    expect(urgencesTooltipHtml('<b>x</b>', '13', null, 'ira')).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(urgencesTooltipHtml('<b>x</b>', '13', null, 'ira', HEALTH_NOW)).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
   it('infobulle APL : valeur du département et de la France, rapport à la moyenne, niveau, millésime', () => {
     const mg = aplTooltipHtml('Val-d’Oise', '95', aplFixture(), 'mg');
@@ -97,6 +99,47 @@ describe('départements : urgences (spec § 3.2) et APL (§ 3.3)', () => {
     const kine = aplTooltipHtml('Val-d’Oise', '95', aplFixture(), 'kine');
     expect(kine).toContain('<span>Rapport à la moyenne nationale</span><span>0,77</span>');
     expect(aplTooltipHtml('Mayotte', '976', aplFixture(), 'mg')).toContain('<span>Département</span><span>n.d.</span>');
+  });
+});
+
+describe('S2 : données en retard, couleurs retirées', () => {
+  // S39 se termine le dimanche 27/09 : en retard après le 14/10 (fin de semaine + 17 jours).
+  const LATE_NOW = Date.parse('2026-10-15T06:00:00Z');
+  const depts = geo([['13', 'Bouches-du-Rhône'], ['75', 'Paris'], ['95', 'Val-d’Oise']]);
+  it('urgences en retard : aucune couleur de niveau sur la carte ; l’APL annuelle garde les siennes', () => {
+    expect(urgencesLate(syndromicFixture(), HEALTH_NOW)).toBe(false);
+    expect(urgencesLate(syndromicFixture(), LATE_NOW)).toBe(true);
+    expect(urgencesLate(null, LATE_NOW)).toBe(false);
+    const fc = departmentHealthFeatures(depts, syndromicFixture(), aplFixture(), LATE_NOW);
+    for (const f of fc.features) expect(Object.keys(f.properties ?? {}).filter((k) => k.startsWith('urg_'))).toEqual([]);
+    expect(fc.features[2].properties?.[aplProp('mg')]).toBe(levelHex('rouge'));
+  });
+  it('infobulle en retard : valeurs et semaine gardées, « (en retard) », niveau suspendu, aucune puce de couleur', () => {
+    const h = urgencesTooltipHtml('Bouches-du-Rhône', '13', syndromicFixture(), 'ira', LATE_NOW);
+    expect(h).toContain('IRA · S39 (en retard)');
+    expect(h).toContain(`<span>Urgences</span><span>2,4${NBSP}% des passages</span>`);
+    expect(h).toContain('<span>Niveau</span><span>n.d.</span>');
+    expect(h).toContain('Niveau saisonnier suspendu : données en retard.');
+    expect(h).not.toContain('hm-dot');
+    const data: HealthMapData = {
+      alerts: [], now: LATE_NOW, syndromic: syndromicFixture(), apl: null, hospitals: new Map(), hospitalsVintage: null, syndrome: 'ira', profession: 'mg',
+    };
+    expect(healthTooltipHtml(LYR_HEALTH_URG_FILL, { code: '13', nom: 'Bouches-du-Rhône' }, data)).toContain('(en retard)');
+    expect(h).not.toMatch(EM_DASH);
+  });
+  it('légende datée (S1) ; en retard : « (en retard) » et couleurs retirées ; sans semaine : légende de base', () => {
+    const base: LegendCategory = { id: 'healthOscour', title: 'Urgences', items: [], notes: ['Département sans couleur : moins de deux saisons de référence.'] };
+    expect(urgencesLegend(base, syndromicFixture(), HEALTH_NOW).notes)
+      .toEqual(['Données : S39 (21-27 sept.), publiées le 30/09.', 'Département sans couleur : moins de deux saisons de référence.']);
+    expect(urgencesLegend(base, syndromicFixture(), LATE_NOW).notes?.[0])
+      .toBe('Données : S39 (21-27 sept.), publiées le 30/09 (en retard) : couleurs de niveau retirées.');
+    expect(urgencesLegend(base, null, LATE_NOW)).toBe(base);
+  });
+  it('alertes : une ligne trop ancienne n’est jamais colorée par son niveau, elle passe hors saison en gris clair (pas de retard, S4)', () => {
+    // Épidémie publiée pour la semaine du 31/08 : début + 28 jours = 28/09, avant le 03/10.
+    const fc = regionAlertFeatures(geo([['11', 'Île-de-France']]), [line(3, '2026-08-31')], HEALTH_NOW);
+    expect(fc.features[0].properties?.['hmColor']).toBe(HEALTH_OFF_SEASON_HEX);
+    expect(regionAlertTooltipHtml('Île-de-France', '11', [line(3, '2026-08-31')], HEALTH_NOW)).not.toContain('hm-dot');
   });
 });
 
@@ -159,7 +202,7 @@ describe('sites d’urgences (spec § 3.4)', () => {
 
 describe('infobulle au survol : la couche la plus précise d’abord', () => {
   const data = (): HealthMapData => ({
-    alerts: alertLevelsFixture().levels, alertsNow: HEALTH_NOW, syndromic: syndromicFixture(), apl: aplFixture(),
+    alerts: alertLevelsFixture().levels, now: HEALTH_NOW, syndromic: syndromicFixture(), apl: aplFixture(),
     hospitals: new Map(hospitalsFixture().sites.map((s) => [s.finess, s] as const)), hospitalsVintage: 2025, syndrome: 'gastro', profession: 'kine',
   });
   it('ordre : site, marqueur hantavirus, urgences, APL, région', () => {

@@ -421,8 +421,8 @@ export class MapContainer {
     this.deckMap?.updateHealthAlerts(alerts, now);
   }
 
-  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null): void {
-    this.deckMap?.updateHealthDepartments(syndromic, apl);
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {
+    this.deckMap?.updateHealthDepartments(syndromic, apl, now);
   }
 
   setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {

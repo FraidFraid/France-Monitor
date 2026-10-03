@@ -489,7 +489,8 @@ export class DeckGLMap {
   private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
   // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
   private healthAlerts: AlertLevelsResponse | null = null;
-  private healthAlertsNow = 0;
+  /** Instant de la dernière relève : règle « en saison » des alertes et retard des urgences (S2). */
+  private healthNow = 0;
   private healthSyndromic: SyndromicResponse | null = null;
   private healthApl: AplDataset | null = null;
   private hospitalSites: ReadonlyMap<string, EmergencySite> = new Map();
@@ -9598,14 +9599,18 @@ export class DeckGLMap {
   /** Veille sanitaire : alertes Odissé par région (§ 3.1) ; `now` sert à la règle « en saison ». */
   updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
     this.healthAlerts = alerts;
-    this.healthAlertsNow = now;
+    this.healthNow = now;
     void this.renderHealthRegions();
   }
 
-  /** Urgences (§ 3.2) et APL (§ 3.3) : une source départementale, une propriété de couleur par syndrome et par profession. */
-  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null): void {
+  /**
+   * Urgences (§ 3.2) et APL (§ 3.3) : une source départementale, une propriété de couleur par syndrome et par profession ;
+   * `now` sert au retard des urgences (S2 : en retard, aucune couleur de niveau).
+   */
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {
     this.healthSyndromic = syndromic;
     this.healthApl = apl;
+    this.healthNow = now;
     void this.renderHealthDepartments();
   }
 
@@ -9645,7 +9650,7 @@ export class DeckGLMap {
     this.healthRegionsDirty = false;
     const geo = await this.getRegionsGeojson();
     const src = this.map?.getSource(SRC_HEALTH_REGIONS) as maplibregl.GeoJSONSource | undefined;
-    if (geo) src?.setData(regionAlertFeatures(geo, this.healthAlerts?.levels ?? [], this.healthAlertsNow));
+    if (geo) src?.setData(regionAlertFeatures(geo, this.healthAlerts?.levels ?? [], this.healthNow));
   }
 
   private async renderHealthDepartments(): Promise<void> {
@@ -9657,7 +9662,7 @@ export class DeckGLMap {
     this.healthDeptsDirty = false;
     const base = await this.getDepartmentsGeojson();
     const src = this.map?.getSource(SRC_HEALTH_DEPTS) as maplibregl.GeoJSONSource | undefined;
-    if (base) src?.setData(departmentHealthFeatures(base, this.healthSyndromic, this.healthApl));
+    if (base) src?.setData(departmentHealthFeatures(base, this.healthSyndromic, this.healthApl, this.healthNow));
   }
 
   /** Contours des régions (18, DROM compris), lus une fois ; un échec est relu au prochain affichage. */
@@ -9674,7 +9679,7 @@ export class DeckGLMap {
 
   private healthMapData(): HealthMapData {
     return {
-      alerts: this.healthAlerts?.levels ?? [], alertsNow: this.healthAlertsNow, syndromic: this.healthSyndromic, apl: this.healthApl,
+      alerts: this.healthAlerts?.levels ?? [], now: this.healthNow, syndromic: this.healthSyndromic, apl: this.healthApl,
       hospitals: this.hospitalSites, hospitalsVintage: this.hospitalsVintage,
       syndrome: this.healthUrgencesSyndrome, profession: this.healthAplProfession,
     };
