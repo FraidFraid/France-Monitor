@@ -11,6 +11,9 @@ export const SNCF_BASE = 'https://api.sncf.com/v1/coverage/sncf';
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 2;
 const MAX_TRIP_LOOKUPS = 40;
+const TRIP_CONCURRENCY = 4;
+const TRIP_FAILURE_MEMO_MS = 30 * 60_000;
+const TRIP_DEADLINE_MS = 25_000;
 const TRIP_CACHE_MS = 6 * 3_600_000;
 export const TOP_DELAYS = 10;
 
@@ -106,21 +109,28 @@ function toStop(raw, withDelay) {
   return { name: String(raw.stop_point.name ?? ''), lat, lon, delayMin: withDelay ? stopDelayMin(raw) : null };
 }
 
+/** Objets d'une perturbation qui sont des circulations (trains) ; les autres types d'objets sont ignorés. */
+function tripObjects(d) {
+  return (d?.impacted_objects ?? []).filter((o) => o?.pt_object && (o.pt_object.embedded_type ? o.pt_object.embedded_type === 'trip' : true));
+}
+
 /**
  * Train perturbé (contrat RailTrain) ; null si la perturbation est passée ou d'un effet non suivi.
  * `fallbackStops` : arrêts lus sur l'itinéraire quand la perturbation n'en publie pas (train supprimé).
+ * `impacted` : l'objet impacté lu (la première circulation par défaut).
  */
-export function toRailTrain(d, fallbackStops = null) {
-  const effect = EFFECTS[d?.severity?.effect];
+export function toRailTrain(d, fallbackStops = null, impacted = tripObjects(d)[0]) {
+  const rawEffect = d?.severity?.effect;
+  const effect = typeof rawEffect === 'string' && Object.hasOwn(EFFECTS, rawEffect) ? EFFECTS[rawEffect] : undefined;
   const status = d?.status === 'active' ? 'en-cours' : d?.status === 'future' ? 'a-venir' : null;
-  const obj = d?.impacted_objects?.[0]?.pt_object;
+  const obj = impacted?.pt_object;
   if (!effect || !status || !obj) return null;
   const kind = trainKind(obj.id);
-  const published = (d.impacted_objects[0].impacted_stops ?? []).map((s) => toStop(s, effect !== 'supprime')).filter(Boolean);
+  const published = (impacted.impacted_stops ?? []).map((s) => toStop(s, effect !== 'supprime')).filter(Boolean);
   const stops = published.length > 0 ? published : (fallbackStops ?? []);
   const delays = stops.map((s) => s.delayMin).filter((v) => v !== null);
   return {
-    id: String(d.id),
+    id: tripObjects(d).length > 1 ? `${d.id}#${obj.id}` : String(d.id),
     number: String(obj.trip?.name ?? obj.name ?? ''),
     kind,
     axis: kind === 'grandes-lignes' && stops.length > 0 ? trainAxis(stops) : null,
@@ -152,25 +162,36 @@ export function groupStats(key, label, trains) {
 
 const byDelayDesc = (a, b) => (b.delayMin ?? -1) - (a.delayMin ?? -1);
 
-/** Partie calculée de la réponse /api/transport/rail-overview (sans `errors`). */
-export function buildRailOverview(disruptions, tripStops = new Map()) {
-  const trains = [];
+/**
+ * Partie calculée de la réponse /api/transport/rail-overview (sans `errors`).
+ * Un train n'est compté qu'une fois : la perturbation la plus récente (`updated_at`) remplace les précédentes.
+ * `at` : heure de réponse de l'API (ISO UTC) ; à défaut, la dernière mise à jour de perturbation.
+ */
+export function buildRailOverview(disruptions, tripStops = new Map(), at = null) {
+  const byTrip = new Map();
   let updated = null;
   for (const d of disruptions) {
-    const tripId = d?.impacted_objects?.[0]?.pt_object?.id;
-    const train = toRailTrain(d, tripStops.get(tripId) ?? null);
-    if (!train) continue;
-    trains.push(train);
-    if (train.updatedAt && (!updated || train.updatedAt > updated)) updated = train.updatedAt;
+    for (const impacted of tripObjects(d)) {
+      const tripId = impacted.pt_object.id;
+      const train = toRailTrain(d, tripStops.get(tripId) ?? null, impacted);
+      if (!train) continue;
+      if (train.updatedAt && (!updated || train.updatedAt > updated)) updated = train.updatedAt;
+      const known = byTrip.get(tripId);
+      if (!known || train.updatedAt >= known.updatedAt) byTrip.set(tripId, train);
+    }
   }
+  const trains = [...byTrip.values()];
   const active = trains.filter((t) => t.status === 'en-cours');
   const longDistance = active.filter((t) => t.kind === 'grandes-lignes');
   const ter = active.filter((t) => t.kind === 'ter');
   const regionNames = [...new Set(ter.map((t) => t.region ?? 'Non rattaché'))];
+  const axes = AXIS_ORDER.map((axis) => groupStats(axis, AXIS_LABELS[axis], longDistance.filter((t) => t.axis === axis)));
+  const unattached = longDistance.filter((t) => t.axis === null);
+  if (unattached.length > 0) axes.push(groupStats('non-rattache', 'Non rattaché', unattached));
   return {
-    updatedAt: updated,
+    updatedAt: at ?? updated,
     longDistance: { active: longDistance.length, delayed15: longDistance.filter((t) => (t.delayMin ?? 0) >= 15).length },
-    axes: AXIS_ORDER.map((axis) => groupStats(axis, AXIS_LABELS[axis], longDistance.filter((t) => t.axis === axis))),
+    axes,
     regions: regionNames
       .map((name) => groupStats(name === 'Non rattaché' ? 'non-rattache' : name, name, ter.filter((t) => (t.region ?? 'Non rattaché') === name)))
       .sort((a, b) => b.trains - a.trains || a.label.localeCompare(b.label, 'fr')),
@@ -179,46 +200,73 @@ export function buildRailOverview(disruptions, tripStops = new Map()) {
   };
 }
 
-/** Perturbations du jour (au plus deux pages de 1 000). */
+/**
+ * Perturbations du jour (au plus deux pages de 1 000).
+ * @returns {Promise<{ disruptions: object[], at: string | null, total: number }>} `at` : heure de réponse de l'API
+ *   (`context.current_datetime`, heure de Paris) en ISO UTC ; `total` : nombre annoncé par l'API.
+ */
 export async function fetchDisruptions(now, auth) {
   const all = [];
+  let at = null;
+  let total = 0;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const json = await fetchStrictJson(disruptionsUrl(now, page), { headers: { Authorization: auth }, timeoutMs: 20_000 });
     if (!json || !Array.isArray(json.disruptions)) throw new SyntaxError('réponse SNCF sans « disruptions »');
     all.push(...json.disruptions);
-    const total = Number(json.pagination?.total_result ?? all.length);
+    at ??= parisLocalToIso(json.context?.current_datetime);
+    total = Number(json.pagination?.total_result ?? all.length);
     if (all.length >= total || json.disruptions.length === 0) break;
   }
-  return all;
+  return { disruptions: all, at, total };
 }
 
 const tripCache = new Map();
+const tripFailures = new Map();
 
 /** Réservé aux tests. */
 export function __resetSncfStateForTests() {
   tripCache.clear();
+  tripFailures.clear();
 }
 
-/** Arrêts des trains supprimés publiés sans arrêt (itinéraire gardé 6 h) ; rend aussi le nombre d'échecs. */
+/**
+ * Arrêts des trains supprimés publiés sans arrêt (itinéraire gardé 6 h ; échec mémorisé 30 min pour ne pas
+ * redemander à chaque lecture). Quatre lectures à la fois, 25 s au plus.
+ * Rend aussi le nombre d'échecs (lectures échouées, mémorisées ou abandonnées) et celui des trains non lus
+ * faute de place (au-delà de 40).
+ */
 export async function readCancelledTripStops(disruptions, auth, now) {
   const stops = new Map();
   let failures = 0;
-  const wanted = disruptions
-    .filter((d) => d?.severity?.effect === 'NO_SERVICE' && d.status !== 'past' && (d.impacted_objects?.[0]?.impacted_stops ?? []).length === 0)
-    .map((d) => d.impacted_objects?.[0]?.pt_object?.id)
-    .filter(Boolean)
-    .slice(0, MAX_TRIP_LOOKUPS);
-  for (const tripId of wanted) {
-    const cached = tripCache.get(tripId);
-    if (cached && now - cached.at < TRIP_CACHE_MS) { stops.set(tripId, cached.stops); continue; }
-    try {
-      const json = await fetchStrictJson(tripUrl(tripId), { headers: { Authorization: auth }, timeoutMs: 10_000 });
-      const list = (json?.vehicle_journeys?.[0]?.stop_times ?? []).map((s) => toStop(s, false)).filter(Boolean);
-      tripCache.set(tripId, { at: now, stops: list });
-      stops.set(tripId, list);
-    } catch {
-      failures += 1;
-    }
+  const ids = [];
+  for (const d of disruptions) {
+    if (d?.severity?.effect !== 'NO_SERVICE' || d.status === 'past') continue;
+    for (const o of tripObjects(d)) if ((o.impacted_stops ?? []).length === 0 && !ids.includes(o.pt_object.id)) ids.push(o.pt_object.id);
   }
-  return { stops, failures };
+  const skipped = Math.max(0, ids.length - MAX_TRIP_LOOKUPS);
+  const queue = [];
+  for (const tripId of ids.slice(0, MAX_TRIP_LOOKUPS)) {
+    const cached = tripCache.get(tripId);
+    const failedAt = tripFailures.get(tripId);
+    if (cached && now - cached.at < TRIP_CACHE_MS) stops.set(tripId, cached.stops);
+    else if (failedAt !== undefined && now - failedAt < TRIP_FAILURE_MEMO_MS) failures += 1;
+    else queue.push(tripId);
+  }
+  const deadline = Date.now() + TRIP_DEADLINE_MS;
+  const worker = async () => {
+    for (let tripId = queue.shift(); tripId !== undefined; tripId = queue.shift()) {
+      if (Date.now() > deadline) { failures += 1; continue; }
+      try {
+        const json = await fetchStrictJson(tripUrl(tripId), { headers: { Authorization: auth }, timeoutMs: 10_000 });
+        const list = (json?.vehicle_journeys?.[0]?.stop_times ?? []).map((s) => toStop(s, false)).filter(Boolean);
+        tripCache.set(tripId, { at: now, stops: list });
+        stops.set(tripId, list);
+      } catch {
+        tripFailures.set(tripId, now);
+        failures += 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(TRIP_CONCURRENCY, queue.length) }, worker));
+  return { stops, failures, skipped };
 }

@@ -13,10 +13,15 @@ export async function loadRailOverview(now = Date.now()) {
   if (!auth) return { ...empty, errors: ['SNCF : clé absente (SNCF_API_KEY)'] };
   try {
     return await cachedSource('traffic:sncf:overview', { ttlSec: 300, staleSec: 3600, shared: false }, async () => {
-      const disruptions = await fetchDisruptions(now, auth);
-      const { stops, failures } = await readCancelledTripStops(disruptions, auth, now);
-      const errors = failures > 0 ? [`SNCF, itinéraires des trains supprimés : ${failures} non lu${failures > 1 ? 's' : ''}`] : [];
-      return { ...buildRailOverview(disruptions, stops), errors };
+      const { disruptions, at, total } = await fetchDisruptions(now, auth);
+      const { stops, failures, skipped } = await readCancelledTripStops(disruptions, auth, now);
+      const errors = [];
+      if (disruptions.length < total) errors.push(`SNCF : perturbations tronquées (${disruptions.length} lues sur ${total})`);
+      if (failures > 0) errors.push(`SNCF, itinéraires des trains supprimés : ${failures} non lu${failures > 1 ? 's' : ''}`);
+      if (skipped > 0) errors.push(`SNCF, itinéraires des trains supprimés : ${skipped} au-delà de la limite de lecture`);
+      // Réponse de l'API sans heure ni perturbation : l'heure de notre lecture (l'API a répondu).
+      const overview = buildRailOverview(disruptions, stops, at);
+      return { ...overview, updatedAt: overview.updatedAt ?? new Date(now).toISOString(), errors };
     });
   } catch (err) {
     return { ...empty, errors: [sourceError('SNCF', err)] };

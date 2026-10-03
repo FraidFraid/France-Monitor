@@ -24,7 +24,7 @@ describe('fonctions pures', () => {
     expect(classifyCause(text)).toBe(kind);
   });
   it('information voyageur sans effet sur la circulation : écartée', () => {
-    expect(isNoise('Train complet', 'Train complet.')).toBe(true);
+    expect(isNoise("Train complet")).toBe(true);
     expect(isNoise('Voitures Hors Quai', '')).toBe(true);
     expect(isNoise('Arrêt déporté Bagnols Chadenet', '')).toBe(true);
     expect(isNoise("🛗Équipement en gare d'Albert hors service", "l'ascenseur voie 1/voie 2 est hors-service")).toBe(true);
