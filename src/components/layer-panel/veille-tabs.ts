@@ -113,9 +113,40 @@ function territorySection(state: HealthSurveillanceState, t: Territory, now: num
 
 // ─── International ───
 
-/** Épidémie d'un message : titre original avant « - » ou « , » (« Ebola disease caused by Bundibugyo virus »). */
+/** Séparateur maladie / lieux d'un titre OMS (« Avian Influenza A(H5N1) - Mexico », « Ebola …, Democratic Republic of the Congo & Uganda »). */
+const OUTBREAK_SEP = / [-–] |, /;
+
+/** Épidémie d'un message : titre original avant le séparateur (« Ebola disease caused by Bundibugyo virus »). */
 function outbreakKey(n: OutbreakNews): string {
-  return fold(n.originalTitle.split(/ - |, /)[0]).trim();
+  return fold(n.originalTitle.split(OUTBREAK_SEP)[0]).trim();
+}
+
+/** Lieux d'un message (titre original après le séparateur, « & », « and » ou virgule) ; aucun lieu : ensemble vide. */
+function outbreakPlaces(n: OutbreakNews): Set<string> {
+  const m = OUTBREAK_SEP.exec(n.originalTitle);
+  const rest = m ? n.originalTitle.slice(m.index + m[0].length) : '';
+  return new Set(rest.split(/\s*(?:,|&|\band\b)\s*/).map((p) => fold(p).trim()).filter((p) => p !== ''));
+}
+
+/**
+ * Messages groupés par épidémie : même maladie et au moins un lieu en commun (la série Ebola RDC, puis RDC et Ouganda, reste
+ * groupée ; H5N1 au Mexique et au Cambodge font deux lignes : aucun pays masqué). Deux messages sans lieu se groupent par maladie.
+ */
+function groupOutbreaks(news: readonly OutbreakNews[]): OutbreakNews[][] {
+  const groups: Array<{ key: string; places: Set<string>; items: OutbreakNews[] }> = [];
+  for (const n of news) {
+    const key = outbreakKey(n);
+    const places = outbreakPlaces(n);
+    const group = groups.find((g) => g.key === key
+      && (places.size === 0 ? g.places.size === 0 : [...places].some((p) => g.places.has(p))));
+    if (group) {
+      group.items.push(n);
+      for (const p of places) group.places.add(p);
+    } else {
+      groups.push({ key, places, items: [n] });
+    }
+  }
+  return groups.map((g) => g.items);
 }
 
 function whoSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
@@ -125,9 +156,7 @@ function whoSection(state: HealthSurveillanceState, now: number, open: OpenFn): 
   const sorted = [...d.who].sort((a, b) => b.date.localeCompare(a.date));
   const newest = sorted[0];
   if (!newest) return { ...base, summary: 'aucun message', html: emptyLine('Aucun message de l’OMS reçu.') };
-  const groups = new Map<string, OutbreakNews[]>();
-  for (const n of sorted) groups.set(outbreakKey(n), [...(groups.get(outbreakKey(n)) ?? []), n]);
-  const rows = [...groups.values()].slice(0, 6).map((g) => {
+  const rows = groupOutbreaks(sorted).slice(0, 6).map((g) => {
     const latest = g[0];
     const oldest = g[g.length - 1];
     const count = g.length > 1 ? ` · ${g.length} messages depuis le ${parisDay(oldest.date)}` : '';
@@ -140,7 +169,7 @@ function whoSection(state: HealthSurveillanceState, now: number, open: OpenFn): 
   return {
     ...base,
     summary: escapeHtml(`${recent} message${recent > 1 ? 's' : ''} en 90 jours · dernier le ${parisDay(newest.date)}`),
-    html: rows + note('Messages officiels de l’OMS (Disease Outbreak News), regroupés par épidémie ; titres traduits par dictionnaire, titre original en infobulle.'),
+    html: rows + note('Messages officiels de l’OMS (Disease Outbreak News), regroupés par épidémie (même maladie, au moins un pays en commun) ; titres traduits par dictionnaire, titre original en infobulle.'),
   };
 }
 

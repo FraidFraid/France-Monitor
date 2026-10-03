@@ -74,6 +74,20 @@ describe('vue Veille sanitaire : onglets Outre-mer, International, Produits (spe
     expect(h.indexOf('Hantavirus')).toBeLessThan(h.indexOf('Virus Nipah'));
     expect(h.indexOf('Virus Nipah')).toBeLessThan(h.indexOf('Fièvre jaune'));
   });
+  it('International : même maladie dans deux pays sans pays commun, deux lignes (aucun pays masqué) ; la série Ebola reste groupée', () => {
+    const h5 = (n: number, date: string, country: string, fr: string) => ({
+      id: `2026-DON${n}`, title: `Grippe aviaire A(H5N1), ${fr}`, originalTitle: `Avian Influenza A(H5N1) - ${country}`, date,
+      url: `https://www.who.int/emergencies/disease-outbreak-news/item/2026-DON${n}`, summary: '',
+    });
+    const state = withState((s) => {
+      if (s.international.data) s.international.data.who.push(h5(620, '2026-09-30', 'Mexico', 'Mexique'), h5(619, '2026-09-20', 'Cambodia', 'Cambodge'));
+    });
+    const h = sectionOf('international', 'who', state)?.html ?? '';
+    expect(h).toMatch(/Grippe aviaire A\(H5N1\), Mexique[^]*30\/09[^]*OMS, DON620<\/a><\/small>/);
+    expect(h).toMatch(/Grippe aviaire A\(H5N1\), Cambodge[^]*20\/09[^]*OMS, DON619<\/a><\/small>/);
+    expect(h).not.toContain('2 messages depuis le 20/09');
+    expect(h).toMatch(/Ebola \(virus Bundibugyo\), République démocratique du Congo<[^]*7 messages depuis le 03\/07/);
+  });
   it('International : trois rapports hebdomadaires de l’ECDC, semaine et sujets', () => {
     const s = sectionOf('international', 'ecdc');
     expect(s?.summary).toBe('semaine 40 · 02/10');
