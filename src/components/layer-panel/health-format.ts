@@ -1,8 +1,9 @@
 // src/components/layer-panel/health-format.ts : formats et lectures communs des panneaux Santé (spec 2026-10-03 § 1 et § 3) ;
 // pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) ; hausse d'un indicateur sanitaire en rouge, baisse en vert.
-import type { AplProfession, SyndromeKey, SyndromicResponse, SyndromicSeries } from '../../types/index.ts';
+import type { AplProfession, HospitalCategory, SyndromeKey, SyndromicResponse, SyndromicSeries } from '../../types/index.ts';
 import { URGENCES_PILL_SYNDROMES, franceRefs, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
 import { dataDateMs } from '../../services/health-surveillance.ts';
+import { DEPARTEMENT_NAMES } from '../../config/departements.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { formatPct, formatSignedPct, frNumber } from './format.ts';
 import { emptyLine, valueHtml } from './frame.ts';
@@ -243,4 +244,28 @@ export function aplProfessionLevel(p: AplProfession, value: number | null, natio
   if (value === null || !Number.isFinite(value)) return null;
   if (p === 'mg') return aplMgLevel(value);
   return national === null ? null : aplRatioLevel(value, national);
+}
+
+// ─── Hôpitaux : catégories (jetons --cat-hosp-*) et noms de départements (spec § 3.4, § 3.6) ───
+
+export const HOSPITAL_CATEGORY_ORDER: readonly HospitalCategory[] = ['chu', 'ch', 'private', 'gcs', 'army', 'other'];
+export const HOSPITAL_CATEGORY_LABEL: Readonly<Record<HospitalCategory, string>> = {
+  chu: 'CHU et CHR', ch: 'Centres hospitaliers', private: 'Cliniques privées', gcs: 'Groupements (GCS)', army: 'Hôpitaux des armées',
+  other: 'Autres établissements',
+};
+
+/** Couleur de catégorie d'un site (jeton CSS) ; « autres » reprend le gris de catégorie --mix-other. */
+export function hospitalCategoryVar(c: HospitalCategory): string {
+  return c === 'other' ? 'var(--mix-other)' : `var(--cat-hosp-${c})`;
+}
+
+/** Codes INSEE dans l'ordre de DEPARTEMENT_NAMES : 01 à 19, 2A, 2B, 21 à 95, puis les DROM. */
+const DEPARTEMENT_CODES: readonly string[] = [
+  ...Array.from({ length: 19 }, (_, i) => String(i + 1).padStart(2, '0')), '2A', '2B',
+  ...Array.from({ length: 75 }, (_, i) => String(i + 21)), '971', '972', '973', '974', '976',
+];
+const DEPARTEMENT_BY_CODE = new Map<string, string>(DEPARTEMENT_CODES.map((code, i) => [code, DEPARTEMENT_NAMES[i] ?? code]));
+
+export function departementName(code: string): string {
+  return DEPARTEMENT_BY_CODE.get(code) ?? code;
 }

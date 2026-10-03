@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { syndromicFixture } from './health.fixture.ts';
 import { NBSP } from './format.ts';
 import {
-  APL_PROFESSIONS, APL_UNIT, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
+  APL_PROFESSIONS, APL_UNIT, HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
   seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
   weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
 } from './health-format.ts';
@@ -94,5 +94,15 @@ describe('aides des panneaux Santé', () => {
       .toEqual(['rouge', 'rouge', null, null]);
     expect(APL_UNIT.sf).toBe('ETP pour 100 000 femmes');
     expect(APL_UNIT.inf).toBe('ETP pour 100 000 habitants');
+  });
+  it('hôpitaux : six catégories en jetons de catégorie, noms de départements dans l’ordre des codes INSEE', () => {
+    expect(HOSPITAL_CATEGORY_ORDER).toEqual(['chu', 'ch', 'private', 'gcs', 'army', 'other']);
+    expect(HOSPITAL_CATEGORY_LABEL.private).toBe('Cliniques privées');
+    expect(HOSPITAL_CATEGORY_ORDER.map(hospitalCategoryVar)).toEqual([
+      'var(--cat-hosp-chu)', 'var(--cat-hosp-ch)', 'var(--cat-hosp-private)', 'var(--cat-hosp-gcs)', 'var(--cat-hosp-army)', 'var(--mix-other)',
+    ]);
+    expect(['01', '19', '2A', '2B', '21', '59', '75', '95', '971', '976', '20'].map(departementName)).toEqual([
+      'Ain', 'Corrèze', 'Corse-du-Sud', 'Haute-Corse', 'Côte-d’Or', 'Nord', 'Paris', 'Val-d’Oise', 'Guadeloupe', 'Mayotte', '20',
+    ]);
   });
 });

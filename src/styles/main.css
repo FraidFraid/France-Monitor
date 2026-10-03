@@ -9,6 +9,8 @@
   --cat-gazole: #f59e0b; --cat-sp95: #38bdf8; --cat-sp98: #f43f5e; --cat-e10: #22c55e; --cat-gpl: #a78bfa;
   --cat-substation: #4fd1ff; --cat-pylon: #3b82f6; --cat-production: #2dd4bf;
   --cat-lng: #a78bfa; --cat-crude: #a16207; --cat-renewable: #4ade80;
+  /* Catégories d'hôpitaux (spec 2026-10-03 § 3.6) : sites d'urgences de la couche Hôpitaux, barre et légende du panneau */
+  --cat-hosp-chu: #64d2ff; --cat-hosp-ch: #bf5af2; --cat-hosp-private: #5e5ce6; --cat-hosp-gcs: #30b0c7; --cat-hosp-army: #ac8e68;
   /* Background */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
