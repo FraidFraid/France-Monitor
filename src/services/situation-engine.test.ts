@@ -334,8 +334,21 @@ describe('situation-engine · detectSituations', () => {
     assert.ok(s);
     assert.ok(s.summary.includes('53\u00a0sites mobiles tombés en 24\u00a0h, dont 43 dans le département Nord (59)'), s.summary);
     assert.ok(s.summary.includes('59\u00a0sites hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises'), s.summary);
-    assert.deepEqual(s.affectedZones.slice(0, 2), ['Nord (59)', 'Herault (34)']);
+    assert.deepEqual(s.affectedZones.slice(0, 2), ['Nord (59)', 'Hérault (34)']);
     assert.ok(!s.summary.includes('\u2014'));
+  });
+
+  it('telecom : départements accentués, Corse (2A, 2B), département absent dit « département non précisé », jamais « Inconnu »', () => {
+    const corse = telecomSituation(telecomRaw([...telecomBatch('2A', 25, 3), ...telecomBatch('2B', 4, 3), ...telecomBatch('07', 2, 3)]));
+    assert.ok(corse);
+    assert.deepEqual(corse.affectedZones, ['Corse-du-Sud (2A)', 'Haute-Corse (2B)', 'Ardèche (07)']);
+    assert.ok(corse.summary.includes('dont 25 dans le département Corse-du-Sud (2A)'), corse.summary);
+    // ARCEP sans département : « Inconnu » côté adaptateur (outages.ts), ou vide.
+    const unknown = telecomSituation(telecomRaw([...telecomBatch('Inconnu', 22, 2), ...telecomBatch('', 3, 2), ...telecomBatch('34', 4, 2)]));
+    assert.ok(unknown);
+    assert.ok(unknown.summary.includes('29\u00a0sites mobiles tombés en 24\u00a0h, dont 25 sans département précisé'), unknown.summary);
+    assert.deepEqual(unknown.affectedZones, ['département non précisé', 'Hérault (34)']);
+    assert.ok(!JSON.stringify(unknown).includes('Inconnu'));
   });
 
   it('telecom : les pannes électriques confirment sans escalader', () => {

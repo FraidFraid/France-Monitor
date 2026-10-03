@@ -399,9 +399,24 @@ function fmtInt(n: number): string {
   return n.toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, NBSP);
 }
 
+/** Panne ARCEP sans département (« Inconnu » côté adaptateur, ou vide) : regroupée sous cette clé, jamais affichée telle quelle. */
+const UNKNOWN_DEPT = '';
+const UNKNOWN_DEPT_LABEL = 'département non précisé';
+
+function telecomDeptKey(department: string | undefined): string {
+  const d = department?.trim() ?? '';
+  return d === '' || d.toLowerCase() === 'inconnu' ? UNKNOWN_DEPT : d;
+}
+
 function telecomDeptLabel(code: string): string {
+  if (code === UNKNOWN_DEPT) return UNKNOWN_DEPT_LABEL;
   const name = DEPARTMENTS[code]?.name;
   return name ? `${name} (${code})` : code;
+}
+
+/** « dans le département Nord (59) », ou « sans département précisé ». */
+function telecomDeptPhrase(code: string): string {
+  return code === UNKNOWN_DEPT ? 'sans département précisé' : `dans le département ${telecomDeptLabel(code)}`;
 }
 
 /**
@@ -419,7 +434,7 @@ function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now())
     const t = o.since ? Date.parse(o.since) : NaN;
     if (Number.isNaN(t) || t > nowMs || nowMs - t > TELECOM_RECENT_MS) continue;
     recent += 1;
-    const dept = o.department?.trim() || 'Inconnu';
+    const dept = telecomDeptKey(o.department);
     byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
   }
 
@@ -439,7 +454,7 @@ function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now())
 
   const zones = ranked.slice(0, 3).map(([d]) => telecomDeptLabel(d));
   const plural = recent > 1;
-  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h, dont ${fmtInt(topCount)} dans le département ${telecomDeptLabel(topDept)}`;
+  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h, dont ${fmtInt(topCount)} ${telecomDeptPhrase(topDept)}`;
   const stockText = `${fmtInt(stock)}${NBSP}site${stock > 1 ? 's' : ''} hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises`;
 
   return situation(
