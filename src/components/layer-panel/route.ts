@@ -8,7 +8,7 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
-import { barRow, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
+import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
 import {
   IMPORTANCE_LEVEL, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, TRAFFIC_THEME, clockOf, dataMs, dateOf, dirLoadLevel, emptyOrDown, fold, formatKm,
   formatKmh, formatMinutes, formatShare, glueUnits, note, plural, readErrors, shortDate, sourceDown, speedLevel, stamp,
@@ -58,6 +58,26 @@ export function sortRoadEvents(events: readonly RoadEvent[]): RoadEvent[] {
 
 function dirLate(n: RoadNationalResponse, now: number): boolean {
   return isTrafficDataLate('dir', n.publishedAt, now);
+}
+
+/**
+ * Flux DATEX des DIR non lu alors que d'autres parties ont répondu (publication absente) : panne nommée, comme l'API SNCF
+ * du panneau ferroviaire ; jamais un « 0 » ni un « (en retard) » (S3, S4). Vitesses, Traficolor, CNIR et TomTom restent.
+ */
+function dirDown(n: RoadNationalResponse | null): boolean {
+  return n !== null && n.publishedAt === null;
+}
+
+const DIR_DOWN_LINE = 'Flux des DIR indisponible : aucun événement lu, aucun chiffre affiché.';
+
+function dirDownSection(base: Omit<FicheSection, 'html'>): FicheSection {
+  return { ...base, summary: 'n.d.', html: emptyLine(DIR_DOWN_LINE) };
+}
+
+/** Date la plus récente parmi les parties lues (DIR, vitesses, Traficolor, CNIR) ; null sans aucune. */
+function lastNationalMs(n: RoadNationalResponse): number | null {
+  const all = [n.publishedAt, n.speeds.at, n.conceded.at, latestOfficial(n.agglos)].map(dataMs).filter((x): x is number => x !== null);
+  return all.length > 0 ? Math.max(...all) : null;
 }
 
 // ─── En-tête ───
@@ -130,6 +150,7 @@ const T2_NOTE = `Réseau national non concédé (DIR) ; les autoroutes concédé
 function eventsSection(n: RoadNationalResponse | null, canFocus: boolean, now: number, open: OpenFn): FicheSection {
   const base = { id: 'events', title: 'Événements en cours', collapsible: true, open: open('events', true) };
   if (!n) return { ...base, summary: 'n.d.', html: sourceDown('événements des DIR') };
+  if (dirDown(n)) return dirDownSection(base);
   const sorted = sortRoadEvents(n.events);
   if (sorted.length === 0) {
     return { ...base, summary: n.errors.length > 0 ? 'n.d.' : 'aucun',
@@ -153,6 +174,7 @@ function eventsSection(n: RoadNationalResponse | null, canFocus: boolean, now: n
 function dirsSection(n: RoadNationalResponse | null, now: number, open: OpenFn): FicheSection {
   const base = { id: 'dirs', title: 'Par direction des routes', collapsible: true, open: open('dirs', true) };
   if (!n) return { ...base, summary: 'n.d.', html: sourceDown('événements des DIR') };
+  if (dirDown(n)) return dirDownSection(base);
   const ranked = [...n.byDir].sort((a, b) => b.incidents - a.incidents || a.dir.localeCompare(b.dir, 'fr'));
   const top = ranked[0];
   if (!top) return { ...base, summary: 'n.d.', html: emptyOrDown(n.errors, 'Aucun incident en cours.', 'événements des DIR') };
@@ -284,6 +306,7 @@ function speedsSection(n: RoadNationalResponse | null, now: number, open: OpenFn
 function longTermSection(n: RoadNationalResponse | null, now: number, open: OpenFn): FicheSection {
   const base = { id: 'longterm', title: 'Fermetures et chantiers de longue durée', collapsible: true, open: open('longterm', false) };
   if (!n) return { ...base, summary: 'n.d.', html: sourceDown('événements des DIR') };
+  if (dirDown(n)) return dirDownSection(base);
   const items = [...n.longTerm].sort((a, b) => (a.kind === 'closure' ? 0 : 1) - (b.kind === 'closure' ? 0 : 1)
     || (dataMs(a.start) ?? 0) - (dataMs(b.start) ?? 0));
   const first = items[0];
@@ -308,8 +331,9 @@ function methodSection(input: RouteViewInput): FicheSection {
   const nLate = n ? dirLate(n, now) : false;
   const late = (b: boolean): string => (b ? ' (en retard)' : '');
   const offAt = n ? latestOfficial(n.agglos) : null;
+  const down = dirDown(n);
   const rowList = [
-    kvRow('Événements', `${sourceLinkHtml('DIR, DATEX II (Bison Futé)', DIR_URL)} · ${escapeHtml(state(n !== null, nationalError !== null,
+    kvRow('Événements', `${sourceLinkHtml('DIR, DATEX II (Bison Futé)', DIR_URL)} · ${escapeHtml(state(n !== null && !down, nationalError !== null || down,
       `publication de ${n ? clockOf(n.publishedAt, now) : 'n.d.'}${late(nLate)}`))}`),
     kvRow('Vitesses', `${sourceLinkHtml('DIR, stations QTV', QTV_URL)} · ${escapeHtml(state(n !== null, nationalError !== null,
       n?.speeds.at ? `mesure de ${clockOf(n.speeds.at, now)}${late(isTrafficDataLate('qtv', n.speeds.at, now))}` : 'source indisponible'))}`),
@@ -321,8 +345,9 @@ function methodSection(input: RouteViewInput): FicheSection {
       u ? `collecte de ${clockOf(u.collectedAt, now)}${late(isTrafficDataLate('tomtom', u.collectedAt, now))} · ${frNumber(u.quota.callsToday, 0)} appels sur ${frNumber(u.quota.limit, 0)} aujourd’hui` : ''))}`),
   ];
   const rows = rowList.join('');
-  const down = rowList.filter((row) => row.includes('source indisponible')).length;
+  const downCount = rowList.filter((row) => row.includes('source indisponible')).length;
   const html = rows
+    + (down ? note('Flux des DIR indisponible : aucune publication lue, aucun chiffre d’événement affiché ; vitesses, Traficolor, CNIR et TomTom restent lus.') : '')
     + note(`Périmètres : réseau routier national non concédé (DIR) ; les autoroutes concédées n’y figurent pas, leurs bouchons viennent du récapitulatif national du CNIR ; ${u ? `${u.agglos.length} agglomérations` : 'agglomérations'} (TomTom, Paris et Lyon en deux cadres). Jamais une couverture France entière.`)
     + note(`Pastille : rouge si un événement météo (neige, verglas, inondation, éboulement récent) touche au moins 2 DIR, ou au moins 5 coupures non planifiées de moins de 24${NBSP}h ; orange si un événement météo est actif, ou au moins 2 coupures ; jaune si au moins une coupure ou au moins 5 accidents ; vert sinon : les accidents ne dépassent jamais le jaune.`)
     + note(T2_NOTE)
@@ -332,7 +357,7 @@ function methodSection(input: RouteViewInput): FicheSection {
     + readErrors([...(n?.errors ?? []), ...(u?.errors ?? [])]);
   return {
     id: 'method', title: 'Méthode et sources', collapsible: true, open: open('method', false), tone: 'reference', html,
-    summary: escapeHtml(`5 sources${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`),
+    summary: escapeHtml(`5 sources${downCount > 0 ? ` · ${downCount} indisponible${downCount > 1 ? 's' : ''}` : ''}`),
   };
 }
 
@@ -355,6 +380,17 @@ export function buildRouteView(input: RouteViewInput): LayerView {
         status: ['DIR injoignable', urbanStamp(u, urbanError, now)],
       },
       sections, bodyHtml: sourceErrorCallout(null, now),
+    };
+  }
+  if (dirDown(n)) {
+    // Comme le panneau ferroviaire sans réponse SNCF : panne du flux nommée, aucun chiffre, les autres parties gardées.
+    return {
+      head: {
+        theme: TRAFFIC_THEME, title: TITLE, level: 'nd',
+        figure: { value: 'n.d.', caption: 'incidents en cours sur le réseau national non concédé', level: null },
+        status: [glueUnits(roadLevel(n).reason), urbanStamp(u, urbanError, now)],
+      },
+      sections, bodyHtml: nationalError !== null ? sourceErrorCallout(lastNationalMs(n), now) : undefined,
     };
   }
   return { head: headOf(input, n), sections, bodyHtml: nationalError !== null ? sourceErrorCallout(dataMs(n.publishedAt), now) : undefined };

@@ -221,6 +221,43 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(visibleText(m?.html ?? '')).toContain('source indisponible');
     expect(m?.summary).toBe('5 sources · 1 indisponible');
   });
+  it('flux DATEX en panne, les autres parties lues (publishedAt null) : panne nommée comme pour la SNCF, jamais un « 0 » ni « (en retard) »', () => {
+    const national = withNational((n) => {
+      n.publishedAt = null;
+      n.events = [];
+      n.longTerm = [];
+      n.byDir = [];
+      n.counts = { incidents: 0, accidents: 0, closures: 0, obstructions: 0, weather: 0, works: 0 };
+      n.errors = ['DIR : HTTP 503'];
+    });
+    const v = view({ national });
+    expect(v.head.level).toBe('nd');
+    expect(v.head.figure).toEqual({ value: 'n.d.', caption: 'incidents en cours sur le réseau national non concédé', level: null });
+    expect(v.head.status).toEqual([roadLevel(national).reason, 'TomTom\u00A015:00']);
+    expect(v.head.status[0]).toBe('flux des DIR indisponible');
+    expect(v.head.lead ?? null).toBeNull();
+    const all = renderLayerView('trafficRoad', v);
+    const text = visibleText(all);
+    expect(text).not.toMatch(/\(en retard\)|DIR, n\.d\.|DIR\u00A0n\.d\./);
+    expect(all).not.toContain('<b class="fmk-num lp-lvl');
+    expect(all).not.toMatch(/>0<\/b>/);
+    for (const id of ['events', 'dirs', 'longterm']) {
+      const s = v.sections.find((x) => x.id === id);
+      expect(s?.summary).toBe('n.d.');
+      expect(s?.html).toContain('Flux des DIR indisponible : aucun événement lu, aucun chiffre affiché.');
+    }
+    // Les autres parties restent : vitesses, Traficolor, CNIR, TomTom.
+    expect(v.sections.find((s) => s.id === 'speeds')?.html).toContain('89');
+    expect(v.sections.find((s) => s.id === 'agglos')?.html).toContain('169,5');
+    expect(v.sections.find((s) => s.id === 'conceded')?.html).toContain('A8, Italie');
+    const m = v.sections.find((s) => s.id === 'method');
+    expect(m?.summary).toBe('5 sources · 1 indisponible');
+    const mt = visibleText(m?.html ?? '');
+    expect(mt).toContain('DIR, DATEX II (Bison Futé) · source indisponible');
+    expect(mt).toContain('Flux des DIR indisponible : aucune publication lue, aucun chiffre d’événement affiché ; vitesses, Traficolor, CNIR et TomTom restent lus.');
+    expect(mt).not.toContain('publication de n.d.');
+    expect(v.bodyHtml).toBeUndefined();
+  });
   it('période réelle de chaque partie (T1, S1) : jamais « temps réel »', () => {
     const t = visibleText(html()).toLowerCase();
     expect(t).not.toContain('temps réel');
