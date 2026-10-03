@@ -64,6 +64,7 @@ export const ROUTES = {
   '/api/traffic/air': () => import('./_handlers/traffic/air.js'),
   '/api/traffic/flow': () => import('./_handlers/traffic/flow.js'),
   '/api/traffic/military': () => import('./_handlers/traffic/military.js'),
+  '/api/traffic/road-national': () => import('./_handlers/traffic/road-national.js'),
   '/api/traffic/road': () => import('./_handlers/traffic/road.js'),
   '/api/traffic/tile': () => import('./_handlers/traffic/tile.js'),
   '/api/transport/disruptions': () => import('./_handlers/transport/disruptions.js'),
