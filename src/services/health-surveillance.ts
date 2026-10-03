@@ -78,9 +78,20 @@ export function isRecallsResponse(v: unknown): v is RecallsResponse {
     && Array.isArray(v.byDay) && Array.isArray(v.latest) && isStringArray(v.errors);
 }
 
+/** Échec avant toute réponse : délai (AbortSignal.timeout) ou réseau, en français (jamais « Failed to fetch » brut). */
+function networkErrorMessage(err: unknown): string {
+  const name = typeof err === 'object' && err !== null && 'name' in err ? err.name : null;
+  return name === 'TimeoutError' || name === 'AbortError' ? 'délai dépassé' : 'source injoignable';
+}
+
 /** Lecture JSON stricte : HTTP non 2xx ou corps illisible (page HTML d'erreur, défi anti-robot) = erreur (S3). */
 export async function readHealthJson(url: string): Promise<unknown> {
-  const resp = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  let resp: Response;
+  try {
+    resp = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (err) {
+    throw new Error(networkErrorMessage(err));
+  }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   try {
     return (await resp.json()) as unknown;
@@ -136,6 +147,24 @@ export async function fetchHealthSurveillance(
     load('recalls', want('recalls'), previous?.recalls, now, isRecallsResponse),
   ]);
   return { syndromic, alerts, sentinelles, wastewater, international, ministry, drugs, recalls };
+}
+
+function copySlot<K extends HealthSurveillanceKey>(target: HealthSurveillanceState, source: HealthSurveillanceState, key: K): void {
+  target[key] = source[key];
+}
+
+/**
+ * Lectures concurrentes (démarrage, activation d'une couche, relève) : chacune part de l'état connu à son lancement ;
+ * à son retour, seules les sources qu'elle a lues remplacent l'état le plus récent (une lecture partielle terminée en
+ * dernier ne vide pas les autres sources).
+ */
+export function mergeSurveillance(
+  latest: HealthSurveillanceState | null, read: HealthSurveillanceState, keys: readonly HealthSurveillanceKey[] | 'all',
+): HealthSurveillanceState {
+  if (latest === null || keys === 'all') return read;
+  const merged: HealthSurveillanceState = { ...latest };
+  for (const key of keys) copySlot(merged, read, key);
+  return merged;
 }
 
 /** Tests seulement : vide le cache. */

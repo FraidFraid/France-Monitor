@@ -41,7 +41,7 @@ import { parseScoreLine, splitScoreLines, statusWordLevel, splitScoreSentences, 
 import { escapeHtml, safeHref, type EventDetailState } from '../france-intel-events.ts';
 import { energySection, fuelSection } from './france-indicators.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
-import { absoluteTime, intensityLevel, kvRow, meterRow, stepCurve, type CurvePoint } from './kit.ts';
+import { absoluteTime, intensityLevel, kvRow, levelDot, meterRow, stepCurve, type CurvePoint } from './kit.ts';
 import {
   digestChangeText,
   formatNumber,
@@ -59,6 +59,8 @@ import {
   type FicheSource,
   type Lang,
 } from './parts.ts';
+import { renderNdPill } from '../layer-panel/frame.ts';
+import type { NationalHealthSummary } from '../layer-panel/veille.ts';
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -88,6 +90,8 @@ export interface ThemeFicheInput {
   /** Couches critiques chargées : avant, « Chargement des données… », jamais « Rien à traiter » (relecture finale m1). */
   ready: boolean;
   lang: Lang;
+  /** Fiche thème Santé (spec 2026-10-03 § 3.5) : niveau national et ses quatre entrées ; null tant que la veille n'est pas chargée. */
+  health?: NationalHealthSummary | null;
 }
 
 function officialSignalText(o: OfficialSignal, lang: Lang): string {
@@ -121,10 +125,28 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
         { label: t(lang, 'Feux détectés', 'Fires detected'), value: String(s.fireDetections) },
       ];
     case 'health':
-      // Les données santé ne sont pas dans l'instantané national : les panneaux santé deviennent
-      // le contenu de ce thème à l'étape 3.
+      // Niveau national et entrées : section santé (healthIndicators), pas de chiffres isolés.
       return [];
   }
+}
+
+const HEALTH_PANELS: ReadonlyArray<readonly [string, string]> = [
+  ['health', 'Veille sanitaire'], ['healthOscour', 'Urgences et SOS Médecins'], ['healthApl', 'Accès aux soins'], ['hospitals', 'Hôpitaux'],
+];
+
+/** Fiche thème Santé (spec 2026-10-03 § 3.5) : niveau national, ses quatre entrées datées, liens d'ouverture des quatre panneaux. */
+function healthIndicators(summary: NationalHealthSummary | null, lang: Lang): string {
+  // Liens au format de « open-cyber » (france-indicators.ts) : FichePanel route data-action vers PosteSituation.runAction.
+  const links = `<div class="fmk-sub">${t(lang, 'Panneaux des couches', 'Layer panels')}</div><ul class="fiche-list">${HEALTH_PANELS.map(([key, label]) =>
+    `<li><button type="button" class="fmk-link" data-action="open-layer:${key}">${escapeHtml(label)}</button></li>`).join('')}</ul>`;
+  const title = `<div class="fmk-sub">${t(lang, 'Niveau national de santé', 'National health level')}</div>`;
+  if (!summary) return `${title}<p class="fiche-empty">${t(lang, 'Données de santé en chargement…', 'Health data loading…')}</p>${links}`;
+  const pill = summary.level === 'nd' ? renderNdPill() : renderVigilancePill(summary.level, lang);
+  const rows = summary.inputs.map((i) => {
+    const late = i.late ? t(lang, ' · en retard, écartée', ' · late, excluded') : '';
+    return `<li>${levelDot(i.late || i.level === 'nd' ? null : i.level)}${escapeHtml(`${i.label} : ${i.value} · ${i.period}${late}`)}</li>`;
+  }).join('');
+  return `${title}<p>${pill} ${escapeHtml(summary.driverPhrase)}</p><ul class="fiche-list">${rows}</ul>${links}`;
 }
 
 export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
@@ -176,6 +198,7 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
     + (signalRows ? `<div class="fmk-sub">${t(lang, 'Signaux officiels', 'Official signals')}</div><ul class="fiche-list">${signalRows}</ul>` : '')
     + (itemRows ? `<div class="fmk-sub">${t(lang, 'Éléments à traiter', 'Items to handle')}</div><ul class="fiche-list">${itemRows}</ul>` : '')
     + (theme === 'energy' ? energySection(input.snapshot.energy, lang).html + (fuelSection(input.snapshot.energy, lang)?.html ?? '') : '')
+    + (theme === 'health' ? healthIndicators(input.health ?? null, lang) : '')
     + `<p class="fmk-note">${t(lang, 'Le niveau du thème est le plus élevé de ses signaux officiels et de ses éléments à traiter.', 'The theme level is the highest of its official signals and items to handle.')}</p>`;
   const sorted = changes.sort(byTimeDesc);
   const sections: FicheSection[] = [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators }];

@@ -35,6 +35,13 @@ describe('offre de soins : fichiers annuels (spec 2026-10-03 § 2.7, § 2.8)', (
     expect(f.mock.calls.map((c) => c[0])).toEqual([APL_URL]);
     expect(b.apl.error).toBeNull();
   });
+  it('fichier injoignable (réseau) : message en français, données précédentes gardées', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const a = await fetchHealthOffer(offerFixture(), HEALTH_NOW);
+    expect(a.apl.error).toBe('source injoignable');
+    expect(a.hospitals.error).toBe('source injoignable');
+    expect(a.apl.data).toEqual(aplFixture());
+  });
   it('gardes de forme', () => {
     expect(isAplDataset(aplFixture())).toBe(true);
     expect(isHospitalsDataset(hospitalsFixture())).toBe(true);

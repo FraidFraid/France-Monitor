@@ -7,7 +7,7 @@ import {
 import {
   HEALTH_SURVEILLANCE_URLS, HEALTH_TTL_MS, fetchHealthSurveillance, isAlertLevelsResponse, isDrugShortagesV2, isInternationalResponse,
   isMinistryMessagesResponse, isRecallsResponse, isSentinellesNationalResponse, isSyndromicResponse, isWastewaterResponse,
-  resetHealthSurveillanceCache, surveillanceDataDate, surveillanceLate, surveillanceStatus, type HealthSurveillanceKey,
+  mergeSurveillance, resetHealthSurveillanceCache, surveillanceDataDate, surveillanceLate, surveillanceStatus, type HealthSurveillanceKey,
 } from './health-surveillance.ts';
 
 const KEYS = Object.keys(HEALTH_SURVEILLANCE_URLS) as HealthSurveillanceKey[];
@@ -78,6 +78,28 @@ describe('veille sanitaire : lecture client (spec 2026-10-03 § 2, S3)', () => {
     stubFetch({ sentinelles: { status: 503 } });
     const none = await fetchHealthSurveillance(null, HEALTH_NOW + 2000);
     expect(none.sentinelles).toEqual({ data: null, error: 'HTTP 503', fetchedAt: null });
+  });
+  it('réseau en échec ou délai dépassé : message en français, jamais le message natif du navigateur', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === HEALTH_SURVEILLANCE_URLS.recalls) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      throw new TypeError('Failed to fetch');
+    }));
+    const s = await fetchHealthSurveillance(surveillanceFixture(), HEALTH_NOW);
+    expect(s.syndromic).toEqual({ data: syndromicFixture(), error: 'source injoignable', fetchedAt: surveillanceFixture().syndromic.fetchedAt });
+    expect(s.recalls.error).toBe('délai dépassé');
+    expect(surveillanceStatus(s, 'syndromic', HEALTH_NOW).error).toBe('source injoignable');
+  });
+  it('lectures concurrentes : une lecture partielle terminée en dernier ne remplace que ses sources', async () => {
+    stubFetch();
+    const partial = await fetchHealthSurveillance(null, HEALTH_NOW, ['syndromic', 'alerts']);
+    const all = surveillanceFixture();
+    const merged = mergeSurveillance(all, partial, ['syndromic', 'alerts']);
+    expect(merged.syndromic).toBe(partial.syndromic);
+    expect(merged.alerts).toBe(partial.alerts);
+    expect(merged.sentinelles).toBe(all.sentinelles);
+    expect(merged.recalls).toBe(all.recalls);
+    expect(mergeSurveillance(all, partial, 'all')).toBe(partial);
+    expect(mergeSurveillance(null, partial, ['syndromic'])).toBe(partial);
   });
   it('gardes de forme', () => {
     expect([isSyndromicResponse(syndromicFixture()), isAlertLevelsResponse(alertLevelsFixture()), isSentinellesNationalResponse(sentinellesFixture()),

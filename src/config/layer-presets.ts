@@ -97,7 +97,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'health',
     label: 'Santé',
     icon: 'stethoscope',
-    description: 'Tout le thème santé : épidémiologie, urgences OSCOUR/SOS Médecins, déserts médicaux et hôpitaux.',
+    description: 'Tout le thème santé : veille sanitaire, urgences et SOS Médecins, accès aux soins et hôpitaux.',
     layers: ['health', 'healthOscour', 'healthApl', 'hospitals'],
   },
   {

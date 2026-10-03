@@ -29,7 +29,7 @@ import { levelHex, scoreLevel } from './services/vigilance.ts';
 import { eventMapPoints, v2FloodSegments } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -54,11 +54,9 @@ import type { DromEnergyPanel } from './components/DromEnergyPanel.ts';
 import { DayNightPanel } from './components/DayNightPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
 import type { DefensePanel } from './components/DefensePanel.ts';
-import type { NationalHealthPanel } from './components/NationalHealthPanel.ts';
 import type { WeatherRadarPanel } from './components/WeatherRadarPanel.ts';
 import type { WeatherRadarFrame, WeatherRadarStatus } from './services/weather-radar.ts';
 import { WEATHER_RADAR_LEGEND_ITEMS } from './config/weather-radar-legend.ts';
-import type { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
 import type { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
 import type { SentinelModal } from './components/SentinelModal.ts';
@@ -94,7 +92,6 @@ import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-region
 import { fetchMetropoles, type MetropoleConsumption } from './services/metropoles.ts';
 import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts';
 import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
-import { fetchHospitalsData } from './services/hospitals.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
 // transport.ts (~970 l.) chargé dynamiquement dans loadSncf/loadSncfFullCoverage + handler focus rail
@@ -134,9 +131,14 @@ import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from '.
 import { fetchNetworkOutages } from './services/internet-outages.ts';
 import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
-// fetchHealthData chargé dynamiquement dans loadHealth() (sort le service ~1300 l. du chunk critique)
-import { computeHealthBarometer } from './services/health-barometer.ts';
-import type { HealthBarometerMetrics } from './services/health-barometer.ts';
+// Services et panneaux santé chargés à la demande (loadHealthSurveillance, loadHealthOffer, ensure*Panel) : hors du chunk critique.
+import type { HealthSurveillanceKey, HealthSurveillanceState } from './services/health-surveillance.ts';
+import type { HealthOfferState } from './services/health-offer.ts';
+import type { NationalHealthSummary } from './components/layer-panel/veille.ts';
+import type { VeilleSanitairePanel } from './components/VeilleSanitairePanel.ts';
+import type { UrgencesPanel } from './components/UrgencesPanel.ts';
+import type { AccesSoinsPanel } from './components/AccesSoinsPanel.ts';
+import type { HopitauxPanel } from './components/HopitauxPanel.ts';
 import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
 import {
   DEFAULT_THREAT_EVENT_FILTERS,
@@ -147,11 +149,10 @@ import {
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 // oil.ts (~1250 l.) chargé dynamiquement dans loadOil() — sort du chunk critique
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
-import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
 import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
@@ -165,13 +166,6 @@ import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 import { loadDepartementIndex } from './services/departement-lookup.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
-// Cache global des dernières métriques du baromètre santé, partagé avec le handler
-// d'événement 'open-health-barometer' (évite un recalcul quand le panneau est rouvert).
-declare global {
-  interface Window {
-    __healthBarometerMetrics?: HealthBarometerMetrics;
-  }
-}
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -183,7 +177,7 @@ const POLL_NUCLEAR_MS                  = 15 * 60_000; // 15 min  (RTE real-time 
 const POLL_OIL_MS                      =  5 * 60_000; //  5 min  (fuel tension quasi-live + oil structural cache)
 const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
 const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
-const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
+const POLL_HEALTH_MS                   = 30 * 60_000; // 30 min  (veille sanitaire et offre de soins, hebdomadaires ou annuelles ; caches clients 25 min)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
 const POLL_ECO2MIX_MS                  =  5 * 60_000; //  5 min  (éCO2mix national, pas de 15 min ; cache client 4 min)
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
@@ -476,7 +470,7 @@ const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
 /**
  * Registre des panneaux flottants possédés par une couche (audit UI 2026-09
  * §5.3 point 3 : un seul panneau flottant ouvert à la fois). Un seul id
- * représentatif par panneau — les groupes santé/pannes réseau partagent un
+ * représentatif par panneau ; le groupe pannes réseau partage un
  * unique panneau pour plusieurs clés enfant (`layerKeys`). Source unique pour
  * getFloatingPanelInstance()/hideAllFloatingPanels()/showFloatingPanel()/le
  * sélecteur « panneaux ouverts » (refreshFloatingPanelSwitcher()). `id` est
@@ -510,7 +504,10 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'oilNetwork', label: 'Pétrole', icon: 'fuel', layerKeys: ['oilNetwork'] },
   { id: 'windMonitor', label: 'Éolien', icon: 'wind', layerKeys: ['windMonitor'] },
   { id: 'metroLoad', label: 'Charge métropolitaine', icon: 'building-2', layerKeys: ['metroLoad'] },
-  { id: 'health', label: 'Santé', icon: 'stethoscope', layerKeys: ['health', 'healthOscour', 'healthApl', 'hospitals'] },
+  { id: 'health', label: 'Veille sanitaire', icon: 'stethoscope', layerKeys: ['health'] },
+  { id: 'healthOscour', label: 'Urgences et SOS Médecins', icon: 'siren', layerKeys: ['healthOscour'] },
+  { id: 'healthApl', label: 'Accès aux soins', icon: 'map-pin', layerKeys: ['healthApl'] },
+  { id: 'hospitals', label: 'Hôpitaux', icon: 'hospital', layerKeys: ['hospitals'] },
   { id: 'trafficRoad', label: 'Trafic routier', icon: 'car-front', layerKeys: ['trafficRoad'] },
   { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
   { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
@@ -548,8 +545,26 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Pétrole SDES / INSEE': 'oilNetwork',
   'Vols Militaires ADS-B': 'military',
   'Feux NASA FIRMS': 'fires',
-  'Santé SPF / DREES': 'health',
+  'Santé publique France': 'healthOscour',
+  'Odissé alertes': 'health',
+  'Sentinelles': 'health',
+  'SUM’eau': 'health',
+  'OMS / ECDC': 'health',
+  'DGS-Urgent (PEPS)': 'health',
+  'ANSM Médicaments': 'health',
+  'RappelConso': 'health',
+  'DREES APL': 'healthApl',
+  'DREES SAE / FINESS': 'hospitals',
 };
+
+/** Couches santé, un panneau chacune (spec 2026-10-03 § 3). */
+type HealthLayerKey = 'health' | 'healthOscour' | 'healthApl' | 'hospitals';
+
+/** Sources santé du panneau des sources : date de la donnée, jamais l'heure de lecture (spec 2026-10-03 S1). */
+const HEALTH_STATUS_SOURCES: ReadonlyArray<readonly [HealthSurveillanceKey, string]> = [
+  ['syndromic', 'Santé publique France'], ['alerts', 'Odissé alertes'], ['sentinelles', 'Sentinelles'], ['wastewater', 'SUM’eau'],
+  ['international', 'OMS / ECDC'], ['ministry', 'DGS-Urgent (PEPS)'], ['drugs', 'ANSM Médicaments'], ['recalls', 'RappelConso'],
+];
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -1284,7 +1299,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'Santé / Épidémio',
+    label: 'Veille sanitaire',
     legend: HEALTH_ISS_LEGEND,
   },
   {
@@ -1292,7 +1307,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'APL – Déserts médicaux',
+    label: 'Accès aux soins',
     legend: HEALTH_APL_LEGEND,
   },
   {
@@ -1300,7 +1315,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'OSCOUR / SOS Médecins',
+    label: 'Urgences et SOS Médecins',
     legend: HEALTH_OSCOUR_LEGEND,
   },
   {
@@ -1550,8 +1565,10 @@ export class App {
   private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
   private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
-  private nationalHealthPanel: NationalHealthPanel | null = null;
-  private healthBarometerPanel: HealthBarometerPanel | null = null;
+  private veillePanel: VeilleSanitairePanel | null = null;
+  private urgencesPanel: UrgencesPanel | null = null;
+  private accesSoinsPanel: AccesSoinsPanel | null = null;
+  private hopitauxPanel: HopitauxPanel | null = null;
   private sentinelModal: SentinelModal | null = null;
   private rightSidebar: RightSidebar | null = null;
   private sentinelModalPromise: Promise<SentinelModal> | null = null;
@@ -1559,8 +1576,10 @@ export class App {
   private wildfireModal: WildfireDossierModal | null = null;
   private wildfireModalPromise: Promise<WildfireDossierModal> | null = null;
   private rightSidebarPromise: Promise<RightSidebar> | null = null;
-  private lastBarometerMetrics: HealthBarometerMetrics | null = null;
-  private currentHealthFeatures: HealthFeatures | null = null;
+  private currentHealth: HealthSurveillanceState | null = null;
+  private currentHealthOffer: HealthOfferState | null = null;
+  /** Niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5), recalculé à chaque relève. */
+  private currentHealthNational: NationalHealthSummary | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
   private searchModalPromise: Promise<SearchModal> | null = null;
@@ -1619,7 +1638,10 @@ export class App {
   private hydraulicPanelPromise: Promise<void> | null = null;
   private eolienPanelPromise: Promise<void> | null = null;
   private metroLoadPanelPromise: Promise<void> | null = null;
-  private healthPanelsPromise: Promise<void> | null = null;
+  private veillePanelPromise: Promise<void> | null = null;
+  private urgencesPanelPromise: Promise<void> | null = null;
+  private accesSoinsPanelPromise: Promise<void> | null = null;
+  private hopitauxPanelPromise: Promise<void> | null = null;
   private firesPanelPromise: Promise<void> | null = null;
   private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
@@ -1635,8 +1657,6 @@ export class App {
   /** Dernier panneau flottant ouvert explicitement via showFloatingPanel() —
    *  repli pour la puce active du sélecteur sur les panneaux sans isVisible(). */
   private currentFloatingPanelId: keyof MapLayers | null = null;
-  /** Vrai pendant une ouverture demandée par l'analyste (sélecteur de panneaux) — spec 2026-09-29 § 4. */
-  private explicitPanelRequest = false;
   private floatingPanelSwitcherEl: HTMLElement | null = null;
   /** true seulement pendant l'application du preset d'accueil (premier
    *  chargement OU état persisté "tout éteint") — voir init() et
@@ -1651,7 +1671,7 @@ export class App {
   private _intervalOil: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: PausableTimer | null = null;
   private _intervalEco2mix: PausableTimer | null = null;
-  private _intervalHealth: ReturnType<typeof setInterval> | null = null;
+  private _intervalHealth: PausableTimer | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
   private _intervalWeather: ReturnType<typeof setInterval> | null = null;
   private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
@@ -1695,7 +1715,7 @@ export class App {
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     this.removePausableInterval(this._intervalAirTraffic); this._intervalAirTraffic = null;
     this.removePausableInterval(this._intervalEco2mix); this._intervalEco2mix = null;
-    if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
+    this.removePausableInterval(this._intervalHealth); this._intervalHealth = null;
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
     if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
     if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
@@ -1754,7 +1774,7 @@ export class App {
    * setInterval qui se met en pause quand l'onglet est caché et reprend
    * (avec un tick immédiat) quand il redevient visible. Réservé aux pollings
    * agressifs (< 1 min) : vols militaires, AIS, trafic aérien, horloge,
-   * terminateur, check version ; et à la relève éCO2mix, dont la donnée doit être
+   * terminateur, check version ; à la relève éCO2mix et à la relève santé, dont la donnée doit être
    * fraîche dès le retour sur l'onglet.
    */
   private registerPausableInterval(fn: () => void, ms: number): PausableTimer {
@@ -2264,55 +2284,6 @@ export class App {
     return this.franceIntelPanelPromise;
   }
 
-  private async loadAplData(): Promise<void> {
-    const response = await fetch('/data/apl-departements.json');
-    const data = await response.json() as {
-      metadata?: { year?: number | string };
-      departements?: Array<{ code_insee?: unknown; apl_index?: unknown; category?: unknown }>;
-    };
-
-    // Mise à jour de l'année réelle si présente dans le JSON
-    if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
-      HEALTH_APL_LEGEND.source.year = data.metadata.year;
-      // addCategory remplace la catégorie existante (même id) en conservant sa visibilité.
-      this.mapLegend?.addCategory(HEALTH_APL_LEGEND);
-    }
-
-    const aplDepartments = Array.isArray(data?.departements)
-      ? data.departements.map((item): HealthDepartmentMetric => ({
-        depCode: String(item?.code_insee ?? '').trim(),
-        depName: '',
-        regionCode: '',
-        regionName: '',
-        incidenceRate: 0,
-        hospitalizations: 0,
-        reanimation: 0,
-        emergencyVisits: 0,
-        positivityRate: 0,
-        spfIncidence: null,
-        spfHospitalizations: null,
-        spfReanimation: null,
-        dreesUrgences: null,
-        sentinellesIncidence: null,
-        topMotifs: [],
-        aplIndex: Number.isFinite(Number(item?.apl_index)) ? Number(item.apl_index) : null,
-        aplCategory: (['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
-          ? String(item.category).trim().toLowerCase()
-          : 'indisponible') as APLCategory,
-        iss: 0,
-        issLevel: 1,
-        trend: 'stable',
-        source: 'drees',
-        updatedAt: new Date(),
-      })).filter((item) => item.depCode)
-      : [];
-
-    if (aplDepartments.length > 0) {
-      // undefined (pas {} as any) : ne pas écraser latestHealthFeatures du panneau santé.
-      this.mapContainer?.updateHealth([], undefined, aplDepartments);
-    }
-  }
-
   private readStoredActiveLayers(): Partial<MapLayers> | null {
     try {
       const raw = layerStateStorage(this.uiV2, window)?.getItem(ACTIVE_LAYERS_STORAGE_KEY);
@@ -2384,7 +2355,6 @@ export class App {
       });
     }
     this.startVersionPolling();
-    this.updateBarometerFabVisibility();
 
     // ── Cache warm-up (perf audit §6 item 1) ──────────────────────────────
     // initMap() below awaits a third-party network chain (cartocdn style →
@@ -2404,10 +2374,7 @@ export class App {
     // the map is ready but hidden layers must be set before any layer becomes visible.
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
     this.layerPanel?.updateLayers(this.activeLayers);
-    this.updateBarometerFabVisibility();
 
-    // APL JSON - non-blocking, the map does not need it to be interactive
-    this.loadAplData().catch((err) => console.warn('[Init] APL load failed:', err));
     // Apply URL view if present
     if (urlState.lng != null && urlState.lat != null) {
       this.mapContainer?.flyTo(urlState.lng, urlState.lat, urlState.zoom ?? 6);
@@ -2870,45 +2837,6 @@ export class App {
     }, { passive: true });
     mapArea.appendChild(underMapJumpBtn);
 
-    // ── Bouton flottant "Baromètre national Santé" ──
-    const barometerBtn = document.createElement('button');
-    barometerBtn.id = 'barometer-fab';
-    barometerBtn.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé : <span style="color:#888; font-weight:600;">${fmIcon('hourglass')} Chargement...</span>`;
-    barometerBtn.style.cssText = `
-      position: absolute;
-      top: 70px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 900;
-      background: linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95));
-      border: 1px solid rgba(255,255,255,0.18);
-      color: #e8e8ec;
-      padding: 8px 18px;
-      border-radius: 24px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      backdrop-filter: blur(12px);
-      transition: all 0.2s;
-      white-space: nowrap;
-      letter-spacing: 0.2px;
-    `;
-    barometerBtn.onmouseover = () => {
-      barometerBtn.style.background = 'linear-gradient(135deg, rgba(46,204,113,0.25), rgba(231,76,60,0.25))';
-      barometerBtn.style.borderColor = 'rgba(255,255,255,0.3)';
-      barometerBtn.style.transform = 'translateX(-50%) scale(1.04)';
-    };
-    barometerBtn.onmouseout = () => {
-      barometerBtn.style.background = 'linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95))';
-      barometerBtn.style.borderColor = 'rgba(255,255,255,0.18)';
-      barometerBtn.style.transform = 'translateX(-50%) scale(1)';
-    };
-    barometerBtn.onclick = () => {
-      document.dispatchEvent(new CustomEvent('open-health-barometer'));
-    };
-    mapArea.appendChild(barometerBtn);
-
     // ── « Panneaux ouverts » : sélecteur de panneau flottant unique ──
     // (audit UI 2026-09 §5.3 point 3). Peuplé/masqué par
     // refreshFloatingPanelSwitcher() — vide et caché tant qu'il n'y a pas
@@ -3138,68 +3066,11 @@ export class App {
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
 
-    // NationalHealthPanel/HealthBarometerPanel: lazy-loaded on first health
-    // layer activation — see ensureHealthPanels() below (perf audit task 5).
-
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
       this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err));
     }, POLL_NETWORK_BAROMETER_MS);
-
-    this.addGlobalListener(document, 'open-national-health', (e) => {
-      // v2 : jamais d'ouverture d'office (chargement, activation de couche), seulement à la demande.
-      if (!opensModulePanel(this.uiV2, (e as CustomEvent<unknown>).detail)) return;
-      // Only open if at least one health layer is active
-      const isAnyHealthLayerActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals;
-
-      if (!isAnyHealthLayerActive) return;
-
-      // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3) — sauf
-      // healthBarometerPanel, avec lequel nationalHealthPanel peut coexister
-      // (exception volontaire, cf. 'open-health-barometer' ci-dessous).
-      this.hideAllFloatingPanels('health');
-
-      // Utiliser les VRAIES features (currentHealthFeatures), pas getHealthFeatures()
-      // qui pouvait renvoyer l'objet vide posé par loadAplData → panneau non peuplé.
-      if (this.currentHealthFeatures) {
-        this.nationalHealthPanel?.show(this.currentHealthFeatures);
-      } else {
-        // Pas encore chargées : afficher le loader. loadHealth() (déclenché à
-        // l'activation) re-dispatch 'open-national-health' à la fin → peuplera.
-        this.nationalHealthPanel?.showLoading();
-      }
-      this.currentFloatingPanelId = 'health';
-      this.refreshFloatingPanelSwitcher();
-    });
-
-    this.addGlobalListener(document, 'open-health-barometer', () => {
-      // Only open if at least one health layer is active
-      const isAnyHealthLayerActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals;
-
-      if (!isAnyHealthLayerActive) return;
-
-      const metrics = window.__healthBarometerMetrics ?? this.lastBarometerMetrics;
-      if (metrics) {
-        // 'health' excepté : nationalHealthPanel peut rester ouvert à côté du
-        // baromètre (exception volontaire préexistante, pas de
-        // nationalHealthPanel?.hide() ici).
-        this.hideAllFloatingPanels('health');
-        this.healthBarometerPanel?.show(metrics);
-      } else {
-        // Données santé pas encore calculées → loader unifié, remplacé par show(metrics)
-        // dès que loadHealth() termine (cf. branche isVisible() dans loadHealth).
-        this.healthBarometerPanel?.showLoading();
-      }
-    });
 
     // France Intelligence Panel — open on sidebar button click or map click
     this.addGlobalListener(document, 'open-france-intel', () => {
@@ -3460,8 +3331,15 @@ export class App {
     } else if (name === 'Feux NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
       this.layoutEnvironmentFloatingPanels();
-    } else if (name === 'Santé SPF / DREES') {
-      if (this.currentHealthFeatures) this.nationalHealthPanel?.show(this.currentHealthFeatures);
+    } else if (name === 'Santé publique France') {
+      // Panneaux Santé créés à la demande : la source peut être cliquée avant toute activation de couche.
+      void this.ensureUrgencesPanel().then(() => this.urgencesPanel?.show(this.currentHealth));
+    } else if (SOURCE_NAME_TO_FLOATING_PANEL[name] === 'health') {
+      void this.ensureVeillePanel().then(() => this.veillePanel?.show(this.currentHealth));
+    } else if (name === 'DREES APL') {
+      void this.ensureAccesSoinsPanel().then(() => this.accesSoinsPanel?.show(this.currentHealthOffer));
+    } else if (name === 'DREES SAE / FINESS') {
+      void this.ensureHopitauxPanel().then(() => this.hopitauxPanel?.show(this.currentHealthOffer));
     }
     this.currentFloatingPanelId = SOURCE_NAME_TO_FLOATING_PANEL[name] ?? null;
     this.refreshFloatingPanelSwitcher();
@@ -3546,27 +3424,6 @@ export class App {
     return effective;
   }
 
-  private updateBarometerFabVisibility(): void {
-    const fab = document.getElementById('barometer-fab');
-
-    const isAnyHealthLayerActive =
-      this.activeLayers.health ||
-      this.activeLayers.healthApl ||
-      this.activeLayers.healthOscour ||
-      this.activeLayers.hospitals;
-
-    // Hide FAB when no health layer is active
-    if (fab) {
-      fab.style.display = isAnyHealthLayerActive ? 'block' : 'none';
-    }
-
-    // Also hide health panels when no health layer is active
-    if (!isAnyHealthLayerActive) {
-      this.healthBarometerPanel?.hide();
-      this.nationalHealthPanel?.hide();
-    }
-  }
-
   /**
    * Shared close handler for panels whose layer belongs to the energy group
    * (powerGrid, hydroBackbone, windMonitor, gasNetwork, oilNetwork, nuclearFleet).
@@ -3611,8 +3468,6 @@ export class App {
       console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
     }
     writeUrlState({ layers: this.activeLayers });
-
-    this.updateBarometerFabVisibility();
 
     // AIS loader lifecycle — show while waiting for first ship data, hide when layer off
     if (key === 'trafficMaritime' && !enabled && this._aisLoaderEl) {
@@ -3809,21 +3664,33 @@ export class App {
       if (enabled) this.renderEnvironmentPanel();
       else this.environmentPanel?.hide();
       this.layoutEnvironmentFloatingPanels();
-    } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
-      const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      // Lazy-load les VRAIES features santé si pas encore chargées. On teste
-      // currentHealthFeatures (et non hasHealthData, que loadAplData force à true),
-      // sinon activer l'onglet APL n'aurait jamais peuplé le panneau santé.
-      if (enabled && !this.currentHealthFeatures) {
-        this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
+    } else if (key === 'health') {
+      if (this.activeLayers.health) {
+        this.loadHealthSurveillance('all').catch((err) => console.error('[App] Veille sanitaire indisponible', err));
+        this.veillePanel?.show(this.currentHealth);
+      } else {
+        this.veillePanel?.hide({ silent: true });
       }
-      if (enabled && anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.explicitPanelRequest } }));
-      } else if (!anyHealthActive) {
-        this.healthBarometerPanel?.hide();
-        this.nationalHealthPanel?.hide();
+    } else if (key === 'healthOscour') {
+      if (this.activeLayers.healthOscour) {
+        this.loadHealthSurveillance(['syndromic', 'alerts']).catch((err) => console.error('[App] Urgences indisponibles', err));
+        this.urgencesPanel?.show(this.currentHealth);
+      } else {
+        this.urgencesPanel?.hide({ silent: true });
+      }
+    } else if (key === 'healthApl') {
+      if (this.activeLayers.healthApl) {
+        this.loadHealthOffer().catch((err) => console.error('[App] APL indisponible', err));
+        this.accesSoinsPanel?.show(this.currentHealthOffer);
+      } else {
+        this.accesSoinsPanel?.hide({ silent: true });
+      }
+    } else if (key === 'hospitals') {
+      if (this.activeLayers.hospitals) {
+        this.loadHealthOffer().catch((err) => console.error('[App] Hôpitaux indisponibles', err));
+        this.hopitauxPanel?.show(this.currentHealthOffer);
+      } else {
+        this.hopitauxPanel?.hide({ silent: true });
       }
     } else if (key === 'sovereignty') {
       // Group master: show/hide child panels based on which sub-layers are active
@@ -4005,7 +3872,7 @@ export class App {
   // doesn't exist yet when onLayerToggle's synchronous _handlePanelVisibility
   // call runs) — but does NOT re-trigger the underlying data load
   // (loadOil/loadNuclear/loadEolien/loadCyber/refreshHydraulicSignalSources/
-  // loadHealth/loadDromEnergy), since _handlePanelVisibility already did
+  // loadHealthSurveillance/loadHealthOffer/loadDromEnergy), since _handlePanelVisibility already did
   // that on the original toggle; re-triggering here would risk a duplicate
   // in-flight request if the chunk resolves before that fetch completes.
 
@@ -4083,28 +3950,78 @@ export class App {
     return this.metroLoadPanelPromise;
   }
 
-  private ensureHealthPanels(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.healthPanelsPromise ??= Promise.all([
-      import('./components/NationalHealthPanel.ts'),
-      import('./components/HealthBarometerPanel.ts'),
-    ]).then(([{ NationalHealthPanel }, { HealthBarometerPanel }]) => {
-      const nationalPanel = new NationalHealthPanel(this.floatContainerEl!);
-      nationalPanel.mount();
-      this.nationalHealthPanel = nationalPanel;
-
-      const barometerPanel = new HealthBarometerPanel(this.floatContainerEl!);
-      barometerPanel.mount();
-      this.healthBarometerPanel = barometerPanel;
-
-      const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      if (anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health'));
-      }
+  private ensureVeillePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.veillePanelPromise ??= import('./components/VeilleSanitairePanel.ts').then(({ VeilleSanitairePanel }) => {
+      const panel = new VeilleSanitairePanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('health'));
+      panel.mount();
+      this.veillePanel = panel;
+      if (this.activeLayers.health) panel.show(this.currentHealth);
     });
-    return this.healthPanelsPromise;
+    return this.veillePanelPromise;
+  }
+
+  private ensureUrgencesPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.urgencesPanelPromise ??= import('./components/UrgencesPanel.ts').then(({ UrgencesPanel }) => {
+      const panel = new UrgencesPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('healthOscour'));
+      panel.mount();
+      this.urgencesPanel = panel;
+      if (this.activeLayers.healthOscour) panel.show(this.currentHealth);
+    });
+    return this.urgencesPanelPromise;
+  }
+
+  private ensureAccesSoinsPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.accesSoinsPanelPromise ??= import('./components/AccesSoinsPanel.ts').then(({ AccesSoinsPanel }) => {
+      const panel = new AccesSoinsPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('healthApl'));
+      panel.mount();
+      this.accesSoinsPanel = panel;
+      if (this.activeLayers.healthApl) panel.show(this.currentHealthOffer);
+    });
+    return this.accesSoinsPanelPromise;
+  }
+
+  private ensureHopitauxPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.hopitauxPanelPromise ??= import('./components/HopitauxPanel.ts').then(({ HopitauxPanel }) => {
+      const panel = new HopitauxPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('hospitals'));
+      panel.mount();
+      this.hopitauxPanel = panel;
+      if (this.activeLayers.hospitals) panel.show(this.currentHealthOffer);
+    });
+    return this.hopitauxPanelPromise;
+  }
+
+  /** Croix d'un panneau Santé : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux). */
+  private closeHealthLayer(key: HealthLayerKey): void {
+    if (!this.activeLayers[key]) return;
+    this.onLayerToggle(key, false);
+    this.layerPanel?.updateLayers(this.activeLayers);
+  }
+
+  /** Lien d'une fiche (thème Santé) vers le panneau d'une couche : active la couche si besoin, puis ouvre son panneau. */
+  private openLayerPanelFromFiche(key: string): void {
+    const def = FLOATING_PANEL_DEFS.find((d) => d.id === key);
+    if (!def) return;
+    if (!this.activeLayers[def.id]) this.onLayerToggle(def.id, true, { suppressPanel: true });
+    this.layerPanel?.updateLayers(this.activeLayers);
+    void Promise.all(this.ensureLazyPanelForLayer(def.id)).then(() => this.showFloatingPanel(def.id));
+  }
+
+  /** Sources de veille à relire : toutes pour Veille sanitaire, urgences et alertes pour Urgences seule, aucune sinon. */
+  private healthSurveillanceKeys(): readonly HealthSurveillanceKey[] | 'all' {
+    if (this.activeLayers.health) return 'all';
+    return this.activeLayers.healthOscour ? ['syndromic', 'alerts'] : [];
   }
 
   private ensureWeatherRadarPanel(): Promise<void> {
@@ -4419,11 +4336,10 @@ export class App {
       case 'hydroBackbone': return [this.ensureHydraulicPanel()];
       case 'windMonitor': return [this.ensureEolienPanel()];
       case 'metroLoad': return [this.ensureMetroLoadPanel()];
-      case 'health':
-      case 'healthApl':
-      case 'healthOscour':
-      case 'hospitals':
-        return [this.ensureHealthPanels()];
+      case 'health': return [this.ensureVeillePanel()];
+      case 'healthOscour': return [this.ensureUrgencesPanel()];
+      case 'healthApl': return [this.ensureAccesSoinsPanel()];
+      case 'hospitals': return [this.ensureHopitauxPanel()];
       case 'fires': return [this.ensureFiresPanel()];
       case 'weatherRadar': return [this.ensureWeatherRadarPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
@@ -4458,7 +4374,7 @@ export class App {
 
   private getFloatingPanelInstance(key: keyof MapLayers): { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null {
     // Accepts either a def's representative `id` or any of its `layerKeys`
-    // members (e.g. 'healthOscour' resolves to the same panel as 'health') —
+    // members (e.g. 'outagesTelecom' resolves to the same panel as 'outagesElec'):
     // callers like activateLayerSilently() pass the exact key that was just
     // toggled, which isn't always the representative one.
     const id = this.floatingPanelIdForLayerKey(key) ?? key;
@@ -4475,7 +4391,10 @@ export class App {
       case 'oilNetwork': return this.oilPanel;
       case 'windMonitor': return this.eolienPanel;
       case 'metroLoad': return this.metroLoadPanel;
-      case 'health': return this.nationalHealthPanel;
+      case 'health': return this.veillePanel;
+      case 'healthOscour': return this.urgencesPanel;
+      case 'healthApl': return this.accesSoinsPanel;
+      case 'hospitals': return this.hopitauxPanel;
       case 'trafficRoad': return this.trafficPanel;
       // MaritimePanel has a private `isVisible` field of its own (unrelated
       // to the optional method this interface declares) — TS treats that as
@@ -4496,9 +4415,7 @@ export class App {
   /** Hides every layer-owned floating panel (FLOATING_PANEL_DEFS) plus the
    *  France Intel drawer, optionally sparing one — the shared "one floating
    *  panel at a time" primitive (audit UI 2026-09 §5.3.3). `exceptId` is used
-   *  by showFloatingPanel() (about to show it) and by the health-barometer
-   *  open path (nationalHealthPanel/healthBarometerPanel are allowed to
-   *  coexist, a pre-existing, intentional exception). */
+   *  by showFloatingPanel() (about to show it). */
   private hideAllFloatingPanels(exceptId?: keyof MapLayers): void {
     for (const def of FLOATING_PANEL_DEFS) {
       if (def.id === exceptId) continue;
@@ -4521,12 +4438,7 @@ export class App {
   private showFloatingPanel(id: keyof MapLayers): void {
     this.syncV2ColumnVars();
     this.hideAllFloatingPanels(id);
-    this.explicitPanelRequest = true;
-    try {
-      this._handlePanelVisibility(id, true);
-    } finally {
-      this.explicitPanelRequest = false;
-    }
+    this._handlePanelVisibility(id, true);
     this.currentFloatingPanelId = id;
     this.refreshFloatingPanelSwitcher();
   }
@@ -6757,97 +6669,53 @@ export class App {
       .catch(() => {});
   }
 
-  private async loadHealth(): Promise<void> {
-    this.statusPanel?.updateSource('SPF / DREES', { status: 'loading', lastUpdate: null });
-    this.statusPanel?.updateSource('Sentinelles', { status: 'loading', lastUpdate: null });
-    this.statusPanel?.updateSource('ANSM Médicaments', { status: 'loading', lastUpdate: null });
-    const { fetchHealthData } = await import('./services/health.ts');
-    const payload = await fetchHealthData();
-    this.currentHealthFeatures = payload.healthFeatures;
-
-    let sentinellesScore = undefined;
-    try {
-      sentinellesScore = computeSentinellesBarometerFromIndicators(
-        payload.healthFeatures.sentinellesIndicators ?? []
-      );
-    } catch (err) {
-      console.error("Failed to load or compute Sentinelles data for Barometer", err);
+  /** Veille sanitaire (spec 2026-10-03 § 2, § 3.1, § 3.2) : panneaux, niveau national de la fiche thème, panneau des sources daté (S1). */
+  private async loadHealthSurveillance(keys: readonly HealthSurveillanceKey[] | 'all'): Promise<void> {
+    if (keys !== 'all' && keys.length === 0) return;
+    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }] = await Promise.all([
+      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'),
+    ]);
+    const now = Date.now();
+    const read = await fetchHealthSurveillance(this.currentHealth, now, keys);
+    // Lectures concurrentes (démarrage et couche restaurée, relève) : seules les sources lues remplacent l'état courant.
+    const state = mergeSurveillance(this.currentHealth, read, keys);
+    this.currentHealth = state;
+    this.currentHealthNational = nationalSummary(state, now);
+    this.veillePanel?.update(state);
+    this.urgencesPanel?.update(state);
+    for (const [key, name] of HEALTH_STATUS_SOURCES) {
+      if (keys === 'all' || keys.includes(key)) this.statusPanel?.updateSource(name, surveillanceStatus(state, key, now));
     }
-
-
-    // Pass departments (preferred) and regions as fallback, plus healthFeatures
-    this.mapContainer?.updateHealth(payload.regions, payload.healthFeatures, payload.departments);
-
-    // Compute and expose barometer — reuses already-loaded data, no extra fetch
-    if (payload.departments.length > 0) {
-      const metrics = computeHealthBarometer(
-        payload.departments,
-        payload.healthFeatures,
-        this.lastBarometerMetrics ?? undefined,
-        sentinellesScore,
-      );
-      this.lastBarometerMetrics = metrics;
-
-      // Trigger barometer open event if panel is already visible
-      if (this.healthBarometerPanel?.isVisible()) {
-        this.healthBarometerPanel.show(metrics);
-      }
-
-      // Store on window for 'open-health-barometer' event handler
-      window.__healthBarometerMetrics = metrics;
-
-      // Update FAB button to show score + ready state
-      const fab = document.getElementById('barometer-fab');
-      if (fab) {
-        const color = metrics.levelColor;
-        fab.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé : <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
-        fab.style.borderColor = `${color}55`;
-      }
-    }
-    const hasData = payload.departments.length > 0 || payload.regions.length > 0;
-    const anyHealthActive =
-      this.activeLayers.health || this.activeLayers.healthApl ||
-      this.activeLayers.healthOscour || this.activeLayers.hospitals;
-    // Ré-ouvre/peuple le panneau dès qu'UN sous-onglet santé (dont APL) est actif —
-    // sinon activer APL seul ouvrait un panneau jamais peuplé.
-    if (hasData && anyHealthActive) {
-      // Un panneau déjà ouvert à la demande (chargement affiché) se remplit : c'est la même demande.
-      document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.nationalHealthPanel?.isVisible() === true } }));
-    }
-    this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);
-    const ss = payload.healthFeatures.sourceStatus;
-    this.statusPanel?.updateSource('SPF / DREES', {
-      status: ss.santePubliqueFrance === 'ok' || ss.drees === 'ok' ? 'ok' : 'stale',
-      lastUpdate: new Date()
-    });
-    this.statusPanel?.updateSource('Sentinelles', {
-      status: ss.sentinelles,
-      lastUpdate: new Date()
-    });
-    this.statusPanel?.updateSource('ANSM Médicaments', {
-      status: ss.drugShortages,
-      lastUpdate: new Date()
-    });
+    this.repaintPoste();
   }
 
+  /** Offre de soins (APL, hôpitaux) : fichiers annuels, panneaux, panneau des sources sur la date de publication (S1). */
+  private async loadHealthOffer(): Promise<void> {
+    const { fetchHealthOffer, offerStatus } = await import('./services/health-offer.ts');
+    const offer = await fetchHealthOffer(this.currentHealthOffer);
+    this.currentHealthOffer = offer;
+    this.accesSoinsPanel?.update(offer);
+    this.hopitauxPanel?.update(offer);
+    this.statusPanel?.updateSource('DREES APL', offerStatus(offer, 'apl'));
+    this.statusPanel?.updateSource('DREES SAE / FINESS', offerStatus(offer, 'hospitals'));
+  }
+
+  /**
+   * Relève santé (spec 2026-10-03 § 3) : toutes les 30 min tant qu'une couche santé est active ; pausée onglet caché, relève
+   * immédiate au retour (registerPausableInterval) ; les caches clients (25 min) sont plus courts que la relève.
+   */
   private startHealthPolling(): void {
-    if (this._intervalHealth !== null) clearInterval(this._intervalHealth);
-
-    this._intervalHealth = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      const isHealthContextActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals ||
-        this.nationalHealthPanel?.isVisible() === true ||
-        this.healthBarometerPanel?.isVisible() === true;
-
-      if (!isHealthContextActive) return;
-
-      this.loadHealth().catch((err) => {
-        console.error('[App] Health poll error', err);
-      });
+    if (this._intervalHealth !== null) return;
+    let inFlight = false;
+    this._intervalHealth = this.registerPausableInterval(() => {
+      if (inFlight) return;
+      const keys = this.healthSurveillanceKeys();
+      const offer = this.activeLayers.healthApl || this.activeLayers.hospitals;
+      if (keys !== 'all' && keys.length === 0 && !offer) return;
+      inFlight = true;
+      Promise.all([this.loadHealthSurveillance(keys), offer ? this.loadHealthOffer() : Promise.resolve()])
+        .catch((err) => console.error('[App] Health poll error', err))
+        .finally(() => { inFlight = false; });
     }, POLL_HEALTH_MS);
   }
 
@@ -7199,19 +7067,6 @@ export class App {
     }, POLL_DROM_LIVE_MS);
   }
 
-  private async loadHospitals(): Promise<void> {
-    this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: 'loading', lastUpdate: null });
-    const hospitals = await fetchHospitalsData();
-    // Assuming mapContainer.updateHospitals will be implemented in DeckGLMap
-    this.mapContainer?.updateHospitals(hospitals);
-
-    const hasData = hospitals.features.length > 0;
-    // Legend visibility follows user's layer toggle, not data availability
-    this.mapLegend?.setCategoryVisibility('hospitals', hasData && this.activeLayers.hospitals);
-
-    this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: hasData ? 'ok' : 'error', lastUpdate: new Date() });
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // LOAD ALL LAYERS — Pattern WorldMonitor (static first, then parallel async)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7368,15 +7223,13 @@ export class App {
         })
       },
       {
-        name: 'health', task: this.loadHealth().catch(() => {
-          this.statusPanel?.updateSource('SPF / DREES', { status: 'error', lastUpdate: new Date() });
-          this.statusPanel?.updateSource('Sentinelles', { status: 'error', lastUpdate: new Date() });
-          this.statusPanel?.updateSource('ANSM Médicaments', { status: 'error', lastUpdate: new Date() });
+        name: 'health', task: this.loadHealthSurveillance('all').catch(() => {
+          this.statusPanel?.updateSource('Santé publique France', { status: 'error', lastUpdate: null });
         })
       },
       {
-        name: 'hospitals', task: this.loadHospitals().catch(() => {
-          this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: 'error', lastUpdate: new Date() });
+        name: 'health-offer', task: this.loadHealthOffer().catch(() => {
+          this.statusPanel?.updateSource('DREES APL', { status: 'error', lastUpdate: null });
         })
       },
       {
@@ -8030,12 +7883,7 @@ export class App {
     });
 
     // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3).
-    // healthBarometerPanel n'est pas dans FLOATING_PANEL_DEFS (il peut
-    // coexister avec nationalHealthPanel, cf. 'open-health-barometer') donc
-    // hideAllFloatingPanels() ne le couvre pas — il ne doit pas non plus
-    // rester ouvert derrière Intelligence France.
     this.hideAllFloatingPanels();
-    this.healthBarometerPanel?.hide();
 
     const panel = await this.ensureFranceIntelPanel();
     const lang = panel.getCurrentLang();
@@ -8074,6 +7922,7 @@ export class App {
         },
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
+        onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
           void this.openSituationReport();
@@ -8164,6 +8013,7 @@ export class App {
       commodities: this.currentCommodityData,
       sources: this.statusPanel?.getSources() ?? [],
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
+      health: this.currentHealthNational,
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
       // Revue : pas de niveau national avant les couches critiques (jamais un vert par défaut).
       ready: this.v2IntelStarted,

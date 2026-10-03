@@ -144,7 +144,7 @@ const en = {
       ais: 'Maritime AIS',
       militaryFlights: 'Military flights',
       airTraffic: 'Air traffic',
-      health: 'SPF / DREES',
+      health: 'Santé publique France',
       sncf: 'SNCF',
     },
     details: {

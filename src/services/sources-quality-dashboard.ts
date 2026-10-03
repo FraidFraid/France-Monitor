@@ -192,11 +192,11 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   },
   {
     id: 'health',
-    name: 'SPF / DREES',
+    name: 'Santé publique France',
     domain: 'Santé',
     sourceType: 'official',
     natureBaseline: 90,
-    watchdogNames: ['SPF / DREES'],
+    watchdogNames: ['Santé publique France'],
     mappedIndicators: ['source', 'date', 'indicateurs santé'],
     limits: ['Données agrégées, pas diagnostic médical'],
   },

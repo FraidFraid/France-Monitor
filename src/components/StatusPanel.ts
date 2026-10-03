@@ -43,7 +43,7 @@ const SOURCE_NAME_KEYS: Record<string, string> = {
     'AIS maritime': 'status.initialSources.ais',
     'Vols militaires': 'status.initialSources.militaryFlights',
     'Trafic aérien': 'status.initialSources.airTraffic',
-    'SPF / DREES': 'status.initialSources.health',
+    'Santé publique France': 'status.initialSources.health',
     SNCF: 'status.initialSources.sncf',
 };
 
@@ -159,7 +159,7 @@ export class StatusPanel {
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
             { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
-            { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
+            { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
     }
@@ -226,7 +226,7 @@ export class StatusPanel {
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
             { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
-            { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
+            { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
     }

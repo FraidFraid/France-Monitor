@@ -17,6 +17,8 @@ import type {
   StructuredBrief,
 } from '../../types/index.ts';
 import { parisDate } from '../../services/ecowatt-official.ts';
+import { nationalSummary } from '../layer-panel/veille.ts';
+import { HEALTH_NOW, surveillanceFixture } from '../layer-panel/health.fixture.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
 
@@ -94,6 +96,7 @@ function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | nul
   const cb = {
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
     onOpenReport: vi.fn(), onShowFrance: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
+    onOpenLayerPanel: vi.fn(),
   } satisfies PosteCallbacks;
   const poste = new PosteSituation(roots, cb, { viewportWidth: () => width, storage, ...extra });
   poste.setEvents(eventsState());
@@ -572,5 +575,16 @@ describe('sections de la fiche France (spec 2026-10-01 § 3.3)', () => {
       expect(() => copy(roots)).not.toThrow();
       expect(toast(roots)).toBe('Copie impossible');
     });
+  });
+});
+
+describe('fiche thème Santé (spec 2026-10-03 § 3.5)', () => {
+  it('niveau national affiché ; un lien ouvre le panneau de la couche par App', () => {
+    const { roots, cb, poste } = setup();
+    poste.update(data({ health: nationalSummary(surveillanceFixture(), HEALTH_NOW) }));
+    poste.select('theme:health');
+    expect(roots.fiche.textContent).toContain('eaux usées en forte hausse');
+    roots.fiche.querySelector<HTMLElement>('[data-action="open-layer:healthOscour"]')?.click();
+    expect(cb.onOpenLayerPanel).toHaveBeenCalledWith('healthOscour');
   });
 });

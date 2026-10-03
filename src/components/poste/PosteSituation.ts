@@ -34,6 +34,7 @@ import { fetchEventDetail } from '../../services/news-events.ts';
 import { escapeHtml, unavailableEventsState, type EventDetailState } from '../france-intel-events.ts';
 import { trendText } from '../france-intel-score.ts';
 import type { InfraInput } from '../../services/infra-continuity.ts';
+import type { NationalHealthSummary } from '../layer-panel/veille.ts';
 import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
@@ -62,6 +63,8 @@ export interface PosteData {
   markets: readonly MarketData[];
   /** Baromètre des infrastructures (section Infrastructures de l'État). */
   infra?: InfraInput | null;
+  /** Niveau national de santé (fiche thème Santé, spec 2026-10-03 § 3.5) ; absent ou null tant que la veille n'est pas chargée. */
+  health?: NationalHealthSummary | null;
   commodities: readonly CommodityData[];
   sources: readonly DataSourceStatus[];
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
@@ -87,6 +90,8 @@ export interface PosteCallbacks {
   onMapShown: () => void;
   /** Toute sélection (ligne, carte, lien) : App ferme d'abord le panneau de module ouvert dans la colonne (v2). */
   onSelect: (key: string) => void;
+  /** Lien d'une fiche vers le panneau d'une couche (fiche thème Santé) : App active la couche et ouvre son panneau. */
+  onOpenLayerPanel?: (key: string) => void;
 }
 
 export interface PosteRoots {
@@ -472,6 +477,7 @@ export class PosteSituation {
       now: data.now,
       ready: data.ready,
       lang: data.lang,
+      health: data.health ?? null,
     });
   }
 
@@ -548,6 +554,11 @@ export class PosteSituation {
     }
     if (action === 'open-cyber') {
       document.dispatchEvent(new CustomEvent('open-cyber-panel'));
+      return;
+    }
+    if (action.startsWith('open-layer:')) {
+      this.revealMap();
+      this.callbacks.onOpenLayerPanel?.(action.slice('open-layer:'.length));
       return;
     }
     if (action === 'report') {
