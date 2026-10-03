@@ -92,7 +92,7 @@ describe('/api/health/alert-levels', () => {
     expect(odisse.pathname.endsWith('/ma_region_epidemies_hivernales_alertes/exports/json')).toBe(true);
     expect(odisse.searchParams.get('where')).toBe("date>=date'2025-08-29'");
   });
-  it('Odissé en HTTP 400 : erreur nommée, bulletins gardés, réponse 200', async () => {
+  it('Odissé en HTTP 400 : erreur nommée, bulletins gardés, réponse 200 en cache CDN court (réponse partielle)', async () => {
     stubSources((url) => (url.includes('odisse') ? respond(fixtureText('odisse-400.json'), 400) : null));
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
@@ -100,7 +100,7 @@ describe('/api/health/alert-levels', () => {
     await handler({ method: 'GET' }, res);
     const body = res.body as Body;
     expect(res.statusCode).toBe(200);
-    expect(res.headers['Cache-Control']).toBe('s-maxage=3600, stale-while-revalidate=21600');
+    expect(res.headers['Cache-Control']).toBe('s-maxage=300, stale-while-revalidate=600');
     expect(body.errors).toEqual(['Odissé, niveaux d’alerte : HTTP 400']);
     expect(body.levels).toEqual([]);
     expect(body.bulletins).toHaveLength(5);
@@ -118,6 +118,20 @@ describe('/api/health/alert-levels', () => {
     ]);
     expect(body.bulletins.map((b) => b.territory)).toEqual(['Guyane', 'La Réunion', 'La Réunion', 'Guyane']);
     expect(body.bulletins[3]).toMatchObject({ title: 'Surveillance sanitaire en Guyane. Bulletin du 24 septembre 2026.', summary: '' });
+  });
+  it('page régionale lue sans aucune carte de bulletin (format changé) : erreur nommée, jamais figée', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const blank = (url: string) => (url.endsWith('/regions-et-territoires/guyane') ? respond('<!DOCTYPE html><html><body><main></main></body></html>') : null);
+    stubSources(blank);
+    const body = await loadAlertLevels(NOW) as Body;
+    expect(body.errors).toEqual(['Santé publique France, page Guyane : aucune carte de bulletin lue']);
+    vi.setSystemTime(NOW + 6 * 60_000);
+    stubSources();
+    const fixed = await loadAlertLevels(NOW + 6 * 60_000) as Body;
+    expect(fixed.errors).toEqual([]);
+    expect(fixed.bulletins.some((b) => b.territory === 'Guyane')).toBe(true);
+    vi.useRealTimers();
   });
   it('tout en échec : 502 non mis en cache', async () => {
     stubSources(() => respond('erreur', 500));

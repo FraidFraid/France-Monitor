@@ -59,14 +59,20 @@ export function parseMinistryMessages(html, now) {
   return [...byKey.values()].sort(compareMessages);
 }
 
-/** Réponse complète (MinistryMessagesResponse). */
+/**
+ * Réponse complète (MinistryMessagesResponse). La page est analysée avant mise en cache : une page sans message reconnu
+ * n'est jamais figée et la dernière liste lue reste servie ; la fenêtre de douze mois est réappliquée à chaque réponse.
+ */
 export async function loadMinistryMessages(now = Date.now()) {
   const base = { sourceUrl: PEPS_URL, officialUrl: DGS_URGENT_OFFICIAL_URL };
   try {
-    const html = await cachedSource('dgs:peps', { ttlSec: 6 * 3600 }, () => fetchStrictHtml(PEPS_URL, { timeoutMs: 20_000 }));
-    const messages = parseMinistryMessages(html, now);
-    if (messages.length === 0) throw new HealthFetchError('aucun message DGS-Urgent ni MARS reconnu', { kind: 'parse' });
-    return { messages, ...base, errors: [] };
+    const read = await cachedSource('dgs:peps:messages', { ttlSec: 6 * 3600 }, async () => {
+      const parsed = parseMinistryMessages(await fetchStrictHtml(PEPS_URL, { timeoutMs: 20_000 }), now);
+      if (parsed.length === 0) throw new HealthFetchError('aucun message DGS-Urgent ni MARS reconnu', { kind: 'parse' });
+      return parsed;
+    });
+    const since = new Date(now - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+    return { messages: read.filter((m) => m.date >= since), ...base, errors: [] };
   } catch (err) {
     return { messages: [], ...base, errors: [sourceError('PEPS, messages DGS-Urgent et MARS', err)] };
   }

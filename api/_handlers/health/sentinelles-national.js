@@ -123,16 +123,33 @@ export function parseSentinellesRss(xml) {
   return { week, provisional, indicators, topRegions, bulletinUrl: bulletin?.link || null };
 }
 
+/**
+ * Dérive du format (S3) : taux national des IRA introuvable, ou indicateur attendu illisible alors que les IRA se lisent
+ * (article diarrhée ou varicelle absent, intertitre d'un sous-indicateur changé) ; les valeurs lues restent servies.
+ */
+export function sentinellesErrors(parsed) {
+  const ira = parsed.indicators.find((i) => i.key === 'ira');
+  if (!ira || ira.rate === null) return ['Sentinelles : taux national des IRA introuvable dans le flux'];
+  const missing = parsed.indicators.filter((i) => i.key !== 'ira' && i.rate === null).map((i) => i.label);
+  return missing.length > 0 ? [`Sentinelles : indicateurs introuvables dans le flux (${missing.join(', ')})`] : [];
+}
+
+/** Réponse complète (SentinellesNationalResponse) ; le flux est analysé avant mise en cache (un flux illisible n'est jamais figé). */
+export async function loadSentinelles() {
+  try {
+    const parsed = await cachedSource('sentinelles:parsed', { ttlSec: 6 * 3600 }, async () => {
+      const result = parseSentinellesRss(await fetchStrictXml(SENTIWEB_RSS_URL));
+      if (!result.indicators.some((i) => i.rate !== null)) throw new HealthFetchError('aucun taux lu dans le flux', { kind: 'parse' });
+      return result;
+    });
+    return { ...parsed, errors: sentinellesErrors(parsed) };
+  } catch (err) {
+    return { week: null, provisional: false, indicators: [], topRegions: [], bulletinUrl: null, errors: [sourceError('Sentinelles, flux RSS', err)] };
+  }
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
-  let body;
-  try {
-    const xml = await cachedSource('sentinelles:rss', { ttlSec: 6 * 3600 }, () => fetchStrictXml(SENTIWEB_RSS_URL));
-    const parsed = parseSentinellesRss(xml);
-    const errors = parsed.indicators[0].rate === null ? ['Sentinelles : taux national des IRA introuvable dans le flux'] : [];
-    body = { ...parsed, errors };
-  } catch (err) {
-    body = { week: null, provisional: false, indicators: [], topRegions: [], bulletinUrl: null, errors: [sourceError('Sentinelles, flux RSS', err)] };
-  }
+  const body = await loadSentinelles();
   sendHealthJson(res, body, { ok: body.indicators.some((i) => i.rate !== null), cacheControl: CACHE_CONTROL });
 }

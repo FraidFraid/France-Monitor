@@ -10,7 +10,7 @@ import { fakeRes, fixtureText, respond, stubFetch } from './helpers/health-fixtu
 const URL_ODISSE = 'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/x/records?limit=100';
 
 beforeEach(() => { __resetSwrCacheForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 async function failure(promise: Promise<unknown>): Promise<HealthFetchError> {
   try {
@@ -60,6 +60,28 @@ describe('lecture stricte', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
     expect((await failure(fetchStrictJson(URL_ODISSE))).kind).toBe('network');
   });
+  it('« captcha » seul : défi dans un corps HTML seulement (un JSON ou un flux qui cite le mot n’en est pas un)', async () => {
+    expect(isChallengePage('{"value":[{"Summary":"A captcha-protected portal"}]}')).toBe(false);
+    expect(isChallengePage('<?xml version="1.0"?><rss><channel><item><title>captcha</title></item></channel></rss>')).toBe(false);
+    expect(isChallengePage('<!DOCTYPE html><html><body><div class="g-recaptcha"></div></body></html>')).toBe(true);
+    stubFetch(() => respond('{"value":[{"Summary":"captcha"}]}'));
+    expect(await fetchStrictJson(URL_ODISSE)).toEqual({ value: [{ Summary: 'captcha' }] });
+  });
+  it('page de défi servie en 403 ou 429 : erreur « anti-robot » ; 429 ordinaire : HTTP 429', async () => {
+    stubFetch(() => respond(fixtureText('dgs-captcha.html'), 403));
+    expect(await failure(fetchStrictHtml('https://sante.gouv.fr/x'))).toMatchObject({ kind: 'challenge', status: 403, message: 'page de contrôle anti-robot (HTTP 403)' });
+    stubFetch(() => respond(fixtureText('request-rejected.html'), 429));
+    expect((await failure(fetchStrictHtml('https://sante.gouv.fr/x'))).kind).toBe('challenge');
+    stubFetch(() => respond('Too Many Requests', 429));
+    expect(await failure(fetchStrictJson(URL_ODISSE))).toMatchObject({ kind: 'http', status: 429, message: 'HTTP 429' });
+  });
+  it('délai dépassé ou coupure pendant la lecture du corps : erreur typée, message en français', async () => {
+    const body = (err: Error) => vi.fn(async () => ({ ok: true, status: 200, text: async () => { throw err; } }));
+    vi.stubGlobal('fetch', body(new DOMException('The operation was aborted due to timeout', 'TimeoutError')));
+    expect(await failure(fetchStrictJson(URL_ODISSE, { timeoutMs: 10 }))).toMatchObject({ kind: 'timeout', message: 'délai dépassé (10 ms)' });
+    vi.stubGlobal('fetch', body(new TypeError('terminated')));
+    expect(await failure(fetchStrictJson(URL_ODISSE))).toMatchObject({ kind: 'network', message: 'réseau : lecture de la réponse interrompue' });
+  });
   it('les pages réelles lues par les gestionnaires ne sont pas prises pour des défis', () => {
     for (const name of ['peps-actualites.html', 'spf-ocean-indien.html', 'spf-bulletin-reunion.html', 'ansm-disponibilites.html', 'sentiweb-rss.xml']) {
       expect(isChallengePage(fixtureText(name))).toBe(false);
@@ -68,6 +90,7 @@ describe('lecture stricte', () => {
   it('aucun repli curl', () => {
     const source = readFileSync(new URL('../api/_lib/health-http.js', import.meta.url), 'utf8');
     expect(source).not.toMatch(/child_process|execFile|spawn\(/);
+    expect(source).not.toContain('\uFEFF');
   });
 });
 
@@ -89,6 +112,28 @@ describe('textes, cache et réponses', () => {
     expect(await cachedSource('t2', { ttlSec: 0, staleSec: 3600 }, async () => { throw new Error('HTTP 500'); })).toEqual({ v: 2 });
     await expect(cachedSource('t3', { ttlSec: 3600 }, async () => { throw new Error('HTTP 500'); })).rejects.toThrow('HTTP 500');
   });
+  it('panne amont mémorisée 5 min par source : l’amont n’est pas relancé à chaque requête ; valeur connue servie entre-temps', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-03T08:00:00Z');
+    vi.setSystemTime(t0);
+    const failing = vi.fn(async () => { throw new HealthFetchError('HTTP 429', { kind: 'http', status: 429 }); });
+    await expect(cachedSource('neg1', { ttlSec: 3600 }, failing)).rejects.toThrow('HTTP 429');
+    vi.setSystemTime(t0 + 4 * 60_000);
+    await expect(cachedSource('neg1', { ttlSec: 3600 }, failing)).rejects.toThrow('HTTP 429');
+    expect(failing).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(t0 + 5 * 60_000 + 1_000);
+    await expect(cachedSource('neg1', { ttlSec: 3600 }, failing)).rejects.toThrow('HTTP 429');
+    expect(failing).toHaveBeenCalledTimes(2);
+
+    vi.setSystemTime(t0);
+    expect(await cachedSource('neg2', { ttlSec: 60 }, async () => ({ v: 1 }))).toEqual({ v: 1 });
+    vi.setSystemTime(t0 + 2 * 60_000);
+    const down = vi.fn(async () => { throw new HealthFetchError('HTTP 503', { kind: 'http', status: 503 }); });
+    expect(await cachedSource('neg2', { ttlSec: 60 }, down)).toEqual({ v: 1 });
+    vi.setSystemTime(t0 + 4 * 60_000);
+    expect(await cachedSource('neg2', { ttlSec: 60 }, down)).toEqual({ v: 1 });
+    expect(down).toHaveBeenCalledTimes(1);
+  });
   it('OPTIONS : 204 ; POST : 405 ; GET : laisse passer', () => {
     const r1 = fakeRes();
     expect(handlePreflight({ method: 'OPTIONS' }, r1)).toBe(true);
@@ -105,5 +150,10 @@ describe('textes, cache et réponses', () => {
     const ko = fakeRes();
     sendHealthJson(ko, { errors: ['x'] }, { ok: false, cacheControl: 's-maxage=60' });
     expect([ko.statusCode, ko.headers['Cache-Control'], ko.body]).toEqual([502, 'no-store', { errors: ['x'] }]);
+  });
+  it('réponse partielle (errors non vide) : cache CDN court, une source rétablie arrive vite', () => {
+    const partial = fakeRes();
+    sendHealthJson(partial, { a: 1, errors: ['OMS, Disease Outbreak News : HTTP 500'] }, { ok: true, cacheControl: 's-maxage=3600' });
+    expect([partial.statusCode, partial.headers['Cache-Control']]).toEqual([200, 's-maxage=300, stale-while-revalidate=600']);
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
-import handler, { ECDC_CDTR_URL, WHO_DON_URL, ecdcTopics, parseEcdcFeed, parseWhoDon } from '../api/_handlers/health/international.js';
+import handler, { ECDC_CDTR_URL, WHO_DON_URL, ecdcTopics, loadInternational, parseEcdcFeed, parseWhoDon } from '../api/_handlers/health/international.js';
 import { fakeRes, fixtureJson, fixtureText, respond, stubFetch } from './helpers/health-fixtures.ts';
 
 type News = { id: string; title: string; originalTitle: string; date: string; url: string; summary: string };
@@ -8,7 +8,7 @@ type Report = { title: string; date: string; url: string; topics: string[] };
 type Body = { who: News[]; ecdc: Report[]; errors: string[] };
 
 beforeEach(() => { __resetSwrCacheForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('OMS, Disease Outbreak News (10 derniers, relevé du 03/10/2026)', () => {
   const who = parseWhoDon(fixtureJson('who-don.json')) as News[];
@@ -74,6 +74,22 @@ describe('/api/health/international', () => {
     expect(res.statusCode).toBe(200);
     expect((res.body as Body).errors).toEqual(['OMS, Disease Outbreak News : HTTP 500']);
     expect((res.body as Body).ecdc).toHaveLength(3);
+  });
+  it('analyse avant mise en cache : un flux OMS vide n’est jamais figé, la dernière liste lue est gardée', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-03T08:00:00Z');
+    vi.setSystemTime(t0);
+    const route = (who: string) => stubFetch((url) => respond(url.startsWith('https://www.who.int') ? who : fixtureText('ecdc-cdtr.xml')));
+    route('{"value":[]}');
+    expect((await loadInternational()).errors).toEqual(['OMS, Disease Outbreak News : aucun message']);
+    vi.setSystemTime(t0 + 6 * 60_000);
+    route(fixtureText('who-don.json'));
+    expect((await loadInternational()).who).toHaveLength(10);
+    vi.setSystemTime(t0 + 2 * 3600_000);
+    route('{"value":[]}');
+    const later = await loadInternational();
+    expect([later.who.length, later.errors]).toEqual([10, []]);
+    vi.useRealTimers();
   });
   it('OMS sans message et ECDC en page HTML : 502 non mis en cache', async () => {
     stubFetch((url) => (url.startsWith('https://www.who.int') ? respond({ value: [] }) : respond('<!DOCTYPE html><html></html>')));

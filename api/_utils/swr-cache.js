@@ -19,6 +19,11 @@
 // Un seul producer tourne à la fois par clé au sein d'une même instance (single-flight) :
 // des appels concurrents sur la même clé partagent la même promesse.
 //
+// Mémoire de panne (option `negativeTtlSec`, désactivée par défaut) : après un échec du producer,
+// la même erreur est renvoyée sans le relancer pendant `negativeTtlSec` secondes (mémoire du process) ;
+// une valeur connue, même périmée, reste servie pendant ce temps. Évite de relancer à chaque requête
+// un amont en panne ou qui bloque l'adresse IP sur des requêtes répétées.
+//
 // Ne lève jamais à cause de Redis : les erreurs Redis sont absorbées par api/_utils/redis.js
 // (get renvoie null, set ne fait rien). Ce module ne propage que les erreurs du `producer`,
 // et seulement quand aucune valeur de repli n'est disponible.
@@ -30,6 +35,34 @@ const memoryCache = new Map();
 
 /** @type {Map<string, Promise<unknown>>} */
 const inflight = new Map();
+
+/** Échecs mémorisés par clé : erreur du producer et instant jusqu'auquel elle est renvoyée sans relance. */
+/** @type {Map<string, { error: unknown, until: number }>} */
+const failures = new Map();
+
+/**
+ * Producer gardé par la mémoire de panne : échec récent renvoyé tel quel, nouvel échec mémorisé, réussite qui l'efface.
+ * @template T
+ * @param {string} key
+ * @param {number} negativeTtlSec
+ * @param {() => Promise<T>} producer
+ * @returns {() => Promise<T>}
+ */
+function withFailureMemo(key, negativeTtlSec, producer) {
+  if (!negativeTtlSec || negativeTtlSec <= 0) return producer;
+  return async () => {
+    const memo = failures.get(key);
+    if (memo && Date.now() < memo.until) throw memo.error;
+    try {
+      const value = await producer();
+      failures.delete(key);
+      return value;
+    } catch (error) {
+      failures.set(key, { error, until: Date.now() + negativeTtlSec * 1000 });
+      throw error;
+    }
+  };
+}
 
 const DEFAULT_REDIS_CLIENT = { get: redisGet, set: redisSet };
 
@@ -118,13 +151,15 @@ async function writeRedis(redisClient, key, value, storedAt, ttlTotalSec) {
  *   ttlSec: number,
  *   staleSec?: number,
  *   timeoutMs?: number,
+ *   negativeTtlSec?: number,
  *   redis?: { get(key: string): Promise<string | null>, set(key: string, value: string, ttlSec: number): Promise<void> },
  * }} options
- * @param {() => Promise<any>} producer
+ * @param {() => Promise<any>} rawProducer
  * @returns {Promise<{ value: any, cache: 'hit' | 'stale' | 'miss', ageSec: number }>}
  */
-export async function getOrRefresh(key, options, producer) {
-  const { ttlSec, staleSec = 0, timeoutMs = 8_000, redis = DEFAULT_REDIS_CLIENT } = options;
+export async function getOrRefresh(key, options, rawProducer) {
+  const { ttlSec, staleSec = 0, timeoutMs = 8_000, negativeTtlSec = 0, redis = DEFAULT_REDIS_CLIENT } = options;
+  const producer = withFailureMemo(key, negativeTtlSec, rawProducer);
 
   let entry = memoryCache.get(key) ?? null;
   if (!entry) {
@@ -180,4 +215,5 @@ export async function getOrRefresh(key, options, producer) {
 export function __resetSwrCacheForTests() {
   memoryCache.clear();
   inflight.clear();
+  failures.clear();
 }

@@ -4,7 +4,7 @@
 // date de mise à jour, date de remise à disposition. L'export XLS (avec la date de début de situation) n'est
 // pas lu : c'est un classeur BIFF .xls que le module xlsx retenu au plan ne lit pas (startedAt reste null).
 // Réponse : DrugShortagesV2 (items, counts, latestUpdate, mitmListUrl, errors).
-import { cachedSource, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
+import { HealthFetchError, cachedSource, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
 
 export const ANSM_PAGE_URL = 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments';
 export const MITM_LIST_URL = 'https://ansm.sante.fr/documents/reference/medicaments-dinteret-therapeutique-majeur-mitm';
@@ -69,17 +69,26 @@ export function buildDrugShortages(rows) {
   return { items, counts, latestUpdate, mitmListUrl: MITM_LIST_URL };
 }
 
+/**
+ * Réponse complète (DrugShortagesV2). La page est analysée avant mise en cache : sans ligne, ou avec des lignes dont aucun
+ * statut n'est reconnu (format changé), c'est une erreur nommée, jamais figée ; la dernière liste lue reste servie.
+ */
+export async function loadDrugShortages() {
+  try {
+    const rows = await cachedSource('ansm:rows', { ttlSec: 1800 }, async () => {
+      const read = parseAnsmRows(await fetchStrictHtml(ANSM_PAGE_URL));
+      if (read.length === 0) throw new HealthFetchError('aucune ligne lue dans la page', { kind: 'parse' });
+      if (read.every((r) => r.status === null)) throw new HealthFetchError('aucun statut reconnu', { kind: 'parse' });
+      return read;
+    });
+    return { ...buildDrugShortages(rows), errors: [] };
+  } catch (err) {
+    return { ...buildDrugShortages([]), errors: [sourceError('ANSM, disponibilités des médicaments', err)] };
+  }
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
-  let body;
-  try {
-    const html = await cachedSource('ansm:page', { ttlSec: 1800 }, () => fetchStrictHtml(ANSM_PAGE_URL));
-    const rows = parseAnsmRows(html);
-    const built = buildDrugShortages(rows);
-    const errors = rows.length === 0 ? ['ANSM, disponibilités des médicaments : aucune ligne lue dans la page'] : [];
-    body = { ...built, errors };
-  } catch (err) {
-    body = { ...buildDrugShortages([]), errors: [sourceError('ANSM, disponibilités des médicaments', err)] };
-  }
+  const body = await loadDrugShortages();
   sendHealthJson(res, body, { ok: body.items.length > 0, cacheControl: CACHE_CONTROL });
 }

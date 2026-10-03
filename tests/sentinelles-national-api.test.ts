@@ -8,7 +8,7 @@ type Indicator = { key: string; label: string; parent: string | null; rate: numb
 type Body = { week: { id: string; start: string; end: string } | null; provisional: boolean; indicators: Indicator[]; topRegions: Array<{ indicator: string; region: string; rate: number; ciLow: number | null; ciHigh: number | null }>; bulletinUrl: string | null; errors: string[] };
 
 beforeEach(() => { __resetSwrCacheForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('flux RSS Sentinelles réel (semaine 202639)', () => {
   const parsed = parseSentinellesRss(RSS) as Omit<Body, 'errors'>;
@@ -75,6 +75,37 @@ describe('/api/health/sentinelles-national', () => {
     expect(res.statusCode).toBe(502);
     expect(res.headers['Cache-Control']).toBe('no-store');
     expect(res.body).toEqual({ week: null, provisional: false, indicators: [], topRegions: [], bulletinUrl: null, errors: ['Sentinelles, flux RSS : HTTP 429'] });
+  });
+  it('format changé : indicateur attendu illisible alors que les IRA se lisent, erreur nommée (valeurs lues gardées)', async () => {
+    const noVaricelle = RSS.replace(/<item>(?:(?!<\/item>)[\s\S])*Varicelle(?:(?!<\/item>)[\s\S])*<\/item>/, '');
+    stubFetch(() => respond(noVaricelle.replace('<strong>Grippe</strong>', '<strong>Influenza</strong>')));
+    const res = fakeRes();
+    await handler({ method: 'GET' }, res);
+    const body = res.body as Body;
+    expect(res.statusCode).toBe(200);
+    expect(body.indicators.find((i) => i.key === 'ira')?.rate).toBe(151);
+    expect(body.errors).toEqual(['Sentinelles : indicateurs introuvables dans le flux (Grippe, Varicelle)']);
+  });
+  it('analyse avant mise en cache : un flux sans article reconnu n’efface pas la dernière valeur lue, et n’est jamais figé', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-03T08:00:00Z');
+    vi.setSystemTime(t0);
+    const EMPTY = '<?xml version="1.0"?><rss><channel></channel></rss>';
+    stubFetch(() => respond(EMPTY));
+    const r1 = fakeRes();
+    await handler({ method: 'GET' }, r1);
+    expect(r1.statusCode).toBe(502);
+    vi.setSystemTime(t0 + 6 * 60_000);
+    stubFetch(() => respond(RSS));
+    const r2 = fakeRes();
+    await handler({ method: 'GET' }, r2);
+    expect([r2.statusCode, (r2.body as Body).week?.id]).toEqual([200, '2026-S39']);
+    vi.setSystemTime(t0 + 13 * 3600_000);
+    stubFetch(() => respond(EMPTY));
+    const r3 = fakeRes();
+    await handler({ method: 'GET' }, r3);
+    expect([r3.statusCode, (r3.body as Body).week?.id, (r3.body as Body).indicators[0]?.rate]).toEqual([200, '2026-S39', 151]);
+    vi.useRealTimers();
   });
   it('page HTML (ancienne URL /html) ou flux sans article reconnu : erreur', async () => {
     stubFetch(() => respond('<!DOCTYPE html><html><body>Sentinelles</body></html>'));

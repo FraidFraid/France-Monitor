@@ -7,6 +7,10 @@ import { getOrRefresh } from '../_utils/swr-cache.js';
 
 export const HEALTH_USER_AGENT = 'FranceMonitor/1.0 (+https://www.francemonitor.com)';
 export const DEFAULT_TIMEOUT_MS = 15_000;
+/** Mémoire de panne par source (S3) : un amont en échec n'est pas relancé à chaque requête (Sentiweb bloque l'IP sur 429). */
+export const FAILURE_MEMO_SEC = 300;
+/** Réponse partielle (une partie en échec) : cache CDN court, une source rétablie arrive vite. */
+export const PARTIAL_CACHE_CONTROL = 's-maxage=300, stale-while-revalidate=600';
 
 const ACCEPT = {
   json: 'application/json',
@@ -29,20 +33,39 @@ export class HealthFetchError extends Error {
 
 // Pages de défi vues le 03/10/2026 : Cegedim « Vérification de sécurité » (captcha, F5 /TSPD/),
 // « Request Rejected » ; plus les défis Cloudflare. Aucune page légitime lue ici ne contient ces marques.
-const CHALLENGE_RE = /<title>\s*(?:v[ée]rification de s[ée]curit[ée]|request rejected|just a moment|attention required)|captcha|\/TSPD\/|cf-chl-|challenge-platform/i;
+// Le mot « captcha » seul ne compte que dans un corps HTML : un JSON ou un flux qui le cite n'est pas un défi.
+const CHALLENGE_RE = /<title>\s*(?:v[ée]rification de s[ée]curit[ée]|request rejected|just a moment|attention required)|\/TSPD\/|cf-chl-|challenge-platform/i;
 
 /** Vrai si le texte est une page de contrôle anti-robot. */
 export function isChallengePage(text) {
-  return CHALLENGE_RE.test(String(text ?? '').slice(0, 200_000));
+  const head = String(text ?? '').slice(0, 200_000);
+  return CHALLENGE_RE.test(head) || (looksLikeHtml(head) && /captcha/i.test(head));
 }
 
 /** Vrai si le texte commence comme une page HTML. */
 export function looksLikeHtml(text) {
-  return /^\s*(?:<!doctype html|<html[\s>])/i.test(String(text ?? '').replace(/^﻿/, ''));
+  return /^\s*(?:<!doctype html|<html[\s>])/i.test(String(text ?? '').replace(/^\uFEFF/, ''));
 }
 
 function looksLikeXml(text) {
-  return /^\s*(?:<\?xml|<rss[\s>]|<feed[\s>])/i.test(String(text ?? '').replace(/^﻿/, ''));
+  return /^\s*(?:<\?xml|<rss[\s>]|<feed[\s>])/i.test(String(text ?? '').replace(/^\uFEFF/, ''));
+}
+
+function errorName(err) {
+  return err && typeof err === 'object' && 'name' in err ? String(err.name) : '';
+}
+
+/** Corps de la réponse ; délai dépassé ou coupure pendant la lecture : HealthFetchError en français (jamais une DOMException brute). */
+async function readBody(resp, url, timeoutMs) {
+  try {
+    return await resp.text();
+  } catch (err) {
+    const name = errorName(err);
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, status: resp.status, kind: 'timeout' });
+    }
+    throw new HealthFetchError('réseau : lecture de la réponse interrompue', { url, status: resp.status, kind: 'network' });
+  }
 }
 
 /**
@@ -59,14 +82,23 @@ export async function fetchStrictText(url, { expect = 'text', timeoutMs = DEFAUL
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    const name = err && typeof err === 'object' && 'name' in err ? String(err.name) : '';
+    const name = errorName(err);
     if (name === 'TimeoutError' || name === 'AbortError') {
       throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, kind: 'timeout' });
     }
     throw new HealthFetchError(`réseau : ${err instanceof Error ? err.message : String(err)}`, { url, kind: 'network' });
   }
-  if (!resp.ok) throw new HealthFetchError(`HTTP ${resp.status}`, { url, status: resp.status, kind: 'http' });
-  const text = await resp.text();
+  if (!resp.ok) {
+    // Défi anti-robot servi en 403 ou 429 : nommé comme tel ; corps illisible : l'erreur HTTP suffit.
+    if (resp.status === 403 || resp.status === 429) {
+      const body = await readBody(resp, url, timeoutMs).catch(() => '');
+      if (isChallengePage(body)) {
+        throw new HealthFetchError(`page de contrôle anti-robot (HTTP ${resp.status})`, { url, status: resp.status, kind: 'challenge' });
+      }
+    }
+    throw new HealthFetchError(`HTTP ${resp.status}`, { url, status: resp.status, kind: 'http' });
+  }
+  const text = await readBody(resp, url, timeoutMs);
   if (isChallengePage(text)) throw new HealthFetchError('page de contrôle anti-robot', { url, status: resp.status, kind: 'challenge' });
   if ((expect === 'json' || expect === 'xml') && looksLikeHtml(text)) {
     throw new HealthFetchError('page HTML reçue au lieu de données', { url, status: resp.status, kind: 'html' });
@@ -105,9 +137,11 @@ export function sourceError(label, err) {
  * Valeur d'une source mise en cache (mémoire et Redis, api/_utils/swr-cache.js) : fraîche pendant ttlSec ;
  * au-delà, nouvelle lecture, et la dernière valeur connue est servie si elle échoue. Lève si la source
  * échoue sans valeur connue. Une valeur servie périmée garde sa propre date (S1) : le retard se voit.
+ * Le producteur lit ET analyse (arbitrage 2 de la phase A) : il lève sur un résultat vide ou illisible, qui
+ * n'est donc jamais mis en cache. Un échec est mémorisé FAILURE_MEMO_SEC secondes : l'amont n'est pas relancé.
  */
 export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400 }, producer) {
-  const { value } = await getOrRefresh(`health:${key}`, { ttlSec, staleSec, timeoutMs: 8_000 }, producer);
+  const { value } = await getOrRefresh(`health:${key}`, { ttlSec, staleSec, timeoutMs: 8_000, negativeTtlSec: FAILURE_MEMO_SEC }, producer);
   return value;
 }
 
@@ -155,8 +189,8 @@ export function handlePreflight(req, res) {
 }
 
 /**
- * Réponse JSON d'un gestionnaire santé : 200 avec `cacheControl` si au moins une source a répondu,
- * sinon 502 non mis en cache (le corps garde `errors[]`).
+ * Réponse JSON d'un gestionnaire santé : 200 avec `cacheControl` si au moins une source a répondu (cache court,
+ * PARTIAL_CACHE_CONTROL, si une partie a échoué), sinon 502 non mis en cache (le corps garde `errors[]`).
  */
 export function sendHealthJson(res, body, { ok, cacheControl }) {
   if (!ok) {
@@ -164,6 +198,7 @@ export function sendHealthJson(res, body, { ok, cacheControl }) {
     res.status(502).json(body);
     return;
   }
-  res.setHeader('Cache-Control', cacheControl);
+  const partial = Array.isArray(body?.errors) && body.errors.length > 0;
+  res.setHeader('Cache-Control', partial ? PARTIAL_CACHE_CONTROL : cacheControl);
   res.status(200).json(body);
 }

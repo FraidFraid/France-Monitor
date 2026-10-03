@@ -70,13 +70,16 @@ function nonEmpty(items, message) {
   return items;
 }
 
-/** Réponse complète (InternationalResponse) ; OMS et ECDC échouent séparément. */
+/**
+ * Réponse complète (InternationalResponse) ; OMS et ECDC échouent séparément. Chaque flux est analysé avant mise en cache :
+ * un flux vide ou illisible n'est jamais figé, la dernière liste lue reste servie.
+ */
 export async function loadInternational() {
   const errors = [];
   const [who, ecdc] = await Promise.all([
-    cachedSource('international:who', { ttlSec: 3600 }, () => fetchStrictJson(WHO_DON_URL)).then((json) => nonEmpty(parseWhoDon(json), 'aucun message'))
+    cachedSource('international:who:parsed', { ttlSec: 3600 }, async () => nonEmpty(parseWhoDon(await fetchStrictJson(WHO_DON_URL)), 'aucun message'))
       .catch((err) => { errors.push(sourceError('OMS, Disease Outbreak News', err)); return []; }),
-    cachedSource('international:ecdc', { ttlSec: 3600 }, () => fetchStrictXml(ECDC_CDTR_URL)).then((xml) => nonEmpty(parseEcdcFeed(xml), 'aucun rapport'))
+    cachedSource('international:ecdc:parsed', { ttlSec: 3600 }, async () => nonEmpty(parseEcdcFeed(await fetchStrictXml(ECDC_CDTR_URL)), 'aucun rapport'))
       .catch((err) => { errors.push(sourceError('ECDC, rapport hebdomadaire des menaces', err)); return []; }),
   ]);
   return { who, ecdc, errors: errors.sort() };

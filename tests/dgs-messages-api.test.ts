@@ -65,6 +65,21 @@ describe('/api/health/dgs-messages', () => {
     expect(res.headers['Cache-Control']).toBe('no-store');
     expect(res.body).toMatchObject({ messages: [], errors: ['PEPS, messages DGS-Urgent et MARS : page de contrôle anti-robot'] });
   });
+  it('analyse avant mise en cache : une page sans message reconnu n’est jamais figée ; la dernière liste lue est gardée', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const EMPTY = '<!DOCTYPE html><html><body><h2>Octobre</h2></body></html>';
+    stubFetch(() => respond(EMPTY));
+    expect((await loadMinistryMessages(NOW) as Body).messages).toHaveLength(0);
+    vi.setSystemTime(NOW + 6 * 60_000);
+    stubFetch(() => respond(fixtureText('peps-actualites.html')));
+    expect((await loadMinistryMessages(NOW + 6 * 60_000) as Body).messages).toHaveLength(18);
+    vi.setSystemTime(NOW + 7 * 3600_000);
+    stubFetch(() => respond(EMPTY));
+    const later = await loadMinistryMessages(NOW + 7 * 3600_000) as Body;
+    expect([later.messages.length, later.errors]).toEqual([18, []]);
+    vi.useRealTimers();
+  });
   it('page lue mais aucun message reconnu (format changé) : erreur, pas de liste vide silencieuse', async () => {
     stubFetch(() => respond('<!DOCTYPE html><html><body><h2>Octobre</h2></body></html>'));
     const body = await loadMinistryMessages(NOW) as Body;

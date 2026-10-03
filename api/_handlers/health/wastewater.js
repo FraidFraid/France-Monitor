@@ -18,19 +18,21 @@ export function toWastewaterPoint(row) {
 
 /**
  * Lignes SUM'eau (plus récentes d'abord ou non) → 26 dernières semaines chronologiques, même semaine ISO un an
- * plus tôt, stations ayant transmis la dernière semaine (colonnes de station non vides) et nombre de colonnes de station.
+ * plus tôt (semaine 53 sans équivalent l'année d'avant : semaine 52), stations ayant transmis la dernière semaine
+ * (valeur numérique finie seulement) et nombre de colonnes de station.
  */
 export function buildWastewater(seriesRows, lastRow) {
   const all = seriesRows.map(toWastewaterPoint).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   const points = all.slice(-POINTS);
   const last = points.at(-1);
   const m = last ? /^(\d{4})-S(\d{2})$/.exec(last.week) : null;
-  const lastYear = m ? all.find((p) => p.week === `${Number(m[1]) - 1}-S${m[2]}`) ?? null : null;
+  const candidates = m ? [`${Number(m[1]) - 1}-S${m[2]}`, ...(m[2] === '53' ? [`${Number(m[1]) - 1}-S52`] : [])] : [];
+  const lastYear = candidates.map((w) => all.find((p) => p.week === w)).find(Boolean) ?? null;
   const stations = lastRow ? Object.keys(lastRow).filter((k) => !NON_STATION.has(k)) : [];
   return {
     points,
     lastYear,
-    stationsReporting: lastRow ? stations.filter((k) => lastRow[k] !== null && lastRow[k] !== undefined).length : null,
+    stationsReporting: lastRow ? stations.filter((k) => typeof lastRow[k] === 'number' && Number.isFinite(lastRow[k])).length : null,
     stationsTotal: stations.length,
   };
 }

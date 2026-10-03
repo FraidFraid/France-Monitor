@@ -59,6 +59,19 @@ describe('SUM’eau (livraison du 30/09/2026)', () => {
     stubSumeau((url) => (new URL(url).searchParams.get('limit') === '60' ? respond({ total_count: 0, results: [] }) : null));
     expect((await call()).body.errors).toEqual(['SUM’eau, série nationale : aucune ligne']);
   });
+  it('fonction pure : station « ayant transmis » seulement pour une valeur numérique finie', () => {
+    const rows = fixtureJson<{ results: Array<Record<string, unknown>> }>('sumeau-series.json').results;
+    const r = buildWastewater(rows, { semaine: '2026-S38', date_complet: '2026-09-14', national_12: 1, national_54: 1, a: 12.5, b: '', c: Number.NaN, d: null, e: '7' });
+    expect([r.stationsReporting, r.stationsTotal]).toEqual([1, 5]);
+  });
+  it('fonction pure : même semaine un an plus tôt, semaine 53 sans équivalent : repli sur la semaine 52', () => {
+    const r = buildWastewater([
+      { semaine: '2026-S53', date_complet: '2026-12-28', national_54: 900, national_12: null },
+      { semaine: '2026-S52', date_complet: '2026-12-21', national_54: 800, national_12: null },
+      { semaine: '2025-S52', date_complet: '2025-12-22', national_54: 700, national_12: null },
+    ], null);
+    expect(r.lastYear).toMatchObject({ week: '2025-S52', national54: 700 });
+  });
   it('fonction pure : semaine sans valeur gardée nulle (jamais 0)', () => {
     const rows = fixtureJson<{ results: Array<Record<string, unknown>> }>('sumeau-series.json').results;
     const r = buildWastewater([{ ...rows[0], national_54: null }, ...rows.slice(1)], null);

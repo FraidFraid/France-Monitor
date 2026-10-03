@@ -123,17 +123,25 @@ export function bulletinSummary(html) {
   return summary.length <= 500 ? summary : `${summary.slice(0, summary.lastIndexOf(' ', 499))}…`;
 }
 
+/**
+ * Bulletins récents d'une région SPF. La page est analysée avant mise en cache : une page sans aucune carte de bulletin
+ * (format changé, page de maintenance) est une erreur nommée, jamais figée ; la dernière liste lue reste servie.
+ */
 async function regionBulletins(region, now, errors) {
-  const html = await cachedSource(`alerts:spf:${region.slug}`, { ttlSec: 3600 }, () => fetchStrictHtml(region.url));
+  const all = await cachedSource(`alerts:spf:cards:${region.slug}`, { ttlSec: 3600 }, async () => {
+    const parsed = parseBulletinCards(await fetchStrictHtml(region.url));
+    if (parsed.length === 0) throw new HealthFetchError('aucune carte de bulletin lue', { kind: 'parse' });
+    return parsed;
+  });
   const since = new Date(now - BULLETIN_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10);
-  const cards = parseBulletinCards(html)
+  const cards = all
     .filter((c) => c.date >= since && HEALTH_RE.test(c.title) && !EXCLUDE_RE.test(c.title))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, BULLETINS_PER_REGION);
   return Promise.all(cards.map(async (card) => {
     let summary = '';
     try {
-      summary = bulletinSummary(await cachedSource(`alerts:bulletin:${card.url}`, { ttlSec: 3600 }, () => fetchStrictHtml(card.url)));
+      summary = await cachedSource(`alerts:bulletin:summary:${card.url}`, { ttlSec: 3600 }, async () => bulletinSummary(await fetchStrictHtml(card.url)));
     } catch (err) {
       errors.push(sourceError(`Santé publique France, bulletin du ${card.date.slice(8, 10)}/${card.date.slice(5, 7)} (${region.label})`, err));
     }

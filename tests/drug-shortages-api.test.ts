@@ -10,7 +10,7 @@ type Body = {
 const PAGE = fixtureText('ansm-disponibilites.html');
 
 beforeEach(() => { __resetSwrCacheForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('page ANSM des disponibilités (extrait réel du 03/10/2026, 22 lignes)', () => {
   const rows = parseAnsmRows(PAGE);
@@ -59,6 +59,29 @@ describe('/api/health/drug-shortages', () => {
     await handler({ method: 'GET' }, res);
     expect([res.statusCode, res.headers['Cache-Control']]).toEqual([502, 'no-store']);
     expect(res.body).toMatchObject({ items: [], errors: [`ANSM, disponibilités des médicaments : ${message}`] });
+  });
+  it('lignes présentes mais aucun statut reconnu (format changé) : erreur nommée « aucun statut reconnu »', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubFetch(() => respond(PAGE.replace(/<td class="text-[a-z]+">[^<]*<\/td>/g, '<td class="text-info">Statut inédit</td>')));
+    const res = fakeRes();
+    await handler({ method: 'GET' }, res);
+    expect(res.statusCode).toBe(502);
+    expect((res.body as Body).errors).toEqual(['ANSM, disponibilités des médicaments : aucun statut reconnu']);
+  });
+  it('analyse avant mise en cache : une page sans tableau n’est jamais figée', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = Date.parse('2026-10-03T08:00:00Z');
+    vi.setSystemTime(t0);
+    stubFetch(() => respond('<!DOCTYPE html><html><body><table></table></body></html>'));
+    const r1 = fakeRes();
+    await handler({ method: 'GET' }, r1);
+    expect(r1.statusCode).toBe(502);
+    vi.setSystemTime(t0 + 6 * 60_000);
+    stubFetch(() => respond(PAGE));
+    const r2 = fakeRes();
+    await handler({ method: 'GET' }, r2);
+    expect([r2.statusCode, (r2.body as Body).items.length]).toEqual([200, 22]);
+    vi.useRealTimers();
   });
   it('page sans tableau (format changé) : erreur, pas de liste vide silencieuse', async () => {
     stubFetch(() => respond('<!DOCTYPE html><html><body><table></table></body></html>'));
