@@ -81,6 +81,7 @@ describe('contrat air-overview', () => {
     expect(body.errors).toEqual([]);
     expect(body.airports.length).toBeGreaterThan(0);
     expect(body.airports.every((a) => a.departures === null && a.departuresWindow === null)).toBe(true);
+    expect(body.airports.filter((a) => a.board !== null).map((a) => a.iata).sort()).toEqual(['BOD', 'BVA']);
     expect(isAirOverviewResponse(wire(body))).toBe(true);
   });
   it('dégradée (départs en HTTP 429, annuaires en 500, journal illisible) : erreurs nommées, acceptée', async () => {

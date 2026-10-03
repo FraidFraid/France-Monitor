@@ -3,6 +3,7 @@
 // volume comparé aux jours précédents, trajectoires inhabituelles (détection automatique, information).
 import type { AirEmergency, AirOverviewResponse, AirportActivity, Squawk } from '../../types/index.ts';
 import { airLevel, isTrafficDataLate } from '../../services/traffic-levels.ts';
+import { airDeparturesEnd, airDeparturesLate } from '../../services/traffic-air.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -43,11 +44,23 @@ function departuresRanked(o: AirOverviewResponse): Array<AirportActivity & { dep
     .sort((a, b) => b.departures - a.departures || a.iata.localeCompare(b.iata));
 }
 
-function windowHours(a: AirportActivity): number | null {
-  const w = a.departuresWindow;
+type DepWindow = NonNullable<AirportActivity['departuresWindow']>;
+
+/** Fenêtre la plus récente (celle dont la fin est `airDeparturesEnd`, source unique du retard des départs) ; null sans départs relevés. */
+function newestWindow(o: AirOverviewResponse): DepWindow | null {
+  const end = airDeparturesEnd(o);
+  return o.airports.find((a) => a.departures !== null && a.departures !== undefined && a.departuresWindow?.end === end)?.departuresWindow ?? null;
+}
+
+function windowHours(w: DepWindow | null): number | null {
   const begin = dataMs(w?.begin);
   const end = dataMs(w?.end);
   return begin === null || end === null ? null : Math.round((end - begin) / HOUR_MS);
+}
+
+/** Les aéroports ne partagent pas tous la même fenêtre de départs. */
+function windowsDiffer(o: AirOverviewResponse): boolean {
+  return new Set(departuresRanked(o).map((a) => `${a.departuresWindow?.begin ?? ''}|${a.departuresWindow?.end ?? ''}`)).size > 1;
 }
 
 const BOARD_IATA: ReadonlySet<string> = new Set(['BVA', 'BOD']);
@@ -63,13 +76,13 @@ function openskyLate(o: AirOverviewResponse, now: number): boolean {
 
 // ─── En-tête ───
 
-function lead(o: AirOverviewResponse): string {
+function lead(o: AirOverviewResponse, now: number): string {
   const current = sortEmergencies(o.emergencies);
   const parts = [current.length === 0 ? 'Aucun code d’urgence en vol.'
     : `${plural(current.length, 'aéronef')} en urgence : ${current.slice(0, 3).map((e) => `${e.callsign ?? e.icao24} (${e.squawk}, ${SQUAWK_WORD[e.squawk]})`).join(', ')}.`];
   const top = departuresRanked(o)[0];
-  const hours = top ? windowHours(top) : null;
-  if (top && hours !== null) parts.push(`${top.name} : ${plural(top.departures, 'départ')} en ${hours}${NBSP}h.`);
+  const hours = windowHours(newestWindow(o));
+  if (top && hours !== null) parts.push(`${top.name} : ${plural(top.departures, 'départ')} en ${hours}${NBSP}h${airDeparturesLate(o, now) ? ' (en retard)' : ''}.`);
   return parts.join(' ');
 }
 
@@ -86,7 +99,7 @@ function headOf(o: AirOverviewResponse, now: number): LayerHeadModel {
     },
     level: late ? 'nd' : verdict.level,
     status: [late ? 'niveau suspendu : données OpenSky en retard' : glueUnits(verdict.reason), stamp('OpenSky', o.at, late, now)],
-    lead: late ? null : lead(o),
+    lead: late ? null : lead(o, now),
   };
 }
 
@@ -96,9 +109,9 @@ function emergencyRow(e: AirEmergency, late: boolean, current: boolean, now: num
   return listRow({
     text: `${e.callsign ?? `transpondeur ${e.icao24}`} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`,
     value: clockOf(current ? e.lastSeen : e.firstSeen, now),
-    level: late || !current ? 'gris' : SQUAWK_LEVEL[e.squawk],
+    level: late || !current || !e.overFrance ? 'gris' : SQUAWK_LEVEL[e.squawk],
     note: [coordText(e.lat, e.lon), e.altitudeM !== null ? formatMeters(e.altitudeM) : 'altitude n.d.',
-      e.overFrance ? 'au-dessus du territoire ou de ses approches' : 'hors du territoire : ne colore pas la pastille',
+      e.overFrance ? 'au-dessus du territoire ou de ses approches' : current ? 'hors territoire et approches : ne colore pas la pastille' : 'hors du territoire : ne colore pas la pastille',
       current ? `vu depuis ${clockOf(e.firstSeen, now)}` : `vu jusqu’à ${clockOf(e.lastSeen, now)}`].join(' · '),
   });
 }
@@ -130,9 +143,9 @@ function airportsSection(o: AirOverviewResponse | null, now: number, open: OpenF
   if (!o) return { ...base, summary: 'n.d.', html: sourceDown('OpenSky') };
   const ranked = departuresRanked(o);
   const top = ranked[0];
-  const hours = top ? windowHours(top) : null;
-  const win = top?.departuresWindow ?? null;
-  const depLate = win ? isTrafficDataLate('opensky-departures', win.end, now) : false;
+  const win = newestWindow(o);
+  const hours = windowHours(win);
+  const depLate = airDeparturesLate(o, now);
   const rows = ranked.map((a) => {
     const sub = `au sol ${frNumber(a.onGround, 0)} · en approche ${frNumber(a.approaching, 0)}`;
     return depLate ? listRow({ text: a.name, value: frNumber(a.departures, 0), level: 'gris', note: sub })
@@ -143,14 +156,15 @@ function airportsSection(o: AirOverviewResponse | null, now: number, open: OpenF
     ? emptyLine('Départs non relevés : le serveur ne les a pas encore lus.')
     : emptyOrDown(o.errors, 'Aucun départ détecté sur la fenêtre affichée.', 'départs par aéroport (OpenSky)'))
     : rows + (win && hours !== null
-      ? note(`Départs détectés de ${clockOf(win.begin, now)} à ${clockOf(win.end, now)} (fenêtre de ${hours}${NBSP}h, relue toutes les 4${NBSP}h)${depLate ? ' (en retard)' : ''}. `
+      ? (windowsDiffer(o) ? note('Les fenêtres ne sont pas les mêmes pour tous les aéroports : la plus récente est indiquée.') : '')
+      + note(`Départs détectés de ${clockOf(win.begin, now)} à ${clockOf(win.end, now)} (fenêtre de ${hours}${NBSP}h, relue toutes les 4${NBSP}h)${depLate ? ' (en retard)' : ''}. `
         + `Au sol : à moins de 4${NBSP}km ; en approche : à moins de 40${NBSP}km et sous ${frNumber(3000, 0)}${NBSP}m.`) : '');
   const suspended = o.credits.remaining !== null && o.credits.remaining < CREDITS_FLOOR ? note('Départs suspendus : crédits OpenSky du jour sous 500.') : '';
   const boards = o.airports.filter((a) => a.board !== null || BOARD_IATA.has(a.iata)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const boardsHtml = boards.length === 0 ? '' : '<h4 class="fmk-eyebrow">Retards et annulations (annuaires officiels)</h4>'
     + boards.map((a) => listRow({
       text: a.name, value: a.board ? clockOf(a.board.at, now) : 'n.d.',
-      note: !a.board ? 'tableau non relevé' : `${plural(a.board?.delayed ?? 0, 'vol retardé', 'vols retardés')} · ${plural(a.board?.cancelled ?? 0, 'vol annulé', 'vols annulés')}`,
+      note: !a.board ? 'tableau non relevé' : `${plural(a.board.delayed, 'vol retardé', 'vols retardés')} · ${plural(a.board.cancelled, 'vol annulé', 'vols annulés')}`,
     })).join('')
     + note('Retards et annulations lus sur les sites officiels des aéroports de Beauvais et de Bordeaux, seuls à les publier ; les autres aéroports n’ont pas de flux ouvert.');
   return {
@@ -217,8 +231,8 @@ function anomaliesSection(o: AirOverviewResponse | null, now: number, open: Open
 
 function methodSection(o: AirOverviewResponse | null, error: string | null, now: number, open: OpenFn): FicheSection {
   const late = o ? openskyLate(o, now) : false;
-  const win = o ? departuresRanked(o)[0]?.departuresWindow ?? null : null;
-  const depLate = win ? isTrafficDataLate('opensky-departures', win.end, now) : false;
+  const win = o ? newestWindow(o) : null;
+  const depLate = o ? airDeparturesLate(o, now) : false;
   const boards = o ? o.airports.filter((a) => a.board !== null).sort((a, b) => a.name.localeCompare(b.name, 'fr')) : [];
   const unread = o !== null && departuresUnread(o) && o.errors.length === 0;
   const status = (text: string): string => (o ? text : error !== null ? 'source indisponible' : 'chargement…');

@@ -171,6 +171,41 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(v.sections.find((x) => x.id === 'airports')?.html).toContain('Source indisponible : départs par aéroport (OpenSky).');
     expect(visibleText(v.sections.find((x) => x.id === 'method')?.html ?? '')).toContain('Incidents de lecture : crédits OpenSky illisibles.');
   });
+  it('retard des départs : la fenêtre la plus récente décide, même si l’aéroport en tête n’est pas le plus récent', () => {
+    const old = { begin: paris('06:00'), end: paris('08:00') };
+    const mixed = withOverview((o) => { o.airports[0].departuresWindow = old; });
+    const v = view({ overview: mixed });
+    const h = v.sections.find((x) => x.id === 'airports')?.html ?? '';
+    expect(h.match(/class="lp-bar-row"/g)).toHaveLength(8);
+    expect(visibleText(h)).toContain('Les fenêtres ne sont pas les mêmes pour tous les aéroports : la plus récente est indiquée.');
+    expect(visibleText(h)).toContain('Départs détectés de 13:09 à 15:09');
+    expect(visibleText(h)).not.toContain('(en retard)');
+    expect(v.head.lead).toBe(`Aucun code d’urgence en vol. Paris-CDG : 71 départs en 2${NBSP}h.`);
+  });
+  it('départs en retard (fenêtre finie depuis plus de 4 h) : lignes grises, en-tête dit « (en retard) », pastille de l’état inchangée', () => {
+    const stale = withOverview((o) => { for (const a of o.airports) if (a.departuresWindow) a.departuresWindow = { begin: paris('06:00'), end: paris('08:00') }; });
+    const v = view({ overview: stale });
+    expect(v.head.level).toBe('vert');
+    expect(v.head.lead).toBe(`Aucun code d’urgence en vol. Paris-CDG : 71 départs en 2${NBSP}h (en retard).`);
+    const h = v.sections.find((x) => x.id === 'airports')?.html ?? '';
+    expect(h).not.toContain('lp-bar-row');
+    expect(visibleText(h)).toContain('Départs détectés de 06:00 à 08:00');
+    expect(visibleText(h)).toContain('(en retard)');
+    expect(visibleText(v.sections.find((x) => x.id === 'method')?.html ?? '')).toContain('fenêtre de 06:00 à 08:00 (en retard)');
+  });
+  it('un 7700 en cours hors du territoire : listé, puce grise, pastille et chiffre au niveau de la France', () => {
+    const overview = withOverview((o) => { o.emergencies = [emergency({ overFrance: false })]; });
+    expect(airLevel(overview).level).toBe('vert');
+    const v = view({ overview });
+    expect(v.head.level).toBe('vert');
+    expect(v.head.figure?.value).toBe('1');
+    expect(v.head.status[0]).toBe(glueUnits(airLevel(overview).reason));
+    const h = v.sections.find((x) => x.id === 'emergencies')?.html ?? '';
+    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>DLH4AB · 7700 (urgence)</span>');
+    expect(h).not.toMatch(/fmk-dot--(?:orange|rouge|jaune)/);
+    expect(visibleText(h)).toContain('hors territoire et approches : ne colore pas la pastille');
+    expect(renderLayerView('trafficAir', v)).toContain('<b class="fmk-num lp-lvl lp-lvl--vert">1</b>');
+  });
   it('erreur sans donnée, erreur avec données, vide, chargement', () => {
     const failed = view({ overview: null, error: 'HTTP 502' });
     expect(failed.head).toMatchObject({ level: 'nd', figure: { value: 'n.d.' }, status: ['OpenSky injoignable'] });
