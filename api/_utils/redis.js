@@ -29,6 +29,19 @@ export async function redisGet(key) {
 }
 
 /**
+ * Comme redisGet, mais une erreur Redis est levée au lieu d'être confondue avec une clé absente
+ * (api/_lib/kv-history.js : une collecte à quota ne doit pas se relancer sur une panne de Redis).
+ * Sans Redis configuré : null, comme une clé absente.
+ * @param {string} key
+ * @returns {Promise<string | null>}
+ */
+export async function redisGetStrict(key) {
+  if (!redis) return null;
+  const result = await redis.get(key);
+  return typeof result === 'string' ? result : result == null ? null : JSON.stringify(result);
+}
+
+/**
  * @param {string} key
  * @param {string} value  — must already be JSON.stringify'd
  * @param {number} ttlSec

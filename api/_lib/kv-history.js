@@ -6,21 +6,28 @@
 // redémarrage elle se recharge depuis Redis. Aucune écriture atomique n'est nécessaire.
 // Le serveur de dev (NODE_ENV=development) lit les mêmes identifiants Upstash que la production : ses clés
 // sont préfixées « dev: » pour ne jamais écraser les séries ni les compteurs de quota de la production.
-import { redisGet, redisSet } from '../_utils/redis.js';
+// Le client lit Redis en mode strict (une panne lève) : kvReadJson distingue ainsi clé absente et panne ;
+// kvGetJson et les autres lectures gardent leur comportement (null sur panne).
+import { redisGetStrict, redisSet } from '../_utils/redis.js';
 
 /** @typedef {{ get(key: string): Promise<string | null>, set(key: string, value: string, ttlSec: number): Promise<void> }} KvClient */
 
 /** @type {KvClient} */
-const DEFAULT_CLIENT = { get: redisGet, set: redisSet };
+const DEFAULT_CLIENT = { get: redisGetStrict, set: redisSet };
 /** @type {KvClient} */
 let client = DEFAULT_CLIENT;
 
 /** @type {Map<string, { value: unknown, expiresAt: number }>} */
 const memory = new Map();
 
+/** Vrai sur le serveur de dev (mêmes identifiants que la production : clés « dev: », collectes à quota bridées). */
+export function isDevServer() {
+  return process.env.NODE_ENV === 'development';
+}
+
 /** Clé réellement écrite : préfixe « dev: » sur le serveur de dev. */
 export function storageKey(key) {
-  return process.env.NODE_ENV === 'development' ? `dev:${key}` : key;
+  return isDevServer() ? `dev:${key}` : key;
 }
 
 /** Réservé aux tests : remplace le client Redis (null : client réel). */
@@ -34,28 +41,40 @@ export function __resetKvForTests() {
 }
 
 /**
- * Valeur JSON d'une clé : mémoire du processus d'abord, Redis sinon (la mémoire est alors remplie).
+ * Valeur JSON d'une clé, en distinguant clé absente et panne de Redis : `{ value, failed }`. Mémoire du processus
+ * d'abord, Redis sinon (la mémoire est alors remplie). `failed` vrai seulement si la lecture Redis a échoué ;
+ * un JSON illisible compte comme une clé absente (la prochaine écriture le remplace).
  * @param {string} key
  * @param {number} [now]
- * @returns {Promise<unknown>} null si absente ou expirée
+ * @returns {Promise<{ value: unknown, failed: boolean }>}
  */
-export async function kvGetJson(key, now = Date.now()) {
+export async function kvReadJson(key, now = Date.now()) {
   const hit = memory.get(storageKey(key));
-  if (hit && hit.expiresAt > now) return hit.value;
+  if (hit && hit.expiresAt > now) return { value: hit.value, failed: false };
   let raw = null;
   try {
     raw = await client.get(storageKey(key));
   } catch {
-    raw = null;
+    return { value: null, failed: true };
   }
-  if (raw === null || raw === undefined) return null;
+  if (raw === null || raw === undefined) return { value: null, failed: false };
   try {
     const value = JSON.parse(raw);
     memory.set(storageKey(key), { value, expiresAt: now + 3_600_000 });
-    return value;
+    return { value, failed: false };
   } catch {
-    return null;
+    return { value: null, failed: false };
   }
+}
+
+/**
+ * Valeur JSON d'une clé : mémoire du processus d'abord, Redis sinon (la mémoire est alors remplie).
+ * @param {string} key
+ * @param {number} [now]
+ * @returns {Promise<unknown>} null si absente, expirée ou illisible, ou si Redis est en panne
+ */
+export async function kvGetJson(key, now = Date.now()) {
+  return (await kvReadJson(key, now)).value;
 }
 
 /**

@@ -5,6 +5,7 @@ import { FRANCE_AIRPORTS } from '../_shared/airports-fr.js';
 import { EMERGENCY_LOG_KEY, EMERGENCY_SQUAWKS, VOLUME_KEY, emergenciesFrom, ensureAirFresh, volumeSample } from '../_shared/air-traffic.js';
 import { haversineKm } from './geo-fr.js';
 import { readLog, readSeries } from './kv-history.js';
+import { sourceError } from './source-http.js';
 
 /** Aéroports du panneau : les huit des départs, puis Beauvais (annuaire officiel seulement). */
 export const OVERVIEW_AIRPORTS = ['CDG', 'ORY', 'NCE', 'LYS', 'MRS', 'TLS', 'BOD', 'NTE', 'BVA'];
@@ -61,10 +62,24 @@ export function sameHourValues(samples, now) {
   return out;
 }
 
-/** Réponse complète (AirOverviewResponse). */
+/** Réponse sans aucune donnée (panne du panneau), erreurs nommées. */
+export function emptyAirOverview(errors) {
+  return {
+    at: null, airborneZone: 0, airborneFrance: 0, onGround: 0, emergencies: [], emergencyLog: [], airports: [],
+    volume: { samples: [], sameHourPrevDays: [] }, anomalies: [], credits: { remaining: null }, errors,
+  };
+}
+
+/** Réponse complète (AirOverviewResponse). Un journal des urgences illisible donne une erreur nommée, pas une panne. */
 export async function loadAirOverview(now = Date.now()) {
   const c = await ensureAirFresh(now);
-  const emergencyLog = await readLog(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * DAY_MS, now });
+  const errors = [...c.errors];
+  let emergencyLog = [];
+  try {
+    emergencyLog = await readLog(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * DAY_MS, now });
+  } catch (err) {
+    errors.push(sourceError('Journal des urgences', err));
+  }
   const samples = await readSeries(VOLUME_KEY, { maxAgeMs: 8 * DAY_MS, now });
   const current = c.at ? volumeSample(c.states, c.at) : { airborneZone: 0, airborneFrance: 0 };
   const airports = OVERVIEW_AIRPORTS.map((iata) => FRANCE_AIRPORTS.find((a) => a.iata === iata))
@@ -84,6 +99,6 @@ export async function loadAirOverview(now = Date.now()) {
     volume: { samples, sameHourPrevDays: sameHourValues(samples, c.at ? Date.parse(c.at) : now) },
     anomalies: c.flights.flatMap((f) => (f.anomalies ?? []).map((a) => ({ callsign: f.callsign ?? null, kind: a.type, airport: a.airportIata ?? null, at: c.at }))),
     credits: { remaining: c.credits },
-    errors: c.errors,
+    errors: [...new Set(errors)], // le journal illisible peut être signalé par la collecte et par la lecture ci-dessus
   };
 }

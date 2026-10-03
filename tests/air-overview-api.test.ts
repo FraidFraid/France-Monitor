@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
-import { __resetAirStateForTests, statesUrl } from '../api/_shared/air-traffic.js';
-import { airportActivity, sameHourValues } from '../api/_lib/air-overview.js';
+import { EMERGENCY_LOG_KEY, __airJobsForTests, __resetAirStateForTests, ensureAirFresh, statesUrl } from '../api/_shared/air-traffic.js';
+import { airportActivity, loadAirOverview, sameHourValues } from '../api/_lib/air-overview.js';
 import handler, { CACHE_CONTROL } from '../api/_handlers/traffic/air-overview.js';
 import airHandler from '../api/_handlers/traffic/air.js';
 import type { AirOverviewResponse } from '../src/types/index.ts';
-import { callHandler, fixtureJson, fixtureText, respond, stubFetch } from './helpers/traffic-fixtures.ts';
+import { callHandler, fakeRes, fixtureJson, fixtureText, respond, stubFetch } from './helpers/traffic-fixtures.ts';
+
+// Panne imprévue du panneau simulée sur demande ; sinon la vraie fonction.
+vi.mock('../api/_lib/air-overview.js', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown> & { loadAirOverview: (now?: number) => Promise<unknown> }>();
+  return { ...actual, loadAirOverview: vi.fn(actual.loadAirOverview) };
+});
 
 const STATES = fixtureJson<{ time: number; states: unknown[][] }>('opensky-states.json');
 const NOW = STATES.time * 1000 + 20_000;
@@ -31,7 +37,21 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); __setKvClientForTests(null); __resetKvForTests(); });
+afterEach(async () => {
+  await __airJobsForTests();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  __setKvClientForTests(null);
+  __resetKvForTests();
+});
+
+/** Première collecte et ses tâches de fond (annuaires, départs) terminées : le panneau sert ensuite sans relire. */
+async function warmUp() {
+  await ensureAirFresh(NOW);
+  await __airJobsForTests();
+}
 
 describe('fonctions pures du panneau', () => {
   it('même heure les jours précédents : plus récent d’abord, jour manquant sauté', () => {
@@ -51,6 +71,7 @@ describe('fonctions pures du panneau', () => {
 describe('/api/traffic/air-overview (OpenSky réel de 15 h 09, annuaires réels)', () => {
   it('200, cache 1 min ; volumes, aéroports, départs datés, annuaires, crédits', async () => {
     stubAll();
+    await warmUp();
     const { status, body, cache } = await callHandler<AirOverviewResponse>(handler);
     expect([status, cache]).toEqual([200, CACHE_CONTROL]);
     expect(body).toMatchObject({ at: '2026-10-03T13:09:39.000Z', airborneZone: 166, airborneFrance: 114, onGround: 37, credits: { remaining: 3619 }, errors: [] });
@@ -80,10 +101,34 @@ describe('/api/traffic/air-overview (OpenSky réel de 15 h 09, annuaires réels)
   it('carte /api/traffic/air : même collecte, aucun appel de plus', async () => {
     const log = stubAll();
     await callHandler(handler);
+    await __airJobsForTests();
     const before = log.urls.length;
     const map = await callHandler<{ flights: unknown[]; fetchedAt: number }>(airHandler);
     expect(map.status).toBe(200);
     expect(map.body.fetchedAt).toBe(STATES.time * 1000);
     expect(log.urls.length).toBe(before);
+  });
+  it('journal des urgences illisible (stockage clé-valeur) : panneau servi avec une erreur nommée, jamais le 500 du routeur', async () => {
+    __setKvClientForTests({ get: async (k: string) => (k === EMERGENCY_LOG_KEY ? '[null]' : null), set: async () => {} });
+    stubAll();
+    await warmUp();
+    const { status, body } = await callHandler<AirOverviewResponse>(handler);
+    expect(status).toBe(200);
+    expect(body.at).toBe('2026-10-03T13:09:39.000Z');
+    expect(body.emergencyLog).toEqual([]);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]).toMatch(/^Journal des urgences : /);
+  });
+  it('panne imprévue du panneau : 502 non mis en cache, erreur nommée, journalisée', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(loadAirOverview).mockRejectedValueOnce(new TypeError('boum'));
+    const { status, body, cache } = await callHandler<AirOverviewResponse>(handler);
+    expect([status, cache, body.at, body.errors, body.airports]).toEqual([502, 'no-store', null, ['Panneau aérien : boum'], []]);
+    expect(logged).toHaveBeenCalledWith('[air-overview]', expect.any(TypeError));
+  });
+  it('méthode autre que GET : 405', async () => {
+    const res = fakeRes();
+    await handler({ method: 'POST', query: {} }, res);
+    expect(res.statusCode).toBe(405);
   });
 });

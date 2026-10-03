@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  __resetKvForTests, __setKvClientForTests, appendSample, incrementCounter, kvGetJson, kvSetJson, readLog, readSeries, upsertLogEntry,
+  __resetKvForTests, __setKvClientForTests, appendSample, incrementCounter, isDevServer, kvGetJson, kvReadJson, kvSetJson, readLog, readSeries, upsertLogEntry,
 } from '../api/_lib/kv-history.js';
 
 const DAY = 86_400_000;
@@ -45,6 +45,29 @@ describe('valeurs JSON', () => {
     await kvSetJson('traffic:test', 42, 60, NOW);
     expect(await kvGetJson('traffic:test', NOW)).toBe(42);
     expect(await kvGetJson('traffic:test', NOW + 61_000)).toBeNull();
+  });
+});
+
+describe('lecture qui distingue clé absente et panne de Redis (collectes à quota)', () => {
+  it('valeur en mémoire ou dans Redis ; clé absente ; JSON illisible traité comme absent', async () => {
+    const redis = fakeRedis();
+    __setKvClientForTests(redis.client);
+    expect(await kvReadJson('traffic:test', NOW)).toEqual({ value: null, failed: false });
+    await kvSetJson('traffic:test', { a: 1 }, 600, NOW);
+    __resetKvForTests();
+    expect(await kvReadJson('traffic:test', NOW)).toEqual({ value: { a: 1 }, failed: false });
+    redis.store.set('traffic:abime', { value: '{abîmé', ttlSec: 60 });
+    expect(await kvReadJson('traffic:abime', NOW)).toEqual({ value: null, failed: false });
+  });
+  it('Redis en panne : `failed` vrai ; kvGetJson garde son comportement (null, sans erreur)', async () => {
+    __setKvClientForTests({ get: async () => { throw new Error('Upstash injoignable'); }, set: async () => {} });
+    expect(await kvReadJson('traffic:test', NOW)).toEqual({ value: null, failed: true });
+    expect(await kvGetJson('traffic:test', NOW)).toBeNull();
+  });
+  it('serveur de dev : même critère que le préfixe « dev: »', () => {
+    expect(isDevServer()).toBe(false);
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(isDevServer()).toBe(true);
   });
 });
 

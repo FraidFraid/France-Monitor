@@ -1,15 +1,19 @@
 // api/_shared/air-traffic.js : trafic aérien civil, collecte serveur unique OpenSky (spec 2026-10-03 panneaux
 // trafic § 2.3, T3, T4). OpenSky authentifié seul (airplanes.live répond 403 depuis septembre 2026 : retiré,
 // avec l'en-tête de navigateur factice) ; `extended=1` (catégorie) ; `squawk` conservé.
-// Une collecte toutes les 2 min au plus, partagée par la carte (/api/traffic/air, relève client de 12 s) et
-// le panneau (/api/traffic/air-overview) ; lancée par la relève serveur (server/prod/traffic-collectors.mjs)
-// ou à la demande. À chaque collecte : journal des urgences (7 jours), échantillon de volume toutes les 10 min
-// (8 jours), départs par aéroport toutes les 4 h (suspendus sous 500 crédits restants), annuaires officiels
-// de Beauvais et Bordeaux (retards, annulations ; enrichissement des vols proches), trajectoires inhabituelles.
+// Une lecture des états toutes les 2 min au plus (5 min sur le serveur de dev, qui partage le compte), partagée
+// par la carte (/api/traffic/air, relève client de 12 s) et le panneau (/api/traffic/air-overview) ; lancée par
+// la relève serveur (server/prod/traffic-collectors.mjs) ou à la demande. Seule cette lecture est attendue par
+// les routes ; à chaque lecture : journal des urgences (7 jours), échantillon de volume toutes les 10 min
+// (8 jours), trajectoires inhabituelles. Tâches de fond lancées par la lecture des états, jamais attendues par
+// un appelant, une seule de chaque à la fois : annuaires officiels de Beauvais et Bordeaux (10 min ; retards,
+// annulations, enrichissement des vols proches) et départs par aéroport toutes les 4 h (8 appels, environ
+// 240 crédits ; suspendus sous 500 crédits restants ou sans compteur lisible ; coupés sur le serveur de dev
+// sauf AIR_DEV_DEPARTURES=1). Leurs derniers résultats sont joints à chaque réponse.
 // Le « score » d'aéroport par densité est supprimé.
 import { FRANCE_AIRPORTS, matchFranceAirport } from './airports-fr.js';
 import { distanceToMetropoleKm, haversineKm, insideMetropole } from '../_lib/geo-fr.js';
-import { appendSample, kvGetJson, kvSetJson, upsertLogEntry } from '../_lib/kv-history.js';
+import { appendSample, isDevServer, kvReadJson, kvSetJson, upsertLogEntry } from '../_lib/kv-history.js';
 import { parisParts } from '../_lib/paris-time.js';
 import { cleanText, fetchStrictHtml, fetchStrictJson, fetchStrictResponse, sourceError } from '../_lib/source-http.js';
 
@@ -20,6 +24,8 @@ const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-
 /** Zone suivie (déborde sur les pays voisins : dit dans « Méthode »). */
 export const ZONE_BOUNDS = { minLat: 41.0, maxLat: 51.8, minLon: -5.8, maxLon: 10.2 };
 export const STATES_INTERVAL_MS = 2 * 60_000;
+/** Serveur de dev : même compte OpenSky que la production, lecture des états bridée pour tenir son budget. */
+export const DEV_STATES_INTERVAL_MS = 5 * 60_000;
 export const VOLUME_INTERVAL_MS = 10 * 60_000;
 export const DEPARTURES_INTERVAL_MS = 4 * 3_600_000;
 export const DEPARTURES_WINDOW_SEC = 2 * 3600;
@@ -67,13 +73,20 @@ const CALLSIGN_OPERATOR_HINTS = {
   KLM: { commercialCode: 'KL', operator: 'KLM' },
 };
 
-// ── État du processus (une seule collecte, partagée) ──
+// ── État du processus ──
+// Une lecture des états à la fois (`inflight`), seule attendue par les routes. Annuaires et départs : tâches de
+// fond, une seule de chaque à la fois (seul écrivain de leur clé) ; leurs derniers résultats sont joints aux réponses.
 let collection = null;
 let inflight = null;
 let cachedToken = null;
 let rateLimitedUntil = 0;
 const boards = new Map();
 const boardFailures = new Map();
+/** Dernier essai par annuaire : `{ board, records, error }`. */
+const boardStatus = new Map();
+let boardsJob = null;
+/** Départs : derniers connus (chargés une fois par processus depuis la clé-valeur), erreurs du dernier essai, cycle en cours. */
+const departures = { value: null, loaded: false, errors: [], job: null };
 const flightHistory = new Map();
 
 /** Réservé aux tests. */
@@ -84,7 +97,23 @@ export function __resetAirStateForTests() {
   rateLimitedUntil = 0;
   boards.clear();
   boardFailures.clear();
+  boardStatus.clear();
+  boardsJob = null;
+  departures.value = null;
+  departures.loaded = false;
+  departures.errors = [];
+  departures.job = null;
   flightHistory.clear();
+}
+
+/** Réservé aux tests : fin des tâches de fond en cours (annuaires, départs). */
+export async function __airJobsForTests() {
+  await Promise.all([boardsJob, departures.job]);
+}
+
+/** Intervalle entre deux lectures des états : 2 min, 5 min sur le serveur de dev. */
+function statesIntervalMs() {
+  return isDevServer() ? DEV_STATES_INTERVAL_MS : STATES_INTERVAL_MS;
 }
 
 /** URL des états de la zone suivie, catégorie comprise. */
@@ -480,79 +509,146 @@ export async function recordEmergencies(emergencies, now) {
   }
 }
 
+// ── Tâches de fond : annuaires et départs (jamais attendues par la carte ni le panneau) ──
+
+/** Annuaires officiels relus en tâche de fond (10 min, mémoire de panne de 10 min), en parallèle, une seule tâche à la fois. */
+function startBoards(now) {
+  boardsJob ??= Promise.all(Object.keys(OFFICIAL_AIRPORT_PROVIDERS).map(async (iata) => {
+    try {
+      const board = await readBoard(iata, now);
+      boardStatus.set(iata, { board: { delayed: board.delayed, cancelled: board.cancelled, at: board.at }, records: board.records, error: null });
+    } catch (err) {
+      boardStatus.set(iata, { board: null, records: [], error: sourceError(`Annuaire ${OFFICIAL_AIRPORT_PROVIDERS[iata].name}`, err) });
+    }
+  })).finally(() => { boardsJob = null; });
+}
+
+/** Lignes des annuaires lus avec succès au dernier essai (enrichissement des vols proches). */
+function boardRecords() {
+  return [...boardStatus.values()].flatMap((s) => s.records);
+}
+
+/**
+ * Cycle des départs (8 aéroports, environ 240 crédits) : lancé par la lecture des états quand aucun n'est en cours,
+ * jamais attendu ; seul écrivain de DEPARTURES_KEY. `remaining` : crédits lus avec ces états.
+ */
+function startDepartures(now, remaining) {
+  departures.job ??= runDepartures(now, remaining)
+    .catch((err) => {
+      console.error('[collecte opensky] départs interrompus', err);
+      departures.errors = [sourceError('OpenSky, départs interrompus', err)];
+    })
+    .finally(() => { departures.job = null; });
+}
+
+async function runDepartures(now, remaining) {
+  if (isDevServer() && process.env.AIR_DEV_DEPARTURES !== '1') {
+    departures.errors = ['OpenSky : départs non lus sur le serveur de dev (AIR_DEV_DEPARTURES=1 pour les lire)'];
+    return;
+  }
+  if (!departures.loaded) {
+    // Une fois par processus : derniers départs gardés (redémarrage sans nouveau cycle). Panne de Redis : aucun
+    // cycle anticipé (240 crédits), nouvel essai à la prochaine lecture des états.
+    const stored = await kvReadJson(DEPARTURES_KEY, now);
+    if (stored.failed) {
+      departures.errors = ['OpenSky : départs non relancés (stockage clé-valeur illisible)'];
+      return;
+    }
+    departures.value = stored.value;
+    departures.loaded = true;
+  }
+  const lastAt = Date.parse(departures.value?.at);
+  if (now - lastAt < DEPARTURES_INTERVAL_MS) return;
+  if (remaining === null) {
+    departures.errors = ['OpenSky : départs suspendus (crédits OpenSky illisibles)'];
+    return;
+  }
+  if (remaining < CREDIT_FLOOR) {
+    departures.errors = [`OpenSky : départs suspendus (${remaining} crédits restants, seuil ${CREDIT_FLOOR})`];
+    return;
+  }
+  const read = await readDepartures(now, await openSkyToken(now));
+  departures.value = read.value;
+  departures.errors = read.errors;
+  await kvSetJson(DEPARTURES_KEY, read.value, 86_400, now);
+}
+
+// ── Lecture des états (seule attendue par les routes) ──
+
 /** Tentative sans nouvelle donnée : dernière collecte gardée avec sa date (S1), ou collecte vide (`at` null). */
 function keepPrevious(now, errors) {
   collection = collection
     ? { ...collection, attemptedAt: now, errors }
-    : { at: null, attemptedAt: now, states: [], flights: [], credits: null, errors, departures: null, boards: {} };
+    : { at: null, attemptedAt: now, states: [], flights: [], credits: null, errors };
   return collection;
 }
 
 async function refresh(now) {
-  const errors = [];
   let states;
   try {
     states = await readStates(now);
   } catch (err) {
-    errors.push(sourceError('OpenSky', err));
-    return keepPrevious(now, errors);
+    return keepPrevious(now, [sourceError('OpenSky', err)]);
   }
+  const errors = [];
   const atIso = new Date(states.time * 1000).toISOString();
   const zoneStates = states.states.filter(inZone);
-  let flights = zoneStates.filter((s) => !s.onGround).map(toMapFlight);
+  startBoards(now);
+  startDepartures(now, states.remaining);
 
-  const boardResults = {};
-  const records = [];
-  for (const iata of Object.keys(OFFICIAL_AIRPORT_PROVIDERS)) {
-    try {
-      const board = await readBoard(iata, now);
-      boardResults[iata] = { delayed: board.delayed, cancelled: board.cancelled, at: board.at };
-      records.push(...board.records);
-    } catch (err) {
-      boardResults[iata] = null;
-      errors.push(sourceError(`Annuaire ${OFFICIAL_AIRPORT_PROVIDERS[iata].name}`, err));
-    }
-  }
-  flights = applyOfficialDirectory(flights, records, now);
+  let flights = applyOfficialDirectory(zoneStates.filter((s) => !s.onGround).map(toMapFlight), boardRecords(), now);
   updateFlightHistory(flights, now);
   flights = flights.map((f) => {
     const nearest = findNearestAirport(f.latitude, f.longitude, 90);
     return { ...f, anomalies: detectTrajectoryAnomalies(f, now), nearbyAirportIata: nearest?.airport.iata, nearbyAirportName: nearest?.airport.name, nearbyAirportDistanceKm: nearest ? Math.round(nearest.distanceKm) : undefined };
   });
 
-  await recordEmergencies(emergenciesFrom(zoneStates, atIso), now);
-  await appendSample(VOLUME_KEY, volumeSample(zoneStates, atIso), { maxAgeMs: VOLUME_KEEP_MS, minIntervalMs: VOLUME_INTERVAL_MS - 30_000, now });
-
-  let departures = await kvGetJson(DEPARTURES_KEY, now);
-  const departuresDue = !departures || now - Date.parse(departures.at) >= DEPARTURES_INTERVAL_MS;
-  if (departuresDue) {
-    if (states.remaining !== null && states.remaining < CREDIT_FLOOR) {
-      errors.push(`OpenSky : départs suspendus (${states.remaining} crédits restants, seuil ${CREDIT_FLOOR})`);
-    } else {
-      const read = await readDepartures(now, await openSkyToken(now));
-      errors.push(...read.errors);
-      departures = read.value;
-      await kvSetJson(DEPARTURES_KEY, departures, 86_400, now);
-    }
+  // Historique dans le stockage clé-valeur : une panne n'efface jamais des positions lues avec succès.
+  try {
+    await recordEmergencies(emergenciesFrom(zoneStates, atIso), now);
+  } catch (err) {
+    errors.push(sourceError('Journal des urgences', err));
+  }
+  try {
+    await appendSample(VOLUME_KEY, volumeSample(zoneStates, atIso), { maxAgeMs: VOLUME_KEEP_MS, minIntervalMs: VOLUME_INTERVAL_MS - 30_000, now });
+  } catch (err) {
+    errors.push(sourceError('Volume aérien', err));
   }
 
-  collection = { at: atIso, attemptedAt: now, states: zoneStates, flights, credits: states.remaining, errors, departures: departures ?? null, boards: boardResults };
+  collection = { at: atIso, attemptedAt: now, states: zoneStates, flights, credits: states.remaining, errors };
   return collection;
 }
 
+/** Collecte servie : dernière lecture des états, derniers annuaires et départs connus, erreurs des trois. */
+function served() {
+  const boardsView = {};
+  const boardErrors = [];
+  for (const iata of Object.keys(OFFICIAL_AIRPORT_PROVIDERS)) {
+    const status = boardStatus.get(iata);
+    boardsView[iata] = status?.board ?? null;
+    if (status?.error) boardErrors.push(status.error);
+  }
+  return { ...collection, boards: boardsView, departures: departures.value, errors: [...collection.errors, ...boardErrors, ...departures.errors] };
+}
+
 /**
- * Collecte à jour : nouvelle lecture si la dernière tentative a 2 min ou plus. Une seule à la fois : la relève,
- * la carte et le panneau partagent la collecte en cours, qui est le seul écrivain du journal des urgences, du
- * volume et des départs (aucune mise à jour perdue entre appels simultanés). Une erreur imprévue après la
- * lecture des états date quand même la tentative : sinon chaque requête de la carte (12 s) relancerait OpenSky
- * et viderait les crédits (T4).
+ * Collecte à jour : nouvelle lecture des états si la dernière tentative a 2 min ou plus (5 min en dev). Une seule à
+ * la fois : la relève, la carte et le panneau partagent la lecture en cours, seul écrivain du journal des urgences
+ * et du volume. Annuaires et départs ne sont jamais attendus. Une erreur imprévue date quand même la tentative
+ * (sinon chaque requête de la carte, toutes les 12 s, relancerait OpenSky et viderait les crédits, T4) et elle est
+ * journalisée sur le serveur.
  */
 export async function ensureAirFresh(now = Date.now()) {
-  if (collection && now - collection.attemptedAt < STATES_INTERVAL_MS) return collection;
-  inflight ??= refresh(now)
-    .catch((err) => keepPrevious(now, [sourceError('Collecte aérienne interrompue', err)]))
-    .finally(() => { inflight = null; });
-  return inflight;
+  if (!collection || now - collection.attemptedAt >= statesIntervalMs()) {
+    inflight ??= refresh(now)
+      .catch((err) => {
+        console.error('[collecte opensky] collecte interrompue', err);
+        return keepPrevious(now, [sourceError('Collecte aérienne interrompue', err)]);
+      })
+      .finally(() => { inflight = null; });
+    await inflight;
+  }
+  return served();
 }
 
 /** Instantané de la carte (/api/traffic/air) : vols en vol de la zone suivie, date réelle des états. */
@@ -562,7 +658,7 @@ export async function fetchAirTrafficSnapshot(now = Date.now()) {
   return {
     source: 'opensky',
     fetchedAt: Date.parse(c.at),
-    ttlMs: STATES_INTERVAL_MS,
+    ttlMs: statesIntervalMs(),
     areas: [],
     flights: c.flights,
     sourceCounts: { opensky: c.flights.length },

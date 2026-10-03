@@ -128,9 +128,9 @@ export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DE
 }
 
 /**
- * Corps texte d'une URL, lu strictement.
+ * Corps texte d'une URL, lu strictement (`contentMarker` : repère du contenu attendu, voir isChallengePage).
  * @param {string} url
- * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit }} [options]
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string }} [options]
  * @returns {Promise<string>}
  */
 export async function fetchStrictText(url, options = {}) {
