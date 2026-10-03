@@ -52,6 +52,20 @@ describe('TransportPanel', () => {
     (c.querySelector('[data-rail-train="SNCF:2026-10-03:9713"]') as HTMLElement).click();
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ number: '9713' }));
   });
+  it('relève de 5 min : la barre d’outils n’est pas reconstruite, le menu « axe ou région » ouvert garde son nœud et le focus', () => {
+    const { c, p } = mount();
+    p.show(railStateFixture());
+    const select = c.querySelector('[data-rail-filter]') as HTMLSelectElement;
+    select.focus();
+    expect(document.activeElement).toBe(select);
+    p.update(railStateFixture());
+    expect(c.querySelector('[data-rail-filter]')).toBe(select);
+    expect(document.activeElement).toBe(select);
+    select.value = 'axis:sud-est';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(c.querySelector('[data-rail-filter]')).toBe(select);
+    expect(c.textContent).toContain('En cours (3)');
+  });
   it('survol d’un train : trajet prévisualisé sur la carte, effacé à la sortie de la ligne ou du panneau ; clic : train choisi (carte factice)', () => {
     const map = { previewTrainRoute: vi.fn(), highlightTrainRoute: vi.fn() };
     const { c, p } = mount((train) => map.highlightTrainRoute(train));

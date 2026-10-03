@@ -7561,6 +7561,7 @@ export class App {
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
       roadEvents: this.trafficInputs().roadEvents,
+      roadUrban: this.currentRoadTraffic?.urban.data ?? null,
     };
   }
 

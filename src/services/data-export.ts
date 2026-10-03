@@ -22,9 +22,10 @@ import {
   type NewsItem,
   type PowerOutage,
   type RoadEvent,
+  type RoadUrbanResponse,
   type TelecomOutage,
 } from '../types/index.ts';
-import { ROAD_KIND_WORD, ROAD_SEVERITY_WORD } from '../components/layer-panel/traffic-format.ts';
+import { JAM_MAGNITUDE_WORD, ROAD_KIND_WORD, ROAD_SEVERITY_WORD } from '../components/layer-panel/traffic-format.ts';
 
 // ─── Types de sérialisation ───────────────────────────────────────────────────
 
@@ -62,7 +63,8 @@ export type ExportLayerKey =
   | 'crues'
   | 'feux'
   | 'pannes'
-  | 'trafic';
+  | 'trafic'
+  | 'bouchons';
 
 /** Couche exportable prête à l'affichage dans le menu (déjà sérialisée). */
 export interface ExportableLayer {
@@ -82,6 +84,8 @@ export interface ExportContext {
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   roadEvents: RoadEvent[];
+  /** Dernière collecte TomTom des agglomérations (bouchons, date du relevé) ; null tant qu'elle n'est pas chargée. */
+  roadUrban: Pick<RoadUrbanResponse, 'collectedAt' | 'jams'> | null;
 }
 
 // ─── Provenance ───────────────────────────────────────────────────────────────
@@ -500,6 +504,35 @@ export function serializeRoadEvents(items: RoadEvent[]): SerializedLayer {
   return { rows, columns, features };
 }
 
+/** Bouchons des agglomérations (TomTom, collecte du serveur, spec 2026-10-03 trafics § 2.2) : retard et longueur, intensité en français. */
+export function serializeUrbanJams(urban: Pick<RoadUrbanResponse, 'collectedAt' | 'jams'> | null): SerializedLayer {
+  const columns: ExportColumn[] = [
+    { key: 'route', label: 'route' },
+    { key: 'de', label: 'de' },
+    { key: 'vers', label: 'vers' },
+    { key: 'retard', label: 'retard (min)' },
+    { key: 'longueur', label: 'longueur (km)' },
+    { key: 'intensite', label: 'intensité' },
+    { key: 'debut', label: 'début' },
+    { key: 'releve', label: 'relevé TomTom' },
+    { key: 'lat', label: 'latitude' },
+    { key: 'lon', label: 'longitude' },
+  ];
+  const rows: ExportRow[] = [];
+  const features: ExportFeatureInput[] = [];
+  for (const j of urban?.jams ?? []) {
+    const intensite = JAM_MAGNITUDE_WORD[j.magnitude];
+    rows.push({
+      route: j.road, de: j.from, vers: j.to, retard: j.delayMin, longueur: j.lengthKm, intensite, debut: j.start, releve: urban?.collectedAt ?? null,
+      lat: j.lat, lon: j.lon,
+    });
+    if (Number.isFinite(j.lat) && Number.isFinite(j.lon)) {
+      features.push({ lat: j.lat, lon: j.lon, properties: { route: j.road, de: j.from, vers: j.to, retard: j.delayMin, longueur: j.lengthKm, intensite } });
+    }
+  }
+  return { rows, columns, features };
+}
+
 // ─── Assemblage : couches exportables ayant des données ───────────────────────
 
 interface LayerDef {
@@ -516,6 +549,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'feux', label: 'Feux actifs', serialize: (c) => serializeFires(c.fires) },
   { key: 'pannes', label: 'Pannes réseaux', serialize: (c) => serializeOutages(c.powerOutages, c.telecomOutages) },
   { key: 'trafic', label: 'Événements routiers (DIR)', serialize: (c) => serializeRoadEvents(c.roadEvents) },
+  { key: 'bouchons', label: 'Bouchons des agglomérations (TomTom)', serialize: (c) => serializeUrbanJams(c.roadUrban) },
 ];
 
 /**

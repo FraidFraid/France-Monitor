@@ -6,6 +6,7 @@ import type { MaritimeSnapshot } from '../../types/index.ts';
 import { FRENCH_MARITIME_TERRITORIES, isInFranceZone, type FrenchMaritimeTerritoryCode } from '../../config/french-ports.ts';
 import { BLACK_LIST_FLAGS, GREY_LIST_FLAGS, RISK_FLAGS_VINTAGE, SANCTIONED_FLAGS, type FlagRisk } from '../../config/risk-flags.ts';
 import type { AisConnectionStatus } from '../../services/ais-connection.ts';
+import { isTrafficDataLate } from '../../services/traffic-levels.ts';
 import type { MilitaryShip, RiskLevel } from '../../services/military-ships.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -13,7 +14,7 @@ import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerTab, type LayerView } from './frame.ts';
-import { maritimeHead, maritimeMethodSection, veilleSections, type MaritimeTab, type MaritimeVeilleInput } from './maritime.ts';
+import { aisLate, maritimeHead, maritimeMethodSection, veilleSections, type MaritimeTab, type MaritimeVeilleInput } from './maritime.ts';
 import { CAT_PORT, coordText, dataMs, fold, formatKm, formatKnots, formatMeters, note, plural } from './traffic-format.ts';
 
 export type MaritimeAlertFilter = 'alertes' | 'risque-eleve' | 'pavillon' | 'militaire' | 'tous';
@@ -86,8 +87,24 @@ const FILTERS: Readonly<Record<MaritimeAlertFilter, (s: MilitaryShip) => boolean
   alertes: isAlertShip, 'risque-eleve': (s) => s.riskLevel === 'high' || s.riskLevel === 'critical', pavillon: flagged, militaire: isMilitaryShip, tous: () => true,
 };
 
-function aisStale(live: MaritimeLiveInput): boolean {
-  return live.status === 'stale' || live.status === 'disconnected';
+/**
+ * État de la liste vivante (onglets Marine nationale et Alertes, fiche navire). `frozen` : même seuil que l'en-tête et la
+ * Veille (isTrafficDataLate('ais'), 5 min sans message) ; sans aucun message, après l'attente initiale ou la coupure de la
+ * liaison. `headDown` : l'en-tête dit lui-même « AIS indisponible » (instantané du relais en retard ou en panne) ; sinon seule la
+ * liaison directe est en cause et la liste le dit sans contredire la pastille.
+ */
+interface LiveState { frozen: boolean; headDown: boolean }
+
+function liveState(input: Pick<MaritimeViewInput, 'snapshot' | 'error' | 'live' | 'now'>): LiveState {
+  const { snapshot: s, error, live, now } = input;
+  const frozen = live.lastMessageAt === null ? live.status === 'stale' || live.status === 'disconnected'
+    : isTrafficDataLate('ais', new Date(live.lastMessageAt).toISOString(), now);
+  return { frozen, headDown: s ? aisLate(s, now) : error !== null };
+}
+
+/** « AIS indisponible » seulement quand l'en-tête le dit ; sinon « Liaison directe interrompue ». */
+function frozenWord(state: LiveState): string {
+  return state.headDown ? 'AIS indisponible' : 'Liaison directe interrompue';
 }
 
 function inTerritory(s: MilitaryShip, territory: MaritimeLiveInput['territory']): boolean {
@@ -143,10 +160,10 @@ function shipRow(s: MilitaryShip, homonyms: ReadonlySet<string>, stale: boolean,
   });
 }
 
-function paged(ships: readonly MilitaryShip[], live: MaritimeLiveInput, now: number, empty: string): string {
+function paged(ships: readonly MilitaryShip[], live: MaritimeLiveInput, state: LiveState, now: number, empty: string): string {
   const limit = Math.max(1, live.pages) * MARITIME_PAGE_SIZE;
   const homonyms = homonymKeys(ships);
-  const stale = aisStale(live);
+  const stale = state.frozen;
   const rest = ships.length - Math.min(limit, ships.length);
   if (ships.length === 0) return emptyLine(empty);
   return ships.slice(0, limit).map((s) => shipRow(s, homonyms, stale, now)).join('')
@@ -155,40 +172,41 @@ function paged(ships: readonly MilitaryShip[], live: MaritimeLiveInput, now: num
 
 // ─── Marine nationale ───
 
-function navySection(live: MaritimeLiveInput, now: number, open: OpenFn): FicheSection {
+function navySection(live: MaritimeLiveInput, state: LiveState, now: number, open: OpenFn): FicheSection {
   const ships = live.navy.filter((s) => inTerritory(s, live.territory) && searched(s, live.search))
     .sort((a, b) => Number(b.isLive === true) - Number(a.isLive === true) || a.name.localeCompare(b.name, 'fr'));
   const atSea = live.navy.filter((s) => s.isLive === true).length;
   return {
     id: 'navy', title: 'Marine nationale', collapsible: true, open: open('navy', true),
     summary: escapeHtml(`${plural(atSea, 'en mer suivi', 'en mer suivis')} · ${plural(live.navy.length, 'navire')}`),
-    html: toolbar(live, false) + paged(ships, live, now, 'Aucun navire de la Marine nationale pour ce choix.')
+    html: toolbar(live, false) + paged(ships, live, state, now, 'Aucun navire de la Marine nationale pour ce choix.')
       + note('Navires de la Marine nationale identifiés par leur MMSI ; sans position AIS depuis 10 minutes, position de référence au port d’attache.'),
   };
 }
 
 // ─── Alertes ───
 
-function alertsSection(live: MaritimeLiveInput, now: number, open: OpenFn): FicheSection {
+function alertsSection(live: MaritimeLiveInput, state: LiveState, now: number, open: OpenFn): FicheSection {
   const inScope = live.traffic.filter((s) => inTerritory(s, live.territory));
   const ships = inScope.filter((s) => FILTERS[live.filter](s) && searched(s, live.search))
     .sort((a, b) => (live.filter === 'tous' ? 0 : RISK_ORDER[b.riskLevel ?? 'none'] - RISK_ORDER[a.riskLevel ?? 'none'])
       || (b.lastSeen ?? 0) - (a.lastSeen ?? 0));
   const n = ships.length;
-  const stale = aisStale(live);
+  const stale = state.frozen;
+  const word = frozenWord(state);
   const counted = live.filter === 'alertes' ? plural(n, 'alerte') : live.filter === 'risque-eleve' ? `${frNumber(n, 0)} à risque élevé`
     : live.filter === 'pavillon' ? `${frNumber(n, 0)} sous pavillon à risque` : live.filter === 'militaire' ? plural(n, 'navire militaire', 'navires militaires') : plural(n, 'navire suivi', 'navires suivis');
   // Flux figé : une absence d'alerte calculée sur des positions figées n'est jamais un fait (T3).
-  const summary = !stale ? counted : (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') && n === 0 ? 'alertes non évaluées' : `${counted} (AIS indisponible)`;
-  const empty = stale && live.traffic.length === 0 ? 'AIS indisponible : aucune position reçue.'
-    : stale && (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') ? 'AIS indisponible : alertes non évaluées.'
+  const summary = !stale ? counted : (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') && n === 0 ? 'alertes non évaluées' : `${counted} (${state.headDown ? 'AIS indisponible' : 'liaison directe interrompue'})`;
+  const empty = stale && live.traffic.length === 0 ? `${word} : aucune position reçue.`
+    : stale && (live.filter === 'alertes' || live.filter === 'risque-eleve' || live.filter === 'pavillon') ? `${word} : alertes non évaluées.`
     : live.status === 'connecting' && live.traffic.length === 0 ? 'Connexion au relais AIS…'
     : live.filter === 'tous' ? 'Aucun navire suivi pour ce choix.'
     : live.filter === 'militaire' ? `Aucun navire militaire parmi ${plural(inScope.length, 'navire suivi', 'navires suivis')}.`
     : `Aucune ${live.filter === 'alertes' ? 'alerte' : 'correspondance'} parmi ${plural(inScope.length, 'navire suivi', 'navires suivis')}.`;
   return {
     id: 'alerts', title: 'Alertes', collapsible: true, open: open('alerts', true), summary: escapeHtml(summary),
-    html: toolbar(live, true) + paged(ships, live, now, empty)
+    html: toolbar(live, true) + paged(ships, live, state, now, empty)
       + note(`Risque calculé sur les positions AIS : pavillon sous sanctions (OFAC) ou sur les listes noire et grise du Paris MOU, cargo au-delà de 22${NBSP}nœuds, navire militaire étranger. Listes : ${RISK_FLAGS_VINTAGE.parisMou} ; ${RISK_FLAGS_VINTAGE.sanctions}.`),
   };
 }
@@ -278,10 +296,13 @@ function shipSections(s: MilitaryShip, stale: boolean, now: number, open: OpenFn
 
 // ─── Aiguillage ───
 
-function aisCallout(live: MaritimeLiveInput, now: number): string {
-  if (!aisStale(live)) return '';
-  const text = live.lastMessageAt !== null ? `AIS indisponible depuis ${absoluteTime(live.lastMessageAt, now, 'fr')} : positions figées.`
-    : 'AIS indisponible : aucun message reçu.';
+function aisCallout(live: MaritimeLiveInput, state: LiveState, now: number): string {
+  if (!state.frozen) return '';
+  const since = live.lastMessageAt !== null ? absoluteTime(live.lastMessageAt, now, 'fr') : null;
+  const text = state.headDown
+    ? (since !== null ? `AIS indisponible depuis ${since} : positions figées.` : 'AIS indisponible : aucun message reçu.')
+    : (since !== null ? `Liaison directe au relais interrompue depuis ${since} : liste figée ; l’en-tête suit l’instantané du relais.`
+      : 'Liaison directe au relais : aucun message reçu ; l’en-tête suit l’instantané du relais.');
   return `<p class="fmk-callout lp-callout">${escapeHtml(text)}</p>`;
 }
 
@@ -291,10 +312,11 @@ export function buildMaritimeView(input: MaritimeViewInput): LayerView {
   const veilleInput: MaritimeVeilleInput = { snapshot: s, error, now, open };
   const head = maritimeHead(s, error, now);
   const method = maritimeMethodSection(veilleInput);
+  const state = liveState(input);
   if (live.selected) {
     return {
-      head, tabs, activeTab: tab, sections: [...shipSections(live.selected, aisStale(live), now, open), method],
-      bodyHtml: '<button type="button" class="lp-toggle" data-mar-back>Retour à la liste</button>' + aisCallout(live, now),
+      head, tabs, activeTab: tab, sections: [...shipSections(live.selected, state.frozen, now, open), method],
+      bodyHtml: '<button type="button" class="lp-toggle" data-mar-back>Retour à la liste</button>' + aisCallout(live, state, now),
     };
   }
   if (tab === 'veille') {
@@ -303,6 +325,6 @@ export function buildMaritimeView(input: MaritimeViewInput): LayerView {
     // Le retard de l'AIS est dit par l'en-tête (« AIS indisponible depuis hh:mm ») et retire les couleurs des sections.
     return { head, tabs, activeTab: tab, sections: [...veilleSections(veilleInput), method], bodyHtml: callout || undefined };
   }
-  const sections = tab === 'marine' ? [navySection(live, now, open), method] : [alertsSection(live, now, open), flagsSection(open), method];
-  return { head, tabs, activeTab: tab, sections, bodyHtml: aisCallout(live, now) || undefined };
+  const sections = tab === 'marine' ? [navySection(live, state, now, open), method] : [alertsSection(live, state, now, open), flagsSection(open), method];
+  return { head, tabs, activeTab: tab, sections, bodyHtml: aisCallout(live, state, now) || undefined };
 }

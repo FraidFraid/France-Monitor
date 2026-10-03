@@ -30,6 +30,7 @@ const MAX_SENSITIVE = 5;
 const PARTIAL_OUTAGE = /^flux AIS partiel/i;
 const PORT_FLOOR_NOTE = 'Les comptes des ports sont des planchers liés à la couverture des récepteurs AIS bénévoles : un port est une zone à plusieurs terminaux '
   + '(Dunkerque Est et Ouest ; Bordeaux, de Bassens au Verdon ; Marseille, Lavéra et Fos ; Saint-Nazaire avec Donges-Montoir ; Le Havre avec Port-Jérôme).';
+const NO_RECEPTION = `aucune réception AIS depuis 24${NBSP}h`;
 const PERIMETER_NOTE = 'Les navires d’outre-mer apparaissent sur la carte (flux direct) mais pas dans ces comptes, limités aux eaux métropolitaines.';
 
 /** Pannes partielles du flux amont nommées par le relais (« flux AIS partiel : lot 2 sur 3 coupé (…) »). */
@@ -139,6 +140,7 @@ function portsSection(input: MaritimeVeilleInput): FicheSection {
   const { snapshot: s, now, open } = input;
   const base = { id: 'ports', title: 'Ports', collapsible: true, open: open('ports', true) };
   if (!s) return { ...base, summary: 'n.d.', html: sourceDown(SNAPSHOT_DOWN) };
+  const late = aisLate(s, now);
   const outages = partialOutages(s.errors);
   const partialNote = outages.length > 0 ? note(`${outages.join(' ; ')} : les comptes des ports concernés sont des minimums.`) : '';
   const received = (p: MaritimePortStats): boolean => p.lastSeenAt !== null;
@@ -147,14 +149,14 @@ function portsSection(input: MaritimeVeilleInput): FicheSection {
   if (ports.length === 0) return { ...base, summary: 'n.d.', html: partialNote + emptyOrDown(s.errors, 'Aucun port renseigné.', 'ports (instantané AIS)') };
   const rows = ports.map((p) => {
     // Aucune réception en 24 h : couverture absente, jamais un 0 factuel ni une jauge.
-    if (p.lastSeenAt === null) return listRow({ text: p.port, value: 'n.d.', level: 'gris', note: 'aucune réception AIS depuis 24 h' });
+    if (p.lastSeenAt === null) return listRow({ text: p.port, value: 'n.d.', level: 'gris', note: NO_RECEPTION });
     const quiet = p.vessels === 0 ? ` · dernière réception ${clockOf(p.lastSeenAt, now)}` : '';
-    return barRow({
-      label: p.port, pct: top && top.vessels > 0 ? (p.vessels / top.vessels) * 100 : 0, value: frNumber(p.vessels, 0), color: CAT_PORT, dot: false,
-      note: `au mouillage ${frNumber(p.atAnchor, 0)} · amarrés ${frNumber(p.moored, 0)} · en route ${frNumber(p.underWay, 0)}${quiet}`,
-    });
+    const note = `au mouillage ${frNumber(p.atAnchor, 0)} · amarrés ${frNumber(p.moored, 0)} · en route ${frNumber(p.underWay, 0)}${quiet}`;
+    // AIS en retard : comme les aéroports et les jauges des DIR, la ligne perd sa jauge et sa couleur.
+    return late ? listRow({ text: p.port, value: frNumber(p.vessels, 0), level: 'gris', note })
+      : barRow({ label: p.port, pct: top && top.vessels > 0 ? (p.vessels / top.vessels) * 100 : 0, value: frNumber(p.vessels, 0), color: CAT_PORT, dot: false, note });
   }).join('');
-  const summary = top ? `${top.port} ${frNumber(top.vessels, 0)}${top.atAnchor > 0 ? ` · ${frNumber(top.atAnchor, 0)} au mouillage` : ''}` : 'aucune réception AIS depuis 24 h';
+  const summary = top ? `${top.port} ${frNumber(top.vessels, 0)}${top.atAnchor > 0 ? ` · ${frNumber(top.atAnchor, 0)} au mouillage` : ''}${late ? ' (en retard)' : ''}` : NO_RECEPTION;
   return {
     ...base, summary: escapeHtml(summary),
     html: partialNote + rows + note(`Présents : à moins de 25${NBSP}km du port ; au mouillage : à moins de 40${NBSP}km. Dunkerque, Calais et la Gironde sont couverts par le relais depuis cette version.`)

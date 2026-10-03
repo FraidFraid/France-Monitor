@@ -20,12 +20,13 @@ import {
   serializeOutages,
   serializeSituations,
   serializeRoadEvents,
+  serializeUrbanJams,
   toCsv,
   toGeoJson,
   type ExportableLayer,
   type ExportContext,
 } from './data-export.ts';
-import { roadNationalFixture } from '../components/layer-panel/traffic.fixture.ts';
+import { roadNationalFixture, roadUrbanFixture } from '../components/layer-panel/traffic.fixture.ts';
 
 // ─── Fixtures typées ──────────────────────────────────────────────────────────
 
@@ -273,6 +274,29 @@ describe('serializeRoadEvents', () => {
   });
 });
 
+describe('serializeUrbanJams', () => {
+  it('bouchons TomTom des agglomérations : route, tronçon, retard et longueur, intensité en français, date du relevé, géolocalisés', () => {
+    const { rows, columns, features } = serializeUrbanJams(roadUrbanFixture());
+    expect(columns.map((c) => [c.key, c.label])).toEqual([
+      ['route', 'route'], ['de', 'de'], ['vers', 'vers'], ['retard', 'retard (min)'], ['longueur', 'longueur (km)'], ['intensite', 'intensité'],
+      ['debut', 'début'], ['releve', 'relevé TomTom'], ['lat', 'latitude'], ['lon', 'longitude'],
+    ]);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toEqual({
+      route: 'A86', de: 'Rueil-Malmaison', vers: 'Colombes', retard: 24.3, longueur: 3.6, intensite: 'bouchon', debut: '2026-10-03T12:42:00+02:00',
+      releve: '2026-10-03T15:00:00+02:00', lat: 48.905, lon: 2.205,
+    });
+    expect(rows.map((r) => r.intensite)).toEqual(['bouchon', 'bouchon', 'à-coups', 'ralenti']);
+    expect(features).toHaveLength(4);
+    expect(features[0]).toEqual({ lat: 48.905, lon: 2.205, properties: { route: 'A86', de: 'Rueil-Malmaison', vers: 'Colombes', retard: 24.3, longueur: 3.6, intensite: 'bouchon' } });
+    expect(serializeUrbanJams(null).rows).toEqual([]);
+  });
+  it('couche exportable à côté des événements DIR (rien ne disparaît sans remplaçant)', () => {
+    const layers = collectExportableLayers({ ...emptyContext(), roadEvents: roadNationalFixture().events, roadUrban: roadUrbanFixture() });
+    expect(layers.map((l) => [l.key, l.label, l.count])).toEqual([['trafic', 'Événements routiers (DIR)', 65], ['bouchons', 'Bouchons des agglomérations (TomTom)', 4]]);
+  });
+});
+
 // ─── Nom de fichier ───────────────────────────────────────────────────────────
 
 describe('buildExportFilename', () => {
@@ -294,6 +318,7 @@ function emptyContext(): ExportContext {
     powerOutages: [],
     telecomOutages: [],
     roadEvents: [],
+    roadUrban: null,
   };
 }
 

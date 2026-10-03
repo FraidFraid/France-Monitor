@@ -90,7 +90,7 @@ describe('vue Trafic maritime, onglet Veille (spec 2026-10-03 trafics § 3.4)', 
   });
   it('ports : couverture AIS (amendement 5), jamais un 0 factuel ni une jauge sans réception en 24 h ; planchers', () => {
     const h = sectionOf('ports')?.html ?? '';
-    expect(h).toContain('<div class="lp-row"><span class="fmk-dot" aria-hidden="true"></span><span>Bordeaux</span><span class="lp-val fmk-num">n.d.</span><small>aucune réception AIS depuis 24 h</small></div>');
+    expect(h).toContain('<div class="lp-row"><span class="fmk-dot" aria-hidden="true"></span><span>Bordeaux</span><span class="lp-val fmk-num">n.d.</span><small>aucune réception AIS depuis 24\u00A0h</small></div>');
     expect(h).not.toMatch(/lp-bar-label">Bordeaux/);
     expect(h.indexOf('>Bordeaux<')).toBeGreaterThan(h.indexOf('>Calais<'));
     expect(h).toMatch(/lp-bar-label">Dunkerque<[^]*dernière réception 11:47/);
@@ -98,7 +98,7 @@ describe('vue Trafic maritime, onglet Veille (spec 2026-10-03 trafics § 3.4)', 
     for (const part of ['planchers liés à la couverture des récepteurs AIS bénévoles', 'Dunkerque Est et Ouest', 'de Bassens au Verdon', 'Lavéra et Fos', 'Donges-Montoir', 'Port-Jérôme']) expect(t).toContain(part);
     const none = withSnapshot((s) => { s.ports.forEach((p) => { p.lastSeenAt = null; p.vessels = 0; }); });
     const s2 = sectionOf('ports', { snapshot: none });
-    expect(s2?.summary).toBe('aucune réception AIS depuis 24 h');
+    expect(s2?.summary).toBe('aucune réception AIS depuis 24\u00A0h');
     expect(s2?.html).not.toContain('lp-bar-row');
   });
   it('panne partielle du flux amont : nommée dans les zones, la synthèse et « Méthode et sources » ; périmètre métropole', () => {
@@ -142,6 +142,12 @@ describe('vue Trafic maritime, onglet Veille (spec 2026-10-03 trafics § 3.4)', 
     expect(sectionOf('signals', { now: LATE_NOW })?.html).not.toMatch(/fmk-dot--/);
     expect(sectionOf('signals', { now: LATE_NOW })?.html).toContain('<span>Signalements suspendus</span><span class="lp-val fmk-num">15:12</span>');
     expect(visibleText(html({ now: LATE_NOW }))).not.toMatch(/aucun navire/i);
+    // Ports : comme les aéroports et les jauges des DIR, une donnée en retard perd ses couleurs (aucune jauge de catégorie).
+    const ports = sectionOf('ports', { now: LATE_NOW });
+    expect(ports?.html).not.toContain('lp-bar-row');
+    expect(ports?.html).not.toContain('var(--cat-port)');
+    expect(ports?.html).toMatch(/<div class="lp-row"><span class="fmk-dot" aria-hidden="true"><\/span><span>[^<]+<\/span><span class="lp-val fmk-num">\d+<\/span><small>au mouillage/);
+    expect(ports?.summary).toMatch(/\(en retard\)$/);
   });
   it('AIS indisponible sans donnée : jamais « aucun navire » ; erreur avec données ; panne partielle ; vide', () => {
     const down = maritimeHead(null, 'HTTP 502', TRAFFIC_NOW);

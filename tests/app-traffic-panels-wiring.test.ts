@@ -170,6 +170,8 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
     expect(report).toContain('roadEvents: traffic.roadEvents,');
     expect(report).toContain('context.sources.push(...trafficReportSources(this.statusPanel?.getSources() ?? []));');
     expect(methodBody('buildExportContext')).toContain('roadEvents: this.trafficInputs().roadEvents,');
+    // Bouchons TomTom des agglomérations exportés à côté des événements DIR (remplaçant de l'ancien export TomTom).
+    expect(methodBody('buildExportContext')).toContain('roadUrban: this.currentRoadTraffic?.urban.data ?? null,');
     for (const gone of ['currentSncfDisruptions', 'currentTrafficIncidents', 'currentRailNetworkData', 'fetchTrafficIncidents', 'hasFreshTrafficIncidentCache',
       'buildRailNetworkData', 'resolveRailFocusDisruption', 'highlightRailDisruptionFromPanel', 'hasRailMapCoverage', 'ensureTrafficLoaded',
       'renderTrafficPanel', 'trafficDataLoaded', 'airplanes.live · proxy gratuit', 'airplanes.live + OpenSky']) {

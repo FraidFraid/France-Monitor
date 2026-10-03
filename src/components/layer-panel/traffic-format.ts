@@ -169,6 +169,8 @@ export function speedLevel(kmh: number): VigilanceLevel {
 export function jamLevel(magnitude: 1 | 2 | 3): VigilanceLevel {
   return magnitude >= 3 ? 'rouge' : magnitude === 2 ? 'orange' : 'jaune';
 }
+/** Intensité d'un bouchon TomTom en français (magnitude 1 à 3), pour l'export. */
+export const JAM_MAGNITUDE_WORD: Readonly<Record<1 | 2 | 3, string>> = { 1: 'ralenti', 2: 'à-coups', 3: 'bouchon' };
 export const SQUAWK_WORD: Readonly<Record<Squawk, string>> = { '7500': 'détournement', '7600': 'panne radio', '7700': 'urgence' };
 /** Puce d'une urgence, comme la pastille (spec § 3.2) : 7500 rouge, 7700 orange, 7600 jaune. */
 export const SQUAWK_LEVEL: Readonly<Record<Squawk, VigilanceLevel>> = { '7500': 'rouge', '7700': 'orange', '7600': 'jaune' };

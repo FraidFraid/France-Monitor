@@ -104,11 +104,13 @@ describe('panneau Trafic maritime : onglets, Marine nationale, Alertes, fiche na
     expect(t).toContain('Registres sous sanctions (OFAC, liste saisie le 27/03/2026)');
     expect(t).toContain('Corée du Nord');
   });
-  it('AIS figé ou coupé : « AIS indisponible depuis hh:mm », puces grises ; jamais « aucune alerte » sans flux', () => {
-    const stale = view({ live: live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000 }) });
+  it('AIS figé ou coupé (en-tête en retard aussi) : « AIS indisponible depuis hh:mm », puces grises ; jamais « aucune alerte » sans flux', () => {
+    const lateSnapshot = { ...maritimeSnapshotFixture(), lastMessageAt: '2026-10-03T15:05:00+02:00' };
+    const stale = view({ snapshot: lateSnapshot, live: live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000 }) });
+    expect(stale.head.level).toBe('nd');
     expect(stale.bodyHtml).toContain('AIS indisponible depuis 15:05 : positions figées.');
     expect(stale.sections.find((s) => s.id === 'alerts')?.html).not.toMatch(/fmk-dot--/);
-    const cut = view({ live: live({ status: 'disconnected', lastMessageAt: null, traffic: [], navy: [] }) });
+    const cut = view({ snapshot: null, error: 'HTTP 502', live: live({ status: 'disconnected', lastMessageAt: null, traffic: [], navy: [] }) });
     expect(cut.bodyHtml).toContain('AIS indisponible : aucun message reçu.');
     expect(visibleText(cut.sections.find((s) => s.id === 'alerts')?.html ?? '')).toContain('AIS indisponible : aucune position reçue.');
     expect(visibleText(renderLayerView('trafficMaritime', cut))).not.toMatch(/Aucune alerte/);
@@ -137,12 +139,37 @@ describe('panneau Trafic maritime : onglets, Marine nationale, Alertes, fiche na
     expect(renderLayerView('trafficMaritime', v)).not.toMatch(/monospace|font-family/);
   });
   it('flux figé avec positions figées : aucune alerte lue comme calme (T3), résumé sans « 0 alerte »', () => {
+    const lateSnapshot = { ...maritimeSnapshotFixture(), lastMessageAt: '2026-10-03T15:05:00+02:00' };
     const frozen = live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000, traffic: [TRAFFIC[0]] });
-    const s = sectionOf('alerts', { live: frozen });
+    const s = sectionOf('alerts', { snapshot: lateSnapshot, live: frozen });
     expect(s?.summary).toBe('alertes non évaluées');
     expect(visibleText(s?.html ?? '')).toContain('AIS indisponible : alertes non évaluées.');
     expect(visibleText(s?.html ?? '')).not.toMatch(/Aucune alerte/);
-    expect(sectionOf('alerts', { live: { ...frozen, traffic: TRAFFIC } })?.summary).toBe('2 alertes (AIS indisponible)');
+    expect(sectionOf('alerts', { snapshot: lateSnapshot, live: { ...frozen, traffic: TRAFFIC } })?.summary).toBe('2 alertes (AIS indisponible)');
+  });
+  it('un seul seuil AIS dans le panneau (5 min, comme l’en-tête et la Veille) : à 3 min, liste vivante et couleurs gardées', () => {
+    const v = view({ live: live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 3 * 60_000 }) });
+    expect(v.bodyHtml).toBeUndefined();
+    expect(v.sections.find((s) => s.id === 'alerts')?.html).toContain('fmk-dot--orange');
+    expect(v.sections.find((s) => s.id === 'alerts')?.summary).toBe('2 alertes');
+    const navy = view({ tab: 'marine', live: live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 3 * 60_000 }) });
+    expect(navy.bodyHtml).toBeUndefined();
+  });
+  it('liaison directe figée mais instantané du relais à l’heure (pastille colorée) : jamais « positions figées » ni « AIS indisponible » sous la pastille', () => {
+    for (const tab of ['alertes', 'marine'] as const) {
+      const v = view({ tab, live: live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000 }) });
+      expect(v.head.level).toBe('vert');
+      const all = visibleText(renderLayerView('trafficMaritime', v));
+      expect(all).not.toMatch(/positions figées|AIS indisponible/);
+      expect(v.bodyHtml).toContain('Liaison directe au relais interrompue depuis 15:05 : liste figée ; l’en-tête suit l’instantané du relais.');
+      expect(v.sections[0].html).not.toMatch(/fmk-dot--/);
+    }
+    const frozen = live({ status: 'stale', lastMessageAt: TRAFFIC_NOW - 10 * 60_000 });
+    expect(sectionOf('alerts', { live: frozen })?.summary).toBe('2 alertes (liaison directe interrompue)');
+    expect(visibleText(sectionOf('alerts', { live: { ...frozen, traffic: [TRAFFIC[0]] } })?.html ?? '')).toContain('Liaison directe interrompue : alertes non évaluées.');
+    const cut = view({ live: live({ status: 'disconnected', lastMessageAt: null, traffic: [], navy: [] }) });
+    expect(cut.bodyHtml).toContain('Liaison directe au relais : aucun message reçu ; l’en-tête suit l’instantané du relais.');
+    expect(visibleText(cut.sections.find((s) => s.id === 'alerts')?.html ?? '')).toContain('Liaison directe interrompue : aucune position reçue.');
   });
   it('pavillons : résumé dérivé des millésimes ; Marine nationale nomme le filtre remplacé', () => {
     expect(sectionOf('flags')?.summary).toBe('rapport annuel Paris MOU 2024 · OFAC, liste saisie le 27/03/2026');

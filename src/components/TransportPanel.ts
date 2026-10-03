@@ -104,7 +104,9 @@ export class TransportPanel {
     if (!this.shell) return;
     const s = this.state;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildRailView({
+    // Mise à jour sans reconstruire les nœuds inchangés (comme le panneau maritime) : le menu « axe ou région » ouvert, le focus et
+    // le défilement restent à la relève de 5 min.
+    this.shell.patch(buildRailView({
       overview: s?.overview.data ?? null, overviewError: s?.overview.error ?? null,
       situations: s?.situations.data ?? null, situationsError: s?.situations.error ?? null,
       filter: this.filter, pages: this.pages, canFocus: this.onSelectTrain !== undefined, now: Date.now(), open,
