@@ -14,7 +14,7 @@ const KEYS = Object.keys(HEALTH_SURVEILLANCE_URLS) as HealthSurveillanceKey[];
 const BODIES: Record<HealthSurveillanceKey, unknown> = {
   syndromic: syndromicFixture(), alerts: alertLevelsFixture(), sentinelles: sentinellesFixture(), wastewater: wastewaterFixture(),
   international: internationalFixture(), ministry: ministryFixture(),
-  // La route garde ses champs historiques jusqu'à la tâche 19 : seuls les champs V2 sont retenus.
+  // Champs hors contrat (les anciens champs historiques de la route, retirés) : jamais retenus, seuls les champs V2 le sont.
   drugs: { ...drugsFixture(), shortages: [{ drug_name: 'x' }], last_update: '2026-10-02', metadata: {} },
   recalls: recallsFixture(),
 };
@@ -98,8 +98,48 @@ describe('veille sanitaire : lecture client (spec 2026-10-03 § 2, S3)', () => {
     expect(merged.alerts).toBe(partial.alerts);
     expect(merged.sentinelles).toBe(all.sentinelles);
     expect(merged.recalls).toBe(all.recalls);
-    expect(mergeSurveillance(all, partial, 'all')).toBe(partial);
+    expect(mergeSurveillance(all, partial, 'all')).toEqual(partial);
     expect(mergeSurveillance(null, partial, ['syndromic'])).toBe(partial);
+  });
+  it('lectures concurrentes (démarrage et couche restaurée) : une seule requête par source en cours, issue commune', async () => {
+    const f = stubFetch({ alerts: { status: 502 } });
+    const [all, partial] = await Promise.all([
+      fetchHealthSurveillance(null, HEALTH_NOW),
+      fetchHealthSurveillance(null, HEALTH_NOW + 1, ['syndromic', 'alerts']),
+    ]);
+    expect(f).toHaveBeenCalledTimes(8);
+    expect(partial.syndromic.data).toBe(all.syndromic.data);
+    expect([all.alerts.error, partial.alerts.error]).toEqual(['HTTP 502', 'HTTP 502']);
+    // Requête terminée : la suivante repart (l'échec n'est pas mis en cache).
+    await fetchHealthSurveillance(all, HEALTH_NOW + 2, ['alerts']);
+    expect(f).toHaveBeenCalledTimes(9);
+  });
+  it('lecture complète terminée en dernier : son échec ne remplace pas la réussite plus récente d’une lecture partielle', async () => {
+    let releaseWastewater: () => void = () => undefined;
+    const wastewaterHeld = new Promise<void>((resolve) => { releaseWastewater = resolve; });
+    let alertsCalls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const key = KEY_OF.get(url);
+      if (!key) throw new Error(`URL inattendue ${url}`);
+      if (key === 'alerts' && (alertsCalls += 1) === 1) return { ok: false, status: 502, json: async () => ({}) };
+      if (key === 'wastewater') await wastewaterHeld;
+      return { ok: true, status: 200, json: async () => BODIES[key] };
+    }));
+    const fullRead = fetchHealthSurveillance(null, HEALTH_NOW);
+    await vi.waitFor(() => expect(alertsCalls).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const partial = await fetchHealthSurveillance(null, HEALTH_NOW + 1000, ['alerts']);
+    expect(partial.alerts).toEqual({ data: alertLevelsFixture(), error: null, fetchedAt: HEALTH_NOW + 1000 });
+    const latest = mergeSurveillance(null, partial, ['alerts']);
+    releaseWastewater();
+    const full = await fullRead;
+    expect(full.alerts.error).toBe('HTTP 502');
+    const merged = mergeSurveillance(latest, full, 'all');
+    expect(merged.alerts).toBe(partial.alerts);
+    expect(merged.wastewater).toBe(full.wastewater);
+    // Lecture suivante en échec sur une donnée connue : l'échec s'affiche, la donnée est gardée.
+    const failedLater = { ...merged, alerts: { data: merged.alerts.data, error: 'HTTP 500', fetchedAt: merged.alerts.fetchedAt } };
+    expect(mergeSurveillance(merged, failedLater, ['alerts']).alerts.error).toBe('HTTP 500');
   });
   it('gardes de forme', () => {
     expect([isSyndromicResponse(syndromicFixture()), isAlertLevelsResponse(alertLevelsFixture()), isSentinellesNationalResponse(sentinellesFixture()),

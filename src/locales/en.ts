@@ -117,6 +117,7 @@ const en = {
     title: 'Data sources',
     loading: 'Loading…',
     realtime: 'REAL TIME',
+    upToDatePeriod: 'UP TO DATE · {{period}}',
     stale: 'STALE CACHE',
     unavailable: 'UNAVAILABLE',
     justNow: 'just now',

@@ -3,8 +3,7 @@
 // stock, tension d'approvisionnement, remise à disposition, arrêt de commercialisation), domaines médicaux,
 // date de mise à jour, date de remise à disposition. L'export XLS (avec la date de début de situation) n'est
 // pas lu : c'est un classeur BIFF .xls que le module xlsx retenu au plan ne lit pas (startedAt reste null).
-// Réponse : champs historiques (shortages, last_update, metadata), lus par src/services/health.ts jusqu'à la
-// tâche 19, plus les champs DrugShortagesV2 (items, counts, latestUpdate, mitmListUrl, errors).
+// Réponse : DrugShortagesV2 (items, counts, latestUpdate, mitmListUrl, errors).
 import { cachedSource, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
 
 export const ANSM_PAGE_URL = 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments';
@@ -37,7 +36,7 @@ export function ansmDate(raw) {
 }
 
 /**
- * Lignes `tr.product-item` du tableau ANSM → { status (null si inconnu), statusLabel, name, dci, updatedAt,
+ * Lignes `tr.product-item` du tableau ANSM → { status (null si inconnu), name, updatedAt,
  * availableAgainAt, domains, url }. Colonne « Remise à disposition » : la date est le texte de <b> ; son
  * attribut data-value vaut la date du jour quand la cellule est vide (piège de l'ancienne lecture).
  */
@@ -48,12 +47,9 @@ export function parseAnsmRows(html) {
     if (tds.length < 5) continue;
     const statusLabel = cleanText(tds[0][2]);
     const speciality = cleanText(tds[2][2]);
-    const dci = /\[([^\]]+)\]\s*$/.exec(speciality)?.[1]?.trim() ?? null;
     rows.push({
       status: shortageStatus(statusLabel),
-      statusLabel,
       name: speciality.replace(/\s*[–-]?\s*\[[^\]]*\]\s*$/, '').trim(),
-      dci,
       updatedAt: ansmDate(/data-value="([^"]*)"/i.exec(tds[1][1])?.[1] ?? tds[1][2]),
       availableAgainAt: ansmDate(/<b>([\s\S]*?)<\/b>/i.exec(tds[3][2])?.[1] ?? ''),
       domains: cleanText(tds[4][2]).split(/\s*,\s*/).filter(Boolean),
@@ -63,39 +59,27 @@ export function parseAnsmRows(html) {
   return rows;
 }
 
-/** Lignes lues → champs DrugShortagesV2 (sans `errors`) et champs historiques. */
+/** Lignes lues → champs DrugShortagesV2 (sans `errors`). */
 export function buildDrugShortages(rows) {
   const items = rows.filter((r) => r.status !== null).map((r) => ({
     name: r.name, status: r.status, updatedAt: r.updatedAt, startedAt: null, availableAgainAt: r.availableAgainAt, domains: r.domains, url: r.url,
   }));
   const counts = Object.fromEntries(STATUSES.map((s) => [s, items.filter((i) => i.status === s).length]));
   const latestUpdate = items.map((i) => i.updatedAt).filter(Boolean).sort().at(-1) ?? null;
-  const historicStatus = { rupture: 'rupture', tension: 'tension', remise: 'normalisation', arret: 'unknown' };
-  const shortages = rows.map((r) => ({
-    drug_name: r.name,
-    dci: r.dci ? r.dci.toUpperCase() : null,
-    status: r.status ? historicStatus[r.status] : 'unknown',
-    start_date: r.updatedAt,
-    expected_end_date: r.availableAgainAt,
-    reason: r.statusLabel || null,
-    alternatives: null,
-    detail_url: r.url,
-  }));
-  return { items, counts, latestUpdate, mitmListUrl: MITM_LIST_URL, shortages, last_update: latestUpdate };
+  return { items, counts, latestUpdate, mitmListUrl: MITM_LIST_URL };
 }
 
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
-  const metadata = { generated_at: new Date().toISOString(), source: ANSM_PAGE_URL };
   let body;
   try {
     const html = await cachedSource('ansm:page', { ttlSec: 1800 }, () => fetchStrictHtml(ANSM_PAGE_URL));
     const rows = parseAnsmRows(html);
     const built = buildDrugShortages(rows);
     const errors = rows.length === 0 ? ['ANSM, disponibilités des médicaments : aucune ligne lue dans la page'] : [];
-    body = { ...built, metadata, errors };
+    body = { ...built, errors };
   } catch (err) {
-    body = { ...buildDrugShortages([]), metadata, errors: [sourceError('ANSM, disponibilités des médicaments', err)] };
+    body = { ...buildDrugShortages([]), errors: [sourceError('ANSM, disponibilités des médicaments', err)] };
   }
   sendHealthJson(res, body, { ok: body.items.length > 0, cacheControl: CACHE_CONTROL });
 }

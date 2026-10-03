@@ -1,3 +1,5 @@
+// src/config/hantavirus.ts : zones d'endémie historiques du hantavirus (Santé publique France, cas 2005 à 2024), affichées
+// par la couche Veille sanitaire (spec 2026-10-03 § 2.9) ; l'épisode 2026 se suit par le message OMS DON611.
 import { REGIONS } from './geo.ts';
 
 export interface HantavirusZoneDefinition {
@@ -5,18 +7,6 @@ export interface HantavirusZoneDefinition {
   name: string;
   center: [number, number];
   risk: 'historic' | 'extended';
-}
-
-export interface HantavirusFacilityDefinition {
-  code: string;
-  label: string;
-  center: [number, number];
-}
-
-export interface HantavirusNavireDefinition {
-  code: string;
-  label: string;
-  center: [number, number];
 }
 
 export const HANTAVIRUS_HISTORICAL_REFERENCE = {
@@ -50,60 +40,3 @@ export const HANTAVIRUS_HISTORICAL_REGIONS: Record<string, HantavirusZoneDefinit
   'REG-27': { code: 'REG-27', name: REGIONS['27'].name, center: REGIONS['27'].center, risk: 'historic' as const },
   'REG-84': { code: 'REG-84', name: REGIONS['84'].name, center: REGIONS['84'].center, risk: 'extended' as const },
 };
-
-export const HANTAVIRUS_REFERENCE_FACILITIES: Record<string, HantavirusFacilityDefinition> = {
-  'HOP-BICHAT': {
-    code: 'HOP-BICHAT',
-    label: 'Hopital Bichat-Claude-Bernard',
-    center: [2.3317, 48.8984],
-  },
-  'HOP-PITIE-SALPETRIERE': {
-    code: 'HOP-PITIE-SALPETRIERE',
-    label: 'Hopital Pitie-Salpetriere',
-    center: [2.365, 48.838],
-  },
-  'HOP-LA-CROIX-ROUSSE': {
-    code: 'HOP-LA-CROIX-ROUSSE',
-    label: 'Hopital de la Croix-Rousse',
-    center: [4.8316, 45.7797],
-  },
-  'HOP-IHU-MARSEILLE': {
-    code: 'HOP-IHU-MARSEILLE',
-    label: 'IHU Mediterranee Infection - Marseille',
-    center: [5.3938, 43.2895],
-  },
-};
-
-export const HANTAVIRUS_NAVIRES: Record<string, HantavirusNavireDefinition> = {
-  'SHIP-MV-HONDIUS': {
-    code: 'SHIP-MV-HONDIUS',
-    label: 'MV Hondius',
-    center: [-23.5, 16.9],
-  },
-};
-
-export function resolveHantavirusTerritoryCenter(code: string): [number, number] | null {
-  if (code in HANTAVIRUS_HISTORICAL_DEPARTMENTS) {
-    return HANTAVIRUS_HISTORICAL_DEPARTMENTS[code].center;
-  }
-  if (code in HANTAVIRUS_HISTORICAL_REGIONS) {
-    return HANTAVIRUS_HISTORICAL_REGIONS[code].center;
-  }
-  if (code.startsWith('REG-')) {
-    const regionCode = code.slice(4);
-    if (regionCode in REGIONS) return REGIONS[regionCode].center;
-  }
-  if (code in HANTAVIRUS_REFERENCE_FACILITIES) {
-    return HANTAVIRUS_REFERENCE_FACILITIES[code].center;
-  }
-  if (code in HANTAVIRUS_NAVIRES) {
-    return HANTAVIRUS_NAVIRES[code].center;
-  }
-  if (code === 'FR') {
-    return [2.2, 46.6];
-  }
-  if (code === 'GF') {
-    return [-53.1, 3.9];
-  }
-  return null;
-}

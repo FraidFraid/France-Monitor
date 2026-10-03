@@ -1,7 +1,8 @@
 // src/services/health-offer.ts : offre de soins, fichiers statiques annuels (spec 2026-10-03 § 2.7, § 2.8) : APL DREES 2024 et
-// sites d'urgences SAE 2025 + FINESS. Données annuelles servies par le CDN : lues une fois par session, relues après un échec.
+// sites d'urgences SAE 2025 + FINESS. Données annuelles servies par le CDN : lues une fois par session (appels concurrents :
+// une seule requête), relues après un échec.
 import type { AplDataset, DataSourceStatus, HospitalsDataset } from '../types/index.ts';
-import { dataDateMs, isRecord, isStringArray, readHealthJson, type SourceSlot } from './health-surveillance.ts';
+import { dataDateMs, isRecord, isStringArray, readHealthJsonShared, type SourceSlot } from './health-surveillance.ts';
 
 export const APL_URL = '/data/apl-2024.json';
 export const HOSPITALS_URL = '/data/hospitals-urgences.json';
@@ -32,7 +33,7 @@ async function loadStatic<T>(
 ): Promise<SourceSlot<T>> {
   if (cache.value !== null) return { data: cache.value, error: null, fetchedAt: cache.at };
   try {
-    const json = await readHealthJson(url);
+    const json = await readHealthJsonShared(url);
     if (!guard(json)) throw new Error('réponse inattendue');
     cache.value = json;
     cache.at = now;
@@ -59,10 +60,18 @@ export function resetHealthOfferCache(): void {
   hospitalsCache.at = null;
 }
 
-/** Panneau des sources : date de publication DREES (APL) ou date de l'extraction FINESS (hôpitaux), jamais l'heure de lecture. */
-export function offerStatus(offer: HealthOfferState, key: 'apl' | 'hospitals'): Pick<DataSourceStatus, 'status' | 'lastUpdate' | 'error'> {
+/**
+ * Panneau des sources : date de publication DREES (APL) ou date de l'extraction FINESS (hôpitaux), jamais l'heure de lecture ;
+ * période affichée : le millésime (APL) ou l'année des données (hôpitaux), jamais « temps réel » (S1).
+ */
+export function offerStatus(
+  offer: HealthOfferState, key: 'apl' | 'hospitals',
+): Pick<DataSourceStatus, 'status' | 'lastUpdate' | 'error' | 'period'> {
   const slot = offer[key];
-  if (slot.data === null) return { status: slot.error !== null ? 'error' : 'loading', lastUpdate: null, error: slot.error ?? undefined };
-  const ms = dataDateMs(key === 'apl' ? offer.apl.data?.publishedAt : offer.hospitals.data?.finessDate);
-  return { status: slot.error !== null ? 'stale' : 'ok', lastUpdate: ms === null ? null : new Date(ms), error: slot.error ?? undefined };
+  if (slot.data === null) return { status: slot.error !== null ? 'error' : 'loading', lastUpdate: null, error: slot.error ?? undefined, period: undefined };
+  const apl = offer.apl.data;
+  const hospitals = offer.hospitals.data;
+  const ms = dataDateMs(key === 'apl' ? apl?.publishedAt : hospitals?.finessDate);
+  const period = key === 'apl' ? (apl ? `millésime ${apl.vintage}` : undefined) : (hospitals ? `données annuelles ${hospitals.vintage}` : undefined);
+  return { status: slot.error !== null ? 'stale' : 'ok', lastUpdate: ms === null ? null : new Date(ms), error: slot.error ?? undefined, period };
 }

@@ -4559,9 +4559,6 @@ export class App {
       el.classList.remove('is-measuring');
       const beside = mapWidth - (drawerOpen ? V2_DRAWER_PX : 0) - 24 - V2_MAP_CONTROLS_PX;
       el.classList.toggle('is-below-controls', oneRow > beside);
-      // Bas de la rangée de puces dans la carte : l'étiquette « Baromètre Santé » se place dessous.
-      const bottom = el.hidden ? 0 : el.offsetTop + el.offsetHeight;
-      document.documentElement.style.setProperty('--v2-switcher-bottom', `${bottom}px`);
     }
     this.syncV2ColumnVars();
   }
@@ -6666,8 +6663,9 @@ export class App {
   /** Veille sanitaire (spec 2026-10-03 § 2, § 3.1, § 3.2) : panneaux, niveau national de la fiche thème, panneau des sources daté (S1). */
   private async loadHealthSurveillance(keys: readonly HealthSurveillanceKey[] | 'all'): Promise<void> {
     if (keys !== 'all' && keys.length === 0) return;
-    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }, { urgencesLegend }] = await Promise.all([
+    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }, { urgencesLegend }, { sourcePeriod }] = await Promise.all([
       import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'), import('./components/deckgl/health-map.ts'),
+      import('./components/layer-panel/health-format.ts'),
     ]);
     const now = Date.now();
     const read = await fetchHealthSurveillance(this.currentHealth, now, keys);
@@ -6682,7 +6680,9 @@ export class App {
     // Légende Urgences datée (S1) ; en retard, « (en retard) » et couleurs retirées de la carte (S2).
     this.mapLegend?.addCategory(urgencesLegend(HEALTH_URGENCES_LEGEND, state.syndromic.data, now));
     for (const [key, name] of HEALTH_STATUS_SOURCES) {
-      if (keys === 'all' || keys.includes(key)) this.statusPanel?.updateSource(name, surveillanceStatus(state, key, now));
+      if (keys === 'all' || keys.includes(key)) {
+        this.statusPanel?.updateSource(name, { ...surveillanceStatus(state, key, now), period: sourcePeriod(state, key, now) });
+      }
     }
     this.repaintPoste();
   }

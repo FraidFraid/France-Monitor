@@ -6058,8 +6058,7 @@ button.header-quality-link {
    `.xxx-panel-content` flex:1/overflow-y:auto de chaque panel), barre de
    poignée visible, zone de sécurité iOS. `!important` nécessaire : la
    position/largeur est posée en `style.cssText` inline par chaque composant.
-   MaritimePanel, NationalHealthPanel, TrafficPanel, TransportPanel, ISNRPanel
-   et HealthBarometerPanel portent la classe générique `.fm-floating-panel`
+   MaritimePanel, TrafficPanel, TransportPanel et ISNRPanel portent la classe générique `.fm-floating-panel`
    (leur conteneur n'avait pas de classe propre). */
 @media (max-width: 768px) {
   .cyber-panel-modal,
@@ -8851,16 +8850,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   /* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
   #app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
   #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  /* L'étiquette du baromètre santé (style inline, haut fixe à 70 px) se place sous les puces. */
-  #app.ui-v2 #barometer-fab { top: calc(var(--v2-switcher-bottom, 0px) + 12px) !important; }
-  /* …et passe SOUS le tiroir Couches quand il est ouvert (style inline z-index 900 ; tiroir à 20). */
-  #app.ui-v2:not(.sidebar-collapsed) #barometer-fab {
-    z-index: var(--z-map-widget) !important;
-    /* Centrée sur la partie visible de la carte, à droite du tiroir. */
-    left: calc(50% + var(--v2-drawer-w) / 2) !important;
-  }
-  /* Place trop juste à côté du tiroir : l'étiquette n'a pas la place, elle revient à la fermeture. */
-  #app.ui-v2:not(.sidebar-collapsed) .map-area:has(.floating-panel-switcher.is-icon-only) #barometer-fab { display: none !important; }
   /* Place trop juste à côté du tiroir (< 150 px) : icône seule, le nom reste en infobulle. */
   #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
     width: 36px; padding: 0; justify-content: center;

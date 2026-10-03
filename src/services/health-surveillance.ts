@@ -35,6 +35,7 @@ export const HEALTH_SURVEILLANCE_URLS: Readonly<Record<HealthSurveillanceKey, st
   drugs: '/api/health/drug-shortages',
   recalls: '/api/health/recalls',
 };
+const HEALTH_SURVEILLANCE_KEYS = Object.keys(HEALTH_SURVEILLANCE_URLS) as HealthSurveillanceKey[];
 
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -100,6 +101,21 @@ export async function readHealthJson(url: string): Promise<unknown> {
   }
 }
 
+/** Lectures en cours, par URL : des appels concurrents (démarrage, couche restaurée, relève) partagent la même requête. */
+const inFlight = new Map<string, Promise<unknown>>();
+
+/**
+ * readHealthJson partagé : une seule requête par source tant qu'elle est en cours ; les appels concurrents en reçoivent
+ * la même issue (réussite ou échec). Requête terminée : la suivante repart (un échec n'est jamais mis en cache).
+ */
+export function readHealthJsonShared(url: string): Promise<unknown> {
+  const pending = inFlight.get(url);
+  if (pending) return pending;
+  const read = readHealthJson(url).finally(() => { inFlight.delete(url); });
+  inFlight.set(url, read);
+  return read;
+}
+
 const cache = new Map<HealthSurveillanceKey, { data: unknown; at: number }>();
 
 function emptySlot<T>(): SourceSlot<T> {
@@ -114,7 +130,7 @@ async function load<T>(
   const hit = cache.get(key);
   if (hit && now - hit.at < HEALTH_TTL_MS && guard(hit.data)) return { data: pick(hit.data), error: null, fetchedAt: hit.at };
   try {
-    const json = await readHealthJson(HEALTH_SURVEILLANCE_URLS[key]);
+    const json = await readHealthJsonShared(HEALTH_SURVEILLANCE_URLS[key]);
     if (!guard(json)) throw new Error('réponse inattendue');
     cache.set(key, { data: json, at: now });
     return { data: pick(json), error: null, fetchedAt: now };
@@ -123,7 +139,7 @@ async function load<T>(
   }
 }
 
-/** Champs V2 seulement : les champs historiques de la route (jusqu'à la tâche 19) ne sont pas lus. */
+/** Champs V2 seulement : un champ hors contrat dans la réponse n'est jamais retenu. */
 function pickDrugs(v: DrugShortagesV2): DrugShortagesV2 {
   return { items: v.items, counts: v.counts, latestUpdate: v.latestUpdate, mitmListUrl: v.mitmListUrl, errors: v.errors };
 }
@@ -153,23 +169,33 @@ function copySlot<K extends HealthSurveillanceKey>(target: HealthSurveillanceSta
   target[key] = source[key];
 }
 
+/** Un échec ne remplace pas une donnée plus récente que celle qu'il porte (source relue avec succès entre-temps par une autre lecture). */
+function failedOverNewer(latest: SourceSlot<unknown>, read: SourceSlot<unknown>): boolean {
+  return read.error !== null && latest.fetchedAt !== null && (read.fetchedAt === null || read.fetchedAt < latest.fetchedAt);
+}
+
 /**
  * Lectures concurrentes (démarrage, activation d'une couche, relève) : chacune part de l'état connu à son lancement ;
  * à son retour, seules les sources qu'elle a lues remplacent l'état le plus récent (une lecture partielle terminée en
- * dernier ne vide pas les autres sources).
+ * dernier ne vide pas les autres sources). Une source en cours de lecture est partagée (readHealthJsonShared) ; seule
+ * reste la source qui a échoué avant d'être relue avec succès par une autre lecture : cet échec plus ancien ne remplace
+ * pas la réussite (une lecture complète terminée en dernier n'efface pas une lecture partielle plus récente).
  */
 export function mergeSurveillance(
   latest: HealthSurveillanceState | null, read: HealthSurveillanceState, keys: readonly HealthSurveillanceKey[] | 'all',
 ): HealthSurveillanceState {
-  if (latest === null || keys === 'all') return read;
+  if (latest === null) return read;
   const merged: HealthSurveillanceState = { ...latest };
-  for (const key of keys) copySlot(merged, read, key);
+  for (const key of keys === 'all' ? HEALTH_SURVEILLANCE_KEYS : keys) {
+    if (!failedOverNewer(latest[key], read[key])) copySlot(merged, read, key);
+  }
   return merged;
 }
 
-/** Tests seulement : vide le cache. */
+/** Tests seulement : vide le cache et la table des lectures en cours. */
 export function resetHealthSurveillanceCache(): void {
   cache.clear();
+  inFlight.clear();
 }
 
 /** Instant d'une date « AAAA-MM-JJ » (midi UTC : le jour est sans ambiguïté) ou ISO ; null si absente ou illisible. */

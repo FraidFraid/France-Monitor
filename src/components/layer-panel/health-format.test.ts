@@ -1,10 +1,11 @@
 // src/components/layer-panel/health-format.test.ts
 import { describe, expect, it } from 'vitest';
-import { syndromicFixture } from './health.fixture.ts';
+import { HEALTH_NOW, surveillanceFixture, syndromicFixture } from './health.fixture.ts';
+import { HEALTH_SURVEILLANCE_URLS, type HealthSurveillanceKey } from '../../services/health-surveillance.ts';
 import { NBSP } from './format.ts';
 import {
   APL_PROFESSIONS, APL_UNIT, HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, aplMgLevel, aplProfessionLevel, aplRatioLevel, PER_100K, changeHtml, changeLevel, changePct, inSentence, isoWeekId, joinFr, parisDay, positionWords, ratioText, regionIn,
-  seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
+  seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourcePeriod, sourceUnavailable, trendArrowHtml, trendOf, urgencesDriver, weekNumber,
   weekShort, weekYear, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
 } from './health-format.ts';
 
@@ -104,5 +105,21 @@ describe('aides des panneaux Santé', () => {
     expect(['01', '19', '2A', '2B', '21', '59', '75', '95', '971', '976', '20'].map(departementName)).toEqual([
       'Ain', 'Corrèze', 'Corse-du-Sud', 'Haute-Corse', 'Côte-d’Or', 'Nord', 'Paris', 'Val-d’Oise', 'Guadeloupe', 'Mayotte', '20',
     ]);
+  });
+});
+
+describe('panneau des sources : période réelle de la donnée (spec 2026-10-03 S1, S2)', () => {
+  const KEYS = Object.keys(HEALTH_SURVEILLANCE_URLS) as HealthSurveillanceKey[];
+  it('semaine et publication, date du dernier message, de la liste ou du dernier rappel ; jamais « temps réel »', () => {
+    const s = surveillanceFixture();
+    expect(Object.fromEntries(KEYS.map((k) => [k, sourcePeriod(s, k, HEALTH_NOW)]))).toEqual({
+      syndromic: 'S39 · publiée le 30/09', alerts: 'S39', sentinelles: 'S39 provisoire', wastewater: 'S38 · publiée le 30/09',
+      international: 'message du 02/10', ministry: 'message du 28/09', drugs: 'liste du 02/10', recalls: 'rappel du 02/10',
+    });
+  });
+  it('donnée en retard : « (en retard) » ; source sans donnée : aucune période', () => {
+    const s = surveillanceFixture();
+    expect(sourcePeriod(s, 'sentinelles', Date.parse('2026-10-20T12:00:00Z'))).toBe('S39 provisoire (en retard)');
+    expect(sourcePeriod({ ...s, alerts: { data: null, error: 'HTTP 502', fetchedAt: null } }, 'alerts', HEALTH_NOW)).toBeUndefined();
   });
 });

@@ -2,7 +2,9 @@
 // pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) ; hausse d'un indicateur sanitaire en rouge, baisse en vert.
 import type { AplProfession, HospitalCategory, SyndromeKey, SyndromicResponse, SyndromicSeries } from '../../types/index.ts';
 import { URGENCES_PILL_SYNDROMES, franceRefs, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
-import { dataDateMs } from '../../services/health-surveillance.ts';
+import {
+  dataDateMs, lastWastewaterPoint, surveillanceDataDate, surveillanceLate, type HealthSurveillanceKey, type HealthSurveillanceState,
+} from '../../services/health-surveillance.ts';
 import { DEPARTEMENT_NAMES } from '../../config/departements.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { formatPct, formatSignedPct, frNumber } from './format.ts';
@@ -96,6 +98,52 @@ export function trendArrowHtml(dir: TrendDir | null, late = false): string {
   if (dir === 'stable') return '<span class="lp-trend" aria-label="stable">=</span>';
   const level = late ? '' : dir === 'up' ? ' lp-lvl lp-lvl--rouge' : ' lp-lvl lp-lvl--vert';
   return `<span class="lp-trend${level}" aria-label="${dir === 'up' ? 'en hausse' : 'en baisse'}">${dir === 'up' ? '▲' : '▼'}</span>`;
+}
+
+/** Semaine et date de publication (« S39 · publiée le 30/09 ») ; semaine seule sans date de publication. */
+function weekPublished(weekId: string, publishedAt: string | null | undefined): string {
+  return `${weekShort(weekId)}${publishedAt ? ` · publiée le ${parisDay(publishedAt)}` : ''}`;
+}
+
+/** Période de la donnée, sans le suffixe de retard ; undefined sans donnée datée. */
+function rawSourcePeriod(state: HealthSurveillanceState, key: HealthSurveillanceKey): string | undefined {
+  const dated = (prefix: string): string | undefined => {
+    const date = surveillanceDataDate(state, key);
+    return date ? `${prefix} ${parisDay(date)}` : undefined;
+  };
+  switch (key) {
+    case 'syndromic': {
+      const d = state.syndromic.data;
+      return d?.week ? weekPublished(d.week.id, d.publishedAt) : undefined;
+    }
+    case 'alerts': {
+      const w = state.alerts.data?.latestWeek;
+      return w ? weekShort(w.id) : undefined;
+    }
+    case 'sentinelles': {
+      const d = state.sentinelles.data;
+      return d?.week ? `${weekShort(d.week.id)}${d.provisional ? ' provisoire' : ''}` : undefined;
+    }
+    case 'wastewater': {
+      const last = lastWastewaterPoint(state.wastewater.data);
+      return last ? weekPublished(last.week, state.wastewater.data?.publishedAt) : undefined;
+    }
+    case 'international':
+    case 'ministry': return dated('message du');
+    case 'drugs': return dated('liste du');
+    case 'recalls': return dated('rappel du');
+  }
+}
+
+/**
+ * Panneau des sources (S1) : période réelle de la donnée (semaine et publication, date du dernier message, de la liste ou du
+ * dernier rappel), affichée à la place de l'âge relatif et du libellé « temps réel » ; « (en retard) » selon S2 ; undefined
+ * sans donnée.
+ */
+export function sourcePeriod(state: HealthSurveillanceState, key: HealthSurveillanceKey, now: number): string | undefined {
+  if (state[key].data === null) return undefined;
+  const period = rawSourcePeriod(state, key);
+  return period === undefined ? undefined : `${period}${surveillanceLate(state, key, now) ? ' (en retard)' : ''}`;
 }
 
 /** Section d'une source en échec sans donnée antérieure (S3) : jamais une liste vide silencieuse. */

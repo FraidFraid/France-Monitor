@@ -72,6 +72,8 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
     expect(s).toContain('this.veillePanel?.update(state);');
     expect(s).toContain('this.urgencesPanel?.update(state);');
     expect(s).toContain('surveillanceStatus(state, key, now)');
+    // Période réelle (semaine, date du message) à la place de « temps réel » et de l'âge relatif (S1).
+    expect(s).toContain('{ ...surveillanceStatus(state, key, now), period: sourcePeriod(state, key, now) }');
     expect(s).toContain('this.currentHealthNational = nationalSummary(state, now);');
     expect(s).not.toContain('new Date()');
     const o = methodBody('loadHealthOffer');

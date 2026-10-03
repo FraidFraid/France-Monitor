@@ -25,6 +25,13 @@ describe('offre de soins : fichiers annuels (spec 2026-10-03 § 2.7, § 2.8)', (
     await fetchHealthOffer(a, HEALTH_NOW + 10 * 3_600_000);
     expect(f).toHaveBeenCalledTimes(2);
   });
+  it('lectures concurrentes (démarrage, deux couches restaurées) : une seule requête par fichier en cours', async () => {
+    const f = stubFetch();
+    const [a, b, c] = await Promise.all([fetchHealthOffer(null, HEALTH_NOW), fetchHealthOffer(null, HEALTH_NOW), fetchHealthOffer(null, HEALTH_NOW)]);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect([b.apl.data, c.apl.data]).toEqual([a.apl.data, a.apl.data]);
+    expect(c.hospitals.error).toBeNull();
+  });
   it('fichier en erreur : erreur portée, données précédentes gardées, relu à l’appel suivant', async () => {
     stubFetch({ [APL_URL]: 404 });
     const a = await fetchHealthOffer(offerFixture(), HEALTH_NOW);
@@ -48,10 +55,11 @@ describe('offre de soins : fichiers annuels (spec 2026-10-03 § 2.7, § 2.8)', (
     expect(isAplDataset({ ...aplFixture(), departments: [{ code: '75' }] })).toBe(false);
     expect(isHospitalsDataset({ ...hospitalsFixture(), sites: [{ finess: '1', lat: 'x' }] })).toBe(false);
   });
-  it('panneau des sources : date de publication DREES et date FINESS, jamais l’heure de lecture', () => {
+  it('panneau des sources : date de publication DREES et date FINESS, jamais l’heure de lecture ; millésime à la place de « temps réel » (S1)', () => {
     const o = offerFixture();
-    expect(offerStatus(o, 'apl')).toEqual({ status: 'ok', lastUpdate: new Date('2026-07-22T12:00:00Z'), error: undefined });
+    expect(offerStatus(o, 'apl')).toEqual({ status: 'ok', lastUpdate: new Date('2026-07-22T12:00:00Z'), error: undefined, period: 'millésime 2024' });
     expect(offerStatus(o, 'hospitals').lastUpdate).toEqual(new Date('2026-05-04T12:00:00Z'));
+    expect(offerStatus(o, 'hospitals').period).toBe('données annuelles 2025');
     expect(offerStatus({ ...o, hospitals: { data: null, error: 'HTTP 500', fetchedAt: null } }, 'hospitals'))
       .toEqual({ status: 'error', lastUpdate: null, error: 'HTTP 500' });
   });

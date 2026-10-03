@@ -118,6 +118,7 @@ const fr = {
     title: 'Sources de données',
     loading: 'Chargement…',
     realtime: 'TEMPS RÉEL',
+    upToDatePeriod: 'À JOUR · {{period}}',
     stale: 'CACHE FIGÉ',
     unavailable: 'INDISPONIBLE',
     justNow: "à l'instant",

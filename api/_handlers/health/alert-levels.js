@@ -2,7 +2,7 @@
 // bronchiolite) et bulletins régionaux Santé publique France des DROM (spec 2026-10-03 panneaux santé § 2.2).
 // Échelle corrigée : 1 pas d'alerte, 2 pré-épidémie, 3 épidémie, 4 post-épidémie (4 revient toujours à 1).
 // Remplace la lecture d'epidemic-alerts.js (échelle inversée, niveau 2 masqué, sous-titre codé en dur) et
-// d'epidemiology-monitor.js (limit=400 refusé) ; ces deux routes sont retirées en tâche 19.
+// d'epidemiology-monitor.js (limit=400 refusé) ; ces deux routes sont retirées.
 import { cachedSource, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError, HealthFetchError } from '../../_lib/health-http.js';
 import { fetchExport, odsDate } from '../../_lib/odisse.js';
 

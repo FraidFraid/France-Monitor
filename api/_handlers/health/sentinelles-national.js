@@ -1,7 +1,7 @@
 // api/_handlers/health/sentinelles-national.js : taux nationaux du réseau Sentinelles (France hexagonale,
 // cas vus en médecine générale pour 100 000 habitants) lus dans le flux RSS officiel (spec 2026-10-03
 // panneaux santé § 2.3). Remplace sentinelles.js (API par région limitée en débit, moyenne non pondérée :
-// IRA 175 affiché contre 151 officiel) et sentinelles-ingestion.js (URL /html erronée), retirés en tâche 19.
+// IRA 175 affiché contre 151 officiel) et sentinelles-ingestion.js (URL /html erronée), routes retirées.
 // Le flux n'a pas de champs : tout se lit dans le texte (« estimé à 151 cas pour 100 000 habitants (IC 95% [144 ; 158]) »).
 import { HealthFetchError, cachedSource, cleanText, fetchStrictXml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
 

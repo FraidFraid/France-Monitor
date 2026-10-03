@@ -1,6 +1,6 @@
 // api/_handlers/health/syndromic.js : passages aux urgences (OSCOUR) et actes SOS Médecins par syndrome,
 // Odissé (Santé publique France), hebdomadaire, publié le mercredi (spec 2026-10-03 panneaux santé § 2.1).
-// Remplace oscour-sos.js, departmental.js et epidemiology.js (jeux COVID gelés ; retirés en tâche 19).
+// Remplace oscour-sos.js, departmental.js et epidemiology.js (jeux COVID gelés, routes retirées).
 // Taux Odissé = pour 100 000 passages codés (ou actes) ; la réponse donne des parts en % (taux / 1 000).
 // Requêtes : 7 exports France (toutes les semaines depuis le 04/07/2022) + 7 exports départementaux
 // (dernière semaine et même semaine des trois saisons précédentes) + 1 lecture de métadonnées ; jamais de `limit`.

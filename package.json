@@ -30,7 +30,6 @@
     "build:maires": "node scripts/build-maires-politique.mjs",
     "build:fuel-price-series": "node scripts/generate-fuel-price-series.mjs",
     "ingest:drom-energy": "node scripts/ingest-drom-energy.mjs",
-    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs",
     "build:apl": "node scripts/build-apl.mjs",
     "build:hospitals": "node scripts/build-hospitals.mjs"
   },

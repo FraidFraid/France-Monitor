@@ -33,6 +33,12 @@ const STATUS_LABELS: Record<string, string> = {
     loading: 'status.loading',
 };
 
+/** Infobulle de la pastille : une source datée par sa période (semaine, millésime) ne se dit jamais « temps réel » (S1). */
+function statusTitle(src: DataSourceStatus): string {
+    if (src.period !== undefined && src.status === 'ok') return t('status.upToDatePeriod', { period: src.period });
+    return t(STATUS_LABELS[src.status] ?? src.status);
+}
+
 const SOURCE_NAME_KEYS: Record<string, string> = {
     'RSS PQR': 'status.initialSources.rss',
     'Écowatt RTE': 'status.initialSources.ecowatt',
@@ -323,6 +329,7 @@ export class StatusPanel {
                 src.status,
                 src.detail ?? '',
                 src.error ?? '',
+                src.period ?? '',
                 formatLastUpdate(src.lastUpdate),
                 formatCacheAge(src.cacheAgeMs) ?? '',
                 String((src.cacheAgeMs ?? 0) > 8 * 60_000),
@@ -455,14 +462,15 @@ export class StatusPanel {
                 right.appendChild(errEl);
             } else {
                 const timeEl = document.createElement('span');
-                timeEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
-                timeEl.textContent = formatLastUpdate(src.lastUpdate);
+                timeEl.style.cssText = 'font-size:10px;color:var(--text-muted);white-space:nowrap;';
+                // Donnée hebdomadaire ou annuelle : sa période réelle, jamais un âge relatif (« il y a 143h ») (S1).
+                timeEl.textContent = src.period ?? formatLastUpdate(src.lastUpdate);
                 right.appendChild(timeEl);
             }
 
             const statusEl = document.createElement('span');
             statusEl.innerHTML = statusIconHtml(src.status);
-            statusEl.title = t(STATUS_LABELS[src.status] ?? src.status);
+            statusEl.title = statusTitle(src);
             right.appendChild(statusEl);
 
             row.appendChild(left);
