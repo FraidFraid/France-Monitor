@@ -216,7 +216,24 @@ describe('vue Veille sanitaire : onglets Outre-mer, International, Produits (spe
       if (s.drugs.data) s.drugs.data.items[0].name = evil;
       if (s.recalls.data) s.recalls.data.latest[0].brand = evil;
       if (s.alerts.data) s.alerts.data.bulletins[0].title = evil;
+      // Champs tiers affichés en note ou en infobulle : titre original OMS (attribut), domaines ANSM, zone et risques RappelConso,
+      // résumé d'un bulletin régional.
+      if (s.international.data) s.international.data.who[0].originalTitle = `"${evil}`;
+      if (s.drugs.data) s.drugs.data.items[0].domains = [evil, `"${evil}`];
+      if (s.recalls.data) {
+        s.recalls.data.latest[0].zone = evil;
+        s.recalls.data.latest[1].risks = [];
+        s.recalls.data.latest[1].riskText = evil;
+      }
+      if (s.alerts.data) s.alerts.data.bulletins[1].summary = evil;
     });
+    const intl = renderLayerView('health', view({ tab: 'international', state }));
+    expect(intl).toContain('title="&quot;&lt;img src=x onerror=1&gt;"');
+    const produits = renderLayerView('health', view({ tab: 'produits', state }));
+    expect(produits).toContain('<small>&lt;img src=x onerror=1&gt; · maitre coq · France entière · ');
+    expect(produits).toContain('salmonelles · &lt;img src=x onerror=1&gt; · &lt;img src=x onerror=1&gt; · ');
+    expect(produits).toContain('rupture depuis le 23/09 · &lt;img src=x onerror=1&gt; · &quot;&lt;img src=x onerror=1&gt;</small>');
+    expect(renderLayerView('health', view({ tab: 'outremer', state }))).toContain('&lt;img src=x onerror=1&gt; · <a class="lp-link"');
     for (const tab of ['outremer', 'international', 'produits'] as const) {
       expect(renderLayerView('health', view({ tab, state }))).not.toContain('<img');
       const h = renderLayerView('health', view({ tab }));
