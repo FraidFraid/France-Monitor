@@ -3983,7 +3983,8 @@ export class App {
     this.hopitauxPanelPromise ??= import('./components/HopitauxPanel.ts').then(({ HopitauxPanel }) => {
       const panel = new HopitauxPanel(container);
       panel.setOnClose(() => this.closeHealthLayer('hospitals'));
-      panel.setOnSelectSite((site) => this.mapContainer?.focusHospital(site));
+      // Mobile (carte SVG) : la carte ne recentre pas sur un site, les lignes ne se donnent pas pour cliquables.
+      if (this.mapContainer?.canFocusHospital()) panel.setOnSelectSite((site) => this.mapContainer?.focusHospital(site));
       panel.mount();
       this.hopitauxPanel = panel;
       if (this.activeLayers.hospitals) panel.show(this.currentHealthOffer);

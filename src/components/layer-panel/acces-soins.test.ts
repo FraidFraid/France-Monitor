@@ -30,7 +30,7 @@ describe('vue Accès aux soins (spec 2026-10-03 § 3.3)', () => {
     });
     expect(v.head.figure?.captionHtml).toContain(`<span class="lp-val fmk-num lp-lvl lp-lvl--rouge">14,9${NBSP}% en 2022</span>`);
     expect(v.head.status).toEqual(['millésime 2024 (activité 2024, population 2022)', 'DREES']);
-    expect(v.head.lead).toBe('L’accès au médecin généraliste recule depuis trois ans (APL nationale 3,72). '
+    expect(v.head.lead).toBe('L’accès au médecin généraliste recule depuis 2022 (APL nationale 3,72). '
       + 'Val-d’Oise, Guyane et Essonne ont plus de six habitants sur dix sous le seuil.');
     expect(html()).toContain(`<b class="fmk-num lp-lvl lp-lvl--orange">18,2${NBSP}%</b>`);
     expect(html()).not.toContain('fm-vig');
@@ -65,6 +65,8 @@ describe('vue Accès aux soins (spec 2026-10-03 § 3.3)', () => {
     expect(h).toContain(`ETP pour 100${NNBSP}000 femmes · 2023 : 21,8 · le plus bas : Orne 11,9`);
     expect(h).toContain('le plus bas : Creuse 22,0');
     expect(h).not.toMatch(/background:var\(--text-secondary\)/);
+    expect(visibleText(h)).toContain('couleur : généralistes, reculs de l’APL nationale de 2022 à 2024 (deux : orange, un : jaune, aucun : vert) ; '
+      + 'autres professions, recul sur 2023 : jaune, sinon vert.');
   });
   it('départements les plus exposés : dix, part sous 2,5 en jauge colorée par l’APL du département', () => {
     const s = sectionOf('exposed');

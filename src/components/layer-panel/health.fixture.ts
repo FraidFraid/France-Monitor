@@ -373,7 +373,7 @@ export function aplFixture(): AplDataset {
 const site = (finess: string, name: string, commune: string, dept: string, category: HospitalCategory, passages: number,
   over: Partial<EmergencySite> = {}): EmergencySite => ({
   finess, name, commune, dept, category, lat: 46.5, lon: 2.5, general: true, pediatric: false, seasonal: false, antenna: false,
-  passages, bedsMco: 300, bedsIcu: null, bedsIntensive: null, bedsUhcd: 8, ...over,
+  passages, bedsMco: 200, bedsIcu: null, bedsIntensive: null, bedsUhcd: 8, ...over,
 });
 const NAMED_SITES: readonly EmergencySite[] = [
   site('750100125', 'Pitié-Salpêtrière', 'Paris', '75', 'chu', 132_774, { lat: 48.838, lon: 2.365, bedsMco: 1600, bedsIcu: 110, bedsIntensive: 120 }),

@@ -31,6 +31,12 @@ describe('HopitauxPanel', () => {
     (c.querySelector('[data-hosp-finess="840000046"]') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ finess: '840000046' }));
   });
+  it('sans recentrage possible (aucun gestionnaire de site, carte mobile) : lignes non cliquables', () => {
+    const { c, p } = mount();
+    p.show(offerFixture());
+    expect(c.querySelector('.lp-row.is-link')).toBeNull();
+    expect(c.querySelector('[data-hosp-finess]')).toBeNull();
+  });
   it('fermer une seule fois ; update fermé ne rouvre pas ; rafraîchissement qui garde les sections ouvertes', () => {
     const { c, p } = mount();
     const onClose = vi.fn();

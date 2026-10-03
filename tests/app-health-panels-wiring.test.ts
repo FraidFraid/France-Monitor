@@ -83,6 +83,9 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
     expect(o).not.toContain('new Date()');
     expect(methodBody('loadOptionalLayers')).toContain("this.loadHealthSurveillance('all')");
   });
+  it('Hôpitaux : lignes cliquables seulement quand la carte peut recentrer (pas sur la carte SVG du mobile)', () => {
+    expect(methodBody('ensureHopitauxPanel')).toContain('if (this.mapContainer?.canFocusHospital()) panel.setOnSelectSite((site) => this.mapContainer?.focusHospital(site));');
+  });
   it('note de situation et historique de qualité : sources santé lues dans le panneau des sources, jamais réenregistrées au Watchdog', () => {
     expect(methodBody('buildSituationReportContext'))
       .toContain('sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],');

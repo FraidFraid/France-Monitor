@@ -12,6 +12,8 @@ import { HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hosp
 export interface HopitauxViewInput {
   data: HospitalsDataset | null;
   error: string | null;
+  /** La carte peut recentrer sur un site (carte WebGL) ; sinon (carte SVG du mobile) les lignes ne se donnent pas pour cliquables. */
+  canSelectSite: boolean;
   now: number;
   open: (sectionId: string, byDefault: boolean) => boolean;
 }
@@ -32,13 +34,27 @@ function monthYear(date: string): string {
   return Number.isFinite(ms) ? new Date(ms).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : date;
 }
 
+/** Portée des totaux nationaux de la SAE : tous les établissements, pas seulement les sites d'urgences. */
+const scope = (d: HospitalsDataset): string => `France entière, tous établissements (SAE ${d.vintage})`;
+
+/** Capacités des sites d'urgences placés, sommées sur leurs lits déclarés (un site sans unité déclarée compte zéro). */
+function emergencySitesCapacity(d: HospitalsDataset): { bedsMco: number; bedsIcu: number; bedsIntensive: number; icuSites: number } {
+  return {
+    bedsMco: d.sites.reduce((a, s) => a + (s.bedsMco ?? 0), 0),
+    bedsIcu: d.sites.reduce((a, s) => a + (s.bedsIcu ?? 0), 0),
+    bedsIntensive: d.sites.reduce((a, s) => a + (s.bedsIntensive ?? 0), 0),
+    icuSites: d.sites.filter((s) => (s.bedsIcu ?? 0) > 0).length,
+  };
+}
+
 function headOf(d: HospitalsDataset): LayerView['head'] {
   const t = d.totals;
   return {
     theme: THEME, title: TITLE,
     figure: { value: frNumber(t.sites, 0), level: null, caption: `${CAPTION} · ${frNumber(t.passages / 1_000_000, 1)}${NBSP}millions de passages en ${d.vintage}` },
     status: [`données annuelles ${d.vintage}`, 'DREES SAE, FINESS'],
-    lead: `${frNumber(t.sites, 0)} sites d’urgences, ${frNumber(t.bedsIcu, 0)} lits de réanimation. `
+    lead: `${frNumber(t.sites, 0)} sites d’urgences. ${scope(d)} : ${frNumber(t.bedsIcu, 0)} lits de réanimation, `
+      + `dont ${frNumber(emergencySitesCapacity(d).bedsIcu, 0)} dans les sites d’urgences. `
       + 'Aucune donnée ouverte ne mesure la tension hospitalière en temps réel : le panneau décrit l’offre, pas l’occupation.',
   };
 }
@@ -57,19 +73,31 @@ function categoriesSection(d: HospitalsDataset, open: OpenFn): FicheSection {
   const antennas = d.sites.filter((s) => s.antenna).length;
   const seasonal = d.sites.filter((s) => s.seasonal).length;
   const sub = `<div class="fmk-sub">${escapeHtml(`dont urgences pédiatriques ${pediatric} · antennes ${antennas} · saisonnières ${seasonal}`)}</div>`;
-  return { ...base, summary: escapeHtml(`${frNumber(d.totals.sites, 0)} sites · ${pediatric} pédiatriques`), html: bar + legend + sub };
+  // Barre, légende et décomptes portent sur les sites placés : le résumé dit la même base, la note les sites sans coordonnées.
+  const missing = d.totals.sites - total;
+  const placedNote = missing > 0
+    ? note(`${frNumber(d.totals.sites, 0)} sites autorisés dont ${missing} sans coordonnées FINESS : barre et décomptes sur les ${frNumber(total, 0)} placés.`)
+    : '';
+  return { ...base, summary: escapeHtml(`${frNumber(total, 0)} sites placés · ${pediatric} pédiatriques`), html: bar + legend + sub + placedNote };
 }
 
+function capacityRows(c: { bedsMco: number; bedsIcu: number; bedsIntensive: number; icuSites: number }): string {
+  return kvRow('Lits de médecine, chirurgie, obstétrique', valueHtml(frNumber(c.bedsMco, 0)))
+    + kvRow('Lits de réanimation', valueHtml(frNumber(c.bedsIcu, 0)))
+    + kvRow('Lits de soins intensifs', valueHtml(frNumber(c.bedsIntensive, 0)))
+    + kvRow('Sites de réanimation', valueHtml(frNumber(c.icuSites, 0)));
+}
+
+/** Totaux nationaux de la SAE (tous établissements), puis la part des sites d'urgences, calculée sur les sites placés. */
 function capacitySection(d: HospitalsDataset, open: OpenFn): FicheSection {
   const t = d.totals;
-  const html = kvRow('Lits de médecine, chirurgie, obstétrique', valueHtml(frNumber(t.bedsMco, 0)))
-    + kvRow('Lits de réanimation', valueHtml(frNumber(t.bedsIcu, 0)))
-    + kvRow('Lits de soins intensifs', valueHtml(frNumber(t.bedsIntensive, 0)))
-    + kvRow('Sites de réanimation', valueHtml(frNumber(t.icuSites, 0)))
-    + note(`Lits installés au 31/12/${d.vintage} (SAE) ; aucune donnée ouverte d’occupation.`);
+  const html = `<h4 class="fmk-eyebrow">${escapeHtml(scope(d))}</h4>${capacityRows(t)}`
+    + `<h4 class="fmk-eyebrow">Dont sites d’urgences</h4>${capacityRows(emergencySitesCapacity(d))}`
+    + note(`Lits installés au 31/12/${d.vintage} (SAE) ; sites d’urgences : somme des ${frNumber(d.sites.length, 0)} sites placés sur la carte, `
+      + 'lits déclarés seulement ; aucune donnée ouverte d’occupation.');
   return {
     id: 'capacity', title: 'Capacités', collapsible: true, open: open('capacity', true), html,
-    summary: escapeHtml(`${frNumber(t.bedsMco, 0)} lits MCO · ${frNumber(t.bedsIcu, 0)} en réanimation`),
+    summary: escapeHtml(`${frNumber(t.bedsMco, 0)} lits MCO · ${frNumber(t.bedsIcu, 0)} en réanimation (France entière)`),
   };
 }
 
@@ -78,7 +106,7 @@ function siteNote(s: EmergencySite, vintage: number): string {
     s.bedsIcu ? `${s.bedsIcu} lits de réanimation` : null].filter((x): x is string => x !== null).join(' · ');
 }
 
-function busiestSection(d: HospitalsDataset, open: OpenFn): FicheSection {
+function busiestSection(d: HospitalsDataset, canSelect: boolean, open: OpenFn): FicheSection {
   const base = { id: 'busiest', title: 'Sites les plus fréquentés', collapsible: true, open: open('busiest', true) };
   const top = d.sites.flatMap((s) => (s.passages === null ? [] : [{ s, passages: s.passages }]))
     .sort((a, b) => b.passages - a.passages).slice(0, 5);
@@ -86,11 +114,11 @@ function busiestSection(d: HospitalsDataset, open: OpenFn): FicheSection {
   if (!first) return { ...base, summary: 'n.d.', html: emptyLine('Aucun nombre de passages publié.') };
   const rows = top.map(({ s, passages }) => listRow({
     text: s.name, value: frNumber(passages, 0), color: hospitalCategoryVar(s.category), note: siteNote(s, d.vintage),
-    data: { 'hosp-finess': s.finess }, link: true, title: `n° FINESS ${s.finess}`,
+    ...(canSelect ? { data: { 'hosp-finess': s.finess }, link: true } : {}), title: `n° FINESS ${s.finess}`,
   })).join('');
   return {
     ...base, summary: escapeHtml(`${first.s.name} ${frNumber(first.passages, 0)} passages`),
-    html: rows + note('Clic : le site sur la carte, avec sa fiche (autorisations, passages, lits, n° FINESS).'),
+    html: rows + (canSelect ? note('Clic : le site sur la carte, avec sa fiche (autorisations, passages, lits, n° FINESS).') : ''),
   };
 }
 
@@ -141,7 +169,7 @@ function methodSection(d: HospitalsDataset | null, error: string | null, open: O
 }
 
 export function buildHopitauxView(input: HopitauxViewInput): LayerView {
-  const { data, error, now, open } = input;
+  const { data, error, canSelectSite, now, open } = input;
   if (data === null && error === null) return { head: { theme: THEME, title: TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   if (data === null) {
     return {
@@ -159,7 +187,7 @@ export function buildHopitauxView(input: HopitauxViewInput): LayerView {
   return {
     head: headOf(data),
     sections: [
-      categoriesSection(data, open), capacitySection(data, open), busiestSection(data, open), departmentsSection(data, open),
+      categoriesSection(data, open), capacitySection(data, open), busiestSection(data, canSelectSite, open), departmentsSection(data, open),
       establishmentsSection(data, open), methodSection(data, error, open),
     ],
     bodyHtml: failed || undefined,

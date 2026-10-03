@@ -56,9 +56,9 @@ function leadOf(d: AplDataset, ys: readonly Year[]): string {
   const prev = ys[ys.length - 2];
   const steps = ys.slice(1).map((y, i) => y.aplMg - ys[i].aplMg);
   const first = ys.length >= 3 && steps.every((x) => x < 0)
-    ? `L’accès au médecin généraliste recule depuis ${digitWord(ys.length)} ans (APL nationale ${frNumber(latest.aplMg, 2)}).`
+    ? `L’accès au médecin généraliste recule depuis ${ys[0].year} (APL nationale ${frNumber(latest.aplMg, 2)}).`
     : ys.length >= 3 && steps.every((x) => x > 0)
-      ? `L’accès au médecin généraliste progresse depuis ${digitWord(ys.length)} ans (APL nationale ${frNumber(latest.aplMg, 2)}).`
+      ? `L’accès au médecin généraliste progresse depuis ${ys[0].year} (APL nationale ${frNumber(latest.aplMg, 2)}).`
       : `APL nationale aux médecins généralistes : ${frNumber(latest.aplMg, 2)}${prev ? ` (${frNumber(prev.aplMg, 2)} en ${prev.year})` : ''}.`;
   const top = [...d.departments].sort((a, b) => b.shareUnder25 - a.shareUnder25).slice(0, 3);
   if (top.length === 0) return first;
@@ -115,12 +115,14 @@ function professionsSection(d: AplDataset, open: OpenFn): FicheSection {
     });
   }).join('');
   const declines = APL_PROFESSIONS.filter((p) => d.france.apl[p] < d.france.apl2023[p]).length;
+  const mgFrom = ys.slice(-3)[0]?.year ?? prevYear;
   return {
     id: 'professions', title: 'Par profession', collapsible: true, open: open('professions', true),
     summary: escapeHtml(`${APL_PROFESSIONS.length} professions · ${declines} en baisse`),
     html: rows + note(`Médecins : consultations accessibles par an et par habitant standardisé. Autres professions : équivalents temps plein ${PER_100K} `
       + `(sages-femmes : pour ${frNumber(100_000, 0)} femmes). Flèche : évolution sur ${prevYear}, rouge en recul, verte en progrès. `
-      + 'Barre : valeur nationale rapportée au département le mieux doté ; couleur : recul sur les derniers millésimes.'),
+      + `Barre : valeur nationale rapportée au département le mieux doté ; couleur : généralistes, reculs de l’APL nationale de ${mgFrom} `
+      + `à ${d.vintage} (deux : orange, un : jaune, aucun : vert) ; autres professions, recul sur ${prevYear} : jaune, sinon vert.`),
   };
 }
 

@@ -69,6 +69,7 @@ export class HopitauxPanel {
   private render(): void {
     if (!this.shell) return;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildHopitauxView({ data: this.data, error: this.error, now: Date.now(), open }));
+    // Lignes cliquables seulement si la carte peut recentrer sur un site (gestionnaire posé par App.ts, carte WebGL).
+    this.shell.render(buildHopitauxView({ data: this.data, error: this.error, canSelectSite: this.onSelectSite !== undefined, now: Date.now(), open }));
   }
 }

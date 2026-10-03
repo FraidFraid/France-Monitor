@@ -441,6 +441,11 @@ export class MapContainer {
     this.deckMap?.focusHospital(site);
   }
 
+  /** Vrai si la carte peut recentrer sur un site d'urgences (carte WebGL ; la carte SVG du mobile ne le fait pas). */
+  canFocusHospital(): boolean {
+    return !this.isMobile;
+  }
+
   // ─── Layer visibility ───
   setLayerVisibility(layers: MapLayers): void {
     if (layers.dromEnergy) {
