@@ -6664,7 +6664,7 @@ export class App {
   private async loadHealthSurveillance(keys: readonly HealthSurveillanceKey[] | 'all'): Promise<void> {
     if (keys !== 'all' && keys.length === 0) return;
     const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }, { urgencesLegend }, { sourcePeriod }] = await Promise.all([
-      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'), import('./components/deckgl/health-map.ts'),
+      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'), import('./components/layer-panel/urgences-legend.ts'),
       import('./components/layer-panel/health-format.ts'),
     ]);
     const now = Date.now();

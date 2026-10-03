@@ -5320,6 +5320,8 @@ button.header-quality-link {
 .hm-tip .hm-row > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .hm-tip .hm-note { margin-top: 6px; color: var(--text-secondary); }
 .hm-tip .hm-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+/* Infobulle de survol : la souris la traverse (elle ne quitte pas la carte en passant dessus). */
+.hm-hover .maplibregl-popup-content { pointer-events: none; }
 
 /* Sous-layer indenté dans le panneau COUCHES */
 .layer-panel-item--sublayer {

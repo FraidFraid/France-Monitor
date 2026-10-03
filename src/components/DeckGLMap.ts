@@ -19,8 +19,9 @@ import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 import {
-  HANTAVIRUS_RING_HEX, HEALTH_HOVER_LAYERS, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp, departmentHealthFeatures,
-  hantavirusFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, urgencesProp, type HealthMapData,
+  HANTAVIRUS_RING_HEX, HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp,
+  departmentHealthFeatures, hantavirusFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, topHealthHit,
+  urgencesProp, type HealthMapData,
 } from './deckgl/health-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
@@ -502,6 +503,11 @@ export class DeckGLMap {
   private healthDeptsDirty = false;
   private regionsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
   private hospitalPopup: maplibregl.Popup | null = null;
+  /** N° FINESS du site dont la fiche est ouverte : pas d'infobulle de survol par-dessus. */
+  private hospitalPopupFiness: string | null = null;
+  // Infobulle de survol santé affichée, curseur main posé par les couches santé (et par elles seules).
+  private healthHoverShown = false;
+  private healthPointer = false;
 
   // Cluster hover state
   private hoveredClusterId: number | null = null;
@@ -5456,10 +5462,8 @@ export class DeckGLMap {
 
     // Couches santé au-dessus des autres remplissages : contours, marqueurs, puis les sites d'urgences.
     try {
-      for (const id of [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
-        LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HOSPITALS]) {
-        this.map.moveLayer(id);
-      }
+      // Même ordre que le survol (HEALTH_HOVER_LAYERS en est l'inverse) : la couche vue au-dessus répond.
+      for (const id of HEALTH_LAYER_ORDER) this.map.moveLayer(id);
     } catch {
       // Ordre des couches pas encore réglable.
     }
@@ -8112,7 +8116,7 @@ export class DeckGLMap {
         }
         if (layer.type === 'heatmap') prop = 'heatmap-opacity';
         if (layer.type === 'raster') prop = 'raster-opacity';
-        if (layerId === LYR_NET_ISP_RING) prop = 'circle-stroke-opacity';
+        if (layerId === LYR_NET_ISP_RING || layerId === LYR_HEALTH_HANTAVIRUS) prop = 'circle-stroke-opacity';
 
         const orig = this.map!.getPaintProperty(layerId, prop) ?? 1;
         this.originalOpacities.set(layerId, { prop, orig });
@@ -9600,6 +9604,7 @@ export class DeckGLMap {
   updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
     this.healthAlerts = alerts;
     this.healthNow = now;
+    this.hideHealthHover();
     void this.renderHealthRegions();
   }
 
@@ -9611,18 +9616,21 @@ export class DeckGLMap {
     this.healthSyndromic = syndromic;
     this.healthApl = apl;
     this.healthNow = now;
+    this.hideHealthHover();
     void this.renderHealthDepartments();
   }
 
   /** Sélecteur du panneau Urgences : change la propriété peinte, sans nouvel envoi de données. */
   setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {
     this.healthUrgencesSyndrome = syndrome;
+    this.hideHealthHover();
     if (this.map?.getLayer(LYR_HEALTH_URG_FILL)) this.map.setPaintProperty(LYR_HEALTH_URG_FILL, 'fill-color', colorFromProp(urgencesProp(syndrome)));
   }
 
   /** Sélecteur du panneau Accès aux soins : change la propriété peinte, sans nouvel envoi de données. */
   setHealthAplProfession(profession: AplProfession): void {
     this.healthAplProfession = profession;
+    this.hideHealthHover();
     if (this.map?.getLayer(LYR_HEALTH_APL_FILL)) this.map.setPaintProperty(LYR_HEALTH_APL_FILL, 'fill-color', colorFromProp(aplProp(profession)));
   }
 
@@ -9630,6 +9638,7 @@ export class DeckGLMap {
   updateHospitals(data: HospitalsDataset | null): void {
     this.hospitalSites = new Map((data?.sites ?? []).map((s): [string, EmergencySite] => [s.finess, s]));
     this.hospitalsVintage = data?.vintage ?? null;
+    this.hideHealthHover();
     const src = this.map?.getSource(SRC_HOSPITALS) as maplibregl.GeoJSONSource | undefined;
     src?.setData(hospitalFeatures(data));
   }
@@ -9687,48 +9696,64 @@ export class DeckGLMap {
 
   private openHospitalPopup(site: EmergencySite): void {
     if (!this.map) return;
-    this.healthHoverPopup?.remove();
+    this.hideHealthHover();
     this.hospitalPopup?.remove();
-    this.hospitalPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' });
+    popup.on('close', () => {
+      if (this.hospitalPopup !== popup) return;
+      this.hospitalPopup = null;
+      this.hospitalPopupFiness = null;
+    });
+    this.hospitalPopup = popup;
+    this.hospitalPopupFiness = site.finess;
+    popup
       .setLngLat([site.lon, site.lat])
       .setHTML(hospitalPopupHtml(site, this.hospitalsVintage))
       .addTo(this.map);
   }
 
+  /** Ferme l'infobulle de survol santé (souris hors de la carte, sélecteur, nouvelles données, couches changées). */
+  private hideHealthHover(): void {
+    if (!this.healthHoverShown) return;
+    this.healthHoverShown = false;
+    this.healthHoverPopup?.remove();
+  }
+
+  /** Curseur main sur un site seulement ; remis à zéro uniquement s'il a été posé ici (les autres couches gardent le leur). */
+  private setHealthPointer(on: boolean): void {
+    if (!this.map || on === this.healthPointer) return;
+    this.healthPointer = on;
+    this.map.getCanvas().style.cursor = on ? 'pointer' : '';
+  }
+
   /**
-   * Couches santé : une infobulle au survol, de la couche la plus précise à la plus large (site, marqueur hantavirus,
-   * département, région) ; clic sur un site : sa fiche. Seules les couches visibles sont interrogées.
+   * Couches santé : une infobulle au survol, celle de la couche dessinée au-dessus (site, marqueur hantavirus, APL, urgences,
+   * région) ; clic sur un site : sa fiche, sans infobulle par-dessus. Seules les couches visibles sont interrogées ;
+   * l'infobulle se ferme quand la souris quitte la carte (panneau, légende, en-tête).
    */
   private initHealthInteractions(): void {
     const map = this.map;
     if (!map) return;
-    let shown = false;
-    // Curseur main sur un site seulement ; remis à zéro uniquement s'il a été posé ici (les autres couches gardent le leur).
-    let pointer = false;
-    const setPointer = (on: boolean): void => {
-      if (on === pointer) return;
-      pointer = on;
-      map.getCanvas().style.cursor = on ? 'pointer' : '';
-    };
     map.on('mousemove', (e) => {
       const visible = HEALTH_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
-      const hits = visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : [];
-      const hit = HEALTH_HOVER_LAYERS.map((id) => hits.find((f) => f.layer.id === id)).find((f) => f !== undefined);
-      const html = hit ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
-      if (!hit || !html) {
-        setPointer(false);
-        if (shown) {
-          shown = false;
-          this.healthHoverPopup?.remove();
-        }
+      const hit = topHealthHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      const onSite = hit?.layer.id === LYR_HOSPITALS;
+      this.setHealthPointer(onSite);
+      const ficheOpen = onSite && String(hit?.properties?.['finess'] ?? '') === this.hospitalPopupFiness;
+      const html = hit && !ficheOpen ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
+      if (!html) {
+        this.hideHealthHover();
         return;
       }
-      shown = true;
-      setPointer(hit.layer.id === LYR_HOSPITALS);
+      this.healthHoverShown = true;
       const popup = this.healthHoverPopup
-        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup' });
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
       this.healthHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => {
+      this.setHealthPointer(false);
+      this.hideHealthHover();
     });
     map.on('click', LYR_HOSPITALS, (e) => {
       const site = this.hospitalSites.get(String(e.features?.[0]?.properties?.['finess'] ?? ''));
@@ -11995,6 +12020,9 @@ export class DeckGLMap {
     this.setVis(LYR_HEALTH_APL_FILL, vis(layers.healthApl ?? false));
     this.setVis(LYR_HEALTH_APL_LINE, vis(layers.healthApl ?? false));
     this.setVis(LYR_HOSPITALS, vis(layers.hospitals ?? false));
+    // Couches changées : l'infobulle de survol se recalcule au prochain mouvement ; Hôpitaux éteinte : sa fiche se ferme.
+    this.hideHealthHover();
+    if (!layers.hospitals) this.hospitalPopup?.remove();
     this.setVis(LYR_TOPAGE_VIS, vis(layers.environmental));
     this.setVis(LYR_FLOODS_RAW, vis(layers.environmental));
     this.setVis(LYR_FLOODS, vis(layers.environmental));

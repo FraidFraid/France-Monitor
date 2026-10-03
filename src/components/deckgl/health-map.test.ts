@@ -1,17 +1,18 @@
 // src/components/deckgl/health-map.test.ts
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { EpidemicPhase, HospitalCategory, RegionalAlertLevel } from '../../types/index.ts';
+import type { EpidemicPhase, HospitalCategory, RegionalAlertLevel, SyndromicResponse } from '../../types/index.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { HEALTH_NOW, alertLevelsFixture, aplFixture, hospitalsFixture, syndromicFixture } from '../layer-panel/health.fixture.ts';
 import { NBSP } from '../layer-panel/format.ts';
 import type { LegendCategory } from '../MapLegend.ts';
 import { HOSPITAL_CATEGORY_LABEL } from '../layer-panel/health-format.ts';
+import { urgencesLate, urgencesLegend } from '../layer-panel/urgences-legend.ts';
 import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
 import {
-  HEALTH_HOVER_LAYERS, HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX, HOSPITAL_COLOR, aplProp, aplTooltipHtml, colorFromProp,
+  HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HEALTH_OFF_SEASON_HEX, HOSPITAL_CATEGORY_HEX, HOSPITAL_COLOR, aplProp, aplTooltipHtml, colorFromProp,
   departmentHealthFeatures, hantavirusFeatures, hantavirusTooltipHtml, healthTooltipHtml, hospitalAuthorizations, hospitalFeatures,
-  hospitalPopupHtml, hospitalTooltipHtml, regionAlert, regionAlertFeatures, regionAlertTooltipHtml, urgencesLate, urgencesLegend, urgencesProp,
+  hospitalPopupHtml, hospitalTooltipHtml, regionAlert, regionAlertFeatures, regionAlertTooltipHtml, topHealthHit, urgencesProp,
   urgencesTooltipHtml,
   type HealthMapData,
 } from './health-map.ts';
@@ -81,13 +82,47 @@ describe('départements : urgences (spec § 3.2) et APL (§ 3.3)', () => {
     expect(h).toContain(`<span>SOS Médecins</span><span>17,8${NBSP}% des actes</span>`);
     expect(h).toContain('<span>Niveau</span><span><i class="hm-dot" style="background:var(--sev-yellow)"></i>Jaune</span>');
     expect(h).toContain(`<span>Maximum des 3 saisons précédentes</span><span>2,3${NBSP}%</span>`);
-    expect(h).toContain(`Au-dessus de ce maximum, de moins de 15${NBSP}%.`);
+    expect(h).toContain(`Au-dessus du maximum des 3 saisons précédentes à la même semaine, de moins de 15${NBSP}%.`);
     expect(urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'ira', HEALTH_NOW)).toContain('<span>SOS Médecins</span><span>n.d.</span>');
     const nd = urgencesTooltipHtml('Lozère', '48', syndromicFixture(), 'bronchio', HEALTH_NOW);
     expect(nd).toContain('<span>Urgences</span><span>n.d.</span>');
     expect(nd).toContain('<span>Niveau</span><span>n.d.</span>');
-    expect(nd).toContain('Moins de deux saisons de référence.');
+    expect(nd).toContain('Comparaison saisonnière n.d. : aucune valeur publiée cette semaine.');
     expect(urgencesTooltipHtml('<b>x</b>', '13', null, 'ira', HEALTH_NOW)).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+  it('infobulle urgences : nombre réel de saisons, décimales du panneau, jamais « 0,0 % » pour une part non nulle', () => {
+    // Bouches-du-Rhône, IRA, valeurs de référence remplacées.
+    const with13 = (er: number | null, refEr: number[], sos: number | null = null): SyndromicResponse => {
+      const d = syndromicFixture();
+      const dep = d.departments.find((x) => x.code === '13');
+      if (dep) dep.values.ira = { er, hosp: null, sos, refEr };
+      return d;
+    };
+    const tipOf = (d: SyndromicResponse): string => urgencesTooltipHtml('Bouches-du-Rhône', '13', d, 'ira', HEALTH_NOW);
+    const one = tipOf(with13(2, [1.8]));
+    expect(one).toContain(`<span>Même semaine, saison précédente</span><span>1,8${NBSP}%</span>`);
+    expect(one).not.toContain('Maximum des');
+    expect(one).toContain('<span>Niveau</span><span>n.d.</span>');
+    expect(one).toContain('Comparaison saisonnière n.d. : moins de deux saisons de référence.');
+    const two = tipOf(with13(2, [1.8, 2.1]));
+    expect(two).toContain(`<span>Maximum des 2 saisons précédentes</span><span>2,1${NBSP}%</span>`);
+    expect(two).toContain('Dans la fourchette des 2 saisons précédentes à la même semaine.');
+    // 2,34 contre un maximum de 2,31 : « 2,3 % » des deux côtés à une décimale, donc deux décimales.
+    const close = tipOf(with13(2.34, [2.31, 2, 1.9]));
+    expect(close).toContain(`<span>Urgences</span><span>2,34${NBSP}% des passages</span>`);
+    expect(close).toContain(`<span>Maximum des 3 saisons précédentes</span><span>2,31${NBSP}%</span>`);
+    const tiny = tipOf(with13(0.04, [0.1, 0.08, 0.06], 0.004));
+    expect(tiny).toContain(`<span>Urgences</span><span>0,04${NBSP}% des passages</span>`);
+    expect(tiny).toContain(`<span>SOS Médecins</span><span>0,004${NBSP}% des actes</span>`);
+    expect(tiny).not.toContain(`0,0${NBSP}%`);
+    // Références toutes nulles : jaune, sans « de moins de 15 % ».
+    const zero = tipOf(with13(0.02, [0, 0, 0]));
+    expect(zero).toContain('<i class="hm-dot" style="background:var(--sev-yellow)"></i>Jaune');
+    expect(zero).toContain(`Au-dessus des 3 saisons précédentes à la même semaine, toutes à 0${NBSP}%.`);
+    expect(zero).not.toContain('moins de 15');
+    expect(tipOf(with13(1, [2, 1.5, 1.2]))).toContain('Sous les 3 saisons précédentes à la même semaine.');
+    expect(tipOf(with13(3, [2.5, 2, 1]))).toContain('Au moins 1,15 fois le maximum des 3 saisons précédentes à la même semaine.');
+    expect(tipOf(with13(4, [2.5, 2, 1]))).toContain('Au moins 1,5 fois le maximum des 3 saisons précédentes à la même semaine.');
   });
   it('infobulle APL : valeur du département et de la France, rapport à la moyenne, niveau, millésime', () => {
     const mg = aplTooltipHtml('Val-d’Oise', '95', aplFixture(), 'mg');
@@ -205,8 +240,16 @@ describe('infobulle au survol : la couche la plus précise d’abord', () => {
     alerts: alertLevelsFixture().levels, now: HEALTH_NOW, syndromic: syndromicFixture(), apl: aplFixture(),
     hospitals: new Map(hospitalsFixture().sites.map((s) => [s.finess, s] as const)), hospitalsVintage: 2025, syndrome: 'gastro', profession: 'kine',
   });
-  it('ordre : site, marqueur hantavirus, urgences, APL, région', () => {
-    expect(HEALTH_HOVER_LAYERS).toEqual([LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_ALERT_FILL]);
+  it('ordre : inverse du dessin (site, marqueur hantavirus, APL dessinée au-dessus des urgences, région)', () => {
+    expect(HEALTH_HOVER_LAYERS).toEqual([LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
+    const drawn = HEALTH_HOVER_LAYERS.map((id) => HEALTH_LAYER_ORDER.indexOf(id));
+    expect(drawn.every((i, k) => i >= 0 && (k === 0 || i < drawn[k - 1]))).toBe(true);
+  });
+  it('Urgences et Accès aux soins allumées : l’APL, dessinée au-dessus, répond ; un site passe avant tout', () => {
+    const hit = (id: string): { layer: { id: string } } => ({ layer: { id } });
+    expect(topHealthHit([hit(LYR_HEALTH_URG_FILL), hit(LYR_HEALTH_APL_FILL), hit(LYR_HEALTH_ALERT_FILL)])?.layer.id).toBe(LYR_HEALTH_APL_FILL);
+    expect(topHealthHit([hit(LYR_HEALTH_ALERT_FILL), hit(LYR_HOSPITALS)])?.layer.id).toBe(LYR_HOSPITALS);
+    expect(topHealthHit([hit('autre-couche')])).toBeUndefined();
   });
   it('aiguillage par couche, syndrome et profession choisis ; nom du département repris de la géométrie ou de la table INSEE', () => {
     expect(healthTooltipHtml(LYR_HOSPITALS, { finess: '840000046' }, data())).toContain('CH d’Avignon');

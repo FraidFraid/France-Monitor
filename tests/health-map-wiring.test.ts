@@ -99,3 +99,41 @@ describe('styles des infobulles santé', () => {
     expect(css).not.toContain('health-hospital-detail-popup');
   });
 });
+
+describe('relecture de la tâche 18 : survol, fiche de site, légende, morceaux chargés', () => {
+  /** Corps d'une méthode de DeckGLMap, de sa signature à l'accolade fermante de même retrait. */
+  const body = (signature: string): string => {
+    const start = deck.indexOf(signature);
+    expect(start).toBeGreaterThan(-1);
+    return deck.slice(start, deck.indexOf('\n  }\n', start));
+  };
+  it('infobulle de survol fermée quand la souris quitte la carte et quand son contenu change', () => {
+    expect(deck).toMatch(/map\.on\('mouseout', \(\) => \{\s*this\.setHealthPointer\(false\);\s*this\.hideHealthHover\(\);/);
+    for (const signature of ['updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {',
+      'updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {',
+      'setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {', 'setHealthAplProfession(profession: AplProfession): void {',
+      'updateHospitals(data: HospitalsDataset | null): void {', 'setLayerVisibility(layers: MapLayers): void {']) {
+      expect(body(signature)).toContain('this.hideHealthHover();');
+    }
+    expect(css).toContain('.hm-hover .maplibregl-popup-content { pointer-events: none; }');
+  });
+  it('fiche de site : pas d’infobulle par-dessus, fermée quand la couche Hôpitaux s’éteint', () => {
+    expect(body('private initHealthInteractions(): void {')).toContain("String(hit?.properties?.['finess'] ?? '') === this.hospitalPopupFiness");
+    expect(body('private openHospitalPopup(site: EmergencySite): void {')).toContain('this.hospitalPopupFiness = site.finess;');
+    expect(body('setLayerVisibility(layers: MapLayers): void {')).toContain('if (!layers.hospitals) this.hospitalPopup?.remove();');
+  });
+  it('survol : la couche dessinée au-dessus répond ; ordre de dessin unique', () => {
+    expect(deck).toContain('for (const id of HEALTH_LAYER_ORDER) this.map.moveLayer(id);');
+    expect(body('private initHealthInteractions(): void {')).toContain('topHealthHit(');
+  });
+  it('survol de légende : l’anneau hantavirus s’atténue par son contour', () => {
+    expect(deck).toContain("if (layerId === LYR_NET_ISP_RING || layerId === LYR_HEALTH_HANTAVIRUS) prop = 'circle-stroke-opacity';");
+  });
+  it('légende Urgences hors de deckgl/ : App ne charge ni la carte ni maplibre-gl pour elle', () => {
+    expect(app).toContain("import('./components/layer-panel/urgences-legend.ts')");
+    expect(app).not.toMatch(/import\('\.\/components\/deckgl\//);
+    const legend = read('src/components/layer-panel/urgences-legend.ts');
+    expect(legend).not.toMatch(/from '(?:\.\.\/deckgl\/|maplibre-gl)/);
+    expect(constants).toContain("import type maplibregl from 'maplibre-gl';");
+  });
+});

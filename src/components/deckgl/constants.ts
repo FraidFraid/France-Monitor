@@ -1,5 +1,5 @@
 // Extracted from DeckGLMap.ts — source/layer IDs, color tables and static dictionaries.
-import maplibregl from 'maplibre-gl';
+import type maplibregl from 'maplibre-gl';
 import type { MapViewState, MeteoRiskType } from '../../types/index.ts';
 import type { IconName } from '../shared/icons.ts';
 

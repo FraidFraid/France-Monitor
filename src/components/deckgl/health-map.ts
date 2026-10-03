@@ -8,16 +8,19 @@ import type {
   AplDataset, AplDepartment, AplProfession, EmergencySite, HospitalCategory, HospitalsDataset, RegionalAlertLevel,
   SyndromicDepartment, SyndromicResponse,
 } from '../../types/index.ts';
-import { alertInSeason, epiWeekLabel, isHealthDataLate, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
+import { alertInSeason, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel } from '../../services/health-levels.ts';
 import { LEVEL_RANK, levelColorVar, levelHex, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { HANTAVIRUS_HISTORICAL_DEPARTMENTS, HANTAVIRUS_HISTORICAL_REFERENCE } from '../../config/hantavirus.ts';
 import { NBSP, formatPct, frNumber } from '../layer-panel/format.ts';
 import {
   APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, APL_UNIT, HOSPITAL_CATEGORY_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
-  aplProfessionLevel, capitalize, departementName, joinFr, parisDay, weekShort, type UrgencesSyndrome,
+  aplProfessionLevel, departementName, joinFr, parisDay, seasonalDigits, weekShort, type SeasonalReading, type UrgencesSyndrome,
 } from '../layer-panel/health-format.ts';
-import type { LegendCategory } from '../MapLegend.ts';
-import { LYR_HEALTH_ALERT_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HOSPITALS } from './constants.ts';
+import { urgencesLate } from '../layer-panel/urgences-legend.ts';
+import {
+  LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL,
+  LYR_HEALTH_URG_LINE, LYR_HOSPITALS,
+} from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
 /** Hors saison (régions) : gris clair, distinct du vert « pas d'alerte » (spec § 3.1). */
@@ -133,15 +136,6 @@ function urgencesLevelOf(d: SyndromicDepartment | undefined, s: UrgencesSyndrome
   return v ? seasonalLevel(v.er, v.refEr) : 'nd';
 }
 
-/**
- * S2 : urgences en retard quand la fin de la dernière semaine publiée + 17 jours est dépassée (même règle que le panneau) ;
- * sans semaine publiée, rien à dater.
- */
-export function urgencesLate(syndromic: SyndromicResponse | null, now: number): boolean {
-  const week = syndromic?.week;
-  return week ? isHealthDataLate('syndromic', week.end, now) : false;
-}
-
 /** Couleurs d'un département ; urgences en retard : aucune couleur de niveau (S2), l'APL annuelle n'est jamais en retard. */
 function departmentProps(d: SyndromicDepartment | undefined, a: AplDepartment | undefined, apl: AplDataset | null, urgLate: boolean): Record<string, string> {
   const props: Record<string, string> = {};
@@ -171,46 +165,51 @@ export function departmentHealthFeatures(
   };
 }
 
-const LEVEL_WORDS: Readonly<Record<HealthLevel, string>> = {
-  vert: 'au plus le maximum des 3 saisons précédentes',
-  jaune: `au-dessus de ce maximum, de moins de 15${NBSP}%`,
-  orange: `de 15 à 50${NBSP}% au-dessus de ce maximum`,
-  rouge: `plus de 50${NBSP}% au-dessus de ce maximum`,
-  nd: 'moins de deux saisons de référence',
-};
+/** Décimales d'une part en % : jamais « 0,0 % » pour une part non nulle (trois au plus). */
+function nonZeroDigits(v: number | null): number {
+  return v !== null && v > 0 && v < 0.05 ? Math.min(3, Math.ceil(-Math.log10(2 * v))) : 1;
+}
+
+/** Position saisonnière en mots, avec le nombre réel de saisons de référence (vocabulaire de seasonalNote, panneau Urgences). */
+function urgencesNote(r: SeasonalReading, late: boolean): string {
+  if (late) return 'Niveau saisonnier suspendu : données en retard.';
+  if (r.value === null) return 'Comparaison saisonnière n.d. : aucune valeur publiée cette semaine.';
+  if (r.level === 'nd') return 'Comparaison saisonnière n.d. : moins de deux saisons de référence.';
+  const n = r.refs.length;
+  const same = `des ${n} saisons précédentes à la même semaine`;
+  const max = Math.max(...r.refs);
+  switch (r.level) {
+    case 'rouge': return `Au moins 1,5 fois le maximum ${same}.`;
+    case 'orange': return `Au moins 1,15 fois le maximum ${same}.`;
+    case 'jaune': return max > 0 ? `Au-dessus du maximum ${same}, de moins de 15${NBSP}%.` : `Au-dessus ${same}, toutes à 0${NBSP}%.`;
+    default: return r.value < Math.min(...r.refs) ? `Sous les ${n} saisons précédentes à la même semaine.` : `Dans la fourchette ${same}.`;
+  }
+}
 
 /**
- * Survol d'un département (Urgences) : part aux urgences, part SOS Médecins, niveau saisonnier, semaine.
- * En retard (S2) : valeurs gardées avec leur semaine suivie de « (en retard) », niveau suspendu, aucune puce de couleur.
+ * Survol d'un département (Urgences) : part aux urgences, part SOS Médecins, niveau saisonnier, semaine, référence.
+ * Décimales du panneau (seasonalDigits : deux quand la valeur et une borne s'arrondissent pareil), jamais « 0,0 % » pour une
+ * part non nulle ; libellé de la référence selon le nombre réel de saisons. En retard (S2) : valeurs gardées avec leur
+ * semaine suivie de « (en retard) », niveau suspendu, aucune puce de couleur.
  */
 export function urgencesTooltipHtml(name: string, code: string, syndromic: SyndromicResponse | null, syndrome: UrgencesSyndrome, now: number): string {
   const d = syndromic?.departments.find((x) => x.code === code);
   const v = d?.values[syndrome];
   const er = v?.er ?? null;
   const sos = v?.sos ?? null;
+  const refs = (v?.refEr ?? []).filter((x) => Number.isFinite(x));
   const late = urgencesLate(syndromic, now);
-  const level: HealthLevel = late ? 'nd' : urgencesLevelOf(d, syndrome);
-  const max = v && v.refEr.length > 0 ? Math.max(...v.refEr) : null;
+  const r: SeasonalReading = { value: er, previous: null, refs, level: late ? 'nd' : urgencesLevelOf(d, syndrome) };
+  const max = refs.length > 0 ? Math.max(...refs) : null;
+  const digits = Math.max(seasonalDigits(r), nonZeroDigits(er), nonZeroDigits(max));
+  const refLabel = refs.length === 1 ? 'Même semaine, saison précédente' : `Maximum des ${refs.length} saisons précédentes`;
   const week = syndromic?.week ? `${weekShort(syndromic.week.id)}${late ? ' (en retard)' : ''}` : 'n.d.';
   return tip(head(`${name} (${code})`, `${URGENCES_SYNDROME_LABEL[syndrome]} · ${week}`)
-    + row('Urgences', er === null ? 'n.d.' : escapeHtml(`${formatPct(er, 1)} des passages`))
-    + row('SOS Médecins', sos === null ? 'n.d.' : escapeHtml(`${formatPct(sos, 1)} des actes`))
-    + row('Niveau', level === 'nd' ? 'n.d.' : `${dot(level)}${escapeHtml(levelLabel(level))}`)
-    + (max === null ? '' : row('Maximum des 3 saisons précédentes', escapeHtml(formatPct(max, 1))))
-    + note(late ? 'Niveau saisonnier suspendu : données en retard.' : `${capitalize(LEVEL_WORDS[level])}.`));
-}
-
-/**
- * Légende Urgences datée (S1) : semaine épidémiologique et date de publication ; en retard (S2), « (en retard) » et
- * couleurs de niveau retirées de la carte. Sans semaine publiée : la légende de base.
- */
-export function urgencesLegend(base: LegendCategory, syndromic: SyndromicResponse | null, now: number): LegendCategory {
-  const week = syndromic?.week;
-  if (!syndromic || !week) return base;
-  const published = syndromic.publishedAt ? `, publiées le ${parisDay(syndromic.publishedAt)}` : '';
-  const period = `Données : ${epiWeekLabel(week)}${published}`;
-  const line = urgencesLate(syndromic, now) ? `${period} (en retard) : couleurs de niveau retirées.` : `${period}.`;
-  return { ...base, notes: [line, ...(base.notes ?? [])] };
+    + row('Urgences', er === null ? 'n.d.' : escapeHtml(`${formatPct(er, digits)} des passages`))
+    + row('SOS Médecins', sos === null ? 'n.d.' : escapeHtml(`${formatPct(sos, nonZeroDigits(sos))} des actes`))
+    + row('Niveau', r.level === 'nd' ? 'n.d.' : `${dot(r.level)}${escapeHtml(levelLabel(r.level))}`)
+    + (max === null ? '' : row(refLabel, escapeHtml(formatPct(max, digits))))
+    + note(urgencesNote(r, late)));
 }
 
 /** Survol d'un département (Accès aux soins) : APL de la profession choisie, France, rapport à la moyenne, niveau, millésime. */
@@ -325,8 +324,27 @@ export interface HealthMapData {
   profession: AplProfession;
 }
 
-/** Couches santé sous la souris, de la plus précise à la plus large : un site, un marqueur, un département, une région. */
-export const HEALTH_HOVER_LAYERS: readonly string[] = [LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_URG_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_ALERT_FILL];
+/** Ordre de dessin des couches santé, du bas vers le haut (moveLayer à l'initialisation de la carte). */
+export const HEALTH_LAYER_ORDER: readonly string[] = [
+  LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
+  LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HOSPITALS,
+];
+const HOVERABLE: ReadonlySet<string> = new Set([LYR_HOSPITALS, LYR_HEALTH_HANTAVIRUS, LYR_HEALTH_APL_FILL, LYR_HEALTH_URG_FILL, LYR_HEALTH_ALERT_FILL]);
+
+/**
+ * Couches santé sous la souris, dans l'ordre inverse du dessin : celle qu'on voit au-dessus répond (un site, un marqueur,
+ * l'APL dessinée au-dessus des urgences, une région).
+ */
+export const HEALTH_HOVER_LAYERS: readonly string[] = [...HEALTH_LAYER_ORDER].reverse().filter((id) => HOVERABLE.has(id));
+
+/** Objet survolé qui répond : celui de la couche dessinée le plus haut parmi HEALTH_HOVER_LAYERS. */
+export function topHealthHit<T extends { layer: { id: string } }>(hits: readonly T[]): T | undefined {
+  for (const id of HEALTH_HOVER_LAYERS) {
+    const hit = hits.find((f) => f.layer.id === id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
 
 export function healthTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>, d: HealthMapData): string | null {
   const code = String(props['code'] ?? '');
