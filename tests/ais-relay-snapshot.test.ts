@@ -83,6 +83,23 @@ describe('zones couvertes par chaque lot, panne amont nommée, mémoire MMSI', (
     expect(err).toHaveBeenCalledWith(expect.stringContaining('échouée'));
     expect(err).toHaveBeenCalledWith(expect.stringContaining('quota dépassé'));
   });
+  it('après close() : plus aucune reconnexion ni minuteur en attente (keepUpstream, amont injoignable)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'] });
+    try {
+      __setKvClientForTests({ get: async () => null, set: async () => {} });
+      relay = startRelayServer({ port: 0, aisApiKey: 'cle', upstreamUrl: 'ws://127.0.0.1:1', keepUpstream: true, tracker: createAisTracker() }) as Relay;
+      await vi.advanceTimersByTimeAsync(50);
+      relay.close();
+      relay = null;
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(40_000); // laisse expirer le minuteur interne du serveur HTTP
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('l’URL HTTP du relais ne dépend plus de AIR_RELAY_URL', () => {
     vi.stubEnv('AIR_RELAY_URL', 'https://autre.example');
     vi.stubEnv('RELAY_PORT', '8090');

@@ -25,6 +25,7 @@ const STATICS_KEY = 'ais:statics';
 const STATICS_SAVE_MS = 30 * 60_000;
 const STATICS_KEEP_SEC = 7 * 86_400;
 const PRUNE_MS = 60_000;
+const SHUTDOWN_SAVE_TIMEOUT_MS = 5_000;
 /** Zone de chaque boîte, dans l'ordre de `BoundingBoxes` ; `metro` : boîte qui alimente l'instantané (eaux françaises métropolitaines). */
 export const BOX_COVERAGE = [
   { label: 'Manche', metro: true }, { label: 'Atlantique', metro: true }, { label: 'golfe du Lion', metro: true }, { label: 'Corse', metro: true },
@@ -212,7 +213,9 @@ export function startRelayServer(options = {}) {
     upstreamStates.forEach(clearReconnectTimer);
   };
 
+  let closed = false;
   const closeLocalRelay = () => {
+    closed = true;
     clearAllReconnectTimers();
     if (staticsTimer) clearInterval(staticsTimer);
     if (pruneTimer) clearInterval(pruneTimer);
@@ -261,7 +264,7 @@ export function startRelayServer(options = {}) {
   };
 
   const scheduleReconnect = (state) => {
-    if (state.reconnectTimer || !aisApiKey) return;
+    if (closed || state.reconnectTimer || !aisApiKey) return;
     if (!wantUpstream()) return;
 
     const now = Date.now();
@@ -291,7 +294,7 @@ export function startRelayServer(options = {}) {
   };
 
   const connectUpstream = (state) => {
-    if (!aisApiKey) return;
+    if (closed || !aisApiKey) return;
     if (!wantUpstream()) return;
     if (state.upstream && (state.upstream.readyState === WebSocket.OPEN || state.upstream.readyState === WebSocket.CONNECTING)) {
       return;
@@ -415,7 +418,7 @@ export function startRelayServer(options = {}) {
   };
 
   server.listen(relayPort, () => {
-    if (usingExternalRelay) return;
+    if (usingExternalRelay || closed) return;
     console.log(`[AIS Relay] 🚀 Nouveau relay démarré et à l’écoute sur le port ${relayPort} (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
     // Élagage des suivis sur minuteur (sans appel HTTP, les tables ne seraient plus bornées).
     pruneTimer = setInterval(() => tracker.prune(Date.now()), PRUNE_MS);
@@ -458,7 +461,14 @@ if (isEntryPoint) {
   console.log(`Relais AIS démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
   // Arrêt propre (systemd) : la mémoire MMSI apprise depuis la dernière sauvegarde n'est pas perdue.
   process.once('SIGTERM', () => {
-    relay.saveStatics('arrêt').finally(() => {
+    // Délai de 5 s : si l'écriture Redis se bloque, on journalise et on sort quand même (systemd n'a pas à tuer le relais).
+    const timeout = new Promise((resolve) => {
+      setTimeout(() => {
+        console.error('[AIS Relay] ❌ Sauvegarde de la mémoire MMSI (arrêt) sans réponse après 5 s : arrêt sans attendre');
+        resolve(null);
+      }, SHUTDOWN_SAVE_TIMEOUT_MS).unref?.();
+    });
+    Promise.race([relay.saveStatics('arrêt'), timeout]).catch(() => {}).finally(() => {
       relay.close();
       process.exit(0);
     });

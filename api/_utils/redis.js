@@ -60,7 +60,7 @@ export async function redisSet(key, value, ttlSec) {
  * Comme redisSet, mais l'échec est propagé (sauvegardes dont l'échec doit être journalisé). Retourne false sans Redis
  * configuré, true si la valeur est écrite.
  * @param {string} key
- * @param {string} value  — must already be JSON.stringify'd
+ * @param {string} value  : must already be JSON.stringify'd
  * @param {number} ttlSec
  * @returns {Promise<boolean>}
  */
