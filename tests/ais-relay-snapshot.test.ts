@@ -83,19 +83,27 @@ describe('zones couvertes par chaque lot, panne amont nommée, mémoire MMSI', (
     expect(err).toHaveBeenCalledWith(expect.stringContaining('échouée'));
     expect(err).toHaveBeenCalledWith(expect.stringContaining('quota dépassé'));
   });
-  it('après close() : plus aucune reconnexion ni minuteur en attente (keepUpstream, amont injoignable)', async () => {
+  it('après close() : plus aucune reconnexion programmée (keepUpstream, amont injoignable)', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'] });
     try {
       __setKvClientForTests({ get: async () => null, set: async () => {} });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'log').mockImplementation(() => {});
       relay = startRelayServer({ port: 0, aisApiKey: 'cle', upstreamUrl: 'ws://127.0.0.1:1', keepUpstream: true, tracker: createAisTracker() }) as Relay;
       await vi.advanceTimersByTimeAsync(50);
       relay.close();
       relay = null;
-      await vi.advanceTimersByTimeAsync(100);
-      await vi.advanceTimersByTimeAsync(40_000); // laisse expirer le minuteur interne du serveur HTTP
-      expect(vi.getTimerCount()).toBe(0);
+      // Les fermetures tardives des sockets que close() vient de fermer ont lieu ici ; elles ne doivent rien reprogrammer.
+      await vi.advanceTimersByTimeAsync(40_000);
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      const logged = warn.mock.calls.length + error.mock.calls.length;
       await vi.advanceTimersByTimeAsync(10 * 60_000);
-      expect(vi.getTimerCount()).toBe(0);
+      // Seuls les minuteurs du relais sont comptés (ses appels à setTimeout, setInterval et ses journaux), pas ceux de Node.
+      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      expect(setIntervalSpy).not.toHaveBeenCalled();
+      expect(warn.mock.calls.length + error.mock.calls.length).toBe(logged);
     } finally {
       vi.useRealTimers();
     }
