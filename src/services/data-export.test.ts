@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import assert from 'node:assert/strict';
 
 import type {
@@ -9,7 +9,6 @@ import type {
   PowerOutage,
   TelecomOutage,
 } from '../types/index.ts';
-import type { TrafficIncident } from './traffic.ts';
 import {
   buildExportFilename,
   collectExportableLayers,
@@ -20,12 +19,13 @@ import {
   serializeNews,
   serializeOutages,
   serializeSituations,
-  serializeTrafficIncidents,
+  serializeRoadEvents,
   toCsv,
   toGeoJson,
   type ExportableLayer,
   type ExportContext,
 } from './data-export.ts';
+import { roadNationalFixture } from '../components/layer-panel/traffic.fixture.ts';
 
 // ─── Fixtures typées ──────────────────────────────────────────────────────────
 
@@ -253,25 +253,18 @@ describe('serializeOutages', () => {
   });
 });
 
-describe('serializeTrafficIncidents', () => {
-  it('joint les numéros de route et géolocalise', () => {
-    const incidents: TrafficIncident[] = [
-      {
-        id: 'i1',
-        lon: 4.83,
-        lat: 45.75,
-        type: 'Accident',
-        severity: 'high',
-        delay: 600,
-        length: 1200,
-        description: 'Accident A7',
-        roadNumbers: ['A7', 'A47'],
-      },
-    ];
-    const { rows, features } = serializeTrafficIncidents(incidents);
-    assert.equal(rows[0].routes, 'A7, A47');
-    assert.equal(features.length, 1);
-    assert.deepEqual([features[0].lon, features[0].lat], [4.83, 45.75]);
+describe('serializeRoadEvents', () => {
+  it('événements DIR : nature, route, lieu, sens, DIR, début ; géolocalise seulement ceux qui ont des coordonnées', () => {
+    const events = roadNationalFixture().events;
+    const { rows, columns, features } = serializeRoadEvents(events);
+    expect(columns.map((c) => c.key)).toEqual(['type', 'nature', 'route', 'lieu', 'sens', 'dir', 'debut', 'fin', 'gravite', 'securite', 'detail', 'lat', 'lon']);
+    expect(rows).toHaveLength(65);
+    assert.equal(rows[0].type, 'Accident');
+    assert.equal(rows[0].route, 'A55');
+    assert.equal(rows[0].dir, 'DIR Méditerranée');
+    assert.equal(rows[0].securite, 'oui');
+    assert.equal(features.length, 7);
+    assert.deepEqual([features[0].lon, features[0].lat], [5.321, 43.371]);
   });
 });
 
@@ -295,7 +288,7 @@ function emptyContext(): ExportContext {
     fires: [],
     powerOutages: [],
     telecomOutages: [],
-    trafficIncidents: [],
+    roadEvents: [],
   };
 }
 

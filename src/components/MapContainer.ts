@@ -446,6 +446,11 @@ export class MapContainer {
     return !this.isMobile;
   }
 
+  /** Vrai si la carte peut recentrer ou surligner un objet des trafics (carte WebGL ; la carte SVG du mobile ne dessine pas les trafics). */
+  canFocusMap(): boolean {
+    return !this.isMobile;
+  }
+
   // ─── Layer visibility ───
   setLayerVisibility(layers: MapLayers): void {
     if (layers.dromEnergy) {

@@ -638,10 +638,10 @@ export class LayerPanel {
         this.helpItem('&#9702;', 'Hôpitaux', 'Sites d’urgences autorisés (SAE 2025) et établissements FINESS : catégories et capacités ; annuelle.'),
       ]),
       this.helpSection(fmIcon('car-front'), 'Trafics', [
-        this.helpItem(fmIcon('car-front'), 'Trafic routier', 'Incidents routiers temps réel (TomTom Traffic API).', 'live'),
-        this.helpItem(fmIcon('ship'), 'Trafic maritime', 'Navires civils AIS : militaires dans la couche Défense.', 'live'),
-        this.helpItem(fmIcon('plane'), 'Trafic aérien', 'Vols civils airplanes.live : militaires dans la couche Défense.', 'live'),
-        this.helpItem(fmIcon('train-front'), 'Réseau ferroviaire', 'Perturbations SNCF actives : arrêts impactés par sévérité, tracés uniquement quand la géométrie est fiable.', 'live'),
+        this.helpItem(fmIcon('car-front'), 'Trafic routier', 'Événements du réseau routier national non concédé (DIR), bouchons des autoroutes concédées (CNIR) et de 12 agglomérations (TomTom) ; chaque partie datée.'),
+        this.helpItem(fmIcon('ship'), 'Trafic maritime', 'Navires suivis par AIS dans les eaux côtières couvertes : signalements croisés, zones, ports ; Marine nationale et alertes.'),
+        this.helpItem(fmIcon('plane'), 'Trafic aérien', 'Aéronefs suivis par OpenSky : urgences (7500, 7600, 7700), départs par aéroport, volume ; militaires dans la couche Défense.'),
+        this.helpItem(fmIcon('train-front'), 'Réseau ferroviaire', 'Trains signalés par la SNCF : retards par axe et par région, situations en cours (SIRI SX), détail train par train.'),
       ]),
       this.helpSection(fmIcon('leaf'), 'Environnement', [
         this.helpItem(fmIcon('leaf'), 'Météo / Crues', 'Alertes Vigilance Météo-France et niveaux Vigicrues (stations hydrométriques).', 'live'),

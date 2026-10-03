@@ -6063,7 +6063,7 @@ button.header-quality-link {
    `.xxx-panel-content` flex:1/overflow-y:auto de chaque panel), barre de
    poignée visible, zone de sécurité iOS. `!important` nécessaire : la
    position/largeur est posée en `style.cssText` inline par chaque composant.
-   MaritimePanel, TrafficPanel, TransportPanel et ISNRPanel portent la classe générique `.fm-floating-panel`
+   ISNRPanel porte la classe générique `.fm-floating-panel`
    (leur conteneur n'avait pas de classe propre). */
 @media (max-width: 768px) {
   .cyber-panel-modal,
@@ -6082,6 +6082,10 @@ button.header-quality-link {
   .urgences-panel-modal,
   .acces-soins-panel-modal,
   .hopitaux-panel-modal,
+  .traffic-panel-modal,
+  .air-traffic-panel-modal,
+  .transport-panel-modal,
+  .maritime-panel-modal,
   .fm-floating-panel {
     position: fixed !important;
     top: auto !important;
@@ -6117,6 +6121,10 @@ button.header-quality-link {
   .urgences-panel-modal::before,
   .acces-soins-panel-modal::before,
   .hopitaux-panel-modal::before,
+  .traffic-panel-modal::before,
+  .air-traffic-panel-modal::before,
+  .transport-panel-modal::before,
+  .maritime-panel-modal::before,
   .fm-floating-panel::before {
     content: '';
     flex-shrink: 0;
@@ -8769,6 +8777,10 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .urgences-panel-modal,
   #app.ui-v2 .acces-soins-panel-modal,
   #app.ui-v2 .hopitaux-panel-modal,
+  #app.ui-v2 .traffic-panel-modal,
+  #app.ui-v2 .air-traffic-panel-modal,
+  #app.ui-v2 .transport-panel-modal,
+  #app.ui-v2 .maritime-panel-modal,
   #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .environment-panel-modal,
   body:has(#app.ui-v2) > .fires-panel-modal,
@@ -9009,9 +9021,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Détails méthodologiques : les lignes de fraîcheur portent une phrase, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. */
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv-v { overflow-wrap: anywhere; }
-/* Méthode et sources des quatre panneaux Santé : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
-#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
-#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+/* Méthode et sources des panneaux Santé et Trafics : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .lp .lp-tbl th, .lp .lp-tbl td { padding: 3px 0; text-align: right; font-weight: 400; vertical-align: baseline; }

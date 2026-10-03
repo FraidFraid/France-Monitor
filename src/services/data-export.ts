@@ -21,9 +21,9 @@ import {
   type MeteoAlert,
   type NewsItem,
   type PowerOutage,
+  type RoadEvent,
   type TelecomOutage,
 } from '../types/index.ts';
-import type { TrafficIncident } from './traffic.ts';
 
 // ─── Types de sérialisation ───────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ export interface ExportContext {
   fires: ActiveFire[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
-  trafficIncidents: TrafficIncident[];
+  roadEvents: RoadEvent[];
 }
 
 // ─── Provenance ───────────────────────────────────────────────────────────────
@@ -468,53 +468,32 @@ export function serializeOutages(power: PowerOutage[], telecom: TelecomOutage[])
   return { rows, columns, features };
 }
 
-/** Incidents trafic routier (TomTom). */
-export function serializeTrafficIncidents(items: TrafficIncident[]): SerializedLayer {
+/** Événements routiers en cours du réseau national (DIR, spec 2026-10-03 trafics § 2.1). */
+export function serializeRoadEvents(items: RoadEvent[]): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'type', label: 'type' },
-    { key: 'gravite', label: 'gravité' },
-    { key: 'description', label: 'description' },
-    { key: 'retard', label: 'retard_s' },
-    { key: 'longueur', label: 'longueur_m' },
-    { key: 'routes', label: 'routes' },
-    { key: 'de', label: 'de' },
-    { key: 'vers', label: 'vers' },
+    { key: 'nature', label: 'nature' },
+    { key: 'route', label: 'route' },
+    { key: 'lieu', label: 'lieu' },
+    { key: 'sens', label: 'sens' },
+    { key: 'dir', label: 'DIR' },
     { key: 'debut', label: 'début' },
     { key: 'fin', label: 'fin' },
+    { key: 'gravite', label: 'gravité' },
+    { key: 'securite', label: 'message de sécurité' },
+    { key: 'detail', label: 'détail' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
-  for (const i of items) {
-    const routes = i.roadNumbers?.join(', ') ?? null;
+  for (const e of items) {
     rows.push({
-      type: i.type,
-      gravite: i.severity,
-      description: i.description,
-      retard: i.delay,
-      longueur: i.length,
-      routes,
-      de: i.from ?? null,
-      vers: i.to ?? null,
-      debut: i.startTime ?? null,
-      fin: i.endTime ?? null,
-      lat: i.lat,
-      lon: i.lon,
+      type: e.label, nature: e.kind, route: e.road, lieu: e.place, sens: e.direction, dir: e.dir, debut: e.start, fin: e.end,
+      gravite: e.severity, securite: e.safety ? 'oui' : 'non', detail: e.detail, lat: e.lat, lon: e.lon,
     });
-    if (Number.isFinite(i.lat) && Number.isFinite(i.lon)) {
-      features.push({
-        lat: i.lat,
-        lon: i.lon,
-        properties: {
-          type: i.type,
-          gravite: i.severity,
-          description: i.description,
-          retard: i.delay,
-          longueur: i.length,
-          routes,
-        },
-      });
+    if (e.lat !== null && e.lon !== null && Number.isFinite(e.lat) && Number.isFinite(e.lon)) {
+      features.push({ lat: e.lat, lon: e.lon, properties: { type: e.label, route: e.road, lieu: e.place, dir: e.dir, debut: e.start } });
     }
   }
   return { rows, columns, features };
@@ -535,7 +514,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'crues', label: 'Crues', serialize: (c) => serializeFloods(c.floods) },
   { key: 'feux', label: 'Feux actifs', serialize: (c) => serializeFires(c.fires) },
   { key: 'pannes', label: 'Pannes réseaux', serialize: (c) => serializeOutages(c.powerOutages, c.telecomOutages) },
-  { key: 'trafic', label: 'Incidents trafic', serialize: (c) => serializeTrafficIncidents(c.trafficIncidents) },
+  { key: 'trafic', label: 'Événements routiers (DIR)', serialize: (c) => serializeRoadEvents(c.roadEvents) },
 ];
 
 /**

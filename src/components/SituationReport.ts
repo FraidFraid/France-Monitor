@@ -19,10 +19,10 @@ import type {
   NewsItem,
   PowerOutage,
   TelecomOutage,
-  TransportDisruption,
+  RailTrain,
+  RoadEvent,
   WatchdogSnapshot,
 } from '../types/index.ts';
-import type { TrafficIncident } from '../services/traffic.ts';
 import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
 import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
@@ -47,8 +47,10 @@ export interface SituationReportContext {
   meteoAlerts: MeteoAlert[];
   floodSegments: FloodSegment[];
   ecowatt: EcowattResponse | null;
-  sncfDisruptions: TransportDisruption[];
-  trafficIncidents: TrafficIncident[];
+  /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
+  railTrains: RailTrain[];
+  /** Événements en cours du réseau routier national (DIR, § 2.1). */
+  roadEvents: RoadEvent[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   newsItems: NewsItem[];
@@ -150,12 +152,11 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     });
   }
 
-  // Transport — perturbations majeures (SNCF high/critical, routier high/critical ≥ 3).
-  const sncfMajor = ctx.sncfDisruptions.filter((d) => d.severity === 'high' || d.severity === 'critical');
-  const trafficMajor = ctx.trafficIncidents.filter((t) => t.severity === 'high' || t.severity === 'critical');
+  // Transport : trains supprimés ou retardés (SNCF), accidents et coupures en cours sur le réseau national (DIR) au moins 3.
+  const sncfMajor = ctx.railTrains.filter((t) => t.effect === 'supprime' || t.effect === 'retard');
+  const trafficMajor = ctx.roadEvents.filter((e) => e.kind === 'accident' || e.kind === 'closure');
   if (sncfMajor.length > 0 || trafficMajor.length >= 3) {
-    const hasCritical =
-      sncfMajor.some((d) => d.severity === 'critical') || trafficMajor.some((t) => t.severity === 'critical');
+    const hasCritical = sncfMajor.some((t) => t.effect === 'supprime');
     const parts: string[] = [];
     if (sncfMajor.length > 0) parts.push(`${sncfMajor.length} perturbation(s) ferroviaire(s) majeure(s)`);
     if (trafficMajor.length > 0) parts.push(`${trafficMajor.length} incident(s) routier(s) majeur(s)`);

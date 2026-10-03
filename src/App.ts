@@ -13,9 +13,10 @@ import type { SearchModal } from './components/SearchModal.ts';
 import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
 import { isLayerPanelOpen } from './components/layer-panel/frame.ts';
-import { TransportPanel } from './components/TransportPanel.ts';
+import type { TransportPanel } from './components/TransportPanel.ts';
 import type { FiresPanel } from './components/FiresPanel.ts';
 import type { TrafficPanel } from './components/TrafficPanel.ts';
+import type { AirTrafficPanel } from './components/AirTrafficPanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
 import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
@@ -73,7 +74,7 @@ import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-os
 
 import { fetchMilitaryFlights } from './services/military-flights.ts';
 import { detectGpsJammingSignals } from './services/gps-jamming.ts';
-import { AIS_RELAY_URL, getAisStatus, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
+import { AIS_RELAY_URL, getAisStatus, getAisConnectionState, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
 import { connectAis } from './services/ais-connection.ts';
 import { detectAisAnomalies } from './services/ais-anomalies.ts';
 import { detectCableThreats, militaryShipToAIS, type DefenseAlert } from './services/cable-threats.ts';
@@ -94,7 +95,6 @@ import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts'
 import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
 import { fetchVigicrues } from './services/vigicrues.ts';
-// transport.ts (~970 l.) chargé dynamiquement dans loadSncf/loadSncfFullCoverage + handler focus rail
 // buildHydraulicBackboneAssets (+ config hydraulic-backbone-official ~1200 l.) chargé
 // dynamiquement dans refreshHydraulicLayer() — sort la grosse config du chunk critique.
 import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
@@ -111,7 +111,12 @@ import {
   installRadar2dObservation,
   runRadar2dToggleTransition,
 } from './services/radar-2d-orchestration.ts';
-import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
+// Services Trafics chargés à la demande (loadRoadTraffic, loadAirOverview, loadRailTraffic, loadMaritimeSnapshot) : hors du chunk critique.
+import type { RoadTrafficState } from './services/traffic-road.ts';
+import type { AirOverviewState } from './services/traffic-air.ts';
+import type { RailTrafficState } from './services/traffic-rail.ts';
+import type { MaritimeState } from './services/traffic-maritime.ts';
+import { TRAFFIC_SOURCE_NAMES, trafficReportSources } from './config/traffic-sources.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
@@ -152,7 +157,7 @@ import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './
 import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -176,7 +181,10 @@ const POLL_FINANCE_MS                  =  5 * 60_000; //  5 min  (market data + 
 const POLL_NUCLEAR_MS                  = 15 * 60_000; // 15 min  (RTE real-time unavailabilities)
 const POLL_OIL_MS                      =  5 * 60_000; //  5 min  (fuel tension quasi-live + oil structural cache)
 const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
-const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
+const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (positions de la carte ; collecte OpenSky du serveur toutes les 2 min)
+const POLL_AIR_OVERVIEW_MS             =  2 * 60_000; //  2 min  (panneau aérien : aperçu du serveur ; cache client 90 s)
+const POLL_ROAD_MS                     =  5 * 60_000; //  5 min  (DIR et agglomérations TomTom collectés par le serveur ; cache client 4 min)
+const POLL_MARITIME_SNAPSHOT_MS        =  2 * 60_000; //  2 min  (instantané du relais AIS ; cache client 90 s)
 const POLL_HEALTH_MS                   = 30 * 60_000; // 30 min  (veille sanitaire et offre de soins, hebdomadaires ou annuelles ; caches clients 25 min)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
 const POLL_ECO2MIX_MS                  =  5 * 60_000; //  5 min  (éCO2mix national, pas de 15 min ; cache client 4 min)
@@ -190,7 +198,7 @@ const RADAR_2D_FRESHNESS_MS            = 20 * 60_000; // worker rejects data old
 const MTG_FRP_FRESHNESS_MS             = 45 * 60_000; // documented upper delivery latency
 const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
-const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
+const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (perturbations SNCF et situations SIRI SX ; cache client 4 min ; couche active, sans arrêt)
 const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
 const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
@@ -509,6 +517,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'healthApl', label: 'Accès aux soins', icon: 'map-pin', layerKeys: ['healthApl'] },
   { id: 'hospitals', label: 'Hôpitaux', icon: 'hospital', layerKeys: ['hospitals'] },
   { id: 'trafficRoad', label: 'Trafic routier', icon: 'car-front', layerKeys: ['trafficRoad'] },
+  { id: 'trafficAir', label: 'Trafic aérien', icon: 'plane', layerKeys: ['trafficAir'] },
   { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
   { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
   { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
@@ -535,6 +544,11 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'SNCF': 'trafficRail',
   'NASA FIRMS': 'fires',
   'Trafic': 'trafficRoad',
+  'TomTom agglomérations': 'trafficRoad',
+  'Trafic aérien': 'trafficAir',
+  'SIRI SX': 'trafficRail',
+  'AIS maritime': 'trafficMaritime',
+  'AIS instantané': 'trafficMaritime',
   'Cyber': 'cyber',
   'Écowatt RTE': 'powerGrid',
   'ARCEP Réseau Mobile': 'outagesElec',
@@ -559,6 +573,9 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
 
 /** Couches santé, un panneau chacune (spec 2026-10-03 § 3). */
 type HealthLayerKey = 'health' | 'healthOscour' | 'healthApl' | 'hospitals';
+
+/** Couches Trafics, un panneau chacune (spec 2026-10-03 trafics § 3). */
+type TrafficLayerKey = 'trafficRoad' | 'trafficAir' | 'trafficRail' | 'trafficMaritime';
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -1179,7 +1196,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Trafic maritime (AIS)',
+    label: 'Trafic maritime',
     legend: MARITIME_TRAFFIC_LEGEND,
   },
   {
@@ -1187,7 +1204,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Trafic aérien (preview)',
+    label: 'Trafic aérien',
     legend: AIR_TRAFFIC_LEGEND,
   },
   {
@@ -1195,7 +1212,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Réseau ferroviaire (SNCF)',
+    label: 'Réseau ferroviaire',
   },
   // ─── Energy Group ───
   {
@@ -1445,7 +1462,6 @@ export class App {
   private metroLoadPanel: MetroLoadPanel | null = null;
   private currentMetropoles: MetropoleConsumption[] | null = null;
   private transportPanel: TransportPanel | null = null;
-  private sncfFullCoverageLoaded = false;
   private firesPanel: FiresPanel | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
   private currentWeatherRadarFrame: WeatherRadarFrame | null = null;
@@ -1479,6 +1495,7 @@ export class App {
     },
   };
   private trafficPanel: TrafficPanel | null = null;
+  private airTrafficPanel: AirTrafficPanel | null = null;
   private marketStrip: MarketStrip | null = null;
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
@@ -1598,19 +1615,19 @@ export class App {
   private readonly eolienTracker = new EolienTracker();
 
 
-  private currentSncfDisruptions: TransportDisruption[] = [];
-  private currentRailNetworkData: RailNetworkData | null = null;
+  /** Trafics (spec 2026-10-03 trafics) : dernières lectures des quatre services, partagées par les panneaux, la carte, le score et la note. */
+  private currentRoadTraffic: RoadTrafficState | null = null;
+  private currentAirOverview: AirOverviewState | null = null;
+  private currentRailTraffic: RailTrafficState | null = null;
+  private currentMaritimeSnapshot: MaritimeState | null = null;
+  private legacyTomTomCleared = false;
   private currentFloodSegments: FloodSegment[] = [];
-  private currentTrafficIncidents: TrafficIncident[] = [];
-  private trafficDataLoaded = false;
   /** Menu d'export CSV / GeoJSON, instancié à la demande au premier clic. */
   private exportMenu: ExportMenu | null = null;
   // Flags « données chargées » → affichent le loader unifié tant que false (cf. render*Panel()).
   private firesLoaded = false;
   private environmentLoaded = false;
-  private maritimeHasData = false;
   private outagesLoaded = false;
-  private trafficLoadPromise: Promise<void> | null = null;
   private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
   // Perf audit top-10 item 5 / task 5: these 13 panels used to be
   // dynamically imported unconditionally inside renderShell(), so every
@@ -1631,6 +1648,8 @@ export class App {
   private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
   private maritimePanelPromise: Promise<void> | null = null;
+  private airTrafficPanelPromise: Promise<void> | null = null;
+  private transportPanelPromise: Promise<void> | null = null;
   private cyberPanelPromise: Promise<void> | null = null;
   private oilPanelPromise: Promise<void> | null = null;
   private nuclearPanelPromise: Promise<void> | null = null;
@@ -1665,7 +1684,10 @@ export class App {
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
   private _intervalDromLive: ReturnType<typeof setInterval> | null = null;
-  private _intervalSncf: ReturnType<typeof setInterval> | null = null;
+  private _intervalSncf: PausableTimer | null = null;
+  private _intervalRoad: PausableTimer | null = null;
+  private _intervalAirOverview: PausableTimer | null = null;
+  private _intervalMaritime: PausableTimer | null = null;
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -1709,7 +1731,10 @@ export class App {
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
     if (this._intervalDromLive !== null) { clearInterval(this._intervalDromLive); this._intervalDromLive = null; }
-    if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
+    this.removePausableInterval(this._intervalSncf); this._intervalSncf = null;
+    this.removePausableInterval(this._intervalRoad); this._intervalRoad = null;
+    this.removePausableInterval(this._intervalAirOverview); this._intervalAirOverview = null;
+    this.removePausableInterval(this._intervalMaritime); this._intervalMaritime = null;
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -2399,7 +2424,10 @@ export class App {
     this.startInfraNetworkPolling();
     this.startEolienPolling();
     this.startDromLivePolling();
-    this.startSncfPolling();
+    this.startRailPolling();
+    this.startRoadPolling();
+    this.startAirOverviewPolling();
+    this.startMaritimePolling();
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -3075,33 +3103,6 @@ export class App {
       this.requestFranceIntelBrief(snapshot, lang);
     });
 
-    this.transportPanel = new TransportPanel(floatContainer);
-    this.transportPanel.setOnHover((disruption) => {
-      void this.highlightRailDisruptionFromPanel(disruption);
-    });
-    this.transportPanel.setOnSelect((disruption) => {
-      const focusDisruption = this.resolveRailFocusDisruption(disruption);
-      this.mapContainer?.highlightTrainRoute(focusDisruption);
-      const departure = disruption?.departure?.coordinates ?? disruption?.coordinates ?? null;
-      const arrival = disruption?.arrival?.coordinates ?? null;
-      if (!departure) return;
-
-      if (arrival) {
-        const midLon = (departure[0] + arrival[0]) / 2;
-        const midLat = (departure[1] + arrival[1]) / 2;
-        this.mapContainer?.flyTo(midLon, midLat, 7);
-      } else {
-        this.mapContainer?.flyTo(departure[0], departure[1], 10);
-      }
-    });
-    this.transportPanel.setOnLoadFullCoverage(() => {
-      this.loadSncfFullCoverage().catch((error) => {
-        console.error('[App] Failed to load full SNCF coverage', error);
-        this.transportPanel?.setFullCoverageLoading(false);
-      });
-    });
-    this.transportPanel.mount();
-
     // FiresPanel/TrafficPanel/MaritimePanel/CyberPanel: lazy-loaded on first
     // layer activation — see ensureFiresPanel()/ensureTrafficPanel()/
     // ensureMaritimePanel()/ensureCyberPanel() below (perf audit task 5).
@@ -3279,17 +3280,18 @@ export class App {
     } else if (name === 'Éolien France') {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       this.layoutEnergyFloatingPanels();
-    } else if (name === 'SNCF') {
-      this.transportPanel?.show(this.currentSncfDisruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: this.currentSncfDisruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
+    } else if (name === 'SNCF' || name === 'SIRI SX') {
+      // Panneaux Trafics créés à la demande : la source peut être cliquée avant toute activation de couche.
+      void this.ensureTransportPanel().then(() => this.transportPanel?.show(this.currentRailTraffic));
     } else if (name === 'NASA FIRMS') {
       this.firesPanel?.show(this.currentActiveFires);
       this.layoutEnvironmentFloatingPanels();
-    } else if (name === 'Trafic') {
-      this.trafficPanel?.show(this.currentTrafficIncidents);
+    } else if (name === 'Trafic' || name === 'TomTom agglomérations') {
+      void this.ensureTrafficPanel().then(() => this.trafficPanel?.show(this.currentRoadTraffic));
+    } else if (name === 'Trafic aérien') {
+      void this.ensureAirTrafficPanel().then(() => this.airTrafficPanel?.show(this.currentAirOverview));
+    } else if (name === 'AIS maritime' || name === 'AIS instantané') {
+      void this.ensureMaritimePanel().then(() => this.maritimePanel?.show(this.currentMaritimeSnapshot));
     } else if (name === 'Cyber') {
       this.cyberPanel?.show(this.currentCyberData);
     } else if (name === 'Écowatt RTE') {
@@ -3351,6 +3353,7 @@ export class App {
       'healthApl',
       'hospitals',
       'trafficRoad',
+      'trafficAir',
       'trafficMaritime',
       'trafficRail',
       'cyber',
@@ -3463,16 +3466,6 @@ export class App {
       this._showAisLoaderFn?.();
     }
 
-    // Road traffic data is loaded on-demand (not pre-fetched) to save bandwidth
-    if (key === 'trafficRoad') {
-      if (enabled) {
-        void this.ensureTrafficLoaded().catch((error) => {
-          console.error('[App] Failed to load road traffic on demand', error);
-        });
-      } else if (!this.activeLayers.trafficRoad) {
-        this.mapContainer?.updateTrafficIncidents([]);
-      }
-    }
     if (key === 'fires' && enabled) {
       void this.loadMtgFrpMetadata().catch((error) => {
         console.error('[App] MTG-FRP metadata load failed', error);
@@ -3584,11 +3577,6 @@ export class App {
     else this.firesPanel?.showLoading();
   }
 
-  private renderTrafficPanel(): void {
-    if (this.trafficDataLoaded) this.trafficPanel?.show(this.currentTrafficIncidents);
-    else this.trafficPanel?.showLoading();
-  }
-
   private renderEnvironmentPanel(): void {
     if (this.environmentLoaded) {
       this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
@@ -3598,32 +3586,38 @@ export class App {
   }
 
   private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
-    // Traffic panels — standalone ifs so both run if key matches both (impossible in
-    // practice but safe: they guard on the specific key value).
-    if (key === 'trafficMaritime') {
-      if (enabled) {
-        if (this.maritimeHasData) this.maritimePanel?.show();
-        else this.maritimePanel?.showLoading();
-      }
-      else this.maritimePanel?.hide();
-    }
+    // Panneaux Trafics (spec 2026-10-03 trafics § 3) : données lues à l'ouverture, masquage silencieux à l'extinction.
     if (key === 'trafficRoad') {
       if (enabled) {
-        void this.ensureTrafficLoaded().catch((error) => {
-          console.error('[App] Failed to load road traffic on restore', error);
-        });
-        this.renderTrafficPanel();
+        this.loadRoadTraffic().catch((err) => console.error('[App] Trafic routier indisponible', err));
+        this.trafficPanel?.show(this.currentRoadTraffic);
       } else {
-        this.trafficPanel?.hide();
+        this.trafficPanel?.hide({ silent: true });
+      }
+    }
+    if (key === 'trafficAir') {
+      if (enabled) {
+        this.loadAirOverview().catch((err) => console.error('[App] Aperçu aérien indisponible', err));
+        this.airTrafficPanel?.show(this.currentAirOverview);
+      } else {
+        this.airTrafficPanel?.hide({ silent: true });
       }
     }
     if (key === 'trafficRail') {
-      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: this.currentSncfDisruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-      else this.transportPanel?.hide();
+      if (enabled) {
+        this.loadRailTraffic().catch((err) => console.error('[App] Réseau ferroviaire indisponible', err));
+        this.transportPanel?.show(this.currentRailTraffic);
+      } else {
+        this.transportPanel?.hide({ silent: true });
+      }
+    }
+    if (key === 'trafficMaritime') {
+      if (enabled) {
+        this.loadMaritimeSnapshot().catch((err) => console.error('[App] Instantané AIS indisponible', err));
+        this.maritimePanel?.show(this.currentMaritimeSnapshot);
+      } else {
+        this.maritimePanel?.hide({ silent: true });
+      }
     }
 
     // All remaining panels use an if/else chain — at most one branch fires per toggle.
@@ -4140,35 +4134,79 @@ export class App {
   }
 
   private ensureTrafficPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
     this.trafficPanelPromise ??= import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
-      const panel = new TrafficPanel(this.floatContainerEl!);
-      panel.setOnClickIncident((lng, lat) => {
-        this.mapContainer?.flyTo(lng, lat, 14);
+      const panel = new TrafficPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficRoad'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusEvent((event) => {
+        if (event.lon !== null && event.lat !== null) this.mapContainer?.flyTo(event.lon, event.lat, 12);
       });
       panel.mount();
       this.trafficPanel = panel;
-      if (this.activeLayers.trafficRoad) {
-        this.renderTrafficPanel();
-      }
+      if (this.activeLayers.trafficRoad) panel.show(this.currentRoadTraffic);
     });
     return this.trafficPanelPromise;
   }
 
+  private ensureAirTrafficPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.airTrafficPanelPromise ??= import('./components/AirTrafficPanel.ts').then(({ AirTrafficPanel }) => {
+      const panel = new AirTrafficPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficAir'));
+      panel.mount();
+      this.airTrafficPanel = panel;
+      if (this.activeLayers.trafficAir) panel.show(this.currentAirOverview);
+    });
+    return this.airTrafficPanelPromise;
+  }
+
+  private ensureTransportPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.transportPanelPromise ??= import('./components/TransportPanel.ts').then(({ TransportPanel }) => {
+      const panel = new TransportPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficRail'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnSelectTrain((train) => this.focusTrain(train));
+      panel.mount();
+      this.transportPanel = panel;
+      if (this.activeLayers.trafficRail) panel.show(this.currentRailTraffic);
+    });
+    return this.transportPanelPromise;
+  }
+
   private ensureMaritimePanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
     this.maritimePanelPromise ??= import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
-      const panel = new MaritimePanel(this.floatContainerEl!);
-      panel.setOnHighlightShip((mmsi) => {
-        this.mapContainer?.setHighlightedShip(mmsi);
+      const panel = new MaritimePanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficMaritime'));
+      panel.setOnHighlightShip((mmsi) => this.mapContainer?.setHighlightedShip(mmsi));
+      panel.setOnSelectShip((ship) => {
+        this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
+        if (this.mapContainer?.canFocusMap()) this.mapContainer.flyTo(ship.lon, ship.lat, 9);
       });
+      panel.mount();
       this.maritimePanel = panel;
-      if (this.activeLayers.trafficMaritime) {
-        if (this.maritimeHasData) panel.show();
-        else panel.showLoading();
-      }
+      if (this.activeLayers.trafficMaritime) panel.show(this.currentMaritimeSnapshot);
     });
     return this.maritimePanelPromise;
+  }
+
+  /** Croix d'un panneau Trafics : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux). */
+  private closeTrafficLayer(key: TrafficLayerKey): void {
+    if (!this.activeLayers[key]) return;
+    this.onLayerToggle(key, false);
+    this.layerPanel?.updateLayers(this.activeLayers);
+  }
+
+  /** Train choisi dans le panneau ferroviaire : la carte se centre sur son trajet. */
+  private focusTrain(train: RailTrain): void {
+    const first = train.stops[0];
+    const last = train.stops[train.stops.length - 1];
+    if (!first || !last) return;
+    this.mapContainer?.flyTo((first.lon + last.lon) / 2, (first.lat + last.lat) / 2, first === last ? 10 : 6);
   }
 
   private ensureCyberPanel(): Promise<void> {
@@ -4353,6 +4391,8 @@ export class App {
       case 'fires': return [this.ensureFiresPanel()];
       case 'weatherRadar': return [this.ensureWeatherRadarPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
+      case 'trafficAir': return [this.ensureAirTrafficPanel()];
+      case 'trafficRail': return [this.ensureTransportPanel()];
       case 'trafficMaritime': return [this.ensureMaritimePanel()];
       case 'cyber':
       case 'threatMap':
@@ -4406,14 +4446,9 @@ export class App {
       case 'healthApl': return this.accesSoinsPanel;
       case 'hospitals': return this.hopitauxPanel;
       case 'trafficRoad': return this.trafficPanel;
-      // MaritimePanel has a private `isVisible` field of its own (unrelated
-      // to the optional method this interface declares) — TS treats that as
-      // a structural conflict, so we assert instead of returning it as-is.
-      // isFloatingPanelVisible()'s `typeof panel.isVisible === 'function'`
-      // check still resolves correctly at runtime (the field is a boolean,
-      // not a function), falling back to the tracked currentFloatingPanelId.
-      case 'trafficMaritime': return this.maritimePanel as { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null;
+      case 'trafficAir': return this.airTrafficPanel;
       case 'trafficRail': return this.transportPanel;
+      case 'trafficMaritime': return this.maritimePanel;
       case 'cyber': return this.cyberPanel;
       case 'military': return this.defensePanel;
       case 'stability': return this.isnrPanel;
@@ -4476,7 +4511,7 @@ export class App {
    *  panel's own isVisible() (ground truth, catches closes that bypassed
    *  showFloatingPanel — e.g. the panel's own × button) and falls back to
    *  the tracked id for the few panels that don't implement isVisible()
-   *  (TrafficPanel, MaritimePanel, TransportPanel, DayNightPanel). */
+   *  (DayNightPanel). */
   private isFloatingPanelVisible(id: keyof MapLayers): boolean {
     const panel = this.getFloatingPanelInstance(id);
     if (!panel) return false;
@@ -4766,7 +4801,7 @@ export class App {
       }
     });
 
-    // Maritime ship click → open MaritimePanel modal
+    // Clic sur un navire de la carte : sa fiche dans le panneau maritime, s'il est ouvert.
     this.mapContainer.setOnMaritimeShipClick((ship) => {
       this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
       this.maritimePanel?.openShipModal(ship);
@@ -5097,9 +5132,12 @@ export class App {
         const aisStatus = getAisStatus();
         const aisRelayLabel = AIS_RELAY_URL ?? 'Non configuré';
         const aisDetail = `${aisRelayLabel} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
+        // Date du dernier message reçu du relais (S1), jamais l'heure de lecture.
+        const aisState = getAisConnectionState();
         this.statusPanel?.updateSource('AIS maritime', {
           status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'error',
-          lastUpdate: aisStatus.connected ? new Date() : null,
+          lastUpdate: aisState.lastMessageAt !== null ? new Date(aisState.lastMessageAt) : null,
+          period: aisState.lastMessageAt !== null ? new Date(aisState.lastMessageAt).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }) : undefined,
           detail: aisStatus.connected ? aisDetail : aisRelayLabel,
           error: aisStatus.connected ? undefined : 'relais déconnecté',
         });
@@ -5134,6 +5172,7 @@ export class App {
 
         // ALWAYS push to map, even with 0 ships (initializes the layer)
         this.mapContainer?.updateGlobalTraffic([...allTraffic], navyMmsiSet);
+        this.maritimePanel?.refreshLive();
 
         // Détection anomalies AIS (radio silence, rendezvous suspects)
         const aisAnomalies = detectAisAnomalies(allTraffic);
@@ -5155,7 +5194,7 @@ export class App {
         console.error('[Military Ships] Failed to update', err);
         this.statusPanel?.updateSource('AIS maritime', {
           status: 'error',
-          lastUpdate: new Date(),
+          lastUpdate: null,
           detail: AIS_RELAY_URL ?? 'Non configuré',
           error: err instanceof Error ? err.message : 'Échec mise à jour AIS',
         });
@@ -5164,10 +5203,8 @@ export class App {
 
     // Register callback for first AIS data arrival (triggers immediate refresh)
     onFirstAisData(() => {
-      this.maritimeHasData = true;
+      // Première trame AIS : carte et panneau maritime (onglets Marine nationale et Alertes) aussitôt à jour.
       updateShips();
-      // Remplace le loader maritime par les données dès la 1re trame AIS.
-      if (this.activeLayers.trafficMaritime && this.maritimePanel?.isOpen()) this.maritimePanel.show();
     });
 
     updateShips();
@@ -5288,12 +5325,6 @@ export class App {
       await this.loadAirTraffic();
     } catch (err) {
       console.error('[AirTraffic] Polling failed', err);
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: 'error',
-        lastUpdate: new Date(),
-        detail: 'airplanes.live + OpenSky · proxy agrégé',
-        error: err instanceof Error ? err.message : 'Échec trafic aérien',
-      });
     } finally {
       this._airTrafficPollInFlight = false;
     }
@@ -5868,138 +5899,64 @@ export class App {
     }
   }
 
-  private async loadTraffic(): Promise<void> {
-    if (this.trafficLoadPromise) {
-      return this.trafficLoadPromise;
-    }
-
-    this.trafficLoadPromise = (async () => {
-      this.statusPanel?.updateSource('Trafic', { status: 'loading', lastUpdate: null });
+  /** Trafic routier (spec trafics § 2.1, § 2.2) : DIR et TomTom collectés par le serveur ; panneau, score, sources datées (S1). */
+  private async loadRoadTraffic(): Promise<void> {
+    const { fetchRoadTraffic, roadStatus, clearLegacyTomTomStorage } = await import('./services/traffic-road.ts');
+    if (!this.legacyTomTomCleared) {
+      this.legacyTomTomCleared = true;
       try {
-        const incidents = await fetchTrafficIncidents();
-        this.trafficDataLoaded = true;
-
-        if (incidents.length > 0) {
-          this.currentTrafficIncidents = incidents;
-          this.mapContainer?.updateTrafficIncidents(incidents);
-          this.statusPanel?.updateSource('Trafic', {
-            status: 'ok',
-            lastUpdate: new Date(),
-            detail: `TomTom · ${incidents.length} incidents affichés`,
-            error: undefined,
-          });
-          this.refreshFranceIntelPanel();
-          return;
-        }
-
-        this.currentTrafficIncidents = [];
-        this.mapContainer?.updateTrafficIncidents([]);
-        this.statusPanel?.updateSource('Trafic', {
-          status: 'stale',
-          lastUpdate: new Date(),
-          detail: 'TomTom · aucun incident renvoyé',
-          error: undefined,
-        });
-        this.refreshFranceIntelPanel();
-      } catch (error) {
-        this.trafficDataLoaded = true;
-        const message = error instanceof Error ? error.message : 'Erreur inconnue';
-        this.currentTrafficIncidents = [];
-        this.mapContainer?.updateTrafficIncidents([]);
-        this.statusPanel?.updateSource('Trafic', {
-          status: 'error',
-          lastUpdate: new Date(),
-          detail: 'TomTom · incidents routiers',
-          error: message,
-        });
-        this.refreshFranceIntelPanel();
+        clearLegacyTomTomStorage(window.localStorage);
+      } catch {
+        // Stockage refusé : rien à effacer.
       }
-    })().finally(() => {
-      this.trafficLoadPromise = null;
-      // Remplace le loader par les données (ou l'état vide) une fois le fetch settlé.
-      if (this.activeLayers.trafficRoad && this.trafficPanel?.isVisible()) this.renderTrafficPanel();
-    });
-
-    return this.trafficLoadPromise;
+    }
+    const now = Date.now();
+    const state = await fetchRoadTraffic(this.currentRoadTraffic, now);
+    this.currentRoadTraffic = state;
+    this.trafficPanel?.update(state);
+    this.statusPanel?.updateSource('Trafic', roadStatus(state, 'national', now));
+    this.statusPanel?.updateSource('TomTom agglomérations', roadStatus(state, 'urban', now));
+    this.recordTrafficSamples(now);
+    this.refreshFranceIntelPanel();
   }
 
-  private ensureTrafficLoaded(): Promise<void> {
-    if (this.currentTrafficIncidents.length > 0) {
-      this.mapContainer?.updateTrafficIncidents(this.currentTrafficIncidents);
-      return Promise.resolve();
-    }
-
-    if (!this.trafficDataLoaded && hasFreshTrafficIncidentCache()) {
-      return this.loadTraffic();
-    }
-
-    if (this.trafficDataLoaded) {
-      return Promise.resolve();
-    }
-
-    return this.loadTraffic();
+  /** Relève routière : 5 min tant que la couche est active ; pausée onglet caché, immédiate au retour (registerPausableInterval). */
+  private startRoadPolling(): void {
+    if (this._intervalRoad !== null) return;
+    let inFlight = false;
+    this._intervalRoad = this.registerPausableInterval(() => {
+      if (inFlight || !this.activeLayers.trafficRoad) return;
+      inFlight = true;
+      this.loadRoadTraffic().catch((err) => console.error('[App] Road poll error', err)).finally(() => { inFlight = false; });
+    }, POLL_ROAD_MS);
   }
 
+  /** Positions des avions pour la carte (/api/traffic/air, 12 s) ; le panneau et le panneau des sources lisent l'aperçu. */
   private async loadAirTraffic(): Promise<void> {
-    this.statusPanel?.updateSource('Trafic aérien', {
-      status: 'loading',
-      lastUpdate: null,
-      detail: 'OpenSky + airplanes.live · proxy agrégé · 12 s',
-      error: undefined,
-    });
-
     const snapshot = await fetchAirTrafficSnapshot();
-    const flights = snapshot.flights;
-    const openSkyCount = snapshot.sourceCounts?.opensky ?? 0;
-    const airplanesLiveCount = snapshot.sourceCounts?.['airplanes.live'] ?? 0;
-    const sourceLabel =
-      snapshot.source === 'opensky'
-        ? 'OpenSky'
-        : snapshot.source === 'airplanes.live'
-          ? 'airplanes.live'
-          : snapshot.source === 'opensky+airplanes.live'
-            ? 'OpenSky + airplanes.live'
-            : snapshot.source;
-    const sourceBreakdown =
-      openSkyCount > 0 || airplanesLiveCount > 0
-        ? `OpenSky ${openSkyCount} + airplanes.live ${airplanesLiveCount}`
-        : sourceLabel;
-    this.mapContainer?.updateAirTraffic(flights);
-
-    const rateLimitedAreas = (snapshot.errors || []).filter((entry) => entry.message.includes('429'));
-    const degradedDetail =
-      rateLimitedAreas.length > 0
-        ? ` · ${rateLimitedAreas.length} source${rateLimitedAreas.length > 1 ? 's' : ''} limitée${rateLimitedAreas.length > 1 ? 's' : ''}`
-        : '';
-    const anomalyDetail = snapshot.anomalyCount ? ` · ${snapshot.anomalyCount} anomalie${snapshot.anomalyCount > 1 ? 's' : ''}` : '';
-    const topAirportDetail = Array.isArray(snapshot.topAirports) && snapshot.topAirports.length > 0
-      ? ` · ${snapshot.topAirports
-          .slice(0, 3)
-          .map((airport) => `${airport.iata} ${airport.score}`)
-          .join(' · ')}`
-      : '';
-
-    if (flights.length > 0) {
-      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'DEGRADE' : 'LIVE';
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: snapshot.errors && snapshot.errors.length > 0 ? 'stale' : 'ok',
-        lastUpdate: new Date(),
-        detail: `${statusLabel} · ${sourceBreakdown} = ${flights.length} vols${anomalyDetail}${topAirportDetail}${degradedDetail}`,
-        error: undefined,
-      });
-    } else {
-      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'INDISPONIBLE' : 'VIDE';
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: snapshot.errors && snapshot.errors.length > 0 ? 'error' : 'stale',
-        lastUpdate: new Date(),
-        detail: snapshot.errors && snapshot.errors.length > 0
-          ? `${statusLabel} · ${sourceBreakdown} · aucune position exploitable`
-          : `${statusLabel} · ${sourceBreakdown} · aucun vol dans l’échantillon`,
-        error: snapshot.errors && snapshot.errors.length > 0 ? snapshot.errors[0].message : undefined,
-      });
-    }
+    this.mapContainer?.updateAirTraffic(snapshot.flights);
   }
 
+  /** Trafic aérien (spec trafics § 2.3) : aperçu OpenSky du serveur ; panneau, sources datées par l'état OpenSky (S1). */
+  private async loadAirOverview(): Promise<void> {
+    const { fetchAirOverview, airStatus } = await import('./services/traffic-air.ts');
+    const now = Date.now();
+    const state = await fetchAirOverview(this.currentAirOverview, now);
+    this.currentAirOverview = state;
+    this.airTrafficPanel?.update(state);
+    this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
+  }
+
+  /** Relève du panneau aérien : 2 min tant que la couche est active (la carte garde sa relève de 12 s). */
+  private startAirOverviewPolling(): void {
+    if (this._intervalAirOverview !== null) return;
+    let inFlight = false;
+    this._intervalAirOverview = this.registerPausableInterval(() => {
+      if (inFlight || !this.activeLayers.trafficAir) return;
+      inFlight = true;
+      this.loadAirOverview().catch((err) => console.error('[App] Air overview poll error', err)).finally(() => { inFlight = false; });
+    }, POLL_AIR_OVERVIEW_MS);
+  }
   private async loadCyber(): Promise<void> {
     console.log('[App/loadCyber] ========== ENTRY ==========');
     console.log('[App/loadCyber] isCyberPanelEnabled():', isCyberPanelEnabled());
@@ -6415,196 +6372,64 @@ export class App {
     };
   }
 
-  private async loadSncf(): Promise<void> {
-    this.statusPanel?.updateSource('SNCF', { status: 'loading', lastUpdate: null });
-    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
-    const disruptions = await fetchSncfDisruptions((enriched) => {
-      // Geocoding + OSM route matching completed in background — refresh map + panel
-      this.currentSncfDisruptions = enriched;
-      const enrichedRail = buildRailNetworkData(enriched);
-      this.currentRailNetworkData = enrichedRail;
-      this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-        this.transportPanel.show(enriched, {
-          fullCoverageLoaded: this.sncfFullCoverageLoaded,
-          dataLoaded: true,
-          mapCoverageReady: this.hasRailMapCoverage(),
-        });
-      }
-      this.refreshFranceIntelPanel();
-    }, 'active');
-    this.sncfFullCoverageLoaded = false;
-    this.currentSncfDisruptions = disruptions;
-    if (disruptions.length > 0) {
-      this.statusPanel?.updateSource('SNCF', { status: 'ok', lastUpdate: new Date() });
-    } else {
-      this.statusPanel?.updateSource('SNCF', { status: 'stale', lastUpdate: new Date() });
-    }
-    // Update rail map layer immediately (partial data — geocoding still in progress)
-    const railData = buildRailNetworkData(disruptions);
-    this.currentRailNetworkData = railData;
-    this.mapContainer?.updateRailNetwork(railData);
-    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-      this.transportPanel.show(disruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: disruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-    }
+  /** Réseau ferroviaire (spec trafics § 2.4) : perturbations SNCF et situations SIRI SX ; panneau, score, note, sources datées (S1). */
+  private async loadRailTraffic(): Promise<void> {
+    const { fetchRailTraffic, railStatus } = await import('./services/traffic-rail.ts');
+    const now = Date.now();
+    const state = await fetchRailTraffic(this.currentRailTraffic, now);
+    this.currentRailTraffic = state;
+    this.transportPanel?.update(state);
+    this.statusPanel?.updateSource('SNCF', railStatus(state, 'overview', now));
+    this.statusPanel?.updateSource('SIRI SX', railStatus(state, 'situations', now));
+    this.recordTrafficSamples(now);
     this.refreshFranceIntelPanel();
   }
 
-  private async loadSncfFullCoverage(): Promise<void> {
-    this.transportPanel?.setFullCoverageLoading(true);
-    this.statusPanel?.updateSource('SNCF', {
-      status: 'loading',
-      lastUpdate: null,
-      detail: 'Chargement couverture complète SNCF',
-    });
-
-    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
-    const disruptions = await fetchSncfDisruptions((enriched) => {
-      this.currentSncfDisruptions = enriched;
-      const enrichedRail = buildRailNetworkData(enriched);
-      this.currentRailNetworkData = enrichedRail;
-      this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-        this.transportPanel.show(enriched, {
-          fullCoverageLoaded: true,
-          dataLoaded: true,
-          mapCoverageReady: this.hasRailMapCoverage(),
-        });
-      }
-      this.refreshFranceIntelPanel();
-    }, 'all');
-
-    this.sncfFullCoverageLoaded = true;
-    this.currentSncfDisruptions = disruptions;
-    this.statusPanel?.updateSource('SNCF', { status: disruptions.length > 0 ? 'ok' : 'stale', lastUpdate: new Date() });
-
-    const railData = buildRailNetworkData(disruptions);
-    this.currentRailNetworkData = railData;
-    this.mapContainer?.updateRailNetwork(railData);
-    this.transportPanel?.setFullCoverageLoading(false);
-    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-      this.transportPanel.show(disruptions, {
-        fullCoverageLoaded: true,
-        dataLoaded: true,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-    }
-    this.refreshFranceIntelPanel();
-  }
-
-  private startSncfPolling(): void {
-    this._intervalSncf = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      if (!this.activeLayers.trafficRail || this.sncfFullCoverageLoaded) return;
-      this.loadSncf().catch((error) => {
-        console.warn('[App] SNCF poll error', error);
-        this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
-      });
+  /** Relève ferroviaire : 5 min tant que la couche est active, sans arrêt (plus de « couverture complète » qui la coupait). */
+  private startRailPolling(): void {
+    if (this._intervalSncf !== null) return;
+    let inFlight = false;
+    this._intervalSncf = this.registerPausableInterval(() => {
+      if (inFlight || !this.activeLayers.trafficRail) return;
+      inFlight = true;
+      this.loadRailTraffic().catch((err) => console.error('[App] SNCF poll error', err)).finally(() => { inFlight = false; });
     }, POLL_SNCF_MS);
   }
 
-  private resolveRailFocusDisruption(disruption: TransportDisruption | null): TransportDisruption | null {
-    if (!disruption || !this.currentRailNetworkData) return disruption;
+  /** Trafic maritime (spec trafics § 2.5) : instantané du relais AIS ; panneau, sources datées par le dernier message (S1). */
+  private async loadMaritimeSnapshot(): Promise<void> {
+    const { fetchMaritimeSnapshot, maritimeStatus } = await import('./services/traffic-maritime.ts');
+    const now = Date.now();
+    const state = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
+    this.currentMaritimeSnapshot = state;
+    this.maritimePanel?.update(state);
+    this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
+    this.recordTrafficSamples(now);
+  }
 
-    const stationMatches = this.currentRailNetworkData.stations.features
-      .filter((feature) => {
-        try {
-          const ids = JSON.parse(String(feature.properties.disruptionIdsJson ?? '[]'));
-          if (Array.isArray(ids) && ids.includes(disruption.id)) return true;
-          const summaries = JSON.parse(String(feature.properties.disruptionSummariesJson ?? '[]'));
-          return Array.isArray(summaries) && summaries.some((summary) => summary?.id === disruption.id);
-        } catch {
-          return false;
-        }
-      });
+  /** Relève de l'instantané maritime : 2 min tant que la couche est active (la carte garde le WebSocket du relais). */
+  private startMaritimePolling(): void {
+    if (this._intervalMaritime !== null) return;
+    let inFlight = false;
+    this._intervalMaritime = this.registerPausableInterval(() => {
+      if (inFlight || !this.activeLayers.trafficMaritime) return;
+      inFlight = true;
+      this.loadMaritimeSnapshot().catch((err) => console.error('[App] Maritime snapshot poll error', err)).finally(() => { inFlight = false; });
+    }, POLL_MARITIME_SNAPSHOT_MS);
+  }
 
-    if (stationMatches.length > 0) {
-      const byName = new Map(stationMatches.map((feature) => [
-        String(feature.properties.name ?? ''),
-        feature.geometry.coordinates as [number, number],
-      ]));
-      const fallbackCoords = stationMatches.map((feature) => feature.geometry.coordinates as [number, number]);
-      const departureName = disruption.departure?.name ?? 'Départ';
-      const arrivalName = disruption.arrival?.name ?? 'Arrivée';
-      const departureCoords = disruption.departure?.coordinates
-        ?? (disruption.departure?.name ? byName.get(disruption.departure.name) : undefined)
-        ?? disruption.coordinates
-        ?? fallbackCoords[0];
-      const arrivalCoords = disruption.arrival?.coordinates
-        ?? (disruption.arrival?.name ? byName.get(disruption.arrival.name) : undefined)
-        ?? fallbackCoords.find((coords) => coords !== departureCoords);
+  /** Historique de qualité des sources Trafics hors Watchdog (même store que la santé). */
+  private recordTrafficSamples(now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => TRAFFIC_SOURCE_NAMES.includes(s.name)) ?? [], now);
+  }
 
-      if (departureCoords || arrivalCoords) {
-        return {
-          ...disruption,
-          departure: disruption.departure
-            ? { ...disruption.departure, coordinates: disruption.departure.coordinates ?? departureCoords }
-            : departureCoords ? { name: departureName, coordinates: departureCoords } : undefined,
-          arrival: disruption.arrival
-            ? { ...disruption.arrival, coordinates: disruption.arrival.coordinates ?? arrivalCoords }
-            : arrivalCoords ? { name: arrivalName, coordinates: arrivalCoords } : undefined,
-          coordinates: disruption.coordinates ?? departureCoords ?? arrivalCoords,
-        };
-      }
-    }
-
-    const arcFeature = this.currentRailNetworkData.arcs.features.find(
-      (feature) => feature.properties.id === disruption.id
-    );
-
-    if (!arcFeature || arcFeature.geometry.coordinates.length < 2) {
-      return disruption;
-    }
-
+  /** Entrées Trafics du score France, de la frise et de la note (arbitrage 14 de la phase B). */
+  private trafficInputs(): { railTrains: RailTrain[]; roadEvents: RoadEvent[]; urbanJamCount: number } {
     return {
-      ...disruption,
-      routeGeometry: {
-        type: 'LineString',
-        coordinates: arcFeature.geometry.coordinates as [number, number][],
-      },
-      geometryFidelity: (arcFeature.properties.geometryFidelity as TransportDisruption['geometryFidelity'] | undefined) ?? disruption.geometryFidelity,
+      railTrains: this.currentRailTraffic?.overview.data?.trains ?? [],
+      roadEvents: this.currentRoadTraffic?.national.data?.events ?? [],
+      urbanJamCount: (this.currentRoadTraffic?.urban.data?.agglos ?? []).reduce((n, a) => n + a.jams, 0),
     };
-  }
-
-  private async highlightRailDisruptionFromPanel(disruption: TransportDisruption | null): Promise<void> {
-    if (!disruption) {
-      this.mapContainer?.highlightTrainRoute(null);
-      return;
-    }
-
-    let focus = this.resolveRailFocusDisruption(disruption);
-    const hasDeparture = !!focus?.departure?.coordinates || !!focus?.coordinates;
-    const hasArrival = !!focus?.arrival?.coordinates;
-
-    if (focus && (!hasDeparture || !hasArrival)) {
-      const { geocodeSncfStation } = await import('./services/transport.ts');
-      const [departureCoords, arrivalCoords] = await Promise.all([
-        hasDeparture ? Promise.resolve(focus.departure?.coordinates ?? focus.coordinates) : geocodeSncfStation(focus.departure?.name),
-        hasArrival ? Promise.resolve(focus.arrival?.coordinates) : geocodeSncfStation(focus.arrival?.name),
-      ]);
-
-      focus = {
-        ...focus,
-        departure: focus.departure
-          ? { ...focus.departure, coordinates: focus.departure.coordinates ?? departureCoords }
-          : departureCoords ? { name: 'Départ', coordinates: departureCoords } : focus.departure,
-        arrival: focus.arrival
-          ? { ...focus.arrival, coordinates: focus.arrival.coordinates ?? arrivalCoords }
-          : arrivalCoords ? { name: 'Arrivée', coordinates: arrivalCoords } : focus.arrival,
-        coordinates: focus.coordinates ?? departureCoords ?? arrivalCoords,
-      };
-    }
-
-    this.mapContainer?.highlightTrainRoute(focus);
-  }
-
-  private hasRailMapCoverage(): boolean {
-    return (this.currentRailNetworkData?.stations.features.length ?? 0) > 0
-      || (this.currentRailNetworkData?.arcs.features.length ?? 0) > 0;
   }
 
   private async loadMetropoles(): Promise<void> {
@@ -7203,20 +7028,14 @@ export class App {
         })
       },
       ...(this.activeLayers.trafficRoad ? [{
-        name: 'traffic', task: this.loadTraffic().catch(() => {
-          this.mapContainer?.updateTrafficIncidents([]);
-          this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: new Date() });
+        name: 'traffic', task: this.loadRoadTraffic().catch(() => {
+          this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: null, period: undefined });
         })
       }] : []),
       {
-        name: 'sncf', task: this.loadSncf().catch(() => {
-          this.currentSncfDisruptions = [];
-          this.currentRailNetworkData = null;
-          this.mapContainer?.updateRailNetwork({
-            arcs: { type: 'FeatureCollection', features: [] },
-            stations: { type: 'FeatureCollection', features: [] },
-          });
-          this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
+        // Score France et note de situation : perturbations SNCF lues au démarrage, même couche éteinte (comme avant).
+        name: 'sncf', task: this.loadRailTraffic().catch(() => {
+          this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
@@ -7242,13 +7061,9 @@ export class App {
   private async loadOptionalLayers(): Promise<void> {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
-        name: 'air-traffic', task: this.loadAirTraffic().catch(() => {
-          this.mapContainer?.updateAirTraffic([]);
-          this.statusPanel?.updateSource('Trafic aérien', {
-            status: 'error',
-            lastUpdate: new Date(),
-            detail: 'airplanes.live · proxy gratuit',
-          });
+        // Panneau des sources : aperçu aérien lu au démarrage ; les positions de la carte attendent l'activation de la couche.
+        name: 'air-overview', task: this.loadAirOverview().catch(() => {
+          this.statusPanel?.updateSource('Trafic aérien', { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
@@ -7346,7 +7161,8 @@ export class App {
     const todayIndex = dayKeys.length - 1;
     laneMap.weather.counts[todayIndex]   += this.currentMeteoAlerts.filter((a) => a.level !== 'green').length;
     laneMap.weather.counts[todayIndex]   += this.currentFloodSegments.filter((a) => a.level !== 'green').length;
-    laneMap.transport.counts[todayIndex] += this.currentSncfDisruptions.length + this.currentTrafficIncidents.length;
+    const traffic = this.trafficInputs();
+    laneMap.transport.counts[todayIndex] += traffic.railTrains.length + traffic.roadEvents.length + traffic.urbanJamCount;
     laneMap.security.counts[todayIndex]  += this.currentDefenseAlerts.length + this.currentJammingSignals.length;
     laneMap.cyber.counts[todayIndex]     += cyber?.alerts.latest.filter((a) => {
       const ts = new Date(a.date);
@@ -7372,8 +7188,7 @@ export class App {
       threatEvents:         this.currentThreatEvents,
       meteoAlerts:          this.currentMeteoAlerts,
       floodSegments:        this.currentFloodSegments,
-      sncfDisruptions:      this.currentSncfDisruptions,
-      trafficIncidents:     this.currentTrafficIncidents,
+      ...this.trafficInputs(),
       powerOutages:         this.currentPowerOutages,
       telecomOutages:       this.currentTelecomOutages,
       defenseAlerts:        this.currentDefenseAlerts,
@@ -7701,7 +7516,8 @@ export class App {
   private buildSituationReportContext(): SituationReportContext {
     const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
-    return {
+    const traffic = this.trafficInputs();
+    const context: SituationReportContext = {
       generatedAt: new Date(),
       permalink: window.location.href,
       situations: snapshot.situations,
@@ -7709,8 +7525,8 @@ export class App {
       meteoAlerts: this.currentMeteoAlerts,
       floodSegments: this.currentFloodSegments,
       ecowatt: this.currentEcowattResponse,
-      sncfDisruptions: this.currentSncfDisruptions,
-      trafficIncidents: this.currentTrafficIncidents,
+      railTrains: traffic.railTrains,
+      roadEvents: traffic.roadEvents,
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
       newsItems: this.newsItems,
@@ -7718,6 +7534,9 @@ export class App {
       sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
       version: null,
     };
+    // Sources Trafics : hors Watchdog, lues dans le panneau des sources avec la date de leur donnée (spec 2026-10-03 trafics S1).
+    context.sources.push(...trafficReportSources(this.statusPanel?.getSources() ?? []));
+    return context;
   }
 
   /** Ouvre la note de situation imprimable (module chargé à la demande). */
@@ -7738,7 +7557,7 @@ export class App {
       fires: this.currentActiveFires,
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
-      trafficIncidents: this.currentTrafficIncidents,
+      roadEvents: this.trafficInputs().roadEvents,
     };
   }
 

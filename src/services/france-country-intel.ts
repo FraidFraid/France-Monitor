@@ -17,7 +17,8 @@ import type {
   CyberState,
   MeteoAlert,
   FloodSegment,
-  TransportDisruption,
+  RailTrain,
+  RoadEvent,
   ActiveFire,
   MarketData,
   TelecomOutage,
@@ -45,7 +46,6 @@ import type {
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
-import type { TrafficIncident } from '@/services/traffic.ts';
 import { detectSituations } from './situation-engine.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 import { ecowattToday } from './ecowatt-official.ts';
@@ -61,8 +61,12 @@ export interface FranceRawData {
   threatEvents?: ThreatEvent[];
   meteoAlerts: MeteoAlert[];
   floodSegments: FloodSegment[];
-  sncfDisruptions: TransportDisruption[];
-  trafficIncidents: TrafficIncident[];
+  /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
+  railTrains: RailTrain[];
+  /** Événements en cours du réseau routier national non concédé (DIR, § 2.1). */
+  roadEvents: RoadEvent[];
+  /** Bouchons des agglomérations collectés par le serveur (TomTom, catégorie 6, § 2.2). */
+  urbanJamCount: number;
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   defenseAlerts: DefenseAlert[];
@@ -455,11 +459,10 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     ).length,
     fireDetections: raw.activeFires.length,
     // Transport
-    railDisruptions: raw.sncfDisruptions.length,
-    railSevere: raw.sncfDisruptions.filter((d) =>
-      d.severity === 'critical' || d.severity === 'high',
-    ).length,
-    roadIncidents: raw.trafficIncidents.length,
+    railDisruptions: raw.railTrains.length,
+    // Ancien « critique ou élevé » : NO_SERVICE et SIGNIFICANT_DELAYS, soit les trains supprimés ou retardés.
+    railSevere: raw.railTrains.filter((t) => t.effect === 'supprime' || t.effect === 'retard').length,
+    roadIncidents: raw.roadEvents.length + raw.urbanJamCount,
     // Infrastructure
     powerOutages: raw.powerOutages.length,
     telecomOutages: raw.telecomOutages.length,

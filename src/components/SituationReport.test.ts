@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { collectSituationReportData, type SituationReportContext } from './SituationReport.ts';
 import type { DetectedSituation, EcowattHourValue } from '../types/index.ts';
 import { parisDate } from '../services/ecowatt-official.ts';
+import { railOverviewFixture, roadNationalFixture } from './layer-panel/traffic.fixture.ts';
 
 function situation(over: Partial<DetectedSituation> = {}): DetectedSituation {
   return {
@@ -28,8 +29,8 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
       },
       mixes: {}, national: mix, interconnections: [], grid: null,
     },
-    sncfDisruptions: [],
-    trafficIncidents: [],
+    railTrains: [],
+    roadEvents: [],
     powerOutages: [],
     telecomOutages: [],
     newsItems: [],
@@ -62,5 +63,15 @@ describe('collectSituationReportData — langage commun L1 (refonte UI étape 2)
     const data = collectSituationReportData(ctx());
     expect(data.domainSignals.find((d) => d.domain.startsWith('Écowatt'))?.level).toBe('rouge');
     expect(data.domainSignals.find((d) => d.domain === 'Vigilance météo')?.level).toBe('rouge');
+  });
+});
+
+describe('note de situation : signal Transport sur les sources Trafics (spec 2026-10-03 trafics § 2.6)', () => {
+  it('trains supprimés ou retardés, accidents et coupures DIR : mêmes phrases ; un train supprimé met le signal en orange', () => {
+    const data = collectSituationReportData(ctx({ railTrains: railOverviewFixture().trains, roadEvents: roadNationalFixture().events }));
+    const s = data.domainSignals.find((d) => d.domain === 'Transport');
+    expect(s?.level).toBe('orange');
+    expect(s?.detail).toBe('7 perturbation(s) ferroviaire(s) majeure(s), 5 incident(s) routier(s) majeur(s).');
+    expect(collectSituationReportData(ctx()).domainSignals.find((d) => d.domain === 'Transport')).toBeUndefined();
   });
 });
