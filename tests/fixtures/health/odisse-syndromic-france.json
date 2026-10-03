@@ -1,0 +1,1648 @@
+{
+"ira": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 6603.5637496,
+"taux_hospit_ira_sau": 15148.880678,
+"taux_actes_ira_sos": 9823.4206668
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 2006.6467332,
+"taux_hospit_ira_sau": 3230.6235431,
+"taux_actes_ira_sos": 16054.384127
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 5789.9418241,
+"taux_hospit_ira_sau": 9034.9978035,
+"taux_actes_ira_sos": 17047.235281
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 3291.5453949,
+"taux_hospit_ira_sau": 6829.4424216,
+"taux_actes_ira_sos": 14488.770752
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 1451.708893,
+"taux_hospit_ira_sau": 2973.3959311,
+"taux_actes_ira_sos": 12205.259976
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 5536.1634413,
+"taux_hospit_ira_sau": 12488.479263,
+"taux_actes_ira_sos": 8877.7334617
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 2097.3150094,
+"taux_hospit_ira_sau": 3739.9661639,
+"taux_actes_ira_sos": 15768.792711
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 6708.3596305,
+"taux_hospit_ira_sau": 10528.946272,
+"taux_actes_ira_sos": 18841.665775
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 3450.5989657,
+"taux_hospit_ira_sau": 7612.730989,
+"taux_actes_ira_sos": 14347.694481
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 1195.7263014,
+"taux_hospit_ira_sau": 2699.1267531,
+"taux_actes_ira_sos": 11358.734723
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 4886.734051,
+"taux_hospit_ira_sau": 9778.3251232,
+"taux_actes_ira_sos": 9012.9682997
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 1489.367095,
+"taux_hospit_ira_sau": 2388.8907985,
+"taux_actes_ira_sos": 14570.962969
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 4784.763776,
+"taux_hospit_ira_sau": 7697.1010566,
+"taux_actes_ira_sos": 15204.799338
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 680.65796937,
+"taux_hospit_ira_sau": 1095.647024,
+"taux_actes_ira_sos": 10508.247509
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 2542.2106513,
+"taux_hospit_ira_sau": 5405.5526054,
+"taux_actes_ira_sos": 13216.873561
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 466.95306455,
+"taux_hospit_ira_sau": 970.04279601,
+"taux_actes_ira_sos": 2475.5548657
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 2108.7788586,
+"taux_hospit_ira_sau": 4877.5748154,
+"taux_actes_ira_sos": 3718.0591444
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1621.3571878,
+"taux_hospit_ira_sau": 4262.4475391,
+"taux_actes_ira_sos": 3574.0887296
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 746.83562449,
+"taux_hospit_ira_sau": 2066.1289804,
+"taux_actes_ira_sos": 3193.3427617
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3714.224842,
+"taux_hospit_ira_sau": 6002.2675737,
+"taux_actes_ira_sos": 6602.5703914
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 444.28278209,
+"taux_hospit_ira_sau": 674.28906479,
+"taux_actes_ira_sos": 2567.0561132
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 722.6450999,
+"taux_hospit_ira_sau": 1826.4395783,
+"taux_actes_ira_sos": 3591.5153463
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1433.1489256,
+"taux_hospit_ira_sau": 3737.1531346,
+"taux_actes_ira_sos": 3868.4133916
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 2091.5201655,
+"taux_hospit_ira_sau": 4945.1778921,
+"taux_actes_ira_sos": 3964.3952427
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3139.0890321,
+"taux_hospit_ira_sau": 5371.1511435,
+"taux_actes_ira_sos": 6611.7286317
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3201.6460009,
+"taux_hospit_ira_sau": 5502.8810896,
+"taux_actes_ira_sos": 6655.008258
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1453.956234,
+"taux_hospit_ira_sau": 3748.6434539,
+"taux_actes_ira_sos": 3796.7239626
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1921.3225334,
+"taux_hospit_ira_sau": 4363.6363636,
+"taux_actes_ira_sos": 3976.2904421
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 385.28896673,
+"taux_hospit_ira_sau": 886.78687555,
+"taux_actes_ira_sos": 2729.7890618
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 764.59185871,
+"taux_hospit_ira_sau": 1782.729805,
+"taux_actes_ira_sos": 3382.3983531
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3276.3321989,
+"taux_hospit_ira_sau": 5651.0218538,
+"taux_actes_ira_sos": 6314.2437592
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 683.35200158,
+"taux_hospit_ira_sau": 1599.7673066,
+"taux_actes_ira_sos": 3549.790275
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1389.9836535,
+"taux_hospit_ira_sau": 3736.3587533,
+"taux_actes_ira_sos": 3812.1851929
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1645.9174518,
+"taux_hospit_ira_sau": 4375.7725587,
+"taux_actes_ira_sos": 3786.6178429
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 328.56535901,
+"taux_hospit_ira_sau": 805.45229244,
+"taux_actes_ira_sos": 2541.6524991
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1683.4487099,
+"taux_hospit_ira_sau": 3886.4388093,
+"taux_actes_ira_sos": 3155.0911698
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3143.7748775,
+"taux_hospit_ira_sau": 5450.3637142,
+"taux_actes_ira_sos": 6567.6756139
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 313.0926935,
+"taux_hospit_ira_sau": 752.82308657,
+"taux_actes_ira_sos": 2761.6738695
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1395.5812146,
+"taux_hospit_ira_sau": 3641.6566708,
+"taux_actes_ira_sos": 3958.5970101
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 715.85192829,
+"taux_hospit_ira_sau": 1663.8879627,
+"taux_actes_ira_sos": 3798.6856868
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 684.39655949,
+"taux_hospit_ira_sau": 1612.6855601,
+"taux_actes_ira_sos": 3650.6935687
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1343.6741899,
+"taux_hospit_ira_sau": 3467.5266603,
+"taux_actes_ira_sos": 3979.0493027
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1582.3504565,
+"taux_hospit_ira_sau": 3295.7978577,
+"taux_actes_ira_sos": 3735.0485218
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 320.61558192,
+"taux_hospit_ira_sau": 555.55555556,
+"taux_actes_ira_sos": 2674.8494673
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3005.4557636,
+"taux_hospit_ira_sau": 5190.0897053,
+"taux_actes_ira_sos": 6748.8704819
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1201.6770658,
+"taux_hospit_ira_sau": 2744.1723222,
+"taux_actes_ira_sos": 3467.7904877
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 238.23893777,
+"taux_hospit_ira_sau": 615.68373299,
+"taux_actes_ira_sos": 2588.3984285
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3069.567844,
+"taux_hospit_ira_sau": 5491.5473242,
+"taux_actes_ira_sos": 6135.1304043
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1353.3842919,
+"taux_hospit_ira_sau": 3620.0633953,
+"taux_actes_ira_sos": 3847.7089828
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 737.8420949,
+"taux_hospit_ira_sau": 1703.4235802,
+"taux_actes_ira_sos": 3601.8268632
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 796.61173183,
+"taux_hospit_ira_sau": 1675.1519133,
+"taux_actes_ira_sos": 3868.4956077
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3170.8364652,
+"taux_hospit_ira_sau": 5692.9127362,
+"taux_actes_ira_sos": 6167.9907168
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1414.3604733,
+"taux_hospit_ira_sau": 3684.5631161,
+"taux_actes_ira_sos": 3989.6238651
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1354.1117554,
+"taux_hospit_ira_sau": 3050.9478673,
+"taux_actes_ira_sos": 3153.5053427
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 303.37259964,
+"taux_hospit_ira_sau": 405.40540541,
+"taux_actes_ira_sos": 2679.4574926
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 830.95111197,
+"taux_hospit_ira_sau": 1830.0783845,
+"taux_actes_ira_sos": 4846.429996
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3098.1085232,
+"taux_hospit_ira_sau": 5564.7189249,
+"taux_actes_ira_sos": 6630.5445863
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1326.0876995,
+"taux_hospit_ira_sau": 3183.1074693,
+"taux_actes_ira_sos": 3802.7977726
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 372.86314659,
+"taux_hospit_ira_sau": 443.8807863,
+"taux_actes_ira_sos": 3053.0019294
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1425.6737178,
+"taux_hospit_ira_sau": 3710.1607192,
+"taux_actes_ira_sos": 4788.018314
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1434.4519991,
+"taux_hospit_ira_sau": 3515.5240647,
+"taux_actes_ira_sos": 5750.3949447
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1472.5244266,
+"taux_hospit_ira_sau": 3129.747797,
+"taux_actes_ira_sos": 3790.3122189
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 359.78966143,
+"taux_hospit_ira_sau": 700.57873896,
+"taux_actes_ira_sos": 3813.5113726
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 859.86167656,
+"taux_hospit_ira_sau": 1639.3442623,
+"taux_actes_ira_sos": 5949.6347559
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3064.9934121,
+"taux_hospit_ira_sau": 5349.0653442,
+"taux_actes_ira_sos": 7916.0246533
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 1847.116614,
+"taux_hospit_ira_sau": 4105.9208569,
+"taux_actes_ira_sos": 4302.7533162
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1500.1891579,
+"taux_hospit_ira_sau": 3625.5193674,
+"taux_actes_ira_sos": 6187.168367
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 318.39954917,
+"taux_hospit_ira_sau": 543.31421672,
+"taux_actes_ira_sos": 4090.1137358
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 930.77656448,
+"taux_hospit_ira_sau": 1800.4960222,
+"taux_actes_ira_sos": 6520.580284
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3125.0,
+"taux_hospit_ira_sau": 5395.0008133,
+"taux_actes_ira_sos": 8100.0717728
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 1029.9379458,
+"taux_hospit_ira_sau": 1842.763512,
+"taux_actes_ira_sos": 7222.4299065
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 2696.4321082,
+"taux_hospit_ira_sau": 5454.130534,
+"taux_actes_ira_sos": 5531.2157722
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3089.8784364,
+"taux_hospit_ira_sau": 5339.0397218,
+"taux_actes_ira_sos": 8223.5444114
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1613.7002865,
+"taux_hospit_ira_sau": 3706.3435495,
+"taux_actes_ira_sos": 6889.490569
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 454.8849209,
+"taux_hospit_ira_sau": 1127.4252753,
+"taux_actes_ira_sos": 5819.3208045
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 562.36150019,
+"taux_hospit_ira_sau": 1137.8002528,
+"taux_actes_ira_sos": 8447.0930635
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 1177.3548264,
+"taux_hospit_ira_sau": 2050.8972676,
+"taux_actes_ira_sos": 9935.7818024
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3535.7575233,
+"taux_hospit_ira_sau": 5931.8163501,
+"taux_actes_ira_sos": 10383.149873
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 3627.0502406,
+"taux_hospit_ira_sau": 8100.9879254,
+"taux_actes_ira_sos": 7015.3676521
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 1898.2271515,
+"taux_hospit_ira_sau": 4217.6503133,
+"taux_actes_ira_sos": 9301.6816299
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_ira_sau": 3915.3746145,
+"taux_hospit_ira_sau": 6623.6122972,
+"taux_actes_ira_sos": 13520.540822
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "15-64 ans",
+"taux_passages_ira_sau": 1269.3994602,
+"taux_hospit_ira_sau": 2271.4258446,
+"taux_actes_ira_sos": 11847.153845
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_ira_sau": 2108.220115,
+"taux_hospit_ira_sau": 4726.1912459,
+"taux_actes_ira_sos": 11059.608885
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "00-04 ans",
+"taux_passages_ira_sau": 4142.7520235,
+"taux_hospit_ira_sau": 8863.5366389,
+"taux_actes_ira_sos": 8023.715415
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "05-14 ans",
+"taux_passages_ira_sau": 635.13458318,
+"taux_hospit_ira_sau": 1421.5559576,
+"taux_actes_ira_sos": 9422.0459719
+}
+],
+"bronchio": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 10600.988363,
+"taux_hospit_bronchio_sau": 20336.538462,
+"taux_actes_bronchio_sos": 6364.9222065
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 8051.1601213,
+"taux_hospit_bronchio_sau": 15629.742033,
+"taux_actes_bronchio_sos": 5095.0262839
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 7241.6737831,
+"taux_hospit_bronchio_sau": 12819.120043,
+"taux_actes_bronchio_sos": 4894.026975
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 3350.2712945,
+"taux_hospit_bronchio_sau": 6769.3744164,
+"taux_actes_bronchio_sos": 2516.9409487
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 3327.8628738,
+"taux_hospit_bronchio_sau": 6725.2974651,
+"taux_actes_bronchio_sos": 2157.9205493
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 3061.8195956,
+"taux_hospit_bronchio_sau": 5891.8918919,
+"taux_actes_bronchio_sos": 1889.6071606
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 2481.2463935,
+"taux_hospit_bronchio_sau": 5459.6100279,
+"taux_actes_bronchio_sos": 1504.8543689
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 2522.7151256,
+"taux_hospit_bronchio_sau": 4921.0206561,
+"taux_actes_bronchio_sos": 2240.5660377
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 2487.5081469,
+"taux_hospit_bronchio_sau": 4652.5679758,
+"taux_actes_bronchio_sos": 1754.3859649
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 1811.5160664,
+"taux_hospit_bronchio_sau": 3954.0816327,
+"taux_actes_bronchio_sos": 1706.0367454
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 1704.5454545,
+"taux_hospit_bronchio_sau": 3554.9703752,
+"taux_actes_bronchio_sos": 1107.266436
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 1769.5099819,
+"taux_hospit_bronchio_sau": 3389.8305085,
+"taux_actes_bronchio_sos": 1382.8238719
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 1660.7894437,
+"taux_hospit_bronchio_sau": 2956.9892473,
+"taux_actes_bronchio_sos": 904.03337969
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 2167.7448644,
+"taux_hospit_bronchio_sau": 4666.6666667,
+"taux_actes_bronchio_sos": 1411.0429448
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 3956.9727238,
+"taux_hospit_bronchio_sau": 7534.2465753,
+"taux_actes_bronchio_sos": 2845.7092041
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 5793.3455944,
+"taux_hospit_bronchio_sau": 11767.626614,
+"taux_actes_bronchio_sos": 3455.0451512
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "0 an",
+"taux_passages_bronchio_sau": 6597.6714101,
+"taux_hospit_bronchio_sau": 12375.249501,
+"taux_actes_bronchio_sos": 4017.1606864
+}
+],
+"gastro": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1064.210338,
+"taux_hospit_gastro_sau": 842.43592489,
+"taux_actes_gastro_sos": 4900.5473836
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1028.2790373,
+"taux_hospit_gastro_sau": 838.44324865,
+"taux_actes_gastro_sos": 4901.4002399
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 974.93340918,
+"taux_hospit_gastro_sau": 875.50889806,
+"taux_actes_gastro_sos": 4882.323204
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1579.166699,
+"taux_hospit_gastro_sau": 1452.2128958,
+"taux_actes_gastro_sos": 5799.311019
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1393.9132368,
+"taux_hospit_gastro_sau": 1300.1027749,
+"taux_actes_gastro_sos": 6015.720524
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1496.7838379,
+"taux_hospit_gastro_sau": 1350.662256,
+"taux_actes_gastro_sos": 6272.7417517
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1474.0968413,
+"taux_hospit_gastro_sau": 1350.6963095,
+"taux_actes_gastro_sos": 5935.0491042
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1311.7575219,
+"taux_hospit_gastro_sau": 1227.8124452,
+"taux_actes_gastro_sos": 6205.4360221
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1375.1577693,
+"taux_hospit_gastro_sau": 1272.3749644,
+"taux_actes_gastro_sos": 5723.1816563
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1327.8957853,
+"taux_hospit_gastro_sau": 1257.0231407,
+"taux_actes_gastro_sos": 5491.1372263
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1406.0407058,
+"taux_hospit_gastro_sau": 1312.4974365,
+"taux_actes_gastro_sos": 5306.0959792
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1353.9208787,
+"taux_hospit_gastro_sau": 1255.7886135,
+"taux_actes_gastro_sos": 5414.0045009
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1239.1116626,
+"taux_hospit_gastro_sau": 1185.8943847,
+"taux_actes_gastro_sos": 5596.2085308
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1186.9659071,
+"taux_hospit_gastro_sau": 1085.6453559,
+"taux_actes_gastro_sos": 5782.0635493
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1120.3112268,
+"taux_hospit_gastro_sau": 1074.3212596,
+"taux_actes_gastro_sos": 5879.2746468
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1058.2158598,
+"taux_hospit_gastro_sau": 922.53059019,
+"taux_actes_gastro_sos": 5478.3432911
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_gastro_sau": 1096.8902933,
+"taux_hospit_gastro_sau": 991.78897007,
+"taux_actes_gastro_sos": 5268.2242893
+}
+],
+"asthme": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 1475.0437662,
+"taux_hospit_asthme_sau": 2064.6819447,
+"taux_actes_asthme_sos": 1847.1380623
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 1554.4196906,
+"taux_hospit_asthme_sau": 2219.1632253,
+"taux_actes_asthme_sos": 2045.9870626
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 1273.0196409,
+"taux_hospit_asthme_sau": 1761.9105973,
+"taux_actes_asthme_sos": 1673.8751896
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 851.57489588,
+"taux_hospit_asthme_sau": 1017.0259443,
+"taux_actes_asthme_sos": 927.56389367
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 626.20159297,
+"taux_hospit_asthme_sau": 720.70914697,
+"taux_actes_asthme_sos": 739.44687045
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 601.49596548,
+"taux_hospit_asthme_sau": 698.21262797,
+"taux_actes_asthme_sos": 768.16583561
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 483.7830832,
+"taux_hospit_asthme_sau": 568.57633203,
+"taux_actes_asthme_sos": 664.68870029
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 451.03808149,
+"taux_hospit_asthme_sau": 514.8456137,
+"taux_actes_asthme_sos": 709.26429493
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 411.53535859,
+"taux_hospit_asthme_sau": 506.78193471,
+"taux_actes_asthme_sos": 621.3966252
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 401.7210283,
+"taux_hospit_asthme_sau": 450.2972506,
+"taux_actes_asthme_sos": 635.19805919
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 416.54302568,
+"taux_hospit_asthme_sau": 481.24906006,
+"taux_actes_asthme_sos": 552.52918288
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 411.4749348,
+"taux_hospit_asthme_sau": 464.45110324,
+"taux_actes_asthme_sos": 673.84050286
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 472.84098626,
+"taux_hospit_asthme_sau": 561.66786797,
+"taux_actes_asthme_sos": 802.52764613
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 535.76197258,
+"taux_hospit_asthme_sau": 750.56962874,
+"taux_actes_asthme_sos": 838.79065028
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 970.48077176,
+"taux_hospit_asthme_sau": 1469.5781766,
+"taux_actes_asthme_sos": 1166.0713067
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 1133.4938926,
+"taux_hospit_asthme_sau": 1697.096023,
+"taux_actes_asthme_sos": 1371.7158163
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_asthme_sau": 1036.8212897,
+"taux_hospit_asthme_sau": 1443.0723476,
+"taux_actes_asthme_sos": 1374.8652862
+}
+],
+"allergie": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 752.56228896,
+"taux_hospit_allergie_sau": 342.68579996,
+"taux_actes_allergie_sos": 1421.395265
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 659.24414672,
+"taux_hospit_allergie_sau": 304.50923956,
+"taux_actes_allergie_sos": 1130.0575119
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 696.26380358,
+"taux_hospit_allergie_sau": 329.5072369,
+"taux_actes_allergie_sos": 1187.440319
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 868.14048656,
+"taux_hospit_allergie_sau": 412.5333842,
+"taux_actes_allergie_sos": 1941.2504073
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 881.49514131,
+"taux_hospit_allergie_sau": 422.6618705,
+"taux_actes_allergie_sos": 1750.2183406
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 867.19078197,
+"taux_hospit_allergie_sau": 438.01728534,
+"taux_actes_allergie_sos": 1736.0302856
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 870.75664838,
+"taux_hospit_allergie_sau": 429.70745831,
+"taux_actes_allergie_sos": 1664.0217116
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 838.23692683,
+"taux_hospit_allergie_sau": 433.9798105,
+"taux_actes_allergie_sos": 1571.4088796
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 760.94686865,
+"taux_hospit_allergie_sau": 317.07746717,
+"taux_actes_allergie_sos": 1643.8645329
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 768.81093346,
+"taux_hospit_allergie_sau": 394.52024977,
+"taux_actes_allergie_sos": 1644.7325516
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 862.48256315,
+"taux_hospit_allergie_sau": 412.88981857,
+"taux_actes_allergie_sos": 1525.2918288
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 826.53751156,
+"taux_hospit_allergie_sau": 355.48896758,
+"taux_actes_allergie_sos": 1493.8306733
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 778.84623446,
+"taux_hospit_allergie_sau": 327.75292054,
+"taux_actes_allergie_sos": 1479.9368088
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 753.01539968,
+"taux_hospit_allergie_sau": 360.54148238,
+"taux_actes_allergie_sos": 1557.0439775
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 762.82101832,
+"taux_hospit_allergie_sau": 333.05254973,
+"taux_actes_allergie_sos": 1426.5887011
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 731.41764303,
+"taux_hospit_allergie_sau": 369.26956678,
+"taux_actes_allergie_sos": 1215.1612938
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_allergie_sau": 660.50664923,
+"taux_hospit_allergie_sau": 321.97581949,
+"taux_actes_allergie_sos": 1099.6829649
+}
+],
+"grippe": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 183.73684981,
+"taux_hospit_grippe_sau": 64.253587492,
+"taux_actes_grippe_sos": 2711.0129975
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 194.47293199,
+"taux_hospit_grippe_sau": 127.92168968,
+"taux_actes_grippe_sos": 3497.7970605
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 245.85277275,
+"taux_hospit_grippe_sau": 132.07521479,
+"taux_actes_grippe_sos": 4556.5354154
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 63.93282653,
+"taux_hospit_grippe_sau": 35.768790538,
+"taux_actes_grippe_sos": 705.27442856
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 82.656517702,
+"taux_hospit_grippe_sau": 43.67934224,
+"taux_actes_grippe_sos": 916.44832606
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 78.017163776,
+"taux_hospit_grippe_sau": 40.532942822,
+"taux_actes_grippe_sos": 927.43466915
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 82.526146505,
+"taux_hospit_grippe_sau": 48.473097431,
+"taux_actes_grippe_sos": 944.13394972
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 85.489064061,
+"taux_hospit_grippe_sau": 51.215008693,
+"taux_actes_grippe_sos": 1031.3153971
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 85.736533039,
+"taux_hospit_grippe_sau": 50.136180707,
+"taux_actes_grippe_sos": 1080.5176986
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 85.33108739,
+"taux_hospit_grippe_sau": 51.695756867,
+"taux_actes_grippe_sos": 978.23109731
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 115.9220937,
+"taux_hospit_grippe_sau": 54.687393189,
+"taux_actes_grippe_sos": 1097.2762646
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 155.37249383,
+"taux_hospit_grippe_sau": 104.87605557,
+"taux_actes_grippe_sos": 1592.126025
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 186.67717424,
+"taux_hospit_grippe_sau": 131.91715059,
+"taux_actes_grippe_sos": 1977.8830964
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 190.54878049,
+"taux_hospit_grippe_sau": 123.30786758,
+"taux_actes_grippe_sos": 2467.908491
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 210.55121836,
+"taux_hospit_grippe_sau": 111.44949135,
+"taux_actes_grippe_sos": 2730.3133035
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 245.67087732,
+"taux_hospit_grippe_sau": 144.10519679,
+"taux_actes_grippe_sos": 3901.0831017
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_grippe_sau": 275.61072257,
+"taux_hospit_grippe_sau": 182.32365682,
+"taux_actes_grippe_sos": 4610.0886234
+}
+],
+"covid": [
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 1085.619204,
+"taux_hospit_covid_sau": 2078.9605197,
+"taux_actes_covid_sos": 6180.0283829
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 2503.7261407,
+"taux_hospit_covid_sau": 3467.5647972,
+"taux_actes_covid_sos": 7241.9968659
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 2415.5143726,
+"taux_hospit_covid_sau": 3567.9577954,
+"taux_actes_covid_sos": 5245.6910395
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 956.81773549,
+"taux_hospit_covid_sau": 2120.4410517,
+"taux_actes_covid_sos": 3845.334589
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 977.94051978,
+"taux_hospit_covid_sau": 1416.9601734,
+"taux_actes_covid_sos": 2782.3748448
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 490.88512468,
+"taux_hospit_covid_sau": 890.48649973,
+"taux_actes_covid_sos": 2999.4944672
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 23.33438169,
+"taux_hospit_covid_sau": 36.281179138,
+"taux_actes_covid_sos": 88.295889336
+},
+{
+"semaine": "2026-S26",
+"date_complet": "2026-06-22",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 15.789078617,
+"taux_hospit_covid_sau": 30.999618466,
+"taux_actes_covid_sos": 90.777896746
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 12.640626975,
+"taux_hospit_covid_sau": 15.331544653,
+"taux_actes_covid_sos": 28.746646225
+},
+{
+"semaine": "2026-S27",
+"date_complet": "2026-06-29",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 9.4165653078,
+"taux_hospit_covid_sau": 11.562178828,
+"taux_actes_covid_sos": 107.13245997
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 18.822322729,
+"taux_hospit_covid_sau": 30.072828546,
+"taux_actes_covid_sos": 89.435575757
+},
+{
+"semaine": "2026-S28",
+"date_complet": "2026-07-06",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 22.861124114,
+"taux_hospit_covid_sau": 31.430068098,
+"taux_actes_covid_sos": 38.861362091
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 25.365152508,
+"taux_hospit_covid_sau": 36.729018548,
+"taux_actes_covid_sos": 34.55126544
+},
+{
+"semaine": "2026-S29",
+"date_complet": "2026-07-13",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 15.34139903,
+"taux_hospit_covid_sau": 30.13192543,
+"taux_actes_covid_sos": 85.098553325
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 12.805600316,
+"taux_hospit_covid_sau": 21.394950792,
+"taux_actes_covid_sos": 85.665334095
+},
+{
+"semaine": "2026-S30",
+"date_complet": "2026-07-20",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 16.653713778,
+"taux_hospit_covid_sau": 16.17316064,
+"taux_actes_covid_sos": 145.36158695
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 32.968552255,
+"taux_hospit_covid_sau": 45.386586929,
+"taux_actes_covid_sos": 94.126506024
+},
+{
+"semaine": "2026-S31",
+"date_complet": "2026-07-27",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 24.737098057,
+"taux_hospit_covid_sau": 31.165733953,
+"taux_actes_covid_sos": 126.65408921
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 38.538856542,
+"taux_hospit_covid_sau": 67.298374071,
+"taux_actes_covid_sos": 87.519691931
+},
+{
+"semaine": "2026-S32",
+"date_complet": "2026-08-03",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 26.319653578,
+"taux_hospit_covid_sau": 48.974927558,
+"taux_actes_covid_sos": 104.34465038
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 46.17201761,
+"taux_hospit_covid_sau": 60.504386568,
+"taux_actes_covid_sos": 98.187985361
+},
+{
+"semaine": "2026-S33",
+"date_complet": "2026-08-10",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 38.270930455,
+"taux_hospit_covid_sau": 53.320208359,
+"taux_actes_covid_sos": 158.23605707
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 49.443497654,
+"taux_hospit_covid_sau": 83.822296731,
+"taux_actes_covid_sos": 137.75369639
+},
+{
+"semaine": "2026-S34",
+"date_complet": "2026-08-17",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 48.295180141,
+"taux_hospit_covid_sau": 73.549441569,
+"taux_actes_covid_sos": 177.19030497
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 75.598850897,
+"taux_hospit_covid_sau": 87.198212437,
+"taux_actes_covid_sos": 269.64560863
+},
+{
+"semaine": "2026-S35",
+"date_complet": "2026-08-24",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 65.95181605,
+"taux_hospit_covid_sau": 82.958208103,
+"taux_actes_covid_sos": 358.92575039
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 114.5576313,
+"taux_hospit_covid_sau": 159.95228542,
+"taux_actes_covid_sos": 287.09115144
+},
+{
+"semaine": "2026-S36",
+"date_complet": "2026-08-31",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 98.751557771,
+"taux_hospit_covid_sau": 138.05119957,
+"taux_actes_covid_sos": 380.25176146
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 139.8036196,
+"taux_hospit_covid_sau": 205.96495921,
+"taux_actes_covid_sos": 435.61410965
+},
+{
+"semaine": "2026-S37",
+"date_complet": "2026-09-07",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 124.07013117,
+"taux_hospit_covid_sau": 147.73537225,
+"taux_actes_covid_sos": 581.32920753
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 181.32850469,
+"taux_hospit_covid_sau": 235.45759833,
+"taux_actes_covid_sos": 965.95205385
+},
+{
+"semaine": "2026-S38",
+"date_complet": "2026-09-14",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 274.55897613,
+"taux_hospit_covid_sau": 359.99247777,
+"taux_actes_covid_sos": 603.3022862
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "Tous âges",
+"taux_passages_covid_sau": 208.7271681,
+"taux_hospit_covid_sau": 321.97581949,
+"taux_actes_covid_sos": 1136.3041863
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"sursaud_cl_age_gene": "65 ans ou plus",
+"taux_passages_covid_sau": 373.91612674,
+"taux_hospit_covid_sau": 523.05721605,
+"taux_actes_covid_sos": 1060.8424337
+}
+]
+}

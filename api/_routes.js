@@ -39,6 +39,7 @@ export const ROUTES = {
   '/api/health/oscour-sos': () => import('./_handlers/health/oscour-sos.js'),
   '/api/health/sentinelles-ingestion': () => import('./_handlers/health/sentinelles-ingestion.js'),
   '/api/health/sentinelles': () => import('./_handlers/health/sentinelles.js'),
+  '/api/health/syndromic': () => import('./_handlers/health/syndromic.js'),
   '/api/health-check': () => import('./_handlers/health-check.js'),
   '/api/infra-network': () => import('./_handlers/infra-network.js'),
   '/api/intelligence/v1/france-intel-brief': () => import('./_handlers/intelligence/v1/france-intel-brief.js'),

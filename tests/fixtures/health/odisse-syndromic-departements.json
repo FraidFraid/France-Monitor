@@ -1,0 +1,1528 @@
+{
+"ira": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_ira_sau": 1756.718925,
+"taux_hospit_ira_sau": 3375.9772566,
+"taux_actes_ira_sos": 13405.327574
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_ira_sau": 2780.1911381,
+"taux_hospit_ira_sau": 4863.2218845,
+"taux_actes_ira_sos": 6929.9552906
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_ira_sau": 2414.5170966,
+"taux_hospit_ira_sau": 5025.307303,
+"taux_actes_ira_sos": 17829.457364
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_ira_sau": 3711.3402062,
+"taux_hospit_ira_sau": 10784.313725,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_ira_sau": 5678.6405679,
+"taux_hospit_ira_sau": 5980.0664452,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_ira_sau": 3887.6889849,
+"taux_hospit_ira_sau": 11607.142857,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_ira_sau": 2102.8037383,
+"taux_hospit_ira_sau": 5050.5050505,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_ira_sau": 1939.6710672,
+"taux_hospit_ira_sau": 3597.624869,
+"taux_actes_ira_sos": 13738.738739
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_ira_sau": 4175.4140425,
+"taux_hospit_ira_sau": 6519.7428834,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_ira_sau": 2892.1023359,
+"taux_hospit_ira_sau": 5839.4160584,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_ira_sau": 2582.1212616,
+"taux_hospit_ira_sau": 5216.0373686,
+"taux_actes_ira_sos": 19163.424125
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_ira_sau": 5077.8050778,
+"taux_hospit_ira_sau": 7854.9848943,
+"taux_actes_ira_sos": 13958.482462
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_ira_sau": 2172.4423062,
+"taux_hospit_ira_sau": 5237.1134021,
+"taux_actes_ira_sos": 15589.045536
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_ira_sau": 4995.4586739,
+"taux_hospit_ira_sau": 8098.2711556,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_ira_sau": 3169.0140845,
+"taux_hospit_ira_sau": 9523.8095238,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_ira_sau": 4607.5085324,
+"taux_hospit_ira_sau": 6965.1741294,
+"taux_actes_ira_sos": 15123.042506
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_ira_sau": 2870.8133971,
+"taux_hospit_ira_sau": 3571.4285714,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_ira_sau": 3538.7639969,
+"taux_hospit_ira_sau": 7442.2248335,
+"taux_actes_ira_sos": 15900.383142
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_ira_sau": 2900.6987084,
+"taux_hospit_ira_sau": 6104.7656558,
+"taux_actes_ira_sos": 17668.768261
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_ira_sau": 3069.9889446,
+"taux_hospit_ira_sau": 6418.769367,
+"taux_actes_ira_sos": 15449.73545
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_ira_sau": 1772.1518987,
+"taux_hospit_ira_sau": 0.0,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_ira_sau": 4845.4469507,
+"taux_hospit_ira_sau": 8306.010929,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_ira_sau": 2433.0900243,
+"taux_hospit_ira_sau": 8235.2941176,
+"taux_actes_ira_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_ira_sau": 4403.0482642,
+"taux_hospit_ira_sau": 7936.5079365,
+"taux_actes_ira_sos": 18640.868334
+}
+],
+"bronchio": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_bronchio_sau": 10424.710425,
+"taux_hospit_bronchio_sau": 17647.058824,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_bronchio_sau": 13333.333333,
+"taux_hospit_bronchio_sau": 30000.0,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_bronchio_sau": 6603.7735849,
+"taux_hospit_bronchio_sau": 14606.741573,
+"taux_actes_bronchio_sos": 0.0
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_bronchio_sau": 6091.3705584,
+"taux_hospit_bronchio_sau": 5263.1578947,
+"taux_actes_bronchio_sos": 2463.0541872
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": 0.0,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_bronchio_sau": 10526.315789,
+"taux_hospit_bronchio_sau": 0.0,
+"taux_actes_bronchio_sos": 2272.7272727
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": null,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_bronchio_sau": 12643.678161,
+"taux_hospit_bronchio_sau": 22727.272727,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_bronchio_sau": 6813.9963168,
+"taux_hospit_bronchio_sau": 11111.111111,
+"taux_actes_bronchio_sos": 4729.7297297
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_bronchio_sau": 16666.666667,
+"taux_hospit_bronchio_sau": 20000.0,
+"taux_actes_bronchio_sos": 3448.2758621
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_bronchio_sau": 6741.5730337,
+"taux_hospit_bronchio_sau": 11666.666667,
+"taux_actes_bronchio_sos": 0.0
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_bronchio_sau": 19047.619048,
+"taux_hospit_bronchio_sau": 41935.483871,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": 0.0,
+"taux_actes_bronchio_sos": 13953.488372
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": 0.0,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_bronchio_sau": 20000.0,
+"taux_hospit_bronchio_sau": 38095.238095,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_bronchio_sau": 5852.8428094,
+"taux_hospit_bronchio_sau": 6451.6129032,
+"taux_actes_bronchio_sos": 10344.827586
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_bronchio_sau": 5423.7288136,
+"taux_hospit_bronchio_sau": 7272.7272727,
+"taux_actes_bronchio_sos": 4597.7011494
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_bronchio_sau": 33333.333333,
+"taux_hospit_bronchio_sau": 66666.666667,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_bronchio_sau": 6108.2024433,
+"taux_hospit_bronchio_sau": 10714.285714,
+"taux_actes_bronchio_sos": 6250.0
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_bronchio_sau": 12859.304085,
+"taux_hospit_bronchio_sau": 18705.035971,
+"taux_actes_bronchio_sos": 3086.4197531
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_bronchio_sau": 15789.473684,
+"taux_hospit_bronchio_sau": 20833.333333,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_bronchio_sau": 7500.0,
+"taux_hospit_bronchio_sau": 15789.473684,
+"taux_actes_bronchio_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": 0.0,
+"taux_actes_bronchio_sos": 8000.0
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_bronchio_sau": 0.0,
+"taux_hospit_bronchio_sau": null,
+"taux_actes_bronchio_sos": null
+}
+],
+"gastro": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_gastro_sau": 3398.5803399,
+"taux_hospit_gastro_sau": 2242.5249169,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_gastro_sau": 3779.6976242,
+"taux_hospit_gastro_sau": 9821.4285714,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_gastro_sau": 781.9287576,
+"taux_hospit_gastro_sau": 607.90273556,
+"taux_actes_gastro_sos": 2309.9850969
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_gastro_sau": 618.55670103,
+"taux_hospit_gastro_sau": 0.0,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_gastro_sau": 1217.8051512,
+"taux_hospit_gastro_sau": 959.48827292,
+"taux_actes_gastro_sos": 5500.3599712
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_gastro_sau": 1672.1655669,
+"taux_hospit_gastro_sau": 1409.978308,
+"taux_actes_gastro_sos": 6804.4788975
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_gastro_sau": 1869.1588785,
+"taux_hospit_gastro_sau": 1010.1010101,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_gastro_sau": 4560.6229143,
+"taux_hospit_gastro_sau": 8759.1240876,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_gastro_sau": 1617.9114234,
+"taux_hospit_gastro_sau": 1206.6952121,
+"taux_actes_gastro_sos": 6031.1284047
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_gastro_sau": 655.2006552,
+"taux_hospit_gastro_sau": 604.22960725,
+"taux_actes_gastro_sos": 1932.7129563
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_gastro_sau": 3545.6029858,
+"taux_hospit_gastro_sau": 2112.0293848,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_gastro_sau": 899.77136957,
+"taux_hospit_gastro_sau": 698.56793573,
+"taux_actes_gastro_sos": 5048.7987988
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_gastro_sau": 853.24232082,
+"taux_hospit_gastro_sau": 1990.0497512,
+"taux_actes_gastro_sos": 1879.1946309
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_gastro_sau": 1666.809129,
+"taux_hospit_gastro_sau": 1253.4273404,
+"taux_actes_gastro_sos": 8045.9770115
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_gastro_sau": 956.93779904,
+"taux_hospit_gastro_sau": 0.0,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_gastro_sau": 2724.7956403,
+"taux_hospit_gastro_sau": 818.92629663,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_gastro_sau": 2112.6760563,
+"taux_hospit_gastro_sau": 0.0,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_gastro_sau": 969.70608134,
+"taux_hospit_gastro_sau": 783.50515464,
+"taux_actes_gastro_sos": 5898.5577702
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_gastro_sau": 3759.3984962,
+"taux_hospit_gastro_sau": 1420.7650273,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_gastro_sau": 1079.8221469,
+"taux_hospit_gastro_sau": 984.6396219,
+"taux_actes_gastro_sos": 5628.1716131
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_gastro_sau": 762.06604572,
+"taux_hospit_gastro_sau": 0.0,
+"taux_actes_gastro_sos": 2501.1798018
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_gastro_sau": 0.0,
+"taux_hospit_gastro_sau": 0.0,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_gastro_sau": 7785.8880779,
+"taux_hospit_gastro_sau": 15294.117647,
+"taux_actes_gastro_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_gastro_sau": 2117.5270006,
+"taux_hospit_gastro_sau": 1814.9623727,
+"taux_actes_gastro_sos": 6243.3862434
+}
+],
+"asthme": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_asthme_sau": 434.40486533,
+"taux_hospit_asthme_sau": 303.95136778,
+"taux_actes_asthme_sos": 5290.6110283
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_asthme_sau": 3887.6889849,
+"taux_hospit_asthme_sau": 0.0,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_asthme_sau": 1322.7883539,
+"taux_hospit_asthme_sau": 1812.3667377,
+"taux_actes_asthme_sos": 1123.1101512
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_asthme_sau": 1914.3901914,
+"taux_hospit_asthme_sau": 1993.3554817,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_asthme_sau": 1027.2945411,
+"taux_hospit_asthme_sau": 1554.5914678,
+"taux_actes_asthme_sos": 1808.7855297
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_asthme_sau": 1030.9278351,
+"taux_hospit_asthme_sau": 1960.7843137,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_asthme_sau": 2122.6965244,
+"taux_hospit_asthme_sau": 2203.8567493,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_asthme_sau": 1600.4130098,
+"taux_hospit_asthme_sau": 2200.4889976,
+"taux_actes_asthme_sos": 1501.5015015
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_asthme_sau": 5339.2658509,
+"taux_hospit_asthme_sau": 5109.4890511,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_asthme_sau": 900.9009009,
+"taux_hospit_asthme_sau": 604.22960725,
+"taux_actes_asthme_sos": 4509.6635648
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_asthme_sau": 700.93457944,
+"taux_hospit_asthme_sau": 0.0,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_asthme_sau": 1397.2871384,
+"taux_hospit_asthme_sau": 1907.3569482,
+"taux_actes_asthme_sos": 1167.3151751
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_asthme_sau": 1512.9498248,
+"taux_hospit_asthme_sau": 1801.8018018,
+"taux_actes_asthme_sos": 1340.9961686
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_asthme_sau": 1924.3779599,
+"taux_hospit_asthme_sau": 3092.7835052,
+"taux_actes_asthme_sos": 2203.8567493
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_asthme_sau": 717.70334928,
+"taux_hospit_asthme_sau": 1190.4761905,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_asthme_sau": 2111.7166213,
+"taux_hospit_asthme_sau": 3184.7133758,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_asthme_sau": 9507.0422535,
+"taux_hospit_asthme_sau": 0.0,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_asthme_sau": 511.94539249,
+"taux_hospit_asthme_sau": 497.51243781,
+"taux_actes_asthme_sos": 4697.9865772
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_asthme_sau": 9245.7420925,
+"taux_hospit_asthme_sau": 5882.3529412,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_asthme_sau": 1522.2382856,
+"taux_hospit_asthme_sau": 2390.438247,
+"taux_actes_asthme_sos": 1375.6613757
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_asthme_sau": 2025.5487331,
+"taux_hospit_asthme_sau": 3111.4612052,
+"taux_actes_asthme_sos": 1322.4665539
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_asthme_sau": 253.16455696,
+"taux_hospit_asthme_sau": 0.0,
+"taux_actes_asthme_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_asthme_sau": 423.3700254,
+"taux_hospit_asthme_sau": 396.82539683,
+"taux_actes_asthme_sos": 2973.1005191
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_asthme_sau": 2283.486494,
+"taux_hospit_asthme_sau": 3387.9781421,
+"taux_actes_asthme_sos": null
+}
+],
+"allergie": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_allergie_sau": 824.74226804,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_allergie_sau": 473.22004732,
+"taux_hospit_allergie_sau": 83.056478405,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_allergie_sau": 1079.9136069,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_allergie_sau": 608.90257559,
+"taux_hospit_allergie_sau": 426.43923241,
+"taux_actes_allergie_sos": 1569.474442
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_allergie_sau": 599.880024,
+"taux_hospit_allergie_sau": 325.37960954,
+"taux_actes_allergie_sos": 1033.5917313
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_allergie_sau": 955.69070374,
+"taux_hospit_allergie_sau": 607.90273556,
+"taux_actes_allergie_sos": 1341.2816692
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_allergie_sau": 900.9009009,
+"taux_hospit_allergie_sau": 604.22960725,
+"taux_actes_allergie_sos": 1861.130995
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_allergie_sau": 443.20037322,
+"taux_hospit_allergie_sau": 183.65472911,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_allergie_sau": 333.70411568,
+"taux_hospit_allergie_sau": 729.9270073,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_allergie_sau": 467.28971963,
+"taux_hospit_allergie_sau": 1010.1010101,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_allergie_sau": 575.26366251,
+"taux_hospit_allergie_sau": 314.35557108,
+"taux_actes_allergie_sos": 1670.4204204
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_allergie_sau": 1029.5799967,
+"taux_hospit_allergie_sau": 233.55391203,
+"taux_actes_allergie_sos": 875.48638132
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_allergie_sau": 597.26962457,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": 939.59731544
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_allergie_sau": 454.13260672,
+"taux_hospit_allergie_sau": 181.98362147,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_allergie_sau": 649.62817335,
+"taux_hospit_allergie_sau": 235.01762632,
+"taux_actes_allergie_sos": 2107.2796935
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_allergie_sau": 631.43651808,
+"taux_hospit_allergie_sau": 288.65979381,
+"taux_actes_allergie_sos": 1652.892562
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_allergie_sau": 352.11267606,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_allergie_sau": 956.93779904,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_allergie_sau": 417.71094403,
+"taux_hospit_allergie_sau": 437.15846995,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_allergie_sau": 677.53546475,
+"taux_hospit_allergie_sau": 157.5423395,
+"taux_actes_allergie_sos": 1537.7518069
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_allergie_sau": 729.9270073,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_allergie_sau": 846.7400508,
+"taux_hospit_allergie_sau": 396.82539683,
+"taux_actes_allergie_sos": 1179.8017933
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_allergie_sau": 1012.6582278,
+"taux_hospit_allergie_sau": 0.0,
+"taux_actes_allergie_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_allergie_sau": 561.27221703,
+"taux_hospit_allergie_sau": 132.80212483,
+"taux_actes_allergie_sos": 1587.3015873
+}
+],
+"grippe": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_grippe_sau": 173.76194613,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": 298.06259314
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_grippe_sau": 3850.290385,
+"taux_hospit_grippe_sau": 2574.7508306,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_grippe_sau": 107.99136069,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_grippe_sau": 0.0,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_grippe_sau": 258.95856663,
+"taux_hospit_grippe_sau": 319.82942431,
+"taux_actes_grippe_sos": 3930.8855292
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_grippe_sau": 277.4445111,
+"taux_hospit_grippe_sau": 216.9197397,
+"taux_actes_grippe_sos": 9043.9276486
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_grippe_sau": 491.4004914,
+"taux_hospit_grippe_sau": 302.11480363,
+"taux_actes_grippe_sos": 1288.4753042
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_grippe_sau": 0.0,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_grippe_sau": 1189.6431071,
+"taux_hospit_grippe_sau": 642.79155188,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_grippe_sau": 280.2566561,
+"taux_hospit_grippe_sau": 209.57038072,
+"taux_actes_grippe_sos": 2683.9339339
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_grippe_sau": 0.0,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_grippe_sau": 163.42539631,
+"taux_hospit_grippe_sau": 155.70260802,
+"taux_actes_grippe_sos": 7879.3774319
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_grippe_sau": 239.23444976,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_grippe_sau": 1657.5840145,
+"taux_hospit_grippe_sau": 1546.8607825,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_grippe_sau": 352.11267606,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_grippe_sau": 85.324232082,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": 715.8836689
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_grippe_sau": 273.52765194,
+"taux_hospit_grippe_sau": 235.01762632,
+"taux_actes_grippe_sos": 4885.0574713
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_grippe_sau": 150.34202811,
+"taux_hospit_grippe_sau": 164.94845361,
+"taux_actes_grippe_sos": 2738.6161076
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_grippe_sau": 247.01813819,
+"taux_hospit_grippe_sau": 118.15675463,
+"taux_actes_grippe_sos": 2229.7401199
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_grippe_sau": 1280.9802283,
+"taux_hospit_grippe_sau": 1202.1857923,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_grippe_sau": 161.57836551,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": 3809.5238095
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_grippe_sau": 253.16455696,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_grippe_sau": 243.30900243,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_grippe_sau": 84.67400508,
+"taux_hospit_grippe_sau": 0.0,
+"taux_actes_grippe_sos": 94.384143464
+}
+],
+"covid": [
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_covid_sau": 0.0,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_covid_sau": 329.9340132,
+"taux_hospit_covid_sau": 469.99276934,
+"taux_actes_covid_sos": 2756.2446167
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_covid_sau": 86.880973067,
+"taux_hospit_covid_sau": 303.95136778,
+"taux_actes_covid_sos": 1043.219076
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_covid_sau": 0.0,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_covid_sau": 824.74226804,
+"taux_hospit_covid_sau": 2941.1764706,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2026-S39",
+"date_complet": "2026-09-21",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_covid_sau": 258.95856663,
+"taux_hospit_covid_sau": 497.51243781,
+"taux_actes_covid_sos": 2318.2145428
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_covid_sau": 258.13113061,
+"taux_hospit_covid_sau": 628.71114216,
+"taux_actes_covid_sos": 3753.7537538
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_covid_sau": 0.0,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_covid_sau": 116.63167716,
+"taux_hospit_covid_sau": 91.827364555,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_covid_sau": 1168.2242991,
+"taux_hospit_covid_sau": 2020.2020202,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_covid_sau": 571.98888707,
+"taux_hospit_covid_sau": 622.81043207,
+"taux_actes_covid_sos": 5544.7470817
+},
+{
+"semaine": "2025-S39",
+"date_complet": "2025-09-22",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_covid_sau": 1392.3013923,
+"taux_hospit_covid_sau": 604.22960725,
+"taux_actes_covid_sos": 6871.8682892
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_covid_sau": 431.42597639,
+"taux_hospit_covid_sau": 1000.9099181,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_covid_sau": 1094.1106077,
+"taux_hospit_covid_sau": 2389.3458676,
+"taux_actes_covid_sos": 5459.7701149
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_covid_sau": 2218.4300341,
+"taux_hospit_covid_sau": 3482.5870647,
+"taux_actes_covid_sos": 7606.2639821
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_covid_sau": 0.0,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_covid_sau": 1913.8755981,
+"taux_hospit_covid_sau": 1190.4761905,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2024-S39",
+"date_complet": "2024-09-23",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_covid_sau": 240.54724498,
+"taux_hospit_covid_sau": 824.74226804,
+"taux_actes_covid_sos": 2965.4837141
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "13",
+"libgeo": "Bouches-du-Rhône",
+"taux_passages_covid_sau": 1020.49494,
+"taux_hospit_covid_sau": 1682.1602479,
+"taux_actes_covid_sos": 7830.6878307
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "48",
+"libgeo": "Lozère",
+"taux_passages_covid_sau": 1012.6582278,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "75",
+"libgeo": "Paris",
+"taux_passages_covid_sau": 705.76610911,
+"taux_hospit_covid_sau": 1457.2666404,
+"taux_actes_covid_sos": 8196.2171306
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "974",
+"libgeo": "Réunion",
+"taux_passages_covid_sau": 222.77917015,
+"taux_hospit_covid_sau": 546.44808743,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "976",
+"libgeo": "Mayotte",
+"taux_passages_covid_sau": 0.0,
+"taux_hospit_covid_sau": 0.0,
+"taux_actes_covid_sos": null
+},
+{
+"semaine": "2023-S39",
+"date_complet": "2023-09-25",
+"dep": "2A",
+"libgeo": "Corse-du-Sud",
+"taux_passages_covid_sau": 2624.8941575,
+"taux_hospit_covid_sau": 4365.0793651,
+"taux_actes_covid_sos": 12600.283152
+}
+]
+}
