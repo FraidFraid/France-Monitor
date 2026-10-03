@@ -29,7 +29,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(railLevel(railOverviewFixture()).level).toBe('orange');
     expect(v.head).toMatchObject({ theme: 'Trafics', title: 'Réseau ferroviaire', level: 'orange' });
     expect(v.head.figure).toEqual({ value: '37', caption: `trains grandes lignes perturbés en cours · 20 à 15${NBSP}min ou plus · SNCF, 15:10`, level: undefined });
-    expect(v.head.status).toEqual([glueUnits(railLevel(railOverviewFixture()).reason), 'SNCF 15:10 · SIRI SX 15:10']);
+    expect(v.head.status).toEqual([glueUnits(railLevel(railOverviewFixture()).reason), 'SNCF\u00A015:10 · SIRI SX\u00A015:10']);
     expect(v.head.lead).toBe(`Axe Sud-Est le plus touché (6 trains, +57${NBSP}min en moyenne). TER Occitanie : +58${NBSP}min en moyenne sur 5 trains. `
       + 'Situation : Panne d’installation près de Châteauroux.');
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--orange">37</b>');
@@ -121,7 +121,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
   it('options du filtre : tous, axes, régions', () => {
     const opts = railFilterOptions(railOverviewFixture());
     expect(opts[0]).toEqual({ value: 'all', label: 'Tous les axes et régions' });
-    expect(opts).toHaveLength(1 + 6 + 10);
+    expect(opts).toHaveLength(1 + 7 + 10);
   });
   it('méthode et sources : périmètre (T1), règle de la pastille, axes, effets exacts, retards', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
@@ -137,7 +137,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(v.head.level).toBe('nd');
     expect(v.head.figure?.level).toBeNull();
     expect(v.head.figure?.caption).toMatch(/SNCF, 15:10 \(en retard\)$/);
-    expect(v.head.status).toEqual(['niveau suspendu : données SNCF en retard', 'SNCF 15:10 (en retard) · SIRI SX 15:10 (en retard)']);
+    expect(v.head.status).toEqual(['niveau suspendu : données SNCF en retard', 'SNCF\u00A015:10\u00A0(en retard) · SIRI SX\u00A015:10\u00A0(en retard)']);
     expect(v.head.lead).toBeNull();
     const h = renderLayerView('trafficRail', v);
     expect(h).not.toMatch(/lp-lvl--|fmk-dot--(?:rouge|orange|jaune|vert)|fm-vig--(?:rouge|orange|jaune|vert)/);
@@ -146,7 +146,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
   it('panne partielle : SIRI SX en panne, perturbations sans agrégat ; jamais « aucune » quand la source manque', () => {
     const down = view({ situations: null, situationsError: 'HTTP 503' });
     expect(down.sections.find((s) => s.id === 'situations')?.html).toContain('Source indisponible : SIRI SX (situations SNCF).');
-    expect(down.head.status[1]).toBe('SNCF 15:10 · SIRI SX injoignable');
+    expect(down.head.status[1]).toBe('SNCF\u00A015:10 · SIRI SX injoignable');
     expect(down.head.lead).not.toContain('Situation :');
     const partial = withOverview((o) => { o.axes = []; o.regions = []; o.errors = ['SNCF : HTTP 429']; });
     const v = view({ overview: partial });
@@ -201,7 +201,7 @@ describe('vue Réseau ferroviaire : arbitrages du serveur', () => {
     expect(railFilterOptions(o).map((x) => x.label)).not.toContain('Axe Non rattaché');
     expect(railFilterOptions(o).map((x) => x.value)).toContain('region:non-rattache');
     const h = sectionOf('axes', { overview: o })?.html ?? '';
-    expect(h.match(/<tr><th scope="row">/g)).toHaveLength(7);
+    expect(h.match(/<tr><th scope="row">/g)).toHaveLength(8);
     expect(h).toContain('Non rattaché</th>');
     const sel = sectionOf('trains', { overview: o, filter: 'axis:non-rattache' })?.html ?? '';
     expect(visibleText(sel)).toContain('n° 5001');

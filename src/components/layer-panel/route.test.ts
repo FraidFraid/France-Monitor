@@ -29,7 +29,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(v.head.figure).toEqual({
       value: '64', caption: 'incidents en cours sur le réseau national · dont 4 accidents · DIR, 14:57', level: undefined,
     });
-    expect(v.head.status).toEqual([glueUnits(roadLevel(roadNationalFixture()).reason), 'DIR 14:57 · TomTom 15:00']);
+    expect(v.head.status).toEqual([glueUnits(roadLevel(roadNationalFixture()).reason), 'DIR\u00A014:57 · TomTom\u00A015:00']);
     expect(v.head.lead).toBe(`4 accidents en cours, le plus récent à 14:44 (A55). A63 coupée (Cestas à Pessac) depuis 09:25. Paris : 169,5${NBSP}km de bouchons.`);
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--jaune">64</b>');
     expect(html()).toContain('fm-vig--jaune');
@@ -158,7 +158,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     const h = v.sections.find((s) => s.id === 'agglos')?.html ?? '';
     expect(h).toContain('Source indisponible : collecte TomTom des agglomérations.');
     expect(h).toContain(`<th scope="row">Marseille</th><td class="lp-faint">n.d.</td><td class="lp-faint">n.d.</td><td><span class="lp-val fmk-num lp-lvl lp-lvl--rouge">7${NBSP}%</span></td>`);
-    expect(v.head.status[1]).toBe('DIR 14:57 · TomTom injoignable');
+    expect(v.head.status[1]).toBe('DIR\u00A014:57 · TomTom injoignable');
   });
   it('erreur sans donnée, erreur avec données, vide, chargement : jamais une liste vide silencieuse', () => {
     const failed = view({ national: null, nationalError: 'HTTP 500' });
@@ -192,8 +192,8 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
   it('période réelle de chaque partie (T1, S1) : jamais « temps réel »', () => {
     const t = visibleText(html()).toLowerCase();
     expect(t).not.toContain('temps réel');
-    expect(t).toContain('dir 14:57');
-    expect(t).toContain('tomtom 15:00');
+    expect(t).toContain('dir\u00A014:57');
+    expect(t).toContain('tomtom\u00A015:00');
     expect(sectionOf('agglos')?.html).toContain(`fichiers de ${'15:06'}`);
   });
 });

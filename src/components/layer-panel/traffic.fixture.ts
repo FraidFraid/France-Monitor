@@ -273,9 +273,10 @@ export function railOverviewFixture(): RailOverviewResponse {
     updatedAt: '2026-10-03T15:10:29+02:00',
     longDistance: { active: 37, delayed15: 20 },
     axes: [
-      group('sud-est', 'Sud-Est', 6, 56.7, 140), group('province', 'Province, transversales', 21, 23.6, 90, 1, 1),
-      group('atlantique', 'Atlantique', 4, 15, 20), group('intercites-bercy', 'Intercités Bercy', 3, 6.7, 10),
-      group('est', 'Est', 2, 10, 15), group('nord', 'Nord', 1, 10, 10, 0, 1),
+      // Les sept axes, toujours, dans l'ordre du serveur (AXIS_ORDER) ; Normandie sans train ce jour-là.
+      group('sud-est', 'Sud-Est', 6, 56.7, 140), group('atlantique', 'Atlantique', 4, 15, 20), group('nord', 'Nord', 1, 10, 10, 0, 1),
+      group('est', 'Est', 2, 10, 15), group('intercites-bercy', 'Intercités Bercy', 3, 6.7, 10), group('normandie', 'Normandie', 0, null, null),
+      group('province', 'Province, transversales', 21, 23.6, 90, 1, 1),
     ],
     regions: [
       group('occitanie', 'Occitanie', 5, 58, 180, 0, 1), group('paca', 'Provence-Alpes-Côte d’Azur', 6, 52.5, 200, 0, 1),
@@ -288,6 +289,19 @@ export function railOverviewFixture(): RailOverviewResponse {
     trains: [...TRAINS],
     errors: [],
   });
+}
+
+/** Variante : un 8e groupe « Non rattaché » (grandes lignes en cours sans axe), avec ses deux trains à axe nul. */
+export function railOverviewUnattachedFixture(): RailOverviewResponse {
+  const o = railOverviewFixture();
+  o.axes.push(group('non-rattache', 'Non rattaché', 2, 12, 20));
+  o.trains.push(
+    train({ id: 'SNCF:2026-10-03:5001', number: '5001', origin: 'Metz', destination: 'Nice', effect: 'retard', delayMin: 20,
+      stops: [stop('Metz', 49.1096, 6.1771, 0), stop('Nice', 43.7045, 7.2619, 20)] }),
+    train({ id: 'SNCF:2026-10-03:5002', number: '5002', origin: 'Strasbourg', destination: 'Lyon Part-Dieu', effect: 'retard', delayMin: 4,
+      stops: [stop('Strasbourg', 48.585, 7.7348, 0), stop('Lyon Part-Dieu', 45.7606, 4.8593, 4)] }),
+  );
+  return o;
 }
 
 const SITUATIONS: readonly RailSituation[] = [

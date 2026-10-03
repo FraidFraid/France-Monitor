@@ -3,7 +3,9 @@
 // bouchon d'agglomération lit la vitesse du tronçon (/api/traffic/flow, budget tenu par le serveur).
 import type { RoadNationalResponse, RoadUrbanResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
-import { loadSlot, trafficSlotStatus, type SourceSlot, type TrafficStatus } from './traffic-source.ts';
+import {
+  isBool, isNum, isNumOrNull, isPoint, isStr, isStrOrNull, listOf, loadSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+} from './traffic-source.ts';
 
 export const ROAD_NATIONAL_URL = '/api/traffic/road-national';
 export const ROAD_URBAN_URL = '/api/traffic/road-urban';
@@ -12,28 +14,50 @@ export const ROAD_TTL_MS = 4 * 60_000;
 
 export interface RoadTrafficState { national: SourceSlot<RoadNationalResponse>; urban: SourceSlot<RoadUrbanResponse> }
 
-const isDateOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
+const ROAD_KINDS: ReadonlySet<string> = new Set(['accident', 'obstruction', 'queue', 'weather', 'closure', 'lane', 'works', 'info']);
+const SECTION_STATUS: ReadonlySet<string> = new Set(['freeFlow', 'heavy', 'congested', 'unknown']);
+
+const isRoadEvent = (e: Record<string, unknown>): boolean => isStr(e.id) && isStr(e.kind) && ROAD_KINDS.has(e.kind) && isStr(e.subtype)
+  && isStr(e.label) && isStrOrNull(e.road) && isStrOrNull(e.place) && isStrOrNull(e.direction) && isStr(e.dir) && isStr(e.start)
+  && isStrOrNull(e.end) && isBool(e.safety) && isBool(e.planned) && isBool(e.longTerm) && isNumOrNull(e.lat) && isNumOrNull(e.lon)
+  && isStr(e.detail);
+const isDirCount = (e: Record<string, unknown>): boolean => isStr(e.dir) && isNum(e.incidents);
+const isSpeedStation = (e: Record<string, unknown>): boolean => isStr(e.id) && isStr(e.dir) && isStrOrNull(e.road) && isNum(e.speed)
+  && isNumOrNull(e.flow) && isNumOrNull(e.lat) && isNumOrNull(e.lon);
+const isOfficialAgglo = (e: Record<string, unknown>): boolean => isStr(e.network) && isStr(e.label) && isStr(e.at)
+  && numbersIn(e, ['sections', 'freeFlow', 'heavy', 'congested', 'unknown']) && isNumOrNull(e.congestedPct);
+const isSection = (e: Record<string, unknown>): boolean => isStr(e.id) && isStr(e.network) && isStr(e.status) && SECTION_STATUS.has(e.status)
+  && Array.isArray(e.path) && e.path.every(isPoint);
+const isConcededJam = (e: Record<string, unknown>): boolean => isStr(e.motorway) && isNumOrNull(e.lengthKm) && isStrOrNull(e.from)
+  && isStrOrNull(e.to) && isStrOrNull(e.operator) && (e.importance === 1 || e.importance === 2 || e.importance === 3) && isStr(e.text);
 
 export function isRoadNationalResponse(v: unknown): v is RoadNationalResponse {
-  if (!isRecord(v) || !isDateOrNull(v.publishedAt) || !Array.isArray(v.events) || !Array.isArray(v.longTerm) || !Array.isArray(v.byDir)
-    || !Array.isArray(v.agglos) || !Array.isArray(v.sections) || !isStringArray(v.errors)) return false;
+  if (!isRecord(v) || !isStrOrNull(v.publishedAt) || !isStringArray(v.errors)) return false;
   const { counts, speeds, conceded } = v;
-  return isRecord(counts) && typeof counts.incidents === 'number' && typeof counts.accidents === 'number'
-    && isRecord(speeds) && Array.isArray(speeds.slowest) && isRecord(conceded) && Array.isArray(conceded.jams)
-    && v.events.every((e: unknown) => isRecord(e) && typeof e.id === 'string' && typeof e.kind === 'string' && typeof e.label === 'string'
-      && typeof e.start === 'string');
+  return listOf(v.events, isRoadEvent) && listOf(v.longTerm, isRoadEvent) && listOf(v.byDir, isDirCount)
+    && numbersIn(counts, ['incidents', 'accidents', 'closures', 'obstructions', 'weather', 'works'])
+    && isRecord(speeds) && isStrOrNull(speeds.at) && numbersIn(speeds, ['stations', 'under50']) && isNumOrNull(speeds.median)
+    && listOf(speeds.slowest, isSpeedStation)
+    && listOf(v.agglos, isOfficialAgglo) && listOf(v.sections, isSection)
+    && isRecord(conceded) && isStrOrNull(conceded.at) && listOf(conceded.jams, isConcededJam);
 }
 
+const isUrbanJam = (e: Record<string, unknown>): boolean => isStrOrNull(e.road) && isStrOrNull(e.from) && isStrOrNull(e.to)
+  && numbersIn(e, ['lengthKm', 'delayMin', 'lat', 'lon']) && (e.magnitude === 1 || e.magnitude === 2 || e.magnitude === 3)
+  && isStrOrNull(e.start) && Array.isArray(e.path) && e.path.every(isPoint);
+const isUrbanAgglo = (e: Record<string, unknown>): boolean => isStr(e.name) && numbersIn(e, ['jams', 'jamKm', 'delayMin']) && isStr(e.collectedAt)
+  && (e.longest === null || (isRecord(e.longest) && isUrbanJam(e.longest)));
+
 export function isRoadUrbanResponse(v: unknown): v is RoadUrbanResponse {
-  return isRecord(v) && isDateOrNull(v.collectedAt) && Array.isArray(v.agglos) && Array.isArray(v.jams) && isRecord(v.quota)
-    && isStringArray(v.errors) && v.agglos.every((a: unknown) => isRecord(a) && typeof a.name === 'string' && typeof a.jamKm === 'number');
+  return isRecord(v) && isStrOrNull(v.collectedAt) && listOf(v.agglos, isUrbanAgglo) && listOf(v.jams, isUrbanJam)
+    && numbersIn(v.quota, ['callsToday', 'limit']) && isStringArray(v.errors);
 }
 
 /** Ne rejette jamais : une route en échec porte `error` et garde ses dernières données. */
 export async function fetchRoadTraffic(previous: RoadTrafficState | null, now: number = Date.now()): Promise<RoadTrafficState> {
   const [national, urban] = await Promise.all([
-    loadSlot(ROAD_NATIONAL_URL, ROAD_TTL_MS, previous?.national, now, isRoadNationalResponse),
-    loadSlot(ROAD_URBAN_URL, ROAD_TTL_MS, previous?.urban, now, isRoadUrbanResponse),
+    loadSlot(ROAD_NATIONAL_URL, ROAD_TTL_MS, previous?.national, now, isRoadNationalResponse, 'des DIR'),
+    loadSlot(ROAD_URBAN_URL, ROAD_TTL_MS, previous?.urban, now, isRoadUrbanResponse, 'TomTom'),
   ]);
   return { national, urban };
 }
@@ -68,10 +92,18 @@ export async function fetchTrafficFlowSegment(lat: number, lon: number, zoom = 1
     if (!isRecord(json) || json.detailedError !== undefined) return null;
     // L'API TomTom v4 imbrique les valeurs sous `flowSegmentData`.
     const p = isRecord(json.flowSegmentData) ? json.flowSegmentData : json;
-    const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
+    const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const currentSpeed = num(p.currentSpeed);
+    const freeFlowSpeed = num(p.freeFlowSpeed);
+    const currentTravelTime = num(p.currentTravelTime);
+    const freeFlowTravelTime = num(p.freeFlowTravelTime);
+    const confidence = num(p.confidence);
+    // Un champ absent ou illisible : tronçon indisponible (n.d.), jamais un zéro inventé ni mis en cache.
+    if (currentSpeed === null || freeFlowSpeed === null || currentTravelTime === null || freeFlowTravelTime === null || confidence === null) {
+      return null;
+    }
     const segment: TrafficFlowSegment = {
-      currentSpeed: num(p.currentSpeed), freeFlowSpeed: num(p.freeFlowSpeed), currentTravelTime: num(p.currentTravelTime),
-      freeFlowTravelTime: num(p.freeFlowTravelTime), confidence: num(p.confidence), roadClosure: p.roadClosure === true,
+      currentSpeed, freeFlowSpeed, currentTravelTime, freeFlowTravelTime, confidence, roadClosure: p.roadClosure === true,
       ...(typeof p.frc === 'string' ? { frc: p.frc } : {}),
     };
     flowCache.set(key, { data: segment, at: now });

@@ -2,7 +2,8 @@
 // partagée avec la santé (HTTP non 2xx, corps illisible ou forme inattendue = erreur), cache par URL sous la relève d'App.ts,
 // jamais de rejet ; panneau des sources sur la date de la donnée et le retard propre à chaque source (isTrafficDataLate).
 import type { DataSourceStatus } from '../types/index.ts';
-import { readHealthJsonShared, type SourceSlot } from './health-surveillance.ts';
+import { absoluteTime } from '../components/fiche/kit.ts';
+import { isRecord, readHealthJsonShared, type SourceSlot } from './health-surveillance.ts';
 import { isTrafficDataLate, type TrafficSource } from './traffic-levels.ts';
 
 export type { SourceSlot };
@@ -18,19 +19,37 @@ export function emptySlot<T>(): SourceSlot<T> {
  * dernières données et porte le message (S3) ; un échec n'est jamais mis en cache.
  */
 export async function loadSlot<T>(
-  url: string, ttlMs: number, previous: SourceSlot<T> | undefined, now: number, guard: (v: unknown) => v is T,
+  url: string, ttlMs: number, previous: SourceSlot<T> | undefined, now: number, guard: (v: unknown) => v is T, name = 'de la source',
 ): Promise<SourceSlot<T>> {
   const hit = cache.get(url);
   if (hit && now - hit.at < ttlMs && guard(hit.data)) return { data: hit.data, error: null, fetchedAt: hit.at };
   try {
     const json = await readHealthJsonShared(url);
-    if (!guard(json)) throw new Error('réponse inattendue');
+    if (!guard(json)) throw new Error(`réponse ${name} mal formée`);
     cache.set(url, { data: json, at: now });
     return { data: json, error: null, fetchedAt: now };
   } catch (err) {
     return { data: previous?.data ?? null, error: err instanceof Error ? err.message : 'erreur inconnue', fetchedAt: previous?.fetchedAt ?? null };
   }
 }
+
+// ─── Petits prédicats de forme, partagés par les gardes des quatre services ───
+
+export const isStr = (v: unknown): v is string => typeof v === 'string';
+export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+export const isStrOrNull = (v: unknown): boolean => v === null || typeof v === 'string';
+export const isNumOrNull = (v: unknown): boolean => v === null || isNum(v);
+export const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+/** Liste dont chaque élément passe `item`. */
+export function listOf(v: unknown, item: (e: Record<string, unknown>) => boolean): boolean {
+  return Array.isArray(v) && v.every((e: unknown) => isRecord(e) && item(e));
+}
+/** Vrai si `v` est un objet dont chaque champ numérique de `keys` est un nombre fini. */
+export function numbersIn(v: unknown, keys: readonly string[]): boolean {
+  return isRecord(v) && keys.every((k) => isNum(v[k]));
+}
+/** Point `[lon, lat]`. */
+export const isPoint = (v: unknown): boolean => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
 
 /** Tests seulement : vide le cache des réponses. */
 export function resetTrafficSourceCache(): void {
@@ -42,13 +61,6 @@ export function dataMs(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
-}
-
-function parisClock(ms: number, now: number): string {
-  const day = (v: number): string => new Date(v).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
-  const clock = new Date(ms).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
-  if (day(ms) === day(now)) return clock;
-  return `${new Date(ms).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} ${clock}`;
 }
 
 export type TrafficStatus = Pick<DataSourceStatus, 'status' | 'lastUpdate' | 'error' | 'period'>;
@@ -71,6 +83,6 @@ export function trafficSlotStatus<T extends { errors: string[] }>(
     status: errors.length > 0 || late ? 'stale' : 'ok',
     lastUpdate: ms === null ? null : new Date(ms),
     error: errors.length > 0 ? errors.join(' ; ') : undefined,
-    period: ms === null ? 'n.d.' : `${parisClock(ms, now)}${late ? ' (en retard)' : ''}`,
+    period: ms === null ? 'n.d.' : `${absoluteTime(ms, now, 'fr')}${late ? ' (en retard)' : ''}`,
   };
 }

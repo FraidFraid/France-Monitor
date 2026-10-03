@@ -31,9 +31,16 @@ export function formatMeters(v: number | null | undefined): string { return with
 export function formatNm(v: number | null | undefined, digits = 1): string { return withUnit(v, digits, 'milles'); }
 export function formatKnots(v: number | null | undefined, digits = 1): string { return withUnit(v, digits, 'nœuds'); }
 export function formatCount(v: number | null | undefined): string { return ok(v) ? frNumber(v, 0) : ND; }
-/** Part en % : une décimale sous 1 %, entier au-delà (« 0,4 % », « 7 % »). */
+/**
+ * Part en % : « < 0,1 % » sous 0,1 ; une décimale sous 1 (« 0,4 % ») ; entier dès 1 (« 7 % », « 12 % »). Une part arrondie à 1,0
+ * s'écrit « 1 % » : jamais « 0,0 % » pour une part non nulle, jamais une décimale inutile.
+ */
 export function formatShare(v: number | null | undefined): string {
-  return ok(v) ? `${frNumber(v, Math.abs(v) < 1 ? 1 : 0)}${NBSP}%` : ND;
+  if (!ok(v)) return ND;
+  const abs = Math.abs(v);
+  if (abs > 0 && abs < 0.1) return `<${NBSP}0,1${NBSP}%`;
+  const digits = abs > 0 && abs < 0.95 ? 1 : 0;
+  return `${frNumber(v, digits)}${NBSP}%`;
 }
 
 /** Heure de Paris de la donnée : « hh:mm » le jour même, « jj/mm hh:mm » sinon ; « n.d. » si absente ou illisible. */
@@ -60,8 +67,8 @@ export function shortDate(iso: string | null | undefined, now: number): string {
 
 /** Source et heure de sa donnée (« DIR 14:57 », « TomTom 15:00 (en retard) », « SNCF n.d. »). */
 export function stamp(label: string, iso: string | null | undefined, late: boolean, now: number): string {
-  const clock = clockOf(iso, now);
-  return `${label} ${clock}${late && clock !== ND ? ' (en retard)' : ''}`;
+  const clock = clockOf(iso, now).replace(' ', NBSP);
+  return `${label}${NBSP}${clock}${late && clock !== ND ? `${NBSP}(en retard)` : ''}`;
 }
 
 /** « 4 accidents », « 1 bouchon », « 0 coupure ». */
@@ -97,7 +104,10 @@ export function readErrors(errors: readonly string[]): string {
   return errors.length > 0 ? note(`Incidents de lecture : ${errors.join(' ; ')}.`) : '';
 }
 
-const TRAFFIC_BREAKABLE = /\d+(?:[,.]\d+)? (?:km\/h|km|min|milles|nœuds|ft|m|h)\b/;
+/** Unités des trafics ; l'unité s'arrête là où finit un mot (« 5 mètres » n'est pas « 5 m »). */
+const UNITS = String.raw`(?:km\/h|km|min|milles|nœuds|ft|m|h|%)(?![\p{L}\p{N}])`;
+const TRAFFIC_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}`, 'u');
+const GLUE_UNITS = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS})`, 'gu');
 
 /** Contrôle R1 des unités des trafics, en complément de `breakableValue` (format.ts) : premier « nombre, espace sécable, unité ». */
 export function trafficBreakable(text: string): string | null {
@@ -106,7 +116,7 @@ export function trafficBreakable(text: string): string | null {
 
 /** Phrases de la partie A (raisons des pastilles, espaces ordinaires) : espace insécable entre un nombre et son unité (R1). */
 export function glueUnits(text: string): string {
-  return text.replace(/(\d(?:[,.]\d+)?) (km\/h|km|min|milles|nœuds|ft|m|h)\b/g, `$1${NBSP}$2`);
+  return text.replace(GLUE_UNITS, `$1${NBSP}$2`);
 }
 
 /** Trajectoires inhabituelles : clés de la partie A (tâche 6), libellés en minuscules pour la ligne « indicatif · type ». */
@@ -121,7 +131,7 @@ export function anomalyLabel(kind: string): string {
 
 /** « 45,673 N 0,140 E » (police du texte, jamais à chasse fixe). */
 export function coordText(lat: number, lon: number): string {
-  return `${frNumber(Math.abs(lat), 3)} ${lat >= 0 ? 'N' : 'S'} ${frNumber(Math.abs(lon), 3)} ${lon >= 0 ? 'E' : 'O'}`;
+  return `${frNumber(Math.abs(lat), 3)}${NBSP}${lat >= 0 ? 'N' : 'S'}${NBSP}${frNumber(Math.abs(lon), 3)}${NBSP}${lon >= 0 ? 'E' : 'O'}`;
 }
 
 // ─── Puces et couleurs (arbitrage 7), partagées par les vues et la carte ───

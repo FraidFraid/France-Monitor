@@ -3,7 +3,9 @@
 import type { AirOverviewResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import { isTrafficDataLate } from './traffic-levels.ts';
-import { dataMs, loadSlot, trafficSlotStatus, type SourceSlot, type TrafficStatus } from './traffic-source.ts';
+import {
+  dataMs, isBool, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+} from './traffic-source.ts';
 
 export const AIR_OVERVIEW_URL = '/api/traffic/air-overview';
 /** Cache client : 90 s, sous la relève du panneau aérien de 2 min (App.ts). */
@@ -11,19 +13,29 @@ export const AIR_OVERVIEW_TTL_MS = 90_000;
 
 export interface AirOverviewState { overview: SourceSlot<AirOverviewResponse> }
 
+const SQUAWKS: ReadonlySet<string> = new Set(['7500', '7600', '7700']);
+
+const isEmergency = (e: Record<string, unknown>): boolean => isStr(e.icao24) && isStrOrNull(e.callsign) && isStr(e.squawk) && SQUAWKS.has(e.squawk)
+  && numbersIn(e, ['lat', 'lon']) && isNumOrNull(e.altitudeM) && isStr(e.firstSeen) && isStr(e.lastSeen) && isBool(e.overFrance);
+const isWindow = (w: unknown): boolean => w === undefined || w === null || (isRecord(w) && isStr(w.begin) && isStr(w.end));
+const isBoard = (b: unknown): boolean => b === undefined || b === null || (isRecord(b) && numbersIn(b, ['delayed', 'cancelled']) && isStr(b.at));
+/** Départs : absents ou null quand le serveur n'en a pas relevé (« départs non relevés »), jamais une panne. */
+const isAirport = (a: Record<string, unknown>): boolean => isStr(a.icao) && isStr(a.iata) && isStr(a.name) && numbersIn(a, ['lat', 'lon', 'onGround', 'approaching'])
+  && (a.departures === undefined || isNumOrNull(a.departures)) && isWindow(a.departuresWindow) && isBoard(a.board);
+const isAnomaly = (a: Record<string, unknown>): boolean => isStrOrNull(a.callsign) && isStr(a.kind) && isStrOrNull(a.airport) && isStr(a.at);
+const isSample = (a: Record<string, unknown>): boolean => isStr(a.at) && numbersIn(a, ['airborneZone', 'airborneFrance']);
+
 export function isAirOverviewResponse(v: unknown): v is AirOverviewResponse {
-  return isRecord(v) && (v.at === null || typeof v.at === 'string') && typeof v.airborneZone === 'number'
-    && typeof v.airborneFrance === 'number' && typeof v.onGround === 'number' && Array.isArray(v.emergencies)
-    && Array.isArray(v.emergencyLog) && Array.isArray(v.airports) && isRecord(v.volume) && Array.isArray(v.volume.samples)
-    && Array.isArray(v.volume.sameHourPrevDays) && Array.isArray(v.anomalies) && isRecord(v.credits) && isStringArray(v.errors)
-    && v.airports.every((a: unknown) => isRecord(a) && typeof a.icao === 'string' && typeof a.lat === 'number' && typeof a.lon === 'number'
-      && (a.departures === undefined || a.departures === null || typeof a.departures === 'number')
-      && (a.departuresWindow === undefined || a.departuresWindow === null || isRecord(a.departuresWindow)));
+  if (!isRecord(v) || !isStrOrNull(v.at) || !numbersIn(v, ['airborneZone', 'airborneFrance', 'onGround']) || !isStringArray(v.errors)) return false;
+  const { volume, credits } = v;
+  return listOf(v.emergencies, isEmergency) && listOf(v.emergencyLog, isEmergency) && listOf(v.airports, isAirport)
+    && isRecord(volume) && listOf(volume.samples, isSample) && Array.isArray(volume.sameHourPrevDays) && volume.sameHourPrevDays.every(isNum)
+    && listOf(v.anomalies, isAnomaly) && isRecord(credits) && isNumOrNull(credits.remaining);
 }
 
 /** Ne rejette jamais. */
 export async function fetchAirOverview(previous: AirOverviewState | null, now: number = Date.now()): Promise<AirOverviewState> {
-  return { overview: await loadSlot(AIR_OVERVIEW_URL, AIR_OVERVIEW_TTL_MS, previous?.overview, now, isAirOverviewResponse) };
+  return { overview: await loadSlot(AIR_OVERVIEW_URL, AIR_OVERVIEW_TTL_MS, previous?.overview, now, isAirOverviewResponse, 'OpenSky') };
 }
 
 /** Panneau des sources (« Trafic aérien ») : date de l'état OpenSky. */
@@ -39,7 +51,7 @@ export function airDeparturesEnd(data: AirOverviewResponse | null): string | nul
   let best: string | null = null;
   let bestMs = -Infinity;
   for (const a of data?.airports ?? []) {
-    const end = a.departures !== null && a.departures !== undefined ? a.departuresWindow?.end ?? null : null;
+    const end = a.departures !== null && a.departures !== undefined && typeof a.departuresWindow?.end === 'string' ? a.departuresWindow.end : null;
     const ms = dataMs(end);
     if (end !== null && ms !== null && ms > bestMs) { best = end; bestMs = ms; }
   }

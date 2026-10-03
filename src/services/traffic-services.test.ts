@@ -1,8 +1,8 @@
 // src/services/traffic-services.test.ts
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  TRAFFIC_NOW, airOverviewFixture, maritimeSnapshotFixture, railOverviewFixture, railSituationsFixture, roadNationalFixture, roadStateFixture,
-  roadUrbanFixture,
+  TRAFFIC_NOW, airOverviewFixture, airStateFixture, maritimeSnapshotFixture, maritimeStateFixture, railOverviewFixture, railOverviewUnattachedFixture,
+  railSituationsFixture, railStateFixture, roadNationalFixture, roadStateFixture, roadUrbanFixture,
 } from '../components/layer-panel/traffic.fixture.ts';
 import { resetHealthSurveillanceCache } from './health-surveillance.ts';
 import { resetTrafficSourceCache } from './traffic-source.ts';
@@ -64,7 +64,7 @@ describe('trafic routier : lecture client (spec trafics § 2.1, § 2.2, T4)', ()
     resetHealthSurveillanceCache();
     stubFetch({ [ROAD_NATIONAL_URL]: { status: 200, body: { events: 'x' } } });
     const none = await fetchRoadTraffic(null, TRAFFIC_NOW + 2000);
-    expect(none.national).toEqual({ data: null, error: 'réponse inattendue', fetchedAt: null });
+    expect(none.national).toEqual({ data: null, error: 'réponse des DIR mal formée', fetchedAt: null });
   });
   it('gardes de forme', () => {
     expect(isRoadNationalResponse(roadNationalFixture())).toBe(true);
@@ -195,5 +195,87 @@ describe('trafic maritime : instantané du relais (spec § 2.5)', () => {
     const sum = Object.values(maritimeSnapshotFixture().byType).reduce((a, b) => a + b, 0);
     expect(Object.keys(maritimeSnapshotFixture().byType)).toHaveLength(11);
     expect(sum).toBe(maritimeSnapshotFixture().vessels);
+  });
+});
+
+describe('gardes d\u2019éléments : un élément mal formé rejette toute la réponse', () => {
+  const bad = { id: 1 };
+  const withKey = <T extends object>(base: T, patch: Record<string, unknown>): unknown => ({ ...base, ...patch });
+  it('route : chaque liste rendue est vérifiée élément par élément', () => {
+    const n = roadNationalFixture();
+    for (const k of ['longTerm', 'byDir', 'agglos', 'sections'] as const) expect(isRoadNationalResponse(withKey(n, { [k]: [bad] })), k).toBe(false);
+    expect(isRoadNationalResponse(withKey(n, { events: [{ ...n.events[0], lat: 'x' }] }))).toBe(false);
+    expect(isRoadNationalResponse(withKey(n, { conceded: { at: null, jams: [bad] } }))).toBe(false);
+    expect(isRoadNationalResponse(withKey(n, { speeds: { ...n.speeds, slowest: [bad] } }))).toBe(false);
+    const u = roadUrbanFixture();
+    expect(isRoadUrbanResponse(withKey(u, { jams: [bad] }))).toBe(false);
+    expect(isRoadUrbanResponse(withKey(u, { agglos: [{ ...u.agglos[0], delayMin: null }] }))).toBe(false);
+  });
+  it('air : urgences, aéroports, trajectoires, échantillons ; départs absents acceptés', () => {
+    const a = airOverviewFixture();
+    for (const k of ['emergencies', 'emergencyLog', 'airports', 'anomalies'] as const) expect(isAirOverviewResponse(withKey(a, { [k]: [bad] })), k).toBe(false);
+    expect(isAirOverviewResponse(withKey(a, { volume: { samples: [bad], sameHourPrevDays: [] } }))).toBe(false);
+    expect(isAirOverviewResponse(withKey(a, { airports: [{ ...a.airports[0], departuresWindow: { begin: 'x', end: 3 } }] }))).toBe(false);
+    const { departures: _d, departuresWindow: _w, ...noDepartures } = a.airports[0];
+    expect(isAirOverviewResponse(withKey(a, { airports: [noDepartures] }))).toBe(true);
+  });
+  it('rail : groupes, trains et arrêts, situations', () => {
+    const o = railOverviewFixture();
+    for (const k of ['axes', 'regions', 'topDelays', 'trains'] as const) expect(isRailOverviewResponse(withKey(o, { [k]: [bad] })), k).toBe(false);
+    expect(isRailOverviewResponse(withKey(o, { trains: [{ ...o.trains[0], stops: 'x' }] }))).toBe(false);
+    expect(isRailOverviewResponse(withKey(o, { trains: [{ ...o.trains[0], stops: [{ name: 'a' }] }] }))).toBe(false);
+    expect(isRailSituationsResponse(withKey(railSituationsFixture(), { situations: [bad] }))).toBe(false);
+  });
+  it('rail : sept axes dont Normandie à zéro train, ou huit avec « Non rattaché » et des trains sans axe', () => {
+    const o = railOverviewFixture();
+    expect(o.axes.map((g) => g.key)).toEqual(['sud-est', 'atlantique', 'nord', 'est', 'intercites-bercy', 'normandie', 'province']);
+    expect(o.axes.find((g) => g.key === 'normandie')?.trains).toBe(0);
+    const u = railOverviewUnattachedFixture();
+    expect(u.axes).toHaveLength(8);
+    expect(u.axes[7]).toMatchObject({ key: 'non-rattache', label: 'Non rattaché' });
+    expect(u.trains.filter((t) => t.axis === null && t.kind === 'grandes-lignes')).toHaveLength(2);
+    expect(isRailOverviewResponse(u)).toBe(true);
+  });
+  it('maritime : zones, ports, signalements, navires sensibles, onze types exactement', () => {
+    const m = maritimeSnapshotFixture();
+    for (const k of ['zones', 'ports', 'signals'] as const) expect(isMaritimeSnapshot(withKey(m, { [k]: [bad] })), k).toBe(false);
+    expect(isMaritimeSnapshot(withKey(m, { sensitive: { ...m.sensitive, list: [bad] } }))).toBe(false);
+    expect(isMaritimeSnapshot(withKey(m, { byType: {} }))).toBe(false);
+    expect(isMaritimeSnapshot(withKey(m, { byType: { ...m.byType, extra: 1 } }))).toBe(false);
+    expect(isMaritimeSnapshot(withKey(m, { info: { restricted: 1 } }))).toBe(false);
+  });
+  it('air, rail, maritime : page HTML ou forme inattendue = erreur nommée, dernières données gardées avec leur propre date', async () => {
+    const later = TRAFFIC_NOW + 1000;
+    stubFetch({ [AIR_OVERVIEW_URL]: { status: 200, html: true } });
+    expect((await fetchAirOverview(airStateFixture(), later)).overview).toEqual({ data: airOverviewFixture(), error: 'réponse illisible', fetchedAt: TRAFFIC_NOW });
+    stubFetch({ [AIR_OVERVIEW_URL]: { status: 200, body: { ...airOverviewFixture(), airports: [bad] } } });
+    expect((await fetchAirOverview(airStateFixture(), later)).overview)
+      .toEqual({ data: airOverviewFixture(), error: 'réponse OpenSky mal formée', fetchedAt: TRAFFIC_NOW });
+    stubFetch({ [RAIL_OVERVIEW_URL]: { status: 200, html: true }, [RAIL_SITUATIONS_URL]: { status: 200, body: { at: null, situations: [bad], errors: [] } } });
+    const rail = await fetchRailTraffic(railStateFixture(), later);
+    expect(rail.overview).toEqual({ data: railOverviewFixture(), error: 'réponse illisible', fetchedAt: TRAFFIC_NOW });
+    expect(rail.situations).toEqual({ data: railSituationsFixture(), error: 'réponse SIRI SX mal formée', fetchedAt: TRAFFIC_NOW });
+    stubFetch({ [SNAPSHOT_URL]: { status: 200, html: true } });
+    expect((await fetchMaritimeSnapshot(maritimeStateFixture(), 'wss://www.francemonitor.com/relay', later)).snapshot)
+      .toEqual({ data: maritimeSnapshotFixture(), error: 'réponse illisible', fetchedAt: TRAFFIC_NOW });
+    resetTrafficSourceCache();
+    resetHealthSurveillanceCache();
+    stubFetch({ [SNAPSHOT_URL]: { status: 200, body: { ...maritimeSnapshotFixture(), zones: [bad] } } });
+    expect((await fetchMaritimeSnapshot(maritimeStateFixture(), 'wss://www.francemonitor.com/relay', later)).snapshot.error)
+      .toBe('réponse AIS mal formée');
+  });
+});
+
+describe('flux d\u2019un tronçon : jamais de zéro inventé', () => {
+  const reply = (body: unknown): void => { vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body }))); };
+  it('champ absent, non fini ou textuel : tronçon indisponible, non mis en cache', async () => {
+    reply({});
+    expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toBeNull();
+    reply({ flowSegmentData: { currentSpeed: 16, freeFlowSpeed: Number.NaN, currentTravelTime: 1, freeFlowTravelTime: 1, confidence: 1 } });
+    expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toBeNull();
+    reply({ flowSegmentData: { currentSpeed: '16', freeFlowSpeed: 24, currentTravelTime: 1, freeFlowTravelTime: 1, confidence: 1 } });
+    expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toBeNull();
+    reply({ flowSegmentData: { currentSpeed: 16, freeFlowSpeed: 24, currentTravelTime: 100, freeFlowTravelTime: 90, confidence: 0.9 } });
+    expect(await fetchTrafficFlowSegment(45.1, 4.1, 10, TRAFFIC_NOW)).toMatchObject({ currentSpeed: 16, roadClosure: false });
   });
 });

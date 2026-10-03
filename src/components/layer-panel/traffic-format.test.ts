@@ -20,6 +20,11 @@ describe('formats des trafics (R1)', () => {
     expect(formatCount(1196)).toBe('1\u202F196');
     expect(formatShare(0.4)).toBe(`0,4${NBSP}%`);
     expect(formatShare(7.07)).toBe(`7${NBSP}%`);
+    expect(formatShare(12.4)).toBe(`12${NBSP}%`);
+    expect(formatShare(0.04)).toBe(`<${NBSP}0,1${NBSP}%`);
+    expect(formatShare(0.1)).toBe(`0,1${NBSP}%`);
+    expect(formatShare(0.96)).toBe(`1${NBSP}%`);
+    expect(formatShare(0)).toBe(`0${NBSP}%`);
     for (const f of [formatKm, formatKmh, formatMeters, formatNm, formatKnots, formatCount, formatShare]) expect(f(null)).toBe('n.d.');
     expect(formatMinutes(Number.NaN)).toBe('n.d.');
   });
@@ -28,6 +33,9 @@ describe('formats des trafics (R1)', () => {
     expect(trafficBreakable('sous 50 km/h')).toBe('50 km/h');
     expect(trafficBreakable('en 2 h')).toBe('2 h');
     expect(trafficBreakable('à 3,4 milles')).toBe('3,4 milles');
+    expect(trafficBreakable('un taux de 7 %')).toBe('7 %');
+    expect(trafficBreakable('à 5 mètres, 2 heures, 3 minutes')).toBeNull();
+    expect(glueUnits('à 5 mètres, 7 % de 12 km')).toBe(`à 5 mètres, 7${NBSP}% de 12${NBSP}km`);
     expect(trafficBreakable(`bouchon de 12${NBSP}km, 50${NBSP}km/h, 4 accidents, le 1 mars`)).toBeNull();
   });
   it('raisons de la partie A rendues insécables ; libellés des trajectoires inhabituelles', () => {
@@ -47,9 +55,9 @@ describe('formats des trafics (R1)', () => {
     expect(dateOf('2026-01-31T08:00:00+01:00')).toBe('31/01/2026');
     expect(shortDate(paris('00:00', '2026-06-01'), TRAFFIC_NOW)).toBe('01/06');
     expect(shortDate('2024-10-22T08:00:00+02:00', TRAFFIC_NOW)).toBe('22/10/2024');
-    expect(stamp('DIR', paris('14:57'), false, TRAFFIC_NOW)).toBe('DIR 14:57');
-    expect(stamp('DIR', paris('14:57'), true, TRAFFIC_NOW)).toBe('DIR 14:57 (en retard)');
-    expect(stamp('DIR', null, true, TRAFFIC_NOW)).toBe('DIR n.d.');
+    expect(stamp('DIR', paris('14:57'), false, TRAFFIC_NOW)).toBe(`DIR${NBSP}14:57`);
+    expect(stamp('DIR', paris('14:57'), true, TRAFFIC_NOW)).toBe(`DIR${NBSP}14:57${NBSP}(en retard)`);
+    expect(stamp('DIR', null, true, TRAFFIC_NOW)).toBe(`DIR${NBSP}n.d.`);
   });
   it('pluriels, repliement des accents, coordonnées', () => {
     expect(plural(4, 'accident')).toBe('4 accidents');
@@ -57,7 +65,8 @@ describe('formats des trafics (R1)', () => {
     expect(plural(0, 'coupure')).toBe('0 coupure');
     expect(plural(1301, 'aéronef')).toBe('1\u202F301 aéronefs');
     expect(fold(' Île-de-France ')).toBe('ile-de-france');
-    expect(coordText(45.673, -0.099)).toBe('45,673 N 0,099 O');
+    expect(coordText(48.5, 2.1)).toBe(`48,500${NBSP}N${NBSP}2,100${NBSP}E`);
+    expect(coordText(45.673, -0.099)).toBe(`45,673${NBSP}N${NBSP}0,099${NBSP}O`);
   });
   it('panne partielle : « source indisponible » quand la réponse signale une erreur, jamais « aucun »', () => {
     expect(emptyOrDown(['CNIR : HTTP 503'], 'Aucun bouchon.', 'CNIR')).toContain('Source indisponible : CNIR.');
