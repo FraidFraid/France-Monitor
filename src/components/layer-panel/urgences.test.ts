@@ -110,7 +110,7 @@ describe('vue Urgences et SOS Médecins (spec 2026-10-03 § 3.2)', () => {
   });
   it('hospitalisations après passage : sept syndromes, niveau saisonnier', () => {
     const s = sectionOf('hosp');
-    expect(s?.summary).toBe(`IRA 4,7${NBSP}% · toutes sous la moyenne saisonnière`);
+    expect(s?.summary).toBe(`IRA 4,7${NBSP}% · toutes sous les saisons précédentes`);
     expect((s?.html ?? '').match(/fmk-dot--vert/g)).toHaveLength(7);
   });
   it('méthode et sources : définition du taux, couverture, départements non agrégeables, retard', () => {
@@ -119,6 +119,13 @@ describe('vue Urgences et SOS Médecins (spec 2026-10-03 § 3.2)', () => {
       '62 associations SOS Médecins', 'valeurs non agrégeables', 'au-delà de 17 jours après la fin de la semaine',
       'jaune au-dessus, orange à 1,15 fois ce maximum ou plus, rouge à 1,5 fois ou plus']) expect(t).toContain(part);
     expect(sectionOf('method')?.summary).toBe('OSCOUR · SOS Médecins');
+    const noSos = syndromicFixture().departments.filter((dep) => dep.values.ira?.sos === null).length;
+    expect(t).toContain(`${noSos} départements sans association SOS Médecins`);
+  });
+  it('hospitalisations : données en retard ou moins de deux saisons de référence, comparaison n.d. sans affirmation', () => {
+    expect(sectionOf('hosp', { now: Date.parse('2026-10-20T00:00:00Z') })?.summary).toBe(`IRA 4,7${NBSP}% · comparaison saisonnière n.d.`);
+    const data = withData((d) => { for (const s of d.syndromes) s.france = s.france.filter((p) => p.week.startsWith('2026')); });
+    expect(sectionOf('hosp', { data })?.summary).toBe(`IRA 4,7${NBSP}% · comparaison saisonnière n.d.`);
   });
   it('en retard (17 jours après la fin de la semaine) : « (en retard) », pastille n.d., aucune couleur', () => {
     const now = Date.parse('2026-10-20T00:00:00Z');

@@ -247,10 +247,12 @@ function hospSection(d: SyndromicResponse, week: EpiWeek, late: boolean, open: O
   const rows = items.map(({ s, hosp, lv }) => listRow({
     text: ROW_LABEL[s.key], value: hosp === null ? 'n.d.' : formatPct(hosp, 1), level: lv === 'nd' ? 'gris' : lv,
   })).join('');
-  const high = items.filter((x) => x.lv !== 'nd' && LEVEL_RANK[x.lv] >= LEVEL_RANK.jaune).length;
+  const known = items.flatMap((x) => (x.lv === 'nd' ? [] : [{ ...x, lv: x.lv }]));
+  const high = known.filter((x) => LEVEL_RANK[x.lv] >= LEVEL_RANK.jaune).length;
   const ira = items.find((x) => x.s.key === 'ira');
-  const summary = `IRA ${ira && ira.hosp !== null ? formatPct(ira.hosp, 1) : 'n.d.'} · `
-    + (high === 0 ? 'toutes sous la moyenne saisonnière' : `${high} au-dessus de la moyenne saisonnière`);
+  const iraText = `IRA ${ira && ira.hosp !== null ? formatPct(ira.hosp, 1) : 'n.d.'}`;
+  const summary = known.length === 0 ? `${iraText} · comparaison saisonnière n.d.`
+    : `${iraText} · ${high === 0 ? 'toutes sous les saisons précédentes' : `${high} au-dessus des saisons précédentes`}`;
   return {
     id: 'hosp', title: 'Hospitalisations après passage', collapsible: true, open: open('hosp', false), summary: escapeHtml(summary),
     html: rows + note('Part des hospitalisations après passage pour le syndrome parmi les hospitalisations après passage avec un diagnostic '
@@ -264,6 +266,7 @@ function methodSection(d: SyndromicResponse | null, error: string | null, now: n
   const state = week
     ? `${epiWeekLabel(week)}, publiée le ${parisDay(d?.publishedAt)}${late ? ' (en retard)' : ''}${error !== null ? ' ; source injoignable au dernier essai' : ''}`
     : error !== null ? 'source indisponible' : 'chargement…';
+  const noSos = d ? d.departments.filter((dep) => dep.values.ira?.sos === null).length : 0;
   const html = kvRow('Urgences et SOS Médecins', `${sourceLinkHtml('Odissé (Santé publique France)', 'https://odisse.santepubliquefrance.fr')} · ${escapeHtml(state)}`)
     + note(`Part des passages : passages pour le syndrome (diagnostic principal ou associé) rapportés aux passages ayant au moins un diagnostic codé, `
       + `même âge et même zone ; ce n’est pas un taux ${PER_100K}. SOS Médecins : part des actes avec un diagnostic.`)
@@ -271,7 +274,7 @@ function methodSection(d: SyndromicResponse | null, error: string | null, now: n
       + 'zone : lieu de recours, pas domicile.')
     + note('Niveau saisonnier : comparaison au maximum de la même semaine des 3 saisons précédentes ; vert au plus ce maximum, '
       + 'jaune au-dessus, orange à 1,15 fois ce maximum ou plus, rouge à 1,5 fois ou plus ; n.d. avec moins de deux saisons de référence.')
-    + note('Départements : valeurs non agrégeables (Santé publique France), petits effectifs (valeurs extrêmes possibles) ; 55 départements sans association SOS Médecins.')
+    + note(`Départements : valeurs non agrégeables (Santé publique France), petits effectifs (valeurs extrêmes possibles)${d ? ` ; ${noSos} départements sans association SOS Médecins` : ''}.`)
     + note('Retard : au-delà de 17 jours après la fin de la semaine (publication le mercredi suivant) ; la donnée perd alors ses couleurs.')
     + (d && d.errors.length > 0 ? note(`Jeux en échec : ${d.errors.join(' ; ')}.`) : '');
   return { id: 'method', title: 'Méthode et sources', collapsible: true, open: open('method', false), tone: 'reference', summary: 'OSCOUR · SOS Médecins', html };
