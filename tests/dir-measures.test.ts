@@ -45,7 +45,8 @@ describe('sections Traficolor géolocalisées (amendement 3)', () => {
   const paths = parseRefDirPaths(fixtureText('refdir.csv'));
   const sections = buildSections('TraficMarius', parseTraficolor(fixtureText('traficolor-TraficMarius.xml')), paths);
   it('tracé début-fin reprojeté ; section sans géométrie absente', () => {
-    expect(sections).toHaveLength(24);
+    expect(sections).toHaveLength(13);
+    expect(sections.find((s) => s.id === 'MM213.J1')).toBeUndefined(); // début = fin: écartée
     expect(sections.find((s) => s.id === 'MM213.N1')).toBeUndefined();
     const s = sections.find((x) => x.id === 'MM213.p2');
     expect(s?.network).toBe('TraficMarius');
@@ -69,6 +70,10 @@ describe('vitesses mesurées (QTV réel, mesure de 15 h)', () => {
     expect(s.slowest).toHaveLength(10);
     expect(s.slowest[2]).toEqual({ id: 'MB731.B1', dir: 'DIR Sud-Ouest', road: 'A621', speed: 14.2, flow: 1100, lat: 43.62453, lon: 1.407806 });
     expect(s.slowest.every((x) => x.speed < 50 && (x.flow ?? 0) > 1000)).toBe(true);
+  });
+  it('débit sentinelle 9999999 : jamais une station lente', () => {
+    const s = summarizeSpeeds({ at: null, stations: [{ id: 'x', speed: 20, flow: 9_999_999 }] }, new Map());
+    expect([s.stations, s.under50]).toEqual([1, 0]);
   });
   it('station lente mais à faible débit : jamais comptée', () => {
     const s = summarizeSpeeds({ at: null, stations: [{ id: 'x', speed: 20, flow: 400 }, { id: 'y', speed: 9_999_999, flow: 2000 }] }, new Map());

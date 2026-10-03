@@ -77,22 +77,32 @@ function roundCoord(v) {
 }
 
 /**
- * Référentiel `refDir.csv` : identifiant → DIR, route, coordonnées du début de section. Les lignes de données
- * ont 19 colonnes pour un en-tête de 20 (`code_insee_commune` absent des données, constaté le 03/10/2026) :
- * l'en-tête est alors lu sans cette colonne.
- * @returns {Map<string, { dir: string, road: string | null, lat: number | null, lon: number | null }>}
+ * Lignes du référentiel `refDir.csv` sous forme d'objets colonne → valeur. Les lignes de données ont 19
+ * colonnes pour un en-tête de 20 (`code_insee_commune` absent des données, constaté le 03/10/2026) :
+ * l'en-tête est alors lu sans cette colonne. Une page HTML à la place du CSV : erreur.
  */
-export function parseRefDir(csv) {
-  const lines = String(csv ?? '').replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
+function readRefDirRows(csv) {
+  const lines = String(csv ?? '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
   if (!lines[0]?.startsWith('code_pme;')) throw new SyntaxError('refDir.csv : en-tête inattendu');
   const header = lines[0].split(';');
   const shortHeader = header.filter((h) => h !== 'code_insee_commune');
-  const out = new Map();
+  const rows = [];
   for (const line of lines.slice(1)) {
     const cells = line.split(';');
     const names = cells.length === header.length ? header : shortHeader;
     const row = Object.fromEntries(names.map((h, i) => [h, (cells[i] ?? '').trim()]));
-    if (!row.code_pme) continue;
+    if (row.code_pme) rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * Référentiel : identifiant → DIR, route, coordonnées du début de section.
+ * @returns {Map<string, { dir: string, road: string | null, lat: number | null, lon: number | null }>}
+ */
+export function parseRefDir(csv) {
+  const out = new Map();
+  for (const row of readRefDirRows(csv)) {
     const point = lambert93ToWgs84(Number(row.x_deb), Number(row.y_deb));
     const road = /^([A-Z]+)0*(\d.*)$/.exec(row.axe ?? '');
     out.set(row.code_pme, {
@@ -107,23 +117,19 @@ export function parseRefDir(csv) {
 
 /**
  * Géométrie des sections du référentiel (amendement 3) : identifiant → [[lon, lat] début, [lon, lat] fin],
- * seulement quand les deux extrémités sont lisibles. Les sections sans géométrie sont absentes.
+ * seulement quand les deux extrémités sont lisibles et distinctes (début = fin : tracé de longueur nulle,
+ * écarté). Les sections sans géométrie sont absentes.
  * @returns {Map<string, Array<[number, number]>>}
  */
 export function parseRefDirPaths(csv) {
-  const lines = String(csv ?? '').replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
-  if (!lines[0]?.startsWith('code_pme;')) throw new SyntaxError('refDir.csv : en-tête inattendu');
-  const header = lines[0].split(';');
-  const shortHeader = header.filter((h) => h !== 'code_insee_commune');
   const out = new Map();
-  for (const line of lines.slice(1)) {
-    const cells = line.split(';');
-    const names = cells.length === header.length ? header : shortHeader;
-    const row = Object.fromEntries(names.map((h, i) => [h, (cells[i] ?? '').trim()]));
-    if (!row.code_pme) continue;
+  for (const row of readRefDirRows(csv)) {
     const start = lambert93ToWgs84(Number(row.x_deb), Number(row.y_deb));
     const end = lambert93ToWgs84(Number(row.x_fin), Number(row.y_fin));
-    if (start && end) out.set(row.code_pme, [[roundCoord(start[0]), roundCoord(start[1])], [roundCoord(end[0]), roundCoord(end[1])]]);
+    if (!start || !end) continue;
+    const path = [[roundCoord(start[0]), roundCoord(start[1])], [roundCoord(end[0]), roundCoord(end[1])]];
+    if (path[0][0] === path[1][0] && path[0][1] === path[1][1]) continue;
+    out.set(row.code_pme, path);
   }
   return out;
 }
@@ -164,11 +170,13 @@ export function parseQtv(xml) {
  */
 export function summarizeSpeeds(qtv, ref) {
   const valid = qtv.stations.filter((s) => s.speed !== null && Number.isFinite(s.speed) && !SENTINEL_SPEEDS.has(s.speed));
+  // Débit sentinelle (9999999) : jamais pris pour un vrai débit
+  const flowOf = (s) => (s.flow === null || !Number.isFinite(s.flow) || s.flow === 9_999_999 ? 0 : s.flow);
   const speeds = valid.map((s) => s.speed).sort((a, b) => a - b);
   const mid = Math.floor(speeds.length / 2);
   const median = speeds.length === 0 ? null : speeds.length % 2 ? speeds[mid] : (speeds[mid - 1] + speeds[mid]) / 2;
   const slow = valid
-    .filter((s) => s.speed < SLOW_SPEED_KMH && (s.flow ?? 0) > SLOW_MIN_FLOW_VPH)
+    .filter((s) => s.speed < SLOW_SPEED_KMH && flowOf(s) > SLOW_MIN_FLOW_VPH)
     .sort((a, b) => a.speed - b.speed);
   return {
     at: qtv.at,

@@ -48,7 +48,7 @@ describe('/api/traffic/road-national (DIR, QTV, Traficolor, CNIR ; réponses ré
     ]);
     expect(body.conceded.at).toBe('2026-10-03T13:42:00.000Z');
     expect(body.conceded.jams).toHaveLength(6);
-    expect(body.sections).toHaveLength(24);
+    expect(body.sections).toHaveLength(13);
     expect(body.sections.every((x) => x.network === 'TraficMarius' && x.path.length === 2)).toBe(true);
   });
   it('deuxième appel dans les 5 min : aucune requête', async () => {
@@ -71,6 +71,28 @@ describe('/api/traffic/road-national (DIR, QTV, Traficolor, CNIR ; réponses ré
     expect(body.agglos.map((a) => a.label)).toEqual(['Bordeaux', 'Marseille']);
     expect(body.conceded).toEqual({ at: null, jams: [] });
     expect(body.counts.accidents).toBe(4);
+  });
+  it.each([
+    [respond('erreur', 500), 'DIR : HTTP 500'],
+    [respond(fixtureText('challenge-captcha.html')), 'DIR : page de contrôle anti-robot'],
+    [respond('<!DOCTYPE html><html><body>Maintenance</body></html>'), 'DIR : page HTML reçue au lieu de données'],
+  ])('instantané DIR en panne : 200 avec les autres parties, erreur nommée', async (failure, message) => {
+    stubSources((url) => (url === SNAPSHOT_URL ? failure : null));
+    const { status, body } = await callHandler<RoadNationalResponse>(handler);
+    expect(status).toBe(200);
+    expect(body.errors).toEqual([message]);
+    expect(body.events).toEqual([]);
+    expect(body.publishedAt).toBeNull();
+    expect(body.speeds.stations).toBe(41);
+    expect(body.agglos).toHaveLength(3);
+    expect(body.conceded.jams).toHaveLength(6);
+  });
+  it('référentiel indisponible, Traficolor sain : sections vides, agglomérations servies, erreur nommée une fois', async () => {
+    stubSources(failing((u) => u === REFDIR_URL, respond('erreur', 500)));
+    const body = await loadRoadNational(NOW);
+    expect(body.sections).toEqual([]);
+    expect(body.agglos).toHaveLength(3);
+    expect(body.errors).toEqual(['QTV : HTTP 500']);
   });
   it('QTV en HTTP 429 : vitesses vides et nommées, le reste servi', async () => {
     stubSources(failing((u) => u === QTV_URL, respond('Too Many Requests', 429)));
