@@ -30,6 +30,7 @@ import type { EventMapPoint } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
 import {
   AIR_ICON_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
+  TRAFFIC_STROKE_DIM_LAYERS, shouldTweenAirPositions,
   airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
   railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
   urbanJamFeatures,
@@ -584,6 +585,11 @@ export class DeckGLMap {
   private deckOverlay: MapboxOverlay | null = null;
   private globalTrafficVisible = true;  // Controlled by military layer toggle
   private globalTrafficData: AisShipData[] = [];
+  /** Sillages et noms des navires mémorisés (getAisTrailData, getAisLabelData). */
+  private aisTrailCache: { source: AisShipData[]; data: AisShipData[] } | null = null;
+  private aisLabelCache: {
+    source: AisShipData[]; highlighted: string | null; selected: string | null; all: boolean; data: AisShipData[];
+  } | null = null;
   /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
   private eventPoints: EventMapPoint[] = [];
   private eventPointsVisible = false;
@@ -5105,6 +5111,11 @@ export class DeckGLMap {
       const airIcons = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
       if (airIcons !== this.airIconsShown) {
         this.airIconsShown = airIcons;
+        if (!airIcons) {
+          // Icônes masquées : animation arrêtée, densité posée sur les positions du dernier relevé.
+          this.stopCivilAirTween();
+          this.refreshCivilAirTrafficSource();
+        }
         if (this.airTrafficVisible) this.scheduleOverlayUpdate();
       }
       if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
@@ -5209,13 +5220,8 @@ export class DeckGLMap {
       return 14;
     };
     const getAisAngle = (d: AisShipData): number => this.getAisDeckAngle(d);
-    const maritimeLabelData = this.globalTrafficData.filter((ship) => {
-      if (!ship.name || ship.name.trim().length === 0) return false;
-      if (ship.mmsi && (ship.mmsi === this._highlightedMmsi || ship.mmsi === this._selectedShipMmsi)) return true;
-      // Pour éviter l'affichage trop brouillon: on n'affiche les noms de TOUS les navires
-      // que si le zoom est suffisant, sinon on ne garde que le navire survolé/sélectionné.
-      return this.viewState.zoom >= 10;
-    });
+    const maritimeLabelData = this.getAisLabelData();
+    const maritimeTrailData = this.getAisTrailData();
     return [
       new DayNightLayer({
         id: 'day-night',
@@ -5229,7 +5235,7 @@ export class DeckGLMap {
       }),
       new PathLayer<AisShipData>({
         id: 'deck-ais-trails',
-        data: this.globalTrafficData.filter(d => d.trail && d.trail.length >= 2),
+        data: maritimeTrailData,
         visible: this.globalTrafficVisible,
         opacity: maritimeDeckOpacity * 0.5,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
@@ -5440,6 +5446,37 @@ export class DeckGLMap {
         },
       }),
     ];
+  }
+
+  /** Navires à sillage : tableau gardé tant que `globalTrafficData` est le même (deck.gl ne régénère pas ses attributs). */
+  private getAisTrailData(): AisShipData[] {
+    const source = this.globalTrafficData;
+    if (this.aisTrailCache?.source !== source) {
+      this.aisTrailCache = { source, data: source.filter((d) => d.trail && d.trail.length >= 2) };
+    }
+    return this.aisTrailCache.data;
+  }
+
+  /**
+   * Noms des navires : tous à partir du zoom 10, sinon le navire survolé ou choisi seulement (lisibilité) ; tableau gardé tant que
+   * la donnée, le navire survolé, le navire choisi et ce seuil de zoom ne changent pas.
+   */
+  private getAisLabelData(): AisShipData[] {
+    const source = this.globalTrafficData;
+    const highlighted = this._highlightedMmsi;
+    const selected = this._selectedShipMmsi;
+    const all = this.viewState.zoom >= 10;
+    const cache = this.aisLabelCache;
+    if (cache && cache.source === source && cache.highlighted === highlighted && cache.selected === selected && cache.all === all) {
+      return cache.data;
+    }
+    const data = source.filter((ship) => {
+      if (!ship.name || ship.name.trim().length === 0) return false;
+      if (ship.mmsi && (ship.mmsi === highlighted || ship.mmsi === selected)) return true;
+      return all;
+    });
+    this.aisLabelCache = { source, highlighted, selected, all, data };
+    return data;
   }
 
   /**
@@ -5732,21 +5769,8 @@ export class DeckGLMap {
         return {
           type: 'Feature' as const,
           geometry: { type: 'Point' as const, coordinates: [longitude, latitude] },
-          properties: {
-            id: flight.id,
-            callsign: flight.callsign,
-            altitude: flight.altitude,
-            speed: flight.speed,
-            heading: this.normalizeFlightHeading(flight.heading),
-            registration: flight.registration || '',
-            aircraftType: flight.aircraftType || '',
-            aircraftModel: flight.aircraftModel || '',
-            operator: flight.operator || '',
-            category: flight.category || '',
-            originAirport: flight.originAirport || '',
-            destinationAirport: flight.destinationAirport || '',
-            source: flight.source || '',
-          },
+          // Seule la densité (heatmap, poids constant) lit cette source : la position suffit.
+          properties: { id: flight.id },
         };
       }),
     });
@@ -7096,6 +7120,21 @@ export class DeckGLMap {
       activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];
     }
 
+    const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
+      if (categoryId === null || activeLayers.length === 0) {
+        // Reset to original
+        this.map!.setPaintProperty(layerId, prop, orig);
+        return;
+      }
+      const isTarget = activeLayers.includes(layerId);
+      // If original is an expression, wrap it down to smaller scale
+      if (Array.isArray(orig)) {
+        this.map!.setPaintProperty(layerId, prop, ['*', orig, isTarget ? 1 : 0.15]);
+      } else {
+        this.map!.setPaintProperty(layerId, prop, isTarget ? orig : Number(orig) * 0.15);
+      }
+    };
+
     allLegendLayers.forEach(layerId => {
       const layer = this.map!.getLayer(layerId);
       if (!layer) return;
@@ -7117,20 +7156,20 @@ export class DeckGLMap {
       }
 
       const { prop, orig } = this.originalOpacities.get(layerId)!;
-
-      if (categoryId === null || activeLayers.length === 0) {
-        // Reset to original
-        this.map!.setPaintProperty(layerId, prop, orig);
-      } else {
-        const isTarget = activeLayers.includes(layerId);
-        // If original is an expression, wrap it down to smaller scale
-        if (Array.isArray(orig)) {
-          this.map!.setPaintProperty(layerId, prop, ['*', orig, isTarget ? 1 : 0.15]);
-        } else {
-          this.map!.setPaintProperty(layerId, prop, isTarget ? orig : Number(orig) * 0.15);
-        }
-      }
+      applyLegendDim(layerId, prop, orig);
     });
+
+    // Contours colorés des Trafics (anneau des signalements AIS, aéroports, mouillages, urgences, arrêts du trajet d'un train) :
+    // atténués avec leur couche, en plus du remplissage.
+    for (const layerId of TRAFFIC_STROKE_DIM_LAYERS) {
+      if (!this.map.getLayer(layerId)) continue;
+      const key = `${layerId}::stroke`;
+      if (!this.originalOpacities.has(key)) {
+        this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });
+      }
+      const { prop, orig } = this.originalOpacities.get(key)!;
+      applyLegendDim(layerId, prop, orig);
+    }
 
     const outageFocusGroups: Record<string, string[]> = {
       outagesInternet: [
@@ -8844,8 +8883,8 @@ export class DeckGLMap {
   updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
     this.railTrafficLate = railOverviewLate(overview, now);
     this.setTrafficSource(SRC_RAIL_STATIONS, railStationFeatures(overview, now));
-    // Trajet tracé : retard relu dans la nouvelle donnée quand le train y figure encore.
-    const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? t : null);
+    // Trajet tracé : retard relu dans la nouvelle donnée ; train qui n'y figure plus (arrivé, retiré) : trajet effacé.
+    const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? null : null);
     this.chosenTrain = fresh(this.chosenTrain);
     this.previewTrain = fresh(this.previewTrain);
     this.drawTrainRoute();
@@ -10402,9 +10441,12 @@ export class DeckGLMap {
 
     this.civilAirTrafficFlights = newCivil;
 
-    // Start tween animation (only if we had data before — no tween on first load)
-    if (hadPreviousData) {
+    // Animation des positions (12 s) seulement quand les icônes sont dessinées : couche active, zoom 7 ou plus (sous le zoom 7,
+    // la densité suffit et l'animation reconstruirait toutes les couches Deck.gl à chaque image). Jamais au premier relevé.
+    if (shouldTweenAirPositions(hadPreviousData, this.airTrafficVisible, this.viewState.zoom)) {
       this.startCivilAirTween();
+    } else {
+      this.stopCivilAirTween();
     }
 
     this.refreshCivilAirTrafficSource();
@@ -11012,6 +11054,7 @@ export class DeckGLMap {
     this.globalTrafficVisible = layers.trafficMaritime;
     this.airIconsShown = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
     this.airTrafficVisible = layers.trafficAir;
+    if (!this.airTrafficVisible || !this.airIconsShown) this.stopCivilAirTween();
     this.dayNightVisible = layers.dayNight ?? false;
     this.refreshAisLayers();
     // Submarine cables

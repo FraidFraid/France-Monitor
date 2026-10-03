@@ -29,6 +29,9 @@ export const AIR_ICON_HEX = '#7dd3fc';
 /** Catégorie de type AIS : clé de `MaritimeSnapshot.byType`. */
 export type VesselCategory = keyof MaritimeSnapshot['byType'];
 
+/** Codes UIT des navires de service : pilote, recherche et sauvetage, police, lutte antipollution, dragage, plongée, transport médical. */
+const SERVICE_CODES: ReadonlySet<number> = new Set([33, 34, 50, 51, 53, 54, 55, 58]);
+
 /**
  * Copie client de `typeCategory` (api/_lib/ais-snapshot.js), classement UIT des codes de type AIS ; la teinte des navires, la
  * légende et les comptes du serveur suivent ce même classement (vérifié code par code de 0 à 99 : tests/vessel-type-category.test.ts).
@@ -45,7 +48,7 @@ export function vesselCategory(code: unknown): VesselCategory {
   if (c === 31 || c === 32 || c === 52) return 'remorqueur';
   if (c === 36 || c === 37) return 'plaisance';
   if (c === 35) return 'militaire';
-  if ([33, 34, 50, 51, 53, 54, 55, 58].includes(c)) return 'service';
+  if (SERVICE_CODES.has(c)) return 'service';
   return 'autre';
 }
 
@@ -73,7 +76,7 @@ const VESSEL_TYPES: ReadonlyArray<{ id: string; category: VesselCategory; label:
   { id: 'sea-tug', category: 'remorqueur', label: 'Remorqueur' },
   { id: 'sea-sailing', category: 'plaisance', label: 'Plaisance' },
   { id: 'sea-highspeed', category: 'grande-vitesse', label: 'Grande vitesse' },
-  { id: 'sea-service', category: 'service', label: 'Service : pilote, sauvetage, police' },
+  { id: 'sea-service', category: 'service', label: 'Service (pilote, sauvetage, police, dragage…)' },
   { id: 'sea-military', category: 'militaire', label: 'Militaire' },
   { id: 'sea-other', category: 'autre', label: 'Autre type' },
   { id: 'sea-unknown', category: 'inconnu', label: 'Type inconnu' },
@@ -122,13 +125,17 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'air-density', label: 'Densité des avions (sous le zoom 7)', color: AIR_ICON_HEX, shape: 'square',
       gradient: `linear-gradient(90deg, rgba(125, 211, 252, 0.15), ${AIR_ICON_HEX}, #e0f7ff)` },
     { id: 'air-plane', label: 'Avion civil (à partir du zoom 7, indicatif au survol)', color: AIR_ICON_HEX, icon: fmIcon('plane') },
-    { id: 'air-emergency', label: 'Urgence en vol (7500, 7600, 7700) et son indicatif', color: levelHex('rouge'), shape: 'circle' },
+    { id: 'air-emergency-7500', label: 'Urgence 7500 (détournement)', color: levelHex('rouge'), shape: 'circle' },
+    { id: 'air-emergency-7700', label: 'Urgence 7700 (urgence générale)', color: levelHex('orange'), shape: 'circle' },
+    { id: 'air-emergency-7600', label: 'Urgence 7600 (panne radio)', color: levelHex('jaune'), shape: 'circle' },
+    { id: 'air-emergency-away', label: 'Urgence hors territoire et approches', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
     { id: 'air-airport', label: 'Aéroport : surface selon les départs détectés', color: CAT_AIRPORT_HEX, shape: 'circle' },
   ],
   source: { label: 'OpenSky Network (ADS-B, compte authentifié)' },
   refresh: { label: `Positions toutes les 12${NBSP}s, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Zone suivie : France métropolitaine et ses approches ; vols militaires dans la couche Défense.',
+    `Urgences en vol (7500, 7600, 7700) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) ; au-delà, gris.`,
     `Départs : 8 aéroports, fenêtre de 2${NBSP}h relevée toutes les 4${NBSP}h ; Beauvais et Bordeaux : annuaires officiels ; arrivées publiées par la source seulement en différé.`,
   ],
 };
@@ -172,6 +179,32 @@ export const MARITIME_TRAFFIC_LEGEND: LegendCategory = {
   ],
 };
 
+// ─── Sections Traficolor dessinées (carte et légende) ───
+
+type TraficolorSection = RoadNationalResponse['sections'][number];
+type MeasuredSection = TraficolorSection & { status: Exclude<TraficolorSection['status'], 'unknown'> };
+
+/** Section Traficolor dessinée sur la carte : mesurée (statut connu) et tracée (au moins deux points). */
+export function isDrawnTraficolorSection(s: TraficolorSection): s is MeasuredSection {
+  return s.status !== 'unknown' && s.path.length >= 2;
+}
+
+/**
+ * Date de la partie Traficolor de la légende : fichier le plus ancien parmi les agglomérations qui ont une section dessinée
+ * (`drawn` faux sans section dessinée) ; agglomération sans date lisible : null (« n.d. », en retard), comme sur la carte.
+ */
+export function traficolorDrawnAt(national: RoadNationalResponse): { drawn: boolean; at: string | null } {
+  const networks = new Set(national.sections.filter(isDrawnTraficolorSection).map((s) => s.network));
+  let oldest: { at: string; ms: number } | null = null;
+  for (const network of networks) {
+    const at = national.agglos.find((a) => a.network === network)?.at ?? null;
+    const ms = at === null ? Number.NaN : Date.parse(at);
+    if (at === null || !Number.isFinite(ms)) return { drawn: true, at: null };
+    if (oldest === null || ms < oldest.ms) oldest = { at, ms };
+  }
+  return { drawn: networks.size > 0, at: oldest?.at ?? null };
+}
+
 // ─── Dates des données (S1, S2) ───
 
 export interface LegendDataPart { label: string; source: TrafficSource; at: string | null; present: boolean }
@@ -206,9 +239,12 @@ function dated(base: LegendCategory, parts: readonly LegendDataPart[], now: numb
   return { ...base, items: items.map((i) => ({ ...i })), notes: [...dataNotes(parts, now), ...(base.notes ?? [])] };
 }
 
+/** Route : DIR, Traficolor (fichier le plus ancien des sections dessinées ; aucune section dessinée : partie omise), TomTom. */
 export function roadLegend(national: RoadNationalResponse | null, urban: RoadUrbanResponse | null, now: number): LegendCategory {
+  const traficolor = national ? traficolorDrawnAt(national) : { drawn: true, at: null };
   return dated(ROAD_TRAFFIC_LEGEND, [
     { label: 'DIR', source: 'dir', at: national?.publishedAt ?? null, present: national !== null },
+    ...(traficolor.drawn ? [{ label: 'Traficolor', source: 'traficolor' as const, at: traficolor.at, present: national !== null }] : []),
     { label: 'TomTom', source: 'tomtom', at: urban?.collectedAt ?? null, present: urban !== null },
   ], now);
 }

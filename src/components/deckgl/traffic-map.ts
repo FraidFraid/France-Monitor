@@ -12,13 +12,13 @@ import type { TrafficFlowSegment } from '../../services/traffic-road.ts';
 import { LEVEL_RANK, levelHex, type VigilanceLevel } from '../../services/vigilance.ts';
 import { NBSP, frNumber } from '../layer-panel/format.ts';
 import {
-  RAIL_EFFECT_WORD, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, SQUAWK_WORD, anomalyLabel, clockOf, coordText, fold, formatCount, formatKm, formatKmh, formatMeters,
+  RAIL_EFFECT_WORD, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, SQUAWK_LEVEL, SQUAWK_WORD, anomalyLabel, clockOf, coordText, fold, formatCount, formatKm, formatKmh, formatMeters,
   formatMinutes, jamLevel, plural, railDelayLevel,
 } from '../layer-panel/traffic-format.ts';
-import { AIR_ICON_HEX, CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX } from '../layer-panel/traffic-legend.ts';
+import { AIR_ICON_HEX, CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX, isDrawnTraficolorSection } from '../layer-panel/traffic-legend.ts';
 import {
   LYR_AIRPORTS, LYR_AIR_DENSITY, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION,
-  LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
+  LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
   SRC_AIR_TRAFFIC, SRC_AIS_SIGNALS, SRC_ANCHORAGES, SRC_RAIL_STATIONS, SRC_ROAD_EVENTS, SRC_ROAD_JAMS, SRC_ROAD_SECTIONS,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
@@ -130,7 +130,7 @@ const TRAFICOLOR: Readonly<Record<Exclude<Section['status'], 'unknown'>, { level
 export function traficolorFeatures(national: RoadNationalResponse | null, now: number): Fc<GeoJSON.LineString> {
   if (!national) return fc([]);
   return fc(national.sections.flatMap((s): GeoJSON.Feature<GeoJSON.LineString>[] => {
-    if (s.status === 'unknown' || s.path.length < 2) return [];
+    if (!isDrawnTraficolorSection(s)) return [];
     const agglo = national.agglos.find((a) => a.network === s.network);
     const at = agglo?.at ?? null;
     const late = isTrafficDataLate('traficolor', at, now);
@@ -146,10 +146,18 @@ export function traficolorFeatures(national: RoadNationalResponse | null, now: n
   }));
 }
 
-/** Vitesse du tronçon (TomTom, au clic, budget serveur) ; indisponible : dit, jamais une vitesse inventée. */
+/** Temps de parcours d'un tronçon (secondes TomTom) : « 45 s », « 1,7 min », « 5 min », « 12 min ». */
+function travelTime(seconds: number): string {
+  if (seconds < 60) return `${frNumber(seconds, 0)}${NBSP}s`;
+  const minutes = Math.round(seconds / 6) / 10;
+  return formatMinutes(minutes, { digits: minutes < 10 && !Number.isInteger(minutes) ? 1 : 0 });
+}
+
+/** Vitesse et temps de parcours du tronçon (TomTom, au clic, budget serveur) ; indisponible : dit, jamais une valeur inventée. */
 function jamFlowHtml(flow: TrafficFlowSegment | null): string {
   if (!flow) return note('Vitesse du tronçon indisponible.');
   return row('Vitesse du tronçon', formatKmh(flow.currentSpeed)) + row('Vitesse sans trafic', formatKmh(flow.freeFlowSpeed))
+    + row('Temps de parcours', `${travelTime(flow.currentTravelTime)} (sans trafic : ${travelTime(flow.freeFlowTravelTime)})`)
     + (flow.roadClosure ? note('Tronçon fermé.') : '');
 }
 
@@ -161,6 +169,14 @@ export function jamPopupHtml(body: string, flow: TrafficFlowSegment | null): str
 
 /** Les icônes d'avions (Deck.gl) s'affichent à partir de ce zoom ; en dessous, la densité. */
 export const AIR_ICON_MIN_ZOOM = 7;
+
+/**
+ * Animation des positions entre deux relevés (12 s) : seulement si les icônes sont dessinées (couche active, zoom 7 ou plus) et
+ * qu'un relevé précédent existe. Sous le zoom 7, la densité suffit : aucune reconstruction des couches Deck.gl image par image.
+ */
+export function shouldTweenAirPositions(hadPrevious: boolean, layerVisible: boolean, zoom: number): boolean {
+  return hadPrevious && layerVisible && zoom >= AIR_ICON_MIN_ZOOM;
+}
 
 export const AIR_DENSITY_PAINT: HeatmapPaint = {
   'heatmap-weight': 1,
@@ -176,17 +192,27 @@ function airEmergencyBody(e: AirEmergency, late: boolean, now: number): string {
     + row('Altitude', formatMeters(e.altitudeM))
     + row('Vu depuis', clockOf(e.firstSeen, now))
     + row('Dernière position', clockOf(e.lastSeen, now))
-    + (e.overFrance ? '' : note('Hors du territoire, dans la zone suivie.'))
+    + (e.overFrance ? '' : note('Hors territoire et approches : couleur retirée, ne colore pas la pastille.'))
     + (late ? note('Données OpenSky en retard : couleur retirée.') : '');
 }
 
-/** Urgences en vol (7500, 7600, 7700) : symbole rouge et indicatif (spec § 3.2). */
+/**
+ * Couleur d'une urgence, comme la ligne du panneau et la pastille (R3, T3) : au-dessus du territoire ou de ses approches, 7500 rouge,
+ * 7700 orange, 7600 jaune ; hors territoire et approches : gris.
+ */
+export function airEmergencyLevel(e: Pick<AirEmergency, 'squawk' | 'overFrance'>): VigilanceLevel | 'gris' {
+  return e.overFrance ? SQUAWK_LEVEL[e.squawk] : 'gris';
+}
+
+/** Urgences en vol (7500, 7600, 7700) : symbole et indicatif (spec § 3.2), couleur du panneau (airEmergencyLevel). */
 export function airEmergencyFeatures(overview: AirOverviewResponse | null, now: number): Fc<GeoJSON.Point> {
   if (!overview) return fc([]);
   const late = isTrafficDataLate('opensky', overview.at, now);
   return fc(overview.emergencies.map((e): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(e.lon, e.lat),
-    properties: { id: e.icao24, label: e.callsign ?? e.icao24.toUpperCase(), color: trafficHex('rouge', late), body: airEmergencyBody(e, late, now) },
+    properties: {
+      id: e.icao24, label: e.callsign ?? e.icao24.toUpperCase(), color: trafficHex(airEmergencyLevel(e), late), body: airEmergencyBody(e, late, now),
+    },
   })));
 }
 
@@ -443,6 +469,12 @@ export const TRAFFIC_LAYER_KEYS: Readonly<Record<TrafficMapLayer, readonly strin
 
 /** Bouchons TomTom : cliquables (vitesse du tronçon). */
 export const TRAFFIC_JAM_LAYERS: readonly string[] = [LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS];
+
+/**
+ * Cercles à contour coloré ou blanc (anneau des signalements AIS sans remplissage, aéroports, mouillages, urgences, arrêts du trajet
+ * d'un train) : au survol de légende d'une autre couche, leur contour s'atténue avec leur remplissage.
+ */
+export const TRAFFIC_STROKE_DIM_LAYERS: readonly string[] = [LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_ANCHORAGES, LYR_AIS_SIGNALS, LYR_TRAIN_STATIONS];
 
 const HOVERABLE: ReadonlySet<string> = new Set([
   LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS, LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_RAIL_STATION, LYR_ANCHORAGES,

@@ -46,9 +46,11 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
       expect(deck).toContain(sig);
       expect(container).toContain(sig);
     }
-    // Survol d'un train : trajet provisoire, puis retour au train choisi ; retard relu à chaque relève SNCF.
+    // Survol d'un train : trajet provisoire, puis retour au train choisi ; retard relu à chaque relève SNCF ; train absent de la
+    // nouvelle donnée : trajet effacé par la carte elle-même.
     expect(deck).toContain('const train = this.previewTrain ?? this.chosenTrain;');
     expect(deck).toContain('this.chosenTrain = fresh(this.chosenTrain);');
+    expect(deck).toContain('const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? null : null);');
     for (const call of ['traficolorFeatures(national, now)', 'urbanJamFeatures(urban, now)', 'roadEventFeatures(national, now)',
       'airportFeatures(overview, now)', 'airEmergencyFeatures(overview, now)', 'railStationFeatures(overview, now)', 'anchorageFeatures(snapshot, now)',
       'maritimeSignalFeatures(snapshot, now)', 'trainRouteFeatures(train, this.railTrafficLate)', 'this.railTrafficLate = railOverviewLate(overview, now);']) {
@@ -61,6 +63,21 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
     expect(deck).toContain('this.showMilitaryTooltip(lngLat, airFlightTooltipHtml(flight));');
     expect(deck).toContain('const airIcons = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;');
     expect(deck).toContain('this.airIconsShown = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;');
+  });
+  it('avions sous le zoom 7 : aucune animation des positions (pas de reconstruction des couches à chaque image), reprise dès le zoom 7', () => {
+    expect(deck).toContain('if (shouldTweenAirPositions(hadPreviousData, this.airTrafficVisible, this.viewState.zoom)) {');
+    expect(deck).not.toMatch(/if \(hadPreviousData\) \{\s*this\.startCivilAirTween\(\);/);
+    expect(deck.split('this.startCivilAirTween();').length - 1).toBe(1);
+    expect(deck).toMatch(/if \(!airIcons\) \{\s*\/\/[^\n]*\n\s*this\.stopCivilAirTween\(\);\s*this\.refreshCivilAirTrafficSource\(\);/);
+    expect(deck).toContain('if (!this.airTrafficVisible || !this.airIconsShown) this.stopCivilAirTween();');
+    // Source de la densité : la position et l'identifiant seulement.
+    expect(deck).toContain('properties: { id: flight.id },');
+  });
+  it('navires : sillages et noms mémorisés sur l’identité des données (deck.gl ne régénère rien sans changement)', () => {
+    expect(deck).toContain('const maritimeLabelData = this.getAisLabelData();');
+    expect(deck).toContain('data: maritimeTrailData,');
+    expect(deck).toContain('if (this.aisTrailCache?.source !== source) {');
+    expect(deck).not.toMatch(/this\.globalTrafficData\.filter\(/);
   });
   it('survol : couche visible du dessus ; clic sur un bouchon : vitesse du tronçon par le gestionnaire budgété', () => {
     expect(deck).toContain('this.initTrafficInteractions();');
@@ -84,6 +101,9 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficAir];');
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];');
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];');
+    // Contours colorés (anneau des signalements, aéroports, mouillages, urgences, arrêts) atténués avec leur couche.
+    expect(deck).toContain('for (const layerId of TRAFFIC_STROKE_DIM_LAYERS) {');
+    expect(deck).toContain("this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });");
   });
 });
 

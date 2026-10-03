@@ -3,20 +3,20 @@ import { describe, expect, it } from 'vitest';
 import type { AirEmergency, AirTrafficFlight, MaritimeSignal } from '../../types/index.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { NBSP, visibleText } from '../layer-panel/format.ts';
-import { trafficBreakable } from '../layer-panel/traffic-format.ts';
+import { SQUAWK_LEVEL, trafficBreakable } from '../layer-panel/traffic-format.ts';
 import { AIR_ICON_HEX, CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX } from '../layer-panel/traffic-legend.ts';
 import {
   TRAFFIC_NOW, airOverviewFixture, maritimeSnapshotFixture, paris, railOverviewFixture, roadNationalFixture, roadUrbanFixture,
 } from '../layer-panel/traffic.fixture.ts';
 import {
   LYR_AIR_DENSITY, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS,
-  LYR_ROAD_SECTIONS, SRC_AIR_TRAFFIC,
+  LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIR_TRAFFIC,
 } from './constants.ts';
 import {
   AIR_DENSITY_PAINT, AIR_ICON_MIN_ZOOM, PORT_COORDS, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS,
-  TRAFFIC_SOURCE_IDS, airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, airportRadius, anchorageFeatures, jamPopupHtml,
+  TRAFFIC_SOURCE_IDS, TRAFFIC_STROKE_DIM_LAYERS, airEmergencyFeatures, airEmergencyLevel, airFlightTooltipHtml, airportFeatures, airportRadius, anchorageFeatures, jamPopupHtml,
   maritimeSignalFeatures, railOverviewLate, railStationFeatures, roadEventFeatures, roadEventSortKey, topTrafficHit, trafficHex,
-  trafficTooltipHtml, traficolorFeatures, trainRouteFeatures, urbanJamFeatures,
+  shouldTweenAirPositions, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures, urbanJamFeatures,
 } from './traffic-map.ts';
 
 const LATE = TRAFFIC_NOW + 2 * 3_600_000;
@@ -70,6 +70,8 @@ describe('route (§ 3.1)', () => {
     const flow = { currentSpeed: 23, freeFlowSpeed: 70, currentTravelTime: 300, freeFlowTravelTime: 100, confidence: 1, roadClosure: false };
     expect(jamPopupHtml(html, flow)).toContain(`23${NBSP}km/h`);
     expect(jamPopupHtml(html, flow)).toContain(`70${NBSP}km/h`);
+    expect(jamPopupHtml(html, flow)).toContain(`Temps de parcours</span><span>5${NBSP}min (sans trafic : 1,7${NBSP}min)`);
+    expect(jamPopupHtml(html, { ...flow, currentTravelTime: 45, freeFlowTravelTime: 30 })).toContain(`45${NBSP}s (sans trafic : 30${NBSP}s)`);
     expect(jamPopupHtml(html, null)).toContain('Vitesse du tronçon indisponible.');
     expect(allNeutral(urbanJamFeatures(roadUrbanFixture(), LATE))).toBe(true);
   });
@@ -89,18 +91,35 @@ describe('aérien (§ 3.2)', () => {
     icao24: '3c6444', callsign: 'AFR123', squawk: '7700', lat: 46.2, lon: 2.1, altitudeM: 3200, firstSeen: paris('15:01'),
     lastSeen: paris('15:09'), overFrance: true, ...over,
   });
-  it('urgences : symbole rouge et indicatif, infobulle échappée ; aucune urgence : rien ; en retard : neutre', () => {
+  it('urgences : couleur du panneau et de la pastille (7500 rouge, 7700 orange, 7600 jaune, hors territoire gris), indicatif, infobulle échappée', () => {
     expect(airEmergencyFeatures(airOverviewFixture(), TRAFFIC_NOW).features).toHaveLength(0);
     const o = airOverviewFixture();
-    o.emergencies = [emergency({ callsign: '<b>X</b>' }), emergency({ callsign: null, squawk: '7600', icao24: 'abc123' })];
+    o.emergencies = [
+      emergency({ callsign: '<b>X</b>' }), emergency({ callsign: null, squawk: '7600', icao24: 'abc123' }),
+      emergency({ callsign: 'HIJ1', squawk: '7500' }), emergency({ callsign: 'AWAY1', overFrance: false }),
+      emergency({ callsign: 'AWAY2', squawk: '7500', overFrance: false }),
+    ];
     const fc = airEmergencyFeatures(o, TRAFFIC_NOW);
-    expect(fc.features.map((f) => [props(f)['label'], props(f)['color']])).toEqual([['<b>X</b>', levelHex('rouge')], ['ABC123', levelHex('rouge')]]);
+    expect(fc.features.map((f) => [props(f)['label'], props(f)['color']])).toEqual([
+      ['<b>X</b>', levelHex('orange')], ['ABC123', levelHex('jaune')], ['HIJ1', levelHex('rouge')], ['AWAY1', TRAFFIC_NEUTRAL_HEX],
+      ['AWAY2', TRAFFIC_NEUTRAL_HEX],
+    ]);
+    for (const e of o.emergencies) expect(airEmergencyLevel(e)).toBe(e.overFrance ? SQUAWK_LEVEL[e.squawk] : 'gris');
     const html = body(fc.features[0]);
     expect(html).toContain('&lt;b&gt;X&lt;/b&gt;');
     expect(html).toContain('7700 · urgence');
     expect(html).toContain(`3\u202F200${NBSP}m`);
+    expect(html).not.toMatch(/hors territoire/i);
     expect(body(fc.features[1])).toContain('7600 · panne radio');
+    expect(body(fc.features[3])).toContain('Hors territoire et approches');
     expect(allNeutral(airEmergencyFeatures(o, LATE))).toBe(true);
+  });
+  it('animation des positions des avions : seulement icônes dessinées (couche active, zoom 7 ou plus) et relevé précédent', () => {
+    expect(shouldTweenAirPositions(true, true, AIR_ICON_MIN_ZOOM)).toBe(true);
+    expect(shouldTweenAirPositions(true, true, 9.5)).toBe(true);
+    expect(shouldTweenAirPositions(true, true, 6.99)).toBe(false);
+    expect(shouldTweenAirPositions(true, false, 9)).toBe(false);
+    expect(shouldTweenAirPositions(false, true, 9)).toBe(false);
   });
   it('aéroports placés par leurs coordonnées, surface selon les départs, jeton de catégorie ; annuaires de Beauvais et Bordeaux', () => {
     const fc = airportFeatures(airOverviewFixture(), TRAFFIC_NOW);
@@ -203,6 +222,17 @@ describe('sources, couches et survol', () => {
     expect(TRAFFIC_LAYER_KEYS.trafficRoad).toEqual([LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS]);
     expect(TRAFFIC_SOURCE_IDS).toHaveLength(8);
     expect(TRAFFIC_JAM_LAYERS).toEqual([LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS]);
+  });
+  it('survol de légende : contours atténués pour l’anneau des signalements et les cercles à contour coloré ou blanc', () => {
+    expect(TRAFFIC_STROKE_DIM_LAYERS).toContain(LYR_AIS_SIGNALS);
+    expect(TRAFFIC_STROKE_DIM_LAYERS).toContain(LYR_TRAIN_STATIONS);
+    for (const id of TRAFFIC_STROKE_DIM_LAYERS.filter((x) => x !== LYR_TRAIN_STATIONS)) {
+      const layer = TRAFFIC_LAYERS.find((l) => l.id === id);
+      expect(layer?.type).toBe('circle');
+      const paint = (layer?.paint ?? {}) as Record<string, unknown>;
+      expect(paint['circle-stroke-width']).toBeGreaterThanOrEqual(1.5);
+      expect(paint['circle-stroke-color']).not.toBe('#111111');
+    }
   });
   it('survol : couche du dessus d’abord ; infobulle seulement avec un contenu ; libellés et densité jamais survolés', () => {
     expect(TRAFFIC_HOVER_LAYERS[0]).toBe(LYR_AIS_SIGNALS);

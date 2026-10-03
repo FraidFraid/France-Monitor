@@ -128,7 +128,7 @@ describe('relecture de la tâche 18 : survol, fiche de site, légende, morceaux 
     expect(deck).toContain('for (const id of HEALTH_LAYER_ORDER) this.map.moveLayer(id);');
     expect(body('private initHealthInteractions(): void {')).toContain('topHealthHit(');
   });
-  it('survol de légende : seul l’anneau des fournisseurs internet s’atténue par son contour', () => {
+  it('survol de légende : l’anneau des fournisseurs internet s’atténue par son contour', () => {
     expect(deck).toContain("if (layerId === LYR_NET_ISP_RING) prop = 'circle-stroke-opacity';");
   });
   it('légende Urgences hors de deckgl/ : App ne charge ni la carte ni maplibre-gl pour elle', () => {

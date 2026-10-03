@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory } from '../MapLegend.ts';
 import { NBSP } from './format.ts';
-import { trafficBreakable } from './traffic-format.ts';
+import { SQUAWK_LEVEL, trafficBreakable } from './traffic-format.ts';
 import {
-  TRAFFIC_NOW, airOverviewFixture, maritimeSnapshotFixture, railOverviewFixture, railSituationsFixture, roadNationalFixture, roadUrbanFixture,
+  TRAFFIC_NOW, airOverviewFixture, paris, maritimeSnapshotFixture, railOverviewFixture, railSituationsFixture, roadNationalFixture, roadUrbanFixture,
 } from './traffic.fixture.ts';
 import {
   AIR_TRAFFIC_LEGEND, CAT_AIRPORT_HEX, CAT_PORT_HEX, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, TRAFFIC_NEUTRAL_HEX,
-  VESSEL_TYPE_HEX, airLegend, maritimeLegend, railLegend, roadLegend, vesselCategory, vesselHex,
+  VESSEL_TYPE_HEX, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
 } from './traffic-legend.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -21,10 +21,10 @@ const label = (c: LegendCategory, id: string): string | undefined => c.items.fin
 const COLORS_GONE = 'En retard : couleurs de niveau retirées de la carte pour ces données.';
 
 describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', () => {
-  it('route : DIR et TomTom datés, périmètres des deux sources, sections Traficolor, palette L1', () => {
+  it('route : DIR, Traficolor et TomTom datés, périmètres des sources, sections Traficolor, palette L1', () => {
     const l = roadLegend(roadNationalFixture(), roadUrbanFixture(), TRAFFIC_NOW);
     expect(l.id).toBe('trafficRoad');
-    expect(l.notes?.[0]).toBe('Données : DIR 14:57 · TomTom 15:00.');
+    expect(l.notes?.[0]).toBe('Données : DIR 14:57 · Traficolor 15:06 · TomTom 15:00.');
     const t = text(l);
     for (const part of ['routes nationales non concédées', `moins de 24${NBSP}h`, '12 agglomérations', 'zoom 10', 'Sections Traficolor',
       'DIR (DATEX II, Traficolor)']) expect(t).toContain(part);
@@ -33,21 +33,43 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
   });
   it('en retard : « (en retard) » et couleurs retirées dites ; partie absente : « indisponible » ; autre jour : date', () => {
     expect(roadLegend(roadNationalFixture(), roadUrbanFixture(), TRAFFIC_NOW + 2 * H).notes?.slice(0, 2))
-      .toEqual(['Données : DIR 14:57 (en retard) · TomTom 15:00 (en retard).', COLORS_GONE]);
-    expect(roadLegend(null, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR indisponible · TomTom 15:00.');
+      .toEqual(['Données : DIR 14:57 (en retard) · Traficolor 15:06 (en retard) · TomTom 15:00 (en retard).', COLORS_GONE]);
+    expect(roadLegend(null, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR indisponible · Traficolor indisponible · TomTom 15:00.');
     const unpublished = roadNationalFixture();
     unpublished.publishedAt = null;
-    expect(roadLegend(unpublished, null, TRAFFIC_NOW).notes?.slice(0, 2)).toEqual(['Données : DIR n.d. · TomTom indisponible.', COLORS_GONE]);
+    expect(roadLegend(unpublished, null, TRAFFIC_NOW).notes?.slice(0, 2))
+      .toEqual(['Données : DIR n.d. · Traficolor 15:06 · TomTom indisponible.', COLORS_GONE]);
     expect(roadLegend(roadNationalFixture(), roadUrbanFixture(), TRAFFIC_NOW + 24 * H).notes?.[0])
-      .toBe('Données : DIR 03/10 14:57 (en retard) · TomTom 03/10 15:00 (en retard).');
+      .toBe('Données : DIR 03/10 14:57 (en retard) · Traficolor 03/10 15:06 (en retard) · TomTom 03/10 15:00 (en retard).');
   });
-  it('aérien : OpenSky daté, densité, urgences rouges, aéroports en jeton de catégorie', () => {
+  it('Traficolor : fichier le plus ancien des agglomérations dessinées, « (en retard) » seul ; sans section dessinée : partie omise', () => {
+    const n = roadNationalFixture();
+    const marius = n.agglos.find((a) => a.network === 'Marius');
+    const limoges = n.agglos.find((a) => a.network === 'Limoges');
+    if (!marius || !limoges) throw new Error('jeu d’essai : Marius et Limoges attendus');
+    marius.at = paris('14:40');
+    limoges.at = paris('09:00'); // aucune section dessinée à Limoges : ignorée
+    expect(traficolorDrawnAt(n)).toEqual({ drawn: true, at: paris('14:40') });
+    expect(roadLegend(n, roadUrbanFixture(), TRAFFIC_NOW).notes?.slice(0, 2))
+      .toEqual(['Données : DIR 14:57 · Traficolor 14:40 (en retard) · TomTom 15:00.', COLORS_GONE]);
+    const orphan = roadNationalFixture();
+    orphan.sections.push({ id: 'Nice-A8-01', network: 'Nice', status: 'heavy', path: [[7.2, 43.7], [7.25, 43.71]] });
+    expect(traficolorDrawnAt(orphan)).toEqual({ drawn: true, at: null });
+    expect(roadLegend(orphan, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR 14:57 · Traficolor n.d. · TomTom 15:00.');
+    const none = roadNationalFixture();
+    none.sections = none.sections.map((s) => ({ ...s, status: 'unknown' as const }));
+    expect(roadLegend(none, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR 14:57 · TomTom 15:00.');
+  });
+  it('aérien : OpenSky daté, densité, urgences aux couleurs du panneau, aéroports en jeton de catégorie', () => {
     const l = airLegend(airOverviewFixture(), TRAFFIC_NOW);
     expect(l.notes?.[0]).toBe('Données : OpenSky 15:09.');
     const t = text(l);
     for (const part of ['OpenSky', 'sous le zoom 7', 'indicatif au survol', '7500, 7600, 7700', 'départs détectés', 'couche Défense',
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
-    expect(color(l, 'air-emergency')).toBe(levelHex('rouge'));
+    expect([color(l, 'air-emergency-7500'), color(l, 'air-emergency-7700'), color(l, 'air-emergency-7600'), color(l, 'air-emergency-away')])
+      .toEqual([levelHex(SQUAWK_LEVEL['7500']), levelHex(SQUAWK_LEVEL['7700']), levelHex(SQUAWK_LEVEL['7600']), TRAFFIC_NEUTRAL_HEX]);
+    expect(label(l, 'air-emergency-away')).toBe('Urgence hors territoire et approches');
+    expect(t).toContain(`moins de 40${NBSP}km`);
     expect(color(l, 'air-airport')).toBe(CAT_AIRPORT_HEX);
     expect(airLegend(null, TRAFFIC_NOW).notes?.[0]).toBe('Données : OpenSky indisponible.');
   });
@@ -64,7 +86,7 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect(l.notes?.[0]).toBe('Données : AIS 15:12.');
     expect(label(l, 'sea-cargo')).toBe('Cargo · 48');
     expect(label(l, 'sea-tug')).toBe('Remorqueur · 9');
-    expect(label(l, 'sea-service')).toBe('Service : pilote, sauvetage, police · 6');
+    expect(label(l, 'sea-service')).toBe('Service (pilote, sauvetage, police, dragage…) · 6');
     expect(label(l, 'sea-military')).toBe('Militaire · 3');
     expect(label(l, 'sea-other')).toBe('Autre type · 1');
     expect(label(l, 'sea-unknown')).toBe('Type inconnu · 1\u202F041');
