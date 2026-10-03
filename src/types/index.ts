@@ -2531,3 +2531,90 @@ export interface HospitalsDataset {
   totals: { sites: number; passages: number; bedsMco: number; bedsIcu: number; bedsIntensive: number; icuSites: number };
   establishments: Array<{ aggregate: string; label: string; count: number }>;
 }
+
+// ═══ Trafics, phase A : sources (spec 2026-10-03 panneaux trafic § 2, contrats partagés avec la phase B) ═══
+export type RoadEventKind = 'accident' | 'obstruction' | 'queue' | 'weather' | 'closure' | 'lane' | 'works' | 'info';
+export interface RoadEvent {
+  id: string; kind: RoadEventKind; subtype: string; label: string;      // label : « Accident », « Route coupée », « Bouchon »…
+  road: string | null; place: string | null; direction: string | null;  // road « A7 » ; direction « vers Lyon »
+  dir: string; start: string; end: string | null;                        // dir « DIR Méditerranée » ; ISO
+  severity: 'low' | 'medium' | 'high' | 'highest' | null; safety: boolean;
+  planned: boolean; longTerm: boolean;                                   // T2 : planifié, ou démarré depuis plus de 24 h
+  lat: number | null; lon: number | null; detail: string;
+}
+export interface RoadSpeedStation { id: string; dir: string; road: string | null; speed: number; flow: number | null; lat: number | null; lon: number | null }
+export interface RoadAggloOfficial { network: string; label: string; sections: number; freeFlow: number; heavy: number; congested: number; unknown: number; congestedPct: number | null; at: string }
+export interface ConcededJam { motorway: string; lengthKm: number | null; from: string | null; to: string | null; operator: string | null; importance: 1 | 2 | 3; text: string }
+export interface RoadNationalResponse {
+  publishedAt: string | null;
+  events: RoadEvent[];            // en cours (non planifiés, moins de 24 h), incidents, coupures, bouchons
+  longTerm: RoadEvent[];          // fermetures et chantiers de longue durée
+  counts: { incidents: number; accidents: number; closures: number; obstructions: number; weather: number; works: number };
+  byDir: Array<{ dir: string; incidents: number }>;
+  speeds: { at: string | null; stations: number; under50: number; median: number | null; slowest: RoadSpeedStation[] };
+  agglos: RoadAggloOfficial[];
+  sections: Array<{ id: string; network: string; status: 'freeFlow' | 'heavy' | 'congested' | 'unknown'; path: Array<[number, number]> }>; // sections Traficolor géolocalisées (carte)
+  conceded: { at: string | null; jams: ConcededJam[] };
+  errors: string[];
+}
+
+export interface UrbanJam { road: string | null; from: string | null; to: string | null; lengthKm: number; delayMin: number; magnitude: 1 | 2 | 3; start: string | null; lat: number; lon: number; path: Array<[number, number]> }
+export interface UrbanAgglo { name: string; jams: number; jamKm: number; delayMin: number; longest: UrbanJam | null; collectedAt: string }
+export interface RoadUrbanResponse { collectedAt: string | null; agglos: UrbanAgglo[]; jams: UrbanJam[]; quota: { callsToday: number; limit: number }; errors: string[] }
+
+export type Squawk = '7500' | '7600' | '7700';
+export interface AirEmergency { icao24: string; callsign: string | null; squawk: Squawk; lat: number; lon: number; altitudeM: number | null; firstSeen: string; lastSeen: string; overFrance: boolean }
+export interface AirportActivity {
+  icao: string; iata: string; name: string; lat: number; lon: number;
+  departures: number | null; departuresWindow: { begin: string; end: string } | null;
+  onGround: number; approaching: number;
+  board: { delayed: number; cancelled: number; at: string } | null;       // Beauvais et Bordeaux seulement
+}
+export interface AirVolumeSample { at: string; airborneZone: number; airborneFrance: number }
+export interface AirAnomaly { callsign: string | null; kind: string; airport: string | null; at: string }
+export interface AirOverviewResponse {
+  at: string | null; airborneZone: number; airborneFrance: number; onGround: number;
+  emergencies: AirEmergency[]; emergencyLog: AirEmergency[];
+  airports: AirportActivity[];
+  volume: { samples: AirVolumeSample[]; sameHourPrevDays: number[] };     // 8 jours ; valeurs de la même heure les jours précédents, plus récent d'abord
+  anomalies: AirAnomaly[];
+  credits: { remaining: number | null };
+  errors: string[];
+}
+
+export type RailAxis = 'sud-est' | 'atlantique' | 'nord' | 'est' | 'intercites-bercy' | 'normandie' | 'province';
+export type RailEffect = 'retard' | 'supprime' | 'service-reduit' | 'detour' | 'modifie' | 'ajoute';
+export interface RailGroupStats { key: string; label: string; trains: number; avgDelayMin: number | null; maxDelayMin: number | null; cancelled: number; reduced: number; detour: number }
+export interface RailTrain {
+  id: string; number: string; kind: 'grandes-lignes' | 'ter' | 'autre';
+  axis: RailAxis | null; region: string | null;
+  origin: string; destination: string; effect: RailEffect; delayMin: number | null;
+  status: 'en-cours' | 'a-venir'; updatedAt: string;
+  stops: Array<{ name: string; lat: number; lon: number; delayMin: number | null }>;
+}
+export interface RailOverviewResponse {
+  updatedAt: string | null;
+  longDistance: { active: number; delayed15: number };
+  axes: RailGroupStats[]; regions: RailGroupStats[];
+  topDelays: RailTrain[]; trains: RailTrain[];
+  errors: string[];
+}
+export type RailCauseKind = 'intemperies' | 'passage-a-niveau' | 'obstacle' | 'panne-installation' | 'panne-train' | 'malaise' | 'forces-ordre' | 'travaux' | 'autre';
+export interface RailSituation { id: string; title: string; cause: string | null; causeKind: RailCauseKind; scope: string; start: string; end: string | null; trains: number }
+export interface RailSituationsResponse { at: string | null; situations: RailSituation[]; errors: string[] }
+
+export type MaritimeZone = 'pas-de-calais' | 'manche' | 'atlantique' | 'mediterranee';
+export interface MaritimeZoneStats { zone: MaritimeZone; label: string; vessels: number; classA: number; classB: number; atAnchor: number; moored: number; underWay: number; restricted: number; fishing: number }
+export interface MaritimePortStats { port: string; vessels: number; atAnchor: number; moored: number; underWay: number }
+export interface MaritimeSignal { mmsi: string; name: string | null; type: string | null; status: number; statusLabel: string; lat: number; lon: number; since: string; confirmed: boolean; sensitive: boolean }
+export interface MaritimeSensitiveVessel { mmsi: string; name: string | null; type: 'petrolier' | 'passagers'; lat: number; lon: number; distanceNm: number }
+export interface MaritimeSnapshot {
+  at: string | null; lastMessageAt: string | null;
+  vessels: number; frenchFlag: number; typedShare: number;            // typedShare en %
+  zones: MaritimeZoneStats[]; ports: MaritimePortStats[];
+  byType: Record<'cargo' | 'petrolier' | 'passagers' | 'peche' | 'remorqueur' | 'plaisance' | 'grande-vitesse' | 'service' | 'militaire' | 'autre' | 'inconnu', number>;
+  signals: MaritimeSignal[];                                          // seulement les confirmés (T3)
+  info: { restricted: number; draught: number; fishing: number };
+  sensitive: { tankers: number; passenger: number; list: MaritimeSensitiveVessel[] };
+  errors: string[];
+}
