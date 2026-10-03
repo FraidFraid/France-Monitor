@@ -27,7 +27,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(roadLevel(roadNationalFixture()).level).toBe('jaune');
     expect(v.head).toMatchObject({ theme: 'Trafics', title: 'Trafic routier', level: 'jaune' });
     expect(v.head.figure).toEqual({
-      value: '64', caption: 'incidents en cours sur le réseau national · dont 4 accidents · DIR, 14:57', level: undefined,
+      value: '64', caption: 'incidents en cours sur le réseau national non concédé · dont 4 accidents · DIR, 14:57', level: undefined,
     });
     expect(v.head.status).toEqual([glueUnits(roadLevel(roadNationalFixture()).reason), 'DIR\u00A014:57 · TomTom\u00A015:00']);
     expect(v.head.lead).toBe(`4 accidents en cours, le plus récent à 14:44 (A55). A63 coupée (Cestas à Pessac) depuis 09:25. Paris : 169,5${NBSP}km de bouchons.`);
@@ -117,7 +117,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(s?.summary).toBe('5 sources');
     const t = visibleText(s?.html ?? '');
     for (const part of ['publication de 14:57', 'mesure de 15:00', 'fichiers de 15:06', 'récapitulatif de 14:57', 'collecte de 15:00',
-      '588 appels sur 2\u202F500', 'réseau routier national non concédé', '12 agglomérations', 'Jamais une couverture France entière',
+      '588 appels sur 2\u202F500', 'réseau routier national non concédé', '2 agglomérations (TomTom', 'Jamais une couverture France entière',
       'les accidents ne dépassent jamais le jaune', 'au moins 5 coupures non planifiées', `au-delà de 30${NBSP}min après leur publication`,
       'jaune dès 7, orange dès 20, rouge dès 40', 'sections Traficolor géolocalisées']) expect(t).toContain(part);
   });
@@ -126,7 +126,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     const v = view({ now });
     expect(v.head.level).toBe('nd');
     expect(v.head.figure?.level).toBeNull();
-    expect(v.head.figure?.caption).toBe('incidents en cours sur le réseau national · dont 4 accidents · DIR, 14:57 (en retard)');
+    expect(v.head.figure?.caption).toBe('incidents en cours sur le réseau national non concédé · dont 4 accidents · DIR, 14:57 (en retard)');
     expect(v.head.status[0]).toBe('niveau suspendu : données DIR en retard');
     expect(v.head.lead).toBeNull();
     const h = renderLayerView('trafficRoad', v);
@@ -168,7 +168,7 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(failed.sections.find((s) => s.id === 'events')?.html).toContain('Source indisponible : événements des DIR.');
     expect(view({ nationalError: 'HTTP 500' }).bodyHtml).toContain('Source injoignable. Dernières données : 14:57.');
     const calm = view({ national: withNational((n) => { n.events = []; n.counts = { ...n.counts, incidents: 0, accidents: 0 }; }) });
-    expect(calm.sections[0].html).toContain('Aucun événement en cours sur le réseau national.');
+    expect(calm.sections[0].html).toContain('Aucun événement en cours sur le réseau national non concédé (les autoroutes concédées sont suivies à part).');
     expect(view({ national: null }).bodyHtml).toContain('Chargement des données…');
   });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute', () => {
@@ -181,6 +181,8 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     const h = html({ national });
     expect(h).not.toMatch(/<img|<script|<svg onload|<b>op/);
     expect(h).toContain('&lt;img src=x onerror=1&gt;');
+    expect(h).toContain('&lt;svg onload=1&gt;');
+    expect(h).toContain('&lt;b&gt;op&lt;/b&gt;');
     for (const over of [{}, { now: Date.parse('2026-10-03T13:40:00Z') }, { urban: null, urbanError: 'HTTP 502' }]) {
       const all = html(over);
       const text = visibleText(all);
@@ -188,6 +190,36 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
       expect(trafficBreakable(text)).toBeNull();
       expect(all).not.toMatch(/\u2014|&mdash;|monospace|#[0-9a-fA-F]{6}\b|rgba?\(/);
     }
+  });
+  it('périmètre DIR dit partout : réseau non concédé, jamais « aucun accident » sur les concessions', () => {
+    const calm = view({ national: withNational((n) => { n.events = []; n.counts = { ...n.counts, incidents: 0, accidents: 0 }; }) });
+    expect(calm.head.lead).toContain('Aucun accident en cours sur le réseau national non concédé (les autoroutes concédées sont suivies à part).');
+    expect(visibleText(calm.sections[0].html)).toContain('réseau national non concédé');
+    expect(view().head.figure?.caption).toContain('réseau national non concédé');
+    expect(visibleText(sectionOf('events')?.html ?? '')).toContain('autoroutes concédées sont suivies à part, par les bouchons du CNIR');
+  });
+  it('Traficolor seul en panne : nommé dans Agglomérations, jamais « la source ne couvre pas » ; le reste reste', () => {
+    const national = withNational((n) => { n.agglos = []; n.errors = ['Traficolor : HTTP 500']; });
+    const v = view({ national });
+    const h = v.sections.find((s) => s.id === 'agglos')?.html ?? '';
+    expect(h).toContain('Source indisponible : niveaux Traficolor des DIR.');
+    expect(visibleText(h)).not.toContain('ne couvre pas');
+    expect(h).toContain('169,5');
+    expect(v.sections.find((s) => s.id === 'speeds')?.html).toContain('89');
+    const m = sectionOf('method', { national });
+    expect(visibleText(m?.html ?? '')).toContain('source indisponible');
+    expect(m?.summary).toBe('5 sources · 1 indisponible');
+  });
+  it('QTV seul en panne : nommé dans Vitesses et dans Méthode ; les autres parties restent', () => {
+    const national = withNational((n) => { n.speeds = { at: null, stations: 0, under50: 0, median: null, slowest: [] }; n.errors = ['QTV : HTTP 500']; });
+    const v = view({ national });
+    expect(v.sections.find((s) => s.id === 'speeds')?.html).toContain('Source indisponible : vitesses des stations QTV des DIR.');
+    expect(v.sections.find((s) => s.id === 'agglos')?.html).not.toContain('Source indisponible');
+    expect(v.sections.find((s) => s.id === 'conceded')?.html).toContain('A8, Italie');
+    const m = v.sections.find((s) => s.id === 'method');
+    expect(visibleText(m?.html ?? '')).toContain('Vitesses');
+    expect(visibleText(m?.html ?? '')).toContain('source indisponible');
+    expect(m?.summary).toBe('5 sources · 1 indisponible');
   });
   it('période réelle de chaque partie (T1, S1) : jamais « temps réel »', () => {
     const t = visibleText(html()).toLowerCase();

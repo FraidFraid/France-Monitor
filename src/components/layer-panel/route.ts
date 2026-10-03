@@ -70,7 +70,7 @@ function lead(n: RoadNationalResponse, u: RoadUrbanResponse | null, now: number)
   const first = accidents[0];
   parts.push(first
     ? `${plural(accidents.length, 'accident')} en cours, le plus récent à ${clockOf(first.start, now)}${first.road ? ` (${first.road})` : ''}.`
-    : 'Aucun accident en cours sur le réseau national.');
+    : 'Aucun accident en cours sur le réseau national non concédé (les autoroutes concédées sont suivies à part).');
   const cut = cuts[0];
   if (cuts.length === 1 && cut) parts.push(`${cut.road ?? 'Route'} coupée${cut.place ? ` (${cut.place})` : ''} depuis ${clockOf(cut.start, now)}.`);
   else if (cuts.length > 1) parts.push(`${cuts.length} routes coupées depuis moins de 24${NBSP}h.`);
@@ -94,7 +94,7 @@ function headOf(input: RouteViewInput, n: RoadNationalResponse): LayerHeadModel 
     theme: TRAFFIC_THEME, title: TITLE,
     figure: {
       value: frNumber(n.counts.incidents, 0),
-      caption: `incidents en cours sur le réseau national · dont ${plural(accidents, 'accident')} · DIR, ${clockOf(n.publishedAt, now)}${tail}`,
+      caption: `incidents en cours sur le réseau national non concédé · dont ${plural(accidents, 'accident')} · DIR, ${clockOf(n.publishedAt, now)}${tail}`,
       level: late ? null : undefined,
     },
     level: late ? 'nd' : verdict.level,
@@ -124,7 +124,7 @@ function restText(rest: readonly RoadEvent[]): string {
   return `${rest.length} autre${rest.length > 1 ? 's' : ''} : ${shown}${ranked.length > 4 ? '…' : ''}.`;
 }
 
-const T2_NOTE = `En cours : événement non planifié démarré depuis moins de 24${NBSP}h ; au-delà, ou planifié, il passe dans « Fermetures et `
+const T2_NOTE = `Réseau national non concédé (DIR) ; les autoroutes concédées sont suivies à part, par les bouchons du CNIR. En cours : événement non planifié démarré depuis moins de 24${NBSP}h ; au-delà, ou planifié, il passe dans « Fermetures et `
   + 'chantiers de longue durée ». Les chantiers ne comptent jamais comme incidents.';
 
 function eventsSection(n: RoadNationalResponse | null, canFocus: boolean, now: number, open: OpenFn): FicheSection {
@@ -133,7 +133,7 @@ function eventsSection(n: RoadNationalResponse | null, canFocus: boolean, now: n
   const sorted = sortRoadEvents(n.events);
   if (sorted.length === 0) {
     return { ...base, summary: n.errors.length > 0 ? 'n.d.' : 'aucun',
-      html: emptyOrDown(n.errors, 'Aucun événement en cours sur le réseau national.', 'événements des DIR') + note(T2_NOTE) };
+      html: emptyOrDown(n.errors, 'Aucun événement en cours sur le réseau national non concédé (les autoroutes concédées sont suivies à part).', 'événements des DIR') + note(T2_NOTE) };
   }
   const late = dirLate(n, now);
   const count = (kind: RoadEvent['kind']): number => sorted.filter((e) => e.kind === kind).length;
@@ -199,6 +199,7 @@ function agglosSection(n: RoadNationalResponse | null, u: RoadUrbanResponse | nu
   if (lines.length === 0) {
     return { ...base, summary: 'n.d.', html: urbanDown + emptyOrDown([...(n?.errors ?? []), ...(u?.errors ?? [])], 'Aucune agglomération renseignée.', 'TomTom et Traficolor') };
   }
+  const officialDown = official.length === 0 ? sourceDown('niveaux Traficolor des DIR') : '';
   const urbanLate = u ? isTrafficDataLate('tomtom', u.collectedAt, now) : false;
   const maxKm = Math.max(0, ...lines.map((l) => l.urban?.jamKm ?? 0));
   const nd = '<td class="lp-faint">n.d.</td>';
@@ -216,16 +217,17 @@ function agglosSection(n: RoadNationalResponse | null, u: RoadUrbanResponse | nu
     + `<th scope="col">Retard</th><th scope="col">Saturé</th></tr></thead><tbody>${rows}</tbody></table>`;
   const more = lines.length > MAX_AGGLOS ? note(`${lines.length - MAX_AGGLOS} autres agglomérations.`) : '';
   const topUrban = lines.find((l) => l.urban !== null)?.urban ?? null;
-  const topOfficial = [...lines].filter((l) => l.official?.congestedPct !== null && l.official !== null)
+  const topOfficial = [...lines].filter((l) => l.official !== null && l.official.congestedPct !== null)
     .sort((a, b) => (b.official?.congestedPct ?? 0) - (a.official?.congestedPct ?? 0))[0]?.official ?? null;
   const summary = topUrban ? `${topUrban.name} ${formatKm(topUrban.jamKm)} de bouchons${urbanLate ? ' (en retard)' : ''}`
     : topOfficial ? `${topOfficial.label} ${formatShare(topOfficial.congestedPct)} saturé` : 'n.d.';
   const offAt = latestOfficial(official);
   return {
     ...base, summary: escapeHtml(summary),
-    html: urbanDown + table + more
-      + note(`Bouchons et retard cumulé : TomTom, 12 agglomérations, embouteillages seulement (jamais les routes fermées), collecte du serveur toutes les 15${NBSP}min de 7${NBSP}h à 21${NBSP}h et toutes les 30${NBSP}min la nuit ; relevé de ${u ? clockOf(u.collectedAt, now) : 'n.d.'}${urbanLate ? ' (en retard)' : ''}.`)
-      + note(`Saturé : part des sections officielles au niveau « saturé » parmi les sections renseignées (Traficolor des DIR, 16 réseaux d’agglomération), en rouge dès 5${NBSP}% ; fichiers de ${clockOf(offAt, now)}. n.d. : la source ne couvre pas l’agglomération.`),
+    html: urbanDown + officialDown + table + more
+      + note(`Bouchons et retard cumulé : TomTom, ${u ? `${u.agglos.length} agglomérations` : 'agglomérations'}, embouteillages seulement (jamais les routes fermées), collecte du serveur toutes les 15${NBSP}min de 7${NBSP}h à 21${NBSP}h et toutes les 30${NBSP}min la nuit ; relevé de ${u ? clockOf(u.collectedAt, now) : 'n.d.'}${urbanLate ? ' (en retard)' : ''}.`)
+      + note(`Saturé : part des sections officielles au niveau « saturé » parmi les sections renseignées (Traficolor des DIR${official.length > 0 ? `, ${official.length} réseaux d’agglomération` : ''}), en rouge dès 5${NBSP}%`
+        + (official.length === 0 ? ' ; source indisponible.' : ` ; fichiers de ${clockOf(offAt, now)}. n.d. : la source ne couvre pas l’agglomération.`)),
   };
 }
 
@@ -306,7 +308,7 @@ function methodSection(input: RouteViewInput): FicheSection {
   const nLate = n ? dirLate(n, now) : false;
   const late = (b: boolean): string => (b ? ' (en retard)' : '');
   const offAt = n ? latestOfficial(n.agglos) : null;
-  const rows = [
+  const rowList = [
     kvRow('Événements', `${sourceLinkHtml('DIR, DATEX II (Bison Futé)', DIR_URL)} · ${escapeHtml(state(n !== null, nationalError !== null,
       `publication de ${n ? clockOf(n.publishedAt, now) : 'n.d.'}${late(nLate)}`))}`),
     kvRow('Vitesses', `${sourceLinkHtml('DIR, stations QTV', QTV_URL)} · ${escapeHtml(state(n !== null, nationalError !== null,
@@ -317,10 +319,11 @@ function methodSection(input: RouteViewInput): FicheSection {
       n?.conceded.at ? `récapitulatif de ${clockOf(n.conceded.at, now)}${late(isTrafficDataLate('cnir', n.conceded.at, now))}` : 'source indisponible'))}`),
     kvRow('Agglomérations', `${sourceLinkHtml('TomTom, collecte du serveur', TOMTOM_URL)} · ${escapeHtml(state(u !== null, urbanError !== null,
       u ? `collecte de ${clockOf(u.collectedAt, now)}${late(isTrafficDataLate('tomtom', u.collectedAt, now))} · ${frNumber(u.quota.callsToday, 0)} appels sur ${frNumber(u.quota.limit, 0)} aujourd’hui` : ''))}`),
-  ].join('');
-  const down = [n === null && nationalError !== null, u === null && urbanError !== null].filter(Boolean).length;
+  ];
+  const rows = rowList.join('');
+  const down = rowList.filter((row) => row.includes('source indisponible')).length;
   const html = rows
-    + note('Périmètres : réseau routier national non concédé (DIR) ; les autoroutes concédées n’y figurent pas, leurs bouchons viennent du récapitulatif national du CNIR ; 12 agglomérations (TomTom, Paris et Lyon en deux cadres). Jamais une couverture France entière.')
+    + note(`Périmètres : réseau routier national non concédé (DIR) ; les autoroutes concédées n’y figurent pas, leurs bouchons viennent du récapitulatif national du CNIR ; ${u ? `${u.agglos.length} agglomérations` : 'agglomérations'} (TomTom, Paris et Lyon en deux cadres). Jamais une couverture France entière.`)
     + note(`Pastille : rouge si un événement météo (neige, verglas, inondation, éboulement récent) touche au moins 2 DIR, ou au moins 5 coupures non planifiées de moins de 24${NBSP}h ; orange si un événement météo est actif, ou au moins 2 coupures ; jaune si au moins une coupure ou au moins 5 accidents ; vert sinon : les accidents ne dépassent jamais le jaune.`)
     + note(T2_NOTE)
     + note(`Retard : événements DIR au-delà de 30${NBSP}min après leur publication ; vitesses et Traficolor au-delà de 20${NBSP}min ; récapitulatif du CNIR au-delà de 2${NBSP}h ; TomTom au-delà de 45${NBSP}min le jour et 75${NBSP}min la nuit. Une donnée en retard perd ses couleurs ; la pastille passe à n.d.`)
@@ -348,7 +351,7 @@ export function buildRouteView(input: RouteViewInput): LayerView {
     return {
       head: {
         theme: TRAFFIC_THEME, title: TITLE, level: 'nd',
-        figure: { value: 'n.d.', caption: 'incidents en cours sur le réseau national', level: null },
+        figure: { value: 'n.d.', caption: 'incidents en cours sur le réseau national non concédé', level: null },
         status: ['DIR injoignable', urbanStamp(u, urbanError, now)],
       },
       sections, bodyHtml: sourceErrorCallout(null, now),
