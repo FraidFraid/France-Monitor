@@ -16,8 +16,12 @@ import proj4 from 'proj4';
 
 export const SAE_VINTAGE = 2025;
 const DREES = 'https://data.drees.solidarites-sante.gouv.fr';
-const SAE_URL = `${DREES}/api/v2/catalog/datasets/707_bases-administratives-sae/attachments/sae_2025_base_administrative_formats_sas_csv_7z`;
 const FINESS_DATASET_API = 'https://www.data.gouv.fr/api/1/datasets/finess-extraction-du-fichier-des-etablissements/';
+
+/** Archive 7z de la base administrative SAE d'un millésime (pièce jointe DREES). */
+export function saeUrl(vintage) {
+  return `${DREES}/api/v2/catalog/datasets/707_bases-administratives-sae/attachments/sae_${vintage}_base_administrative_formats_sas_csv_7z`;
+}
 const SAE_TABLES = ['ID', 'URGENCES', 'URGENCES2', 'REA', 'MCO'];
 
 /** Systèmes de coordonnées du FINESS (dernier segment de `sourcecoordet`) → définitions proj4. */
@@ -79,15 +83,35 @@ export function parseSemicolonCsv(text) {
   return rows;
 }
 
-/** Table SAE (texte latin-1 déjà décodé) → objets par en-tête ; FI reste du texte (zéro initial gardé). */
+/** Table SAE (texte déjà décodé par decodeSaeCsv) → objets par en-tête ; FI reste du texte (zéro initial gardé). */
 export function readSaeTable(text) {
   const [header, ...rows] = parseSemicolonCsv(text);
   return rows.map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])));
 }
 
-/** Octets d'un CSV SAE (latin-1, en pratique windows-1252) → texte. */
-export function decodeLatin1(bytes) {
-  return new TextDecoder('windows-1252').decode(bytes);
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+const WINDOWS_1252 = new TextDecoder('windows-1252');
+
+/**
+ * Octets d'un CSV SAE → texte, ligne par ligne : UTF-8 d'abord, windows-1252 (latin-1) en repli si la ligne n'est pas de
+ * l'UTF-8 valide. La table ID mêle des valeurs UTF-8 à un fichier latin-1 : décodé d'un bloc en latin-1, « HÔPITAL » devenait
+ * « HÃ”PITAL ».
+ */
+export function decodeSaeCsv(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const lines = [];
+  for (let start = 0; start < data.length;) {
+    const lf = data.indexOf(0x0a, start);
+    const end = lf < 0 ? data.length : lf + 1;
+    const line = data.subarray(start, end);
+    try {
+      lines.push(UTF8.decode(line));
+    } catch {
+      lines.push(WINDOWS_1252.decode(line));
+    }
+    start = end;
+  }
+  return lines.join('');
 }
 
 /** « 1,ATLASANTE,96,BAN,EPSG:2154 RGF93 / Lambert-93 (Métropole) » → « EPSG:2154 » ; UTM WGS84 sans code → code EPSG. */
@@ -137,6 +161,11 @@ const groupByFi = (rows) => {
   return map;
 };
 const ICU_UNITS = new Set(['REAADU', 'REAENF', 'REAPEDREC']);
+/** Cellule de lits : vide ou illisible = non déclaré (null), jamais 0. */
+const bedsOrNull = (v) => {
+  const t = String(v ?? '').trim();
+  return t !== '' && Number.isFinite(Number(t)) ? Number(t) : null;
+};
 const INTENSIVE_UNITS = new Set(['SIADU', 'SIPED']);
 
 /**
@@ -146,6 +175,7 @@ const INTENSIVE_UNITS = new Set(['SIADU', 'SIPED']);
  * soins intensifs), passages des sites d'urgences.
  */
 export function buildHospitalsDataset({ sae, finess, vintage = SAE_VINTAGE }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(finess.date ?? ''))) throw new Error('date d’extraction FINESS absente ou illisible (première ligne)');
   const ids = new Map(sae.ID.map((r) => [r.FI, r]));
   const urg2 = groupByFi(sae.URGENCES2);
   const rea = groupByFi(sae.REA);
@@ -179,7 +209,7 @@ export function buildHospitalsDataset({ sae, finess, vintage = SAE_VINTAGE }) {
       seasonal: u.AUTSAIS === '1',
       antenna: u.AUTMEDURG === '1',
       passages: passRows.length > 0 ? sum(passRows, 'PASSU') : null,
-      bedsMco: m ? Number(m.LIT_MCO) || 0 : null,
+      bedsMco: m ? bedsOrNull(m.LIT_MCO) : null,
       bedsIcu: icu.length > 0 ? sum(icu, 'LIT') : null,
       bedsIntensive: intensive.length > 0 ? sum(intensive, 'LIT') : null,
       bedsUhcd: passRows.length > 0 ? sum(passRows, 'LIT_UHCD') : null,
@@ -209,6 +239,13 @@ export function buildHospitalsDataset({ sae, finess, vintage = SAE_VINTAGE }) {
     },
     establishments: [...aggregates.values()].sort((a, b) => (a.aggregate < b.aggregate ? -1 : 1)),
   };
+}
+
+/** JSON de métadonnées : statut HTTP contrôlé, délai borné. */
+export async function fetchMetadata(url, timeoutMs = 60_000) {
+  const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} pour ${url}`);
+  return resp.json();
 }
 
 async function download(url, file) {
@@ -249,10 +286,10 @@ async function buildIn(work, arg) {
   if (!saeArchive) {
     saeArchive = join(work, 'sae.7z');
     console.log('[build-hospitals] téléchargement de la base administrative SAE…');
-    await download(SAE_URL, saeArchive);
+    await download(saeUrl(SAE_VINTAGE), saeArchive);
   }
   if (!finessFile) {
-    const meta = await (await fetch(FINESS_DATASET_API)).json();
+    const meta = await fetchMetadata(FINESS_DATASET_API);
     const url = latestFinessUrl(meta?.resources ?? []);
     if (!url) throw new Error('ressource FINESS géolocalisée introuvable sur data.gouv');
     finessFile = join(work, 'finess.csv');
@@ -262,7 +299,7 @@ async function buildIn(work, arg) {
   const includes = SAE_TABLES.flatMap((t) => ['--include', `*/Base CSV/${t}_${SAE_VINTAGE}.csv`]);
   execFileSync('bsdtar', ['-xf', saeArchive, '-C', work, ...includes], { stdio: 'inherit' });
   const sae = {};
-  for (const t of SAE_TABLES) sae[t] = readSaeTable(decodeLatin1(await readFile(await findFile(work, `${t}_${SAE_VINTAGE}.csv`))));
+  for (const t of SAE_TABLES) sae[t] = readSaeTable(decodeSaeCsv(await readFile(await findFile(work, `${t}_${SAE_VINTAGE}.csv`))));
   const finess = parseFiness(await readFile(finessFile, 'utf8'));
   const dataset = buildHospitalsDataset({ sae, finess });
   const out = fileURLToPath(new URL('../public/data/hospitals-urgences.json', import.meta.url));

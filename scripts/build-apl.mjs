@@ -137,6 +137,20 @@ export function buildAplDataset({ sheets, publishedAt, names = DEPT_NAMES }) {
   };
 }
 
+/** JSON de métadonnées : statut HTTP contrôlé, délai borné. */
+export async function fetchMetadata(url, timeoutMs = 60_000) {
+  const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} pour ${url}`);
+  return resp.json();
+}
+
+/** Date de publication du jeu (AAAA-MM-JJ, S1) ; absente ou illisible : échec, jamais un fichier sans date. */
+export function publishedAtOf(meta) {
+  const date = String(meta?.metas?.default?.modified ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date de publication absente des métadonnées DREES');
+  return date;
+}
+
 async function download(url, file) {
   const resp = await fetch(url, { signal: AbortSignal.timeout(180_000) });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} pour ${url}`);
@@ -156,8 +170,7 @@ async function main() {
 }
 
 async function buildFrom(dir, downloadFirst, readExcelFile) {
-  const meta = await (await fetch(`${DREES}/api/explore/v2.1/catalog/datasets/${DATASET}`)).json();
-  const publishedAt = String(meta?.metas?.default?.modified ?? '').slice(0, 10);
+  const publishedAt = publishedAtOf(await fetchMetadata(`${DREES}/api/explore/v2.1/catalog/datasets/${DATASET}`));
   const sheets = {};
   for (const p of PROFESSIONS) {
     const file = join(dir, `${p.attachment}.xlsx`);

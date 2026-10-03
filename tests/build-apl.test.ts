@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { aggregate, buildAplDataset, departmentOf, parseAplSheet } from '../scripts/build-apl.mjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { aggregate, buildAplDataset, departmentOf, fetchMetadata, parseAplSheet, publishedAtOf } from '../scripts/build-apl.mjs';
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 // Feuilles miniatures fidèles aux classeurs DREES 2022-2024 : 8 lignes de titre et de notes, en-tête en ligne 9,
 // ligne d'unités, puis une ligne par commune (code INSEE en texte, arrondissements de Paris, Corse, DROM).
@@ -76,5 +78,22 @@ describe('agrégation (règle DREES)', () => {
     });
     expect(dataset.departments[3]).toMatchObject({ code: '974', pop: 210, popUnder25: 210, shareUnder25: 100 });
     expect(dataset.missing).toEqual(['976']);
+  });
+});
+
+describe('métadonnées DREES : date de publication (S1)', () => {
+  it('date de modification lue ; absente ou illisible : échec, jamais un fichier sans date', () => {
+    expect(publishedAtOf({ metas: { default: { modified: '2026-07-22T09:12:00+00:00' } } })).toBe('2026-07-22');
+    expect(() => publishedAtOf({ metas: { default: {} } })).toThrow('date de publication');
+    expect(() => publishedAtOf(null)).toThrow('date de publication');
+  });
+  it('lecture des métadonnées : statut HTTP contrôlé, délai borné', async () => {
+    const inits: Array<RequestInit | undefined> = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      inits.push(init);
+      return { ok: false, status: 500, json: async () => ({}) };
+    }));
+    await expect(fetchMetadata('https://data.drees.solidarites-sante.gouv.fr/x')).rejects.toThrow('HTTP 500');
+    expect(inits[0]?.signal).toBeInstanceOf(AbortSignal);
   });
 });
