@@ -274,8 +274,8 @@ export function railOverviewFixture(): RailOverviewResponse {
     longDistance: { active: 37, delayed15: 20 },
     axes: [
       // Les sept axes, toujours, dans l'ordre du serveur (AXIS_ORDER) ; Normandie sans train ce jour-là.
-      group('sud-est', 'Sud-Est', 6, 56.7, 140), group('atlantique', 'Atlantique', 4, 15, 20), group('nord', 'Nord', 1, 10, 10, 0, 1),
-      group('est', 'Est', 2, 10, 15), group('intercites-bercy', 'Intercités Bercy', 3, 6.7, 10), group('normandie', 'Normandie', 0, null, null),
+      group('sud-est', 'Sud-Est (Paris Gare de Lyon)', 6, 56.7, 140), group('atlantique', 'Atlantique (Paris Montparnasse)', 4, 15, 20), group('nord', 'Nord (Paris Nord)', 1, 10, 10, 0, 1),
+      group('est', 'Est (Paris Est)', 2, 10, 15), group('intercites-bercy', 'Intercités (Paris Bercy)', 3, 6.7, 10), group('normandie', 'Normandie (Paris Saint-Lazare)', 0, null, null),
       group('province', 'Province, transversales', 21, 23.6, 90, 1, 1),
     ],
     regions: [

@@ -30,7 +30,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(v.head).toMatchObject({ theme: 'Trafics', title: 'Réseau ferroviaire', level: 'orange' });
     expect(v.head.figure).toEqual({ value: '37', caption: `trains grandes lignes perturbés en cours · 20 à 15${NBSP}min ou plus · SNCF, 15:10`, level: undefined });
     expect(v.head.status).toEqual([glueUnits(railLevel(railOverviewFixture()).reason), 'SNCF\u00A015:10 · SIRI SX\u00A015:10']);
-    expect(v.head.lead).toBe(`Axe Sud-Est le plus touché (6 trains, +57${NBSP}min en moyenne). TER Occitanie : +58${NBSP}min en moyenne sur 5 trains. `
+    expect(v.head.lead).toBe(`Axe Sud-Est (Paris Gare de Lyon) le plus touché (6 trains, +57${NBSP}min en moyenne). TER Occitanie : +58${NBSP}min en moyenne sur 5 trains. `
       + 'Situation : Panne d’installation près de Châteauroux.');
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--orange">37</b>');
   });
@@ -42,15 +42,15 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
   });
   it('grandes lignes par axe : trains, retard moyen coloré dès l’orange, maximum, supprimés ; puce selon la règle', () => {
     const s = sectionOf('axes');
-    expect(s?.summary).toBe(`Sud-Est +57${NBSP}min`);
+    expect(s?.summary).toBe(`Sud-Est (Paris Gare de Lyon) +57${NBSP}min`);
     const h = s?.html ?? '';
-    expect(h).toContain(`<tr><th scope="row"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span>Sud-Est</th><td><span class="lp-val fmk-num">6</span></td>`
+    expect(h).toContain(`<tr><th scope="row"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span>Sud-Est (Paris Gare de Lyon)</th><td><span class="lp-val fmk-num">6</span></td>`
       + `<td><span class="lp-val fmk-num lp-lvl lp-lvl--orange">+57${NBSP}min</span></td><td><span class="lp-val fmk-num">140${NBSP}min</span></td>`
       + '<td><span class="lp-val fmk-num">0</span></td></tr>');
     expect(h).toContain(`<span class="fmk-dot fmk-dot--jaune" aria-hidden="true"></span>Province, transversales</th><td><span class="lp-val fmk-num">21</span></td>`
       + `<td><span class="lp-val fmk-num">+24${NBSP}min</span></td>`);
-    expect(h).toContain(`<span class="fmk-dot fmk-dot--vert" aria-hidden="true"></span>Atlantique</th>`);
-    const order = ['>Sud-Est<', '>Province, transversales<', '>Atlantique<', '>Est<', '>Nord<', '>Intercités Bercy<'].map((n) => h.indexOf(n));
+    expect(h).toContain(`<span class="fmk-dot fmk-dot--vert" aria-hidden="true"></span>Atlantique (Paris Montparnasse)</th>`);
+    const order = ['>Sud-Est (Paris Gare de Lyon)<', '>Province, transversales<', '>Atlantique (Paris Montparnasse)<', '>Est (Paris Est)<', '>Nord (Paris Nord)<', '>Intercités (Paris Bercy)<'].map((n) => h.indexOf(n));
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(visibleText(h)).toContain('Gare de Lyon : Sud-Est');
   });
@@ -83,7 +83,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(h.match(/class="lp-row/g)).toHaveLength(5);
     expect(h).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-rail-train="SNCF:2026-10-03:9713"><span class="fmk-dot fmk-dot--rouge" aria-hidden="true"></span>'
       + `<span>n° 9713 · Paris Gare de Lyon – Barcelone Sants</span><span class="lp-val fmk-num lp-lvl lp-lvl--rouge">+140${NBSP}min</span>`
-      + '<small>retard · axe Sud-Est · mis à jour 15:08</small></div>');
+      + '<small>retard · axe Sud-Est (Paris Gare de Lyon) · mis à jour 15:08</small></div>');
     expect(h).toContain(`<span class="lp-val fmk-num lp-lvl lp-lvl--orange">+60${NBSP}min</span>`);
     expect(sectionOf('top', { canFocus: false })?.html).not.toContain('data-rail-train');
   });
@@ -92,7 +92,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(s?.summary).toBe('7 en cours · 1 à venir');
     const h = s?.html ?? '';
     expect(h).toContain('<select class="lp-select" data-rail-filter aria-label="Axe ou région"><option value="all" selected>Tous les axes et régions</option>');
-    expect(h).toContain('<option value="axis:sud-est">Axe Sud-Est</option>');
+    expect(h).toContain('<option value="axis:sud-est">Axe Sud-Est (Paris Gare de Lyon)</option>');
     expect(h).toContain('<option value="region:occitanie">TER Occitanie</option>');
     const t = visibleText(h);
     expect(t.indexOf('En cours (7)')).toBeLessThan(t.indexOf('n° 4400'));
@@ -102,12 +102,12 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
     expect(t.indexOf('À venir (1)')).toBeLessThan(t.indexOf('n° 8521'));
     expect(h).toMatch(/<span>n° 4400 · Lyon Part-Dieu – Tours<\/span><span class="lp-val fmk-num lp-lvl lp-lvl--rouge">supprimé<\/span><small>supprimé · axe Province, transversales/);
     expect(h).toMatch(/n° 871234 · Narbonne – Toulouse Matabiau[^]*<small>retard · TER Occitanie · mis à jour 15:08<\/small>/);
-    expect(h).toMatch(/n° 8521[^]*<small>retard · axe Atlantique · à venir · mis à jour 15:08<\/small>/);
+    expect(h).toMatch(/n° 8521[^]*<small>retard · axe Atlantique \(Paris Montparnasse\) · à venir · mis à jour 15:08<\/small>/);
     expect(h).not.toContain('data-rail-more');
     const sudEst = visibleText(sectionOf('trains', { filter: 'axis:sud-est' })?.html ?? '');
     expect(sudEst).toContain('En cours (3)');
     expect(sudEst).not.toContain('n° 4400');
-    expect(sectionOf('trains', { filter: 'axis:sud-est' })?.html).toContain('<option value="axis:sud-est" selected>Axe Sud-Est</option>');
+    expect(sectionOf('trains', { filter: 'axis:sud-est' })?.html).toContain('<option value="axis:sud-est" selected>Axe Sud-Est (Paris Gare de Lyon)</option>');
     expect(visibleText(sectionOf('trains', { filter: 'region:occitanie' })?.html ?? '')).toContain('n° 871234');
     const many = withOverview((o) => {
       const base = o.trains[0];
