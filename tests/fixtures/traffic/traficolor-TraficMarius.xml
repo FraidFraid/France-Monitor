@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><d2LogicalModel xmlns="http://datex2.eu/schema/2/2_0" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" modelBaseVersion="2">
+    <exchange>
+        <clientIdentification>TIPI</clientIdentification>
+        <supplierIdentification>
+            <country>fr</country>
+            <nationalIdentifier>TraficMarius</nationalIdentifier>
+        </supplierIdentification>
+    </exchange>
+    <payloadPublication xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="MeasuredDataPublication" lang="fr">
+        <publicationTime>2026-10-03T15:48:00.000+02:00</publicationTime>
+        <publicationCreator>
+            <country>fr</country>
+            <nationalIdentifier>TraficMarius</nationalIdentifier>
+        </publicationCreator>
+        <measurementSiteTableReference targetClass="MeasurementSiteTable" id="TraficMarius" version="1"/>
+        <headerInformation>
+            <confidentiality>noRestriction</confidentiality>
+            <informationStatus>real</informationStatus>
+        </headerInformation>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.N1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="399">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.P1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="0">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.k2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="300">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.p2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="0">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.n2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="359">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.o2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="175">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.j2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="107">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM213.J1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="197">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="Mm713.N1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="155">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM513.V1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="0">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM513.T1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="199">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM513.U1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="197">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM413.b2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="369">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.z2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="0">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.y2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="360">
+                            <trafficStatusValue>freeFlow</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.i2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="381">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.h2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="423">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.b2" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="277">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.N1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="230">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.M1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="383">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.L1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="370">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.K1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="342">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.J1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="330">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.I1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="420">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM313.H1" version="1"/>
+            <measurementTimeDefault>2026-10-03T15:48:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficStatus">
+                        <trafficStatus numberOfInputValuesUsed="391">
+                            <trafficStatusValue>congested</trafficStatusValue>
+                        </trafficStatus>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+    </payloadPublication>
+</d2LogicalModel>
