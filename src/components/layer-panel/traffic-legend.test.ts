@@ -9,7 +9,7 @@ import {
 } from './traffic.fixture.ts';
 import {
   AIR_TRAFFIC_LEGEND, CAT_AIRPORT_HEX, CAT_PORT_HEX, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, TRAFFIC_NEUTRAL_HEX,
-  VESSEL_TYPE_HEX, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
+  AIR_ALTITUDE_BANDS, VESSEL_TYPE_HEX, airAltitudeHex, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
 } from './traffic-legend.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -60,12 +60,18 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     none.sections = none.sections.map((s) => ({ ...s, status: 'unknown' as const }));
     expect(roadLegend(none, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR 14:57 · TomTom 15:00.');
   });
-  it('aérien : OpenSky daté, avions nets à tous les zooms (plus de densité), urgences aux couleurs du panneau, aéroports en jeton de catégorie', () => {
+  it('aérien : OpenSky daté, avions nets à tous les zooms et colorés par l’altitude, urgences aux couleurs du panneau, aéroports en jeton de catégorie', () => {
     const l = airLegend(airOverviewFixture(), TRAFFIC_NOW);
     expect(l.notes?.[0]).toBe('Données : OpenSky 15:09.');
     const t = text(l);
     expect(t).not.toMatch(/densité|zoom 7/i);
-    expect(label(l, 'air-plane')).toBe('Avion civil (indicatif au survol)');
+    // Cinq tranches d'altitude (pieds, comme l'infobulle d'un avion), puis l'altitude non transmise en teinte neutre.
+    const bands = l.items.filter((i) => i.id.startsWith('air-alt-'));
+    expect(bands.map((i) => [i.label, i.color])).toEqual([
+      [`Moins de 5\u202F000${NBSP}ft`, '#ff7832'], [`5\u202F000 à 15\u202F000${NBSP}ft`, '#ffd232'], [`15\u202F000 à 25\u202F000${NBSP}ft`, '#82e650'],
+      [`25\u202F000 à 35\u202F000${NBSP}ft`, '#32c8ff'], [`35\u202F000${NBSP}ft ou plus`, '#8264ff'], ['Altitude non transmise', TRAFFIC_NEUTRAL_HEX],
+    ]);
+    expect(bands.every((i) => typeof i.icon === 'string' && i.icon.includes('svg'))).toBe(true);
     for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0détournement, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
     expect([color(l, 'air-emergency-7500'), color(l, 'air-emergency-7700'), color(l, 'air-emergency-7600'), color(l, 'air-emergency-away')])
@@ -74,6 +80,15 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect(t).toContain(`moins de 40${NBSP}km`);
     expect(color(l, 'air-airport')).toBe(CAT_AIRPORT_HEX);
     expect(airLegend(null, TRAFFIC_NOW).notes?.[0]).toBe('Données : OpenSky indisponible.');
+  });
+  it('avions : teinte de chaque tranche d’altitude à ses bornes ; altitude non transmise neutre, jamais une tranche inventée', () => {
+    const cases: Array<[number, string]> = [
+      [1, '#ff7832'], [4_999, '#ff7832'], [5_000, '#ffd232'], [14_999, '#ffd232'], [15_000, '#82e650'], [24_999, '#82e650'],
+      [25_000, '#32c8ff'], [34_999, '#32c8ff'], [35_000, '#8264ff'], [45_000, '#8264ff'],
+    ];
+    for (const [ft, hex] of cases) expect(airAltitudeHex(ft)).toBe(hex);
+    for (const missing of [0, -120, Number.NaN, null, undefined]) expect(airAltitudeHex(missing)).toBe(TRAFFIC_NEUTRAL_HEX);
+    expect(AIR_ALTITUDE_BANDS.map((b) => b.below)).toEqual([5_000, 15_000, 25_000, 35_000, Number.POSITIVE_INFINITY]);
   });
   it('rail : SNCF et SIRI SX datés, seuils de retard des gares, situations hors carte dites', () => {
     const l = railLegend(railOverviewFixture(), railSituationsFixture(), TRAFFIC_NOW);

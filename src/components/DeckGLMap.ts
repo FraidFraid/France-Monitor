@@ -36,7 +36,7 @@ import {
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
 import {
-  AIR_ICON_HEX, VESSEL_TYPE_HEX, type VesselCategory, vesselCategory, vesselHex, vesselTypeLabel,
+  VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
@@ -5306,7 +5306,8 @@ export class DeckGLMap {
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
-        getIcon: () => this.getAirTrafficIconDef(AIR_ICON_HEX),
+        // Couleur selon l'altitude (tranches de traffic-legend.ts, une icône mise en cache par couleur).
+        getIcon: (d: AirTrafficFlight) => this.getAirTrafficIconDef(airAltitudeHex(d.altitude)),
         getColor: () => [255, 255, 255, 255],
         getSize: (d: AirTrafficFlight) => (d.altitude > 30000 ? 20 : d.altitude > 15000 ? 18 : 16),
         getAngle: (d: AirTrafficFlight) => this.headingToDeckAngle(this.getTweenedHeading(d)),

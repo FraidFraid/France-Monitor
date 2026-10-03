@@ -21,8 +21,35 @@ export const TRAFFIC_NEUTRAL_HEX = '#c7c7cc';
 /** Jetons de catégorie de main.css (R2), copiés pour MapLibre qui ne lit pas les variables CSS (vérifié par test). */
 export const CAT_AIRPORT_HEX = '#5ac8fa';
 export const CAT_PORT_HEX = '#30b0c7';
-/** Avions civils : une seule teinte (l'altitude n'est pas une gravité, arbitrage 28), icônes nettes à tous les zooms. */
-export const AIR_ICON_HEX = '#7dd3fc';
+// ─── Avions civils : couleur selon l'altitude (retour utilisateur, couleurs d'avant la tâche 15 ; remplace l'arbitrage 28) ───
+
+/** Tranches d'altitude (pieds) et teinte de l'icône, de bas en haut ; la dernière n'a pas de plafond. */
+export const AIR_ALTITUDE_BANDS: ReadonlyArray<{ id: string; below: number; hex: string }> = [
+  { id: 'air-alt-low', below: 5_000, hex: '#ff7832' },
+  { id: 'air-alt-climb', below: 15_000, hex: '#ffd232' },
+  { id: 'air-alt-mid', below: 25_000, hex: '#82e650' },
+  { id: 'air-alt-cruise', below: 35_000, hex: '#32c8ff' },
+  { id: 'air-alt-high', below: Number.POSITIVE_INFINITY, hex: '#8264ff' },
+];
+
+/**
+ * Teinte d'un avion selon son altitude (pieds) : moins de 5 000 orange, puis jaune, vert, bleu, violet dès 35 000 ; altitude non
+ * transmise (absente, nulle ou négative) : teinte neutre, jamais une tranche inventée (S5).
+ */
+export function airAltitudeHex(altitudeFt: number | null | undefined): string {
+  if (typeof altitudeFt !== 'number' || !(altitudeFt > 0)) return TRAFFIC_NEUTRAL_HEX;
+  const band = AIR_ALTITUDE_BANDS.find((b) => altitudeFt < b.below) ?? AIR_ALTITUDE_BANDS[AIR_ALTITUDE_BANDS.length - 1];
+  return band.hex;
+}
+
+/** « Moins de 5 000 ft », « 5 000 à 15 000 ft », …, « 35 000 ft ou plus » (unité de l'infobulle d'un avion). */
+function altitudeBandLabel(index: number): string {
+  const ft = (v: number): string => frNumber(v, 0);
+  const band = AIR_ALTITUDE_BANDS[index];
+  if (index === 0) return `Moins de ${ft(band.below)}${NBSP}ft`;
+  const floor = AIR_ALTITUDE_BANDS[index - 1].below;
+  return Number.isFinite(band.below) ? `${ft(floor)} à ${ft(band.below)}${NBSP}ft` : `${ft(floor)}${NBSP}ft ou plus`;
+}
 
 // ─── Types de navires : teinte de la carte, légende et comptes de l'instantané, un seul classement ───
 
@@ -121,8 +148,13 @@ export const ROAD_TRAFFIC_LEGEND: LegendCategory = {
 export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficAir',
   title: 'Trafic aérien',
+  columns: 2,
+  splitIndex: 7,
   items: [
-    { id: 'air-plane', label: 'Avion civil (indicatif au survol)', color: AIR_ICON_HEX, icon: fmIcon('plane') },
+    { id: 'air-plane-header', label: 'Avions civils : altitude, indicatif au survol', color: HEADER_HEX, isHeader: true },
+    ...AIR_ALTITUDE_BANDS.map(({ id, hex }, i): LegendItem => ({ id, label: altitudeBandLabel(i), color: hex, icon: fmIcon('plane') })),
+    { id: 'air-alt-unknown', label: 'Altitude non transmise', color: TRAFFIC_NEUTRAL_HEX, icon: fmIcon('plane') },
+    { id: 'air-emergency-header', label: 'Urgences et aéroports', color: HEADER_HEX, isHeader: true },
     { id: 'air-emergency-7500', label: 'Urgence 7500 (détournement)', color: levelHex('rouge'), shape: 'circle' },
     { id: 'air-emergency-7700', label: 'Urgence 7700 (urgence générale)', color: levelHex('orange'), shape: 'circle' },
     { id: 'air-emergency-7600', label: 'Urgence 7600 (panne radio)', color: levelHex('jaune'), shape: 'circle' },

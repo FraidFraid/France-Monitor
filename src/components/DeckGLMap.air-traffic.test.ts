@@ -3,8 +3,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AirTrafficFlight, MapViewState } from '../types/index.ts';
 import { DeckGLMap } from './DeckGLMap.ts';
+import { airFlightTooltipHtml } from './deckgl/traffic-map.ts';
+import { NBSP } from './layer-panel/format.ts';
+import { TRAFFIC_NEUTRAL_HEX } from './layer-panel/traffic-legend.ts';
 
-interface DeckLayerLike { id: string; props: { visible?: boolean } }
+interface IconDef { url: string }
+interface DeckLayerLike { id: string; props: { visible?: boolean; getIcon?: (d: AirTrafficFlight) => IconDef } }
 
 const flight = (over: Partial<AirTrafficFlight> = {}): AirTrafficFlight => ({
   id: 'f1', callsign: 'EZY123', longitude: 2.35, latitude: 48.85, altitude: 32000, speed: 440, heading: 90, source: 'opensky', ...over,
@@ -42,6 +46,20 @@ describe('avions civils : icônes à tous les zooms, animation seulement à part
       expect(airIconLayer(deckMap)?.props.visible).toBe(true);
     }
     expect(airIconLayer(deckAt(5, false))?.props.visible).toBe(false);
+  });
+
+  it('icône d’un avion colorée selon son altitude (tranches d’avant la tâche 15), une icône par couleur ; altitude dans l’infobulle', () => {
+    const deckMap = deckAt(9);
+    deckMap.updateAirTraffic([flight()]);
+    const getIcon = airIconLayer(deckMap)?.props.getIcon;
+    if (!getIcon) throw new Error('couche d’icônes des avions sans getIcon');
+    const fill = (altitude: number): string => decodeURIComponent(getIcon(flight({ altitude })).url);
+    const cases: Array<[number, string]> = [
+      [4_999, '#ff7832'], [5_000, '#ffd232'], [15_000, '#82e650'], [25_000, '#32c8ff'], [35_000, '#8264ff'], [0, TRAFFIC_NEUTRAL_HEX],
+    ];
+    for (const [altitude, hex] of cases) expect(fill(altitude)).toContain(`fill="${hex}"`);
+    expect(getIcon(flight({ altitude: 6_000 }))).toBe(getIcon(flight({ altitude: 14_000 })));
+    expect(airFlightTooltipHtml(flight({ altitude: 32_000 }))).toContain(`32\u202F000${NBSP}ft`);
   });
 
   it('zoom 5 : nouveau relevé posé d’un coup, aucune boucle d’animation ; zoom 8 : animation lancée', () => {
