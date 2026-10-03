@@ -248,80 +248,6 @@ async function fetchSentinellesIndicators(): Promise<Array<{
   return indicators;
 }
 
-function decodeHtml(input: string): string {
-  return input
-    .replace(/&#0*39;/g, '\'')
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&eacute;/g, 'é')
-    .replace(/&egrave;/g, 'è')
-    .replace(/&ecirc;/g, 'ê')
-    .replace(/&agrave;/g, 'à')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function stripTags(input: string): string {
-  return decodeHtml(String(input || '').replace(/<[^>]+>/g, ' '));
-}
-
-function toIsoDate(raw: string): string | null {
-  const text = String(raw || '').trim();
-  if (!text) return null;
-  const dmy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
-  const ymd = text.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
-  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
-  return null;
-}
-
-async function fetchAnsmShortages(): Promise<{ shortages: Array<Record<string, unknown>>; last_update: string | null }> {
-  const html = await fetch('https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments', {
-    signal: AbortSignal.timeout(15_000),
-  }).then((r) => r.ok ? r.text() : Promise.resolve(''));
-
-  const shortages: Array<Record<string, unknown>> = [];
-  const rowRegex = /<tr[^>]*class="[^"]*product-item[^"]*"[^>]*data-href="([^"]+)"[^>]*>([\s\S]*?)<\/tr>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = rowRegex.exec(html)) !== null) {
-    const detailPath = m[1];
-    const tds = [...m[2].matchAll(/<td([^>]*)>([\s\S]*?)<\/td>/gi)];
-    if (tds.length < 4) continue;
-    const statusText = stripTags(tds[0][2]);
-    const startDate = toIsoDate(stripTags(tds[1][2]));
-    const speciality = stripTags(tds[2][2]);
-    const dciMatch = speciality.match(/^(.*)\s+\[([^\]]+)\]\s*$/);
-    const drugName = dciMatch ? dciMatch[1].trim() : speciality;
-    const dci = dciMatch ? dciMatch[2].trim().toUpperCase() : null;
-    const endAttr = /data-value="([^"]*)"/i.exec(tds[3][1]);
-    const expectedEndDate = toIsoDate(endAttr?.[1] ?? stripTags(tds[3][2]));
-    const status = statusText.toLowerCase().includes('rupture') ? 'rupture'
-      : statusText.toLowerCase().includes('tension') ? 'tension'
-        : statusText.toLowerCase().includes('remise') ? 'normalisation'
-          : 'unknown';
-
-    shortages.push({
-      drug_name: drugName,
-      dci,
-      status,
-      start_date: startDate,
-      expected_end_date: expectedEndDate,
-      reason: statusText,
-      alternatives: null,
-      detail_url: detailPath ? `https://ansm.sante.fr${detailPath}` : null,
-    });
-  }
-
-  const lastUpdate = shortages
-    .map((s) => String(s.start_date ?? ''))
-    .filter(Boolean)
-    .sort()
-    .slice(-1)[0] || null;
-
-  return { shortages, last_update: lastUpdate };
-}
-
 export function healthProxyPlugin(): Plugin {
   return {
     name: 'health-proxy',
@@ -407,21 +333,6 @@ export function healthProxyPlugin(): Plugin {
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(JSON.stringify({ alerts: [], metadata: { generated_at: new Date().toISOString() } }));
-        }
-      });
-
-      server.middlewares.use('/api/health/drug-shortages', async (_req, res) => {
-        try {
-          const data = await fetchAnsmShortages();
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.setHeader('Cache-Control', 'public, max-age=1800');
-          res.end(JSON.stringify(data));
-        } catch (err) {
-          console.error('[health-proxy/drug-shortages]', err);
-          res.statusCode = 502;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ error: 'ANSM proxy failed', shortages: [], last_update: null }));
         }
       });
 
