@@ -5,8 +5,6 @@ import { fileURLToPath } from 'url';
 import { parseEnv } from 'util';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import { fetchAirTrafficSnapshot } from './api/_shared/air-traffic.js';
-
 const DEFAULT_RELAY_PORT = 8090;
 const DEFAULT_AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const CIRCUIT_BREAKER_THRESHOLD = 5;
@@ -49,46 +47,6 @@ function chunkArray(items, size) {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
-}
-
-// ── Cache + single-flight pour GET /opensky ──
-//
-// fetchAirTrafficSnapshot() a déjà son propre cache mémoire interne (20s, voir
-// api/_shared/air-traffic.js), mais sans coalescing : plusieurs requêtes concurrentes
-// arrivant avant que le premier fetch n'aboutisse déclenchent chacune leur propre calcul
-// complet du snapshot (~10s, plusieurs upstreams). Le cache ci-dessous garantit qu'un seul
-// calcul est en vol à la fois et que les appels rapprochés (10s) réutilisent son résultat.
-const OPENSKY_CACHE_TTL_MS = 10_000;
-let openskyCacheEntry = null; // { snapshot, fetchedAt }
-let openskyInflight = null; // Promise<snapshot> | null
-
-async function getOpenSkySnapshot() {
-  const now = Date.now();
-  if (openskyCacheEntry && now - openskyCacheEntry.fetchedAt < OPENSKY_CACHE_TTL_MS) {
-    return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
-  }
-
-  if (openskyInflight) {
-    const snapshot = await openskyInflight;
-    return { snapshot, cacheStatus: 'hit' };
-  }
-
-  openskyInflight = fetchAirTrafficSnapshot(fetch).finally(() => {
-    openskyInflight = null;
-  });
-
-  try {
-    const snapshot = await openskyInflight;
-    openskyCacheEntry = { snapshot, fetchedAt: Date.now() };
-    return { snapshot, cacheStatus: 'miss' };
-  } catch (error) {
-    // En cas d'échec, on retombe sur la dernière valeur connue plutôt que de faire
-    // échouer tous les appelants concurrents.
-    if (openskyCacheEntry) {
-      return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
-    }
-    throw error;
-  }
 }
 
 // Utilisation de global pour survivre aux rechargements HMR de Vite
@@ -148,24 +106,7 @@ export function startRelayServer(options = {}) {
         ok: true,
         ais: Boolean(aisApiKey),
         upstreamUrl,
-        opensky: Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET),
       }, { 'Cache-Control': 'no-store' });
-      return;
-    }
-
-    if (req.method === 'GET' && url.pathname === '/opensky') {
-      try {
-        const { snapshot, cacheStatus } = await getOpenSkySnapshot();
-        sendJson(res, 200, snapshot, {
-          'Cache-Control': 'public, max-age=10',
-          'X-Relay-Source': 'local-ais-relay',
-          'X-Relay-Cache': cacheStatus,
-        });
-      } catch (error) {
-        sendJson(res, 502, {
-          error: error instanceof Error ? error.message : 'OpenSky relay failed',
-        }, { 'Cache-Control': 'no-store', 'X-Relay-Cache': 'miss' });
-      }
       return;
     }
 
@@ -411,5 +352,5 @@ const isEntryPoint = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isEntryPoint) {
   startRelayServer();
-  console.log(`Relay AIS/OpenSky démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
+  console.log(`Relais AIS démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
 }

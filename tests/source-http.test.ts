@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import * as health from '../api/_lib/health-http.js';
 import {
-  SOURCE_USER_AGENT, SourceFetchError, cachedSource, fetchStrictJson, fetchStrictResponse, fetchStrictXml, sendSourceJson, sourceError,
+  SOURCE_USER_AGENT, SourceFetchError, cachedSource, fetchStrictHtml, fetchStrictJson, fetchStrictResponse, fetchStrictXml, isChallengePage, sendSourceJson, sourceError,
 } from '../api/_lib/source-http.js';
 import { fakeRes, fixtureText, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -51,6 +51,29 @@ describe('en-têtes, méthode et en-têtes de réponse (OpenSky, SNCF)', () => {
     expect(r.header('x-rate-limit-remaining')).toBe('3619');
     expect(r.header('retry-after')).toBeNull();
     expect(r.status).toBe(200);
+  });
+});
+
+describe('repère de contenu : vraie page qui intègre un formulaire reCAPTCHA (annuaire de Bordeaux, 03/10/2026)', () => {
+  const MARKER = 'id="flights-list-table"';
+  const BOD = 'https://www.bordeaux.aeroport.fr/vols-destinations/arrivees-departs-du-jour';
+  // Extrait de la page réelle (108 Ko, HTTP 200) : script reCAPTCHA en tête, formulaire en pied de page ; valeurs remplacées.
+  const PAGE = '<!DOCTYPE html><html><head><title>Arrivées et départs du jour - Bordeaux Aéroport</title>'
+    + '<script src="https://www.google.com/recaptcha/api.js?hl=fr&amp;render=explicit" async defer></script></head><body>'
+    + `<table ${MARKER}><tr><td>15:10</td><td>Lyon</td></tr></table>`
+    + '<form><div data-drupal-selector="edit-captcha" class="captcha captcha-type-challenge--recaptcha"><input type="hidden" name="captcha_token" value="x" />'
+    + '<div class="g-recaptcha" data-theme="light" data-type="image"></div></div></form></body></html>';
+
+  it('sans repère : « captcha » seul fait un défi (règle inchangée) ; repère présent : page lue', async () => {
+    expect(isChallengePage(PAGE)).toBe(true);
+    expect(isChallengePage(PAGE, { contentMarker: MARKER })).toBe(false);
+    stubFetch(() => respond(PAGE));
+    expect(await fetchStrictHtml(BOD, { contentMarker: MARKER })).toBe(PAGE);
+    expect((await failure(fetchStrictHtml(BOD))).kind).toBe('challenge');
+  });
+  it('repère absent, ou marque explicite de défi : toujours un défi', () => {
+    expect(isChallengePage(PAGE.replace(MARKER, 'id="autre"'), { contentMarker: MARKER })).toBe(true);
+    expect(isChallengePage(`${fixtureText('challenge-captcha.html')}<table ${MARKER}></table>`, { contentMarker: MARKER })).toBe(true);
   });
 });
 

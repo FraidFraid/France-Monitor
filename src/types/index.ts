@@ -986,6 +986,8 @@ export interface AirTrafficFlight {
   eta?: number;
   lastSeen?: number;
   onGround?: boolean;
+  /** Code transpondeur (squawk) tel qu'OpenSky le publie ; 7500, 7600 et 7700 sont des urgences. */
+  squawk?: string;
   source: string;
   anomalies?: AirTrafficAnomaly[];
   nearbyAirportIata?: string;

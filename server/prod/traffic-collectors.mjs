@@ -2,6 +2,7 @@
 // trafic, T4). Lancée par server/prod/http-server.mjs quand il tourne en production (VM) : toutes les
 // minutes, chaque collecteur vérifie s'il est dû et ne fait rien sinon. Les routes appellent les mêmes
 // fonctions : sans relève (dev, panne du minuteur), la collecte se fait à la demande, à la même cadence.
+import { ensureAirFresh } from '../../api/_shared/air-traffic.js';
 import { ensureUrbanFresh } from '../../api/_lib/tomtom-urban.js';
 
 export const COLLECTOR_TICK_MS = 60_000;
@@ -9,6 +10,7 @@ export const COLLECTOR_TICK_MS = 60_000;
 /** Collecteurs : nom et fonction `(now) => Promise<unknown>` qui ne collecte que si c'est dû. */
 export const COLLECTORS = [
   { name: 'tomtom', run: ensureUrbanFresh },
+  { name: 'opensky', run: ensureAirFresh },
 ];
 
 /**

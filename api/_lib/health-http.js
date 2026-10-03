@@ -36,10 +36,20 @@ export class HealthFetchError extends Error {
 // Le mot « captcha » seul ne compte que dans un corps HTML : un JSON ou un flux qui le cite n'est pas un défi.
 const CHALLENGE_RE = /<title>\s*(?:v[ée]rification de s[ée]curit[ée]|request rejected|just a moment|attention required)|\/TSPD\/|cf-chl-|challenge-platform/i;
 
-/** Vrai si le texte est une page de contrôle anti-robot. */
-export function isChallengePage(text) {
-  const head = String(text ?? '').slice(0, 200_000);
-  return CHALLENGE_RE.test(head) || (looksLikeHtml(head) && /captcha/i.test(head));
+/**
+ * Vrai si le texte est une page de contrôle anti-robot. `contentMarker` (facultatif) : repère du contenu attendu,
+ * par exemple l'identifiant du tableau lu ; une page qui le contient n'est pas un défi du seul fait qu'elle cite
+ * « captcha » (vraie page qui intègre un formulaire reCAPTCHA : annuaire de l'aéroport de Bordeaux, 03/10/2026).
+ * Les marques explicites de défi (titre, Cloudflare, F5) comptent toujours.
+ * @param {string} text
+ * @param {{ contentMarker?: string }} [options]
+ */
+export function isChallengePage(text, { contentMarker } = {}) {
+  const body = String(text ?? '');
+  const head = body.slice(0, 200_000);
+  if (CHALLENGE_RE.test(head)) return true;
+  if (!looksLikeHtml(head) || !/captcha/i.test(head)) return false;
+  return !(contentMarker && body.includes(contentMarker));
 }
 
 /** Vrai si le texte commence comme une page HTML. */
@@ -71,11 +81,12 @@ async function readBody(resp, url, timeoutMs) {
 /**
  * Réponse d'une URL, lue strictement : corps texte, statut et lecture d'en-tête (`header('x-rate-limit-remaining')`).
  * `headers` complète les en-têtes envoyés (Authorization, Content-Type…) ; le User-Agent reste fixe.
+ * `contentMarker` : repère du contenu attendu (voir isChallengePage).
  * @param {string} url
- * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit }} [options]
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string }} [options]
  * @returns {Promise<{ text: string, status: number, header(name: string): string | null }>}
  */
-export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body } = {}) {
+export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, contentMarker } = {}) {
   let resp;
   try {
     resp = await fetch(url, {
@@ -102,7 +113,7 @@ export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DE
     throw new HealthFetchError(`HTTP ${resp.status}`, { url, status: resp.status, kind: 'http' });
   }
   const text = await readBody(resp, url, timeoutMs);
-  if (isChallengePage(text)) throw new HealthFetchError('page de contrôle anti-robot', { url, status: resp.status, kind: 'challenge' });
+  if (isChallengePage(text, { contentMarker })) throw new HealthFetchError('page de contrôle anti-robot', { url, status: resp.status, kind: 'challenge' });
   if ((expect === 'json' || expect === 'xml') && looksLikeHtml(text)) {
     throw new HealthFetchError('page HTML reçue au lieu de données', { url, status: resp.status, kind: 'html' });
   }
@@ -141,9 +152,9 @@ export function fetchStrictXml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers } 
   return fetchStrictText(url, { expect: 'xml', timeoutMs, headers });
 }
 
-/** Page HTML d'une URL, lue strictement (page de défi refusée). */
-export function fetchStrictHtml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers } = {}) {
-  return fetchStrictText(url, { expect: 'html', timeoutMs, headers });
+/** Page HTML d'une URL, lue strictement (page de défi refusée ; `contentMarker` : voir isChallengePage). */
+export function fetchStrictHtml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers, contentMarker } = {}) {
+  return fetchStrictText(url, { expect: 'html', timeoutMs, headers, contentMarker });
 }
 
 /** Message d'erreur d'une source pour `errors[]` : « Odissé, IRA France : HTTP 429 ». */

@@ -5,7 +5,7 @@ afterEach(() => { vi.useRealTimers(); });
 
 describe('relève serveur des collectes à quota', () => {
   it('collecteurs enregistrés et relève d’une minute', () => {
-    expect(COLLECTORS.map((c) => c.name)).toEqual(['tomtom']);
+    expect(COLLECTORS.map((c) => c.name)).toEqual(['tomtom', 'opensky']);
     expect(COLLECTOR_TICK_MS).toBe(60_000);
   });
   it('lance chaque collecteur tout de suite puis à chaque minute ; une erreur n’arrête pas les autres', async () => {

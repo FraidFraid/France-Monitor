@@ -14,7 +14,6 @@ import { dromEnergyProxyPlugin } from './src/plugins/drom-energy-proxy';
 import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
-import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
 import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
 import { trafficFlowProxyPlugin } from './src/plugins/traffic-flow-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
@@ -133,7 +132,6 @@ export default defineConfig(({ mode }) => {
       eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
-      airTrafficProxyPlugin(),
       trafficRoadProxyPlugin(),
       trafficFlowProxyPlugin(),
       trafficTileProxyPlugin(),
