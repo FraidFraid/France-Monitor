@@ -5,8 +5,8 @@ import { fileURLToPath } from 'url';
 import { parseEnv } from 'util';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import { createAisTracker, snapshotResponse } from './api/_lib/ais-snapshot.js';
-import { kvGetJson, kvSetJson } from './api/_lib/kv-history.js';
+import { boundStatics, createAisTracker, snapshotResponse } from './api/_lib/ais-snapshot.js';
+import { kvReadJson, kvWriteJson } from './api/_lib/kv-history.js';
 
 // Relais AIS (VM : fm-relay.service, 127.0.0.1:8090 ; Caddy sert /relay* en retirant le préfixe).
 // - WebSocket « / » : rediffuse tel quel le flux aisstream.io aux cartes des navigateurs (inchangé).
@@ -24,6 +24,14 @@ const SNAPSHOT_CACHE_MS = 30_000;
 const STATICS_KEY = 'ais:statics';
 const STATICS_SAVE_MS = 30 * 60_000;
 const STATICS_KEEP_SEC = 7 * 86_400;
+const PRUNE_MS = 60_000;
+/** Zone de chaque boîte, dans l'ordre de `BoundingBoxes` ; `metro` : boîte qui alimente l'instantané (eaux françaises métropolitaines). */
+export const BOX_COVERAGE = [
+  { label: 'Manche', metro: true }, { label: 'Atlantique', metro: true }, { label: 'golfe du Lion', metro: true }, { label: 'Corse', metro: true },
+  { label: 'Dunkerque-Calais', metro: true }, { label: 'Gironde', metro: true }, { label: 'Antilles', metro: false }, { label: 'Guyane', metro: false },
+  { label: 'La Réunion', metro: false }, { label: 'Mayotte', metro: false }, { label: 'Saint-Pierre-et-Miquelon', metro: false },
+  { label: 'Wallis-et-Futuna', metro: false }, { label: 'Polynésie', metro: false }, { label: 'Nouvelle-Calédonie', metro: false },
+];
 const SUBSCRIPTION = {
   APIKey: '',
   BoundingBoxes: [
@@ -104,7 +112,7 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
 }
 
 export function getRelayHttpBaseUrl() {
-  return process.env.AIR_RELAY_URL?.trim() || `http://127.0.0.1:${process.env.RELAY_PORT || DEFAULT_RELAY_PORT}`;
+  return `http://127.0.0.1:${process.env.RELAY_PORT || DEFAULT_RELAY_PORT}`;
 }
 
 /**
@@ -140,7 +148,7 @@ export function startRelayServer(options = {}) {
       const now = Date.now();
       if (!snapshotCache || now - snapshotCache.at > SNAPSHOT_CACHE_MS) {
         const upstreamOpen = upstreamStates.some((s) => s.upstream?.readyState === WebSocket.OPEN);
-        snapshotCache = { at: now, body: snapshotResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen }) };
+        snapshotCache = { at: now, body: snapshotResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen, upstreams: upstreamLots(now) }) };
       }
       sendJson(res, 200, snapshotCache.body, { 'Cache-Control': 'public, max-age=30', 'Access-Control-Allow-Origin': '*' });
       return;
@@ -148,6 +156,20 @@ export function startRelayServer(options = {}) {
 
     sendJson(res, 404, { error: 'Not found' }, { 'Cache-Control': 'no-store' });
   });
+
+  /** État de chaque connexion amont pour `snapshotResponse` : ouverte, dernier message (ou ouverture), zones couvertes. */
+  const upstreamLots = () => upstreamStates.map((state) => {
+    const boxes = chunkStart(state.index);
+    const covered = BOX_COVERAGE.slice(boxes, boxes + state.subscription.BoundingBoxes.length);
+    return {
+      index: state.index,
+      open: state.upstream?.readyState === WebSocket.OPEN,
+      lastAt: state.lastMessageAt ?? state.openedAt,
+      labels: covered.map((c) => c.label),
+      metro: covered.some((c) => c.metro),
+    };
+  });
+  const chunkStart = (index) => index * MAX_BOUNDING_BOXES_PER_SUBSCRIPTION;
 
   const wsServer = new WebSocketServer({ server });
   const upstreamStates = chunks.map((chunk, index) => ({
@@ -161,9 +183,12 @@ export function startRelayServer(options = {}) {
     lastUpstreamError: null,
     pingInterval: null,
     msgCount: 0,
+    openedAt: null,
+    lastMessageAt: null,
   }));
   let usingExternalRelay = false;
   let staticsTimer = null;
+  let pruneTimer = null;
 
   const hasDownstreamClients = () => {
     for (const client of wsServer.clients) {
@@ -190,6 +215,7 @@ export function startRelayServer(options = {}) {
   const closeLocalRelay = () => {
     clearAllReconnectTimers();
     if (staticsTimer) clearInterval(staticsTimer);
+    if (pruneTimer) clearInterval(pruneTimer);
     for (const state of upstreamStates) {
       if (state.pingInterval) clearInterval(state.pingInterval);
       state.pingInterval = null;
@@ -278,6 +304,8 @@ export function startRelayServer(options = {}) {
       state.consecutiveFailures = 0;
       state.circuitBreakerUntil = 0;
       state.lastUpstreamError = null;
+      state.openedAt = Date.now();
+      state.lastMessageAt = null;
       console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} : souscription #${state.index + 1}/${upstreamStates.length} envoyée (${state.subscription.BoundingBoxes.length} bbox)`);
       state.upstream?.send(JSON.stringify(state.subscription));
 
@@ -294,6 +322,7 @@ export function startRelayServer(options = {}) {
       if (state.msgCount === 1 || state.msgCount % 500 === 0) {
         console.log(`[AIS Relay] 📡 Flux #${state.index + 1} message #${state.msgCount} reçu, ${wsServer.clients.size} client(s) connecté(s)`);
       }
+      state.lastMessageAt = Date.now();
       const text = data.toString();
       tracker.ingest(text);
       broadcast(text);
@@ -367,14 +396,38 @@ export function startRelayServer(options = {}) {
   server.on('error', handleListenError);
   wsServer.on('error', handleListenError);
 
+  /**
+   * Sauvegarde la mémoire MMSI (navires vus dans les eaux françaises depuis 7 jours, champs minimaux, bornée à 900 Ko).
+   * Écriture stricte : taille et résultat sont journalisés, un échec n'est jamais avalé.
+   */
+  const saveStatics = async (reason = 'périodique') => {
+    const { list, bytes, trimmed } = boundStatics(tracker.exportStatics(Date.now()));
+    const ko = `${Math.round(bytes / 1024)} Ko`;
+    const result = await kvWriteJson(STATICS_KEY, list, STATICS_KEEP_SEC);
+    if (!result.ok) {
+      console.error(`[AIS Relay] ❌ Sauvegarde de la mémoire MMSI (${reason}) échouée : ${list.length} navires, ${ko} : ${result.error}`);
+    } else if (!result.persisted) {
+      console.warn(`[AIS Relay] ⚠️ Mémoire MMSI (${reason}) gardée en mémoire seulement : Redis non configuré (${list.length} navires, ${ko})`);
+    } else {
+      console.log(`[AIS Relay] 💾 Mémoire MMSI sauvée (${reason}) : ${list.length} navires, ${ko}${trimmed ? `, ${trimmed} plus anciens retirés` : ''}`);
+    }
+    return { ...result, count: list.length, bytes, trimmed };
+  };
+
   server.listen(relayPort, () => {
     if (usingExternalRelay) return;
     console.log(`[AIS Relay] 🚀 Nouveau relay démarré et à l’écoute sur le port ${relayPort} (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
+    // Élagage des suivis sur minuteur (sans appel HTTP, les tables ne seraient plus bornées).
+    pruneTimer = setInterval(() => tracker.prune(Date.now()), PRUNE_MS);
+    pruneTimer.unref?.();
     if (!keepUpstream) return;
     // Mémoire MMSI gardée d'un redémarrage à l'autre (les données statiques n'arrivent que toutes les 6 min).
-    kvGetJson(STATICS_KEY).then((list) => tracker.importStatics(list, Date.now()), () => {});
+    kvReadJson(STATICS_KEY).then(({ value, failed }) => {
+      if (failed) console.error('[AIS Relay] ❌ Relecture de la mémoire MMSI impossible (Redis en panne) : démarrage sans mémoire');
+      else tracker.importStatics(value, Date.now());
+    }, (err) => console.error('[AIS Relay] ❌ Relecture de la mémoire MMSI échouée :', err instanceof Error ? err.message : String(err)));
     staticsTimer = setInterval(() => {
-      void kvSetJson(STATICS_KEY, tracker.exportStatics(Date.now()), STATICS_KEEP_SEC);
+      void saveStatics();
     }, STATICS_SAVE_MS);
     staticsTimer.unref?.();
     upstreamStates.forEach(connectUpstream);
@@ -385,13 +438,9 @@ export function startRelayServer(options = {}) {
     server,
     wsServer,
     tracker,
+    saveStatics,
     close() {
-      if (staticsTimer) clearInterval(staticsTimer);
-      for (const state of upstreamStates) {
-        state.upstream?.close();
-      }
-      wsServer.close();
-      server.close();
+      closeLocalRelay();
       relayInstance = null;
       global.__aisRelayInstance = null;
     },
@@ -405,6 +454,13 @@ const isEntryPoint = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isEntryPoint) {
   // Production (VM) : flux amont toujours ouvert pour l'instantané /snapshot.
-  startRelayServer({ keepUpstream: true });
+  const relay = startRelayServer({ keepUpstream: true });
   console.log(`Relais AIS démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
+  // Arrêt propre (systemd) : la mémoire MMSI apprise depuis la dernière sauvegarde n'est pas perdue.
+  process.once('SIGTERM', () => {
+    relay.saveStatics('arrêt').finally(() => {
+      relay.close();
+      process.exit(0);
+    });
+  });
 }

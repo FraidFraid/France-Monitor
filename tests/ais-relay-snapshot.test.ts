@@ -1,12 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAisTracker } from '../api/_lib/ais-snapshot.js';
-import { startRelayServer, subscriptionChunks } from '../ais-relay.js';
+import { __setKvClientForTests } from '../api/_lib/kv-history.js';
+import { BOX_COVERAGE, getRelayHttpBaseUrl, startRelayServer, subscriptionChunks } from '../ais-relay.js';
 import { fixtureText } from './helpers/traffic-fixtures.ts';
 
-type Relay = { server: { address(): { port: number } | string | null; once(e: string, f: () => void): void; listening: boolean }; close(): void };
+type Relay = { saveStatics(reason?: string): Promise<{ ok: boolean; persisted: boolean; error?: string; count: number; bytes: number }>; server: { address(): { port: number } | string | null; once(e: string, f: () => void): void; listening: boolean }; close(): void };
 let relay: Relay | null = null;
 
-afterEach(() => { relay?.close(); relay = null; });
+afterEach(() => { relay?.close(); relay = null; __setKvClientForTests(null); vi.restoreAllMocks(); });
 
 async function started(tracker = createAisTracker()): Promise<number> {
   relay = startRelayServer({ port: 0, aisApiKey: '', keepUpstream: false, tracker }) as Relay;
@@ -43,5 +44,49 @@ describe('GET /snapshot et /health (relais local, sans clé ni flux amont)', () 
     const port = await started();
     expect(await (await fetch(`http://127.0.0.1:${port}/health`)).json()).toMatchObject({ ok: true, ais: false });
     expect((await fetch(`http://127.0.0.1:${port}/opensky`)).status).toBe(404);
+  });
+});
+
+describe('zones couvertes par chaque lot, panne amont nommée, mémoire MMSI', () => {
+  it('une zone nommée par boîte, dans l’ordre de l’abonnement', () => {
+    expect(BOX_COVERAGE).toHaveLength(subscriptionChunks('k').flatMap((c) => c.BoundingBoxes).length);
+    expect(BOX_COVERAGE.map((c) => c.label).slice(0, 6)).toEqual(['Manche', 'Atlantique', 'golfe du Lion', 'Corse', 'Dunkerque-Calais', 'Gironde']);
+  });
+  it('amont injoignable avec clé : les lots métropolitains sont nommés, le lot d’outre-mer seul ne l’est pas', async () => {
+    __setKvClientForTests({ get: async () => null, set: async () => {} });
+    relay = startRelayServer({ port: 0, aisApiKey: 'cle', upstreamUrl: 'ws://127.0.0.1:1', keepUpstream: true, tracker: createAisTracker() }) as Relay;
+    if (!relay.server.listening) await new Promise<void>((resolve) => relay?.server.once('listening', resolve));
+    const address = relay.server.address();
+    if (!address || typeof address === 'string') throw new Error('adresse du relais inconnue');
+    const body = await (await fetch(`http://127.0.0.1:${address.port}/snapshot`)).json() as { errors: string[] };
+    expect(body.errors).toEqual([
+      'flux AIS interrompu : lot 1 sur 3 coupé (Manche, Atlantique, golfe du Lion, Corse, Dunkerque-Calais)',
+      'flux AIS interrompu : lot 2 sur 3 coupé (Gironde, Antilles, Guyane, La Réunion, Mayotte)',
+    ]);
+  });
+  it('sauvegarde de la mémoire MMSI : succès journalisé ; échec Redis journalisé, jamais avalé', async () => {
+    const tracker = createAisTracker();
+    for (const l of fixtureText('ais-messages.jsonl').split('\n').filter(Boolean)) tracker.ingest(l);
+    const written: string[] = [];
+    __setKvClientForTests({ get: async () => null, set: async () => {}, setStrict: async (_k: string, v: string) => { written.push(v); return true; } } as never);
+    relay = startRelayServer({ port: 0, aisApiKey: '', keepUpstream: false, tracker }) as Relay;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ok = await relay.saveStatics('essai');
+    expect([ok.ok, ok.persisted]).toEqual([true, true]);
+    expect(JSON.parse(written[0]).length).toBe(ok.count);
+    expect(ok.bytes).toBeLessThanOrEqual(900 * 1024);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Mémoire MMSI sauvée (essai)'));
+    __setKvClientForTests({ get: async () => null, set: async () => {}, setStrict: async () => { throw new Error('quota dépassé'); } } as never);
+    const ko = await relay.saveStatics('essai');
+    expect(ko.ok).toBe(false);
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('échouée'));
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('quota dépassé'));
+  });
+  it('l’URL HTTP du relais ne dépend plus de AIR_RELAY_URL', () => {
+    vi.stubEnv('AIR_RELAY_URL', 'https://autre.example');
+    vi.stubEnv('RELAY_PORT', '8090');
+    expect(getRelayHttpBaseUrl()).toBe('http://127.0.0.1:8090');
+    vi.unstubAllEnvs();
   });
 });

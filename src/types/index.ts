@@ -2607,7 +2607,7 @@ export interface RailSituationsResponse { at: string | null; situations: RailSit
 
 export type MaritimeZone = 'pas-de-calais' | 'manche' | 'atlantique' | 'mediterranee';
 export interface MaritimeZoneStats { zone: MaritimeZone; label: string; vessels: number; classA: number; classB: number; atAnchor: number; moored: number; underWay: number; restricted: number; fishing: number }
-export interface MaritimePortStats { port: string; vessels: number; atAnchor: number; moored: number; underWay: number }
+export interface MaritimePortStats { port: string; vessels: number; atAnchor: number; moored: number; underWay: number; lastSeenAt: string | null }  // lastSeenAt : dernière position reçue dans la zone du port (24 h, UTC)
 export interface MaritimeSignal { mmsi: string; name: string | null; type: string | null; status: number; statusLabel: string; lat: number; lon: number; since: string; confirmed: boolean; sensitive: boolean }
 export interface MaritimeSensitiveVessel { mmsi: string; name: string | null; type: 'petrolier' | 'passagers'; lat: number; lon: number; distanceNm: number }
 export interface MaritimeSnapshot {

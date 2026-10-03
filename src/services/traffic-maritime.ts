@@ -34,7 +34,7 @@ const ZONES: ReadonlySet<string> = new Set(['pas-de-calais', 'manche', 'atlantiq
 const isByType = (b: unknown): boolean => isRecord(b) && Object.keys(b).length === BY_TYPE_KEYS.length && numbersIn(b, BY_TYPE_KEYS);
 const isZone = (z: Record<string, unknown>): boolean => isStr(z.zone) && ZONES.has(z.zone) && isStr(z.label)
   && numbersIn(z, ['vessels', 'classA', 'classB', 'atAnchor', 'moored', 'underWay', 'restricted', 'fishing']);
-const isPort = (p: Record<string, unknown>): boolean => isStr(p.port) && numbersIn(p, ['vessels', 'atAnchor', 'moored', 'underWay']);
+const isPort = (p: Record<string, unknown>): boolean => isStr(p.port) && numbersIn(p, ['vessels', 'atAnchor', 'moored', 'underWay']) && isStrOrNull(p.lastSeenAt);
 const isSignal = (s: Record<string, unknown>): boolean => isStr(s.mmsi) && isStrOrNull(s.name) && isStrOrNull(s.type) && isNum(s.status)
   && isStr(s.statusLabel) && numbersIn(s, ['lat', 'lon']) && isStr(s.since) && isBool(s.confirmed) && isBool(s.sensitive);
 const isSensitiveVessel = (s: Record<string, unknown>): boolean => isStr(s.mmsi) && isStrOrNull(s.name) && (s.type === 'petrolier' || s.type === 'passagers')

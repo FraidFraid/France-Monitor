@@ -192,4 +192,19 @@ describe('contrat de l’instantané maritime', () => {
       expect(isMaritimeSnapshot(wire(body))).toBe(true);
     }
   });
+  it('panne partielle ou connexion muette : acceptées avec leur lot nommé ; zones de port avec lastSeenAt', () => {
+    const lots = [
+      { index: 0, open: true, lastAt: LAST, labels: ['Manche'], metro: true },
+      { index: 1, open: false, lastAt: null, labels: ['Gironde'], metro: true },
+      { index: 2, open: true, lastAt: LAST - 8 * 60_000, labels: ['Corse'], metro: true },
+    ];
+    const body = snapshotResponse(populated(), LAST + 1000, { hasKey: true, upstreamOpen: true, upstreams: lots });
+    expect(body.errors).toEqual(['flux AIS partiel : lot 2 sur 3 coupé (Gironde)', 'flux AIS partiel : lot 3 sur 3 muet depuis 8 min (Corse)']);
+    expect(isMaritimeSnapshot(wire(body))).toBe(true);
+    expect(body.ports.every((p: { lastSeenAt: string | null }) => p.lastSeenAt === null || /Z$/.test(p.lastSeenAt))).toBe(true);
+    expect(body.ports.find((p: { port: string }) => p.port === 'Bordeaux')?.lastSeenAt).toBeNull();
+    const broken = wire(body) as { ports: Array<Record<string, unknown>> };
+    delete broken.ports[0].lastSeenAt;
+    expect(isMaritimeSnapshot(broken)).toBe(false);
+  });
 });

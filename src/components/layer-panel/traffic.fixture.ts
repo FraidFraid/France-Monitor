@@ -325,8 +325,8 @@ export function maritimeSnapshotFixture(): MaritimeSnapshot {
   const zone = (id: MaritimeSnapshot['zones'][number]['zone'], label: string, vessels: number, classA: number, classB: number,
     atAnchor: number, moored: number, underWay: number, restricted: number, fishing: number): MaritimeSnapshot['zones'][number] =>
     ({ zone: id, label, vessels, classA, classB, atAnchor, moored, underWay, restricted, fishing });
-  const port = (name: string, vessels: number, atAnchor: number, moored: number, underWay: number): MaritimeSnapshot['ports'][number] =>
-    ({ port: name, vessels, atAnchor, moored, underWay });
+  const port = (name: string, vessels: number, atAnchor: number, moored: number, underWay: number, lastSeenAt: string | null = '2026-10-03T13:11:52.000Z'): MaritimeSnapshot['ports'][number] =>
+    ({ port: name, vessels, atAnchor, moored, underWay, lastSeenAt });
   return {
     at: '2026-10-03T15:12:10+02:00', lastMessageAt: '2026-10-03T15:12:09+02:00',
     vessels: 1196, frenchFlag: 681, typedShare: 13,
@@ -341,8 +341,8 @@ export function maritimeSnapshotFixture(): MaritimeSnapshot {
     ],
     ports: [
       port('Le Havre', 94, 7, 20, 41), port('Brest', 56, 0, 8, 19), port('Marseille-Fos', 53, 0, 18, 10), port('Rouen', 45, 0, 15, 7),
-      port('Toulon', 22, 0, 10, 1), port('Saint-Nazaire', 18, 2, 2, 4), port('Dunkerque', 0, 0, 0, 0), port('Calais', 0, 0, 0, 0),
-      port('Bordeaux', 0, 0, 0, 0),
+      port('Toulon', 22, 0, 10, 1), port('Saint-Nazaire', 18, 2, 2, 4), port('Dunkerque', 0, 0, 0, 0, '2026-10-03T09:47:21.000Z'), port('Calais', 0, 0, 0, 0, '2026-10-03T12:30:05.000Z'),
+      port('Bordeaux', 0, 0, 0, 0, null),
     ],
     signals: [],
     info: { restricted: 41, draught: 3, fishing: 43 },

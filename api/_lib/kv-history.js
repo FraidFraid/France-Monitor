@@ -8,12 +8,12 @@
 // sont préfixées « dev: » pour ne jamais écraser les séries ni les compteurs de quota de la production.
 // Le client lit Redis en mode strict (une panne lève) : kvReadJson distingue ainsi clé absente et panne ;
 // kvGetJson et les autres lectures gardent leur comportement (null sur panne).
-import { redisGetStrict, redisSet } from '../_utils/redis.js';
+import { redisGetStrict, redisSet, redisSetStrict } from '../_utils/redis.js';
 
-/** @typedef {{ get(key: string): Promise<string | null>, set(key: string, value: string, ttlSec: number): Promise<void> }} KvClient */
+/** @typedef {{ get(key: string): Promise<string | null>, set(key: string, value: string, ttlSec: number): Promise<void>, setStrict?(key: string, value: string, ttlSec: number): Promise<boolean> }} KvClient */
 
 /** @type {KvClient} */
-const DEFAULT_CLIENT = { get: redisGetStrict, set: redisSet };
+const DEFAULT_CLIENT = { get: redisGetStrict, set: redisSet, setStrict: redisSetStrict };
 /** @type {KvClient} */
 let client = DEFAULT_CLIENT;
 
@@ -90,6 +90,27 @@ export async function kvSetJson(key, value, ttlSec, now = Date.now()) {
     await client.set(storageKey(key), JSON.stringify(value), Math.max(1, Math.round(ttlSec)));
   } catch {
     // La mémoire suffit jusqu'au prochain redémarrage.
+  }
+}
+
+/**
+ * Écrit une valeur JSON comme kvSetJson, mais rend le résultat de l'écriture Redis au lieu de l'avaler :
+ * `{ ok, persisted, error }` (`persisted` faux sans Redis configuré ; `ok` faux si l'écriture Redis a échoué).
+ * La mémoire du processus est mise à jour dans tous les cas.
+ * @param {string} key
+ * @param {unknown} value
+ * @param {number} ttlSec
+ * @param {number} [now]
+ * @returns {Promise<{ ok: boolean, persisted: boolean, error?: string }>}
+ */
+export async function kvWriteJson(key, value, ttlSec, now = Date.now()) {
+  memory.set(storageKey(key), { value, expiresAt: now + ttlSec * 1000 });
+  try {
+    const write = client.setStrict ?? (async (k, v, t) => { await client.set(k, v, t); return true; });
+    const persisted = await write(storageKey(key), JSON.stringify(value), Math.max(1, Math.round(ttlSec)));
+    return { ok: true, persisted: persisted !== false };
+  } catch (err) {
+    return { ok: false, persisted: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

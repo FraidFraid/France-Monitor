@@ -57,6 +57,20 @@ export async function redisSet(key, value, ttlSec) {
 }
 
 /**
+ * Comme redisSet, mais l'échec est propagé (sauvegardes dont l'échec doit être journalisé). Retourne false sans Redis
+ * configuré, true si la valeur est écrite.
+ * @param {string} key
+ * @param {string} value  — must already be JSON.stringify'd
+ * @param {number} ttlSec
+ * @returns {Promise<boolean>}
+ */
+export async function redisSetStrict(key, value, ttlSec) {
+  if (!redis) return false;
+  await redis.set(key, value, { ex: ttlSec });
+  return true;
+}
+
+/**
  * SET key value NX EX ttlSec.
  * Returns true if written (key was absent), false if key already existed.
  * @param {string} key

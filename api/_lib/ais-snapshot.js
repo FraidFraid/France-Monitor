@@ -56,20 +56,41 @@ export function zoneOf(lat, lon) {
   return 'atlantique';
 }
 
-/** Ports suivis (§ 2.5) ; Marseille-Fos : point entre les deux bassins. */
+/**
+ * Ports suivis (§ 2.5) : chacun est une zone de plusieurs points (bassins, appontements). Un navire appartient à un port
+ * s'il est dans le rayon d'un quelconque de ses points ; il n'est compté qu'une fois par port.
+ */
 export const PORTS = [
-  { port: 'Le Havre', lat: 49.48, lon: 0.11 }, { port: 'Rouen', lat: 49.45, lon: 1.06 }, { port: 'Dunkerque', lat: 51.05, lon: 2.36 },
-  { port: 'Calais', lat: 50.97, lon: 1.85 }, { port: 'Brest', lat: 48.38, lon: -4.49 }, { port: 'Saint-Nazaire', lat: 47.27, lon: -2.20 },
-  { port: 'Bordeaux', lat: 44.87, lon: -0.55 }, { port: 'Marseille-Fos', lat: 43.36, lon: 5.12 }, { port: 'Toulon', lat: 43.10, lon: 5.92 },
+  { port: 'Le Havre', points: [[49.48, 0.11], [49.48, 0.55]] },
+  { port: 'Rouen', points: [[49.45, 1.06]] },
+  { port: 'Dunkerque', points: [[51.05, 2.36], [51.02, 2.17]] },
+  { port: 'Calais', points: [[50.97, 1.85]] },
+  { port: 'Brest', points: [[48.38, -4.49]] },
+  { port: 'Saint-Nazaire', points: [[47.27, -2.20], [47.31, -2.08]] },
+  { port: 'Bordeaux', points: [[44.90, -0.53], [45.01, -0.55], [45.20, -0.74], [45.55, -1.07]] },
+  { port: 'Marseille-Fos', points: [[43.33, 5.35], [43.39, 5.00], [43.42, 4.88]] },
+  { port: 'Toulon', points: [[43.10, 5.92]] },
 ];
 
-/** Zones portuaires (rayon de 8 km) où un statut « échoué » ou « non maître de sa manœuvre » n'est jamais retenu. */
-export const HARBOURS = [
-  [49.48, 0.11], [49.45, 1.06], [51.05, 2.36], [50.97, 1.85], [48.38, -4.49], [47.27, -2.20], [44.87, -0.55], [43.30, 5.35], [43.42, 4.88],
-  [43.10, 5.92], [49.65, -1.62], [48.64, -2.02], [48.72, -3.97], [47.73, -3.37], [47.87, -3.92], [46.15, -1.22], [46.49, -1.79], [43.53, -1.51],
+/** Distance (km) d'un point à la zone d'un port : le plus proche de ses points. */
+function distanceToPortKm(lat, lon, port) {
+  return Math.min(...port.points.map(([plat, plon]) => haversineKm(lat, lon, plat, plon)));
+}
+
+/** Durée pendant laquelle la dernière position reçue dans la zone d'un port est gardée (`lastSeenAt`). */
+export const PORT_SEEN_KEEP_MS = 24 * 3_600_000;
+/** Une connexion amont ouverte mais sans message depuis plus que cette durée est dite muette. */
+export const UPSTREAM_SILENT_MS = 5 * 60_000;
+/** Taille maximale de la mémoire MMSI sauvegardée (limite de requête d'un Upstash gratuit : 1 Mo). */
+export const STATICS_MAX_BYTES = 900 * 1024;
+
+/** Zones portuaires (rayon de 8 km autour de chaque point ; les points des ports suivis y sont ajoutés) où un statut « échoué » ou « non maître de sa manœuvre » n'est jamais retenu. */
+export const HARBOUR_EXTRA = [
+  [44.87, -0.55], [43.30, 5.35], [49.65, -1.62], [48.64, -2.02], [48.72, -3.97], [47.73, -3.37], [47.87, -3.92], [46.15, -1.22], [46.49, -1.79], [43.53, -1.51],
   [50.73, 1.60], [49.93, 1.08], [49.28, -0.25], [48.83, -1.60], [43.40, 3.70], [43.02, 3.06], [42.52, 3.11], [43.69, 7.29], [43.55, 7.01],
   [42.70, 9.45], [41.92, 8.74], [42.57, 8.76], [41.59, 9.28], [41.39, 9.16],
 ];
+export const HARBOURS = [...PORTS.flatMap((p) => p.points), ...HARBOUR_EXTRA];
 
 export function inHarbour(lat, lon) {
   return HARBOURS.some(([hlat, hlon]) => haversineKm(lat, lon, hlat, hlon) <= HARBOUR_RADIUS_KM);
@@ -193,13 +214,30 @@ export function parseAisMessage(raw) {
 export function createAisTracker() {
   const vessels = new Map();
   const statics = new Map();
+  /** Dernier message reçu dans les eaux françaises (population de l'instantané : ni outre-mer, ni Solent). */
   let lastMessageAt = null;
+  /** MMSI vus dans les eaux françaises : instant du dernier message (borne la mémoire sauvegardée). */
+  const frenchSeen = new Map();
+  /** Dernière position reçue dans la zone de chaque port (instant, gardée 24 h). */
+  const portSeen = new Map();
+
+  function touchFrench(mmsi, at) {
+    if (at > (frenchSeen.get(mmsi) ?? 0)) frenchSeen.set(mmsi, at);
+    if (lastMessageAt === null || at > lastMessageAt) lastMessageAt = at;
+  }
 
   function ingest(raw) {
     const m = parseAisMessage(raw);
     if (!m) return;
-    if (lastMessageAt === null || m.at > lastMessageAt) lastMessageAt = m.at;
+    if (m.kind === 'position' && inFrenchWaters(m.lat, m.lon)) {
+      touchFrench(m.mmsi, m.at);
+      for (const port of PORTS) {
+        if (distanceToPortKm(m.lat, m.lon, port) <= PORT_PRESENT_KM && m.at > (portSeen.get(port.port) ?? 0)) portSeen.set(port.port, m.at);
+      }
+    }
     if (m.kind === 'static') {
+      const known = vessels.get(m.mmsi);
+      if (known && inFrenchWaters(known.lat, known.lon)) touchFrench(m.mmsi, m.at);
       statics.set(m.mmsi, { type: m.type, name: m.name, destination: m.destination, length: m.length, draught: m.draught, at: m.at });
       return;
     }
@@ -220,14 +258,24 @@ export function createAisTracker() {
     vessels.set(m.mmsi, v);
   }
 
-  function snapshot(now) {
+  /** Borne les suivis : positions vieilles de plus de 20 min, données statiques et MMSI vus de plus de 7 jours, ports de plus de 24 h. */
+  function prune(now) {
     for (const [mmsi, v] of vessels) if (now - v.lastAt > 2 * SEEN_WINDOW_MS) vessels.delete(mmsi);
     for (const [mmsi, s] of statics) if (now - s.at > STATIC_KEEP_MS) statics.delete(mmsi);
+    for (const [mmsi, at] of frenchSeen) if (now - at > STATIC_KEEP_MS) frenchSeen.delete(mmsi);
+    for (const [port, at] of portSeen) if (now - at > PORT_SEEN_KEEP_MS) portSeen.delete(port);
+  }
+
+  function snapshot(now) {
+    prune(now);
     const seen = [...vessels.values()].filter((v) => now - v.lastAt <= SEEN_WINDOW_MS && inFrenchWaters(v.lat, v.lon));
     const zones = Object.fromEntries(Object.keys(ZONE_LABELS).map((z) => [z, {
       zone: z, label: ZONE_LABELS[z], vessels: 0, classA: 0, classB: 0, atAnchor: 0, moored: 0, underWay: 0, restricted: 0, fishing: 0,
     }]));
-    const ports = PORTS.map((p) => ({ port: p.port, vessels: 0, atAnchor: 0, moored: 0, underWay: 0 }));
+    const ports = PORTS.map((p) => ({
+      port: p.port, vessels: 0, atAnchor: 0, moored: 0, underWay: 0,
+      lastSeenAt: portSeen.has(p.port) ? new Date(portSeen.get(p.port)).toISOString() : null,
+    }));
     const info = { restricted: 0, draught: 0, fishing: 0 };
     const signals = [];
     const sensitive = { tankers: 0, passenger: 0, list: [] };
@@ -249,7 +297,7 @@ export function createAisTracker() {
       if (v.status === 4) info.draught += 1;
       if (v.status === 7) { z.fishing += 1; info.fishing += 1; }
       PORTS.forEach((p, i) => {
-        const km = haversineKm(v.lat, v.lon, p.lat, p.lon);
+        const km = distanceToPortKm(v.lat, v.lon, p);
         if (km <= PORT_ANCHOR_KM && v.status === 1) ports[i].atAnchor += 1;
         if (km > PORT_PRESENT_KM) return;
         ports[i].vessels += 1;
@@ -266,7 +314,7 @@ export function createAisTracker() {
       }
       const run = v.run;
       if (run && run.lastAt - run.since >= SIGNAL_MIN_DURATION_MS && run.positions >= SIGNAL_MIN_POSITIONS
-        && run.maxSog < SIGNAL_MAX_SOG && !inHarbour(v.lat, v.lon)) {
+        && run.maxSog <= SIGNAL_MAX_SOG && !inHarbour(v.lat, v.lon)) {
         signals.push({
           mmsi: v.mmsi, name: st?.name ?? v.name ?? null, type: typeLabel(st?.type), status: run.status, statusLabel: STATUS_LABELS[run.status],
           lat: v.lat, lon: v.lon, since: new Date(run.since).toISOString(), confirmed: true, sensitive: sensitiveKind(st?.type) !== null,
@@ -290,32 +338,87 @@ export function createAisTracker() {
     };
   }
 
+  /**
+   * Mémoire MMSI à sauvegarder : seulement les navires vus dans les eaux françaises depuis 7 jours, champs minimaux
+   * (`mmsi`, `type`, `name`, `at` : date de la donnée statique, `seen` : dernier message en eaux françaises).
+   */
   function exportStatics(now) {
-    return [...statics].filter(([, s]) => now - s.at <= STATIC_KEEP_MS).map(([mmsi, s]) => ({ mmsi, ...s }));
+    const out = [];
+    for (const [mmsi, s] of statics) {
+      const seen = frenchSeen.get(mmsi);
+      if (seen === undefined || now - seen > STATIC_KEEP_MS || now - s.at > STATIC_KEEP_MS) continue;
+      out.push({ mmsi, type: s.type, name: s.name, at: s.at, seen });
+    }
+    return out;
   }
 
   function importStatics(list, now) {
     for (const s of Array.isArray(list) ? list : []) {
       if (!s?.mmsi || !Number.isFinite(s.at) || now - s.at > STATIC_KEEP_MS || statics.has(String(s.mmsi))) continue;
-      statics.set(String(s.mmsi), { type: s.type ?? null, name: s.name ?? null, destination: s.destination ?? null, length: s.length ?? null, draught: s.draught ?? null, at: s.at });
+      statics.set(String(s.mmsi), { type: s.type ?? null, name: s.name ?? null, destination: null, length: null, draught: null, at: s.at });
+      const seen = Number.isFinite(s.seen) ? s.seen : s.at;
+      if (now - seen <= STATIC_KEEP_MS && seen > (frenchSeen.get(String(s.mmsi)) ?? 0)) frenchSeen.set(String(s.mmsi), seen);
     }
   }
 
-  return { ingest, snapshot, exportStatics, importStatics, get size() { return { vessels: vessels.size, statics: statics.size }; } };
+  return { ingest, snapshot, prune, exportStatics, importStatics, get size() { return { vessels: vessels.size, statics: statics.size }; } };
+}
+
+/**
+ * Erreurs nommées des connexions amont aisstream. Chaque lot d'abonnement couvre des boîtes précises : un lot fermé, ou
+ * ouvert mais sans message depuis plus de 5 min, est nommé avec les zones qu'il couvre, sans quoi ses zones s'afficheraient
+ * à 0 comme un fait. Seuls les lots qui couvrent une zone suivie par l'instantané (métropole) comptent ; un lot
+ * d'outre-mer seul n'altère pas l'instantané.
+ * @param {Array<{ index: number, open: boolean, lastAt: number | null, labels: string[], metro: boolean }>} lots
+ *   `lastAt` : dernier message de la connexion, ou son ouverture s'il n'en a pas reçu
+ * @param {number} now
+ * @returns {string[]}
+ */
+export function upstreamErrors(lots, now) {
+  const watched = lots.filter((lot) => lot.metro);
+  const bad = watched.map((lot) => {
+    if (!lot.open) return { lot, what: 'coupé' };
+    if (lot.lastAt !== null && now - lot.lastAt > UPSTREAM_SILENT_MS) return { lot, what: `muet depuis ${Math.floor((now - lot.lastAt) / 60_000)} min` };
+    return null;
+  }).filter(Boolean);
+  const prefix = bad.length === watched.length ? 'flux AIS interrompu' : 'flux AIS partiel';
+  return bad.map(({ lot, what }) => `${prefix} : lot ${lot.index + 1} sur ${lots.length} ${what} (${lot.labels.join(', ')})`);
+}
+
+/**
+ * Mémoire MMSI bornée pour la sauvegarde : les entrées les plus anciennes (dernier message en eaux françaises) sont
+ * retirées au-delà de `maxBytes` (taille du JSON sérialisé).
+ * @param {Array<{ seen?: number, at: number }>} list
+ * @param {number} [maxBytes]
+ * @returns {{ list: Array<object>, bytes: number, trimmed: number }}
+ */
+export function boundStatics(list, maxBytes = STATICS_MAX_BYTES) {
+  const sorted = [...list].sort((a, b) => (b.seen ?? b.at) - (a.seen ?? a.at));
+  let bytes = 2;
+  const kept = [];
+  for (const entry of sorted) {
+    const size = Buffer.byteLength(JSON.stringify(entry)) + (kept.length ? 1 : 0);
+    if (bytes + size > maxBytes) break;
+    bytes += size;
+    kept.push(entry);
+  }
+  return { list: kept, bytes, trimmed: sorted.length - kept.length };
 }
 
 /**
  * Corps de GET /snapshot : instantané du suivi, avec les pannes nommées (S3). Sans clé ou sans flux amont,
  * l'instantané garde sa dernière donnée (`lastMessageAt`) : la vue écrit « AIS indisponible depuis hh:mm »,
- * jamais « aucun navire ».
+ * jamais « aucun navire ». `upstreams` (état de chaque connexion amont, voir `upstreamErrors`) remplace `upstreamOpen`
+ * quand le relais le fournit.
  * @param {{ snapshot(now: number): object }} tracker
  * @param {number} now
- * @param {{ hasKey: boolean, upstreamOpen: boolean }} state
+ * @param {{ hasKey: boolean, upstreamOpen: boolean, upstreams?: Parameters<typeof upstreamErrors>[0] }} state
  */
-export function snapshotResponse(tracker, now, { hasKey, upstreamOpen }) {
+export function snapshotResponse(tracker, now, { hasKey, upstreamOpen, upstreams }) {
   const body = tracker.snapshot(now);
   const errors = [];
   if (!hasKey) errors.push('AIS : clé aisstream absente (AISSTREAM_API_KEY)');
+  else if (upstreams) errors.push(...upstreamErrors(upstreams, now));
   else if (!upstreamOpen) errors.push('AIS : flux aisstream déconnecté');
   return { ...body, errors };
 }
