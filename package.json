@@ -30,7 +30,8 @@
     "build:maires": "node scripts/build-maires-politique.mjs",
     "build:fuel-price-series": "node scripts/generate-fuel-price-series.mjs",
     "ingest:drom-energy": "node scripts/ingest-drom-energy.mjs",
-    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs"
+    "generate:apl-snapshot": "node scripts/generate-apl-snapshot.mjs",
+    "build:apl": "node scripts/build-apl.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -44,6 +45,7 @@
     "eslint": "^9.39.4",
     "happy-dom": "^20.10.6",
     "prettier": "^3.8.1",
+    "read-excel-file": "^9.3.10",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.62.1",
     "vite": "^7.3.1",
