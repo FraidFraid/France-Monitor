@@ -13,6 +13,7 @@
   --cat-hosp-chu: #64d2ff; --cat-hosp-ch: #bf5af2; --cat-hosp-private: #5e5ce6; --cat-hosp-gcs: #30b0c7; --cat-hosp-army: #ac8e68;
   /* Trafics (spec 2026-10-03 trafics § 3) : aéroports (jauges des départs, disques de la carte), ports (jauges, route récente d'un navire) */
   --cat-airport: #5ac8fa;
+  --cat-port: #30b0c7;
   /* Background */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
