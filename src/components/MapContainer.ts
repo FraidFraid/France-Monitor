@@ -7,7 +7,7 @@ import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
 import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { TrafficSegment } from '../config/mock-data.ts';
@@ -18,6 +18,7 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -415,14 +416,29 @@ export class MapContainer {
     this.deckMap?.updateInfraNetwork(state);
   }
 
-  // ─── Health (Santé — ISS) ───
-  updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): void {
-    this.deckMap?.updateHealth(regions, healthFeatures, departments);
+  // ─── Santé (spec 2026-10-03 § 3) ───
+  updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
+    this.deckMap?.updateHealthAlerts(alerts, now);
   }
 
-  // ─── Hospitals (FINESS) ───
-  updateHospitals(hospitals: GeoJSON.FeatureCollection<GeoJSON.Point>): void {
-    this.deckMap?.updateHospitals(hospitals);
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null): void {
+    this.deckMap?.updateHealthDepartments(syndromic, apl);
+  }
+
+  setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {
+    this.deckMap?.setHealthUrgencesSyndrome(syndrome);
+  }
+
+  setHealthAplProfession(profession: AplProfession): void {
+    this.deckMap?.setHealthAplProfession(profession);
+  }
+
+  updateHospitals(data: HospitalsDataset | null): void {
+    this.deckMap?.updateHospitals(data);
+  }
+
+  focusHospital(site: EmergencySite): void {
+    this.deckMap?.focusHospital(site);
   }
 
   // ─── Layer visibility ───
@@ -561,11 +577,6 @@ export class MapContainer {
   selectItem(item: NewsItem | null): void {
     this.deckMap?.selectItem(item);
     this.svgMap?.selectItem(item);
-  }
-
-  getHealthFeatures(): HealthFeatures | null {
-    if (this.deckMap) return this.deckMap.getHealthFeatures();
-    return null;
   }
 
   flyTo(longitude: number, latitude: number, zoom?: number): void {

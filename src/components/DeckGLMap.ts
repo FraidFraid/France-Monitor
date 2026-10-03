@@ -13,9 +13,15 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
-import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
+import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
+import {
+  HANTAVIRUS_RING_HEX, HEALTH_HOVER_LAYERS, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp, departmentHealthFeatures,
+  hantavirusFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, urgencesProp, type HealthMapData,
+} from './deckgl/health-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
@@ -47,17 +53,12 @@ import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
 import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
 export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
-import { emptyFC, getFeatureCenter, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
+import { emptyFC, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
 import {
   escapeHtml,
   getWeatherRadarSourceId,
   getWeatherRadarLayerId,
   getWeatherRiskIcon,
-  issToFillColor,
-  issToLineColor,
-  issToColor,
-  getISSSemio,
-  getHealthSourceLabel,
   scoreToISNRColor,
   scoreToISNRLineColor,
   deptCodeToId,
@@ -83,8 +84,9 @@ import {
   SRC_POWER_REGIONS,
   SRC_INTERCONN,
   SRC_WEATHER,
-  SRC_HEALTH,
-  SRC_HEALTH_MARKERS,
+  SRC_HEALTH_REGIONS,
+  SRC_HEALTH_DEPTS,
+  SRC_HEALTH_HANTAVIRUS,
   SRC_FLOODS,
   SRC_FLOODS_HIGHLIGHT,
   SRC_TOPAGE_VIS,
@@ -124,12 +126,13 @@ import {
   LYR_WEATHER_LINE_VIOLET,
   SRC_WEATHER_ICONS,
   LYR_WEATHER_ICONS,
-  LYR_HEALTH_FILL,
-  LYR_HEALTH_LINE,
-  LYR_HEALTH_MARKERS,
+  LYR_HEALTH_ALERT_FILL,
+  LYR_HEALTH_ALERT_LINE,
+  LYR_HEALTH_HANTAVIRUS,
+  LYR_HEALTH_URG_FILL,
+  LYR_HEALTH_URG_LINE,
   LYR_HEALTH_APL_FILL,
   LYR_HEALTH_APL_LINE,
-  LYR_HEALTH_OSCOUR_CIRCLES,
   SRC_ISNR,
   LYR_ISNR_FILL,
   LYR_ISNR_LINE,
@@ -294,9 +297,7 @@ import {
   LYR_IXP_CLUSTER_COUNT,
   LYR_IXP_CIRCLE,
   LYR_IXP_HIGHLIGHT,
-  LYR_HOSPITALS_CHU,
-  LYR_HOSPITALS_CH,
-  LYR_HOSPITALS_LABEL,
+  LYR_HOSPITALS,
   SRC_MAIRES_POL,
   LYR_MAIRES_POL,
   LYR_MAIRES_POL_LABEL,
@@ -466,16 +467,9 @@ export class DeckGLMap {
   private enrichedHoverPopup: maplibregl.Popup | null = null;
   private railStationPanel: HTMLElement | null = null;
   private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
-  private _lastHoveredHealthId: number | null = null;
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
-  private latestHealthFeatures: HealthFeatures | null = null;
-  // APL (déserts médicaux) vient de DEUX sources : le fichier statique
-  // /data/apl-departements.json (loadAplData) ET l'API santé /api/health/apl.
-  // En prod l'API peut renvoyer une liste vide → on PERSISTE les valeurs APL
-  // non-nulles pour qu'un refresh santé ultérieur n'efface jamais la couche.
-  private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
   private floodSegmentsById: Map<string, FloodSegment> = new Map();
   // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
   // is created, in parallel with map style/tile loading, instead of only
@@ -485,25 +479,32 @@ export class DeckGLMap {
   // fetched the first time the gas layer is switched on.
   private gasNetworkSourcesPromise: Promise<void> | null = null;
   // Perf audit §6 item 2: departements.geojson (3.3 MB) is memoized inside
-  // getDepartmentsGeojson(), but updateWeather/updateHealth/updateISNR/
+  // getDepartmentsGeojson(), but updateWeather/updateISNR/
   // updateOutages used to trigger it unconditionally regardless of layer
-  // visibility. These four fields hold the most recent args passed while the
+  // visibility. These three fields (the health layers use healthRegionsDirty/healthDeptsDirty) hold the most recent args passed while the
   // corresponding layer was inactive, so setLayerVisibility() can replay the
   // same call (cheap: memoized fetch, or first real one) once it's switched on.
   private _pendingWeatherAlerts: MeteoAlert[] | null = null;
-  private _pendingHealthArgs: { regions: HealthRegionMetric[]; healthFeatures?: HealthFeatures; departments?: HealthDepartmentMetric[] } | null = null;
   private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
   private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
-
-  public getHealthFeatures(): HealthFeatures | null {
-    return this.latestHealthFeatures;
-  }
+  // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
+  private healthAlerts: AlertLevelsResponse | null = null;
+  private healthAlertsNow = 0;
+  private healthSyndromic: SyndromicResponse | null = null;
+  private healthApl: AplDataset | null = null;
+  private hospitalSites: ReadonlyMap<string, EmergencySite> = new Map();
+  private hospitalsVintage: number | null = null;
+  private healthUrgencesSyndrome: UrgencesSyndrome = 'ira';
+  private healthAplProfession: AplProfession = 'mg';
+  // Perf : regions.geojson et departements.geojson ne sont lus qu'avec la couche visible ; setLayerVisibility rejoue.
+  private healthRegionsDirty = false;
+  private healthDeptsDirty = false;
+  private regionsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
+  private hospitalPopup: maplibregl.Popup | null = null;
 
   // Cluster hover state
   private hoveredClusterId: number | null = null;
   private lastClusterItems: NewsItem[] = [];
-  // Département santé actuellement ouvert au clic (évite de ré-afficher le hover dessus)
-  private _activeHealthClickId: number | null = null;
   
   private threatEvents: ThreatEvent[] = [];
   private threatEventsVisible: boolean = true;
@@ -733,16 +734,10 @@ export class DeckGLMap {
       data: emptyFC(),
     });
 
-    // Health regions
-    this.map.addSource(SRC_HEALTH, {
-      type: 'geojson',
-      data: emptyFC(),
-      promoteId: 'code'
-    });
-    this.map.addSource(SRC_HEALTH_MARKERS, {
-      type: 'geojson',
-      data: emptyFC(),
-    });
+    // Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL), zones hantavirus historiques.
+    this.map.addSource(SRC_HEALTH_REGIONS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_HEALTH_DEPTS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_HEALTH_HANTAVIRUS, { type: 'geojson', data: hantavirusFeatures() });
 
     // ISNR stability departments
     this.map.addSource(SRC_ISNR, {
@@ -916,7 +911,7 @@ export class DeckGLMap {
       data: buildSubmarineLandingPoints(submarineCablesData),
     });
 
-    // Hospitals (FINESS)
+    // Sites d'urgences autorisés (SAE 2025, FINESS)
     this.map.addSource(SRC_HOSPITALS, { type: 'geojson', data: emptyFC() });
 
     // ═══════════════════════════════════════════════════════════════
@@ -1163,122 +1158,56 @@ export class DeckGLMap {
 
     // NOTE: Weather icons layer is added later (after all fill layers) to ensure visibility
 
-    // ─── Health: regional epidemiology fill ───
+    // ─── Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau ───
+    // Veille sanitaire : régions par le plus haut niveau d'alerte en saison, gris clair hors saison.
     this.map.addLayer({
-      id: LYR_HEALTH_FILL,
+      id: LYR_HEALTH_ALERT_FILL,
       type: 'fill',
-      source: SRC_HEALTH,
-      paint: {
-        'fill-color': ['get', 'fillColor'],
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.85,
-          [
-            'interpolate',
-            ['linear'],
-            ['coalesce', ['get', 'healthStressIndex'], 0],
-            0, 0.35,
-            100, 0.7
-          ]
-        ],
-      },
+      source: SRC_HEALTH_REGIONS,
+      paint: { 'fill-color': colorFromProp('hmColor'), 'fill-opacity': 0.45 },
     });
-
+    this.map.addLayer({
+      id: LYR_HEALTH_ALERT_LINE,
+      type: 'line',
+      source: SRC_HEALTH_REGIONS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.35)', 'line-width': 1 },
+    });
+    // Urgences : départements par le niveau saisonnier du syndrome choisi dans le panneau.
+    this.map.addLayer({
+      id: LYR_HEALTH_URG_FILL,
+      type: 'fill',
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'fill-color': colorFromProp(urgencesProp(this.healthUrgencesSyndrome)), 'fill-opacity': 0.5 },
+    });
+    this.map.addLayer({
+      id: LYR_HEALTH_URG_LINE,
+      type: 'line',
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
+    });
+    // Accès aux soins : départements par l'APL de la profession choisie dans le panneau.
     this.map.addLayer({
       id: LYR_HEALTH_APL_FILL,
       type: 'fill',
-      source: SRC_HEALTH,
-      paint: {
-        'fill-color': [
-          'match',
-          ['get', 'aplCategory'],
-          ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
-          'transparent'
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.30,
-          0.15
-        ],
-      },
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'fill-color': colorFromProp(aplProp(this.healthAplProfession)), 'fill-opacity': 0.5 },
     });
-
     this.map.addLayer({
       id: LYR_HEALTH_APL_LINE,
       type: 'line',
-      source: SRC_HEALTH,
-      paint: {
-        'line-color': [
-          'match',
-          ['get', 'aplCategory'],
-          ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
-          'transparent'
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'line-width': 2,
-        'line-opacity': 0.6
-      },
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
     });
-
+    // Zones d'endémie historiques du hantavirus : anneau (repère daté, pas un niveau).
     this.map.addLayer({
-      id: LYR_HEALTH_OSCOUR_CIRCLES,
+      id: LYR_HEALTH_HANTAVIRUS,
       type: 'circle',
-      source: SRC_HEALTH_MARKERS,
-      filter: ['==', ['get', 'isDepartmental'], 1],
+      source: SRC_HEALTH_HANTAVIRUS,
       paint: {
-        'circle-color': [
-          'step',
-          ['get', 'oscourMaxTrend'],
-          OSCOUR_LEVELS[0].color,
-          OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].color,
-          OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].color,
-          OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].color
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'circle-radius': [
-          'interpolate', ['linear'], ['get', 'oscourMaxTrend'],
-          OSCOUR_LEVELS[0].threshold, OSCOUR_LEVELS[0].radius,
-          OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].radius,
-          OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].radius,
-          OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].radius
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'circle-stroke-color': '#000000',
-        'circle-stroke-width': 1.5,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_HEALTH_LINE,
-      type: 'line',
-      source: SRC_HEALTH,
-      paint: {
-        'line-color': ['get', 'lineColor'],
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          2.2,
-          1
-        ],
-        'line-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          1.0,
-          0.85
-        ],
-      },
-    });
-    this.map.addLayer({
-      id: LYR_HEALTH_MARKERS,
-      type: 'circle',
-      source: SRC_HEALTH_MARKERS,
-      filter: ['!=', ['get', 'isDepartmental'], 1],
-      minzoom: 4.8,
-      paint: {
-        'circle-color': ['coalesce', ['get', 'healthIconColor'], '#34c759'],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4.8, 4, 7, 6, 10, 8],
-        'circle-opacity': 0.95,
-        'circle-stroke-width': 0,
-        'circle-stroke-opacity': 0,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7],
+        'circle-color': 'rgba(0, 0, 0, 0)',
+        'circle-stroke-color': HANTAVIRUS_RING_HEX,
+        'circle-stroke-width': ['match', ['get', 'risk'], 'extended', 1, 2],
       },
     });
 
@@ -2867,49 +2796,17 @@ export class DeckGLMap {
       },
     });
 
-    // CHU : jaune #F4D03F (pour représenter la centralisation et la tension)
+    // Sites d'urgences (spec § 3.4) : couleur = catégorie, surface = passages annuels.
     this.map.addLayer({
-      id: LYR_HOSPITALS_CHU,
+      id: LYR_HOSPITALS,
       type: 'circle',
       source: SRC_HOSPITALS,
-      filter: ['==', ['get', 'type'], 'CHU'],
       paint: {
-        'circle-color': '#F4D03F',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 7, 8, 11, 12, 16],
-        'circle-opacity': 0.92,
-      },
-    });
-    // CH / Clinique Privée : bleu/cyan #1ABC9C (capacité normale)
-    this.map.addLayer({
-      id: LYR_HOSPITALS_CH,
-      type: 'circle',
-      source: SRC_HOSPITALS,
-      filter: ['!=', ['get', 'type'], 'CHU'],
-      paint: {
-        'circle-color': '#1ABC9C',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
-        'circle-opacity': 0.95,
-      },
-    });
-    // Label hôpitaux au zoom 10+
-    this.map.addLayer({
-      id: LYR_HOSPITALS_LABEL,
-      type: 'symbol',
-      source: SRC_HOSPITALS,
-      minzoom: 10,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 10,
-        'text-offset': [0, 1.2],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Regular'],
-      },
-      paint: {
-        'text-color': '#ffffff',
-        'text-halo-color': '#0a0a0f',
-        'text-halo-width': 1.5,
-        'text-opacity': 0.85,
+        'circle-color': HOSPITAL_COLOR,
+        'circle-radius': HOSPITAL_RADIUS,
+        'circle-opacity': 0.9,
+        'circle-stroke-color': '#0a0a0f',
+        'circle-stroke-width': 1,
       },
     });
 
@@ -4081,240 +3978,8 @@ export class DeckGLMap {
       this.firesHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
 
-    // ─── Health Interactions (ISS) ───
-    const handleHealthMove = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-
-      // Zone d'exclusion : si un point hôpital est sous la souris, on laisse son handler s'exprimer
-      const hospitalFeatures = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH]
-      });
-      if (hospitalFeatures.length > 0) {
-        if (this._lastHoveredHealthId !== null) {
-          this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-          this._lastHoveredHealthId = null;
-        }
-        this.healthHoverPopup?.remove();
-        return;
-      }
-
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const featureId = typeof feat.id === 'number' ? feat.id : Number.parseInt(String(p.code ?? ''), 10);
-
-      if (this._lastHoveredHealthId !== null && this._lastHoveredHealthId !== featureId) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-      }
-      if (Number.isFinite(featureId)) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: featureId }, { hover: true });
-        this._lastHoveredHealthId = featureId;
-      }
-
-      this.map.getCanvas().style.cursor = 'pointer';
-
-      // -- Fix: Si on bouge la souris sur le département DÉJÀ cliqué, on ne ré-affiche pas le hover
-      if (this._activeHealthClickId === featureId) {
-        this.healthHoverPopup?.remove();
-        return;
-      }
-
-      const isDept = Number.parseInt(String(p.isDepartmental ?? '0')) === 1;
-      const geoName = String(p.nom ?? p.name ?? (isDept ? 'Département' : 'Région'));
-      const iss = Number.parseFloat(String(p.iss ?? p.healthStressIndex ?? '0'));
-      const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
-      const isOscourMarker = feat.layer.id === LYR_HEALTH_OSCOUR_CIRCLES;
-
-      let topMotifs: Array<{
-        code?: string;
-        label?: string;
-        trendPct?: number;
-        trend_pct?: number;
-        trendLabel?: string;
-        trend?: string;
-      }> = [];
-      try {
-        const topMotifsJson = String(p.topMotifsJson ?? '[]');
-        const parsed = JSON.parse(topMotifsJson);
-        if (Array.isArray(parsed)) {
-          topMotifs = parsed.slice(0, 4);
-        }
-      } catch {
-        // Ignore malformed optional motif payloads.
-      }
-
-      const motifsHtml = topMotifs.length > 0
-        ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-            <div style="color:#d8d8df; margin-bottom:4px; font-weight:600;">${fmIcon('triangle-alert')} Hausse des ${isOscourMarker ? 'passages' : 'Urgences/SOS'}:</div>
-            ${topMotifs.map((m) => {
-          const code = m.label || m.code || '';
-          const tp = Number(m.trendPct) || (m.trend_pct ? Number(m.trend_pct) : 0);
-          const tLabel = m.trendLabel || m.trend || (tp ? `+${Math.round(tp * 100)}%` : 'n/d');
-          return `<div style="display:flex; justify-content:space-between; gap:10px; margin:2px 0;">
-                 <span style="color:#9898a8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${code}</span>
-                 <strong style="color:${tp >= 0.5 ? '#FF1744' : tp >= 0.2 ? '#E91E63' : '#F39C12'};">${tLabel}</strong>
-               </div>`;
-        }).join('')}
-          </div>`
-        : '';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:140px; padding:2px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-            <strong style="font-size:13px; color:#fff;">${geoName}</strong>
-            <span style="font-size:12px; font-weight:700; color:${semio.color};">${fmStatusDot(semio.dotLevel)} ${semio.name}</span>
-          </div>
-          <div style="font-size:11px; color:#9898a8; margin-top:4px;">ISS : <strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>/100</div>
-          ${motifsHtml}
-          <div style="font-size:10px; color:#6b6b76; margin-top:6px;">${fmIcon('mouse-pointer-click')} Cliquez pour plus de détails</div>
-        </div>
-      `;
-
-      if (!this.healthHoverPopup) {
-        this.healthHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '360px',
-          className: 'dark-popup'
-        });
-      }
-      this.healthHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-    };
-
-    const handleHealthLeave = () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = '';
-      if (this._lastHoveredHealthId !== null) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-      }
-      this._lastHoveredHealthId = null;
-      this.healthHoverPopup?.remove();
-    };
-
-    const handleHealthClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const isDept = Number.parseInt(String(p.isDepartmental ?? '0')) === 1;
-      const geoName = String(p.nom ?? p.name ?? (isDept ? 'Département' : 'Région'));
-      const iss = Number.parseFloat(String(p.iss ?? p.healthStressIndex ?? '0'));
-      const incidence = Number.parseFloat(String(p.incidenceRate ?? '0'));
-      const spfIncidence = Number.parseFloat(String(p.spfIncidenceRate ?? '0'));
-      const hosp = Number.parseFloat(String(p.hospitalizations ?? '0'));
-      const spfHosp = Number.parseFloat(String(p.spfHospitalizations ?? '0'));
-      const rea = Number.parseFloat(String(p.reanimation ?? '0'));
-      const urgences = Number.parseFloat(String(p.emergencyVisits ?? '0'));
-      const positivity = Number.parseFloat(String(p.positivityRate ?? '0'));
-      const aplIndex = Number.parseFloat(String(p.aplIndex ?? 'NaN'));
-      const aplCategoryRaw = String(p.aplCategory ?? 'indisponible');
-      const topMotifsJson = String(p.topMotifsJson ?? '[]');
-      let topMotifs: Array<{ code: string; label: string; trendLabel: string; trendPct: number; network: 'OSCOUR' | 'SOS_MED' }> = [];
-      try {
-        const parsed = JSON.parse(topMotifsJson);
-        if (Array.isArray(parsed)) {
-          topMotifs = parsed
-            .map((m) => ({
-              code: String(m?.code ?? '').trim(),
-              label: String(m?.label ?? '').trim(),
-              trendLabel: String(m?.trendLabel ?? '').trim(),
-              trendPct: Number(m?.trendPct ?? 0),
-              network: String(m?.network ?? '').includes('SOS') ? 'SOS_MED' as const : 'OSCOUR' as const,
-            }))
-            .filter((m) => m.code || m.label)
-            .slice(0, 4);
-        }
-      } catch {
-        topMotifs = [];
-      }
-      const trend = String(p.trend ?? 'stable');
-      const trendLabel = trend === 'up' ? `${fmIcon('trending-up')} Hausse` : trend === 'down' ? `${fmIcon('trending-down')} Baisse` : '→ Stable';
-      const source = getHealthSourceLabel(String(p.source ?? 'spf-epid'));
-      const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
-      const granularityLabel = isDept ? 'Département' : 'Région';
-      const aplDef = APL_LEVELS.find(l => l.category === aplCategoryRaw);
-      const aplCategoryLabel = aplDef ? aplDef.label : 'Indisponible';
-      const aplColor = aplDef ? aplDef.color : '#9898a8';
-      const motifsHtml = topMotifs.length > 0
-        ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-            <div style="color:#9898a8; margin-bottom:4px;">Motifs en forte hausse (OSCOUR / SOS Médecins)</div>
-            ${topMotifs.map((m) => {
-          const lvl = [...OSCOUR_LEVELS].reverse().find(l => m.trendPct >= l.threshold) || OSCOUR_LEVELS[0];
-          return `<div style="display:flex; justify-content:space-between; gap:10px; margin:2px 0;">
-              <span style="color:#d8d8df;">${m.label || m.code} <span style="color:#9898a8;">(${m.network === 'SOS_MED' ? 'SOS' : 'OSCOUR'})</span></span>
-              <strong style="color:${lvl.color};">${m.trendLabel || `${m.trendPct >= 0 ? '+' : ''}${Math.round(m.trendPct * 100)}%`}</strong>
-            </div>`;
-        }).join('')}
-          </div>`
-        : '';
-
-
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:290px;">
-          <h4 style="margin:0 0 2px; font-weight:700; font-size:15px; color:#ffffff;">${geoName}</h4>
-          <div style="font-size:11px; color:#9898a8; margin-bottom:6px;">${granularityLabel} • ${source}</div>
-          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${fmStatusDot(semio.dotLevel)} Niv. ${semio.level} • ${semio.name} · ${semio.label}</div>
-
-          <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08);">
-            <span style="color:#9898a8;">ISS (0-100)</span><strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>
-            <span style="color:#9898a8;">Incidence composite /100k</span><strong>${Number.isFinite(incidence) ? incidence.toFixed(1) : '0.0'}</strong>
-            ${spfIncidence > 0 ? `<span style="color:#5ac8fa;">┗ SPF incidence</span><strong>${spfIncidence.toFixed(1)}</strong>` : ''}
-
-            <span style="color:#9898a8;">Hospitalisations</span><strong>${Number.isFinite(hosp) ? Math.round(hosp) : 0}</strong>
-            ${spfHosp > 0 ? `<span style="color:#5ac8fa;">┗ SPF hospitalisations</span><strong>${Math.round(spfHosp)}</strong>` : ''}
-            ${rea > 0 ? `<span style="color:#ff6b6b;">Réanimation / Soins critiques</span><strong>${Math.round(rea)}</strong>` : ''}
-            ${urgences > 0 ? `<span style="color:#ffa94d;">Passages urgences</span><strong>${Math.round(urgences)}</strong>` : ''}
-            ${positivity > 0 ? `<span style="color:#9898a8;">Positivité</span><strong>${positivity.toFixed(1)} %</strong>` : ''}
-            ${isDept ? `<span style="color:${aplColor};">APL (déserts médicaux)</span><strong style="color:${aplColor};">${Number.isFinite(aplIndex) ? aplIndex.toFixed(2) : 'n/d'} • ${aplCategoryLabel}</strong>` : ''}
-            <span style="color:#9898a8;">Tendance</span><strong>${trendLabel}</strong>
-          </div>
-
-          ${isDept ? motifsHtml : ''}
-
-          <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); text-align: center;">
-            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: true } }))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
-          </div>
-        </div>
-      `;
-
-      this.healthHoverPopup?.remove(); // Hide hover tooltip when clicking to avoid overlap
-
-      const featureId = typeof feat.id === 'number' ? feat.id : Number.parseInt(String(p.code ?? ''), 10);
-      this._activeHealthClickId = featureId;
-
-      const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '360px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
-
-      popup.on('close', () => {
-        if (this._activeHealthClickId === featureId) {
-          this._activeHealthClickId = null;
-        }
-      });
-    };
-
-    this.map.on('mousemove', LYR_HEALTH_FILL, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_APL_FILL, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_APL_LINE, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_MARKERS, handleHealthMove);
-    this.map.on('mousemove', (e) => {
-      if (!this.map || this._lastHoveredHealthId === null) return;
-      const healthAtCursor = this.map.queryRenderedFeatures(e.point, { layers: [LYR_HEALTH_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_OSCOUR_CIRCLES, LYR_HEALTH_MARKERS] });
-      if (healthAtCursor.length === 0) {
-        handleHealthLeave();
-      }
-    });
-    this.map.on('mouseleave', LYR_HEALTH_FILL, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_APL_FILL, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_APL_LINE, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_MARKERS, handleHealthLeave);
-
-    this.map.on('click', LYR_HEALTH_FILL, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_APL_FILL, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_APL_LINE, handleHealthClick);
+    // Couches santé : infobulle au survol et fiche de site au clic (initHealthInteractions).
+    this.initHealthInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -4363,8 +4028,6 @@ export class DeckGLMap {
         .setHTML(html)
         .addTo(this.map);
     });
-    this.map.on('click', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_MARKERS, handleHealthClick);
 
     // ─── Citizen outage zone — hover tooltip élargi ───
     let citizenHoverPopup: maplibregl.Popup | null = null;
@@ -5790,16 +5453,14 @@ export class DeckGLMap {
     this.map.on('move', schedulePulseUpdate);
     this.map.on('zoom', schedulePulseUpdate);
 
-    // Keep health layer above other fills so it remains visible when enabled.
+    // Couches santé au-dessus des autres remplissages : contours, marqueurs, puis les sites d'urgences.
     try {
-      this.map.moveLayer(LYR_HEALTH_FILL);
-      this.map.moveLayer(LYR_HEALTH_APL_FILL);
-      this.map.moveLayer(LYR_HEALTH_APL_LINE);
-      this.map.moveLayer(LYR_HEALTH_LINE);
-      this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
-      this.map.moveLayer(LYR_HEALTH_MARKERS);
+      for (const id of [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
+        LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_HANTAVIRUS, LYR_HOSPITALS]) {
+        this.map.moveLayer(id);
+      }
     } catch {
-      // Ignore if layer order cannot be adjusted yet.
+      // Ordre des couches pas encore réglable.
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -8391,10 +8052,10 @@ export class DeckGLMap {
     ];
 
     const allLegendLayers = [
-      LYR_HEALTH_FILL, LYR_HEALTH_LINE,
+      LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_HANTAVIRUS,
+      LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
-      LYR_HEALTH_OSCOUR_CIRCLES,
-      LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
+      LYR_HOSPITALS,
       LYR_POWER_FILL, LYR_POWER_LINE,
       LYR_CITIZEN_FILL, LYR_CITIZEN_LINE,
       LYR_TELECOM_PTS,
@@ -8407,13 +8068,13 @@ export class DeckGLMap {
 
     let activeLayers: string[] = [];
     if (categoryId === 'health') {
-      activeLayers = [LYR_HEALTH_FILL, LYR_HEALTH_LINE];
+      activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE, LYR_HEALTH_HANTAVIRUS];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
     } else if (categoryId === 'healthOscour') {
-      activeLayers = [LYR_HEALTH_OSCOUR_CIRCLES];
+      activeLayers = [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];
     } else if (categoryId === 'hospitals') {
-      activeLayers = [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL];
+      activeLayers = [LYR_HOSPITALS];
     } else if (categoryId === 'outagesElec') {
       activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
     } else if (categoryId === 'outagesTelecom') {
@@ -9932,249 +9593,142 @@ export class DeckGLMap {
     }
   }
 
-  // ─── Hospitals Layer (FINESS) ───
+  // ─── Santé (spec 2026-10-03 § 3) ───
 
-  updateHospitals(hospitals: GeoJSON.FeatureCollection<GeoJSON.Point>): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_HOSPITALS) as maplibregl.GeoJSONSource;
-    if (!src) return;
-    src.setData(hospitals);
-
-    // Event listeners (registered once)
-    if (!this._hospitalsEventsRegistered) {
-      this._hospitalsEventsRegistered = true;
-      this._initHospitalEvents();
-    }
+  /** Veille sanitaire : alertes Odissé par région (§ 3.1) ; `now` sert à la règle « en saison ». */
+  updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
+    this.healthAlerts = alerts;
+    this.healthAlertsNow = now;
+    void this.renderHealthRegions();
   }
 
-  private _hospitalsEventsRegistered = false;
-  private _hospitalsPopup: maplibregl.Popup | null = null;
-
-  private _initHospitalEvents(): void {
-    if (!this.map) return;
-
-    const showHospitalTooltip = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!e.features?.length || !this.map) return;
-      const feat = e.features[0];
-      const p = feat.properties as Record<string, unknown>;
-      const name = p.name as string ?? 'Établissement';
-      const type = p.type as string ?? 'Hôpital';
-      const beds = p.beds ? `${p.beds} lits` : 'Capacité inconnue';
-      const isEmergency = p.emergency === true || p.emergency === 'true';
-      const color = type === 'CHU' ? '#ff3b30' : '#ff9500';
-
-      const isChu = type === 'CHU';
-      const icon = isChu ? fmIcon('hospital', { size: 18 }) : fmIcon('stethoscope', { size: 18 });
-
-      this._hospitalsPopup?.remove();
-      this._hospitalsPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        className: 'health-hospital-popup',
-        offset: 12,
-        maxWidth: '260px',
-      })
-        .setLngLat((feat.geometry as GeoJSON.Point).coordinates as [number, number])
-        .setHTML(`
-          <div style="font-family:'Inter',sans-serif;background:#12121a;border:1px solid ${color}55;border-radius:8px;padding:10px 14px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="font-size:18px;">${icon}</span>
-              <span style="font-size:13px;font-weight:700;color:#fff;">${name}</span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
-              <span style="background:${color}22;border:1px solid ${color}44;color:${color};padding:2px 8px;border-radius:4px;">${type}</span>
-              <span style="background:#ffffff10;color:#ccc;padding:2px 8px;border-radius:4px;">${beds}</span>
-              ${isEmergency ? `<span style="background:#ff3b3022;border:1px solid #ff3b3055;color:#ff3b30;padding:2px 8px;border-radius:4px;">${fmIcon('siren')} Urgences</span>` : ''}
-            </div>
-          </div>
-        `)
-        .addTo(this.map);
-    };
-
-    const hideHospitalTooltip = () => {
-      this._hospitalsPopup?.remove();
-      this._hospitalsPopup = null;
-    };
-
-    // Hover events for both CHU and CH layers
-    for (const lyr of [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH]) {
-      this.map.on('mouseenter', lyr, (e) => {
-        if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-        showHospitalTooltip(e);
-      });
-      this.map.on('mouseleave', lyr, () => {
-        if (this.map) this.map.getCanvas().style.cursor = '';
-        hideHospitalTooltip();
-      });
-    }
+  /** Urgences (§ 3.2) et APL (§ 3.3) : une source départementale, une propriété de couleur par syndrome et par profession. */
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null): void {
+    this.healthSyndromic = syndromic;
+    this.healthApl = apl;
+    void this.renderHealthDepartments();
   }
 
-  // ─── Health Layer ───
+  /** Sélecteur du panneau Urgences : change la propriété peinte, sans nouvel envoi de données. */
+  setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {
+    this.healthUrgencesSyndrome = syndrome;
+    if (this.map?.getLayer(LYR_HEALTH_URG_FILL)) this.map.setPaintProperty(LYR_HEALTH_URG_FILL, 'fill-color', colorFromProp(urgencesProp(syndrome)));
+  }
 
-  async updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): Promise<void> {
+  /** Sélecteur du panneau Accès aux soins : change la propriété peinte, sans nouvel envoi de données. */
+  setHealthAplProfession(profession: AplProfession): void {
+    this.healthAplProfession = profession;
+    if (this.map?.getLayer(LYR_HEALTH_APL_FILL)) this.map.setPaintProperty(LYR_HEALTH_APL_FILL, 'fill-color', colorFromProp(aplProp(profession)));
+  }
+
+  /** Hôpitaux (§ 3.4) : sites placés, index par n° FINESS (infobulle, fiche, panneau). */
+  updateHospitals(data: HospitalsDataset | null): void {
+    this.hospitalSites = new Map((data?.sites ?? []).map((s): [string, EmergencySite] => [s.finess, s]));
+    this.hospitalsVintage = data?.vintage ?? null;
+    const src = this.map?.getSource(SRC_HOSPITALS) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(hospitalFeatures(data));
+  }
+
+  /** Site choisi dans le panneau Hôpitaux : la carte s'y centre et ouvre sa fiche. */
+  focusHospital(site: EmergencySite): void {
     if (!this.map) return;
-    this.latestHealthFeatures = healthFeatures ?? this.latestHealthFeatures;
+    this.flyTo(site.lon, site.lat, Math.max(this.map.getZoom(), 9));
+    this.openHospitalPopup(site);
+  }
 
-    const hasDepts = Array.isArray(departments) && departments.length > 0;
-    const hasRegions = regions.length > 0;
-
-    if (!hasDepts && !hasRegions) {
-      const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-      const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-      src?.setData(emptyFC());
-      markersSrc?.setData(emptyFC());
+  private async renderHealthRegions(): Promise<void> {
+    if (!this.map) return;
+    if (!this.currentLayers?.health) {
+      this.healthRegionsDirty = true;
       return;
     }
+    this.healthRegionsDirty = false;
+    const geo = await this.getRegionsGeojson();
+    const src = this.map?.getSource(SRC_HEALTH_REGIONS) as maplibregl.GeoJSONSource | undefined;
+    if (geo) src?.setData(regionAlertFeatures(geo, this.healthAlerts?.levels ?? [], this.healthAlertsNow));
+  }
 
-    try {
-      // ─ Prefer departmental granularity ─
-      if (hasDepts) {
-        const deptMap = new Map<string, HealthDepartmentMetric>();
-        for (const d of departments!) deptMap.set(d.depCode, d);
-
-        // Mémorise toute valeur APL non-nulle reçue (fichier statique ou API) ;
-        // un appel ultérieur sans APL ne pourra plus écraser la couche.
-        // (Runs unconditionally, even while hidden below — see
-        // project_apl_prod_overwrite.md: this memory must stay correct
-        // regardless of whether the choropleth itself is rendered.)
-        for (const d of departments!) {
-          const hasApl = d.aplIndex != null || (d.aplCategory != null && d.aplCategory !== 'indisponible');
-          if (hasApl) this.aplByDept.set(d.depCode, { aplIndex: d.aplIndex ?? null, aplCategory: d.aplCategory ?? 'indisponible' });
-        }
-
-        // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
-        // while no health layer is visible. setLayerVisibility() replays this
-        // call with the same args once one is switched on.
-        const anyHealthLayerActive =
-          this.currentLayers?.health || this.currentLayers?.healthApl ||
-          this.currentLayers?.healthOscour || this.currentLayers?.hospitals;
-        if (!anyHealthLayerActive) {
-          this._pendingHealthArgs = { regions, healthFeatures, departments };
-          return;
-        }
-        this._pendingHealthArgs = null;
-
-        const baseGeojson = await this.getDepartmentsGeojson();
-        if (!baseGeojson) return;
-        const geojson = this.cloneDepartmentsGeojson(baseGeojson);
-
-        for (const feature of geojson.features) {
-          const code = String(feature.properties?.code ?? '');
-          const metric = deptMap.get(code);
-          const iss = metric?.iss ?? 0;
-          feature.id = deptCodeToId(code);
-          feature.properties = {
-            ...feature.properties,
-            fillColor: issToFillColor(iss),
-            lineColor: issToLineColor(iss),
-            healthIconColor: issToColor(iss),
-            healthStressIndex: iss,
-            iss,
-            issLevel: metric?.issLevel ?? 1,
-            incidenceRate: metric?.incidenceRate ?? 0,
-            spfIncidenceRate: metric?.spfIncidence ?? 0,
-            sentinellesIncidenceRate: metric?.sentinellesIncidence ?? 0,
-            hospitalizations: metric?.hospitalizations ?? 0,
-            spfHospitalizations: metric?.spfHospitalizations ?? 0,
-            reanimation: metric?.reanimation ?? 0,
-            emergencyVisits: metric?.emergencyVisits ?? 0,
-            positivityRate: metric?.positivityRate ?? 0,
-            hasOscourAlert: metric?.topMotifs && metric.topMotifs.length > 0 ? 1 : 0,
-            oscourMaxTrend: metric?.topMotifs && metric.topMotifs.length > 0 ? Math.max(...metric.topMotifs.map(m => m.trendPct || (m as { trend_pct?: number }).trend_pct || 0)) : 0,
-            topMotifsJson: JSON.stringify(metric?.topMotifs ?? []),
-            aplIndex: metric?.aplIndex ?? this.aplByDept.get(code)?.aplIndex ?? null,
-            aplCategory: (metric?.aplCategory && metric.aplCategory !== 'indisponible')
-              ? metric.aplCategory
-              : (this.aplByDept.get(code)?.aplCategory ?? 'indisponible'),
-            trend: metric?.trend ?? 'stable',
-            source: metric?.source ?? 'spf-epid',
-            updatedAt: metric?.updatedAt?.toISOString() ?? new Date().toISOString(),
-            isDepartmental: 1,
-          };
-        }
-
-        const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-        const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-        src?.setData(geojson);
-
-        // Use SRC_HEALTH_MARKERS for points (ex: OSCOUR circles)
-        const markerFeatures = geojson.features.map(f => {
-          const center = getFeatureCenter(f);
-          if (!center) return null;
-          return {
-            type: 'Feature',
-            properties: { ...f.properties },
-            geometry: { type: 'Point', coordinates: center }
-          } as GeoJSON.Feature;
-        }).filter(f => f !== null) as GeoJSON.Feature[];
-
-        markersSrc?.setData({ type: 'FeatureCollection', features: markerFeatures });
-      } else {
-        // ─ Fallback: regional ─
-        const regionsByCode = new Map<string, HealthRegionMetric>();
-        for (const region of regions) regionsByCode.set(region.regionCode, region);
-
-        const resp = await fetch('/data/regions.geojson');
-        if (!resp.ok) return;
-        const geojson = await resp.json() as GeoJSON.FeatureCollection;
-
-        geojson.features = geojson.features.filter((f) => regionsByCode.has(String(f.properties?.code ?? '')));
-
-        for (const feature of geojson.features) {
-          const code = String(feature.properties?.code ?? '');
-          const metric = regionsByCode.get(code);
-          if (!metric) continue;
-          const iss = metric.iss ?? metric.healthStressIndex ?? 0;
-          feature.id = Number.parseInt(code, 10);
-          feature.properties = {
-            ...feature.properties,
-            fillColor: issToFillColor(iss),
-            lineColor: issToLineColor(iss),
-            healthIconColor: issToColor(iss),
-            healthStressIndex: iss,
-            iss,
-            issLevel: metric.issLevel ?? 1,
-            incidenceRate: metric.incidenceRate,
-            spfIncidenceRate: metric.spfIncidenceRate,
-            sentinellesIncidenceRate: metric.sentinellesIncidenceRate,
-            hospitalizations: metric.hospitalizations,
-            spfHospitalizations: metric.spfHospitalizations,
-            reanimation: metric.reanimation ?? 0,
-            positivityRate: metric.positivityRate,
-            trend: metric.trend,
-            source: metric.source,
-            updatedAt: metric.updatedAt.toISOString(),
-            isDepartmental: 0,
-          };
-        }
-
-        const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-        const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-        const markerFeatures: GeoJSON.Feature[] = geojson.features
-          .map((feature) => {
-            const center = getFeatureCenter(feature);
-            if (!center) return null;
-            return { type: 'Feature', properties: { ...feature.properties }, geometry: { type: 'Point', coordinates: center } } as GeoJSON.Feature;
-          })
-          .filter((f): f is GeoJSON.Feature => f !== null);
-
-        src?.setData(geojson);
-        markersSrc?.setData({ type: 'FeatureCollection', features: markerFeatures });
-      }
-
-      try {
-        this.map.moveLayer(LYR_HEALTH_FILL);
-        this.map.moveLayer(LYR_HEALTH_APL_FILL);
-        this.map.moveLayer(LYR_HEALTH_APL_LINE);
-        this.map.moveLayer(LYR_HEALTH_LINE);
-        this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
-        this.map.moveLayer(LYR_HEALTH_MARKERS);
-      } catch {
-        // Ignore ordering errors.
-      }
-    } catch (error) {
-      console.warn('[DeckGLMap] Failed to update health layer', error);
+  private async renderHealthDepartments(): Promise<void> {
+    if (!this.map) return;
+    if (!this.currentLayers?.healthOscour && !this.currentLayers?.healthApl) {
+      this.healthDeptsDirty = true;
+      return;
     }
+    this.healthDeptsDirty = false;
+    const base = await this.getDepartmentsGeojson();
+    const src = this.map?.getSource(SRC_HEALTH_DEPTS) as maplibregl.GeoJSONSource | undefined;
+    if (base) src?.setData(departmentHealthFeatures(base, this.healthSyndromic, this.healthApl));
+  }
+
+  /** Contours des régions (18, DROM compris), lus une fois ; un échec est relu au prochain affichage. */
+  private getRegionsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
+    this.regionsGeojsonPromise ??= fetch('/data/regions.geojson')
+      .then((r) => (r.ok ? (r.json() as Promise<GeoJSON.FeatureCollection>) : null))
+      .catch(() => null)
+      .then((geo) => {
+        if (!geo) this.regionsGeojsonPromise = null;
+        return geo;
+      });
+    return this.regionsGeojsonPromise;
+  }
+
+  private healthMapData(): HealthMapData {
+    return {
+      alerts: this.healthAlerts?.levels ?? [], alertsNow: this.healthAlertsNow, syndromic: this.healthSyndromic, apl: this.healthApl,
+      hospitals: this.hospitalSites, hospitalsVintage: this.hospitalsVintage,
+      syndrome: this.healthUrgencesSyndrome, profession: this.healthAplProfession,
+    };
+  }
+
+  private openHospitalPopup(site: EmergencySite): void {
+    if (!this.map) return;
+    this.healthHoverPopup?.remove();
+    this.hospitalPopup?.remove();
+    this.hospitalPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
+      .setLngLat([site.lon, site.lat])
+      .setHTML(hospitalPopupHtml(site, this.hospitalsVintage))
+      .addTo(this.map);
+  }
+
+  /**
+   * Couches santé : une infobulle au survol, de la couche la plus précise à la plus large (site, marqueur hantavirus,
+   * département, région) ; clic sur un site : sa fiche. Seules les couches visibles sont interrogées.
+   */
+  private initHealthInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    let shown = false;
+    // Curseur main sur un site seulement ; remis à zéro uniquement s'il a été posé ici (les autres couches gardent le leur).
+    let pointer = false;
+    const setPointer = (on: boolean): void => {
+      if (on === pointer) return;
+      pointer = on;
+      map.getCanvas().style.cursor = on ? 'pointer' : '';
+    };
+    map.on('mousemove', (e) => {
+      const visible = HEALTH_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hits = visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : [];
+      const hit = HEALTH_HOVER_LAYERS.map((id) => hits.find((f) => f.layer.id === id)).find((f) => f !== undefined);
+      const html = hit ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
+      if (!hit || !html) {
+        setPointer(false);
+        if (shown) {
+          shown = false;
+          this.healthHoverPopup?.remove();
+        }
+        return;
+      }
+      shown = true;
+      setPointer(hit.layer.id === LYR_HOSPITALS);
+      const popup = this.healthHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup' });
+      this.healthHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('click', LYR_HOSPITALS, (e) => {
+      const site = this.hospitalSites.get(String(e.features?.[0]?.properties?.['finess'] ?? ''));
+      if (site) this.openHospitalPopup(site);
+    });
   }
 
   // ─── ISNR Stability Layer ───
@@ -12381,16 +11935,14 @@ export class DeckGLMap {
     }
 
     // Perf audit §6 item 2: replay any department-choropleth update that was
-    // skipped (§ updateWeather/updateHealth/updateISNR/updateOutages above)
+    // skipped (§ updateWeather/updateISNR/updateOutages above ; health layers through their dirty flags)
     // while its layer was hidden, now that it's visible again.
     if (layers.environmental && this._pendingWeatherAlerts !== null) {
       const alerts = this._pendingWeatherAlerts;
       void this.updateWeather(alerts);
     }
-    if ((layers.health || layers.healthApl || layers.healthOscour || layers.hospitals) && this._pendingHealthArgs) {
-      const { regions, healthFeatures, departments } = this._pendingHealthArgs;
-      void this.updateHealth(regions, healthFeatures, departments);
-    }
+    if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
+    if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {
       const scores = this._pendingIsnrScores;
       void this.updateISNR(scores);
@@ -12429,16 +11981,15 @@ export class DeckGLMap {
     this.setVis(LYR_WEATHER_LINE_RED, vis(layers.environmental));
     this.setVis(LYR_WEATHER_LINE_VIOLET, vis(layers.environmental));
     this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
-    // Core health uses ISS fill, shown when health is enabled
-    this.setVis(LYR_HEALTH_FILL, vis(layers.health ?? false));
+    // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
+    this.setVis(LYR_HEALTH_ALERT_FILL, vis(layers.health ?? false));
+    this.setVis(LYR_HEALTH_ALERT_LINE, vis(layers.health ?? false));
+    this.setVis(LYR_HEALTH_HANTAVIRUS, vis(layers.health ?? false));
+    this.setVis(LYR_HEALTH_URG_FILL, vis(layers.healthOscour ?? false));
+    this.setVis(LYR_HEALTH_URG_LINE, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_APL_FILL, vis(layers.healthApl ?? false));
     this.setVis(LYR_HEALTH_APL_LINE, vis(layers.healthApl ?? false));
-    this.setVis(LYR_HEALTH_LINE, vis(layers.health ?? false));
-    this.setVis(LYR_HEALTH_OSCOUR_CIRCLES, vis(layers.healthOscour ?? false));
-    this.setVis(LYR_HEALTH_MARKERS, vis(layers.health ?? false));
-    this.setVis(LYR_HOSPITALS_CHU, vis(layers.hospitals ?? false));
-    this.setVis(LYR_HOSPITALS_CH, vis(layers.hospitals ?? false));
-    this.setVis(LYR_HOSPITALS_LABEL, vis(layers.hospitals ?? false));
+    this.setVis(LYR_HOSPITALS, vis(layers.hospitals ?? false));
     this.setVis(LYR_TOPAGE_VIS, vis(layers.environmental));
     this.setVis(LYR_FLOODS_RAW, vis(layers.environmental));
     this.setVis(LYR_FLOODS, vis(layers.environmental));

@@ -153,7 +153,6 @@ import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
 import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
-import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -592,77 +591,67 @@ function hasActiveEnergySystems(layers: Pick<MapLayers, typeof ENERGY_SYSTEM_LAY
   return ENERGY_SYSTEM_LAYER_KEYS.some((key) => layers[key]);
 }
 
-const HEALTH_ISS_LEGEND: LegendCategory = {
+// Légendes santé (spec 2026-10-03 § 3) : couleurs identiques à la carte (deckgl/health-map.ts, vérifié par test).
+const HEALTH_ALERTS_LEGEND: LegendCategory = {
   id: 'health',
-  title: 'Santé : ISS (Stress Sanitaire)',
-  type: 'gradient',
-  items: [],
-  gradientColors: ['#2ECC71', '#F1C40F', '#E67E22', '#E74C3C'],
-  gradientMin: 'Sérénité (0)',
-  gradientMax: 'Crise (100)',
-  source: {
-    label: 'Santé publique France / Composite',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Mise à jour quotidienne'
-  }
+  title: 'Veille sanitaire : alertes grippe et bronchiolite par région',
+  items: [
+    { id: 'health-alert-epidemic', label: 'Épidémie', color: levelHex('orange'), shape: 'square' },
+    { id: 'health-alert-pre-post', label: 'Pré-épidémie ou post-épidémie', color: levelHex('jaune'), shape: 'square' },
+    { id: 'health-alert-none', label: 'Pas d’alerte', color: levelHex('vert'), shape: 'square' },
+    { id: 'health-alert-off', label: 'Hors saison', color: '#c7c7cc', shape: 'square' },
+    { id: 'health-hantavirus', label: 'Zone d’endémie historique du hantavirus', color: '#f2f2f7', shape: 'ring', note: 'Cas recensés de 2005 à 2024' },
+  ],
+  source: { label: 'Santé publique France (Odissé)', url: 'https://odisse.santepubliquefrance.fr' },
+  refresh: { label: 'Hebdomadaire, publié le mercredi' },
+};
+
+const HEALTH_URGENCES_LEGEND: LegendCategory = {
+  id: 'healthOscour',
+  title: 'Urgences : syndrome choisi, comparé aux 3 saisons précédentes',
+  items: [
+    { id: 'urg-rouge', label: 'Plus de 50 % au-dessus du maximum', color: levelHex('rouge'), shape: 'square' },
+    { id: 'urg-orange', label: 'De 15 à 50 % au-dessus', color: levelHex('orange'), shape: 'square' },
+    { id: 'urg-jaune', label: 'Au-dessus, de moins de 15 %', color: levelHex('jaune'), shape: 'square' },
+    { id: 'urg-vert', label: 'Au plus le maximum des 3 saisons', color: levelHex('vert'), shape: 'square' },
+  ],
+  notes: ['Département sans couleur : moins de deux saisons de référence.'],
+  source: { label: 'Santé publique France (Odissé : OSCOUR et SOS Médecins)', url: 'https://odisse.santepubliquefrance.fr' },
+  refresh: { label: 'Hebdomadaire, publié le mercredi' },
 };
 
 const HEALTH_APL_LEGEND: LegendCategory = {
   id: 'healthApl',
-  title: 'Santé : APL (Déserts médicaux)',
-  items: APL_LEVELS.map(level => ({
-    id: level.id,
-    label: level.label,
-    color: level.color,
-    shape: 'square'
-  })),
+  title: 'Accès aux soins : APL de la profession choisie',
+  items: [
+    { id: 'apl-rouge', label: 'Généralistes : moins de 2,5 consultations par an et par habitant', color: levelHex('rouge'), shape: 'square' },
+    { id: 'apl-orange', label: 'De 2,5 à 3,5', color: levelHex('orange'), shape: 'square' },
+    { id: 'apl-jaune', label: 'De 3,5 à 4', color: levelHex('jaune'), shape: 'square' },
+    { id: 'apl-vert', label: '4 et plus', color: levelHex('vert'), shape: 'square' },
+  ],
+  notes: ['Autres professions : rapport à la moyenne nationale, rouge sous 0,5, orange sous 0,75, jaune sous 1, vert au-delà.'],
   source: {
-    label: 'DREES',
-    url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/accessibilite-potentielle-localisee-apl-aux-medecins-generalistes/',
-    year: '2023',
+    label: 'DREES, APL',
+    url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/530_l-accessibilite-potentielle-localisee-apl/',
+    year: 2024,
   },
-  refresh: {
-    label: 'Mise à jour annuelle (structurelle)'
-  }
-};
-
-
-
-
-const HEALTH_OSCOUR_LEGEND: LegendCategory = {
-  id: 'healthOscour',
-  title: 'Santé : Urgences / SOS Médecins',
-  items: OSCOUR_LEVELS.map(level => ({
-    id: level.id,
-    label: level.label,
-    color: level.color,
-    shape: 'circle'
-  })),
-  source: {
-    label: 'Santé publique France – SURSAUD',
-    url: 'https://geodes.santepubliquefrance.fr/',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Données quotidiennes (J-1)'
-  }
+  refresh: { label: 'Annuelle' },
 };
 
 const HOSPITALS_LEGEND: LegendCategory = {
   id: 'hospitals',
-  title: 'Infrastructures Hospitalières',
+  title: 'Hôpitaux : sites d’urgences autorisés',
   items: [
-    { id: 'chu', label: 'Sous tension (CHU)', color: '#F4D03F', shape: 'circle' },
-    { id: 'ch', label: 'Capacité normale (CH / Clinique)', color: '#1ABC9C', shape: 'circle' }
+    { id: 'hosp-chu', label: 'CHU et CHR', color: '#64d2ff', shape: 'circle' },
+    { id: 'hosp-ch', label: 'Centres hospitaliers', color: '#bf5af2', shape: 'circle' },
+    { id: 'hosp-private', label: 'Cliniques privées', color: '#5e5ce6', shape: 'circle' },
+    { id: 'hosp-gcs', label: 'Groupements (GCS)', color: '#30b0c7', shape: 'circle' },
+    { id: 'hosp-army', label: 'Hôpitaux des armées', color: '#ac8e68', shape: 'circle' },
+    { id: 'hosp-other', label: 'Autres établissements', color: '#71717a', shape: 'circle' },
   ],
-  source: {
-    label: 'FINESS / data.gouv',
-  },
-  refresh: {
-    label: 'Mise à jour annuelle (structurelle)'
-  }
+  notes: ['Surface du disque : passages aux urgences de l’année.'],
+  source: { label: 'DREES (SAE) et FINESS', url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/707_bases-administratives-sae/', year: 2025 },
+  refresh: { label: 'Annuelle' },
 };
 
 const ROAD_TRAFFIC_LEGEND: LegendCategory = {
@@ -1300,7 +1289,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'standalone',
     dependsOnGroup: false,
     label: 'Veille sanitaire',
-    legend: HEALTH_ISS_LEGEND,
+    legend: HEALTH_ALERTS_LEGEND,
   },
   {
     id: 'healthApl',
@@ -1316,7 +1305,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'standalone',
     dependsOnGroup: false,
     label: 'Urgences et SOS Médecins',
-    legend: HEALTH_OSCOUR_LEGEND,
+    legend: HEALTH_URGENCES_LEGEND,
   },
   {
     id: 'hospitals',
@@ -3969,6 +3958,8 @@ export class App {
     this.urgencesPanelPromise ??= import('./components/UrgencesPanel.ts').then(({ UrgencesPanel }) => {
       const panel = new UrgencesPanel(container);
       panel.setOnClose(() => this.closeHealthLayer('healthOscour'));
+      panel.setOnSyndrome((syndrome) => this.mapContainer?.setHealthUrgencesSyndrome(syndrome));
+      this.mapContainer?.setHealthUrgencesSyndrome(panel.getSyndrome());
       panel.mount();
       this.urgencesPanel = panel;
       if (this.activeLayers.healthOscour) panel.show(this.currentHealth);
@@ -3982,6 +3973,8 @@ export class App {
     this.accesSoinsPanelPromise ??= import('./components/AccesSoinsPanel.ts').then(({ AccesSoinsPanel }) => {
       const panel = new AccesSoinsPanel(container);
       panel.setOnClose(() => this.closeHealthLayer('healthApl'));
+      panel.setOnProfession((profession) => this.mapContainer?.setHealthAplProfession(profession));
+      this.mapContainer?.setHealthAplProfession(panel.getProfession());
       panel.mount();
       this.accesSoinsPanel = panel;
       if (this.activeLayers.healthApl) panel.show(this.currentHealthOffer);
@@ -3995,6 +3988,7 @@ export class App {
     this.hopitauxPanelPromise ??= import('./components/HopitauxPanel.ts').then(({ HopitauxPanel }) => {
       const panel = new HopitauxPanel(container);
       panel.setOnClose(() => this.closeHealthLayer('hospitals'));
+      panel.setOnSelectSite((site) => this.mapContainer?.focusHospital(site));
       panel.mount();
       this.hopitauxPanel = panel;
       if (this.activeLayers.hospitals) panel.show(this.currentHealthOffer);
@@ -4843,9 +4837,9 @@ export class App {
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
     // Rail legend is embedded in TransportPanel — not in the bottom map legend
-    this.mapLegend.addCategory(HEALTH_ISS_LEGEND);
+    this.mapLegend.addCategory(HEALTH_ALERTS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
-    this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
+    this.mapLegend.addCategory(HEALTH_URGENCES_LEGEND);
     this.mapLegend.addCategory(HOSPITALS_LEGEND);
     this.mapLegend.addCategory(ENERGY_ECOWATT_LEGEND);
     this.mapLegend.addCategory(NUCLEAR_LEGEND);
@@ -6683,6 +6677,8 @@ export class App {
     this.currentHealthNational = nationalSummary(state, now);
     this.veillePanel?.update(state);
     this.urgencesPanel?.update(state);
+    this.mapContainer?.updateHealthAlerts(state.alerts.data, now);
+    this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null);
     for (const [key, name] of HEALTH_STATUS_SOURCES) {
       if (keys === 'all' || keys.includes(key)) this.statusPanel?.updateSource(name, surveillanceStatus(state, key, now));
     }
@@ -6696,6 +6692,8 @@ export class App {
     this.currentHealthOffer = offer;
     this.accesSoinsPanel?.update(offer);
     this.hopitauxPanel?.update(offer);
+    this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data);
+    this.mapContainer?.updateHospitals(offer.hospitals.data);
     this.statusPanel?.updateSource('DREES APL', offerStatus(offer, 'apl'));
     this.statusPanel?.updateSource('DREES SAE / FINESS', offerStatus(offer, 'hospitals'));
   }

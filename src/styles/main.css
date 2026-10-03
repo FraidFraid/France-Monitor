@@ -5311,32 +5311,15 @@ button.header-quality-link {
   display: none;
 }
 
-/* ═══ Hôpitaux popups (dark style identique ISS) ═══ */
-.health-hospital-popup .maplibregl-popup-content,
-.health-hospital-detail-popup .maplibregl-popup-content {
-  background: #12121a !important;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
-  padding: 0 !important;
-}
-
-.health-hospital-popup .maplibregl-popup-tip,
-.health-hospital-detail-popup .maplibregl-popup-tip {
-  display: none !important;
-}
-
-.health-hospital-detail-popup .maplibregl-popup-close-button {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 16px;
-  top: 8px;
-  right: 8px;
-}
-
-.health-hospital-detail-popup .maplibregl-popup-close-button:hover {
-  color: #fff;
-  background: transparent;
-}
+/* Carte santé (spec 2026-10-03 § 3) : infobulles et fiche de site dans .dark-popup ; texte de l'interface, chiffres alignés. */
+.hm-tip { min-width: 210px; font-size: 12px; line-height: 1.45; color: var(--text-primary); }
+.hm-tip b { display: block; font-size: 13px; font-weight: 700; }
+.hm-tip .hm-sub { margin: 1px 0 6px; color: var(--text-secondary); }
+.hm-tip .hm-row { display: flex; justify-content: space-between; gap: 14px; padding: 1px 0; }
+.hm-tip .hm-row > span:first-child { color: var(--text-secondary); }
+.hm-tip .hm-row > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.hm-tip .hm-note { margin-top: 6px; color: var(--text-secondary); }
+.hm-tip .hm-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
 
 /* Sous-layer indenté dans le panneau COUCHES */
 .layer-panel-item--sublayer {

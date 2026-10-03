@@ -29,7 +29,7 @@ export const HANTAVIRUS_HISTORICAL_REFERENCE = {
 export const HANTAVIRUS_HISTORICAL_DEPARTMENTS: Record<string, HantavirusZoneDefinition> = {
   'DEP-08': { code: 'DEP-08', name: 'Ardennes', center: [4.72, 49.77], risk: 'historic' },
   'DEP-10': { code: 'DEP-10', name: 'Aube', center: [4.08, 48.3], risk: 'extended' },
-  'DEP-21': { code: 'DEP-21', name: "Cote-d'Or", center: [5.04, 47.32], risk: 'extended' },
+  'DEP-21': { code: 'DEP-21', name: 'Côte-d’Or', center: [5.04, 47.32], risk: 'extended' },
   'DEP-25': { code: 'DEP-25', name: 'Doubs', center: [6.02, 47.24], risk: 'extended' },
   'DEP-39': { code: 'DEP-39', name: 'Jura', center: [5.55, 46.67], risk: 'historic' },
   'DEP-51': { code: 'DEP-51', name: 'Marne', center: [4.03, 49.04], risk: 'extended' },
@@ -39,8 +39,8 @@ export const HANTAVIRUS_HISTORICAL_DEPARTMENTS: Record<string, HantavirusZoneDef
   'DEP-57': { code: 'DEP-57', name: 'Moselle', center: [6.18, 49.12], risk: 'historic' },
   'DEP-67': { code: 'DEP-67', name: 'Bas-Rhin', center: [7.75, 48.57], risk: 'historic' },
   'DEP-68': { code: 'DEP-68', name: 'Haut-Rhin', center: [7.34, 47.75], risk: 'historic' },
-  'DEP-69': { code: 'DEP-69', name: 'Rhone', center: [4.84, 45.76], risk: 'extended' },
-  'DEP-70': { code: 'DEP-70', name: 'Haute-Saone', center: [6.15, 47.62], risk: 'historic' },
+  'DEP-69': { code: 'DEP-69', name: 'Rhône', center: [4.84, 45.76], risk: 'extended' },
+  'DEP-70': { code: 'DEP-70', name: 'Haute-Saône', center: [6.15, 47.62], risk: 'historic' },
   'DEP-88': { code: 'DEP-88', name: 'Vosges', center: [6.45, 48.18], risk: 'historic' },
   'DEP-90': { code: 'DEP-90', name: 'Territoire de Belfort', center: [6.87, 47.64], risk: 'extended' },
 };
