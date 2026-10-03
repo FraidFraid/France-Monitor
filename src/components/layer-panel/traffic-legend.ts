@@ -21,7 +21,7 @@ export const TRAFFIC_NEUTRAL_HEX = '#c7c7cc';
 /** Jetons de catégorie de main.css (R2), copiés pour MapLibre qui ne lit pas les variables CSS (vérifié par test). */
 export const CAT_AIRPORT_HEX = '#5ac8fa';
 export const CAT_PORT_HEX = '#30b0c7';
-/** Avions civils : une seule teinte (l'altitude n'est pas une gravité, arbitrage 28), reprise par la densité. */
+/** Avions civils : une seule teinte (l'altitude n'est pas une gravité, arbitrage 28), icônes nettes à tous les zooms. */
 export const AIR_ICON_HEX = '#7dd3fc';
 
 // ─── Types de navires : teinte de la carte, légende et comptes de l'instantané, un seul classement ───
@@ -122,9 +122,7 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficAir',
   title: 'Trafic aérien',
   items: [
-    { id: 'air-density', label: 'Densité des avions (sous le zoom 7)', color: AIR_ICON_HEX, shape: 'square',
-      gradient: `linear-gradient(90deg, rgba(125, 211, 252, 0.15), ${AIR_ICON_HEX}, #e0f7ff)` },
-    { id: 'air-plane', label: 'Avion civil (à partir du zoom 7, indicatif au survol)', color: AIR_ICON_HEX, icon: fmIcon('plane') },
+    { id: 'air-plane', label: 'Avion civil (indicatif au survol)', color: AIR_ICON_HEX, icon: fmIcon('plane') },
     { id: 'air-emergency-7500', label: 'Urgence 7500 (détournement)', color: levelHex('rouge'), shape: 'circle' },
     { id: 'air-emergency-7700', label: 'Urgence 7700 (urgence générale)', color: levelHex('orange'), shape: 'circle' },
     { id: 'air-emergency-7600', label: 'Urgence 7600 (panne radio)', color: levelHex('jaune'), shape: 'circle' },
@@ -135,7 +133,7 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   refresh: { label: `Positions toutes les 12${NBSP}s, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Zone suivie : France métropolitaine et ses approches ; vols militaires dans la couche Défense.',
-    `Urgences en vol (7500, 7600, 7700) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) ; au-delà, gris.`,
+    `Urgences en vol (7500${NBSP}détournement, 7600${NBSP}panne${NBSP}radio, 7700${NBSP}urgence) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) ; au-delà, gris.`,
     `Départs : 8 aéroports, fenêtre de 2${NBSP}h relevée toutes les 4${NBSP}h ; Beauvais et Bordeaux : annuaires officiels ; arrivées publiées par la source seulement en différé.`,
   ],
 };

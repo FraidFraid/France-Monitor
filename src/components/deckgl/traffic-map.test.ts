@@ -4,16 +4,16 @@ import type { AirEmergency, AirTrafficFlight, MaritimeSignal } from '../../types
 import { levelHex } from '../../services/vigilance.ts';
 import { NBSP, visibleText } from '../layer-panel/format.ts';
 import { SQUAWK_LEVEL, trafficBreakable } from '../layer-panel/traffic-format.ts';
-import { AIR_ICON_HEX, CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX } from '../layer-panel/traffic-legend.ts';
+import { CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX } from '../layer-panel/traffic-legend.ts';
 import {
   TRAFFIC_NOW, airOverviewFixture, maritimeSnapshotFixture, paris, railOverviewFixture, roadNationalFixture, roadUrbanFixture,
 } from '../layer-panel/traffic.fixture.ts';
 import {
-  LYR_AIR_DENSITY, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS,
-  LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIR_TRAFFIC,
+  LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS,
+  LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS,
 } from './constants.ts';
 import {
-  AIR_DENSITY_PAINT, AIR_ICON_MIN_ZOOM, PORT_COORDS, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS,
+  AIR_TWEEN_MIN_ZOOM, PORT_COORDS, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS,
   TRAFFIC_SOURCE_IDS, TRAFFIC_STROKE_DIM_LAYERS, airEmergencyFeatures, airEmergencyLevel, airFlightTooltipHtml, airportFeatures, airportRadius, anchorageFeatures, jamPopupHtml,
   maritimeSignalFeatures, railOverviewLate, railStationFeatures, roadEventFeatures, roadEventSortKey, topTrafficHit, trafficHex,
   shouldTweenAirPositions, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures, urbanJamFeatures,
@@ -114,8 +114,9 @@ describe('aérien (§ 3.2)', () => {
     expect(body(fc.features[3])).toContain('Hors territoire et approches');
     expect(allNeutral(airEmergencyFeatures(o, LATE))).toBe(true);
   });
-  it('animation des positions des avions : seulement icônes dessinées (couche active, zoom 7 ou plus) et relevé précédent', () => {
-    expect(shouldTweenAirPositions(true, true, AIR_ICON_MIN_ZOOM)).toBe(true);
+  it('animation des positions des avions : couche active, zoom 7 ou plus et relevé précédent ; sous le zoom 7, positions posées', () => {
+    expect(AIR_TWEEN_MIN_ZOOM).toBe(7);
+    expect(shouldTweenAirPositions(true, true, AIR_TWEEN_MIN_ZOOM)).toBe(true);
     expect(shouldTweenAirPositions(true, true, 9.5)).toBe(true);
     expect(shouldTweenAirPositions(true, true, 6.99)).toBe(false);
     expect(shouldTweenAirPositions(true, false, 9)).toBe(false);
@@ -134,10 +135,9 @@ describe('aérien (§ 3.2)', () => {
       expect(bva).toContain(part);
     }
   });
-  it('avions : densité sous le zoom 7, icônes au-delà, une teinte ; aucun libellé d’indicatif ; infobulle échappée', () => {
-    expect(TRAFFIC_LAYERS.find((l) => l.id === LYR_AIR_DENSITY)).toMatchObject({ type: 'heatmap', source: SRC_AIR_TRAFFIC, maxzoom: AIR_ICON_MIN_ZOOM });
-    expect(AIR_DENSITY_PAINT['heatmap-opacity']).toBe(0.8);
-    expect(JSON.stringify(AIR_DENSITY_PAINT['heatmap-color'])).toContain(AIR_ICON_HEX);
+  it('avions : icônes nettes à tous les zooms (aucune densité, aucun calque MapLibre des positions) ; aucun libellé d’indicatif ; infobulle échappée', () => {
+    expect(TRAFFIC_LAYERS.some((l) => l.type === 'heatmap')).toBe(false);
+    expect(TRAFFIC_LAYER_KEYS.trafficAir).toEqual([LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL]);
     expect(JSON.stringify(TRAFFIC_LAYERS)).not.toContain('callsign');
     const flight: AirTrafficFlight = { id: 'f1', callsign: '<i>EZY1</i>', longitude: 2, latitude: 48, altitude: 35000, speed: 450, heading: 271.6, source: 'opensky' };
     const html = airFlightTooltipHtml(flight);
@@ -234,14 +234,13 @@ describe('sources, couches et survol', () => {
       expect(paint['circle-stroke-color']).not.toBe('#111111');
     }
   });
-  it('survol : couche du dessus d’abord ; infobulle seulement avec un contenu ; libellés et densité jamais survolés', () => {
+  it('survol : couche du dessus d’abord ; infobulle seulement avec un contenu ; libellés jamais survolés', () => {
     expect(TRAFFIC_HOVER_LAYERS[0]).toBe(LYR_AIS_SIGNALS);
-    expect(TRAFFIC_HOVER_LAYERS).not.toContain(LYR_AIR_DENSITY);
     expect(TRAFFIC_HOVER_LAYERS).not.toContain(LYR_AIR_EMERGENCY_LABEL);
     expect(topTrafficHit([{ layer: { id: LYR_ANCHORAGES } }, { layer: { id: LYR_AIS_SIGNALS } }])?.layer.id).toBe(LYR_AIS_SIGNALS);
     expect(trafficTooltipHtml(LYR_RAIL_STATION, { body: '<b>Narbonne</b>' })).toBe('<div class="hm-tip"><b>Narbonne</b></div>');
     expect(trafficTooltipHtml(LYR_ROAD_EVENTS, {})).toBeNull();
-    expect(trafficTooltipHtml(LYR_AIR_DENSITY, { body: 'x' })).toBeNull();
+    expect(trafficTooltipHtml(LYR_AIR_EMERGENCY_LABEL, { body: 'x' })).toBeNull();
   });
   it('infobulles : R1, aucun tiret cadratin, aucune police à chasse fixe', () => {
     const n = roadNationalFixture();

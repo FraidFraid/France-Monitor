@@ -15,17 +15,16 @@ import {
   RAIL_EFFECT_WORD, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, SQUAWK_LEVEL, SQUAWK_WORD, anomalyLabel, clockOf, coordText, fold, formatCount, formatKm, formatKmh, formatMeters,
   formatMinutes, jamLevel, plural, railDelayLevel,
 } from '../layer-panel/traffic-format.ts';
-import { AIR_ICON_HEX, CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX, isDrawnTraficolorSection } from '../layer-panel/traffic-legend.ts';
+import { CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX, isDrawnTraficolorSection } from '../layer-panel/traffic-legend.ts';
 import {
-  LYR_AIRPORTS, LYR_AIR_DENSITY, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION,
+  LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION,
   LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
-  SRC_AIR_TRAFFIC, SRC_AIS_SIGNALS, SRC_ANCHORAGES, SRC_RAIL_STATIONS, SRC_ROAD_EVENTS, SRC_ROAD_JAMS, SRC_ROAD_SECTIONS,
+  SRC_AIS_SIGNALS, SRC_ANCHORAGES, SRC_RAIL_STATIONS, SRC_ROAD_EVENTS, SRC_ROAD_JAMS, SRC_ROAD_SECTIONS,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 type Section = RoadNationalResponse['sections'][number];
-type HeatmapPaint = NonNullable<Extract<LayerSpecification, { type: 'heatmap' }>['paint']>;
 export type TrafficMapLayer = 'trafficRoad' | 'trafficAir' | 'trafficRail' | 'trafficMaritime';
 
 function fc<G extends GeoJSON.Geometry>(features: GeoJSON.Feature<G>[]): Fc<G> {
@@ -167,24 +166,19 @@ export function jamPopupHtml(body: string, flow: TrafficFlowSegment | null): str
 
 // ─── Aérien (§ 3.2) ───
 
-/** Les icônes d'avions (Deck.gl) s'affichent à partir de ce zoom ; en dessous, la densité. */
-export const AIR_ICON_MIN_ZOOM = 7;
+/**
+ * Les icônes d'avions (Deck.gl) sont dessinées à tous les zooms (retour de l'utilisateur : une densité floue ne remplace pas des
+ * avions nets) ; leurs positions ne sont animées entre deux relevés qu'à partir de ce zoom.
+ */
+export const AIR_TWEEN_MIN_ZOOM = 7;
 
 /**
- * Animation des positions entre deux relevés (12 s) : seulement si les icônes sont dessinées (couche active, zoom 7 ou plus) et
- * qu'un relevé précédent existe. Sous le zoom 7, la densité suffit : aucune reconstruction des couches Deck.gl image par image.
+ * Animation des positions entre deux relevés (12 s) : couche active, zoom 7 ou plus et relevé précédent. Sous le zoom 7, l'avion
+ * se déplace de quelques pixels par relevé : positions posées à chaque relevé, sans reconstruire les couches Deck.gl à chaque image.
  */
 export function shouldTweenAirPositions(hadPrevious: boolean, layerVisible: boolean, zoom: number): boolean {
-  return hadPrevious && layerVisible && zoom >= AIR_ICON_MIN_ZOOM;
+  return hadPrevious && layerVisible && zoom >= AIR_TWEEN_MIN_ZOOM;
 }
-
-export const AIR_DENSITY_PAINT: HeatmapPaint = {
-  'heatmap-weight': 1,
-  'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 4, 0.6, AIR_ICON_MIN_ZOOM, 1.2],
-  'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, AIR_ICON_MIN_ZOOM, 22],
-  'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(125, 211, 252, 0)', 0.3, 'rgba(125, 211, 252, 0.35)', 0.7, AIR_ICON_HEX, 1, '#e0f7ff'],
-  'heatmap-opacity': 0.8,
-};
 
 function airEmergencyBody(e: AirEmergency, late: boolean, now: number): string {
   return head(e.callsign ?? `ICAO ${e.icao24.toUpperCase()}`, `${e.squawk} · ${SQUAWK_WORD[e.squawk]}`)
@@ -426,7 +420,6 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
     id: LYR_ROAD_EVENTS, type: 'circle', source: SRC_ROAD_EVENTS, layout: { 'circle-sort-key': TRAFFIC_SORT, visibility: 'none' },
     paint: { 'circle-color': TRAFFIC_COLOR, 'circle-radius': TRAFFIC_RADIUS, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#111111', 'circle-opacity': 0.95 },
   },
-  { id: LYR_AIR_DENSITY, type: 'heatmap', source: SRC_AIR_TRAFFIC, maxzoom: AIR_ICON_MIN_ZOOM, layout: { visibility: 'none' }, paint: AIR_DENSITY_PAINT },
   {
     id: LYR_AIRPORTS, type: 'circle', source: SRC_AIRPORTS, layout: { visibility: 'none' },
     paint: { 'circle-color': TRAFFIC_COLOR, 'circle-opacity': 0.3, 'circle-radius': TRAFFIC_RADIUS, 'circle-stroke-width': 1.5, 'circle-stroke-color': TRAFFIC_COLOR },
@@ -462,7 +455,7 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
 /** Couches MapLibre de chaque couche Trafics (visibilité, survol de légende). */
 export const TRAFFIC_LAYER_KEYS: Readonly<Record<TrafficMapLayer, readonly string[]>> = {
   trafficRoad: [LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS],
-  trafficAir: [LYR_AIR_DENSITY, LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL],
+  trafficAir: [LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL],
   trafficRail: [LYR_RAIL_STATION, LYR_RAIL_STATION_LABEL],
   trafficMaritime: [LYR_ANCHORAGES, LYR_AIS_SIGNALS],
 };

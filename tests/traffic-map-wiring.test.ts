@@ -57,21 +57,19 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
       expect(deck).toContain(call);
     }
   });
-  it('avions : icônes à partir du zoom 7, une teinte, infobulle échappée ; densité en dessous', () => {
-    expect(deck).toContain('visible: this.airTrafficVisible && this.airIconsShown,');
+  it('avions : icônes nettes à tous les zooms (retour utilisateur), une teinte, infobulle échappée ; plus de densité ni de source MapLibre', () => {
+    expect(deck).toContain('visible: this.airTrafficVisible,');
     expect(deck).toContain('getIcon: () => this.getAirTrafficIconDef(AIR_ICON_HEX),');
     expect(deck).toContain('this.showMilitaryTooltip(lngLat, airFlightTooltipHtml(flight));');
-    expect(deck).toContain('const airIcons = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;');
-    expect(deck).toContain('this.airIconsShown = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;');
+    expect(deck).not.toMatch(/airIconsShown|AIR_ICON_MIN_ZOOM|SRC_AIR_TRAFFIC|LYR_AIR_DENSITY|refreshCivilAirTrafficSource|air-traffic-density/);
+    expect(constants).not.toMatch(/SRC_AIR_TRAFFIC|LYR_AIR_DENSITY/);
   });
-  it('avions sous le zoom 7 : aucune animation des positions (pas de reconstruction des couches à chaque image), reprise dès le zoom 7', () => {
+  it('avions sous le zoom 7 : positions posées à chaque relevé, aucune animation ni reconstruction des couches par image', () => {
     expect(deck).toContain('if (shouldTweenAirPositions(hadPreviousData, this.airTrafficVisible, this.viewState.zoom)) {');
     expect(deck).not.toMatch(/if \(hadPreviousData\) \{\s*this\.startCivilAirTween\(\);/);
     expect(deck.split('this.startCivilAirTween();').length - 1).toBe(1);
-    expect(deck).toMatch(/if \(!airIcons\) \{\s*\/\/[^\n]*\n\s*this\.stopCivilAirTween\(\);\s*this\.refreshCivilAirTrafficSource\(\);/);
-    expect(deck).toContain('if (!this.airTrafficVisible || !this.airIconsShown) this.stopCivilAirTween();');
-    // Source de la densité : la position et l'identifiant seulement.
-    expect(deck).toContain('properties: { id: flight.id },');
+    expect(deck).toMatch(/if \(this\.viewState\.zoom < AIR_TWEEN_MIN_ZOOM && this\.civilAirAnimFrame !== null\) \{\s*this\.stopCivilAirTween\(\);\s*this\.scheduleOverlayUpdate\(\);/);
+    expect(deck).toContain('if (!this.airTrafficVisible) this.stopCivilAirTween();');
   });
   it('navires : sillages et noms mémorisés sur l’identité des données (deck.gl ne régénère rien sans changement)', () => {
     expect(deck).toContain('const maritimeLabelData = this.getAisLabelData();');

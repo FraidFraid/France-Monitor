@@ -29,7 +29,7 @@ import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
 import {
-  AIR_ICON_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
+  AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
   TRAFFIC_STROKE_DIM_LAYERS, shouldTweenAirPositions,
   airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
   railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
@@ -241,7 +241,6 @@ import {
   SRC_MILITARY_BASES,
   SRC_MILITARY_FLIGHTS,
   SRC_MILITARY_FLIGHT_TRAILS,
-  SRC_AIR_TRAFFIC,
   SRC_MILITARY_SHIPS,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
   SRC_MILITARY_SHIPS_SELECTED,
@@ -445,7 +444,6 @@ export class DeckGLMap {
   private trafficHoverShown = false;
   private trafficPointer = false;
   private trafficJamPopup: maplibregl.Popup | null = null;
-  private airIconsShown = false;
   private railTrafficLate = false;
   /** Trajet tracé : train choisi dans le panneau ; un train survolé le remplace le temps du survol. */
   private chosenTrain: RailTrain | null = null;
@@ -895,7 +893,6 @@ export class DeckGLMap {
     this.map.addSource(SRC_MILITARY_BASES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_FLIGHTS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_FLIGHT_TRAILS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_AIR_TRAFFIC, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
@@ -5107,16 +5104,10 @@ export class DeckGLMap {
         longitude: c.lng, latitude: c.lat,
         zoom: this.map.getZoom(), pitch: this.map.getPitch(), bearing: this.map.getBearing(),
       };
-      // Avions : densité sous le zoom 7, icônes au-delà (spec trafics § 3.2).
-      const airIcons = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
-      if (airIcons !== this.airIconsShown) {
-        this.airIconsShown = airIcons;
-        if (!airIcons) {
-          // Icônes masquées : animation arrêtée, densité posée sur les positions du dernier relevé.
-          this.stopCivilAirTween();
-          this.refreshCivilAirTrafficSource();
-        }
-        if (this.airTrafficVisible) this.scheduleOverlayUpdate();
+      // Avions : icônes à tous les zooms ; sous le zoom 7, une animation en cours s'arrête sur les positions du dernier relevé.
+      if (this.viewState.zoom < AIR_TWEEN_MIN_ZOOM && this.civilAirAnimFrame !== null) {
+        this.stopCivilAirTween();
+        this.scheduleOverlayUpdate();
       }
       if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
         this.scheduleOverlayUpdate();
@@ -5311,7 +5302,7 @@ export class DeckGLMap {
       new IconLayer<AirTrafficFlight>({
         id: 'deck-air-traffic',
         data: this.civilAirTrafficFlights,
-        visible: this.airTrafficVisible && this.airIconsShown,
+        visible: this.airTrafficVisible,
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
@@ -5755,25 +5746,6 @@ export class DeckGLMap {
       return ((h % 360) + 360) % 360;
     }
     return newH;
-  }
-
-  private refreshCivilAirTrafficSource(): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_AIR_TRAFFIC) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    src.setData({
-      type: 'FeatureCollection',
-      features: this.civilAirTrafficFlights.map((flight) => {
-        const [longitude, latitude] = this.projectAirTrafficPosition(flight);
-        return {
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: [longitude, latitude] },
-          // Seule la densité (heatmap, poids constant) lit cette source : la position suffit.
-          properties: { id: flight.id },
-        };
-      }),
-    });
   }
 
   private handleAisHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): void {
@@ -10435,15 +10407,14 @@ export class DeckGLMap {
 
     this.civilAirTrafficFlights = newCivil;
 
-    // Animation des positions (12 s) seulement quand les icônes sont dessinées : couche active, zoom 7 ou plus (sous le zoom 7,
-    // la densité suffit et l'animation reconstruirait toutes les couches Deck.gl à chaque image). Jamais au premier relevé.
+    // Animation des positions (12 s) : couche active, zoom 7 ou plus, jamais au premier relevé. Sous le zoom 7, les icônes restent
+    // dessinées et leurs positions sont posées d'un coup : une seule reconstruction des couches par relevé, aucune par image.
     if (shouldTweenAirPositions(hadPreviousData, this.airTrafficVisible, this.viewState.zoom)) {
       this.startCivilAirTween();
     } else {
       this.stopCivilAirTween();
     }
 
-    this.refreshCivilAirTrafficSource();
     this.refreshAisLayers();
   }
 
@@ -10493,8 +10464,6 @@ export class DeckGLMap {
         this.civilAirAnimFrame = requestAnimationFrame(tick);
       } else {
         this.civilAirAnimFrame = null;
-        // Final: update MapLibre GeoJSON source (labels) with settled positions
-        this.refreshCivilAirTrafficSource();
       }
     };
 
@@ -11046,9 +11015,8 @@ export class DeckGLMap {
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
     this.globalTrafficVisible = layers.trafficMaritime;
-    this.airIconsShown = this.viewState.zoom >= AIR_ICON_MIN_ZOOM;
     this.airTrafficVisible = layers.trafficAir;
-    if (!this.airTrafficVisible || !this.airIconsShown) this.stopCivilAirTween();
+    if (!this.airTrafficVisible) this.stopCivilAirTween();
     this.dayNightVisible = layers.dayNight ?? false;
     this.refreshAisLayers();
     // Submarine cables

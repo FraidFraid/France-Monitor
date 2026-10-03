@@ -60,11 +60,13 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     none.sections = none.sections.map((s) => ({ ...s, status: 'unknown' as const }));
     expect(roadLegend(none, roadUrbanFixture(), TRAFFIC_NOW).notes?.[0]).toBe('Données : DIR 14:57 · TomTom 15:00.');
   });
-  it('aérien : OpenSky daté, densité, urgences aux couleurs du panneau, aéroports en jeton de catégorie', () => {
+  it('aérien : OpenSky daté, avions nets à tous les zooms (plus de densité), urgences aux couleurs du panneau, aéroports en jeton de catégorie', () => {
     const l = airLegend(airOverviewFixture(), TRAFFIC_NOW);
     expect(l.notes?.[0]).toBe('Données : OpenSky 15:09.');
     const t = text(l);
-    for (const part of ['OpenSky', 'sous le zoom 7', 'indicatif au survol', '7500, 7600, 7700', 'départs détectés', 'couche Défense',
+    expect(t).not.toMatch(/densité|zoom 7/i);
+    expect(label(l, 'air-plane')).toBe('Avion civil (indicatif au survol)');
+    for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0détournement, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
     expect([color(l, 'air-emergency-7500'), color(l, 'air-emergency-7700'), color(l, 'air-emergency-7600'), color(l, 'air-emergency-away')])
       .toEqual([levelHex(SQUAWK_LEVEL['7500']), levelHex(SQUAWK_LEVEL['7700']), levelHex(SQUAWK_LEVEL['7600']), TRAFFIC_NEUTRAL_HEX]);
