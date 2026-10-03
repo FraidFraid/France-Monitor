@@ -1,4 +1,4 @@
-import type { SentinellesIndicator } from '../types/index.ts';
+import type { LegacySentinellesIndicator } from '../types/index.ts';
 
 export interface SentinellesRssItem {
   title: string;
@@ -10,7 +10,7 @@ export interface SentinellesRssItem {
 export interface SentinellesIngestionResult {
   sentinelles_last_week_available: string | null;
   rss_items: SentinellesRssItem[];
-  indicators: SentinellesIndicator[];
+  indicators: LegacySentinellesIndicator[];
 }
 
 const SENTINELLES_RSS_URL = 'https://www.sentiweb.fr/rss/fr/fr/html';
@@ -133,7 +133,7 @@ function readNumber(row: Record<string, string>, keys: string[]): number | undef
   return undefined;
 }
 
-function territoryLevelFromGeo(geo: string): SentinellesIndicator['territoire_niveau'] {
+function territoryLevelFromGeo(geo: string): LegacySentinellesIndicator['territoire_niveau'] {
   if (geo === 'PAY') return 'nation';
   if (geo === 'REG') return 'region';
   return 'departement';
@@ -147,7 +147,7 @@ function normalizeSentinellesRows(
   rows: Array<Record<string, string>>,
   pathologie: string,
   fallbackWeek: string | null,
-): SentinellesIndicator[] {
+): LegacySentinellesIndicator[] {
   return rows
     .map((row) => {
       const incidence = readNumber(row, ['inc100', 'incidence', 'inc']);
@@ -157,7 +157,7 @@ function normalizeSentinellesRows(
       if (!semaine_epid) return null;
 
       const territoireGeo = row.geo || row.nivgeo || (row.geo_insee ? 'REG' : 'PAY');
-      const indicator: SentinellesIndicator = {
+      const indicator: LegacySentinellesIndicator = {
         pathologie,
         semaine_epid,
         territoire_niveau: territoryLevelFromGeo(territoireGeo),
@@ -169,7 +169,7 @@ function normalizeSentinellesRows(
       };
       return indicator;
     })
-    .filter((indicator): indicator is SentinellesIndicator => indicator !== null);
+    .filter((indicator): indicator is LegacySentinellesIndicator => indicator !== null);
 }
 
 export async function parseSentinellesRss(fetcher: typeof fetch = fetch): Promise<SentinellesRssItem[]> {
@@ -220,11 +220,11 @@ export async function fetchSentinellesIndicators(fetcher: typeof fetch = fetch):
 
   const blocks = await Promise.all(SENTINELLES_TARGETS.map(async (target) => {
     const datasetId = datasetMap.get(target.id);
-    if (!datasetId) return [] as SentinellesIndicator[];
+    if (!datasetId) return [] as LegacySentinellesIndicator[];
 
     const datasetUrl = `https://www.sentiweb.fr/api/v1/datasets/rest/dataset?id=${encodeURIComponent(datasetId)}&span=short&$format=json`;
     const response = await fetcher(datasetUrl, { headers: { Accept: 'application/json' } });
-    if (!response.ok) return [] as SentinellesIndicator[];
+    if (!response.ok) return [] as LegacySentinellesIndicator[];
 
     const payload = await response.json() as { data?: Array<Record<string, string>> };
     return normalizeSentinellesRows(payload.data ?? [], target.pathologie, sentinelles_last_week_available);
@@ -241,7 +241,7 @@ export async function fetchSentinellesTableFromCsv(
   csvUrl: string,
   pathologie: string,
   fetcher: typeof fetch = fetch,
-): Promise<SentinellesIndicator[]> {
+): Promise<LegacySentinellesIndicator[]> {
   const response = await fetcher(csvUrl, { headers: { Accept: 'text/csv, text/plain' } });
   if (!response.ok) {
     throw new Error(`Sentinelles CSV HTTP ${response.status}`);

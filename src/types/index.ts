@@ -1310,7 +1310,7 @@ export interface HealthFeatures {
     obsoleteCount: number;
   };
   sentinellesLastWeekAvailable: string | null;
-  sentinellesNormalizedIndicators: SentinellesIndicator[];
+  sentinellesNormalizedIndicators: LegacySentinellesIndicator[];
   hantavirusEvents: HantavirusEvent[];
 }
 
@@ -1543,7 +1543,7 @@ export interface AlerteEpidemique {
   meta?: Record<string, string | number | boolean | null>;
 }
 
-export interface SentinellesIndicator {
+export interface LegacySentinellesIndicator {
   pathologie: 'IRA' | 'Grippe' | 'Varicelle' | 'Diarrhee aigue' | string;
   semaine_epid: string;
   territoire_niveau: 'nation' | 'region' | 'departement';
@@ -2794,3 +2794,113 @@ export interface DromLiveTerritory {
   day: DromLivePoint[];
 }
 export interface DromLiveResponse { fetchedAt: number; territories: DromLiveTerritory[] }
+
+// ═══ Santé, phase A : sources (spec 2026-10-03 panneaux santé § 2, contrats partagés avec la phase B) ═══
+/** Semaine épidémiologique ISO : id « 2026-S39 », lundi et dimanche au format AAAA-MM-JJ. */
+export interface EpiWeek { id: string; start: string; end: string }
+
+export type SyndromeKey = 'ira' | 'grippe' | 'covid' | 'bronchio' | 'gastro' | 'asthme' | 'allergie';
+
+/** Parts en % (taux Odissé pour 100 000 divisé par 1 000 : 2 108 → 2.108). er : passages aux urgences ;
+ *  hosp : hospitalisations après passage ; sos : actes SOS Médecins (null : pas d'association). */
+export interface SyndromicValue { er: number | null; hosp: number | null; sos: number | null }
+export interface SyndromicWeekPoint extends SyndromicValue { week: string; start: string }
+export interface SyndromicSeries {
+  key: SyndromeKey;
+  label: string;                                // 'IRA' | 'Grippe' | 'COVID-19' | 'Bronchiolite' | 'Gastro-entérite' | 'Asthme' | 'Allergie'
+  ageClass: string;                             // classe de la série principale : 'Tous âges' ou '0 an' (bronchiolite)
+  france: SyndromicWeekPoint[];                 // chronologique, depuis la semaine du lundi 2022-07-04
+  ages: Record<string, SyndromicWeekPoint[]>;   // 14 dernières semaines ; IRA : '00-04 ans', '05-14 ans', '15-64 ans', '65 ans ou plus' ; COVID : '65 ans ou plus' ; autres : {}
+}
+/** refEr : part aux urgences de la même semaine ISO des 3 saisons précédentes, de la plus récente à la plus ancienne. */
+export interface SyndromicDepartmentValue extends SyndromicValue { refEr: number[] }
+export interface SyndromicDepartment { code: string; name: string; values: Partial<Record<SyndromeKey, SyndromicDepartmentValue>> }
+export interface SyndromicResponse {
+  week: EpiWeek | null;
+  publishedAt: string | null;                   // data_processed (ISO) du jeu IRA France
+  syndromes: SyndromicSeries[];                 // ordre : ira, bronchio, gastro, asthme, allergie, grippe, covid
+  departments: SyndromicDepartment[];           // dernière semaine, 101 départements
+  errors: string[];                             // un message par jeu en échec
+}
+
+/** 1 pas d'alerte, 2 pré-épidémie, 3 épidémie, 4 post-épidémie (4 revient à 1 : pas plus grave que 3). */
+export type EpidemicPhase = 1 | 2 | 3 | 4;
+export interface RegionalAlertLevel { region: string; regionName: string; pathology: 'grippe' | 'bronchiolite'; phase: EpidemicPhase; week: string; start: string }
+export interface HealthBulletin { territory: string; title: string; date: string; url: string; summary: string }
+export interface AlertLevelsResponse {
+  levels: RegionalAlertLevel[];                 // dernière ligne publiée par région et pathologie
+  bulletins: HealthBulletin[];                  // bulletins régionaux SPF des DROM, 45 derniers jours
+  latestWeek: EpiWeek | null;
+  ignoredRegionCodes: string[];                 // codes sans libellé (07, 08)
+  errors: string[];
+}
+
+export type SentinellesIndicatorKey = 'ira' | 'covid' | 'grippe' | 'vrs' | 'bronchiolite' | 'diarrhee' | 'varicelle';
+export interface SentinellesIndicator {
+  key: SentinellesIndicatorKey; label: string; parent: 'ira' | null;
+  rate: number | null; ciLow: number | null; ciHigh: number | null;   // cas pour 100 000 habitants, France hexagonale
+  previous: number | null;                      // semaine précédente consolidée
+  trend: string | null;                         // mots du réseau : « en augmentation », « stable »…
+  activity: string | null;                      // « faible », « modérée », « forte », « très forte » ou autre libellé brut
+}
+export interface SentinellesNationalResponse {
+  week: EpiWeek | null; provisional: boolean;
+  indicators: SentinellesIndicator[];
+  topRegions: Array<{ indicator: SentinellesIndicatorKey; region: string; rate: number; ciLow: number | null; ciHigh: number | null }>;
+  bulletinUrl: string | null; errors: string[];
+}
+
+export interface WastewaterPoint { week: string; start: string; national54: number | null; national12: number | null }
+export interface WastewaterResponse {
+  points: WastewaterPoint[];                    // 26 dernières semaines, chronologique
+  lastYear: WastewaterPoint | null;             // même semaine ISO, un an plus tôt
+  stationsReporting: number | null; stationsTotal: number;
+  publishedAt: string | null; errors: string[];
+}
+
+export interface OutbreakNews { id: string; title: string; originalTitle: string; date: string; url: string; summary: string }
+export interface EcdcReport { title: string; date: string; url: string; topics: string[] }
+export interface InternationalResponse { who: OutbreakNews[]; ecdc: EcdcReport[]; errors: string[] }
+
+export interface MinistryMessage { kind: 'DGS-Urgent' | 'MARS'; number: string; date: string; title: string; url: string | null; reply: boolean }
+export interface MinistryMessagesResponse { messages: MinistryMessage[]; sourceUrl: string; officialUrl: string; errors: string[] }
+
+export type ShortageStatus = 'rupture' | 'tension' | 'remise' | 'arret';
+export interface DrugShortage { name: string; status: ShortageStatus; updatedAt: string | null; startedAt: string | null; availableAgainAt: string | null; domains: string[]; url: string | null }
+/** Champs ajoutés à la réponse de /api/health/drug-shortages (les champs historiques restent jusqu'à la tâche 19). */
+export interface DrugShortagesV2 { items: DrugShortage[]; counts: Record<ShortageStatus, number>; latestUpdate: string | null; mitmListUrl: string; errors: string[] }
+
+export type RecallRisk = 'listeria' | 'salmonelle' | 'stec' | 'campylobacter' | 'staphylocoque' | 'histamine' | 'allergene' | 'autre';
+export interface ProductRecall { id: string; date: string; label: string; brand: string; category: string; risks: RecallRisk[]; riskText: string; zone: string; url: string }
+export interface RecallsResponse {
+  since: string; total: number; healthRisk: number;
+  byRisk: Partial<Record<RecallRisk, number>>;
+  byDay: Array<{ day: string; total: number; healthRisk: number }>;
+  latest: ProductRecall[];                      // 10 derniers à risque sanitaire
+  errors: string[];
+}
+
+/** mg : consultations par an et par habitant standardisé ; autres : ETP pour 100 000 habitants (sf : pour 100 000 femmes). */
+export type AplProfession = 'mg' | 'inf' | 'kine' | 'sf' | 'dent';
+export interface AplDepartment {
+  code: string; name: string;
+  apl: Record<AplProfession, number | null>; apl2023: Record<AplProfession, number | null>;
+  pop: number; popUnder25: number; shareUnder25: number;   // généralistes, seuil 2,5 ; part en %
+}
+export interface AplDataset {
+  vintage: number; publishedAt: string; source: string;
+  france: { apl: Record<AplProfession, number>; apl2023: Record<AplProfession, number>; byYear: Array<{ year: number; aplMg: number; shareUnder25: number; popUnder25: number }> };
+  departments: AplDepartment[]; missing: string[];
+}
+
+export type HospitalCategory = 'chu' | 'ch' | 'private' | 'gcs' | 'army' | 'other';
+export interface EmergencySite {
+  finess: string; name: string; commune: string; dept: string; category: HospitalCategory; lat: number; lon: number;
+  general: boolean; pediatric: boolean; seasonal: boolean; antenna: boolean;
+  passages: number | null; bedsMco: number | null; bedsIcu: number | null; bedsIntensive: number | null; bedsUhcd: number | null;
+}
+export interface HospitalsDataset {
+  vintage: number; finessDate: string; sites: EmergencySite[]; unmatched: string[];
+  totals: { sites: number; passages: number; bedsMco: number; bedsIcu: number; bedsIntensive: number; icuSites: number };
+  establishments: Array<{ aggregate: string; label: string; count: number }>;
+}

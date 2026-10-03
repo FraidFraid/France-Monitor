@@ -232,7 +232,7 @@ interface EpidemiologyMonitorResponse {
 
 interface SentinellesIngestionResponse {
   sentinelles_last_week_available?: string | null;
-  indicators?: import('../types/index.ts').SentinellesIndicator[];
+  indicators?: import('../types/index.ts').LegacySentinellesIndicator[];
 }
 
 interface HantavirusResponse {
