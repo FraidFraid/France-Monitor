@@ -3195,11 +3195,16 @@ export interface NetworkVisibility {
 }
 export interface VisibilitySample { at: string; minPct: number }          // query_time, minimum des six réseaux
 export interface ExchangePoint { id: number; name: string; city: string | null; updated: string | null; url: string }
+/** Préfixes annoncés par réseau à un instantané (clé : ASN), IPv4 + IPv6 : base de la règle de baisse (S8), seuil à poser par B26. */
+export interface PrefixSample { at: string; prefixes: Record<string, number> }
+/** Réseau non lu à cet instantané : jamais omis, jamais compté à 0 ; `error` = panne nommée (« RIPEstat, AS15557 : HTTP 503 »), null si lecture en cours. */
+export interface UnreadNetwork { asn: MajorNetworkAsn; name: string; error: string | null }
 export interface ConnectivityResponse {
   readAt: string | null;
   snapshotAt: string | null;        // query_time RIPEstat (00 h, 08 h ou 16 h UTC)
   networks: NetworkVisibility[];    // ordre de MajorNetworkAsn
-  history: { samples: VisibilitySample[]; since: string | null };       // 30 jours
+  unread?: UnreadNetwork[];         // les réseaux de MajorNetworkAsn absents de `networks` : networks + unread = toujours les six
+  history: { samples: VisibilitySample[]; since: string | null; prefixSamples?: PrefixSample[] };       // 30 jours
   exchanges: { readAt: string | null; items: ExchangePoint[] } | null;  // PeeringDB, points d'échange en France
   errors: string[];
 }
