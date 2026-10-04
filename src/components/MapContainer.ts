@@ -61,6 +61,7 @@ export class MapContainer {
   private radar2dEnabled = false;
   private echoTopsEnabled = false;
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
+  private radarPick: { lat: number; lon: number } | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -93,6 +94,7 @@ export class MapContainer {
     if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
+    if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
@@ -664,6 +666,7 @@ export class MapContainer {
   }
 
   setRadarPick(point: { lat: number; lon: number } | null): void {
+    this.radarPick = point;
     this.deckMap?.setRadarPick(point);
   }
 

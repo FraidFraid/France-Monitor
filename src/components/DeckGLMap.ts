@@ -140,6 +140,8 @@ import {
   LYR_WEATHER_LINE_RED,
   LYR_WEATHER_LINE_VIOLET,
   SRC_WEATHER_ICONS,
+  LYR_WEATHER_ICONS,
+  LYR_FOREST_DANGER_FILL,
   LYR_HEALTH_ALERT_FILL,
   LYR_HEALTH_ALERT_LINE,
   LYR_HEALTH_URG_FILL,
@@ -456,6 +458,7 @@ export class DeckGLMap {
   private envFloodSections: Map<string, FloodSection> = new Map();
   private envFires: FiresResponse | null = null;
   private envFiresNow = 0;
+  private envFloods: FloodsResponse | null = null;
   private _forestDangerFill = false;
   private _echoTopsEnabled = false;
   private radarPick: { lat: number; lon: number } | null = null;
@@ -9531,8 +9534,11 @@ export class DeckGLMap {
   /** Tronçons jaunes, orange, rouges (aussi en v2) et stations des tronçons en vigilance, datés. */
   updateFloodsLayer(f: FloodsResponse | null, now: number): void {
     if (!this.map) return;
+    this.envFloods = f;
+    const kept = this._highlightedFloodSegmentId;
     this.envFloodSections = new Map((f?.sections ?? []).map((s) => [s.id, s]));
-    this.highlightFloodSection(null);
+    // Le tronçon mis en avant est gardé tant qu'il existe dans les nouvelles données.
+    this.highlightFloodSection(kept !== null && this.envFloodSections.has(kept) ? kept : null);
     (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(f, now));
     (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(f, now));
     this.hideEnvironmentHover();
@@ -9617,6 +9623,34 @@ export class DeckGLMap {
     this.onRadarPointPick = handler;
   }
 
+  /** Couches crues ou feux réaffichées : couleurs recalculées avec l'horloge courante (S2), jamais celle du dernier rafraîchissement. */
+  private repaintEnvironmentOnShow(before: MapLayers | null | undefined, layers: MapLayers): void {
+    if (!this.map) return;
+    const was = before ?? {};
+    if (envLayerOn(layers, 'floods') && !envLayerOn(was, 'floods') && this.envFloods) {
+      const now = Date.now();
+      (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(this.envFloods, now));
+      (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(this.envFloods, now));
+    }
+    if (envLayerOn(layers, 'fires') && !envLayerOn(was, 'fires') && this.envFires) {
+      this.envFiresNow = Date.now();
+      (this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource | undefined)?.setData(fireDetectionFeatures(this.envFires, this.envFiresNow));
+      void this.paintForestDanger();
+    }
+  }
+
+  /** Clic sur un objet d'une autre couche interactive : le point du profil radar ne se pose que sur la carte vide ou l'image radar. */
+  private clickHitsInteractiveFeature(point: maplibregl.PointLike): boolean {
+    const map = this.map;
+    if (!map) return false;
+    const ids = [
+      ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL), LYR_WEATHER_ICONS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_FLIGHTS, LYR_MILITARY_SHIPS, LYR_HOSPITALS,
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(),
+    ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
+  }
+
   /** Image 2D Météo-France visible : couche Radar active, ou ancien interrupteur du panneau Feux (jusqu'à la tâche 16). */
   private radar2dShown(): boolean {
     return this._radar2dEnabled || (this.currentLayers?.weatherRadar ?? false);
@@ -9684,6 +9718,7 @@ export class DeckGLMap {
     map.on('mouseout', () => this.hideEnvironmentHover());
     map.on('click', (e) => {
       if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;
+      if (this.clickHitsInteractiveFeature(e.point)) return;
       this.onRadarPointPick(e.lngLat.lat, e.lngLat.lng);
     });
   }
@@ -11057,6 +11092,7 @@ export class DeckGLMap {
   private currentLayers?: MapLayers;
 
   setLayerVisibility(layers: MapLayers): void {
+    const before = this.currentLayers;
     this.currentLayers = layers;
     const eventsVisible = layers.events === true;
     if (eventsVisible !== this.eventPointsVisible) {
@@ -11082,9 +11118,11 @@ export class DeckGLMap {
       void this.updateWeather(alerts);
     }
     if (layers.environmental && this.envVigilancePending && this.envVigilance) {
-      const { v, echeance, now } = this.envVigilance;
-      void this.updateVigilanceLayer(v, echeance, now);
+      // Rejeu à l'heure courante (S2) : une carte devenue en retard pendant que la couche était masquée repasse en gris.
+      const { v, echeance } = this.envVigilance;
+      void this.updateVigilanceLayer(v, echeance, Date.now());
     }
+    this.repaintEnvironmentOnShow(before, layers);
     if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
     if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {

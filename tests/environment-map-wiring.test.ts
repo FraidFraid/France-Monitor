@@ -52,6 +52,8 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
       expect(container).toContain(sig);
     }
     expect(container).toContain('if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);');
+    expect(container).toContain('if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);');
+    expect(container).toContain('this.radarPick = point;');
     for (const old of ['updateWeather(alerts: MeteoAlert[])', 'updateFloods(segments: FloodSegment[])', 'updateFires(fires: ActiveFire[])']) expect(deck).toContain(old);
   });
 });

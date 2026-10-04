@@ -15,6 +15,7 @@ import {
   COLOR_WORD, FOREST_DANGER_LEVEL, FOREST_DANGER_WORD, PHENOMENON_ICON, PHENOMENON_LABEL, SATELLITE_WORD, capitalize, clockOf, formatAge, formatChangeM,
   formatFlowM3s, formatFrp, formatHeightM, parisDayWord, slotText,
 } from '../layer-panel/environment-format.ts';
+import { NBSP } from '../layer-panel/format.ts';
 import { ENV_NEUTRAL_HEX, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOOD_STATION_HEX } from '../layer-panel/environment-legend.ts';
 import { departementName } from '../layer-panel/health-format.ts';
 import type { IconName } from '../shared/icons.ts';
@@ -71,7 +72,7 @@ function parisStamp(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return 'n.d.';
   const d = new Date(ms);
-  return `${d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`;
+  return `${d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })}${NBSP}${d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`;
 }
 
 // ─── Vigilance météo (§ 2.1) ───
@@ -210,7 +211,7 @@ function detectionBody(d: FireDetection, foyer: FireFoyer | undefined, level: Vi
     + row('Puissance (FRP)', formatFrp(d.frpMw))
     + row('Acquisition', `${clockOf(d.acquiredAt, now)} (${formatAge(Date.parse(d.acquiredAt), now)})`)
     + row('Passage', d.daynight === 'N' ? 'de nuit' : 'de jour')
-    + (foyer ? row('Foyer', `${foyer.detections} détections, ${foyer.passes} passages, ${formatFrp(foyer.frpTotalMw)}`) : '')
+    + (foyer ? row('Foyer', `${foyer.detections}${NBSP}détections, ${foyer.passes}${NBSP}passages, ${formatFrp(foyer.frpTotalMw)}`) : '')
     + (level === 'gris' ? note('Chaleur vue au moins 5 des 10 derniers jours au même endroit : probablement industrielle, jamais un feu de forêt.') : '')
     + (late ? note('Dernière acquisition de plus de 14 h : couleur retirée.') : '')
     + note(`NASA FIRMS, ${SATELLITE_WORD[d.satellite]}.`);

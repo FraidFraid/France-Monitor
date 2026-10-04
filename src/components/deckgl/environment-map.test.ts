@@ -127,6 +127,12 @@ describe('feux : détections de France par foyer, étranger en gris clair', () =
     expect(det.features.map((f) => String(props(f)['body'])).join(' ')).not.toMatch(/VIIRS SNPP|\u2014/);
     expect(String(ofDept('59')[0]['body'])).toContain('probablement industrielle, jamais un feu de forêt');
   });
+  it('ligne Foyer : nombres collés à leur mot et à leur unité (R1)', () => {
+    const body = String(ofDept('35')[0]['body']);
+    const row = /<span>Foyer<\/span><span>([^<]*)<\/span>/.exec(body)?.[1] ?? '';
+    expect(row).toMatch(/\d\u00a0détections, \d+\u00a0passages, .*\u00a0MW/);
+    expect(row).not.toMatch(/\d [a-zé]/i);
+  });
   it('confiance faible jamais en rouge : plafond orange dans un foyer majeur', () => {
     const f = FIRES_FIXTURE();
     const foyer = f.foyers.find((x) => x.dept === '55');
@@ -145,7 +151,7 @@ describe('feux : détections de France par foyer, étranger en gris clair', () =
     expect(abroad.features).toHaveLength(8);
     expect(abroad.features.every((f) => props(f)['color'] === FIRE_ABROAD_HEX)).toBe(true);
     const gand = abroad.features.find((f) => f.geometry.coordinates[0] === 3.81388);
-    expect(String(props(gand)['body'])).toContain('<span>Acquisition</span><span>04/10 03:39</span>');
+    expect(String(props(gand)['body'])).toContain('<span>Acquisition</span><span>04/10\u00a003:39</span>');
     expect(abroad.features.some((f) => f.geometry.coordinates[1] === 45.14902)).toBe(true);
   });
   it('météo des forêts du 03/10 (J1 = 04/10) : 10 départements jaunes, les autres verts ; en retard : gris ; échue : rien', () => {

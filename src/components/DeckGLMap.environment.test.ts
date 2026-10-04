@@ -10,6 +10,8 @@ import {
 } from './deckgl/constants.ts';
 import { resetDepartementsGeojsonCache } from '../services/departements-geojson.ts';
 import { levelHex } from '../services/vigilance.ts';
+import { ENV_NEUTRAL_HEX } from './layer-panel/environment-legend.ts';
+import type { MapLayers } from '../types/index.ts';
 
 const GEO_TEXT = readFileSync(new URL('../../public/data/departements.geojson', import.meta.url), 'utf8');
 const NOW = ENV_FIXTURE_NOW;
@@ -31,6 +33,10 @@ class FakeMap {
     this.visibility.set(id, value);
   }
   setFeatureState(): void {}
+  getZoom(): number { return 5; }
+  getBounds(): { getWest(): number; getEast(): number; getSouth(): number; getNorth(): number } {
+    return { getWest: () => -5, getEast: () => 10, getSouth: () => 41, getNorth: () => 51 };
+  }
   count(id: string): number {
     return this.data.get(id)?.features.length ?? -1;
   }
@@ -86,6 +92,61 @@ describe('DeckGLMap : couches Environnement (méthodes neuves)', () => {
     expect(map.count(SRC_FIRES_HIGHLIGHT)).toBe(0);
     d.updateFiresLayer(f, NOW, { forestDangerFill: true });
     expect(map.visibility.get(LYR_FOREST_DANGER_FILL)).toBe('visible');
+  });
+  it('crues : le tronçon mis en avant survit au rafraîchissement tant qu\u2019il existe, sinon est effacé', () => {
+    const map = new FakeMap([LYR_FLOODS_HIGHLIGHT]);
+    const d = deck(map, { environmental: true });
+    d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
+    d.highlightFloodSection('MO12');
+    d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
+    expect(map.count(SRC_FLOODS_HIGHLIGHT)).toBe(1);
+    expect(map.visibility.get(LYR_FLOODS_HIGHLIGHT)).toBe('visible');
+    const without = FLOODS_FIXTURE();
+    without.sections = without.sections.filter((s) => s.id !== 'MO12');
+    d.updateFloodsLayer(without, NOW);
+    expect([map.count(SRC_FLOODS_HIGHLIGHT), map.visibility.get(LYR_FLOODS_HIGHLIGHT)]).toEqual([0, 'none']);
+  });
+  it('réaffichage : vigilance, crues et feux recalculés avec l\u2019horloge courante (carte devenue en retard : gris)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(GEO_TEXT, { status: 200 })));
+    const map = new FakeMap([]);
+    const d = deck(map, { environmental: false, fires: false });
+    await d.updateVigilanceLayer(VIGILANCE_FIXTURE(), 'J', NOW);
+    d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
+    d.updateFiresLayer(FIRES_FIXTURE(), NOW, { forestDangerFill: false });
+    const later = Date.parse('2026-10-05T01:00:00Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(later);
+    try {
+      d.setLayerVisibility({ environmental: true, fires: true } as MapLayers);
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    const colorOf = (src: string, key: string, val: string): unknown =>
+      map.data.get(src)?.features.find((f) => f.properties?.[key] === val)?.properties?.['color'];
+    expect(colorOf(SRC_WEATHER, 'code', '66')).toBe(ENV_NEUTRAL_HEX);
+    expect(map.data.get(SRC_FLOODS)?.features.every((f) => f.properties?.['color'] === ENV_NEUTRAL_HEX)).toBe(true);
+    expect(map.data.get(SRC_FIRES)?.features.every((f) => f.properties?.['color'] === ENV_NEUTRAL_HEX)).toBe(true);
+  });
+  it('clic : le point du profil radar ne se pose pas sur un objet d\u2019une autre couche, se pose sur la carte vide', () => {
+    const handlers: Record<string, (e: unknown) => void> = {};
+    let hit = true;
+    const map = {
+      on: (ev: string, h: (e: unknown) => void) => { handlers[ev] = h; },
+      getLayer: () => ({}),
+      getLayoutProperty: () => 'visible',
+      queryRenderedFeatures: () => (hit ? [{}] : []),
+    };
+    const d = deck(map as unknown as FakeMap, { weatherRadar: true });
+    const pick = vi.fn();
+    d.setOnRadarPointPick(pick);
+    Reflect.apply(Reflect.get(d, 'initEnvironmentInteractions') as () => void, d, []);
+    const click = { point: { x: 1, y: 1 }, lngLat: { lat: 43, lng: 3 } };
+    handlers['click'](click);
+    expect(pick).not.toHaveBeenCalled();
+    hit = false;
+    handlers['click'](click);
+    expect(pick).toHaveBeenCalledWith(43, 3);
   });
   it('point du profil radar : dessiné couche Radar active seulement ; effacé', () => {
     const map = new FakeMap([LYR_RADAR_PICK]);
