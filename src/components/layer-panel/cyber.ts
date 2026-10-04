@@ -72,6 +72,12 @@ function atText(iso: string | null | undefined, now: number): string | null {
   return second === undefined ? `à ${first}` : `le ${first} à ${second}`;
 }
 
+/** « depuis 16:30 » le jour même, « depuis le 03/10 à 14:00 » sinon (heure de Paris). */
+function sinceText(iso: string | null | undefined, now: number): string {
+  const at = atText(iso, now);
+  return at === null ? 'une heure n.d.' : at.startsWith('à ') ? at.slice(2) : at;
+}
+
 function lateMark(late: boolean): string {
   return late ? ' (en retard)' : '';
 }
@@ -94,8 +100,12 @@ function avisWithin(c: CyberResponse, now: number, days: number): CertFrItem[] {
   return c.certfr.avis.filter((a) => certfrAgeDays(a, now) < days);
 }
 
+/** Vulnérabilités ajoutées depuis moins de `days` jours ; une date d'ajout future (âge négatif) n'est jamais comptée. */
 function kevWithin(c: CyberResponse, now: number, days: number): KevItem[] {
-  return c.kev.recent.filter((k) => kevAgeDays(k, now) < days);
+  return c.kev.recent.filter((k) => {
+    const age = kevAgeDays(k, now);
+    return age >= 0 && age < days;
+  });
 }
 
 /** Éditeur et produit du catalogue ; « Multiple Products » de la CISA dit en français (aucun texte anglais générique affiché). */
@@ -132,13 +142,15 @@ function stamps(c: CyberResponse, now: number): string {
   ].join(' · ');
 }
 
+/** Phrase d'appui sur le catalogue KEV ; catalogue en retard (26 h) : datée et dite « en retard », jamais lue comme actuelle. */
 function leadOf(c: CyberResponse, now: number): string | null {
   if (c.kev.readAt === null) return null;
   const week = kevWithin(c, now, 7);
   const cited = week.filter((k) => k.certfrRefs.length > 0);
   const names = [...new Set(cited.map(kevName))];
+  const late = isSovereigntyDataLate('kev', c.kev.readAt, now) ? ` (catalogue lu ${atText(c.kev.readAt, now) ?? 'à une heure n.d.'}, en retard)` : '';
   return `${plural(week.length, 'vulnérabilité exploitée ajoutée', 'vulnérabilités exploitées ajoutées')} au catalogue KEV de la CISA en 7 jours, `
-    + `dont ${cited.length} ${cited.length > 1 ? 'citées' : 'citée'} par le CERT-FR${names.length > 0 ? ` : ${names.join(', ')}` : ''}.`;
+    + `dont ${cited.length} ${cited.length > 1 ? 'citées' : 'citée'} par le CERT-FR${names.length > 0 ? ` : ${names.join(', ')}` : ''}${late}.`;
 }
 
 /** Pastille et raison de `cyberLevel` (O2), jamais recalculées ; gros chiffre : alertes en cours, sans couleur à zéro ou en retard. */
@@ -182,7 +194,8 @@ function statusText(item: CertFrItem, now: number): string {
 /**
  * Exploitation (O3) : « exploitation signalée par le CERT-FR » avec la phrase de la page citée telle quelle (elle peut attribuer
  * l'exploitation à un éditeur) ; inscription au catalogue KEV de la CISA en appui, datée quand l'ajout a moins de 30 jours ; sinon
- * « non inscrite au catalogue KEV », jamais « pas d'exploitation connue ».
+ * « non inscrite au catalogue KEV » sur une alerte, jamais « pas d'exploitation connue ». Un avis hors catalogue ne porte aucune mention
+ * (arbitrage du contrôleur : la section le dit une fois).
  */
 function exploitationParts(item: CertFrItem, c: CyberResponse, now: number): string[] {
   const parts: string[] = [];
@@ -195,7 +208,7 @@ function exploitationParts(item: CertFrItem, c: CyberResponse, now: number): str
     const added = item.kevCves.map((cve) => c.kev.recent.find((k) => k.cve === cve)?.dateAdded).filter((d): d is string => d !== undefined).sort()[0];
     const word = item.kevCves.length > 1 ? 'inscrites' : 'inscrite';
     parts.push(`${word} au catalogue KEV de la CISA${added !== undefined ? ` le ${shortDate(added, now)}` : ''} : ${item.kevCves.join(', ')}`);
-  } else {
+  } else if (item.kind === 'alerte') {
     parts.push('non inscrite au catalogue KEV');
   }
   return parts;
@@ -234,9 +247,11 @@ function certfrSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
   return {
     ...base,
     summary: escapeHtml(summary),
-    html: (alerts || emptyLine('Aucune alerte CERT-FR depuis 90 jours.'))
+    // En retard : la lecture est dite dans le corps, au-dessus des statuts qu'elle date (puces grises), pas seulement dans le résumé.
+    html: (isLate ? note(`Statuts et avis lus ${atText(c.certfr.readAt, now) ?? 'à une heure n.d.'} (en retard) : à revérifier sur le site du CERT-FR.`) : '')
+      + (alerts || emptyLine('Aucune alerte CERT-FR depuis 90 jours.'))
       + note('Statut repris du CERT-FR : en cours, ou clôturée le JJ/MM. Une clôture « ne signifie pas la fin d’une menace » (CERT-FR).')
-      + note('Avis des 30 derniers jours')
+      + note('Avis des 30 derniers jours ; sans mention : non inscrite au catalogue KEV.')
       + (avis.length > 0 ? avis.slice(0, AVIS_SHOWN).join('') : emptyLine('Aucun avis CERT-FR depuis 30 jours.'))
       + (more > 0 ? `<details class="lp-more"><summary>${escapeHtml(`${more} avis de plus`)}</summary>${avis.slice(AVIS_SHOWN).join('')}</details>` : '')
       + note('Exploitation : « exploitation signalée par le CERT-FR » quand le texte de l’alerte le dit, phrase citée telle quelle ; l’inscription au '
@@ -404,13 +419,17 @@ function leaksSection(c: CyberResponse, now: number, open: OpenFn): FicheSection
   const h = c.hibp;
   if (h === null) return { ...base, summary: 'n.d.', html: sourceDown('Have I Been Pwned') };
   const late = isSovereigntyDataLate('hibp', h.readAt, now);
-  const counts = h.count === 0
-    ? emptyLine('Aucune fuite de domaine en .fr ajoutée à Have I Been Pwned depuis 30 jours.')
-    : kvRow('Fuites de domaines en .fr ajoutées depuis 30 jours', valueHtml(formatCount(h.count)))
-      + kvRow('Ajout le plus récent', valueHtml(shortDate(h.newestAddedDate, now)));
+  const counted = kvRow('Fuites de domaines en .fr ajoutées depuis 30 jours', valueHtml(formatCount(h.count)))
+    + kvRow('Ajout le plus récent', valueHtml(shortDate(h.newestAddedDate, now)));
+  // V1 : une liste en retard n'est jamais un calme ; « aucune fuite » n'est dit que sur une lecture à jour.
+  const notEvaluated = `Non évalué · Have I Been Pwned non relu depuis ${sinceText(h.readAt, now)}`;
+  const counts = late
+    ? (h.count === 0 ? emptyLine(`${notEvaluated}.`) : note(`${notEvaluated} : comptes de la dernière lecture.`) + counted)
+    : h.count === 0 ? emptyLine('Aucune fuite de domaine en .fr ajoutée à Have I Been Pwned depuis 30 jours.') : counted;
+  const summary = h.count === 0 ? (late ? 'non évalué' : 'aucune en .fr sur 30 jours') : `${plural(h.count, 'fuite')} en .fr sur 30 jours`;
   return {
     ...base,
-    summary: escapeHtml(`${h.count === 0 ? 'aucune en .fr sur 30 jours' : `${plural(h.count, 'fuite')} en .fr sur 30 jours`}${lateMark(late)}`),
+    summary: escapeHtml(`${summary}${lateMark(late)}`),
     html: counts
       + `<p class="fmk-note">${sourceLinkHtml('liste publique des fuites sur Have I Been Pwned', h.url)}</p>`
       + note('Compte et lien seulement, sans titre ni domaine : pour les violations de données des services de l’État, l’ANSSI centralise la '

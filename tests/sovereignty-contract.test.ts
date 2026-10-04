@@ -274,14 +274,25 @@ describe('contrat Connectivité', () => {
 
 const FEED_ITEMS = [...parseCertFrFeed(fx('certfr-alerte-feed.xml'), 'alerte'), ...parseCertFrFeed(fx('certfr-avis-feed.xml'), 'avis')];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-/** Page construite pour un élément sans page enregistrée : dernière version = première version, CVE du résumé du flux. */
+/** Phrases d'exploitation des pages réelles d'ALE-009 et d'ALE-010, lues le 04/10/2026 (amendement 7, O3), recopiées telles quelles. */
+const PAGE_EXPLOITATION: Readonly<Record<string, string>> = {
+  'CERTFR-2026-ALE-009': 'L\'éditeur indique que ces deux vulnérabilités sont activement exploitées, sans préciser s\'il est possible pour un attaquant '
+    + 'non authentifié de chaîner l\'exploitation de ces deux vulnérabilités pour prendre la main sur l\'équipement.',
+  'CERTFR-2026-ALE-010': 'Le CERT-FR a connaissance de nombreuses compromissions de Metabase vulnérables.',
+};
+/**
+ * Page construite pour un élément sans page enregistrée : dernière version = première version, CVE du résumé du flux ; pour ALE-009 et
+ * ALE-010, la phrase d'exploitation de la page réelle.
+ */
 function constructedPage(ref: string): string {
   const item = FEED_ITEMS.find((i) => i.ref === ref);
   if (!item) return '<!doctype html><html><body>introuvable</body></html>';
   const [y, m, d] = item.firstVersion.split('-');
   const day = `${Number(d)} ${MONTHS[Number(m) - 1]} ${y}`;
+  const exploitation = PAGE_EXPLOITATION[ref];
   return `<!doctype html><html><body><table><tr><td>Référence</td><td>${ref}</td></tr>`
     + `<tr><td>Date de la première version</td><td>${day}</td></tr><tr><td>Date de la dernière version</td><td>${day}</td></tr></table>`
+    + (exploitation !== undefined ? `<p>${exploitation}</p>` : '')
     + `<ul>${item.feedCves.map((c: string) => `<li>Référence CVE ${c}</li>`).join('')}</ul></body></html>`;
 }
 /** Sources réelles ; `override` force une réponse pour une URL (panne, page HTML…). */

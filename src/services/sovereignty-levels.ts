@@ -332,7 +332,9 @@ function byPublication(a: CertFrItem, b: CertFrItem): number {
  * catalogue KEV, ou si les revendications dépassent 1,5 fois la moyenne (jaune au plus, même au-delà de 3 fois) ; vert sinon. n.d. si
  * le CERT-FR est en panne (readAt null ou en retard) ; n.d. aussi quand une alerte au statut non lu pourrait colorer plus haut : moins
  * de 7 jours et rien d'orange ni de rouge, ou moins de 30 jours et rien d'autre ne colore (jamais un vert faux). Une publication future
- * de plus d'1 h n'est jamais récente. Le 04/10 : orange (ALE-011, publiée le 28/09).
+ * de plus d'1 h n'est jamais récente. « (en retard) » retire les couleurs : les revendications d'un fichier de ransomware.live publié il
+ * y a plus de 24 h (lastModified, même retard que la vue) ne colorent pas, et la raison le dit. Le 04/10 : orange (ALE-011, publiée le
+ * 28/09).
  */
 export function cyberLevel(c: CyberResponse, now: number): LevelVerdict {
   if (c.certfr.readAt === null) return { level: 'nd', reason: 'CERT-FR indisponible' };
@@ -364,9 +366,12 @@ export function cyberLevel(c: CyberResponse, now: number): LevelVerdict {
   const avis = c.certfr.avis.find((a) => dayWithin(certfrDate(a), CERTFR_RECENT_DAYS, now) && a.kevCves.length > 0);
   if (avis) return { level: 'jaune', reason: `${avis.ref} : avis citant la vulnérabilité exploitée ${avis.kevCves[0]} (catalogue KEV de la CISA)` };
   const ratio = claimsRatio(c.ransomware);
-  if (ratio !== null && ratio > CLAIMS_RATIO_JAUNE) {
+  const claimsHigh = ratio !== null && ratio > CLAIMS_RATIO_JAUNE;
+  const claimsLate = c.ransomware !== null && isSovereigntyDataLate('ransomware', c.ransomware.lastModified, now);
+  if (claimsHigh && !claimsLate) {
     return { level: 'jaune', reason: `hausse des revendications, non confirmées : ${ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}\u00a0fois la moyenne` };
   }
   if (unreadVerdict !== null) return unreadVerdict;
-  return { level: 'vert', reason: 'aucune alerte CERT-FR en cours ni vulnérabilité exploitée citée par un avis de moins de 7\u00a0jours' };
+  const calm = 'aucune alerte CERT-FR en cours ni vulnérabilité exploitée citée par un avis de moins de 7\u00a0jours';
+  return { level: 'vert', reason: claimsHigh ? `${calm} ; hausse des revendications non retenue : fichier de ransomware.live en retard` : calm };
 }

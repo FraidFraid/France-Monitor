@@ -448,6 +448,20 @@ describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)
     expect(cyberLevel(cyber([], [], 1.5), NOW).level).toBe('vert');
     expect(cyberLevel(cyber([ALE_011, ALE_012], [], 3.2), NOW).level).toBe('rouge');
   });
+  it('revendications d’un fichier de ransomware.live en retard (publié il y a plus de 24 h) : ne colorent pas, la raison le dit ; à moins de 24 h : jaune', () => {
+    const claims = (ratio: number, lastModified: string | null, alerts: CertFrItem[] = []): CyberResponse => {
+      const c = cyber(alerts, [], ratio);
+      return { ...c, ransomware: c.ransomware === null ? null : { ...c.ransomware, lastModified } };
+    };
+    const calm = `aucune alerte CERT-FR en cours ni vulnérabilité exploitée citée par un avis de moins de 7${NBSP}jours`;
+    expect(cyberLevel(claims(3.2, '2026-10-03T14:30:00.000Z'), NOW)).toEqual({
+      level: 'vert', reason: `${calm} ; hausse des revendications non retenue : fichier de ransomware.live en retard`,
+    });
+    expect(cyberLevel(claims(1.6, null), NOW).level).toBe('vert');
+    expect(cyberLevel(claims(1.29, '2026-10-03T14:30:00.000Z'), NOW)).toEqual({ level: 'vert', reason: calm });
+    expect(cyberLevel(claims(1.6, '2026-10-03T15:00:00.000Z'), NOW)).toEqual({ level: 'jaune', reason: `hausse des revendications, non confirmées : 1,6${NBSP}fois la moyenne` });
+    expect(cyberLevel(claims(3.2, '2026-10-03T14:30:00.000Z', [ALE_010]), NOW)).toEqual({ level: 'jaune', reason: 'CERTFR-2026-ALE-010 en cours, publiée le 10/09' });
+  });
   it('vert : alertes closes, avis ancien, rapport 1,29', () => {
     const oldAvis = { ...AVI_1257, firstVersion: '2026-09-23', lastVersion: '2026-09-23' };
     expect(cyberLevel(cyber([ALE_008], [oldAvis]), NOW)).toEqual({
