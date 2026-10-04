@@ -344,7 +344,8 @@ export function droneZonesBlock(d: NonNullable<DefenseSitesSummary['drones']>): 
   const button = `<button type="button" class="lp-toggle" data-drone-zones aria-pressed="${d.shown}">`
     + `${d.shown ? 'Masquer les zones drones' : 'Zones drones DGAC sur la carte'}</button>`;
   if (d.meta === null) {
-    return kvRow('Zones drones DGAC', escapeHtml(d.error !== null ? 'fichier illisible' : 'lu à l’ouverture du panneau'))
+    // Le fichier (1,47 Mo) n'est lu qu'à l'activation de l'option, jamais à l'ouverture du panneau (câblage de B28).
+    return kvRow('Zones drones DGAC', escapeHtml(d.error !== null ? 'fichier illisible' : 'lu à l’activation de l’option'))
       + (d.error !== null ? note(`Fichier des zones drones illisible : ${d.error}.`) : '') + button;
   }
   const m = d.meta;

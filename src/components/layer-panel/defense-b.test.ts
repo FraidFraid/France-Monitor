@@ -260,7 +260,8 @@ describe('section Sanctions et zones drones', () => {
     expect(section(shown, 'sites')?.html).toContain('aria-pressed="true">Masquer les zones drones');
     const unread = input();
     unread.sites = { ...unread.sites, drones: { meta: null, error: null, shown: false } };
-    expect(visibleText(section(unread, 'sites')?.html ?? '')).toContain('lu à l’ouverture du panneau');
+    expect(visibleText(section(unread, 'sites')?.html ?? '')).toContain('lu à l’activation de l’option');
+    expect(visibleText(section(unread, 'sites')?.html ?? '')).not.toContain('ouverture du panneau');
     const broken = input();
     broken.sites = { ...broken.sites, drones: { meta: null, error: 'zones drones : HTTP 404 <b>x</b>', shown: false } };
     const bh = section(broken, 'sites')?.html ?? '';
