@@ -4,7 +4,7 @@ import type {
   VigilanceResponse,
 } from '../types/index.ts';
 import {
-  ENVIRONMENT_LATE_AFTER_MIN, ORANGE_FOYER_MW, dayWordOf, firesLevel, floodsLevel, forestDangerCurrent, forestDangerSeason, foyerLevel,
+  ENVIRONMENT_LATE_AFTER_MIN, ORANGE_FOYER_MW, dayWordOf, firesLevel, firmsState, floodsLevel, forestDangerCurrent, forestDangerSeason, foyerLevel,
   isEnvironmentDataLate, isMajorFoyer, nextVigilanceMap, parisDayOf, stationLate, vigilanceLevel,
 } from './environment-levels.ts';
 
@@ -259,7 +259,9 @@ describe('firesLevel', () => {
     const old = forestDanger({ publishedAt: '2026-09-30T14:50:00Z', j1Date: '2026-10-01', j2Date: '2026-10-02', season: 'hors-saison' });
     const later = T('2026-10-15T10:00:00+02:00');
     expect(forestDangerCurrent(old, later)).toBe(false);
-    expect(firesLevel(fires([], old), later)).toEqual({ level: 'vert', reason: 'aucun foyer en France ; météo des forêts hors saison' });
+    // Collecte FIRMS du 15/10, à l'heure : celle du 04/10 serait en retard (S2) et la pastille n.d.
+    const firms = { ...fires([], old), readAt: '2026-10-15T07:55:00Z', lastAcquisitionAt: '2026-10-15T03:10:00Z' };
+    expect(firesLevel(firms, later)).toEqual({ level: 'vert', reason: 'aucun foyer en France ; météo des forêts hors saison' });
   });
   it('pannes : n.d. si les deux sources manquent, ou FIRMS en panne hors saison ; une seule source : niveau sur l’autre, panne dite', () => {
     expect(firesLevel(fires([], null, null), NOW)).toEqual({ level: 'nd', reason: 'FIRMS et météo des forêts indisponibles' });
@@ -268,5 +270,41 @@ describe('firesLevel', () => {
     expect(firesLevel(fires([], forestDanger(), null), NOW)).toEqual({ level: 'jaune', reason: 'danger modéré aujourd’hui : 10 départements ; détections FIRMS indisponibles' });
     expect(firesLevel(fires([foyer({ recurrent: true })], null), NOW))
       .toEqual({ level: 'vert', reason: 'aucun foyer en France hors 1 source récurrente à vérifier ; météo des forêts indisponible' });
+  });
+});
+
+describe('pastille Feux et retards (S2, spec § 2.4) : une source en retard ou en panne compte comme indisponible', () => {
+  /** Dernière acquisition du jeu d'essai (04:43Z) + 15 h : FIRMS en retard ; météo des forêts du 03/10 encore à l'heure (+ 30 h à 20:50Z). */
+  const FIRMS_LATE = T('2026-10-04T19:43:00Z');
+  it('FIRMS en retard : la météo des forêts du jour colore seule la pastille, foyers sans couleur, retard nommé', () => {
+    const big = foyer({ confirmed: true, passes: 4, frpTotalMw: 412.6 });
+    expect(firmsState(fires([big]), FIRMS_LATE)).toBe('late');
+    expect(firesLevel(fires([big]), FIRMS_LATE)).toEqual({ level: 'jaune', reason: 'danger modéré aujourd’hui : 10 départements ; détections FIRMS en retard' });
+    // Météo des forêts au niveau 1 seulement : vert, retard FIRMS nommé.
+    const ain = forestDanger({}, [{ dept: '01', name: 'Ain', j1: 1, j2: 1 }]);
+    expect(firesLevel(fires([big], ain), FIRMS_LATE)).toEqual({ level: 'vert', reason: 'danger faible ; détections FIRMS en retard' });
+  });
+  it('FIRMS en retard et météo des forêts absente, hors saison ou en retard : n.d., les deux causes nommées', () => {
+    expect(firesLevel(fires([], null), FIRMS_LATE)).toEqual({ level: 'nd', reason: 'niveau suspendu : détections FIRMS en retard ; météo des forêts indisponible' });
+    const old = forestDanger({ j1Date: '2026-10-01' });
+    expect(firesLevel(fires([], old), FIRMS_LATE)).toEqual({ level: 'nd', reason: 'niveau suspendu : détections FIRMS en retard ; météo des forêts hors saison' });
+    // 04/10 à 21:00Z (23 h à Paris) : publication du 03/10 + 30 h dépassée, J1 encore aujourd'hui.
+    const bothLate = T('2026-10-04T21:00:00Z');
+    expect(firesLevel(fires([]), bothLate)).toEqual({ level: 'nd', reason: 'niveau suspendu : détections FIRMS en retard ; météo des forêts en retard' });
+  });
+  it('météo des forêts en retard, FIRMS à l’heure : les foyers colorent seuls, retard de la météo des forêts nommé', () => {
+    const at = T('2026-10-04T21:00:00Z');
+    const fresh = (foyers: FireFoyer[]): FiresResponse => ({ ...fires(foyers), readAt: '2026-10-04T20:30:00Z', lastAcquisitionAt: '2026-10-04T13:00:00Z' });
+    expect(firesLevel(fresh([foyer({ confirmed: true, passes: 2 })]), at))
+      .toEqual({ level: 'jaune', reason: 'un foyer confirmé de moins de 10 MW en France ; météo des forêts en retard' });
+    expect(firesLevel(fresh([]), at)).toEqual({ level: 'vert', reason: 'aucun foyer en France ; météo des forêts en retard' });
+  });
+  it('collecte lue il y a plus de 2 jours (gardée par le client), sans acquisition datée : FIRMS en panne', () => {
+    const readAt = T('2026-10-04T08:00:00Z');
+    const kept = { ...fires([foyer({ confirmed: true, passes: 2, frpTotalMw: 12.4 })]), lastAcquisitionAt: null };
+    expect(firmsState(kept, readAt + 2 * 86_400_000 - 60_000)).toBe('ok');
+    expect(firmsState(kept, readAt + 2 * 86_400_000 + 60_000)).toBe('down');
+    expect(firmsState({ ...kept, readAt: null }, NOW)).toBe('down');
+    expect(firmsState(fires([]), NOW)).toBe('ok');
   });
 });

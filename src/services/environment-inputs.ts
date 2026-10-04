@@ -7,15 +7,8 @@ import type {
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
 import { floodsToSectionRefs } from './environment-floods.ts';
-import { firesLevel, floodsLevel, isEnvironmentDataLate, vigilanceLevel, type LayerLevel } from './environment-levels.ts';
+import { firesLevel, firmsState, floodsLevel, isEnvironmentDataLate, vigilanceLevel, type LayerLevel } from './environment-levels.ts';
 import { vigilanceToMeteoAlerts } from './environment-vigilance.ts';
-
-/**
- * Âge au-delà duquel une collecte des feux ne compte plus : 2 jours après sa lecture, comme le serveur qui ne la sert plus
- * (api/_lib/fires-collect.js, LAST_TTL_SEC). Le client garde la collecte précédente après une erreur : un onglet resté ouvert
- * compterait sinon de vieilles détections.
- */
-const FIRES_COLLECTION_MAX_AGE_MS = 2 * 86_400_000;
 
 export interface EnvironmentInputs {
   /** Départements en jaune ou plus de l'échéance du jour (J). */
@@ -41,44 +34,50 @@ export interface EnvironmentInputs {
   firesPillLevel: LayerLevel;
 }
 
-/** Collecte des feux encore comptée : lue il y a moins de 2 jours ; date absente ou illisible : aucune collecte. */
-function servedFires(fires: FiresResponse | null, now: number): FiresResponse | null {
-  if (fires === null || fires.readAt === null) return null;
-  const readAt = Date.parse(fires.readAt);
-  return Number.isFinite(readAt) && now - readAt < FIRES_COLLECTION_MAX_AGE_MS ? fires : null;
-}
-
 /**
- * Pastille Feux (firesLevel) : foyers et météo des forêts du jour, le plus haut des deux. Une collecte écartée (plus de 2 jours, ou
- * jamais lue par le serveur) compte comme FIRMS en panne : seule la météo des forêts du jour colore encore ; jamais lue : n.d.
+ * Carte de vigilance qui compte : pastille lue (carte datée, échéance du jour) et à l'heure (update_time + 15 h, S2), comme le
+ * panneau qui dit alors n.d. ; sinon aucune (le client garde la carte précédente après une erreur).
  */
-function firesPillLevel(fires: FiresResponse | null, served: FiresResponse | null, now: number): LayerLevel {
-  if (fires === null) return 'nd';
-  return firesLevel(served ?? { ...fires, readAt: null, foyers: [], detections: [] }, now).level;
+function servedVigilance(v: VigilanceResponse | null, now: number): VigilanceResponse | null {
+  if (v === null || vigilanceLevel(v, 'J').level === 'nd' || isEnvironmentDataLate('vigilance', v.updateTime, now)) return null;
+  return v;
+}
+
+/** Relevé Vigicrues qui compte : lu et à l'heure (relevé du serveur + 30 min, S2), comme le panneau ; sinon aucun. */
+function servedFloods(f: FloodsResponse | null, now: number): FloodsResponse | null {
+  if (f === null || floodsLevel(f).level === 'nd' || isEnvironmentDataLate('vigicrues', f.readAt, now)) return null;
+  return f;
 }
 
 /**
- * Entrées du jour à l'instant `now` ; une source jamais lue donne des listes vides (jamais une valeur inventée) et se dit
- * indisponible. Une collecte des feux de plus de 2 jours compte comme jamais lue : ni détections, ni foyers, ni incidents.
- * Vigilance et crues sont indisponibles quand leur pastille dit n.d. (carte sans date ou sans échéance du jour, relevé absent).
+ * Collecte des feux qui compte : FIRMS à l'heure (firmsState : dernière acquisition + 14 h, collecte de moins de 2 jours) ;
+ * en retard ou en panne : aucune détection, aucun foyer, aucun incident.
+ */
+function servedFires(fires: FiresResponse | null, now: number): FiresResponse | null {
+  return fires !== null && firmsState(fires, now) === 'ok' ? fires : null;
+}
+
+/**
+ * Entrées du jour à l'instant `now`. Une source jamais lue, en échec ou en retard (S2, mêmes délais que les panneaux) donne des
+ * listes vides (jamais une valeur inventée) et se dit indisponible : la tuile « Météo » dit alors n.d. en gris, le moniteur
+ * d'alertes ne lève aucune vigilance d'une carte périmée, le score voit des listes vides (formule inchangée). Pastille Feux :
+ * firesLevel, seule fonction de la pastille du panneau (FIRMS en retard ou en panne, la météo des forêts du jour colore seule).
  */
 export function buildEnvironmentInputs(
   vigilance: VigilanceResponse | null, floods: FloodsResponse | null, fires: FiresResponse | null, fireIncidents: readonly LocatedFireIncident[],
   now: number,
 ): EnvironmentInputs {
+  const servedMap = servedVigilance(vigilance, now);
+  const servedSections = servedFloods(floods, now);
   const served = servedFires(fires, now);
   return {
-    meteoAlerts: vigilanceToMeteoAlerts(vigilance, 'J'),
-    floodSegments: floodsToSectionRefs(floods),
+    meteoAlerts: vigilanceToMeteoAlerts(servedMap, 'J'),
+    floodSegments: floodsToSectionRefs(servedSections),
     activeFires: scoreFireDetections(served).map(toActiveFire),
     fireIncidents: served === null ? [] : [...fireIncidents],
     fireFoyers: served?.foyers ?? [],
-    environmentAvailable: {
-      vigilance: vigilance !== null && vigilanceLevel(vigilance, 'J').level !== 'nd',
-      floods: floods !== null && floodsLevel(floods).level !== 'nd',
-      fires: served !== null,
-    },
-    firesPillLevel: firesPillLevel(fires, served, now),
+    environmentAvailable: { vigilance: servedMap !== null, floods: servedSections !== null, fires: served !== null },
+    firesPillLevel: fires === null ? 'nd' : firesLevel(fires, now).level,
   };
 }
 

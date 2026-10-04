@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FireObservationFeedState, FiresResponse, LocatedFireIncident } from '../../types/index.ts';
 import { firesLevel } from '../../services/environment-levels.ts';
+import { buildEnvironmentInputs } from '../../services/environment-inputs.ts';
 import { buildDossier } from '../../services/wildfire-dossier.ts';
 import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FIRE_IMPACTS_FIXTURE, RADAR_COLUMN_FIXTURE } from './environment.fixture.ts';
 import { envBreakable, glueEnvUnits } from './environment-format.ts';
@@ -173,11 +174,15 @@ describe('pannes, retards, hors saison (S1 à S3)', () => {
     const stale = view({ firesError: 'HTTP 502' });
     expect(stale.bodyHtml).toContain('Source injoignable. Dernières données : 10:10.');
   });
-  it('FIRMS en retard (14 h après la dernière acquisition) : pastille suspendue, foyers sans couleur, « (en retard) »', () => {
+  it('FIRMS en retard (14 h après la dernière acquisition) : la météo des forêts du jour colore seule la pastille, retard nommé, foyers sans couleur, « (en retard) »', () => {
     const late = Date.parse('2026-10-04T17:35:00Z');
     const v = view({ now: late });
-    expect(v.head.level).toBe('nd');
-    expect(v.head.status[0]).toBe('niveau suspendu : détections FIRMS en retard');
+    // Spec § 2.4 (vague finale, point 2) : n.d. seulement si les deux sources sont indisponibles ; FIRMS en retard = indisponible.
+    expect(v.head.level).toBe('jaune');
+    expect(v.head.status[0]).toBe(glueEnvUnits('danger modéré aujourd’hui : 10 départements ; détections FIRMS en retard'));
+    expect(v.head.lead).toBeNull();
+    // Même fonction que la part « Feux » de la tuile « Météo » (firesPillLevel).
+    expect(buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [], late).firesPillLevel).toBe(v.head.level);
     expect(v.head.status[1]).toContain(`FIRMS${NBSP}05:34${NBSP}(en retard)`);
     const s = v.sections.find((x) => x.id === 'detections');
     expect(s?.summary).toContain('(en retard)');
@@ -357,7 +362,7 @@ describe('décisions du contrôleur postérieures à la brief', () => {
     // 502 (météo des forêts en panne aussi) : la dernière réponse reçue reste servie avec sa date, et son retard compte.
     const late = view({ firesError: 'HTTP 502', now: Date.parse('2026-10-04T17:35:00Z') });
     expect(late.bodyHtml).toContain('Source injoignable. Dernières données : 10:10.');
-    expect(late.head).toMatchObject({ level: 'nd', status: ['niveau suspendu : détections FIRMS en retard', expect.stringContaining('(en retard)')] });
+    expect(late.head).toMatchObject({ level: 'jaune', status: [glueEnvUnits('danger modéré aujourd’hui : 10 départements ; détections FIRMS en retard'), expect.stringContaining('(en retard)')] });
   });
 
   it('collecte gardée servie après un cycle en échec : sa propre date, panne nommée, règles du retard appliquées', () => {
@@ -376,8 +381,12 @@ describe('décisions du contrôleur postérieures à la brief', () => {
     expect(v.head.status[2]).toBe('dernier essai FIRMS en échec : collecte du 04/10 à 10:10 servie');
     expect(visibleText(sectionOf('methode', { fires: f })?.html ?? '')).toContain('Suomi NPP en panne, NOAA-20 en panne, NOAA-21 en panne, MODIS (Terra, Aqua) en panne');
     const late = view({ fires: f, now: Date.parse('2026-10-04T17:35:00Z') });
-    expect(late.head.level).toBe('nd');
-    expect(late.head.status[0]).toBe('niveau suspendu : détections FIRMS en retard');
+    expect(late.head.level).toBe('jaune');
+    expect(late.head.status[0]).toBe(glueEnvUnits('danger modéré aujourd’hui : 10 départements ; détections FIRMS en retard'));
+    // Météo des forêts en retard aussi (publication + 30 h) : n.d., les deux retards nommés.
+    const both = view({ fires: f, now: Date.parse('2026-10-04T21:00:00Z') });
+    expect(both.head.level).toBe('nd');
+    expect(both.head.status[0]).toBe('niveau suspendu : détections FIRMS en retard ; météo des forêts en retard');
   });
 
   it('courbe de la saison : titre « aucun département en danger sur la période » quand aucun département n’est au niveau 2 ou plus', () => {

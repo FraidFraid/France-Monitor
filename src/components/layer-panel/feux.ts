@@ -9,7 +9,7 @@ import type {
 } from '../../types/index.ts';
 import { departementAeronauticalDay, aeronauticalLine } from '../../services/aeronautical-day.ts';
 import {
-  firesLevel, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, maxForestDanger,
+  firesLevel, firmsState, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, maxForestDanger,
 } from '../../services/environment-levels.ts';
 import { FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, MDF_ERROR_PREFIX, isProgressNote } from '../../services/environment-source.ts';
 import { situationLevel } from '../../services/vigilance.ts';
@@ -124,8 +124,9 @@ function dayTick(ms: number): string {
   return new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 }
 
+/** Collecte servie qui ne compte plus (firmsState : en retard, ou lue il y a 2 jours ou plus) : foyers sans couleur, « (en retard) ». */
 function firmsLate(f: FiresResponse, now: number): boolean {
-  return f.readAt !== null && f.lastAcquisitionAt !== null && isEnvironmentDataLate('firms', f.lastAcquisitionAt, now);
+  return f.readAt !== null && firmsState(f, now) !== 'ok';
 }
 
 function mdfLate(fd: ForestDanger, now: number): boolean {
@@ -199,17 +200,14 @@ function lead(f: FiresResponse): string | null {
 
 function headOf(input: FeuxViewInput, f: FiresResponse): LayerHeadModel {
   const { now } = input;
-  const late = firmsLate(f, now);
+  // Pastille : firesLevel seule (FIRMS en retard ou en panne, la météo des forêts du jour colore seule, retard nommé ; spec § 2.4).
   const verdict = firesLevel(f, now);
   return {
     theme: ENVIRONMENT_THEME, title: FEUX_TITLE, figure: figureOf(f, now),
-    level: late ? 'nd' : verdict.level,
+    level: verdict.level,
     // Lecture FIRMS incomplète : dite en tête, sans changer la couleur de la pastille.
-    status: [
-      late ? 'niveau suspendu : détections FIRMS en retard' : glueEnvUnits(verdict.reason), stamps(f, now),
-      ...(firmsIncomplete(f) ? [incompleteWords(f, now)] : []),
-    ],
-    lead: late ? null : lead(f),
+    status: [glueEnvUnits(verdict.reason), stamps(f, now), ...(firmsIncomplete(f) ? [incompleteWords(f, now)] : [])],
+    lead: firmsLate(f, now) ? null : lead(f),
   };
 }
 
@@ -471,7 +469,7 @@ function methodSection(input: FeuxViewInput, f: FiresResponse | null): FicheSect
     + note(`Capteurs : VIIRS (Suomi NPP, NOAA-20, NOAA-21 ; confiance en lettres, faible, nominale, haute) et MODIS (Terra, Aqua ; confiance de 0 à 100). Latence d’environ 3${NBSP}h ; les passages sur la France sont groupés (vers 01${NBSP}h à 03${NBSP}h et 11${NBSP}h à 13${NBSP}h UTC), d’où des heures sans observation. En retard au-delà de 14${NBSP}h après la dernière acquisition.`)
     + note(`Foyer : détections à moins de 1${NBSP}km et de 12${NBSP}h l’une de l’autre ; confirmé dès deux passages (satellite et heure d’acquisition) ; une confiance faible n’est jamais rouge.`)
     + note(`Récurrence : une source vue à moins de 1${NBSP}km au moins 5 des 10 derniers jours est « à vérifier, probablement industrielle » et ne compte jamais comme feu. Exception : un foyer d’au moins 100${NBSP}MW ou de confiance haute apparu depuis 7 jours au plus n’est jamais récurrent.`)
-    + note(`Pastille : rouge si un département est au danger très élevé ou si un foyer confirmé non récurrent cumule au moins 100${NBSP}MW ; orange si danger élevé ou foyer confirmé non récurrent d’au moins 10${NBSP}MW ; jaune si danger modéré, foyer confirmé plus petit ou détection isolée non récurrente ; n.d. si FIRMS et la météo des forêts sont en panne ; la panne d’une source est nommée dans la raison, même quand l’autre colore la pastille.`)
+    + note(`Pastille : rouge si un département est au danger très élevé ou si un foyer confirmé non récurrent cumule au moins 100${NBSP}MW ; orange si danger élevé ou foyer confirmé non récurrent d’au moins 10${NBSP}MW ; jaune si danger modéré, foyer confirmé plus petit ou détection isolée non récurrente ; une source en retard compte comme en panne ; n.d. si FIRMS et la météo des forêts sont en panne ou en retard ; la panne ou le retard d’une source est nommé dans la raison, même quand l’autre colore la pastille.`)
     + note(`Météo des forêts : niveau officiel de danger (1 faible à 4 très élevé), publié chaque jour vers 16${NBSP}h${NBSP}50 de juin à l’automne pour le lendemain et le surlendemain ; ce n’est pas une carte des incendies.`)
     + `<p class="fmk-note">${escapeHtml('Expertise sur les feux de forêt : ')}${sourceLinkHtml('CNRS, expertise scientifique collective', CNRS_URL)}.</p>`
     + readErrors(errors.filter((e) => !isProgressNote(e)).map(glueEnvUnits)) + errors.filter(isProgressNote).map((e) => note(noteText(e))).join('');

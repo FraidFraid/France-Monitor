@@ -6591,8 +6591,9 @@ export class App {
    * Entrées Environnement du score France, de la frise, des situations, de la note, de l'export, du poste v2, de l'ISNR et du stress
    * hydro (spec 2026-10-04 environnement § 2.7) : vigilance du jour, tronçons en vigilance, détections en France non récurrentes,
    * incidents DBSCAN géo-résolus, foyers du serveur, sources lues, séismes et épisodes de pollution (phase B, situations) ; lues dans
-   * les dernières réponses des services, jamais copiées ailleurs. Une collecte des feux de plus de 2 jours, gardée après une erreur, ne
-   * compte plus ; un relevé des séismes en retard ou une couche des épisodes en panne ou en retard non plus. Un rafraîchissement les lit
+   * les dernières réponses des services, jamais copiées ailleurs. Une source en retard (S2, mêmes délais que les panneaux : carte de
+   * vigilance, relevé Vigicrues, détections FIRMS) ou une collecte des feux de plus de 2 jours, gardée après une erreur, ne compte
+   * plus ; un relevé des séismes en retard ou une couche des épisodes en panne ou en retard non plus. Un rafraîchissement les lit
    * une fois et les passe à ses consommateurs : un seul instant pour ces règles (revue m6).
    */
   private environmentInputs(now: number = Date.now()): EnvironmentInputs {
@@ -7280,7 +7281,7 @@ export class App {
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
-    // env : vigilance du jour et incidents des feux, mêmes entrées que le score (collecte des feux de plus de 2 jours écartée).
+    // env : vigilance du jour et incidents des feux, mêmes entrées que le score (carte en retard ou collecte FIRMS en retard écartées).
 
     // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
     // sinon repli sur les articles un par un.

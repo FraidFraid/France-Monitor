@@ -212,20 +212,65 @@ function mw(v: number): string {
 }
 
 /**
+ * Âge au-delà duquel une collecte des feux ne compte plus : 2 jours après sa lecture, comme le serveur qui ne la sert plus
+ * (api/_lib/fires-collect.js, LAST_TTL_SEC). Le client garde la collecte précédente après une erreur : un onglet resté ouvert
+ * compterait sinon de vieilles détections.
+ */
+export const FIRES_COLLECTION_MAX_AGE_MS = 2 * 86_400_000;
+
+/** Détections FIRMS d'une réponse : à l'heure, en retard (S2) ou indisponibles (S3). */
+export type FirmsState = 'ok' | 'late' | 'down';
+
+/**
+ * État des détections FIRMS à l'instant `now` : indisponibles sans collecte servie (readAt null) ; en retard 14 h après la
+ * dernière acquisition sur la zone ; indisponibles encore si la collecte a été lue il y a 2 jours ou plus (ou à une date
+ * illisible). Seul « ok » compte, pour la pastille, la carte des foyers et les entrées du score.
+ */
+export function firmsState(f: FiresResponse, now: number): FirmsState {
+  if (f.readAt === null) return 'down';
+  if (f.lastAcquisitionAt !== null && isEnvironmentDataLate('firms', f.lastAcquisitionAt, now)) return 'late';
+  const readAt = Date.parse(f.readAt);
+  return Number.isFinite(readAt) && now - readAt < FIRES_COLLECTION_MAX_AGE_MS ? 'ok' : 'down';
+}
+
+/** Météo des forêts d'une réponse : du jour, en retard (publication + 30 h), échue hors saison, ou indisponible. */
+type MdfState = 'ok' | 'late' | 'off' | 'down';
+
+function mdfState(fd: ForestDanger | null, now: number): MdfState {
+  if (fd === null) return 'down';
+  if (!forestDangerCurrent(fd, now)) return 'off';
+  return isEnvironmentDataLate('mdf', fd.publishedAt, now) ? 'late' : 'ok';
+}
+
+const FIRMS_DOWN_WORDS: Readonly<Record<Exclude<FirmsState, 'ok'>, string>> = { late: 'détections FIRMS en retard', down: 'détections FIRMS indisponibles' };
+const MDF_DOWN_WORDS: Readonly<Record<Exclude<MdfState, 'ok'>, string>> = {
+  late: 'météo des forêts en retard', off: 'météo des forêts hors saison', down: 'météo des forêts indisponible',
+};
+
+/** Raison du n.d. : les deux sources indisponibles, chacune nommée ; « niveau suspendu » quand l'une n'est qu'en retard. */
+function firesNdReason(firms: Exclude<FirmsState, 'ok'>, mdf: Exclude<MdfState, 'ok'>): string {
+  if (firms === 'down' && mdf === 'down') return 'FIRMS et météo des forêts indisponibles';
+  const firmsWords = firms === 'late' ? FIRMS_DOWN_WORDS.late : 'FIRMS indisponible';
+  const reason = `${firmsWords} ; ${MDF_DOWN_WORDS[mdf]}`;
+  return firms === 'late' || mdf === 'late' ? `niveau suspendu : ${reason}` : reason;
+}
+
+/**
  * Pastille Feux (§ 2.4) : rouge si un département est au niveau 4 en J1 ou un foyer majeur (isMajorFoyer) ; orange si niveau 3 ou
  * foyer confirmé non récurrent d'au moins 10 MW (arbitrage 14 du contrôleur) ; jaune si niveau 2, foyer confirmé plus petit ou
- * détection isolée non récurrente en France ; vert sinon ; n.d. si FIRMS (readAt null) et météo des forêts (null) sont en panne.
- * La météo des forêts ne compte que si forestDangerCurrent. La raison réunit les causes du niveau retenu (« ; »). Le 04/10 :
+ * détection isolée non récurrente en France ; vert sinon. Une source en retard compte comme indisponible (S2) : FIRMS en retard ou
+ * en panne (firmsState), météo des forêts absente, échue hors saison ou en retard. n.d. seulement si les deux sont indisponibles ;
+ * sinon l'autre colore seule la pastille et la panne ou le retard est nommé dans la raison. Seule fonction de la pastille : panneau,
+ * part « Feux » de la tuile « Météo » (environment-inputs.ts). La raison réunit les causes du niveau retenu (« ; »). Le 04/10 :
  * 10 départements au niveau 2 et trois foyers confirmés de 1,24 à 3,91 MW donnent jaune, comme la vérification de la spec.
  */
 export function firesLevel(f: FiresResponse, now: number): LevelVerdict {
   const fd = f.forestDanger;
-  if (f.readAt === null && fd === null) return { level: 'nd', reason: 'FIRMS et météo des forêts indisponibles' };
-  const fdCurrent = fd !== null && forestDangerCurrent(fd, now);
-  // FIRMS en panne et météo des forêts échue (hors saison) : aucune donnée qui vaille, jamais un vert par défaut.
-  if (f.readAt === null && !fdCurrent) return { level: 'nd', reason: 'FIRMS indisponible ; météo des forêts hors saison' };
+  const firms = firmsState(f, now);
+  const mdf = mdfState(fd, now);
+  if (firms !== 'ok' && mdf !== 'ok') return { level: 'nd', reason: firesNdReason(firms, mdf) };
   const causes: Array<{ level: VigilanceLevel; text: string }> = [];
-  if (f.readAt !== null) {
+  if (firms === 'ok') {
     const active = f.foyers.filter((x) => !x.recurrent);
     const major = active.filter(isMajorFoyer);
     const confirmed = active.filter((x) => foyerLevel(x) === 'orange');
@@ -244,7 +289,7 @@ export function firesLevel(f: FiresResponse, now: number): LevelVerdict {
       causes.push({ level: 'jaune', text: isolated.length > 1 ? `${isolated.length} détections isolées en France` : 'une détection isolée en France' });
     }
   }
-  if (fd !== null && fdCurrent) {
+  if (fd !== null && mdf === 'ok') {
     const max = maxForestDanger(fd);
     if (max >= 2) {
       const at = fd.departments.filter((d) => d.j1 === max);
@@ -255,16 +300,14 @@ export function firesLevel(f: FiresResponse, now: number): LevelVerdict {
   const rank: Readonly<Record<VigilanceLevel, number>> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
   const top = causes.reduce<VigilanceLevel>((m, c) => (rank[c.level] > rank[m] ? c.level : m), 'vert');
   if (top !== 'vert') {
-    // Une source en panne se voit même quand l'autre colore la pastille (S3).
-    const outage = f.readAt === null ? ['détections FIRMS indisponibles'] : fd === null ? ['météo des forêts indisponible'] : [];
+    // Une source en panne ou en retard se voit même quand l'autre colore la pastille (S2, S3) ; hors saison n'est pas une panne.
+    const outage = firms !== 'ok' ? [FIRMS_DOWN_WORDS[firms]] : mdf === 'down' || mdf === 'late' ? [MDF_DOWN_WORDS[mdf]] : [];
     return { level: top, reason: [...causes.filter((c) => c.level === top).map((c) => c.text), ...outage].join(' ; ') };
   }
-  if (f.readAt === null) return { level: 'vert', reason: 'danger faible ; FIRMS indisponible' };
+  if (firms !== 'ok') return { level: 'vert', reason: `danger faible ; ${firms === 'late' ? FIRMS_DOWN_WORDS.late : 'FIRMS indisponible'}` };
   const recurrent = f.foyers.filter((x) => x.recurrent).length;
   const noFoyer = `aucun foyer en France${recurrent > 0 ? ` hors ${recurrent} source${recurrent > 1 ? 's' : ''} récurrente${recurrent > 1 ? 's' : ''} à vérifier` : ''}`;
-  if (fd === null) return { level: 'vert', reason: `${noFoyer} ; météo des forêts indisponible` };
-  if (!fdCurrent) return { level: 'vert', reason: `${noFoyer} ; météo des forêts hors saison` };
-  return { level: 'vert', reason: `${noFoyer}, danger faible` };
+  return { level: 'vert', reason: mdf === 'ok' ? `${noFoyer}, danger faible` : `${noFoyer} ; ${MDF_DOWN_WORDS[mdf]}` };
 }
 
 // ─── Phase B (tâche 20) : sécheresse, qualité de l'air, séismes ───

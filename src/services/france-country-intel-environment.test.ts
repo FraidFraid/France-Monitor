@@ -4,7 +4,10 @@
 // 04/10 : vigilance (2 départements orange, 0 rouge), crues (4 tronçons jaunes), feux (3 foyers confirmés non récurrents, aciérie de
 // Dunkerque et Fos-sur-Mer récurrentes).
 import { describe, expect, it } from 'vitest';
+import { domainTiles } from '../components/france-intel-blocks.ts';
+import { buildCruesView } from '../components/layer-panel/crues.ts';
 import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FLOODS_FIXTURE, VIGILANCE_FIXTURE } from '../components/layer-panel/environment.fixture.ts';
+import { buildVigilanceView } from '../components/layer-panel/vigilance.ts';
 import type { LocatedFireIncident } from '../types/index.ts';
 import { buildEnvironmentInputs } from './environment-inputs.ts';
 import { firesLevel } from './environment-levels.ts';
@@ -64,14 +67,15 @@ describe('entrées Environnement (adaptateurs purs)', () => {
   it('collecte des feux lue il y a plus de 2 jours (gardée par le client après une erreur) : détections, foyers et incidents absents', () => {
     const incident = { id: 'gironde-front' } as LocatedFireIncident;
     const readAt = Date.parse(FIRES_FIXTURE().readAt ?? '');
-    const old = buildEnvironmentInputs(VIGILANCE_FIXTURE(), FLOODS_FIXTURE(), FIRES_FIXTURE(), [incident], readAt + 2 * DAY_MS + MINUTE_MS);
+    // Sans acquisition datée, seule la règle des 2 jours écarte la collecte ; avec une acquisition datée, son retard de 14 h
+    // l'écarte bien avant (retard S2, vague finale, point 1 : voir plus bas).
+    const undated = { ...FIRES_FIXTURE(), lastAcquisitionAt: null };
+    const old = buildEnvironmentInputs(null, null, undated, [incident], readAt + 2 * DAY_MS + MINUTE_MS);
     expect([old.activeFires, old.fireFoyers, old.fireIncidents]).toEqual([[], [], []]);
-    // Seuls les feux sont écartés (et dits indisponibles) : vigilance et crues restent lues.
-    expect([old.meteoAlerts.length, old.floodSegments.length]).toEqual([7, 4]);
-    expect(old.environmentAvailable).toEqual({ vigilance: true, floods: true, fires: false });
+    expect(old.environmentAvailable).toEqual({ vigilance: false, floods: false, fires: false });
     // Collecte écartée = FIRMS en panne pour la pastille ; la météo des forêts du 04/10 est échue le 06/10 : n.d.
     expect(old.firesPillLevel).toBe('nd');
-    const recent = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [incident], readAt + 2 * DAY_MS - MINUTE_MS);
+    const recent = buildEnvironmentInputs(null, null, undated, [incident], readAt + 2 * DAY_MS - MINUTE_MS);
     expect([recent.activeFires.length > 0, recent.fireFoyers.length > 0, recent.fireIncidents]).toEqual([true, true, [incident]]);
     expect(recent.environmentAvailable.fires).toBe(true);
     const unread = buildEnvironmentInputs(null, null, { ...FIRES_FIXTURE(), readAt: null }, [incident], ENV_FIXTURE_NOW);
@@ -127,5 +131,58 @@ describe('situations : WILDFIRE_ESCALATION et FLOOD_CRISIS inchangées, entrée 
     expect(incidents.every((i) => i.detectionsCount < MAJOR_FIRE_GATE.minDetections || i.frpTotal < MAJOR_FIRE_GATE.minFrpTotal)).toBe(true);
     const located = incidents.map((i) => ({ ...i, deptCodes: [], communes: [] }));
     expect(detectWildfireIncidents(raw({ fireIncidents: located }))).toEqual([]);
+  });
+});
+
+describe('retard (S2) : une source en retard compte comme indisponible, comme pour les panneaux (vague finale, point 1)', () => {
+  const HOUR_MS = 3_600_000;
+  const OPEN = (_: string, d: boolean): boolean => d;
+  /** Tuile « Météo » de bout en bout : entrées Environnement, signaux du score, tuiles. */
+  const meteoTile = (e: ReturnType<typeof buildEnvironmentInputs>) => domainTiles(buildFranceSignals(raw({ ...e })), 'fr').find((x) => x.label === 'Météo');
+
+  it('carte de vigilance de 20 h : panneau n.d., vigilance indisponible, aucune alerte (moniteur, score), tuile « Vigilance n.d. » gris', () => {
+    const now = Date.parse(VIGILANCE_FIXTURE().updateTime ?? '') + 20 * HOUR_MS;
+    const panel = buildVigilanceView({
+      vigilance: VIGILANCE_FIXTURE(), vigilanceError: null, seaLevels: null, seaLevelsError: null, echeance: 'J', selectedDept: null, canFocus: true, now, open: OPEN,
+    });
+    expect(panel.head.level).toBe('nd');
+    const e = buildEnvironmentInputs(VIGILANCE_FIXTURE(), null, null, [], now);
+    expect([e.environmentAvailable.vigilance, e.meteoAlerts]).toEqual([false, []]);
+    expect(meteoTile(e)?.parts?.[0]).toEqual({ label: 'Vigilance', value: null, level: null });
+    // 14 h après la carte : encore à l'heure, les 7 départements comptent.
+    const onTime = buildEnvironmentInputs(VIGILANCE_FIXTURE(), null, null, [], now - 6 * HOUR_MS);
+    expect([onTime.environmentAvailable.vigilance, onTime.meteoAlerts.length]).toEqual([true, 7]);
+  });
+
+  it('relevé Vigicrues de 40 min : panneau n.d., crues indisponibles, aucun tronçon au score, tuile « Crues n.d. » gris', () => {
+    const now = Date.parse(FLOODS_FIXTURE().readAt ?? '') + 40 * MINUTE_MS;
+    const panel = buildCruesView({ floods: FLOODS_FIXTURE(), floodsError: null, canFocus: true, now, open: OPEN });
+    expect(panel.head.level).toBe('nd');
+    const e = buildEnvironmentInputs(null, FLOODS_FIXTURE(), null, [], now);
+    expect([e.environmentAvailable.floods, e.floodSegments]).toEqual([false, []]);
+    expect(meteoTile(e)?.parts?.[1]).toEqual({ label: 'Crues', value: null, level: null });
+    const onTime = buildEnvironmentInputs(null, FLOODS_FIXTURE(), null, [], now - 20 * MINUTE_MS);
+    expect([onTime.environmentAvailable.floods, onTime.floodSegments.length]).toEqual([true, 4]);
+  });
+
+  it('FIRMS de 15 h : détections, foyers et incidents absents, feux indisponibles ; la météo des forêts du jour colore seule la part « Feux »', () => {
+    const now = Date.parse(FIRES_FIXTURE().lastAcquisitionAt ?? '') + 15 * HOUR_MS;
+    const incident = { id: 'gironde-front' } as LocatedFireIncident;
+    const e = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [incident], now);
+    expect([e.activeFires, e.fireFoyers, e.fireIncidents, e.environmentAvailable.fires]).toEqual([[], [], [], false]);
+    // Même pastille que le panneau (firesLevel) : 10 départements au niveau 2, retard FIRMS nommé.
+    expect(firesLevel(FIRES_FIXTURE(), now)).toEqual({ level: 'jaune', reason: 'danger modéré aujourd’hui : 10 départements ; détections FIRMS en retard' });
+    expect(e.firesPillLevel).toBe('jaune');
+    expect(meteoTile(e)?.parts?.[2]).toEqual({ label: 'Feux', value: null, level: 'medium' });
+  });
+
+  it('les trois en retard : le score voit des listes vides, sans recalibrage', () => {
+    const now = Date.parse('2026-10-05T04:30:00Z');
+    const late = buildEnvironmentInputs(VIGILANCE_FIXTURE(), FLOODS_FIXTURE(), FIRES_FIXTURE(), [], now);
+    expect(late.environmentAvailable).toEqual({ vigilance: false, floods: false, fires: false });
+    const opts = { previousScore: null, now };
+    const withLate = buildFranceCountrySnapshot(raw({ ...late }), opts);
+    const empty = buildFranceCountrySnapshot(raw(), opts);
+    expect([withLate.score, withLate.scoreBreakdown]).toEqual([empty.score, empty.scoreBreakdown]);
   });
 });
