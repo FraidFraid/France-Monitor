@@ -82,9 +82,11 @@ describe('vue Défense (spec 2026-10-04 souveraineté § 2.1)', () => {
   it('sections dans l’ordre du contrat ; urgences repliées sans urgence ; méthode en ton de référence', () => {
     const v = view();
     expect(v.sections.map((s) => [s.id, s.open ?? false])).toEqual([
-      ['vigipirate', true], ['aeronefs', true], ['urgences', false], ['marine', false], ['sites', false], ['methode', false],
+      ['vigipirate', true], ['aeronefs', true], ['urgences', false], ['gnss', true], ['marine', false], ['sites', false], ['gels', false], ['methode', false],
     ]);
     expect(v.sections.at(-1)?.tone).toBe('reference');
+    // Entrées de la phase A (sans grille GNSS ni registre) : les deux sections de la phase B restent en « chargement… ».
+    expect(v.sections.filter((s) => s.id === 'gnss' || s.id === 'gels').map((s) => s.summary)).toEqual(['chargement…', 'chargement…']);
   });
 });
 

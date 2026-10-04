@@ -6,7 +6,10 @@
 // hors score), vérifiée par la relecture quotidienne de la page officielle (O14) ; Marine nationale vue en AIS, les autres bâtiments
 // à leur port base comme position de référence (V1, S2), sans sous-marin (O11) ; sites de la liste interne (O13). Chaque partie porte
 // la date de sa donnée (S1) ; une panne se voit (S3) ; une absence n'est jamais un calme.
-import type { MilitaryAircraft, MilitaryBase, MilitaryDeptCount, MilitaryEmergency, MilitaryResponse, OsmFileMeta, Squawk, VigipiratePageCheck } from '../../types/index.ts';
+import type {
+  DroneZonesFile, GnssResponse, MilitaryAircraft, MilitaryBase, MilitaryDeptCount, MilitaryEmergency, MilitaryResponse, OsmFileMeta, SanctionsResponse, Squawk,
+  VigipiratePageCheck,
+} from '../../types/index.ts';
 import { VIGIPIRATE_LABEL, VIGIPIRATE_RANK_LABEL, VIGIPIRATE_SOURCE_LABEL, type VigipirateEntry } from '../../config/vigipirate.ts';
 import {
   MILITARY_FIGURE_LABEL, defenseLevel, isSovereigntyDataLate, militaryCounts, militaryEmergencyLevel, vigipirateAlertEnd,
@@ -20,6 +23,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { stackedDayBars, type DayStack } from './chart.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
+import { withDefenseB } from './defense-b.ts';
 import { departementName } from './health-format.ts';
 import { frozenWord, homonymKeys, navyLiveState, shipRow, splitNavy, type NavyLiveInput, type NavyLiveState } from './navy.ts';
 import {
@@ -35,6 +39,8 @@ export const DEFENSE_TITLE = 'Défense';
 export interface DefenseSitesSummary {
   curated: { total: number; byType: Readonly<Record<MilitaryBase['type'], number>>; overseas: number; abroad: number };
   osm: { meta: (OsmFileMeta & { count: number }) | null; error: string | null; shown: boolean };
+  /** Phase B (tâche B25) : zones drones de la DGAC ; absent ou null : section des sites sans leur bloc. */
+  drones?: { meta: Omit<DroneZonesFile, 'zones'> | null; error: string | null; shown: boolean } | null;
 }
 
 /** Entrée de la vue ; la phase B y ajoute la grille GNSS et le registre des gels (B25). */
@@ -50,6 +56,9 @@ export interface DefenseViewInput {
   /** État AIS du serveur (relevé des câbles) : `evaluated: false` dit « AIS indisponible » dans la section Marine nationale. */
   aisRelay: { evaluated: boolean; lastMessageAt: string | null } | null;
   sites: DefenseSitesSummary;
+  /** Phase B (tâche B25) : grille GNSS et météo spatiale, registre des gels ; absents : sections en « chargement… ». */
+  gnss?: GnssResponse | null; gnssError?: string | null;
+  sanctions?: SanctionsResponse | null; sanctionsError?: string | null;
   canFocus: boolean; now: number; open: OpenFn;
 }
 
@@ -464,7 +473,7 @@ function methodSection(input: DefenseViewInput): FicheSection {
 
 // ─── Assemblage ───
 
-export function buildDefenseView(input: DefenseViewInput): LayerView {
+function buildDefenseViewA(input: DefenseViewInput): LayerView {
   const { military: m, militaryError, vigipirate, now } = input;
   const notices = noticesOf(input);
   const underBadge = noticesHtml(notices, vigipirateAlertEndPassed(vigipirate, now));
@@ -490,4 +499,12 @@ export function buildDefenseView(input: DefenseViewInput): LayerView {
   }
   const bodyHtml = underBadge + (militaryError !== null ? adsbErrorCallout(dataMs(m.readAt), now) : '');
   return { head: headOf(input, m), sections, ...(bodyHtml !== '' ? { bodyHtml } : {}) };
+}
+
+/**
+ * Panneau Défense complet (contrats § 4.1) : vue de la phase A, puis ajouts de la phase B (defense-b.ts) : sections GNSS et Sanctions,
+ * zones drones dans « Sites de défense », méthode, pastille avec le compte de mailles à précision dégradée.
+ */
+export function buildDefenseView(input: DefenseViewInput): LayerView {
+  return withDefenseB(buildDefenseViewA(input), input);
 }
