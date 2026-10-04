@@ -18,7 +18,7 @@ import {
 import { CAT_SECHERESSE_VIGILANCE_HEX, DROUGHT_UNAVAILABLE_HEX, ENV_NEUTRAL_HEX, QUAKE_ABROAD_HEX, QUAKE_WEAK_HEX } from '../layer-panel/environment-legend.ts';
 import { CAT_PORT_HEX } from '../layer-panel/traffic-legend.ts';
 import {
-  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_QUAKE_LABEL, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
+  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_QUAKE_LABEL, LYR_TELECOM_PTS, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
   SRC_QUAKES, SRC_TIDE_GAUGES,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
@@ -223,3 +223,45 @@ export const ENV_B_LAYER_KEYS: Readonly<Record<'drought' | 'airQuality' | 'earth
   airQuality: [LYR_AIR_FILL, LYR_AIR_LINE],
   earthquakes: [LYR_QUAKES, LYR_QUAKE_LABEL],
 };
+
+// ─── Réaffichage (S2) ───
+
+/** Dernières réponses reçues par les couches de la phase B (gardées même couche masquée). */
+export interface EnvBData {
+  drought: DroughtResponse | null;
+  air: AirQualityResponse | null;
+  quakes: EarthquakesResponse | null;
+  seaLevels: SeaLevelsResponse | null;
+  vigilance: VigilanceResponse | null;
+}
+
+export type EnvBLayerState = Partial<Record<'drought' | 'airQuality' | 'earthquakes' | 'environmental', boolean>>;
+
+/**
+ * Sources à repeindre quand une couche passe de masquée à visible : couleurs recalculées avec l'horloge courante (S2), une donnée
+ * devenue en retard pendant que la couche était masquée repasse neutre. Les marégraphes suivent la couche Vigilance météo.
+ * Départements fournis par l'appelant (null : pas encore lus, sources départementales laissées telles quelles).
+ */
+export function envBReshowPaints(
+  was: EnvBLayerState, layers: EnvBLayerState, data: EnvBData, geo: GeoJSON.FeatureCollection | null, now: number,
+): Array<{ source: string; data: GeoJSON.FeatureCollection }> {
+  const shown = (k: keyof EnvBLayerState): boolean => (layers[k] ?? false) && !(was[k] ?? false);
+  const out: Array<{ source: string; data: GeoJSON.FeatureCollection }> = [];
+  if (shown('drought') && geo && data.drought) out.push({ source: SRC_DROUGHT, data: droughtDeptFeatures(geo, data.drought, now) });
+  if (shown('airQuality') && geo && data.air) out.push({ source: SRC_AIR_QUALITY, data: airDeptFeatures(geo, data.air, now) });
+  if (shown('earthquakes') && data.quakes) out.push({ source: SRC_QUAKES, data: quakeFeatures(data.quakes, now) });
+  if (shown('environmental') && data.seaLevels) out.push({ source: SRC_TIDE_GAUGES, data: tideGaugeFeatures(data.seaLevels, data.vigilance, now) });
+  return out;
+}
+
+/** Couche sous laquelle placer les points de la phase B : la première couche de points ajoutée après la dernière surface (fills) de la carte. */
+export const ENV_B_POINTS_ANCHOR = LYR_TELECOM_PTS;
+
+/**
+ * Place séismes et marégraphes (et l'étiquette des séismes) sous l'ancre, donc au-dessus de toutes les surfaces (tension carburants,
+ * zones militaires, citoyen, réseau électrique) quand elles sont actives. À appeler une fois l'ancre ajoutée à la carte.
+ */
+export function placeEnvBPoints(map: { getLayer(id: string): unknown; moveLayer(id: string, before?: string): unknown }): void {
+  if (!map.getLayer(ENV_B_POINTS_ANCHOR)) return;
+  for (const l of ENV_B_POINT_LAYERS) if (map.getLayer(l.id)) map.moveLayer(l.id, ENV_B_POINTS_ANCHOR);
+}

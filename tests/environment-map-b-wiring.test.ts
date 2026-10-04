@@ -28,4 +28,11 @@ describe('carte de la phase B', () => {
     for (const part of ['this.deckMap?.updateDroughtLayer(d, now)', 'this.deckMap?.updateAirQualityLayer(a, now)', 'this.deckMap?.updateEarthquakesLayer(q, now)',
       'this.deckMap?.updateSeaLevelsLayer(s, v, now)']) expect(container).toContain(part);
   });
+  it('DeckGLMap garde les réponses de la phase B, les repeint au réaffichage et place les points après la dernière surface', () => {
+    for (const part of ['this.envB.drought = d;', 'this.envB.air = a;', 'this.envB.quakes = q;', 'this.envB.seaLevels = s;', 'this.envB.vigilance = v;',
+      'envBReshowPaints(was, layers, this.envB, geo, Date.now())', 'void this.repaintEnvironmentBOnShow(was, layers);', 'placeEnvBPoints(this.map);']) {
+      expect(deck).toContain(part);
+    }
+    expect(deck.indexOf('id: LYR_POWER_FILL')).toBeLessThan(deck.indexOf('placeEnvBPoints(this.map);'));
+  });
 });

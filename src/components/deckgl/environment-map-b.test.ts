@@ -12,7 +12,7 @@ import {
 import { NBSP } from '../layer-panel/format.ts';
 import {
   ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_KEYS, ENV_B_POINT_LAYERS, ENV_B_SOURCE_IDS, airDeptFeatures, droughtDeptFeatures, quakeFeatures, quakeRadius,
-  tideGaugeFeatures,
+  tideGaugeFeatures, envBReshowPaints, placeEnvBPoints, type EnvBData,
 } from './environment-map-b.ts';
 import { ENV_HOVER_LAYERS, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, envTooltipHtml } from './environment-map.ts';
 import {
@@ -164,5 +164,62 @@ describe('légendes datées (S1, S2)', () => {
   it('jeton de la vigilance sécheresse : même valeur que main.css', () => {
     const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
     expect(css).toContain(`--cat-secheresse-vigilance: ${CAT_SECHERESSE_VIGILANCE_HEX};`);
+  });
+});
+
+describe('département indisponible et en retard (m4)', () => {
+  it('reste gris « donnée indisponible », jamais coloré ni neutre', () => {
+    const d: DroughtResponse = structuredClone(DROUGHT_FIXTURE);
+    const ain = d.departments.find((x) => x.dept === '01');
+    if (ain) Object.assign(ain, { available: false, max: null, superficielle: null, souterraine: null, potable: null });
+    const fc = droughtDeptFeatures(GEO, d, Date.parse('2026-10-05T13:00:00Z'));
+    expect(props(fc, 0)['color']).toBe(DROUGHT_UNAVAILABLE_HEX);
+    expect(String(props(fc, 0)['body'])).toContain('donnée indisponible');
+  });
+});
+
+describe('réaffichage à l’heure courante (S2)', () => {
+  const data: EnvBData = {
+    drought: DROUGHT_FIXTURE, air: AIR_FIXTURE, quakes: QUAKES_FIXTURE, seaLevels: SEA_LEVELS_FIXTURE, vigilance: null,
+  };
+  const LATE = Date.parse('2026-10-06T10:00:00Z');
+  const colors = (fc: GeoJSON.FeatureCollection): unknown[] => fc.features.map((f) => f.properties?.['color']);
+  it('sécheresse, air, séismes : masqué puis visible, couleurs neutres si la donnée est devenue en retard', () => {
+    const fresh = envBReshowPaints({}, { drought: true, airQuality: true, earthquakes: true }, data, GEO, NOW);
+    expect(fresh.map((p) => p.source)).toEqual([SRC_DROUGHT, 'air-quality-src', SRC_QUAKES]);
+    expect(colors(fresh[0].data)[0]).toBe('#ff3b30');
+    const late = envBReshowPaints({}, { drought: true, airQuality: true, earthquakes: true }, data, GEO, LATE);
+    expect(colors(late[0].data).slice(0, 3)).toEqual(['#c7c7cc', '#c7c7cc', '#c7c7cc']);
+    expect(colors(late[1].data).slice(0, 2)).toEqual(['#c7c7cc', '#c7c7cc']);
+    expect(new Set(colors(late[2].data))).toEqual(new Set(['#c7c7cc']));
+  });
+  it('marégraphes : repeints avec la couche Vigilance météo, neutres en retard', () => {
+    const late = envBReshowPaints({}, { environmental: true }, data, GEO, LATE);
+    expect(late.map((p) => p.source)).toEqual([SRC_TIDE_GAUGES]);
+    expect(new Set(colors(late[0].data))).toEqual(new Set(['#c7c7cc']));
+  });
+  it('couche déjà visible, ou donnée jamais reçue : rien à repeindre', () => {
+    expect(envBReshowPaints({ drought: true, earthquakes: true, environmental: true }, { drought: true, earthquakes: true, environmental: true }, data, GEO, LATE)).toEqual([]);
+    expect(envBReshowPaints({}, { drought: true, earthquakes: true, environmental: true },
+      { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null }, GEO, LATE)).toEqual([]);
+  });
+});
+
+describe('ordre des couches : points au-dessus de toutes les surfaces (risque 7)', () => {
+  it('séismes et marégraphes placés sous la première couche de points qui suit la dernière surface', () => {
+    const order = ['weather-fill', 'quakes', 'quakes-label', 'tide-gauges', 'fuel-tension-fill', 'military-zones-fill', 'citizen-fill', 'power-fill', 'telecom-pts'];
+    const map = {
+      getLayer: (id: string): unknown => (order.includes(id) ? {} : undefined),
+      moveLayer: (id: string, before?: string): void => {
+        order.splice(order.indexOf(id), 1);
+        order.splice(before ? order.indexOf(before) : order.length, 0, id);
+      },
+    };
+    placeEnvBPoints(map);
+    const at = (id: string): number => order.indexOf(id);
+    for (const surface of ['fuel-tension-fill', 'military-zones-fill', 'citizen-fill', 'power-fill']) {
+      for (const point of ['quakes', 'quakes-label', 'tide-gauges']) expect(at(point)).toBeGreaterThan(at(surface));
+    }
+    expect(at('tide-gauges')).toBeLessThan(at('telecom-pts'));
   });
 });

@@ -28,6 +28,7 @@ import { ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_BEFORE, ENV_B_POINT_LAY
 import { deptCodeToId, escapeHtml } from './format-utils.ts';
 
 export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';
+export { envBReshowPaints, placeEnvBPoints, type EnvBData, type EnvBLayerState } from './environment-map-b.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires';

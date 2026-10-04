@@ -37,7 +37,8 @@ import {
 import {
   ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
-  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints,
+  type EnvBData, type EnvBLayerState,
 } from './deckgl/environment-map.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
@@ -447,6 +448,8 @@ export class DeckGLMap {
   private envFires: FiresResponse | null = null;
   private envFiresNow = 0;
   private envFloods: FloodsResponse | null = null;
+  /** Dernières réponses de la phase B, gardées couche masquée pour le repeint à l'heure courante (S2). */
+  private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
   private _forestDangerFill = false;
   private _echoTopsEnabled = false;
   private radarPick: { lat: number; lon: number } | null = null;
@@ -2997,6 +3000,8 @@ export class DeckGLMap {
         'circle-stroke-color': '#0a0a0f',
       },
     });
+    // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
+    placeEnvBPoints(this.map);
 
     // ─── Internet / BGP outages ───
     // Glow ring for IODA outage events — couleur teal (cyan) pour distinguer d'internet
@@ -8978,6 +8983,7 @@ export class DeckGLMap {
 
   /** Sécheresse : niveau le plus haut des arrêtés par département (VigiEau) ; départements lus une fois (getDepartmentsGeojson). */
   async updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void> {
+    this.envB.drought = d;
     const geo = await this.getDepartmentsGeojson();
     if (!this.map) return;
     (this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now) : emptyFC());
@@ -8986,6 +8992,7 @@ export class DeckGLMap {
 
   /** Qualité de l'air : indice ATMO le plus haut du jour par département (palette L1). */
   async updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
+    this.envB.air = a;
     const geo = await this.getDepartmentsGeojson();
     if (!this.map) return;
     (this.map.getSource(SRC_AIR_QUALITY) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? airDeptFeatures(geo, a, now) : emptyFC());
@@ -8994,6 +9001,7 @@ export class DeckGLMap {
 
   /** Séismes des 7 derniers jours : cercles proportionnels à la magnitude. */
   updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
+    this.envB.quakes = q;
     if (!this.map) return;
     (this.map.getSource(SRC_QUAKES) as maplibregl.GeoJSONSource | undefined)?.setData(quakeFeatures(q, now));
     this.hideEnvironmentHover();
@@ -9001,6 +9009,8 @@ export class DeckGLMap {
 
   /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
   updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
+    this.envB.seaLevels = s;
+    this.envB.vigilance = v;
     if (!this.map) return;
     (this.map.getSource(SRC_TIDE_GAUGES) as maplibregl.GeoJSONSource | undefined)?.setData(tideGaugeFeatures(s, v, now));
     this.hideEnvironmentHover();
@@ -9099,6 +9109,18 @@ export class DeckGLMap {
       (this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource | undefined)?.setData(fireDetectionFeatures(this.envFires, this.envFiresNow));
       void this.paintForestDanger();
     }
+    void this.repaintEnvironmentBOnShow(was, layers);
+  }
+
+  /** Phase B réaffichée (sécheresse, qualité de l'air, séismes, marégraphes avec la vigilance) : repeinte à l'heure courante (S2). */
+  private async repaintEnvironmentBOnShow(was: EnvBLayerState, layers: EnvBLayerState): Promise<void> {
+    const needGeo = ((layers.drought ?? false) && !(was.drought ?? false)) || ((layers.airQuality ?? false) && !(was.airQuality ?? false));
+    const geo = needGeo ? await this.getDepartmentsGeojson() : null;
+    if (!this.map) return;
+    for (const p of envBReshowPaints(was, layers, this.envB, geo, Date.now())) {
+      (this.map.getSource(p.source) as maplibregl.GeoJSONSource | undefined)?.setData(p.data);
+    }
+    this.hideEnvironmentHover();
   }
 
   /** Clic sur un objet d'une autre couche interactive : le point du profil radar ne se pose que sur la carte vide ou l'image radar. */
