@@ -53,6 +53,7 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
     expect(DEFENSE_LEGEND.source?.label).toContain('Données adsb.lol, ODbL 1.0');
     expect(DEFENSE_LEGEND.source?.label).toContain('AIS : aisstream.io via le relais');
     expect(CONNECTIVITY_LEGEND.source?.label).toContain('© les contributeurs d’OpenStreetMap, ODbL 1.0');
+    expect(CONNECTIVITY_LEGEND.source?.label).toContain('Shom (CC BY-SA)');
     expect(text(CYBER_LEGEND)).toContain('Pas de lieu publié : voir le panneau');
     for (const c of [DEFENSE_LEGEND, CONNECTIVITY_LEGEND, CYBER_LEGEND]) {
       expect(text(c)).not.toMatch(/temps réel|ADS-B Exchange|Marine ?Traffic|SubmarineCableMap|Shodan|Censys|~\s?5 min|OpenSky|adsb\.fi|\u2014/i);
@@ -91,7 +92,7 @@ describe('légendes datées par la donnée (S1, S2)', () => {
   it('Connectivité : AIS à jour, fichier OSM daté ; veille non évaluée : sa cause dite (AIS muet, fichier illisible) ; jamais lue : indisponible', () => {
     const c = connectivityLegend(FILE, WATCH, NOW);
     expect(c.refresh?.label).toBe('AIS à jour 16:47');
-    expect(c.notes).toContain('Tracés OpenStreetMap (ODbL 1.0) du 04/10, précision non garantie.');
+    expect(c.notes).toContain('Tracés du Shom (CC BY-SA) et d’OpenStreetMap (ODbL 1.0) du 04/10, précision non garantie.');
     const mute = connectivityLegend(FILE, { ...WATCH, evaluated: false, aisLastMessageAt: '2026-10-04T14:41:00Z' }, NOW);
     expect(mute.refresh?.label).toBe('AIS muet depuis 16:41 : alertes non évaluées');
     expect(mute.notes).toContain('Veille non évaluée : navires signalés en gris, ni confirmés ni retirés.');

@@ -103,7 +103,7 @@ export function defenseLegend(m: MilitaryResponse | null, opts: { osmWorks: bool
 // ─── Connectivité ───
 
 const CONNECTIVITY_ITEMS: readonly LegendItem[] = [
-  { id: 'cable-header', label: 'Câbles télécom sous-marins (OpenStreetMap)', color: HEADER_HEX, isHeader: true },
+  { id: 'cable-header', label: 'Câbles télécom sous-marins (Shom, OpenStreetMap)', color: HEADER_HEX, isHeader: true },
   { id: 'cable-route', label: 'Tracé de câble', color: CABLE_HEX, icon: LINE },
   { id: 'cable-landing', label: 'Atterrage en France', color: LANDING_HEX, shape: 'circle', borderColor: '#ffffff', borderWidth: 2 },
   { id: 'vessel-header', label: 'Navires lents sur un câble (AIS)', color: HEADER_HEX, isHeader: true },
@@ -117,16 +117,16 @@ export const CONNECTIVITY_LEGEND: LegendCategory = {
   id: 'subseaCables',
   title: 'Connectivité',
   items: [...CONNECTIVITY_ITEMS],
-  source: { label: 'Câbles : © les contributeurs d’OpenStreetMap, ODbL 1.0 · AIS : aisstream.io via le relais', url: 'https://www.openstreetmap.org/copyright' },
+  source: { label: 'Câbles : Shom (CC BY-SA), © les contributeurs d’OpenStreetMap, ODbL 1.0 · AIS : aisstream.io via le relais', url: 'https://www.openstreetmap.org/copyright' },
   refresh: { label: `Veille du serveur toutes les 5${NBSP}min` },
-  notes: ['Tracés OpenStreetMap, précision non garantie ; câbles électriques non retenus.', PROXIMITY_NOTE],
+  notes: ['Tracés du Shom (CC BY-SA) et d’OpenStreetMap, précision non garantie ; câbles électriques non retenus.', PROXIMITY_NOTE],
 };
 
 /** Connectivité datée : « AIS à jour 16:47 », ou la cause d'une veille non évaluée (« AIS muet depuis hh:mm : alertes non évaluées ») ; fichier des câbles daté. */
 export function connectivityLegend(file: SubseaCablesFile | null, watch: CablesWatchResponse | null, now: number): LegendCategory {
   const generated = parse(file?.generatedAt);
   const fileNote = file !== null && generated !== null
-    ? `Tracés OpenStreetMap (ODbL 1.0) du ${dayMonth(generated)}, précision non garantie.`
+    ? `Tracés du Shom (CC BY-SA) et d’OpenStreetMap (ODbL 1.0) du ${dayMonth(generated)}, précision non garantie.`
     : 'Fichier des câbles illisible : tracés absents.';
   if (watch === null || watch.readAt === null) return copy(CONNECTIVITY_LEGEND, CONNECTIVITY_ITEMS, 'Veille des câbles indisponible', [fileNote, PROXIMITY_NOTE]);
   const ais = parse(watch.aisLastMessageAt);

@@ -299,6 +299,20 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
       level: 'nd', reason: 'non évalué · AIS muet depuis 16:42',
     });
   });
+  it('alerte « non évaluée (flux de la zone muet) » : ne colore jamais la pastille, ajoute une note ; une alerte évaluée garde sa couleur', () => {
+    const muted = alert({ confirmed: false, zoneMuted: true });
+    expect(cablesLevel(watch({ alerts: [muted] }), NOW)).toEqual({
+      level: 'vert', reason: `aucun navire lent à moins de 500${NBSP}m d’un câble ; 1${NBSP}alerte non évaluée (flux de la zone muet)`,
+    });
+    expect(cablesLevel(watch({ alerts: [alert({ zoneMuted: true })] }), NOW).level).toBe('vert');
+    expect(cablesLevel(watch({ alerts: [muted, alert({ id: 'b', confirmed: false, zoneMuted: false })] }), NOW)).toEqual({
+      level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : NAVIRE ESSAI (AMITIE) ; 1${NBSP}alerte non évaluée (flux de la zone muet)`,
+    });
+  });
+  it('câble du Shom sans nom : « câble télécom (Shom) » dans la raison', () => {
+    expect(cablesLevel(watch({ alerts: [alert({ cableId: 'shom/FR000013709500001', cableName: null })] }), NOW).reason)
+      .toBe(`1${NBSP}navire lent confirmé sur un câble, à vérifier : NAVIRE ESSAI (câble télécom (Shom))`);
+  });
   it(`relais jamais lu : n.d. ; relevé de plus de ${CABLES_WATCH_STALE_MIN} min : n.d.`, () => {
     expect(cablesLevel(watch({ readAt: null, aisLastMessageAt: null, evaluated: false }), NOW)).toEqual({ level: 'nd', reason: 'relais AIS jamais lu' });
     expect(cablesLevel(watch({ readAt: '2026-10-04T14:33:29.000Z' }), NOW)).toEqual({ level: 'nd', reason: 'non évalué · veille des câbles non relevée depuis 16:33' });

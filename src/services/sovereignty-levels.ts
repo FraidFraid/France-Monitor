@@ -226,7 +226,8 @@ export function cableAlertLevel(a: CableAlert, evaluated: boolean): VigilanceLev
 }
 
 function vesselWord(a: CableAlert): string {
-  return `${a.name ?? `MMSI ${a.mmsi}`} (${a.cableName ?? 'câble sans nom'})`;
+  const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom (Shom)' : 'câble sans nom');
+  return `${a.name ?? `MMSI ${a.mmsi}`} (${cable})`;
 }
 
 /**
@@ -246,15 +247,19 @@ export function cablesLevel(c: CablesWatchResponse, now: number): LevelVerdict {
   if (!Number.isFinite(readAt) || readAt + CABLES_WATCH_STALE_MIN * MINUTE_MS < now) {
     return { level: 'nd', reason: `non évalué · veille des câbles non relevée depuis ${clockOf(c.readAt)}` };
   }
-  const confirmed = c.alerts.filter((a) => a.confirmed);
+  // Une alerte « non évaluée (flux de la zone muet) » est gardée mais ne colore jamais la pastille : elle ajoute une note.
+  const muted = c.alerts.filter((a) => a.zoneMuted === true).length;
+  const mutedNote = muted > 0 ? `${plural(muted, 'alerte non évaluée', 'alertes non évaluées')} (flux de la zone muet)` : null;
+  const withNote = (reason: string): string => (mutedNote === null ? reason : `${reason} ; ${mutedNote}`);
+  const confirmed = c.alerts.filter((a) => a.confirmed && a.zoneMuted !== true);
   if (confirmed.length > 0) {
-    return { level: 'orange', reason: `${plural(confirmed.length, 'navire lent confirmé', 'navires lents confirmés')} sur un câble, à vérifier : ${vesselWord(confirmed[0])}` };
+    return { level: 'orange', reason: withNote(`${plural(confirmed.length, 'navire lent confirmé', 'navires lents confirmés')} sur un câble, à vérifier : ${vesselWord(confirmed[0])}`) };
   }
-  const once = c.alerts.filter((a) => !a.confirmed);
+  const once = c.alerts.filter((a) => !a.confirmed && a.zoneMuted !== true);
   if (once.length > 0) {
-    return { level: 'jaune', reason: `${plural(once.length, 'navire lent vu une fois', 'navires lents vus une fois')} sur un câble, à vérifier : ${vesselWord(once[0])}` };
+    return { level: 'jaune', reason: withNote(`${plural(once.length, 'navire lent vu une fois', 'navires lents vus une fois')} sur un câble, à vérifier : ${vesselWord(once[0])}`) };
   }
-  return { level: 'vert', reason: 'aucun navire lent à moins de 500\u00a0m d’un câble' };
+  return { level: 'vert', reason: withNote('aucun navire lent à moins de 500\u00a0m d’un câble') };
 }
 
 // ─── Vigilance cyber (spec § 2.3 ; amendement 7, O1 à O4) ───
