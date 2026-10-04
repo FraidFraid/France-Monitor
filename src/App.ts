@@ -99,6 +99,7 @@ import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } 
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
 import { buildEnvironmentInputs, servedAirEpisodes, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
+import { ENVIRONMENT_LATE_AFTER_MIN } from './services/environment-levels.ts';
 // Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
 // couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
 import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
@@ -218,7 +219,8 @@ const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien te
 const POLL_DROM_LIVE_MS               =  5 * 60_000; //  5 min  (EDF SEI temps réel, pas de 5 min)
 // Vigilance, crues, radar et feux : relèves de ENVIRONMENT_POLL_MS (src/config/environment-sources.ts), syncEnvironmentPolling.
 const POLL_MTG_FRP_MS                  = 10 * 60_000; // 10 min  (LSA SAF product cadence)
-const MTG_FRP_FRESHNESS_MS             = 45 * 60_000; // documented upper delivery latency
+// MTG-FRP : retard S2 de la spec environnement (observation + 60 min), constante unique de la tâche 1, jamais l'ancien seuil de 45 min.
+const MTG_FRP_LATE_MS                  = ENVIRONMENT_LATE_AFTER_MIN['mtg-frp'] * 60_000;
 const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
 const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (perturbations SNCF et situations SIRI SX ; cache client 4 min ; couche active, sans arrêt)
@@ -6815,7 +6817,7 @@ export class App {
     this.mtgFrpRequestInFlight = true;
     Watchdog.register('fire-mtg-frp', {
       label: 'MTG-FRP LSA SAF',
-      staleAfterMs: MTG_FRP_FRESHNESS_MS,
+      staleAfterMs: MTG_FRP_LATE_MS,
       detail: 'Produit de démonstration EUMETSAT LSA SAF',
     });
     Watchdog.report('fire-mtg-frp', { type: 'loading' });
@@ -6829,9 +6831,10 @@ export class App {
         this.latestMtgFrpMetadata = metadata;
       }
       const observedAt = Date.parse(metadata.observedAt);
-      // État dérivé de l'observation (démonstration), jamais « actif » codé : le panneau Feux le date.
+      // État dérivé de l'observation (démonstration), jamais « actif » codé : le panneau Feux le date et dit son retard à l'affichage
+      // (observation + 60 min, S2) ; « stale » (dernière valide gardée) est réservé à une lecture en échec.
       this.mtgFrpFeed = {
-        status: Date.now() - observedAt > MTG_FRP_FRESHNESS_MS ? 'stale' : 'ok',
+        status: 'ok',
         observedAt,
         fetchedAt: Date.now(),
         source: 'EUMETSAT LSA SAF',

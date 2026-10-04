@@ -5,7 +5,7 @@ import { firesLevel } from '../../services/environment-levels.ts';
 import { buildEnvironmentInputs } from '../../services/environment-inputs.ts';
 import { buildDossier } from '../../services/wildfire-dossier.ts';
 import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FIRE_IMPACTS_FIXTURE, RADAR_COLUMN_FIXTURE } from './environment.fixture.ts';
-import { envBreakable, glueEnvUnits } from './environment-format.ts';
+import { envBreakable, formatAge, glueEnvUnits } from './environment-format.ts';
 import { NBSP, breakableValue, visibleText } from './format.ts';
 import { renderLayerView } from './frame.ts';
 import { FEUX_TABS, FEUX_TITLE, buildFeuxView, mtgFrpState, type FeuxViewInput } from './feux.ts';
@@ -106,6 +106,14 @@ describe('vue Feux de forêt (spec 2026-10-04 environnement § 2.4)', () => {
     expect(mtgFrpState({ ...feed, status: 'error', observedAt: null }, NOW)).toBe('source indisponible');
     expect(mtgFrpState(null, NOW)).toBe('non lu');
     expect(html({ mtgFrp: feed, options: { ...OPTIONS, gibs: true, mtgFrp: true } })).not.toMatch(/\bACTIF\b/);
+  });
+  it('MTG-FRP : en retard 60 min après l’observation (constante S2 de la tâche 1), lu à l’affichage ; « dernière valide gardée » après un échec seulement', () => {
+    const observedAt = Date.parse('2026-10-04T07:50:00Z');
+    const feed: FireObservationFeedState = { status: 'ok', observedAt, fetchedAt: observedAt, source: 'EUMETSAT LSA SAF' };
+    expect(mtgFrpState(feed, observedAt + 50 * 60_000)).not.toContain('(en retard)');
+    const late = observedAt + 61 * 60_000;
+    expect(mtgFrpState(feed, late)).toBe(`observation 09:50 (${formatAge(observedAt, late)}) (en retard)`);
+    expect(mtgFrpState({ ...feed, status: 'stale' }, late)).toBe(`observation 09:50 (${formatAge(observedAt, late)}) (en retard), dernière valide gardée`);
   });
   it('hauteur du panache : module gardé dans chaque foyer, replié tant qu’il n’est pas demandé ; chargement, panne, profil daté (démonstration)', () => {
     const id = '48.5627_-1.7717_2026-10-04_0300_Suomi NPP';

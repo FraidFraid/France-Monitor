@@ -349,10 +349,15 @@ function observationOptions(input: FeuxViewInput): string {
     + listRow({ text: 'MTG-FRP (démonstration)', valueHtml: mtg, note: mtgFrpState(mtgFrp, now) });
 }
 
-/** État du produit MTG-FRP tiré de sa lecture (jamais « ACTIF » codé). */
+/**
+ * État du produit MTG-FRP tiré de sa lecture (jamais « ACTIF » codé) : « (en retard) » 60 min après l'observation (S2, constante de
+ * la tâche 1), lu à l'affichage ; « dernière valide gardée » seulement quand la dernière lecture a échoué (état 'stale').
+ */
 export function mtgFrpState(feed: FireObservationFeedState | null, now: number): string {
   if (feed === null) return 'non lu';
-  const observed = feed.observedAt === null ? null : `observation ${absoluteTime(feed.observedAt, now, 'fr')} (${formatAge(feed.observedAt, now)})`;
+  const late = feed.observedAt !== null && isEnvironmentDataLate('mtg-frp', new Date(feed.observedAt).toISOString(), now);
+  const observed = feed.observedAt === null ? null
+    : `observation ${absoluteTime(feed.observedAt, now, 'fr')} (${formatAge(feed.observedAt, now)})${late ? ' (en retard)' : ''}`;
   switch (feed.status) {
     case 'ok': return observed ?? 'observation sans date';
     case 'stale': return `${observed ?? 'observation sans date'}, dernière valide gardée`;
