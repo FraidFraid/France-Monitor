@@ -52,7 +52,7 @@ export function parseRoutingStatus(json, asn, name) {
   const v4 = d.visibility?.v4 ?? {};
   const v6 = d.visibility?.v6 ?? {};
   const [v4Seeing, v4Total, v6Seeing, v6Total] = [v4.ris_peers_seeing, v4.total_ris_peers, v6.ris_peers_seeing, v6.total_ris_peers].map(count);
-  if (v4Seeing === null || v6Seeing === null || !(v4Total > 0) || !(v6Total > 0)) throw new Error('visibilité non publiée');
+  if (v4Seeing === null || v6Seeing === null || !(v4Total > 0) || !(v6Total > 0) || v4Seeing > v4Total || v6Seeing > v6Total) throw new Error('visibilité non publiée');
   const v4Prefixes = count(d.announced_space?.v4?.prefixes);
   const v6Prefixes = count(d.announced_space?.v6?.prefixes);
   if (v4Prefixes === null || v6Prefixes === null) throw new Error('préfixes annoncés non publiés');

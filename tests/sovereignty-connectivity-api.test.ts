@@ -7,10 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests, readSeries } from '../api/_lib/kv-history.js';
 import {
-  MAJOR_NETWORKS, RIPE_SAMPLES_KEY, RIPE_SAMPLES_MAX_AGE_MS, __resetRipeForTests, ensureRipeFresh, parseRoutingStatus, routingStatusUrl,
+  MAJOR_NETWORKS, RIPE_PENDING_NOTE, RIPE_SAMPLES_KEY, RIPE_SAMPLES_MAX_AGE_MS, __resetRipeForTests, ensureRipeFresh, parseRoutingStatus, routingStatusUrl,
 } from '../api/_lib/ripestat.js';
 import { PEERINGDB_IX_URL, parseIx } from '../api/_lib/peeringdb.js';
-import handler, { CACHE_CONTROL } from '../api/_handlers/sovereignty/connectivity.js';
+import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL, loadConnectivity } from '../api/_handlers/sovereignty/connectivity.js';
 import type { ConnectivityResponse } from '../src/types/index.ts';
 import { type FakeResponse, callHandler, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -65,6 +65,8 @@ describe('RIPEstat routing-status', () => {
     expect(() => parseRoutingStatus({ ...free, data: { ...free.data, query_time: null } }, 12322, 'Free')).toThrow('instantané non daté');
     const zero = { ...free, data: { ...free.data, visibility: { v4: { ris_peers_seeing: 0, total_ris_peers: 0 }, v6: { ris_peers_seeing: 0, total_ris_peers: 0 } } } };
     expect(() => parseRoutingStatus(zero, 12322, 'Free')).toThrow('visibilité non publiée');
+    const over = { ...free, data: { ...free.data, visibility: { v4: { ris_peers_seeing: 326, total_ris_peers: 325 }, v6: { ris_peers_seeing: 314, total_ris_peers: 314 } } } };
+    expect(() => parseRoutingStatus(over, 12322, 'Free')).toThrow('visibilité non publiée');
   });
 });
 
@@ -160,6 +162,27 @@ describe('route GET /api/sovereignty/connectivity', () => {
     const down = await callHandler<ConnectivityResponse>(handler);
     expect([down.status, down.cache, down.body.snapshotAt, down.body.exchanges]).toEqual([502, 'no-store', null, null]);
     expect(down.body.errors).toContain('PeeringDB : HTTP 503');
+  });
+  it('PeeringDB en panne, RIPEstat lu : 200 partiel, six réseaux, annuaire nul et panne nommée', async () => {
+    sources('2026-10-04T08:00:00', (url) => (url === PEERINGDB_IX_URL ? respond('indisponible', 503) : null));
+    const { status, body } = await callHandler<ConnectivityResponse>(handler);
+    expect([status, body.networks.length, body.exchanges, body.errors]).toEqual([200, 6, null, ['PeeringDB : HTTP 503']]);
+  });
+  it('échéance de la route : relevé gardé servi avec la note, cache de 60 s, réseaux non lus sans panne, PeeringDB en retard nommé', async () => {
+    sources();
+    await ensureRipeFresh(NOW - 2 * H);
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    __resetSwrCacheForTests();
+    const b = await loadConnectivity(NOW, { budgetMs: 20 });
+    expect(b.errors).toEqual([RIPE_PENDING_NOTE, 'PeeringDB : délai dépassé (échéance de la route)']);
+    expect([b.networks.length, b.unread]).toEqual([6, []]);
+    expect(PENDING_CACHE_CONTROL).toBe('s-maxage=60, stale-while-revalidate=120');
+  });
+  it('première lecture sans relevé gardé, RIPEstat et PeeringDB trop lents : 502 no-store, six non lus sans panne, causes nommées dans errors', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const b = await loadConnectivity(NOW, { budgetMs: 20 });
+    expect([b.networks.length, b.unread?.length, b.unread?.every((u) => u.error === null), b.snapshotAt, b.exchanges]).toEqual([0, 6, true, null, null]);
+    expect(b.errors).toEqual([RIPE_PENDING_NOTE, 'PeeringDB : délai dépassé (échéance de la route)']);
   });
   it('aucun fetch direct dans les modules du lot', () => {
     for (const file of ['ripestat.js', 'peeringdb.js']) {
