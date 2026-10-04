@@ -594,7 +594,8 @@ export class PosteSituation {
       ? item.ref.situation
       : data.snapshot.situations.find((s) => `situation:${s.id}` === ficheKey);
     if (action === 'dossier' && situation) {
-      // « Voir l'aéronef » vole vers l'appareil sur la carte ; le dossier d'incendie est une fenêtre.
+      // « Voir l'aéronef » vole vers l'appareil sur la carte ; le dossier d'incendie s'ouvre dans l'onglet « Dossier d'un feu » du
+      // panneau Feux de forêt.
       if (situation.type === 'MILITARY_SURGE_ALERT') this.revealMap();
       this.callbacks.onOpenDossier(situation);
       return;

@@ -342,6 +342,20 @@ export class MapLegend {
 
     /** Ajoute une catégorie de légende */
     addCategory(category: LegendCategory): void {
+        this.upsertCategory(category);
+        this.update();
+    }
+
+    /**
+     * Ajoute ou remplace plusieurs catégories (par identifiant, visibilité donnée sinon gardée) puis reconstruit la légende une seule
+     * fois : légendes datées rafraîchies ensemble à chaque bascule de couche ou lecture.
+     */
+    setCategories(categories: readonly LegendCategory[]): void {
+        for (const category of categories) this.upsertCategory(category);
+        this.update();
+    }
+
+    private upsertCategory(category: LegendCategory): void {
         const existing = this.categories.findIndex(c => c.id === category.id);
         if (existing >= 0) {
             const previous = this.categories[existing];
@@ -352,7 +366,6 @@ export class MapLegend {
         } else {
             this.categories.push({ ...category, visible: category.visible ?? false });
         }
-        this.update();
     }
 
     /** Met à jour la visibilité d'un item */

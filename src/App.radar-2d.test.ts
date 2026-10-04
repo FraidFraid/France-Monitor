@@ -41,7 +41,8 @@ describe('App : manifeste radar Météo-France', () => {
     fetchRadar2dManifest.mockResolvedValue({ configured: true, degraded: false, manifest: MANIFEST });
     const { app, load, updateSource, setEchoTopsOverlay, overlay, panelUpdate } = radarApp(async () => undefined);
     await load();
-    expect(fetchRadar2dManifest).toHaveBeenCalledWith(true);
+    // Ouverture du panneau, puce, sommets d'écho : lecture par le cache de 2 min du service (jamais forcée).
+    expect(fetchRadar2dManifest).toHaveBeenCalledWith(false);
     expect(overlay).toHaveBeenCalledWith(MANIFEST, false);
     expect(setEchoTopsOverlay).toHaveBeenCalledWith(MANIFEST, true);
     expect(updateSource).toHaveBeenCalledWith('Radar Météo-France', expect.objectContaining({ lastUpdate: new Date('2026-10-04T08:05:00Z') }));
@@ -63,5 +64,25 @@ describe('App : manifeste radar Météo-France', () => {
     await load();
     expect(overlay).toHaveBeenCalledWith(null, false);
     expect(updateSource).toHaveBeenCalledWith('Radar Météo-France', expect.objectContaining({ status: 'error', error: 'worker radar non configuré' }));
+  });
+
+  it('seule la relève périodique force la lecture réseau du manifeste (ouverture du panneau : cache du service)', async () => {
+    fetchRadar2dManifest.mockResolvedValue({ configured: true, degraded: false, manifest: MANIFEST });
+    const { app } = radarApp(async () => undefined);
+    let tick: (() => void) | null = null;
+    const registerPausableInterval = vi.fn((fn: () => void) => { tick = fn; return { id: 1 }; });
+    Object.assign(app, { activeLayers: { weatherRadar: true, fires: false }, environmentPolls: {}, registerPausableInterval });
+    const env = app as unknown as {
+      syncEnvironmentPolling: (key: 'weatherRadar') => void; loadEnvironmentSource: (key: 'weatherRadar') => Promise<void>;
+    };
+
+    await env.loadEnvironmentSource('weatherRadar');
+    expect(fetchRadar2dManifest).toHaveBeenLastCalledWith(false);
+
+    env.syncEnvironmentPolling('weatherRadar');
+    expect(registerPausableInterval).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    (tick as unknown as () => void)();
+    await vi.waitFor(() => expect(fetchRadar2dManifest).toHaveBeenLastCalledWith(true));
+    expect(fetchRadar2dManifest).toHaveBeenCalledTimes(2);
   });
 });

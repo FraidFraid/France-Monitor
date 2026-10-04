@@ -1,19 +1,24 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it, vi } from 'vitest';
-import type { FireDetection, FiresResponse, LocatedFireIncident } from './types/index.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DetectedSituation, FireDetection, FiresResponse, LocatedFireIncident } from './types/index.ts';
 import type { FiresState } from './services/environment-fires.ts';
 import { PressAlertSource } from './services/press-alert-source.ts';
 
-const { fetchFires, resolveIncidentGeography } = vi.hoisted(() => ({
+const { fetchFires, fetchFireImpacts, resolveIncidentGeography, enrichWithLlm } = vi.hoisted(() => ({
   fetchFires: vi.fn(),
+  fetchFireImpacts: vi.fn(async () => ({ data: null, error: null })),
   resolveIncidentGeography: vi.fn(),
+  enrichWithLlm: vi.fn(async (d: unknown) => d),
 }));
 
 vi.mock('./services/environment-fires.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./services/environment-fires.ts')>()),
   fetchFires,
+  fetchFireImpacts,
 }));
+
+vi.mock('./services/wildfire-enrich.ts', () => ({ enrichWithLlm }));
 
 vi.mock('./services/incident-geography.ts', () => ({
   resolveIncidentGeography,
@@ -129,5 +134,60 @@ describe('App : alertes grands feux', () => {
       (app as unknown as { currentFireIncidents: LocatedFireIncident[] }).currentFireIncidents,
     ).toEqual([locatedIncident]);
     expect(firesUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ incidents: [locatedIncident] }));
+  });
+});
+
+describe('App : dossier d’un grand feu ouvert depuis une situation (onglet du panneau Feux)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    localStorage.clear();
+  });
+
+  function dossierApp(incidents: LocatedFireIncident[]) {
+    const app = appForAlerts(incidents);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const hideAllFloatingPanels = vi.fn();
+    // Couche Feux jamais activée : ni panneau, ni collecte lue (cas par défaut en v2).
+    Object.assign(app, {
+      floatContainerEl: container, firesPanel: null, firesPanelPromise: null, mapContainer: null, activeLayers: { fires: false },
+      currentFires: null, forestDangerFill: false, radarManifest: null, mtgFrpFeed: null, gibsEnabled: false, mtgFrpEnabled: false,
+      echoTopsEnabled: false, currentFloatingPanelId: null, hideAllFloatingPanels, refreshFloatingPanelSwitcher: vi.fn(),
+    });
+    const open = (incidentId: string): boolean => (
+      app as unknown as { openAlertDossier: (s: DetectedSituation) => boolean }
+    ).openAlertDossier({ type: 'WILDFIRE_ESCALATION', id: `wildfire-${incidentId}` } as DetectedSituation);
+    const dossierTab = (): string | null | undefined =>
+      container.querySelector('.fires-panel-modal.is-open [data-tab="dossier"]')?.getAttribute('aria-selected');
+    return { app, container, hideAllFloatingPanels, open, dossierTab };
+  }
+
+  it('couche Feux jamais activée : panneau créé à la demande, état donné d’abord, onglet Dossier ouvert sur l’incident', async () => {
+    const { app, hideAllFloatingPanels, open, dossierTab } = dossierApp([incident()]);
+
+    expect(open('gironde-front')).toBe(true);
+    await vi.waitFor(() => expect(dossierTab()).toBe('true'));
+
+    expect(hideAllFloatingPanels).toHaveBeenCalledWith('fires');
+    expect((app as unknown as { currentFloatingPanelId: string | null }).currentFloatingPanelId).toBe('fires');
+    expect(fetchFireImpacts).toHaveBeenCalledWith(44.78, -0.93);
+  });
+
+  it('panneau déjà créé couche éteinte, sans état : le dossier s’ouvre aussitôt', async () => {
+    const { app, container, open, dossierTab } = dossierApp([incident()]);
+    await (app as unknown as { ensureFiresPanel: () => Promise<void> }).ensureFiresPanel();
+    expect(container.querySelector('.fires-panel-modal.is-open')).toBeNull();
+
+    expect(open('gironde-front')).toBe(true);
+    expect(dossierTab()).toBe('true');
+  });
+
+  it('incident inconnu : faux, aucun panneau masqué ni ouvert', async () => {
+    const { app, container, hideAllFloatingPanels, open } = dossierApp([incident()]);
+    await (app as unknown as { ensureFiresPanel: () => Promise<void> }).ensureFiresPanel();
+
+    expect(open('inconnu')).toBe(false);
+    expect(hideAllFloatingPanels).not.toHaveBeenCalled();
+    expect(container.querySelector('.fires-panel-modal.is-open')).toBeNull();
   });
 });

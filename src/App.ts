@@ -3947,7 +3947,9 @@ export class App {
         this.vigilanceEcheance = echeance;
         // Carte repeinte à l'échéance choisie, département choisi gardé en surbrillance.
         void this.mapContainer?.updateVigilanceLayer(this.currentVigilance?.vigilance.data ?? null, echeance, Date.now())
-          .then(() => this.mapContainer?.selectWeatherDepartment(this.selectedVigilanceDept));
+          .then(() => this.mapContainer?.selectWeatherDepartment(this.selectedVigilanceDept))
+          // Carte non repeinte : tracé ; le panneau reste sur l'échéance choisie et la prochaine lecture repeindra la carte.
+          .catch((err: unknown) => console.error('[App] Carte de vigilance non repeinte', err));
         this.refreshEnvironmentLegend();
       });
       panel.mount();
@@ -4093,7 +4095,9 @@ export class App {
         this.syncEnvironmentPolling(key);
         return;
       }
-      this.loadEnvironmentSource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+      // La relève est la seule lecture qui force le manifeste radar (cadence de 5 min du worker) ; les autres passent par le cache.
+      const read = key === 'weatherRadar' ? this.loadRadarManifest(true) : this.loadEnvironmentSource(key);
+      read.catch((err) => console.error(`[App] Relève ${key} en échec`, err));
     }, ENVIRONMENT_POLL_MS[key]);
   }
 
@@ -4130,13 +4134,20 @@ export class App {
     if (!this.mapLegend) return;
     const now = Date.now();
     const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
-    this.mapLegend.addCategory(this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND);
-    this.mapLegend.addCategory(this.currentFloods ? floodsLegend(this.currentFloods.floods.data, now) : FLOODS_LEGEND);
-    this.mapLegend.addCategory(this.radarManifest !== null || this.radarError !== null ? radarLegend(manifest, this.echoTopsEnabled, now) : RADAR_LEGEND);
-    this.mapLegend.addCategory(this.currentFires ? firesLegend(this.currentFires.fires.data, this.forestDangerFill, now) : FIRES_LEGEND);
-    for (const key of ENVIRONMENT_LAYER_KEYS) {
-      this.mapLegend.setCategoryVisibility(key, this.activeLayers.environmentGroup && this.activeLayers[key]);
-    }
+    const shown = (key: EnvironmentLayerKey): boolean => this.activeLayers.environmentGroup && this.activeLayers[key];
+    // Les quatre catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
+    this.mapLegend.setCategories([
+      {
+        ...(this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND),
+        visible: shown('environmental'),
+      },
+      { ...(this.currentFloods ? floodsLegend(this.currentFloods.floods.data, now) : FLOODS_LEGEND), visible: shown('floods') },
+      {
+        ...(this.radarManifest !== null || this.radarError !== null ? radarLegend(manifest, this.echoTopsEnabled, now) : RADAR_LEGEND),
+        visible: shown('weatherRadar'),
+      },
+      { ...(this.currentFires ? firesLegend(this.currentFires.fires.data, this.forestDangerFill, now) : FIRES_LEGEND), visible: shown('fires') },
+    ]);
   }
 
   /** État du panneau Radar : manifeste, option des sommets d'écho (partagée avec les feux) et profil du point cliqué. */
@@ -4659,12 +4670,22 @@ export class App {
     if (situation.type === 'WILDFIRE_ESCALATION') {
       const incidentId = situation.id.replace(/^wildfire-/, '');
       if (!this.currentFireIncidents.some((i) => i.id === incidentId)) return false;
-      // Onglet « Dossier d'un feu » du panneau Feux (spec 2026-10-04 environnement § 2.4), à la place de l'ancienne fenêtre.
-      void this.ensureFiresPanel().then(() => {
+      // Onglet « Dossier d'un feu » du panneau Feux (spec 2026-10-04 environnement § 2.4), à la place de l'ancienne fenêtre. Le panneau
+      // reçoit d'abord l'état courant : créé couche Feux éteinte, il n'en a aucun et l'incident y serait introuvable. Rien n'est masqué
+      // si le dossier ne s'ouvre pas.
+      const openDossier = (): boolean => {
+        this.firesPanel?.update(this.firesPanelState());
+        if (!this.firesPanel?.openDossier(incidentId)) return false;
         this.hideAllFloatingPanels('fires');
-        if (this.firesPanel?.openDossier(incidentId)) this.currentFloatingPanelId = 'fires';
+        this.currentFloatingPanelId = 'fires';
         this.refreshFloatingPanelSwitcher();
-      });
+        return true;
+      };
+      if (this.firesPanel) return openDossier();
+      // Panneau pas encore chargé : l'incident est connu et le panneau reçoit son état avant l'ouverture, le dossier s'ouvrira donc
+      // dès l'arrivée du morceau (sans conteneur flottant, aucun panneau ne peut naître).
+      if (!this.floatContainerEl) return false;
+      void this.ensureFiresPanel().then(() => { openDossier(); });
       return true;
     }
 
@@ -6597,12 +6618,13 @@ export class App {
   /**
    * Manifeste radar Météo-France (spec § 2.3) : image 2D montrée par la couche Radar météo, sommets d'écho selon l'option partagée avec
    * les feux, ligne « Radar Météo-France » datée par l'observation (S1) ; une lecture en échec garde la dernière image et le dit.
+   * `force` : relève périodique seulement (lecture réseau) ; ouverture du panneau, puce et sommets d'écho lisent par le cache de 2 min
+   * du service.
    */
-  private loadRadarManifest(): Promise<void> {
+  private loadRadarManifest(force = false): Promise<void> {
     return this.readEnvironment('weatherRadar', async () => {
       try {
-        // Lecture forcée : relève de 5 min calée sur le worker ; le cache de 2 min du service ne sert qu'aux lectures rapprochées.
-        const result = await fetchRadar2dManifest(true);
+        const result = await fetchRadar2dManifest(force);
         const manifest = result.configured ? result.manifest : null;
         // Image 2D : la couche Radar la commande (l'interrupteur « Réflectivité radar 2D » du panneau Feux n'existe plus).
         await this.mapContainer?.setRadar2dOverlay(manifest, false);

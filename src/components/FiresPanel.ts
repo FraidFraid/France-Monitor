@@ -109,17 +109,23 @@ export class FiresPanel {
     const input: FeuxDossierInput = { incident, dossier: buildDossier(incident, [], incident.deptCodes), impacts: null, impactsError: null };
     this.dossier = input;
     this.show(null);
-    void fetchFireImpacts(incident.centroidLat, incident.centroidLon).then(({ data, error }) => {
-      if (this.dossier?.incident.id !== incidentId) return;
-      this.dossier = { ...this.dossier, impacts: data, impactsError: error };
-      this.update(null);
-    });
-    // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un dossier, pour un seul incident.
-    void enrichWithLlm(input.dossier).then((enriched) => {
-      if (this.dossier?.incident.id !== incidentId) return;
-      this.dossier = { ...this.dossier, dossier: enriched };
-      this.update(null);
-    });
+    // Le service ne rejette pas (contrat) ; un rejet inattendu reste une panne dite dans le dossier (S3), jamais un rejet non géré.
+    void fetchFireImpacts(incident.centroidLat, incident.centroidLon)
+      .catch((err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'lecture des communes en échec' }))
+      .then(({ data, error }) => {
+        if (this.dossier?.incident.id !== incidentId) return;
+        this.dossier = { ...this.dossier, impacts: data, impactsError: error };
+        this.update(null);
+      });
+    // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un dossier, pour un seul incident. En échec, le dossier reste
+    // celui de l'observation, sans enrichissement.
+    void enrichWithLlm(input.dossier)
+      .then((enriched) => {
+        if (this.dossier?.incident.id !== incidentId) return;
+        this.dossier = { ...this.dossier, dossier: enriched };
+        this.update(null);
+      })
+      .catch(() => undefined);
     return true;
   }
 

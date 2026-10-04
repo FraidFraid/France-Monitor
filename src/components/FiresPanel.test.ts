@@ -8,9 +8,10 @@ import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FIRE_IMPACTS_FIXTURE, RADAR_COLUMN_FIXT
 
 const radar = vi.hoisted(() => ({ fetchRadarColumn: vi.fn() }));
 const impacts = vi.hoisted(() => ({ fetchFireImpacts: vi.fn() }));
+const enrich = vi.hoisted(() => ({ enrichWithLlm: vi.fn() }));
 vi.mock('../services/radar-column.ts', () => radar);
 vi.mock('../services/environment-fires.ts', async (original) => ({ ...(await original<object>()), ...impacts }));
-vi.mock('../services/wildfire-enrich.ts', () => ({ enrichWithLlm: vi.fn(async <T>(d: T) => d) }));
+vi.mock('../services/wildfire-enrich.ts', () => enrich);
 
 const { FiresPanel } = await import('./FiresPanel.ts');
 type Panel = InstanceType<typeof FiresPanel>;
@@ -34,6 +35,7 @@ beforeEach(() => {
   vi.setSystemTime(ENV_FIXTURE_NOW);
   radar.fetchRadarColumn.mockResolvedValue(RADAR_COLUMN_FIXTURE());
   impacts.fetchFireImpacts.mockResolvedValue({ data: FIRE_IMPACTS_FIXTURE(), error: null });
+  enrich.enrichWithLlm.mockImplementation(async (d: unknown) => d);
 });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); document.body.innerHTML = ''; localStorage.clear(); });
 
@@ -111,6 +113,18 @@ describe('FiresPanel', () => {
     expect(impacts.fetchFireImpacts).toHaveBeenCalledWith(44.88, -1.12);
     await flush();
     expect(c.textContent).toContain('Le Porge');
+    expect(c.textContent).toContain('Aucune estimation de maisons menacées ni d’évacués');
+  });
+  it('dossier : communes illisibles (rejet), panne dite (S3) ; relecture locale en échec, dossier gardé sans enrichissement', async () => {
+    impacts.fetchFireImpacts.mockRejectedValueOnce(new Error('réseau coupé'));
+    enrich.enrichWithLlm.mockRejectedValueOnce(new Error('Ollama absent'));
+    const { c, p } = mount();
+    p.update(state([INCIDENT]));
+    expect(p.openDossier('inc-porge')).toBe(true);
+    await flush();
+    expect(c.querySelector('[data-tab="dossier"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(c.textContent).toContain('Source indisponible : communes de geo.api.gouv.fr.');
+    expect(c.textContent).not.toContain('Chargement des communes');
     expect(c.textContent).toContain('Aucune estimation de maisons menacées ni d’évacués');
   });
   it('fermer une seule fois ; silencieux sans rappel ; destroy retire', () => {
