@@ -1428,7 +1428,10 @@ export class App {
   private currentFires: FiresState | null = null;
   /** Dernières lectures des services de la phase B (comme currentVigilance) ; la sécheresse n'entre jamais dans le score (E2). */
   private currentDrought: DroughtState | null = null;
-  /** Remplissages départementaux visibles, du plus ancien au plus récent activé (le dernier masque les autres). */
+  /**
+   * Remplissages départementaux visibles, dans l'ordre fixe de la carte (environment-map-b.ts, ENV_B_FILL_LAYERS) : la qualité de
+   * l'air est toujours dessinée au-dessus de la sécheresse, quel que soit l'ordre d'activation ; le dernier masque les autres.
+   */
   private fillOrder: string[] = [];
   private currentAirQuality: AirQualityState | null = null;
   private currentEarthquakes: EarthquakesState | null = null;
@@ -4274,9 +4277,8 @@ export class App {
     const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
     const shown = (key: EnvironmentLayerKey): boolean => this.activeLayers.environmentGroup && this.activeLayers[key];
     const vigilance = this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND;
-    // Remplissages départementaux visibles, du plus ancien au plus récent activé : le dernier est au-dessus et masque l'autre.
-    this.fillOrder = this.fillOrder.filter((k) => shown(k as EnvironmentLayerKey));
-    for (const k of ['drought', 'airQuality'] as const) if (shown(k) && !this.fillOrder.includes(k)) this.fillOrder.push(k);
+    // Remplissages départementaux visibles, dans l'ordre de la carte et de l'infobulle : la qualité de l'air masque la sécheresse.
+    this.fillOrder = (['drought', 'airQuality'] as const).filter((k) => shown(k));
     // Toutes les catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
     this.mapLegend.setCategories([
       // Marégraphes (section Submersion marine) : élément et date de la dernière mesure, une fois lus (arbitrage 13).

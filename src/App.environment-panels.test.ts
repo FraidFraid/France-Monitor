@@ -3,6 +3,9 @@
 // repeint pas, légendes datées reconstruites une seule fois par appel.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LegendCategory } from './components/MapLegend.ts';
+import { LYR_AIR_FILL, LYR_DROUGHT_FILL } from './components/deckgl/constants.ts';
+import { ENV_HOVER_LAYERS } from './components/deckgl/environment-map.ts';
+import { ENV_B_FILL_LAYERS } from './components/deckgl/environment-map-b.ts';
 import { ENV_FIXTURE_NOW, FLOODS_FIXTURE, VIGILANCE_FIXTURE, seaLevelsStateFixture } from './components/layer-panel/environment.fixture.ts';
 import type { MapLayers } from './types/index.ts';
 import { App } from './App.ts';
@@ -66,6 +69,43 @@ describe('App : légendes Environnement', () => {
     expect(categories.map((c) => [c.id, c.visible])).toEqual([
       ['environmental', false], ['floods', true], ['weatherRadar', false], ['fires', false], ['drought', false], ['airQuality', false], ['earthquakes', false],
     ]);
+  });
+});
+
+describe('App : remplissages Sécheresse et Qualité de l’air actifs ensemble (vague finale, point 3)', () => {
+  /** Légendes des deux remplissages après chaque activation, dans l'ordre donné. */
+  function legendsAfter(order: ReadonlyArray<'drought' | 'airQuality'>): LegendCategory[] {
+    const app = Object.create(App.prototype) as App & Record<string, unknown>;
+    const setCategories = vi.fn();
+    const activeLayers = {
+      environmentGroup: true, environmental: false, floods: false, weatherRadar: false, fires: false, drought: false, airQuality: false, earthquakes: false,
+    };
+    Object.assign(app, {
+      mapLegend: { setCategories, addCategory: vi.fn(), setCategoryVisibility: vi.fn() },
+      currentVigilance: null, currentFloods: null, currentFires: null, radarManifest: null, radarError: null, vigilanceEcheance: 'J', echoTopsEnabled: false,
+      forestDangerFill: false, currentDrought: null, currentAirQuality: null, currentEarthquakes: null, currentSeaLevels: null, fillOrder: [], activeLayers,
+    });
+    for (const key of order) {
+      activeLayers[key] = true;
+      (app as unknown as { refreshEnvironmentLegend: () => void }).refreshEnvironmentLegend();
+    }
+    const last = setCategories.mock.calls.at(-1)?.[0] as LegendCategory[];
+    return last.filter((c) => c.id === 'drought' || c.id === 'airQuality');
+  }
+  const masked = (c: LegendCategory | undefined): string[] => (c?.notes ?? []).filter((n) => n.startsWith('Remplissage masqué'));
+
+  it('quel que soit l’ordre d’activation, la qualité de l’air est dessinée au-dessus : la légende Sécheresse dit le masque, jamais celle de l’air', () => {
+    for (const order of [['drought', 'airQuality'], ['airQuality', 'drought']] as const) {
+      const [drought, air] = legendsAfter(order);
+      expect(masked(drought)).toEqual(['Remplissage masqué par Qualité de l’air.']);
+      expect(masked(air)).toEqual([]);
+    }
+  });
+
+  it('même ordre que la carte (qualité de l’air insérée au-dessus de la sécheresse) et que l’infobulle (qualité de l’air d’abord)', () => {
+    const drawn = ENV_B_FILL_LAYERS.map((l) => l.id);
+    expect(drawn.indexOf(LYR_DROUGHT_FILL)).toBeLessThan(drawn.indexOf(LYR_AIR_FILL));
+    expect(ENV_HOVER_LAYERS.indexOf(LYR_AIR_FILL)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_DROUGHT_FILL));
   });
 });
 

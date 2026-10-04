@@ -321,8 +321,9 @@ export function earthquakesLegend(q: EarthquakesResponse | null, now: number): L
 }
 
 /**
- * Deux remplissages départementaux actifs (Sécheresse, Qualité de l'air) : celui activé en dernier est au-dessus et masque l'autre.
- * `order` donne les remplissages visibles, du plus ancien au plus récent ; la légende du masqué le dit (aucune note s'il est seul).
+ * Deux remplissages départementaux actifs (Sécheresse, Qualité de l'air) : celui du dessus masque l'autre (ordre fixe de la carte :
+ * qualité de l'air au-dessus de la sécheresse, comme l'infobulle). `order` donne les remplissages visibles, du dessous au dessus ;
+ * la légende du masqué le dit (aucune note s'il est seul).
  */
 export function withFillMask(legend: LegendCategory, order: readonly string[]): LegendCategory {
   const at = order.indexOf(legend.id);

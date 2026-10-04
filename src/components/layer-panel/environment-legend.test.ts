@@ -135,10 +135,11 @@ describe('R1 : aucune unité détachée dans les légendes', () => {
 });
 
 describe('deux remplissages départementaux : la légende du masqué le dit', () => {
-  it('le dernier activé est au-dessus ; seul, aucune note', () => {
+  it('celui du dessus masque l’autre (ordre de la carte : qualité de l’air au-dessus) ; seul, aucune note', () => {
     expect(text(withFillMask(DROUGHT_LEGEND, ['drought', 'airQuality']))).toContain('Remplissage masqué par Qualité de l’air.');
     expect(text(withFillMask(AIR_QUALITY_LEGEND, ['drought', 'airQuality']))).not.toContain('masqué');
-    expect(text(withFillMask(AIR_QUALITY_LEGEND, ['airQuality', 'drought']))).toContain('Remplissage masqué par Sécheresse.');
+    // Vague finale, point 3 : la qualité de l'air n'est jamais masquée par la sécheresse (App passe toujours l'ordre de la carte).
+    expect(text(withFillMask(AIR_QUALITY_LEGEND, ['drought', 'airQuality']))).not.toContain('Remplissage masqué par Sécheresse.');
     expect(withFillMask(DROUGHT_LEGEND, ['drought'])).toBe(DROUGHT_LEGEND);
     expect(withFillMask(DROUGHT_LEGEND, [])).toBe(DROUGHT_LEGEND);
   });
