@@ -80,6 +80,7 @@ describe('vue Séismes (spec 2026-10-04 environnement § 3.3, amendement 2)', ()
     const quakes = withQuakes((q) => { q.source = 'EMSC'; q.errors = ['BCSF-RéNaSS : HTTP 500']; });
     const v = view({ quakes });
     expect(v.head.status[1]).toBe(`EMSC (repli)${NBSP}10:05`);
+    expect(v.head.status[2]).toBe('BCSF-RéNaSS indisponible, repli EMSC');
     expect(visibleText(v.sections[1].html)).toContain('Incidents de lecture : BCSF-RéNaSS : HTTP 500.');
   });
   it('en retard (relevé de plus de 30 min) : n.d., « (en retard) », aucune couleur, points sans couleur de niveau', () => {
@@ -99,6 +100,33 @@ describe('vue Séismes (spec 2026-10-04 environnement § 3.3, amendement 2)', ()
     expect(calm.sections[0].html).toContain(`Aucun séisme enregistré en France ni à moins de 20${NBSP}km sur 7${NBSP}jours.`);
     expect(view({ quakes: null }).bodyHtml).toContain('Chargement des données…');
   });
+  it('séisme hors de France (M 3,5 et M 4,8, Aoste à 1 km) : gris, « hors de France », ni pastille, ni gros chiffre, ni synthèse', () => {
+    const base = view();
+    for (const m of [3.5, 4.8]) {
+      const quakes = withQuakes((q) => { q.quakes.unshift(strong(m, { id: `ao-${m}`, inFrance: false, dept: null, distanceKm: 1, lat: 45.7, lon: 7.3, description: 'Proche de Aosta' })); });
+      const v = view({ quakes });
+      expect(v.head.level).toBe(base.head.level);
+      expect(v.head.figure).toEqual(base.head.figure);
+      expect(v.head.status).toEqual(base.head.status);
+      expect(v.head.lead).toBe(base.head.lead);
+      expect(v.sections[0].summary).toBe(base.sections[0].summary);
+      const row = v.sections[0].html.split('<div class="lp-row').find((r) => r.includes(`ao-${m}`)) ?? '';
+      expect(row).toContain(`hors de France, à 1${NBSP}km de la frontière`);
+      expect(row).toContain('lp-faint');
+      expect(row).not.toMatch(/fmk-dot--/);
+    }
+  });
+  it('liste vide en retard : phrase datée avec « (en retard) » et source nommée ; à jour : source nommée', () => {
+    const empty = (over: Partial<EarthquakesResponse> = {}) => withQuakes((q) => { q.quakes = []; Object.assign(q, over); });
+    const late = visibleText(section('derniers', { quakes: empty(), now: Date.parse('2026-10-04T08:40:00Z') })?.html ?? '');
+    expect(late).toContain('Aucun séisme enregistré au dernier relevé du 04/10 10:05 (en retard), source BCSF-RéNaSS.');
+    const emsc = visibleText(section('derniers', { quakes: empty({ source: 'EMSC' }) })?.html ?? '');
+    expect(emsc).toContain('Source : EMSC (repli).');
+  });
+  it('un seul événement non sismique : singulier', () => {
+    const t = visibleText(section('methode', { quakes: withQuakes((q) => { q.nonSeismic = 1; }) })?.html ?? '');
+    expect(t).toContain(`1 tir de carrière ou explosion écarté sur 7${NBSP}jours`);
+  });
   it('icône « activity » disponible', () => {
     expect(fmIcon('activity')).toContain('<svg');
   });
@@ -106,6 +134,12 @@ describe('vue Séismes (spec 2026-10-04 environnement § 3.3, amendement 2)', ()
     const quakes = withQuakes((q) => { q.quakes[0].description = '<img src=x onerror=1> proche de <script>x</script>'; });
     const h = html({ quakes });
     expect(h).not.toMatch(/<img|<script/);
+    expect(h).toContain('&lt;script&gt;x&lt;/script&gt;');
+    expect(h).toContain(quakes.quakes[0].id);
+    const hostile = withQuakes((q) => { q.quakes[0].status = '<b>x</b>' as Quake['status']; q.quakes[0].id = 'a"onclick="x'; });
+    const hh = html({ quakes: hostile });
+    expect(hh).not.toMatch(/<b>x|data-quake="a"onclick/);
+    expect(hh).toContain('&lt;b&gt;x&lt;/b&gt;');
     for (const over of [{}, { now: Date.parse('2026-10-04T08:40:00Z') }, { quakes: null, quakesError: 'HTTP 502' }]) {
       const all = html(over);
       const text = visibleText(all);

@@ -38,6 +38,15 @@ function inWeek(q: Quake, now: number): boolean {
   const t = Date.parse(q.at);
   return Number.isFinite(t) && t <= now && now - t <= WEEK_MS;
 }
+/** « jj/mm hh:mm » (heure de Paris) du relevé, toujours avec la date. */
+function parisDayClock(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return 'n.d.';
+  const p = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Paris' })
+    .formatToParts(ms);
+  const get = (t: string): string => p.find((x) => x.type === t)?.value ?? '';
+  return `${get('day')}/${get('month')} ${get('hour')}:${get('minute')}`;
+}
 function placeText(q: Quake): string {
   const place = capitalize(quakePlace(q));
   return q.dept !== null ? `${place} (${departementName(q.dept)})` : place;
@@ -74,7 +83,10 @@ function headOf(q: EarthquakesResponse, now: number): LayerHeadModel {
       level: isLate ? null : strong.length === 0 ? 'vert' : figureLevel === 'gris' ? null : figureLevel,
     },
     level: isLate ? 'nd' : verdict.level,
-    status: [isLate ? 'niveau suspendu : relevé des séismes en retard' : glueEnvUnits(verdict.reason), stamp(sourceLabel(q), q.readAt, isLate, now)],
+    status: [
+      isLate ? 'niveau suspendu : relevé des séismes en retard' : glueEnvUnits(verdict.reason), stamp(sourceLabel(q), q.readAt, isLate, now),
+      ...(q.source === 'EMSC' ? ['BCSF-RéNaSS indisponible, repli EMSC'] : []),
+    ],
     lead: isLate ? null : leadOf(q, now),
   };
 }
@@ -108,7 +120,11 @@ function derniersSection(q: EarthquakesResponse | null, canFocus: boolean, now: 
   const isLate = late(q, now);
   const list = q.quakes.filter((x) => inWeek(x, now)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   if (list.length === 0) {
-    return { ...base, summary: 'aucun', html: emptyLine(`Aucun séisme enregistré en France ni à moins de 20${NBSP}km sur 7${NBSP}jours.`) };
+    const label = sourceLabel(q);
+    const text = isLate
+      ? `Aucun séisme enregistré au dernier relevé du ${parisDayClock(q.readAt)} (en retard), source ${label}.`
+      : `Aucun séisme enregistré en France ni à moins de 20${NBSP}km sur 7${NBSP}jours. Source : ${label}.`;
+    return { ...base, summary: isLate ? 'aucun (en retard)' : 'aucun', html: emptyLine(text) };
   }
   const fr = list.filter(quakeInFrance);
   const max = fr.reduce((m, x) => Math.max(m, x.magnitude), 0);
@@ -142,7 +158,7 @@ function methodSection(q: EarthquakesResponse | null, failed: boolean, now: numb
   const html = kvRow('Séismes', `${sourceLinkHtml('BCSF-RéNaSS (Bureau central sismologique français)', BCSF_URL)} · ${escapeHtml(state)}`)
     + kvRow('Repli', `${sourceLinkHtml('EMSC (Centre sismologique euro-méditerranéen)', EMSC_URL)} · ${escapeHtml('seulement si le BCSF-RéNaSS est en panne ; il ne publie pas de révision : ses événements sont dits automatiques')}`)
     + note(`En France : épicentre sur le territoire métropolitain (Corse comprise) ou dans les eaux françaises. Les séismes à moins de 20${NBSP}km du territoire, hors de France, sont affichés en gris « hors de France » ; ils ne comptent ni dans la pastille ni dans le gros chiffre.`)
-    + note(`${plural(q?.nonSeismic ?? 0, 'tir de carrière, explosions et autres événements non sismiques écartés', 'tirs de carrière, explosions et autres événements non sismiques écartés')} sur 7${NBSP}jours.`)
+    + note(`${plural(q?.nonSeismic ?? 0, 'tir de carrière ou explosion écarté', 'tirs de carrière, explosions et autres événements non sismiques écartés')} sur 7${NBSP}jours.`)
     + note(`Pastille : sur les 72 dernières heures, en France, rouge dès magnitude 5, orange dès 4, jaune dès 3, vert sinon. Situation : un séisme de magnitude 4 ou plus en France crée une situation de sévérité moyenne, élevée dès 5 (elle plafonne le score à 78).`)
     + note('Magnitude locale publiée (MLv, ml), arrondie au dixième comme la description ; statut « automatique » tant qu’un sismologue ne l’a pas revu.')
     + note(`Retard : relevé du serveur de plus de 30${NBSP}min. Relève : toutes les 10${NBSP}min. Séismes d’outre-mer hors du champ de ce panneau.`)
