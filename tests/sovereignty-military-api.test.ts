@@ -6,7 +6,8 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADSB_LOL_BASE, __resetAdsbLolForTests } from '../api/_lib/adsb-lol.js';
-import { __resetKvForTests, __setKvClientForTests, readLog } from '../api/_lib/kv-history.js';
+import { __resetKvForTests, __setKvClientForTests, kvSetJson, readLog } from '../api/_lib/kv-history.js';
+import { aircraftFamily } from '../api/_lib/icao-country.js';
 import {
   MIL_EMERGENCY_KEY, MIL_HOURLY_KEY, MIL_INTERVAL_MS, MIL_PENDING_NOTE, MIL_TOO_OLD_ERROR, __resetMilitaryForTests, ensureMilitaryFresh,
   hourKey, militaryEmergenciesFrom, normalizeMilAircraft,
@@ -58,6 +59,18 @@ function stubReads(...reads: Array<MilRead | ReturnType<typeof respond>>) {
     return 'ok' in r && 'status' in r ? r : respond(r);
   });
 }
+
+/** Appareil que la réponse ne doit jamais nommer (O10) : famille calculée par le code (bloc OACI France), ou bit PIA (4) ou LADD (8). */
+function isMaskedAc(a: Ac): boolean {
+  return aircraftFamily(a.hex) === 'francais' || (Number(a.dbFlags) & 12) !== 0;
+}
+
+/** Lecture avec des appareils masqués de toutes sortes : autre nation PIA au-dessus de la France, LADD hors de France, français LADD. */
+const WITH_PROTECTED = (sec = 0): MilRead => reading(sec, [
+  { ...fixtureAc('43c6f6'), dbFlags: 5 },
+  { ...fixtureAc('ae1436'), dbFlags: 9 },
+  { ...fixtureAc('3bf004'), dbFlags: 9 },
+]);
 
 /** Appareils comptés au-dessus de la France (français par département, autres montrés ou masqués). */
 function counted(body: MilitaryResponse): { francais: number; autres: number } {
@@ -125,25 +138,23 @@ describe('/api/sovereignty/military', () => {
     expect(log.urls).toEqual([MIL_URL]);
     expect(sentHeader(log.inits[0], 'User-Agent')).toBe(SOURCE_USER_AGENT);
   });
-  it('O10 : ni adresse, ni indicatif d’un appareil français, et aucune immatriculation pour personne, dans toute la réponse', async () => {
-    stubReads(MIL());
+  it('O10 : ni adresse ni indicatif d’un appareil masqué (famille calculée par le code, PIA, LADD), aucune immatriculation pour personne, dans toute la réponse', async () => {
+    const read = WITH_PROTECTED();
+    stubReads(read);
     const { body } = await callHandler<MilitaryResponse>(handler);
     const text = JSON.stringify(body);
-    for (const a of MIL().ac) {
-      if (typeof a.r === 'string') expect(text).not.toContain(`"${a.r}"`);
-      if (a.hex.startsWith('3b') || a.hex.startsWith('38') || a.hex.startsWith('39') || a.hex.startsWith('3a')) {
-        expect(text).not.toContain(`"${a.hex}"`);
-        if (typeof a.flight === 'string' && a.flight.trim()) expect(text).not.toContain(`"${a.flight.trim()}"`);
-      }
+    const masked = read.ac.filter(isMaskedAc);
+    // Garde du test lui-même : les 4 français de la zone, l'appareil PIA et l'appareil LADD hors de France sont bien parmi les masqués.
+    expect(['3bf002', '3bf003', '3bf004', '3bf001', '43c6f6', 'ae1436'].every((hex) => masked.some((a) => a.hex === hex))).toBe(true);
+    for (const a of masked) {
+      expect(text).not.toContain(`"${a.hex}"`);
+      if (typeof a.flight === 'string' && a.flight.trim()) expect(text).not.toContain(`"${a.flight.trim()}"`);
     }
+    for (const a of read.ac) if (typeof a.r === 'string') expect(text).not.toContain(`"${a.r}"`);
     expect(text).not.toContain('registration');
   });
   it('PIA ou LADD : autre nation au-dessus de la France comptée sans être montrée, hors de France jamais dessinée ; un français LADD reste compté', async () => {
-    stubReads(reading(0, [
-      { ...fixtureAc('43c6f6'), dbFlags: 5 },
-      { ...fixtureAc('ae1436'), dbFlags: 9 },
-      { ...fixtureAc('3bf004'), dbFlags: 9 },
-    ]));
+    stubReads(WITH_PROTECTED());
     const body = await ensureMilitaryFresh(T0);
     expect(body.others.map((a) => a.hex)).toEqual(['894081', 'c2b5b7', '44f684', '43c700']);
     expect([body.maskedOthers, counted(body)]).toEqual([1, { francais: 4, autres: 5 }]);
@@ -153,15 +164,62 @@ describe('/api/sovereignty/military', () => {
     const text = JSON.stringify(body);
     for (const hidden of ['"43c6f6"', '"RRR2243"', '"ae1436"', '"FAZE37"']) expect(text).not.toContain(hidden);
   });
-  it('historique horaire : hex distincts par famille (aucun compte d’une lecture répétée), clé « sov: »', async () => {
+  it('historique horaire : aéronefs distincts par famille (aucun compte d’une lecture répétée), clé « sov: », une seule écriture', async () => {
+    const writes: Array<[string, string]> = [];
+    __setKvClientForTests({ get: async () => null, set: async (k: string, v: string) => { writes.push([k, v]); } });
     stubReads(MIL(), reading(120));
     await ensureMilitaryFresh(T0);
     vi.setSystemTime(T0 + MIL_INTERVAL_MS);
     const body = await ensureMilitaryFresh(T0 + MIL_INTERVAL_MS);
     expect(body.hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }]);
-    const stored = await readLog<{ hour: string; francais: string[]; autres: string[] }>(MIL_HOURLY_KEY, { dateOf: (e) => `${e.hour}:00:00.000Z`, maxAgeMs: 7 * 86_400_000, now: T0 });
-    expect(stored).toEqual([{ hour: '2026-10-04T14', francais: ['3bf003', '3bf001', '3bf002', '3bf004'], autres: ['43c6f6', '43c700', '44f684', '894081', 'c2b5b7'] }]);
+    expect(await readLog(MIL_HOURLY_KEY, { dateOf: (e: { hour: string }) => `${e.hour}:00:00.000Z`, maxAgeMs: 7 * 86_400_000, now: T0 }))
+      .toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }]);
+    expect(writes.filter(([k]) => k === MIL_HOURLY_KEY)).toHaveLength(1);
     expect(MIL_HOURLY_KEY.startsWith('sov:')).toBe(true);
+  });
+  it('historique horaire (O10) : aucune adresse française, PIA ni LADD écrite dans le stockage clé-valeur, des comptes seulement', async () => {
+    const writes: Array<[string, string]> = [];
+    __setKvClientForTests({ get: async () => null, set: async (k: string, v: string) => { writes.push([k, v]); } });
+    const read = WITH_PROTECTED();
+    stubReads(read);
+    const body = await ensureMilitaryFresh(T0);
+    expect(body.hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }]);
+    const hourly = writes.filter(([k]) => k === MIL_HOURLY_KEY).map(([, v]) => v);
+    expect(hourly).toEqual([JSON.stringify([{ hour: '2026-10-04T14', francais: 4, autres: 5 }])]);
+    for (const a of read.ac.filter(isMaskedAc)) expect(hourly.join()).not.toContain(a.hex);
+  });
+  it('historique horaire après un redémarrage dans l’heure : ni double compte ni compte perdu (borne basse gardée), un nouvel aéronef s’ajoute', async () => {
+    const newcomer: Ac = { ...GENEVE_7500, hex: '4b1a2d', flight: 'SUI0001 ', squawk: '2000', emergency: 'none', lat: 46.5, lon: 4.8 };
+    const withoutDrago = (sec: number, extra: Ac[] = []): MilRead => {
+      const r = reading(sec, extra);
+      return { ...r, ac: r.ac.filter((a) => a.hex !== '3bf004') };
+    };
+    stubReads(MIL(), withoutDrago(120), withoutDrago(240, [newcomer]));
+    await ensureMilitaryFresh(T0);
+    __resetMilitaryForTests();
+    vi.setSystemTime(T0 + MIL_INTERVAL_MS);
+    expect((await ensureMilitaryFresh(T0 + MIL_INTERVAL_MS)).hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }]);
+    vi.setSystemTime(T0 + 2 * MIL_INTERVAL_MS);
+    expect((await ensureMilitaryFresh(T0 + 2 * MIL_INTERVAL_MS)).hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 6 }]);
+  });
+  it('historique horaire : nouvelle heure UTC, nouveaux comptes (mémoire de l’heure précédente oubliée)', async () => {
+    stubReads(MIL(), reading(3_600));
+    await ensureMilitaryFresh(T0);
+    vi.setSystemTime(T0 + 3_600_000);
+    expect((await ensureMilitaryFresh(T0 + 3_600_000)).hourly.hours).toEqual([
+      { hour: '2026-10-04T14', francais: 4, autres: 5 }, { hour: '2026-10-04T15', francais: 4, autres: 5 },
+    ]);
+  });
+  it('historique horaire d’un ancien format (listes d’adresses) : réécrit en comptes dès la lecture suivante', async () => {
+    await kvSetJson(MIL_HOURLY_KEY, [
+      { hour: '2026-10-04T14', francais: ['3b0099'], autres: [] },
+      { hour: '2026-10-04T13', francais: ['3bf002', '3bf003'], autres: ['43c6f6'] },
+    ], 7 * 86_400, T0);
+    stubReads(MIL());
+    const body = await ensureMilitaryFresh(T0);
+    expect(body.hourly.hours).toEqual([{ hour: '2026-10-04T13', francais: 2, autres: 1 }, { hour: '2026-10-04T14', francais: 4, autres: 5 }]);
+    const stored = await readLog<Record<string, unknown>>(MIL_HOURLY_KEY, { dateOf: (e) => `${String(e.hour)}:00:00.000Z`, maxAgeMs: 7 * 86_400_000, now: T0 });
+    expect(stored).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }, { hour: '2026-10-04T13', francais: 2, autres: 1 }]);
   });
   it('cadence de 2 min : aucune nouvelle lecture avant, une après', async () => {
     const log = stubReads(MIL(), reading(120));
@@ -239,6 +297,18 @@ describe('/api/sovereignty/military', () => {
     expect(body.frenchByDept).toEqual([{ dept: '13', count: 3 }, { dept: '69', count: 1 }, { dept: null, count: 1 }]);
     expect(body.abroad.map((a) => a.hex)).toEqual(['c05325', 'ae1436', 'ae5719', '4b1a2c']);
     expect([counted(body), body.abroadCount]).toEqual([{ francais: 5, autres: 5 }, 4]);
+  });
+  it('en Italie à 1 km de la frontière (Clavière, au-dessus de Montgenèvre) : hors de France, dessiné en gris, jamais compté', async () => {
+    const claviere: Ac = { ...GENEVE_7500, hex: '33ff01', flight: 'IAM0001 ', t: 'M346', squawk: '2000', emergency: 'none', lat: 44.94, lon: 6.77 };
+    stubReads(reading(0, [claviere]));
+    const body = await ensureMilitaryFresh(T0);
+    expect(body.abroad.find((a) => a.hex === '33ff01')).toEqual({ hex: '33ff01', callsign: 'IAM0001', type: 'M346', country: 'Italie', lat: 44.94, lon: 6.77 });
+    expect(body.others.some((a) => a.hex === '33ff01')).toBe(false);
+    expect([counted(body), body.abroadCount]).toEqual([{ francais: 4, autres: 5 }, 4]);
+  });
+  it('readAt : instant de la collecte passé à ensureMilitaryFresh, pas l’horloge du processus', async () => {
+    stubReads(MIL());
+    expect((await ensureMilitaryFresh(T0 + 5_000)).readAt).toBe('2026-10-04T14:48:35.000Z');
   });
   it('les urgences militaires vont dans leur journal, jamais dans celui du Trafic aérien', async () => {
     stubReads(reading(0, [RCH161_7700]));

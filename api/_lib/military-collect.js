@@ -5,16 +5,17 @@
 // France », dessiné en gris, jamais compté. Pays par bloc OACI (api/_lib/icao-country.js), jamais une hypothèse « France ».
 // Amendement 7, O10 (réponse ministérielle publiée au JO le 25/10/2016) : les appareils du bloc France sont servis en compte par
 // département seulement (ni adresse, ni indicatif, ni type, ni position) ; un appareil marqué PIA ou LADD (`dbFlags`) n'est jamais
-// montré, quelle que soit sa nation ; l'immatriculation (`r`) n'est jamais lue. Le serveur garde l'adresse des appareils masqués
-// dans son seul stockage clé-valeur (journal des urgences, historique horaire) pour fusionner les lectures, jamais dans la réponse.
+// montré, quelle que soit sa nation ; l'immatriculation (`r`) n'est jamais lue. L'adresse d'un appareil masqué n'est écrite que dans
+// le journal des urgences du serveur, pour fusionner les lectures d'un épisode, jamais dans la réponse.
 // Urgences (7500, 7600, 7700 et champ `emergency`) : règle T3 du Trafic aérien (journal de 7 jours, confirmée sur deux lectures).
-// Historique horaire de 7 jours (hex distincts par heure UTC et par famille) dans le stockage clé-valeur ; la collecte elle-même
-// vit en mémoire du processus et reste servie 2 h au plus avec sa date (S1).
+// Historique horaire de 7 jours dans le stockage clé-valeur : des comptes seulement (aéronefs distincts par heure UTC et par
+// famille), les adresses de l'heure en cours restant en mémoire du processus ; la collecte elle-même vit en mémoire et reste servie
+// 2 h au plus avec sa date (S1).
 import { APPROACH_KM, EMERGENCY_SQUAWKS, ZONE_BOUNDS, recordEmergencies } from '../_shared/air-traffic.js';
 import { adsbLolGet } from './adsb-lol.js';
 import { departementAt } from './geo-fr.js';
 import { aircraftFamily, icaoCountry } from './icao-country.js';
-import { isDevServer, readLog, upsertLogEntry } from './kv-history.js';
+import { isDevServer, kvSetJson, readLog } from './kv-history.js';
 import { sourceError } from './source-http.js';
 import { inFranceV2, nearFrance } from './territory.js';
 
@@ -49,11 +50,17 @@ const EMERGENCY_TO_SQUAWK = { unlawful: '7500', nordo: '7600', general: '7700', 
  */
 let collection = null;
 let inflight = null;
+/**
+ * Adresses vues au-dessus de la France pendant l'heure UTC en cours, par famille : `{ hour, francais: Set, autres: Set }`. Mémoire
+ * du processus seulement (dédoublonnage des lectures de l'heure) ; jamais écrites dans le stockage clé-valeur (O10).
+ */
+let hourSeen = null;
 
-/** Réservé aux tests : aucune collecte en mémoire. */
+/** Réservé aux tests : aucune collecte en mémoire (simule un redémarrage du processus ; le stockage clé-valeur reste). */
 export function __resetMilitaryForTests() {
   collection = null;
   inflight = null;
+  hourSeen = null;
 }
 
 function intervalMs() {
@@ -154,8 +161,8 @@ function byDeptSeaLast(a, b) {
  *   dernier), les autres montrés un par un (`others`, tri par indicatif puis adresse) ou comptés seulement (`maskedOthers`, PIA ou
  *   LADD) ;
  * - hors de France, toutes familles comptées (`abroadCount`), les appareils montrables seuls dessinés (`abroad`, ordre du flux) ;
- * - `seen` : adresses au-dessus de la France par famille, masqués compris, pour l'historique horaire (stockage clé-valeur seulement,
- *   jamais servi).
+ * - `seen` : adresses au-dessus de la France par famille, masqués compris, pour dédoublonner l'historique horaire en mémoire
+ *   (jamais servies ni écrites).
  * @param {Array<ReturnType<typeof normalizeMilAircraft>>} list
  */
 export function splitByTerritory(list) {
@@ -279,22 +286,39 @@ export function hourKey(ms) {
 }
 
 const hourDate = (e) => (e && typeof e.hour === 'string' ? `${e.hour}:00:00.000Z` : '');
-const union = (a, b) => [...new Set([...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])])].sort();
 
-/** Historique horaire : hex distincts de l'heure ajoutés ; aucune écriture quand rien de neuf (le stockage n'est pas sollicité). */
+/** Compte d'une famille dans une entrée du journal ; une liste d'adresses d'un ancien format devient son nombre d'éléments distincts. */
+function hourCount(v) {
+  if (Array.isArray(v)) return new Set(v).size;
+  return Number.isInteger(v) && v > 0 ? v : 0;
+}
+
+/**
+ * Historique horaire : comptes d'aéronefs distincts de l'heure (MilitaryHourCount), jamais d'adresse dans le stockage clé-valeur
+ * (O10). Les adresses de l'heure en cours sont dédoublonnées en mémoire ; après un redémarrage dans l'heure, le compte gardé est le
+ * plus grand du stockage et de la mémoire (borne basse, jamais un double compte). Aucune écriture quand les comptes n'augmentent
+ * pas (le stockage n'est pas sollicité), sauf pour réécrire en comptes une entrée d'un ancien format qui gardait des adresses.
+ */
 async function recordHour(ms, seen, now) {
   const hour = hourKey(ms);
-  const { francais, autres } = seen;
-  const log = await readLog(MIL_HOURLY_KEY, { dateOf: hourDate, maxAgeMs: KEEP_MS, now });
-  const entry = log.find((e) => e.hour === hour);
-  if (entry && francais.every((h) => entry.francais.includes(h)) && autres.every((h) => entry.autres.includes(h))) return;
-  await upsertLogEntry(MIL_HOURLY_KEY, { hour, francais: union([], francais), autres: union([], autres) }, {
-    idOf: (e) => e.hour,
-    dateOf: hourDate,
-    merge: (old, next) => ({ hour: old.hour, francais: union(old.francais, next.francais), autres: union(old.autres, next.autres) }),
-    maxAgeMs: KEEP_MS,
-    now,
-  });
+  if (hourSeen?.hour !== hour) hourSeen = { hour, francais: new Set(), autres: new Set() };
+  for (const hex of seen.francais) hourSeen.francais.add(hex);
+  for (const hex of seen.autres) hourSeen.autres.add(hex);
+  const stored = await readLog(MIL_HOURLY_KEY, { dateOf: hourDate, maxAgeMs: KEEP_MS, now });
+  const legacy = stored.some((e) => Array.isArray(e.francais) || Array.isArray(e.autres));
+  const log = stored.map((e) => ({ hour: e.hour, francais: hourCount(e.francais), autres: hourCount(e.autres) }));
+  const i = log.findIndex((e) => e.hour === hour);
+  const before = i >= 0 ? log[i] : null;
+  const next = {
+    hour,
+    francais: Math.max(before?.francais ?? 0, hourSeen.francais.size),
+    autres: Math.max(before?.autres ?? 0, hourSeen.autres.size),
+  };
+  if (!legacy && before && before.francais === next.francais && before.autres === next.autres) return;
+  if (i >= 0) log[i] = next;
+  else log.push(next);
+  log.sort((a, b) => b.hour.localeCompare(a.hour));
+  await kvSetJson(MIL_HOURLY_KEY, log, Math.ceil(KEEP_MS / 1000), now);
 }
 
 /** Tentative sans nouvelle lecture : collecte précédente gardée avec sa date (S1), ou collecte vide. */
@@ -330,7 +354,7 @@ async function refresh(now) {
   } catch (err) {
     errors.push(sourceError('Historique horaire des vols militaires', err));
   }
-  collection = { readAt: new Date(Date.now()).toISOString(), sourceNow: atIso, attemptedAt: now, ...aircraft, current, errors };
+  collection = { readAt: new Date(now).toISOString(), sourceNow: atIso, attemptedAt: now, ...aircraft, current, errors };
   return collection;
 }
 
@@ -357,8 +381,7 @@ async function served(now, extra = []) {
   try {
     const log = await readLog(MIL_HOURLY_KEY, { dateOf: hourDate, maxAgeMs: KEEP_MS, now });
     hours = log
-      .filter((e) => Array.isArray(e.francais) && Array.isArray(e.autres))
-      .map((e) => ({ hour: e.hour, francais: e.francais.length, autres: e.autres.length }))
+      .map((e) => ({ hour: e.hour, francais: hourCount(e.francais), autres: hourCount(e.autres) }))
       .sort((a, b) => a.hour.localeCompare(b.hour));
   } catch (err) {
     errors.push(sourceError('Historique horaire des vols militaires', err));
