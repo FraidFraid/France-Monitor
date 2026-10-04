@@ -8,7 +8,7 @@ import {
   CABLES_FILE_FIXTURE, CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE, SOV_FIXTURE_NOW,
 } from './sovereignty.fixture.ts';
 import { NBSP, breakableValue, visibleText } from './format.ts';
-import { renderLayerView } from './frame.ts';
+import { renderLayerView, type LayerView } from './frame.ts';
 import { trafficBreakable } from './traffic-format.ts';
 import { CABLES_FILE_ERROR_TEXT, clockOf, glueSovUnits, sovBreakable } from './sovereignty-format.ts';
 import { CONNECTIVITE_TITLE, buildConnectiviteView, landingPlace, type ConnectiviteViewInput } from './connectivite.ts';
@@ -21,6 +21,12 @@ const input = (over: Partial<ConnectiviteViewInput> = {}): ConnectiviteViewInput
 });
 const view = (over: Partial<ConnectiviteViewInput> = {}) => buildConnectiviteView(input(over));
 const html = (over: Partial<ConnectiviteViewInput> = {}): string => renderLayerView('subseaCables', view(over));
+/** Gros chiffre de la phase A : la phase B (B26) le déplace dans la section « Navires » (ou « Câbles ») ; valeur, légende et couleur de la ligne. */
+function slow(v: LayerView): { value: string; caption: string; level: string | null } {
+  const h = (v.sections.find((s) => s.id === 'navires') ?? v.sections.find((s) => s.id === 'cables'))?.html ?? '';
+  const m = /Navires lents sur un tracé<\/span><span class="fmk-kv-v fmk-num"><span class="lp-val fmk-num( lp-lvl lp-lvl--(\w+))?">([^<]*)<\/span><\/span><\/div><p class="fmk-note">([^<]*)<\/p>/.exec(h);
+  return { value: m?.[3] ?? '', caption: visibleText(m?.[4] ?? ''), level: m?.[2] ?? null };
+}
 const sectionOf = (id: string, over: Partial<ConnectiviteViewInput> = {}) => view(over).sections.find((s) => s.id === id);
 
 const OSM = { source: 'OpenStreetMap', licence: 'ODbL 1.0', outOfService: false } as const;
@@ -59,16 +65,15 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     const v = view();
     expect(cablesLevel(w, NOW).level).toBe('vert');
     expect(v.head).toMatchObject({ theme: 'Souveraineté', title: CONNECTIVITE_TITLE, level: 'vert' });
-    expect(v.head.figure).toEqual({ value: '0', caption: `navire lent à moins de 500${NBSP}m d’un câble · AIS à jour ${clockOf(w.aisLastMessageAt, NOW)}` });
+    expect(slow(v)).toEqual({ value: '0', caption: `navire lent à moins de 500${NBSP}m d’un câble · AIS à jour ${clockOf(w.aisLastMessageAt, NOW)}`, level: 'vert' });
     expect(v.head.status[0]).toBe(glueSovUnits(cablesLevel(w, NOW).reason));
     expect(v.head.status[1]).toMatch(/^AIS\u00A0\d\d:\d\d · câbles du \d\d\/\d\d$/);
     const file = CABLES_FILE_FIXTURE();
     const landings = file.cables.reduce((n, c) => n + c.landings.length, 0);
     expect(v.head.lead).toBe(`${file.cables.length}${NBSP}câbles télécom sous-marins dans les eaux françaises, ${landings}${NBSP}atterrages en France, d’après le Shom et OpenStreetMap.`);
-    expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--vert">0</b>');
   });
   it('sections et ouverture : câbles ouverts, navires repliés sans alerte, méthode en ton de référence', () => {
-    expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([['cables', true], ['navires', false], ['methode', false]]);
+    expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([['reseaux', true], ['cables', true], ['navires', false], ['echanges', false], ['methode', false]]);
     expect(view().sections.at(-1)?.tone).toBe('reference');
   });
   it('câbles et atterrages du fichier (Shom et OpenStreetMap) : tous les câbles listés, liste repliée', () => {
@@ -107,7 +112,7 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
   it('navire lent confirmé (construit) : « à vérifier », distance au tracé, vitesse, mouillage, première et dernière vue ; jamais « menace »', () => {
     const v = view({ watch: { ...WATCH, alerts: [ALERT] }, file: SMALL });
     expect(v.head.level).toBe('orange');
-    expect(v.head.figure).toEqual({ value: '1', caption: `navire lent à moins de 500${NBSP}m d’un câble · AIS à jour 16:47` });
+    expect(slow(v)).toMatchObject({ value: '1', caption: `navire lent à moins de 500${NBSP}m d’un câble · AIS à jour 16:47` });
     const s = v.sections.find((x) => x.id === 'navires');
     expect([s?.open, s?.summary]).toEqual([true, '1 à vérifier']);
     expect(s?.html).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-vessel="227123456:way/761201753">'
@@ -126,7 +131,7 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     const w = CABLES_WATCH_ALERTS_FIXTURE();
     const v = view({ watch: w });
     expect(v.head.level).toBe('orange');
-    expect(v.head.figure?.value).toBe(String(w.alerts.length));
+    expect(slow(v).value).toBe(String(w.alerts.length));
     const h = v.sections.find((x) => x.id === 'navires')?.html ?? '';
     for (const a of w.alerts) expect(h).toContain(`data-vessel="${a.id}"`);
     expect(h).toContain('fmk-dot--orange');
@@ -160,7 +165,7 @@ describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
     const v = view({ watch: w });
     const since = clockOf(w.aisLastMessageAt, NOW);
     expect(v.head.level).toBe('nd');
-    expect(v.head.figure).toEqual({ value: 'n.d.', caption: `navires lents sur un câble : non évalué · AIS muet depuis ${since}`, level: null });
+    expect(slow(v)).toMatchObject({ value: 'n.d.', caption: `navires lents sur un câble : non évalué · AIS muet depuis ${since}` });
     expect(v.head.status[0]).toBe(`non évalué · AIS muet depuis ${since}`);
     const s = v.sections.find((x) => x.id === 'navires');
     expect(s?.summary).toBe('non évalué');
@@ -173,7 +178,7 @@ describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
     expect(noFile.head.status[0]).toBe('non évalué · fichier des câbles illisible');
     expect(noFile.sections.find((x) => x.id === 'navires')?.html).toContain('<p class="fmk-callout lp-callout">Fichier des câbles illisible : alertes gardées, non évaluées.</p>');
     const relay = view({ watch: { ...WATCH, evaluated: false, errors: ['Relais AIS : HTTP 503'] }, file: SMALL });
-    expect(relay.head.figure?.caption).toBe('navires lents sur un câble : non évalué · relais AIS injoignable');
+    expect(slow(relay).caption).toBe('navires lents sur un câble : non évalué · relais AIS injoignable');
     expect(visibleText(relay.sections.find((x) => x.id === 'navires')?.html ?? '')).toContain('Relais AIS injoignable : alertes non évaluées.');
     expect(visibleText(relay.sections.find((x) => x.id === 'navires')?.html ?? '')).not.toContain('AIS muet');
     expect(relay.head.status.join(' ')).not.toContain('AIS muet');
@@ -181,8 +186,8 @@ describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
   it('réponse vieillie côté client (AIS de plus de 15 min, amendement 5) : gros chiffre gardé en retard, sans couleur, pastille n.d.', () => {
     const v = view({ watch: { ...WATCH, alerts: [ALERT] }, file: SMALL, now: Date.parse('2026-10-04T15:03:00Z') });
     expect(v.head.level).toBe('nd');
-    expect(v.head.figure).toMatchObject({ value: '1', level: null });
-    expect(v.head.figure?.caption).toContain('(en retard)');
+    expect(slow(v)).toMatchObject({ value: '1', level: null });
+    expect(slow(v).caption).toContain('(en retard)');
     expect(v.head.status[0]).toBe('niveau suspendu : relevé AIS en retard');
   });
   it('réponse vieillie : les lignes de navires passent en gris, sans couleur de niveau', () => {
@@ -195,7 +200,7 @@ describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
     const muted: CableAlert = { ...ALERT, zoneMuted: true };
     const v = view({ watch: { ...WATCH, evaluated: false, slowVessels: null, alerts: [muted] }, file: SMALL });
     expect(v.head.level).toBe('nd');
-    expect(v.head.figure).toMatchObject({ value: 'n.d.', level: null });
+    expect(slow(v)).toMatchObject({ value: 'n.d.', level: null });
     const s = v.sections.find((x) => x.id === 'navires');
     expect(s?.summary).toBe('non évalué');
     expect(s?.html).not.toMatch(/fmk-dot--(?:orange|jaune|rouge)/);
@@ -234,7 +239,7 @@ describe('flux de zone muet et compte non évalué (A5, A9)', () => {
     const v = view({ watch: w });
     expect(cablesLevel(w, NOW).level).toBe('vert');
     expect(v.head.level).toBe('vert');
-    expect(v.head.figure?.value).toBe('0');
+    expect(slow(v).value).toBe('0');
     expect(v.head.status[0]).toBe(glueSovUnits(cablesLevel(w, NOW).reason));
     expect(v.head.status[0]).toContain('non évaluée (flux de la zone muet)');
     const s = v.sections.find((x) => x.id === 'navires');
@@ -249,7 +254,7 @@ describe('flux de zone muet et compte non évalué (A5, A9)', () => {
     const muted: CableAlert = { ...ALERT, id: '227999999:way/761201753', mmsi: '227999999', zoneMuted: true };
     const v = view({ watch: { ...WATCH, alerts: [ALERT, muted] }, file: SMALL });
     expect(v.head.level).toBe('orange');
-    expect(v.head.figure?.value).toBe('1');
+    expect(slow(v).value).toBe('1');
     expect(v.sections.find((x) => x.id === 'navires')?.summary).toBe(`1 à vérifier · 1${NBSP}alerte non évaluée (flux de la zone muet)`);
   });
   it('compte des navires lents non évalué (slowVessels null) : jamais « aucun navire »', () => {

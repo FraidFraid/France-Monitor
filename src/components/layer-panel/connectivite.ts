@@ -3,13 +3,14 @@
 // leurs atterrages en France ; navires lents à moins de 500 m d'un tracé, confirmés sur deux relevés AIS du serveur : « à vérifier »,
 // jamais une menace. Flux AIS muet (T3) : « non évalué », alertes gardées en gris, jamais « aucun navire ». Chaque partie porte la date
 // de sa donnée (S1) ; une panne se voit (S3).
-import type { CableAlert, CableLanding, CablesWatchResponse, SubseaCable, SubseaCablesFile } from '../../types/index.ts';
+import type { CableAlert, CableLanding, CablesWatchResponse, ConnectivityResponse, SubseaCable, SubseaCablesFile } from '../../types/index.ts';
 import { cableAlertLevel, cablesLevel, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerHeadModel, type LayerView } from './frame.ts';
+import { withConnectiviteB } from './connectivite-b.ts';
 import { departementName } from './health-format.ts';
 import {
   SOVEREIGNTY_THEME, cablesUnevaluatedWhy, capitalize, clockOf, dataMs, dateOf, formatCount, formatKnots, formatMeters, glueSovUnits, note, plural,
@@ -24,6 +25,8 @@ export const CONNECTIVITE_TITLE = 'Connectivité';
 export interface ConnectiviteViewInput {
   watch: CablesWatchResponse | null; watchError: string | null;
   file: SubseaCablesFile | null; fileError: string | null;
+  /** Phase B (tâche B26) : visibilité des grands réseaux et points d'échange ; absents : sections en « chargement… ». */
+  connectivity?: ConnectivityResponse | null; connectivityError?: string | null;
   canFocus: boolean; now: number; open: OpenFn;
 }
 
@@ -284,7 +287,7 @@ function methodSection(input: ConnectiviteViewInput): FicheSection {
 
 // ─── Assemblage ───
 
-export function buildConnectiviteView(input: ConnectiviteViewInput): LayerView {
+function buildConnectiviteViewA(input: ConnectiviteViewInput): LayerView {
   const { watch: w, watchError, file, now } = input;
   if (w === null && watchError === null) {
     return { head: { theme: SOVEREIGNTY_THEME, title: CONNECTIVITE_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
@@ -301,4 +304,13 @@ export function buildConnectiviteView(input: ConnectiviteViewInput): LayerView {
     };
   }
   return { head: headOf(w, file, now), sections, bodyHtml: watchError !== null ? sourceErrorCallout(dataMs(w.readAt), now) : undefined };
+}
+
+/**
+ * Panneau Connectivité complet (contrats § 4.1) : vue de la phase A, puis ajouts de la phase B (connectivite-b.ts) : gros chiffre des
+ * grands réseaux vus par au moins 99 % des routeurs témoins RIPE, pastille au plus haut des câbles et des réseaux, sections Réseaux et
+ * Points d'échange.
+ */
+export function buildConnectiviteView(input: ConnectiviteViewInput): LayerView {
+  return withConnectiviteB(buildConnectiviteViewA(input), input);
 }
