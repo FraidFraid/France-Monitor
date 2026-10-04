@@ -12,7 +12,7 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
-import type { FiresResponse, FloodSection, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -37,7 +37,7 @@ import {
 import {
   ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
-  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures,
 } from './deckgl/environment-map.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
@@ -152,6 +152,12 @@ import {
   LYR_FIRES_HIGHLIGHT,
   SRC_FIRES_ABROAD,
   SRC_FLOOD_STATIONS,
+  SRC_DROUGHT,
+  SRC_AIR_QUALITY,
+  SRC_QUAKES,
+  SRC_TIDE_GAUGES,
+  LYR_DROUGHT_FILL,
+  LYR_AIR_FILL,
   SRC_RADAR_PICK,
   SRC_FOREST_DANGER,
   SRC_MODIS,
@@ -8968,6 +8974,38 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
   }
 
+  // ─── Environnement, phase B (spec 2026-10-04 § 3) ───
+
+  /** Sécheresse : niveau le plus haut des arrêtés par département (VigiEau) ; départements lus une fois (getDepartmentsGeojson). */
+  async updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void> {
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now) : emptyFC());
+    this.hideEnvironmentHover();
+  }
+
+  /** Qualité de l'air : indice ATMO le plus haut du jour par département (palette L1). */
+  async updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_AIR_QUALITY) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? airDeptFeatures(geo, a, now) : emptyFC());
+    this.hideEnvironmentHover();
+  }
+
+  /** Séismes des 7 derniers jours : cercles proportionnels à la magnitude. */
+  updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
+    if (!this.map) return;
+    (this.map.getSource(SRC_QUAKES) as maplibregl.GeoJSONSource | undefined)?.setData(quakeFeatures(q, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
+  updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
+    if (!this.map) return;
+    (this.map.getSource(SRC_TIDE_GAUGES) as maplibregl.GeoJSONSource | undefined)?.setData(tideGaugeFeatures(s, v, now));
+    this.hideEnvironmentHover();
+  }
+
   /** Tronçon du panneau Crues mis en avant (null : aucun). */
   highlightFloodSection(id: string | null): void {
     if (!this.map) return;
@@ -9068,7 +9106,8 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return false;
     const ids = [
-      ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL), LYR_WEATHER_ICONS,
+      // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
+      ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
       LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_FLIGHTS, LYR_MILITARY_SHIPS, LYR_HOSPITALS,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(),
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');

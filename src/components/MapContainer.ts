@@ -14,7 +14,7 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
-import type { FiresResponse, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -582,6 +582,23 @@ export class MapContainer {
 
   highlightFloodSection(id: string | null): void {
     this.deckMap?.highlightFloodSection(id);
+  }
+
+  // ─── Environnement, phase B ───
+  updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void> {
+    return this.deckMap?.updateDroughtLayer(d, now) ?? Promise.resolve();
+  }
+
+  updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
+    return this.deckMap?.updateAirQualityLayer(a, now) ?? Promise.resolve();
+  }
+
+  updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
+    this.deckMap?.updateEarthquakesLayer(q, now);
+  }
+
+  updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
+    this.deckMap?.updateSeaLevelsLayer(s, v, now);
   }
 
   focusFloodSection(id: string): void {

@@ -2,12 +2,14 @@
 // environnement § 2 ; contrats § 4.1 et § 5) : sources, périmètres (E4), date réelle de chaque donnée (S1) ; donnée en retard (S2) :
 // « (en retard) » et couleurs de niveau retirées (« En retard : couleurs de niveau retirées de la carte. »). Teintes de catégorie
 // recopiées des jetons de main.css pour MapLibre, qui ne lit pas les variables CSS (égalité vérifiée par test).
-import type { FiresResponse, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
+import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
 import { isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilancePeriodOf } from '../../services/environment-levels.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
-import { formatAge, formatRainRate, marshallPalmerMmH, parisDayWord } from './environment-format.ts';
+import { dayMonthClock, formatAge, formatRainRate, marshallPalmerMmH, parisDayWord } from './environment-format.ts';
+import { absoluteTime } from '../fiche/kit.ts';
+import { CAT_PORT_HEX } from './traffic-legend.ts';
 import { NBSP, frNumber } from './format.ts';
 
 const PARIS = 'Europe/Paris';
@@ -225,4 +227,109 @@ export function firesLegend(f: FiresResponse | null, forestDangerFill: boolean, 
     ? ['Météo des forêts indisponible.']
     : [`Météo des forêts publiée le ${dateAt(published)}, niveaux pour ${parisDayWord(fd.j1Date, now)}${fd.season === 'hors-saison' ? ' (hors saison)' : ''}.`];
   return copy(FIRES_LEGEND, items, refresh, [...(FIRES_LEGEND.notes ?? []), ...mdfNote, ...(f !== null && f.readAt !== null && late && at !== null ? [COLORS_GONE] : [])]);
+}
+
+// ─── Phase B (tâche 30) : sécheresse, qualité de l'air, séismes, marégraphes ───
+
+/** Jeton --cat-secheresse-vigilance de main.css, copié pour MapLibre (vérifié par test). */
+export const CAT_SECHERESSE_VIGILANCE_HEX = '#7fb3d5';
+/** Séisme en France sous le seuil d'affichage (2,5) : gris clair. */
+export const QUAKE_WEAK_HEX = '#d1d1d6';
+/** Séisme hors de France (à 20 km au plus) : gris. */
+export const QUAKE_ABROAD_HEX = '#8e8e93';
+/** Sécheresse, département publié « unavailable » par VigiEau (amendement 15) : gris, hors des niveaux, jamais « aucun arrêté ». */
+export const DROUGHT_UNAVAILABLE_HEX = '#8e8e93';
+
+const B_HEADER_HEX = '#9898a8';
+
+export const DROUGHT_LEGEND: LegendCategory = {
+  id: 'drought',
+  title: 'Sécheresse',
+  items: [
+    { id: 'drought-header', label: 'Arrêtés de restriction d’eau, niveau le plus haut', color: B_HEADER_HEX, isHeader: true },
+    { id: 'drought-crise', label: 'Crise', color: levelHex('rouge'), shape: 'square' },
+    { id: 'drought-ar', label: 'Alerte renforcée', color: levelHex('orange'), shape: 'square' },
+    { id: 'drought-alerte', label: 'Alerte', color: levelHex('jaune'), shape: 'square' },
+    { id: 'drought-vigilance', label: 'Vigilance (sensibilisation, sans restriction)', color: CAT_SECHERESSE_VIGILANCE_HEX, shape: 'square' },
+    { id: 'drought-unavailable', label: 'Donnée indisponible (VigiEau « unavailable »)', color: DROUGHT_UNAVAILABLE_HEX, shape: 'square' },
+  ],
+  source: { label: 'VigiEau (ministère de la Transition écologique)' },
+  refresh: { label: `Relève toutes les 6${NBSP}h` },
+  notes: ['Département sans arrêté : non rempli. 96 départements de métropole dessinés.', 'Un stock, pas un événement : hors du score France.'],
+};
+
+export const AIR_QUALITY_LEGEND: LegendCategory = {
+  id: 'airQuality',
+  title: 'Qualité de l’air',
+  items: [
+    { id: 'air-header', label: 'Indice ATMO du jour, plus haut du département', color: B_HEADER_HEX, isHeader: true },
+    { id: 'air-1-2', label: 'Bon ou moyen (1, 2)', color: levelHex('vert'), shape: 'square' },
+    { id: 'air-3', label: 'Dégradé (3)', color: levelHex('jaune'), shape: 'square' },
+    { id: 'air-4', label: 'Mauvais (4)', color: levelHex('orange'), shape: 'square' },
+    { id: 'air-5', label: 'Très mauvais et plus (5 à 7)', color: levelHex('rouge'), shape: 'square' },
+  ],
+  source: { label: 'Atmo France (AASQA), indice ATMO par commune' },
+  refresh: { label: `Relève toutes les heures de 13${NBSP}h à 19${NBSP}h, toutes les 6${NBSP}h sinon` },
+  notes: ['Couleurs de l’échelle FranceMonitor, pas la palette officielle ATMO.', 'Département sans indice publié ce jour : non rempli (communes couvertes par les AASQA).'],
+};
+
+export const EARTHQUAKES_LEGEND: LegendCategory = {
+  id: 'earthquakes',
+  title: 'Séismes',
+  items: [
+    { id: 'quake-header', label: 'Séismes des 7 derniers jours, surface selon la magnitude', color: B_HEADER_HEX, isHeader: true },
+    { id: 'quake-5', label: 'Magnitude 5 ou plus', color: levelHex('rouge'), shape: 'circle' },
+    { id: 'quake-4', label: 'Magnitude 4 à 4,9', color: levelHex('orange'), shape: 'circle' },
+    { id: 'quake-3', label: 'Magnitude 3 à 3,9', color: levelHex('jaune'), shape: 'circle' },
+    { id: 'quake-2-5', label: 'Magnitude 2,5 à 2,9', color: levelHex('vert'), shape: 'circle' },
+    { id: 'quake-weak', label: 'Moins de 2,5', color: QUAKE_WEAK_HEX, shape: 'circle' },
+    { id: 'quake-abroad', label: `Hors de France, à 20${NBSP}km au plus`, color: QUAKE_ABROAD_HEX, shape: 'circle' },
+  ],
+  source: { label: 'BCSF-RéNaSS (EMSC en repli)' },
+  refresh: { label: `Relève toutes les 10${NBSP}min` },
+  notes: ['En France : territoire métropolitain, Corse comprise, ou eaux françaises. Magnitude 3 ou plus étiquetée.'],
+};
+
+function bClock(iso: string | null, now: number, withDate = false): string {
+  const ms = iso === null ? Number.NaN : Date.parse(iso);
+  return Number.isFinite(ms) ? absoluteTime(ms, now, 'fr', { withDate }) : 'n.d.';
+}
+
+function bDated(base: LegendCategory, data: string, late: boolean): LegendCategory {
+  return {
+    ...base, items: base.items.map((i) => ({ ...i })),
+    notes: [`Données : ${data}${late ? ' (en retard)' : ''}.`, ...(late ? ['En retard : couleurs de niveau retirées de la carte.'] : []), ...(base.notes ?? [])],
+  };
+}
+
+export function droughtLegend(d: DroughtResponse | null, now: number): LegendCategory {
+  if (!d || d.asOf === null) return bDated(DROUGHT_LEGEND, 'VigiEau indisponible', false);
+  return bDated(DROUGHT_LEGEND, `arrêtés en vigueur au ${dayMonthClock(d.asOf)}`, isEnvironmentDataLate('vigieau', d.asOf, now));
+}
+
+export function airQualityLegend(a: AirQualityResponse | null, now: number): LegendCategory {
+  if (!a) return bDated(AIR_QUALITY_LEGEND, 'Atmo France indisponible', false);
+  if (a.index.date === null) return bDated(AIR_QUALITY_LEGEND, 'indice ATMO non encore publié', false);
+  const day = `${a.index.date.slice(8, 10)}/${a.index.date.slice(5, 7)}`;
+  return bDated(AIR_QUALITY_LEGEND, `indice ATMO du ${day}, mis à jour le ${bClock(a.index.updatedAt, now, true)}`, isEnvironmentDataLate('atmo', a.index.updatedAt, now));
+}
+
+export function earthquakesLegend(q: EarthquakesResponse | null, now: number): LegendCategory {
+  if (!q || q.readAt === null) return bDated(EARTHQUAKES_LEGEND, 'BCSF-RéNaSS et EMSC indisponibles', false);
+  const source = q.source === 'EMSC' ? 'EMSC (repli)' : 'BCSF-RéNaSS';
+  return bDated(EARTHQUAKES_LEGEND, `relevé ${source} ${bClock(q.readAt, now)}`, isEnvironmentDataLate('bcsf', q.readAt, now));
+}
+
+/** Légende de la vigilance (tâche 15) complétée des marégraphes : élément et date de la dernière mesure ; jamais modifiée sur place. */
+export function withTideGauges(legend: LegendCategory, s: SeaLevelsResponse | null, now: number): LegendCategory {
+  const latest = (s?.gauges ?? []).map((g) => g.lastAt).filter((x): x is string => x !== null && Number.isFinite(Date.parse(x)))
+    .sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? null;
+  const noteText = s === null ? 'Marégraphes SHOM : non lus.'
+    : latest === null ? 'Marégraphes SHOM : aucune mesure lue.'
+      : `Marégraphes SHOM : dernière mesure ${bClock(latest, now)}${isEnvironmentDataLate('refmar', latest, now) ? ' (en retard)' : ''}.`;
+  return {
+    ...legend,
+    items: [...legend.items.map((i) => ({ ...i })), { id: 'vig-tide-gauge', label: 'Marégraphe SHOM (hauteur d’eau)', color: CAT_PORT_HEX, shape: 'circle' }],
+    notes: [...(legend.notes ?? []), noteText],
+  };
 }

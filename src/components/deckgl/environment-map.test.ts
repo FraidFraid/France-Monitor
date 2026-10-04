@@ -175,9 +175,13 @@ describe('feux : détections de France par foyer, étranger en gris clair', () =
 
 describe('sources, couches, survol', () => {
   it('sources et couches nouvelles, masquées au départ ; météo des forêts et étranger sous les feux de France', () => {
-    expect(ENV_LAYERS.map((l) => l.id)).toEqual([LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_WEATHER_ICONS, LYR_RADAR_PICK]);
+    expect(ENV_LAYERS.map((l) => l.id)).toEqual([
+      'drought-fill', 'drought-line', 'air-quality-fill', 'air-quality-line',
+      LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_WEATHER_ICONS, LYR_RADAR_PICK,
+      'quakes', 'quakes-label', 'tide-gauges',
+    ]);
     expect(ENV_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
-    expect(ENV_SOURCE_IDS).toHaveLength(4);
+    expect(ENV_SOURCE_IDS).toHaveLength(8);
     expect(ENV_LAYER_BEFORE[LYR_FOREST_DANGER_FILL]).toBe(LYR_FIRES_GLOW);
     // Un pictogramme de vigilance ne cache jamais un point de feu : il est inséré sous les feux de France.
     expect(ENV_LAYER_BEFORE[LYR_WEATHER_ICONS]).toBe(LYR_FIRES_GLOW);
@@ -190,8 +194,9 @@ describe('sources, couches, survol', () => {
     expect(envLayerOn({ fires: true }, 'weatherRadar')).toBe(false);
   });
   it('survol : couche du dessus d’abord (points, tracés, surfaces) ; infobulle préparée ; rien sans corps', () => {
-    expect(ENV_HOVER_LAYERS[0]).toBe(LYR_FIRES_POINTS);
-    expect(ENV_HOVER_LAYERS.at(-1)).toBe(LYR_WEATHER_FILL);
+    expect(ENV_HOVER_LAYERS[0]).toBe('quakes');
+    expect(ENV_HOVER_LAYERS.at(-1)).toBe('drought-fill');
+    expect(ENV_HOVER_LAYERS.indexOf(LYR_FIRES_POINTS)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_WEATHER_FILL));
     const hit = topEnvHit([{ layer: { id: LYR_WEATHER_FILL } }, { layer: { id: LYR_FLOODS } }]);
     expect(hit?.layer.id).toBe(LYR_FLOODS);
     expect(envTooltipHtml(LYR_FLOODS, { body: '<b>Têt</b>' })).toBe('<div class="hm-tip"><b>Têt</b></div>');

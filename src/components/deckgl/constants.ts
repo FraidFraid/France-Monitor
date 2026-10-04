@@ -818,3 +818,16 @@ export const DEFAULT_VIEW: MapViewState = {
 
 // France center for interconnection arcs
 export const FRANCE_CENTER: [number, number] = [2.5, 46.5];
+
+// ─── Environnement, phase B (spec 2026-10-04 § 3) ───
+export const SRC_DROUGHT = 'drought-src';
+export const LYR_DROUGHT_FILL = 'drought-fill';
+export const LYR_DROUGHT_LINE = 'drought-line';
+export const SRC_AIR_QUALITY = 'air-quality-src';
+export const LYR_AIR_FILL = 'air-quality-fill';
+export const LYR_AIR_LINE = 'air-quality-line';
+export const SRC_QUAKES = 'quakes-src';
+export const LYR_QUAKES = 'quakes';
+export const LYR_QUAKE_LABEL = 'quakes-label';
+export const SRC_TIDE_GAUGES = 'tide-gauges-src';
+export const LYR_TIDE_GAUGES = 'tide-gauges';
