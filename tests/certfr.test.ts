@@ -154,7 +154,7 @@ describe('statut officiel (amendement 7, O1 et O3), page liste du 04/10/2026', (
     expect(list.find((e) => e.ref === 'CERTFR-2026-ALE-008')).toEqual({ ref: 'CERTFR-2026-ALE-008', publishedAt: '2026-07-22', status: 'cloturee', closedAt: '2026-09-22' });
   });
   it('statut illisible : l’alerte reste dans le résultat avec status null, jamais « en cours » ; applyAlertList garde le statut déjà lu', () => {
-    const html = fx('certfr-alerte-liste.html').replace('Alerte en cours', 'Statut à venir');
+    const html = fx('certfr-alerte-liste.html').replaceAll('Alerte en cours', 'Statut à venir');
     const unreadable = parseCertFrAlertList(html);
     expect(unreadable).toHaveLength(10);
     expect(unreadable.filter((e) => e.status === null).map((e) => e.ref)).toEqual(['CERTFR-2026-ALE-011', 'CERTFR-2026-ALE-010', 'CERTFR-2026-ALE-009']);
