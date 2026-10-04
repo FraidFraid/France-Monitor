@@ -18,7 +18,8 @@ import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { dispatch } from '../../api/_utils/dispatch.js';
 import { addResponseHelpers, addQuery, readBody } from './vercel-compat.mjs';
-import { startTrafficCollectors } from './traffic-collectors.mjs';
+import { COLLECTORS, startTrafficCollectors } from './traffic-collectors.mjs';
+import { ENVIRONMENT_COLLECTORS } from './environment-collectors.mjs';
 
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 3000;
@@ -163,8 +164,8 @@ if (isMainModule) {
     console.log(`[prod-server] écoute sur http://${host}:${port}`);
   });
 
-  // Collectes serveur à quota (TomTom, OpenSky) : une seule pour tous les visiteurs (spec trafic, T4).
-  const stopCollectors = startTrafficCollectors();
+  // Collectes serveur : TomTom et OpenSky (quota, spec trafic T4), FIRMS et archive de la vigilance (spec environnement § 2.4, E5).
+  const stopCollectors = startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS] });
 
   let shuttingDown = false;
   /** @param {string} signal */

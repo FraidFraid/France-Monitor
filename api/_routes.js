@@ -14,6 +14,7 @@ export const ROUTES = {
   '/api/energy/ecowatt': () => import('./_handlers/energy/ecowatt.js'),
   '/api/energy/eolien': () => import('./_handlers/energy/eolien.js'),
   '/api/energy/gas-pir': () => import('./_handlers/energy/gas-pir.js'),
+  '/api/environment/fires': () => import('./_handlers/environment/fires.js'),
   '/api/environment/floods': () => import('./_handlers/environment/floods.js'),
   '/api/environment/vigilance': () => import('./_handlers/environment/vigilance.js'),
   '/api/events/changes': () => import('./_handlers/events/changes.js'),
