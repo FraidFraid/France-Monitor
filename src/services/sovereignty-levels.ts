@@ -13,7 +13,7 @@ import { LEVEL_RANK, type VigilanceLevel } from './vigilance.ts';
 export type { LayerLevel, LevelVerdict };
 
 export type SovereigntySource =
-  | 'adsb-mil' | 'ais-cables' | 'certfr' | 'kev' | 'ransomware' | 'hibp' | 'cybermalveillance'
+  | 'adsb-mil' | 'ais-cables' | 'certfr' | 'kev' | 'ransomware' | 'hibp' | 'cybermalveillance' | 'vigipirate'
   | 'adsb-gnss' | 'noaa' | 'ripestat' | 'gels';
 
 /** Minutes après la date de référence de chaque source au-delà desquelles la donnée est « en retard » (tableau S2 de la spec). */
@@ -25,6 +25,7 @@ export const SOVEREIGNTY_LATE_AFTER_MIN: Readonly<Record<SovereigntySource, numb
   ransomware: 24 * 60,       // lastModified + 24 h
   hibp: 26 * 60,             // hibp.readAt + 26 h
   cybermalveillance: 6 * 60, // readAt + 6 h (lecture horaire, même règle que le CERT-FR)
+  vigipirate: 26 * 60,       // readAt + 26 h : relecture quotidienne de la page du SGDSN (O14), nouvel essai une heure après un échec ; la saisie n'est jamais en retard
   'adsb-gnss': 40,           // readAt (dernière collecte complète) + 40 min
   noaa: 3 * 60,              // scalesAt + 3 h
   ripestat: 10 * 60,         // snapshotAt (query_time) + 10 h

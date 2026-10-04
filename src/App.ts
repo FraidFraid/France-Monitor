@@ -54,7 +54,8 @@ import type { EolienPanel } from './components/EolienPanel.ts';
 import { OilPanel } from './components/OilPanel.ts';
 import type { DromEnergyPanel } from './components/DromEnergyPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
-import type { DefensePanel } from './components/DefensePanel.ts';
+import type { DefensePanel, DefensePanelState } from './components/DefensePanel.ts';
+import type { ConnectivityPanel, ConnectivityPanelState } from './components/ConnectivityPanel.ts';
 import type { WeatherRadarPanel, RadarPanelState } from './components/WeatherRadarPanel.ts';
 import type { FiresPanelState } from './components/FiresPanel.ts';
 import type { MaritimePanel } from './components/MaritimePanel.ts';
@@ -70,8 +71,7 @@ import {
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
-// ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadStaticData()
-import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
+// ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
 import { fetchMilitaryFlights } from './services/military-flights.ts';
 import { detectGpsJammingSignals } from './services/gps-jamming.ts';
@@ -121,9 +121,44 @@ import {
   AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend, withFillMask,
   earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
 } from './components/layer-panel/environment-legend.ts';
+// Souveraineté (spec 2026-10-04 souveraineté ; contrats § 4.4) : aéronefs militaires, veille des câbles et vigilance cyber lus au démarrage
+// et relevés sans arrêt (score, arbitrage 21) ; panneaux, carte, légendes et panneau des sources datés par leur donnée.
+import { fetchDefenseOsmWorks, fetchMilitary, mergeMilitary, militaryStatus, type MilitaryState } from './services/sovereignty-military.ts';
+import { cablesStatus, fetchCables, mergeCables, type CablesState } from './services/sovereignty-cables.ts';
+import { cyberStatus, fetchCyber, mergeCyber, type CyberPart, type SovCyberState } from './services/sovereignty-cyber.ts';
+import {
+  fetchVigipirateCheck, mergeVigipirateCheck, vigipirateCheckStatus, type VigipirateCheckState,
+} from './services/sovereignty-vigipirate.ts';
+import {
+  SOVEREIGNTY_ALWAYS_POLLED, SOVEREIGNTY_LAYER_KEYS, SOVEREIGNTY_LAYER_SOURCES, SOVEREIGNTY_POLL_MS, SOVEREIGNTY_SOURCE_NAMES,
+  hasActiveSovereignty, sovereigntyReportSources, type SovereigntyLayerKey,
+} from './config/sovereignty-sources.ts';
+import {
+  CONNECTIVITY_LEGEND, CYBER_LEGEND, DEFENSE_LEGEND, connectivityLegend, cyberLegend, defenseLegend,
+} from './components/layer-panel/sovereignty-legend.ts';
+import { findShipByKey, navyLiveState } from './components/layer-panel/navy.ts';
+import type { DefenseSitesSummary } from './components/layer-panel/defense.ts';
+import {
+  LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE,
+  LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
+} from './components/deckgl/constants.ts';
 
 /** Clé d'une des couches Environnement (un panneau, une relève, une légende chacune). */
 const isEnvironmentLayerKey = (key: keyof MapLayers): key is EnvironmentLayerKey => (ENVIRONMENT_LAYER_KEYS as readonly string[]).includes(key);
+/** Clé d'une des trois couches Souveraineté (un panneau, une relève, une légende chacune ; contrats § 4.4 point 2). */
+const isSovereigntyLayerKey = (key: keyof MapLayers): key is SovereigntyLayerKey => (SOVEREIGNTY_LAYER_KEYS as readonly string[]).includes(key);
+/** Lignes cyber du panneau des sources (arbitrage 22) : partie de la réponse qui date chaque ligne, nom affiché. */
+const CYBER_STATUS_PARTS: ReadonlyArray<readonly [CyberPart, string]> = [
+  ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'],
+  ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
+];
+/** Ligne de la relecture quotidienne de la page Vigipirate du SGDSN (O14, arbitrage du contrôleur) ; la saisie n'a pas de ligne. */
+const VIGIPIRATE_CHECK_SOURCE = 'Vigipirate (page du SGDSN)';
+/** Sites de défense avant la lecture de la liste interne : jamais affichés (ensureDefensePanel attend loadDefenseSites). */
+const NO_DEFENSE_SITES: DefenseSitesSummary = {
+  curated: { total: 0, byType: { air: 0, navy: 0, army: 0, joint: 0, fortification: 0, other: 0 }, overseas: 0, abroad: 0 },
+  osm: { meta: null, error: null, shown: false },
+};
 // buildHydraulicBackboneAssets (+ config hydraulic-backbone-official ~1200 l.) chargé
 // dynamiquement dans refreshHydraulicLayer() — sort la grosse config du chunk critique.
 import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
@@ -173,12 +208,7 @@ import type { UrgencesPanel } from './components/UrgencesPanel.ts';
 import type { AccesSoinsPanel } from './components/AccesSoinsPanel.ts';
 import type { HopitauxPanel } from './components/HopitauxPanel.ts';
 import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
-import {
-  DEFAULT_THREAT_EVENT_FILTERS,
-  fetchThreatMapEvents,
-  filterThreatEvents,
-  type ThreatEventFilters,
-} from './services/threat-map.ts';
+import { fetchThreatMapEvents } from './services/threat-map.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 // oil.ts (~1250 l.) chargé dynamiquement dans loadOil() — sort du chunk critique
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
@@ -233,8 +263,6 @@ const TRAFFIC_POLL_MS: Readonly<Record<TrafficLayerKey, number>> = {
 
 // Cap on news items kept in memory / pushed to map & panels (after date sort).
 const MAX_NEWS_ITEMS = 500;
-// GPS jamming + military surge analyses are throttled (positions stay at 5 s).
-const MILITARY_DETECTION_THROTTLE_MS = 30_000;
 // Inter-batch delays for background RSS augmentation pipelines.
 const GEOCODE_BATCH_DELAY_MS = 50;
 const SUMMARIZE_BATCH_DELAY_MS = 50;
@@ -554,8 +582,10 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'trafficAir', label: 'Trafic aérien', icon: 'plane', layerKeys: ['trafficAir'] },
   { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
   { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
-  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
   { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
+  { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
+  // threatMap retirée à A17 avec MapLayers.threatMap (contrats § 4.3).
+  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
   { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
   {
     id: 'outagesElec',
@@ -590,7 +620,12 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'SIRI SX': 'trafficRail',
   'AIS maritime': 'trafficMaritime',
   'AIS instantané': 'trafficMaritime',
-  'Cyber': 'cyber',
+  'CERT-FR': 'cyber',
+  'CISA KEV': 'cyber',
+  'Ransomware.live': 'cyber',
+  'Have I Been Pwned': 'cyber',
+  'Cybermalveillance.gouv.fr': 'cyber',
+  'Câbles et AIS': 'subseaCables',
   'Écowatt RTE': 'powerGrid',
   'ARCEP Réseau Mobile': 'outagesElec',
   'Enedis / Pannes Électricité': 'outagesElec',
@@ -598,7 +633,8 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'IODA Internet': 'outagesElec',
   'Réseau Gaz / EcoGaz': 'gasNetwork',
   'Pétrole SDES / INSEE': 'oilNetwork',
-  'Vols Militaires ADS-B': 'military',
+  'Vols militaires': 'military',
+  'Vigipirate (page du SGDSN)': 'military',
   'Santé publique France': 'healthOscour',
   'Odissé alertes': 'health',
   'Sentinelles': 'health',
@@ -732,77 +768,6 @@ const NEWS_LEGEND: LegendCategory = {
   ],
 };
 
-
-const MILITARY_LEGEND: LegendCategory = {
-  id: 'military',
-  title: 'Défense : Activité Militaire',
-  columns: 2,
-  items: [
-    // Types d'aéronefs (icône avion)
-    { id: 'fighter', label: 'Chasseur', color: '#ff3b30', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'transport', label: 'Transport', color: '#4a9eff', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'tanker', label: 'Ravitailleur', color: '#ff9500', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'awacs', label: 'AWACS / ISR', color: '#a855f7', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'patrol', label: 'Patrouille maritime', color: '#00d4c8', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'helicopter', label: 'Hélicoptère', color: '#22c55e', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'drone', label: 'Drone / UAV', color: '#ff6b9d', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'trainer', label: 'Entraînement', color: '#ffcc00', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'liaison', label: 'Liaison', color: '#9898a8', shape: 'circle', icon: fmIcon('plane') },
-    // Bases (triangles ▲)
-    { id: 'base-air', label: 'Base aérienne', color: '#4a9eff', shape: 'triangle' },
-    { id: 'base-navy', label: 'Base navale', color: '#00d4c8', shape: 'triangle' },
-    { id: 'base-army', label: 'Base terrestre', color: '#22c55e', shape: 'triangle' },
-    { id: 'base-joint', label: 'Base interarmées', color: '#a855f7', shape: 'triangle' },
-    { id: 'base-fortification', label: 'Fortification', color: '#78716c', shape: 'triangle' },
-    { id: 'base-other', label: 'Autre site militaire', color: '#f59e0b', shape: 'triangle' },
-    // Navires & zones
-    { id: 'ship', label: 'Navire Marine Nationale', color: '#00d4c8', shape: 'square', icon: fmIcon('anchor') },
-    { id: 'zone', label: 'Zone restreinte (RTF/P/D)', color: '#ff2d55', shape: 'zone' },
-  ],
-  source: {
-    label: 'ADS-B Exchange / OpenSky / Marine Traffic',
-  },
-  refresh: {
-    label: 'Temps réel (~30s)'
-  }
-};
-
-const SUBSEA_CABLES_LEGEND: LegendCategory = {
-  id: 'subseaCables',
-  title: 'Connectivité sous-marine',
-  items: [
-    { id: 'subsea-route', label: 'Liaison sous-marine', color: '#22c7ff', icon: '━━━' },
-    { id: 'subsea-landing', label: 'Point d’atterrage (contour blanc = repère visuel)', color: '#7dd3fc', shape: 'circle', borderColor: '#ffffff', borderWidth: 2 },
-  ],
-  source: {
-    label: 'SubmarineCableMap / jeux publics consolidés',
-  },
-  refresh: {
-    label: 'Tracés statiques, enrichissement dérivé local'
-  }
-};
-
-const CYBER_LEGEND: LegendCategory = {
-  id: 'cyber',
-  title: 'Pression cyber & incidents',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 2,
-  items: [
-    { id: 'critical', label: 'Critique / crise', color: '#EF4444', shape: 'circle' },
-    { id: 'high', label: 'Élevée', color: '#F97316', shape: 'circle' },
-    { id: 'medium', label: 'Modérée', color: '#F59E0B', shape: 'circle' },
-    { id: 'low', label: 'Faible / veille', color: '#3B82F6', shape: 'circle' },
-  ],
-  source: {
-    label: 'Leaks FR / CERT-NVD / ransomware / Shodan / Censys',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: '~5 min'
-  },
-  notes: ['Couleur = sévérité maximale affichée sur la carte ; les clusters héritent du signal le plus fort.'],
-};
 
 // Couleur des régions = solde production/consommation éco2mix (teintes de REGION_BALANCE_COLORS,
 // deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
@@ -1272,23 +1237,23 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Défense / Militaire',
-    legend: MILITARY_LEGEND,
+    label: 'Défense',
+    legend: DEFENSE_LEGEND,
   },
   {
     id: 'subseaCables',
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Connectivité sous-marine',
-    legend: SUBSEA_CABLES_LEGEND,
+    label: 'Connectivité',
+    legend: CONNECTIVITY_LEGEND,
   },
   {
     id: 'cyber',
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Vigilance Cyber',
+    label: 'Vigilance cyber',
     legend: CYBER_LEGEND,
   },
   {
@@ -1499,7 +1464,6 @@ export class App {
   private currentCommodityData: CommodityData[] = [];
   private currentCyberData: CyberState | null = null;
   private currentThreatEvents: ThreatEvent[] = [];
-  private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
 
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
@@ -1519,6 +1483,15 @@ export class App {
   private currentInfraState: InfraNetworkState | null = null;
   private currentCitizenZones: import('./types/index.ts').OutageZoneCollection | null = null;
   private defensePanel: DefensePanel | null = null;
+  private connectivityPanel: ConnectivityPanel | null = null;
+  /** Souveraineté (spec 2026-10-04 souveraineté) : dernières lectures des services, partagées par les panneaux, la carte et (A16) le score. */
+  private currentMilitary: MilitaryState | null = null;
+  private currentCables: CablesState | null = null;
+  private currentSovCyber: SovCyberState | null = null;
+  /** Relecture quotidienne de la page Vigipirate du SGDSN par le serveur (O14), lue avec la Défense. */
+  private currentVigipirate: VigipirateCheckState | null = null;
+  /** Sites du panneau Défense : liste interne (lue avant le panneau) et ouvrages OpenStreetMap (option lue à la première demande). */
+  private defenseSites: DefenseSitesSummary = NO_DEFENSE_SITES;
   private currentDefenseAlerts: DefenseAlert[] = [];
   private currentAisAnomalies: AisAnomaly[] = [];
   private currentJammingSignals: GpsJammingSignal[] = [];
@@ -1618,6 +1591,8 @@ export class App {
   private nuclearPanelPromise: Promise<void> | null = null;
   private outagesPanelPromise: Promise<void> | null = null;
   private defensePanelPromise: Promise<void> | null = null;
+  private connectivityPanelPromise: Promise<void> | null = null;
+  private defenseSitesPromise: Promise<void> | null = null;
   private hasRestoredActiveLayerPanels = false;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
   // ── Single floating panel (audit UI 2026-09 §5.3 point 3) ────────────────
@@ -1631,7 +1606,6 @@ export class App {
   private suppressFirstLoadPanelAutoOpen = false;
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
-  private _intervalMilitaryFlights: PausableTimer | null = null;
   private _intervalShips: PausableTimer | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
   private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
@@ -1648,6 +1622,8 @@ export class App {
   private trafficPolls: Partial<Record<TrafficLayerKey, PausableTimer>> = {};
   /** Relèves des panneaux Environnement : sans arrêt pour la vigilance, les crues et les feux (score), sinon couche active ou panneau ouvert. */
   private environmentPolls: Partial<Record<EnvironmentLayerKey, PausableTimer>> = {};
+  /** Relèves des couches Souveraineté : sans arrêt pour les trois (score, SOVEREIGNTY_ALWAYS_POLLED). */
+  private sovereigntyPolls: Partial<Record<SovereigntyLayerKey, PausableTimer>> = {};
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -1673,7 +1649,6 @@ export class App {
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
-    this.removePausableInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null;
     this.removePausableInterval(this._intervalShips); this._intervalShips = null;
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
     if (this._intervalNuclear !== null) { clearInterval(this._intervalNuclear); this._intervalNuclear = null; }
@@ -1691,6 +1666,8 @@ export class App {
     this.trafficPolls = {};
     for (const key of ENVIRONMENT_LAYER_KEYS) this.removePausableInterval(this.environmentPolls[key] ?? null);
     this.environmentPolls = {};
+    for (const key of SOVEREIGNTY_LAYER_KEYS) this.removePausableInterval(this.sovereigntyPolls[key] ?? null);
+    this.sovereigntyPolls = {};
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -2210,7 +2187,7 @@ export class App {
     normalized.traffic = normalized.trafficRoad || normalized.trafficMaritime || normalized.trafficAir || (normalized.trafficRail ?? false);
     normalized.energySystems = hasActiveEnergySystems(normalized);
     normalized.environmentGroup = hasActiveEnvironment(normalized);
-    normalized.sovereignty = normalized.military || normalized.subseaCables || normalized.cyber;
+    normalized.sovereignty = hasActiveSovereignty(normalized);
     normalized.outages = normalized.outagesElec || normalized.outagesTelecom || normalized.outagesInternet || normalized.outagesCloud || normalized.outages;
     return normalized;
   }
@@ -2289,7 +2266,7 @@ export class App {
 
     // ── Polling — start immediately, independent of layer data
     this.startRSSPipeline();
-    this.startMilitaryPolling();
+    this.startShipsPolling();
     // Finance/commodities strips render under the map and aren't part of the
     // critical first paint — defer their startup (immediate fetch + interval)
     // until the browser is idle so they don't compete with critical-layer
@@ -2311,6 +2288,8 @@ export class App {
     for (const key of TRAFFIC_LAYER_KEYS) this.syncTrafficPolling(key);
     // Relèves Environnement : vigilance, crues et feux sans arrêt (score, situations) ; le radar si sa couche est active.
     for (const key of ENVIRONMENT_LAYER_KEYS) this.syncEnvironmentPolling(key);
+    // Relèves Souveraineté : aéronefs militaires, veille des câbles et cyber sans arrêt (score, arbitrage 21).
+    for (const key of SOVEREIGNTY_LAYER_KEYS) this.syncSovereigntyPolling(key);
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -2369,6 +2348,10 @@ export class App {
     // Lectures qui ne rejettent jamais (environment-source.ts) : elles remplissent le cache par URL relu par loadVigilance et loadFloods.
     void fetchVigilance(null);
     void fetchFloods(null);
+    // Souveraineté : lectures qui ne rejettent jamais, relues par loadMilitary, loadCables et loadCyber (cache par URL).
+    void fetchMilitary(null);
+    void fetchCables(null);
+    void fetchCyber(null);
     fetchNuclearUnavailabilities().catch(() => {});
     fetchRTEIIPIncidents().catch(() => {});
     fetchFromIngestApi().catch(() => {});
@@ -2967,14 +2950,8 @@ export class App {
 
     // ElusPanel disabled
 
-    this.addGlobalListener(document, 'open-cyber-panel', () => {
-      // Fired from BarometerWidget's tooltip button, independent of the
-      // 'cyber' layer being toggled on — ensure the chunk is loaded first.
-      if (!this.currentCyberData) void this.loadCyber();
-      void this.ensureCyberPanel().then(() => {
-        this.cyberPanel?.show(this.currentCyberData);
-      });
-    });
+    // Bouton du baromètre et du poste de situation : panneau Vigilance cyber, même couche éteinte (contrats § 4.4 point 18).
+    this.addGlobalListener(document, 'open-cyber-panel', () => this.showSovereigntyPanel('cyber'));
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
@@ -3150,8 +3127,11 @@ export class App {
       void this.ensureAirTrafficPanel().then(() => this.openTrafficPanel('trafficAir'));
     } else if (name === 'AIS maritime' || name === 'AIS instantané') {
       void this.ensureMaritimePanel().then(() => this.openTrafficPanel('trafficMaritime'));
-    } else if (name === 'Cyber') {
-      this.cyberPanel?.show(this.currentCyberData);
+    } else if (SOURCE_NAME_TO_FLOATING_PANEL[name] === 'cyber') {
+      // Cinq sources de la Vigilance cyber (arbitrage 22) : panneau créé à la demande, couche éteinte possible.
+      void this.ensureCyberPanel().then(() => this.openSovereigntyPanel('cyber'));
+    } else if (name === 'Câbles et AIS') {
+      void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));
     } else if (name === 'Écowatt RTE') {
       this.energyPanel?.show(this.currentEcowattResponse);
     } else if (
@@ -3171,8 +3151,10 @@ export class App {
       if (this.currentGasData) this.gasPanel?.show(this.currentGasData, this.currentBiogasState);
     } else if (name === 'Pétrole SDES / INSEE') {
       if (this.currentOilData) this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
-    } else if (name === 'Vols Militaires ADS-B') {
-      this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
+    } else if (name === 'Vols militaires') {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === VIGIPIRATE_CHECK_SOURCE) {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
     } else if (name === 'Santé publique France') {
       // Panneaux Santé créés à la demande : la source peut être cliquée avant toute activation de couche.
       void this.ensureUrgencesPanel().then(() => this.urgencesPanel?.show(this.currentHealth));
@@ -3215,8 +3197,9 @@ export class App {
       'trafficAir',
       'trafficMaritime',
       'trafficRail',
-      'cyber',
       'military',
+      'subseaCables',
+      'cyber',
       'stability',
       'outagesElec',
       'outagesTelecom',
@@ -3258,6 +3241,8 @@ export class App {
       effective.trafficRail;
     // Comme `traffic` : sans le maître dérivé, une couche Environnement seule ne s'afficherait pas (enfants dependsOnGroup).
     effective.environmentGroup = hasActiveEnvironment(effective);
+    // Même raison pour la Souveraineté : une couche enfant seule restaurée s'affiche.
+    effective.sovereignty = hasActiveSovereignty(effective);
     const groupsOn = new Set(
       LAYER_CONFIGS
         .filter(l => l.role === "groupMaster" && effective[l.id])
@@ -3310,6 +3295,7 @@ export class App {
     this.refreshLegendVisibility();
     this.refreshTrafficLegend();
     this.refreshEnvironmentLegend();
+    this.refreshSovereigntyLegend();
 
     // Persist layer state across sessions
     try {
@@ -3336,7 +3322,7 @@ export class App {
       });
       if (this.echoTopsEnabled) this.loadRadarManifest().catch((error) => console.error('[App] Manifeste radar indisponible', error));
     }
-    // AIS relay socket: opened lazily at boot (startMilitaryPolling) only if
+    // AIS relay socket: opened lazily at boot (startShipsPolling) only if
     // trafficMaritime/military was already active. connectAis() is idempotent
     // (no-op if already connecting/connected), so this just covers the case
     // where the layer is switched on later in the session (perf audit §6 item 4).
@@ -3394,10 +3380,7 @@ export class App {
       }
     }
 
-    if (key === 'military' || key === 'subseaCables' || key === 'cyber' || key === 'threatMap') {
-      this.activeLayers.sovereignty =
-        this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
-    }
+    if (isSovereigntyLayerKey(key)) this.activeLayers.sovereignty = hasActiveSovereignty(this.activeLayers);
     if (ENERGY_SYSTEM_LAYER_KEYS.includes(key as typeof ENERGY_SYSTEM_LAYER_KEYS[number])) {
       this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
     }
@@ -3422,7 +3405,7 @@ export class App {
   /**
    * Show or hide the panel that corresponds to the toggled layer.
    *
-   * Some layers have no panel (subseaCables: visual-only).
+   * Chaque couche Souveraineté a son panneau (Connectivité comprise).
    * Some panels are shared across child layers (outages tab auto-switch).
    * Some trigger lazy data loads if the data hasn't been fetched yet.
    *
@@ -3449,6 +3432,16 @@ export class App {
       } else {
         this.getFloatingPanelInstance(key)?.hide({ silent: true });
         this.syncTrafficPolling(key);
+      }
+    }
+    // Panneaux Souveraineté (spec 2026-10-04 souveraineté § 2) : à l'ouverture, source lue et relève réglée ; à l'extinction, masquage
+    // silencieux et relève réglée (les trois couches restent relevées pour le score, arbitrage 21).
+    if (isSovereigntyLayerKey(key)) {
+      if (enabled) {
+        this.openSovereigntyPanel(key);
+      } else {
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncSovereigntyPolling(key);
       }
     }
 
@@ -3499,44 +3492,13 @@ export class App {
         this.hopitauxPanel?.hide({ silent: true });
       }
     } else if (key === 'sovereignty') {
-      // Group master: show/hide child panels based on which sub-layers are active
+      // Maître éteint : les trois panneaux Souveraineté masqués (silencieux : les couches gardent leur état), relèves réglées.
       if (!this.activeLayers.sovereignty) {
-        this.cyberPanel?.hide();
-        this.defensePanel?.hide();
-      } else {
-        if (this.activeLayers.cyber) {
-          if (!this.currentCyberData) this.loadCyber();
-          this.cyberPanel?.show(this.currentCyberData);
-        }
-        if (this.activeLayers.military) {
-          this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
+        for (const sovKey of SOVEREIGNTY_LAYER_KEYS) {
+          this.getFloatingPanelInstance(sovKey)?.hide({ silent: true });
+          this.syncSovereigntyPolling(sovKey);
         }
       }
-    } else if (key === 'cyber') {
-      if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        if (!this.currentCyberData) this.loadCyber(); // lazy-load on first enable
-        void this.loadThreatMapEvents();
-        this.cyberPanel?.show(this.currentCyberData);
-      } else {
-        this.cyberPanel?.hide();
-      }
-    } else if (key === 'threatMap') {
-      if (this.activeLayers.threatMap) {
-        void this.loadThreatMapEvents();
-        if (!this.currentCyberData) void this.loadCyber();
-        this.cyberPanel?.selectTab('incidents');
-        if (this.cyberPanel && !this.cyberPanel.isVisible() && this.activeLayers.sovereignty) {
-          this.cyberPanel.show(this.currentCyberData);
-        }
-      }
-    } else if (key === 'military') {
-      if (this.activeLayers.military && this.activeLayers.sovereignty) {
-        this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      } else {
-        this.defensePanel?.hide();
-      }
-    } else if (key === 'subseaCables') {
-      // Visual-only layer — no panel to toggle.
     } else if (key === 'powerGrid') {
       if (this.activeLayers.powerGrid) this.energyPanel?.show(this.currentEcowattResponse);
       else this.energyPanel?.hide();
@@ -4300,6 +4262,338 @@ export class App {
     ]);
   }
 
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 4.4) : Défense, Connectivité, Vigilance cyber ───
+
+  private ensureDefensePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    // La liste interne des sites est lue avant le panneau : la section « Sites de défense » n'affiche jamais un compte vide.
+    this.defensePanelPromise ??= Promise.all([import('./components/DefensePanel.ts'), this.loadDefenseSites()]).then(([{ DefensePanel }]) => {
+      const panel = new DefensePanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('military'));
+      // Lignes recentrées sur la carte WebGL seulement (mobile : aucun rendu de la souveraineté sur la carte). O10 : aéronefs d'autres
+      // nations et urgences montrées seulement ; un appareil français ou masqué n'a pas de position.
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusAircraft((aircraft) => this.mapContainer?.flyTo(aircraft.lon, aircraft.lat, 9));
+        panel.setOnFocusEmergency((emergency) => this.mapContainer?.flyTo(emergency.lon, emergency.lat, 9));
+        panel.setOnFocusNavy((ship) => this.mapContainer?.flyTo(ship.lon, ship.lat, 10));
+      }
+      panel.setOnOsmWorks((on) => this.setOsmWorks(on));
+      panel.mount();
+      this.defensePanel = panel;
+      if (this.activeLayers.military) panel.show(this.defensePanelState());
+    });
+    return this.defensePanelPromise;
+  }
+
+  private ensureConnectivityPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.connectivityPanelPromise ??= import('./components/ConnectivityPanel.ts').then(({ ConnectivityPanel }) => {
+      const panel = new ConnectivityPanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('subseaCables'));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusCable((id) => this.mapContainer?.highlightCable(id));
+        panel.setOnFocusLanding((landing) => this.mapContainer?.flyTo(landing.lon, landing.lat, 10));
+        panel.setOnFocusVessel((alert) => this.mapContainer?.flyTo(alert.lon, alert.lat, 11));
+      }
+      panel.mount();
+      this.connectivityPanel = panel;
+      if (this.activeLayers.subseaCables) panel.show(this.connectivityPanelState());
+    });
+    return this.connectivityPanelPromise;
+  }
+
+  private ensureCyberPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.cyberPanelPromise ??= import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
+      const panel = new CyberPanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('cyber'));
+      panel.mount();
+      this.cyberPanel = panel;
+      if (this.activeLayers.cyber) panel.show(this.currentSovCyber);
+    });
+    return this.cyberPanelPromise;
+  }
+
+  /** Panneau d'une couche Souveraineté, créé à la demande. */
+  private ensureSovereigntyPanel(key: SovereigntyLayerKey): Promise<void> {
+    switch (key) {
+      case 'military': return this.ensureDefensePanel();
+      case 'subseaCables': return this.ensureConnectivityPanel();
+      case 'cyber': return this.ensureCyberPanel();
+    }
+  }
+
+  /** Croix d'un panneau Souveraineté : éteint sa couche comme une case décochée ; panneau ouvert couche éteinte : relève réglée. */
+  private closeSovereigntyLayer(key: SovereigntyLayerKey): void {
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncSovereigntyPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Souveraineté sur ses dernières données, lit aussitôt sa source et règle sa relève : case cochée, puce,
+   * restauration, clic sur la carte, ligne du panneau des sources ou bouton du baromètre (couche éteinte possible).
+   */
+  private openSovereigntyPanel(key: SovereigntyLayerKey): void {
+    switch (key) {
+      case 'military': this.defensePanel?.show(this.defensePanelState()); break;
+      case 'subseaCables': this.connectivityPanel?.show(this.connectivityPanelState()); break;
+      case 'cyber': this.cyberPanel?.show(this.currentSovCyber); break;
+    }
+    // Défense : la Marine nationale vient du WebSocket AIS du navigateur (connectAis() est idempotent).
+    if (key === 'military') connectAis();
+    this.loadSovereigntySource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncSovereigntyPolling(key);
+  }
+
+  /** Panneau d'une couche Souveraineté ouvert depuis la carte ou le baromètre, couche éteinte possible : un seul panneau à la fois. */
+  private showSovereigntyPanel(key: SovereigntyLayerKey): void {
+    this.syncV2ColumnVars();
+    this.hideAllFloatingPanels(key);
+    void this.ensureSovereigntyPanel(key).then(() => this.openSovereigntyPanel(key));
+    this.currentFloatingPanelId = key;
+    this.refreshFloatingPanelSwitcher();
+  }
+
+  /** Source du panneau d'une couche Souveraineté. */
+  private loadSovereigntySource(key: SovereigntyLayerKey): Promise<void> {
+    switch (key) {
+      case 'military': return this.loadMilitary();
+      case 'subseaCables': return this.loadCables();
+      case 'cyber': return this.loadCyber();
+    }
+  }
+
+  /** Relève voulue : les trois couches nourrissent le score (SOVEREIGNTY_ALWAYS_POLLED, arbitrage 21) ; sinon couche active ou panneau ouvert. */
+  private sovereigntyPollWanted(key: SovereigntyLayerKey): boolean {
+    if (SOVEREIGNTY_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    return this.getFloatingPanelInstance(key)?.isVisible?.() ?? false;
+  }
+
+  /** Démarre ou arrête la relève pausable d'une couche Souveraineté (SOVEREIGNTY_POLL_MS), comme syncEnvironmentPolling. */
+  private syncSovereigntyPolling(key: SovereigntyLayerKey): void {
+    const timer = this.sovereigntyPolls[key];
+    if (!this.sovereigntyPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.sovereigntyPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.sovereigntyPolls[key] = this.registerPausableInterval(() => {
+      if (!this.sovereigntyPollWanted(key)) {
+        this.syncSovereigntyPolling(key);
+        return;
+      }
+      this.loadSovereigntySource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, SOVEREIGNTY_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une source Souveraineté : une seule à la fois par couche (démarrage, ouverture, relève : un second appelant rejoint la
+   * lecture en cours) ; si le service ne se charge pas, toutes les lignes de la couche le disent (S3).
+   */
+  private readSovereignty(key: SovereigntyLayerKey, read: () => Promise<void>): Promise<void> {
+    return dedupe(`sovereignty:${key}`, () => read().catch((err: unknown) => {
+      this.markSovereigntySourcesFailed(key, err);
+      throw err;
+    }));
+  }
+
+  /** Lignes d'une couche Souveraineté quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error ». */
+  private markSovereigntySourcesFailed(key: SovereigntyLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of SOVEREIGNTY_LAYER_SOURCES[key]) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
+  /** Historique de qualité des sources Souveraineté hors Watchdog (même store que la santé, les Trafics et l'Environnement). */
+  private recordSovereigntySamples(now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => SOVEREIGNTY_SOURCE_NAMES.includes(s.name)) ?? [], now);
+  }
+
+  /**
+   * Légendes Souveraineté datées par leur donnée (S1) puis montrées selon leur couche ; avant toute lecture, la légende de base (jamais
+   * « indisponible » pour une source qui charge).
+   */
+  private refreshSovereigntyLegend(): void {
+    if (!this.mapLegend) return;
+    const now = Date.now();
+    const shown = (key: SovereigntyLayerKey): boolean => this.activeLayers.sovereignty && this.activeLayers[key];
+    this.mapLegend.setCategories([
+      {
+        ...(this.currentMilitary
+          ? defenseLegend(this.currentMilitary.military.data, { osmWorks: this.defenseSites.osm.shown, droneZones: false }, now)
+          : DEFENSE_LEGEND),
+        visible: shown('military'),
+      },
+      {
+        ...(this.currentCables ? connectivityLegend(this.currentCables.file, this.currentCables.watch.data, now) : CONNECTIVITY_LEGEND),
+        visible: shown('subseaCables'),
+      },
+      { ...(this.currentSovCyber ? cyberLegend(this.currentSovCyber.cyber.data, now) : CYBER_LEGEND), visible: shown('cyber') },
+    ]);
+  }
+
+  /**
+   * État du panneau Défense : relevé adsb.lol, veille des câbles (état de l'AIS vu par le serveur), relecture de la page Vigipirate du
+   * SGDSN, sites de défense.
+   */
+  private defensePanelState(): DefensePanelState {
+    return { military: this.currentMilitary, cables: this.currentCables, vigipirate: this.currentVigipirate, sites: this.defenseSites };
+  }
+
+  /** État du panneau Connectivité : veille des câbles et fichier des câbles (Shom et OpenStreetMap). */
+  private connectivityPanelState(): ConnectivityPanelState {
+    return { cables: this.currentCables };
+  }
+
+  /**
+   * Sites de défense : liste interne en chunk dynamique, lue une fois, sans fusion OpenStreetMap (les ouvrages OSM sont une option datée,
+   * setOsmWorks) ; zones « ZIT » dessinées jusqu'aux zones de la DGAC (B27). Lue au démarrage et avant le premier affichage du panneau.
+   */
+  private loadDefenseSites(): Promise<void> {
+    this.defenseSitesPromise ??= Promise.all([import('./config/military-bases-db.ts'), import('./components/layer-panel/defense.ts')])
+      .then(([{ ACTIVE_INSTALLATIONS }, { summarizeCuratedSites }]) => {
+        this.mapContainer?.updateDefenseSites(ACTIVE_INSTALLATIONS);
+        this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
+        this.defenseSites = { ...this.defenseSites, curated: summarizeCuratedSites(ACTIVE_INSTALLATIONS) };
+        this.defensePanel?.update(this.defensePanelState());
+      })
+      .catch((err: unknown) => console.error('[App] Sites de défense non chargés', err));
+    return this.defenseSitesPromise;
+  }
+
+  /** Option des ouvrages OpenStreetMap (bouton du panneau Défense) : fichier daté lu à la première demande, une fois (arbitrage 10). */
+  private setOsmWorks(on: boolean): void {
+    this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, shown: on } };
+    this.mapContainer?.setOsmWorksVisible(on);
+    this.defensePanel?.update(this.defensePanelState());
+    this.refreshSovereigntyLegend();
+    if (!on || this.defenseSites.osm.meta !== null) return;
+    void fetchDefenseOsmWorks().then(({ data, error }) => {
+      this.mapContainer?.updateOsmWorks(data);
+      const meta = data
+        ? { generatedAt: data.generatedAt, osmBase: data.osmBase, licence: data.licence, source: data.source, count: data.items.length }
+        : null;
+      this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, meta, error } };
+      this.defensePanel?.update(this.defensePanelState());
+    });
+  }
+
+  /**
+   * Défense (spec souveraineté § 2.1 ; amendement 7, O9, O14) : aéronefs militaires ou d'État visibles en ADS-B au-dessus de la
+   * métropole (collecte adsb.lol du serveur) et relecture quotidienne de la page Vigipirate du SGDSN (cache de 30 min : une requête au
+   * plus par demi-heure) ; panneau, carte, légende et lignes « Vols militaires » et « Vigipirate (page du SGDSN) » datées par leur
+   * donnée (S1), jamais « LIVE ».
+   */
+  private loadMilitary(): Promise<void> {
+    return this.readSovereignty('military', async () => {
+      const [incoming, check] = await Promise.all([fetchMilitary(this.currentMilitary), fetchVigipirateCheck(this.currentVigipirate)]);
+      this.currentMilitary = mergeMilitary(this.currentMilitary, incoming);
+      this.currentVigipirate = mergeVigipirateCheck(this.currentVigipirate, check);
+      const now = Date.now();
+      this.statusPanel?.updateSource('Vols militaires', militaryStatus(this.currentMilitary, now));
+      this.statusPanel?.updateSource(VIGIPIRATE_CHECK_SOURCE, vigipirateCheckStatus(this.currentVigipirate, now));
+      this.mapContainer?.updateMilitaryLayer(this.currentMilitary.military.data, now);
+      this.defensePanel?.update(this.defensePanelState());
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+      // Transition (contrats, arbitrage 13) : l'ancien chargeur nourrit encore le score et le moniteur d'alertes ; retiré à A16.
+      void this.refreshLegacyMilitaryScore();
+    });
+  }
+
+  /**
+   * Connectivité (§ 2.2) : veille des câbles du serveur et fichier des câbles (Shom et OpenStreetMap) ; panneau, carte, légende et ligne
+   * « Câbles et AIS » datée par le dernier message AIS (S1) ; le panneau Défense lit l'état de l'AIS vu par le serveur.
+   */
+  private loadCables(): Promise<void> {
+    return this.readSovereignty('subseaCables', async () => {
+      const incoming = await fetchCables(this.currentCables);
+      this.currentCables = mergeCables(this.currentCables, incoming);
+      const now = Date.now();
+      this.statusPanel?.updateSource('Câbles et AIS', cablesStatus(this.currentCables, now));
+      this.mapContainer?.updateCablesLayer(this.currentCables.file, this.currentCables.watch.data, now);
+      this.connectivityPanel?.update(this.connectivityPanelState());
+      this.defensePanel?.update(this.defensePanelState());
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+    });
+  }
+
+  /**
+   * Vigilance cyber (§ 2.3) : CERT-FR, CISA KEV, revendications, fuites publiées, Cybermalveillance (collecte du serveur) ; panneau,
+   * légende et cinq lignes du panneau des sources, chacune datée par sa partie de la réponse (arbitrage 22).
+   */
+  private loadCyber(): Promise<void> {
+    return this.readSovereignty('cyber', async () => {
+      const incoming = await fetchCyber(this.currentSovCyber);
+      this.currentSovCyber = mergeCyber(this.currentSovCyber, incoming);
+      const now = Date.now();
+      for (const [part, name] of CYBER_STATUS_PARTS) this.statusPanel?.updateSource(name, cyberStatus(this.currentSovCyber, part, now));
+      this.cyberPanel?.update(this.currentSovCyber);
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+      // Transition (arbitrage 13) : l'ancien tableau cyber nourrit encore le score et l'ISNR, lu une fois ; retiré à A16.
+      void this.loadLegacyCyberScore();
+    });
+  }
+
+  /**
+   * Clic sur un objet Souveraineté de la carte (contrats § 4.4 point 19) : un bâtiment de la Marine nationale ouvre sa fiche à sa position
+   * (« position de référence, pas une observation » au port base) ; un aéronef ou une urgence ouvre le panneau Défense ; un câble, un
+   * atterrage ou un navire signalé ouvrent le panneau Connectivité. Sites et ouvrages : infobulle seule (un site garde son propre clic).
+   */
+  private onSovereigntyMapClick(layerId: string, props: Record<string, unknown>): void {
+    const id = typeof props['id'] === 'string' ? props['id'] : null;
+    if (layerId === LYR_SOV_NAVY_OBSERVED || layerId === LYR_SOV_NAVY_REFERENCE) {
+      // Clé du marqueur `mmsi ?? id` ; un bâtiment sans MMSI vérifié (O12) n'est trouvé que par son identifiant.
+      const ship = id !== null ? findShipByKey(id, getMilitaryShips()) : undefined;
+      const at = ship ? this.mapContainer?.project(ship.lon, ship.lat) ?? null : null;
+      if (ship && at) this.mapPopup?.showMilitaryShip(ship, at.x, at.y);
+      return;
+    }
+    if (layerId === LYR_SOV_AIRCRAFT || layerId === LYR_SOV_AIRCRAFT_ABROAD || layerId === LYR_SOV_EMERGENCIES) {
+      this.showSovereigntyPanel('military');
+    } else if (layerId === LYR_SUBMARINE_CABLES_HITAREA || layerId === LYR_SUBMARINE_CABLES_LANDING || layerId === LYR_SOV_CABLE_VESSELS) {
+      if (layerId === LYR_SUBMARINE_CABLES_HITAREA && id !== null) this.mapContainer?.highlightCable(id);
+      this.showSovereigntyPanel('subseaCables');
+    }
+  }
+
+  /**
+   * Transition (contrats, arbitrage 13) : ancien chargeur des vols, gardé pour le seul score et le moniteur d'alertes jusqu'à A16 ; il
+   * n'écrit plus ni dans le panneau des sources, ni sur la carte, ni dans un panneau (O10 : plus aucun indicatif français dessiné).
+   * Relancé par chaque relève de la Défense (2 min).
+   */
+  private async refreshLegacyMilitaryScore(): Promise<void> {
+    try {
+      const snapshot = await fetchMilitaryFlights();
+      const flights = snapshot.flights;
+      this.currentMilitaryFlights = flights;
+      this.currentMilitaryFlightsCount = flights.length;
+      this.currentMilitarySurges = detectMilitarySurges(flights.map((f) => ({
+        id: f.id, latitude: f.latitude, longitude: f.longitude, aircraftType: f.aircraftType, squawkAlert: f.squawkAlert,
+      })));
+      this.currentJammingSignals = detectGpsJammingSignals(flights);
+    } catch (err) {
+      console.error('[App] Ancien chargeur des vols (score seul) en échec', err);
+      this.currentMilitarySurges = [];
+      this.currentJammingSignals = [];
+    }
+    await this.loadDefenseAlerts(getAllLiveTraffic(), NAVY_MMSI_SET);
+    this.refreshFranceIntelPanel();
+  }
+
   /** État du panneau Radar : manifeste, option des sommets d'écho (partagée avec les feux) et profil du point cliqué. */
   private radarPanelState(): RadarPanelState {
     const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
@@ -4352,30 +4646,6 @@ export class App {
     const last = train.stops[train.stops.length - 1];
     if (!first || !last) return;
     this.mapContainer?.flyTo((first.lon + last.lon) / 2, (first.lat + last.lat) / 2, first === last ? 10 : 6);
-  }
-
-  private ensureCyberPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.cyberPanelPromise ??= import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
-      const panel = new CyberPanel(this.floatContainerEl!);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnThreatFiltersChange((filters) => {
-        this.currentThreatFilters = filters;
-        this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
-      });
-      panel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
-      panel.mount();
-      this.cyberPanel = panel;
-      // Replay buffered data pushed while the chunk was loading
-      if (this.currentCyberData) panel.update(this.currentCyberData);
-      if (this.currentThreatEvents.length > 0) panel.updateThreatEvents(this.currentThreatEvents);
-      if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        panel.show(this.currentCyberData);
-      }
-    });
-    return this.cyberPanelPromise;
   }
 
   private ensureOilPanel(): Promise<void> {
@@ -4468,45 +4738,6 @@ export class App {
     return this.outagesPanelPromise;
   }
 
-  private ensureDefensePanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.defensePanelPromise ??= import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
-      const panel = new DefensePanel(this.floatContainerEl!);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnAlertClick((alert) => {
-        // suppressPanel: true — ces couches ne sont activées qu'en renfort
-        // visuel sur la carte pendant que l'utilisateur regarde DefensePanel ;
-        // sans ça, showFloatingPanel('trafficMaritime') fermerait le panneau
-        // Défense qu'il est justement en train de consulter (audit UI
-        // 2026-09 §5.3.3).
-        if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
-          this.onLayerToggle('trafficMaritime', true, { suppressPanel: true });
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        if (!this.activeLayers.subseaCables) {
-          this.onLayerToggle('subseaCables', true, { suppressPanel: true });
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        // Fly to the threat location when clicking on an alert item
-        this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
-      });
-      panel.setOnJammingClick((signal) => {
-        const zoom = signal.clusterRadius != null
-          ? (signal.clusterRadius > 50 ? 8 : 9)
-          : 11;
-        this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
-      });
-      panel.mount();
-      this.defensePanel = panel;
-      if (this.activeLayers.military && this.activeLayers.sovereignty) {
-        panel.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-    });
-    return this.defensePanelPromise;
-  }
-
   /**
    * Dispatches a toggled/restored layer key to the matching ensureXPanel()
    * loader above, if any. Called from onLayerToggle() (when a layer is
@@ -4544,11 +4775,12 @@ export class App {
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
       case 'trafficMaritime': return [this.ensureMaritimePanel()];
-      case 'cyber':
-      case 'threatMap':
-        return [this.ensureCyberPanel()];
-      case 'sovereignty':
-        return [this.ensureCyberPanel(), this.ensureDefensePanel()];
+      // Souveraineté (contrats § 4.4 point 12) : un panneau par couche ; threatMap part à A17.
+      case 'military': return [this.ensureDefensePanel()];
+      case 'subseaCables': return [this.ensureConnectivityPanel()];
+      case 'cyber': return [this.ensureCyberPanel()];
+      case 'threatMap': return [this.ensureCyberPanel()];
+      case 'sovereignty': return [this.ensureDefensePanel(), this.ensureConnectivityPanel(), this.ensureCyberPanel()];
       case 'oilNetwork': return [this.ensureOilPanel()];
       case 'nuclearFleet': return [this.ensureNuclearPanel()];
       case 'outages':
@@ -4557,8 +4789,6 @@ export class App {
       case 'outagesInternet':
       case 'outagesCloud':
         return [this.ensureOutagesPanel()];
-      case 'military':
-        return [this.ensureDefensePanel()];
       default:
         return [];
     }
@@ -4604,6 +4834,7 @@ export class App {
       case 'trafficMaritime': return this.maritimePanel;
       case 'cyber': return this.cyberPanel;
       case 'military': return this.defensePanel;
+      case 'subseaCables': return this.connectivityPanel;
       case 'stability': return this.isnrPanel;
       case 'outagesElec': return this.outagesPanel;
       default: return null;
@@ -4973,6 +5204,8 @@ export class App {
 
     // Clic sur la carte, couche Radar active : profil vertical du point (démonstration, panneau Radar météo).
     this.mapContainer.setOnRadarPointPick((lat, lon) => this.loadRadarProfile(lat, lon));
+    // Clic sur un objet Souveraineté (contrats § 4.4 point 19) : fiche d'un bâtiment, ou panneau de sa couche.
+    this.mapContainer.setOnSovereigntyFeatureClick((layerId, props) => this.onSovereigntyMapClick(layerId, props));
     // Sync URL when map view changes
     this.mapContainer.setOnViewChange((vs) => {
       writeUrlState({
@@ -5065,8 +5298,8 @@ export class App {
     this.mapLegend.addCategory(DROUGHT_LEGEND);
     this.mapLegend.addCategory(AIR_QUALITY_LEGEND);
     this.mapLegend.addCategory(EARTHQUAKES_LEGEND);
-    this.mapLegend.addCategory(MILITARY_LEGEND);
-    this.mapLegend.addCategory(SUBSEA_CABLES_LEGEND);
+    this.mapLegend.addCategory(DEFENSE_LEGEND);
+    this.mapLegend.addCategory(CONNECTIVITY_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
     this.mapLegend.addCategory(OUTAGES_ELEC_LEGEND);
     this.mapLegend.addCategory(OUTAGES_TELECOM_LEGEND);
@@ -5077,6 +5310,7 @@ export class App {
     this.refreshLegendVisibility();
     this.refreshTrafficLegend();
     this.refreshEnvironmentLegend();
+    this.refreshSovereigntyLegend();
 
     // Handle click on single item popup -> open article link
     this.mapPopup.setOnItemClick((item) => {
@@ -5119,125 +5353,19 @@ export class App {
     }, RSS_POLL_INTERVAL_MS);
   }
 
-  private startMilitaryPolling(): void {
-    // Perf audit §6 item 4: only open the AIS relay socket when something
-    // actually needs it at boot. onLayerToggle() below opens it on-demand
-    // (connectAis() is idempotent) the first time trafficMaritime/military
-    // is switched on later.
+  /**
+   * Relève AIS de 5 s (Trafic maritime et Marine nationale, spec souveraineté § 2.1) : ligne « AIS maritime » datée par le dernier message,
+   * carte de la Marine nationale (vue en AIS, ou port base de référence), panneaux maritime et Défense, anomalies AIS. Les aéronefs
+   * militaires ont leur relève (syncSovereigntyPolling('military')) ; la veille des câbles est faite par le serveur.
+   */
+  private startShipsPolling(): void {
+    // Audit de performance § 6 point 4 : le WebSocket du relais AIS n'est ouvert au démarrage que si une couche en a besoin ;
+    // onLayerToggle() l'ouvre ensuite à la demande (connectAis() est idempotent).
     if (this.activeLayers.trafficMaritime || this.activeLayers.military) {
       connectAis();
     }
-    // Heavy analyses (surges + GPS jamming) run at most every 30 s; positions stay at 5 s.
-    let lastDetectionRun = 0;
-    const fetchFlights = async () => {
-      try {
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: 'loading',
-          lastUpdate: null,
-          detail: 'adsb.fi -> airplanes.live -> OpenSky',
-          error: undefined,
-        });
-        const snapshot = await fetchMilitaryFlights();
-        const flights = snapshot.flights;
-        this.currentMilitaryFlights = flights;
-        this.currentMilitaryFlightsCount = flights.length;
-        this.mapContainer?.updateMilitaryFlights(flights);
-        this.refreshFranceIntelPanel();
 
-        const sourceBreakdown = Object.entries(snapshot.sourceCounts)
-          .filter(([, count]) => count > 0)
-          .map(([source, count]) => `${source} ${count}`)
-          .join(' + ');
-        const modeLabel =
-          snapshot.mode === 'empty'
-            ? 'VIDE'
-            : snapshot.mode === 'stale-cache'
-              ? 'CACHE'
-              : snapshot.errors.length > 0
-                ? 'DEGRADE'
-                : 'LIVE';
-        const detail = `${modeLabel} · ${sourceBreakdown || snapshot.source}${snapshot.errors.length > 0 ? ` · fallback ${snapshot.errors.map((e) => e.source).join(', ')}` : ''}`;
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: snapshot.mode === 'empty' || snapshot.mode === 'stale-cache' || snapshot.errors.length > 0 ? 'stale' : 'ok',
-          lastUpdate: new Date(snapshot.fetchedAt),
-          detail,
-          error: undefined,
-        });
-
-        // Heavy detections throttled to once per 30 s (positions refresh stays at 5 s)
-        const nowMs = Date.now();
-        if (nowMs - lastDetectionRun >= MILITARY_DETECTION_THROTTLE_MS) {
-          lastDetectionRun = nowMs;
-
-          // Detect and display military surges (WorldMonitor pattern)
-          const surges = detectMilitarySurges(
-            flights.map((f) => ({
-              id: f.id,
-              latitude: f.latitude,
-              longitude: f.longitude,
-              aircraftType: f.aircraftType,
-              squawkAlert: f.squawkAlert,
-            }))
-          );
-          this.currentMilitarySurges = surges;
-          if (surges.length > 0) {
-            const emergencies = surges.filter((s) => s.type === 'emergency');
-            if (emergencies.length > 0) {
-              this.statusPanel?.updateSource('Vols militaires', {
-                status: 'error',
-                lastUpdate: new Date(),
-                detail,
-                error: emergencies[0].description,
-              });
-            }
-          }
-
-          // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
-          const jammingSignals = detectGpsJammingSignals(flights);
-          this.currentJammingSignals = jammingSignals;
-          this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
-          this.refreshFranceIntelPanel();
-        }
-      } catch (err) {
-        console.error('[Military] Failed to fetch flights', err);
-        this.currentMilitarySurges = [];
-        this.currentJammingSignals = [];
-        this.refreshFranceIntelPanel();
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: 'error',
-          lastUpdate: new Date(),
-          detail: 'adsb.fi -> airplanes.live -> OpenSky',
-          error: err instanceof Error ? err.message : 'Échec vols militaires',
-        });
-      }
-    };
-    fetchFlights();
-    // ADS-B: refresh frequently enough to feel live without hammering sources.
-    // Pausable: suspended while the tab is hidden, resumed with an immediate tick.
-    //
-    // Perf audit §5 item 5 / §6 item 4: military flights also feed AlertMonitor
-    // (surges + GPS jamming), so polling never stops outright — but when the
-    // military layer/panel isn't visible there is no map to update, so the
-    // tick is throttled to once every 5 min instead of every 5 s. The guard
-    // lives here, at the tick entry, rather than inside fetchFlights() itself.
-    const MILITARY_SLOW_POLL_MS = 5 * 60_000;
-    let lastSlowFlightsFetch = Date.now();
-    this._intervalMilitaryFlights = this.registerPausableInterval(
-      () => {
-        const militaryActive = this.activeLayers.military || this.defensePanel?.isVisible() === true;
-        if (!militaryActive) {
-          const now = Date.now();
-          if (now - lastSlowFlightsFetch < MILITARY_SLOW_POLL_MS) return;
-          lastSlowFlightsFetch = now;
-        }
-        fetchFlights().catch(err => console.error('[App] Military flights poll error', err));
-      },
-      5_000,
-    );
-
-    // Ships: refresh map frequently; heavier cable analysis stays throttled below.
     const AIS_UI_REFRESH_MS = 5_000;
-    const AIS_ALERT_REFRESH_MS = 30_000;
     let initialRetryCount = 0;
 
     const showAisLoader = () => {
@@ -5292,7 +5420,6 @@ export class App {
       }, 420);
     };
     const MAX_INITIAL_RETRIES = 5;
-    let lastDefenseAlertUpdate = 0;
 
     const updateShips = async () => {
       try {
@@ -5306,9 +5433,13 @@ export class App {
           detail: aisStatus.connected ? aisDetail : aisRelayLabel,
         });
 
-        // Navires Marine Nationale pour l'affichage sur la carte (icônes dédiées)
+        // Marine nationale (souveraineté § 2.1) : vue en AIS, ou port base de référence ; liaison figée : bâtiments vus en gris.
+        // O10 et O11 : plus rien n'est poussé vers l'ancienne couche des navires (retirée à A17).
         const militaryShips = getMilitaryShips();
-        this.mapContainer?.updateMilitaryShips(militaryShips);
+        const navyNow = Date.now();
+        const navyFrozen = navyLiveState({ status: aisState.status, lastMessageAt: aisState.lastMessageAt }, false, navyNow).frozen;
+        this.mapContainer?.updateNavyLayer(militaryShips, navyFrozen, navyNow);
+        this.defensePanel?.refreshLive();
 
         // Use exported NAVY_MMSI_SET (sovereign whitelist) - more reliable than runtime-built set
         const navyMmsiSet = NAVY_MMSI_SET;
@@ -5347,13 +5478,7 @@ export class App {
           ...aisAnomalies,
         ];
         this.refreshFranceIntelPanel();
-
-        // Détection de menaces sur câbles (plus coûteuse) à cadence réduite.
-        const now = Date.now();
-        if (now - lastDefenseAlertUpdate >= AIS_ALERT_REFRESH_MS) {
-          lastDefenseAlertUpdate = now;
-          await this.loadDefenseAlerts(allTraffic, navyMmsiSet);
-        }
+        // Veille des câbles : faite par le serveur sur l'AIS du relais (/api/sovereignty/cables-watch, relève de la Connectivité).
       } catch (err) {
         console.error('[Military Ships] Failed to update', err);
         this.statusPanel?.updateSource('AIS maritime', {
@@ -5416,11 +5541,6 @@ export class App {
         this.submarineCablesData!,
         { maxDistanceMeters: 500, maxSpeedKnots: 2, militaryOnly: false }
       );
-
-      // Update panel if visible
-      if (this.defensePanel?.isVisible()) {
-        this.defensePanel.update(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
 
       if (this.currentDefenseAlerts.length > 0) {
         console.log(`[Defense] ${this.currentDefenseAlerts.length} cable threat(s) detected (excluding French Navy)`);
@@ -6125,94 +6245,20 @@ export class App {
     });
   }
 
-  private async loadCyber(): Promise<void> {
-    console.log('[App/loadCyber] ========== ENTRY ==========');
-    console.log('[App/loadCyber] isCyberPanelEnabled():', isCyberPanelEnabled());
-
-    // Skip if feature flag is disabled
-    if (!isCyberPanelEnabled()) {
-      console.log('[App/loadCyber] Feature DISABLED, skipping...');
-      this.statusPanel?.updateSource('Cyber', { status: 'stale', lastUpdate: null });
-      return;
-    }
-
-    this.statusPanel?.updateSource('Cyber', { status: 'loading', lastUpdate: null });
-    console.log('[App/loadCyber] Calling fetchCyberDashboard()...');
-
+  /**
+   * Transition (contrats, arbitrage 13) : ancien tableau cyber et événements de menace, lus une fois pour le seul score et l'ISNR jusqu'à
+   * A16 ; plus de panneau, de carte ni de ligne « Cyber » au panneau des sources (horloge du navigateur).
+   */
+  private async loadLegacyCyberScore(): Promise<void> {
+    if (this.currentCyberData !== null || !isCyberPanelEnabled()) return;
     try {
-      const cyberData = await fetchCyberDashboard();
-      console.log('[App/loadCyber] Data received!');
-      console.log('[App/loadCyber] globalScore:', cyberData.meta.globalScore);
-      console.log('[App/loadCyber] alerts.count30d:', cyberData.alerts.count30d);
-      console.log('[App/loadCyber] alerts.latest.length:', cyberData.alerts.latest.length);
-      console.log('[App/loadCyber] ransomware.total30d:', cyberData.ransomware.total30d);
-      console.log('[App/loadCyber] vulnerabilities.criticalCount:', cyberData.vulnerabilities.criticalCount);
-
+      const [cyberData, threats] = await Promise.all([fetchCyberDashboard(), fetchThreatMapEvents()]);
       this.currentCyberData = cyberData;
-      console.log('[App/loadCyber] this.currentCyberData SET');
-
+      this.currentThreatEvents = threats.events;
       this.refreshFranceIntelPanel();
-
-      // Determine status based on source availability
-      const allSourcesUp = cyberData.meta.sources.every(s => s.isUp);
-      const someSourcesUp = cyberData.meta.sources.some(s => s.isUp);
-
-      console.log('[App/loadCyber] Sources status:', cyberData.meta.sources.map(s => `${s.source}:${s.isUp}`).join(', '));
-
-      if (allSourcesUp) {
-        this.statusPanel?.updateSource('Cyber', { status: 'ok', lastUpdate: new Date() });
-      } else if (someSourcesUp) {
-        this.statusPanel?.updateSource('Cyber', { status: 'stale', lastUpdate: new Date() });
-      } else {
-        this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
-      }
-
-      // Update panel if visible
-      console.log('[App/loadCyber] cyberPanel exists:', !!this.cyberPanel);
-      console.log('[App/loadCyber] cyberPanel.isVisible():', this.cyberPanel?.isVisible());
-      this.cyberPanel?.update(cyberData);
-
-      // Also update the threat map layer with live data
-      void this.loadThreatMapEvents();
-
-      console.log(`[App/loadCyber] ========== COMPLETE: Score=${cyberData.meta.globalScore}, Sources=${cyberData.meta.sources.filter(s => s.isUp).length}/3 ==========`);
     } catch (err) {
-      console.error('[App/loadCyber] ========== FAILED ==========', err);
-      this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
+      console.error('[App] Ancien tableau cyber (score seul) en échec', err);
     }
-  }
-
-  /** Fetch threat map events → DeckGL layer + CyberPanel incidents tab. */
-  private async loadThreatMapEvents(): Promise<void> {
-    try {
-      const state = await fetchThreatMapEvents();
-      this.currentThreatEvents = state.events;
-      const visibleEvents = filterThreatEvents(state.events, this.currentThreatFilters);
-      this.mapContainer?.updateThreatEvents(visibleEvents);
-      this.cyberPanel?.updateThreatEvents(state.events);
-      console.log(`[ThreatMap] ${visibleEvents.length}/${state.events.length} events visible after filters`);
-    } catch (err) {
-      console.error('[ThreatMap] Failed to load events:', err);
-    }
-  }
-
-  private focusThreatEvent(event: ThreatEvent): void {
-    const [lng, lat] = event.location.coordinates;
-    const zoomByPrecision: Record<ThreatEvent['location']['precision'], number> = {
-      hq: 13.5,
-      city: 12,
-      region: 8,
-      country: 6.2,
-      unknown: 6.2,
-    };
-    this.mapContainer?.flyTo(lng, lat, zoomByPrecision[event.location.precision] ?? 10);
-
-    window.setTimeout(() => {
-      const projected = this.mapContainer?.project(lng, lat);
-      if (projected && this.mapPopup) {
-        this.mapPopup.showThreatEvent(event, projected.x, projected.y);
-      }
-    }, 900);
   }
 
   private async loadGas(): Promise<void> {
@@ -6991,25 +7037,8 @@ export class App {
 
   /** Sync — called first, no network, instant display */
   private loadStaticData(): void {
-    // ─── STATIC DATA — Affichage immédiat (pas de fetch) ───────────────────
-    // military-bases-db (~1100 l.) chargé en chunk dynamique → hors du bundle critique.
-    // La couche militaire étant masquée par défaut, ce léger différé est invisible.
-    void import('./config/military-bases-db.ts').then(({ ACTIVE_INSTALLATIONS }) => {
-      // Affiche d'abord notre DB statique enrichie (~160 sites)
-      this.mapContainer?.updateMilitaryBases(ACTIVE_INSTALLATIONS);
-      this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
-
-      // ─── OSM MILITARY DATA — Charge puis fusionne avec la DB statique ──────
-      loadStaticOsmFeatures().then((osmFeatures) => {
-        if (osmFeatures.length > 0) {
-          const merged = mergeWithStaticDb(osmFeatures, ACTIVE_INSTALLATIONS);
-          this.mapContainer?.updateMilitaryBases(merged);
-          console.log(`[App] Military bases: ${ACTIVE_INSTALLATIONS.length} static + ${osmFeatures.length} OSM = ${merged.length} total`);
-        }
-      }).catch((err) => {
-        console.warn('[App] Failed to load OSM military features:', err);
-      });
-    });
+    // Sites de défense (liste interne en chunk dynamique) et zones « ZIT » : loadDefenseSites, sans fusion OpenStreetMap (souveraineté § 2.1).
+    void this.loadDefenseSites();
   }
   /** CRITICAL — awaited in init(). 4 layers that seed the ISNR (energy + weather + floods). */
   private async loadCriticalLayers(): Promise<void> {
@@ -7054,6 +7083,14 @@ export class App {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
         name: 'fires', task: this.loadFires().catch((err) => console.error('[App] Feux de forêt indisponibles', err))
+      },
+      // Souveraineté : aéronefs militaires et veille des câbles lus au démarrage (score, arbitrage 21) ; un service en échec met ses
+      // lignes en erreur (readSovereignty) ; ici, la trace.
+      {
+        name: 'military', task: this.loadMilitary().catch((err) => console.error('[App] Aéronefs militaires indisponibles', err))
+      },
+      {
+        name: 'cables', task: this.loadCables().catch((err) => console.error('[App] Veille des câbles indisponible', err))
       },
       // Qualité de l'air et séismes lus au démarrage (situations, tâche 32) ; la sécheresse seulement avec sa couche ou son panneau.
       {
@@ -7132,9 +7169,8 @@ export class App {
         })
       },
       {
-        name: 'cyber', task: this.loadCyber().catch(() => {
-          this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
-        })
+        // Vigilance cyber : un service en échec met ses cinq lignes en erreur (readSovereignty), jamais à l'heure du navigateur.
+        name: 'cyber', task: this.loadCyber().catch((err) => console.error('[App] Vigilance cyber indisponible', err))
       },
       {
         name: 'space-weather', task: this.loadSpaceWeather().catch(() => {
@@ -7587,6 +7623,8 @@ export class App {
     context.sources.push(...trafficReportSources(this.statusPanel?.getSources() ?? []));
     // Sources Environnement : hors Watchdog, datées par leur donnée (spec 2026-10-04 environnement S1).
     context.sources.push(...environmentReportSources(this.statusPanel?.getSources() ?? []));
+    // Sources Souveraineté : hors Watchdog, datées par leur donnée (spec 2026-10-04 souveraineté S1).
+    context.sources.push(...sovereigntyReportSources(this.statusPanel?.getSources() ?? []));
     return context;
   }
 
@@ -7779,7 +7817,7 @@ export class App {
   }
 
   private async openFranceIntelPanel(): Promise<void> {
-    if (!this.currentCyberData) void this.loadCyber();
+    if (!this.currentSovCyber) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
     if (!this.currentOilData) void this.loadOil();
     void this.refreshNetworkBarometerWidget().catch((err) => {
@@ -7875,7 +7913,7 @@ export class App {
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
-    if (!this.currentCyberData) void this.loadCyber();
+    if (!this.currentSovCyber) void this.loadCyber();
     if (!this.currentOilData) void this.loadOil();
     void this.refreshNetworkBarometerWidget().catch((err) => {
       console.error('[App] Network barometer refresh on v2 start failed', err);

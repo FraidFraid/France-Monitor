@@ -93,7 +93,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'security',
     label: 'Sécurité & défense',
     icon: 'shield',
-    description: 'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, câbles sous-marins et pannes télécom/Internet/cloud.',
+    description: 'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, connectivité et pannes télécom, Internet et cloud.',
     layers: ['news', 'stability', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
   },
   {

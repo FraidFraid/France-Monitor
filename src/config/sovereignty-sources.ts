@@ -1,9 +1,10 @@
 // src/config/sovereignty-sources.ts : couches et sources Souveraineté du panneau des sources, hors Watchdog (spec 2026-10-04
 // souveraineté S1 ; contrats § 3.4 ; amendement 7, S11) : chaque ligne est datée par sa donnée, jamais par l'heure de lecture, et
 // nomme sa source avec un lien (attributions affichées). Une seule liste pour App.ts (panneau des sources, note de situation,
-// historique de qualité, relèves). La saisie Vigipirate n'est pas une source lue : pas de ligne.
+// historique de qualité, relèves). La saisie Vigipirate n'est pas une source lue : pas de ligne ; la relecture quotidienne de la page
+// du SGDSN par le serveur (O14) en a une, « Vigipirate (page du SGDSN) », datée par cette lecture (arbitrage du contrôleur, A15).
 import type { DataSourceStatus, WatchdogSnapshot } from '../types/index.ts';
-import type { SovereigntySource } from '../services/sovereignty-levels.ts';
+import { MILITARY_FIGURE_LABEL, type SovereigntySource } from '../services/sovereignty-levels.ts';
 
 /** Couches Souveraineté, un panneau chacune ; clés gardées (subseaCables est libellée « Connectivité »). */
 export type SovereigntyLayerKey = 'military' | 'subseaCables' | 'cyber';
@@ -17,8 +18,8 @@ export function hasActiveSovereignty(layers: Partial<Record<SovereigntyLayerKey,
 
 /** Clé de la source (retards S2) et nom dans le panneau des sources (hors Watchdog, datés par la donnée). */
 export const SOVEREIGNTY_STATUS_SOURCES = [
-  ['adsb-mil', 'Vols militaires'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'],
-  ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'], ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
+  ['adsb-mil', 'Vols militaires'], ['vigipirate', 'Vigipirate (page du SGDSN)'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'],
+  ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'], ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
   // phase B : ['adsb-gnss', 'Grille GNSS'], ['noaa', 'NOAA SWPC'], ['ripestat', 'RIPEstat'], ['gels', 'Registre des gels'],
 ] as const satisfies ReadonlyArray<readonly [SovereigntySource, string]>;
 
@@ -34,7 +35,11 @@ export const SOVEREIGNTY_SOURCE_NAMES: readonly string[] = SOVEREIGNTY_STATUS_SO
  * attribution obligatoire, aucun nom de victime repris).
  */
 export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<SovereigntySourceName, { detail: string; link: string }>> = {
-  'Vols militaires': { detail: 'Données adsb.lol, ODbL 1.0 · relevé du serveur', link: 'https://www.adsb.lol' },
+  // O9 : même libellé que le gros chiffre du panneau Défense, sa légende et sa tuile.
+  'Vols militaires': { detail: `Données adsb.lol, ODbL 1.0 · ${MILITARY_FIGURE_LABEL}, relevé du serveur`, link: 'https://www.adsb.lol' },
+  'Vigipirate (page du SGDSN)': {
+    detail: 'SGDSN, page Vigipirate relue chaque jour par le serveur (empreinte du texte, sans le reprendre)', link: 'https://www.sgdsn.gouv.fr/vigipirate',
+  },
   'Câbles et AIS': {
     detail: 'Relais AIS du serveur · câbles Shom (CC BY-SA) et OpenStreetMap (ODbL 1.0)',
     link: 'https://www.data.gouv.fr/datasets/conduites-et-cables-sous-marins-repertories-par-le-shom/',
@@ -46,9 +51,15 @@ export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<SovereigntySourceName, 
   'Cybermalveillance.gouv.fr': { detail: 'Cybermalveillance.gouv.fr, alertes et actualités', link: 'https://www.cybermalveillance.gouv.fr' },
 };
 
+/** Détail et lien d'une ligne du panneau des sources, null hors Souveraineté (StatusPanel rend le lien, texte échappé). */
+export function sovereigntySourceDetail(name: string): { detail: string; link: string } | null {
+  const found = SOVEREIGNTY_STATUS_SOURCES.find(([, n]) => n === name);
+  return found ? SOVEREIGNTY_SOURCE_DETAILS[found[1]] : null;
+}
+
 /** Lignes mises en erreur si le service d'une couche ne se charge pas. */
 export const SOVEREIGNTY_LAYER_SOURCES: Readonly<Record<SovereigntyLayerKey, readonly SovereigntySourceName[]>> = {
-  military: ['Vols militaires'],
+  military: ['Vols militaires', 'Vigipirate (page du SGDSN)'],
   subseaCables: ['Câbles et AIS'],
   cyber: ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr'],
 };

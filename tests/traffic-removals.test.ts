@@ -65,12 +65,12 @@ describe('retraits Trafics (spec 2026-10-03 trafics § 2.6)', () => {
     expect(read('src/components/MapContainer.ts')).not.toMatch(/updateTraffic\(|mock-data/);
     expect(read('src/components/DeckGLMap.ts')).not.toMatch(/updateTraffic\(/);
   });
-  it('trafic aérien civil : OpenSky seul dans le service et le panneau des sources ; vols militaires inchangés', () => {
+  it('trafic aérien civil : OpenSky seul dans le service et le panneau des sources ; vols militaires datés par adsb.lol (souveraineté)', () => {
     expect(read('src/services/air-traffic.ts')).not.toMatch(/airplanes|signalCount/);
     const status = read('src/components/StatusPanel.ts');
     expect(status).toContain("{ name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' }");
     expect(status).not.toContain('OpenSky + airplanes.live');
-    expect(status).toContain('adsb.fi → airplanes.live → OpenSky');
+    expect(status).not.toContain('adsb.fi → airplanes.live → OpenSky');
     for (const f of ['src/locales/fr.ts', 'src/locales/en.ts']) expect(read(f)).not.toContain('OpenSky + airplanes.live');
   });
   it('badges « TEMPS RÉEL » des panneaux Trafics et budget TomTom du navigateur retirés', () => {

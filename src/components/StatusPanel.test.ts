@@ -67,3 +67,41 @@ describe('StatusPanel : sources hebdomadaires ou annuelles datées par leur pér
     expect(row(host, 'Sentinelles').text).not.toContain('S39');
   });
 });
+
+describe('StatusPanel : lignes Souveraineté (spec 2026-10-04 souveraineté S1 ; amendement 7, A15)', () => {
+  it('lignes datées présentes dès le chargement, chacune avec sa source nommée et liée ; jamais adsb.fi', () => {
+    const host = document.createElement('div');
+    const panel = new StatusPanel(host);
+    panel.mount();
+    const names = ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
+      'Cybermalveillance.gouv.fr'];
+    for (const name of names) expect(panel.getSources().find((s) => s.name === name)?.status).toBe('loading');
+    expect(host.textContent).not.toMatch(/adsb\.fi|airplanes\.live|LIVE/);
+    const rows = Array.from(host.querySelector('[data-panel="status"]')?.children[1]?.children ?? []);
+    const ransom = rows.find((r) => r.textContent?.startsWith('Ransomware.live'));
+    const link = ransom?.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://www.ransomware.live/t&c');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link?.textContent).toBe('Source : Ransomware.live · revendications non confirmées, conditions d’utilisation');
+    const vigipirate = rows.find((r) => r.textContent?.startsWith('Vigipirate (page du SGDSN)'))?.querySelector('a');
+    expect(vigipirate?.getAttribute('href')).toBe('https://www.sgdsn.gouv.fr/vigipirate');
+    // Une ligne hors Souveraineté garde son détail en texte, sans lien.
+    expect(rows.find((r) => r.textContent?.startsWith('Vigicrues'))?.querySelector('a')).toBeNull();
+  });
+  it('le lien ouvre la source sans ouvrir le panneau de la ligne', () => {
+    const host = document.createElement('div');
+    const panel = new StatusPanel(host);
+    const opened: string[] = [];
+    panel.setOnSourceClick((name) => opened.push(name));
+    panel.mount();
+    const rows = Array.from(host.querySelector('[data-panel="status"]')?.children[1]?.children ?? []);
+    const cert = rows.find((r) => r.textContent?.startsWith('CERT-FR'));
+    const link = cert?.querySelector('a');
+    link?.addEventListener('click', (e) => e.preventDefault());
+    link?.click();
+    expect(opened).toEqual([]);
+    (cert as HTMLElement | undefined)?.click();
+    expect(opened).toEqual(['CERT-FR']);
+  });
+});

@@ -98,9 +98,10 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     domain: 'Cyber',
     sourceType: 'technical',
     natureBaseline: 80,
-    watchdogNames: ['Cyber'],
-    mappedIndicators: ['source', 'catégorie', 'criticité', 'score global'],
-    limits: ['Sources hétérogènes, recoupement humain recommandé'],
+    // Cinq lignes datées du panneau des sources (arbitrage 22) ; identifiant et nom gardés pour l'historique de qualité.
+    watchdogNames: ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr'],
+    mappedIndicators: ['alerte CERT-FR en cours (statut officiel)', 'dernière version', 'vulnérabilité exploitée (catalogue KEV)', 'revendications agrégées', 'fuites en .fr'],
+    limits: ['Revendications non confirmées par les entités visées ; une vulnérabilité ne compte que si son exploitation est connue'],
   },
   {
     id: 'finance',
@@ -199,8 +200,9 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     sourceType: 'technical',
     natureBaseline: 65,
     watchdogNames: ['Vols militaires'],
-    mappedIndicators: ['source', 'fallback', 'positions'],
-    limits: ['ADS-B incomplet par nature'],
+    // O9 : même libellé que le gros chiffre du panneau Défense.
+    mappedIndicators: ['relevé du serveur', 'aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole', 'urgences confirmées'],
+    limits: ['Couverture communautaire : un appareil absent du flux n’est pas absent du ciel'],
   },
   {
     id: 'ais-maritime',

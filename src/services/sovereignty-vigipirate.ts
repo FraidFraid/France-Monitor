@@ -4,19 +4,20 @@
 // https://www.sgdsn.gouv.fr/vigipirate, date de la lecture qui l'a vue changer) et rend les mentions de la ligne Vigipirate :
 // fin des 12 jours d'une « alerte attentat » (échéance passée : à revérifier), « niveau à revérifier sur sgdsn.gouv.fr (page modifiée
 // le JJ/MM) », rappel d'une saisie de plus de 4 mois, vérification en panne (S3 : une panne se voit, jamais « inchangée »). Lue avec la
-// relève de la couche Défense.
+// relève de la couche Défense ; ligne « Vigipirate (page du SGDSN) » du panneau des sources datée par la relecture du serveur.
 import type { VigipirateEntry, VigipiratePageCheck } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
-import { vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue } from './sovereignty-levels.ts';
+import { SOVEREIGNTY_LATE_AFTER_MIN, vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue } from './sovereignty-levels.ts';
 import {
-  isDateOrNull, isStringList, loadSovereigntySlot, mergeSlot, nullable, record, shapeOf, value, type SourceSlot,
+  isDateOrNull, isStringList, loadSovereigntySlot, mergeSlot, nullable, record, shapeOf, sovereigntySlotStatus, value, type SourceSlot,
+  type SovereigntyStatus,
 } from './sovereignty-source.ts';
 
 export const VIGIPIRATE_CHECK_URL = '/api/sovereignty/vigipirate';
 /** Cache client : 30 min (la route se garde une heure au CDN ; le serveur relit la page une fois par jour). */
 export const VIGIPIRATE_CHECK_TTL_MS = 30 * 60_000;
-/** Relecture quotidienne (24 h), nouvel essai une heure après un échec : au-delà de 26 h, la vérification est en retard. */
-export const VIGIPIRATE_CHECK_LATE_AFTER_H = 26;
+/** Relecture quotidienne (24 h), nouvel essai une heure après un échec : au-delà de 26 h, la vérification est en retard (tableau S2). */
+export const VIGIPIRATE_CHECK_LATE_AFTER_H = SOVEREIGNTY_LATE_AFTER_MIN.vigipirate / 60;
 
 export interface VigipirateCheckState { check: SourceSlot<VigipiratePageCheck> }
 
@@ -46,6 +47,14 @@ export async function fetchVigipirateCheck(previous: VigipirateCheckState | null
 /** Fusion à l'écriture (S3) : une lecture en échec garde la vérification actuellement en mémoire. */
 export function mergeVigipirateCheck(current: VigipirateCheckState | null, incoming: VigipirateCheckState): VigipirateCheckState {
   return { check: mergeSlot(current?.check, incoming.check) };
+}
+
+/**
+ * Panneau des sources : « Vigipirate (page du SGDSN) », datée par la relecture de la page par le serveur (`readAt`), en retard au-delà
+ * de 26 h (S1, S2) ; une relecture en échec garde sa date et nomme la panne (S3). La saisie elle-même n'a pas de ligne.
+ */
+export function vigipirateCheckStatus(state: VigipirateCheckState, now: number): SovereigntyStatus {
+  return sovereigntySlotStatus(state.check, 'vigipirate', state.check.data?.readAt ?? null, now);
 }
 
 /** Mentions de la ligne Vigipirate, null quand elles n'ont pas lieu d'être. */

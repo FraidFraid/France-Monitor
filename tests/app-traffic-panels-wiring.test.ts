@@ -142,7 +142,7 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
     expect(app).toContain('[AIR_POSITIONS_SOURCE]: \'trafficAir\',');
   });
   it('AIS : panneau des sources daté par le dernier message, panneau maritime rafraîchi à chaque tour', () => {
-    const ships = methodBody('startMilitaryPolling');
+    const ships = methodBody('startShipsPolling');
     expect(ships).toContain('const aisState = getAisConnectionState();');
     // Date du dernier message, « (en retard) » selon la source AIS : connecté ne veut jamais dire à jour (m1).
     expect(ships).toContain('...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),');

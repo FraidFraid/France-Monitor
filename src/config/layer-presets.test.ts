@@ -69,6 +69,14 @@ describe('layer-presets', () => {
     assert.equal(result.hospitals, false);
   });
 
+  it('vue Sécurité : description sur les libellés de la souveraineté (Connectivité, plus « câbles sous-marins »)', () => {
+    const security = LAYER_PRESETS.find((p) => p.id === 'security');
+    assert.equal(
+      security?.description,
+      'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, connectivité et pannes télécom, Internet et cloud.',
+    );
+  });
+
   it('layersForPreset("health") active tout le thème santé', () => {
     const result = layersForPreset('health');
     for (const key of ['health', 'healthOscour', 'healthApl', 'hospitals'] as const) {

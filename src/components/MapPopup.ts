@@ -500,13 +500,14 @@ export class MapPopup {
 
   private renderMilitaryShipPopup(ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }): string {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const speed = ship.speed != null && ship.speed > 0 ? `${ship.speed} nœuds` : 'À quai';
+    const speed = ship.speed != null && ship.speed > 0 ? `${ship.speed}\u00a0nœuds` : 'À quai';
     const heading = ship.heading != null && ship.heading > 0 ? `${Math.round(ship.heading)}°` : 'n.d.';
     const mmsi = ship.mmsi ? esc(ship.mmsi) : 'n.d.';
     const port = ship.port ? esc(ship.port) : 'n.d.';
+    // Vu en AIS : une observation ; au port base : position de référence, jamais une observation (spec souveraineté § 2.1, V1, S2).
     const liveTag = ship.isLive
-      ? `<span class="wm-badge" style="background:#22c55e20;color:#22c55e;border-color:#22c55e40">● AIS LIVE</span>`
-      : `<span class="wm-badge" style="background:#9898a820;color:#9898a8;border-color:#9898a840">PORT D'ATTACHE</span>`;
+      ? `<span class="wm-badge" style="background:#00d4c820;color:#00d4c8;border-color:#00d4c840">vu en AIS</span>`
+      : `<span class="wm-badge" style="background:#9898a820;color:#9898a8;border-color:#9898a840">position de référence, pas une observation</span>`;
 
     return `
       <div class="wm-popup-header">
@@ -532,7 +533,7 @@ export class MapPopup {
           <span class="wm-field-value wm-mono">${mmsi}</span>
         </div>
         <div class="wm-field">
-          <span class="wm-field-label">PORT</span>
+          <span class="wm-field-label">PORT BASE</span>
           <span class="wm-field-value">${port}</span>
         </div>
         <div class="wm-field" style="grid-column: span 2">
@@ -540,7 +541,7 @@ export class MapPopup {
           <span class="wm-field-value wm-mono">${ship.lat.toFixed(4)}°N, ${ship.lon.toFixed(4)}°E</span>
         </div>
       </div>
-      <div class="wm-popup-footer">Marine Nationale · AISstream.io</div>
+      <div class="wm-popup-footer">Marine nationale · aisstream.io via le relais</div>
     `;
   }
 

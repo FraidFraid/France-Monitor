@@ -49,7 +49,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'earthquakes', label: 'SÉISMES', icon: fmIcon('activity'), sublayerOf: 'environmentGroup' },
   { key: 'sovereignty', label: 'SOUVERAINETÉ', icon: fmIcon('shield') },
   { key: 'military', label: 'DÉFENSE', icon: fmIcon('shield'), sublayerOf: 'sovereignty' },
-  { key: 'subseaCables', label: 'CONNECTIVITÉ SOUS-MARINE', icon: fmIcon('waves'), sublayerOf: 'sovereignty' },
+  { key: 'subseaCables', label: 'CONNECTIVITÉ', icon: fmIcon('waves'), sublayerOf: 'sovereignty' },
   { key: 'cyber', label: 'VIGILANCE CYBER', icon: fmIcon('lock-keyhole'), sublayerOf: 'sovereignty' },
   { key: 'outages', label: 'PANNES RÉSEAU', icon: fmIcon('satellite-dish') },
   { key: 'outagesElec',     label: 'ÉLECTRICITÉ',   icon: fmIcon('zap'),   sublayerOf: 'outages' },
@@ -656,9 +656,10 @@ export class LayerPanel {
         this.helpItem(fmIcon('activity'), 'Séismes', 'Séismes des 7 derniers jours en France et à moins de 20\u00a0km (BCSF-RéNaSS, EMSC en repli) : magnitude, profondeur, statut.'),
       ]),
       this.helpSection(fmIcon('shield'), 'Souveraineté', [
-        this.helpItem(fmIcon('shield'), 'Défense', 'Bases militaires (▲), vols militaires et navires de la Marine nationale.', 'live'),
-        this.helpItem(fmIcon('waves'), 'Connectivité sous-marine', 'Câbles télécom sous-marins et points d’atterrage en France.', 'monthly'),
-        this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Baromètre multi-signaux : leaks FR, ransomware 30j, CERT/NVD critiques, exposition passive Shodan/Censys et incidents géolocalisés. Chaque famille est plafonnée pour éviter la saturation.', 'live'),
+        // Sans badge (point 20) : chaque panneau date sa donnée. O9 (libellé du gros chiffre), O10, O18, S2, S10.
+        this.helpItem(fmIcon('shield'), 'Défense', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), comptes par département pour les appareils français, urgences confirmées, posture Vigipirate, Marine nationale vue en AIS et ports base de référence, sites de défense.'),
+        this.helpItem(fmIcon('waves'), 'Connectivité', 'Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS).'),
+        this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Alertes CERT-FR en cours (statut officiel), avis, catalogue KEV de la CISA, revendications de rançongiciels (Ransomware.live, comptes agrégés), fuites récentes (Have I Been Pwned, compte et lien), alertes Cybermalveillance.'),
       ]),
       this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau', [
         this.helpItem(fmIcon('zap'), 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes).', 'live'),

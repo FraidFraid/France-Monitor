@@ -80,7 +80,7 @@ describe('sources-quality-dashboard', () => {
           fallbackCount: 1,
         }),
         status({
-          name: 'Cyber',
+          name: 'CERT-FR',
           status: 'error',
           lastUpdate: new Date('2026-06-27T07:00:00.000Z'),
           error: 'source indisponible',
@@ -98,6 +98,17 @@ describe('sources-quality-dashboard', () => {
     assert.ok(data.signalsToReview.some((signal) => signal.source === 'Cyber'));
     assert.ok(data.moduleMatrix.some((row) => row.module === 'Réseau'));
     assert.ok(data.methodScale.some((row) => row.range === '70-100'));
+  });
+
+  it('souveraineté : cinq lignes cyber datées pour l’entrée « Cyber », plus de ligne « Cyber » ; vols militaires sans repli (O9)', () => {
+    const registry = getSourceQualityRegistry();
+    assert.deepEqual(registry.find((e) => e.id === 'cyber')?.watchdogNames, ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr']);
+    assert.equal(registry.find((e) => e.id === 'cyber')?.mappedIndicators.includes('score global'), false);
+    const military = registry.find((e) => e.id === 'military-flights');
+    assert.deepEqual(military?.watchdogNames, ['Vols militaires']);
+    assert.deepEqual(military?.limits, ['Couverture communautaire : un appareil absent du flux n’est pas absent du ciel']);
+    assert.equal(military?.mappedIndicators.includes('fallback'), false);
+    assert.ok(military?.mappedIndicators.includes('aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole'));
   });
 });
 

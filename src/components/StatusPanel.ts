@@ -5,6 +5,7 @@
  */
 
 import type { DataSourceStatus } from '../types/index.ts';
+import { sovereigntySourceDetail } from '../config/sovereignty-sources.ts';
 import { t } from '../services/i18n.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import type { IconName } from './shared/icons.ts';
@@ -68,7 +69,6 @@ const SOURCE_NAME_KEYS: Record<string, string> = {
 
 const SOURCE_DETAIL_KEYS: Record<string, string> = {
     'API publique open data, licence Etalab': 'status.details.hubeau',
-    'adsb.fi → airplanes.live → OpenSky': 'status.details.militaryFlights',
     'OpenSky (ADS-B), collecte du serveur': 'status.details.airTraffic',
 };
 
@@ -176,7 +176,16 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
+            // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
+            // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
+            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
+            { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
+            { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
+            { name: 'CISA KEV', lastUpdate: null, status: 'loading' },
+            { name: 'Ransomware.live', lastUpdate: null, status: 'loading' },
+            { name: 'Have I Been Pwned', lastUpdate: null, status: 'loading' },
+            { name: 'Cybermalveillance.gouv.fr', lastUpdate: null, status: 'loading' },
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
@@ -243,7 +252,16 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
+            // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
+            // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
+            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
+            { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
+            { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
+            { name: 'CISA KEV', lastUpdate: null, status: 'loading' },
+            { name: 'Ransomware.live', lastUpdate: null, status: 'loading' },
+            { name: 'Have I Been Pwned', lastUpdate: null, status: 'loading' },
+            { name: 'Cybermalveillance.gouv.fr', lastUpdate: null, status: 'loading' },
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
@@ -392,12 +410,23 @@ export class StatusPanel {
             nameEl.textContent = translateSourceName(src.name);
             textWrap.appendChild(nameEl);
 
-            // ── Détail statique (provenance, licence…) ──
-            if (src.detail) {
-                const detailEl = document.createElement('span');
+            // ── Détail statique (provenance, licence…) ; lignes Souveraineté : la source nommée avec son lien (attributions de la spec) ──
+            const sovereign = sovereigntySourceDetail(src.name);
+            const detail = src.detail !== undefined ? translateDetail(src.detail) : sovereign?.detail ?? null;
+            if (detail) {
+                const link = sovereign?.link ?? null;
+                const detailEl = document.createElement(link ? 'a' : 'span');
                 detailEl.style.cssText = 'font-size:10px;color:var(--text-muted);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-                detailEl.title = translateDetail(src.detail);
-                detailEl.textContent = translateDetail(src.detail);
+                detailEl.title = detail;
+                detailEl.textContent = detail;
+                if (link && detailEl instanceof HTMLAnchorElement) {
+                    detailEl.href = link;
+                    detailEl.target = '_blank';
+                    detailEl.rel = 'noopener noreferrer';
+                    detailEl.style.textDecoration = 'underline';
+                    // Le lien ouvre la source ; il n'ouvre pas le panneau de la ligne.
+                    detailEl.addEventListener('click', (e) => e.stopPropagation());
+                }
                 textWrap.appendChild(detailEl);
             }
 

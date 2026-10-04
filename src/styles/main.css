@@ -5773,91 +5773,13 @@ button.header-quality-link {
   }
 }
 
-/* ═══ Cyber Panel ═══ */
-
-/* Skeleton loading animation */
+/* Squelettes de chargement (animation gardée : d'autres panneaux s'en servent) */
 @keyframes pulse {
   0%, 100% {
     opacity: 0.4;
   }
   50% {
     opacity: 0.8;
-  }
-}
-
-/* Critical alert pulsation */
-@keyframes cyber-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
-    background: rgba(0, 0, 0, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
-    background: rgba(239, 68, 68, 0.08);
-  }
-}
-
-.cyber-panel-modal {
-  font-family: var(--font-family);
-}
-
-.cyber-bento-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.cyber-bento-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.cyber-bento-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.cyber-alert-item {
-  transition: background 0.2s ease, transform 0.15s ease;
-}
-
-.cyber-alert-item:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
-  transform: translateX(2px);
-}
-
-.cyber-cve-badge {
-  transition: all 0.2s ease;
-}
-
-.cyber-cve-badge:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  transform: scale(1.02);
-}
-
-/* Odometer styling */
-.cyber-odometer > div {
-  transition: color 0.3s ease;
-}
-
-/* Ring chart animation */
-.cyber-ring-container svg circle {
-  transition: stroke-dasharray 0.5s ease-out, stroke 0.3s ease;
-}
-
-/* Warning banner */
-.cyber-warning {
-  animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -5878,6 +5800,7 @@ button.header-quality-link {
 @media (max-width: 768px) {
   .cyber-panel-modal,
   .defense-panel-modal,
+  .connectivity-panel-modal,
   .energy-panel-modal,
   .vigilance-panel-modal,
   .floods-panel-modal,
@@ -5922,6 +5845,7 @@ button.header-quality-link {
 
   .cyber-panel-modal::before,
   .defense-panel-modal::before,
+  .connectivity-panel-modal::before,
   .energy-panel-modal::before,
   .vigilance-panel-modal::before,
   .floods-panel-modal::before,
@@ -5954,23 +5878,6 @@ button.header-quality-link {
     margin: 10px auto 2px;
     border-radius: 2px;
     background: rgba(255, 255, 255, 0.22);
-  }
-}
-
-/* Responsive adjustments for cyber panel */
-@media (max-width: 480px) {
-  .cyber-panel-modal {
-    width: calc(100vw - 20px) !important;
-    right: 10px !important;
-    left: 10px !important;
-  }
-
-  .cyber-bento-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cyber-cve-card {
-    grid-column: span 1 !important;
   }
 }
 
@@ -7883,6 +7790,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
      attachés à #app comme à <body>). !important : les panneaux posent leur géométrie en style inline. */
   #app.ui-v2 .cyber-panel-modal,
   #app.ui-v2 .defense-panel-modal,
+  #app.ui-v2 .connectivity-panel-modal,
   #app.ui-v2 .energy-panel-modal,
   #app.ui-v2 .vigilance-panel-modal,
   #app.ui-v2 .floods-panel-modal,
@@ -8151,6 +8059,12 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Méthode et sources des panneaux Santé, Trafics et Environnement : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
 #app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 #app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+/* Panneaux Souveraineté (spec 2026-10-04 souveraineté) : ligne de niveau qui passe à la ligne, méthode et sources en phrases (mêmes
+   règles que les panneaux Trafics et Environnement). */
+:is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .lp .lp-tbl th, .lp .lp-tbl td { padding: 3px 0; text-align: right; font-weight: 400; vertical-align: baseline; }

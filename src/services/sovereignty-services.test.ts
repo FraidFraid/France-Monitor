@@ -26,7 +26,8 @@ import {
   CYBER_TTL_MS, CYBER_URL, RANSOMWARE_UNDATED_NOTE, cyberResponseProblems, cyberStatus, fetchCyber, isCyberResponse, mergeCyber,
 } from './sovereignty-cyber.ts';
 import {
-  VIGIPIRATE_CHECK_URL, fetchVigipirateCheck, isVigipiratePageCheck, vigipirateAlertEndPassed, vigipirateNotices,
+  VIGIPIRATE_CHECK_LATE_AFTER_H, VIGIPIRATE_CHECK_URL, fetchVigipirateCheck, isVigipiratePageCheck, mergeVigipirateCheck, vigipirateAlertEndPassed,
+  vigipirateCheckStatus, vigipirateNotices,
 } from './sovereignty-vigipirate.ts';
 
 const NOW = SOV_FIXTURE_NOW;
@@ -368,6 +369,24 @@ describe('Vigipirate : vérification de la page officielle (O14, S1)', () => {
     // 21 h 30 UTC : encore le 04/10 à Paris, jour de la saisie : rien à revérifier.
     const sameDay = { ...changed, readAt: '2026-10-04T21:30:00.000Z', pageChangedAt: '2026-10-04T21:30:00.000Z' };
     expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(sameDay), Date.parse('2026-10-05T08:00:00Z')).recheck).toBeNull();
+  });
+  it('ligne « Vigipirate (page du SGDSN) » datée par la relecture du serveur ; en retard au-delà de 26 h ; panne nommée, date gardée', async () => {
+    expect(VIGIPIRATE_CHECK_LATE_AFTER_H).toBe(26);
+    const state = { check: slot(VIGIPIRATE_CHECK_FIXTURE()) };
+    expect(vigipirateCheckStatus(state, NOW)).toMatchObject({ status: 'ok', period: '16:48', lastUpdate: new Date('2026-10-04T14:48:30.000Z') });
+    expect(vigipirateCheckStatus(state, NOW + 26 * HOUR)).toMatchObject({ status: 'ok' });
+    expect(vigipirateCheckStatus(state, NOW + 26 * HOUR + 1000)).toMatchObject({ status: 'stale' });
+    expect(vigipirateCheckStatus(state, NOW + 26 * HOUR + 1000).period).toMatch(/\(en retard\)$/);
+    const failed = { check: slot({ ...VIGIPIRATE_CHECK_FIXTURE(), errors: ['SGDSN, page Vigipirate : HTTP 503'] }) };
+    expect(vigipirateCheckStatus(failed, NOW)).toMatchObject({ status: 'stale', error: 'SGDSN, page Vigipirate : HTTP 503', period: '16:48' });
+    expect(vigipirateCheckStatus({ check: slot(null) }, NOW)).toMatchObject({ status: 'loading', lastUpdate: null });
+    // 502 sans relecture réussie : ligne en erreur, nommée par le serveur ; une lecture en échec garde la vérification en mémoire.
+    stubFetch({}, { [VIGIPIRATE_CHECK_URL]: { status: 502, body: { readAt: null, fingerprint: null, pageChangedAt: null, errors: ['SGDSN, page Vigipirate : HTTP 503'] } } });
+    const never = await fetchVigipirateCheck(null, NOW);
+    expect(vigipirateCheckStatus(never, NOW)).toMatchObject({ status: 'error', lastUpdate: null, error: 'SGDSN, page Vigipirate : HTTP 503' });
+    const kept = mergeVigipirateCheck(state, never);
+    expect(kept.check.data).toEqual(VIGIPIRATE_CHECK_FIXTURE());
+    expect(vigipirateCheckStatus(kept, NOW)).toMatchObject({ status: 'stale', period: '16:48', error: 'SGDSN, page Vigipirate : HTTP 503' });
   });
   it('vérification en panne ou en retard : dite, jamais « inchangée »', async () => {
     const failed = { ...VIGIPIRATE_CHECK_FIXTURE(), errors: ['SGDSN, page Vigipirate : page de contrôle anti-robot'] };
