@@ -218,13 +218,23 @@ export function isNamedBy(text: string, prefix: string): boolean {
  * lecture ; « stale » en retard ou quand une partie a échoué ; « error » sans donnée ou sans date de la source (partie jamais lue) ;
  * « loading » avant la première lecture ou quand le serveur ne dit qu'une note d'avancement. Les notes d'avancement sont jointes à la
  * période, sans dégrader le statut.
- * `errorPrefix` : ne garde que les erreurs de la réponse nommées par ce libellé (une réponse cyber porte cinq sources) ; `parts` :
- * libellés de toutes les sources de la réponse, une erreur qui n'en nomme aucune (collecte interrompue, note d'avancement commune) vaut
- * alors pour chaque ligne, et une panne de lecture n'est retirée d'une ligne que si elle nomme une autre source.
+ * `errorPrefix` : ne garde que les erreurs de la réponse nommées par ce libellé (une réponse cyber porte cinq sources).
+ * `options.parts` : libellés de toutes les sources de la réponse ; une erreur qui n'en nomme aucune (collecte interrompue, note
+ * d'avancement commune) vaut alors pour chaque ligne, et une panne de lecture n'est retirée d'une ligne que si elle nomme une autre
+ * source. `options.fallback` : date de repli quand la source lue ne publie pas sa date (fichier Ransomware.live sans en-tête
+ * last-modified : date du relevé), dite par sa note dans la période (« 16:48 · fichier sans date de modification ») ; jamais
+ * « source jamais lue » pour une source lue.
  */
+export interface SovereigntyStatusOptions {
+  parts?: readonly string[];
+  fallback?: { date: string | null; note: string };
+}
+
 export function sovereigntySlotStatus<T extends { errors: string[] }>(
-  slot: SourceSlot<T>, source: SovereigntySource, dataDate: string | null, now: number, errorPrefix?: string, parts: readonly string[] = [],
+  slot: SourceSlot<T>, source: SovereigntySource, dataDate: string | null, now: number, errorPrefix?: string,
+  options: SovereigntyStatusOptions = {},
 ): SovereigntyStatus {
+  const parts = options.parts ?? [];
   const others = parts.filter((p) => p !== errorPrefix);
   const readFailures = slot.error === null ? [] : slot.error.split(' ; ').filter((e) => !others.some((p) => isNamedBy(e, p)));
   if (slot.data === null) {
@@ -242,11 +252,15 @@ export function sovereigntySlotStatus<T extends { errors: string[] }>(
   const notes = all.filter(isSovereigntyProgressNote);
   const withNotes = (period: string): string => (notes.length > 0 ? `${period} · ${notes.join(' ; ')}` : period);
   const error = errors.length > 0 ? errors.join(' ; ') : undefined;
-  const ms = dataMs(dataDate);
+  const ownMs = dataMs(dataDate);
+  const fallback = ownMs === null && options.fallback !== undefined && dataMs(options.fallback.date) !== null ? options.fallback : null;
+  const date = fallback === null ? dataDate : fallback.date;
+  const ms = dataMs(date);
   if (ms === null) return { status: 'error', lastUpdate: null, error: error ?? 'source jamais lue', period: withNotes('n.d.') };
-  const late = isSovereigntyDataLate(source, dataDate, now);
+  const late = isSovereigntyDataLate(source, date, now);
+  // « (en retard) » reste en fin de l'heure (StatusPanel le lit en fin de période) ; la note de repli la précède.
   return {
     status: errors.length > 0 || late ? 'stale' : 'ok', lastUpdate: new Date(ms), error,
-    period: withNotes(`${absoluteTime(ms, now, 'fr')}${late ? ' (en retard)' : ''}`),
+    period: withNotes(`${absoluteTime(ms, now, 'fr')}${fallback === null ? '' : ` · ${fallback.note}`}${late ? ' (en retard)' : ''}`),
   };
 }

@@ -8,7 +8,7 @@ import type { DefenseOsmWorksFile, MilitaryResponse } from '../types/index.ts';
 import { readHealthJsonShared } from './health-surveillance.ts';
 import {
   describeProblems, exactly, isBool, isCount, isDate, isDateOrNull, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, isStringList, list,
-  loadSovereigntySlot, mergeSlot, record, shapeOf, sovereigntySlotStatus, value, type ShapeCheck, type SourceSlot, type SovereigntyStatus,
+  loadSovereigntySlot, mergeSlot, record, refine, shapeOf, sovereigntySlotStatus, value, type ShapeCheck, type SourceSlot, type SovereigntyStatus,
 } from './sovereignty-source.ts';
 
 export const MILITARY_URL = '/api/sovereignty/military';
@@ -31,19 +31,41 @@ const count = value(isCount);
 const date = value(isDate);
 const squawk = value((v) => isOneOf(v, SQUAWKS));
 
-/** Appareil montré (MilitaryAircraft) : ni immatriculation ni famille (O10). */
-const aircraft = record({
+/** Bloc d'adresses OACI de la France (faits § 5.3, api/_lib/icao-country.js) : 380000 à 3BFFFF. */
+const FRENCH_BLOCK = { start: 0x380000, end: 0x3bffff } as const;
+
+/** Adresse du bloc France ; une adresse non OACI (« ~… ») n'a pas de pays et n'est jamais lue comme française. */
+function isFrenchIcaoAddress(address: unknown): boolean {
+  if (typeof address !== 'string' || !/^[0-9a-f]{6}$/i.test(address)) return false;
+  const n = Number.parseInt(address, 16);
+  return n >= FRENCH_BLOCK.start && n <= FRENCH_BLOCK.end;
+}
+
+/**
+ * O10 côté client : un appareil montré un par un (avec indicatif, type et position) n'est jamais français, par son pays ou par son
+ * adresse, ni à adresse non OACI (nationalité inconnue, masquée par défaut) ; sinon la réponse est refusée et l'élément nommé.
+ */
+const notMasked = (addressKey: string) => (v: Record<string, unknown>): boolean => {
+  const address = v[addressKey];
+  return v.country !== 'France' && !isFrenchIcaoAddress(address) && !(typeof address === 'string' && address.startsWith('~'));
+};
+const MASKED_SHOWN = 'appareil français ou à adresse non OACI montré, O10';
+
+/** Appareil montré (MilitaryAircraft) : ni immatriculation ni famille, jamais français (O10). */
+const aircraft = refine(record({
   hex: str, callsign: strOrNull, type: strOrNull, country: strOrNull, lat: num, lon: num, dept: strOrNull, altitudeFt: numOrNull,
   speedKt: numOrNull, track: numOrNull, seenAt: date,
-});
-const abroad = record({ hex: str, callsign: strOrNull, type: strOrNull, country: strOrNull, lat: num, lon: num });
+}), notMasked('hex'), MASKED_SHOWN);
+const abroad = refine(
+  record({ hex: str, callsign: strOrNull, type: strOrNull, country: strOrNull, lat: num, lon: num }), notMasked('hex'), MASKED_SHOWN,
+);
 const deptCount = record({ dept: strOrNull, count });
-/** Urgence d'un appareil montré : famille « autres » par construction. */
-const shownEmergency = record({
+/** Urgence d'un appareil montré : famille « autres » par construction, jamais un appareil français (O10). */
+const shownEmergency = refine(record({
   icao24: str, callsign: strOrNull, squawk, lat: num, lon: num, altitudeM: numOrNull, firstSeen: date, lastSeen: date, overFrance: bool,
   masked: exactly(false), family: exactly('autres'), type: strOrNull, country: strOrNull, emergency: strOrNull, inFrance: bool,
   dept: strOrNull,
-});
+}), notMasked('icao24'), MASKED_SHOWN);
 /** Urgence masquée (O10) : ni adresse, ni indicatif, ni position, ni type, ni pays. */
 const maskedEmergency = record({
   masked: exactly(true), family: value((v) => isOneOf(v, FAMILIES)), squawk, firstSeen: date, lastSeen: date, overFrance: bool,

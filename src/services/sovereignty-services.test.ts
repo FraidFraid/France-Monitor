@@ -22,7 +22,9 @@ import {
   CABLES_FILE_URL, CABLES_WATCH_TTL_MS, CABLES_WATCH_URL, cablesStatus, cablesWatchProblems, fetchCables, isCablesWatchResponse,
   isSubseaCablesFile, mergeCables,
 } from './sovereignty-cables.ts';
-import { CYBER_TTL_MS, CYBER_URL, cyberResponseProblems, cyberStatus, fetchCyber, isCyberResponse, mergeCyber } from './sovereignty-cyber.ts';
+import {
+  CYBER_TTL_MS, CYBER_URL, RANSOMWARE_UNDATED_NOTE, cyberResponseProblems, cyberStatus, fetchCyber, isCyberResponse, mergeCyber,
+} from './sovereignty-cyber.ts';
 import {
   VIGIPIRATE_CHECK_URL, fetchVigipirateCheck, isVigipiratePageCheck, vigipirateNotices,
 } from './sovereignty-vigipirate.ts';
@@ -83,11 +85,11 @@ describe('socle : statut daté par la donnée, notes d’avancement, filtre par 
     const errors = ['CERT-FR, avis : HTTP 503', 'CISA KEV : HTTP 503', 'HIBP : HTTP 403', 'Collecte cyber interrompue : délai dépassé'];
     expect(sovereigntySlotStatus(slot(errors), 'certfr', '2026-10-04T14:48:30.000Z', NOW, 'CERT-FR').error).toBe('CERT-FR, avis : HTTP 503');
     expect(sovereigntySlotStatus(slot(errors), 'kev', '2026-10-04T14:48:30.000Z', NOW, 'CISA KEV').error).toBe('CISA KEV : HTTP 503');
-    expect(sovereigntySlotStatus(slot(errors), 'kev', '2026-10-04T14:48:30.000Z', NOW, 'CISA KEV', ['CERT-FR', 'CISA KEV', 'HIBP']).error)
+    expect(sovereigntySlotStatus(slot(errors), 'kev', '2026-10-04T14:48:30.000Z', NOW, 'CISA KEV', { parts: ['CERT-FR', 'CISA KEV', 'HIBP'] }).error)
       .toBe('CISA KEV : HTTP 503 ; Collecte cyber interrompue : délai dépassé');
     // Panne de lecture (502 nommé) : retirée d'une ligne seulement si elle nomme une autre source.
     const failed = { data: null, error: 'CERT-FR, alertes : HTTP 503 ; HIBP : HTTP 503 ; HTTP 502', fetchedAt: null };
-    expect(sovereigntySlotStatus(failed, 'hibp', null, NOW, 'HIBP', ['CERT-FR', 'HIBP']).error).toBe('HIBP : HTTP 503 ; HTTP 502');
+    expect(sovereigntySlotStatus(failed, 'hibp', null, NOW, 'HIBP', { parts: ['CERT-FR', 'HIBP'] }).error).toBe('HIBP : HTTP 503 ; HTTP 502');
   });
   it('écarts nommés : au plus cinq, puis leur nombre', () => {
     expect(describeProblems(['a', 'b'])).toBe('a, b');
@@ -118,6 +120,30 @@ describe('Défense', () => {
     const missing = MILITARY_FIXTURE();
     delete field(missing).maskedOthers;
     expect([isMilitaryResponse(missing), militaryResponseProblems(missing)]).toEqual([false, ['maskedOthers (absent)']]);
+  });
+  it('O10 : un appareil français (pays « France » ou adresse du bloc 380000 à 3BFFFF) ou à adresse non OACI n’est jamais montré : dans `others`, `abroad` ou une urgence montrée, la réponse est refusée et l’élément nommé', () => {
+    const O10 = '(appareil français ou à adresse non OACI montré, O10)';
+    const byCountry = MILITARY_FIXTURE();
+    field(byCountry.others[0]).country = 'France';
+    expect(militaryResponseProblems(byCountry)).toEqual([`others[0] ${O10}`]);
+    const byAddress = MILITARY_FIXTURE();
+    Object.assign(field(byAddress.others[3]), { hex: '3bf004', country: null });
+    expect(militaryResponseProblems(byAddress)).toEqual([`others[3] ${O10}`]);
+    const abroad = MILITARY_FIXTURE();
+    Object.assign(field(abroad.abroad[1]), { hex: '3a0001', country: 'France' });
+    expect(militaryResponseProblems(abroad)).toEqual([`abroad[1] ${O10}`]);
+    const unknown = MILITARY_FIXTURE();
+    field(unknown.abroad[2]).hex = '~4b0def';
+    expect(militaryResponseProblems(unknown)).toEqual([`abroad[2] ${O10}`]);
+    const emergency = MILITARY_EMERGENCY_FIXTURE();
+    Object.assign(field(emergency.emergencies[0]), { icao24: '3bf004', country: 'France' });
+    Object.assign(field(emergency.emergencyLog[1]), { country: 'France' });
+    expect(militaryResponseProblems(emergency)).toEqual([`emergencies[0] ${O10}`, `emergencyLog[1] ${O10}`]);
+    // Bornes du bloc France : 37FFFF et 3C0000 (Allemagne) restent montrables.
+    const edges = MILITARY_FIXTURE();
+    Object.assign(field(edges.others[0]), { hex: '37ffff', country: null });
+    Object.assign(field(edges.others[1]), { hex: '3c0000', country: 'Allemagne' });
+    expect(isMilitaryResponse(edges)).toBe(true);
   });
   it('lecture sous le cache de 100 s, jamais de rejet ; échec : données gardées, panne portée', async () => {
     const f = stubFetch({ [MILITARY_URL]: MILITARY_FIXTURE() });
@@ -209,6 +235,12 @@ describe('Connectivité', () => {
     expect(frozen.error).toContain('flux AIS interrompu');
     expect(at(CABLES_WATCH_ZONE_MUTED_FIXTURE())).toMatchObject({ status: 'stale', period: '16:46', error: expect.stringContaining('flux AIS partiel') });
   });
+  it('« Câbles et AIS » en retard au-delà de 15 min après le dernier message AIS (amendement 5), pas avant', () => {
+    const state = { watch: { data: CABLES_WATCH_FIXTURE(), error: null, fetchedAt: NOW }, file: null, fileError: null };
+    const last = Date.parse('2026-10-04T14:46:58.000Z');
+    expect(cablesStatus(state, last + 15 * MIN)).toMatchObject({ status: 'ok', period: '16:46' });
+    expect(cablesStatus(state, last + 15 * MIN + 1000)).toMatchObject({ status: 'stale', period: '16:46 (en retard)' });
+  });
 });
 
 describe('Vigilance cyber', () => {
@@ -251,6 +283,27 @@ describe('Vigilance cyber', () => {
     expect(cyberStatus(state, 'ransomware', NOW + 24 * HOUR)).toMatchObject({ status: 'stale', period: '04/10 16:30 (en retard)' });
     expect(cyberStatus(state, 'cybermalveillance', NOW + 6 * HOUR + MIN)).toMatchObject({ status: 'stale', period: '16:48 (en retard)' });
   });
+  it('retards des lignes (S2), de part et d’autre de chaque limite : CERT-FR 6 h, CISA KEV 26 h, HIBP 26 h', () => {
+    const state = { cyber: { data: CYBER_FIXTURE(), error: null, fetchedAt: NOW } };
+    const read = Date.parse('2026-10-04T14:48:30.000Z');
+    for (const [part, hours] of [['certfr', 6], ['kev', 26], ['hibp', 26]] as const) {
+      expect([part, cyberStatus(state, part, read + hours * HOUR).status]).toEqual([part, 'ok']);
+      expect([part, cyberStatus(state, part, read + hours * HOUR + 1000)]).toEqual([part, expect.objectContaining({ status: 'stale', period: expect.stringMatching(/16:48 \(en retard\)$/) })]);
+    }
+  });
+  it('Ransomware.live sans date de modification publiée : datée par le relevé du serveur et dite, jamais « source jamais lue »', () => {
+    const data = CYBER_FIXTURE();
+    if (data.ransomware === null) throw new Error('jeu d’essai sans revendications');
+    data.ransomware = { ...data.ransomware, lastModified: null };
+    const state = { cyber: { data, error: null, fetchedAt: NOW } };
+    expect(cyberStatus(state, 'ransomware', NOW)).toEqual({
+      status: 'ok', lastUpdate: new Date('2026-10-04T14:48:30.000Z'), error: undefined, period: `16:48 · ${RANSOMWARE_UNDATED_NOTE}`,
+    });
+    expect(cyberStatus(state, 'ransomware', NOW + 24 * HOUR + MIN)).toMatchObject({ status: 'stale', period: `04/10 16:48 · ${RANSOMWARE_UNDATED_NOTE} (en retard)` });
+    // Ni date du fichier ni relevé : jamais lue.
+    data.ransomware = { ...data.ransomware, checkedAt: null };
+    expect(cyberStatus(state, 'ransomware', NOW)).toMatchObject({ status: 'error', error: 'source jamais lue', period: 'n.d.' });
+  });
   it('erreur sans source (collecte interrompue) et note commune : sur les cinq lignes', () => {
     const data = { ...CYBER_FIXTURE(), errors: ['Collecte cyber interrompue : délai dépassé', CYBER_PENDING_NOTE] };
     const state = { cyber: { data, error: null, fetchedAt: NOW } };
@@ -279,17 +332,36 @@ describe('Vigipirate : vérification de la page officielle (O14, S1)', () => {
     // Saisie mise à jour le jour du changement : plus rien à revérifier.
     expect(vigipirateNotices({ ...VIGIPIRATE_FIXTURE, saisiLe: '2026-10-05' }, slot(VIGIPIRATE_CHECK_CHANGED_FIXTURE()), later).recheck).toBeNull();
   });
-  it('« alerte attentat » : fin des 12 jours ; saisie de plus de 4 mois : rappel', () => {
+  it('« alerte attentat » : fin des 12 jours ; saisie de plus de 4\u00a0mois : rappel', () => {
     const alerte = { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat' as const, depuis: '2026-10-05', saisiLe: '2026-10-05' };
     expect(vigipirateNotices(alerte, slot(VIGIPIRATE_CHECK_FIXTURE()), NOW + 24 * HOUR).alertEnd).toBe('jusqu’au 17/10, sauf renouvellement par le Premier ministre');
     expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), Date.parse('2027-02-15T12:00:00+01:00')).reminder)
-      .toBe('saisie du 04/10/2026, de plus de 4 mois : à vérifier sur sgdsn.gouv.fr');
+      .toBe('saisie du 04/10/2026, de plus de 4\u00a0mois : à vérifier sur sgdsn.gouv.fr');
+  });
+  it('rappel de 4 mois (120 jours de Paris après la saisie) : pas le 01/02/2027 à 23 h 59, oui le 02/02/2027 à 0 h 01', () => {
+    const check = slot(VIGIPIRATE_CHECK_FIXTURE());
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, check, Date.parse('2027-02-01T23:59:00+01:00')).reminder).toBeNull();
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, check, Date.parse('2027-02-02T00:01:00+01:00')).reminder)
+      .toBe('saisie du 04/10/2026, de plus de 4\u00a0mois : à vérifier sur sgdsn.gouv.fr');
+  });
+  it('jour de Paris, pas jour UTC : relecture ou changement à 22 h 30 UTC un soir d’été tombe le lendemain à Paris', () => {
+    const lateEvening = '2026-10-04T22:30:00.000Z';
+    const failed = { ...VIGIPIRATE_CHECK_FIXTURE(), readAt: lateEvening, errors: ['SGDSN, page Vigipirate : HTTP 503'] };
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(failed), Date.parse('2026-10-05T08:00:00Z')).checkFailure)
+      .toBe('page officielle non relue depuis le 05/10 : SGDSN, page Vigipirate : HTTP 503');
+    const changed = { ...VIGIPIRATE_CHECK_CHANGED_FIXTURE(), readAt: lateEvening, pageChangedAt: lateEvening };
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(changed), Date.parse('2026-10-05T08:00:00Z')).recheck)
+      .toBe('niveau à revérifier sur sgdsn.gouv.fr (page modifiée le 05/10)');
+    // 21 h 30 UTC : encore le 04/10 à Paris, jour de la saisie : rien à revérifier.
+    const sameDay = { ...changed, readAt: '2026-10-04T21:30:00.000Z', pageChangedAt: '2026-10-04T21:30:00.000Z' };
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(sameDay), Date.parse('2026-10-05T08:00:00Z')).recheck).toBeNull();
   });
   it('vérification en panne ou en retard : dite, jamais « inchangée »', async () => {
     const failed = { ...VIGIPIRATE_CHECK_FIXTURE(), errors: ['SGDSN, page Vigipirate : page de contrôle anti-robot'] };
     expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(failed), NOW).checkFailure)
       .toBe('page officielle non relue depuis le 04/10 : SGDSN, page Vigipirate : page de contrôle anti-robot');
-    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), NOW + 27 * HOUR).checkFailure).toBe('page officielle non relue depuis le 04/10');
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), NOW + 26 * HOUR).checkFailure).toBeNull();
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), NOW + 26 * HOUR + 1000).checkFailure).toBe('page officielle non relue depuis le 04/10');
     stubFetch({}, { [VIGIPIRATE_CHECK_URL]: { status: 502, body: { readAt: null, fingerprint: null, pageChangedAt: null, errors: ['SGDSN, page Vigipirate : HTTP 503'] } } });
     const never = await fetchVigipirateCheck(null, NOW);
     expect(vigipirateNotices(VIGIPIRATE_FIXTURE, never.check, NOW).checkFailure).toBe('page officielle jamais relue : SGDSN, page Vigipirate : HTTP 503');

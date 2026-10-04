@@ -16,12 +16,16 @@ export function hasActiveSovereignty(layers: Partial<Record<SovereigntyLayerKey,
 }
 
 /** Clé de la source (retards S2) et nom dans le panneau des sources (hors Watchdog, datés par la donnée). */
-export const SOVEREIGNTY_STATUS_SOURCES: ReadonlyArray<readonly [SovereigntySource, string]> = [
+export const SOVEREIGNTY_STATUS_SOURCES = [
   ['adsb-mil', 'Vols militaires'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'],
   ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'], ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
   // phase B : ['adsb-gnss', 'Grille GNSS'], ['noaa', 'NOAA SWPC'], ['ripestat', 'RIPEstat'], ['gels', 'Registre des gels'],
-];
+] as const satisfies ReadonlyArray<readonly [SovereigntySource, string]>;
 
+/** Nom d'une ligne Souveraineté du panneau des sources : un nom mal écrit ne compile pas. */
+export type SovereigntySourceName = (typeof SOVEREIGNTY_STATUS_SOURCES)[number][1];
+
+/** Noms des lignes, en `string` pour les comparer aux noms du panneau des sources (`names.includes(s.name)`). */
 export const SOVEREIGNTY_SOURCE_NAMES: readonly string[] = SOVEREIGNTY_STATUS_SOURCES.map(([, name]) => name);
 
 /**
@@ -29,7 +33,7 @@ export const SOVEREIGNTY_SOURCE_NAMES: readonly string[] = SOVEREIGNTY_STATUS_SO
  * conditions, et ce que la ligne date. Ransomware.live : source nommée, lien vers ses conditions d'utilisation (non commercial,
  * attribution obligatoire, aucun nom de victime repris).
  */
-export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<string, { detail: string; link: string }>> = {
+export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<SovereigntySourceName, { detail: string; link: string }>> = {
   'Vols militaires': { detail: 'Données adsb.lol, ODbL 1.0 · relevé du serveur', link: 'https://www.adsb.lol' },
   'Câbles et AIS': {
     detail: 'Relais AIS du serveur · câbles Shom (CC BY-SA) et OpenStreetMap (ODbL 1.0)',
@@ -43,7 +47,7 @@ export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<string, { detail: strin
 };
 
 /** Lignes mises en erreur si le service d'une couche ne se charge pas. */
-export const SOVEREIGNTY_LAYER_SOURCES: Readonly<Record<SovereigntyLayerKey, readonly string[]>> = {
+export const SOVEREIGNTY_LAYER_SOURCES: Readonly<Record<SovereigntyLayerKey, readonly SovereigntySourceName[]>> = {
   military: ['Vols militaires'],
   subseaCables: ['Câbles et AIS'],
   cyber: ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr'],

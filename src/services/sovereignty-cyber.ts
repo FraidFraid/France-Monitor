@@ -92,10 +92,24 @@ export function mergeCyber(current: SovCyberState | null, incoming: SovCyberStat
 }
 
 /** Ligne du panneau des sources de chaque partie : source du retard, préfixe des erreurs du serveur, date de la donnée (S1). */
-const PARTS: Readonly<Record<CyberPart, { source: SovereigntySource; prefix: string; date: (c: CyberResponse) => string | null }>> = {
+interface PartLine {
+  source: SovereigntySource;
+  prefix: string;
+  date: (c: CyberResponse) => string | null;
+  /** Date de repli quand la source ne publie pas la sienne, avec sa note. */
+  fallback?: { date: (c: CyberResponse) => string | null; note: string };
+}
+
+/** Fichier victims.json servi sans en-tête last-modified : daté par le relevé du serveur (`checkedAt`), et dit. */
+export const RANSOMWARE_UNDATED_NOTE = 'fichier sans date de modification';
+
+const PARTS: Readonly<Record<CyberPart, PartLine>> = {
   certfr: { source: 'certfr', prefix: 'CERT-FR', date: (c) => c.certfr.readAt },
   kev: { source: 'kev', prefix: 'CISA KEV', date: (c) => c.kev.readAt },
-  ransomware: { source: 'ransomware', prefix: 'Ransomware.live', date: (c) => c.ransomware?.lastModified ?? null },
+  ransomware: {
+    source: 'ransomware', prefix: 'Ransomware.live', date: (c) => c.ransomware?.lastModified ?? null,
+    fallback: { date: (c) => c.ransomware?.checkedAt ?? null, note: RANSOMWARE_UNDATED_NOTE },
+  },
   hibp: { source: 'hibp', prefix: 'HIBP', date: (c) => c.hibp?.readAt ?? null },
   cybermalveillance: { source: 'cybermalveillance', prefix: 'Cybermalveillance', date: (c) => c.cybermalveillance?.readAt ?? null },
 };
@@ -105,11 +119,13 @@ const PREFIXES: readonly string[] = Object.values(PARTS).map((p) => p.prefix);
 
 /**
  * Panneau des sources : « CERT-FR » (relevé des flux), « CISA KEV » (relevé du catalogue), « Ransomware.live » (date du fichier
- * publié, `lastModified`), « Have I Been Pwned » et « Cybermalveillance.gouv.fr » (relevé, `readAt`). Chaque ligne ne garde que les
- * erreurs de sa source, plus celles qui n'en nomment aucune (collecte interrompue, « Vigilance cyber : collecte en cours »).
+ * publié, `lastModified` ; sans elle, date du relevé `checkedAt` et « fichier sans date de modification »), « Have I Been Pwned » et
+ * « Cybermalveillance.gouv.fr » (relevé, `readAt`). Chaque ligne ne garde que les erreurs de sa source, plus celles qui n'en nomment
+ * aucune (collecte interrompue, « Vigilance cyber : collecte en cours »).
  */
 export function cyberStatus(state: SovCyberState, part: CyberPart, now: number): SovereigntyStatus {
   const p = PARTS[part];
   const data = state.cyber.data;
-  return sovereigntySlotStatus(state.cyber, p.source, data ? p.date(data) : null, now, p.prefix, PREFIXES);
+  const fallback = p.fallback && data ? { date: p.fallback.date(data), note: p.fallback.note } : undefined;
+  return sovereigntySlotStatus(state.cyber, p.source, data ? p.date(data) : null, now, p.prefix, { parts: PREFIXES, fallback });
 }

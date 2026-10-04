@@ -52,7 +52,7 @@ export interface VigipirateNotices {
   alertEnd: string | null;
   /** « niveau à revérifier sur sgdsn.gouv.fr (page modifiée le 05/10) » : page modifiée après le jour de la saisie. */
   recheck: string | null;
-  /** « saisie du 04/10/2026, de plus de 4 mois : à vérifier sur sgdsn.gouv.fr ». */
+  /** « saisie du 04/10/2026, de plus de 4 mois : à vérifier sur sgdsn.gouv.fr » ; espace insécable entre 4 et mois dans le texte (R1). */
   reminder: string | null;
   /** Vérification en panne ou en retard : « page officielle non relue depuis le 04/10 : SGDSN, page Vigipirate : HTTP 503 ». */
   checkFailure: string | null;
@@ -95,7 +95,7 @@ export function vigipirateNotices(entry: VigipirateEntry, check: SourceSlot<Vigi
   return {
     alertEnd: end === null ? null : `jusqu’au ${dayMonth(end)}, sauf renouvellement par le Premier ministre`,
     recheck: changed === null ? null : `niveau à revérifier sur sgdsn.gouv.fr (page modifiée le ${dayMonth(changed)})`,
-    reminder: vigipirateReminderDue(entry, now) ? `saisie du ${fullDate(entry.saisiLe)}, de plus de 4 mois : à vérifier sur sgdsn.gouv.fr` : null,
+    reminder: vigipirateReminderDue(entry, now) ? `saisie du ${fullDate(entry.saisiLe)}, de plus de 4\u00a0mois : à vérifier sur sgdsn.gouv.fr` : null,
     checkFailure: checkFailureOf(check, now),
   };
 }
