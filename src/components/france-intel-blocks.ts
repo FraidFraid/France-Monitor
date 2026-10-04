@@ -170,28 +170,76 @@ function pillTileLevel(pill: FranceCountrySignals['cyberPillLevel'], unavailable
   return pill === 'nd' ? null : PILL_DOMAIN_LEVEL[pill];
 }
 
+/** « 7 vulnérabilités » : nombre et nom collés par une espace insécable (R1, la légende passe à la ligne, jamais le compte). */
+function countWord(n: number, one: string, many: string): string {
+  return `${n}\u00a0${n > 1 ? many : one}`;
+}
+
+/**
+ * Tuile « Cyber » : gros chiffre du panneau Vigilance cyber (O1 : alertes en cours), niveau = sa pastille. Une source indisponible ou en
+ * retard ne donne jamais un compte (S3) : CERT-FR absent, « n.d. » sans compte de vulnérabilités ; catalogue KEV en retard,
+ * « vulnérabilités citées non évaluées ».
+ */
+function cyberTile(s: FranceCountrySignals, lang: Lang): DomainTile {
+  const alerts = t(lang, 'alertes CERT-FR en cours', 'CERT-FR alerts in progress');
+  const vulnerabilities = s.kevUnavailable === true
+    ? t(lang, 'vulnérabilités citées non évaluées', 'cited vulnerabilities not assessed')
+    : lang === 'fr'
+      ? countWord(s.cyberCritical, 'vulnérabilité exploitée citée', 'vulnérabilités exploitées citées')
+      : countWord(s.cyberCritical, 'exploited vulnerability cited', 'exploited vulnerabilities cited');
+  return {
+    label: 'Cyber',
+    value: s.cyberUnavailable === true ? null : s.cyberOpenAlerts ?? s.cyberAlerts,
+    meta: s.cyberUnavailable === true ? alerts : `${alerts} · ${vulnerabilities}`,
+    level: pillTileLevel(s.cyberPillLevel, s.cyberUnavailable, s.cyberCritical > 0 ? 'high' : s.cyberAlerts > 5 ? 'medium' : 'low'),
+  };
+}
+
+/**
+ * Tuile « Militaire » : gros chiffre Défense (O9) et appareils français ; niveau = pastille Défense (urgences affichées sur deux relevés),
+ * jamais le nombre d'aéronefs. adsb.lol indisponible ou en retard : « n.d. », sans compte de français.
+ */
+function militaryTile(s: FranceCountrySignals, lang: Lang): DomainTile {
+  const label = t(lang, MILITARY_FIGURE_LABEL, MILITARY_FIGURE_LABEL_EN);
+  return {
+    label: t(lang, 'Militaire', 'Military'),
+    value: s.militaryUnavailable === true ? null : s.militaryFlights,
+    meta: s.militaryUnavailable === true ? label : `${label} · ${s.militaryFrench ?? 0}\u00a0${t(lang, 'français', 'French')}`,
+    level: pillTileLevel(s.defensePillLevel, s.militaryUnavailable, s.militaryFlights > 10 ? 'medium' : 'low'),
+  };
+}
+
+/**
+ * Tuile « Défense » : formule inchangée sur les parts lues, navires lents confirmés sur un câble (AIS frais) et mailles à précision GNSS
+ * dégradée. Une part non lue est dite « non évaluée » et n'entre ni au chiffre ni au niveau (phase A : aucune grille GNSS, « GNSS non
+ * évalué », jamais « GNSS 0 ») ; aucune part lue : « n.d. », point gris.
+ */
+function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
+  const cablesOff = s.cablesUnavailable === true;
+  const gnssOff = s.gnssUnavailable === true;
+  const cableAlerts = cablesOff ? 0 : s.defenseAlerts;
+  const cableHigh = cablesOff ? 0 : s.defenseHigh;
+  const cells = gnssOff ? 0 : s.jammingSignals;
+  const cables = cablesOff ? t(lang, 'câbles non évalués', 'cables not assessed') : `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts}`;
+  const gnss = gnssOff ? t(lang, 'GNSS non évalué', 'GNSS not assessed') : `GNSS ${s.jammingSignals}`;
+  return {
+    label: t(lang, 'Défense', 'Defense'),
+    value: cablesOff && gnssOff ? null : cableAlerts + cells,
+    meta: `${cables} · ${gnss}`,
+    level: cablesOff && gnssOff ? null : cableHigh > 0 || cells > 0 ? 'high' : cableAlerts > 0 ? 'medium' : 'low',
+  };
+}
+
 export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
   const outages = s.powerOutages + s.telecomOutages;
   return [
-    {
-      // Gros chiffre du panneau Vigilance cyber (O1 : alertes en cours) ; niveau = sa pastille ; source indisponible : « n.d. », gris (S3).
-      label: 'Cyber', value: s.cyberUnavailable === true ? null : s.cyberOpenAlerts ?? s.cyberAlerts,
-      meta: `${t(lang, 'alertes CERT-FR en cours', 'CERT-FR alerts in progress')} · ${s.cyberCritical} ${s.cyberCritical > 1
-        ? t(lang, 'vulnérabilités exploitées citées', 'exploited vulnerabilities cited')
-        : t(lang, 'vulnérabilité exploitée citée', 'exploited vulnerability cited')}`,
-      level: pillTileLevel(s.cyberPillLevel, s.cyberUnavailable, s.cyberCritical > 0 ? 'high' : s.cyberAlerts > 5 ? 'medium' : 'low'),
-    },
+    cyberTile(s, lang),
     {
       label: 'Rail', value: s.railDisruptions,
       meta: `${s.railSevere} ${t(lang, 'fortes', 'severe')}`,
       level: s.railSevere > 0 ? 'high' : s.railDisruptions > 10 ? 'medium' : 'low',
     },
-    {
-      // Gros chiffre Défense (O9) ; niveau = pastille Défense (urgences affichées sur deux relevés), jamais le nombre d'aéronefs.
-      label: t(lang, 'Militaire', 'Military'), value: s.militaryUnavailable === true ? null : s.militaryFlights,
-      meta: `${t(lang, MILITARY_FIGURE_LABEL, MILITARY_FIGURE_LABEL_EN)} · ${s.militaryFrench ?? 0} ${t(lang, 'français', 'French')}`,
-      level: pillTileLevel(s.defensePillLevel, s.militaryUnavailable, s.militaryFlights > 10 ? 'medium' : 'low'),
-    },
+    militaryTile(s, lang),
     {
       label: 'Maritime', value: s.maritimeTrafficFrance,
       meta: t(lang, 'navires zone FR', 'ships FR waters'),
@@ -202,12 +250,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
       meta: `${t(lang, 'élec', 'power')} ${s.powerOutages} · ${t(lang, 'télécom', 'telecom')} ${s.telecomOutages}`,
       level: outages > 5 ? 'high' : outages > 0 ? 'medium' : 'low',
     },
-    {
-      // Formule inchangée sur les entrées nettoyées : navires lents confirmés sur un câble (AIS frais), mailles GNSS (phase B).
-      label: t(lang, 'Défense', 'Defense'), value: s.cablesUnavailable === true ? null : s.defenseAlerts + s.jammingSignals,
-      meta: `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts} · GNSS ${s.jammingSignals}`,
-      level: s.cablesUnavailable === true ? null : s.defenseHigh > 0 || s.jammingSignals > 0 ? 'high' : s.defenseAlerts > 0 ? 'medium' : 'low',
-    },
+    defenseTile(s, lang),
     meteoTile(s, lang),
     {
       label: 'Finance', value: s.marketStress,

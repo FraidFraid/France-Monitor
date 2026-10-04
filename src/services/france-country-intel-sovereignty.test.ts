@@ -9,7 +9,7 @@ import {
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import type { MilitaryResponse } from '../types/index.ts';
 import { buildFranceCountrySnapshot, buildFranceSignals, computeFranceScoreBreakdown, type FranceRawData } from './france-country-intel.ts';
-import { buildDeterministicBrief } from './france-intel-brief.ts';
+import { briefSignalCounts, buildDeterministicBrief } from './france-intel-brief.ts';
 import { buildSovereigntyInputs } from './sovereignty-inputs.ts';
 
 const NOW = SOV_FIXTURE_NOW;
@@ -97,6 +97,23 @@ describe('score France : entrées Souveraineté (formule inchangée)', () => {
     });
     const down = buildFranceCountrySnapshot(raw(buildSovereigntyInputs(null, null, null, NOW)), { now: NOW });
     expect([down.cyberScore, down.briefContext.cyberScore]).toEqual([null, null]);
+  });
+  it('S3 : comptes envoyés au modèle avec les drapeaux des sources non lues ; alertes en cours et avis KEV à part (m1)', () => {
+    const day = briefSignalCounts(buildFranceSignals(raw(sov04()), NOW));
+    expect(day).toMatchObject({
+      cyberAlerts: 6, cyberOpenAlerts: 3, cyberKevAdvisories: 3, militaryFlights: 9, defenseAlerts: 0, jammingSignals: 0,
+      militaryUnavailable: false, cablesUnavailable: false, cyberUnavailable: false, kevUnavailable: false,
+      // Phase A : aucune grille GNSS mesurée.
+      gnssUnavailable: true,
+    });
+    const down = briefSignalCounts(buildFranceSignals(raw(buildSovereigntyInputs(
+      { ...MILITARY_FIXTURE(), readAt: '2026-10-04T14:30:00.000Z' }, CABLES_WATCH_FROZEN_FIXTURE(), null, NOW,
+    )), NOW));
+    expect(down).toMatchObject({ militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true, cyberUnavailable: true, kevUnavailable: true });
+    const kevLate = CYBER_FIXTURE();
+    kevLate.kev.readAt = new Date(NOW - 27 * 3_600_000).toISOString();
+    expect(briefSignalCounts(buildFranceSignals(raw(buildSovereigntyInputs(null, null, kevLate, NOW)), NOW)))
+      .toMatchObject({ cyberUnavailable: false, kevUnavailable: true, cyberOpenAlerts: 3, cyberKevAdvisories: 0 });
   });
   it('O8 : le brief de repli déterministe ne cite jamais un compte d’aéronefs militaires', () => {
     const data = raw({ ...buildSovereigntyInputs(hijackFixture(), CABLES_WATCH_ALERTS_FIXTURE(), CYBER_FIXTURE(), NOW), militaryFlightsCount: 30 });

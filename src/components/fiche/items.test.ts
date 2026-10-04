@@ -132,23 +132,31 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     }
   });
 
-  it('chiffres de la sécurité (souveraineté, O6, O9) : alertes CERT-FR en cours, aéronefs visibles en ADS-B, alertes câbles ; n.d. si indisponible', () => {
+  it('chiffres de la sécurité (souveraineté, O6, O9, S3) : une ligne par source ; indisponible « n.d. », GNSS non mesuré « non évalué », jamais « 0 »', () => {
     const row = (label: string, value: string): string => `<span class="fmk-kv-k">${label}</span><span class="fmk-kv-v fmk-num">${value}</span>`;
     const labels = [
-      'Alertes CERT-FR en cours', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole',
-      'Alertes câbles confirmées et mailles GNSS dégradées',
+      'Alertes CERT-FR en cours', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole', 'Alertes câbles confirmées',
+      'Mailles GNSS dégradées (24\u00a0h)',
     ];
     const read = buildThemeFiche(themeInput({
       theme: 'security',
       snapshot: { signals: signals({ cyberAlerts: 6, cyberOpenAlerts: 3, militaryFlights: 9, defenseAlerts: 1, jammingSignals: 2 }), energy: null },
     })).sections[0].html;
-    labels.forEach((label, i) => expect(read).toContain(row(label, ['3', '9', '3'][i] ?? '')));
+    labels.forEach((label, i) => expect(read).toContain(row(label, ['3', '9', '1', '2'][i] ?? '')));
     expect(read).not.toMatch(/Vols militaires|au-dessus de la France|brouillage/);
+    // Phase A : aucune grille GNSS ; les câbles lus disent leur compte, le GNSS « non évalué ».
+    const phaseA = buildThemeFiche(themeInput({
+      theme: 'security', snapshot: { signals: signals({ defenseAlerts: 0, gnssUnavailable: true }), energy: null },
+    })).sections[0].html;
+    expect(phaseA).toContain(row('Alertes câbles confirmées', '0'));
+    expect(phaseA).toContain(row('Mailles GNSS dégradées (24\u00a0h)', 'non évalué'));
     const down = buildThemeFiche(themeInput({
       theme: 'security',
-      snapshot: { signals: signals({ cyberUnavailable: true, militaryUnavailable: true, cablesUnavailable: true }), energy: null },
+      snapshot: { signals: signals({ cyberUnavailable: true, militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true }), energy: null },
     })).sections[0].html;
-    for (const label of labels) expect(down).toContain(row(label, 'n.d.'));
+    labels.slice(0, 3).forEach((label) => expect(down).toContain(row(label, 'n.d.')));
+    expect(down).toContain(row('Mailles GNSS dégradées (24\u00a0h)', 'non évalué'));
+    expect(down).not.toMatch(/fmk-num">0</);
   });
 
   it('énergie : bloc énergie du kit, aucune trace des anciennes cartes', () => {

@@ -50,7 +50,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Cyber</span>
-      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">alertes CERT-FR en cours · 20 vulnérabilités exploitées citées</span></div>
+      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">alertes CERT-FR en cours · 20 vulnérabilités exploitées citées</span></div>
     </div>
   
     <div class="frintel-dom-tile">
@@ -62,7 +62,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
       <span class="frintel-dom-label">Militaire</span>
-      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole · 0 français</span></div>
+      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole · 0 français</span></div>
     </div>
   
     <div class="frintel-dom-tile">
@@ -111,7 +111,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Cyber</span>
-      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">CERT-FR alerts in progress · 20 exploited vulnerabilities cited</span></div>
+      <div class="frintel-dom-value">24 <span class="frintel-dom-meta">CERT-FR alerts in progress · 20 exploited vulnerabilities cited</span></div>
     </div>
   
     <div class="frintel-dom-tile">
@@ -123,7 +123,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
       <span class="frintel-dom-label">Military</span>
-      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">military or state aircraft visible on ADS-B over metropolitan France · 0 French</span></div>
+      <div class="frintel-dom-value">36 <span class="frintel-dom-meta">military or state aircraft visible on ADS-B over metropolitan France · 0 French</span></div>
     </div>
   
     <div class="frintel-dom-tile">

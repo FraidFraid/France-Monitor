@@ -115,7 +115,7 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
   it('tuiles de domaines : 8, dans l’ordre, avec niveau', () => {
     const tiles = domainTiles(signals({ cyberAlerts: 24, cyberCritical: 20, militaryFlights: 36 }), 'fr');
     expect(tiles.map((t) => t.label)).toEqual(['Cyber', 'Rail', 'Militaire', 'Maritime', 'Pannes', 'Défense', 'Météo', 'Finance']);
-    expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes CERT-FR en cours · 20 vulnérabilités exploitées citées', level: 'high' });
+    expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes CERT-FR en cours · 20\u00a0vulnérabilités exploitées citées', level: 'high' });
     expect(tiles[2]?.level).toBe('medium');
     expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange', critical: 'rouge' });
   });
@@ -131,13 +131,23 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
       return domainTiles(buildFranceSignals(raw, SOV_FIXTURE_NOW), lang).find((x) => x.label === label);
     };
     const day = buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW);
-    expect(tile('Cyber', day)).toEqual({ label: 'Cyber', value: 3, meta: 'alertes CERT-FR en cours · 7 vulnérabilités exploitées citées', level: 'high' });
-    expect(tile('Militaire', day)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4 français`, level: 'low' });
-    expect(tile('Military', day, 'en')).toMatchObject({ meta: 'military or state aircraft visible on ADS-B over metropolitan France · 4 French' });
-    expect(tile('Défense', day)).toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS 0', level: 'low' });
-    expect(JSON.stringify(domainTiles(buildFranceSignals({ ...base, ...day }, SOV_FIXTURE_NOW), 'fr'))).not.toMatch(/au-dessus de la France|[Ff]aille|GPS/);
+    expect(tile('Cyber', day)).toEqual({ label: 'Cyber', value: 3, meta: 'alertes CERT-FR en cours · 7\u00a0vulnérabilités exploitées citées', level: 'high' });
+    expect(tile('Militaire', day)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4\u00a0français`, level: 'low' });
+    expect(tile('Military', day, 'en')).toMatchObject({ meta: 'military or state aircraft visible on ADS-B over metropolitan France · 4\u00a0French' });
+    // Phase A : aucune grille GNSS mesurée, « GNSS non évalué », jamais « GNSS 0 » ; le chiffre et le niveau ne lisent que les câbles.
+    expect(tile('Défense', day)).toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS non évalué', level: 'low' });
+    expect(tile('Defense', day, 'en')).toMatchObject({ meta: 'cables 0 · GNSS not assessed' });
+    expect(JSON.stringify(domainTiles(buildFranceSignals({ ...base, ...day }, SOV_FIXTURE_NOW), 'fr'))).not.toMatch(/au-dessus de la France|[Ff]aille|GPS|GNSS 0/);
+    // Sources indisponibles ou en retard (S3) : « n.d. », point gris, et aucun compte « 0 » dans la légende.
     const down = buildSovereigntyInputs(null, CABLES_WATCH_FROZEN_FIXTURE(), null, SOV_FIXTURE_NOW);
-    for (const label of ['Cyber', 'Militaire', 'Défense']) expect(tile(label, down)).toMatchObject({ value: null, level: null });
+    expect(tile('Cyber', down)).toEqual({ label: 'Cyber', value: null, meta: 'alertes CERT-FR en cours', level: null });
+    expect(tile('Militaire', down)).toEqual({ label: 'Militaire', value: null, meta: MILITARY_FIGURE_LABEL, level: null });
+    expect(tile('Défense', down)).toEqual({ label: 'Défense', value: null, meta: 'câbles non évalués · GNSS non évalué', level: null });
+    // Catalogue KEV en retard, CERT-FR à l'heure : alertes comptées, vulnérabilités citées « non évaluées ».
+    const kevLate = CYBER_FIXTURE();
+    kevLate.kev.readAt = new Date(SOV_FIXTURE_NOW - 27 * 3_600_000).toISOString();
+    const late = buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FIXTURE(), kevLate, SOV_FIXTURE_NOW);
+    expect(tile('Cyber', late)).toMatchObject({ value: 3, meta: 'alertes CERT-FR en cours · vulnérabilités citées non évaluées' });
   });
 
   it('tuile « Météo » du 04/10 (jeux d’essai réels) : vigilance, crues et feux distincts, jamais additionnés ; niveau le plus haut', () => {

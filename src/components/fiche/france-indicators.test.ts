@@ -70,7 +70,7 @@ describe('Domaines', () => {
     expect(s.summary).toContain('fmk-dot--jaune');
     expect(s.summary).toContain('fmk-dot--vert');
     expect(s.html.match(/class="fmk-domain"/g)).toHaveLength(8);
-    expect(s.html).toContain('alertes CERT-FR en cours · 20 vulnérabilités exploitées citées');
+    expect(s.html).toContain('alertes CERT-FR en cours · 20\u00a0vulnérabilités exploitées citées');
     expect(s.html).toContain('<span class="fmk-tag fmk-tag--warn">Orages · Jaune</span>');
     expect(s.html).toContain('<span class="fmk-tag fmk-tag--warn">159 SNCF fortes</span>');
   });

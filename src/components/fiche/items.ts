@@ -127,9 +127,14 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
           label: t(lang, MILITARY_FIGURE_TITLE, 'Military or state aircraft visible on ADS-B over metropolitan France'),
           value: s.militaryUnavailable === true ? 'n.d.' : String(s.militaryFlights),
         },
+        // Deux sources, deux lignes : une part non lue ne se cache jamais dans une somme (phase A : aucune grille GNSS, « non évalué »).
         {
-          label: t(lang, 'Alertes câbles confirmées et mailles GNSS dégradées', 'Confirmed cable alerts and degraded GNSS cells'),
-          value: s.cablesUnavailable === true ? 'n.d.' : String(s.defenseAlerts + s.jammingSignals),
+          label: t(lang, 'Alertes câbles confirmées', 'Confirmed cable alerts'),
+          value: s.cablesUnavailable === true ? 'n.d.' : String(s.defenseAlerts),
+        },
+        {
+          label: t(lang, 'Mailles GNSS dégradées (24\u00a0h)', 'Degraded GNSS cells (24\u00a0h)'),
+          value: s.gnssUnavailable === true ? t(lang, 'non évalué', 'not assessed') : String(s.jammingSignals),
         },
       ];
     case 'environment':

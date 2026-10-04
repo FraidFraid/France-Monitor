@@ -324,9 +324,10 @@ function certfrAlertDriver(a: CertFrItem): string {
 /**
  * « Vigilance cyber » sur des événements, plus aucun seuil sur un stock : alertes CERT-FR au statut « en cours » repris du CERT-FR (O1),
  * avis qui citent une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours (O6), revendications au-delà de 1,5 fois la moyenne
- * (fichier de ransomware.live à l'heure). Moyenne, et une alerte seule reste moyenne (S14) ; critique seulement pour deux alertes en
- * cours publiées depuis moins de 7 jours (pastille rouge, O2). Les revendications ne dépassent jamais la gravité moyenne ni ne comptent
- * pour la critique (O4).
+ * (fichier de ransomware.live à l'heure). Moyenne ; une alerte seule reste moyenne (S14) ; élevée pour deux alertes en cours publiées
+ * depuis moins de 7 jours. Jamais critique : des alertes restent ouvertes des semaines et figeraient l'indice national à 55 (arbitrage
+ * du contrôleur, revue d'A16). Les revendications ne dépassent jamais la gravité moyenne (O4). Situation ouverte par les seules
+ * revendications : ni action ni source du CERT-FR, la source est Ransomware.live.
  */
 function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituation | null {
   const c = raw.cyber;
@@ -335,13 +336,15 @@ function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituati
   const recentOpen = open.filter((a) => isCertFrPublishedRecently(a, nowMs));
   const kevFresh = !isSovereigntyDataLate('kev', c.kev.readAt, nowMs);
   const kevAdvisories = kevFresh ? certfrKevAdvisories(c, nowMs) : [];
-  const kevCited = kevFresh ? c.kev.recent.filter((k) => k.certfrRefs.length > 0).length : 0;
   const claimsLate = c.ransomware !== null && isSovereigntyDataLate('ransomware', c.ransomware.lastModified, nowMs);
   const ratio = claimsLate ? null : claimsRatio(c.ransomware);
   const claimsHigh = ratio !== null && ratio > CLAIMS_RATIO_JAUNE;
-  if (open.length === 0 && kevAdvisories.length === 0 && !claimsHigh) return null;
+  const certfrBacked = open.length > 0 || kevAdvisories.length > 0;
+  if (!certfrBacked && !claimsHigh) return null;
+  // Vulnérabilités citées sur 30 jours : un facteur des seules situations ouvertes par le CERT-FR (un stock, jamais un déclencheur).
+  const kevCited = kevFresh && certfrBacked ? c.kev.recent.filter((k) => k.certfrRefs.length > 0).length : 0;
 
-  const severity: SituationSeverity = recentOpen.length >= 2 ? 'critical' : 'medium';
+  const severity: SituationSeverity = recentOpen.length >= 2 ? 'high' : 'medium';
   const exploitationSaid = open.some((a) => a.exploited === true || a.kevCves.length > 0);
   const ratioText = ratio === null ? '' : `${ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${NBSP}fois la moyenne`;
   const advisoriesText = `${kevAdvisories.length}${NBSP}avis citant une vulnérabilité ajoutée au catalogue KEV depuis moins de ${CERTFR_RECENT_DAYS}${NBSP}jours`;
@@ -358,12 +361,12 @@ function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituati
     ...(claimsHigh ? [`revendications à ${ratioText}, non confirmées`] : []),
   ].join(' ; ');
   const outageCorrelation = raw.powerOutages.length > 0 || raw.telecomOutages.length > 0;
-  const first = open[0];
-  // Lien : la source du facteur des revendications quand il est dit (attribution « Source : Ransomware.live », conditions d'usage) ;
-  // sinon l'alerte en cours la plus récente.
-  const link = claimsHigh
-    ? { linkUrl: SOVEREIGNTY_SOURCE_DETAILS['Ransomware.live'].link, linkLabel: 'Source : Ransomware.live' }
-    : first !== undefined ? { linkUrl: first.url, linkLabel: `Alerte ${first.ref}` } : {};
+  // Lien : la page CERT-FR d'abord (alerte en cours la plus récente, sinon premier avis compté) ; la source des revendications
+  // (« Source : Ransomware.live », conditions d'usage) seulement quand elles ouvrent seules la situation.
+  const certfrItem = open[0] ?? kevAdvisories[0];
+  const link = certfrItem !== undefined
+    ? { linkUrl: certfrItem.url, linkLabel: `${certfrItem.kind === 'alerte' ? 'Alerte' : 'Avis'} ${certfrItem.ref}` }
+    : { linkUrl: SOVEREIGNTY_SOURCE_DETAILS['Ransomware.live'].link, linkLabel: 'Source : Ransomware.live' };
 
   const base = situation(
     'cyber-pressure',
@@ -375,12 +378,23 @@ function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituati
     ['France'],
     drivers,
     [
-      action('Lire les alertes du CERT-FR et appliquer les correctifs publiés', 'Analyste cyber', 'investigate', true),
-      action('Relayer l’alerte aux services et opérateurs concernés', 'Analyste cyber', 'escalate'),
-      ...(claimsHigh ? [action('Vérifier les secteurs critiques visés (santé, énergie, administration)', 'Analyste cyber', 'investigate')] : []),
+      ...(open.length > 0 ? [
+        action('Lire les alertes du CERT-FR et appliquer les correctifs publiés', 'Analyste cyber', 'investigate', true),
+        action('Relayer l’alerte aux services et opérateurs concernés', 'Analyste cyber', 'escalate'),
+      ] : kevAdvisories.length > 0 ? [
+        action('Lire les avis du CERT-FR et appliquer les correctifs publiés', 'Analyste cyber', 'investigate', true),
+      ] : []),
+      ...(claimsHigh ? [
+        action('Vérifier les revendications auprès du CSIRT régional', 'Analyste cyber', 'cross-check'),
+        action('Vérifier les secteurs critiques visés (santé, énergie, administration)', 'Analyste cyber', 'investigate'),
+      ] : []),
       ...(outageCorrelation ? [action('Croiser avec les pannes réseau pour écarter une attaque coordonnée', 'IA + analyste infra', 'cross-check', true)] : []),
     ],
-    ['CERT-FR', ...(kevAdvisories.length > 0 || kevCited > 0 ? ['CISA KEV'] : []), ...(claimsHigh ? ['Ransomware.live'] : [])],
+    [
+      ...(certfrBacked ? ['CERT-FR'] : []),
+      ...(kevAdvisories.length > 0 || kevCited > 0 ? ['CISA KEV'] : []),
+      ...(claimsHigh ? ['Ransomware.live'] : []),
+    ],
   );
   return { ...base, ...link, activateLayers: ['cyber'] };
 }

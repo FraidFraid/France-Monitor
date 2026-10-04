@@ -1237,8 +1237,17 @@ export interface FranceCountrySignals {
   militaryUnavailable?: boolean;
   cablesUnavailable?: boolean;
   cyberUnavailable?: boolean;
+  /**
+   * Mailles à précision GNSS dégradée non mesurées (phase A : aucune grille ; phase B : grille jamais complète, en retard ou en
+   * dégradation générale) : « GNSS non évalué », jamais « GNSS 0 ».
+   */
+  gnssUnavailable?: boolean;
+  /** Catalogue KEV de la CISA indisponible ou en retard (26 h) : vulnérabilités citées et avis KEV « non évalués », jamais « 0 ». */
+  kevUnavailable?: boolean;
   /** Alertes CERT-FR au statut « en cours » repris du CERT-FR (O1 ; gros chiffre du panneau Vigilance cyber, tuile « Cyber », fiche). */
   cyberOpenAlerts?: number;
+  /** Avis du CERT-FR citant une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours (O6), dits à part des alertes au brief. */
+  cyberKevAdvisories?: number;
   /** Pastilles des panneaux Défense et Vigilance cyber, mêmes fonctions (defenseLevel, cyberLevel). */
   defensePillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';

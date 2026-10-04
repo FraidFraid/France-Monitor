@@ -426,27 +426,49 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
     assert.equal(s?.linkUrl, 'https://www.cert.ssi.gouv.fr/alerte/CERTFR-2026-ALE-011/');
     assert.doesNotMatch(JSON.stringify(s), /Shodan|Censys|NVD|FrenchBreaches|RansomwareLive|Score cyber|[Ff]aille|pas d’exploitation connue|Pression cyber/);
   });
-  it('« Vigilance cyber » : critique pour deux alertes en cours publiées en moins de 7 jours ; revendications seules : moyenne au plus (O4)', () => {
+  it('« Vigilance cyber » : élevée pour deux alertes en cours publiées en moins de 7 jours, jamais critique ; revendications : moyenne au plus (O4)', () => {
     const two = CYBER_FIXTURE();
     two.certfr.alerts = two.certfr.alerts.map((a) => (a.ref === 'CERTFR-2026-ALE-010' ? { ...a, firstVersion: '2026-10-01' } : a));
-    assert.equal(detectSituations(baseRawData({ cyber: two }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE')?.severity, 'critical');
+    const high = detectSituations(baseRawData({ cyber: two }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE');
+    assert.equal(high?.severity, 'high');
+    // Trois alertes en cours publiées en moins de 7 jours, revendications au plus haut : toujours élevée, jamais critique (indice gelé à 55).
+    const three = CYBER_FIXTURE();
+    three.certfr.alerts = three.certfr.alerts.map((a) => (a.status === 'en-cours' ? { ...a, firstVersion: '2026-10-02' } : a));
+    if (three.ransomware) three.ransomware.ratio = 4.5;
+    assert.equal(detectSituations(baseRawData({ cyber: three }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE')?.severity, 'high');
     const red = CYBER_FIXTURE();
     if (red.ransomware) red.ransomware.ratio = 3.2;
-    assert.equal(detectSituations(baseRawData({ cyber: red }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE')?.severity, 'medium');
+    const withClaims = detectSituations(baseRawData({ cyber: red }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE');
+    assert.equal(withClaims?.severity, 'medium');
+    // Alertes et revendications ensemble : le lien de l'alerte CERT-FR d'abord.
+    assert.equal(withClaims?.linkUrl, 'https://www.cert.ssi.gouv.fr/alerte/CERTFR-2026-ALE-011/');
+    assert.deepEqual(withClaims?.sourceRefs, ['CERT-FR', 'CISA KEV', 'Ransomware.live']);
     const quiet = CYBER_FIXTURE();
     quiet.certfr.alerts = quiet.certfr.alerts.map((a) => ({ ...a, status: 'cloturee' as const }));
     quiet.certfr.avis = quiet.certfr.avis.map((a) => ({ ...a, kevCves: [] }));
-    quiet.kev.recent = quiet.kev.recent.map((k) => ({ ...k, certfrRefs: [] }));
     assert.ok(!detectSituations(baseRawData({ cyber: quiet }), SOV_FIXTURE_NOW).some((x) => x.type === 'CYBER_PRESSURE'));
     if (quiet.ransomware) quiet.ransomware.ratio = 3.2;
     const claims = detectSituations(baseRawData({ cyber: quiet }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE');
     assert.equal(claims?.severity, 'medium');
-    assert.deepEqual(claims?.sourceRefs, ['CERT-FR', 'Ransomware.live']);
-    assert.ok(claims?.drivers.includes('revendications de la semaine (revendiquées par les groupes, non confirmées) : 3,2\u00a0fois la moyenne · Source : Ransomware.live'));
+    // Ouverte par les seules revendications : ni source, ni action, ni facteur du CERT-FR (m3).
+    assert.deepEqual(claims?.sourceRefs, ['Ransomware.live']);
+    assert.deepEqual(claims?.drivers, ['revendications de la semaine (revendiquées par les groupes, non confirmées) : 3,2\u00a0fois la moyenne · Source : Ransomware.live']);
+    assert.deepEqual(claims?.recommendedActions.map((a) => a.label), [
+      'Vérifier les revendications auprès du CSIRT régional', 'Vérifier les secteurs critiques visés (santé, énergie, administration)',
+    ]);
+    assert.doesNotMatch(JSON.stringify(claims), /CERT-FR|Relayer l’alerte/);
     assert.equal(claims?.linkUrl, 'https://www.ransomware.live/t&c');
     assert.equal(claims?.linkLabel, 'Source : Ransomware.live');
     if (quiet.ransomware) quiet.ransomware.lastModified = new Date(SOV_FIXTURE_NOW - 25 * 3_600_000).toISOString();
     assert.ok(!detectSituations(baseRawData({ cyber: quiet }), SOV_FIXTURE_NOW).some((x) => x.type === 'CYBER_PRESSURE'));
+  });
+  it('« Vigilance cyber » ouverte par des avis KEV seuls : avis du CERT-FR lus, lien vers le premier avis, jamais « Relayer l’alerte »', () => {
+    const avis = CYBER_FIXTURE();
+    avis.certfr.alerts = avis.certfr.alerts.map((a) => ({ ...a, status: 'cloturee' as const }));
+    const s = detectSituations(baseRawData({ cyber: avis }), SOV_FIXTURE_NOW).find((x) => x.type === 'CYBER_PRESSURE');
+    assert.equal(s?.severity, 'medium');
+    assert.deepEqual(s?.recommendedActions.map((a) => a.label), ['Lire les avis du CERT-FR et appliquer les correctifs publiés']);
+    assert.deepEqual([s?.linkLabel, s?.sourceRefs], ['Avis CERTFR-2026-AVI-1257', ['CERT-FR', 'CISA KEV']]);
   });
   it('MARITIME_ANOMALY : un navire lent confirmé sur un câble, AIS frais, s’y ajoute ; source « Câbles (Shom, OpenStreetMap) et AIS »', () => {
     const raw = { ...maritimeFixture(), cableAlerts: CABLES_WATCH_ALERTS_FIXTURE().alerts.filter((a) => a.confirmed) };

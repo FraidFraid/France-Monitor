@@ -53,7 +53,7 @@ import type {
 import type { EolienLive } from '@/services/eolien/types.ts';
 import { detectSituations } from './situation-engine.ts';
 import { computeCyberPressureAssessment, type CyberPressureAssessment } from './cyber-threat-scoring.ts';
-import { MILITARY_FIGURE_LABEL } from './sovereignty-levels.ts';
+import { MILITARY_FIGURE_LABEL, isSovereigntyDataLate } from './sovereignty-levels.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 
@@ -525,7 +525,11 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     militaryUnavailable: raw.sovereigntyAvailable?.military === false,
     cablesUnavailable: raw.sovereigntyAvailable?.cables === false,
     cyberUnavailable: raw.sovereigntyAvailable?.cyber === false,
+    // Aucune grille mesurée (phase A) ou grille inexploitable (phase B) : « non évalué », jamais « 0 » (S3).
+    gnssUnavailable: raw.gnssDegraded === null,
+    kevUnavailable: raw.sovereigntyAvailable?.cyber === false || (raw.cyber !== null && isSovereigntyDataLate('kev', raw.cyber.kev.readAt, nowMs)),
     cyberOpenAlerts: cyberPressure.inputs.openAlerts,
+    cyberKevAdvisories: cyberPressure.inputs.kevAdvisories7d,
     defensePillLevel: raw.defensePillLevel,
     cyberPillLevel: raw.cyberPillLevel,
     // Finance (weak signal)
