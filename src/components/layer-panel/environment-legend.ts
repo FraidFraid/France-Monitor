@@ -320,6 +320,18 @@ export function earthquakesLegend(q: EarthquakesResponse | null, now: number): L
   return bDated(EARTHQUAKES_LEGEND, `relevé ${source} ${bClock(q.readAt, now)}`, isEnvironmentDataLate('bcsf', q.readAt, now));
 }
 
+/**
+ * Deux remplissages départementaux actifs (Sécheresse, Qualité de l'air) : celui activé en dernier est au-dessus et masque l'autre.
+ * `order` donne les remplissages visibles, du plus ancien au plus récent ; la légende du masqué le dit (aucune note s'il est seul).
+ */
+export function withFillMask(legend: LegendCategory, order: readonly string[]): LegendCategory {
+  const at = order.indexOf(legend.id);
+  if (at < 0 || at === order.length - 1) return legend;
+  const top = order[order.length - 1];
+  const name = top === 'airQuality' ? 'Qualité de l’air' : top === 'drought' ? 'Sécheresse' : top;
+  return { ...legend, notes: [`Remplissage masqué par ${name}.`, ...(legend.notes ?? [])] };
+}
+
 /** Légende de la vigilance (tâche 15) complétée des marégraphes : élément et date de la dernière mesure ; jamais modifiée sur place. */
 export function withTideGauges(legend: LegendCategory, s: SeaLevelsResponse | null, now: number): LegendCategory {
   const latest = (s?.gauges ?? []).map((g) => g.lastAt).filter((x): x is string => x !== null && Number.isFinite(Date.parse(x)))

@@ -8,7 +8,7 @@ import { envBreakable } from './environment-format.ts';
 import { NBSP } from './format.ts';
 import {
   ECHO_TOP_CLASSES, ENV_NEUTRAL_HEX, FIRES_LEGEND, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOODS_LEGEND, FLOOD_STATION_HEX, RADAR_DBZ_CLASSES,
-  RADAR_LEGEND, VIGILANCE_LEGEND, firesLegend, floodsLegend, radarLegend, vigilanceLegend,
+  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withFillMask,
 } from './environment-legend.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -131,5 +131,15 @@ describe('R1 : aucune unité détachée dans les légendes', () => {
     ];
     for (const l of all) expect(envBreakable(text(l))).toBeNull();
     expect(radarLegend(MANIFEST, true, NOW).items.find((i) => i.id === 'echo-top-0')?.label).toContain('pas un niveau');
+  });
+});
+
+describe('deux remplissages départementaux : la légende du masqué le dit', () => {
+  it('le dernier activé est au-dessus ; seul, aucune note', () => {
+    expect(text(withFillMask(DROUGHT_LEGEND, ['drought', 'airQuality']))).toContain('Remplissage masqué par Qualité de l’air.');
+    expect(text(withFillMask(AIR_QUALITY_LEGEND, ['drought', 'airQuality']))).not.toContain('masqué');
+    expect(text(withFillMask(AIR_QUALITY_LEGEND, ['airQuality', 'drought']))).toContain('Remplissage masqué par Sécheresse.');
+    expect(withFillMask(DROUGHT_LEGEND, ['drought'])).toBe(DROUGHT_LEGEND);
+    expect(withFillMask(DROUGHT_LEGEND, [])).toBe(DROUGHT_LEGEND);
   });
 });

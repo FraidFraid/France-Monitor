@@ -117,7 +117,7 @@ import {
   environmentReportSources, hasActiveEnvironment, type EnvironmentLayerKey,
 } from './config/environment-sources.ts';
 import {
-  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend,
+  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend, withFillMask,
   earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
 } from './components/layer-panel/environment-legend.ts';
 
@@ -1428,6 +1428,8 @@ export class App {
   private currentFires: FiresState | null = null;
   /** Dernières lectures des services de la phase B (comme currentVigilance) ; la sécheresse n'entre jamais dans le score (E2). */
   private currentDrought: DroughtState | null = null;
+  /** Remplissages départementaux visibles, du plus ancien au plus récent activé (le dernier masque les autres). */
+  private fillOrder: string[] = [];
   private currentAirQuality: AirQualityState | null = null;
   private currentEarthquakes: EarthquakesState | null = null;
   private currentSeaLevels: SeaLevelsState | null = null;
@@ -4272,6 +4274,9 @@ export class App {
     const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
     const shown = (key: EnvironmentLayerKey): boolean => this.activeLayers.environmentGroup && this.activeLayers[key];
     const vigilance = this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND;
+    // Remplissages départementaux visibles, du plus ancien au plus récent activé : le dernier est au-dessus et masque l'autre.
+    this.fillOrder = this.fillOrder.filter((k) => shown(k as EnvironmentLayerKey));
+    for (const k of ['drought', 'airQuality'] as const) if (shown(k) && !this.fillOrder.includes(k)) this.fillOrder.push(k);
     // Toutes les catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
     this.mapLegend.setCategories([
       // Marégraphes (section Submersion marine) : élément et date de la dernière mesure, une fois lus (arbitrage 13).
@@ -4285,8 +4290,8 @@ export class App {
         visible: shown('weatherRadar'),
       },
       { ...(this.currentFires ? firesLegend(this.currentFires.fires.data, this.forestDangerFill, now) : FIRES_LEGEND), visible: shown('fires') },
-      { ...(this.currentDrought ? droughtLegend(this.currentDrought.drought.data, now) : DROUGHT_LEGEND), visible: shown('drought') },
-      { ...(this.currentAirQuality ? airQualityLegend(this.currentAirQuality.air.data, now) : AIR_QUALITY_LEGEND), visible: shown('airQuality') },
+      { ...withFillMask(this.currentDrought ? droughtLegend(this.currentDrought.drought.data, now) : DROUGHT_LEGEND, this.fillOrder), visible: shown('drought') },
+      { ...withFillMask(this.currentAirQuality ? airQualityLegend(this.currentAirQuality.air.data, now) : AIR_QUALITY_LEGEND, this.fillOrder), visible: shown('airQuality') },
       { ...(this.currentEarthquakes ? earthquakesLegend(this.currentEarthquakes.quakes.data, now) : EARTHQUAKES_LEGEND), visible: shown('earthquakes') },
     ]);
   }
