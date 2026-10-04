@@ -72,13 +72,16 @@ export function mergeGnss(current: GnssState | null, incoming: GnssState): GnssS
 
 const NOAA_PREFIX = 'NOAA SWPC';
 
-/** La même réponse ne garde que les erreurs d'une des deux lignes (note de collecte adsb.lol : grille ; « NOAA SWPC, … » : météo). */
+/**
+ * La même réponse ne garde que les erreurs d'une des deux lignes (note de collecte adsb.lol : grille ; « NOAA SWPC, … » : météo).
+ * Sans réponse (panne de lecture entière : 502 nu, réseau, forme refusée), la panne vaut pour les deux lignes.
+ */
 function restrictedTo(slot: SourceSlot<GnssResponse>, keep: (error: string) => boolean): SourceSlot<GnssResponse> {
-  return {
-    data: slot.data === null ? null : { ...slot.data, errors: slot.data.errors.filter(keep) },
-    error: slot.error === null ? null : slot.error.split(' ; ').filter(keep).join(' ; ') || null,
-    fetchedAt: slot.fetchedAt,
-  };
+  if (slot.data === null) return slot;
+  // Une panne de lecture qui ne nomme aucune des deux sources (« HTTP 502 », « source injoignable ») vaut pour les deux lignes.
+  const bare = (e: string): boolean => !isNamedBy(e, NOAA_PREFIX) && !isNamedBy(e, 'Grille GNSS') && !isNamedBy(e, 'adsb.lol');
+  const error = slot.error === null ? null : slot.error.split(' ; ').filter((e) => keep(e) || bare(e)).join(' ; ') || null;
+  return { data: { ...slot.data, errors: slot.data.errors.filter(keep) }, error, fetchedAt: slot.fetchedAt };
 }
 
 /**

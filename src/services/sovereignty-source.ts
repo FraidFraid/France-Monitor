@@ -211,6 +211,7 @@ export async function loadSovereigntySlot<T extends { errors: string[] }>(
 export function resetSovereigntySourceCache(): void {
   cache.clear();
   inFlight.clear();
+  pendingSince.clear();
 }
 
 // ─── Panneau des sources (S1, S2) ───
@@ -237,6 +238,24 @@ export interface SovereigntyStatusOptions {
   fallback?: { date: string | null; note: string };
 }
 
+/**
+ * Collecte « en cours » sans date de donnée (I2) : début de l'attente vue par ligne, gardé ici (module du service, ni dans le type
+ * `SourceSlot` partagé ni dans les types de l'application). Effacé dès qu'une valeur datée ou une autre issue arrive. Au bout de
+ * `PENDING_MAX_MS`, la ligne est une panne : une note d'avancement ne peut pas durer indéfiniment.
+ */
+const pendingSince = new Map<SovereigntySource, number>();
+export const PENDING_MAX_MS = 30 * 60_000;
+export const PENDING_TOO_LONG_PERIOD = 'n.d. · collecte en cours depuis plus de 30\u00a0min';
+
+function pendingStatus(source: SovereigntySource, period: string, now: number): SovereigntyStatus {
+  const since = pendingSince.get(source) ?? now;
+  pendingSince.set(source, since);
+  if (now - since > PENDING_MAX_MS) {
+    return { status: 'error', lastUpdate: null, error: 'collecte en cours depuis plus de 30\u00a0min', period: PENDING_TOO_LONG_PERIOD };
+  }
+  return { status: 'loading', lastUpdate: null, error: undefined, period };
+}
+
 export function sovereigntySlotStatus<T extends { errors: string[] }>(
   slot: SourceSlot<T>, source: SovereigntySource, dataDate: string | null, now: number, errorPrefix?: string,
   options: SovereigntyStatusOptions = {},
@@ -247,8 +266,9 @@ export function sovereigntySlotStatus<T extends { errors: string[] }>(
   if (slot.data === null) {
     if (slot.error === null) return { status: 'loading', lastUpdate: null, error: undefined, period: undefined };
     if (readFailures.length > 0 && readFailures.every(isSovereigntyProgressNote)) {
-      return { status: 'loading', lastUpdate: null, error: undefined, period: `n.d. · ${readFailures.join(' ; ')}` };
+      return pendingStatus(source, `n.d. · ${readFailures.join(' ; ')}`, now);
     }
+    pendingSince.delete(source);
     return { status: 'error', lastUpdate: null, error: readFailures.length > 0 ? readFailures.join(' ; ') : 'source jamais lue', period: undefined };
   }
   const own = errorPrefix === undefined
@@ -265,9 +285,11 @@ export function sovereigntySlotStatus<T extends { errors: string[] }>(
   const ms = dataMs(date);
   if (ms === null) {
     // Rien de lu encore et le serveur ne dit qu'une note d'avancement (« adsb.lol : collecte en cours ») : « loading », jamais une panne.
-    if (error === undefined && notes.length > 0) return { status: 'loading', lastUpdate: null, error: undefined, period: withNotes('n.d.') };
+    if (error === undefined && notes.length > 0) return pendingStatus(source, withNotes('n.d.'), now);
+    pendingSince.delete(source);
     return { status: 'error', lastUpdate: null, error: error ?? 'source jamais lue', period: withNotes('n.d.') };
   }
+  pendingSince.delete(source);
   const late = isSovereigntyDataLate(source, date, now);
   // « (en retard) » reste en fin de l'heure (StatusPanel le lit en fin de période) ; la note de repli la précède.
   return {

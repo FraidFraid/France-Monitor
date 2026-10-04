@@ -7,7 +7,7 @@ import {
   CONNECTIVITY_FIXTURE, DRONE_ZONES_META_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, SANCTIONS_FIXTURE, SOV_FIXTURE_NOW,
   connectivityStateFixture, gnssStateFixture, sanctionsStateFixture,
 } from '../components/layer-panel/sovereignty.fixture.ts';
-import { resetSovereigntySourceCache, SOVEREIGNTY_PROGRESS_NOTES, isSovereigntyProgressNote } from './sovereignty-source.ts';
+import { PENDING_MAX_MS, PENDING_TOO_LONG_PERIOD, resetSovereigntySourceCache, SOVEREIGNTY_PROGRESS_NOTES, isSovereigntyProgressNote } from './sovereignty-source.ts';
 import {
   GNSS_TTL_MS, GNSS_URL, fetchGnss, gnssResponseProblems, gnssStatus, isGnssResponse, mergeGnss,
 } from './sovereignty-gnss.ts';
@@ -202,5 +202,49 @@ describe('panneau des sources (S1, S2) et notes d’avancement', () => {
   });
   it('lien vers le registre officiel porté par le client (S7)', () => {
     expect(GELS_REGISTRY_URL).toBe('https://gels-avoirs.dgtresor.gouv.fr/');
+  });
+});
+
+describe('revue de B24 : pannes entières, attente bornée, jour des mailles', () => {
+  it('I1 : 502 nu, réseau coupé ou réponse refusée sans donnée : les deux lignes en erreur', async () => {
+    stubFetch({}, { [GNSS_URL]: { status: 502 } });
+    const bare = await fetchGnss(null, NOW);
+    expect([gnssStatus(bare, 'noaa', NOW).status, gnssStatus(bare, 'adsb-gnss', NOW).status]).toEqual(['error', 'error']);
+    expect(gnssStatus(bare, 'noaa', NOW).error).toBe('HTTP 502');
+    resetSovereigntySourceCache();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const offline = await fetchGnss(null, NOW);
+    expect([gnssStatus(offline, 'noaa', NOW).status, gnssStatus(offline, 'adsb-gnss', NOW).status]).toEqual(['error', 'error']);
+    resetSovereigntySourceCache();
+    stubFetch({ [GNSS_URL]: { readAt: null } });
+    const malformed = await fetchGnss(null, NOW);
+    expect([gnssStatus(malformed, 'noaa', NOW).status, gnssStatus(malformed, 'adsb-gnss', NOW).status]).toEqual(['error', 'error']);
+  });
+  it('I1 : panne de lecture sans nom avec données gardées : les deux lignes en retard, pas seulement la grille', () => {
+    const state = { gnss: { data: GNSS_FIXTURE(), error: 'HTTP 502', fetchedAt: NOW } };
+    expect(gnssStatus(state, 'noaa', NOW)).toMatchObject({ status: 'stale', error: 'HTTP 502' });
+    expect(gnssStatus(state, 'adsb-gnss', NOW)).toMatchObject({ status: 'stale', error: 'HTTP 502' });
+  });
+  it('I2 : « collecte en cours » sans date : en chargement 30 min, puis en erreur ; une valeur datée remet à zéro', () => {
+    const g = GNSS_FIXTURE();
+    const pending = gnssStateFixture({ ...g, readAt: null, errors: ['adsb.lol : collecte en cours'] });
+    expect(gnssStatus(pending, 'adsb-gnss', NOW).status).toBe('loading');
+    expect(gnssStatus(pending, 'adsb-gnss', NOW + PENDING_MAX_MS).status).toBe('loading');
+    const late = gnssStatus(pending, 'adsb-gnss', NOW + PENDING_MAX_MS + 1);
+    expect([late.status, late.period]).toEqual(['error', PENDING_TOO_LONG_PERIOD]);
+    expect(gnssStatus(gnssStateFixture(), 'adsb-gnss', NOW + PENDING_MAX_MS + 2).status).toBe('ok');
+    expect(gnssStatus(pending, 'adsb-gnss', NOW + PENDING_MAX_MS + 3).status).toBe('loading');
+  });
+  it('I2 : sans réponse (note seule dans un 502) bornée de même', async () => {
+    stubFetch({}, { [GNSS_URL]: { status: 502, body: { ...GNSS_FIXTURE(), readAt: null, cells: [], cellsDay: null, errors: ['adsb.lol : collecte en cours'] } } });
+    const state = await fetchGnss(null, NOW);
+    expect(gnssStatus(state, 'adsb-gnss', NOW).status).toBe('loading');
+    expect(gnssStatus(state, 'adsb-gnss', NOW + PENDING_MAX_MS + 1).status).toBe('error');
+  });
+  it('m3 : les mailles du jour `cellsDay` sont en dégradation générale dans l’orage, jamais dans le jeu calme', () => {
+    const storm = GNSS_STORM_FIXTURE();
+    const calm = GNSS_FIXTURE();
+    expect(storm.days.days.find((d) => d.date === storm.cellsDay)?.general).toBe(true);
+    expect(calm.days.days.find((d) => d.date === calm.cellsDay)?.general).toBe(false);
   });
 });
