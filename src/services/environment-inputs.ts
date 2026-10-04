@@ -2,10 +2,12 @@
 // de l'export, du poste v2, de l'ISNR et du stress hydro (spec 2026-10-04 environnement § 2.7 ; contrats § 6). Adaptateurs purs sur
 // les dernières lectures des services (tâche 9) : la formule du score et ses cibles ne changent pas, seules les entrées changent.
 import type {
-  ActiveFire, FireFoyer, FiresResponse, FloodSectionRef, FloodsResponse, LocatedFireIncident, MeteoAlert, VigilanceResponse,
+  ActiveFire, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef, FloodsResponse, LocatedFireIncident, MeteoAlert,
+  VigilanceResponse,
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
 import { floodsToSectionRefs } from './environment-floods.ts';
+import { floodsLevel, vigilanceLevel } from './environment-levels.ts';
 import { vigilanceToMeteoAlerts } from './environment-vigilance.ts';
 
 /**
@@ -26,6 +28,11 @@ export interface EnvironmentInputs {
   fireIncidents: LocatedFireIncident[];
   /** Foyers du serveur en France (confirmés, isolés, récurrents) : tuile « Météo » et fiche Environnement. */
   fireFoyers: FireFoyer[];
+  /**
+   * Sources lues (S3) : une source indisponible donne des listes vides au score (formule inchangée), mais « n.d. » et un point gris
+   * sur la tuile « Météo » et la fiche Environnement, jamais un « 0 » vert.
+   */
+  environmentAvailable: EnvironmentAvailability;
 }
 
 /** Collecte des feux encore comptée : lue il y a moins de 2 jours ; date absente ou illisible : aucune collecte. */
@@ -36,8 +43,9 @@ function servedFires(fires: FiresResponse | null, now: number): FiresResponse | 
 }
 
 /**
- * Entrées du jour à l'instant `now` ; une source jamais lue donne des listes vides (jamais une valeur inventée). Une collecte des
- * feux de plus de 2 jours compte comme jamais lue : ni détections, ni foyers, ni incidents.
+ * Entrées du jour à l'instant `now` ; une source jamais lue donne des listes vides (jamais une valeur inventée) et se dit
+ * indisponible. Une collecte des feux de plus de 2 jours compte comme jamais lue : ni détections, ni foyers, ni incidents.
+ * Vigilance et crues sont indisponibles quand leur pastille dit n.d. (carte sans date ou sans échéance du jour, relevé absent).
  */
 export function buildEnvironmentInputs(
   vigilance: VigilanceResponse | null, floods: FloodsResponse | null, fires: FiresResponse | null, fireIncidents: readonly LocatedFireIncident[],
@@ -50,5 +58,10 @@ export function buildEnvironmentInputs(
     activeFires: scoreFireDetections(served).map(toActiveFire),
     fireIncidents: served === null ? [] : [...fireIncidents],
     fireFoyers: served?.foyers ?? [],
+    environmentAvailable: {
+      vigilance: vigilance !== null && vigilanceLevel(vigilance, 'J').level !== 'nd',
+      floods: floods !== null && floodsLevel(floods).level !== 'nd',
+      fires: served !== null,
+    },
   };
 }

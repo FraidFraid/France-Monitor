@@ -110,7 +110,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     expect(m.sections[0]).toMatchObject({ collapsible: true, open: true });
     const html = m.sections[0].html;
     expect(html).toContain('Départements en vigilance orange ou rouge');
-    expect(html).toContain('Foyers confirmés en France');
+    expect(html).toContain('<span class="fmk-kv-k">Foyers confirmés en France</span><span class="fmk-kv-v fmk-num">2</span>');
     expect(html).not.toContain('Feux détectés');
     expect(html).toContain('Signaux officiels');
     expect(html).toContain('Éléments à traiter');
@@ -119,6 +119,17 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     const sources = m.sections.find((s) => s.id === 'sources');
     expect(sources).toMatchObject({ open: false, tone: 'reference' });
     expect(sources?.html).toContain('Météo-France');
+  });
+
+  it('chiffres de l’environnement (S3) : vigilance, crues et feux indisponibles disent « n.d. », jamais « 0 »', () => {
+    const m = buildThemeFiche({
+      ...envInput(),
+      snapshot: { signals: signals({ vigilanceUnavailable: true, floodsUnavailable: true, firesUnavailable: true }), energy: null },
+    });
+    const html = m.sections[0].html;
+    for (const label of ['Départements en vigilance orange ou rouge', 'Tronçons en crue orange ou rouge', 'Foyers confirmés en France']) {
+      expect(html).toContain(`<span class="fmk-kv-k">${label}</span><span class="fmk-kv-v fmk-num">n.d.</span>`);
+    }
   });
 
   it('énergie : bloc énergie du kit, aucune trace des anciennes cartes', () => {

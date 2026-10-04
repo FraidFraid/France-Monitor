@@ -77,12 +77,33 @@ describe('panneaux Environnement : un panneau par couche (spec 2026-10-04 enviro
     const fires = methodBody('loadFires');
     expect(fires).toContain('clusterFireDetections(this.environmentInputs().activeFires, { epsKm: 3, minPoints: 2 })');
     expect(fires).toContain('void resolveIncidentGeography(incidents)');
-    expect(methodBody('buildFranceSnapshot')).toContain('...this.environmentInputs(),');
-    expect(methodBody('buildFranceSnapshot')).not.toMatch(/activeFires:|fireIncidents:|meteoAlerts:|floodSegments:/);
-    for (const m of ['buildFranceTimeline', 'buildSituationReportContext', 'updatePoste', 'updateISNR', 'refreshHydraulicLayer', 'buildAlertMonitorSituations']) {
-      expect(methodBody(m)).toContain('this.environmentInputs()');
-    }
+    const snapshot = methodBody('buildFranceSnapshot');
+    expect(snapshot).toContain('...env,');
+    expect(snapshot).toContain('this.buildFranceTimeline(lang, env)');
+    expect(snapshot).not.toMatch(/activeFires:|fireIncidents:|meteoAlerts:|floodSegments:/);
+    for (const m of ['updateISNR', 'refreshHydraulicLayer']) expect(methodBody(m)).toContain('this.environmentInputs()');
     expect(methodBody('buildExportContext')).toContain('fires: this.currentFires?.fires.data?.detections ?? [],');
+  });
+  it('une seule lecture des entrées Environnement par rafraîchissement : un seul instant pour la règle des 2 jours (revue m6)', () => {
+    const calls = (body: string): number => (body.match(/this\.environmentInputs\(/g) ?? []).length;
+    expect(app).toContain('  private environmentInputs(now: number = Date.now()): EnvironmentInputs {');
+    // Instantané et moniteur : entrées reçues, lues seulement à défaut (appels isolés : brief, panneau v1).
+    expect(app).toContain('    env: EnvironmentInputs = this.environmentInputs(),\n  ): FranceCountrySnapshot {');
+    expect(app).toContain('  private buildAlertMonitorSituations(env: EnvironmentInputs = this.environmentInputs()): DetectedSituation[] {');
+    for (const m of ['buildFranceSnapshot', 'buildFranceTimeline', 'buildAlertMonitorSituations', 'updatePoste']) expect(calls(methodBody(m))).toBe(0);
+    for (const m of ['refreshFranceIntelPanel', 'repaintPoste']) {
+      const body = methodBody(m);
+      expect(calls(body)).toBe(1);
+      expect(body).toContain('const env = this.environmentInputs();');
+      expect(body).toMatch(/this\.buildFranceSnapshot\(lang, undefined, env\)/);
+      expect(body).toMatch(/this\.buildAlertMonitorSituations\(env\)/);
+      expect(body).toMatch(/this\.updatePoste\([^)]*, env\)/);
+    }
+    for (const m of ['buildSituationReportContext', 'buildExportContext']) {
+      const body = methodBody(m);
+      expect(calls(body)).toBe(1);
+      expect(body).toContain('this.buildFranceSnapshot(lang, undefined, env)');
+    }
     expect(app).not.toMatch(/currentMeteoAlerts|currentFloodSegments|currentActiveFires/);
     expect(app).not.toMatch(/fetchVigilanceMeteo|fetchVigilanceTimeline|fetchVigicrues|fetchFiresData|v2FloodSegments/);
   });

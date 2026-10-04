@@ -6349,13 +6349,14 @@ export class App {
   /**
    * Entrées Environnement du score France, de la frise, des situations, de la note, de l'export, du poste v2, de l'ISNR et du stress
    * hydro (spec 2026-10-04 environnement § 2.7) : vigilance du jour, tronçons en vigilance, détections en France non récurrentes,
-   * incidents DBSCAN géo-résolus, foyers du serveur ; lues dans les dernières réponses des services, jamais copiées ailleurs. Une
-   * collecte des feux de plus de 2 jours, gardée après une erreur, ne compte plus.
+   * incidents DBSCAN géo-résolus, foyers du serveur, sources lues ; lues dans les dernières réponses des services, jamais copiées
+   * ailleurs. Une collecte des feux de plus de 2 jours, gardée après une erreur, ne compte plus. Un rafraîchissement les lit une fois
+   * et les passe à ses consommateurs : un seul instant pour la règle des 2 jours (revue m6).
    */
-  private environmentInputs(): EnvironmentInputs {
+  private environmentInputs(now: number = Date.now()): EnvironmentInputs {
     return buildEnvironmentInputs(
       this.currentVigilance?.vigilance.data ?? null, this.currentFloods?.floods.data ?? null, this.currentFires?.fires.data ?? null,
-      this.currentFireIncidents, Date.now(),
+      this.currentFireIncidents, now,
     );
   }
 
@@ -6910,7 +6911,7 @@ export class App {
     }, POLL_SPACE_WEATHER_REFRESH_MS);
   }
 
-  private buildFranceTimeline(lang: 'fr' | 'en'): { days: string[]; lanes: FranceIntelTimelineLane[] } {
+  private buildFranceTimeline(lang: 'fr' | 'en', env: EnvironmentInputs): { days: string[]; lanes: FranceIntelTimelineLane[] } {
     const now = new Date();
     const days = Array.from({ length: 7 }, (_, index) => {
       const day = new Date(now);
@@ -6945,7 +6946,6 @@ export class App {
     }
 
     const todayIndex = dayKeys.length - 1;
-    const env = this.environmentInputs();
     laneMap.weather.counts[todayIndex]   += env.meteoAlerts.filter((a) => a.level !== 'green').length;
     laneMap.weather.counts[todayIndex]   += env.floodSegments.filter((a) => a.level !== 'green').length;
     const traffic = this.trafficInputs();
@@ -6967,13 +6967,14 @@ export class App {
   private buildFranceSnapshot(
     lang: 'fr' | 'en',
     options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
+    env: EnvironmentInputs = this.environmentInputs(),
   ): FranceCountrySnapshot {
     const raw: FranceRawData = {
       newsItems:            this.newsItems,
       isnrData:             this.currentISNRData,
       cyberData:            this.currentCyberData,
       threatEvents:         this.currentThreatEvents,
-      ...this.environmentInputs(),
+      ...env,
       ...this.trafficInputs(),
       powerOutages:         this.currentPowerOutages,
       telecomOutages:       this.currentTelecomOutages,
@@ -6987,7 +6988,7 @@ export class App {
       nuclearState:         this.currentNuclearState,
       eolienLive:           this.currentEolienLive,
       aisAnomalies:         this.currentAisAnomalies,
-      timeline:             this.buildFranceTimeline(lang),
+      timeline:             this.buildFranceTimeline(lang, env),
       briefLang:            lang,
       oilDashboard:         this.currentOilData ?? null,
       fuelTensionDashboard: this.currentFuelTensionData ?? null,
@@ -7020,13 +7021,12 @@ export class App {
     };
   }
 
-  private buildAlertMonitorSituations(): DetectedSituation[] {
+  private buildAlertMonitorSituations(env: EnvironmentInputs = this.environmentInputs()): DetectedSituation[] {
     const language = getCurrentLanguage();
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
-    // Vigilance du jour et incidents des feux : mêmes entrées que le score (collecte des feux de plus de 2 jours écartée).
-    const env = this.environmentInputs();
+    // env : vigilance du jour et incidents des feux, mêmes entrées que le score (collecte des feux de plus de 2 jours écartée).
 
     // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
     // sinon repli sur les articles un par un.
@@ -7240,7 +7240,9 @@ export class App {
 
   private refreshFranceIntelPanel(): void {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
+    // Entrées Environnement lues une fois : instantané, moniteur et poste v2 voient le même instant (revue m6).
+    const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
     // Revue (correction post-relecture) : en v2, tant que les couches critiques ne sont pas
     // chargées, les caches consommés par l'instantané sont vides — ne pas écrire dans l'historique
     // de stabilité local ni dans l'historique de situation partagé (SET NX, une seule écriture par
@@ -7254,9 +7256,9 @@ export class App {
         defense: snapshot.axes.defense,
       });
     }
-    const alerts = this.buildAlertMonitorSituations();
+    const alerts = this.buildAlertMonitorSituations(env);
     if (this.uiV2) {
-      this.updatePoste(snapshot, alerts, lang);
+      this.updatePoste(snapshot, alerts, lang, env);
     } else {
       this.alertMonitor?.update(alerts, lang);
       this.situationMonitor?.update(snapshot.situations, lang);
@@ -7301,9 +7303,9 @@ export class App {
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
   private buildSituationReportContext(): SituationReportContext {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
-    const traffic = this.trafficInputs();
     const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
+    const traffic = this.trafficInputs();
     const context: SituationReportContext = {
       generatedAt: new Date(),
       permalink: window.location.href,
@@ -7337,8 +7339,8 @@ export class App {
   /** Instantané des caches courants pour l'export CSV / GeoJSON (aucun fetch). */
   private buildExportContext(): ExportContext {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
     const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
     return {
       news: this.newsItems,
       situations: snapshot.situations,
@@ -7640,13 +7642,14 @@ export class App {
   private repaintPoste(): void {
     if (!this.uiV2 || !this.poste) return;
     const lang = this.intelLang();
-    this.updatePoste(this.buildFranceSnapshot(lang), this.buildAlertMonitorSituations(), lang);
+    // Entrées Environnement lues une fois par repeinte : un seul instant pour la règle des 2 jours (revue m6).
+    const env = this.environmentInputs();
+    this.updatePoste(this.buildFranceSnapshot(lang, undefined, env), this.buildAlertMonitorSituations(env), lang, env);
   }
 
   /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
-  private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en'): void {
+  private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en', env: EnvironmentInputs): void {
     const now = Date.now();
-    const env = this.environmentInputs();
     this.poste?.update({
       snapshot,
       alerts,

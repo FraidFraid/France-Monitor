@@ -12,6 +12,7 @@ import {
   energySegments,
   oilStatusInfo,
   timelineIntensity,
+  type DomainLevel,
   type DomainTile,
   type EnergyKey,
 } from '../france-intel-blocks.ts';
@@ -78,19 +79,22 @@ export function infraSection(infra: InfraInput | null, lang: Lang): IndicatorSec
 
 export function domainsSection(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): IndicatorSection {
   const tiles = domainTiles(snapshot.signals, lang);
+  // Sans niveau (source indisponible, S3) : point gris, « n.d. », hors du compte par niveau.
+  const dot = (level: DomainLevel | null): string => levelDot(level === null ? null : DOMAIN_LEVEL[level]);
+  const num = (v: number | null): string => `<b class="fmk-num">${v === null ? 'n.d.' : formatNumber(v, lang)}</b>`;
   const value = (tile: DomainTile): string => (tile.parts
-    ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${levelDot(DOMAIN_LEVEL[p.level])}`
-      + `${escapeHtml(p.label)} <b class="fmk-num">${formatNumber(p.value, lang)}</b></span>`).join('')}</span>`
-    : `<b class="fmk-num">${tile.value === null ? 'n.d.' : formatNumber(tile.value, lang)}</b>`);
+    ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${dot(p.level)}`
+      + `${escapeHtml(p.label)} ${num(p.value)}</span>`).join('')}</span>`
+    : num(tile.value));
   const grid = tiles.map((tile) => `<div class="fmk-domain">`
-    + `<span class="fmk-domain-name">${levelDot(DOMAIN_LEVEL[tile.level])}${escapeHtml(tile.label)}</span>`
+    + `<span class="fmk-domain-name">${dot(tile.level)}${escapeHtml(tile.label)}</span>`
     + `${value(tile)}<small>${escapeHtml(tile.meta)}</small></div>`).join('');
   const chips = domainChips(snapshot, lang)
     .map((c) => `<span class="fmk-tag fmk-tag--${c.tone}">${escapeHtml(c.text)}</span>`).join('');
   return {
     id: 'domains',
     title: t(lang, 'Domaines', 'Domains'),
-    summary: levelCounts(tiles.map((tile) => DOMAIN_LEVEL[tile.level]), lang),
+    summary: levelCounts(tiles.flatMap((tile) => (tile.level === null ? [] : [DOMAIN_LEVEL[tile.level]])), lang),
     html: `<div class="fmk-domains">${grid}</div>${chips ? `<div class="fmk-tags">${chips}</div>` : ''}`,
   };
 }

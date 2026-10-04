@@ -1186,6 +1186,13 @@ export interface CyberState {
 
 // ═══ France Intelligence Card ═══
 
+/** Sources Environnement lues pour le score et la tuile « Météo » (spec 2026-10-04 environnement S3) : false si indisponible. */
+export interface EnvironmentAvailability {
+  vigilance: boolean;
+  floods: boolean;
+  fires: boolean;
+}
+
 export interface FranceCountrySignals {
   // News
   criticalNews: number;
@@ -1205,6 +1212,15 @@ export interface FranceCountrySignals {
   fireFoyersOrange?: number;
   /** Parmi eux, les foyers majeurs (isMajorFoyer : au moins 100 MW cumulés, confiance non faible). Absent : 0. */
   fireFoyersMajor?: number;
+  /** Détections isolées (foyers non confirmés) non récurrentes, en France : part « Feux » de la tuile au jaune (arbitrage 14). Absent : 0. */
+  fireFoyersIsolated?: number;
+  /**
+   * Source Environnement indisponible (jamais lue, en échec sans donnée, sans carte ou sans relevé ; collecte des feux de plus de
+   * 2 jours) : chiffres « n.d. » et point gris, jamais un « 0 » vert (S3). Le score, lui, voit des listes vides. Absent : lue.
+   */
+  vigilanceUnavailable?: boolean;
+  floodsUnavailable?: boolean;
+  firesUnavailable?: boolean;
   // Transport
   railDisruptions: number;
   railSevere: number;

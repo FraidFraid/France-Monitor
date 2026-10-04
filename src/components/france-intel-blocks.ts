@@ -83,15 +83,19 @@ function renderTimelineLane(lane: FranceIntelTimelineLane): string {
 
 export type DomainLevel = 'low' | 'medium' | 'high' | 'critical';
 
-/** Chiffre distinct d'une tuile à plusieurs parts (tuile « Météo » : vigilance, crues, feux), avec son propre niveau. */
-export interface DomainTilePart { label: string; value: number; level: DomainLevel }
+/**
+ * Chiffre distinct d'une tuile à plusieurs parts (tuile « Météo » : vigilance, crues, feux), avec son propre niveau. value et level
+ * null : source indisponible, « n.d. » et point gris, hors du niveau de la tuile (S3).
+ */
+export interface DomainTilePart { label: string; value: number | null; level: DomainLevel | null }
 
 export interface DomainTile {
   label: string;
   /** null : la tuile n'additionne pas ses parts (unités différentes), chacune est affichée. */
   value: number | null;
   meta: string;
-  level: DomainLevel;
+  /** null : aucune part lue (toutes indisponibles), point gris, jamais un vert par défaut. */
+  level: DomainLevel | null;
   parts?: DomainTilePart[];
 }
 
@@ -106,30 +110,38 @@ function partLevel(red: number, any: number): DomainLevel {
 }
 
 /**
- * Part « Feux », même règle que la pastille Feux : rouge si un foyer majeur, orange si un foyer confirmé d'au moins 10 MW ; des foyers
- * confirmés seulement plus petits comptent comme des détections isolées, jaune (arbitrage 14 du contrôleur) ; vert sinon.
+ * Part « Feux », même règle que la pastille Feux : rouge si un foyer majeur, orange si un foyer confirmé d'au moins 10 MW ; jaune
+ * pour des foyers confirmés seulement plus petits ou des détections isolées (arbitrage 14 du contrôleur) ; vert sinon.
  */
 function firePartLevel(s: FranceCountrySignals): DomainLevel {
   if ((s.fireFoyersMajor ?? 0) > 0) return 'critical';
   if ((s.fireFoyersOrange ?? 0) > 0) return 'high';
-  return (s.fireFoyersConfirmed ?? 0) > 0 ? 'medium' : 'low';
+  return (s.fireFoyersConfirmed ?? 0) > 0 || (s.fireFoyersIsolated ?? 0) > 0 ? 'medium' : 'low';
+}
+
+/** Part d'une source : son chiffre et son niveau, ou « n.d. » sans niveau si elle est indisponible (S3). */
+function tilePart(label: string, unavailable: boolean | undefined, value: number, level: DomainLevel): DomainTilePart {
+  return unavailable === true ? { label, value: null, level: null } : { label, value, level };
 }
 
 /**
  * Tuile « Météo » (spec 2026-10-04 environnement § 2.7) : départements en vigilance orange ou rouge, tronçons orange ou rouges et
- * foyers confirmés en France, trois chiffres distincts (jamais additionnés) ; niveau = le plus haut des trois.
+ * foyers confirmés en France, trois chiffres distincts (jamais additionnés) ; niveau = le plus haut des parts lues ; une source
+ * indisponible dit « n.d. » (S3) ; aucune part lue : tuile sans niveau.
  */
 function meteoTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const parts: DomainTilePart[] = [
-    { label: t(lang, 'Vigilance', 'Weather'), value: s.meteoAlerts, level: partLevel(s.meteoRedAlerts ?? 0, s.meteoAlerts) },
-    { label: t(lang, 'Crues', 'Floods'), value: s.floodAlerts, level: partLevel(s.floodRedAlerts ?? 0, s.floodAlerts) },
-    { label: t(lang, 'Feux', 'Fires'), value: s.fireFoyersConfirmed ?? 0, level: firePartLevel(s) },
+    tilePart(t(lang, 'Vigilance', 'Weather'), s.vigilanceUnavailable, s.meteoAlerts, partLevel(s.meteoRedAlerts ?? 0, s.meteoAlerts)),
+    tilePart(t(lang, 'Crues', 'Floods'), s.floodsUnavailable, s.floodAlerts, partLevel(s.floodRedAlerts ?? 0, s.floodAlerts)),
+    tilePart(t(lang, 'Feux', 'Fires'), s.firesUnavailable, s.fireFoyersConfirmed ?? 0, firePartLevel(s)),
   ];
   return {
     label: t(lang, 'Météo', 'Weather'),
     value: null,
     meta: t(lang, 'dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés', 'orange or red depts · orange or red sections · confirmed fires'),
-    level: parts.reduce<DomainLevel>((m, p) => (DOMAIN_RANK[p.level] > DOMAIN_RANK[m] ? p.level : m), 'low'),
+    level: parts.reduce<DomainLevel | null>(
+      (m, p) => (p.level !== null && (m === null || DOMAIN_RANK[p.level] > DOMAIN_RANK[m]) ? p.level : m), null,
+    ),
     parts,
   };
 }
@@ -235,10 +247,11 @@ export function oilStatusInfo(status: OilVigilanceStatus | null, lang: Lang): { 
 
 export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): string {
   const tiles = domainTiles(snapshot.signals, lang);
-  const levelColor = (level: DomainLevel): string => levelColorVar(DOMAIN_LEVEL[level]);
+  // Sans niveau (source indisponible, S3) : point gris.
+  const levelColor = (level: DomainLevel | null): string => (level === null ? 'var(--sev-grey)' : levelColorVar(DOMAIN_LEVEL[level]));
   const valueHtml = (tile: DomainTile): string => (tile.parts
     ? tile.parts.map((p) => `<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:${levelColor(p.level)};"></span>`
-      + `${escapeHtml(p.label)} ${p.value}</span>`).join('')
+      + `${escapeHtml(p.label)} ${p.value ?? 'n.d.'}</span>`).join('')
     : `${tile.value ?? 'n.d.'}`);
   const tilesHtml = tiles.map((tile) => `
     <div class="frintel-dom-tile">

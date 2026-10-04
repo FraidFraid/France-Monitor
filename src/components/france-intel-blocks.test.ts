@@ -131,6 +131,11 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect([small?.level, small?.parts?.[2]]).toEqual(['medium', { label: 'Feux', value: 2, level: 'medium' }]);
   });
 
+  it('part « Feux » (arbitrage 14) : des détections isolées seules la mettent au jaune, comme la pastille Feux ; le chiffre reste celui des foyers confirmés', () => {
+    const isolated = domainTiles(signals({ fireFoyersIsolated: 4, fireDetections: 4 }), 'fr').find((x) => x.label === 'Météo');
+    expect([isolated?.level, isolated?.parts?.[2]]).toEqual(['medium', { label: 'Feux', value: 0, level: 'medium' }]);
+  });
+
   it('tuile « Météo » : un rouge ou un foyer majeur la met au rouge ; rien : vert ; les détections brutes n’y comptent plus', () => {
     const red = domainTiles(signals({ meteoAlerts: 1, meteoRedAlerts: 1 }), 'fr').find((x) => x.label === 'Météo');
     expect([red?.level, red?.parts?.[0].level]).toEqual(['critical', 'critical']);
@@ -138,6 +143,42 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect([major?.level, major?.parts?.[2]]).toEqual(['critical', { label: 'Feux', value: 1, level: 'critical' }]);
     const calm = domainTiles(signals({ fireDetections: 259 }), 'fr').find((x) => x.label === 'Météo');
     expect([calm?.level, calm?.value, calm?.parts?.map((p) => p.value)]).toEqual(['low', null, [0, 0, 0]]);
+  });
+
+  it('tuile « Météo » (S3) : vigilance, crues et feux indisponibles (jamais lus, en échec, collecte de plus de 2 jours) : n.d. en gris, jamais un « 0 » vert', () => {
+    const now = Date.parse(FIRES_FIXTURE().readAt ?? '') + 2 * 86_400_000 + 60_000;
+    const env = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [], now);
+    const raw = {
+      newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+      nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
+      fuelTensionDashboard: null, ...env,
+    } satisfies FranceRawData;
+    const tile = domainTiles(buildFranceSignals(raw), 'fr').find((x) => x.label === 'Météo');
+    expect(tile).toEqual({
+      label: 'Météo', value: null, level: null,
+      meta: 'dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés',
+      parts: [
+        { label: 'Vigilance', value: null, level: null },
+        { label: 'Crues', value: null, level: null },
+        { label: 'Feux', value: null, level: null },
+      ],
+    });
+    const html = renderDomainsBlock({ signals: buildFranceSignals(raw), meteo: [] }, 'fr');
+    for (const label of ['Vigilance', 'Crues', 'Feux']) {
+      expect(html).toContain(`<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>${label} n.d.</span>`);
+    }
+    expect(html).toContain('<span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>\n      <span class="frintel-dom-label">Météo</span>');
+    expect(html).not.toMatch(/(Vigilance|Crues|Feux) 0/);
+  });
+
+  it('tuile « Météo » (S3) : une part indisponible ne compte pas dans le niveau de la tuile, les autres gardent leur couleur', () => {
+    const tile = domainTiles(signals({ vigilanceUnavailable: true, floodAlerts: 1, fireFoyersConfirmed: 1 }), 'fr').find((x) => x.label === 'Météo');
+    expect([tile?.level, tile?.parts]).toEqual(['high', [
+      { label: 'Vigilance', value: null, level: null },
+      { label: 'Crues', value: 1, level: 'high' },
+      { label: 'Feux', value: 1, level: 'medium' },
+    ]]);
   });
 
   it('tuile « Météo » rendue : chaque part avec sa puce et son chiffre, aucune somme', () => {

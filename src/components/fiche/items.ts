@@ -120,9 +120,10 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
       ];
     case 'environment':
       return [
-        { label: t(lang, 'Départements en vigilance orange ou rouge', 'Departments on orange or red'), value: String(s.meteoAlerts) },
-        { label: t(lang, 'Tronçons en crue orange ou rouge', 'River sections on orange or red'), value: String(s.floodAlerts) },
-        { label: t(lang, 'Foyers confirmés en France', 'Confirmed fires in France'), value: String(s.fireFoyersConfirmed ?? 0) },
+        // Source indisponible (S3) : « n.d. », jamais un « 0 ».
+        { label: t(lang, 'Départements en vigilance orange ou rouge', 'Departments on orange or red'), value: s.vigilanceUnavailable === true ? 'n.d.' : String(s.meteoAlerts) },
+        { label: t(lang, 'Tronçons en crue orange ou rouge', 'River sections on orange or red'), value: s.floodsUnavailable === true ? 'n.d.' : String(s.floodAlerts) },
+        { label: t(lang, 'Foyers confirmés en France', 'Confirmed fires in France'), value: s.firesUnavailable === true ? 'n.d.' : String(s.fireFoyersConfirmed ?? 0) },
       ];
     case 'health':
       // Niveau national et entrées : section santé (healthIndicators), pas de chiffres isolés.

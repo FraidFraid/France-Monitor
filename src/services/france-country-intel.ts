@@ -44,6 +44,7 @@ import type {
   FranceScorePillarBreakdown,
   LocatedFireIncident,
   FireFoyer,
+  EnvironmentAvailability,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -81,6 +82,8 @@ export interface FranceRawData {
   fireIncidents?: LocatedFireIncident[];
   /** Foyers du serveur en France (tuile « Météo », fiche Environnement) ; absent : aucun. */
   fireFoyers?: FireFoyer[];
+  /** Sources Environnement lues (affichage « n.d. », S3 ; jamais lu par la formule) ; absent : toutes lues. */
+  environmentAvailable?: EnvironmentAvailability;
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;
@@ -466,6 +469,11 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     fireFoyersConfirmed: (raw.fireFoyers ?? []).filter((f) => f.confirmed && !f.recurrent).length,
     fireFoyersOrange: (raw.fireFoyers ?? []).filter((f) => foyerLevel(f) === 'orange' || foyerLevel(f) === 'rouge').length,
     fireFoyersMajor: (raw.fireFoyers ?? []).filter(isMajorFoyer).length,
+    fireFoyersIsolated: (raw.fireFoyers ?? []).filter((f) => !f.confirmed && !f.recurrent).length,
+    // Affichage seulement (S3) : la formule ne lit pas ces champs, une source indisponible lui donne des listes vides.
+    vigilanceUnavailable: raw.environmentAvailable?.vigilance === false,
+    floodsUnavailable: raw.environmentAvailable?.floods === false,
+    firesUnavailable: raw.environmentAvailable?.fires === false,
     // Transport
     railDisruptions: raw.railTrains.length,
     // Ancien « critique ou élevé » : NO_SERVICE et SIGNIFICANT_DELAYS, soit les trains supprimés ou retardés.
