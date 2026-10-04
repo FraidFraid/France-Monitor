@@ -2594,7 +2594,11 @@ export interface VigilanceBulletin {
   items: VigilanceBulletinItem[];    // [] : zone sans texte (6 zones sur 7 le 04/10)
 }
 /** Maximum du jour (jour de Paris) des départements par couleur, sur les publications de l'archive (échéance J). */
-export interface VigilanceDayCount { date: string; jaune: number; orange: number; rouge: number; publications: number }
+export interface VigilanceDayCount {
+  date: string; jaune: number; orange: number; rouge: number; publications: number;
+  /** Vrai pour le jour de Paris en cours (maximum encore susceptible de monter) et pour un jour dont des cartes n'ont pas pu être lues ; à montrer « jour en cours » ou incomplet. */
+  partial?: boolean;
+}
 export interface VigilanceResponse {
   updateTime: string | null;           // product.update_time de la carte ; null : carte jamais lue
   textsUpdateTime: string | null;      // update_time des textes

@@ -6,7 +6,8 @@
 // flux). Les niveaux sont repris tels quels (E1) : aucun calcul refait ici.
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { cachedSource, decodeEntities, fetchStrictJson, sourceError } from './source-http.js';
-import { overlayCurrentDay, readVigilanceHistory } from './vigilance-archive.js';
+import { parisDay } from './paris-time.js';
+import { overlayCurrentDay, readVigilanceHistory, recordCurrentDay, refreshWithin } from './vigilance-archive.js';
 
 export const CARTE_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
 export const TEXTES_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/textesvigilance/encours';
@@ -301,16 +302,24 @@ function emptyVigilance(errors) {
  * empêcher l'autre (réponse partielle nommée). Historique : 30 jours de l'archive, jour de l'échéance J superposé ; une
  * panne de l'archive est nommée sans retirer le reste.
  */
-export async function loadVigilance(now = Date.now()) {
+export async function loadVigilance(now = Date.now(), archiveWaitMs = 0) {
   const key = meteoFranceKey();
   if (!key) return emptyVigilance(['Météo-France : clé absente']);
   const headers = { apikey: key };
   const [carte, textes, archive] = await Promise.all([
     readPart(CARTE_KEY, 'Météo-France, carte', async () => parseVigilanceCarte(await fetchStrictJson(CARTE_URL, { headers }))),
     readPart(TEXTES_KEY, 'Météo-France, textes', async () => parseVigilanceTextes(await fetchStrictJson(TEXTES_URL, { headers }))),
-    readVigilanceHistory(now),
+    // Relève de l'archive attendue en parallèle de la carte et des textes (jamais plus de `archiveWaitMs`), puis historique lu.
+    (async () => {
+      if (archiveWaitMs > 0) await refreshWithin(now, archiveWaitMs);
+      return readVigilanceHistory(now);
+    })(),
   ]);
-  const days = overlayCurrentDay(archive.days, carte.value?.periods.find((p) => p.echeance === 'J') ?? null);
+  const periodJ = carte.value?.periods.find((p) => p.echeance === 'J') ?? null;
+  const running = await recordCurrentDay(periodJ, carte.value?.updateTime ?? null, now);
+  // Jour de Paris en cours : maximum partiel (« jour en cours »), jamais présenté comme définitif.
+  const today = parisDay(now);
+  const days = overlayCurrentDay(archive.days, periodJ, running).map((d) => (d.date === today ? { ...d, partial: true } : d));
   const errors = [carte.error, ...(carte.value?.errors ?? []), textes.error, archive.error].filter((e) => typeof e === 'string');
   return {
     updateTime: carte.value?.updateTime ?? null,
