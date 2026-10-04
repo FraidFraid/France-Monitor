@@ -40,22 +40,17 @@ export function latestGaugeAt(s: SeaLevelsResponse | null): string | null {
   return best;
 }
 
-/** Plus ancienne dernière mesure parmi les marégraphes qui en ont une ; null sans mesure. */
-function oldestGaugeAt(s: SeaLevelsResponse): string | null {
-  const dates = s.gauges.map((g) => g.lastAt).filter((d): d is string => d !== null && Number.isFinite(Date.parse(d)));
-  return dates.sort((x, y) => Date.parse(x) - Date.parse(y))[0] ?? null;
-}
-
 /**
- * Panneau des sources (« Marégraphes SHOM ») : retard jugé marégraphe par marégraphe (dernière mesure + 30 min). Un marégraphe servi
- * périmé après un échec n'a pas d'erreur à lui : un seul en retard suffit à passer la ligne « stale », datée de sa dernière mesure.
+ * Panneau des sources (« Marégraphes SHOM ») : « stale » seulement quand le marégraphe le plus frais est en retard (flux mort, dernière
+ * mesure + 30 min) ou sans donnée ; sinon « ok », daté par la mesure la plus fraîche, avec une note nommant les marégraphes en retard
+ * (jamais une dégradation : le retard par marégraphe se lit dans la section Submersion du panneau).
  */
 export function seaLevelsStatus(state: SeaLevelsState, now: number): EnvironmentStatus {
   const data = state.seaLevels.data;
-  const anyLate = data !== null && data.gauges.some((g) => isEnvironmentDataLate('refmar', g.lastAt, now));
-  const date = data !== null && anyLate ? oldestGaugeAt(data) : latestGaugeAt(data);
-  const status = environmentSlotStatus(state.seaLevels, 'refmar', date, now);
-  if (!anyLate || status.status === 'loading' || status.status === 'error') return status;
-  const period = status.period ?? 'n.d.';
-  return { ...status, status: 'stale', period: period.includes('(en retard)') || period === 'n.d.' ? period : `${period} (en retard)` };
+  const status = environmentSlotStatus(state.seaLevels, 'refmar', latestGaugeAt(data), now);
+  if (data === null || status.status === 'loading' || status.status === 'error') return status;
+  const late = data.gauges.filter((g) => isEnvironmentDataLate('refmar', g.lastAt, now));
+  if (late.length === 0 || late.length === data.gauges.length) return status;
+  const note = late.length === 1 ? `1 marégraphe en retard : ${late[0].name}` : `${late.length} marégraphes en retard`;
+  return { ...status, period: `${status.period ?? 'n.d.'} · ${note}` };
 }

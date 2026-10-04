@@ -100,17 +100,20 @@ describe('panneau des sources : date de la donnée (S1), retard (S2)', () => {
     if (partial.quakes.data) partial.quakes.data.errors = ['BCSF-RéNaSS : HTTP 500'];
     expect(earthquakesStatus(partial, ENV_FIXTURE_NOW)).toMatchObject({ status: 'stale', error: 'BCSF-RéNaSS : HTTP 500' });
   });
-  it('marégraphes : retard jugé par marégraphe, sans erreur propre au marégraphe périmé', () => {
-    const mixed = seaLevelsStateFixture();
-    if (mixed.seaLevels.data) mixed.seaLevels.data.gauges[0].lastAt = '2026-10-04T06:00:00.000Z';   // Brest périmé, Marseille à jour
-    const status = seaLevelsStatus(mixed, ENV_FIXTURE_NOW);
-    expect(status).toMatchObject({ status: 'stale', error: undefined });
-    expect(status.period).toContain('(en retard)');
-    expect(status.lastUpdate).toEqual(new Date('2026-10-04T06:00:00.000Z'));
+  it('marégraphes : un retard isolé est une note, le flux mort ou l’absence de donnée dégradent', () => {
+    const one = seaLevelsStateFixture();
+    if (one.seaLevels.data) one.seaLevels.data.gauges[0].lastAt = '2026-10-04T07:00:00.000Z';   // Brest en retard, Marseille à jour
+    const oneStatus = seaLevelsStatus(one, ENV_FIXTURE_NOW);
+    expect(oneStatus).toMatchObject({ status: 'ok', error: undefined, lastUpdate: new Date('2026-10-04T08:10:00.000Z') });
+    expect(oneStatus.period).toBe('10:10 · 1 marégraphe en retard : Brest');
+    const all = seaLevelsStateFixture();
+    expect(seaLevelsStatus(all, Date.parse('2026-10-04T08:41:00Z'))).toMatchObject({ status: 'stale', period: '10:10 (en retard)' });
     const noMeasure = seaLevelsStateFixture();
     if (noMeasure.seaLevels.data) noMeasure.seaLevels.data.gauges[1].lastAt = null;
-    expect(seaLevelsStatus(noMeasure, ENV_FIXTURE_NOW).status).toBe('stale');
-    expect(seaLevelsStatus(seaLevelsStateFixture(), Date.parse('2026-10-04T08:41:00Z'))).toMatchObject({ status: 'stale' });
+    expect(seaLevelsStatus(noMeasure, ENV_FIXTURE_NOW)).toMatchObject({ status: 'ok', period: '10:10 · 1 marégraphe en retard : Marseille' });
+    const empty = seaLevelsStateFixture();
+    if (empty.seaLevels.data) empty.seaLevels.data.gauges = [];
+    expect(seaLevelsStatus(empty, ENV_FIXTURE_NOW).status).toBe('stale');
     expect(seaLevelsStatus({ seaLevels: { data: null, error: 'HTTP 503', fetchedAt: null } }, ENV_FIXTURE_NOW)).toMatchObject({ status: 'error', error: 'HTTP 503' });
   });
   it('séismes : repli EMSC accepté, la panne BCSF nommée dans errors', () => {
