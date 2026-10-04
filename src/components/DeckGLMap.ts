@@ -14,6 +14,7 @@ import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
 import { DayNightLayer } from '../layers/DayNightLayer.ts';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { FiresResponse, FloodSection, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -35,6 +36,11 @@ import {
   railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
+import {
+  ENV_HOVER_LAYERS, ENV_ICON_NAMES, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, envIconImage, envLayerOn,
+  envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures,
+} from './deckgl/environment-map.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
@@ -134,7 +140,6 @@ import {
   LYR_WEATHER_LINE_RED,
   LYR_WEATHER_LINE_VIOLET,
   SRC_WEATHER_ICONS,
-  LYR_WEATHER_ICONS,
   LYR_HEALTH_ALERT_FILL,
   LYR_HEALTH_ALERT_LINE,
   LYR_HEALTH_URG_FILL,
@@ -152,6 +157,10 @@ import {
   LYR_FIRES_POINTS,
   SRC_FIRES_HIGHLIGHT,
   LYR_FIRES_HIGHLIGHT,
+  SRC_FIRES_ABROAD,
+  SRC_FLOOD_STATIONS,
+  SRC_RADAR_PICK,
+  SRC_FOREST_DANGER,
   SRC_MODIS,
   LYR_MODIS,
   SRC_SENTINEL_SCENE,
@@ -441,6 +450,18 @@ export class DeckGLMap {
   private healthHoverPopup: maplibregl.Popup | null = null;
   /** Trafics (spec 2026-10-03 trafics § 3) : survol, fiche d'un bouchon, icônes d'avions selon le zoom, retard SNCF du trajet tracé. */
   private trafficHoverPopup: maplibregl.Popup | null = null;
+  // Environnement (spec 2026-10-04 environnement § 2) : dernières données reçues (rejeu au réaffichage, surbrillances), options, survol.
+  private envVigilance: { v: VigilanceResponse | null; echeance: VigilanceEcheance; now: number } | null = null;
+  private envVigilancePending = false;
+  private envFloodSections: Map<string, FloodSection> = new Map();
+  private envFires: FiresResponse | null = null;
+  private envFiresNow = 0;
+  private _forestDangerFill = false;
+  private _echoTopsEnabled = false;
+  private radarPick: { lat: number; lon: number } | null = null;
+  private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
+  private envHoverPopup: maplibregl.Popup | null = null;
+  private envHoverShown = false;
   private trafficHoverShown = false;
   private trafficPointer = false;
   private trafficJamPopup: maplibregl.Popup | null = null;
@@ -675,6 +696,7 @@ export class DeckGLMap {
 
     await new Promise<void>((r) => this.map!.on('load', r));
     await this.loadIconAtlas();
+    this.registerEnvironmentIcons();
 
     // ═══════════════════════════════════════════════════════════════
     // ANTI-FLASH: Force all custom layers to start HIDDEN
@@ -769,6 +791,8 @@ export class DeckGLMap {
     // NASA FIRMS Fires
     this.map.addSource(SRC_FIRES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FIRES_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
+    // Environnement (spec 2026-10-04 § 2) : météo des forêts, détections hors de France, stations des tronçons, point du profil radar.
+    for (const id of ENV_SOURCE_IDS) this.map.addSource(id, envSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -1080,7 +1104,7 @@ export class DeckGLMap {
       type: 'fill',
       source: SRC_WEATHER,
       paint: {
-        'fill-color': ['get', 'fillColor'],
+        'fill-color': ['coalesce', ['get', 'color'], ['get', 'fillColor']],
         'fill-opacity': [
           'case',
           ['boolean', ['get', 'hasAlert'], false],
@@ -1124,7 +1148,7 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'yellow']],
       paint: {
-        'line-color': ['get', 'lineColor'],
+        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
         'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 2.3, 1.2],
         'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.9],
       },
@@ -1135,7 +1159,7 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'orange']],
       paint: {
-        'line-color': ['get', 'lineColor'],
+        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
         'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.2, 2.4],
         'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.98],
       },
@@ -1146,7 +1170,7 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'red']],
       paint: {
-        'line-color': ['get', 'lineColor'],
+        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
         'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.6, 2.8],
         'line-opacity': 1,
       },
@@ -1270,6 +1294,8 @@ export class DeckGLMap {
       id: LYR_FIRES_GLOW,
       type: 'circle',
       source: SRC_FIRES,
+      // Halo : foyers orange ou rouges seulement (propriété `glow`) ; anciens points sans la propriété : halo gardé.
+      filter: ['coalesce', ['get', 'glow'], true],
       paint: {
         'circle-radius': [
           'interpolate',
@@ -1278,7 +1304,7 @@ export class DeckGLMap {
           5, 10,
           10, 30
         ],
-        'circle-color': '#ff3b30',
+        'circle-color': ['coalesce', ['get', 'color'], '#ff3b30'],
         'circle-opacity': 0.3,
         'circle-blur': 0.8
       }
@@ -1287,19 +1313,21 @@ export class DeckGLMap {
       id: LYR_FIRES_POINTS,
       type: 'circle',
       source: SRC_FIRES,
+      layout: { 'circle-sort-key': ['coalesce', ['get', 'sortKey'], 0] },
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          5, 3,
-          10, 5
+          5, ['coalesce', ['get', 'radius'], 3],
+          10, ['*', ['coalesce', ['get', 'radius'], 3], 1.6],
         ],
-        'circle-color': [
+        // Couleur du foyer (deckgl/environment-map.ts) ; repli sur l'ancienne table jusqu'à la tâche 18.
+        'circle-color': ['coalesce', ['get', 'color'], [
           'match', ['get', 'confidence'],
           'high', '#ffd60a',
           'nominal', '#ff9500',
           'low', '#ff3b30',
           '#ff9500'
-        ],
+        ]],
         'circle-stroke-width': 1,
         'circle-stroke-color': 'rgba(0,0,0,0.5)',
         'circle-opacity': 0.9,
@@ -1461,6 +1489,12 @@ export class DeckGLMap {
         'visibility': 'none',
       },
     });
+    // ─── Environnement (spec 2026-10-04 § 2) : couches nouvelles de deckgl/environment-map.ts, masquées jusqu'à setLayerVisibility ───
+    for (const layer of ENV_LAYERS) {
+      const before = ENV_LAYER_BEFORE[layer.id];
+      this.map.addLayer(layer, before && this.map.getLayer(before) ? before : undefined);
+    }
+
     // ─── L1: News glow (critical/high only) ───
     this.map.addLayer({
       id: LYR_GLOW,
@@ -3731,6 +3765,8 @@ export class DeckGLMap {
     this.map.on('mousemove', LYR_FIRES_POINTS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
       const p = e.features[0].properties || {};
+      // Objets de la nouvelle couche (tâche 15) : infobulle de initEnvironmentInteractions ; bloc retiré à la tâche 18.
+      if (typeof p.body === 'string') return;
       const frp = Number(p.frp ?? 0).toFixed(1);
       const conf = String(p.confidence ?? '');
       const confLabel = conf === 'high' ? `${fmStatusDot('high')} Haute` : conf === 'nominal' ? `${fmStatusDot('medium')} Nominale` : `${fmStatusDot('low')} Basse`;
@@ -3792,6 +3828,9 @@ export class DeckGLMap {
 
     // Couches Trafics : infobulle au survol, vitesse du tronçon au clic sur un bouchon (initTrafficInteractions).
     this.initTrafficInteractions();
+
+    // Couches Environnement : infobulle au survol, point du profil radar au clic (initEnvironmentInteractions).
+    this.initEnvironmentInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -4468,6 +4507,7 @@ export class DeckGLMap {
       this.weatherHoverPopup?.remove();
       this.previewWeatherDepartment(null);
       const feature = e.features[0];
+      if (typeof feature.properties?.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
       const featureId = feature.id;
       this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
 
@@ -4531,6 +4571,7 @@ export class DeckGLMap {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const p = feat.properties || {};
+      if (typeof p.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
 
       let levelText = 'Inconnu';
       let levelColor = '#888';
@@ -4635,6 +4676,7 @@ export class DeckGLMap {
 
       const feat = e.features[0];
       const p = feat.properties || {};
+      if (typeof p.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
       if (!p.hasAlert) {
         this.map.getCanvas().style.cursor = '';
         this.weatherHoverPopup?.remove();
@@ -7058,6 +7100,7 @@ export class DeckGLMap {
       LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
       LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       LYR_TRAFFIC, ...Object.values(TRAFFIC_LAYER_KEYS).flat(), LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS,
+      ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
     ];
 
     let activeLayers: string[] = [];
@@ -7091,6 +7134,14 @@ export class DeckGLMap {
       activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];
     } else if (categoryId === 'trafficMaritime') {
       activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];
+    } else if (categoryId === 'environmental') {
+      activeLayers = [...ENV_LAYER_KEYS.environmental];
+    } else if (categoryId === 'floods') {
+      activeLayers = [...ENV_LAYER_KEYS.floods];
+    } else if (categoryId === 'weatherRadar') {
+      activeLayers = [...ENV_LAYER_KEYS.weatherRadar];
+    } else if (categoryId === 'fires') {
+      activeLayers = [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS];
     }
 
     const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
@@ -9457,6 +9508,186 @@ export class DeckGLMap {
 
   private _highlightedFloodSegmentId: string | null = null;
 
+  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) : méthodes neuves, à côté des anciennes (retirées à la tâche 18) ───
+
+  /** Vigilance de l'échéance choisie (J ou J+1), datée ; couche masquée : gardée, puis peinte à son réaffichage. */
+  async updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void> {
+    this.envVigilance = { v, echeance, now };
+    // L'ancienne relecture (updateWeather) ne repeint plus par-dessus la nouvelle couche.
+    this._pendingWeatherAlerts = null;
+    if (!this.map) return;
+    if (!this.currentLayers?.environmental) {
+      this.envVigilancePending = true;
+      return;
+    }
+    this.envVigilancePending = false;
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_WEATHER) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? vigilanceDeptFeatures(geo, v, echeance, now) : emptyFC());
+    (this.map.getSource(SRC_WEATHER_ICONS) as maplibregl.GeoJSONSource | undefined)?.setData(vigilanceIconFeatures(v, echeance, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Tronçons jaunes, orange, rouges (aussi en v2) et stations des tronçons en vigilance, datés. */
+  updateFloodsLayer(f: FloodsResponse | null, now: number): void {
+    if (!this.map) return;
+    this.envFloodSections = new Map((f?.sections ?? []).map((s) => [s.id, s]));
+    this.highlightFloodSection(null);
+    (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(f, now));
+    (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(f, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Tronçon du panneau Crues mis en avant (null : aucun). */
+  highlightFloodSection(id: string | null): void {
+    if (!this.map) return;
+    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
+    const section = id === null ? undefined : this.envFloodSections.get(id);
+    if (!section) {
+      highlightSrc?.setData(emptyFC());
+      this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
+      this._highlightedFloodSegmentId = null;
+      return;
+    }
+    highlightSrc?.setData({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: section.path }, properties: { id: section.id } }],
+    });
+    this._highlightedFloodSegmentId = section.id;
+    this.setVis(LYR_FLOODS_HIGHLIGHT, envLayerOn(this.currentLayers ?? {}, 'floods') ? 'visible' : 'none');
+  }
+
+  /** Recentre la carte sur un tronçon (clic dans le panneau Crues) et le met en avant. */
+  focusFloodSection(id: string): void {
+    const section = this.envFloodSections.get(id);
+    if (!section || section.path.length === 0) return;
+    this.highlightFloodSection(id);
+    this.fitBounds(computeFloodSegmentBbox({ type: 'MultiLineString', coordinates: section.path }), 80);
+  }
+
+  /** Détections de France par foyer, détections hors de France, météo des forêts (option, éteinte par défaut), datées. */
+  updateFiresLayer(f: FiresResponse | null, now: number, opts: { forestDangerFill: boolean }): void {
+    this.envFires = f;
+    this.envFiresNow = now;
+    this._forestDangerFill = opts.forestDangerFill;
+    if (!this.map) return;
+    (this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource | undefined)?.setData(fireDetectionFeatures(f, now));
+    (this.map.getSource(SRC_FIRES_ABROAD) as maplibregl.GeoJSONSource | undefined)?.setData(fireAbroadFeatures(f));
+    const firesOn = envLayerOn(this.currentLayers ?? {}, 'fires');
+    for (const id of FOREST_DANGER_LAYERS) this.setVis(id, firesOn && opts.forestDangerFill ? 'visible' : 'none');
+    void this.paintForestDanger();
+    this.hideEnvironmentHover();
+  }
+
+  /** Remplissage de la météo des forêts : polygones lus seulement quand l'option est cochée. */
+  private async paintForestDanger(): Promise<void> {
+    const src = this.map?.getSource(SRC_FOREST_DANGER) as maplibregl.GeoJSONSource | undefined;
+    if (!this._forestDangerFill) {
+      src?.setData(emptyFC());
+      return;
+    }
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map || !this._forestDangerFill) return;
+    (this.map.getSource(SRC_FOREST_DANGER) as maplibregl.GeoJSONSource | undefined)?.setData(
+      geo ? forestDangerFeatures(geo, this.envFires, this.envFiresNow) : emptyFC(),
+    );
+  }
+
+  /** Détections d'un foyer mises en avant (survol d'un foyer dans le panneau) ; null : aucune. */
+  highlightFoyer(id: string | null): void {
+    if (!this.map) return;
+    const points = id === null ? [] : (this.envFires?.detections ?? []).filter((d) => d.foyerId === id);
+    (this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: 'FeatureCollection',
+      features: points.map((d) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [d.lon, d.lat] }, properties: {} })),
+    });
+  }
+
+  /** Point du profil vertical radar (null : effacé). */
+  setRadarPick(point: { lat: number; lon: number } | null): void {
+    this.radarPick = point;
+    if (!this.map) return;
+    (this.map.getSource(SRC_RADAR_PICK) as maplibregl.GeoJSONSource | undefined)?.setData(point ? radarPickFeature(point.lat, point.lon) : emptyFC());
+    const shown = point !== null && envLayerOn(this.currentLayers ?? {}, 'weatherRadar');
+    for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, shown ? 'visible' : 'none');
+  }
+
+  /** Clic sur la carte, couche Radar active : point du profil vertical (App.ts lit la colonne). */
+  setOnRadarPointPick(handler: (lat: number, lon: number) => void): void {
+    this.onRadarPointPick = handler;
+  }
+
+  /** Image 2D Météo-France visible : couche Radar active, ou ancien interrupteur du panneau Feux (jusqu'à la tâche 16). */
+  private radar2dShown(): boolean {
+    return this._radar2dEnabled || (this.currentLayers?.weatherRadar ?? false);
+  }
+
+  /** Sommets d'écho visibles : option cochée et couche Radar ou Feux active. */
+  private echoTopsShown(enabled: boolean): boolean {
+    return enabled && ((this.currentLayers?.weatherRadar ?? false) || (this.currentLayers?.fires ?? false));
+  }
+
+  /** Pictogrammes des phénomènes de la vigilance en images SDF (teintés par la couleur de l'objet). */
+  private registerEnvironmentIcons(): void {
+    if (!this.map) return;
+    const SIZE = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    for (const name of ENV_ICON_NAMES) {
+      const id = envIconImage(name);
+      if (this.map.hasImage(id)) continue;
+      const svg = fmIcon(name, { size: SIZE }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('stroke="currentColor"', 'stroke="#ffffff"');
+      const img = new Image(SIZE, SIZE);
+      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      img.onload = () => {
+        ctx.clearRect(0, 0, SIZE, SIZE);
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
+        URL.revokeObjectURL(url);
+        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, ctx.getImageData(0, 0, SIZE, SIZE), { pixelRatio: 2, sdf: true });
+      };
+      img.src = url;
+    }
+  }
+
+  /** Ferme l'infobulle de l'environnement (souris hors de la carte, nouvelles données, couches changées). */
+  private hideEnvironmentHover(): void {
+    if (!this.envHoverShown) return;
+    this.envHoverShown = false;
+    this.envHoverPopup?.remove();
+  }
+
+  /**
+   * Couches Environnement : une infobulle au survol, celle de la couche dessinée au-dessus (préparée avec la donnée, texte échappé) ;
+   * département de la vigilance survolé mis en avant ; clic sur la carte, couche Radar active : point du profil vertical.
+   */
+  private initEnvironmentInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topEnvHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (hit?.layer.id === LYR_WEATHER_FILL && html) this.previewWeatherDepartment(String(hit.properties?.['code'] ?? ''));
+      if (!html) {
+        this.hideEnvironmentHover();
+        return;
+      }
+      this.envHoverShown = true;
+      const popup = this.envHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.envHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideEnvironmentHover());
+    map.on('click', (e) => {
+      if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;
+      this.onRadarPointPick(e.lngLat.lat, e.lngLat.lng);
+    });
+  }
+
   // ─── Fires Layer ───
 
   updateFires(fires: ActiveFire[]): void {
@@ -9524,9 +9755,7 @@ export class DeckGLMap {
   setFirePointsVisible(enabled: boolean): void {
     this._firePointsEnabled = enabled;
     const visibility = enabled ? 'visible' : 'none';
-    this.setVis(LYR_FIRES_GLOW, visibility);
-    this.setVis(LYR_FIRES_POINTS, visibility);
-    this.setVis(LYR_FIRES_HIGHLIGHT, visibility);
+    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, visibility);
   }
 
   private async swapModisTilesToLatest(): Promise<void> {
@@ -9623,6 +9852,7 @@ export class DeckGLMap {
   }
 
   setEchoTopsOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    this._echoTopsEnabled = enabled;
     if (!this.map) return;
     const url = manifest?.echoTopImageUrl;
     if (!url) {
@@ -9643,14 +9873,14 @@ export class DeckGLMap {
           id: ECHO_TOPS_LAYER_ID,
           type: 'raster',
           source: ECHO_TOPS_SOURCE_ID,
-          layout: { visibility: enabled ? 'visible' : 'none' },
+          layout: { visibility: this.echoTopsShown(enabled) ? 'visible' : 'none' },
           paint: {
             'raster-opacity': 0.62,
             'raster-resampling': 'linear',
             'raster-fade-duration': 0,
           },
         },
-        this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined,
+        this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined,
       );
     } else if (this._echoTopsUrl !== url) {
       const source = this.map.getSource(ECHO_TOPS_SOURCE_ID) as
@@ -9659,7 +9889,7 @@ export class DeckGLMap {
       source?.updateImage?.({ url, coordinates });
     }
     this._echoTopsUrl = url;
-    this.setVis(ECHO_TOPS_LAYER_ID, enabled ? 'visible' : 'none');
+    this.setVis(ECHO_TOPS_LAYER_ID, this.echoTopsShown(enabled) ? 'visible' : 'none');
   }
 
   async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
@@ -9682,8 +9912,8 @@ export class DeckGLMap {
     const sourceExists = this.map.getSource(RADAR_2D_SOURCE_ID) !== undefined;
     const layerExists = this.map.getLayer(RADAR_2D_LAYER_ID) !== undefined;
     if (manifest.observedAt === this.radar2dManifest?.observedAt && sourceExists && layerExists) {
-      this.setVis(RADAR_2D_LAYER_ID, enabled ? 'visible' : 'none');
       this._radar2dEnabled = enabled;
+      this.setVis(RADAR_2D_LAYER_ID, this.radar2dShown() ? 'visible' : 'none');
       return;
     }
 
@@ -9859,15 +10089,16 @@ export class DeckGLMap {
       id: RADAR_2D_LAYER_ID,
       type: 'raster',
       source: RADAR_2D_SOURCE_ID,
-      layout: { visibility: this._radar2dEnabled ? 'visible' : 'none' },
+      layout: { visibility: this.radar2dShown() ? 'visible' : 'none' },
       paint: {
         'raster-opacity': 0.58,
-        'raster-resampling': 'linear',
+        // Mosaïque de 1 km : pixels nets à tous les zooms utiles (spec § 2.3), jamais lissés.
+        'raster-resampling': 'nearest',
         'raster-fade-duration': 0,
       },
-    }, this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined);
+    }, this.map.getLayer(ECHO_TOPS_LAYER_ID) ? ECHO_TOPS_LAYER_ID : this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
     // DeckGLMap's anti-flash wrapper hides newly added layers during startup.
-    this.setVis(RADAR_2D_LAYER_ID, this._radar2dEnabled ? 'visible' : 'none');
+    this.setVis(RADAR_2D_LAYER_ID, this.radar2dShown() ? 'visible' : 'none');
   }
 
   private removeRadar2dLayer(): void {
@@ -10850,6 +11081,10 @@ export class DeckGLMap {
       const alerts = this._pendingWeatherAlerts;
       void this.updateWeather(alerts);
     }
+    if (layers.environmental && this.envVigilancePending && this.envVigilance) {
+      const { v, echeance, now } = this.envVigilance;
+      void this.updateVigilanceLayer(v, echeance, now);
+    }
     if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
     if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {
@@ -10883,13 +11118,9 @@ export class DeckGLMap {
     for (const region of WEATHER_RADAR_REGIONS) {
       this.setVis(getWeatherRadarLayerId(region.id), vis(layers.weatherRadar ?? false));
     }
-    this.setVis(LYR_WEATHER_FILL, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_YELLOW, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_ORANGE, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_RED, vis(layers.environmental));
+    // Environnement (spec 2026-10-04 § 2) : couches de deckgl/environment-map.ts, par couche.
+    for (const id of ENV_LAYER_KEYS.environmental) this.setVis(id, vis(envLayerOn(layers, 'environmental')));
     this.setVis(LYR_WEATHER_LINE_VIOLET, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
     // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
     this.setVis(LYR_HEALTH_ALERT_FILL, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_ALERT_LINE, vis(layers.health ?? false));
@@ -10901,14 +11132,19 @@ export class DeckGLMap {
     // Couches changées : l'infobulle de survol se recalcule au prochain mouvement ; Hôpitaux éteinte : sa fiche se ferme.
     this.hideHealthHover();
     if (!layers.hospitals) this.hospitalPopup?.remove();
-    this.setVis(LYR_TOPAGE_VIS, vis(layers.environmental));
-    this.setVis(LYR_FLOODS_RAW, vis(layers.environmental));
-    this.setVis(LYR_FLOODS, vis(layers.environmental));
-    this.setVis(LYR_FLOODS_HIGHLIGHT, vis(layers.environmental && this._highlightedFloodSegmentId !== null));
-    this.setVis(LYR_MODIS, vis((layers.fires ?? false) && this._modisOverlayEnabled));
-    this.setVis(LYR_FIRES_GLOW, vis((layers.fires ?? false) && this._firePointsEnabled));
-    this.setVis(LYR_FIRES_POINTS, vis((layers.fires ?? false) && this._firePointsEnabled));
-    this.setVis(LYR_FIRES_HIGHLIGHT, vis((layers.fires ?? false) && this._firePointsEnabled));
+    const floodsOn = envLayerOn(layers, 'floods');
+    this.setVis(LYR_TOPAGE_VIS, vis(floodsOn));
+    this.setVis(LYR_FLOODS_RAW, vis(floodsOn));
+    for (const id of ENV_LAYER_KEYS.floods) this.setVis(id, vis(floodsOn));
+    this.setVis(LYR_FLOODS_HIGHLIGHT, vis(floodsOn && this._highlightedFloodSegmentId !== null));
+    const firesOn = envLayerOn(layers, 'fires');
+    this.setVis(LYR_MODIS, vis(firesOn && this._modisOverlayEnabled));
+    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn && this._firePointsEnabled));
+    for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));
+    for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, vis(envLayerOn(layers, 'weatherRadar') && this.radarPick !== null));
+    this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
+    this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
+    this.hideEnvironmentHover();
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');

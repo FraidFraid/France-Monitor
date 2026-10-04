@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { DeckGLMap } from './DeckGLMap.ts';
 import { ECHO_TOPS_LAYER_ID, ECHO_TOPS_SOURCE_ID } from './deckgl/format-utils.ts';
-import { LYR_FIRES_GLOW } from './deckgl/constants.ts';
+import { LYR_WEATHER_FILL } from './deckgl/constants.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
 
 const MANIFEST: Radar2dManifest = {
@@ -68,10 +68,11 @@ function createDeckMap(map: EchoMap): DeckGLMap {
 }
 
 describe('DeckGLMap sommets d’écho', () => {
-  it('crée la source image sous le halo FIRMS avec la bonne emprise', () => {
+  it('crée la source image sous le remplissage de la vigilance avec la bonne emprise', () => {
     const map = new EchoMap();
-    map.addLayer({ id: LYR_FIRES_GLOW, type: 'circle' } as maplibregl.AddLayerObject);
+    map.addLayer({ id: LYR_WEATHER_FILL, type: 'fill' } as maplibregl.AddLayerObject);
     const deckMap = createDeckMap(map);
+    Reflect.set(deckMap, 'currentLayers', { fires: true, weatherRadar: false });
 
     deckMap.setEchoTopsOverlay(MANIFEST, true);
 
@@ -86,7 +87,7 @@ describe('DeckGLMap sommets d’écho', () => {
         [-9.965, 39.46785],
       ],
     });
-    expect(map.beforeIds.get(ECHO_TOPS_LAYER_ID)).toBe(LYR_FIRES_GLOW);
+    expect(map.beforeIds.get(ECHO_TOPS_LAYER_ID)).toBe(LYR_WEATHER_FILL);
     expect(map.visibility()).toBe('visible');
   });
 
@@ -98,6 +99,17 @@ describe('DeckGLMap sommets d’écho', () => {
     deckMap.setEchoTopsOverlay(MANIFEST, false);
 
     expect(map.visibility()).toBe('none');
+  });
+
+  it('option cochée : visible avec la couche Radar météo ou Feux de forêt, masquée sans aucune des deux (contrats § 5)', () => {
+    const map = new EchoMap();
+    const deckMap = createDeckMap(map);
+    Reflect.set(deckMap, 'currentLayers', { fires: false, weatherRadar: false });
+    deckMap.setEchoTopsOverlay(MANIFEST, true);
+    expect(map.visibility()).toBe('none');
+    Reflect.set(deckMap, 'currentLayers', { fires: false, weatherRadar: true });
+    deckMap.setEchoTopsOverlay(MANIFEST, true);
+    expect(map.visibility()).toBe('visible');
   });
 
   it('remplace l’image quand une nouvelle observation est publiée', () => {

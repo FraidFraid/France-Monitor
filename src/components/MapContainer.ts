@@ -16,6 +16,7 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import type { FiresResponse, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -59,6 +60,7 @@ export class MapContainer {
   private radar2dManifest: Radar2dManifest | null = null;
   private radar2dEnabled = false;
   private echoTopsEnabled = false;
+  private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -90,6 +92,7 @@ export class MapContainer {
     if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
     if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
+    if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
@@ -633,6 +636,40 @@ export class MapContainer {
   /** Survol d'un train dans le panneau ferroviaire : trajet provisoire ; null rend celui du train choisi. */
   previewTrainRoute(train: RailTrain | null): void {
     this.deckMap?.previewTrainRoute(train);
+  }
+
+  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) ───
+  async updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void> {
+    await this.deckMap?.updateVigilanceLayer(v, echeance, now);
+  }
+
+  updateFloodsLayer(f: FloodsResponse | null, now: number): void {
+    this.deckMap?.updateFloodsLayer(f, now);
+  }
+
+  highlightFloodSection(id: string | null): void {
+    this.deckMap?.highlightFloodSection(id);
+  }
+
+  focusFloodSection(id: string): void {
+    this.deckMap?.focusFloodSection(id);
+  }
+
+  updateFiresLayer(f: FiresResponse | null, now: number, opts: { forestDangerFill: boolean }): void {
+    this.deckMap?.updateFiresLayer(f, now, opts);
+  }
+
+  highlightFoyer(id: string | null): void {
+    this.deckMap?.highlightFoyer(id);
+  }
+
+  setRadarPick(point: { lat: number; lon: number } | null): void {
+    this.deckMap?.setRadarPick(point);
+  }
+
+  setOnRadarPointPick(handler: (lat: number, lon: number) => void): void {
+    this.onRadarPointPick = handler;
+    this.deckMap?.setOnRadarPointPick(handler);
   }
 
   destroy(): void {

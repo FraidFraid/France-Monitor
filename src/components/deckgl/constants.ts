@@ -70,6 +70,17 @@ export const LYR_FIRES_GLOW = 'fires-glow';
 export const LYR_FIRES_POINTS = 'fires-pts';
 export const SRC_FIRES_HIGHLIGHT = 'fires-highlight-src';
 export const LYR_FIRES_HIGHLIGHT = 'fires-highlight';
+// Environnement (spec 2026-10-04 environnement § 2) : stations des tronçons en vigilance, point du profil radar, détections hors
+// de France, météo des forêts par département (option de la couche Feux).
+export const SRC_FLOOD_STATIONS = 'flood-stations-src';
+export const LYR_FLOOD_STATIONS = 'flood-stations';
+export const SRC_RADAR_PICK = 'radar-pick-src';
+export const LYR_RADAR_PICK = 'radar-pick';
+export const SRC_FIRES_ABROAD = 'fires-abroad-src';
+export const LYR_FIRES_ABROAD = 'fires-abroad';
+export const SRC_FOREST_DANGER = 'forest-danger-src';
+export const LYR_FOREST_DANGER_FILL = 'forest-danger-fill';
+export const LYR_FOREST_DANGER_LINE = 'forest-danger-line';
 export const SRC_MODIS = 'modis-overlay-src';
 export const LYR_MODIS = 'modis-overlay';
 export const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
