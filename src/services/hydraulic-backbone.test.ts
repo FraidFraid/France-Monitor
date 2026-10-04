@@ -1,6 +1,6 @@
 // src/services/hydraulic-backbone.test.ts
 import { describe, expect, it } from 'vitest';
-import type { FloodSegment } from '../types/index.ts';
+import type { FloodSectionRef } from '../types/index.ts';
 import { HYDRAULIC_BACKBONE_SEEDS } from '../config/hydraulic-backbone.ts';
 import { buildHydraulicBackboneAssets, hydroCause, type HydroCauseInput } from './hydraulic-backbone.ts';
 
@@ -27,7 +27,7 @@ describe('cause des contraintes hydrauliques', () => {
     const seed = HYDRAULIC_BACKBONE_SEEDS.find((s) => s.river === "Eau d'Olle");
     expect(seed).toBeTruthy();
     const line = { type: 'LineString' as const, coordinates: [[6.0, 45.2], [6.1, 45.3]] };
-    const flood = { id: 'f', name: "Eau d'Olle", level: 'orange', geometry: line, displayGeometry: line, rawGeometry: line } as FloodSegment;
+    const flood: FloodSectionRef = { id: 'f', name: "Eau d'Olle", level: 'orange', geometry: line };
     const NOW = Date.parse('2026-10-02T07:00:00Z');
     const withFlood = buildHydraulicBackboneAssets(null, [flood], [], null, NOW);
     expect(withFlood.find((a) => a.id === seed?.id)?.signals.cause).toBe('crue vigilance orange');

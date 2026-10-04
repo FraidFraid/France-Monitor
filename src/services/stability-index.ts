@@ -8,7 +8,7 @@
 import type {
   NewsItem,
   MeteoAlert,
-  FloodSegment,
+  FloodSectionRef,
   EcowattResponse,
   TimeRange,
   ThreatLevel,
@@ -488,7 +488,7 @@ function computeInfraFromMeteo(alerts: MeteoAlert[], deptCode: string): number {
   return METEO_LEVEL_WEIGHTS[alert.level] ?? 0;
 }
 
-function computeInfraFromFloods(segments: FloodSegment[]): number {
+function computeInfraFromFloods(segments: FloodSectionRef[]): number {
   // Prendre le niveau max des tronçons
   let maxScore = 0;
   for (const seg of segments) {
@@ -594,7 +594,7 @@ export function computeInfraFromOutages(
 export function computeISNR(
   newsItems: NewsItem[],
   meteoAlerts: MeteoAlert[],
-  floodSegments: FloodSegment[],
+  floodSegments: FloodSectionRef[],
   ecowatt: EcowattResponse | null,
   timeRange: TimeRange,
   telecomOutages: TelecomOutage[],

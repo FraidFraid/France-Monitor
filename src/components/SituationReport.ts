@@ -13,7 +13,7 @@
 import type {
   DetectedSituation,
   EcowattResponse,
-  FloodSegment,
+  FloodSectionRef,
   ISNRData,
   MeteoAlert,
   NewsItem,
@@ -45,7 +45,7 @@ export interface SituationReportContext {
   situations: DetectedSituation[];
   stability: ISNRData | null;
   meteoAlerts: MeteoAlert[];
-  floodSegments: FloodSegment[];
+  floodSegments: FloodSectionRef[];
   ecowatt: EcowattResponse | null;
   /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
   railTrains: RailTrain[];

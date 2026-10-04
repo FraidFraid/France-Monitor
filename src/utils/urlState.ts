@@ -34,6 +34,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'hospitals',
     'environmentGroup',
     'environmental',
+    'floods',
     'weatherRadar',
     'fires',
     'traffic',
@@ -54,7 +55,6 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'gasNetwork',
     'oilNetwork',
     'nuclearFleet',
-    'dayNight',
     'elus',
 ];
 

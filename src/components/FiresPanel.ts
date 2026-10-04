@@ -1,1052 +1,180 @@
-import type { ActiveFire, FireIncident, FireObservationRuntimeState } from '../types/index.ts';
-import {
-    applyPremiumCloseButtonHover,
-    createPremiumIconHeader,
-    getPremiumCloseButtonStyle,
-    getPremiumModalStyle,
-} from './panelHeader.ts';
-import { applyFiresFilter, DEFAULT_FIRES_FILTER } from '../services/fires.ts';
-import type { FiresFilterState } from '../services/fires.ts';
-import { clusterFireDetections } from '../services/fire-clustering.ts';
-import { fetchNearbyCommuneLabel } from '../services/elus.ts';
-import { fmLoaderHTML } from './shared/loader.ts';
-import { renderTruthBadge, renderFreshnessBadge } from './shared/truthBadge.ts';
-import { fmIcon } from './shared/icons.ts';
-import {
-    buildFireObservationSources,
-    FIRE_OBSERVATION_CNRS_URL,
-    FIRE_OBSERVATION_LSA_SAF_URL,
-} from './fire-observation-model.ts';
+// src/components/FiresPanel.ts : panneau de couche « Feux de forêt » (spec 2026-10-04 environnement § 2.4), réécrit dans le cadre
+// commun : onglets Veille et Dossier d'un feu (onglet mémorisé dans fm.layer.tabs). Coquille DOM : contenu de buildFeuxView (pur),
+// cadre de createLayerPanelShell. Elle lit elle-même le profil radar d'un foyer à l'ouverture de sa « Hauteur du panache »
+// (fetchRadarColumn, démonstration) et, pour le dossier d'un grand feu, les communes autour de son centre (fetchFireImpacts) puis la
+// relecture Ollama locale (enrichWithLlm, jamais de repli cloud). Plus de badge « TEMPS RÉEL » ni de « latence ~1h » : chaque partie
+// porte la date de sa donnée (S1, E3). L'interrupteur « Réflectivité radar 2D » disparaît : la couche Radar météo le remplace.
+import type { FireFoyer, FireObservationFeedState, LocatedFireIncident, RadarColumnResult } from '../types/index.ts';
+import type { FiresState } from '../services/environment-fires.ts';
+import { fetchFireImpacts } from '../services/environment-fires.ts';
+import { loadSectionState } from '../services/fiche-sections-store.ts';
 import { fetchRadarColumn } from '../services/radar-column.ts';
-import { radarProfileErrorHtml, radarProfileHtml, radarProfileLoadingHtml } from './radar-profile-view.ts';
+import { buildDossier, selectMajorIncidents } from '../services/wildfire-dossier.ts';
+import { enrichWithLlm } from '../services/wildfire-enrich.ts';
+import { FEUX_TABS, buildFeuxView, type FeuxDossierInput, type FeuxTab } from './layer-panel/feux.ts';
+import {
+  createLayerPanelShell, isLayerPanelOpen, loadLayerTab, safeStorage, saveLayerTab, sectionOpenOf, type LayerPanelShell,
+} from './layer-panel/frame.ts';
+
+const PANEL_ID = 'fires';
+
+/** Options de la carte, toutes tenues par App.ts (les sommets d'écho sont partagés avec le panneau Radar). */
+export interface FiresPanelOptions { gibs: boolean; mtgFrp: boolean; echoTops: boolean; echoTopsAvailable: boolean; forestDangerFill: boolean }
+
+/** État reçu d'App.ts : collecte du serveur, incidents DBSCAN sur les détections nettoyées (dossier), MTG-FRP dérivé, options. */
+export interface FiresPanelState {
+  fires: FiresState | null;
+  incidents: LocatedFireIncident[];
+  mtgFrp: FireObservationFeedState | null;
+  options: FiresPanelOptions;
+}
+
+const NO_OPTIONS: FiresPanelOptions = { gibs: false, mtgFrp: false, echoTops: false, echoTopsAvailable: false, forestDangerFill: false };
 
 export class FiresPanel {
-    private modalEl!: HTMLElement;
-    private contentEl!: HTMLElement;
-    private headerSubEl?: HTMLElement;
-    private _badgeEl?: HTMLElement;
-    private rawFires: ActiveFire[] = [];
-    private filterState: FiresFilterState = { ...DEFAULT_FIRES_FILTER };
-    private onFilteredFiresCb: ((fires: ActiveFire[]) => void) | null = null;
-    private onHoverFireCb: ((lat: number | null, lon: number | null) => void) | null = null;
-    private onHoverIncidentCb: ((points: { lat: number; lon: number }[] | null) => void) | null = null;
-    private onModisToggleCb: ((enabled: boolean) => void) | null = null;
-    private onMtgFrpToggleCb: ((enabled: boolean) => void) | null = null;
-    private onRadar2dToggleCb: ((enabled: boolean) => void) | null = null;
-    private onFirePointsToggleCb: ((enabled: boolean) => void) | null = null;
-    private onEchoTopsToggleCb: ((enabled: boolean) => void) | null = null;
-    private onCloseCb: (() => void) | null = null;
-    private modisEnabled = false;
-    private mtgFrpEnabled = false;
-    private radar2dEnabled = false;
-    /** Marqueurs FIRMS affichés sur la carte (ON par défaut, non persisté). */
-    private firePointsEnabled = true;
-    private echoTopsEnabled = false;
-    private echoTopsAvailable = false;
-    private observationRuntime?: FireObservationRuntimeState;
-    private observationEl?: HTMLDetailsElement;
-    private observationOpen = false;
-    private isDragging = false;
-    private dragOffsetX = 0;
-    private dragOffsetY = 0;
-    private readonly VISIBLE_BATCH_SIZE = 6;
-    private visibleCountByIncident: Map<string, number> = new Map();
-    /** Incidents dont le profil radar est déplié (survit aux re-rendus). */
-    private radarProfileOpen = new Set<string>();
-    private firePlaceLabels = new Map<string, string>();
-    private firePlacePending = new Set<string>();
-    /** Geocoding des centroïdes d'incidents : incidentId → commune */
-    private incidentPlaceLabels = new Map<string, string>();
-    private incidentPlacePending = new Set<string>();
-    /** Métadonnées issues de fetchFiresData() */
-    private sourcesInfo: string[] = [];
-    private apiKeyUsed = false;
+  private shell: LayerPanelShell | null = null;
+  private onClose?: () => void;
+  private onFocusFoyer?: (foyer: FireFoyer) => void;
+  private onEchoTops?: (on: boolean) => void;
+  private onMtgFrp?: (on: boolean) => void;
+  private onGibs?: (on: boolean) => void;
+  private onForestDangerFill?: (on: boolean) => void;
+  private state: FiresPanelState | null = null;
+  private tab: FeuxTab;
+  /** Profils « Hauteur du panache » demandés, par foyer (gardés jusqu'à la disparition du foyer). */
+  private readonly plume = new Map<string, RadarColumnResult | 'loading' | 'error'>();
+  private dossier: FeuxDossierInput | null = null;
+  private readonly storage = safeStorage();
+  private readonly container: HTMLElement;
 
-    constructor(_container: HTMLElement) {
-        // container unused — panel mounts to document.body
+  constructor(container: HTMLElement) {
+    this.container = container;
+    this.tab = loadLayerTab(this.storage, PANEL_ID, FEUX_TABS) as FeuxTab;
+  }
+
+  mount(): void {
+    const shell = createLayerPanelShell({
+      container: this.container, className: 'fires-panel-modal', panelId: PANEL_ID, storage: this.storage, onClose: () => this.hide(),
+      onTab: (id) => {
+        if (!(FEUX_TABS as readonly string[]).includes(id)) return;
+        this.tab = id as FeuxTab;
+        saveLayerTab(this.storage, PANEL_ID, id);
+        this.render();
+      },
+    });
+    shell.root.addEventListener('click', (e) => this.onClick(e.target as HTMLElement));
+    // « Hauteur du panache » : le profil est lu à la première ouverture du repli d'un foyer.
+    shell.root.addEventListener('toggle', (e) => {
+      const details = e.target;
+      if (!(details instanceof HTMLDetailsElement) || !details.open) return;
+      const id = details.dataset['plumeFoyer'];
+      if (id && !this.plume.has(id)) void this.loadPlume(id);
+    }, true);
+    this.shell = shell;
+  }
+
+  setOnClose(handler: () => void): void { this.onClose = handler; }
+  /** Lignes de foyer cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
+  setOnFocusFoyer(handler: (foyer: FireFoyer) => void): void { this.onFocusFoyer = handler; }
+  setOnEchoTops(handler: (on: boolean) => void): void { this.onEchoTops = handler; }
+  setOnMtgFrp(handler: (on: boolean) => void): void { this.onMtgFrp = handler; }
+  setOnGibs(handler: (on: boolean) => void): void { this.onGibs = handler; }
+  setOnForestDangerFill(handler: (on: boolean) => void): void { this.onForestDangerFill = handler; }
+
+  show(state: FiresPanelState | null): void {
+    this.shell?.root.classList.add('is-open');
+    this.update(state);
+  }
+
+  /** Nouvelles données : un panneau fermé ne se rouvre pas ; onglet, panaches lus, dossier ouvert et sections gardés. */
+  update(state: FiresPanelState | null): void {
+    if (state) {
+      this.state = state;
+      const ids = new Set(state.fires?.fires.data?.foyers.map((f) => f.id) ?? []);
+      for (const id of [...this.plume.keys()]) if (!ids.has(id)) this.plume.delete(id);
     }
+    if (this.isVisible()) this.render();
+  }
 
-    setOnFilteredFires(cb: (fires: ActiveFire[]) => void): void {
-        this.onFilteredFiresCb = cb;
+  /**
+   * Ouvre le panneau sur l'onglet « Dossier d'un feu » pour un incident (alerte ou situation WILDFIRE_ESCALATION, ligne cliquée) ;
+   * faux si l'incident n'est pas (ou plus) connu. Le dossier s'affiche aussitôt avec la seule observation, puis les communes à moins
+   * de 10 km et la relecture locale le complètent ; jamais de chiffre supposé (impacts non renseignés).
+   */
+  openDossier(incidentId: string): boolean {
+    const incident = this.state?.incidents.find((i) => i.id === incidentId);
+    if (!incident) return false;
+    this.tab = 'dossier';
+    saveLayerTab(this.storage, PANEL_ID, 'dossier');
+    const input: FeuxDossierInput = { incident, dossier: buildDossier(incident, [], incident.deptCodes), impacts: null, impactsError: null };
+    this.dossier = input;
+    this.show(null);
+    void fetchFireImpacts(incident.centroidLat, incident.centroidLon).then(({ data, error }) => {
+      if (this.dossier?.incident.id !== incidentId) return;
+      this.dossier = { ...this.dossier, impacts: data, impactsError: error };
+      this.update(null);
+    });
+    // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un dossier, pour un seul incident.
+    void enrichWithLlm(input.dossier).then((enriched) => {
+      if (this.dossier?.incident.id !== incidentId) return;
+      this.dossier = { ...this.dossier, dossier: enriched };
+      this.update(null);
+    });
+    return true;
+  }
+
+  hide(opts: { silent?: boolean } = {}): void {
+    this.shell?.root.classList.remove('is-open');
+    if (!opts.silent) this.onClose?.();
+  }
+
+  isVisible(): boolean {
+    return this.shell ? isLayerPanelOpen(this.shell.root) : false;
+  }
+
+  destroy(): void {
+    this.shell?.destroy();
+    this.shell = null;
+  }
+
+  private onClick(target: HTMLElement): void {
+    const options = this.state?.options ?? NO_OPTIONS;
+    if (target.closest('[data-echo-tops]')) { this.onEchoTops?.(!options.echoTops); return; }
+    if (target.closest('[data-gibs]')) { this.onGibs?.(!options.gibs); return; }
+    if (target.closest('[data-mtg]')) { this.onMtgFrp?.(!options.mtgFrp); return; }
+    if (target.closest('[data-forest-fill]')) { this.onForestDangerFill?.(!options.forestDangerFill); return; }
+    const incident = target.closest<HTMLElement>('[data-incident]')?.dataset['incident'];
+    if (incident) { this.openDossier(incident); return; }
+    const foyerId = target.closest<HTMLElement>('[data-foyer]')?.dataset['foyer'];
+    const foyer = foyerId ? this.state?.fires?.fires.data?.foyers.find((f) => f.id === foyerId) : undefined;
+    if (foyer) this.onFocusFoyer?.(foyer);
+  }
+
+  /** Profil vertical à la station radar la plus proche du centroïde du foyer (démonstration) ; null de la lecture : panne dite. */
+  private async loadPlume(foyerId: string): Promise<void> {
+    const foyer = this.state?.fires?.fires.data?.foyers.find((f) => f.id === foyerId);
+    if (!foyer) return;
+    this.plume.set(foyerId, 'loading');
+    this.render();
+    let result: RadarColumnResult | null = null;
+    try {
+      result = await fetchRadarColumn(foyer.lat, foyer.lon);
+    } catch {
+      result = null;
     }
-
-    setOnHoverFire(cb: (lat: number | null, lon: number | null) => void): void {
-        this.onHoverFireCb = cb;
-    }
-
-    /**
-     * Appelé quand on survole/quitte une carte d'incident.
-     * `points` = toutes les détections du cluster, ou null au mouseleave.
-     */
-    setOnHoverIncident(cb: (points: { lat: number; lon: number }[] | null) => void): void {
-        this.onHoverIncidentCb = cb;
-    }
-
-    setOnModisToggle(cb: (enabled: boolean) => void): void {
-        this.onModisToggleCb = cb;
-    }
-
-    setOnMtgFrpToggle(cb: (enabled: boolean) => void): void {
-        if (this.onMtgFrpToggleCb === cb) return;
-        this.onMtgFrpToggleCb = cb;
-    }
-
-    setOnRadar2dToggle(cb: (enabled: boolean) => void): void {
-        if (this.onRadar2dToggleCb === cb) return;
-        this.onRadar2dToggleCb = cb;
-    }
-
-    setOnFirePointsToggle(cb: (enabled: boolean) => void): void {
-        if (this.onFirePointsToggleCb === cb) return;
-        this.onFirePointsToggleCb = cb;
-    }
-
-    setRadar2dEnabled(enabled: boolean): void {
-        if (this.radar2dEnabled === enabled) return;
-        this.radar2dEnabled = enabled;
-        if (!this.observationEl?.isConnected) return;
-        const next = this._createMultiSensorObservation();
-        this.observationEl.replaceWith(next);
-        this.observationEl = next;
-    }
-
-    setOnEchoTopsToggle(cb: (enabled: boolean) => void): void {
-        if (this.onEchoTopsToggleCb === cb) return;
-        this.onEchoTopsToggleCb = cb;
-    }
-
-    setEchoTopsAvailability(available: boolean): void {
-        if (this.echoTopsAvailable === available) return;
-        this.echoTopsAvailable = available;
-        if (!this.observationEl?.isConnected) return;
-        const next = this._createMultiSensorObservation();
-        this.observationEl.replaceWith(next);
-        this.observationEl = next;
-    }
-
-    setObservationRuntimeState(state: FireObservationRuntimeState): void {
-        this.observationRuntime = state;
-        if (!this.observationEl?.isConnected) return;
-        const wasOpen = this.observationEl.open;
-        this.observationOpen = wasOpen;
-        const next = this._createMultiSensorObservation();
-        this.observationEl.replaceWith(next);
-        this.observationEl = next;
-    }
-
-    setOnClose(cb: () => void): void {
-        this.onCloseCb = cb;
-    }
-
-    /** Permet à App.ts de transmettre les métadonnées de la réponse API */
-    setSourcesInfo(sources: string[], apiKeyUsed: boolean): void {
-        this.sourcesInfo = sources;
-        this.apiKeyUsed = apiKeyUsed;
-        this._updateHeader();
-    }
-
-    mount(): void {
-        this.modalEl = document.createElement('div');
-        this.modalEl.className = 'fires-panel-modal';
-        this.modalEl.style.cssText = [
-            getPremiumModalStyle({
-                width: '400px',
-                maxHeight: 'calc(100vh - 88px)',
-                backgroundStart: 'rgba(24, 12, 10, 0.97)',
-                backgroundEnd: 'rgba(20, 11, 10, 0.96)',
-                borderColor: 'rgba(239, 68, 68, 0.18)',
-                position: 'fixed',
-                top: '68px',
-                zIndex: 9999,
-            }),
-        ].join(';');
-
-        // Close button
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = fmIcon('x');
-        closeBtn.setAttribute('aria-label', 'Fermer');
-        closeBtn.style.cssText = getPremiumCloseButtonStyle();
-        applyPremiumCloseButtonHover(closeBtn);
-        closeBtn.onclick = () => this.hide();
-        this.modalEl.appendChild(closeBtn);
-
-        // Header
-        const header = createPremiumIconHeader({
-            icon: fmIcon('flame', { size: 30 }),
-            title: 'Feux de forêt actifs',
-            subtitle: 'NASA FIRMS · VIIRS SNPP · latence ~3h',
-            statusId: 'fires-status-label',
-            badgeId: 'fires-truth-badge',
-            gradientStart: 'rgba(239, 68, 68, 0.18)',
-            gradientEnd: 'rgba(245, 158, 11, 0.10)',
-            iconGradientStart: 'rgba(239, 68, 68, 0.22)',
-            iconGradientEnd: 'rgba(249, 115, 22, 0.14)',
-            titlePrefix: 'Veille feux & chaleur',
-        });
-        header.style.flexShrink = '0';
-        this.headerSubEl = header.querySelector('#fires-status-label') as HTMLElement | null ?? undefined;
-        this._badgeEl = header.querySelector('#fires-truth-badge') as HTMLElement | null ?? undefined;
-        if (this._badgeEl) this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
-        this.modalEl.appendChild(header);
-
-        // Content
-        this.contentEl = document.createElement('div');
-        this.contentEl.className = 'fires-panel-content';
-        this.contentEl.style.cssText = 'padding:16px;overflow-y:auto;flex:1;';
-        this.modalEl.appendChild(this.contentEl);
-
-        document.body.appendChild(this.modalEl);
-        this._setupDrag();
-    }
-
-    showLoading(): void {
-        if (!this.modalEl || !this.contentEl) return;
-        this.modalEl.style.display = 'flex';
-        this.contentEl.innerHTML = fmLoaderHTML({ text: 'Chargement des foyers actifs…' });
-    }
-
-    private _updateHeader(): void {
-        if (!this.headerSubEl) return;
-        if (this.apiKeyUsed && this.sourcesInfo.length >= 2) {
-            this.headerSubEl.textContent = `NASA FIRMS · ${this.sourcesInfo.join(' · ')} · latence ~1h`;
-        } else if (this.sourcesInfo.length > 0) {
-            this.headerSubEl.textContent = `NASA FIRMS · ${this.sourcesInfo[0]} · latence ~3h`;
-        }
-        if (this._badgeEl) {
-            if (this.sourcesInfo.length === 0) {
-                this._badgeEl.innerHTML = renderTruthBadge('INDISPONIBLE', '#EF4444');
-            } else if (this.apiKeyUsed) {
-                // La fraîcheur réelle du flux FIRMS est suivie par le Watchdog.
-                this._badgeEl.innerHTML = renderFreshnessBadge(['fires-nasa']);
-            } else {
-                this._badgeEl.innerHTML = renderTruthBadge('HISTORIQUE', '#60A5FA');
-            }
-        }
-    }
-
-    private _setupDrag(): void {
-        this.modalEl.style.cursor = 'grab';
-
-        this.modalEl.addEventListener('mousedown', (e) => {
-            if ((e.target as HTMLElement).closest('button')) return;
-            if ((e.target as HTMLElement).closest('.fires-panel-content')) return;
-            this.isDragging = true;
-            const rect = this.modalEl.getBoundingClientRect();
-            this.dragOffsetX = e.clientX - rect.left;
-            this.dragOffsetY = e.clientY - rect.top;
-            this.modalEl.style.cursor = 'grabbing';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!this.isDragging) return;
-            const x = e.clientX - this.dragOffsetX;
-            const y = e.clientY - this.dragOffsetY;
-            const maxX = window.innerWidth - this.modalEl.offsetWidth;
-            const maxY = window.innerHeight - this.modalEl.offsetHeight;
-            this.modalEl.style.left = Math.max(0, Math.min(x, maxX)) + 'px';
-            this.modalEl.style.top = Math.max(0, Math.min(y, maxY)) + 'px';
-            this.modalEl.style.right = 'auto';
-        });
-
-        document.addEventListener('mouseup', () => {
-            if (this.isDragging) {
-                this.isDragging = false;
-                this.modalEl.style.cursor = 'grab';
-            }
-        });
-    }
-
-    setRawFires(fires: ActiveFire[]): void {
-        this.rawFires = fires;
-        const filtered = applyFiresFilter(fires, this.filterState);
-        this.onFilteredFiresCb?.(filtered);
-        if (this.modalEl && this.modalEl.style.display !== 'none') {
-            this._renderContent();
-        }
-    }
-
-    show(fires: ActiveFire[]): void {
-        if (!this.modalEl) return;
-        this.rawFires = fires;
-        this.modalEl.style.display = 'flex';
-        this._applyAndNotify();
-    }
-
-    hide(opts: { silent?: boolean } = {}): void {
-        if (this.modalEl) this.modalEl.style.display = 'none';
-        // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
-        if (!opts.silent) this.onCloseCb?.();
-    }
-
-    isVisible(): boolean {
-        return this.modalEl?.style.display === 'flex';
-    }
-
-    update(fires: ActiveFire[]): void {
-        this.rawFires = fires;
-        this._applyAndNotify();
-    }
-
-    private _applyAndNotify(): void {
-        const filtered = applyFiresFilter(this.rawFires, this.filterState);
-        this.visibleCountByIncident.clear();
-        this.onFilteredFiresCb?.(filtered);
-        this._renderContent();
-    }
-
-    /**
-     * Retourne le lieu d'une détection individuelle.
-     * Format : "Commune (lat°N, lon°E)" si géocodée, sinon juste les coords.
-     */
-    private _getFirePlaceLabel(fire: ActiveFire): string {
-        const gps = `${fire.latitude.toFixed(3)}°N, ${fire.longitude.toFixed(3)}°E`;
-        const commune = this.firePlaceLabels.get(fire.id);
-        if (commune && commune.length > 0) return `${commune} (${gps})`;
-        return gps;
-    }
-
-    /**
-     * Retourne le lieu du centroïde d'un incident.
-     * Format : "Commune (lat°N, lon°E)" si géocodé, sinon juste les coords.
-     */
-    private _getIncidentPlaceLabel(incident: FireIncident): string {
-        const gps = `${incident.centroidLat.toFixed(3)}°N, ${incident.centroidLon.toFixed(3)}°E`;
-        const commune = this.incidentPlaceLabels.get(incident.id);
-        if (commune && commune.length > 0) return `${commune} (${gps})`;
-        return gps;
-    }
-
-    /** Géocode les centroïdes d'incidents pas encore résolus */
-    private async _prefetchIncidentPlaceLabels(incidents: FireIncident[]): Promise<void> {
-        const toFetch = incidents.filter(
-            i => !this.incidentPlaceLabels.has(i.id) && !this.incidentPlacePending.has(i.id)
-        );
-        if (toFetch.length === 0) return;
-
-        for (const inc of toFetch) this.incidentPlacePending.add(inc.id);
-
-        const results = await Promise.all(
-            toFetch.map(async (inc) => {
-                const label = await fetchNearbyCommuneLabel(inc.centroidLat, inc.centroidLon);
-                return { id: inc.id, label };
-            })
-        );
-
-        let changed = false;
-        for (const r of results) {
-            this.incidentPlacePending.delete(r.id);
-            this.incidentPlaceLabels.set(r.id, r.label ?? '');
-            changed = true;
-        }
-
-        if (changed && this.isVisible()) {
-            const scrollTop = this.contentEl.scrollTop;
-            this._renderContent();
-            requestAnimationFrame(() => { this.contentEl.scrollTop = scrollTop; });
-        }
-    }
-
-    private async _prefetchFirePlaceLabels(fires: ActiveFire[]): Promise<void> {
-        const toFetch = fires.filter((fire) => !this.firePlaceLabels.has(fire.id) && !this.firePlacePending.has(fire.id));
-        if (toFetch.length === 0) return;
-
-        for (const fire of toFetch) {
-            this.firePlacePending.add(fire.id);
-        }
-
-        const results = await Promise.all(
-            toFetch.map(async (fire) => {
-                const label = await fetchNearbyCommuneLabel(fire.latitude, fire.longitude);
-                return { id: fire.id, label };
-            })
-        );
-
-        let changed = false;
-        for (const result of results) {
-            this.firePlacePending.delete(result.id);
-            this.firePlaceLabels.set(result.id, result.label ?? '');
-            changed = true;
-        }
-
-        if (changed && this.isVisible()) {
-            const scrollTop = this.contentEl.scrollTop;
-            this._renderContent();
-            requestAnimationFrame(() => {
-                this.contentEl.scrollTop = scrollTop;
-            });
-        }
-    }
-
-    // ─── Helpers de rendu ────────────────────────────────────────────────────
-
-    private _severityMeta(score: number): { color: string; bg: string; label: string } {
-        if (score >= 60) return { color: '#ff3b30', bg: 'rgba(255,59,48,0.12)', label: 'CRITIQUE' };
-        if (score >= 30) return { color: '#ff9500', bg: 'rgba(255,149,0,0.10)', label: 'MODÉRÉ' };
-        return              { color: '#ffd60a', bg: 'rgba(255,214,10,0.08)',  label: 'FAIBLE' };
-    }
-
-    private _confidenceColor(conf: string): string {
-        if (conf === 'high')    return '#ffd60a';
-        if (conf === 'nominal') return '#ff9500';
-        return '#ff3b30';
-    }
-
-    private _confLabel(conf: string): string {
-        if (conf === 'high')    return 'HAUTE';
-        if (conf === 'nominal') return 'NOMINALE';
-        return 'BASSE';
-    }
-
-    private _formatDuration(minutes: number): string {
-        if (minutes < 60)  return `${minutes} min`;
-        if (minutes < 1440) return `${Math.round(minutes / 60)} h`;
-        return `${Math.round(minutes / 1440)} j`;
-    }
-
-    // ─── Rendu principal ─────────────────────────────────────────────────────
-
-    private _renderContent(): void {
-        this.contentEl.innerHTML = '';
-
-        const filtered = applyFiresFilter(this.rawFires, this.filterState);
-        const incidents = clusterFireDetections(filtered, { epsKm: 3, minPoints: 2 });
-
-        // Fires appartenant à un incident vs. détections isolées (bruit DBSCAN)
-        const incidentFireIds = new Set(incidents.flatMap(i => i.detectionIds));
-        const orphanFires = filtered.filter(f => !incidentFireIds.has(f.id));
-
-        const totalFrp = filtered.reduce((s, f) => s + (f.frp || 0), 0);
-
-        const latestDate = filtered.reduce((latest, f) => {
-            const raw = String(f.acq_time).padStart(4, '0');
-            const d = `${f.acq_date}T${raw.slice(0, 2)}:${raw.slice(2)}Z`;
-            return d > latest ? d : latest;
-        }, '');
-        const latestLabel = latestDate
-            ? new Date(latestDate).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-            : 'n.d.';
-
-        // ── 1. À savoir FIRMS ────────────────────────────────────────────────
-        this._renderInfoBlock();
-
-        // ── 2. Observation multi-capteurs ────────────────────────────────────
-        this._renderMultiSensorObservation();
-
-        // ── 3. Imagerie VIIRS (NASA GIBS) ────────────────────────────────────
-        this._renderModisSection();
-
-        // ── 4. Filtres ────────────────────────────────────────────────────────
-        this._renderFilters();
-
-        // ── 5. Stats globales ─────────────────────────────────────────────────
-        if (filtered.length === 0) {
-            const empty = document.createElement('div');
-            empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:24px 0;';
-            empty.innerHTML = `<div style="margin-bottom:12px;opacity:0.5;display:flex;justify-content:center;">${fmIcon('circle-off', { size: 36 })}</div><div style="font-size:13px;">Aucune détection avec ces filtres.</div><div style="font-size:11px;margin-top:8px;opacity:0.7;">${this.rawFires.length} brutes · 0 filtrées</div>`;
-            this.contentEl.appendChild(empty);
-        } else {
-            this._renderStats(filtered, incidents, totalFrp);
-            this._renderIncidentList(incidents, orphanFires, filtered);
-        }
-
-        // ── 6. Footer ─────────────────────────────────────────────────────────
-        this._renderFooter(filtered, incidents, latestLabel);
-    }
-
-    // ─── Bloc "À savoir" ─────────────────────────────────────────────────────
-
-    private _renderInfoBlock(): void {
-        const multiSource = this.apiKeyUsed && this.sourcesInfo.length >= 2;
-        const satellites  = multiSource ? this.sourcesInfo.join(', ') : 'SNPP';
-        // Mesuré le 2026-07-27 : les 3 satellites sont sur le MÊME plan
-        // héliosynchrone, espacés d'environ 50 min. Ils passent donc tous au même
-        // créneau solaire local, ce qui donne deux GRAPPES par jour (jour et nuit)
-        // et non une couverture horaire. Écarts relevés : 0,5 à 0,7 h dans une
-        // grappe, 10,5 h entre deux grappes. Annoncer « ~1 h » laissait croire à un
-        // rafraîchissement continu et faisait passer un trou normal pour une panne.
-        const revisit     = multiSource
-            ? '~40 min en grappe · 2 grappes/jour'
-            : '~1 h en grappe · 2 grappes/jour';
-
-        const info = document.createElement('details');
-        info.style.cssText = 'background:rgba(255,149,0,0.07);border:1px solid rgba(255,149,0,0.22);border-radius:8px;padding:10px 12px;margin-bottom:14px;cursor:pointer;';
-        info.innerHTML = `
-            <summary style="color:#ff9500;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;user-select:none;">
-                À savoir sur FIRMS <span style="margin-left:auto;font-size:10px;opacity:0.7;">${fmIcon('chevron-right')}</span>
-            </summary>
-            <div style="margin-top:10px;color:var(--text-muted);font-size:11px;line-height:1.8;display:flex;flex-direction:column;gap:4px;">
-                <div>${fmIcon('satellite')} <b style="color:var(--text-primary);">${satellites}</b> : revisite France <b style="color:var(--text-primary);">${revisit}</b>.</div>
-                <div>${fmIcon('timer')} Même plan orbital : les passages arrivent groupés (jour et nuit), avec <b style="color:var(--text-primary);">~10 h sans observation</b> entre deux grappes. Un écart de plusieurs heures est normal.</div>
-                ${multiSource ? `<div>${fmIcon('link')} Détections proches (&lt; 3 km) regroupées en <b style="color:var(--text-primary);">incidents DBSCAN</b> avec score de sévérité.</div>` : ''}
-                ${multiSource ? `<div>${fmIcon('check')} Un incident vu par 2+ satellites reçoit le label <b style="color:#ff9500;">multi-satellite</b> (score impact ↑).</div>` : ''}
-                <div>${fmIcon('triangle-alert')} <b style="color:var(--text-primary);">Faux positifs</b> : torchères industrielles, aciéries, champs brûlés, réflexions solaires.</div>
-                <div>${fmIcon('lightbulb')} Activez <b style="color:var(--text-primary);">Masquer zones urbaines</b> pour filtrer les sources industrielles permanentes.</div>
-            </div>`;
-        this.contentEl.appendChild(info);
-    }
-
-    private _renderMultiSensorObservation(): void {
-        this.observationEl = this._createMultiSensorObservation();
-        this.contentEl.appendChild(this.observationEl);
-    }
-
-    private _createMultiSensorObservation(): HTMLDetailsElement {
-        const sources = buildFireObservationSources({
-            multiSource: this.apiKeyUsed && this.sourcesInfo.length >= 2,
-            runtime: this.observationRuntime,
-            now: Date.now(),
-        });
-        const details = document.createElement('details');
-        details.className = 'fires-multisensor';
-        if (this.observationOpen) details.open = true;
-        details.addEventListener('toggle', () => {
-            this.observationOpen = details.open;
-        });
-        details.style.cssText = 'background:rgba(59,130,246,0.06);border:1px solid rgba(96,165,250,0.20);border-radius:8px;padding:10px 12px;margin-bottom:14px;';
-
-        const summary = document.createElement('summary');
-        summary.className = 'fires-multisensor__summary';
-        summary.style.cssText = 'color:#93c5fd;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;';
-        summary.innerHTML = `${fmIcon('satellite-dish')} Observation multi-capteurs <span class="fires-multisensor__badge">EXPÉRIMENTAL</span><span class="fires-multisensor__chevron">${fmIcon('chevron-down')}</span>`;
-        summary.addEventListener('click', () => {
-            // Capture the native <details> transition before async geocoding can rerender the panel.
-            this.observationOpen = !details.open;
-        });
-        details.appendChild(summary);
-
-        const body = document.createElement('div');
-        body.style.cssText = 'margin-top:10px;display:flex;flex-direction:column;gap:7px;';
-        for (const source of sources) {
-            const row = document.createElement('div');
-            row.className = 'fires-multisensor__row';
-            const copy = document.createElement('div');
-            const label = document.createElement('div');
-            label.innerHTML = `${fmIcon(source.icon, { size: 11 })} `;
-            label.append(document.createTextNode(source.label));
-            if (source.qualification) {
-                const qualification = document.createElement('span');
-                qualification.className = 'fires-multisensor__qualification';
-                qualification.textContent = source.qualification;
-                label.append(' ', qualification);
-            }
-            label.style.cssText = 'color:var(--text-primary);font-size:11px;font-weight:600;';
-            const meta = document.createElement('div');
-            meta.textContent = `${source.role} · ${source.timing}`;
-            meta.style.cssText = 'color:var(--text-muted);font-size:10px;line-height:1.45;margin-top:2px;';
-            copy.append(label, meta);
-            if (source.observation) {
-                const observation = document.createElement('div');
-                observation.className = 'fires-multisensor__observation';
-                observation.textContent = source.observation;
-                copy.appendChild(observation);
-            }
-            if (source.warning) {
-                const warning = document.createElement('div');
-                warning.className = 'fires-multisensor__warning';
-                warning.textContent = source.warning;
-                copy.appendChild(warning);
-            }
-            const controls = document.createElement('div');
-            controls.className = 'fires-multisensor__controls';
-            const status = document.createElement('span');
-            status.textContent = source.status;
-            status.className = `fires-multisensor__status${source.status === 'NON CONNECTÉ' ? ' fires-multisensor__status--disconnected' : ''}`;
-            controls.appendChild(status);
-            if (source.id === 'mtg-frp' || source.id === 'radar-2d') {
-                const enabled = source.id === 'mtg-frp' ? this.mtgFrpEnabled : this.radar2dEnabled;
-                const toggle = document.createElement('button');
-                toggle.type = 'button';
-                toggle.className = 'fires-multisensor__toggle';
-                toggle.setAttribute('aria-pressed', String(enabled));
-                toggle.setAttribute('aria-label', `${enabled ? 'Masquer' : 'Afficher'} ${source.label}`);
-                toggle.textContent = enabled ? 'Masquer' : 'Afficher';
-                toggle.onclick = () => {
-                    if (source.id === 'mtg-frp') {
-                        this.mtgFrpEnabled = !this.mtgFrpEnabled;
-                        this.onMtgFrpToggleCb?.(this.mtgFrpEnabled);
-                    } else {
-                        this.radar2dEnabled = !this.radar2dEnabled;
-                        this.onRadar2dToggleCb?.(this.radar2dEnabled);
-                    }
-                    const next = source.id === 'mtg-frp' ? this.mtgFrpEnabled : this.radar2dEnabled;
-                    toggle.setAttribute('aria-pressed', String(next));
-                    toggle.setAttribute('aria-label', `${next ? 'Masquer' : 'Afficher'} ${source.label}`);
-                    toggle.textContent = next ? 'Masquer' : 'Afficher';
-                };
-                controls.appendChild(toggle);
-            }
-            if (source.id === 'radar-2d' && this.echoTopsAvailable) {
-                // Hauteur du sommet d'écho (mosaïque 2D) — aide pyroconvection,
-                // sans prétendre à l'analyse volumique 3D.
-                const echoToggle = document.createElement('button');
-                echoToggle.type = 'button';
-                echoToggle.className = 'fires-multisensor__toggle';
-                const echoLabel = (): string =>
-                    this.echoTopsEnabled ? 'Masquer sommets' : 'Sommets d’écho';
-                echoToggle.setAttribute('aria-pressed', String(this.echoTopsEnabled));
-                echoToggle.setAttribute('aria-label', 'Afficher la hauteur du sommet d’écho radar');
-                echoToggle.textContent = echoLabel();
-                echoToggle.onclick = () => {
-                    this.echoTopsEnabled = !this.echoTopsEnabled;
-                    this.onEchoTopsToggleCb?.(this.echoTopsEnabled);
-                    echoToggle.setAttribute('aria-pressed', String(this.echoTopsEnabled));
-                    echoToggle.textContent = echoLabel();
-                };
-                controls.appendChild(echoToggle);
-            }
-            row.append(copy, controls);
-            body.appendChild(row);
-        }
-
-        const note = document.createElement('div');
-        note.style.cssText = 'margin-top:3px;padding:8px;border-radius:6px;background:rgba(249,115,22,0.08);color:var(--text-muted);font-size:10px;line-height:1.5;';
-        note.innerHTML = `${fmIcon('wind')} <b style="color:var(--text-primary);">Pyroconvection</b> : un panache très développé peut signaler un feu intense et une propagation plus erratique. FranceMonitor ne produit pas encore ce diagnostic.`;
-        body.appendChild(note);
-
-        const links = document.createElement('div');
-        links.className = 'fires-multisensor__links';
-        links.innerHTML = `<a href="${FIRE_OBSERVATION_LSA_SAF_URL}" target="_blank" rel="noopener noreferrer">Produit MTG-FRP ${fmIcon('external-link', { size: 10 })}</a><a href="${FIRE_OBSERVATION_CNRS_URL}" target="_blank" rel="noopener noreferrer">Expertise CNRS ${fmIcon('external-link', { size: 10 })}</a>`;
-        body.appendChild(links);
-        details.appendChild(body);
-        return details;
-    }
-
-    // ─── Section imagerie VIIRS ───────────────────────────────────────────────
-
-    private _renderModisSection(): void {
-        const section = document.createElement('div');
-        section.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:8px;padding:12px;margin-bottom:14px;';
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
-        const left = document.createElement('div');
-        left.innerHTML = '<div style="color:var(--text-primary);font-size:12px;font-weight:500;">Imagerie satellite (fumée / feux)</div><div style="color:var(--text-muted);font-size:10px;margin-top:2px;">NASA GIBS · VIIRS SNPP Corrected Reflectance · dernière image disponible</div>';
-        row.appendChild(left);
-
-        const sw = document.createElement('div');
-        sw.style.cssText = `width:36px;height:20px;border-radius:10px;background:${this.modisEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)'};position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;`;
-        const knob = document.createElement('div');
-        knob.style.cssText = `width:16px;height:16px;border-radius:8px;background:white;position:absolute;top:2px;left:${this.modisEnabled ? '18px' : '2px'};transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);`;
-        sw.appendChild(knob);
-        sw.onclick = () => {
-            this.modisEnabled = !this.modisEnabled;
-            this.onModisToggleCb?.(this.modisEnabled);
-            sw.style.background = this.modisEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)';
-            knob.style.left = this.modisEnabled ? '18px' : '2px';
-        };
-        row.appendChild(sw);
-        section.appendChild(row);
-        this.contentEl.appendChild(section);
-    }
-
-    // ─── Filtres ────────────────────────────────────────────────────────────
-
-    private _renderFilters(): void {
-        const section = document.createElement('div');
-        section.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid var(--border-color);border-radius:8px;padding:12px;margin-bottom:14px;display:flex;flex-direction:column;gap:12px;';
-
-        // Confidence
-        const confWrap = document.createElement('div');
-        confWrap.innerHTML = '<div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Confiance minimum</div>';
-        const confPills = document.createElement('div');
-        confPills.style.cssText = 'display:flex;gap:6px;';
-        (['low', 'nominal', 'high'] as FiresFilterState['minConfidence'][]).forEach((k, i) => {
-            const label = ['Basse', 'Nominale', 'Haute'][i];
-            const active = this.filterState.minConfidence === k;
-            const p = document.createElement('button');
-            p.textContent = label;
-            p.style.cssText = `flex:1;padding:6px 4px;font-size:11px;border-radius:6px;border:1px solid ${active ? 'rgba(255,149,0,0.6)' : 'var(--border-color)'};background:${active ? 'rgba(255,149,0,0.18)' : 'transparent'};color:${active ? '#ff9500' : 'var(--text-muted)'};cursor:pointer;font-weight:${active ? '600' : '400'};`;
-            p.onclick = () => { this.filterState = { ...this.filterState, minConfidence: k }; this._applyAndNotify(); };
-            confPills.appendChild(p);
-        });
-        confWrap.appendChild(confPills);
-        section.appendChild(confWrap);
-
-        // Urban
-        const withUrban    = applyFiresFilter(this.rawFires, { ...this.filterState, hideUrban: false }).length;
-        const withoutUrban = applyFiresFilter(this.rawFires, { ...this.filterState, hideUrban: true  }).length;
-        const urbanHidden  = withUrban - withoutUrban;
-        const urbanRow = document.createElement('div');
-        urbanRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
-        const urbanLeft = document.createElement('div');
-        urbanLeft.innerHTML = `<div style="color:var(--text-primary);font-size:12px;">Masquer zones urbaines/portuaires</div><div style="color:var(--text-muted);font-size:10px;">Filtre torchères, usines, ports · <span style="color:${urbanHidden > 0 ? '#ff9500' : 'var(--text-muted)'};font-weight:600;">${urbanHidden} filtrées</span></div>`;
-        urbanRow.appendChild(urbanLeft);
-        const sw = document.createElement('div');
-        sw.style.cssText = `width:36px;height:20px;border-radius:10px;background:${this.filterState.hideUrban ? '#ff9500' : 'rgba(255,255,255,0.15)'};position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;`;
-        const swKnob = document.createElement('div');
-        swKnob.style.cssText = `width:16px;height:16px;border-radius:8px;background:white;position:absolute;top:2px;left:${this.filterState.hideUrban ? '18px' : '2px'};transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);`;
-        sw.appendChild(swKnob);
-        sw.onclick = () => { this.filterState = { ...this.filterState, hideUrban: !this.filterState.hideUrban }; this._applyAndNotify(); };
-        urbanRow.appendChild(sw);
-        section.appendChild(urbanRow);
-
-        // Affichage des marqueurs FIRMS sur la carte (n'affecte ni le panneau ni les surcouches)
-        const pointsRow = document.createElement('div');
-        pointsRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
-        const pointsLeft = document.createElement('div');
-        pointsLeft.innerHTML = '<div style="color:var(--text-primary);font-size:12px;">Points de feu sur la carte</div><div style="color:var(--text-muted);font-size:10px;">Masque uniquement les marqueurs FIRMS · radar et imagerie inchangés</div>';
-        pointsRow.appendChild(pointsLeft);
-        const pointsSw = document.createElement('div');
-        pointsSw.style.cssText = `width:36px;height:20px;border-radius:10px;background:${this.firePointsEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)'};position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;`;
-        const pointsKnob = document.createElement('div');
-        pointsKnob.style.cssText = `width:16px;height:16px;border-radius:8px;background:white;position:absolute;top:2px;left:${this.firePointsEnabled ? '18px' : '2px'};transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);`;
-        pointsSw.appendChild(pointsKnob);
-        pointsSw.onclick = () => {
-            this.firePointsEnabled = !this.firePointsEnabled;
-            pointsSw.style.background = this.firePointsEnabled ? '#ff9500' : 'rgba(255,255,255,0.15)';
-            pointsKnob.style.left = this.firePointsEnabled ? '18px' : '2px';
-            this.onFirePointsToggleCb?.(this.firePointsEnabled);
-        };
-        pointsRow.appendChild(pointsSw);
-        section.appendChild(pointsRow);
-
-        // Persistence
-        const persistWrap = document.createElement('div');
-        persistWrap.innerHTML = '<div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Persistance minimum</div>';
-        const persistPills = document.createElement('div');
-        persistPills.style.cssText = 'display:flex;gap:6px;';
-        ([1, 2, 3] as number[]).forEach((v, i) => {
-            const label = ['Toutes', '2+ passes', '3+ passes'][i];
-            const active = this.filterState.minPersistence === v;
-            const p = document.createElement('button');
-            p.textContent = label;
-            p.style.cssText = `flex:1;padding:6px 4px;font-size:11px;border-radius:6px;border:1px solid ${active ? 'rgba(255,149,0,0.6)' : 'var(--border-color)'};background:${active ? 'rgba(255,149,0,0.18)' : 'transparent'};color:${active ? '#ff9500' : 'var(--text-muted)'};cursor:pointer;font-weight:${active ? '600' : '400'};`;
-            p.onclick = () => { this.filterState = { ...this.filterState, minPersistence: v }; this._applyAndNotify(); };
-            persistPills.appendChild(p);
-        });
-        persistWrap.appendChild(persistPills);
-        section.appendChild(persistWrap);
-
-        this.contentEl.appendChild(section);
-    }
-
-    // ─── Stats globales ───────────────────────────────────────────────────────
-
-    private _renderStats(filtered: ActiveFire[], incidents: FireIncident[], totalFrp: number): void {
-        const high    = filtered.filter(f => f.confidence === 'high').length;
-        const nominal = filtered.filter(f => f.confidence === 'nominal').length;
-        const low     = filtered.filter(f => f.confidence === 'low').length;
-        const criticalInc = incidents.filter(i => i.score.severityScore >= 60).length;
-        const moderateInc = incidents.filter(i => i.score.severityScore >= 30 && i.score.severityScore < 60).length;
-
-        const stats = document.createElement('div');
-        stats.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;';
-        stats.innerHTML = `
-            <div style="background:rgba(255,59,48,0.10);border:1px solid rgba(255,59,48,0.28);border-radius:8px;padding:10px;text-align:center;">
-                <div style="color:#ff3b30;font-size:20px;font-weight:700;">${incidents.length}</div>
-                <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;margin-top:2px;">Incidents</div>
-                <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${criticalInc} critiques</div>
-            </div>
-            <div style="background:rgba(255,149,0,0.08);border:1px solid rgba(255,149,0,0.25);border-radius:8px;padding:10px;text-align:center;">
-                <div style="color:#ff9500;font-size:20px;font-weight:700;">${filtered.length}</div>
-                <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;margin-top:2px;">Détections</div>
-                <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">FRP ${totalFrp.toFixed(0)} MW</div>
-            </div>
-            <div style="background:rgba(255,214,10,0.06);border:1px solid rgba(255,214,10,0.20);border-radius:8px;padding:10px;text-align:center;">
-                <div style="color:#ffd60a;font-size:20px;font-weight:700;">${high}</div>
-                <div style="color:var(--text-muted);font-size:10px;text-transform:uppercase;margin-top:2px;">Haute conf.</div>
-                <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${nominal} nom. · ${low} basse</div>
-            </div>`;
-        this.contentEl.appendChild(stats);
-
-        // Résumé incidents
-        if (incidents.length > 0) {
-            const summary = document.createElement('div');
-            summary.style.cssText = 'color:var(--text-muted);font-size:11px;line-height:1.5;margin-bottom:10px;';
-            const nearUrbanCount = incidents.filter(i => i.nearUrban).length;
-            const multiSatCount  = incidents.filter(i => i.satellites.length >= 2).length;
-            const parts: string[] = [];
-            if (criticalInc > 0) parts.push(`<span style="color:#ff3b30;font-weight:600;">${criticalInc} critique${criticalInc > 1 ? 's' : ''}</span>`);
-            if (moderateInc > 0) parts.push(`<span style="color:#ff9500;font-weight:600;">${moderateInc} modéré${moderateInc > 1 ? 's' : ''}</span>`);
-            if (nearUrbanCount > 0) parts.push(`<span style="color:#ff9500;">${nearUrbanCount} près de zones urbaines</span>`);
-            if (multiSatCount > 0 && this.apiKeyUsed) parts.push(`<span style="color:#ffd60a;">${multiSatCount} confirmés multi-satellite</span>`);
-            if (parts.length > 0) {
-                summary.innerHTML = parts.join(' · ');
-                this.contentEl.appendChild(summary);
-            }
-        }
-    }
-
-    // ─── Liste incidents ──────────────────────────────────────────────────────
-
-    private _renderIncidentList(incidents: FireIncident[], orphanFires: ActiveFire[], _filtered: ActiveFire[]): void {
-        const listTitle = document.createElement('div');
-        listTitle.style.cssText = 'color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;';
-        listTitle.textContent = incidents.length > 0 ? `Incidents détectés (${incidents.length})` : 'Détections brutes';
-        this.contentEl.appendChild(listTitle);
-
-        const list = document.createElement('div');
-        list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
-
-        // ── Incidents DBSCAN ─────────────────────────────────────────────────
-        // Lancer le géocodage de tous les centroïdes d'incidents visibles
-        void this._prefetchIncidentPlaceLabels(incidents);
-
-        for (const incident of incidents) {
-            const meta = this._severityMeta(incident.score.severityScore);
-            const fires = incident.detectionIds
-                .map(id => this.rawFires.find(f => f.id === id))
-                .filter((f): f is ActiveFire => f !== undefined);
-
-            // Calcul du label d'impact
-            const impactLabels = incident.score.labels
-                .filter(l => ['near_urban', 'night', 'multi_satellite', 'high_confidence'].includes(l))
-                .map(l => ({
-                    near_urban:       `${fmIcon('building-2')} Zone urbaine`,
-                    night:            `${fmIcon('moon')} Détection nocturne`,
-                    multi_satellite:  `${fmIcon('satellite')} Multi-satellite`,
-                    high_confidence:  `${fmIcon('check')} Haute confiance`,
-                }[l] ?? l));
-
-            const section = document.createElement('details');
-            section.style.cssText = `background:${meta.bg};border:1px solid ${meta.color}33;border-radius:10px;overflow:hidden;`;
-
-            // En-tête incident
-            const hdr = document.createElement('summary');
-            hdr.style.cssText = 'list-style:none;display:flex;flex-direction:column;gap:4px;padding:12px 14px;cursor:pointer;';
-            hdr.innerHTML = `
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <div style="width:8px;height:8px;border-radius:50%;background:${meta.color};flex-shrink:0;"></div>
-                    <div style="color:${meta.color};font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">${meta.label}</div>
-                    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-                        <span style="color:${meta.color};font-size:13px;font-weight:700;">${incident.frpTotal.toFixed(0)} MW</span>
-                        <span style="color:var(--text-muted);font-size:11px;">${incident.detectionsCount} det.</span>
-                    </div>
-                </div>
-                <div style="display:flex;gap:10px;align-items:center;padding-left:16px;">
-                    <span style="color:var(--text-muted);font-size:10px;">
-                        ${fmIcon('map-pin')} ${this._getIncidentPlaceLabel(incident)}
-                    </span>
-                    <span style="color:var(--text-muted);font-size:10px;">·</span>
-                    <span style="color:var(--text-muted);font-size:10px;">${fmIcon('timer')} ${this._formatDuration(incident.durationMinutes)}</span>
-                    ${incident.satellites.length >= 2
-                        ? `<span style="color:var(--text-muted);font-size:10px;">·</span><span style="color:#ffd60a;font-size:10px;">${fmIcon('satellite')} ${incident.satellites.join('+')}</span>`
-                        : `<span style="color:var(--text-muted);font-size:10px;">·</span><span style="color:var(--text-muted);font-size:10px;">${incident.satellites[0] ?? 'SNPP'}</span>`}
-                </div>
-                ${impactLabels.length > 0
-                    ? `<div style="display:flex;flex-wrap:wrap;gap:4px;padding-left:16px;">${impactLabels.map(l => `<span style="background:rgba(255,255,255,0.08);border-radius:4px;padding:2px 6px;font-size:9px;color:var(--text-muted);">${l}</span>`).join('')}</div>`
-                    : ''}
-                <div style="display:flex;gap:6px;padding-left:16px;">
-                    <div style="flex:1;background:rgba(255,255,255,0.05);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--text-muted);">
-                        Sévérité <span style="color:${meta.color};font-weight:700;">${incident.score.severityScore}/100</span>
-                    </div>
-                    <div style="flex:1;background:rgba(255,255,255,0.05);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--text-muted);">
-                        Impact <span style="color:${incident.nearUrban ? '#ff3b30' : meta.color};font-weight:700;">${incident.score.impactScore}/100</span>
-                    </div>
-                </div>`;
-            section.appendChild(hdr);
-
-            // Hover sur la section incident → highlight du cluster complet sur la carte
-            const clusterPoints = fires.map(f => ({ lat: f.latitude, lon: f.longitude }));
-            section.addEventListener('mouseenter', () => {
-                this.onHoverIncidentCb?.(clusterPoints);
-            });
-            section.addEventListener('mouseleave', () => {
-                this.onHoverIncidentCb?.(null);
-            });
-            // Corps : liste des détections
-            const body = document.createElement('div');
-            body.style.cssText = 'border-top:1px solid rgba(255,255,255,0.06);';
-
-            // ── Profil vertical radar (phase 0 « radar 3D », DÉMONSTRATION) ──
-            const profileWrap = document.createElement('div');
-            profileWrap.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.04);';
-            const profileBtn = document.createElement('button');
-            profileBtn.textContent = this.radarProfileOpen.has(incident.id)
-                ? 'Masquer le profil radar'
-                : 'Profil radar (démonstration)';
-            profileBtn.style.cssText = 'margin:8px 14px;padding:4px 10px;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.04);color:var(--text-muted);font-size:10px;cursor:pointer;';
-            const profileContent = document.createElement('div');
-            const renderProfile = (): void => {
-                profileContent.innerHTML = radarProfileLoadingHtml();
-                void fetchRadarColumn(incident.centroidLat, incident.centroidLon).then((result) => {
-                    profileContent.innerHTML = result === null ? radarProfileErrorHtml() : radarProfileHtml(result, Date.now());
-                });
-            };
-            profileBtn.onclick = (event) => {
-                event.stopPropagation();
-                if (this.radarProfileOpen.has(incident.id)) {
-                    this.radarProfileOpen.delete(incident.id);
-                    profileContent.innerHTML = '';
-                    profileBtn.textContent = 'Profil radar (démonstration)';
-                } else {
-                    this.radarProfileOpen.add(incident.id);
-                    profileBtn.textContent = 'Masquer le profil radar';
-                    renderProfile();
-                }
-            };
-            profileWrap.appendChild(profileBtn);
-            profileWrap.appendChild(profileContent);
-            body.appendChild(profileWrap);
-            if (this.radarProfileOpen.has(incident.id)) renderProfile();
-
-            const visibleKey = incident.id;
-            const visibleCount = this.visibleCountByIncident.get(visibleKey) ?? this.VISIBLE_BATCH_SIZE;
-            const visibleFires = fires.slice(0, visibleCount);
-
-            void this._prefetchFirePlaceLabels(visibleFires);
-
-            for (const f of visibleFires) {
-                const confColor = this._confidenceColor(f.confidence);
-                const raw = String(f.acq_time).padStart(4, '0');
-                const period = f.daynight === 'D' ? fmIcon('sun') : fmIcon('moon');
-                const item = document.createElement('div');
-                item.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;transition:background 0.15s;gap:8px;`;
-                item.innerHTML = `
-                    <div style="flex:1;min-width:0;">
-                        <div style="color:var(--text-primary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._getFirePlaceLabel(f)} ${period}</div>
-                        <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${f.acq_date} · ${raw.slice(0,2)}:${raw.slice(2)} UTC · <span style="color:${confColor};">${this._confLabel(f.confidence)}</span></div>
-                    </div>
-                    <div style="color:${meta.color};font-size:12px;font-weight:700;white-space:nowrap;">${(f.frp || 0).toFixed(1)} MW</div>`;
-                item.addEventListener('mouseenter', (e) => {
-                    e.stopPropagation();
-                    item.style.background = 'rgba(255,149,0,0.08)'; 
-                    this.onHoverFireCb?.(f.latitude, f.longitude); 
-                });
-                item.addEventListener('mouseleave', (e) => {
-                    e.stopPropagation();
-                    item.style.background = 'transparent'; 
-                    // Au lieu d'effacer, on restaure le halo du cluster complet (puisqu'on est toujours dedans)
-                    this.onHoverIncidentCb?.(clusterPoints); 
-                });
-                body.appendChild(item);
-            }
-
-            if (fires.length > visibleCount) {
-                const moreWrap = document.createElement('div');
-                moreWrap.style.cssText = 'display:flex;justify-content:center;padding:8px;';
-                const moreBtn = document.createElement('button');
-                moreBtn.textContent = `+ ${Math.min(this.VISIBLE_BATCH_SIZE, fires.length - visibleCount)} détections`;
-                moreBtn.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.04);color:var(--text-muted);font-size:10px;cursor:pointer;';
-                moreBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.visibleCountByIncident.set(visibleKey, visibleCount + this.VISIBLE_BATCH_SIZE);
-                    const scrollTop = this.contentEl.scrollTop;
-                    this._renderContent();
-                    requestAnimationFrame(() => { this.contentEl.scrollTop = scrollTop; });
-                };
-                moreWrap.appendChild(moreBtn);
-                body.appendChild(moreWrap);
-            }
-
-            section.appendChild(body);
-            list.appendChild(section);
-        }
-
-        // ── Détections isolées (bruit DBSCAN) ────────────────────────────────
-        if (orphanFires.length > 0) {
-            const orphanSorted = [...orphanFires].sort((a, b) => (b.frp || 0) - (a.frp || 0));
-            const orphanSection = document.createElement('details');
-            orphanSection.style.cssText = 'background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;';
-
-            const orphanHdr = document.createElement('summary');
-            orphanHdr.style.cssText = 'list-style:none;display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;';
-            orphanHdr.innerHTML = `
-                <div style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.3);flex-shrink:0;"></div>
-                <div style="color:var(--text-muted);font-size:11px;font-weight:600;">Détections isolées</div>
-                <div style="color:var(--text-muted);font-size:10px;margin-left:auto;">${orphanFires.length} point${orphanFires.length > 1 ? 's' : ''} · hors cluster</div>`;
-            orphanSection.appendChild(orphanHdr);
-
-            // Hover sur la section orphans → highlight du point individuel au mouseleave = clear
-            orphanSection.addEventListener('mouseleave', () => {
-                this.onHoverIncidentCb?.(null);
-                this.onHoverFireCb?.(null, null);
-            });
-
-            const orphanBody = document.createElement('div');
-            orphanBody.style.cssText = 'border-top:1px solid rgba(255,255,255,0.06);';
-
-            const visibleKey = '__orphans__';
-            const visibleCount = this.visibleCountByIncident.get(visibleKey) ?? this.VISIBLE_BATCH_SIZE;
-            const visibleOrphans = orphanSorted.slice(0, visibleCount);
-
-            void this._prefetchFirePlaceLabels(visibleOrphans);
-
-            for (const f of visibleOrphans) {
-                const confColor = this._confidenceColor(f.confidence);
-                const raw = String(f.acq_time).padStart(4, '0');
-                const period = f.daynight === 'D' ? fmIcon('sun') : fmIcon('moon');
-                const item = document.createElement('div');
-                item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;transition:background 0.15s;gap:8px;';
-                item.innerHTML = `
-                    <div style="flex:1;min-width:0;">
-                        <div style="color:var(--text-primary);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this._getFirePlaceLabel(f)} ${period}</div>
-                        <div style="color:var(--text-muted);font-size:10px;margin-top:1px;">${f.acq_date} · ${raw.slice(0,2)}:${raw.slice(2)} UTC · <span style="color:${confColor};">${this._confLabel(f.confidence)}</span></div>
-                    </div>
-                    <div style="color:var(--text-muted);font-size:12px;font-weight:600;white-space:nowrap;">${(f.frp || 0).toFixed(1)} MW</div>`;
-                item.addEventListener('mouseenter', (e) => {
-                    e.stopPropagation();
-                    item.style.background = 'rgba(255,255,255,0.04)'; 
-                    this.onHoverFireCb?.(f.latitude, f.longitude); 
-                });
-                item.addEventListener('mouseleave', (e) => {
-                    e.stopPropagation();
-                    item.style.background = 'transparent'; 
-                    // Restaurer l'état vide vu qu'il n'y a pas de parent cluster ici
-                    this.onHoverFireCb?.(null, null); 
-                });
-                orphanBody.appendChild(item);
-            }
-
-            if (orphanFires.length > visibleCount) {
-                const moreWrap = document.createElement('div');
-                moreWrap.style.cssText = 'display:flex;justify-content:center;padding:8px;';
-                const moreBtn = document.createElement('button');
-                moreBtn.textContent = `+ ${Math.min(this.VISIBLE_BATCH_SIZE, orphanFires.length - visibleCount)} de plus`;
-                moreBtn.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.04);color:var(--text-muted);font-size:10px;cursor:pointer;';
-                moreBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.visibleCountByIncident.set(visibleKey, visibleCount + this.VISIBLE_BATCH_SIZE);
-                    const scrollTop = this.contentEl.scrollTop;
-                    this._renderContent();
-                    requestAnimationFrame(() => { this.contentEl.scrollTop = scrollTop; });
-                };
-                moreWrap.appendChild(moreBtn);
-                orphanBody.appendChild(moreWrap);
-            }
-
-            orphanSection.appendChild(orphanBody);
-            list.appendChild(orphanSection);
-        }
-
-        this.contentEl.appendChild(list);
-    }
-
-    // ─── Footer ───────────────────────────────────────────────────────────────
-
-    private _renderFooter(filtered: ActiveFire[], incidents: FireIncident[], latestLabel: string): void {
-        const multiSource  = this.apiKeyUsed && this.sourcesInfo.length >= 2;
-        const satelliteStr = this.sourcesInfo.length > 0 ? this.sourcesInfo.join(' · ') : 'SNPP (public)';
-        const revisitStr   = multiSource
-            ? '~40 min en grappe · 2 grappes/jour'
-            : '~1 h en grappe · 2 grappes/jour';
-
-        const footer = document.createElement('div');
-        footer.style.cssText = 'margin-top:16px;padding:12px 0 0;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:4px;';
-
-        // Ligne satellites
-        const satLine = document.createElement('div');
-        satLine.style.cssText = 'display:flex;align-items:center;gap:6px;';
-        satLine.innerHTML = `
-            <span style="display:flex;">${fmIcon('satellite', { size: 10 })}</span>
-            <span style="color:var(--text-muted);font-size:10px;">${satelliteStr}</span>
-            <span style="color:var(--border-color);font-size:10px;">·</span>
-            <span style="color:var(--text-muted);font-size:10px;">${revisitStr}</span>
-            ${multiSource ? `<span style="background:rgba(255,214,10,0.15);color:#ffd60a;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:600;margin-left:2px;">API KEY ${fmIcon('check', { size: 10 })}</span>` : ''}`;
-        footer.appendChild(satLine);
-
-        // Ligne stats
-        const statsLine = document.createElement('div');
-        statsLine.style.cssText = 'display:flex;flex-wrap:wrap;gap:x 8px;color:var(--text-muted);font-size:10px;';
-        statsLine.innerHTML = `
-            <span>Brutes : <b style="color:var(--text-primary);">${this.rawFires.length}</b></span>
-            <span style="margin:0 4px;opacity:0.4;">·</span>
-            <span>Filtrées : <b style="color:var(--text-primary);">${filtered.length}</b></span>
-            <span style="margin:0 4px;opacity:0.4;">·</span>
-            <span>Incidents : <b style="color:var(--text-primary);">${incidents.length}</b></span>
-            <span style="margin:0 4px;opacity:0.4;">·</span>
-            <span>Dernière : <b style="color:var(--text-primary);">${latestLabel}</b></span>`;
-        footer.appendChild(statsLine);
-
-        this.contentEl.appendChild(footer);
-    }
+    this.plume.set(foyerId, result ?? 'error');
+    this.render();
+  }
+
+  private render(): void {
+    if (!this.shell || !this.isVisible()) return;
+    const s = this.state;
+    const slot = s?.fires?.fires ?? null;
+    const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
+    this.shell.render(buildFeuxView({
+      fires: slot?.data ?? null, firesError: slot?.error ?? null, mtgFrp: s?.mtgFrp ?? null, options: s?.options ?? NO_OPTIONS,
+      plume: this.plume, tab: this.tab, majorIncidents: selectMajorIncidents(s?.incidents ?? []), dossier: this.dossier,
+      canFocus: this.onFocusFoyer !== undefined, now: Date.now(), open,
+    }));
+  }
 }

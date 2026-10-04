@@ -7,6 +7,7 @@ import {
   LAYER_PRESETS,
   hasPersistedLayers,
   layersForPreset,
+  migrateStoredLayers,
   themeLayers,
   v2StartupLayers,
   type LayerPresetId,
@@ -42,7 +43,7 @@ describe('layer-presets', () => {
 
   it('layersForPreset("general") active une couche phare par thème', () => {
     const result = layersForPreset('general');
-    for (const key of ['news', 'powerGrid', 'military', 'health', 'environmental'] as const) {
+    for (const key of ['news', 'powerGrid', 'military', 'health', 'environmental', 'floods'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
     assert.equal(result.cyber, false);
@@ -78,10 +79,11 @@ describe('layer-presets', () => {
 
   it('layersForPreset("environment") active tout le thème environnement & transports', () => {
     const result = layersForPreset('environment');
-    for (const key of ['environmental', 'weatherRadar', 'fires', 'dayNight', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
+    for (const key of ['environmental', 'floods', 'weatherRadar', 'fires', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
     assert.equal(result.powerGrid, false);
+    assert.equal('dayNight' in result, false); // couche Jour / Nuit retirée (spec 2026-10-04 § 2.5)
   });
 
   it('les quatre thèmes sont complets : chaque couche appartient à exactement un thème', () => {
@@ -110,12 +112,13 @@ describe('layer-presets', () => {
 
 describe('couches v2 (spec 2026-09-29 § 5)', () => {
   it('une nouvelle visite v2 démarre avec les événements et les vigilances, rien d’autre', () => {
-    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true });
+    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true });
   });
 
   it('v2 : « Vue générale » ne garde que les vigilances parmi les couches des thèmes', () => {
     const general = themeLayers(true, 'general');
     assert.equal(general.environmental, true);
+    assert.equal(general.floods, true);
     for (const key of ['news', 'powerGrid', 'military', 'health'] as const) assert.equal(general[key], false, key);
     assert.equal('events' in general, false); // les thèmes ne touchent pas la couche Événements
   });
@@ -123,6 +126,21 @@ describe('couches v2 (spec 2026-09-29 § 5)', () => {
   it('les autres thèmes, et la v1, gardent leurs vues', () => {
     assert.deepEqual(themeLayers(true, 'energy'), layersForPreset('energy'));
     assert.deepEqual(themeLayers(false, 'general'), layersForPreset('general'));
+  });
+});
+
+describe('migration de l’état mémorisé (Vigilance météo et Crues séparées, Jour / Nuit retiré)', () => {
+  it('ancien état { environmental: true } : Vigilance météo et Crues actives', () => {
+    assert.deepEqual(migrateStoredLayers({ environmental: true, news: false }), { environmental: true, news: false, floods: true });
+  });
+  it('ancien état environmental éteint : Crues éteintes ; état récent : clé floods gardée telle quelle', () => {
+    assert.equal(migrateStoredLayers({ environmental: false }).floods, false);
+    assert.equal(migrateStoredLayers({ environmental: true, floods: false }).floods, false);
+  });
+  it('{ dayNight: true } seul : clé supprimée, donc aucune couche active et premier chargement (vue d’accueil)', () => {
+    const migrated = migrateStoredLayers({ dayNight: true });
+    assert.deepEqual(migrated, {});
+    assert.equal(hasPersistedLayers(migrated), false);
   });
 });
 

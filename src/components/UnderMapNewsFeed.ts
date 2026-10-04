@@ -92,6 +92,7 @@ const DEFAULT_LAYERS: MapLayers = {
   hospitals: false,
   environmentGroup: false,
   environmental: false,
+  floods: false,
   weatherRadar: false,
   fires: false,
   traffic: false,
@@ -114,7 +115,6 @@ const DEFAULT_LAYERS: MapLayers = {
   gasNetwork: false,
   oilNetwork: false,
   nuclearFleet: false,
-  dayNight: false,
   elus: false,
 };
 

@@ -9,7 +9,7 @@ import type {
   DataSourceStatus,
   DetectedSituation,
   EcowattResponse,
-  FloodSegment,
+  FloodSectionRef,
   IntelEventsState,
   MarketData,
   MeteoAlert,
@@ -59,7 +59,7 @@ export interface PosteData {
   alerts: readonly DetectedSituation[];
   ecowatt: EcowattResponse | null;
   meteo: readonly MeteoAlert[];
-  floods: readonly FloodSegment[];
+  floods: readonly FloodSectionRef[];
   markets: readonly MarketData[];
   /** Baromètre des infrastructures (section Infrastructures de l'État). */
   infra?: InfraInput | null;
@@ -583,7 +583,9 @@ export class PosteSituation {
     }
     const item = this.queue?.items.find((i) => i.key === ficheKey);
     if (action === 'show-layer' && item?.ref.kind === 'official') {
-      const layers = item.ref.group.source === 'ecowatt' ? ['powerGrid'] : ['environmental'];
+      // Vigicrues ouvre la couche Crues, séparée de la vigilance météo (spec 2026-10-04 environnement § 2.2).
+      const source = item.ref.group.source;
+      const layers = source === 'ecowatt' ? ['powerGrid'] : source === 'vigicrues' ? ['floods'] : ['environmental'];
       this.revealMap();
       this.callbacks.onActivateLayers(layers);
       return;

@@ -53,7 +53,7 @@ describe('sources-quality-dashboard', () => {
     const afterContact = getSourcesQualityDashboardData({
       statuses: [
         status({ name: 'MTG-FRP LSA SAF', status: 'ok' }),
-        status({ name: 'Radar 2D Météo-France', status: 'ok', detail: 'Configuration requise' }),
+        status({ name: 'Radar Météo-France', status: 'ok', detail: 'Configuration requise' }),
       ],
     });
     assert.equal(afterContact.sources.some((source) => source.id === 'fire-mtg-frp'), true);

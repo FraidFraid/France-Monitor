@@ -42,8 +42,8 @@ describe('styles de la disposition A1 (?ui=v2)', () => {
     expect(css).toContain('@media (max-width: 768px) { .lp .lp-head { position: static; } }');
     expect(css).not.toContain('@media (max-width: 700px) { .lp .lp-head');
   });
-  it('« Méthode et sources » en phrases (libellé fixe, valeur qui passe à la ligne) : les panneaux Santé et Trafics seulement', () => {
-    const health = '#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal) .fmk .fmk-sec--ref';
+  it('« Méthode et sources » en phrases (libellé fixe, valeur qui passe à la ligne) : les panneaux Santé, Trafics et Environnement seulement', () => {
+    const health = '#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal) .fmk .fmk-sec--ref';
     expect(css).toContain(`${health} .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }`);
     expect(css).toContain(`${health} .fmk-kv-v { overflow-wrap: anywhere; }`);
     // Les panneaux Énergie gardent leurs valeurs alignées à droite dans « Méthode et sources ».

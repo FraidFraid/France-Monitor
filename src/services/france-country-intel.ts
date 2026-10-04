@@ -16,7 +16,7 @@ import type {
   ISNRDimensionScores,
   CyberState,
   MeteoAlert,
-  FloodSegment,
+  FloodSectionRef,
   RailTrain,
   RoadEvent,
   ActiveFire,
@@ -60,7 +60,7 @@ export interface FranceRawData {
   cyberData: CyberState | null;
   threatEvents?: ThreatEvent[];
   meteoAlerts: MeteoAlert[];
-  floodSegments: FloodSegment[];
+  floodSegments: FloodSectionRef[];
   /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
   railTrains: RailTrain[];
   /** Événements en cours du réseau routier national non concédé (DIR, § 2.1). */

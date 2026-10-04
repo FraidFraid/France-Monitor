@@ -17,7 +17,7 @@ import {
   RISK_LABELS,
   type ActiveFire,
   type DetectedSituation,
-  type FloodSegment,
+  type FloodSectionRef,
   type MeteoAlert,
   type NewsItem,
   type PowerOutage,
@@ -79,7 +79,7 @@ export interface ExportContext {
   news: NewsItem[];
   situations: DetectedSituation[];
   meteoAlerts: MeteoAlert[];
-  floods: FloodSegment[];
+  floods: FloodSectionRef[];
   fires: ActiveFire[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
@@ -321,36 +321,24 @@ export function serializeMeteoAlerts(items: MeteoAlert[]): SerializedLayer {
   return { rows, columns, features: [] };
 }
 
-/** Crues (Vigicrues) — point représentatif = premier sommet du tronçon. */
-export function serializeFloods(items: FloodSegment[]): SerializedLayer {
+/** Crues (Vigicrues) : point représentatif = premier sommet du tronçon, tracé tel que publié (aucun recalage). */
+export function serializeFloods(items: FloodSectionRef[]): SerializedLayer {
   const columns: ExportColumn[] = [
+    { key: 'code', label: 'code_tronçon' },
     { key: 'nom', label: 'nom' },
     { key: 'niveau', label: 'niveau' },
-    { key: 'sourceDonnee', label: 'source_donnée' },
-    { key: 'fidelite', label: 'fidélité_géométrie' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
   for (const s of items) {
-    const point = firstCoordinate(s.displayGeometry ?? s.geometry);
+    const point = firstCoordinate(s.geometry);
     const lon = point ? point[0] : null;
     const lat = point ? point[1] : null;
-    rows.push({
-      nom: s.name,
-      niveau: s.level,
-      sourceDonnee: s.dataSource,
-      fidelite: s.geometryFidelity,
-      lat,
-      lon,
-    });
+    rows.push({ code: s.id, nom: s.name, niveau: s.level, lat, lon });
     if (point) {
-      features.push({
-        lat: point[1],
-        lon: point[0],
-        properties: { nom: s.name, niveau: s.level, sourceDonnee: s.dataSource, fidelite: s.geometryFidelity },
-      });
+      features.push({ lat: point[1], lon: point[0], properties: { code: s.id, nom: s.name, niveau: s.level } });
     }
   }
   return { rows, columns, features };

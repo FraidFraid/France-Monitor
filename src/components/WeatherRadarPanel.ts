@@ -1,143 +1,84 @@
-/**
- * WeatherRadarPanel.ts — panneau flottant de la couche « Radar météo » (mosaïque RainViewer).
- * Affiche l'heure et la nature de l'image, sa fraîcheur, la légende des intensités et la source.
- * Le × ferme le panneau sans éteindre la couche.
- */
-import {
-  applyPremiumCloseButtonHover,
-  createPremiumIconHeader,
-  getPremiumCloseButtonStyle,
-  getPremiumModalStyle,
-} from './panelHeader.ts';
-import { fmIcon } from './shared/icons.ts';
-import { WEATHER_RADAR_LEGEND_ITEMS } from '../config/weather-radar-legend.ts';
-import {
-  weatherRadarSummary,
-  type WeatherRadarFrame,
-  type WeatherRadarStatus,
-} from '../services/weather-radar.ts';
+// src/components/WeatherRadarPanel.ts : panneau de couche « Radar météo » (spec 2026-10-04 environnement § 2.3), réécrit : la
+// mosaïque de réflectivité Météo-France du worker radar remplace RainViewer. Coquille DOM : contenu de buildRadarView (pur), cadre de
+// createLayerPanelShell ; le bouton « Sommets d'écho » bascule l'option partagée avec le panneau Feux (App.echoTopsEnabled) ; le
+// profil vertical vient d'un clic sur la carte (App.loadRadarProfile). La croix éteint la couche, comme les autres panneaux.
+import type { Radar2dManifest } from '../services/radar-2d.ts';
+import type { RadarProfileState } from '../services/environment-radar.ts';
+import { loadSectionState } from '../services/fiche-sections-store.ts';
+import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
+import { buildRadarView } from './layer-panel/radar.ts';
 
-const REFRESH_LABEL_MS = 60_000;
+const PANEL_ID = 'weatherRadar';
+
+/** État reçu d'App.ts : manifeste (null avant la première lecture ou en panne), option et profil du point cliqué. */
+export interface RadarPanelState {
+  manifest: Radar2dManifest | null;
+  configured: boolean;
+  error: string | null;
+  echoTops: boolean;
+  echoTopsAvailable: boolean;
+  profile: RadarProfileState | null;
+}
 
 export class WeatherRadarPanel {
+  private shell: LayerPanelShell | null = null;
+  private onClose?: () => void;
+  private onEchoTops?: (on: boolean) => void;
+  private state: RadarPanelState | null = null;
+  private readonly storage = safeStorage();
   private readonly container: HTMLElement;
-  private modalEl: HTMLElement | null = null;
-  private contentEl: HTMLElement | null = null;
-  private onClose: (() => void) | null = null;
-  private frame: WeatherRadarFrame | null = null;
-  private status: WeatherRadarStatus = 'loading';
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
   }
 
-  setOnClose(handler: () => void): void {
-    this.onClose = handler;
-  }
-
   mount(): void {
-    const modal = document.createElement('div');
-    modal.className = 'fm-floating-panel';
-    modal.style.cssText = getPremiumModalStyle({
-      width: '360px',
-      maxHeight: 'calc(100vh - var(--header-height) - 40px)',
-      backgroundStart: 'rgba(12, 18, 31, 0.97)',
-      backgroundEnd: 'rgba(13, 16, 26, 0.96)',
-      borderColor: 'rgba(79, 195, 247, 0.18)',
-      top: 'calc(var(--header-height) + 20px)',
-    }) + 'display:none;overflow-y:auto;';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = fmIcon('x');
-    closeBtn.setAttribute('aria-label', 'Fermer');
-    closeBtn.style.cssText = getPremiumCloseButtonStyle();
-    applyPremiumCloseButtonHover(closeBtn);
-    closeBtn.onclick = () => this.hide();
-    modal.appendChild(closeBtn);
-
-    modal.appendChild(createPremiumIconHeader({
-      icon: fmIcon('cloud-rain'),
-      title: 'Radar météo',
-      subtitle: 'Précipitations : mosaïque radar RainViewer',
-      gradientStart: 'rgba(79, 195, 247, 0.16)',
-      gradientEnd: 'rgba(59, 130, 246, 0.10)',
-      iconGradientStart: 'rgba(79, 195, 247, 0.22)',
-      iconGradientEnd: 'rgba(59, 130, 246, 0.14)',
-    }));
-
-    this.contentEl = document.createElement('div');
-    this.contentEl.style.cssText = 'display:flex;flex-direction:column;gap:14px;padding:14px 16px 16px;';
-    modal.appendChild(this.contentEl);
-
-    this.container.appendChild(modal);
-    this.modalEl = modal;
-    this.render();
+    const shell = createLayerPanelShell({
+      container: this.container, className: 'radar-panel-modal', panelId: PANEL_ID, storage: this.storage, onClose: () => this.hide(),
+    });
+    shell.root.addEventListener('click', (e) => {
+      const button = (e.target as HTMLElement).closest<HTMLElement>('[data-echo-tops]');
+      if (button) this.onEchoTops?.(button.dataset['echoTops'] !== 'on');
+    });
+    this.shell = shell;
   }
 
-  /** Trame affichée par la carte et état du chargement. */
-  update(frame: WeatherRadarFrame | null, status: WeatherRadarStatus): void {
-    this.frame = frame;
-    this.status = status;
+  setOnClose(handler: () => void): void { this.onClose = handler; }
+  /** Option « Sommets d'écho » (état unique d'App.ts, partagé avec le panneau Feux). */
+  setOnEchoTops(handler: (on: boolean) => void): void { this.onEchoTops = handler; }
+
+  show(state: RadarPanelState | null): void {
+    this.shell?.root.classList.add('is-open');
+    this.update(state);
+  }
+
+  update(state: RadarPanelState | null): void {
+    if (state) this.state = state;
     if (this.isVisible()) this.render();
   }
 
-  show(): void {
-    if (!this.modalEl) return;
-    this.modalEl.style.display = 'flex';
-    this.modalEl.style.flexDirection = 'column';
-    this.render();
-    this.timer ??= setInterval(() => { if (this.isVisible()) this.render(); }, REFRESH_LABEL_MS);
-  }
-
   hide(opts: { silent?: boolean } = {}): void {
-    if (this.modalEl) this.modalEl.style.display = 'none';
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
-    // Masquage « silencieux » (bascule entre panneaux) : pas de rappel ; le × prévient l'appli
-    // pour qu'elle remette à jour le sélecteur (la couche reste active).
+    this.shell?.root.classList.remove('is-open');
     if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {
-    return this.modalEl?.style.display === 'flex';
+    return this.shell ? isLayerPanelOpen(this.shell.root) : false;
   }
 
   destroy(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.modalEl?.remove();
+    this.shell?.destroy();
+    this.shell = null;
   }
 
   private render(): void {
-    if (!this.contentEl) return;
-    const s = weatherRadarSummary(this.frame, this.status, Date.now(), 'fr');
-
-    let image: string;
-    if (s.state === 'ready') {
-      const nature = s.natureLabel === 'observation' ? 'observation' : 'prévision à court terme';
-      image = `
-        <div data-wr="image" style="${s.stale ? 'opacity:0.5;filter:grayscale(1);' : ''}">
-          <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${s.imageLabel}</div>
-          <div style="margin-top:2px;font-size:12px;color:var(--text-muted);">Nature de l’image : ${nature}</div>
-          ${s.stale ? `<div data-wr="stale" style="margin-top:6px;font-size:11px;color:var(--text-muted);">${s.staleLabel}</div>` : ''}
-        </div>`;
-    } else {
-      image = `<div data-wr="image" style="font-size:12px;color:var(--text-muted);">${s.message}</div>`;
-    }
-
-    const legend = WEATHER_RADAR_LEGEND_ITEMS.map((item) => `
-      <li style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);">
-        <span aria-hidden="true" style="width:12px;height:12px;border-radius:2px;flex-shrink:0;background:${item.color ?? 'transparent'};"></span>
-        <span>${item.label}</span>
-      </li>`).join('');
-
-    this.contentEl.innerHTML = `
-      ${image}
-      <section>
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Intensité des précipitations</div>
-        <ul data-wr="legend" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;">${legend}</ul>
-      </section>
-      <footer style="font-size:11px;line-height:1.4;color:var(--text-muted);">
-        Source : RainViewer · nouvelle image environ toutes les 10 min · France métropolitaine, Europe et outre-mer
-      </footer>`;
+    if (!this.shell) return;
+    const s = this.state;
+    const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
+    // Première ouverture sans lecture : état de chargement de la vue (manifeste null, configuré, aucune erreur).
+    this.shell.render(buildRadarView({
+      manifest: s?.manifest ?? null, configured: s?.configured ?? true, manifestError: s?.error ?? null,
+      echoTops: s?.echoTops ?? false, echoTopsAvailable: s?.echoTopsAvailable ?? false, profile: s?.profile ?? null, now: Date.now(), open,
+    }));
   }
 }

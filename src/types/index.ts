@@ -147,6 +147,8 @@ export interface MapLayers {
   hospitals: boolean;
   environmentGroup: boolean;
   environmental: boolean;
+  /** Crues : tronçons Vigicrues et stations Hub'Eau (spec 2026-10-04 environnement § 2.2), séparée de la vigilance météo. */
+  floods: boolean;
   weatherRadar: boolean;
   fires: boolean;
   traffic: boolean;

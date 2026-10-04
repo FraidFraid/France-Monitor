@@ -8,7 +8,7 @@ import {
   type CommodityData,
   type DetectedSituation,
   type EcowattResponse,
-  type FloodSegment,
+  type FloodSectionRef,
   type IntelEventsState,
   type MarketData,
   type MeteoAlert,
@@ -96,7 +96,7 @@ export interface WorkQueueInput {
   events: IntelEventsState | null;
   ecowatt: EcowattResponse | null;
   meteo: readonly MeteoAlert[];
-  floods: readonly FloodSegment[];
+  floods: readonly FloodSectionRef[];
   markets: readonly MarketLine[];
   /** Niveaux vus à la dernière visite ; null à la première visite. */
   baseline: VisitBaseline | null;
@@ -154,7 +154,7 @@ interface OfficialEntry {
 function officialEntries(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number,
 ): OfficialEntry[] {
   const out: OfficialEntry[] = [];
@@ -183,7 +183,7 @@ function officialEntries(
 export function officialAlertGroups(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number = Date.now(),
 ): OfficialAlertGroup[] {
   const groups = new Map<string, OfficialAlertGroup>();
@@ -204,7 +204,7 @@ export function officialAlertGroups(
 export function officialSignals(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number = Date.now(),
 ): OfficialSignal[] {
   const entries = officialEntries(ecowatt, meteo, floods, nowMs);

@@ -1,7 +1,7 @@
 import { HYDRAULIC_BACKBONE_SEEDS } from '../config/hydraulic-backbone.ts';
 import type {
   EcowattResponse,
-  FloodSegment,
+  FloodSectionRef,
   FloodVigilanceLevel,
   HydraulicBackboneAsset,
   HydraulicObservationTrend,
@@ -104,8 +104,9 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function flattenFloodCoordinates(segment: FloodSegment): [number, number][] {
-  const geometry = segment.displayGeometry ?? segment.geometry;
+function flattenFloodCoordinates(segment: FloodSectionRef): [number, number][] {
+  // Tracé tel que publié par Vigicrues (aucun recalage, spec 2026-10-04 environnement § 2.2).
+  const geometry = segment.geometry;
   if (geometry.type === 'LineString') {
     return geometry.coordinates as [number, number][];
   }
@@ -114,7 +115,7 @@ function flattenFloodCoordinates(segment: FloodSegment): [number, number][] {
 
 function getNearestFloodLevel(
   asset: Pick<HydraulicBackboneAsset, 'location' | 'river'>,
-  floods: FloodSegment[],
+  floods: FloodSectionRef[],
 ): FloodVigilanceLevel | null {
   if (floods.length === 0) return null;
 
@@ -199,7 +200,7 @@ function computeCriticality(asset: HydraulicBackboneAsset): number {
 function computeDerivedHydroScore(
   asset: HydraulicBackboneAsset,
   ecowatt: EcowattResponse | null,
-  floods: FloodSegment[],
+  floods: FloodSectionRef[],
   alerts: MeteoAlert[],
   nowMs: number,
 ): number {
@@ -239,7 +240,7 @@ function classifyHydroTrend(score: number): HydraulicTrend {
 
 function computeHydrometrySynergy(
   observationTrend: HydraulicObservationTrend,
-  floods: FloodSegment[],
+  floods: FloodSectionRef[],
   alerts: MeteoAlert[],
   asset: HydraulicBackboneAsset,
   ecowatt: EcowattResponse | null,
@@ -307,7 +308,7 @@ export function hydroCause(i: HydroCauseInput): string | null {
 
 export function buildHydraulicBackboneAssets(
   ecowatt: EcowattResponse | null,
-  floods: FloodSegment[] = [],
+  floods: FloodSectionRef[] = [],
   alerts: MeteoAlert[] = [],
   hydrometrySnapshot: HydraulicHydrometrySnapshot | null = null,
   nowMs: number = Date.now(),

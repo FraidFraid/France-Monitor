@@ -53,9 +53,9 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'trafficAir',
   'trafficRail',
   'environmental',
+  'floods',
   'weatherRadar',
   'fires',
-  'dayNight',
   'military',
   'subseaCables',
   'cyber',
@@ -76,8 +76,8 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'general',
     label: 'Vue générale',
     icon: 'compass',
-    description: 'Une couche phare par thème : actualités, réseau électrique, défense, santé, météo/crues.',
-    layers: ['news', 'powerGrid', 'military', 'health', 'environmental'],
+    description: 'Une couche phare par thème : actualités, réseau électrique, défense, santé, vigilance météo et crues.',
+    layers: ['news', 'powerGrid', 'military', 'health', 'environmental', 'floods'],
   },
   {
     id: 'energy',
@@ -104,8 +104,8 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'environment',
     label: 'Environnement & transports',
     icon: 'leaf',
-    description: 'Tout le thème environnement & transports : météo/crues, radar, feux, jour/nuit, trafics routier, ferroviaire, maritime et aérien.',
-    layers: ['environmental', 'weatherRadar', 'fires', 'dayNight', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
+    description: 'Tout le thème environnement & transports : vigilance météo, crues, radar, feux de forêt, trafics routier, ferroviaire, maritime et aérien.',
+    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
   },
 ];
 
@@ -126,9 +126,9 @@ export function layersForPreset(id: LayerPresetId): Partial<MapLayers> {
   return result;
 }
 
-/** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite — les événements et les vigilances. */
+/** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite, les événements et les vigilances (météo et crues, séparées le 04/10/2026). */
 export function v2StartupLayers(): Partial<MapLayers> {
-  return { events: true, environmental: true };
+  return { events: true, environmental: true, floods: true };
 }
 
 /**
@@ -139,7 +139,19 @@ export function v2StartupLayers(): Partial<MapLayers> {
 export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers> {
   if (!uiV2 || id !== 'general') return layersForPreset(id);
   const off = Object.fromEntries(ALL_PRESETABLE_LAYER_KEYS.map((key) => [key, false])) as Partial<MapLayers>;
-  return { ...off, environmental: true };
+  return { ...off, environmental: true, floods: true };
+}
+
+/**
+ * Migration de l'état de couches mémorisé (spec 2026-10-04 environnement § 2.2 et § 2.5 ; amendement 9) : la couche
+ * `environmental` (« Météo / crues ») a été scindée ; un état ancien sans clé `floods` reçoit `floods = environmental`, pour que
+ * les tronçons Vigicrues restent visibles. La couche Jour / Nuit est retirée : sa clé `dayNight` est supprimée. Pure.
+ */
+export function migrateStoredLayers(parsed: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...parsed };
+  if (!('floods' in out) && typeof out.environmental === 'boolean') out.floods = out.environmental;
+  delete out.dayNight;
+  return out;
 }
 
 /**

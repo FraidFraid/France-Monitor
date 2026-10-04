@@ -20,7 +20,7 @@ import type {
   DetectedSituation,
   EcowattResponse,
   EcowattSignal,
-  FloodSegment,
+  FloodSectionRef,
   IntelEventsState,
   MarketData,
   MeteoAlert,
@@ -66,12 +66,8 @@ function meteo(department: string, level: MeteoAlert['level'], risks: MeteoAlert
   return { department, departmentCode: department.slice(0, 2), level, risks };
 }
 
-function flood(name: string, level: FloodSegment['level']): FloodSegment {
-  const line = { type: 'LineString' as const, coordinates: [] };
-  return {
-    id: name, name, level, dataSource: 'live', geometryFidelity: 'raw', matchConfidence: 1,
-    rawVertexCount: 0, displayVertexCount: 0, geometry: line, rawGeometry: line, displayGeometry: line,
-  };
+function flood(name: string, level: FloodSectionRef['level']): FloodSectionRef {
+  return { id: name, name, level, geometry: { type: 'LineString' as const, coordinates: [] } };
 }
 
 function market(over: Partial<MarketLine> = {}): MarketLine {
