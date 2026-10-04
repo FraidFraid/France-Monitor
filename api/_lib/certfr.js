@@ -97,7 +97,8 @@ function versionCell(html, which) {
 const APOS = "(?:'|&#39;|&#x27;|&rsquo;|\u2019)";
 /** Phrase qui dit l'exploitation : « activement exploitées », « exploitation active », « exploitées activement » (hors phrase négative). */
 const EXPLOITED_RE = /activement\s+exploit[ée]e?s?|exploit[ée]e?s?\s+activement|exploitations?\s+actives?/i;
-const NEGATION_RE = /(?:\bne\s|\bpas\b|\baucune?\b|\bn['\u2019])/i;
+/** Négation liée à la proposition d'exploitation : « pas d'exploitation », « aucune exploitation », « non exploitée », « sans exploitation », « n'est pas (activement) exploitée », « n'a pas été exploitée » (au plus deux mots entre les deux). Une négation ailleurs dans la phrase (« ne nécessite pas d'authentification et est activement exploitée ») ne compte pas. */
+const NEGATED_EXPLOITATION_RE = /\b(?:pas|aucune?|non|sans|jamais)\s+(?:[^\s.]+\s+){0,2}?(?:d['\u2019]\s*)?(?:activement\s+)?exploit/i;
 
 /** Date de clôture inscrite dans la « Gestion détaillée du document » : « le 22 septembre 2026 » avant « Clôture de l'alerte ». */
 function closureDate(html) {
@@ -109,7 +110,7 @@ function closureDate(html) {
 function exploitedQuote(html) {
   const body = String(html).replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<\/(?:p|li|dd|dt|h\d|tr|td)>/gi, '. ');
   for (const sentence of cleanText(body).split(/(?<=[.!?])\s+/)) {
-    if (EXPLOITED_RE.test(sentence) && !NEGATION_RE.test(sentence)) return sentence.replace(/[.\s]+$/, '').trim() + '.';
+    if (EXPLOITED_RE.test(sentence) && !NEGATED_EXPLOITATION_RE.test(sentence)) return sentence.replace(/[.\s]+$/, '').trim() + '.';
   }
   return null;
 }
@@ -134,9 +135,9 @@ export function parseCertFrPage(html) {
 /**
  * Page liste des alertes (https://www.cert.ssi.gouv.fr/alerte/, une lecture) : pour chaque alerte, référence, date de publication et
  * statut officiel (« Alerte en cours » : 'en-cours' ; « Clôturée le … » : 'cloturee' et `closedAt`). Une alerte au statut illisible
- * est écartée ; lève si aucune alerte n'est lisible (page changée ou défi anti-robot).
+ * est gardée avec `status: null` ; lève si aucune alerte n'est lisible (page changée ou défi anti-robot).
  * @param {string} html
- * @returns {Array<{ ref: string, publishedAt: string | null, status: 'en-cours' | 'cloturee', closedAt: string | null }>}
+ * @returns {Array<{ ref: string, publishedAt: string | null, status: 'en-cours' | 'cloturee' | null, closedAt: string | null }>}
  */
 export function parseCertFrAlertList(html) {
   const out = [];
@@ -147,6 +148,8 @@ export function parseCertFrAlertList(html) {
     const publishedAt = frenchDate(cleanText(/class="item-date"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? ''));
     if (/^alerte en cours/i.test(statusText)) out.push({ ref, publishedAt, status: 'en-cours', closedAt: null });
     else if (/^cl(?:ô|o)tur(?:é|e)e/i.test(statusText)) out.push({ ref, publishedAt, status: 'cloturee', closedAt: frenchDate(statusText) });
+    // Statut illisible : l'alerte reste dans le résultat avec `status: null` (jamais « en cours » supposé, jamais écartée sans trace).
+    else out.push({ ref, publishedAt, status: null, closedAt: null });
   }
   if (out.length === 0) throw new Error('page liste des alertes sans statut lisible');
   return out;
@@ -161,7 +164,7 @@ export function parseCertFrAlertList(html) {
  * @returns {{ status: 'en-cours' | 'cloturee' | null, closedAt: string | null, conflict: boolean }}
  */
 export function resolveAlertStatus(listEntry, page) {
-  if (listEntry) {
+  if (listEntry?.status) {
     const conflict = Boolean(page) && (listEntry.status === 'cloturee') !== page.closed;
     return { status: listEntry.status, closedAt: listEntry.closedAt ?? (listEntry.status === 'cloturee' ? page?.closedAt ?? null : null), conflict };
   }
@@ -288,6 +291,6 @@ export function applyAlertList(items, list) {
   const byRef = new Map(list.map((e) => [e.ref, e]));
   return items.map((i) => {
     const e = i.kind === 'alerte' ? byRef.get(i.ref) : undefined;
-    return e ? { ...i, status: e.status, closedAt: e.closedAt } : i;
+    return e?.status ? { ...i, status: e.status, closedAt: e.closedAt } : i;
   });
 }

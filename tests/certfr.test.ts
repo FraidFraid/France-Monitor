@@ -71,6 +71,14 @@ describe('parseCertFrPage', () => {
       exploited: true, exploitedQuote: 'Dans son avis du 14 juillet 2026, Microsoft a indiqué que la vulnérabilité CVE-2026-58644 est activement exploitée.',
     });
   });
+  it('négation liée à l’exploitation seulement : « ne nécessite pas d’authentification et est activement exploitée » reste signalée', () => {
+    const page = (sentence: string): ReturnType<typeof parseCertFrPage> => parseCertFrPage(`<td>Date de la dernière version</td><td>1 octobre 2026</td><p>${sentence}</p>`);
+    expect(page('Cette vulnérabilité ne nécessite pas d’authentification et est activement exploitée.').exploited).toBe(true);
+    for (const negated of [
+      'La vulnérabilité n’est pas activement exploitée.', 'La vulnérabilité n’est pas exploitée.', 'Il existe aucune exploitation connue.', 'Il n’y a pas d’exploitation connue.',
+      'La vulnérabilité est non exploitée.', 'Sans exploitation signalée à ce jour.', 'La vulnérabilité n’a pas été exploitée.', 'Le CERT-FR n’a pas connaissance d’exploitations actives.',
+    ]) expect([negated, page(negated).exploited]).toEqual([negated, false]);
+  });
   it('phrase négative : pas d’exploitation signalée', () => {
     const html = '<td>Date de la dernière version</td><td>1 octobre 2026</td><p>Le CERT-FR n’a pas connaissance d’exploitations actives.</p><p>Seule la mise à jour protège contre l’exploitation.</p>';
     expect(parseCertFrPage(html)).toMatchObject({ exploited: false, exploitedQuote: null, closed: false });
@@ -145,6 +153,16 @@ describe('statut officiel (amendement 7, O1 et O3), page liste du 04/10/2026', (
     expect(list.find((e) => e.ref === 'CERTFR-2026-ALE-011')).toEqual({ ref: 'CERTFR-2026-ALE-011', publishedAt: '2026-09-28', status: 'en-cours', closedAt: null });
     expect(list.find((e) => e.ref === 'CERTFR-2026-ALE-008')).toEqual({ ref: 'CERTFR-2026-ALE-008', publishedAt: '2026-07-22', status: 'cloturee', closedAt: '2026-09-22' });
   });
+  it('statut illisible : l’alerte reste dans le résultat avec status null, jamais « en cours » ; applyAlertList garde le statut déjà lu', () => {
+    const html = fx('certfr-alerte-liste.html').replace('Alerte en cours', 'Statut à venir');
+    const unreadable = parseCertFrAlertList(html);
+    expect(unreadable).toHaveLength(10);
+    expect(unreadable.filter((e) => e.status === null).map((e) => e.ref)).toEqual(['CERTFR-2026-ALE-011', 'CERTFR-2026-ALE-010', 'CERTFR-2026-ALE-009']);
+    const page = parseCertFrPage(fx('certfr-alerte-CERTFR-2026-ALE-011.html'));
+    expect(resolveAlertStatus(unreadable[0], page)).toEqual({ status: null, closedAt: null, conflict: false });
+    const item = { ref: 'CERTFR-2026-ALE-011', kind: 'alerte', status: 'en-cours', closedAt: null };
+    expect(applyAlertList([item], unreadable)).toEqual([item]);
+  });
   it('page sans alerte lisible (maintenance, défi) : erreur', () => {
     expect(() => parseCertFrAlertList('<html><body>Maintenance</body></html>')).toThrow('page liste des alertes sans statut lisible');
   });
@@ -195,6 +213,7 @@ describe('Rapports Menaces et incidents (ANSSI), flux CTI du 04/10/2026 (S12)', 
     const log = stubFetch(() => respond(fx('certfr-cti-feed.xml')));
     expect((await fetchCtiReports()).length).toBe(cti.length);
     expect(log.urls).toEqual([CERTFR_CTI_FEED]);
+    expect(sentHeader(log.inits[0], 'User-Agent')).toBe(SOURCE_USER_AGENT);
     stubFetch(() => respond('<rss><channel></channel></rss>'));
     await expect(fetchCtiReports()).rejects.toThrow('flux CTI sans rapport lisible');
   });
