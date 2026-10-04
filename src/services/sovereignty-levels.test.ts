@@ -294,6 +294,16 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
       level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : MMSI 227000001 (AMITIE)`,
     });
   });
+  it('un navire près de deux câbles compte une fois (relevé du 05/10 : un même navire à 112 m de deux câbles du Shom)', () => {
+    const twin = alert({ id: '227000001:shom/FR000008471400001', cableId: 'shom/FR000008471400001', cableName: null });
+    const other = alert({ id: '227000002:way/761201757', mmsi: '227000002', name: 'AUTRE NAVIRE' });
+    expect(cablesLevel(watch({ alerts: [alert(), twin, other] }), NOW)).toEqual({
+      level: 'orange', reason: `2${NBSP}navires lents confirmés sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)`,
+    });
+    expect(cablesLevel(watch({ alerts: [alert({ confirmed: false }), { ...twin, confirmed: false }] }), NOW)).toEqual({
+      level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)`,
+    });
+  });
   it('AIS muet depuis 6 min : n.d. « non évalué · AIS muet depuis 16:42 », alerte confirmée gardée mais sans couleur', () => {
     expect(cablesLevel(watch({ evaluated: false, aisLastMessageAt: '2026-10-04T14:42:00.000Z', alerts: [alert()] }), NOW)).toEqual({
       level: 'nd', reason: 'non évalué · AIS muet depuis 16:42',
@@ -395,7 +405,7 @@ describe('une valeur sur une ligne (R1)', () => {
   it('aucune raison ne sépare un nombre du mot qui le suit par une espace simple', () => {
     const reasons = [
       defenseLevel(military(), NOW, 3), defenseLevel(military(), NOW, 1), defenseLevel(military([masked()]), NOW),
-      cablesLevel(watch({ alerts: [alert(), alert({ id: 'b' })] }), NOW), cablesLevel(watch({ alerts: [alert({ confirmed: false })] }), NOW),
+      cablesLevel(watch({ alerts: [alert(), alert({ id: 'b', mmsi: '227000002' })] }), NOW), cablesLevel(watch({ alerts: [alert({ confirmed: false })] }), NOW),
       cablesLevel(watch(), NOW),
       cyberLevel(cyber([ALE_011, ALE_012]), NOW), cyberLevel(cyber([ALE_010, ALE_009]), NOW), cyberLevel(cyber([], [], 2.25), NOW),
       cyberLevel(cyber([ALE_008]), NOW),

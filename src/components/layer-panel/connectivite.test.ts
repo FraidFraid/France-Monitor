@@ -121,6 +121,17 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     expect(visibleText(s?.html ?? '')).toContain('« à vérifier », jamais une menace');
     expect(visibleText(html({ watch: { ...WATCH, alerts: [ALERT] } })).replace(/jamais une menace/g, '')).not.toMatch(/menace/i);
   });
+  it('un navire près de deux câbles compte une fois dans le gros chiffre et la pastille (relevé du 05/10) ; une ligne par câble', () => {
+    const twin: CableAlert = { ...ALERT, id: '227123456:shom/FR000000000000001', cableId: 'shom/FR000000000000001', cableName: null };
+    const other: CableAlert = { ...ALERT, id: '227654321:way/761201702', mmsi: '227654321', name: 'AUTRE ESSAI', cableId: 'way/761201702', cableName: 'BARMAR' };
+    const w: CablesWatchResponse = { ...WATCH, alerts: [ALERT, twin, other] };
+    const v = view({ watch: w, file: SMALL });
+    expect(slow(v)).toMatchObject({ value: '2', caption: `navires lents à moins de 500${NBSP}m d’un câble · AIS à jour 16:47` });
+    expect(v.head.status[0]).toBe(glueSovUnits(cablesLevel(w, NOW).reason));
+    expect(v.head.status[0]).toContain(`2${NBSP}navires lents confirmés sur un câble`);
+    const h = v.sections.find((x) => x.id === 'navires')?.html ?? '';
+    for (const a of w.alerts) expect(h).toContain(`data-vessel="${a.id}"`);
+  });
   it('navire près d’un câble du Shom sans nom : « câble télécom (Shom) »', () => {
     const a: CableAlert = { ...ALERT, id: '227123456:shom/FR000000000000001', cableId: 'shom/FR000000000000001', cableName: null };
     const h = sectionOf('navires', { watch: { ...WATCH, alerts: [a] }, file: SMALL })?.html ?? '';

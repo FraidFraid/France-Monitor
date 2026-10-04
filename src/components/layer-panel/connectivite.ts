@@ -4,7 +4,7 @@
 // jamais une menace. Flux AIS muet (T3) : « non évalué », alertes gardées en gris, jamais « aucun navire ». Chaque partie porte la date
 // de sa donnée (S1) ; une panne se voit (S3).
 import type { CableAlert, CableLanding, CablesWatchResponse, ConnectivityResponse, SubseaCable, SubseaCablesFile } from '../../types/index.ts';
-import { cableAlertLevel, cablesLevel, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
+import { cableAlertLevel, cablesLevel, distinctVessels, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -147,7 +147,8 @@ function headOf(w: CablesWatchResponse, file: SubseaCablesFile | null, now: numb
     };
   }
   const isLate = aisLate(w, now);
-  const n = w.alerts.filter((a) => a.zoneMuted !== true).length;   // les alertes de zone muette ne sont pas dans le relevé
+  // Navires distincts (une alerte par navire et par câble) ; les alertes de zone muette ne sont pas dans le relevé.
+  const n = distinctVessels(w.alerts.filter((a) => a.zoneMuted !== true));
   const verdict = cablesLevel(w, now);
   return {
     ...base,

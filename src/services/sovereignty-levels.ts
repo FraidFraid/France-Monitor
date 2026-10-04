@@ -229,6 +229,11 @@ export function cableAlertLevel(a: CableAlert, evaluated: boolean): VigilanceLev
   return a.confirmed ? 'orange' : 'jaune';
 }
 
+/** Nombre de navires distincts (MMSI) parmi des alertes de la veille des câbles, qui en compte une par navire et par câble. */
+export function distinctVessels(alerts: readonly CableAlert[]): number {
+  return new Set(alerts.map((a) => a.mmsi)).size;
+}
+
 function vesselWord(a: CableAlert): string {
   const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom (Shom)' : 'câble sans nom');
   return `${a.name ?? `MMSI ${a.mmsi}`} (${cable})`;
@@ -255,13 +260,15 @@ export function cablesLevel(c: CablesWatchResponse, now: number): LevelVerdict {
   const muted = c.alerts.filter((a) => a.zoneMuted === true).length;
   const mutedNote = muted > 0 ? `${plural(muted, 'alerte non évaluée', 'alertes non évaluées')} (flux de la zone muet)` : null;
   const withNote = (reason: string): string => (mutedNote === null ? reason : `${reason} ; ${mutedNote}`);
+  // Une alerte par navire et par câble : un navire près de deux tracés compte une fois (relevé du 05/10 : un même navire à 112 m de deux
+  // câbles du Shom).
   const confirmed = c.alerts.filter((a) => a.confirmed && a.zoneMuted !== true);
   if (confirmed.length > 0) {
-    return { level: 'orange', reason: withNote(`${plural(confirmed.length, 'navire lent confirmé', 'navires lents confirmés')} sur un câble, à vérifier : ${vesselWord(confirmed[0])}`) };
+    return { level: 'orange', reason: withNote(`${plural(distinctVessels(confirmed), 'navire lent confirmé', 'navires lents confirmés')} sur un câble, à vérifier : ${vesselWord(confirmed[0])}`) };
   }
   const once = c.alerts.filter((a) => !a.confirmed && a.zoneMuted !== true);
   if (once.length > 0) {
-    return { level: 'jaune', reason: withNote(`${plural(once.length, 'navire lent vu une fois', 'navires lents vus une fois')} sur un câble, à vérifier : ${vesselWord(once[0])}`) };
+    return { level: 'jaune', reason: withNote(`${plural(distinctVessels(once), 'navire lent vu une fois', 'navires lents vus une fois')} sur un câble, à vérifier : ${vesselWord(once[0])}`) };
   }
   return { level: 'vert', reason: withNote('aucun navire lent à moins de 500\u00a0m d’un câble') };
 }
