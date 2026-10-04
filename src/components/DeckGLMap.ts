@@ -41,6 +41,16 @@ import {
   type EnvBData, type EnvBLayerState,
 } from './deckgl/environment-map.ts';
 import {
+  SOV_HOVER_LAYERS, SOV_LAYERS, SOV_LAYER_KEYS, SOV_OPTION_LAYERS, SOV_SOURCE_IDS, abroadAircraftFeatures, aircraftFeatures, cableAlertFeatures,
+  cableFeatures, defenseSiteFeatures, landingFeatures, militaryEmergencyFeatures, navyFeatures, osmWorksFeatures, sovCableColor, sovSourceSpec,
+  sovTooltipHtml, topSovHit,
+} from './deckgl/sovereignty-map.ts';
+import {
+  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_EMERGENCIES, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
+} from './deckgl/constants.ts';
+import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
@@ -86,10 +96,8 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type FmDotLevel, type IconName } from './shared/icons.ts';
 import {
-  buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
   renderDromEnergyTooltipHtml,
-  buildSubseaCableTooltip,
 } from './deckgl/popup-templates.ts';
 import {
   SRC,
@@ -436,8 +444,6 @@ export class DeckGLMap {
   private aisIconDefs: Record<string, { url: string; width: number; height: number; anchorX: number; anchorY: number; mask: boolean }> = {};
   // Lightweight hover tooltip (uses maplibregl.Popup)
   private militaryTooltip: maplibregl.Popup | null = null;
-  private hoveredSubseaCableId: string | number | null = null;
-  private hoveredSubseaLandingId: string | number | null = null;
   private aisHoverTooltip: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   /** Trafics (spec 2026-10-03 trafics § 3) : survol, fiche d'un bouchon, icônes d'avions selon le zoom, retard SNCF du trajet tracé. */
@@ -457,6 +463,16 @@ export class DeckGLMap {
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
   private envHoverPopup: maplibregl.Popup | null = null;
   private envHoverShown = false;
+  // Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : infobulle, option des ouvrages OSM, clic transmis à App.ts, dernières
+  // données (rejeu à l'heure courante au réaffichage, S2), câbles OSM et Shom (cadrage d'un câble choisi).
+  private sovHoverPopup: maplibregl.Popup | null = null;
+  private sovHoverShown = false;
+  private osmWorksVisible = false;
+  private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
+  private sovCables: SubseaCablesFile | null = null;
+  private sovCableWatch: CablesWatchResponse | null = null;
+  private sovMilitary: MilitaryResponse | null = null;
+  private sovNavy: { ships: readonly MilitaryShip[]; frozen: boolean } | null = null;
   private trafficHoverShown = false;
   private trafficPointer = false;
   private trafficJamPopup: maplibregl.Popup | null = null;
@@ -894,28 +910,17 @@ export class DeckGLMap {
     this.map.addSource(SRC_MILITARY_SHIPS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
+    // Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs, urgences, Marine nationale, ouvrages OSM, navires près d'un câble.
+    for (const id of SOV_SOURCE_IDS) this.map.addSource(id, sovSourceSpec());
     this.map.addSource(SRC_GLOBAL_TRAFFIC, { type: 'geojson', data: emptyFC() });
 
-    let submarineCablesData = emptyFC() as GeoJSON.FeatureCollection<GeoJSON.LineString>;
-    try {
-      const submarineCablesResponse = await fetch('/data/submarine-cables.json');
-      if (submarineCablesResponse.ok) {
-        submarineCablesData = await submarineCablesResponse.json() as GeoJSON.FeatureCollection<GeoJSON.LineString>;
-      }
-    } catch (err) {
-      console.warn('[DeckGLMap] Failed to load submarine cables data:', err);
-    }
-
-    // Submarine cables
+    // Câbles (Connectivité) : vides jusqu'à updateCablesLayer (fichier du Shom et d'OpenStreetMap), l'ancien fichier dessiné à la main n'est plus lu.
     this.map.addSource(SRC_SUBMARINE_CABLES, {
       type: 'geojson',
-      data: submarineCablesData,
+      data: emptyFC(),
       promoteId: 'id',
     });
-    this.map.addSource(SRC_SUBMARINE_CABLES_LANDINGS, {
-      type: 'geojson',
-      data: buildSubmarineLandingPoints(submarineCablesData),
-    });
+    this.map.addSource(SRC_SUBMARINE_CABLES_LANDINGS, { type: 'geojson', data: emptyFC() });
 
     // Sites d'urgences autorisés (SAE 2025, FINESS)
     this.map.addSource(SRC_HOSPITALS, { type: 'geojson', data: emptyFC() });
@@ -2839,7 +2844,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#5fdcff',
+        'line-color': sovCableColor('#5fdcff'),
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
           3, 10,
@@ -2878,7 +2883,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#22c7ff',
+        'line-color': sovCableColor('#22c7ff'),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2.8, 8, 4.2, 12, 5.8],
         'line-opacity': 0.96,
       },
@@ -2894,7 +2899,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#f4fdff',
+        'line-color': sovCableColor('#f4fdff'),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 8, 2.1, 12, 2.8],
         'line-opacity': 0.98,
       },
@@ -2935,6 +2940,9 @@ export class DeckGLMap {
     this.map.moveLayer(LYR_SUBMARINE_CABLES_CORE, undefined);
     this.map.moveLayer(LYR_SUBMARINE_CABLES_LANDING, undefined);
     this.map.moveLayer(LYR_SUBMARINE_CABLES_HITAREA, undefined);
+
+    // ─── Souveraineté (contrats § 5) : couches de deckgl/sovereignty-map.ts, au-dessus des câbles, masquées jusqu'à setLayerVisibility ───
+    for (const layer of SOV_LAYERS) this.map.addLayer(layer);
 
     // ─── Citizen Outage Zones (crowd-sourced clusters) ───
     // Toujours violet (matching légende) — l'intensité varie selon severity
@@ -3688,6 +3696,8 @@ export class DeckGLMap {
 
     // Couches Environnement : infobulle au survol, point du profil radar au clic (initEnvironmentInteractions).
     this.initEnvironmentInteractions();
+    // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
+    this.initSovereigntyInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -4662,22 +4672,12 @@ export class DeckGLMap {
     });
     this.map.on('mousemove', LYR_INTERCONN_HITAREA, showFlowHover);
 
-    // ─── Military Bases interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${p.name || 'Base'}</strong><br><span style="color:#34c759;font-size:11px">${p.type || ''}</span>`
-      );
+    // ─── Sites de défense : curseur ; infobulle échappée de initSovereigntyInteractions ; clic : fiche du site (onMilitaryBaseClick) ───
+    this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, () => {
+      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
     this.map.on('mouseleave', LYR_MILITARY_BASES_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
     });
     this.map.on('click', LYR_MILITARY_BASES_CIRCLE, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
@@ -4764,42 +4764,15 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Submarine Cables Interactions ───
-    const showSubseaCableHover = (
-      e: maplibregl.MapLayerMouseEvent,
-      source: typeof SRC_SUBMARINE_CABLES | typeof SRC_SUBMARINE_CABLES_LANDINGS
-    ) => {
-      if (!this.map) return;
-      const feat = e.features?.[0];
-      if (!feat?.properties) return;
-
-      this.map.getCanvas().style.cursor = 'pointer';
-      this.clearSubseaCableHoverState();
-
-      if (source === SRC_SUBMARINE_CABLES && feat.id != null) {
-        this.hoveredSubseaCableId = feat.id;
-        this.map.setFeatureState({ source, id: feat.id }, { hover: true });
-      }
-      if (source === SRC_SUBMARINE_CABLES_LANDINGS && feat.id != null) {
-        this.hoveredSubseaLandingId = feat.id;
-        this.map.setFeatureState({ source, id: feat.id }, { hover: true });
-      }
-
-      this.showMilitaryTooltip(e.lngLat, buildSubseaCableTooltip(feat.properties as Record<string, unknown>));
-    };
-
+    // ─── Câbles (Connectivité) : curseur ; infobulle et clic de initSovereigntyInteractions (câbles du Shom et d'OpenStreetMap) ───
     for (const layerId of [LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING]) {
       this.map.on('mouseenter', layerId, () => {
         if (this.map) this.map.getCanvas().style.cursor = 'pointer';
       });
       this.map.on('mouseleave', layerId, () => {
         if (this.map) this.map.getCanvas().style.cursor = '';
-        this.hideSubseaCableTooltip();
       });
     }
-
-    this.map.on('mousemove', LYR_SUBMARINE_CABLES_HITAREA, (e) => showSubseaCableHover(e, SRC_SUBMARINE_CABLES));
-    this.map.on('mousemove', LYR_SUBMARINE_CABLES_LANDING, (e) => showSubseaCableHover(e, SRC_SUBMARINE_CABLES_LANDINGS));
 
     // Track view state
     this.map.on('moveend', () => {
@@ -4824,7 +4797,7 @@ export class DeckGLMap {
     // PULSE OVERLAY (CSS animations for critical/high alerts)
     // ═══════════════════════════════════════════════════════════════
     this.initPulseOverlay();
-    this.startSubseaPulseAnimation();
+    // Halo des câbles : animé seulement quand la couche Connectivité est visible (setLayerVisibility, audit 30).
 
     // Update pulse markers on map move — throttled via requestAnimationFrame
     // so DOM style updates happen at most once per frame (≤ 16 ms) instead of
@@ -6411,6 +6384,9 @@ export class DeckGLMap {
 
       // ─── Navire militaire ───
       'mil-ship': this.buildSvg(SIZE, this.svgAnchor('#00d4c8')),
+      // ─── Marine nationale (souveraineté) : port base, position de référence (contour pointillé) ; vu en AIS, flux figé (gris) ───
+      'mil-ship-ref': this.buildSvg(SIZE, `<circle cx="32" cy="32" r="29" fill="none" stroke="${NAVY_HEX}" stroke-width="3" stroke-dasharray="6 5"/>${this.svgAnchor(NAVY_HEX)}`),
+      'mil-ship-stale': this.buildSvg(SIZE, this.svgAnchor(SOV_ABROAD_HEX)),
     };
 
     const canvas = document.createElement('canvas');
@@ -9134,7 +9110,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
       LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_FLIGHTS, LYR_MILITARY_SHIPS, LYR_HOSPITALS,
-      ...Object.values(TRAFFIC_LAYER_KEYS).flat(),
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
@@ -9982,6 +9958,128 @@ export class DeckGLMap {
     this.onEventPointClick = handler;
   }
 
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) ───
+
+  /** Aéronefs militaires d'autres pays au-dessus de la France, hors de France en gris, urgences cerclées par niveau (O10 : jamais un appareil français) ; relevé en retard : gris. */
+  updateMilitaryLayer(m: MilitaryResponse | null, now: number): void {
+    this.sovMilitary = m;
+    if (!this.map) return;
+    this.paintMilitary(m, now);
+    this.hideSovereigntyHover();
+  }
+
+  private paintMilitary(m: MilitaryResponse | null, now: number): void {
+    if (!this.map) return;
+    (this.map.getSource(SRC_SOV_AIRCRAFT) as maplibregl.GeoJSONSource | undefined)?.setData(aircraftFeatures(m, now));
+    (this.map.getSource(SRC_SOV_AIRCRAFT_ABROAD) as maplibregl.GeoJSONSource | undefined)?.setData(abroadAircraftFeatures(m));
+    (this.map.getSource(SRC_SOV_EMERGENCIES) as maplibregl.GeoJSONSource | undefined)?.setData(militaryEmergencyFeatures(m, now));
+  }
+
+  /** Marine nationale : vus en AIS (heure en étiquette ; flux figé : gris) et ports base de référence (icône à part) ; jamais un SNLE ni un SNA (O11). */
+  updateNavyLayer(ships: readonly MilitaryShip[], frozen: boolean, now: number): void {
+    this.sovNavy = { ships, frozen };
+    if (!this.map) return;
+    // Surbrillance et sélection du Trafic maritime : un bâtiment au port est retrouvé par son MMSI dans cette table.
+    this.militaryShipsById.clear();
+    for (const s of ships) this.militaryShipsById.set(s.id, s);
+    (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(ships, frozen, now));
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
+  }
+
+  /** Sites de la liste interne (triangles par catégorie), sans fusion OpenStreetMap. */
+  updateDefenseSites(bases: readonly MilitaryBase[]): void {
+    if (!this.map) return;
+    this.militaryBasesById.clear();
+    for (const b of bases) this.militaryBasesById.set(b.id, b);
+    (this.map.getSource(SRC_MILITARY_BASES) as maplibregl.GeoJSONSource | undefined)?.setData(defenseSiteFeatures(bases));
+  }
+
+  /** Ouvrages OpenStreetMap (option de la couche Défense, éteinte par défaut). */
+  updateOsmWorks(file: DefenseOsmWorksFile | null): void {
+    (this.map?.getSource(SRC_SOV_OSM_WORKS) as maplibregl.GeoJSONSource | undefined)?.setData(osmWorksFeatures(file));
+  }
+
+  setOsmWorksVisible(on: boolean): void {
+    this.osmWorksVisible = on;
+    const shown = on && (this.currentLayers?.military ?? false);
+    for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, shown ? 'visible' : 'none');
+  }
+
+  /** Câbles télécom du Shom et d'OpenStreetMap (tracés, atterrages) et navires lents signalés, datés. */
+  updateCablesLayer(file: SubseaCablesFile | null, watch: CablesWatchResponse | null, now: number): void {
+    this.sovCables = file;
+    this.sovCableWatch = watch;
+    if (!this.map) return;
+    (this.map.getSource(SRC_SUBMARINE_CABLES) as maplibregl.GeoJSONSource | undefined)?.setData(cableFeatures(file));
+    (this.map.getSource(SRC_SUBMARINE_CABLES_LANDINGS) as maplibregl.GeoJSONSource | undefined)?.setData(landingFeatures(file));
+    (this.map.getSource(SRC_SOV_CABLE_VESSELS) as maplibregl.GeoJSONSource | undefined)?.setData(cableAlertFeatures(watch, now));
+    this.hideSovereigntyHover();
+  }
+
+  /** Câble choisi dans le panneau Connectivité : la carte se cale sur l'emprise de son tracé ; null : rien ne bouge. */
+  highlightCable(id: string | null): void {
+    const cable = id === null ? undefined : this.sovCables?.cables.find((c) => c.id === id);
+    const points = cable ? cable.path.flat() : [];
+    if (points.length === 0) return;
+    const lons = points.map((p) => p[0]);
+    const lats = points.map((p) => p[1]);
+    this.fitBounds([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)], 80);
+  }
+
+  /** Clic sur un objet Souveraineté : App.ts ouvre le panneau de sa couche ou la fiche d'un navire. */
+  setOnSovereigntyFeatureClick(handler: (layerId: string, props: Record<string, unknown>) => void): void {
+    this.onSovereigntyFeatureClick = handler;
+  }
+
+  /** Défense ou Connectivité réaffichée : couleurs recalculées avec l'horloge courante (S2), jamais celle du dernier rafraîchissement. */
+  private repaintSovereigntyOnShow(before: MapLayers | null | undefined, layers: MapLayers): void {
+    if (!this.map) return;
+    const was = before ?? ({} as Partial<MapLayers>);
+    const now = Date.now();
+    if (layers.military && !was.military) {
+      if (this.sovMilitary) this.paintMilitary(this.sovMilitary, now);
+      if (this.sovNavy) (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(this.sovNavy.ships, this.sovNavy.frozen, now));
+    }
+    if (layers.subseaCables && !was.subseaCables && this.sovCableWatch) {
+      (this.map.getSource(SRC_SOV_CABLE_VESSELS) as maplibregl.GeoJSONSource | undefined)?.setData(cableAlertFeatures(this.sovCableWatch, now));
+    }
+  }
+
+  private hideSovereigntyHover(): void {
+    if (!this.sovHoverShown) return;
+    this.sovHoverShown = false;
+    this.sovHoverPopup?.remove();
+  }
+
+  /** Couches Souveraineté : une infobulle préparée avec la donnée (couche du dessus, texte échappé) ; clic transmis à App.ts. */
+  private initSovereigntyInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const visibleLayers = (): string[] => SOV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    map.on('mousemove', (e) => {
+      const layers = visibleLayers();
+      const hit = topSovHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      const html = hit ? sovTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideSovereigntyHover();
+        return;
+      }
+      this.sovHoverShown = true;
+      const popup = this.sovHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.sovHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideSovereigntyHover());
+    map.on('click', (e) => {
+      if (!this.onSovereigntyFeatureClick) return;
+      const layers = visibleLayers();
+      const hit = topSovHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      if (hit) this.onSovereigntyFeatureClick(hit.layer.id, { ...(hit.properties ?? {}) });
+    });
+  }
+
   // ─── Military Layers ───
 
   updateMilitaryZones(zones: RestrictedZone[]): void {
@@ -10508,24 +10606,6 @@ export class DeckGLMap {
     el.style.pointerEvents = 'none';
   }
 
-  private clearSubseaCableHoverState(): void {
-    if (!this.map) return;
-    if (this.hoveredSubseaCableId != null) {
-      this.map.setFeatureState({ source: SRC_SUBMARINE_CABLES, id: this.hoveredSubseaCableId }, { hover: false });
-      this.hoveredSubseaCableId = null;
-    }
-    if (this.hoveredSubseaLandingId != null) {
-      this.map.setFeatureState({ source: SRC_SUBMARINE_CABLES_LANDINGS, id: this.hoveredSubseaLandingId }, { hover: false });
-      this.hoveredSubseaLandingId = null;
-    }
-  }
-
-  private hideSubseaCableTooltip(): void {
-    this.clearSubseaCableHoverState();
-    this.militaryTooltip?.remove();
-    this.militaryTooltip = null;
-  }
-
   // ─── Layer Visibility Toggle ───
 
   private currentLayers?: MapLayers;
@@ -10555,6 +10635,7 @@ export class DeckGLMap {
       void this.updateVigilanceLayer(v, echeance, Date.now());
     }
     this.repaintEnvironmentOnShow(before, layers);
+    this.repaintSovereigntyOnShow(before, layers);
     if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
     if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {
@@ -10705,11 +10786,10 @@ export class DeckGLMap {
     this.setVis(LYR_METRO_LOAD_CIRCLE, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
 
-    // Military layers
-    this.setVis(LYR_MILITARY_ZONES_FILL, vis(layers.military));
-    this.setVis(LYR_MILITARY_ZONES_LINE, vis(layers.military));
-    this.setVis(LYR_MILITARY_BASES_CIRCLE, vis(layers.military));
-    this.setVis(LYR_MILITARY_BASES_LABEL, vis(layers.military));
+    // Military layers : couches Souveraineté de deckgl/sovereignty-map.ts (aéronefs, urgences, Marine nationale, sites, zones) ; option des
+    // ouvrages OpenStreetMap éteinte par défaut. Les couches anciennes qui suivent ne sont plus nourries (vols : retirées à A17).
+    for (const id of SOV_LAYER_KEYS.military) this.setVis(id, vis(layers.military));
+    for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, vis(layers.military && this.osmWorksVisible));
     this.setVis(LYR_MILITARY_FLIGHT_TRAILS, vis(layers.military));
     this.setVis(LYR_MILITARY_FLIGHTS, vis(layers.military));
     this.setVis(LYR_MILITARY_FLIGHTS_LABEL, vis(layers.military));
@@ -10722,12 +10802,11 @@ export class DeckGLMap {
     this.airTrafficVisible = layers.trafficAir;
     if (!this.airTrafficVisible) this.stopCivilAirTween();
     this.refreshAisLayers();
-    // Submarine cables
-    this.setVis(LYR_SUBMARINE_CABLES, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_GLOW, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_CORE, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_HITAREA, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_LANDING, vis(layers.subseaCables));
+    // Connectivité : câbles du Shom et d'OpenStreetMap, atterrages, navires signalés ; halo animé seulement couche visible (audit 30).
+    for (const id of SOV_LAYER_KEYS.subseaCables) this.setVis(id, vis(layers.subseaCables));
+    if (layers.subseaCables) this.startSubseaPulseAnimation();
+    else this.stopSubseaPulseAnimation();
+    this.hideSovereigntyHover();
     this.setVis(LYR_POWER_FILL, vis(layers.outagesElec));
     this.setVis(LYR_POWER_LINE, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));

@@ -14,6 +14,7 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
@@ -59,6 +60,7 @@ export class MapContainer {
   private echoTopsEnabled = false;
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
   private radarPick: { lat: number; lon: number } | null = null;
+  private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -91,6 +93,7 @@ export class MapContainer {
     if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
+    if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
@@ -621,6 +624,40 @@ export class MapContainer {
   setOnRadarPointPick(handler: (lat: number, lon: number) => void): void {
     this.onRadarPointPick = handler;
     this.deckMap?.setOnRadarPointPick(handler);
+  }
+
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : carte WebGL seulement (mobile : aucun rendu, comme avant) ───
+  updateMilitaryLayer(m: MilitaryResponse | null, now: number): void {
+    this.deckMap?.updateMilitaryLayer(m, now);
+  }
+
+  updateNavyLayer(ships: readonly MilitaryShip[], frozen: boolean, now: number): void {
+    this.deckMap?.updateNavyLayer(ships, frozen, now);
+  }
+
+  updateDefenseSites(bases: readonly MilitaryBase[]): void {
+    this.deckMap?.updateDefenseSites(bases);
+  }
+
+  updateOsmWorks(file: DefenseOsmWorksFile | null): void {
+    this.deckMap?.updateOsmWorks(file);
+  }
+
+  setOsmWorksVisible(on: boolean): void {
+    this.deckMap?.setOsmWorksVisible(on);
+  }
+
+  updateCablesLayer(file: SubseaCablesFile | null, watch: CablesWatchResponse | null, now: number): void {
+    this.deckMap?.updateCablesLayer(file, watch, now);
+  }
+
+  highlightCable(id: string | null): void {
+    this.deckMap?.highlightCable(id);
+  }
+
+  setOnSovereigntyFeatureClick(handler: (layerId: string, props: Record<string, unknown>) => void): void {
+    this.onSovereigntyFeatureClick = handler;
+    this.deckMap?.setOnSovereigntyFeatureClick(handler);
   }
 
   destroy(): void {
