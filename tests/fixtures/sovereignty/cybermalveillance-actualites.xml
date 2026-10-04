@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Flux RSS des actualités</title>
+  <subtitle/>
+  <link href="https://www.cybermalveillance.gouv.fr/feed/atom-flux-actualites" rel="self" type="application/rss+xml"/>
+  <updated>2026-10-04T15:26:16+02:00</updated>
+  <id>https://www.cybermalveillance.gouv.fr/feed/atom-flux-actualites</id>
+  <author>
+    <name>ACYMA</name>
+  </author>
+  <icon>favicon.ico</icon>
+  <link rel="alternate">https://www.cybermalveillance.gouv.fr</link>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/lettres-d-information</id>
+    <title><![CDATA[Lettres d&rsquo;information]]></title>
+    <summary type="html"><![CDATA[<p>Actualités, contenus et ressources thématiques pour vous sensibiliser aux risques numériques et aux bonnes pratiques associées, informations sur les cybermenaces&#8230; Retrouvez dans cette section les lettres d&rsquo;informations de Cybermalveillance.gouv.fr. </p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/lettres-d-information"/>
+    <updated>2026-10-01T16:11:47+02:00</updated>
+    <published>2026-10-01 16:11:46</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026-campagne</id>
+    <title><![CDATA[Cybermois 2026 : « Se Cyber Protéger, ce n&rsquo;est pas si bête »]]></title>
+    <summary type="html"><![CDATA[Nous avons tous entendu parler de cybersécurité. Nous savons qu’il faut faire attention. Et pourtant, les bons réflexes ne sont pas toujours appliqués. C’est de ce constat qu’est née la campagne 2026 du Cybermois : « Se Cyber Protéger, ce n’est pas si bête ». Inscrivez-vous dès…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026-campagne"/>
+    <updated>2026-10-01T14:26:14+02:00</updated>
+    <published>2026-09-29 23:10:55</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybertour-france-2026</id>
+    <title><![CDATA[CyberTour de France 2026 : le cybermois au plus près des territoires]]></title>
+    <summary type="html"><![CDATA[À l’occasion de la 14e édition du Cybermois, Cybermalveillance.gouv.fr repart sur les routes avec le CyberTour de France 2026. Du 1er octobre au 4 novembre, six étapes organisées avec les Campus Cyber territoriaux, les collectivités et leurs partenaires permettront d’aller à la…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybertour-france-2026"/>
+    <updated>2026-09-29T15:39:37+02:00</updated>
+    <published>2026-09-15 10:52:39</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cp-cybermois-2026</id>
+    <title><![CDATA[Cybermois 2026 : près d’un Français sur deux désormais notifié suite à une violation de ses données]]></title>
+    <summary type="html"><![CDATA[À l’occasion du lancement de la 14ème édition du Cybermois, Cybermalveillance.gouv.fr, le dispositif national d’assistance et de prévention en cybersécurité, dévoile les résultats de son 3ème baromètre sur la perception cyber des Français, réalisé avec Ipsos Digital. L’étude…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cp-cybermois-2026"/>
+    <updated>2026-09-18T15:49:18+02:00</updated>
+    <published>2026-09-15 10:50:28</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/enquete-collectivites-cybersecurite-2026</id>
+    <title><![CDATA[Cybermalveillance.gouv.fr lance une enquête auprès des collectivités de moins de 25 000 habitants]]></title>
+    <summary type="html"><![CDATA[<p>Dans la continuité de ses actions à destination des collectivités, Cybermalveillance.gouv.fr réalise une enquête sur la maturité des collectivités locales en termes de cybersécurité et a pour objectif d’améliorer leur sécurisation numérique.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/enquete-collectivites-cybersecurite-2026"/>
+    <updated>2026-10-02T11:00:26+02:00</updated>
+    <published>2026-09-01 14:23:34</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-faille-securite-critique-spip</id>
+    <title><![CDATA[Cybermalveillance.gouv.fr lance une AlerteCyber concernant une faille de sécurité critique dans SPIP]]></title>
+    <summary type="html"><![CDATA[Cybermalveillance.gouv.fr déclenche ce jour une nouvelle AlerteCyber concernant des failles de sécurité critiques dans les produits Microsoft. Il est primordial de les corriger le plus rapidement possible en mettant à jour les systèmes concernés pour réduire les risques d’une cyberattaque.…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-faille-securite-critique-spip"/>
+    <updated>2026-08-27T15:16:35+02:00</updated>
+    <published>2026-08-27 15:16:34</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-faille-de-securite-critique-dans-spip-202608</id>
+    <title><![CDATA[AlerteCyber : Faille de sécurité critique dans SPIP]]></title>
+    <summary type="html"><![CDATA[Failles de sécurité critiques dans SPIP Risques Espionnage, vol, voire destruction de vos données suite à la prise de contrôle à distance de vos équipements concernés. Description Une faille de sécurité a été corrigée dans le système de gestion de contenu SPIP. L’exploitation de…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-faille-de-securite-critique-dans-spip-202608"/>
+    <updated>2026-09-16T09:55:02+02:00</updated>
+    <published>2026-08-27 14:24:06</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-microsoftsharepoint-0726</id>
+    <title><![CDATA[Cybermalveillance.gouv.fr lance une AlerteCyber concernant deux failles de sécurité critiques dans Microsoft SharePoint]]></title>
+    <summary type="html"><![CDATA[<p>Cybermalveillance.gouv.fr déclenche ce jour une nouvelle AlerteCyber concernant deux failles de sécurité critiques dans Microsoft SharePoint. Il est primordial de les corriger le plus rapidement possible en mettant à jour les systèmes concernés pour réduire les risques d’une cyberattaque.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-microsoftsharepoint-0726"/>
+    <updated>2026-08-10T14:49:07+02:00</updated>
+    <published>2026-07-28 13:22:05</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-failles-de-securite-critiques-dans-sharepoint-202607</id>
+    <title><![CDATA[AlerteCyber : Failles de sécurité critiques dans Microsoft SharePoint]]></title>
+    <summary type="html"><![CDATA[<p>Deux failles de sécurité critiques ont été corrigées dans Microsoft SharePoint.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-failles-de-securite-critiques-dans-sharepoint-202607"/>
+    <updated>2026-09-15T13:11:48+02:00</updated>
+    <published>2026-07-28 08:53:06</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-wordpress</id>
+    <title><![CDATA[Cybermalveillance.gouv.fr lance une AlerteCyber concernant des failles de sécurité critiques dans WordPress]]></title>
+    <summary type="html"><![CDATA[<p>Cybermalveillance.gouv.fr déclenche ce jour une nouvelle AlerteCyber concernant des failles de sécurité critiques dans WordPress. Il est primordial de les corriger le plus rapidement possible en mettant à jour les systèmes concernés pour réduire les risques d’une cyberattaque.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-wordpress"/>
+    <updated>2026-07-23T17:12:14+02:00</updated>
+    <published>2026-07-23 11:48:48</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-failles-de-securite-critiques-dans-wordpress-202607</id>
+    <title><![CDATA[AlerteCyber : Failles de sécurité critiques dans WordPress]]></title>
+    <summary type="html"><![CDATA[<p>Deux failles de sécurité critiques ont été corrigées dans WordPress.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/alertecyber-failles-de-securite-critiques-dans-wordpress-202607"/>
+    <updated>2026-09-15T13:20:28+02:00</updated>
+    <published>2026-07-23 09:25:40</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/remboursement-impot-hameconnage</id>
+    <title><![CDATA[Remboursement d&rsquo;impôt : attention aux tentatives d&rsquo;hameçonnage]]></title>
+    <summary type="html"><![CDATA[À l’approche de la campagne annuelle de remboursement de l’impôt sur le revenu, dont les versements interviendront les 24 et 31 juillet 2026, la vigilance est de mise. Comme chaque année, cette période est propice aux campagnes d’hameçonnage usurpant l’identité de l’administration…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/remboursement-impot-hameconnage"/>
+    <updated>2026-09-08T15:55:25+02:00</updated>
+    <published>2026-07-15 10:26:15</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/faire-ses-demarches-administratives-en-ligne-en-evitant-les-pieges</id>
+    <title><![CDATA[Faire ses démarches administratives en ligne en évitant les pièges]]></title>
+    <summary type="html"><![CDATA[De nombreuses démarches administratives peuvent être réalisées en ligne : documents d&rsquo;identité, aides sociales, impôts, carte grise, etc. Mais des escrocs ou des sites Internet douteux utilisent cette thématique à des fins frauduleuses : arnaque commerciale, vol d&rsquo;informations,…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/faire-ses-demarches-administratives-en-ligne-en-evitant-les-pieges"/>
+    <updated>2026-09-07T16:23:55+02:00</updated>
+    <published>2026-07-09 10:58:00</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/mallettecyber-pro</id>
+    <title><![CDATA[Lancement de la MalletteCyber Pro pour sensibiliser les TPE-PME]]></title>
+    <summary type="html"><![CDATA[À l’occasion de la Grande Assemblée des Entrepreneurs, Cybermalveillance.gouv.fr, soutenu par un collectif d’acteurs professionnels, annonce la mise à disposition de la MalletteCyber Pro, un outil clé en main pour responsabiliser, accompagner les entreprises et leur permettre de se…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/mallettecyber-pro"/>
+    <updated>2026-07-09T16:49:03+02:00</updated>
+    <published>2026-06-25 11:50:13</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026</id>
+    <title><![CDATA[Cybermois 2026]]></title>
+    <summary type="html"><![CDATA[<p>Le Mois européen de la cybersécurité, Cybermois en France, vise à sensibiliser aux menaces numériques et à promouvoir les bons réflexes.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026"/>
+    <updated>2026-10-01T14:10:41+02:00</updated>
+    <published>2026-06-04 12:00:48</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/7-conseils-pour-eviter-les-cyberescroqueries</id>
+    <title><![CDATA[Soldes d&rsquo;été : 7 conseils pour éviter les cyber-arnaques]]></title>
+    <summary type="html"><![CDATA[<p>Durant les périodes promotionnelles, Cybermalveillance.gouv.fr appelle à la plus grande vigilance et délivre 7 conseils pour éviter de se faire escroquer. </p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/7-conseils-pour-eviter-les-cyberescroqueries"/>
+    <updated>2026-08-11T14:38:10+02:00</updated>
+    <published>2026-06-03 15:45:00</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026-kit-communication</id>
+    <title><![CDATA[Cybermois 2026 : kit de communication]]></title>
+    <summary type="html"><![CDATA[<p>Vous souhaitez communiquer sur le Cybermois 2026 auprès de vos publics, éditer les supports du Cybermois à vos couleurs ou réutiliser des contenus de sensibilisation ? Nous vous mettons à disposition différents outils.</p>
+]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/cybermois-2026-kit-communication"/>
+    <updated>2026-10-01T17:25:04+02:00</updated>
+    <published>2026-06-02 09:56:39</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/ugap-cybermalveillancegouvfr</id>
+    <title><![CDATA[L’UGAP et Cybermalveillance.gouv.fr nouent un partenariat structurant pour accompagner les acteurs publics face au risque cyber]]></title>
+    <summary type="html"><![CDATA[Dans un contexte d’intensification des menaces numériques, l’UGAP, centrale d’achat public, et Cybermalveillance.gouv.fr ont signé une convention de partenariat visant à renforcer la sensibilisation et l’accompagnement des acheteurs publics en matière de cybersécurité. Ce partenariat…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/ugap-cybermalveillancegouvfr"/>
+    <updated>2026-06-02T09:37:55+02:00</updated>
+    <published>2026-06-01 17:36:35</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/violations-donnees-ra25</id>
+    <title><![CDATA[Les violations de données en 2025 : une accélération avec des conséquences très diverses]]></title>
+    <summary type="html"><![CDATA[Dans la continuité de l’année 2024, l’année 2025 a été marquée par une accélération des violations de données personnelles. De nombreux incidents, dont certains considérables, ont affecté des organisations publiques et privées, entraînant l’exposition des données personnelles de…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/violations-donnees-ra25"/>
+    <updated>2026-08-18T17:05:04+02:00</updated>
+    <published>2026-06-01 15:06:37</published>
+  </entry>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/donnees-perso-piratage-compte-ra25</id>
+    <title><![CDATA[Le piratage de comptes en ligne en 2025]]></title>
+    <summary type="html"><![CDATA[Le piratage de compte en ligne continue de progresser en 2025 et devient la menace n° 1 pour les publics professionnels. Il concerne toujours tous types de comptes mais les messageries électroniques (courriel) et les comptes de réseaux sociaux restent particulièrement ciblés par les…]]></summary>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/actualites/donnees-perso-piratage-compte-ra25"/>
+    <updated>2026-06-01T15:03:53+02:00</updated>
+    <published>2026-06-01 15:02:56</published>
+  </entry>
+</feed>
