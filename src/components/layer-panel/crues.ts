@@ -37,6 +37,13 @@ const shownChange = (c: number | null): number | null => (c === null ? null : Ma
 const isHubeauError = (e: string): boolean => /^Hub['’]Eau/i.test(e) && !isProgressNote(e);
 /** Erreurs du serveur qui sont de vraies pannes (les notes d'avancement sont dites à part, jamais « source indisponible »). */
 const realErrors = (f: FloodsResponse): string[] => f.errors.filter((e) => !isProgressNote(e));
+/** Relevé périmé servi par le serveur après un échec de relecture : donnée réelle, avec sa date, jamais une panne de la liste. */
+const isStalePrevious = (e: string): boolean => /^Vigicrues : relevé précédent servi \(lecture en échec\)$/.test(e);
+const hasStalePrevious = (f: FloodsResponse): boolean => f.errors.some(isStalePrevious);
+/** Pannes de la liste des tronçons (ni stations, ni territoires, ni relevé précédent servi). */
+const listErrors = (f: FloodsResponse): string[] => realErrors(f).filter((e) => /^Vigicrues/i.test(e) && !/stations|territoires/i.test(e) && !isStalePrevious(e));
+/** Liste des tronçons indisponible : relevé lu, mais vide et accompagné d'une vraie panne Vigicrues (jamais « 0 » ni « aucune vigilance »). */
+const listDown = (f: FloodsResponse): boolean => f.sections.length === 0 && listErrors(f).length > 0;
 const isoOf = (ms: number | null): string | null => (ms === null ? null : new Date(ms).toISOString());
 
 /** Niveau officiel le plus haut des tronçons (1 si aucun en vigilance). */
@@ -95,14 +102,22 @@ function biggestRise(f: FloodsResponse, now: number): { station: FloodStation; s
 }
 
 function headOf(f: FloodsResponse, now: number): LayerHeadModel {
+  if (listDown(f)) {
+    return {
+      theme: ENVIRONMENT_THEME, title: CRUES_TITLE, level: 'nd',
+      figure: { value: 'n.d.', caption: 'tronçons en vigilance · Vigicrues indisponible', level: null },
+      status: ['Vigicrues indisponible'], lead: null,
+    };
+  }
   const isLate = late(f, now);
+  const previous = hasStalePrevious(f) ? ' (relevé précédent)' : '';
   const verdict = floodsLevel(f);
   const top = topLevel(f);
-  const tail = `sur ${frNumber(f.total, 0)} surveillés · relevé Vigicrues ${clockOf(f.readAt, now)}${isLate ? ' (en retard)' : ''}`;
+  const tail = `sur ${frNumber(f.total, 0)} surveillés · relevé Vigicrues ${clockOf(f.readAt, now)}${previous}${isLate ? ' (en retard)' : ''}`;
   const figure = top === 1
     ? { value: '0', caption: `tronçon en vigilance jaune ou plus · ${tail}`, level: isLate ? null : COLOR_LEVEL[1] }
     : { value: frNumber(countAt(f, top), 0), caption: `${countsCaption(f, top)} · ${tail}`, level: isLate ? null : COLOR_LEVEL[top] };
-  const stamps = [stamp('Vigicrues', f.readAt, isLate, now), measuresStamp(f, now)].filter((s): s is string => s !== null).join(' · ');
+  const stamps = [`${stamp('Vigicrues', f.readAt, isLate, now)}${previous}`, measuresStamp(f, now)].filter((s): s is string => s !== null).join(' · ');
   const rise = isLate ? null : biggestRise(f, now);
   const measured = f.sections.some((s) => s.stations.some((st) => st.heightM !== null));
   const lead = isLate || top === 1 || heightsLate(f, now) ? null
@@ -135,8 +150,8 @@ function sectionsSection(f: FloodsResponse | null, canFocus: boolean, now: numbe
   const perimeter = note(`${frNumber(f.total, 0)} tronçons de cours d’eau surveillés par l’État ; les tronçons verts sont comptés, ni listés ni dessinés.`);
   const list = sortedSections(f);
   if (list.length === 0) {
-    const vigicruesErrors = realErrors(f).filter((e) => /^Vigicrues/i.test(e) && !/stations|territoires/i.test(e));
-    return { ...base, summary: 'aucun', html: emptyOrDown(vigicruesErrors, 'Aucun tronçon en vigilance jaune ou plus.', 'tronçons Vigicrues') + perimeter };
+    if (listDown(f)) return { ...base, summary: 'n.d.', html: sourceDown('tronçons Vigicrues') + perimeter };
+    return { ...base, summary: 'aucun', html: emptyOrDown([], 'Aucun tronçon en vigilance jaune ou plus.', 'tronçons Vigicrues') + perimeter };
   }
   const isLate = late(f, now);
   return {
@@ -186,18 +201,23 @@ function curves(st: FloodStation, isLate: boolean, now: number, openByDefault: b
     + '</details>';
 }
 
-function stationRow(st: FloodStation, section: FloodSection, canFocus: boolean, now: number, first: boolean): string {
+function stationRow(st: FloodStation, section: FloodSection, canFocus: boolean, now: number, first: boolean, readAt: string | null): string {
   const isLate = stationLate(st, now);
   const measured = st.heightM !== null && st.lastAt !== null;
   // Débit seul (hauteur absente) : le débit est la valeur de la ligne, avec sa propre date.
-  const flowOnly = !measured && st.flowM3s !== null && st.flowAt != null;
-  const flowLate = flowOnly && isEnvironmentDataLate('hubeau', st.flowAt ?? null, now);
+  const flowOnly = !measured && st.flowM3s !== null;
+  // Sans date propre du débit : la date de la mesure de hauteur, à défaut l'heure de lecture, dite comme telle.
+  const flowDateIso = st.flowAt ?? st.lastAt ?? readAt;
+  const flowLate = flowOnly && isEnvironmentDataLate('hubeau', flowDateIso, now);
+  const flowOnlyNote = st.flowAt != null ? `débit mesuré ${clockOf(st.flowAt, now)}`
+    : st.lastAt !== null ? `débit sans date propre, mesure de hauteur ${clockOf(st.lastAt, now)}`
+      : `débit sans date propre, lu à ${clockOf(readAt, now)}`;
   const value = measured ? heightHtml(st, isLate) : flowOnly ? valueHtml(formatFlowM3s(st.flowM3s)) : valueHtml('n.d.');
   const flowDate = measured && st.flowAt != null && clockOf(st.flowAt, now) !== clockOf(st.lastAt, now) ? ` (mesuré ${clockOf(st.flowAt, now)})` : '';
   const parts = [
     section.name,
     measured ? `mesure ${clockOf(st.lastAt, now)}${isLate ? ' (en retard)' : ''}`
-      : flowOnly ? `débit mesuré ${clockOf(st.flowAt, now)}${flowLate ? ' (en retard)' : ''}` : 'aucune mesure lue',
+      : flowOnly ? `${flowOnlyNote}${flowLate ? ' (en retard)' : ''}` : 'aucune mesure lue',
     measured && st.flowM3s !== null ? `débit ${formatFlowM3s(st.flowM3s)}${flowDate}` : null,
   ].filter((x): x is string => x !== null);
   const focusable = canFocus && st.lat !== null && st.lon !== null;
@@ -211,6 +231,7 @@ function stationsSection(f: FloodsResponse | null, canFocus: boolean, now: numbe
   const base = { id: 'stations', title: 'Stations des tronçons en vigilance', collapsible: true, open: open('stations', true) };
   if (!f || f.readAt === null) return { ...base, summary: 'n.d.', html: sourceDown('stations Hub’Eau') };
   const list = sortedSections(f);
+  if (listDown(f)) return { ...base, summary: 'n.d.', html: sourceDown('stations des tronçons Vigicrues') };
   if (list.length === 0) return { ...base, summary: 'aucune', html: emptyLine('Aucun tronçon en vigilance : aucune station suivie.') };
   const hubeau = f.errors.filter(isHubeauError);
   const progress = f.errors.filter(isProgressNote);
@@ -218,7 +239,7 @@ function stationsSection(f: FloodsResponse | null, canFocus: boolean, now: numbe
   const measured = all.filter((st) => st.heightM !== null);
   let html = '';
   if (hubeau.length > 0 && measured.length === 0) html += sourceDown('mesures Hub’Eau des stations');
-  else if (hubeau.length > 0) html += note(`Lecture partielle : ${hubeau.join(' ; ')}.`);
+  else if (hubeau.length > 0) html += note(`Lecture partielle : ${glueEnvUnits(hubeau.join(' ; '))}.`);
   else if (progress.length > 0 && measured.length === 0) html += emptyLine('Mesures Hub’Eau en cours de lecture : hauteurs à la prochaine relève.');
   else if (progress.length > 0) html += note('Hauteurs en cours de lecture : relevé précédent servi.');
   const lastMs = lastMeasureMs(f);
@@ -230,7 +251,8 @@ function stationsSection(f: FloodsResponse | null, canFocus: boolean, now: numbe
       html += down ? sourceDown(`stations du tronçon ${s.name}`) : emptyLine(`${s.name} : aucune station publiée par Vigicrues pour ce tronçon.`);
       continue;
     }
-    html += s.stations.map((st, i) => stationRow(st, s, canFocus, now, i === 0 && st.heightM !== null)).join('');
+    const firstMeasured = s.stations.findIndex((st) => st.heightM !== null && st.lastAt !== null);
+    html += s.stations.map((st, i) => stationRow(st, s, canFocus, now, i === firstMeasured, f.readAt)).join('');
   }
   if (f.stationsOmitted > 0) html += note(`${plural(f.stationsOmitted, 'station')} au-delà du plafond de 60 : non lues (tronçons rouges, puis orange, puis jaunes d’abord).`);
   html += note(NOT_ALERT)
@@ -249,7 +271,7 @@ function methodSection(input: CruesViewInput): FicheSection {
   const isLate = f ? late(f, now) : false;
   const lastMs = f ? lastMeasureMs(f) : null;
   const hubeauDown = f ? f.errors.some(isHubeauError) : false;
-  const vigicruesState = read ? `relevé du serveur ${clockOf(f.readAt, now)}${isLate ? ' (en retard)' : ''}` : floodsError !== null || f ? 'source indisponible' : 'chargement…';
+  const vigicruesState = read ? `relevé du serveur ${clockOf(f.readAt, now)}${hasStalePrevious(f) ? ' (relevé précédent)' : ''}${isLate ? ' (en retard)' : ''}` : floodsError !== null || f ? 'source indisponible' : 'chargement…';
   const pending = f ? f.errors.some((e) => isProgressNote(e)) : false;
   const hubeauState = !read ? 'n.d.'
     : lastMs !== null ? `dernière mesure ${absoluteTime(lastMs, now, 'fr')}${f && heightsLate(f, now) ? ' (en retard)' : ''}`
@@ -261,8 +283,8 @@ function methodSection(input: CruesViewInput): FicheSection {
     + note(`Hauteur au repère de la station (millimètres publiés, affichés en mètres) ; débit en m³/s quand la station le publie. ${NOT_ALERT}`)
     + note(`Retard : relevé Vigicrues au-delà de 30${NBSP}min ; mesure d’une station au-delà de 1${NBSP}h. Une donnée en retard perd ses couleurs ; la pastille passe à n.d.`)
     + note('Couleurs : niveau officiel du tronçon (jaune, orange, rouge) ; variation d’une station en rouge à la hausse, en vert à la baisse.')
-    + readErrors(f ? realErrors(f) : []);
-  const down = [!read, read && hubeauDown && lastMs === null].filter(Boolean).length;
+    + readErrors(f ? realErrors(f).map(glueEnvUnits) : []);
+  const down = [!read || listDown(f), read && hubeauDown && lastMs === null].filter(Boolean).length;
   return {
     id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html,
     summary: escapeHtml(`2 sources${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`),

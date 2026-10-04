@@ -254,4 +254,81 @@ describe('vue Crues : décisions postérieures au brief', () => {
     expect(h).not.toMatch(/lp-trend lp-lvl[^>]*>0,00/);
     expect(h).not.toMatch(/lp-trend lp-lvl[^>]*>[−+]0,00/);
   });
+  it('5 mm de hausse : « +0,01 m » colorée en rouge (le seuil est le centimètre affiché)', () => {
+    const floods = withFloods((f) => { f.sections[0].stations[0].change1hM = 0.005; f.sections[0].stations[1].change1hM = -0.006; });
+    const h = sectionOf('stations', { floods })?.html ?? '';
+    expect(h).toContain(`<span class="lp-trend lp-lvl lp-lvl--rouge" aria-label="variation sur 1${NBSP}h">+0,01${NBSP}m</span>`);
+    expect(h).toContain(`<span class="lp-trend lp-lvl lp-lvl--vert" aria-label="variation sur 1${NBSP}h">−0,01${NBSP}m</span>`);
+  });
+  it('débit seul en retard : valeur gardée, « (en retard) », sans couleur de catégorie', () => {
+    const floods = withFloods((f) => {
+      Object.assign(f.sections[0].stations[0], { lastAt: null, heightM: null, change1hM: null, heightSeries: [], flowM3s: 3.2, flowAt: '2026-10-04T05:30:00Z' });
+    });
+    const h = sectionOf('stations', { floods })?.html ?? '';
+    expect(h).toContain(`<span class="lp-val fmk-num">3,2${NBSP}m³/s</span><small>Têt · débit mesuré 07:30 (en retard)</small>`);
+  });
+  it('débit seul sans flowAt : valeur gardée, datée de la mesure de hauteur ou de la lecture, dite comme telle', () => {
+    const withLast = withFloods((f) => {
+      Object.assign(f.sections[0].stations[0], { lastAt: '2026-10-04T08:00:00Z', heightM: null, change1hM: null, heightSeries: [], flowM3s: 3.2, flowAt: undefined });
+    });
+    expect(sectionOf('stations', { floods: withLast })?.html).toContain(`3,2${NBSP}m³/s</span><small>Têt · débit sans date propre, mesure de hauteur 10:00</small>`);
+    const readOnly = withFloods((f) => {
+      Object.assign(f.sections[0].stations[0], { lastAt: null, heightM: null, change1hM: null, heightSeries: [], flowM3s: 3.2, flowAt: null });
+    });
+    const h = sectionOf('stations', { floods: readOnly })?.html ?? '';
+    expect(h).toContain(`3,2${NBSP}m³/s</span><small>Têt · débit sans date propre, lu à 10:05</small>`);
+    expect(h).not.toContain('<span>Vinca</span><span class="lp-val fmk-num">n.d.</span>');
+  });
+  it('courbe ouverte par défaut : la première station mesurée du tronçon, même si la première n’a pas de hauteur', () => {
+    const floods = withFloods((f) => {
+      Object.assign(f.sections[0].stations[0], { lastAt: null, heightM: null, flowM3s: null, change1hM: null, heightSeries: [], flowSeries: [] });
+    });
+    const sec = floods.sections[0];
+    const h = sectionOf('stations', { floods })?.html ?? '';
+    const second = sec.stations[1].code;
+    expect(h).toContain(`data-curve="${second}" open>`);
+    expect(h.match(new RegExp(`data-curve="(?:${sec.stations.slice(1).map((st) => st.code).join('|')})"( open)?`, 'g'))?.filter((x) => x.endsWith(' open')).length).toBe(1);
+  });
+  it('lecture partielle : « 5 min » du texte serveur reste collé', () => {
+    const floods = withFloods((f) => { f.errors = ["Hub'Eau, débits : délai de 5 min dépassé"]; });
+    const h = sectionOf('stations', { floods })?.html ?? '';
+    expect(h).toContain(`délai de 5${NBSP}min dépassé`);
+    expect(envBreakable(visibleText(h))).toBeNull();
+  });
+});
+
+describe('vue Crues : tête et section d’accord sur la liste des tronçons (S3)', () => {
+  const listFailure = (e: string) => withFloods((f) => { f.sections = []; f.counts = { vert: 337, jaune: 0, orange: 0, rouge: 0 }; f.errors = [e]; });
+  it('liste indisponible malgré un relevé lu : tête n.d., « Vigicrues indisponible », ni 0 ni vert', () => {
+    const v = view({ floods: listFailure('Vigicrues : HTTP 503') });
+    expect(v.head).toMatchObject({ level: 'nd', figure: { value: 'n.d.', caption: 'tronçons en vigilance · Vigicrues indisponible', level: null }, status: ['Vigicrues indisponible'] });
+    expect(v.head.lead).toBeNull();
+    expect(v.sections[0].html).toContain('Source indisponible : tronçons Vigicrues.');
+    expect(v.sections[1].html).toContain('Source indisponible');
+    expect(v.sections[2].summary).toBe('2 sources · 1 indisponible');
+    const all = renderLayerView('floods', v);
+    expect(all).not.toMatch(/fm-vig--vert|lp-lvl--vert/);
+    expect(visibleText(all)).not.toMatch(/Aucun tronçon|aucun tronçon/);
+  });
+  it('relevé précédent servi après échec : la tête garde ce relevé, avec sa date, la mention et le retard', () => {
+    const floods = withFloods((f) => { f.errors = ['Vigicrues : relevé précédent servi (lecture en échec)']; });
+    const v = view({ floods });
+    expect(v.head.level).toBe('jaune');
+    expect(v.head.figure?.caption).toBe('tronçons en jaune · 0 orange · 0 rouge · sur 337 surveillés · relevé Vigicrues 10:05 (relevé précédent)');
+    expect(v.head.status[1]).toBe(`Vigicrues${NBSP}10:05 (relevé précédent) · mesures Hub’Eau${NBSP}10:00`);
+    expect(v.sections[0].html).toContain('data-section="MO12"');
+    const later = view({ floods, now: NOW + H });
+    expect(later.head.level).toBe('nd');
+    expect(later.head.figure?.caption).toBe('tronçons en jaune · 0 orange · 0 rouge · sur 337 surveillés · relevé Vigicrues 10:05 (relevé précédent) (en retard)');
+    const calm = withFloods((f) => { f.sections = []; f.counts = { vert: 337, jaune: 0, orange: 0, rouge: 0 }; f.errors = ['Vigicrues : relevé précédent servi (lecture en échec)']; });
+    const c = view({ floods: calm });
+    expect(c.head.figure?.caption).toContain('(relevé précédent)');
+    expect(c.sections[0].html).not.toContain('Source indisponible');
+  });
+  it('jour calme sans panne : « 0 » vert, aucun tronçon en vigilance', () => {
+    const calm = withFloods((f) => { f.sections = []; f.counts = { vert: 337, jaune: 0, orange: 0, rouge: 0 }; f.errors = []; });
+    const v = view({ floods: calm });
+    expect(v.head).toMatchObject({ level: 'vert', figure: { value: '0', level: 'vert' } });
+    expect(v.sections[0].html).toContain('Aucun tronçon en vigilance jaune ou plus.');
+  });
 });
