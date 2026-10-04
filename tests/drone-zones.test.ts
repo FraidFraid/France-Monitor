@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  DRONES_FILE_PATH, DRONES_LEGEND, DRONES_LICENCE, DRONES_POINTER, DRONES_TITLE, DRONES_SOURCE, MAX_FILE_BYTES, NON_AGGLO_CQL, PAGE_SIZE, VOL_INTERDIT_CQL, buildDroneZonesFile, capabilitiesUrl,
+  DRONES_FILE_PATH, DRONES_LEGEND, assertCompleteRead, distinctIdCount, droppedIds, DRONES_LICENCE, DRONES_POINTER, DRONES_TITLE, DRONES_SOURCE, MAX_FILE_BYTES, NON_AGGLO_CQL, PAGE_SIZE, VOL_INTERDIT_CQL, buildDroneZonesFile, capabilitiesUrl,
   editionFromCapabilities, hitsUrl, isAgglomeration, numberMatchedOf, pageUrl, ringTolerance, simplifyRing, toDroneZone,
 } from '../api/_lib/drone-zones.js';
 import type { DroneZone, DroneZonesFile } from '../src/types/index.ts';
@@ -44,11 +44,25 @@ describe('adresses WFS : filtre CQL toujours présent, pages sans tri', () => {
 describe('titre, légende officiels et renvoi (amendement S6)', () => {
   it('titre et légende de la couche repris du GetCapabilities ; renvoi au SIA et aux arrêtés préfectoraux ; aucun tiret cadratin', () => {
     expect(DRONES_TITLE).toBe('Restrictions UAS catégorie Ouverte et Aéromodélisme');
-    expect(CAPS).toContain(DRONES_LEGEND.replace(/\u2019/g, '\u2019').replace('s\u2019appuyant', "s'appuyant").replace('à l\u2019AIP', "à l'AIP"));
+    expect(CAPS).toContain(DRONES_LEGEND.replace('s\u2019appuyant', "s'appuyant").replace('à l\u2019AIP', "à l'AIP"));
     expect(DRONES_LEGEND).toContain('ne couvre pas les interdictions temporaires');
     expect(DRONES_POINTER).toMatch(/SIA/);
     expect(DRONES_POINTER).toMatch(/arrêtés préfectoraux/);
     expect(`${DRONES_TITLE}${DRONES_LEGEND}${DRONES_POINTER}`).not.toContain('\u2014');
+  });
+});
+
+describe('relevé complet (identifiants distincts lus = compte annoncé)', () => {
+  it('relevé complet accepté ; page tronquée ou page répétée refusée, erreur nommée', () => {
+    expect(distinctIdCount(FX.features)).toBe(12);
+    expect(assertCompleteRead(FX.features, 12)).toBe(12);
+    expect(() => assertCompleteRead(FX.features.slice(0, 10), 12)).toThrow('zones drones : 10 lues sur 12 annoncées, fichier non écrit');
+    expect(() => assertCompleteRead([...FX.features.slice(0, 6), ...FX.features.slice(0, 6)], 12)).toThrow('6 lues sur 12 annoncées');
+  });
+  it('zones écartées nommées', () => {
+    const flat = { ...FX.features[0], id: 'carte_restriction_drones_lf.999', geometry: { type: 'MultiPolygon' as const, coordinates: [[[[0, 0], [1, 0], [0, 0]]]] } };
+    expect(droppedIds([...FX.features, flat])).toEqual(['999']);
+    expect(droppedIds(FX.features)).toEqual([]);
   });
 });
 
@@ -113,6 +127,8 @@ describe('fichier publié public/data/drone-restrictions.json (généré par le 
     expect(file.counts.kept).toBeLessThan(6000);
     expect(file.counts.volInterdit).toBeGreaterThan(60_000);
     expect(file.counts.agglomerations + file.counts.kept).toBeLessThanOrEqual(file.counts.volInterdit);
+    // un fichier tronqué échoue : au plus 5 zones dégénérées écartées sur les hors-agglomération
+    expect(file.counts.volInterdit - file.counts.agglomerations - file.counts.kept).toBeLessThanOrEqual(5);
     for (const z of file.zones) {
       expect(z.id).toMatch(/^\d+$/);
       expect(isAgglomeration(z.remarque)).toBe(false);

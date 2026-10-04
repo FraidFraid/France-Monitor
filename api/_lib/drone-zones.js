@@ -198,3 +198,26 @@ export function buildDroneZonesFile({ features, edition, volInterdit, nonAgglome
     counts: { volInterdit, agglomerations: Math.max(0, volInterdit - nonAgglomeration), kept: zones.length }, zones,
   };
 }
+
+/** Nombre d'identifiants distincts lus ; une page tronquée ou répétée le fait diverger du compte annoncé. */
+export function distinctIdCount(features) {
+  return new Set(features.map((f) => String(f?.id ?? '')).filter((id) => id !== '')).size;
+}
+
+/** Refuse un relevé incomplet : lève une erreur nommée si les identifiants distincts lus ne sont pas ceux annoncés par le compte WFS. */
+export function assertCompleteRead(features, nonAgglomeration) {
+  const read = distinctIdCount(features);
+  if (read !== nonAgglomeration) {
+    throw new Error(`zones drones : ${read} lues sur ${nonAgglomeration} annoncées, fichier non écrit`);
+  }
+  return read;
+}
+
+/** Identifiants numériques des zones lues mais écartées (anneaux dégénérés), pour les nommer dans le journal du script. */
+export function droppedIds(features) {
+  const ids = new Set();
+  for (const f of features) {
+    if (!toDroneZone(f)) ids.add(String(f?.id ?? '').split('.').pop());
+  }
+  return [...ids].sort((a, b) => Number(a) - Number(b));
+}

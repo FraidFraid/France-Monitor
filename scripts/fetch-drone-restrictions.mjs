@@ -6,7 +6,7 @@
 // public/data/drone-restrictions.json, daté, sous 1,5 Mio ; au-delà de la borne, rien n'est écrit.
 import { writeFileSync } from 'node:fs';
 import {
-  DRONES_FILE_PATH, MAX_FILE_BYTES, NON_AGGLO_CQL, PAGE_SIZE, VOL_INTERDIT_CQL, buildDroneZonesFile, capabilitiesUrl, editionFromCapabilities,
+  DRONES_FILE_PATH, MAX_FILE_BYTES, assertCompleteRead, droppedIds, NON_AGGLO_CQL, PAGE_SIZE, VOL_INTERDIT_CQL, buildDroneZonesFile, capabilitiesUrl, editionFromCapabilities,
   hitsUrl, numberMatchedOf, pageUrl,
 } from '../api/_lib/drone-zones.js';
 import { fetchStrictJson, fetchStrictText } from '../api/_lib/source-http.js';
@@ -32,6 +32,10 @@ for (let start = 0; start < nonAgglomeration; start += PAGE_SIZE) {
   console.log(`page ${start} : ${page.features.length} zones`);
   if (page.features.length < PAGE_SIZE) break;
 }
+
+assertCompleteRead(features, nonAgglomeration);
+const dropped = droppedIds(features);
+if (dropped.length > 0) console.log(`zones écartées (anneaux dégénérés) : ${dropped.join(', ')}`);
 
 const file = buildDroneZonesFile({ features, edition, volInterdit, nonAgglomeration, generatedAt: new Date().toISOString() });
 const text = `${JSON.stringify(file)}\n`;
