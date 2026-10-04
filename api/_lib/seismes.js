@@ -114,6 +114,14 @@ function served(v, now, errors) {
 
 const FETCH_TIMEOUT_MS = 20_000;
 const FRESH_SEC = 600;
+/**
+ * Âge du relevé BCSF encore servi sans panne : `readAt` est daté AVANT la lecture et le cache compte ses 10 min APRÈS elle ;
+ * une lecture dure au plus FETCH_TIMEOUT_MS, d'où la marge (sinon une entrée encore fraîche pour le cache passerait pour une panne).
+ */
+const FRESH_READ_MS = FRESH_SEC * 1000 + FETCH_TIMEOUT_MS;
+/** Relevé BCSF périmé (relecture en échec) : panne nommée ; la date du relevé est dans `readAt`, dite à l'heure de Paris par la vue. */
+export const BCSF_DOWN_ERROR = 'BCSF-RéNaSS : source indisponible';
+export const BCSF_STALE_SERVED_ERROR = 'BCSF-RéNaSS : source indisponible, relevé précédent servi';
 
 /**
  * BCSF-RéNaSS d'abord (cache de 10 min, attente alignée sur le délai de lecture), EMSC en repli. Une valeur BCSF périmée
@@ -130,9 +138,8 @@ export async function loadEarthquakes(now = Date.now()) {
       if (!parsed.complete) throw new Error('fenêtre de 7 jours incomplète');
       return { quakes: parsed.quakes, nonSeismic: parsed.nonSeismic, source: 'BCSF-RéNaSS', readAt };
     });
-    if (now - Date.parse(v.readAt) <= FRESH_SEC * 1000) return served(v, now, errors);
+    if (now - Date.parse(v.readAt) <= FRESH_READ_MS) return served(v, now, errors);
     stale = v;
-    errors.push(`BCSF-RéNaSS : source indisponible, valeur en cache du ${v.readAt}`);
   } catch (err) {
     errors.push(sourceError('BCSF-RéNaSS', err));
   }
@@ -141,9 +148,10 @@ export async function loadEarthquakes(now = Date.now()) {
       const parsed = parseEmsc(await fetchStrictJson(emscUrl(new Date(now - QUAKE_WINDOW_MS).toISOString()), { timeoutMs: FETCH_TIMEOUT_MS }), now);
       return { quakes: parsed.quakes, nonSeismic: parsed.nonSeismic, source: 'EMSC', readAt };
     });
-    return served(v, now, errors);
+    // EMSC servi : le relevé BCSF périmé ne l'est pas, la panne seule est nommée.
+    return served(v, now, stale ? [BCSF_DOWN_ERROR, ...errors] : errors);
   } catch (err) {
     errors.push(sourceError('EMSC (repli)', err));
   }
-  return stale ? served(stale, now, errors) : emptyQuakes(errors);
+  return stale ? served(stale, now, [BCSF_STALE_SERVED_ERROR, ...errors]) : emptyQuakes(errors);
 }

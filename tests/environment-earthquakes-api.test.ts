@@ -7,6 +7,9 @@ import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { BCSF_URL, EMSC_BASE, emscUrl, parseBcsf, parseEmsc, quakeScope } from '../api/_lib/seismes.js';
 import handler, { CACHE_CONTROL } from '../api/_handlers/environment/earthquakes.js';
 import type { EarthquakesResponse } from '../src/types/index.ts';
+import { visibleText } from '../src/components/layer-panel/format.ts';
+import { renderLayerView } from '../src/components/layer-panel/frame.ts';
+import { buildSeismesView } from '../src/components/layer-panel/seismes.ts';
 import { type FakeResponse, callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const env = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
@@ -172,7 +175,42 @@ describe('/api/environment/earthquakes', () => {
     sources({ bcsf: respond('Internal Server Error', 500), emsc: respond('Service Unavailable', 503) });
     const { status, body } = await callHandler<EarthquakesResponse>(handler);
     expect([status, body.source, body.readAt, body.quakes.length]).toEqual([200, 'BCSF-RéNaSS', '2026-10-04T08:10:00.000Z', 8]);
-    expect(body.errors).toHaveLength(2);
-    expect(body.errors[1]).toBe('EMSC (repli) : HTTP 503');
+    // Vague finale, points 5 et 10 : panne nommée sans date ISO UTC brute (la date du relevé est dans readAt, dite à l'heure de Paris).
+    expect(body.errors).toEqual(['BCSF-RéNaSS : source indisponible, relevé précédent servi', 'EMSC (repli) : HTTP 503']);
+  });
+  it('BCSF périmé et EMSC servi : panne BCSF nommée, jamais « relevé précédent servi » ni date ISO UTC', async () => {
+    sources();
+    await callHandler<EarthquakesResponse>(handler);
+    vi.setSystemTime(NOW + 20 * 60_000);
+    sources({ bcsf: respond('Internal Server Error', 500) });
+    const { body } = await callHandler<EarthquakesResponse>(handler);
+    expect([body.source, body.errors]).toEqual(['EMSC', ['BCSF-RéNaSS : source indisponible']]);
+  });
+  it('relevé de la veille servi après deux pannes : la vue le date à l’heure de Paris (JJ/MM hh:mm), jamais en ISO UTC brute', async () => {
+    sources();
+    await callHandler<EarthquakesResponse>(handler);
+    const later = NOW + 23 * 3_600_000;
+    vi.setSystemTime(later);
+    sources({ bcsf: respond('Internal Server Error', 500), emsc: respond('Service Unavailable', 503) });
+    const { body } = await callHandler<EarthquakesResponse>(handler);
+    const v = buildSeismesView({ quakes: body, quakesError: null, canFocus: true, now: later, open: () => true });
+    const method = visibleText(v.sections.find((x) => x.id === 'methode')?.html ?? '');
+    expect(method).toContain('relevé du serveur 04/10 10:10 (en retard)');
+    expect(method).toContain('Incidents de lecture : BCSF-RéNaSS : source indisponible, relevé précédent servi ; EMSC (repli) : HTTP 503.');
+    expect(visibleText(renderLayerView('earthquakes', v))).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+  });
+  it('seuil de fraîcheur : une entrée enregistrée après une lecture de 2 s, relue à 601 s, sert BCSF sans erreur (readAt daté avant la lecture)', async () => {
+    // Lecture BCSF de 2 s : readAt = NOW, valeur mise en cache à NOW + 2 s.
+    stubFetch((url) => {
+      if (url === BCSF_URL) { vi.setSystemTime(NOW + 2_000); return respond(BCSF); }
+      return respond(EMSC);
+    });
+    const first = await callHandler<EarthquakesResponse>(handler);
+    expect([first.body.source, first.body.errors]).toEqual(['BCSF-RéNaSS', []]);
+    vi.setSystemTime(NOW + 601_000);
+    const fetched = stubFetch((url) => respond(url === BCSF_URL ? BCSF : EMSC));
+    const { status, body } = await callHandler<EarthquakesResponse>(handler);
+    expect([status, body.source, body.readAt, body.errors]).toEqual([200, 'BCSF-RéNaSS', '2026-10-04T08:10:00.000Z', []]);
+    expect(fetched.urls).toEqual([]);
   });
 });
