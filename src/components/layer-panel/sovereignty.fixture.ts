@@ -11,8 +11,12 @@
 // neuve : un test peut la modifier sans toucher les autres. tests/sovereignty-contract.test.ts vérifie que le serveur rend exactement
 // ces réponses.
 import type {
-  CablesWatchResponse, CyberResponse, MilitaryResponse, SubseaCablesFile, VigipirateEntry, VigipiratePageCheck,
+  CablesWatchResponse, ConnectivityResponse, CyberResponse, DroneZonesFile, GnssResponse, MilitaryResponse, SanctionsResponse,
+  SubseaCablesFile, VigipirateEntry, VigipiratePageCheck,
 } from '../../types/index.ts';
+import type { GnssState } from '../../services/sovereignty-gnss.ts';
+import type { ConnectivityState } from '../../services/sovereignty-connectivity.ts';
+import type { SanctionsState } from '../../services/sovereignty-sanctions.ts';
 
 /** 4 octobre 2026, 16 h 48 min 30 s à Paris (14:48:30Z) : heure des relevés de la spec. */
 export const SOV_FIXTURE_NOW = Date.parse('2026-10-04T16:48:30+02:00');
@@ -547,3 +551,348 @@ export const VIGIPIRATE_FIXTURE: VigipirateEntry = {
   saisiLe: '2026-10-04',
   lien: 'https://www.sgdsn.gouv.fr/vigipirate',
 };
+
+// ─── Phase B (tâche B24) : grille GNSS et météo spatiale, grands réseaux, registre des gels, zones drones ───
+// Réponses construites par le code du serveur (api/_handlers/sovereignty/gnss.js, connectivity.js, sanctions.js) au 04/10/2026 à
+// 16 h 48 min 30 s à Paris : Kp, échelles et alerte NOAA réels ; six routing-status RIPEstat et annuaire PeeringDB réels (27 points
+// d'échange : identifiant, nom, ville, date, aucune coordonnée de contact) ; grille GNSS sur lectures adsb.lol construites (adresses
+// fictives, cycles de 10 min depuis le 03/10 00 h 05 UTC : la veille 03/10 est couverte, ses mailles sont servies, le jour en cours
+// ne l'est jamais) ; registre des gels sur le fichier DG Trésor réduit et anonymisé (identifiants et noms fictifs, aucun nom dans la
+// réponse), publications précédentes construites pour la courbe. tests/sovereignty-contract-b.test.ts vérifie que les formes et les
+// statuts des lignes du panneau des sources sont ceux du serveur.
+
+/** Grille du 04/10 : 14 mailles françaises mesurées, deux orange en Bretagne (12,5 % et 10,5 %), une jaune ; Kp 5 à 09 h UTC sans dégradation générale (21 %). */
+const GNSS: GnssResponse = {
+  "readAt": "2026-10-04T14:45:24.000Z",
+  "windowStart": "2026-10-03T14:45:24.000Z",
+  "reads": 720,
+  "aircraft": 723,
+  "cells": [
+    {"lat": 50.5, "lon": -1.5, "good": 3, "degraded": 3, "unknown": 2, "pct": 33.3, "level": "orange", "inFrance": false},
+    {"lat": 48.5, "lon": 2, "good": 120, "degraded": 1, "unknown": 4, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 48.5, "lon": 2.5, "good": 96, "degraded": 0, "unknown": 2, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 48, "lon": -4, "good": 16, "degraded": 3, "unknown": 0, "pct": 10.5, "level": "orange", "inFrance": true},
+    {"lat": 48, "lon": -3.5, "good": 20, "degraded": 4, "unknown": 1, "pct": 12.5, "level": "orange", "inFrance": true},
+    {"lat": 48, "lon": -3, "good": 30, "degraded": 2, "unknown": 2, "pct": 3.1, "level": "jaune", "inFrance": true},
+    {"lat": 48, "lon": 2, "good": 64, "degraded": 0, "unknown": 1, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 48, "lon": 2.5, "good": 58, "degraded": 1, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 47.5, "lon": 1.5, "good": 41, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 47, "lon": 2, "good": 37, "degraded": 0, "unknown": 1, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 46.5, "lon": 2.5, "good": 29, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 46, "lon": 3, "good": 40, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 46, "lon": 6, "good": 22, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": false},
+    {"lat": 45.5, "lon": 4.5, "good": 55, "degraded": 1, "unknown": 2, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 45, "lon": 5, "good": 33, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 44.5, "lon": 4.5, "good": 25, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 44, "lon": 4, "good": 3, "degraded": 0, "unknown": 1, "pct": null, "level": "peu", "inFrance": true}
+  ],
+  "cellsDay": "2026-10-03",
+  "frenchCells": 14,
+  "generalDegradation": false,
+  "degraded": {
+    "rolling24h": 2,
+    "previousUtcDays": [2, null]
+  },
+  "days": {
+    "days": [
+      {"date": "2026-10-03", "jaune": 1, "orange": 2, "general": false},
+      {"date": "2026-10-04", "jaune": 1, "orange": 2, "general": false}
+    ],
+    "since": "2026-10-03"
+  },
+  "errors": [],
+  "spaceWeather": {
+    "readAt": "2026-10-04T14:45:00.000Z",
+    "scalesAt": "2026-10-04T14:46:00.000Z",
+    "today": {"date": "2026-10-04", "observed": true, "r": 0, "s": 0, "g": 0, "rMinorProb": null, "rMajorProb": null, "sProb": null},
+    "forecast": [
+      {"date": "2026-10-04", "observed": false, "r": null, "s": null, "g": 1, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1},
+      {"date": "2026-10-05", "observed": false, "r": null, "s": null, "g": 0, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1},
+      {"date": "2026-10-06", "observed": false, "r": null, "s": null, "g": 0, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1}
+    ],
+    "kp": [
+      {"at": "2026-09-27T12:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-27T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-27T18:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-27T21:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-28T00:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-28T03:00:00.000Z", "kp": 1.67},
+      {"at": "2026-09-28T06:00:00.000Z", "kp": 1},
+      {"at": "2026-09-28T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-28T12:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-28T15:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-28T18:00:00.000Z", "kp": 1},
+      {"at": "2026-09-28T21:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T00:00:00.000Z", "kp": 2},
+      {"at": "2026-09-29T03:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-29T06:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-29T12:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T15:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T18:00:00.000Z", "kp": 1},
+      {"at": "2026-09-29T21:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-30T00:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T03:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T06:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-30T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-30T12:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-30T18:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-30T21:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-01T00:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-01T03:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-01T06:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-01T09:00:00.000Z", "kp": 1},
+      {"at": "2026-10-01T12:00:00.000Z", "kp": 1},
+      {"at": "2026-10-01T15:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-01T18:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-01T21:00:00.000Z", "kp": 2},
+      {"at": "2026-10-02T00:00:00.000Z", "kp": 1},
+      {"at": "2026-10-02T03:00:00.000Z", "kp": 1},
+      {"at": "2026-10-02T06:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-02T09:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T12:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-02T18:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T21:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-03T00:00:00.000Z", "kp": 2.33},
+      {"at": "2026-10-03T03:00:00.000Z", "kp": 2.67},
+      {"at": "2026-10-03T06:00:00.000Z", "kp": 2.67},
+      {"at": "2026-10-03T09:00:00.000Z", "kp": 2},
+      {"at": "2026-10-03T12:00:00.000Z", "kp": 1.67},
+      {"at": "2026-10-03T15:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-03T18:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-03T21:00:00.000Z", "kp": 1},
+      {"at": "2026-10-04T00:00:00.000Z", "kp": 3},
+      {"at": "2026-10-04T03:00:00.000Z", "kp": 3.33},
+      {"at": "2026-10-04T06:00:00.000Z", "kp": 4.33},
+      {"at": "2026-10-04T09:00:00.000Z", "kp": 5}
+    ],
+    "lastAlert": {"productId": "K05A", "issuedAt": "2026-10-04T14:03:28.167Z", "title": "ALERT: Geomagnetic K-index of 5", "gScale": 1}
+  }
+};
+
+/** Orage construit : 10 mailles françaises dont 4 dégradées (40 %), Kp 5,33 depuis le 03/10 : dégradation générale, aucune maille comptée. */
+const GNSS_STORM: GnssResponse = {
+  "readAt": "2026-10-04T14:45:24.000Z",
+  "windowStart": "2026-10-03T14:45:24.000Z",
+  "reads": 720,
+  "aircraft": 344,
+  "cells": [
+    {"lat": 48.5, "lon": 2, "good": 18, "degraded": 4, "unknown": 0, "pct": 13.6, "level": "orange", "inFrance": true},
+    {"lat": 48.5, "lon": 2.5, "good": 24, "degraded": 4, "unknown": 1, "pct": 10.7, "level": "orange", "inFrance": true},
+    {"lat": 48, "lon": 2, "good": 30, "degraded": 2, "unknown": 0, "pct": 3.1, "level": "jaune", "inFrance": true},
+    {"lat": 48, "lon": 2.5, "good": 23, "degraded": 2, "unknown": 0, "pct": 4, "level": "jaune", "inFrance": true},
+    {"lat": 47.5, "lon": 1.5, "good": 41, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 47, "lon": 2, "good": 37, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 46.5, "lon": 2.5, "good": 29, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 46, "lon": 3, "good": 40, "degraded": 1, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 45.5, "lon": 4.5, "good": 55, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true},
+    {"lat": 45, "lon": 5, "good": 33, "degraded": 0, "unknown": 0, "pct": 0, "level": "vert", "inFrance": true}
+  ],
+  "cellsDay": "2026-10-03",
+  "frenchCells": 10,
+  "generalDegradation": true,
+  "degraded": {
+    "rolling24h": 0,
+    "previousUtcDays": [0, null]
+  },
+  "days": {
+    "days": [
+      {"date": "2026-10-03", "jaune": 2, "orange": 2, "general": true},
+      {"date": "2026-10-04", "jaune": 2, "orange": 2, "general": true}
+    ],
+    "since": "2026-10-03"
+  },
+  "errors": [],
+  "spaceWeather": {
+    "readAt": "2026-10-04T14:45:00.000Z",
+    "scalesAt": "2026-10-04T14:46:00.000Z",
+    "today": {"date": "2026-10-04", "observed": true, "r": 0, "s": 0, "g": 0, "rMinorProb": null, "rMajorProb": null, "sProb": null},
+    "forecast": [
+      {"date": "2026-10-04", "observed": false, "r": null, "s": null, "g": 1, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1},
+      {"date": "2026-10-05", "observed": false, "r": null, "s": null, "g": 0, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1},
+      {"date": "2026-10-06", "observed": false, "r": null, "s": null, "g": 0, "rMinorProb": 5, "rMajorProb": 1, "sProb": 1}
+    ],
+    "kp": [
+      {"at": "2026-09-27T12:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-27T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-27T18:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-27T21:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-28T00:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-28T03:00:00.000Z", "kp": 1.67},
+      {"at": "2026-09-28T06:00:00.000Z", "kp": 1},
+      {"at": "2026-09-28T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-28T12:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-28T15:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-28T18:00:00.000Z", "kp": 1},
+      {"at": "2026-09-28T21:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T00:00:00.000Z", "kp": 2},
+      {"at": "2026-09-29T03:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-29T06:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-29T12:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T15:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-29T18:00:00.000Z", "kp": 1},
+      {"at": "2026-09-29T21:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-30T00:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T03:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T06:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-30T09:00:00.000Z", "kp": 1.33},
+      {"at": "2026-09-30T12:00:00.000Z", "kp": 1},
+      {"at": "2026-09-30T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-09-30T18:00:00.000Z", "kp": 0.67},
+      {"at": "2026-09-30T21:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-01T00:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-01T03:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-01T06:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-01T09:00:00.000Z", "kp": 1},
+      {"at": "2026-10-01T12:00:00.000Z", "kp": 1},
+      {"at": "2026-10-01T15:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-01T18:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-01T21:00:00.000Z", "kp": 2},
+      {"at": "2026-10-02T00:00:00.000Z", "kp": 1},
+      {"at": "2026-10-02T03:00:00.000Z", "kp": 1},
+      {"at": "2026-10-02T06:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-02T09:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T12:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T15:00:00.000Z", "kp": 0.33},
+      {"at": "2026-10-02T18:00:00.000Z", "kp": 0.67},
+      {"at": "2026-10-02T21:00:00.000Z", "kp": 1.33},
+      {"at": "2026-10-03T00:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T03:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T06:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T09:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T12:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T15:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T18:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-03T21:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-04T00:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-04T03:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-04T06:00:00.000Z", "kp": 5.33},
+      {"at": "2026-10-04T09:00:00.000Z", "kp": 5.33}
+    ],
+    "lastAlert": {"productId": "K05A", "issuedAt": "2026-10-04T14:03:28.167Z", "title": "ALERT: Geomagnetic K-index of 5", "gScale": 1}
+  }
+};
+
+/** Les six routing-status du 04/10 (instantané de 08 h UTC : quatre réseaux à 100 %, Free 99,38 %, RENATER 99,69 %), série construite de 23 instantanés depuis le 27/09, 27 points d'échange. */
+const CONNECTIVITY: ConnectivityResponse = {
+  "readAt": "2026-10-04T14:48:30.000Z",
+  "snapshotAt": "2026-10-04T08:00:00.000Z",
+  "networks": [
+    {"asn": 3215, "name": "Orange", "v4Seeing": 325, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 923, "v6Prefixes": 45, "visibilityPct": 100},
+    {"asn": 15557, "name": "SFR", "v4Seeing": 325, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 147, "v6Prefixes": 12, "visibilityPct": 100},
+    {"asn": 5410, "name": "Bouygues Telecom", "v4Seeing": 325, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 20, "v6Prefixes": 2, "visibilityPct": 100},
+    {"asn": 12322, "name": "Free", "v4Seeing": 323, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 538, "v6Prefixes": 527, "visibilityPct": 99.38},
+    {"asn": 2200, "name": "RENATER", "v4Seeing": 324, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 77, "v6Prefixes": 2, "visibilityPct": 99.69},
+    {"asn": 16276, "name": "OVHcloud", "v4Seeing": 325, "v4Total": 325, "v6Seeing": 314, "v6Total": 314, "v4Prefixes": 709, "v6Prefixes": 43, "visibilityPct": 100}
+  ],
+  "unread": [],
+  "history": {
+    "samples": [
+      {"at": "2026-09-27T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-27T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-27T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-28T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-28T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-28T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-29T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-29T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-29T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-30T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-30T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-09-30T16:00:00.000Z", "minPct": 99.08},
+      {"at": "2026-10-01T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-01T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-01T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-02T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-02T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-02T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-03T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-03T08:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-03T16:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-04T00:00:00.000Z", "minPct": 99.38},
+      {"at": "2026-10-04T08:00:00.000Z", "minPct": 99.38}
+    ],
+    "since": "2026-09-27T00:00:00.000Z",
+    "prefixSamples": [
+      {
+        "at": "2026-10-04T08:00:00.000Z",
+        "prefixes": {"2200": 79, "3215": 968, "5410": 22, "12322": 1065, "15557": 159, "16276": 752}
+      }
+    ]
+  },
+  "exchanges": {
+    "readAt": "2026-10-04T14:48:30.000Z",
+    "items": [
+      {"id": 4994, "name": "1-FR FREE", "city": "Paris", "updated": "2026-04-30T13:40:26Z", "url": "https://www.peeringdb.com/ix/4994"},
+      {"id": 4461, "name": "Association HwHost", "city": "Paris", "updated": "2024-05-11T23:37:47Z", "url": "https://www.peeringdb.com/ix/4461"},
+      {"id": 1019, "name": "AuvernIX", "city": "Clermont-Ferrand", "updated": "2020-08-09T17:34:13Z", "url": "https://www.peeringdb.com/ix/1019"},
+      {"id": 3384, "name": "BéarnIX", "city": "Pau", "updated": "2024-02-26T11:51:32Z", "url": "https://www.peeringdb.com/ix/3384"},
+      {"id": 1670, "name": "BreizhIX", "city": "Rennes", "updated": "2017-03-19T14:08:08Z", "url": "https://www.peeringdb.com/ix/1670"},
+      {"id": 2726, "name": "BrestIX", "city": "Brest", "updated": "2019-11-06T17:49:10Z", "url": "https://www.peeringdb.com/ix/2726"},
+      {"id": 1149, "name": "DE-CIX Marseille", "city": "Marseille", "updated": "2021-11-17T11:46:45Z", "url": "https://www.peeringdb.com/ix/1149"},
+      {"id": 255, "name": "Equinix Paris", "city": "Paris", "updated": "2024-07-26T15:38:16Z", "url": "https://www.peeringdb.com/ix/255"},
+      {"id": 4985, "name": "ERA-IX Paris", "city": "Paris", "updated": "2026-03-20T12:12:34Z", "url": "https://www.peeringdb.com/ix/4985"},
+      {"id": 4968, "name": "EuroRhine-IX", "city": "Strasbourg", "updated": "2026-05-11T08:29:08Z", "url": "https://www.peeringdb.com/ix/4968"},
+      {"id": 69, "name": "France-IX AURA", "city": "Lyon and Grenoble", "updated": "2025-07-08T12:08:34Z", "url": "https://www.peeringdb.com/ix/69"},
+      {"id": 4693, "name": "France-IX Bordeaux", "city": "Bordeaux", "updated": "2025-07-08T12:12:02Z", "url": "https://www.peeringdb.com/ix/4693"},
+      {"id": 4005, "name": "France-IX Lille", "city": "Lille", "updated": "2025-07-08T12:08:58Z", "url": "https://www.peeringdb.com/ix/4005"},
+      {"id": 880, "name": "France-IX Marseille", "city": "Marseille", "updated": "2026-03-05T13:23:50Z", "url": "https://www.peeringdb.com/ix/880"},
+      {"id": 359, "name": "France-IX Paris", "city": "Paris", "updated": "2026-03-05T13:23:02Z", "url": "https://www.peeringdb.com/ix/359"},
+      {"id": 5040, "name": "France-IX Paris Essentiel", "city": "Paris", "updated": "2026-07-06T16:29:13Z", "url": "https://www.peeringdb.com/ix/5040"},
+      {"id": 4162, "name": "France-IX Toulouse", "city": "Toulouse", "updated": "2025-07-08T12:09:41Z", "url": "https://www.peeringdb.com/ix/4162"},
+      {"id": 1320, "name": "Hopus", "city": "Paris, Lyon, Marseille, Geneva, Zurich, Amsterdam, Frankfurt", "updated": "2025-06-24T10:07:54Z", "url": "https://www.peeringdb.com/ix/1320"},
+      {"id": 4245, "name": "ixFabric - Lyon", "city": "Lyon", "updated": "2026-09-27T22:53:35Z", "url": "https://www.peeringdb.com/ix/4245"},
+      {"id": 3913, "name": "ixFabric - Paris", "city": "Paris", "updated": "2026-09-27T22:53:19Z", "url": "https://www.peeringdb.com/ix/3913"},
+      {"id": 881, "name": "Lillix", "city": "Lille", "updated": "2024-07-18T07:45:51Z", "url": "https://www.peeringdb.com/ix/881"},
+      {"id": 4652, "name": "MPLIX", "city": "Montpellier", "updated": "2025-02-16T00:25:45Z", "url": "https://www.peeringdb.com/ix/4652"},
+      {"id": 4705, "name": "nine", "city": "Amsterdam, Bordeaux, Frankfurt, Genève, Lille, London, Lyon, Marseille, Milano, Montpellier, Paris, Zurich", "updated": "2026-07-11T04:14:52Z", "url": "https://www.peeringdb.com/ix/4705"},
+      {"id": 5011, "name": "nine - six in Paris", "city": "Paris", "updated": "2026-06-03T15:42:21Z", "url": "https://www.peeringdb.com/ix/5011"},
+      {"id": 1040, "name": "NormandIX", "city": "Normandy", "updated": "2020-08-01T06:18:28Z", "url": "https://www.peeringdb.com/ix/1040"},
+      {"id": 3436, "name": "Ouest.Network", "city": "Nantes", "updated": "2023-11-06T08:42:20Z", "url": "https://www.peeringdb.com/ix/3436"},
+      {"id": 34, "name": "SFINX", "city": "Paris", "updated": "2021-07-23T12:16:46Z", "url": "https://www.peeringdb.com/ix/34"}
+    ]
+  },
+  "errors": []
+};
+
+/** Publication du 02/10 10 h 36 : comptes du fichier réduit (40 entrées), différence construite (1 nouveau gel, 2 radiations), deux publications précédentes pour la courbe. */
+const SANCTIONS: SanctionsResponse = {
+  "readAt": "2026-10-04T14:48:30.000Z",
+  "dateCheckedAt": "2026-10-04T14:48:30.000Z",
+  "current": {"publishedAt": "2026-10-02T10:36:17.126+02:00", "total": 40, "physiques": 27, "morales": 10, "navires": 3, "added": 1, "removed": 2},
+  "history": {
+    "publications": [
+      {"publishedAt": "2026-09-19T10:31:05.000+02:00", "total": 37, "physiques": 25, "morales": 9, "navires": 3, "added": null, "removed": null},
+      {"publishedAt": "2026-09-26T10:30:00.000+02:00", "total": 39, "physiques": 26, "morales": 10, "navires": 3, "added": 3, "removed": 1},
+      {"publishedAt": "2026-10-02T10:36:17.126+02:00", "total": 40, "physiques": 27, "morales": 10, "navires": 3, "added": 1, "removed": 2}
+    ],
+    "since": "2026-09-19T10:31:05.000+02:00"
+  },
+  "errors": []
+};
+
+/** En-tête du fichier des zones drones (sans les zones) tel que le script l'a écrit : édition 2025-07-01, 5 541 zones gardées. */
+const DRONE_ZONES_META: Omit<DroneZonesFile, 'zones'> = {
+  generatedAt: '2026-10-04T15:40:00.000Z', edition: '2025-07-01', source: 'DGAC / IGN, Géoplateforme', licence: 'CGU cartes.gouv.fr',
+  counts: { volInterdit: 73_000, agglomerations: 67_457, kept: 5541 },
+};
+
+export function GNSS_FIXTURE(): GnssResponse { return copy(GNSS); }
+export function GNSS_STORM_FIXTURE(): GnssResponse { return copy(GNSS_STORM); }
+export function CONNECTIVITY_FIXTURE(): ConnectivityResponse { return copy(CONNECTIVITY); }
+export function SANCTIONS_FIXTURE(): SanctionsResponse { return copy(SANCTIONS); }
+export function DRONE_ZONES_META_FIXTURE(): Omit<DroneZonesFile, 'zones'> { return copy(DRONE_ZONES_META); }
+
+/** États des coquilles (lecture réussie à SOV_FIXTURE_NOW). */
+export function gnssStateFixture(data: GnssResponse = GNSS_FIXTURE()): GnssState {
+  return { gnss: { data, error: null, fetchedAt: SOV_FIXTURE_NOW } };
+}
+export function connectivityStateFixture(data: ConnectivityResponse = CONNECTIVITY_FIXTURE()): ConnectivityState {
+  return { connectivity: { data, error: null, fetchedAt: SOV_FIXTURE_NOW } };
+}
+export function sanctionsStateFixture(data: SanctionsResponse = SANCTIONS_FIXTURE()): SanctionsState {
+  return { sanctions: { data, error: null, fetchedAt: SOV_FIXTURE_NOW } };
+}

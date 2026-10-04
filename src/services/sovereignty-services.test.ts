@@ -11,7 +11,8 @@ import {
 import type { MilitaryResponse, VigipiratePageCheck } from '../types/index.ts';
 import { resetTrafficSourceCache } from './traffic-source.ts';
 import {
-  CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE, MILITARY_PENDING_NOTE, SOVEREIGNTY_PROGRESS_NOTES, describeProblems,
+  CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GELS_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE, MILITARY_PENDING_NOTE, RIPE_PENDING_NOTE,
+  SOVEREIGNTY_PROGRESS_NOTES, describeProblems,
   isSovereigntyProgressNote, resetSovereigntySourceCache, sovereigntySlotStatus,
 } from './sovereignty-source.ts';
 import {
@@ -75,7 +76,9 @@ describe('socle : statut daté par la donnée, notes d’avancement, filtre par 
     expect(sovereigntySlotStatus(slot(['HIBP : HTTP 403']), 'hibp', null, NOW, 'HIBP')).toEqual({ status: 'error', lastUpdate: null, error: 'HIBP : HTTP 403', period: 'n.d.' });
   });
   it('notes d’avancement : statut ok, note jointe à la période ; une panne reste dégradée ; une note seule sans donnée : chargement', () => {
-    expect(SOVEREIGNTY_PROGRESS_NOTES).toEqual([MILITARY_PENDING_NOTE, CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE]);
+    expect(SOVEREIGNTY_PROGRESS_NOTES).toEqual([
+      MILITARY_PENDING_NOTE, CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE, RIPE_PENDING_NOTE, GELS_PENDING_NOTE,
+    ]);
     expect(isSovereigntyProgressNote('CERT-FR, avis : HTTP 503')).toBe(false);
     expect(sovereigntySlotStatus(slot([CERTFR_PAGES_NOTE]), 'certfr', '2026-10-04T14:48:30.000Z', NOW, 'CERT-FR'))
       .toMatchObject({ status: 'ok', error: undefined, period: `16:48 · ${CERTFR_PAGES_NOTE}` });

@@ -30,8 +30,15 @@ export const CYBER_PENDING_NOTE = 'Vigilance cyber : collecte en cours';
 /** Cumul de la grille GNSS de moins de 24 h (phase B, api/_lib/gnss-collect.js). */
 export const GNSS_CONSTRUCTION_NOTE = 'Grille GNSS : référence en construction';
 
+/** Lecture RIPEstat plus longue que l'échéance de la route (phase B, api/_lib/ripestat.js, RIPE_PENDING_NOTE). */
+export const RIPE_PENDING_NOTE = 'RIPEstat : lecture en cours';
+/** Lecture du registre des gels plus longue que l'échéance de la route (phase B, api/_lib/gels-avoirs.js, GELS_PENDING_NOTE). */
+export const GELS_PENDING_NOTE = 'Registre des gels : lecture en cours';
+
 /** Notes d'avancement du serveur : phrases exactes des modules serveur. */
-export const SOVEREIGNTY_PROGRESS_NOTES: readonly string[] = [MILITARY_PENDING_NOTE, CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE];
+export const SOVEREIGNTY_PROGRESS_NOTES: readonly string[] = [
+  MILITARY_PENDING_NOTE, CERTFR_PAGES_NOTE, CYBER_PENDING_NOTE, GNSS_CONSTRUCTION_NOTE, RIPE_PENDING_NOTE, GELS_PENDING_NOTE,
+];
 
 export function isSovereigntyProgressNote(text: string): boolean {
   return SOVEREIGNTY_PROGRESS_NOTES.includes(text);
@@ -256,7 +263,11 @@ export function sovereigntySlotStatus<T extends { errors: string[] }>(
   const fallback = ownMs === null && options.fallback !== undefined && dataMs(options.fallback.date) !== null ? options.fallback : null;
   const date = fallback === null ? dataDate : fallback.date;
   const ms = dataMs(date);
-  if (ms === null) return { status: 'error', lastUpdate: null, error: error ?? 'source jamais lue', period: withNotes('n.d.') };
+  if (ms === null) {
+    // Rien de lu encore et le serveur ne dit qu'une note d'avancement (« adsb.lol : collecte en cours ») : « loading », jamais une panne.
+    if (error === undefined && notes.length > 0) return { status: 'loading', lastUpdate: null, error: undefined, period: withNotes('n.d.') };
+    return { status: 'error', lastUpdate: null, error: error ?? 'source jamais lue', period: withNotes('n.d.') };
+  }
   const late = isSovereigntyDataLate(source, date, now);
   // « (en retard) » reste en fin de l'heure (StatusPanel le lit en fin de période) ; la note de repli la précède.
   return {

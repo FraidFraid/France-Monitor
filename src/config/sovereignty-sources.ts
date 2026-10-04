@@ -5,6 +5,7 @@
 // du SGDSN par le serveur (O14) en a une, « Vigipirate (page du SGDSN) », datée par cette lecture (arbitrage du contrôleur, A15).
 import type { DataSourceStatus, WatchdogSnapshot } from '../types/index.ts';
 import { MILITARY_FIGURE_LABEL, type SovereigntySource } from '../services/sovereignty-levels.ts';
+import { GELS_REGISTRY_URL } from '../services/sovereignty-sanctions.ts';
 
 /** Couches Souveraineté, un panneau chacune ; clés gardées (subseaCables est libellée « Connectivité »). */
 export type SovereigntyLayerKey = 'military' | 'subseaCables' | 'cyber';
@@ -20,7 +21,7 @@ export function hasActiveSovereignty(layers: Partial<Record<SovereigntyLayerKey,
 export const SOVEREIGNTY_STATUS_SOURCES = [
   ['adsb-mil', 'Vols militaires'], ['vigipirate', 'Vigipirate (page du SGDSN)'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'],
   ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'], ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
-  // phase B : ['adsb-gnss', 'Grille GNSS'], ['noaa', 'NOAA SWPC'], ['ripestat', 'RIPEstat'], ['gels', 'Registre des gels'],
+  ['adsb-gnss', 'Grille GNSS'], ['noaa', 'NOAA SWPC'], ['ripestat', 'RIPEstat'], ['gels', 'Registre des gels'],
 ] as const satisfies ReadonlyArray<readonly [SovereigntySource, string]>;
 
 /** Nom d'une ligne Souveraineté du panneau des sources : un nom mal écrit ne compile pas. */
@@ -49,6 +50,11 @@ export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<SovereigntySourceName, 
   'Ransomware.live': { detail: 'Source : Ransomware.live · revendications non confirmées, conditions d’utilisation', link: 'https://www.ransomware.live/t&c' },
   'Have I Been Pwned': { detail: 'Have I Been Pwned, CC BY 4.0 · fuites publiées en .fr', link: 'https://haveibeenpwned.com/PwnedWebsites' },
   'Cybermalveillance.gouv.fr': { detail: 'Cybermalveillance.gouv.fr, alertes et actualités', link: 'https://www.cybermalveillance.gouv.fr' },
+  // Phase B (B24) : précision de position déclarée (O15 : jamais « brouillage » affirmé), météo spatiale, grands réseaux, registre des gels (S7).
+  'Grille GNSS': { detail: 'Données adsb.lol, ODbL 1.0 · précision de position déclarée par les aéronefs, dernière collecte complète du serveur', link: 'https://www.adsb.lol' },
+  'NOAA SWPC': { detail: 'NOAA Space Weather Prediction Center, domaine public · échelles R, S, G et indice Kp, heure des échelles', link: 'https://www.swpc.noaa.gov' },
+  RIPEstat: { detail: 'RIPEstat (RIPE NCC) · visibilité des grands réseaux français, instantané du relevé · points d’échange : PeeringDB', link: 'https://stat.ripe.net' },
+  'Registre des gels': { detail: 'DG Trésor, registre national des gels · date de publication relue chaque heure', link: GELS_REGISTRY_URL },
 };
 
 /** Détail et lien d'une ligne du panneau des sources, null hors Souveraineté (StatusPanel rend le lien, texte échappé). */
@@ -59,8 +65,8 @@ export function sovereigntySourceDetail(name: string): { detail: string; link: s
 
 /** Lignes mises en erreur si le service d'une couche ne se charge pas. */
 export const SOVEREIGNTY_LAYER_SOURCES: Readonly<Record<SovereigntyLayerKey, readonly SovereigntySourceName[]>> = {
-  military: ['Vols militaires', 'Vigipirate (page du SGDSN)'],
-  subseaCables: ['Câbles et AIS'],
+  military: ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels'],
+  subseaCables: ['Câbles et AIS', 'RIPEstat'],
   cyber: ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr'],
 };
 

@@ -15,17 +15,18 @@ describe('couches et sources Souveraineté (contrats § 3.4)', () => {
     expect(hasActiveSovereignty({ subseaCables: true })).toBe(true);
     expect(hasActiveSovereignty({ military: false, subseaCables: false, cyber: false })).toBe(false);
   });
-  it('huit lignes datées par la donnée, chacune rattachée à une couche ; aucune ligne « Cyber », d’exposition ni de NVD', () => {
+  it('douze lignes datées par la donnée (quatre de la phase B), chacune rattachée à une couche ; aucune ligne « Cyber », d’exposition ni de NVD', () => {
     expect(SOVEREIGNTY_SOURCE_NAMES).toEqual([
       'Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
-      'Cybermalveillance.gouv.fr',
+      'Cybermalveillance.gouv.fr', 'Grille GNSS', 'NOAA SWPC', 'RIPEstat', 'Registre des gels',
     ]);
     expect(Object.values(SOVEREIGNTY_LAYER_SOURCES).flat().sort()).toEqual([...SOVEREIGNTY_SOURCE_NAMES].sort());
     expect(SOVEREIGNTY_STATUS_SOURCES.map(([key]) => key)).toEqual([
-      'adsb-mil', 'vigipirate', 'ais-cables', 'certfr', 'kev', 'ransomware', 'hibp', 'cybermalveillance',
+      'adsb-mil', 'vigipirate', 'ais-cables', 'certfr', 'kev', 'ransomware', 'hibp', 'cybermalveillance', 'adsb-gnss', 'noaa', 'ripestat', 'gels',
     ]);
     // La relecture de la page du SGDSN (O14) a sa ligne, rattachée à la Défense ; la saisie Vigipirate n'en a pas.
-    expect(SOVEREIGNTY_LAYER_SOURCES.military).toEqual(['Vols militaires', 'Vigipirate (page du SGDSN)']);
+    expect(SOVEREIGNTY_LAYER_SOURCES.military).toEqual(['Vols militaires', 'Vigipirate (page du SGDSN)', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels']);
+    expect(SOVEREIGNTY_LAYER_SOURCES.subseaCables).toEqual(['Câbles et AIS', 'RIPEstat']);
     expect(SOVEREIGNTY_SOURCE_NAMES.join(' ')).not.toMatch(/^Cyber$|Shodan|Censys|NVD|adsb\.fi|OpenSky/);
   });
   it('détail et lien de chaque ligne : attributions de la spec, jamais « LIVE » ni une source retirée ; Ransomware.live nommée avec ses conditions', () => {

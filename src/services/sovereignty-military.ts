@@ -137,3 +137,6 @@ export function fetchDefenseOsmWorks(): Promise<{ data: DefenseOsmWorksFile | nu
 export function resetDefenseOsmWorksCache(): void {
   works = null;
 }
+
+// Phase B (tâche B24) : fichier des zones drones DGAC, option de la couche Défense (contrats § 3.3).
+export { DRONE_ZONES_URL, fetchDroneZones, isDroneZonesFile, resetDroneZonesCache } from './sovereignty-drones.ts';

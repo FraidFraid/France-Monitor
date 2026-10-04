@@ -10,7 +10,9 @@ const FILES = [
   'api/_lib/subsea-cables.js', 'api/_lib/shom-cables.js', 'api/_lib/cable-watch.js', 'api/_lib/certfr.js', 'api/_lib/cisa-kev.js',
   'api/_lib/ransomware-live.js', 'api/_lib/hibp.js', 'api/_lib/cybermalveillance.js', 'api/_lib/cyber-collect.js', 'api/_lib/vigipirate-page.js',
   'api/_handlers/sovereignty/military.js', 'api/_handlers/sovereignty/cables-watch.js', 'api/_handlers/sovereignty/cyber.js',
-  'api/_handlers/sovereignty/vigipirate.js', 'scripts/fetch-subsea-cables.mjs', 'scripts/fetch-france-military.mjs',
+  'api/_handlers/sovereignty/vigipirate.js', 'api/_lib/gnss-grid.js', 'api/_lib/gnss-collect.js', 'api/_lib/noaa-swpc.js',
+  'api/_lib/ripestat.js', 'api/_lib/peeringdb.js', 'api/_lib/gels-avoirs.js', 'api/_lib/drone-zones.js', 'api/_handlers/sovereignty/gnss.js',
+  'api/_handlers/sovereignty/connectivity.js', 'api/_handlers/sovereignty/sanctions.js', 'scripts/fetch-subsea-cables.mjs', 'scripts/fetch-france-military.mjs',
   'server/prod/sovereignty-collectors.mjs',
 ];
 const read = (rel: string): string => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
