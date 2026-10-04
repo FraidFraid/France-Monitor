@@ -283,4 +283,15 @@ describe('/api/environment/vigilance', () => {
     expect(log.urls.filter((u) => u === CARTE_URL)).toHaveLength(2);
     expect([status, body.updateTime, body.readAt, body.errors]).toEqual([200, '2026-10-04T08:00:12Z', '2026-10-04T08:10:00.000Z', ['Météo-France, carte : HTTP 500']]);
   });
+  it('jamais en arrière : une carte plus ancienne lue après une plus récente est ignorée, la récente reste servie avec sa date', async () => {
+    const newer = fx('vigilance-encours-reduit.json').replace('2026-10-04T08:00:12Z', '2026-10-04T10:00:12Z');
+    let serveNewer = true;
+    sources((url) => (url === CARTE_URL && serveNewer ? respond(newer) : null));
+    const first = await callHandler<VigilanceResponse>(handler);
+    expect(first.body.updateTime).toBe('2026-10-04T10:00:12Z');
+    serveNewer = false;
+    vi.setSystemTime(NOW + 6 * 60_000);
+    const { status, body } = await callHandler<VigilanceResponse>(handler);
+    expect([status, body.updateTime, body.errors]).toEqual([200, '2026-10-04T10:00:12Z', []]);
+  });
 });

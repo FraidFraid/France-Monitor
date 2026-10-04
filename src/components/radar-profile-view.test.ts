@@ -36,7 +36,7 @@ describe('radarProfileHtml', () => {
 
   it('colonne de production du 04/10 (Nîmes, 53,6 km, 5 élévations) : nominale à 10 h 10, datée le lendemain', () => {
     const html = radarProfileHtml(RADAR_COLUMN_FIXTURE(), ENV_FIXTURE_NOW);
-    expect(visibleText(html)).toContain(`Radar NIMES · 53,6${NBSP}km · balayage annoncé pour 11:30 (heure nominale Météo-France) · 5 élévations`);
+    expect(visibleText(html)).toContain(`Radar NIMES · 53,6${NBSP}km · balayage annoncé pour 04/10 11:30 (heure nominale Météo-France) · 5 élévations`);
     expect(radarProfileHtml(RADAR_COLUMN_FIXTURE(), Date.parse('2026-10-05T09:00:00+02:00'))).toContain('observation du 04/10 11:30');
     expect((html.match(/data-dbz=/g) ?? []).length).toBe(1);
     expect((html.match(/data-empty=/g) ?? []).length).toBe(4);
@@ -62,9 +62,9 @@ describe('radarProfileHtml', () => {
   it('heure postérieure à maintenant : balayage annoncé (heure nominale), jamais une observation déjà faite', () => {
     const early = Date.parse('2026-07-23T10:10:00+02:00');
     const html = radarProfileHtml({ kind: 'profile', profile: PROFILE }, early);
-    expect(visibleText(html)).toContain(`Radar BORDEAUX · 42,7${NBSP}km · balayage annoncé pour 10:30 (heure nominale Météo-France) · 3 élévations`);
+    expect(visibleText(html)).toContain(`Radar BORDEAUX · 42,7${NBSP}km · balayage annoncé pour 23/07 10:30 (heure nominale Météo-France) · 3 élévations`);
     expect(html).not.toContain('observation du');
-    expect(visibleText(radarProfileHtml(RADAR_COLUMN_FIXTURE(), ENV_FIXTURE_NOW))).toContain('balayage annoncé pour 11:30');
+    expect(visibleText(radarProfileHtml(RADAR_COLUMN_FIXTURE(), ENV_FIXTURE_NOW))).toContain('balayage annoncé pour 04/10 11:30');
     // Tolérance d'une minute : à 30 s avant l'heure, c'est encore une observation.
     expect(radarProfileHtml({ kind: 'profile', profile: PROFILE }, Date.parse('2026-07-23T10:29:30+02:00'))).toContain('observation du 23/07 10:30');
   });

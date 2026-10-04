@@ -12,7 +12,7 @@ import {
   LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS,
 } from './constants.ts';
 import {
-  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_NAMES, ENV_ICON_SIZE, alphaToSdf, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, envLayerOn, envTooltipHtml, fireAbroadFeatures,
+  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SDF_RADIUS, ENV_ICON_SIZE, alphaToSdf, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, envLayerOn, envTooltipHtml, fireAbroadFeatures,
   fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures, radarPickFeature, topEnvHit, vigilanceDeptFeatures,
   vigilanceIconFeatures,
 } from './environment-map.ts';
@@ -204,6 +204,10 @@ describe('sources, couches, survol', () => {
 });
 
 describe('pictogrammes : champ de distance', () => {
+  it('la marge autour du tracé couvre le rayon du dégradé (une seule constante les lie)', () => {
+    expect(ENV_ICON_MARGIN).toBeGreaterThanOrEqual(ENV_ICON_SDF_RADIUS);
+    expect(ENV_ICON_SIZE).toBe(ENV_ICON_GLYPH + 2 * ENV_ICON_MARGIN);
+  });
   it('un disque plein devient un dégradé : 192 au bord, plus fort dedans, nul loin dehors, sans palier 0 ou 255 collé au bord', () => {
     const size = ENV_ICON_SIZE;
     const rgba = new Uint8ClampedArray(size * size * 4);

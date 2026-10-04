@@ -12,7 +12,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
 import {
   COLOR_LEVEL, COLOR_WORD, ENVIRONMENT_THEME, clockOf, dataMs, emptyOrDown, formatChangeM, formatFlowM3s, formatHeightM, glueEnvUnits, note,
-  plural, readErrors, sourceDown, stamp,
+  plural, readErrors, sourceDown,
 } from './environment-format.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
@@ -117,7 +117,8 @@ function headOf(f: FloodsResponse, now: number): LayerHeadModel {
   const figure = top === 1
     ? { value: '0', caption: `tronçon en vigilance jaune ou plus · ${tail}`, level: isLate ? null : COLOR_LEVEL[1] }
     : { value: frNumber(countAt(f, top), 0), caption: `${countsCaption(f, top)} · ${tail}`, level: isLate ? null : COLOR_LEVEL[top] };
-  const stamps = [`${stamp('Vigicrues', f.readAt, isLate, now)}${previous}`, measuresStamp(f, now)].filter((s): s is string => s !== null).join(' · ');
+  // Le relevé Vigicrues est déjà dit une fois, dans la légende du gros chiffre : la ligne d'état ne garde que les mesures Hub'Eau.
+  const stamps = measuresStamp(f, now);
   const rise = isLate ? null : biggestRise(f, now);
   const measured = f.sections.some((s) => s.stations.some((st) => st.heightM !== null));
   const lead = isLate || top === 1 || heightsLate(f, now) ? null
@@ -126,7 +127,7 @@ function headOf(f: FloodsResponse, now: number): LayerHeadModel {
   return {
     theme: ENVIRONMENT_THEME, title: CRUES_TITLE, figure,
     level: isLate ? 'nd' : verdict.level,
-    status: [isLate ? 'niveau suspendu : relevé Vigicrues en retard' : glueEnvUnits(verdict.reason), stamps],
+    status: [isLate ? 'niveau suspendu : relevé Vigicrues en retard' : glueEnvUnits(verdict.reason), ...(stamps === null ? [] : [stamps])],
     lead,
   };
 }

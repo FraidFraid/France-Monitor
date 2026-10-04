@@ -35,7 +35,7 @@ import {
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
 import {
-  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
+  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
   radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures,
 } from './deckgl/environment-map.ts';
@@ -9094,7 +9094,7 @@ export class DeckGLMap {
     if (!this.map) return;
     const SIZE = ENV_ICON_SIZE;
     const GLYPH = ENV_ICON_GLYPH;
-    const MARGIN = (SIZE - GLYPH) / 2;
+    const MARGIN = ENV_ICON_MARGIN;
     const canvas = document.createElement('canvas');
     canvas.width = SIZE;
     canvas.height = SIZE;

@@ -264,9 +264,13 @@ export function parseVigilanceTextes(json) {
 /** Dernier échec de chaque partie (mémoire du processus) : nommé tant que la valeur servie est plus ancienne que lui (S3). */
 const failures = new Map();
 
+/** Dernière valeur la plus récente de chaque partie (mémoire du processus) : une lecture plus ancienne ne la remplace jamais. */
+const newest = new Map();
+
 /** Réservé aux tests : oublie les échecs mémorisés. */
 export function __resetVigilanceStateForTests() {
   failures.clear();
+  newest.clear();
 }
 
 /**
@@ -279,7 +283,12 @@ async function readPart(key, label, read) {
       try {
         const parsed = await read();
         failures.delete(key);
-        return { ...parsed, readAt: new Date(Date.now()).toISOString() };
+        // Météo-France sert parfois une carte plus ancienne que la précédente : on garde la plus récente, avec sa date.
+        const kept = newest.get(key);
+        if (kept && Date.parse(parsed.updateTime) < Date.parse(kept.updateTime)) return kept;
+        const fresh = { ...parsed, readAt: new Date(Date.now()).toISOString() };
+        newest.set(key, fresh);
+        return fresh;
       } catch (err) {
         failures.set(key, { at: Date.now(), message: sourceError(label, err) });
         throw err;

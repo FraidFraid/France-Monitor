@@ -85,13 +85,17 @@ export function envIconImage(name: IconName): string {
 /** Côté de l'image d'un pictogramme (pixels) : le tracé occupe `ENV_ICON_GLYPH`, le reste est la marge du champ de distance. */
 export const ENV_ICON_SIZE = 64;
 export const ENV_ICON_GLYPH = 48;
+/** Rayon du dégradé du champ de distance (pixels) : la marge autour du tracé en dépend, jamais l'inverse. */
+export const ENV_ICON_SDF_RADIUS = 8;
+/** Marge de chaque côté du tracé : au moins le rayon, sinon le dégradé serait coupé. */
+export const ENV_ICON_MARGIN = (ENV_ICON_SIZE - ENV_ICON_GLYPH) / 2;
 
 /**
  * Champ de distance signé (SDF, alpha d'une image MapLibre `sdf: true`) calculé depuis l'alpha d'un dessin : bord à 0,75 (192),
  * dégradé sur `radius` pixels de part et d'autre. Un dessin enregistré tel quel en SDF a un alpha de 0 ou 255 : bords crénelés.
  * Distance euclidienne exacte (Felzenszwalb), alpha fractionnaire des bords pris en compte (méthode de tiny-sdf).
  */
-export function alphaToSdf(rgba: ArrayLike<number>, size: number, radius = 8, cutoff = 0.25): Uint8ClampedArray {
+export function alphaToSdf(rgba: ArrayLike<number>, size: number, radius = ENV_ICON_SDF_RADIUS, cutoff = 0.25): Uint8ClampedArray {
   const n = size * size;
   const INF = 1e20;
   const outer = new Float64Array(n);

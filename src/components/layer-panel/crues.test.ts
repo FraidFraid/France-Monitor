@@ -34,7 +34,7 @@ describe('vue Crues (spec 2026-10-04 environnement § 2.2)', () => {
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Environnement', title: CRUES_TITLE, level: 'jaune' });
     expect(v.head.figure).toEqual({ value: '4', caption: 'tronçons en jaune · 0 orange · 0 rouge · sur 337 surveillés · relevé Vigicrues 10:05', level: 'jaune' });
-    expect(v.head.status).toEqual([glueEnvUnits(floodsLevel(FLOODS_FIXTURE()).reason), `Vigicrues${NBSP}10:05 · mesures Hub’Eau${NBSP}10:00`]);
+    expect(v.head.status).toEqual([glueEnvUnits(floodsLevel(FLOODS_FIXTURE()).reason), `mesures Hub’Eau${NBSP}10:00`]);
     expect(v.head.status[0]).toBe('Têt, Agly, Réart, Tech (Méditerranée Ouest)');
     expect(v.head.lead).toBe(`Plus forte hausse sur 1${NBSP}h : St-Paul-de-Fenouillet (Agly), +0,10${NBSP}m.`);
     const h = html();
@@ -107,7 +107,7 @@ describe('vue Crues (spec 2026-10-04 environnement § 2.2)', () => {
     const floods = withFloods((f) => { f.sections = []; f.counts = { vert: 337, jaune: 0, orange: 0, rouge: 0 }; f.stationsReadAt = null; });
     const v = view({ floods });
     expect(v.head).toMatchObject({ level: 'vert', figure: { value: '0', caption: 'tronçon en vigilance jaune ou plus · sur 337 surveillés · relevé Vigicrues 10:05', level: 'vert' } });
-    expect(v.head.status).toEqual(['aucun tronçon en vigilance jaune ou plus', `Vigicrues${NBSP}10:05`]);
+    expect(v.head.status).toEqual(['aucun tronçon en vigilance jaune ou plus']);
     expect(v.sections[0].html).toContain('Aucun tronçon en vigilance jaune ou plus.');
     expect(v.sections[1].html).toContain('Aucun tronçon en vigilance : aucune station suivie.');
     expect(visibleText(renderLayerView('floods', v))).not.toContain('Source indisponible');
@@ -119,7 +119,7 @@ describe('vue Crues (spec 2026-10-04 environnement § 2.2)', () => {
     expect(h).toContain('<span>Vinca</span><span class="lp-val fmk-num">n.d.</span><small>Têt · aucune mesure lue</small>');
     expect(h).not.toMatch(new RegExp(`>0,00${NBSP}m<`));
     expect(v.sections.find((s) => s.id === 'stations')?.summary).toBe('n.d.');
-    expect(v.head.status[1]).toBe(`Vigicrues${NBSP}10:05`);
+    expect(v.head.status).toHaveLength(1);
     expect(v.head.lead).toBeNull();
     expect(v.sections[0].html).toContain('data-section="MO12"');
     const m = v.sections.find((s) => s.id === 'methode');
@@ -241,7 +241,7 @@ describe('vue Crues : décisions postérieures au brief', () => {
     const h = sectionOf('stations', { floods })?.html ?? '';
     expect(visibleText(h)).toContain('Hauteurs Hub’Eau en retard : dernière mesure 08:45.');
     expect(h).not.toMatch(/lp-trend lp-lvl/);
-    expect(v.head.status[1]).toBe(`Vigicrues${NBSP}10:05 · mesures Hub’Eau${NBSP}08:45 (en retard)`);
+    expect(v.head.status[1]).toBe(`mesures Hub’Eau${NBSP}08:45 (en retard)`);
     expect(v.head.lead).toBeNull();
     expect(v.sections.find((s) => s.id === 'stations')?.summary).toBe('9 stations mesurées · 0 en hausse (en retard)');
   });
@@ -315,7 +315,7 @@ describe('vue Crues : tête et section d’accord sur la liste des tronçons (S3
     const v = view({ floods });
     expect(v.head.level).toBe('jaune');
     expect(v.head.figure?.caption).toBe('tronçons en jaune · 0 orange · 0 rouge · sur 337 surveillés · relevé Vigicrues 10:05 (relevé précédent)');
-    expect(v.head.status[1]).toBe(`Vigicrues${NBSP}10:05 (relevé précédent) · mesures Hub’Eau${NBSP}10:00`);
+    expect(v.head.status[1]).toBe(`mesures Hub’Eau${NBSP}10:00`);
     expect(v.sections[0].html).toContain('data-section="MO12"');
     const later = view({ floods, now: NOW + H });
     expect(later.head.level).toBe('nd');

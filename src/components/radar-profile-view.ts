@@ -127,7 +127,7 @@ export function profileObservationLabel(observedAt: string, now: number): string
   const ms = Date.parse(observedAt);
   if (!Number.isFinite(ms)) return 'observation n.d.';
   if (ms > now + FUTURE_TOLERANCE_MS) {
-    return `balayage annoncé pour ${absoluteTime(ms, now, 'fr')} (heure nominale Météo-France)`;
+    return `balayage annoncé pour ${absoluteTime(ms, now, 'fr', { withDate: true })} (heure nominale Météo-France)`;
   }
   return `observation du ${absoluteTime(ms, now, 'fr', { withDate: true })}`;
 }
