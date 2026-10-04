@@ -42,11 +42,35 @@ export const ORANGE_FOYER_MW = 10;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
-const PARIS_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
+const PARIS_PARTS = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+/** Champs de l'heure murale de Paris d'un instant, sans dépendre du format de la locale. */
+function parisParts(instant: number): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  const out: Record<string, number> = {};
+  for (const p of PARIS_PARTS.formatToParts(new Date(instant))) if (p.type !== 'literal') out[p.type] = Number(p.value);
+  return { year: out.year, month: out.month, day: out.day, hour: out.hour, minute: out.minute, second: out.second };
+}
+
+/** Décalage de Paris par rapport à UTC à cet instant (ms) : 1 h en hiver, 2 h en été. */
+function parisOffsetMs(instant: number): number {
+  const p = parisParts(instant);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(instant / 1000) * 1000;
+}
+
+/** Instant correspondant à `hour` h (heure murale de Paris) du jour « AAAA-MM-JJ ». */
+function parisWallToInstant(day: string, hour: number): number {
+  const [y, m, d] = day.split('-').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hour);
+  const guess = wall - parisOffsetMs(wall - HOUR_MS);
+  return wall - parisOffsetMs(guess);
+}
 
 /** « 2026-10-04 » : jour de Paris d'un instant (heure d'été comprise). */
 export function parisDayOf(instant: number): string {
-  return PARIS_DAY.format(new Date(instant));
+  const p = parisParts(instant);
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
 }
 
 /** Jour suivant d'un jour « AAAA-MM-JJ » (calendrier, sans fuseau). */
@@ -79,12 +103,11 @@ export function isEnvironmentDataLate(source: EnvironmentSource, dataDate: strin
   return t + ENVIRONMENT_LATE_AFTER_MIN[source] * MINUTE_MS < now;
 }
 
-/** Prochaine carte régulière de vigilance : 04:00 ou 14:00 UTC (06 h et 16 h en été, 05 h et 15 h en hiver). */
+/** Prochaine carte régulière de vigilance : 06 h ou 16 h, heure de Paris toute l'année (04:00 et 14:00 UTC en été, 05:00 et 15:00 UTC en hiver). */
 export function nextVigilanceMap(now: number): number {
-  const d = new Date(now);
-  const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const slots = [midnight + 4 * HOUR_MS, midnight + 14 * HOUR_MS, midnight + 28 * HOUR_MS];
-  return slots.find((t) => t > now) ?? midnight + 28 * HOUR_MS;
+  const today = parisDayOf(now);
+  const candidates = [today, nextDayOf(today)].flatMap((day) => [6, 16].map((h) => parisWallToInstant(day, h)));
+  return candidates.find((t) => t > now) ?? candidates[candidates.length - 1];
 }
 
 // ─── Vigilance météo (spec § 2.1) ───
@@ -135,7 +158,8 @@ export function vigilanceLevel(v: VigilanceResponse, echeance: VigilanceEcheance
  */
 export function floodsLevel(f: FloodsResponse): LevelVerdict {
   if (f.readAt === null) return { level: 'nd', reason: 'Vigicrues indisponible' };
-  const top: OfficialColorId = f.counts.rouge > 0 ? 4 : f.counts.orange > 0 ? 3 : f.counts.jaune > 0 ? 2 : 1;
+  // Niveau et raison viennent des mêmes tronçons : ils ne peuvent pas se contredire.
+  const top = f.sections.reduce<OfficialColorId>((m, x) => (x.level > m ? x.level : m), 1);
   if (top === 1) return { level: 'vert', reason: 'aucun tronçon en vigilance jaune ou plus' };
   const groups = new Map<string, string[]>();
   for (const s of f.sections.filter((x) => x.level === top)) {
@@ -229,7 +253,11 @@ export function firesLevel(f: FiresResponse, now: number): LevelVerdict {
   }
   const rank: Readonly<Record<VigilanceLevel, number>> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
   const top = causes.reduce<VigilanceLevel>((m, c) => (rank[c.level] > rank[m] ? c.level : m), 'vert');
-  if (top !== 'vert') return { level: top, reason: causes.filter((c) => c.level === top).map((c) => c.text).join(' ; ') };
+  if (top !== 'vert') {
+    // Une source en panne se voit même quand l'autre colore la pastille (S3).
+    const outage = f.readAt === null ? ['détections FIRMS indisponibles'] : fd === null ? ['météo des forêts indisponible'] : [];
+    return { level: top, reason: [...causes.filter((c) => c.level === top).map((c) => c.text), ...outage].join(' ; ') };
+  }
   if (f.readAt === null) return { level: 'vert', reason: 'danger faible ; FIRMS indisponible' };
   const recurrent = f.foyers.filter((x) => x.recurrent).length;
   const noFoyer = `aucun foyer en France${recurrent > 0 ? ` hors ${recurrent} source${recurrent > 1 ? 's' : ''} récurrente${recurrent > 1 ? 's' : ''} à vérifier` : ''}`;

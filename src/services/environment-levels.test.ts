@@ -66,6 +66,11 @@ describe('isEnvironmentDataLate (tableau S2)', () => {
     expect(isEnvironmentDataLate('mdf', '2026-10-03T14:50:06Z', T('2026-10-04T20:51:00Z'))).toBe(true); // moins de 72 h : encore en saison
     expect(isEnvironmentDataLate('mdf', '2026-09-30T14:50:00Z', T('2026-10-15T10:00:00+02:00'))).toBe(false);
   });
+  it('météo des forêts : limite exacte de 30 h, puis une seconde de plus', () => {
+    const published = '2026-10-03T14:50:06Z';
+    expect(isEnvironmentDataLate('mdf', published, Date.parse(published) + 30 * 3_600_000)).toBe(false);
+    expect(isEnvironmentDataLate('mdf', published, Date.parse(published) + 30 * 3_600_000 + 1000)).toBe(true);
+  });
 });
 
 describe('saison de la météo des forêts', () => {
@@ -76,6 +81,12 @@ describe('saison de la météo des forêts', () => {
     expect(forestDangerSeason('2026-10-03T14:50:06Z', T('2026-10-06T14:50:07Z'))).toBe('hors-saison');
     expect(forestDangerSeason(null, NOW)).toBe('hors-saison');
   });
+  it('bornes de saison à minuit de Paris', () => {
+    expect(forestDangerSeason(null, T('2026-05-31T23:59:59+02:00'))).toBe('hors-saison');
+    expect(forestDangerSeason(null, T('2026-06-01T00:00:00+02:00'))).toBe('en-saison');
+    expect(forestDangerSeason(null, T('2026-09-30T23:59:59+02:00'))).toBe('en-saison');
+    expect(forestDangerSeason(null, T('2026-10-01T00:00:00+02:00'))).toBe('hors-saison');
+  });
 });
 
 describe('heures et jours de Paris', () => {
@@ -84,7 +95,16 @@ describe('heures et jours de Paris', () => {
     expect(new Date(nextVigilanceMap(T('2026-10-04T16:30:00+02:00'))).toISOString()).toBe('2026-10-05T04:00:00.000Z');
     expect(new Date(nextVigilanceMap(T('2026-10-04T05:00:00+02:00'))).toISOString()).toBe('2026-10-04T04:00:00.000Z');
     // Heure d'hiver : 04:00Z = 05 h à Paris.
-    expect(new Date(nextVigilanceMap(T('2026-11-02T03:00:00+01:00'))).toISOString()).toBe('2026-11-02T04:00:00.000Z');
+    // Heure d'hiver : 06 h Paris = 05:00Z, 16 h Paris = 15:00Z.
+    expect(new Date(nextVigilanceMap(T('2026-11-02T03:00:00+01:00'))).toISOString()).toBe('2026-11-02T05:00:00.000Z');
+  });
+  it('cartes à 06 h et 16 h de Paris toute l’année, autour du changement d’heure du 25/10/2026', () => {
+    expect(new Date(nextVigilanceMap(T('2026-10-25T13:00:00Z'))).toISOString()).toBe('2026-10-25T15:00:00.000Z');
+    expect(new Date(nextVigilanceMap(T('2026-10-24T13:00:00Z'))).toISOString()).toBe('2026-10-24T14:00:00.000Z');
+    // Juste après une carte : la suivante est le prochain 06 h de Paris (lendemain, heure d'hiver).
+    expect(new Date(nextVigilanceMap(T('2026-10-24T14:00:01Z'))).toISOString()).toBe('2026-10-25T05:00:00.000Z');
+    expect(new Date(nextVigilanceMap(T('2026-10-25T15:00:00Z'))).toISOString()).toBe('2026-10-26T05:00:00.000Z');
+    expect(new Date(nextVigilanceMap(T('2026-10-25T04:00:00Z'))).toISOString()).toBe('2026-10-25T05:00:00.000Z');
   });
   it('jour de Paris, mots du jour (minuit de Paris et changement d’heure compris)', () => {
     expect(parisDayOf(T('2026-10-04T23:30:00Z'))).toBe('2026-10-05');
@@ -118,6 +138,9 @@ describe('vigilanceLevel', () => {
     const coastOnly = period({ maxColor: 3, departments: [GARD], coast: [{ code: '6610', departement: '66', name: 'Pyrénées-Orientales, littoral', color: 3, slots: [] }] });
     expect(vigilanceLevel(vigilance([coastOnly]))).toEqual({ level: 'orange', reason: 'vagues-submersion : Pyrénées-Orientales, littoral' });
   });
+  it('J1 absent : n.d., jamais « aucune vigilance »', () => {
+    expect(vigilanceLevel(vigilance([period({})]), 'J1')).toEqual({ level: 'nd', reason: 'carte de vigilance Météo-France indisponible' });
+  });
   it('carte lue sans vigilance : vert, et c’est dit ; carte jamais lue : n.d., jamais « aucune vigilance »', () => {
     expect(vigilanceLevel(vigilance([period({ maxColor: 1, departments: [], counts: [] })]))).toEqual({ level: 'vert', reason: 'aucune vigilance jaune ou plus' });
     expect(vigilanceLevel(vigilance([], null))).toEqual({ level: 'nd', reason: 'carte de vigilance Météo-France indisponible' });
@@ -145,6 +168,10 @@ describe('floodsLevel', () => {
       .toEqual({ level: 'orange', reason: 'Loire bourguignonne (Loire-Allier-Cher-Indre)' });
     expect(floodsLevel(floods([], { vert: 337, jaune: 0, orange: 0, rouge: 0 }))).toEqual({ level: 'vert', reason: 'aucun tronçon en vigilance jaune ou plus' });
     expect(floodsLevel(floods([], { vert: 0, jaune: 0, orange: 0, rouge: 0 }, null))).toEqual({ level: 'nd', reason: 'Vigicrues indisponible' });
+  });
+  it('niveau et raison viennent des mêmes tronçons, même si les compteurs disent autre chose', () => {
+    const f = floods([section('MO12', 'Têt', 2)], { vert: 336, jaune: 0, orange: 1, rouge: 0 });
+    expect(floodsLevel(f)).toEqual({ level: 'jaune', reason: 'Têt (Méditerranée Ouest)' });
   });
   it('station en retard une heure après sa dernière mesure (Vinca, 07:55Z)', () => {
     const vinca: FloodStation = {
@@ -220,7 +247,13 @@ describe('firesLevel', () => {
     const small = [foyer({ confirmed: true, passes: 2, frpTotalMw: 3.91 }), foyer({ id: 'f2', confirmed: true, passes: 2, frpTotalMw: 2.58 }), foyer({ id: 'f3' })];
     expect(firesLevel(fires(small), NOW))
       .toEqual({ level: 'jaune', reason: '2 foyers confirmés de moins de 10 MW en France ; danger modéré aujourd’hui : 10 départements' });
-    expect(firesLevel(fires([foyer({})], null), NOW)).toEqual({ level: 'jaune', reason: 'une détection isolée en France' });
+    expect(firesLevel(fires([foyer({})], null), NOW)).toEqual({ level: 'jaune', reason: 'une détection isolée en France ; météo des forêts indisponible' });
+    // Foyer majeur de confiance faible : jamais rouge dans la pastille, orange au plus.
+    const faible = foyer({ confirmed: true, passes: 4, frpTotalMw: 250, confidenceMax: 'faible' });
+    expect(firesLevel(fires([faible], ain), NOW)).toEqual({ level: 'orange', reason: 'un foyer confirmé en France' });
+    // Département au niveau 3 : orange.
+    const fd3 = forestDanger({}, [{ dept: '13', name: 'Bouches-du-Rhône', j1: 3, j2: 2 }]);
+    expect(firesLevel(fires([], fd3), NOW)).toEqual({ level: 'orange', reason: 'danger élevé aujourd’hui : Bouches-du-Rhône' });
   });
   it('hors saison : niveaux échus sans couleur (publication du 30/09 lue le 15/10)', () => {
     const old = forestDanger({ publishedAt: '2026-09-30T14:50:00Z', j1Date: '2026-10-01', j2Date: '2026-10-02', season: 'hors-saison' });
@@ -232,7 +265,7 @@ describe('firesLevel', () => {
     expect(firesLevel(fires([], null, null), NOW)).toEqual({ level: 'nd', reason: 'FIRMS et météo des forêts indisponibles' });
     const old = forestDanger({ j1Date: '2026-10-01' });
     expect(firesLevel(fires([], old, null), NOW)).toEqual({ level: 'nd', reason: 'FIRMS indisponible ; météo des forêts hors saison' });
-    expect(firesLevel(fires([], forestDanger(), null), NOW)).toEqual({ level: 'jaune', reason: 'danger modéré aujourd’hui : 10 départements' });
+    expect(firesLevel(fires([], forestDanger(), null), NOW)).toEqual({ level: 'jaune', reason: 'danger modéré aujourd’hui : 10 départements ; détections FIRMS indisponibles' });
     expect(firesLevel(fires([foyer({ recurrent: true })], null), NOW))
       .toEqual({ level: 'vert', reason: 'aucun foyer en France hors 1 source récurrente à vérifier ; météo des forêts indisponible' });
   });
