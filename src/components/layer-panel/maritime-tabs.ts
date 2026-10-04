@@ -6,23 +6,22 @@ import type { MaritimeSnapshot } from '../../types/index.ts';
 import { FRENCH_MARITIME_TERRITORIES, isInFranceZone, type FrenchMaritimeTerritoryCode } from '../../config/french-ports.ts';
 import { BLACK_LIST_FLAGS, GREY_LIST_FLAGS, RISK_FLAGS_VINTAGE, SANCTIONED_FLAGS, type FlagRisk } from '../../config/risk-flags.ts';
 import type { AisConnectionStatus } from '../../services/ais-connection.ts';
-import { isTrafficDataLate } from '../../services/traffic-levels.ts';
 import type { MilitaryShip, RiskLevel } from '../../services/military-ships.ts';
-import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerTab, type LayerView } from './frame.ts';
 import { aisLate, maritimeHead, maritimeMethodSection, veilleSections, type MaritimeTab, type MaritimeVeilleInput } from './maritime.ts';
+import { RISK_LEVEL, flagName, frozenWord, homonymKeys, navyLiveState, shipRow, type NavyLiveState } from './navy.ts';
 import { CAT_PORT, coordText, dataMs, fold, formatKm, formatKnots, formatMeters, note, plural } from './traffic-format.ts';
 
 export type MaritimeAlertFilter = 'alertes' | 'risque-eleve' | 'pavillon' | 'militaire' | 'tous';
 export const MARITIME_ALERT_FILTERS: readonly MaritimeAlertFilter[] = ['alertes', 'risque-eleve', 'pavillon', 'militaire', 'tous'];
 export const MARITIME_PAGE_SIZE = 20;
 
-/** Risque d'un navire (critères de military-ships.ts) dans la palette des niveaux : aucun vert, faible jaune, modéré orange, élevé et critique rouge. */
-export const RISK_LEVEL: Readonly<Record<RiskLevel, VigilanceLevel>> = { none: 'vert', low: 'jaune', medium: 'orange', high: 'rouge', critical: 'rouge' };
+/** Risque d'un navire dans la palette des niveaux : défini dans navy.ts, partagé avec le panneau Défense. */
+export { RISK_LEVEL };
 const RISK_WORD: Readonly<Record<RiskLevel, string>> = { none: 'nul', low: 'faible', medium: 'modéré', high: 'élevé', critical: 'critique' };
 const RISK_ORDER: Readonly<Record<RiskLevel, number>> = { none: 0, low: 1, medium: 2, high: 3, critical: 4 };
 const FILTER_LABEL: Readonly<Record<MaritimeAlertFilter, string>> = {
@@ -75,9 +74,6 @@ export function isAlertShip(s: MilitaryShip): boolean {
 function flagIso(s: MilitaryShip): string {
   return (s.country ?? '').split('|')[0] ?? '';
 }
-function flagName(s: MilitaryShip): string {
-  return (s.country ?? '').split('|')[1] ?? '';
-}
 function flagged(s: MilitaryShip): boolean {
   const iso = flagIso(s);
   return BLACK_LIST_FLAGS.has(iso) || GREY_LIST_FLAGS.has(iso) || SANCTIONED_FLAGS.has(iso);
@@ -88,23 +84,15 @@ const FILTERS: Readonly<Record<MaritimeAlertFilter, (s: MilitaryShip) => boolean
 };
 
 /**
- * État de la liste vivante (onglets Marine nationale et Alertes, fiche navire). `frozen` : même seuil que l'en-tête et la
- * Veille (isTrafficDataLate('ais'), 5 min sans message) ; sans aucun message, après l'attente initiale ou la coupure de la
- * liaison. `headDown` : l'en-tête dit lui-même « AIS indisponible » (instantané du relais en retard ou en panne) ; sinon seule la
- * liaison directe est en cause et la liste le dit sans contredire la pastille.
+ * État de la liste vivante (onglets Marine nationale et Alertes, fiche navire) : règle de navy.ts (navyLiveState), partagée avec le
+ * panneau Défense. `headDown` : l'en-tête dit lui-même « AIS indisponible » (instantané du relais en retard ou en panne) ; sinon seule
+ * la liaison directe est en cause et la liste le dit sans contredire la pastille.
  */
-interface LiveState { frozen: boolean; headDown: boolean }
+type LiveState = NavyLiveState;
 
 function liveState(input: Pick<MaritimeViewInput, 'snapshot' | 'error' | 'live' | 'now'>): LiveState {
   const { snapshot: s, error, live, now } = input;
-  const frozen = live.lastMessageAt === null ? live.status === 'stale' || live.status === 'disconnected'
-    : isTrafficDataLate('ais', new Date(live.lastMessageAt).toISOString(), now);
-  return { frozen, headDown: s ? aisLate(s, now) : error !== null };
-}
-
-/** « AIS indisponible » seulement quand l'en-tête le dit ; sinon « Liaison directe interrompue ». */
-function frozenWord(state: LiveState): string {
-  return state.headDown ? 'AIS indisponible' : 'Liaison directe interrompue';
+  return navyLiveState(live, s ? aisLate(s, now) : error !== null, now);
 }
 
 function inTerritory(s: MilitaryShip, territory: MaritimeLiveInput['territory']): boolean {
@@ -133,31 +121,6 @@ function toolbar(live: MaritimeLiveInput, withFilters: boolean): string {
     `<button type="button" class="lp-toggle" data-mar-filter="${f}" aria-pressed="${f === live.filter}">${FILTER_LABEL[f]}</button>`).join('')}</div>` : '';
   return `<div class="lp-toolbar"><input type="search" class="lp-search" data-mar-search value="${escapeHtml(live.search)}" placeholder="Nom ou MMSI" `
     + `aria-label="Rechercher un navire par nom ou MMSI"><select class="lp-select" data-mar-territory aria-label="Territoire">${options}</select></div>${chips}`;
-}
-
-function homonymKeys(ships: readonly MilitaryShip[]): Set<string> {
-  const counts = new Map<string, number>();
-  for (const s of ships) {
-    const key = fold(s.name);
-    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k));
-}
-
-function shipRow(s: MilitaryShip, homonyms: ReadonlySet<string>, stale: boolean, now: number): string {
-  const dup = homonyms.has(fold(s.name)) && s.mmsi !== undefined;
-  const country = flagName(s);
-  const seen = s.lastSeen !== undefined ? `vu à ${absoluteTime(s.lastSeen, now, 'fr')}`
-    : s.isLive === false && s.port ? `position de référence : ${s.port}` : null;
-  const role = s.role && s.role !== 'Civil/Inconnu' ? s.role : null;
-  const noteText = [s.type, role, country ? `pavillon ${country}` : null, s.maritimeTerritory?.name ?? null,
-    s.nearestPort ? `${s.nearestPort.name} à ${formatKm(s.nearestPort.distanceKm, 0)}` : null, seen, ...(s.riskReasons ?? [])]
-    .filter((x): x is string => x !== null && x !== '').join(' · ');
-  return listRow({
-    text: dup ? `${s.name} · MMSI …${s.mmsi?.slice(-4) ?? ''}` : s.name,
-    value: s.isLive === false ? 'port d’attache' : s.speed !== undefined ? formatKnots(s.speed) : 'n.d.',
-    level: stale ? 'gris' : RISK_LEVEL[s.riskLevel ?? 'none'], note: noteText, data: { 'mar-ship': s.mmsi ?? s.id }, link: true,
-  });
 }
 
 function paged(ships: readonly MilitaryShip[], live: MaritimeLiveInput, state: LiveState, now: number, empty: string): string {

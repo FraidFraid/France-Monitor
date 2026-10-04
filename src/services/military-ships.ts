@@ -13,6 +13,7 @@
 
 import { getMmsiCountry } from '../utils/mmsi-country.ts';
 import { isInFranceZone, getNearestPort, getFrenchMaritimeTerritory, type FrenchMaritimeTerritoryCode } from '../config/french-ports.ts';
+import type { NavyMmsiVerification } from '../types/index.ts';
 import { getFlagRisk } from '../config/risk-flags.ts';
 import type { FlagRisk } from '../config/risk-flags.ts';
 import {
@@ -70,48 +71,46 @@ export interface MilitaryShip {
 }
 
 // ─── Base statique de la Marine Nationale ───
-// Navires avec MMSI connus et port d'attache
-const FRENCH_NAVY_SHIPS: Array<Omit<MilitaryShip, 'lat' | 'lon'> & { homeLat: number; homeLon: number }> = [
+// Bâtiments de surface et leur port base. Le MMSI est un candidat : il n'est reconnu en AIS que s'il est vérifié sur une source officielle
+// publique (O12 : base MARS de l'UIT, defense.gouv.fr), jour et lien dans mmsiVerifiedAt et mmsiSource. La recherche publique de l'UIT
+// (stations de navire) a répondu 403 à un GET honnête le 04/10/2026 : aucune entrée n'est vérifiée, la tâche A18 recontrôle en direct.
+// Les sous-marins (SNLE, SNA) n'y figurent plus (O11) ; l'Île Longue reste un site de défense (config/military-bases-db.ts).
+interface NavyEntry extends Omit<MilitaryShip, 'lat' | 'lon'> {
+    homeLat: number;
+    homeLon: number;
+    /** « AAAA-MM-JJ » du contrôle sur la source officielle ; null : MMSI non vérifié, donc non reconnu. */
+    mmsiVerifiedAt: NavyMmsiVerification['mmsiVerifiedAt'] | null;
+    /** Lien de la source officielle consultée ; null tant que non vérifié. */
+    mmsiSource: NavyMmsiVerification['mmsiSource'] | null;
+}
+const FRENCH_NAVY_SHIPS: NavyEntry[] = [
     // ─── Porte-avions ───
-    { id: 'r91', name: 'Charles de Gaulle', type: 'Porte-avions', role: 'Aviation', mmsi: '227334000', port: 'Toulon', homeLat: 43.122, homeLon: 5.928 },
+    { id: 'r91', name: 'Charles de Gaulle', type: 'Porte-avions', role: 'Aviation', mmsi: '227334000', port: 'Toulon', homeLat: 43.122, homeLon: 5.928, mmsiVerifiedAt: null, mmsiSource: null },
 
     // ─── Frégates de défense aérienne (FDA) ───
-    { id: 'd620', name: 'Chevalier Paul', type: 'Frégate DA', role: 'Défense aérienne', mmsi: '227731000', port: 'Toulon', homeLat: 43.120, homeLon: 5.925 },
-    { id: 'd621', name: 'Forbin', type: 'Frégate DA', role: 'Défense aérienne', mmsi: '227732000', port: 'Toulon', homeLat: 43.119, homeLon: 5.926 },
+    { id: 'd620', name: 'Chevalier Paul', type: 'Frégate DA', role: 'Défense aérienne', mmsi: '227731000', port: 'Toulon', homeLat: 43.120, homeLon: 5.925, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd621', name: 'Forbin', type: 'Frégate DA', role: 'Défense aérienne', mmsi: '227732000', port: 'Toulon', homeLat: 43.119, homeLon: 5.926, mmsiVerifiedAt: null, mmsiSource: null },
 
     // ─── Frégates multi-missions (FREMM) ───
-    { id: 'd650', name: 'Aquitaine', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227801000', port: 'Toulon', homeLat: 43.121, homeLon: 5.924 },
-    { id: 'd651', name: 'Provence', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227802000', port: 'Toulon', homeLat: 43.118, homeLon: 5.927 },
-    { id: 'd652', name: 'Languedoc', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227803000', port: 'Toulon', homeLat: 43.117, homeLon: 5.923 },
-    { id: 'd653', name: 'Auvergne', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227804000', port: 'Toulon', homeLat: 43.123, homeLon: 5.929 },
-    { id: 'd654', name: 'Bretagne', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227805000', port: 'Brest', homeLat: 48.375, homeLon: -4.495 },
-    { id: 'd655', name: 'Normandie', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227806000', port: 'Brest', homeLat: 48.377, homeLon: -4.497 },
+    { id: 'd650', name: 'Aquitaine', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227801000', port: 'Toulon', homeLat: 43.121, homeLon: 5.924, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd651', name: 'Provence', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227802000', port: 'Toulon', homeLat: 43.118, homeLon: 5.927, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd652', name: 'Languedoc', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227803000', port: 'Toulon', homeLat: 43.117, homeLon: 5.923, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd653', name: 'Auvergne', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227804000', port: 'Toulon', homeLat: 43.123, homeLon: 5.929, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd654', name: 'Bretagne', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227805000', port: 'Brest', homeLat: 48.375, homeLon: -4.495, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'd655', name: 'Normandie', type: 'FREMM', role: 'Frégate multi-missions', mmsi: '227806000', port: 'Brest', homeLat: 48.377, homeLon: -4.497, mmsiVerifiedAt: null, mmsiSource: null },
 
     // ─── Bâtiments de projection et de commandement (BPC) ───
-    { id: 'l9011', name: 'Mistral', type: 'BPC', role: 'Projection amphibie', mmsi: '227301000', port: 'Toulon', homeLat: 43.116, homeLon: 5.921 },
-    { id: 'l9012', name: 'Tonnerre', type: 'BPC', role: 'Projection amphibie', mmsi: '227302000', port: 'Toulon', homeLat: 43.115, homeLon: 5.920 },
-    { id: 'l9013', name: 'Dixmude', type: 'BPC', role: 'Projection amphibie', mmsi: '227303000', port: 'Toulon', homeLat: 43.114, homeLon: 5.919 },
-
-    // ─── Sous-marins nucléaires lanceurs d'engins (SNLE) ─ jamais en AIS ───
-    // On les affiche au port comme "stationnés"
-    { id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', homeLat: 48.309, homeLon: -4.411 },
-    { id: 's617', name: 'Le Téméraire', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', homeLat: 48.308, homeLon: -4.412 },
-    { id: 's618', name: 'Le Vigilant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', homeLat: 48.307, homeLon: -4.413 },
-    { id: 's619', name: 'Le Terrible', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', homeLat: 48.306, homeLon: -4.414 },
-
-    // ─── Sous-marins nucléaires d'attaque (SNA) ───
-    { id: 's602', name: 'Perle', type: 'SNA', role: 'Attaque sous-marine', port: 'Toulon', homeLat: 43.112, homeLon: 5.917 },
-    { id: 's603', name: 'Casabianca', type: 'SNA', role: 'Attaque sous-marine', port: 'Toulon', homeLat: 43.111, homeLon: 5.916 },
-    { id: 's604', name: 'Émeraude', type: 'SNA', role: 'Attaque sous-marine', port: 'Toulon', homeLat: 43.110, homeLon: 5.915 },
-    { id: 's605', name: 'Améthyste', type: 'SNA', role: 'Attaque sous-marine', port: 'Toulon', homeLat: 43.109, homeLon: 5.914 },
+    { id: 'l9011', name: 'Mistral', type: 'BPC', role: 'Projection amphibie', mmsi: '227301000', port: 'Toulon', homeLat: 43.116, homeLon: 5.921, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'l9012', name: 'Tonnerre', type: 'BPC', role: 'Projection amphibie', mmsi: '227302000', port: 'Toulon', homeLat: 43.115, homeLon: 5.920, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'l9013', name: 'Dixmude', type: 'BPC', role: 'Projection amphibie', mmsi: '227303000', port: 'Toulon', homeLat: 43.114, homeLon: 5.919, mmsiVerifiedAt: null, mmsiSource: null },
 
     // ─── Patrouilleurs / OPV ───
-    { id: 'p680', name: 'Leopard', type: 'Patrouilleur', role: 'Surveillance maritime', mmsi: '227501000', port: 'Cherbourg', homeLat: 49.646, homeLon: -1.624 },
-    { id: 'p689', name: 'Géranium', type: 'Patrouilleur outre-mer', role: 'Surveillance ZEE', mmsi: '227509000', port: 'Fort-de-France', homeLat: 14.598, homeLon: -61.079 },
+    { id: 'p680', name: 'Leopard', type: 'Patrouilleur', role: 'Surveillance maritime', mmsi: '227501000', port: 'Cherbourg', homeLat: 49.646, homeLon: -1.624, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'p689', name: 'Géranium', type: 'Patrouilleur outre-mer', role: 'Surveillance ZEE', mmsi: '227509000', port: 'Fort-de-France', homeLat: 14.598, homeLon: -61.079, mmsiVerifiedAt: null, mmsiSource: null },
 
     // ─── Bâtiment de soutien et d'assistance ───
-    { id: 'a607', name: 'Marne', type: 'Ravitailleur', role: 'Soutien logistique', mmsi: '227201000', port: 'Toulon', homeLat: 43.126, homeLon: 5.932 },
-    { id: 'a608', name: 'Somme', type: 'Ravitailleur', role: 'Soutien logistique', mmsi: '227202000', port: 'Brest', homeLat: 48.380, homeLon: -4.500 },
+    { id: 'a607', name: 'Marne', type: 'Ravitailleur', role: 'Soutien logistique', mmsi: '227201000', port: 'Toulon', homeLat: 43.126, homeLon: 5.932, mmsiVerifiedAt: null, mmsiSource: null },
+    { id: 'a608', name: 'Somme', type: 'Ravitailleur', role: 'Soutien logistique', mmsi: '227202000', port: 'Brest', homeLat: 48.380, homeLon: -4.500, mmsiVerifiedAt: null, mmsiSource: null },
 ];
 
 // Clé API aisstream.io — DEV UNIQUEMENT.
@@ -174,8 +173,9 @@ const staticByMmsi = new Map<string, StaticAisData>();
 let lastStaticSample: { mmsi: string; staticReport: unknown } | null = null;
 // Set de MMSI de la Marine Nationale pour marquage rapide
 // Exported for sovereign whitelist filtering in App.ts
+/** Seuls les MMSI vérifiés sur une source officielle publique sont reconnus (O12). */
 export const NAVY_MMSI_SET = new Set(
-    FRENCH_NAVY_SHIPS.filter(s => s.mmsi).map(s => s.mmsi!)
+    FRENCH_NAVY_SHIPS.filter(s => s.mmsi && s.mmsiVerifiedAt !== null).map(s => s.mmsi!)
 );
 
 // Callback for first data arrival (allows App.ts to trigger immediate refresh)
@@ -572,7 +572,8 @@ export function getMilitaryShips(): MilitaryShip[] {
     const AIS_MAX_AGE = 10 * 60 * 1000; // 10 minutes - repli vers port d'attache si pas de données
 
     return FRENCH_NAVY_SHIPS.map(ship => {
-        const live = ship.mmsi ? livePositions.get(ship.mmsi) : undefined;
+        const verifiedMmsi = ship.mmsiVerifiedAt !== null ? ship.mmsi : undefined;
+        const live = verifiedMmsi ? livePositions.get(verifiedMmsi) : undefined;
         const isLive = live != null && (now - live.ts) < AIS_MAX_AGE;
 
         return {
@@ -580,7 +581,7 @@ export function getMilitaryShips(): MilitaryShip[] {
             name: ship.name,
             type: ship.type,
             role: ship.role,
-            mmsi: ship.mmsi,
+            mmsi: verifiedMmsi,
             lat: isLive ? live!.lat : ship.homeLat,
             lon: isLive ? live!.lon : ship.homeLon,
             speed: isLive ? live!.speed : 0,
@@ -612,7 +613,7 @@ export function getAllLiveTraffic(
         if (filterFrance && !isInFranceZone(pos.lat, pos.lon, territoryCode)) continue;
 
         const staticData = staticByMmsi.get(mmsi);
-        const navyShip = FRENCH_NAVY_SHIPS.find(s => s.mmsi === mmsi);
+        const navyShip = FRENCH_NAVY_SHIPS.find(s => s.mmsiVerifiedAt !== null && s.mmsi === mmsi);
         const resolvedShipType = pos.shipType ?? staticData?.shipType;
         const resolvedName = normalizeShipName(pos.name) ?? normalizeShipName(staticData?.name);
         const resolvedDestination = pos.destination ?? staticData?.destination;

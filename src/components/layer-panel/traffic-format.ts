@@ -171,7 +171,9 @@ export function jamLevel(magnitude: 1 | 2 | 3): VigilanceLevel {
 }
 /** Intensité d'un bouchon TomTom en français (magnitude 1 à 3), pour l'export. */
 export const JAM_MAGNITUDE_WORD: Readonly<Record<1 | 2 | 3, string>> = { 1: 'ralenti', 2: 'à-coups', 3: 'bouchon' };
-export const SQUAWK_WORD: Readonly<Record<Squawk, string>> = { '7500': 'détournement', '7600': 'panne radio', '7700': 'urgence' };
+export const SQUAWK_WORD: Readonly<Record<Squawk, string>> = { '7500': 'intervention illicite', '7600': 'panne radio', '7700': 'urgence' };
+/** Précision à côté d'un code d'urgence (S3) : le transpondeur affiche un code, seules les autorités qualifient l'événement. */
+export const SQUAWK_CAVEAT = 'code affiché par le transpondeur, non confirmé par les autorités';
 /** Puce d'une urgence, comme la pastille (spec § 3.2) : 7500 rouge, 7700 orange, 7600 jaune. */
 export const SQUAWK_LEVEL: Readonly<Record<Squawk, VigilanceLevel>> = { '7500': 'rouge', '7700': 'orange', '7600': 'jaune' };
 /** Groupe ferroviaire (axe, région) : retard moyen jaune dès 20 min, orange dès 45, rouge dès 90 ou 10 trains supprimés. */

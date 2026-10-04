@@ -251,9 +251,9 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(v.head.level).toBe('vert');
     expect(v.head.status[0]).toBe('aucune urgence confirmée au-dessus du territoire ou de ses approches');
     expect(v.head.figure?.caption).toBe('aéronef en urgence · dont 1 à confirmer · 1\u202F301 en vol dans la zone suivie · OpenSky, 15:09');
-    expect(v.head.lead).toBe(`1 aéronef en urgence : DLH4AB (7500, détournement, à confirmer). Paris-CDG : 71 départs en 2${NBSP}h.`);
+    expect(v.head.lead).toBe(`1 aéronef en urgence : DLH4AB (7500, intervention illicite, à confirmer). Paris-CDG : 71 départs en 2${NBSP}h.`);
     const h = v.sections[0].html;
-    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>DLH4AB · 7500 (détournement)</span><span class="lp-val fmk-num">15:09</span>'
+    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>DLH4AB · 7500 (intervention illicite)</span><span class="lp-val fmk-num">15:09</span>'
       + `<small>47,200${NBSP}N${NBSP}2,100${NBSP}E · 3\u202F200${NBSP}m · au-dessus du territoire ou de ses approches · vu une fois, à confirmer</small>`);
     expect(renderLayerView('trafficAir', v)).not.toMatch(/lp-lvl--rouge|fm-vig--rouge|fmk-dot--rouge/);
     expect(visibleText(h)).toContain('vu sur au moins deux relevés');

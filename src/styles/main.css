@@ -20,6 +20,11 @@
   --radar-dbz-1: #5ed3ff; --radar-dbz-2: #39abff; --radar-dbz-3: #228be6; --radar-dbz-4: #26c56a; --radar-dbz-5: #f5dc42;
   --radar-dbz-6: #f78f2d; --radar-dbz-7: #e74848; --radar-dbz-8: #ae3bc4; --radar-dbz-9: #ffffff;
   --echo-top-1: #78909c; --echo-top-2: #26a69a; --echo-top-3: #43a047; --echo-top-4: #fdd835; --echo-top-5: #fb8c00; --echo-top-6: #e53935;
+  /* Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs militaires français, autres et hors de France, Marine nationale, câbles
+     et atterrages ; vulnérabilités exploitées (citées par le CERT-FR ou non) et revendications de rançongiciels ; valeurs reprises dans
+     layer-panel/sovereignty-legend.ts pour la carte (vérifié par test) */
+  --cat-mil-francais: #4a9eff; --cat-mil-autres: #ff6b9d; --cat-mil-etranger: #d1d1d6; --cat-navy: #00d4c8;
+  --cat-cable: #22c7ff; --cat-landing: #7dd3fc; --cat-kev: #8e8ef0; --cat-kev-cite: #5e5ce6; --cat-revendication: #bf5af2;
   /* Environnement, phase B (spec 2026-10-04 § 3.1) : vigilance sécheresse, teinte de catégorie (jamais une couleur de niveau) */
   --cat-secheresse-vigilance: #7fb3d5;
   /* Background */
