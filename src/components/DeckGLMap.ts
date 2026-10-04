@@ -10,7 +10,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
-import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
@@ -44,11 +44,12 @@ import {
   cableFeatures, defenseSiteFeatures, landingFeatures, militaryEmergencyFeatures, navyFeatures, osmWorksFeatures, sovCableColor, sovSourceSpec,
   sovTooltipHtml, topSovHit,
 } from './deckgl/sovereignty-map.ts';
+import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
 import {
-  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_EMERGENCIES, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
+  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
 } from './deckgl/constants.ts';
 import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
@@ -250,7 +251,6 @@ import {
   LYR_METRO_LOAD_GLOW,
   LYR_METRO_LOAD_CIRCLE,
   LYR_METRO_LOAD_LABEL,
-  SRC_MILITARY_ZONES,
   SRC_MILITARY_BASES,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
   SRC_MILITARY_SHIPS_SELECTED,
@@ -260,8 +260,6 @@ import {
   SRC_TELECOM,
   SRC_POWER,
   SRC_HOSPITALS,
-  LYR_MILITARY_ZONES_FILL,
-  LYR_MILITARY_ZONES_LINE,
   LYR_MILITARY_BASES_CIRCLE,
   LYR_MILITARY_BASES_LABEL,
   LYR_MILITARY_SHIPS_HIGHLIGHT,
@@ -453,6 +451,7 @@ export class DeckGLMap {
   private sovHoverPopup: maplibregl.Popup | null = null;
   private sovHoverShown = false;
   private osmWorksVisible = false;
+  private droneZonesVisible = false;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
   private sovCables: SubseaCablesFile | null = null;
   private sovCableWatch: CablesWatchResponse | null = null;
@@ -879,7 +878,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_IXP_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
     // Military
-    this.map.addSource(SRC_MILITARY_ZONES, { type: 'geojson', data: emptyFC() });
+    // Souveraineté, phase B (tâche B27) : mailles GNSS et zones drones DGAC, à la place des rectangles « ZIT ».
+    for (const id of SOV_B_SOURCE_IDS) this.map.addSource(id, sovBSourceSpec());
     this.map.addSource(SRC_MILITARY_BASES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
@@ -2537,26 +2537,8 @@ export class DeckGLMap {
     });
 
     // ─── Military ───
-    this.map.addLayer({
-      id: LYR_MILITARY_ZONES_FILL,
-      type: 'fill',
-      source: SRC_MILITARY_ZONES,
-      paint: {
-        'fill-color': '#ff2d55',
-        'fill-opacity': 0.15,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_MILITARY_ZONES_LINE,
-      type: 'line',
-      source: SRC_MILITARY_ZONES,
-      paint: {
-        'line-color': '#ff2d55',
-        'line-width': 2,
-        'line-opacity': 0.8,
-        'line-dasharray': [4, 4]
-      },
-    });
+    // Souveraineté, phase B (tâche B27) : zones drones DGAC (option) puis mailles GNSS, surfaces sous les points.
+    for (const layer of SOV_B_LAYERS) this.map.addLayer(layer);
 
     // Sites d'urgences (spec § 3.4) : couleur = catégorie, surface = passages annuels.
     this.map.addLayer({
@@ -9584,18 +9566,22 @@ export class DeckGLMap {
 
   // ─── Military Layers ───
 
-  updateMilitaryZones(zones: RestrictedZone[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_ZONES) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: zones.filter(z => z.active).map((z) => ({
-        type: 'Feature' as const,
-        geometry: z.geometry,
-        properties: { name: z.name, type: z.type },
-      })),
-    });
+  /** Mailles GNSS jaunes et orange du jour UTC précédent (hors de France en gris, dégradation générale du jour en contour seul). */
+  updateGnssLayer(g: GnssResponse | null, now: number): void {
+    (this.map?.getSource(SRC_SOV_GNSS) as maplibregl.GeoJSONSource | undefined)?.setData(gnssCellFeatures(g, now));
+    this.hideSovereigntyHover();
+  }
+
+  /** Zones drones DGAC du fichier publié (lu une fois par session par App.ts). */
+  updateDroneZones(file: DroneZonesFile | null): void {
+    (this.map?.getSource(SRC_SOV_DRONES) as maplibregl.GeoJSONSource | undefined)?.setData(droneZoneFeatures(file));
+  }
+
+  /** Option « zones drones » de la couche Défense, éteinte par défaut : visible seulement couche active. */
+  setDroneZonesVisible(on: boolean): void {
+    this.droneZonesVisible = on;
+    const shown = on && (this.currentLayers?.military ?? false);
+    for (const id of SOV_OPTION_LAYERS.droneZones) this.setVis(id, shown ? 'visible' : 'none');
   }
 
   updateAirTraffic(flights: AirTrafficFlight[]): void {
@@ -10141,6 +10127,7 @@ export class DeckGLMap {
     // ouvrages OpenStreetMap éteinte par défaut. Sélection et surbrillance d'un bâtiment : partagées avec le Trafic maritime.
     for (const id of SOV_LAYER_KEYS.military) this.setVis(id, vis(layers.military));
     for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, vis(layers.military && this.osmWorksVisible));
+    for (const id of SOV_OPTION_LAYERS.droneZones) this.setVis(id, vis(layers.military && this.droneZonesVisible));
     this.setVis(LYR_MILITARY_SHIPS_HIGHLIGHT, vis(layers.trafficMaritime || layers.military));
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)

@@ -2,11 +2,15 @@
 // souveraineté § 2 ; contrats § 3.9) : sources réellement appelées avec leurs licences, date réelle de chaque donnée (S1) ; donnée en
 // retard (S2) : « (en retard) » et couleurs retirées. Teintes de catégorie recopiées des jetons de main.css pour MapLibre, qui ne lit
 // pas les variables CSS (égalité vérifiée par test). Jamais « temps réel », « ADS-B Exchange » ni « Marine Traffic » (audit 19).
-import type { CablesWatchResponse, CyberResponse, MilitaryBase, MilitaryResponse, SubseaCablesFile } from '../../types/index.ts';
+import type {
+  CablesWatchResponse, CyberResponse, DroneZonesFile, GnssResponse, MilitaryBase, MilitaryResponse, SubseaCablesFile,
+} from '../../types/index.ts';
+import { DRONES_LEGEND, DRONES_POINTER, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import { MILITARY_FIGURE_LABEL, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
 import { NBSP } from './format.ts';
+import { GNSS_ORANGE_PCT } from './defense-b.ts';
 import { cablesUnevaluatedWhy, capitalize } from './sovereignty-format.ts';
 
 const PARIS = 'Europe/Paris';
@@ -35,8 +39,6 @@ export const KEV_HEX = '#8e8ef0';
 export const KEV_CITED_HEX = '#5e5ce6';
 /** Revendications de rançongiciels (jeton --cat-revendication). */
 export const CLAIMS_HEX = '#bf5af2';
-/** Deux zones interdites saisies à la main (couleur de la couche existante, gardée jusqu'aux zones drones de la DGAC). */
-export const RESTRICTED_ZONE_HEX = '#ff2d55';
 
 function clock(ms: number): string {
   return new Date(ms).toLocaleTimeString('fr-FR', { timeZone: PARIS, hour: '2-digit', minute: '2-digit' });
@@ -70,7 +72,6 @@ const DEFENSE_ITEMS: readonly LegendItem[] = [
   { id: 'base-navy', label: 'Base navale', color: BASE_TYPE_HEX.navy, shape: 'triangle' },
   { id: 'base-army', label: 'Site de l’armée de terre', color: BASE_TYPE_HEX.army, shape: 'triangle' },
   { id: 'base-joint', label: 'Site interarmées', color: BASE_TYPE_HEX.joint, shape: 'triangle' },
-  { id: 'zone', label: 'Zone interdite, tracé approché saisi à la main, non daté', color: RESTRICTED_ZONE_HEX, shape: 'zone' },
 ];
 const OSM_WORKS_ITEM: LegendItem = { id: 'osm-works', label: 'Ouvrage OpenStreetMap (ODbL 1.0)', color: BASE_TYPE_HEX.fortification, shape: 'circle' };
 const DEFENSE_NOTES: readonly string[] = [
@@ -166,3 +167,60 @@ export const DRONE_ZONE_HEX = '#5e5ce6';
 export const KP_CALM_HEX = '#64d2ff';
 /** Registre des gels : barres et courbe (jeton --cat-gels). */
 export const GELS_HEX = '#ac8e68';
+
+// ─── Phase B (tâche B27) : mailles GNSS du jour UTC précédent et zones drones DGAC dans la légende Défense ───
+
+/** Données de la phase B lues par App.ts ; dronesShown suit l'option « zones drones » de la couche Défense. */
+export interface DefenseLegendB { gnss: GnssResponse | null; drones: DroneZonesFile | null; dronesShown: boolean }
+
+/** « 04/10/2026 » (jour de Paris). */
+function fullDateB(ms: number): string {
+  return new Date(ms).toLocaleDateString('fr-FR', { timeZone: PARIS, day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+/** « 07-2025 » pour l'édition « 2025-07-01 ». */
+function editionB(edition: string): string {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(edition);
+  return m ? `${m[2]}-${m[1]}` : edition;
+}
+/** « 03/10 » d'un jour UTC « 2026-10-03 ». */
+function utcDayLabel(day: string): string {
+  return `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+}
+
+/**
+ * Légende Défense de la phase A complétée par les mailles GNSS et, option active, les zones drones. Mailles datées par leur jour UTC
+ * complet (`cellsDay`, jamais l'heure de la grille glissante, O17) ; grille de plus de 40 min : « (en retard) : couleurs retirées ».
+ */
+export function withDefensePhaseB(base: LegendCategory, input: DefenseLegendB, now: number): LegendCategory {
+  const items: LegendItem[] = base.items.map((i) => ({ ...i }));
+  const notes: string[] = [...(base.notes ?? [])];
+  const g = input.gnss;
+  items.push({ id: 'sov-gnss-header', label: 'Précision de position GNSS dégradée, mailles de 0,5°', color: HEADER_HEX, isHeader: true });
+  if (g === null || g.readAt === null || g.cellsDay === null || g.cells.length === 0) {
+    items.push({ id: 'sov-gnss-nd', label: 'Mailles non publiées (jour non couvert)', color: SOV_ABROAD_HEX, shape: 'square' });
+    notes.push('Mailles du jour UTC précédent : non publiées (jour non couvert).');
+  } else {
+    const late = isSovereigntyDataLate('adsb-gnss', g.readAt, now);
+    const day = utcDayLabel(g.cellsDay);
+    const general = g.days.days.find((d) => d.date === g.cellsDay)?.general === true;
+    items.push(
+      { id: 'sov-gnss-orange', label: `Au-delà de ${GNSS_ORANGE_PCT}${NBSP}% des aéronefs à précision dégradée`, color: late ? SOV_ABROAD_HEX : levelHex('orange'), shape: 'square' },
+      { id: 'sov-gnss-jaune', label: `De 2 à ${GNSS_ORANGE_PCT}${NBSP}%`, color: late ? SOV_ABROAD_HEX : levelHex('jaune'), shape: 'square' },
+      { id: 'sov-gnss-abroad', label: 'Hors de France : jamais comptée', color: SOV_ABROAD_HEX, shape: 'square' },
+    );
+    notes.push(`Mailles du ${day}, jour UTC complet${late ? ' (en retard) : couleurs retirées' : ''} ; « trop peu d’avions » et mailles vertes non dessinées.`);
+    if (general) notes.push(`Dégradation générale le ${day}, probablement météo spatiale : mailles françaises en contour seul, non comptées.`);
+    notes.push('Précision de position, jamais un brouillage établi : seules la DGAC et l’ANFR qualifient un brouillage.');
+  }
+  if (input.dronesShown) {
+    items.push({ id: 'sov-drones', label: 'Zone drones DGAC : vol interdit, hors agglomérations', color: DRONE_ZONE_HEX, shape: 'zone' });
+    const generated = input.drones ? Date.parse(input.drones.generatedAt) : Number.NaN;
+    notes.push(input.drones !== null
+      ? `Zones drones : ${input.drones.source}, à jour au ${editionB(input.drones.edition)} ; fichier du ${Number.isFinite(generated) ? fullDateB(generated) : 'n.d.'}.`
+      : 'Zones drones : fichier pas encore lu.');
+    notes.push(`Couche officielle « ${DRONES_TITLE} » : ${DRONES_LEGEND}`);
+    notes.push('Zones permanentes hors agglomérations seulement ; les interdictions temporaires (NOTAM) ne sont pas couvertes.');
+    notes.push(DRONES_POINTER);
+  }
+  return { ...base, items, notes };
+}

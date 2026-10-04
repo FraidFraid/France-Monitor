@@ -19,12 +19,13 @@ import {
 } from '../layer-panel/sovereignty-format.ts';
 import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
 import {
-  LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_MILITARY_ZONES_FILL, LYR_MILITARY_ZONES_LINE, LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD,
-  LYR_SOV_AIRCRAFT_LABEL, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE, LYR_SOV_OSM_WORKS,
+  LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_DRONES_FILL, LYR_SOV_DRONES_LINE,
+  LYR_SOV_GNSS_FILL, LYR_SOV_GNSS_LINE, LYR_SOV_AIRCRAFT_LABEL, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE, LYR_SOV_OSM_WORKS,
   LYR_SUBMARINE_CABLES, LYR_SUBMARINE_CABLES_CORE, LYR_SUBMARINE_CABLES_GLOW, LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
   SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_EMERGENCIES, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { droneZoneTooltipHtml } from './sovereignty-map-b.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 export type SovereigntyMapLayer = 'military' | 'subseaCables';
@@ -355,7 +356,7 @@ export const SOV_LAYERS: readonly LayerSpecification[] = [
 export const SOV_LAYER_KEYS: Readonly<Record<SovereigntyMapLayer, readonly string[]>> = {
   military: [
     LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_LABEL, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_REFERENCE, LYR_SOV_NAVY_OBSERVED,
-    LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_MILITARY_ZONES_FILL, LYR_MILITARY_ZONES_LINE,
+    LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_SOV_GNSS_FILL, LYR_SOV_GNSS_LINE,
   ],
   subseaCables: [
     LYR_SUBMARINE_CABLES_GLOW, LYR_SUBMARINE_CABLES, LYR_SUBMARINE_CABLES_CORE, LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
@@ -364,12 +365,14 @@ export const SOV_LAYER_KEYS: Readonly<Record<SovereigntyMapLayer, readonly strin
 };
 
 /** Options éteintes par défaut : ouvrages OpenStreetMap ; zones drones de la DGAC (phase B, tâche B27). */
-export const SOV_OPTION_LAYERS: Readonly<{ osmWorks: readonly string[]; droneZones: readonly string[] }> = { osmWorks: [LYR_SOV_OSM_WORKS], droneZones: [] };
+export const SOV_OPTION_LAYERS: Readonly<{ osmWorks: readonly string[]; droneZones: readonly string[] }> = { osmWorks: [LYR_SOV_OSM_WORKS], droneZones: [LYR_SOV_DRONES_FILL, LYR_SOV_DRONES_LINE] };
 
 /** Couches survolées, de la plus haute à la plus basse : celle qu'on voit au-dessus répond (points avant tracés). */
 export const SOV_HOVER_LAYERS: readonly string[] = [
   LYR_SOV_EMERGENCIES, LYR_SOV_AIRCRAFT, LYR_SOV_CABLE_VESSELS, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE, LYR_SOV_AIRCRAFT_ABROAD,
   LYR_SUBMARINE_CABLES_LANDING, LYR_SOV_OSM_WORKS, LYR_MILITARY_BASES_CIRCLE, LYR_SUBMARINE_CABLES_HITAREA,
+  // Phase B (tâche B27) : surfaces, sous tous les points et tracés.
+  LYR_SOV_GNSS_FILL, LYR_SOV_DRONES_FILL,
 ];
 const HOVERABLE: ReadonlySet<string> = new Set(SOV_HOVER_LAYERS);
 
@@ -383,7 +386,12 @@ export function topSovHit<T extends { layer: { id: string } }>(hits: readonly T[
 
 /** Infobulle préparée avec la donnée (propriété `body`, déjà échappée) ; null hors des couches survolables ou sans corps. */
 export function sovTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>): string | null {
+  // Zones drones (phase B) : infobulle construite au survol, aucun corps stocké sur 5 541 zones.
+  if (layerId === LYR_SOV_DRONES_FILL) return droneZoneTooltipHtml(props);
   const body = props['body'];
   if (typeof body !== 'string' || body === '' || !HOVERABLE.has(layerId)) return null;
   return tip(body);
 }
+
+// Phase B (tâche B27) : mailles GNSS et zones drones DGAC (contrats § 5), écrites dans sovereignty-map-b.ts.
+export { droneZoneFeatures, gnssCellFeatures } from './sovereignty-map-b.ts';

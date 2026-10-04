@@ -63,11 +63,12 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
       for (const n of c.notes ?? []) expect(sovBreakable(n), n).toBeNull();
     }
   });
-  it('Défense : hors de France en gris, urgences par niveau, ports d’attache de référence, sites, zones « ZIT » datées comme non datées', () => {
+  it('Défense : hors de France en gris, urgences par niveau, ports d’attache de référence, sites ; plus de zones « ZIT » (tâche B27)', () => {
     const t = text(DEFENSE_LEGEND);
     for (const label of ['Autres pays', 'Hors de France, jamais compté', 'Urgence confirmée (deux lectures)',
       'Urgence vue une fois', 'Bâtiment vu en AIS (heure en étiquette)', 'Port base : position de référence, pas une observation',
-      'Zone interdite, tracé approché saisi à la main, non daté']) expect(t).toContain(label);
+    ]) expect(t).toContain(label);
+    expect(t).not.toContain('Zone interdite');
     const color = (id: string): string | undefined => DEFENSE_LEGEND.items.find((i) => i.id === id)?.color;
     expect(color('mil-francais')).toBeUndefined();
     expect([color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])

@@ -27,7 +27,7 @@ const REPLACEMENTS = [
   'api/_lib/cable-watch.js', 'api/_handlers/sovereignty/cables-watch.js', 'public/data/subsea-cables.json', 'public/data/defense-osm-works.json',
   'api/_lib/certfr.js', 'api/_lib/cisa-kev.js', 'api/_lib/ransomware-live.js', 'api/_lib/hibp.js', 'api/_lib/cybermalveillance.js',
   'api/_handlers/sovereignty/cyber.js', 'src/components/DefensePanel.ts', 'src/components/ConnectivityPanel.ts', 'src/components/CyberPanel.ts',
-  'src/components/deckgl/sovereignty-map.ts', 'src/services/sovereignty-inputs.ts',
+  'src/components/deckgl/sovereignty-map.ts', 'src/components/deckgl/sovereignty-map-b.ts', 'src/services/sovereignty-inputs.ts',
 ];
 
 /** Fichiers sources d'un dossier (récursif), chemins relatifs à la racine du dépôt. */
@@ -71,6 +71,9 @@ const GONE_SYMBOL = new RegExp('\\b(' + [
   // son clic ouvre la fiche du bâtiment (onSovereigntyMapClick) ; ancienne pose des sites remplacée par updateDefenseSites (tâche A14)
   'LYR_MILITARY_SHIPS', 'SRC_MILITARY_SHIPS', 'updateMilitaryShips', 'setOnMilitaryShipClick', 'onMilitaryShipClick', 'setOnMaritimeShipClick',
   '_onMaritimeShipClick', '_onMaritimeShipClickCb', 'updateMilitaryBases',
+  // rectangles « ZIT » codés en dur et ancienne liste des sites (tâche B27 ; remplaçants : zones drones DGAC, ACTIVE_INSTALLATIONS)
+  'RESTRICTED_ZONES', 'RestrictedZone', 'updateMilitaryZones', 'SRC_MILITARY_ZONES', 'LYR_MILITARY_ZONES_FILL', 'LYR_MILITARY_ZONES_LINE',
+  'RESTRICTED_ZONE_HEX', 'MILITARY_BASES',
   // brouillage déduit des vols, câbles dessinés à la main
   'GpsJammingSignal', 'detectGpsJammingSignals', 'DefenseAlert', 'detectCableThreats', 'militaryShipToAIS', 'loadDefenseAlerts', 'submarineCablesData',
   'buildSubseaCableTooltip', 'buildSubmarineLandingPoints', 'SubmarineCableProperties', 'normalizeLandingPoints',
@@ -185,9 +188,7 @@ describe('retraits Souveraineté (spec 2026-10-04 souveraineté § 2.5, contrats
       expect(Object.keys(s).filter((k) => ['description', 'units', 'aircraft', 'personnel'].includes(k)), s.id).toEqual([]);
     }
     const types = code('src/types/index.ts');
-    expect(types.slice(types.indexOf('export interface MilitaryBase {'), types.indexOf('export interface RestrictedZone {'))).not.toContain('description');
-    const military = code('src/config/military.ts');
-    expect(military.slice(military.indexOf('export const MILITARY_BASES'), military.indexOf('export const RESTRICTED_ZONES'))).not.toContain('description:');
+    expect(types.slice(types.indexOf('export interface MilitaryBase {'), types.indexOf('export interface MilitaryBase {') + 400).split('}')[0]).not.toContain('description');
     const popup = code('src/components/MapPopup.ts');
     expect(popup).not.toMatch(/base\.description|ext\['(units|aircraft|icao|region)'\]|UNITÉS STATIONÉES|data\.gouv\.fr/);
     // Remplaçants : l'infobulle de la carte (tâche A14) et la fiche disent la même chose.

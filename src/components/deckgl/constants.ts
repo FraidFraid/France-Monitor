@@ -167,7 +167,6 @@ export const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
 export const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
 export const LYR_METRO_LOAD_LABEL = 'metro-load-labels';
 
-export const SRC_MILITARY_ZONES = 'military-zones-src';
 export const SRC_MILITARY_BASES = 'military-bases-src';
 export const SRC_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight-src';
 export const SRC_MILITARY_SHIPS_SELECTED = 'military-ships-selected-src';
@@ -178,8 +177,6 @@ export const SRC_TELECOM = 'telecom-src';
 export const SRC_POWER = 'power-src';
 export const SRC_HOSPITALS = 'hospitals-src';
 
-export const LYR_MILITARY_ZONES_FILL = 'military-zones-fill';
-export const LYR_MILITARY_ZONES_LINE = 'military-zones-line';
 export const LYR_MILITARY_BASES_CIRCLE = 'military-bases-circle';
 export const LYR_MILITARY_BASES_LABEL = 'military-bases-label';
 export const LYR_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight';
@@ -205,6 +202,13 @@ export const SRC_SOV_OSM_WORKS = 'sov-osm-works-src';
 export const LYR_SOV_OSM_WORKS = 'sov-osm-works';
 export const SRC_SOV_CABLE_VESSELS = 'sov-cable-vessels-src';
 export const LYR_SOV_CABLE_VESSELS = 'sov-cable-vessels';
+// Souveraineté, phase B (tâche B27) : mailles GNSS du jour UTC précédent et zones drones DGAC (option de la couche Défense), deckgl/sovereignty-map-b.ts.
+export const SRC_SOV_GNSS = 'sov-gnss-src';
+export const LYR_SOV_GNSS_FILL = 'sov-gnss-fill';
+export const LYR_SOV_GNSS_LINE = 'sov-gnss-line';
+export const SRC_SOV_DRONES = 'sov-drones-src';
+export const LYR_SOV_DRONES_FILL = 'sov-drones-fill';
+export const LYR_SOV_DRONES_LINE = 'sov-drones-line';
 export const LYR_TELECOM_PTS = 'telecom-pts';
 export const LYR_POWER_FILL = 'power-fill';
 export const LYR_POWER_LINE = 'power-line';

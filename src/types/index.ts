@@ -826,16 +826,6 @@ export interface MilitaryBase {
   tier?: number;
 }
 
-export interface RestrictedZone {
-  id: string;
-  name: string;
-  type: 'ZIT' | 'ZRT' | 'ZIA';
-  geometry: GeoJSON.Polygon;
-  active: boolean;
-  minAltitude?: number;
-  maxAltitude?: number;
-}
-
 // ═══ Finance (Bourse) ═══
 
 export interface MarketData {

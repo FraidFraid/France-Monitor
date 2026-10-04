@@ -70,7 +70,6 @@ import {
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
-import { RESTRICTED_ZONES } from './config/military.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
 import { AIS_RELAY_URL, getAisStatus, getAisConnectionState, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
@@ -4430,13 +4429,12 @@ export class App {
 
   /**
    * Sites de défense : liste interne en chunk dynamique, lue une fois, sans fusion OpenStreetMap (les ouvrages OSM sont une option datée,
-   * setOsmWorks) ; zones « ZIT » dessinées jusqu'aux zones de la DGAC (B27). Lue au démarrage et avant le premier affichage du panneau.
+   * setOsmWorks). Lue au démarrage et avant le premier affichage du panneau.
    */
   private loadDefenseSites(): Promise<void> {
     this.defenseSitesPromise ??= Promise.all([import('./config/military-bases-db.ts'), import('./components/layer-panel/defense.ts')])
       .then(([{ ACTIVE_INSTALLATIONS }, { summarizeCuratedSites }]) => {
         this.mapContainer?.updateDefenseSites(ACTIVE_INSTALLATIONS);
-        this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
         this.defenseSites = { ...this.defenseSites, curated: summarizeCuratedSites(ACTIVE_INSTALLATIONS) };
         this.defensePanel?.update(this.defensePanelState());
       })
@@ -6899,7 +6897,7 @@ export class App {
 
   /** Sync — called first, no network, instant display */
   private loadStaticData(): void {
-    // Sites de défense (liste interne en chunk dynamique) et zones « ZIT » : loadDefenseSites, sans fusion OpenStreetMap (souveraineté § 2.1).
+    // Sites de défense (liste interne en chunk dynamique) : loadDefenseSites, sans fusion OpenStreetMap (souveraineté § 2.1).
     void this.loadDefenseSites();
   }
   /** CRITICAL — awaited in init(). 4 layers that seed the ISNR (energy + weather + floods). */
