@@ -29,7 +29,7 @@
     { "name": "Actualités", "description": "Fil d'actualités ingéré (presse nationale + régionale) et son agrégation temporelle." },
     { "name": "Santé", "description": "Santé opérationnelle de la plateforme et historique de la situation." },
     { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
-    { "name": "Environnement", "description": "Détections satellite de feux en France, foyers et météo des forêts." },
+    { "name": "Environnement", "description": "Vigilance météo, crues, feux de forêt (détections satellite, foyers, météo des forêts), sécheresse, qualité de l'air, séismes et marégraphes." },
     { "name": "Cyber", "description": "Fuites de données et incidents cyber cartographiés." }
   ],
   "paths": {
@@ -320,6 +320,114 @@
           "502": {
             "description": "Ni collecte FIRMS ni météo des forêts (clé absente comprise) : même corps, pannes nommées dans `errors`, jamais mis en cache.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FiresResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/vigilance": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentVigilance",
+        "summary": "Vigilance météo : carte Météo-France par département et par phénomène, bulletins, historique",
+        "description": "Carte de vigilance Météo-France (aujourd'hui et demain) par département et par phénomène, avec ses créneaux, les domaines littoraux, le commentaire, les bulletins national, zonaux et départementaux, et les départements en vigilance sur 30 jours (archive open data). Couleurs officielles reprises telles quelles, carte datée par son `update_time`.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Carte ou textes lus ; une partie en panne est nommée dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VigilanceResponse" } } }
+          },
+          "502": {
+            "description": "Ni carte ni textes (clé absente comprise) : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VigilanceResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/floods": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentFloods",
+        "summary": "Crues : tronçons Vigicrues en vigilance et hauteurs des stations (Hub'Eau)",
+        "description": "Vigilance crues par tronçon (InfoVigiCru, relevé du serveur) : comptes par couleur sur les tronçons surveillés, tronçons en vigilance jaune ou plus avec leur tracé et les stations Hub'Eau de chacun (hauteur, débit, variation, courbe). Couleurs officielles reprises telles quelles.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Relevé Vigicrues lu (ou servi du cache avec sa date) ; territoires, stations ou Hub'Eau en panne : nommés dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FloodsResponse" } } }
+          },
+          "502": {
+            "description": "Vigicrues jamais lu : même corps, panne nommée dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FloodsResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/drought": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentDrought",
+        "summary": "Sécheresse : restrictions d'eau en vigueur par département (VigiEau)",
+        "description": "Niveau de restriction le plus haut par département et par usage (eaux superficielles, souterraines, potable), comptes par niveau, date des arrêtés et série quotidienne depuis la mise en service. Un stock : jamais dans le score.\n\nCache CDN visé : `s-maxage=3600, stale-while-revalidate=7200` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "VigiEau lu (ou servi du cache avec sa date) ; une panne de la relecture est nommée dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DroughtResponse" } } }
+          },
+          "502": {
+            "description": "VigiEau jamais lu : même corps, panne nommée dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DroughtResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/air": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentAir",
+        "summary": "Qualité de l'air : épisodes de pollution et indice ATMO (Atmo France)",
+        "description": "Épisodes de pollution de J à J+2 (information-recommandation, alerte) par zone et par polluant, et indice ATMO de J agrégé par département. Requêtes WFS toujours filtrées par date ; un jour non publié est dit, jamais « aucun épisode ».\n\nCache CDN visé : `s-maxage=1800, stale-while-revalidate=3600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Épisodes ou indice lus ; une couche en panne est nommée dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AirQualityResponse" } } }
+          },
+          "502": {
+            "description": "Aucune des deux couches lue : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AirQualityResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/earthquakes": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentEarthquakes",
+        "summary": "Séismes : 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli)",
+        "description": "Séismes des 7 derniers jours, plus récent d'abord : magnitude, profondeur, position, département, « en France » (territoire ou eaux françaises) ou à 20 km au plus, statut (revu ou automatique). Tirs de carrière, explosions et glissements écartés et comptés.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "BCSF-RéNaSS ou EMSC lu (ou un relevé précédent servi avec sa date) ; une panne est nommée dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EarthquakesResponse" } } }
+          },
+          "502": {
+            "description": "Ni BCSF-RéNaSS ni EMSC : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EarthquakesResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/environment/sea-levels": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentSeaLevels",
+        "summary": "Marégraphes : hauteurs d'eau observées du SHOM (19 ports)",
+        "description": "Hauteur d'eau observée de chaque marégraphe (zéro hydrographique), variation sur 1 h, domaine littoral de vigilance et courbe de 24 h. La marée prédite n'est pas publiée sans clé : aucun écart à la prédiction.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Au moins un marégraphe lu ; chaque marégraphe en panne est nommé dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeaLevelsResponse" } } }
+          },
+          "502": {
+            "description": "Aucun marégraphe lu : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeaLevelsResponse" } } }
           }
         }
       }
@@ -650,6 +758,85 @@
           "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
         },
         "required": ["readAt", "lastAcquisitionAt", "sources", "detections", "abroadCount", "abroad", "foyers", "daily", "nextPasses", "forestDanger", "errors"]
+      },
+      "VigilanceResponse": {
+        "type": "object",
+        "description": "Vigilance météo, type `VigilanceResponse` de `src/types/index.ts`.",
+        "properties": {
+          "updateTime": { "type": ["string", "null"], "format": "date-time", "description": "`update_time` de la carte Météo-France ; `null` : carte jamais lue." },
+          "textsUpdateTime": { "type": ["string", "null"], "format": "date-time", "description": "`update_time` des textes (bulletins)." },
+          "periods": { "type": "array", "description": "Échéances J puis J1 : couleur maximale, départements et phénomènes avec leurs créneaux, domaines littoraux, commentaire ; vide sans carte.", "items": { "type": "object" } },
+          "bulletins": { "type": "array", "description": "Bulletins national, zonaux et départementaux non vides.", "items": { "type": "object" } },
+          "history": { "type": "object", "description": "Départements en vigilance par jour sur 30 jours au plus (`days`, `since`)." },
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Dernière lecture réussie de la carte par le serveur." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["updateTime", "textsUpdateTime", "periods", "bulletins", "history", "readAt", "errors"]
+      },
+      "FloodsResponse": {
+        "type": "object",
+        "description": "Crues, type `FloodsResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Relevé Vigicrues du serveur ; `null` : jamais lu." },
+          "total": { "type": "integer", "description": "Tronçons surveillés." },
+          "counts": { "type": "object", "description": "Tronçons par couleur (`vert`, `jaune`, `orange`, `rouge`)." },
+          "sections": { "type": "array", "description": "Tronçons en vigilance jaune ou plus : niveau, territoire, tracé, stations Hub'Eau.", "items": { "type": "object" } },
+          "stationsReadAt": { "type": ["string", "null"], "format": "date-time", "description": "Dernière lecture Hub'Eau réussie." },
+          "stationsOmitted": { "type": "integer", "description": "Stations au-delà du plafond de lecture." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["readAt", "total", "counts", "sections", "stationsReadAt", "stationsOmitted", "errors"]
+      },
+      "DroughtResponse": {
+        "type": "object",
+        "description": "Sécheresse, type `DroughtResponse` de `src/types/index.ts`.",
+        "properties": {
+          "asOf": { "type": ["string", "null"], "format": "date-time", "description": "Date des arrêtés la plus récente publiée par VigiEau." },
+          "departments": { "type": "array", "description": "Départements : disponibilité, niveau maximal et niveau par usage.", "items": { "type": "object" } },
+          "counts": { "type": "object", "description": "Départements disponibles par niveau (`vigilance`, `alerte`, `alerte_renforcee`, `crise`, `aucun`)." },
+          "history": { "type": "object", "description": "Série quotidienne depuis la mise en service (`days`, `since`)." },
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Lecture VigiEau servie ; `null` : jamais lue." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["asOf", "departments", "counts", "history", "readAt", "errors"]
+      },
+      "AirQualityResponse": {
+        "type": "object",
+        "description": "Qualité de l'air, type `AirQualityResponse` de `src/types/index.ts`.",
+        "properties": {
+          "days": { "type": "array", "description": "Jours J, J+1 et J+2 (heure de Paris).", "items": { "type": "string", "format": "date" } },
+          "episodesUpdatedAt": { "type": ["string", "null"], "format": "date-time", "description": "`date_maj` la plus récente des épisodes ; `null` : couche non lue." },
+          "zonesCovered": { "type": "integer", "description": "Zones distinctes publiées." },
+          "episodes": { "type": "array", "description": "Épisodes de pollution publiés (hors « pas de dépassement »).", "items": { "type": "object" } },
+          "perPollutant": { "type": "array", "description": "Épisodes par polluant et par jour.", "items": { "type": "object" } },
+          "index": { "type": "object", "description": "Indice ATMO de J par département : date, mise à jour, communes couvertes, communes par classe." },
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Lecture la plus récente des deux couches ; `null` : aucune." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["days", "episodesUpdatedAt", "zonesCovered", "episodes", "perPollutant", "index", "readAt", "errors"]
+      },
+      "EarthquakesResponse": {
+        "type": "object",
+        "description": "Séismes, type `EarthquakesResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Relevé du serveur ; `null` : aucune source lue." },
+          "source": { "type": ["string", "null"], "enum": ["BCSF-RéNaSS", "EMSC", null], "description": "Source servie (EMSC : repli)." },
+          "quakes": { "type": "array", "description": "Séismes des 7 derniers jours, plus récent d'abord.", "items": { "type": "object" } },
+          "nonSeismic": { "type": "integer", "description": "Tirs de carrière, explosions et glissements écartés sur 7 jours." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["readAt", "source", "quakes", "nonSeismic", "errors"]
+      },
+      "SeaLevelsResponse": {
+        "type": "object",
+        "description": "Marégraphes, type `SeaLevelsResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Relevé du serveur ; `null` : aucun marégraphe lu." },
+          "gauges": { "type": "array", "description": "Marégraphes : nom, domaine littoral, position, dernière mesure, hauteur, variation sur 1 h, courbe de 24 h.", "items": { "type": "object" } },
+          "predictionAvailable": { "type": "boolean", "const": false, "description": "Marée prédite non publiée sans clé." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["readAt", "gauges", "predictionAvailable", "errors"]
       },
       "ThreatSource": {
         "type": "object",
