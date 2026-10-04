@@ -10,7 +10,7 @@ import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
-import { radarProfileErrorHtml, radarProfileHtml, radarProfileLoadingHtml } from '../radar-profile-view.ts';
+import { profileObservationLabel, radarProfileErrorHtml, radarProfileHtml, radarProfileLoadingHtml } from '../radar-profile-view.ts';
 import { ENVIRONMENT_THEME, clockOf, formatDbz, formatRainRate, marshallPalmerMmH, note, stamp } from './environment-format.ts';
 import { ECHO_TOP_CLASSES, RADAR_DBZ_CLASSES } from './environment-legend.ts';
 import { NBSP } from './format.ts';
@@ -59,7 +59,7 @@ function headOf(input: RadarViewInput): LayerHeadModel {
   return {
     ...base,
     // Observation, pas un niveau : jamais de couleur, même à l'heure (level: null explicite).
-    figure: { value: Number.isFinite(ms) ? absoluteTime(ms, now, 'fr') : 'n.d.', caption: `${CAPTION}${isLate ? ' (en retard)' : ''}`, level: null },
+    figure: { value: Number.isFinite(ms) ? absoluteTime(ms, now, 'fr') : 'n.d.', caption: `${CAPTION}${isLate ? ' (en retard)' : ''}${manifestError !== null ? ' (dernière image gardée)' : ''}`, level: null },
     status: [stamp('Radar Météo-France', m.observedAt, isLate, now), ...(manifestError !== null ? ['dernière image gardée (lecture en échec)'] : [])],
     lead: 'Observation de la réflectivité, pas un niveau de vigilance : à lire avec la vigilance Météo-France.',
   };
@@ -107,8 +107,8 @@ function echoTopsSection(input: RadarViewInput): FicheSection {
 /** Résumé de la section : station et heure d'observation avec la date. */
 function profileSummary(result: RadarColumnResult, now: number): string {
   if (result.kind === 'hors-couverture') return 'hors de portée';
-  const ms = Date.parse(result.profile.observedAt);
-  return `${result.profile.station.name} · ${Number.isFinite(ms) ? absoluteTime(ms, now, 'fr', { withDate: true }) : 'n.d.'}`;
+  const label = profileObservationLabel(result.profile.observedAt, now);
+  return `${result.profile.station.name} · ${label.replace(/^observation du /, '')}`;
 }
 
 function profileSection(input: RadarViewInput): FicheSection {
@@ -138,7 +138,7 @@ function methodSection(input: RadarViewInput): FicheSection {
     ? 'worker radar non configuré'
     : m === null
       ? (manifestError !== null ? 'source injoignable' : 'chargement…')
-      : `image du ${absoluteTime(Date.parse(m.observedAt), now, 'fr', { withDate: true })}${late(m, now) ? ' (en retard)' : ''}, générée à ${clockOf(m.generatedAt, now)}`;
+      : `image du ${Number.isFinite(Date.parse(m.observedAt)) ? absoluteTime(Date.parse(m.observedAt), now, 'fr', { withDate: true }) : 'n.d.'}${late(m, now) ? ' (en retard)' : ''}, générée à ${clockOf(m.generatedAt, now)}`;
   const html = kvRow('Mosaïque', `${sourceLinkHtml('Météo-France, DPRadar', DPRADAR_URL)} · ${escapeHtml(state)}`)
     + kvRow('Licence', escapeHtml('Licence Ouverte 2.0'))
     + note(`Image produite par le worker radar du serveur à partir de la mosaïque de réflectivité de Météo-France : 1${NBSP}km, métropole et Corse avec leurs marges, une image toutes les 5${NBSP}min, latence de 5 à 10${NBSP}min après l’observation.`)

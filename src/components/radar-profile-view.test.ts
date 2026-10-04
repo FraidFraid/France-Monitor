@@ -34,9 +34,9 @@ describe('radarProfileHtml', () => {
     expect(html).toContain('<svg');
   });
 
-  it('colonne de production du 04/10 (Nîmes, 53,6 km, 5 élévations) datée, même un autre jour que maintenant', () => {
+  it('colonne de production du 04/10 (Nîmes, 53,6 km, 5 élévations) : nominale à 10 h 10, datée le lendemain', () => {
     const html = radarProfileHtml(RADAR_COLUMN_FIXTURE(), ENV_FIXTURE_NOW);
-    expect(visibleText(html)).toContain(`Radar NIMES · 53,6${NBSP}km · observation du 04/10 11:30 · 5 élévations`);
+    expect(visibleText(html)).toContain(`Radar NIMES · 53,6${NBSP}km · balayage annoncé pour 11:30 (heure nominale Météo-France) · 5 élévations`);
     expect(radarProfileHtml(RADAR_COLUMN_FIXTURE(), Date.parse('2026-10-05T09:00:00+02:00'))).toContain('observation du 04/10 11:30');
     expect((html.match(/data-dbz=/g) ?? []).length).toBe(1);
     expect((html.match(/data-empty=/g) ?? []).length).toBe(4);
@@ -49,6 +49,24 @@ describe('radarProfileHtml', () => {
       expect(envBreakable(visibleText(outsideSvg(html)))).toBeNull();
       expect(html).not.toMatch(/\u2014|&mdash;|monospace/);
     }
+  });
+
+  it('racine autonome : tous les rendus portent la classe fmk, badge de démonstration compris (sortie telle que posée par le panneau Feux)', () => {
+    for (const html of [radarProfileHtml({ kind: 'profile', profile: PROFILE }, NOW), radarProfileHtml({ kind: 'hors-couverture' }, NOW),
+      radarProfileLoadingHtml(), radarProfileErrorHtml()]) {
+      expect(html.startsWith('<div class="fmk">')).toBe(true);
+    }
+    expect(radarProfileHtml(RADAR_COLUMN_FIXTURE(), Date.now())).toContain('fmk-tag fmk-tag--warn');
+  });
+
+  it('heure postérieure à maintenant : balayage annoncé (heure nominale), jamais une observation déjà faite', () => {
+    const early = Date.parse('2026-07-23T10:10:00+02:00');
+    const html = radarProfileHtml({ kind: 'profile', profile: PROFILE }, early);
+    expect(visibleText(html)).toContain(`Radar BORDEAUX · 42,7${NBSP}km · balayage annoncé pour 10:30 (heure nominale Météo-France) · 3 élévations`);
+    expect(html).not.toContain('observation du');
+    expect(visibleText(radarProfileHtml(RADAR_COLUMN_FIXTURE(), ENV_FIXTURE_NOW))).toContain('balayage annoncé pour 11:30');
+    // Tolérance d'une minute : à 30 s avant l'heure, c'est encore une observation.
+    expect(radarProfileHtml({ kind: 'profile', profile: PROFILE }, Date.parse('2026-07-23T10:29:30+02:00'))).toContain('observation du 23/07 10:30');
   });
 
   it('rend un point par niveau avec écho, un marqueur creux sinon', () => {
@@ -75,8 +93,8 @@ describe('radarProfileHtml', () => {
   });
 
   it('expose des états chargement et erreur', () => {
-    expect(radarProfileLoadingHtml()).toBe('<p class="fmk-note">Chargement du profil radar…</p>');
-    expect(radarProfileErrorHtml()).toBe('<p class="fmk-note">Profil radar indisponible pour le moment.</p>');
+    expect(radarProfileLoadingHtml()).toBe('<div class="fmk"><p class="fmk-note">Chargement du profil radar…</p></div>');
+    expect(radarProfileErrorHtml()).toBe('<div class="fmk"><p class="fmk-note">Profil radar indisponible pour le moment.</p></div>');
   });
 
   it("adapte l'axe des altitudes au niveau le plus haut du profil", () => {

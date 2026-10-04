@@ -105,12 +105,31 @@ function svg(profile: RadarColumnProfile): string {
 
 const BADGE = '<span class="fmk-tag fmk-tag--warn">DÉMONSTRATION</span>';
 
+/** Racine `fmk` : les styles des notes et du badge sont portés par cette classe, le rendu est autonome où qu'il soit inséré. */
+const wrap = (inner: string): string => `<div class="fmk">${inner}</div>`;
+
 export function radarProfileLoadingHtml(): string {
-  return '<p class="fmk-note">Chargement du profil radar…</p>';
+  return wrap('<p class="fmk-note">Chargement du profil radar…</p>');
 }
 
 export function radarProfileErrorHtml(): string {
-  return '<p class="fmk-note">Profil radar indisponible pour le moment.</p>';
+  return wrap('<p class="fmk-note">Profil radar indisponible pour le moment.</p>');
+}
+
+/** Tolérance (1 min) avant de tenir une heure d'observation pour postérieure à maintenant. */
+const FUTURE_TOLERANCE_MS = 60_000;
+
+/**
+ * Date de la colonne : « observation du 04/10 11:30 », ou, si l'heure est postérieure à maintenant (heure nominale du balayage,
+ * pas une observation déjà faite), « balayage annoncé pour 11:30 (heure nominale Météo-France) ». Jamais utilisée comme date de la donnée.
+ */
+export function profileObservationLabel(observedAt: string, now: number): string {
+  const ms = Date.parse(observedAt);
+  if (!Number.isFinite(ms)) return 'observation n.d.';
+  if (ms > now + FUTURE_TOLERANCE_MS) {
+    return `balayage annoncé pour ${absoluteTime(ms, now, 'fr')} (heure nominale Météo-France)`;
+  }
+  return `observation du ${absoluteTime(ms, now, 'fr', { withDate: true })}`;
 }
 
 /**
@@ -119,14 +138,12 @@ export function radarProfileErrorHtml(): string {
  */
 export function radarProfileHtml(result: RadarColumnResult, now: number): string {
   if (result.kind === 'hors-couverture') {
-    return `<p class="fmk-note">${BADGE} Point hors de portée des radars de métropole (plus de 160${NBSP}km).</p>`;
+    return wrap(`<p class="fmk-note">${BADGE} Point hors de portée des radars de métropole (plus de 160${NBSP}km).</p>`);
   }
   const { profile } = result;
-  const observed = Date.parse(profile.observedAt);
-  const when = Number.isFinite(observed) ? absoluteTime(observed, now, 'fr', { withDate: true }) : 'n.d.';
   const n = profile.levels.length;
-  return '<div>'
-    + `<p class="fmk-note">${BADGE} Radar ${escapeHtml(profile.station.name)} · ${formatDistanceKm(profile.distanceKm)} · observation du ${when} · ${n} élévation${n > 1 ? 's' : ''}</p>`
+  return '<div class="fmk">'
+    + `<p class="fmk-note">${BADGE} Radar ${escapeHtml(profile.station.name)} · ${formatDistanceKm(profile.distanceKm)} · ${profileObservationLabel(profile.observedAt, now)} · ${n} élévation${n > 1 ? 's' : ''}</p>`
     + svg(profile)
     + `<p class="fmk-note">Réflectivité brute (échos fixes non corrigés) · sans diagnostic automatique · Météo-France DPRadar, Licence Ouverte 2.0</p>`
     + '</div>';

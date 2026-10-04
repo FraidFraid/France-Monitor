@@ -98,8 +98,12 @@ describe('profil vertical en un point (démonstration)', () => {
   });
   it('profil rendu : station et heure d’observation avec la date, badge DÉMONSTRATION, SVG', () => {
     const s = section('profil', { profile: point(RADAR_COLUMN_FIXTURE()) });
-    expect(s?.summary).toBe('NIMES · 04/10 11:30');
-    expect(visibleText(s?.html ?? '')).toContain(`Radar NIMES · 53,6${N}km · observation du 04/10 11:30 · 5 élévations`);
+    expect(s?.summary).toBe('NIMES · balayage annoncé pour 11:30 (heure nominale Météo-France)');
+    expect(visibleText(s?.html ?? '')).toContain(`Radar NIMES · 53,6${N}km · balayage annoncé pour 11:30 (heure nominale Météo-France) · 5 élévations`);
+    expect(s?.html).not.toContain('observation du');
+    const later = section('profil', { profile: point(RADAR_COLUMN_FIXTURE()), now: Date.parse('2026-10-04T12:00:00+02:00') });
+    expect(later?.summary).toBe('NIMES · 04/10 11:30');
+    expect(visibleText(later?.html ?? '')).toContain('observation du 04/10 11:30');
     expect(s?.html).toContain('<span class="fmk-tag fmk-tag--warn">DÉMONSTRATION</span>');
     expect(s?.html).toContain('<svg');
   });
@@ -125,6 +129,7 @@ describe('états de la source', () => {
   it('lecture en échec, dernière image gardée : dite, avec sa date', () => {
     const v = view({ manifestError: 'Radar 2D manifest HTTP 502' });
     expect(v.head.status).toEqual([`Radar Météo-France${N}10:05`, 'dernière image gardée (lecture en échec)']);
+    expect(v.head.figure).toEqual({ value: '10:05', caption: `${CAPTION} (dernière image gardée)`, level: null });
     expect(visibleText(v.bodyHtml ?? '')).toBe('Source injoignable. Dernières données : 10:05.');
   });
   it('worker non configuré : dit partout, jamais « aucune pluie »', () => {
