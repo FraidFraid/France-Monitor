@@ -56,7 +56,7 @@ import {
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
 import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
-import { findShipByKey } from './layer-panel/navy.ts';
+import { findShipByKey, isSubmarine } from './layer-panel/navy.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
@@ -2923,6 +2923,8 @@ export class DeckGLMap {
         ],
         'circle-color': [
           'case',
+          ['==', ['get', 'outOfService'], true],
+          SOV_ABROAD_HEX,
           ['>=', ['coalesce', ['to-number', ['get', 'capacity_tbps']], 0], 100],
           '#b9ecff',
           '#7dd3fc'
@@ -9977,12 +9979,14 @@ export class DeckGLMap {
 
   /** Marine nationale : vus en AIS (heure en étiquette ; flux figé : gris) et ports base de référence (icône à part) ; jamais un SNLE ni un SNA (O11). */
   updateNavyLayer(ships: readonly MilitaryShip[], frozen: boolean, now: number): void {
-    this.sovNavy = { ships, frozen };
+    // O11 : un sous-marin n'entre jamais dans la table (surbrillance et sélection par MMSI).
+    const shown = ships.filter((s) => !isSubmarine(s));
+    this.sovNavy = { ships: shown, frozen };
     if (!this.map) return;
     // Surbrillance et sélection du Trafic maritime : un bâtiment au port est retrouvé par son MMSI dans cette table.
     this.militaryShipsById.clear();
-    for (const s of ships) this.militaryShipsById.set(s.id, s);
-    (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(ships, frozen, now));
+    for (const s of shown) this.militaryShipsById.set(s.id, s);
+    (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(shown, frozen, now));
     this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
     this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
   }

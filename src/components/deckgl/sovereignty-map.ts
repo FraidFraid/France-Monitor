@@ -77,8 +77,14 @@ function vigilanceHex(level: ReturnType<typeof militaryEmergencyLevel>, late: bo
 // Un appareil français, un appareil marqué PIA ou LADD et une adresse non OACI (« ~… ») n'ont jamais de point : le serveur ne les envoie
 // pas (comptés par département seulement) ; les gardes d'ici ne servent qu'à ne jamais en dessiner un si une réponse en laissait passer.
 
-function drawable(hex: string): boolean {
-  return hex !== '' && !hex.startsWith('~');
+function drawable(a: { hex: string; country: string | null }): boolean {
+  if (a.hex === '' || a.hex.startsWith('~') || a.country === 'France') return false;
+  if (/^[0-9a-f]{6}$/iu.test(a.hex)) {
+    const n = Number.parseInt(a.hex, 16);
+    if (n >= 0x380000 && n <= 0x3bffff) return false;   // bloc OACI de la France
+  }
+  const flags = Number((a as { dbFlags?: unknown }).dbFlags);
+  return !(Number.isInteger(flags) && (flags & 12) !== 0);   // bits 4 (PIA) et 8 (LADD) de dbFlags
 }
 
 function aircraftBody(a: MilitaryAircraft, late: boolean, now: number): string {
@@ -96,7 +102,7 @@ function aircraftBody(a: MilitaryAircraft, late: boolean, now: number): string {
 export function aircraftFeatures(m: MilitaryResponse | null, now: number): Fc<GeoJSON.Point> {
   if (m === null || m.readAt === null) return fc([]);
   const late = isSovereigntyDataLate('adsb-mil', m.readAt, now);
-  return fc(m.others.filter((a) => drawable(a.hex)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
+  return fc(m.others.filter((a) => drawable(a)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(a.lon, a.lat),
     properties: {
       id: a.hex, color: late ? GREY : MIL_AUTRES_HEX, label: `${aircraftLabel(a)} ${clockOf(a.seenAt, now)}`, body: aircraftBody(a, late, now),
@@ -111,7 +117,7 @@ function abroadBody(a: MilitaryAbroad): string {
 /** Aéronefs de la zone d'affichage hors de France : gris clair, jamais comptés. */
 export function abroadAircraftFeatures(m: MilitaryResponse | null): Fc<GeoJSON.Point> {
   if (m === null || m.readAt === null) return fc([]);
-  return fc(m.abroad.filter((a) => drawable(a.hex)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
+  return fc(m.abroad.filter((a) => drawable(a)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(a.lon, a.lat), properties: { id: a.hex, color: GREY, body: abroadBody(a) },
   })));
 }
@@ -149,20 +155,22 @@ export function militaryEmergencyFeatures(m: MilitaryResponse | null, now: numbe
  * base (icône à part, contour pointillé, « pas une observation », S2). SNLE et SNA ne sont jamais dessinés (O11).
  */
 export function navyFeatures(ships: readonly MilitaryShip[], frozen: boolean, now: number): Fc<GeoJSON.Point> {
-  return fc(ships.filter((s) => !isSubmarine(s)).map((s): GeoJSON.Feature<GeoJSON.Point> => {
+  return fc(ships.filter((s) => !isSubmarine(s)).flatMap((s): GeoJSON.Feature<GeoJSON.Point>[] => {
     const observed = s.isLive === true;
+    // Heure illisible : le point est écarté, jamais une date inventée ni une exception.
+    if (observed && s.lastSeen !== undefined && !Number.isFinite(s.lastSeen)) return [];
     const seen = observed && s.lastSeen !== undefined ? clockOf(new Date(s.lastSeen).toISOString(), now) : '';
     const body = observed
       ? head(s.name, `${s.type} · ${s.role}`) + row('Vu en AIS à', seen || 'n.d.') + row('Vitesse', s.speed !== undefined ? formatKnots(s.speed) : 'n.d.')
         + (frozen ? note('Flux AIS figé : position non évaluée.') : note('AIS : aisstream.io via le relais.'))
       : head(s.name, `${s.type} · ${s.role}`) + row('Port base', s.port ?? 'n.d.') + note('Port base : position de référence, pas une observation.');
-    return {
+    return [{
       type: 'Feature', geometry: point(s.lon, s.lat),
       properties: {
         id: s.mmsi ?? s.id, kind: observed ? 'observed' : 'reference', icon: observed ? (frozen ? 'mil-ship-stale' : 'mil-ship') : 'mil-ship-ref',
         color: observed && frozen ? GREY : NAVY_HEX, label: seen, body,
       },
-    };
+    }];
   }));
 }
 
@@ -199,11 +207,17 @@ function landingPlace(l: CableLanding): string {
   return l.commune !== '' ? `${l.commune} (${l.dept})` : placeOf(l.dept);
 }
 
+/** Un câble est du Shom par le préfixe `shom/` de son identifiant, jamais autrement (amendement 7, revue d'A5). */
+function isShomCable(c: Pick<SubseaCable, 'id'>): boolean {
+  return c.id.startsWith('shom/');
+}
+
 /** « Shom (CC BY-SA, 2019) » : source, licence et année d'édition du fichier ; « OpenStreetMap (ODbL 1.0) » pour un complément. */
 function cableSourceText(c: SubseaCable, file: SubseaCablesFile): string {
-  const edition = file.sources.find((s) => s.source === c.source && s.licence === c.licence)?.edition ?? null;
-  const year = c.source === 'Shom' && edition !== null ? /^\d{4}/u.exec(edition)?.[0] ?? null : null;
-  return `${c.source} (${c.licence}${year !== null ? `, ${year}` : ''})`;
+  const name = isShomCable(c) ? 'Shom' : 'OpenStreetMap';
+  const edition = file.sources.find((s) => s.source === name && s.licence === c.licence)?.edition ?? null;
+  const year = isShomCable(c) && edition !== null ? /^\d{4}/u.exec(edition)?.[0] ?? null : null;
+  return `${name} (${c.licence}${year !== null ? `, ${year}` : ''})`;
 }
 
 function cableBody(c: SubseaCable, file: SubseaCablesFile): string {
@@ -211,7 +225,7 @@ function cableBody(c: SubseaCable, file: SubseaCablesFile): string {
   const places = [...new Set(c.landings.map(landingPlace))].join(', ');
   const title = c.name ?? `câble télécom · ${source}`;
   const sub = c.outOfService ? 'hors service' : c.name !== null ? `câble télécom · ${source}` : 'câble télécom sous-marin';
-  const provenance = c.source === 'Shom'
+  const provenance = isShomCable(c)
     ? `Tracé du Shom, ${source}.`
     : `Tracé OpenStreetMap, précision non garantie. © les contributeurs d’OpenStreetMap, ODbL 1.0, fichier du ${dateOf(file.generatedAt)}.`;
   return head(title, sub)
@@ -239,14 +253,14 @@ export function landingFeatures(file: SubseaCablesFile | null): Fc<GeoJSON.Point
   return fc(file.cables.flatMap((c) => c.landings.map((l, i): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(l.lon, l.lat),
     properties: {
-      id: `${c.id}:${i}`, cable: c.id,
+      id: `${c.id}:${i}`, cable: c.id, outOfService: c.outOfService,
       body: head(landingPlace(l), 'atterrage en France') + row('Câble', c.name ?? `câble télécom · ${cableSourceText(c, file)}`),
     },
   }))));
 }
 
 function alertBody(a: CableAlert, muted: boolean, now: number): string {
-  const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom du Shom, sans nom' : 'câble sans nom');
+  const cable = a.cableName ?? (isShomCable({ id: a.cableId }) ? 'câble télécom du Shom, sans nom' : 'câble sans nom');
   return head(`${a.name ?? `MMSI ${a.mmsi}`} · ${a.vesselType ?? 'type n.d.'}`, a.confirmed ? 'Navire lent confirmé sur deux relevés' : 'Navire lent vu une fois, à confirmer')
     + row('Câble', cable)
     + row('Distance au tracé', formatMeters(a.distanceM))

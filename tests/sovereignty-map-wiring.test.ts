@@ -42,6 +42,8 @@ describe('DeckGLMap : couches Souveraineté de deckgl/sovereignty-map.ts', () =>
     expect(deck).toContain('...SOV_HOVER_LAYERS,\n    ].filter(');
     expect(deck).toContain("'line-color': sovCableColor('#22c7ff'),");
     expect(deck).not.toContain('/data/submarine-cables.json');
+    expect(deck).toContain('const shown = ships.filter((s) => !isSubmarine(s));');
+    expect(deck).toContain("['==', ['get', 'outOfService'], true],\n          SOV_ABROAD_HEX,");
   });
   it('méthodes de la carte et de son conteneur', () => {
     for (const sig of [

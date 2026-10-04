@@ -70,6 +70,17 @@ describe('aéronefs militaires : autres pays au-dessus de la France, hors de Fra
     expect(aircraftFeatures(m, NOW).features.map((f) => props(f)['id'])).toEqual(['c2b5b7']);
     expect(abroadAircraftFeatures(m).features).toHaveLength(0);
   });
+  it('défense en profondeur (O10) : un appareil français (pays ou bloc OACI) ou PIA/LADD n’a jamais de point, dans others comme dans abroad', () => {
+    const base = MILITARY_FIXTURE();
+    const french = { ...base.others[0], hex: '3bf004', country: 'France' };
+    const frenchBlock = { ...base.others[1], country: null, hex: '39abcd' };
+    const pia = { ...base.others[2], dbFlags: 4 };
+    const ladd = { ...base.others[3], dbFlags: '8' };
+    const ok = base.others[4];
+    const m = military((r) => { r.others = [french, frenchBlock, pia, ladd, ok]; r.abroad = [{ ...r.abroad[0], country: 'France' }, { ...r.abroad[1], hex: '3a0001' }, r.abroad[2]]; });
+    expect(aircraftFeatures(m, NOW).features.map((f) => props(f)['id'])).toEqual([ok.hex]);
+    expect(abroadAircraftFeatures(m).features.map((f) => props(f)['id'])).toEqual([base.abroad[2].hex]);
+  });
   it('relevé en retard (12 min) : gris, dit ; jamais lu : rien dessiné', () => {
     const late = aircraftFeatures(MILITARY_FIXTURE(), NOW + 12 * MIN);
     expect(late.features.every((f) => props(f)['color'] === SOV_ABROAD_HEX)).toBe(true);
@@ -117,6 +128,11 @@ describe('Marine nationale : vus en AIS datés, port base de référence (icône
     expect(String(byId(fc, '227801000')['body'])).toContain('Port base : position de référence, pas une observation.');
     expect(String(byId(fc, '227801000')['body'])).not.toMatch(/stationn|attache/);
     expect(byId(fc, '227802000')['color']).toBe(NAVY_HEX);
+  });
+  it('heure AIS illisible : le point est écarté, sans exception', () => {
+    const bad = ship({ id: 'd652', name: 'Illisible', mmsi: '227803000', isLive: true, lastSeen: Number.NaN });
+    expect(() => navyFeatures([bad, LIVE], false, NOW)).not.toThrow();
+    expect(navyFeatures([bad, LIVE], false, NOW).features.map((f) => props(f)['id'])).toEqual(['227802000']);
   });
   it('flux figé (T3) : bâtiment vu en AIS en gris, « non évalué »', () => {
     const fc = navyFeatures([LIVE], true, NOW);
@@ -192,6 +208,21 @@ describe('Connectivité : câbles du Shom et d’OpenStreetMap avec leur source,
     expect(String(offProps['body'])).toContain('<div class="hm-sub">hors service</div>');
     expect(props(fc.features.find((f) => f.id === on?.id))['color']).toBe(CABLE_HEX);
     expect(sovCableColor('#22c7ff')).toEqual(['case', ['==', ['get', 'outOfService'], true], SOV_ABROAD_HEX, '#22c7ff']);
+  });
+  it('Shom reconnu par le seul préfixe shom/ ; atterrage d’un câble hors service gris', () => {
+    const odd = CABLES_FILE_FIXTURE();
+    const target = odd.cables.find((c) => c.source === 'Shom' && c.name === null && !c.outOfService);
+    expect(target).toBeDefined();
+    if (target) target.source = 'OpenStreetMap';
+    const body = String(props(cableFeatures(odd).features.find((f) => f.id === target?.id))['body']);
+    expect(body).toContain('Shom (CC BY-SA, 2019)');
+    const off = file.cables.find((c) => c.outOfService && c.landings.length > 0);
+    const landings = landingFeatures(file).features.filter((f) => props(f)['cable'] === off?.id);
+    if (off) {
+      expect(landings.length).toBeGreaterThan(0);
+      expect(landings.every((f) => props(f)['outOfService'] === true)).toBe(true);
+    }
+    expect(landingFeatures(file).features.some((f) => props(f)['outOfService'] === false)).toBe(true);
   });
   it('atterrage nommé par commune ; tronçon au large sans atterrage dit « tronçon au large »', () => {
     const landing = landingFeatures(file).features[0];
