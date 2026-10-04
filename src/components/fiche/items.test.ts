@@ -132,7 +132,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     }
   });
 
-  it('chiffres de la sécurité (souveraineté, O6, O9, S3) : une ligne par source ; indisponible « n.d. », GNSS non mesuré « non évalué », jamais « 0 »', () => {
+  it('chiffres de la sécurité (souveraineté, O6, O9, S3) : une ligne par source ; CERT-FR indisponible « n.d. », part de la Défense non lue « non évalué », jamais « 0 »', () => {
     const row = (label: string, value: string): string => `<span class="fmk-kv-k">${label}</span><span class="fmk-kv-v fmk-num">${value}</span>`;
     const labels = [
       'Alertes CERT-FR en cours', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole', 'Alertes câbles confirmées',
@@ -144,7 +144,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     })).sections[0].html;
     labels.forEach((label, i) => expect(read).toContain(row(label, ['3', '9', '1', '2'][i] ?? '')));
     expect(read).not.toMatch(/Vols militaires|au-dessus de la France|brouillage/);
-    // Phase A : aucune grille GNSS ; les câbles lus disent leur compte, le GNSS « non évalué ».
+    // Grille GNSS non lue (absente, en retard, dégradation générale) : les câbles lus disent leur compte, le GNSS « non évalué ».
     const phaseA = buildThemeFiche(themeInput({
       theme: 'security', snapshot: { signals: signals({ defenseAlerts: 0, gnssUnavailable: true }), energy: null },
     })).sections[0].html;
@@ -154,8 +154,15 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
       theme: 'security',
       snapshot: { signals: signals({ cyberUnavailable: true, militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true }), energy: null },
     })).sections[0].html;
-    labels.slice(0, 3).forEach((label) => expect(down).toContain(row(label, 'n.d.')));
-    expect(down).toContain(row('Mailles GNSS dégradées (24\u00a0h)', 'non évalué'));
+    expect(down).toContain(row(labels[0] ?? '', 'n.d.'));
+    // Disponibilité par partie (tâche B28) : aéronefs, câbles et grille GNSS, chacun « non évalué ».
+    labels.slice(1).forEach((label) => expect(down).toContain(row(label, 'non évalué')));
+    // Grille lue, câbles en retard : le GNSS dit son compte, les câbles « non évalué ».
+    const partial = buildThemeFiche(themeInput({
+      theme: 'security', snapshot: { signals: signals({ cablesUnavailable: true, gnssUnavailable: false, jammingSignals: 2 }), energy: null },
+    })).sections[0].html;
+    expect(partial).toContain(row('Alertes câbles confirmées', 'non évalué'));
+    expect(partial).toContain(row('Mailles GNSS dégradées (24\u00a0h)', '2'));
     expect(down).not.toMatch(/fmk-num">0</);
   });
 

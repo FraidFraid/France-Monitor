@@ -8,9 +8,10 @@ import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FLOODS_FIXTURE, VIGILANCE_FIXTURE } fro
 import { buildEnvironmentInputs } from '../services/environment-inputs.ts';
 import { buildFranceSignals, type FranceRawData } from '../services/france-country-intel.ts';
 import { buildSovereigntyInputs } from '../services/sovereignty-inputs.ts';
+import { withGnssInputs } from '../services/sovereignty-inputs-b.ts';
 import { MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
 import {
-  CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CYBER_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
+  CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CYBER_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
 } from './layer-panel/sovereignty.fixture.ts';
 
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
@@ -143,6 +144,17 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect(tile('Cyber', down)).toEqual({ label: 'Cyber', value: null, meta: 'alertes CERT-FR en cours', level: null });
     expect(tile('Militaire', down)).toEqual({ label: 'Militaire', value: null, meta: MILITARY_FIGURE_LABEL, level: null });
     expect(tile('Défense', down)).toEqual({ label: 'Défense', value: null, meta: 'câbles non évalués · GNSS non évalué', level: null });
+    // Phase B (tâche B28) : grille du 04/10 lue (2 mailles sur 24 h) ; niveau des mailles = pastille Défense (jaune), pastille de la tuile
+    // « Militaire » aussi. Câbles en retard, grille lue : la part GNSS seule. Orage (dégradation générale) : « GNSS non évalué ».
+    const withGnss = withGnssInputs(day, GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
+    expect(tile('Défense', withGnss)).toEqual({ label: 'Défense', value: 2, meta: 'câbles 0 · GNSS 2', level: 'medium' });
+    expect(tile('Militaire', withGnss)).toMatchObject({ value: 9, level: 'medium' });
+    const three = withGnssInputs(day, { ...GNSS_FIXTURE(), degraded: { rolling24h: 3, previousUtcDays: [3, null] } }, MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
+    expect(tile('Défense', three)).toMatchObject({ value: 3, meta: 'câbles 0 · GNSS 3', level: 'high' });
+    const cablesLate = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FROZEN_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW), GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
+    expect(tile('Défense', cablesLate)).toEqual({ label: 'Défense', value: 2, meta: 'câbles non évalués · GNSS 2', level: 'medium' });
+    expect(tile('Défense', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW)))
+      .toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS non évalué', level: 'low' });
     // Catalogue KEV en retard, CERT-FR à l'heure : alertes comptées, vulnérabilités citées « non évaluées ».
     const kevLate = CYBER_FIXTURE();
     kevLate.kev.readAt = new Date(SOV_FIXTURE_NOW - 27 * 3_600_000).toISOString();

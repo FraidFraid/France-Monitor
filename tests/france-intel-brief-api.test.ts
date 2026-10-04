@@ -68,7 +68,7 @@ describe('buildPrompt v14', () => {
     const fr = buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr');
     for (const text of [
       'alertes câbles non évaluées, précision GNSS non évaluée, aéronefs militaires ou d’État visibles en ADS-B non évalués',
-      'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', 'précision GNSS : non évaluée (aucune grille mesurée)',
+      'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', 'précision GNSS : non évaluée (grille absente, en retard ou en dégradation générale)',
       'alertes CERT-FR : non évaluées (CERT-FR indisponible ou en retard)',
       'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',
     ]) expect(fr).toContain(text);
@@ -78,10 +78,15 @@ describe('buildPrompt v14', () => {
     expect(en).toContain('cable alerts not assessed, GNSS accuracy not assessed, military or state aircraft visible on ADS-B not assessed');
     expect(en).not.toMatch(/\b0 (?:confirmed cable|cells?|military)/);
     expect(en).toContain('Calm wording (stable/calm/normal/under control) is FORBIDDEN');
-    // GNSS seul non mesuré (phase A) : dit « non évalué » sans interdire le calme pour autant.
-    const phaseA = buildPrompt(95, axes, isnr, 0, 0, [], { ...signals, militaryUnavailable: false, cablesUnavailable: false, cyberUnavailable: false, kevUnavailable: false }, null, [], [], 'fr');
-    expect(phaseA).toContain('0 alertes câbles confirmées, précision GNSS non évaluée, 0 aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
-    expect(phaseA).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
+    // Phase B (tâche B28) : la grille GNSS branchée entre dans la règle ; seule non lue (absente, en retard, dégradation générale), elle
+    // interdit aussi le calme ; lue et sans maille, le calme redevient permis.
+    const read = { ...signals, militaryUnavailable: false, cablesUnavailable: false, cyberUnavailable: false, kevUnavailable: false };
+    const gnssOnly = buildPrompt(95, axes, isnr, 0, 0, [], read, null, [], [], 'fr');
+    expect(gnssOnly).toContain('0 alertes câbles confirmées, précision GNSS non évaluée, 0 aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
+    expect(gnssOnly).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : INTERDIT');
+    const all = buildPrompt(95, axes, isnr, 0, 0, [], { ...read, gnssUnavailable: false }, null, [], [], 'fr');
+    expect(all).toContain('0 alertes câbles confirmées, 0 mailles à précision GNSS dégradée');
+    expect(all).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
   });
   it('signalCounts reçus : drapeaux de sources non lues et comptes cyber séparés repris, jamais inventés', async () => {
     vi.stubEnv('GROQ_API_KEY', 'test-key');

@@ -391,13 +391,14 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
     assert.equal(s?.lat, undefined);
     assert.equal(s?.lon, undefined);
   });
-  it('« Signal défense » (O7, O15, S15) : 3 mailles GNSS sur 24 h, moyenne ; élevée sur deux jours UTC complets de suite ; DGAC et ANFR', () => {
+  it('« Précision GNSS dégradée » (O7, O15, S15, tâche B28) : 3 mailles GNSS sur 24 h, moyenne ; élevée sur deux jours UTC complets de suite ; DGAC et ANFR', () => {
     const now = detectSituations(baseRawData({ gnssDegraded: { rolling24h: 3, previousUtcDays: [3, null] } }), SOV_FIXTURE_NOW)
       .find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
     assert.equal(now?.severity, 'medium');
+    assert.equal(now?.title, 'Précision GNSS dégradée');
     assert.equal(now?.summary, '3\u00a0mailles à précision GNSS dégradée sur 24\u00a0h, à vérifier.');
     assert.deepEqual(now?.affectedZones, ['France']);
-    assert.ok(now?.recommendedActions.some((a) => a.label === 'À vérifier auprès de la DGAC et de l’ANFR, seules à qualifier un brouillage'));
+    assert.ok(now?.recommendedActions.some((a) => a.label === 'Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage'));
     assert.doesNotMatch(JSON.stringify(now), /brouillage mesuré|Brouillage GNSS/);
     const twoDays = detectSituations(baseRawData({ gnssDegraded: { rolling24h: 4, previousUtcDays: [3, 5] } }), SOV_FIXTURE_NOW);
     assert.equal(twoDays.find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED')?.severity, 'high');

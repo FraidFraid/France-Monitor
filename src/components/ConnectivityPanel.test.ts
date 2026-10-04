@@ -30,8 +30,9 @@ describe('ConnectivityPanel', () => {
     expect(c.querySelector('.lp.connectivity-panel-modal .lp-title')?.textContent).toBe('Connectivité');
     expect(c.textContent).toContain('Chargement des données…');
     p.update(state());
-    // Phase B (B26) : le gros chiffre est « N / 6 » grands réseaux ; sans relevé RIPEstat (branché par B28) il reste « n.d. » sans
-    // couleur, et le compte des navires lents est passé en tête de la section des navires.
+    // Phase B (B26) : le gros chiffre est « N / 6 » grands réseaux ; tant que RIPEstat n'est pas lu (état sans `connectivity`, B28) il
+    // reste « n.d. » sans couleur (« 6 / 6 » : ConnectivityPanel-b.test.ts), et le compte des navires lents est en tête de la section
+    // des navires.
     expect(c.querySelector('.lp-figure b')?.textContent).toBe('n.d.');
     expect(c.querySelector('.lp-figure b')?.className ?? '').not.toMatch(/lp-lvl--/);
     expect(c.textContent).toContain('Navires lents sur un tracé');

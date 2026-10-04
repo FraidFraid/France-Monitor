@@ -4,14 +4,18 @@
 // comme MaritimePanel) ; un aéronef d'une autre nation, une urgence montrée ou un bâtiment cliqués (ou Entrée) sont recentrés sur la
 // carte ; bouton des ouvrages OpenStreetMap. Amendement 7 : un appareil français n'est qu'un compte par département (O10), jamais une
 // ligne cliquable ; une urgence masquée n'a ni position ni adresse, rien à recentrer. Posture Vigipirate vérifiée par la relecture
-// quotidienne de la page du SGDSN (O14). Chaque rendu, relève AIS de 5 s comprise, met à jour sans reconstruire ce qui n'a pas changé
+// quotidienne de la page du SGDSN (O14). Phase B (tâche B28) : grille GNSS et registre des gels gardés quand une mise à jour ne les donne
+// pas (règle de VigilancePanel) ; une maille du jour UTC précédent cliquée est recentrée (O17 : jamais un lieu en direct) ; bouton des
+// zones drones DGAC (option de la couche). Chaque rendu, relève AIS de 5 s comprise, met à jour sans reconstruire ce qui n'a pas changé
 // (shell.patch).
 import { VIGIPIRATE } from '../config/vigipirate.ts';
 import type { AisConnectionStatus } from '../services/ais-connection.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import { getAisConnectionState, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
 import type { CablesState } from '../services/sovereignty-cables.ts';
+import type { GnssState } from '../services/sovereignty-gnss.ts';
 import type { MilitaryState } from '../services/sovereignty-military.ts';
+import type { SanctionsState } from '../services/sovereignty-sanctions.ts';
 import type { VigipirateCheckState } from '../services/sovereignty-vigipirate.ts';
 import type { MilitaryAircraft, ShownMilitaryEmergency } from '../types/index.ts';
 import { buildDefenseView, type DefenseSitesSummary } from './layer-panel/defense.ts';
@@ -23,13 +27,19 @@ const PANEL_ID = 'military';
 
 /**
  * État reçu d'App.ts : relevé adsb.lol, veille des câbles (état de l'AIS vu par le serveur), relecture de la page Vigipirate du SGDSN
- * (null avant la première lecture), sites de défense.
+ * (null avant la première lecture), sites de défense (zones drones de la phase B comprises).
  */
 export interface DefensePanelState {
   military: MilitaryState | null;
   cables: CablesState | null;
   vigipirate: VigipirateCheckState | null;
   sites: DefenseSitesSummary;
+  /**
+   * Phase B (contrats § 4.2) : grille GNSS et météo spatiale, registre national des gels. Absents d'une mise à jour : derniers reçus
+   * gardés ; null : pas encore lus (sections « chargement… »).
+   */
+  gnss?: GnssState | null;
+  sanctions?: SanctionsState | null;
 }
 
 /** Marine nationale vue en AIS et état du WebSocket du relais (injectables en test). */
@@ -53,6 +63,8 @@ export class DefensePanel {
   private onFocusEmergency?: (emergency: ShownMilitaryEmergency) => void;
   private onFocusNavy?: (ship: MilitaryShip) => void;
   private onOsmWorks?: (on: boolean) => void;
+  private onDroneZones?: (on: boolean) => void;
+  private onFocusGnssCell?: (cell: { lat: number; lon: number }) => void;
   private state: DefensePanelState | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
@@ -78,15 +90,23 @@ export class DefensePanel {
   setOnFocusNavy(handler: (ship: MilitaryShip) => void): void { this.onFocusNavy = handler; }
   /** Bouton « Afficher les ouvrages OpenStreetMap » : App.ts lit le fichier daté à la première demande. */
   setOnOsmWorks(handler: (on: boolean) => void): void { this.onOsmWorks = handler; }
+  /** Bouton des zones drones (section Sites) : bascule de l'option de la couche Défense, d'après son aria-pressed (phase B). */
+  setOnDroneZones(handler: (on: boolean) => void): void { this.onDroneZones = handler; }
+  /** Ligne d'une maille GNSS du jour UTC précédent (section GNSS) : recentrage de la carte (phase B, O17). */
+  setOnFocusGnssCell(handler: (cell: { lat: number; lon: number }) => void): void { this.onFocusGnssCell = handler; }
 
   show(state: DefensePanelState): void {
     this.shell?.root.classList.add('is-open');
     this.update(state);
   }
 
-  /** Nouvel état ; un panneau fermé ne se rouvre pas. */
+  /** Nouvel état ; un panneau fermé ne se rouvre pas. Grille GNSS et registre des gels absents de l'appel : derniers reçus gardés. */
   update(state: DefensePanelState): void {
-    this.state = state;
+    this.state = {
+      ...state,
+      gnss: state.gnss !== undefined ? state.gnss : this.state?.gnss ?? null,
+      sanctions: state.sanctions !== undefined ? state.sanctions : this.state?.sanctions ?? null,
+    };
     if (this.isVisible()) this.render();
   }
 
@@ -116,6 +136,18 @@ export class DefensePanel {
       this.onOsmWorks?.(!(this.state?.sites.osm.shown ?? false));
       return;
     }
+    const droneToggle = target.closest<HTMLElement>('[data-drone-zones]');
+    if (droneToggle) {
+      this.onDroneZones?.(droneToggle.getAttribute('aria-pressed') !== 'true');
+      return;
+    }
+    // « 48:-3.5 » : coin sud-ouest d'une maille du jour UTC précédent (seules lignes portant l'attribut, O17).
+    const gnssCell = target.closest<HTMLElement>('[data-gnss-cell]')?.dataset['gnssCell'];
+    if (gnssCell) {
+      const [lat, lon] = gnssCell.split(':').map(Number);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) this.onFocusGnssCell?.({ lat, lon });
+      return;
+    }
     const m = this.state?.military?.military.data ?? null;
     // O10 : seuls les appareils d'autres nations (`others`) ont une ligne cliquable ; les français ne sont que des comptes.
     const hex = target.closest<HTMLElement>('[data-aircraft]')?.dataset['aircraft'];
@@ -140,7 +172,7 @@ export class DefensePanel {
 
   private render(): void {
     if (!this.shell || !this.state) return;
-    const { military, cables, vigipirate, sites } = this.state;
+    const { military, cables, vigipirate, sites, gnss, sanctions } = this.state;
     const connection = this.live.connection();
     const watch = cables?.watch.data ?? null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
@@ -150,7 +182,10 @@ export class DefensePanel {
       navy: { status: connection.status, lastMessageAt: connection.lastMessageAt, ships: this.live.navy() },
       // AIS indisponible pour le serveur (muet, relais injoignable) ; un fichier des câbles illisible ne fige pas la Marine nationale.
       aisRelay: watch !== null && watch.readAt !== null ? { evaluated: !cablesAisDown(watch), lastMessageAt: watch.aisLastMessageAt } : null,
-      sites, canFocus: this.onFocusAircraft !== undefined, now: Date.now(), open,
+      sites,
+      gnss: gnss?.gnss.data ?? null, gnssError: gnss?.gnss.error ?? null,
+      sanctions: sanctions?.sanctions.data ?? null, sanctionsError: sanctions?.sanctions.error ?? null,
+      canFocus: this.onFocusAircraft !== undefined, now: Date.now(), open,
     }));
   }
 }

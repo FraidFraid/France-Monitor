@@ -620,7 +620,8 @@ function emergencyAircraftLine(e: MilitaryEmergency): string {
  * « Signal défense » (O7) : un 7500 affiché sur deux relevés au-dessus du territoire ou à moins de 40 km, moyenne, « à confirmer par les
  * autorités » ; trois mailles à précision GNSS dégradée sur 24 h (phase B, comptes sans lieu), moyenne, élevée seulement sur deux jours
  * UTC complets de suite (defenseSituationSeverity). Les 7700 et 7600 restent des urgences aériennes du panneau et du moniteur d'alertes.
- * Jamais un nombre d'aéronefs : un aéronef observé n'est pas un événement.
+ * Jamais un nombre d'aéronefs : un aéronef observé n'est pas un événement. Sur le seul GNSS, la situation s'intitule « Précision GNSS
+ * dégradée » (O15, jamais « brouillage ») et dit de signaler à la DGAC et à l'ANFR, seules à qualifier un brouillage (S15, tâche B28).
  */
 function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
   const hijacks = (raw.militaryEmergencies ?? []).filter(isDefenseSituationEmergency);
@@ -638,7 +639,7 @@ function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
     'DEFENSE_SIGNAL_ELEVATED',
     severity,
     hijacks.length > 0 ? 0.9 : 0.7,
-    'Signal défense',
+    hijacks.length > 0 ? 'Signal défense' : 'Précision GNSS dégradée',
     `${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`,
     hijacks.length > 0 ? [...new Set(hijacks.map(emergencyZone))].slice(0, 4) : ['France'],
     lines,
@@ -647,7 +648,7 @@ function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
         action('Croiser avec les communiqués officiels (préfecture, DGAC)', 'Analyste défense', 'cross-check', true),
         action('Suivre l’aéronef sur le panneau Défense', 'Analyste défense', 'monitor'),
       ] : []),
-      ...(gnssCells > 0 ? [action('À vérifier auprès de la DGAC et de l’ANFR, seules à qualifier un brouillage', 'Analyste défense', 'cross-check')] : []),
+      ...(gnssCells > 0 ? [action('Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage', 'Analyste défense', 'cross-check')] : []),
     ],
     [...(hijacks.length > 0 ? ['adsb.lol'] : []), ...(gnssCells > 0 ? ['Grille GNSS (adsb.lol)', 'NOAA SWPC'] : [])],
   );

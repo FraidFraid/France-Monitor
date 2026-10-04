@@ -90,7 +90,10 @@ function militaryFigure(count, lang) {
  */
 const NOT_ASSESSED = {
   cables: { fr: 'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', en: 'slow vessels on cables: not assessed (AIS watch mute or late)' },
-  gnss: { fr: 'précision GNSS : non évaluée (aucune grille mesurée)', en: 'GNSS accuracy: not assessed (no measured grid)' },
+  gnss: {
+    fr: 'précision GNSS : non évaluée (grille absente, en retard ou en dégradation générale)',
+    en: 'GNSS accuracy: not assessed (grid missing, late or under general degradation)',
+  },
   military: {
     fr: 'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',
     en: 'military or state aircraft visible on ADS-B: not assessed (adsb.lol reading unavailable or late)',
@@ -169,13 +172,14 @@ function sovereigntySignals(signalCounts, lang) {
 }
 
 /**
- * Signaux immédiats faibles : aucun compte, et aucune source Souveraineté lue en défaut (câbles, aéronefs, CERT-FR) ; une absence n'est
- * jamais un calme. La grille GNSS, absente de la phase A, n'y entre pas.
+ * Signaux immédiats faibles : aucun compte, et aucune source Souveraineté lue en défaut (câbles, aéronefs, grille GNSS, CERT-FR) ; une
+ * absence n'est jamais un calme. La grille GNSS y entre depuis son branchement (phase B, tâche B28).
  */
 function hasLowImmediateSignals(signalCounts) {
   return (
     !signalCounts.cablesUnavailable
     && !signalCounts.militaryUnavailable
+    && !signalCounts.gnssUnavailable
     && !signalCounts.cyberUnavailable
     && signalCounts.criticalNews === 0
     && signalCounts.highNews === 0

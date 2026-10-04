@@ -30,7 +30,7 @@
     { "name": "Santé", "description": "Santé opérationnelle de la plateforme et historique de la situation." },
     { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
     { "name": "Environnement", "description": "Vigilance météo, crues, feux de forêt (détections satellite, foyers, météo des forêts), sécheresse, qualité de l'air, séismes et marégraphes." },
-    { "name": "Souveraineté", "description": "Aéronefs militaires au-dessus de la France, veille des câbles télécom sous-marins, vigilance cyber (CERT-FR, vulnérabilités exploitées, revendications agrégées)." }
+    { "name": "Souveraineté", "description": "Défense (aéronefs militaires ou d'État visibles en ADS-B, page Vigipirate du SGDSN, précision de position GNSS et météo spatiale, registre des gels), connectivité (câbles télécom sous-marins, grands réseaux, points d'échange), vigilance cyber (CERT-FR, vulnérabilités exploitées, revendications agrégées) : mesures datées de sources ouvertes, sans lieu inventé." }
   ],
   "paths": {
     "/api/news": {
@@ -467,6 +467,54 @@
           "502": { "description": "Aucune partie lue : même forme, pannes nommées dans `errors`, jamais mis en cache.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } }
         }
       }
+    },
+    "/api/sovereignty/vigipirate": {
+      "get": {
+        "tags": ["Souveraineté"],
+        "operationId": "getSovereigntyVigipirate",
+        "summary": "Relecture quotidienne de la page Vigipirate du SGDSN : date de lecture, empreinte, date du dernier changement",
+        "description": "Le serveur relit chaque jour la page https://www.sgdsn.gouv.fr/vigipirate (GET, empreinte SHA-256 du contenu utile, sans le reprendre) et sert `readAt` (dernière lecture réussie), `fingerprint` et `pageChangedAt` (lecture où l'empreinte a changé pour la dernière fois). Jamais le texte de la page : le niveau affiché vient d'une saisie datée (Source : site internet du SGDSN), à revérifier sur sgdsn.gouv.fr quand la page a changé. Type `VigipiratePageCheck` de `src/types/index.ts`.\n\nCache CDN visé : `s-maxage=3600, stale-while-revalidate=7200`.",
+        "responses": {
+          "200": { "description": "Page lue au moins une fois ; une panne ultérieure est nommée dans `errors`, la dernière lecture servie avec sa date.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } },
+          "502": { "description": "Page jamais lue : même forme, `readAt` nul, panne nommée dans `errors`, jamais mis en cache.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } }
+        }
+      }
+    },
+    "/api/sovereignty/gnss": {
+      "get": {
+        "tags": ["Souveraineté"],
+        "operationId": "getSovereigntyGnss",
+        "summary": "Précision de position GNSS dégradée (comptes sur 24 h, mailles du jour UTC précédent) et météo spatiale (Données adsb.lol, ODbL 1.0 ; NOAA SWPC)",
+        "description": "Dernière grille complète de la collecte du serveur : cinq lectures adsb.lol (/v2/point) toutes les 10 min, mailles de 0,5° ; sur 24 h glissantes, un aéronef distinct par maille avec sa pire précision de position déclarée (`nac_p` 8 ou plus : bonne ; 1 à 7 : dégradée ; 0 : comptée à part, sauf après une bonne précision du même appareil le même jour UTC). Part dégradée = 100 × (dégradés − 1) / (bons + dégradés), au moins 5 aéronefs ; jaune de 2 à 10 %, orange au-delà. En direct, un compte sans lieu (`degraded` : mailles françaises au-delà de 10 % sur 24 h glissantes et sur les deux derniers jours UTC complets, veille d'abord, `null` pour un jour non couvert) ; les mailles localisées (`cells`) ne sont publiées que pour le jour UTC précédent (`cellsDay`), et seulement s'il est couvert en entier. Dégradation générale (plus de 30 % des mailles françaises dégradées et Kp de 5− ou plus sur la fenêtre) : aucune maille comptée. Une précision de position dégradée est à vérifier : seules la DGAC et l'ANFR qualifient un brouillage. Météo spatiale de la NOAA (domaine public) : échelles R, S et G du jour, prévisions datées, indice Kp sur 7 jours, dernière alerte. Type `GnssResponse` de `src/types/index.ts`.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (30 s pendant une collecte en cours).",
+        "responses": {
+          "200": { "description": "Grille ou météo spatiale servie ; une partie en panne est nommée dans `errors`.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } },
+          "502": { "description": "Ni grille ni météo spatiale : même forme, pannes nommées dans `errors`, jamais mis en cache.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } }
+        }
+      }
+    },
+    "/api/sovereignty/connectivity": {
+      "get": {
+        "tags": ["Souveraineté"],
+        "operationId": "getSovereigntyConnectivity",
+        "summary": "Visibilité des six grands réseaux français (RIPEstat) et points d'échange en France (PeeringDB)",
+        "description": "Instantané RIPEstat `routing-status` (instantanés RIPE RIS de 00 h, 08 h et 16 h UTC, relevés chaque heure) pour Orange, SFR, Bouygues Telecom, Free, RENATER et OVHcloud : routeurs témoins RIS qui voient chaque réseau en IPv4 et en IPv6, préfixes annoncés ; un réseau est dit vu par au moins 99 % des routeurs témoins RIPE ou non. Un réseau non lu est nommé dans `unread` avec sa panne, jamais compté à 0. Séries de la visibilité minimale et des préfixes annoncés sur 30 jours. Points d'échange publiés en France par PeeringDB (annuaire, sans état en direct). Hors score. Type `ConnectivityResponse` de `src/types/index.ts`.\n\nCache CDN visé : `s-maxage=1800, stale-while-revalidate=3600` (60 s pendant une lecture en cours).",
+        "responses": {
+          "200": { "description": "RIPEstat ou PeeringDB servi ; une partie en panne est nommée dans `errors`.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } },
+          "502": { "description": "Ni RIPEstat ni PeeringDB : même forme, pannes nommées dans `errors`, jamais mis en cache.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } }
+        }
+      }
+    },
+    "/api/sovereignty/sanctions": {
+      "get": {
+        "tags": ["Souveraineté"],
+        "operationId": "getSovereigntySanctions",
+        "summary": "Registre national des gels (DG Trésor) : date de publication, comptes par nature, nouveaux gels et radiations",
+        "description": "Date de la dernière publication du registre national des gels, relue chaque heure ; comptes par nature (personnes physiques, personnes morales, navires) ; nouveaux gels et radiations (différences d'identifiants avec la publication précédente, `null` au premier relevé, jamais « tout est nouveau ») ; historique des publications sur 400 jours. Aucun nom n'est servi : consulter la dernière version du registre (https://gels-avoirs.dgtresor.gouv.fr/). Hors score. Type `SanctionsResponse` de `src/types/index.ts`.\n\nCache CDN visé : `s-maxage=1800, stale-while-revalidate=3600` (60 s pendant une lecture en cours).",
+        "responses": {
+          "200": { "description": "Publication connue ou date lue ; une panne est nommée dans `errors`.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } },
+          "502": { "description": "Date jamais lue et aucune publication connue : même forme, panne nommée dans `errors`, jamais mis en cache.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SovereigntyResponse" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -854,7 +902,7 @@
       },
       "SovereigntyResponse": {
         "type": "object",
-        "description": "Réponse d'une route Souveraineté : champs propres à la route (types MilitaryResponse, CablesWatchResponse, CyberResponse de src/types/index.ts), toujours une date de lecture et la liste des pannes nommées.",
+        "description": "Réponse d'une route Souveraineté : champs propres à la route (types MilitaryResponse, CablesWatchResponse, CyberResponse, VigipiratePageCheck, GnssResponse, ConnectivityResponse, SanctionsResponse de src/types/index.ts), toujours une date de lecture et la liste des pannes nommées.",
         "properties": {
           "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Dernière lecture réussie par le serveur ; nul si jamais lue." },
           "errors": { "type": "array", "items": { "type": "string" }, "description": "Pannes nommées par leur source (« CERT-FR, avis : HTTP 503 »)." }

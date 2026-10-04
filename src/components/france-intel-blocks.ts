@@ -20,7 +20,7 @@ import {
 } from '../utils/fuelPriceChart.ts';
 import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
-import { MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
+import { GNSS_SITUATION_CELLS, MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -211,8 +211,9 @@ function militaryTile(s: FranceCountrySignals, lang: Lang): DomainTile {
 
 /**
  * Tuile « Défense » : formule inchangée sur les parts lues, navires lents confirmés sur un câble (AIS frais) et mailles à précision GNSS
- * dégradée. Une part non lue est dite « non évaluée » et n'entre ni au chiffre ni au niveau (phase A : aucune grille GNSS, « GNSS non
- * évalué », jamais « GNSS 0 ») ; aucune part lue : « n.d. », point gris.
+ * dégradée. Une part non lue est dite « non évaluée » et n'entre ni au chiffre ni au niveau (grille GNSS absente, en retard ou en
+ * dégradation générale : « GNSS non évalué », jamais « GNSS 0 ») ; aucune part lue : « n.d. », point gris. Niveau des mailles (phase B,
+ * tâche B28) : celui de la pastille Défense, jaune pour 1 ou 2, orange à partir de GNSS_SITUATION_CELLS.
  */
 function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const cablesOff = s.cablesUnavailable === true;
@@ -226,7 +227,8 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
     label: t(lang, 'Défense', 'Defense'),
     value: cablesOff && gnssOff ? null : cableAlerts + cells,
     meta: `${cables} · ${gnss}`,
-    level: cablesOff && gnssOff ? null : cableHigh > 0 || cells > 0 ? 'high' : cableAlerts > 0 ? 'medium' : 'low',
+    level: cablesOff && gnssOff ? null
+      : cableHigh > 0 || cells >= GNSS_SITUATION_CELLS ? 'high' : cableAlerts > 0 || cells > 0 ? 'medium' : 'low',
   };
 }
 

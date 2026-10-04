@@ -78,7 +78,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     </div>
   
     <div class="frintel-dom-tile">
-      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
       <span class="frintel-dom-label">Défense</span>
       <div class="frintel-dom-value">1 <span class="frintel-dom-meta">câbles 0 · GNSS 1</span></div>
     </div>
@@ -139,7 +139,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     </div>
   
     <div class="frintel-dom-tile">
-      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
+      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
       <span class="frintel-dom-label">Defense</span>
       <div class="frintel-dom-value">1 <span class="frintel-dom-meta">cables 0 · GNSS 1</span></div>
     </div>

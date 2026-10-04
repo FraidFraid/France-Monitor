@@ -130,14 +130,22 @@ import {
   hasActiveSovereignty, sovereigntyReportSources, type SovereigntyLayerKey,
 } from './config/sovereignty-sources.ts';
 import {
-  CONNECTIVITY_LEGEND, CYBER_LEGEND, DEFENSE_LEGEND, connectivityLegend, cyberLegend, defenseLegend,
+  CONNECTIVITY_LEGEND, CYBER_LEGEND, DEFENSE_LEGEND, connectivityLegend, cyberLegend, defenseLegend, withDefensePhaseB,
 } from './components/layer-panel/sovereignty-legend.ts';
 import { findShipByKey, navyLiveState } from './components/layer-panel/navy.ts';
 import type { DefenseSitesSummary } from './components/layer-panel/defense.ts';
 import { buildSovereigntyInputs, monitoredMilitaryEmergencies, type SovereigntyInputs } from './services/sovereignty-inputs.ts';
+// Souveraineté, phase B (tâche B28) : grille GNSS et météo spatiale (score), grands réseaux, registre des gels, zones drones ; moniteur.
+import { fetchGnss, gnssStatus, mergeGnss, type GnssState } from './services/sovereignty-gnss.ts';
+import { fetchConnectivity, mergeConnectivity, ripeStatus, type ConnectivityState } from './services/sovereignty-connectivity.ts';
+import { fetchSanctions, gelsStatus, mergeSanctions, type SanctionsState } from './services/sovereignty-sanctions.ts';
+import { fetchDroneZones } from './services/sovereignty-drones.ts';
+import { withGnssInputs } from './services/sovereignty-inputs-b.ts';
+import { gnssJammingSituations } from './services/sovereignty-alerts.ts';
+import type { DroneZonesFile } from './types/index.ts';
 import {
-  LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE,
-  LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
+  LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_GNSS_FILL, LYR_SOV_NAVY_OBSERVED,
+  LYR_SOV_NAVY_REFERENCE, LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
 } from './components/deckgl/constants.ts';
 
 /** Clé d'une des couches Environnement (un panneau, une relève, une légende chacune). */
@@ -613,6 +621,7 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Have I Been Pwned': 'cyber',
   'Cybermalveillance.gouv.fr': 'cyber',
   'Câbles et AIS': 'subseaCables',
+  'RIPEstat': 'subseaCables',
   'Écowatt RTE': 'powerGrid',
   'ARCEP Réseau Mobile': 'outagesElec',
   'Enedis / Pannes Électricité': 'outagesElec',
@@ -622,6 +631,9 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Pétrole SDES / INSEE': 'oilNetwork',
   'Vols militaires': 'military',
   'Vigipirate (page du SGDSN)': 'military',
+  'Grille GNSS': 'military',
+  'NOAA SWPC': 'military',
+  'Registre des gels': 'military',
   'Santé publique France': 'healthOscour',
   'Odissé alertes': 'health',
   'Sentinelles': 'health',
@@ -2329,6 +2341,8 @@ export class App {
     void fetchMilitary(null);
     void fetchCables(null);
     void fetchCyber(null);
+    // Phase B : la grille GNSS nourrit le score (relue par loadGnss) ; réseaux, gels et zones drones seulement à la demande.
+    void fetchGnss(null);
     fetchNuclearUnavailabilities().catch(() => {});
     fetchRTEIIPIncidents().catch(() => {});
     fetchFromIngestApi().catch(() => {});
@@ -3132,6 +3146,10 @@ export class App {
       void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
     } else if (name === VIGIPIRATE_CHECK_SOURCE) {
       void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === 'Grille GNSS' || name === 'NOAA SWPC' || name === 'Registre des gels') {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === 'RIPEstat') {
+      void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));
     } else if (name === 'Santé publique France') {
       // Panneaux Santé créés à la demande : la source peut être cliquée avant toute activation de couche.
       void this.ensureUrgencesPanel().then(() => this.urgencesPanel?.show(this.currentHealth));
@@ -4248,11 +4266,14 @@ export class App {
         panel.setOnFocusAircraft((aircraft) => this.mapContainer?.flyTo(aircraft.lon, aircraft.lat, 9));
         panel.setOnFocusEmergency((emergency) => this.mapContainer?.flyTo(emergency.lon, emergency.lat, 9));
         panel.setOnFocusNavy((ship) => this.mapContainer?.flyTo(ship.lon, ship.lat, 10));
+        // Phase B : seules les mailles du jour UTC précédent ont une ligne (O17 : jamais un lieu en direct).
+        panel.setOnFocusGnssCell((cell) => this.focusGnssCell(cell));
       }
       panel.setOnOsmWorks((on) => this.setOsmWorks(on));
+      panel.setOnDroneZones((on) => this.setDroneZones(on));
       panel.mount();
       this.defensePanel = panel;
-      if (this.activeLayers.military) panel.show(this.defensePanelState());
+      if (this.activeLayers.military) panel.show(this.defensePanelStateB());
     });
     return this.defensePanelPromise;
   }
@@ -4270,7 +4291,7 @@ export class App {
       }
       panel.mount();
       this.connectivityPanel = panel;
-      if (this.activeLayers.subseaCables) panel.show(this.connectivityPanelState());
+      if (this.activeLayers.subseaCables) panel.show(this.connectivityPanelStateB());
     });
     return this.connectivityPanelPromise;
   }
@@ -4312,13 +4333,13 @@ export class App {
    */
   private openSovereigntyPanel(key: SovereigntyLayerKey): void {
     switch (key) {
-      case 'military': this.defensePanel?.show(this.defensePanelState()); break;
-      case 'subseaCables': this.connectivityPanel?.show(this.connectivityPanelState()); break;
+      case 'military': this.defensePanel?.show(this.defensePanelStateB()); break;
+      case 'subseaCables': this.connectivityPanel?.show(this.connectivityPanelStateB()); break;
       case 'cyber': this.cyberPanel?.show(this.currentSovCyber); break;
     }
     // Défense : la Marine nationale vient du WebSocket AIS du navigateur (connectAis() est idempotent).
     if (key === 'military') connectAis();
-    this.loadSovereigntySource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.loadSovereigntySourceB(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
     this.syncSovereigntyPolling(key);
   }
 
@@ -4329,6 +4350,162 @@ export class App {
     void this.ensureSovereigntyPanel(key).then(() => this.openSovereigntyPanel(key));
     this.currentFloatingPanelId = key;
     this.refreshFloatingPanelSwitcher();
+  }
+
+  // ─── Souveraineté, phase B (tâche B28 ; contrats § 4.4 point 15, § 6 ; amendement 7, O7, O15, O17, S15) ───
+  // Grille GNSS et météo spatiale (score : lue avec chaque lecture de la couche Défense), registre des gels (couche Défense active ou
+  // panneau ouvert), grands réseaux et points d'échange (couche Connectivité active ou panneau ouvert), fichier des zones drones (une fois
+  // par session, à l'activation de l'option, jamais au démarrage).
+
+  private gnssState: GnssState | null = null;
+  private connectivityState: ConnectivityState | null = null;
+  private sanctionsState: SanctionsState | null = null;
+  private droneZonesFile: DroneZonesFile | null = null;
+  private droneZonesError: string | null = null;
+  private droneZonesOn = false;
+
+  /** Lecture d'une couche Souveraineté (tâche A15), puis les sources de la phase B de cette couche (arbitrage 21). */
+  private async loadSovereigntySourceB(key: SovereigntyLayerKey): Promise<void> {
+    const reads: Array<Promise<void>> = [this.loadSovereigntySource(key)];
+    if (key === 'military') {
+      reads.push(this.loadGnss());
+      if (this.sovereigntyBWanted('military')) reads.push(this.loadSanctions());
+    }
+    if (key === 'subseaCables' && this.sovereigntyBWanted('subseaCables')) reads.push(this.loadConnectivity());
+    await Promise.all(reads);
+  }
+
+  /** Sources de la phase B hors score : couche active ou panneau ouvert. */
+  private sovereigntyBWanted(key: 'military' | 'subseaCables'): boolean {
+    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false);
+  }
+
+  /**
+   * Grille GNSS et météo spatiale : lignes « Grille GNSS » et « NOAA SWPC » (S1, datées par leur donnée), mailles du jour UTC précédent
+   * sur la carte, panneau, légende, score, situations et moniteur.
+   */
+  private loadGnss(): Promise<void> {
+    return dedupe('sovereignty:gnss', async () => {
+      try {
+        this.gnssState = mergeGnss(this.gnssState, await fetchGnss(this.gnssState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('Grille GNSS', gnssStatus(this.gnssState, 'adsb-gnss', now));
+        this.statusPanel?.updateSource('NOAA SWPC', gnssStatus(this.gnssState, 'noaa', now));
+        this.mapContainer?.updateGnssLayer(this.gnssState.gnss.data, now);
+        this.refreshSovereigntyPanelsB('military');
+        this.recordSovereigntySamples(now);
+        this.refreshFranceIntelPanel();
+      } catch (err) {
+        this.markSovereigntyBFailed(['Grille GNSS', 'NOAA SWPC'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Grands réseaux (RIPEstat) et points d'échange (PeeringDB), une route : ligne « RIPEstat », panneau Connectivité. Hors score. */
+  private loadConnectivity(): Promise<void> {
+    return dedupe('sovereignty:connectivity', async () => {
+      try {
+        this.connectivityState = mergeConnectivity(this.connectivityState, await fetchConnectivity(this.connectivityState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('RIPEstat', ripeStatus(this.connectivityState, now));
+        this.refreshSovereigntyPanelsB('subseaCables');
+        this.recordSovereigntySamples(now);
+      } catch (err) {
+        this.markSovereigntyBFailed(['RIPEstat'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Registre national des gels (DG Trésor) : ligne « Registre des gels », section Sanctions du panneau Défense. Hors score, aucun nom. */
+  private loadSanctions(): Promise<void> {
+    return dedupe('sovereignty:sanctions', async () => {
+      try {
+        this.sanctionsState = mergeSanctions(this.sanctionsState, await fetchSanctions(this.sanctionsState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('Registre des gels', gelsStatus(this.sanctionsState, now));
+        this.refreshSovereigntyPanelsB('military');
+        this.recordSovereigntySamples(now);
+      } catch (err) {
+        this.markSovereigntyBFailed(['Registre des gels'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Fichier des zones drones (1,47 Mo) : lu une fois par session ; un échec n'est pas gardé (nouvelle tentative à la demande suivante). */
+  private loadDroneZonesOnce(): Promise<void> {
+    if (this.droneZonesFile !== null) return Promise.resolve();
+    return dedupe('sovereignty:droneZones', async () => {
+      const { data, error } = await fetchDroneZones();
+      this.droneZonesFile = data;
+      this.droneZonesError = error;
+      this.mapContainer?.updateDroneZones(data);
+      this.refreshSovereigntyPanelsB('military');
+    });
+  }
+
+  /** Option « zones drones » de la couche Défense (bouton du panneau) : carte, panneau, légende ; fichier lu au premier appel. */
+  private setDroneZones(on: boolean): void {
+    this.droneZonesOn = on;
+    this.mapContainer?.setDroneZonesVisible(on);
+    this.refreshSovereigntyPanelsB('military');
+    if (on) this.loadDroneZonesOnce().catch((err: unknown) => console.error('[App] Zones drones illisibles', err));
+  }
+
+  /** Maille du jour UTC précédent choisie dans le panneau Défense ou sur la carte : la carte se cale sur son centre. */
+  private focusGnssCell(cell: { lat: number; lon: number }): void {
+    this.mapContainer?.flyTo(cell.lon + 0.25, cell.lat + 0.25, 8);
+  }
+
+  /** État du panneau Défense (tâche A15) complété : grille GNSS, registre des gels, zones drones (contrats § 4.2). */
+  private defensePanelStateB(): DefensePanelState {
+    const a = this.defensePanelState();
+    const f = this.droneZonesFile;
+    const meta = f ? { generatedAt: f.generatedAt, edition: f.edition, source: f.source, licence: f.licence, counts: f.counts } : null;
+    return {
+      ...a,
+      sites: { ...a.sites, drones: { meta, error: this.droneZonesError, shown: this.droneZonesOn } },
+      gnss: this.gnssState,
+      sanctions: this.sanctionsState,
+    };
+  }
+
+  /** État du panneau Connectivité (tâche A15) complété : grands réseaux et points d'échange. */
+  private connectivityPanelStateB(): ConnectivityPanelState {
+    return { ...this.connectivityPanelState(), connectivity: this.connectivityState };
+  }
+
+  /** Panneau de la couche et légende, après une lecture ou une option de la phase B (le seul panneau concerné : pas de rendu de trop). */
+  private refreshSovereigntyPanelsB(key: 'military' | 'subseaCables'): void {
+    if (key === 'military') this.defensePanel?.update(this.defensePanelStateB());
+    else this.connectivityPanel?.update(this.connectivityPanelStateB());
+    this.refreshSovereigntyLegend();
+  }
+
+  /** Légende Défense datée (tâche A10) complétée par les mailles GNSS du jour UTC précédent et, option active, les zones drones (B27). */
+  private defenseLegendB(...args: Parameters<typeof defenseLegend>): ReturnType<typeof defenseLegend> {
+    const [m, opts, now] = args;
+    return withDefensePhaseB(defenseLegend(m, { ...opts, droneZones: this.droneZonesOn }, now), {
+      gnss: this.gnssState?.gnss.data ?? null, drones: this.droneZonesFile, dronesShown: this.droneZonesOn,
+    }, now);
+  }
+
+  /** Entrées du score (tâche A16) avec les comptes GNSS sans lieu et la pastille Défense recalculée (contrats § 6, phase B ; O17). */
+  private buildSovereigntyInputsB(...args: Parameters<typeof buildSovereigntyInputs>): ReturnType<typeof buildSovereigntyInputs> {
+    const [military, cables, cyber, now] = args;
+    const gnss = this.gnssState?.gnss.data ?? null;
+    return withGnssInputs(buildSovereigntyInputs(military, cables, cyber, now), gnss, military, now);
+  }
+
+  /** Lignes d'une source de la phase B quand son lecteur échoue sans réponse : datée, « stale » ; sinon « error » (S3). */
+  private markSovereigntyBFailed(names: readonly string[], err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of names) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
   }
 
   /** Source du panneau d'une couche Souveraineté. */
@@ -4362,7 +4539,7 @@ export class App {
         this.syncSovereigntyPolling(key);
         return;
       }
-      this.loadSovereigntySource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+      this.loadSovereigntySourceB(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
     }, SOVEREIGNTY_POLL_MS[key]);
   }
 
@@ -4402,7 +4579,7 @@ export class App {
     this.mapLegend.setCategories([
       {
         ...(this.currentMilitary
-          ? defenseLegend(this.currentMilitary.military.data, { osmWorks: this.defenseSites.osm.shown, droneZones: false }, now)
+          ? this.defenseLegendB(this.currentMilitary.military.data, { osmWorks: this.defenseSites.osm.shown, droneZones: false }, now)
           : DEFENSE_LEGEND),
         visible: shown('military'),
       },
@@ -4436,7 +4613,7 @@ export class App {
       .then(([{ ACTIVE_INSTALLATIONS }, { summarizeCuratedSites }]) => {
         this.mapContainer?.updateDefenseSites(ACTIVE_INSTALLATIONS);
         this.defenseSites = { ...this.defenseSites, curated: summarizeCuratedSites(ACTIVE_INSTALLATIONS) };
-        this.defensePanel?.update(this.defensePanelState());
+        this.defensePanel?.update(this.defensePanelStateB());
       })
       .catch((err: unknown) => console.error('[App] Sites de défense non chargés', err));
     return this.defenseSitesPromise;
@@ -4446,7 +4623,7 @@ export class App {
   private setOsmWorks(on: boolean): void {
     this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, shown: on } };
     this.mapContainer?.setOsmWorksVisible(on);
-    this.defensePanel?.update(this.defensePanelState());
+    this.defensePanel?.update(this.defensePanelStateB());
     this.refreshSovereigntyLegend();
     if (!on || this.defenseSites.osm.meta !== null) return;
     void fetchDefenseOsmWorks().then(({ data, error }) => {
@@ -4455,7 +4632,7 @@ export class App {
         ? { generatedAt: data.generatedAt, osmBase: data.osmBase, licence: data.licence, source: data.source, count: data.items.length }
         : null;
       this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, meta, error } };
-      this.defensePanel?.update(this.defensePanelState());
+      this.defensePanel?.update(this.defensePanelStateB());
     });
   }
 
@@ -4474,7 +4651,7 @@ export class App {
       this.statusPanel?.updateSource('Vols militaires', militaryStatus(this.currentMilitary, now));
       this.statusPanel?.updateSource(VIGIPIRATE_CHECK_SOURCE, vigipirateCheckStatus(this.currentVigipirate, now));
       this.mapContainer?.updateMilitaryLayer(this.currentMilitary.military.data, now);
-      this.defensePanel?.update(this.defensePanelState());
+      this.defensePanel?.update(this.defensePanelStateB());
       this.refreshSovereigntyLegend();
       this.recordSovereigntySamples(now);
       // Score, situations, tuiles et moniteur d'alertes : entrées de sovereigntyInputs() (contrats § 6).
@@ -4493,8 +4670,8 @@ export class App {
       const now = Date.now();
       this.statusPanel?.updateSource('Câbles et AIS', cablesStatus(this.currentCables, now));
       this.mapContainer?.updateCablesLayer(this.currentCables.file, this.currentCables.watch.data, now);
-      this.connectivityPanel?.update(this.connectivityPanelState());
-      this.defensePanel?.update(this.defensePanelState());
+      this.connectivityPanel?.update(this.connectivityPanelStateB());
+      this.defensePanel?.update(this.defensePanelStateB());
       this.refreshSovereigntyLegend();
       this.recordSovereigntySamples(now);
       this.refreshFranceIntelPanel();
@@ -4522,9 +4699,18 @@ export class App {
    * Clic sur un objet Souveraineté de la carte (contrats § 4.4 point 19) : un bâtiment de la Marine nationale ouvre sa fiche à sa position
    * (« position de référence, pas une observation » au port base) ; un aéronef ou une urgence ouvre le panneau Défense ; un câble, un
    * atterrage ou un navire signalé ouvrent le panneau Connectivité. Sites et ouvrages : infobulle seule (un site garde son propre clic).
+   * Phase B : une maille GNSS (jour UTC précédent seulement, O17) recentre la carte et ouvre le panneau Défense ; une zone drones : infobulle
+   * seule.
    */
   private onSovereigntyMapClick(layerId: string, props: Record<string, unknown>): void {
     const id = typeof props['id'] === 'string' ? props['id'] : null;
+    if (layerId === LYR_SOV_GNSS_FILL) {
+      // « 48:-3.5 » : coin sud-ouest de la maille, même clé que `data-gnss-cell` du panneau.
+      const [lat, lon] = typeof props['cell'] === 'string' ? props['cell'].split(':').map(Number) : [];
+      if (lat !== undefined && lon !== undefined && Number.isFinite(lat) && Number.isFinite(lon)) this.focusGnssCell({ lat, lon });
+      this.showSovereigntyPanel('military');
+      return;
+    }
     if (layerId === LYR_SOV_NAVY_OBSERVED || layerId === LYR_SOV_NAVY_REFERENCE) {
       // Clé du marqueur `mmsi ?? id` ; un bâtiment sans MMSI vérifié (O12) n'est trouvé que par son identifiant.
       const ship = id !== null ? findShipByKey(id, getMilitaryShips()) : undefined;
@@ -4542,10 +4728,10 @@ export class App {
 
   /**
    * Entrées Souveraineté du score, des situations, de la frise, des tuiles et du moniteur d'alertes (contrats § 6), lues dans les
-   * dernières réponses des services, jamais copiées ailleurs (modèle environmentInputs). Phase A : aucune grille GNSS (B28).
+   * dernières réponses des services, jamais copiées ailleurs (modèle environmentInputs). Phase B : grille GNSS par buildSovereigntyInputsB.
    */
   private sovereigntyInputs(now: number = Date.now()): SovereigntyInputs {
-    return buildSovereigntyInputs(
+    return this.buildSovereigntyInputsB(
       this.currentMilitary?.military.data ?? null, this.currentCables?.watch.data ?? null, this.currentSovCyber?.cyber.data ?? null, now,
     );
   }
@@ -5028,6 +5214,14 @@ export class App {
       // dès l'arrivée du morceau (sans conteneur flottant, aucun panneau ne peut naître).
       if (!this.floatContainerEl) return false;
       void this.ensureFiresPanel().then(() => { openDossier(); });
+      return true;
+    }
+
+    if (situation.type === 'GPS_JAMMING_ALERT') {
+      // Précision GNSS dégradée (phase B, O17) : un compte sans lieu, rien à recentrer ; le panneau Défense dit les mailles du jour UTC
+      // précédent, la météo spatiale et la méthode.
+      if (!this.floatContainerEl) return false;
+      this.showSovereigntyPanel('military');
       return true;
     }
 
@@ -6949,6 +7143,10 @@ export class App {
       {
         name: 'military', task: this.loadMilitary().catch((err) => console.error('[App] Aéronefs militaires indisponibles', err))
       },
+      // Phase B : la grille GNSS est lue avec chaque lecture de la Défense (score) ; ici, la première.
+      {
+        name: 'gnss', task: this.loadGnss().catch((err) => console.error('[App] Grille GNSS indisponible', err))
+      },
       {
         name: 'cables', task: this.loadCables().catch((err) => console.error('[App] Veille des câbles indisponible', err))
       },
@@ -7223,7 +7421,7 @@ export class App {
       }));
 
     // Souveraineté (contrats § 6 ; amendement 7, O7, O10) : urgences au-dessus du territoire ou à moins de 40 km, les trois codes,
-    // affichées sur deux relevés ou vues une fois ; navires lents confirmés sur un câble, AIS frais ; mailles GNSS en phase B (B28).
+    // affichées sur deux relevés ou vues une fois ; navires lents confirmés sur un câble, AIS frais ; compte de mailles GNSS (phase B).
     const sov = this.sovereigntyInputs(nowMs);
     const surgeSituations = militaryEmergencyAlerts(monitoredMilitaryEmergencies(this.currentMilitary?.military.data ?? null, nowMs))
       .slice(0, ALERT_MONITOR_LIMIT);
@@ -7261,8 +7459,9 @@ export class App {
       });
 
     const defenseSituations = cableAlertSituations(sov.cableAlerts).slice(0, ALERT_MONITOR_LIMIT);
-    // Phase B (B28) : une alerte par compte de mailles à précision GNSS dégradée ; aucune grille en phase A.
-    const jammingSituations: DetectedSituation[] = [];
+    // Phase B (tâche B28 ; O7, O17) : une seule entrée GNSS, sans lieu, tirée du compte des 24 h ; moyenne, élevée sur deux jours UTC
+    // complets de suite, jamais critique ; aucune si la grille est en retard, en dégradation générale ou jamais lue.
+    const jammingSituations = gnssJammingSituations(this.gnssState?.gnss.data ?? null, nowMs).slice(0, ALERT_MONITOR_LIMIT);
 
     const aisSituations = [...this.currentAisAnomalies]
       .sort((a, b) => b.timestamp - a.timestamp)

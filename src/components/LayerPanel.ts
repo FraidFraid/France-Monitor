@@ -656,9 +656,9 @@ export class LayerPanel {
         this.helpItem(fmIcon('activity'), 'Séismes', 'Séismes des 7 derniers jours en France et à moins de 20\u00a0km (BCSF-RéNaSS, EMSC en repli) : magnitude, profondeur, statut.'),
       ]),
       this.helpSection(fmIcon('shield'), 'Souveraineté', [
-        // Sans badge (point 20) : chaque panneau date sa donnée. O9 (libellé du gros chiffre), O10, O18, S2, S10.
-        this.helpItem(fmIcon('shield'), 'Défense', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), comptes par département pour les appareils français, urgences confirmées, posture Vigipirate, Marine nationale vue en AIS et ports base de référence, sites de défense.'),
-        this.helpItem(fmIcon('waves'), 'Connectivité', 'Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS).'),
+        // Sans badge (point 20) : chaque panneau date sa donnée. O9 (libellé du gros chiffre), O10, O18, S2, S10 ; phase B (B28) : O15, O17.
+        this.helpItem(fmIcon('shield'), 'Défense', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), comptes par département pour les appareils français, urgences confirmées, posture Vigipirate, Marine nationale vue en AIS et ports base de référence, sites de défense ; précision de position GNSS dégradée (compte sur 24\u00a0h, mailles du jour UTC précédent), météo spatiale (NOAA SWPC), registre national des gels (DG Trésor), zones drones (DGAC).'),
+        this.helpItem(fmIcon('waves'), 'Connectivité', 'Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS) ; visibilité des grands réseaux français (RIPEstat), points d’échange (PeeringDB).'),
         this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Alertes CERT-FR en cours (statut officiel), avis, catalogue KEV de la CISA, revendications de rançongiciels (Ransomware.live, comptes agrégés), fuites récentes (Have I Been Pwned, compte et lien), alertes Cybermalveillance.'),
       ]),
       this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau', [

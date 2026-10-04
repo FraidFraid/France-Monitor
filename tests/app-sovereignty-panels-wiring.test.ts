@@ -68,8 +68,8 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     // O9 : libellé du gros chiffre ; O10 : comptes par département ; S2 : port base.
     expect(help).toContain('Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), comptes par département pour les appareils français');
     expect(help).toContain('Marine nationale vue en AIS et ports base de référence');
-    // O18 : le Shom en référence, OpenStreetMap en complément.
-    expect(help).toContain('Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS).');
+    // O18 : le Shom en référence, OpenStreetMap en complément (phase B, B28 : grands réseaux et points d'échange ajoutés à la phrase).
+    expect(help).toContain('Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS) ;');
     expect(help).toContain('Alertes CERT-FR en cours (statut officiel), avis, catalogue KEV de la CISA, revendications de rançongiciels (Ransomware.live, comptes agrégés)');
     expect(help).not.toMatch(/'live'|'monthly'|Shodan|Censys|NVD|leaks|score global|faille|ports d’attache|au-dessus de la France/);
   });
@@ -215,7 +215,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(popup).not.toMatch(/AIS LIVE|PORT D'ATTACHE/);
   });
   it('score, frise, moniteur d’alertes et ISNR sur les entrées Souveraineté (tâche A16, contrats § 6 ; amendement 7, O7, O10)', () => {
-    expect(methodBody('sovereigntyInputs')).toContain('buildSovereigntyInputs(');
+    expect(methodBody('sovereigntyInputs')).toContain('this.buildSovereigntyInputsB(');
     const snap = methodBody('buildFranceSnapshot');
     expect(snap).toContain('...sov,');
     expect(snap).not.toMatch(/cyberData|threatEvents|defenseAlerts|jammingSignals|currentMilitaryFlightsCount/);

@@ -1,7 +1,10 @@
 // src/components/ConnectivityPanel.ts : panneau de couche « Connectivité » (spec 2026-10-04 souveraineté § 2.2 ; contrats § 4.2), clé de
 // couche `subseaCables` gardée. Coquille DOM : contenu de buildConnectiviteView (pur), cadre commun ; un câble, un lieu d'atterrage ou un
 // navire signalé cliqués (ou Entrée) sont recentrés sur la carte. Plus de couche « visuelle seulement » : les câbles ont leur panneau.
+// Phase B (tâche B28) : visibilité des grands réseaux (RIPEstat) et points d'échange (PeeringDB) passés à la vue, gardés quand une mise à
+// jour ne les donne pas.
 import type { CablesState } from '../services/sovereignty-cables.ts';
+import type { ConnectivityState } from '../services/sovereignty-connectivity.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import type { CableAlert, CableLanding } from '../types/index.ts';
 import { buildConnectiviteView } from './layer-panel/connectivite.ts';
@@ -9,9 +12,11 @@ import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, ty
 
 const PANEL_ID = 'subseaCables';
 
-/** État reçu d'App.ts : veille des câbles et fichier des câbles (Shom et OpenStreetMap ; phase B : grands réseaux, B28). */
+/** État reçu d'App.ts : veille des câbles et fichier des câbles (Shom et OpenStreetMap), grands réseaux et points d'échange (phase B). */
 export interface ConnectivityPanelState {
   cables: CablesState | null;
+  /** Phase B (contrats § 4.2) : absent d'une mise à jour, derniers reçus gardés ; null : pas encore lus (« n.d. », chargement). */
+  connectivity?: ConnectivityState | null;
 }
 
 export class ConnectivityPanel {
@@ -47,9 +52,9 @@ export class ConnectivityPanel {
     this.update(state);
   }
 
-  /** Nouvel état ; un panneau fermé ne se rouvre pas. */
+  /** Nouvel état ; un panneau fermé ne se rouvre pas. Grands réseaux absents de l'appel : derniers reçus gardés. */
   update(state: ConnectivityPanelState): void {
-    this.state = state;
+    this.state = { ...state, connectivity: state.connectivity !== undefined ? state.connectivity : this.state?.connectivity ?? null };
     if (this.isVisible()) this.render();
   }
 
@@ -96,10 +101,11 @@ export class ConnectivityPanel {
 
   private render(): void {
     if (!this.shell || !this.state) return;
-    const cables = this.state.cables;
+    const { cables, connectivity } = this.state;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildConnectiviteView({
       watch: cables?.watch.data ?? null, watchError: cables?.watch.error ?? null, file: cables?.file ?? null, fileError: cables?.fileError ?? null,
+      connectivity: connectivity?.connectivity.data ?? null, connectivityError: connectivity?.connectivity.error ?? null,
       canFocus: this.onFocusCable !== undefined, now: Date.now(), open,
     }));
   }

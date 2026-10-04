@@ -34,6 +34,10 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/sovereignty/military` | Aéronefs militaires au-dessus de la France (Données adsb.lol, ODbL 1.0), appareils français en compte par département, urgences confirmées, comptes horaires. |
 | `GET /api/sovereignty/cables-watch` | Navires lents près d'un câble télécom sous-marin (AIS du relais, câbles du Shom et d'OpenStreetMap), « à vérifier ». |
 | `GET /api/sovereignty/cyber` | Alertes et avis du CERT-FR, vulnérabilités exploitées (CISA), revendications agrégées (Ransomware.live), fuites en .fr (HIBP), Cybermalveillance.gouv.fr. |
+| `GET /api/sovereignty/vigipirate` | Relecture quotidienne de la page Vigipirate du SGDSN : date de lecture, empreinte du texte, date du dernier changement ; jamais le texte de la page. |
+| `GET /api/sovereignty/gnss` | Précision de position GNSS dégradée (Données adsb.lol, ODbL 1.0) : comptes sans lieu sur 24 h glissantes et sur les deux derniers jours UTC complets, mailles de 0,5° du jour UTC précédent seulement ; météo spatiale de la NOAA (échelles, indice Kp, dernière alerte). Seules la DGAC et l'ANFR qualifient un brouillage. |
+| `GET /api/sovereignty/connectivity` | Six grands réseaux français vus ou non par au moins 99 % des routeurs témoins RIPE (RIPEstat), séries sur 30 jours, points d'échange publiés par PeeringDB. |
+| `GET /api/sovereignty/sanctions` | Registre national des gels (DG Trésor) : date de publication, comptes par nature, nouveaux gels et radiations ; aucun nom (consulter la dernière version du registre). |
 
 Voir [`/openapi.json`](https://www.francemonitor.com/openapi.json) pour les schémas de réponse complets, champ par champ.
 
@@ -64,6 +68,9 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/sovereignty/military` | 1 min (collecte du serveur toutes les 2 min) |
 | `/api/sovereignty/cables-watch` | 2 min (relevé du relais toutes les 5 min) |
 | `/api/sovereignty/cyber` | 10 min (CERT-FR relu chaque heure) |
+| `/api/sovereignty/vigipirate` | 1 h (page relue chaque jour) |
+| `/api/sovereignty/gnss` | 5 min (30 s pendant une collecte en cours ; collecte toutes les 10 min) |
+| `/api/sovereignty/connectivity`, `/api/sovereignty/sanctions` | 30 min (1 min pendant une lecture en cours) |
 | `/api/energy/ecowatt` | ~15 min |
 | `/api/energy/gas-pir` | ~30 min |
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |

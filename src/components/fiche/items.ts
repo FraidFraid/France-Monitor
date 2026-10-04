@@ -117,7 +117,8 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
       // Production, éolien et stocks sont portés par les sections énergie et carburants.
       return [];
     case 'security':
-      // Souveraineté (spec 2026-10-04 souveraineté § 2.4 ; O1, O9) : source indisponible, « n.d. » (S3), jamais un « 0 ».
+      // Souveraineté (spec 2026-10-04 souveraineté § 2.4 ; O1, O9) : source indisponible, « n.d. » (S3), jamais un « 0 » ; parts de la
+      // Défense (aéronefs, câbles, grille GNSS) absentes ou en retard : « non évalué », une par une (disponibilité par partie, tâche B28).
       return [
         {
           label: t(lang, 'Alertes CERT-FR en cours', 'CERT-FR alerts in progress'),
@@ -125,12 +126,13 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
         },
         {
           label: t(lang, MILITARY_FIGURE_TITLE, 'Military or state aircraft visible on ADS-B over metropolitan France'),
-          value: s.militaryUnavailable === true ? 'n.d.' : String(s.militaryFlights),
+          value: s.militaryUnavailable === true ? t(lang, 'non évalué', 'not assessed') : String(s.militaryFlights),
         },
-        // Deux sources, deux lignes : une part non lue ne se cache jamais dans une somme (phase A : aucune grille GNSS, « non évalué »).
+        // Deux sources, deux lignes : une part non lue ne se cache jamais dans une somme (grille GNSS absente, en retard ou en
+        // dégradation générale : « non évalué »).
         {
           label: t(lang, 'Alertes câbles confirmées', 'Confirmed cable alerts'),
-          value: s.cablesUnavailable === true ? 'n.d.' : String(s.defenseAlerts),
+          value: s.cablesUnavailable === true ? t(lang, 'non évalué', 'not assessed') : String(s.defenseAlerts),
         },
         {
           label: t(lang, 'Mailles GNSS dégradées (24\u00a0h)', 'Degraded GNSS cells (24\u00a0h)'),
