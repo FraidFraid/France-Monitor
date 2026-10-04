@@ -20,6 +20,22 @@ import { SOURCE_USER_AGENT } from '../api/_lib/source-http.js';
 import type { CyberResponse } from '../src/types/index.ts';
 import { type FakeResponse, callHandler, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
+/**
+ * Panne imprévue de la partie CERT-FR (injection de défaut) : l'accumulation des éléments lève quand `certfrFault.on` est vrai ;
+ * sinon le module réel répond.
+ */
+const certfrFault = vi.hoisted(() => ({ on: false }));
+vi.mock('../api/_lib/certfr.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/_lib/certfr.js')>();
+  return {
+    ...actual,
+    mergeCertFrItems: (...args: Parameters<typeof actual.mergeCertFrItems>) => {
+      if (certfrFault.on) throw new Error('accumulation illisible');
+      return actual.mergeCertFrItems(...args);
+    },
+  };
+});
+
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/sovereignty/${name}`, import.meta.url), 'utf8');
 const NOW = Date.parse('2026-10-04T16:48:30+02:00');
 const HOUR = 3_600_000;
@@ -80,6 +96,7 @@ beforeEach(() => {
   __setKvClientForTests({ get: async () => null, set: async () => undefined });
   __resetRansomwareForTests();
   __resetCyberForTests();
+  certfrFault.on = false;
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
 });
@@ -157,6 +174,20 @@ describe('/api/sovereignty/cyber : réponse complète du 04/10', () => {
     expect(body.cybermalveillance?.entries).toHaveLength(21);
     expect(body.cybermalveillance?.entries.every((e) => typeof e.published === 'string')).toBe(true);
     expect(body.readAt).toBe('2026-10-04T14:48:30.000Z');
+  });
+  it('fuites .fr ajoutées depuis moins de 30 jours (O5) : un compte, la date d’ajout la plus récente et le lien HIBP, jamais un titre, un nom ni un domaine', async () => {
+    const breaches = (JSON.parse(fx('hibp-breaches-reduit.json')) as Array<Record<string, unknown>>).map((b) => {
+      if (b.Domain === 'organisation-02.fr') return { ...b, AddedDate: '2026-09-20T08:00:00Z' };
+      if (b.Domain === 'organisation-03.fr') return { ...b, AddedDate: '2026-09-28T17:12:00Z' };
+      return b;
+    });
+    sources((url) => (url === HIBP_BREACHES_URL ? respond(breaches) : null));
+    const { status, body } = await callHandler<CyberResponse>(handler);
+    expect(status).toBe(200);
+    expect(body.hibp).toEqual({ readAt: '2026-10-04T14:48:30.000Z', count: 2, newestAddedDate: '2026-09-28T17:12:00Z', url: HIBP_PUBLIC_URL });
+    for (const value of [JSON.stringify(body), JSON.stringify(await kvGetJson(CYBER_KEY, NOW))]) {
+      expect(value).not.toMatch(/Fuite\d|Fuite fictive|organisation-\d|PwnCount|BreachDate|DataClasses/);
+    }
   });
   it('aucun nom ni site de victime, aucun titre ni domaine de fuite dans la réponse ni dans le stockage clé-valeur ; valeurs de moins de 200 Ko', async () => {
     await steadyState();
@@ -250,6 +281,32 @@ describe('statut officiel des alertes : jamais « en cours » supposé', () => {
 });
 
 describe('pannes partielles (une partie en panne garde sa valeur et se nomme)', () => {
+  it('panne imprévue de la partie CERT-FR : alertes, avis, rapports et croisement KEV gardés avec leur date, panne nommée, réponse gardée jamais vidée', async () => {
+    sources();
+    const first = await ensureCyberFresh(NOW);
+    expect(first.certfr.alerts).toHaveLength(6);
+    certfrFault.on = true;
+    vi.setSystemTime(NOW + HOUR);
+    const body = await ensureCyberFresh(NOW + HOUR);
+    expect(body.errors).toContain('CERT-FR : accumulation illisible');
+    expect(body.certfr.readAt).toBe('2026-10-04T14:48:30.000Z');
+    expect(body.certfr.alerts).toEqual(first.certfr.alerts);
+    expect(body.certfr.avis).toEqual(first.certfr.avis);
+    expect(body.certfr.reports).toEqual(first.certfr.reports);
+    expect(body.kev.recent).toEqual(first.kev.recent);
+    const stored = await kvGetJson(CYBER_KEY, NOW + HOUR) as CyberResponse;
+    expect([stored.certfr.readAt, stored.certfr.alerts.length, stored.errors]).toEqual([
+      '2026-10-04T14:48:30.000Z', 6, expect.arrayContaining(['CERT-FR : accumulation illisible']),
+    ]);
+  });
+  it('panne imprévue de la partie CERT-FR sans réponse gardée : CERT-FR non daté et vide, panne nommée, autres parties servies', async () => {
+    sources();
+    certfrFault.on = true;
+    const body = await ensureCyberFresh(NOW);
+    expect(body.errors).toContain('CERT-FR : accumulation illisible');
+    expect(body.certfr).toEqual({ readAt: null, alerts: [], avis: [], reports: [] });
+    expect(body.readAt).toBe('2026-10-04T14:48:30.000Z');
+  });
   it('flux des avis en panne : alertes servies, panne nommée', async () => {
     sources((url) => (url === CERTFR_FEEDS.avis ? respond('indisponible', 503) : null));
     const { status, body } = await callHandler<CyberResponse>(handler);

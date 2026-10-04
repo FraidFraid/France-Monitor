@@ -43,6 +43,11 @@ function isRecord(v) {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
 
+/** Tableau tel quel, sinon tableau vide (valeur gardée d'une forme inattendue). */
+function listOf(v) {
+  return Array.isArray(v) ? v : [];
+}
+
 function isStale(readAt, ttlSec, now) {
   const t = Date.parse(readAt);
   return Number.isFinite(t) && now - t > ttlSec * 1000 + STALE_MARGIN_MS;
@@ -175,20 +180,34 @@ async function collectCyber(now) {
     settle(certfrPart(now)), settle(loadKev(now)), settle(ensureRansomwareFresh(now)), settle(loadHibp(now)), settle(loadCybermalveillance(now)),
   ]);
   const errors = [];
-  const certfrRecord = certfr.ok
-    ? certfr.value
-    : { items: [], reports: prev?.certfr.reports ?? [], readAt: null, errors: [sourceError('CERT-FR', certfr.error)] };
-  errors.push(...certfrRecord.errors);
+  const kevValue = kev.ok ? kev.value : null;
+  const kevSet = kevValue ? new Set(kevValue.cves) : null;
+  const prevItems = prev
+    ? [...listOf(prev.certfr.alerts), ...listOf(prev.certfr.avis)].filter((i) => isRecord(i) && typeof i.ref === 'string' && Array.isArray(i.cves))
+    : [];
+  let certfrReadAt;
+  let items;
+  let reports;
+  if (certfr.ok) {
+    errors.push(...certfr.value.errors);
+    certfrReadAt = certfr.value.readAt;
+    const previousKev = new Map(prevItems.map((i) => [i.ref, listOf(i.kevCves)]));
+    items = certfr.value.items.map((i) => toCertFrItem(i, kevSet, previousKev));
+    reports = listOf(certfr.value.reports);
+  } else {
+    // Panne imprévue de la partie CERT-FR (S3) : la dernière réponse gardée reste servie avec sa propre date, panne nommée ;
+    // `sov:cyber:last` n'est jamais réécrit avec des alertes vides.
+    errors.push(sourceError('CERT-FR', certfr.error));
+    certfrReadAt = typeof prev?.certfr.readAt === 'string' ? prev.certfr.readAt : null;
+    items = prevItems.map((i) => (kevSet ? { ...i, kevCves: listOf(i.cves).filter((c) => kevSet.has(c)) } : i));
+    reports = listOf(prev?.certfr.reports);
+  }
 
-  let kevValue = null;
   if (kev.ok) {
-    kevValue = kev.value;
     if (isStale(kevValue.readAt, KEV_TTL_SEC, now)) errors.push('CISA KEV : relevé précédent servi (lecture en échec)');
   } else {
     errors.push(sourceError('CISA KEV', kev.error));
   }
-  const previousKev = new Map([...(prev?.certfr.alerts ?? []), ...(prev?.certfr.avis ?? [])].map((i) => [i.ref, i.kevCves ?? []]));
-  const items = certfrRecord.items.map((i) => toCertFrItem(i, kevValue ? new Set(kevValue.cves) : null, previousKev));
   const alerts = sortCertFr(items.filter((i) => i.kind === 'alerte' && parisDaysSince(itemDate(i), now) < ALERT_KEEP_DAYS));
   const avis = sortCertFr(items.filter((i) => i.kind === 'avis' && parisDaysSince(itemDate(i), now) < RECENT_DAYS));
   let kevPart = prev?.kev ?? EMPTY_KEV;
@@ -233,11 +252,11 @@ async function collectCyber(now) {
     errors.push(sourceError('Cybermalveillance', cyberm.error));
   }
 
-  const dates = [certfrRecord.readAt, kevPart.readAt, ransomware?.checkedAt ?? null, hibpPart?.readAt ?? null, cybermPart?.readAt ?? null]
+  const dates = [certfrReadAt, kevPart.readAt, ransomware?.checkedAt ?? null, hibpPart?.readAt ?? null, cybermPart?.readAt ?? null]
     .filter((d) => typeof d === 'string').sort();
   const body = {
     readAt: dates.at(-1) ?? null,
-    certfr: { readAt: certfrRecord.readAt, alerts, avis, reports: Array.isArray(certfrRecord.reports) ? certfrRecord.reports : [] },
+    certfr: { readAt: certfrReadAt, alerts, avis, reports },
     kev: kevPart,
     ransomware,
     hibp: hibpPart,
