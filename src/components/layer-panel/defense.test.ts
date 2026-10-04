@@ -33,7 +33,7 @@ const LIVE = ship({
 });
 const HOME = ship({ id: 'd650', name: 'Aquitaine' });
 /** Sous-marin d'une ancienne liste : jamais affiché (O11), même s'il arrivait dans les positions. */
-const SUB = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3253, lon: -4.5636 });
+const SUB = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3018, lon: -4.5172 });
 const NAVY: NavyLiveInput = { status: 'connected', lastMessageAt: NOW - MIN, ships: [SUB, HOME, LIVE] };
 const SITES: DefenseSitesSummary = { curated: summarizeCuratedSites(ACTIVE_INSTALLATIONS), osm: { meta: null, error: null, shown: false } };
 const BADGE = 'Vigipirate : vigilance renforcée (niveau d’alerte intermédiaire) depuis le 22/06/2026 · Source : site internet du SGDSN';

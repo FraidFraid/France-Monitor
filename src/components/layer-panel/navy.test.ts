@@ -15,7 +15,7 @@ const ship = (over: Partial<MilitaryShip> & Pick<MilitaryShip, 'id' | 'name'>): 
 });
 const LIVE = ship({ id: 'd651', name: 'Provence', mmsi: '227802000', isLive: true, lastSeen: NOW - MIN, speed: 14.2, lat: 42.9, lon: 6.1, country: 'FR|France' });
 const HOME = ship({ id: 'd650', name: 'Aquitaine', mmsi: '227801000' });
-const SNLE = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3253, lon: -4.5636 });
+const SNLE = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3018, lon: -4.5172 });
 const SNA_LIVE = ship({ id: 's602', name: 'Perle', type: 'SNA', role: 'Attaque sous-marine', isLive: true, lastSeen: NOW - MIN });
 
 describe('état du flux AIS (T3), même seuil que l’en-tête du Trafic maritime', () => {
@@ -73,7 +73,7 @@ describe('base de la Marine nationale (military-ships.ts)', () => {
   it('aucun sous-marin dans la liste affichée (O11) ; l’Île Longue reste un site de défense', () => {
     const ships = getMilitaryShips();
     expect(ships.some(isSubmarine)).toBe(false);
-    expect(INSTALLATIONS_BY_ID.get('BN-ILE-LONGUE')?.coordinates).toEqual([-4.5636, 48.3253]);
+    expect(INSTALLATIONS_BY_ID.get('BN-ILE-LONGUE')?.coordinates).toEqual([-4.5172, 48.3018]);
   });
   it('MMSI non vérifié sur une source officielle publique : non reconnu (O12), aucune ligne vue en AIS', () => {
     const ships = getMilitaryShips();

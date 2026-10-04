@@ -203,7 +203,10 @@ const NAVAL_BASES: MilitaryInstallation[] = [
     {
         id: 'BN-ILE-LONGUE', name: 'Île Longue (base navale)',
         type: 'navy',
-        coordinates: [-4.5636, 48.3253],
+        // Centre de la relation OpenStreetMap 2567312 (« Base opérationnelle de L'Île Longue », military=naval_base), lu le
+        // 04/10/2026 et relu le 05/10/2026 ; l'ancien point (48.3253, -4.5636) tombait sur les batteries de la presqu'île de Crozon,
+        // à 4,3 km de la base.
+        coordinates: [-4.5172, 48.3018],
         region: 'Bretagne',
         status: 'active',
     },

@@ -118,7 +118,7 @@ describe('aéronefs militaires : autres pays au-dessus de la France, hors de Fra
 describe('Marine nationale : vus en AIS datés, port base de référence (icône à part), aucun sous-marin (O11)', () => {
   const LIVE = ship({ id: 'd651', name: 'Provence', mmsi: '227802000', isLive: true, lastSeen: SOV_FIXTURE_NOW - MIN, speed: 14.2, lat: 42.9, lon: 6.1 });
   const HOME = ship({ id: 'd650', name: 'Aquitaine', mmsi: '227801000' });
-  const SNLE = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3253, lon: -4.5636, isLive: true });
+  const SNLE = ship({ id: 's616', name: 'Le Triomphant', type: 'SNLE', role: 'Dissuasion nucléaire', port: 'Île Longue', lat: 48.3018, lon: -4.5172, isLive: true });
   const SNA = ship({ id: 's617', name: 'Suffren', type: 'SNA', role: 'Attaque', port: 'Toulon', isLive: false });
   it('observé : icône du navire, heure en étiquette ; référence : icône pointillée, « pas une observation » ; SNLE et SNA jamais dessinés', () => {
     const fc = navyFeatures([LIVE, HOME, SNLE, SNA], false, NOW);
@@ -146,7 +146,7 @@ describe('sites de défense, ouvrages OpenStreetMap', () => {
     const fc = defenseSiteFeatures(ACTIVE_INSTALLATIONS);
     expect(fc.features).toHaveLength(ACTIVE_INSTALLATIONS.length);
     const ile = fc.features.find((f) => props(f)['id'] === 'BN-ILE-LONGUE');
-    expect(ile?.geometry.coordinates).toEqual([-4.5636, 48.3253]);
+    expect(ile?.geometry.coordinates).toEqual([-4.5172, 48.3018]);
     expect([props(ile)['type'], props(ile)['name']]).toEqual(['navy', 'Île Longue (base navale)']);
     expect(String(props(ile)['body'])).toContain('Liste interne de sites publics, sans date par site.');
   });
