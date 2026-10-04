@@ -119,3 +119,24 @@ describe('barres empilées par jour', () => {
     expect(stackedDayBars([], { label: 'x', value: String, tick: String })).toBe('');
   });
 });
+
+describe('barres empilées et points : bords (fix tâche 10)', () => {
+  const d = Date.parse('2026-10-04T12:00:00Z');
+  const o = { label: 'Vigilance', value: (v: number) => `${v}`, tick: () => 'j' };
+  it('un seul jour : barre plafonnée et centrée, libellé 0 sur l’axe bas', () => {
+    const svg = stackedDayBars([{ day: d, parts: [{ value: 5, color: 'var(--sev-yellow)', label: 'jaune' }] }], o);
+    expect(svg).toMatch(/<rect x="172\.0"[^>]*width="40\.0"/);
+    expect(svg).toContain('>0<');
+  });
+  it('tout à zéro : le titre le dit', () => {
+    const svg = stackedDayBars([{ day: d, parts: [{ value: 0, color: 'var(--sev-yellow)', label: 'jaune' }] }], { ...o, emptyNote: 'aucun département en vigilance sur la période' });
+    expect(svg).toContain('aria-label="Vigilance : aucun département en vigilance sur la période"');
+    expect(svg).not.toContain('<rect ');
+  });
+  it('point sous yMin : l’axe s’étend pour l’inclure', () => {
+    const svg = dotChart([{ at: T0 + H, value: 2, color: 'var(--sev-green)' }, { at: T0 + 2 * H, value: 8, color: 'var(--sev-red)' }],
+      { label: 'x', from: T0, to: T0 + 24 * H, value: (v) => `${v}`, tick: () => 't', yMin: 3 });
+    expect(svg).toContain('>2<');
+    expect(svg).not.toContain('>3<');
+  });
+});

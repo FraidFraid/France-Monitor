@@ -136,6 +136,8 @@ export interface BandRow { label: string; segments: ReadonlyArray<{ from: number
 
 const BAND_LABEL_W = 104;
 const BAND_H = 12;
+/** Largeur maximale d'une barre empilée : un seul jour ne donne pas une barre pleine largeur. */
+const MAX_BAR_W = 40;
 const BAND_GAP = 5;
 
 /** Frise horaire : une bande par phénomène, couleur par créneau, repère « maintenant », bornes de l'échéance en heure de Paris. */
@@ -179,7 +181,8 @@ export function dotChart(
 ): string {
   const pts = points.filter((p) => Number.isFinite(p.at) && Number.isFinite(p.value) && p.at >= o.from && p.at <= o.to);
   if (pts.length === 0 || !(o.to > o.from)) return '';
-  const lo = o.yMin ?? Math.min(...pts.map((p) => p.value));
+  // Un point sous yMin étend l'axe vers le bas : jamais écrasé en silence sur l'axe.
+  const lo = Math.min(o.yMin ?? Infinity, ...pts.map((p) => p.value));
   const hi = Math.max(lo + 1, ...pts.map((p) => p.value));
   const x = (at: number): number => ((at - o.from) / (o.to - o.from)) * W;
   const y = (v: number): number => BOTTOM - ((Math.max(lo, v) - lo) / (hi - lo)) * (BOTTOM - TOP);
@@ -202,13 +205,18 @@ export function dotChart(
 export interface DayStack { day: number; parts: ReadonlyArray<{ value: number; color: string; label: string }> }
 
 /** Barres empilées par jour (météo des forêts par niveau, détections par jour, épisodes J à J+2, sécheresse) ; jours dans l'ordre reçu. */
-export function stackedDayBars(days: readonly DayStack[], o: { label: string; value: (v: number) => string; tick: (ms: number) => string }): string {
+export function stackedDayBars(
+  days: readonly DayStack[],
+  o: { label: string; value: (v: number) => string; tick: (ms: number) => string; /** Dit dans le titre qu'aucune valeur n'est à tracer (tout à zéro). */ emptyNote?: string },
+): string {
   const kept = days.filter((d) => Number.isFinite(d.day));
   if (kept.length === 0) return '';
   const total = (d: DayStack): number => d.parts.reduce((s, p) => s + (Number.isFinite(p.value) && p.value > 0 ? p.value : 0), 0);
   const hi = Math.max(1, ...kept.map(total));
   const slot = W / kept.length;
-  const barW = Math.max(1, slot - (kept.length > 40 ? 0.5 : 2));
+  const fullW = Math.max(1, slot - (kept.length > 40 ? 0.5 : 2));
+  const barW = Math.min(fullW, MAX_BAR_W);
+  const inset = barW < fullW ? (slot - barW) / 2 : 0;
   const parts: string[] = [`<line x1="0" x2="${W}" y1="${BOTTOM}" y2="${BOTTOM}" ${DASH} stroke-width="0.5"/>`];
   kept.forEach((d, i) => {
     let base = BOTTOM;
@@ -216,11 +224,12 @@ export function stackedDayBars(days: readonly DayStack[], o: { label: string; va
       if (!(Number.isFinite(p.value) && p.value > 0)) continue;
       const h = (p.value / hi) * (BOTTOM - TOP);
       base -= h;
-      parts.push(`<rect x="${(i * slot).toFixed(1)}" y="${base.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${escapeHtml(p.color)}">`
+      parts.push(`<rect x="${(i * slot + inset).toFixed(1)}" y="${base.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${escapeHtml(p.color)}">`
         + `<title>${escapeHtml(`${o.tick(d.day)} · ${p.label} : ${o.value(p.value)}`)}</title></rect>`);
     }
   });
-  parts.push(textAt(2, TOP - 2, 'start', o.value(hi)), textAt(0, 102, 'start', o.tick(kept[0].day)),
+  parts.push(textAt(2, TOP - 2, 'start', o.value(hi)), textAt(2, BOTTOM + 10, 'start', o.value(0)), textAt(0, 102, 'start', o.tick(kept[0].day)),
     textAt(W, 102, 'end', o.tick(kept[kept.length - 1].day)));
-  return `<svg class="lp-chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${escapeHtml(o.label)}">${parts.join('')}</svg>`;
+  const title = o.emptyNote && kept.every((d) => total(d) === 0) ? `${o.label} : ${o.emptyNote}` : o.label;
+  return `<svg class="lp-chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${escapeHtml(title)}">${parts.join('')}</svg>`;
 }

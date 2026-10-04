@@ -68,7 +68,7 @@ export const VIGILANCE_LEGEND: LegendCategory = {
     { id: 'env-vig-icon', label: 'Pictogramme : phénomène le plus fort du département', color: HEADER_HEX, isHeader: true },
   ],
   source: { label: 'Météo-France, vigilance météorologique', url: 'https://vigilance.meteofrance.fr' },
-  refresh: { label: 'Cartes de 06 h et 16 h (05 h et 15 h en hiver), et mises à jour d’événement' },
+  refresh: { label: 'Cartes de 06 h et 16 h (05 h et 15 h en hiver), et mises à jour d’événement' },
   notes: [
     'Métropole et Corse ; l’outre-mer n’est pas dans ce flux.',
     'Échéance : aujourd’hui ou demain, selon la bascule du panneau.',
@@ -107,8 +107,8 @@ export const FLOODS_LEGEND: LegendCategory = {
     { id: 'flood-yellow', label: 'Jaune', color: levelHex('jaune'), icon: LINE, iconSize: 18 },
     { id: 'flood-stations-header', label: 'Stations des tronçons en vigilance', color: HEADER_HEX, isHeader: true },
     { id: 'flood-station', label: 'Station (hauteur au repère)', color: FLOOD_STATION_HEX, shape: 'circle' },
-    { id: 'flood-station-up', label: 'Hauteur en hausse sur 1 h', color: levelHex('rouge'), shape: 'ring' },
-    { id: 'flood-station-down', label: 'Hauteur en baisse sur 1 h', color: levelHex('vert'), shape: 'ring' },
+    { id: 'flood-station-up', label: 'Hauteur en hausse sur 1 h', color: levelHex('rouge'), shape: 'ring' },
+    { id: 'flood-station-down', label: 'Hauteur en baisse sur 1 h', color: levelHex('vert'), shape: 'ring' },
   ],
   source: { label: 'Vigicrues (tronçons) · Hub’Eau (hauteurs et débits)', url: 'https://www.vigicrues.gouv.fr' },
   refresh: { label: `Relève toutes les 10${NBSP}min` },
@@ -144,7 +144,7 @@ const ECHO_TOP_ITEMS: readonly LegendItem[] = [
   { id: 'echo-top-header', label: 'Sommets d’écho', color: HEADER_HEX, isHeader: true },
   ...ECHO_TOP_CLASSES.map((c, i): LegendItem => {
     const next = ECHO_TOP_CLASSES[i + 1];
-    const label = next ? `${c.km} à ${next.km}${NBSP}km` : `${c.km}${NBSP}km et plus`;
+    const label = next ? `${c.km} à ${next.km}${NBSP}km${c.km === 0 ? ' (classe d’image, pas un niveau)' : ''}` : `${c.km}${NBSP}km et plus`;
     return { id: `echo-top-${c.km}`, label, color: c.hex, shape: 'square' };
   }),
 ];
@@ -158,8 +158,8 @@ export const RADAR_LEGEND: LegendCategory = {
   source: { label: 'Météo-France, mosaïque de réflectivité (DPRadar, Licence Ouverte 2.0)' },
   refresh: { label: `Une image toutes les 5${NBSP}min` },
   notes: [
-    'Mosaïque 1 km : métropole et Corse, avec leurs marges.',
-    'Pluie équivalente : Z = 200 R^1,6 ; au-delà de 50 dBZ, grêle possible et pluie surestimée.',
+    'Mosaïque 1 km : métropole et Corse, avec leurs marges.',
+    'Pluie équivalente : Z = 200 R^1,6 ; au-delà de 50 dBZ, grêle possible et pluie surestimée.',
     'Clic sur la carte : profil vertical de réflectivité au radar le plus proche (démonstration).',
   ],
 };
@@ -172,7 +172,7 @@ export function radarLegend(m: Radar2dManifest | null, echoTops: boolean, now: n
   const late = isEnvironmentDataLate('radar', m.observedAt, now);
   return copy(RADAR_LEGEND, items, `Image du ${dateAt(at)}${late ? ' (en retard)' : ''} · mosaïque 1${NBSP}km · une image toutes les 5${NBSP}min`, [
     ...(RADAR_LEGEND.notes ?? []),
-    ...(echoTops ? ['Sommets d’écho : altitude du plus haut écho significatif ; au-delà de 8 km, sommet orageux ou pyroconvection possible.'] : []),
+    ...(echoTops ? ['Sommets d’écho : altitude du plus haut écho significatif ; au-delà de 8 km, sommet orageux ou pyroconvection possible.'] : []),
     ...(late ? ['En retard : image ancienne, à lire avec sa date.'] : []),
   ]);
 }
@@ -180,7 +180,7 @@ export function radarLegend(m: Radar2dManifest | null, echoTops: boolean, now: n
 // ─── Feux de forêt ───
 
 const FIRE_ITEMS: readonly LegendItem[] = [
-  { id: 'fire-header', label: 'Détections en France, 24 h', color: HEADER_HEX, isHeader: true },
+  { id: 'fire-header', label: 'Détections en France, 24 h', color: HEADER_HEX, isHeader: true },
   { id: 'fire-major', label: `Foyer confirmé de 100${NBSP}MW ou plus`, color: levelHex('rouge'), shape: 'circle' },
   { id: 'fire-confirmed', label: `Foyer confirmé de 10${NBSP}MW ou plus (deux passages ou plus)`, color: levelHex('orange'), shape: 'circle' },
   { id: 'fire-isolated', label: `Détection isolée ou foyer confirmé de moins de 10${NBSP}MW`, color: levelHex('jaune'), shape: 'circle' },

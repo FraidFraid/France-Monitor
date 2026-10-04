@@ -86,3 +86,10 @@ describe('R1 : nombres collés à leur unité', () => {
     expect(envBreakable(glueEnvUnits('foyer confirmé de 413 MW'))).toBeNull();
   });
 });
+
+describe('R1 : millimètres', () => {
+  it('« 5 mm » détaché est repéré puis collé', () => {
+    expect(envBreakable('cumul 5 mm')).toBe('5 mm');
+    expect(envBreakable(glueEnvUnits('cumul 5 mm'))).toBeNull();
+  });
+});

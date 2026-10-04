@@ -4,6 +4,7 @@ import type { FiresResponse, FloodsResponse, VigilancePeriod, VigilanceResponse 
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory } from '../MapLegend.ts';
+import { envBreakable } from './environment-format.ts';
 import { NBSP } from './format.ts';
 import {
   ECHO_TOP_CLASSES, ENV_NEUTRAL_HEX, FIRES_LEGEND, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOODS_LEGEND, FLOOD_STATION_HEX, RADAR_DBZ_CLASSES,
@@ -118,5 +119,17 @@ describe('légendes datées (S1), périmètres (E4), retard (S2)', () => {
     for (const l of [vigilanceLegend(VIGILANCE, 'J', NOW), floodsLegend(FLOODS, NOW), radarLegend(MANIFEST, true, NOW), firesLegend(FIRES, true, NOW)]) {
       expect(text(l)).not.toMatch(/\u2014|temps réel|live/i);
     }
+  });
+});
+
+describe('R1 : aucune unité détachée dans les légendes', () => {
+  it('envBreakable nul sur tous les textes de toutes les légendes', () => {
+    const all = [
+      VIGILANCE_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, FIRES_LEGEND,
+      vigilanceLegend(VIGILANCE, 'J', NOW), vigilanceLegend(VIGILANCE, 'J1', NOW), floodsLegend(FLOODS, NOW), radarLegend(MANIFEST, true, NOW),
+      radarLegend(MANIFEST, true, NOW + 11 * 60_000), firesLegend(FIRES, true, NOW), firesLegend(FIRES, true, NOW + 14 * H),
+    ];
+    for (const l of all) expect(envBreakable(text(l))).toBeNull();
+    expect(radarLegend(MANIFEST, true, NOW).items.find((i) => i.id === 'echo-top-0')?.label).toContain('pas un niveau');
   });
 });
