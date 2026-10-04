@@ -78,7 +78,7 @@ function droughtLate(d: DroughtResponse, now: number): boolean {
 
 function leadOf(d: DroughtResponse): string {
   const c = d.counts;
-  const potable = d.departments.filter((x) => x.potable === 'crise').length;
+  const potable = d.departments.filter((x) => x.available && x.potable === 'crise').length;
   return `${plural(c.crise, 'département')} en crise, ${frNumber(c.alerte_renforcee, 0)} en alerte renforcée, ${frNumber(c.alerte, 0)} en alerte, `
     + `${frNumber(c.vigilance, 0)} en vigilance. Eau potable : ${plural(potable, 'département')} en crise.`;
 }

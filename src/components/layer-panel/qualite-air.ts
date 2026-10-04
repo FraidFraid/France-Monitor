@@ -162,7 +162,9 @@ function indexSection(a: AirQualityResponse | null, now: number, open: OpenFn): 
   if (!a) return { ...base, summary: 'n.d.', html: sourceDown('indice ATMO (Atmo France)') };
   const today = a.days[0] ?? '';
   if (a.index.date === null || a.index.departments.length === 0) {
-    return { ...base, summary: 'n.d.', html: a.errors.length > 0 ? sourceDown('indice ATMO (Atmo France)') : emptyLine(`Indice ATMO du ${dayLong(today)} non encore publié.`) };
+    // Seule une panne de l'indice (« Atmo France, indice : … », api/_lib/atmo.js) le dit indisponible ; une panne des épisodes seule n'y touche pas.
+    const indexDown = a.errors.some((e) => e.startsWith('Atmo France, indice'));
+    return { ...base, summary: 'n.d.', html: indexDown ? sourceDown('indice ATMO (Atmo France)') : emptyLine(`Indice ATMO du ${dayLong(today)} non encore publié.`) };
   }
   const late = indexLate(a, now);
   const ranked = [...a.index.departments].sort((x, y) => (y.maxIndex ?? 0) - (x.maxIndex ?? 0) || share(y) - share(x));

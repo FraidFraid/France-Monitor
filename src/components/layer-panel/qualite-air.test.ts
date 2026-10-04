@@ -121,11 +121,15 @@ describe('vue Qualité de l’air (spec 2026-10-04 environnement § 3.2)', () =>
     expect(noEpisodes.head.status.at(-1)).toBe('1 incident de lecture (voir Méthode et sources)');
     const noIndex = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; }) });
     expect(noIndex.sections.find((s) => s.id === 'indice')?.html).toContain('Indice ATMO du 4 octobre non encore publié.');
-    const wfs = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; a.errors = ['réponse WFS non filtrée']; }) });
+    const wfs = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; a.errors = ['Atmo France, indice : réponse WFS non filtrée']; }) });
     expect(wfs.sections.find((s) => s.id === 'indice')?.html).toContain('Source indisponible : indice ATMO (Atmo France).');
     expect(wfs.sections.find((s) => s.id === 'indice')?.html).not.toContain('non encore publié');
     expect(visibleText(wfs.sections.find((s) => s.id === 'methode')?.html ?? '')).toContain('réponse WFS non filtrée');
     expect(wfs.head.status.at(-1)).toBe('1 incident de lecture (voir Méthode et sources)');
+    // Une panne des épisodes seule ne dit pas l'indice indisponible : il reste « non encore publié ».
+    const episodesOnly = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; a.errors = ['Atmo France, épisodes : HTTP 500']; }) });
+    expect(episodesOnly.sections.find((s) => s.id === 'indice')?.html).toContain('Indice ATMO du 4 octobre non encore publié.');
+    expect(episodesOnly.sections.find((s) => s.id === 'indice')?.html).not.toContain('Source indisponible');
     const failed = view({ air: null, airError: 'HTTP 502' });
     expect(failed.head).toMatchObject({ level: 'nd', figure: { value: 'n.d.' }, status: ['Atmo France injoignable'] });
     expect(failed.bodyHtml).toContain('Source injoignable. Aucune donnée reçue.');

@@ -30,6 +30,11 @@ describe('vue Sécheresse (spec 2026-10-04 environnement § 3.1)', () => {
     expect(v.head.figure).toEqual({ value: '79', caption: 'départements en crise · arrêtés en vigueur au 4 octobre 02:43', level: 'rouge' });
     expect(v.head.status).toEqual([`79${NBSP}départements en crise`, `VigiEau${NBSP}02:43`]);
     expect(v.head.lead).toBe('79 départements en crise, 14 en alerte renforcée, 3 en alerte, 3 en vigilance. Eau potable : 70 départements en crise.');
+    // La tête compte l'eau potable comme la section : un département indisponible n'y entre pas.
+    const d = structuredClone(DROUGHT_FIXTURE);
+    const crisis = d.departments.find((x) => x.potable === 'crise');
+    if (crisis) crisis.available = false;
+    expect(buildSecheresseView(input({ drought: d })).head.lead).toContain('Eau potable : 69 départements en crise.');
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--rouge">79</b>');
     expect(html()).toContain('fm-vig--rouge');
   });
