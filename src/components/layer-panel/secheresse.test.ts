@@ -130,4 +130,30 @@ describe('vue Sécheresse (spec 2026-10-04 environnement § 3.1)', () => {
       expect(text.toLowerCase()).not.toContain('temps réel');
     }
   });
+  it('chiffre de l’en-tête : niveau le plus haut atteint, jamais un « 0 » vert sous une pastille orange (m1)', () => {
+    const drought = withDrought((d) => { d.counts = { vigilance: 3, alerte: 3, alerte_renforcee: 14, crise: 0, aucun: 81 }; });
+    const v = view({ drought });
+    expect(v.head.level).toBe('orange');
+    expect(v.head.figure).toEqual({ value: '14', caption: 'départements en alerte renforcée · arrêtés en vigueur au 4 octobre 02:43', level: 'orange' });
+    const calm = view({ drought: withDrought((d) => { d.counts = { vigilance: 3, alerte: 0, alerte_renforcee: 0, crise: 0, aucun: 98 }; }) });
+    expect(calm.head.figure).toMatchObject({ value: '0', level: 'vert' });
+  });
+  it('lecture partielle : l’incident est nommé dans l’en-tête (m2)', () => {
+    const v = view({ drought: withDrought((d) => { d.errors = ['VigiEau : HTTP 503']; }) });
+    expect(v.head.status).toContain('lecture partielle : VigiEau : HTTP 503');
+    expect(view().head.status.join(' ')).not.toContain('partielle');
+  });
+  it('eau potable : un département indisponible n’est jamais nommé en crise (m3)', () => {
+    const drought = withDrought((d) => { d.departments[0].available = false; d.departments[0].potable = 'crise'; d.departments[0].name = 'Fantomeville'; });
+    expect(visibleText(section('eau-potable', { drought })?.html ?? '')).not.toContain('Fantomeville');
+  });
+  it('textes hostiles dans plusieurs départements, texte échappé présent (m5)', () => {
+    const drought = withDrought((d) => {
+      for (const i of [0, 5, 40]) { d.departments[i].name = `<b onclick=1>D${i}</b>`; d.departments[i].region = `<i>R${i}</i>`; }
+    });
+    const all = html({ drought });
+    expect(all).not.toMatch(/<b onclick|<i>R/);
+    for (const i of [0, 5, 40]) expect(all).toContain(`&lt;b onclick=1&gt;D${i}&lt;/b&gt;`);
+    expect(all).toContain('&lt;i&gt;R5&lt;/i&gt;');
+  });
 });

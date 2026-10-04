@@ -83,19 +83,28 @@ function leadOf(d: DroughtResponse): string {
     + `${frNumber(c.vigilance, 0)} en vigilance. Eau potable : ${plural(potable, 'département')} en crise.`;
 }
 
+/** Chiffre de l'en-tête : départements au niveau de restriction le plus haut atteint (la vigilance n'est pas une restriction). */
+function topFigure(d: DroughtResponse): { n: number; word: string; level: VigilanceLevel } {
+  if (d.counts.crise > 0) return { n: d.counts.crise, word: 'en crise', level: 'rouge' };
+  if (d.counts.alerte_renforcee > 0) return { n: d.counts.alerte_renforcee, word: 'en alerte renforcée', level: 'orange' };
+  if (d.counts.alerte > 0) return { n: d.counts.alerte, word: 'en alerte', level: 'jaune' };
+  return { n: 0, word: 'sous restriction', level: 'vert' };
+}
+
 function headOf(d: DroughtResponse, now: number): LayerHeadModel {
   const late = droughtLate(d, now);
   const verdict = droughtLevel(d);
-  const crise = d.counts.crise;
+  const top = topFigure(d);
+  const partial = d.departments.length > 0 && d.errors.length > 0 ? [`lecture partielle : ${d.errors[0]}`] : [];
   return {
     theme: ENVIRONMENT_THEME, title: SECHERESSE_TITLE,
     figure: {
-      value: frNumber(crise, 0),
-      caption: `départements en crise · arrêtés en vigueur au ${dayMonthClock(d.asOf)}${late ? ' (en retard)' : ''}`,
-      level: late || verdict.level === 'nd' ? null : crise > 0 ? 'rouge' : 'vert',
+      value: frNumber(top.n, 0),
+      caption: `départements ${top.word} · arrêtés en vigueur au ${dayMonthClock(d.asOf)}${late ? ' (en retard)' : ''}`,
+      level: late || verdict.level === 'nd' ? null : top.level,
     },
     level: late ? 'nd' : verdict.level,
-    status: [late ? 'niveau suspendu : arrêtés VigiEau en retard' : glueEnvUnits(verdict.reason), stamp('VigiEau', d.asOf, late, now)],
+    status: [late ? 'niveau suspendu : arrêtés VigiEau en retard' : glueEnvUnits(verdict.reason), stamp('VigiEau', d.asOf, late, now), ...partial],
     lead: late || d.departments.length === 0 ? null : leadOf(d),
   };
 }
@@ -154,7 +163,7 @@ function potableSection(d: DroughtResponse | null, now: number, open: OpenFn): F
   const rows = [...ORDER, null].map((key) => listRow({
     text: capitalize(wordOf(key)), value: frNumber(count(key), 0), ...(late ? { level: 'gris' as const } : tintOf(key)),
   })).join('');
-  const crisis = sortDroughtDepartments(d.departments.filter((x) => x.potable === 'crise'));
+  const crisis = sortDroughtDepartments(d.departments.filter((x) => x.available && x.potable === 'crise'));
   const named = crisis.slice(0, MAX_NAMED).map((x) => x.name).join(', ');
   const rest = crisis.length - MAX_NAMED;
   const names = crisis.length === 0 ? note('Aucun département en crise pour l’eau potable.')
