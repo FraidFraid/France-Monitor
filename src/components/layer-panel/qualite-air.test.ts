@@ -39,8 +39,9 @@ describe('vue Qualité de l’air (spec 2026-10-04 environnement § 3.2)', () =>
     expect(v.head).toMatchObject({ theme: 'Environnement', title: 'Qualité de l’air', level: 'vert' });
     expect(v.head.figure).toEqual({ value: '0', caption: 'épisodes de pollution en cours ou prévus, J à J+2 · Atmo France, 03/10 20:05', level: 'vert' });
     expect(v.head.status).toEqual(['aucun épisode de pollution prévu', `Atmo${NBSP}03/10${NBSP}20:05 · indice${NBSP}03/10${NBSP}15:36`]);
-    expect(v.head.lead).toBe('Aucun épisode de pollution en cours ni prévu jusqu’au 6 octobre (101 zones suivies). Indice ATMO du 4 octobre : '
+    expect(v.head.lead).toBe(`Aucun épisode de pollution aujourd’hui (101 zones suivies) ; ${parisDayWord('2026-10-05', ENV_FIXTURE_NOW)} et ${parisDayWord('2026-10-06', ENV_FIXTURE_NOW)} pas encore publiés. Indice ATMO du 4 octobre : `
       + '4\u202F920 communes en indice dégradé sur 26\u202F663 couvertes, aucune en indice mauvais ou pire.');
+    expect(v.head.lead).not.toContain('jusqu’au');
   });
   it('sections, ordre et ouverture', () => {
     expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([['episodes', true], ['indice', false], ['methode', false]]);
@@ -60,8 +61,10 @@ describe('vue Qualité de l’air (spec 2026-10-04 environnement § 3.2)', () =>
     expect(v.head.figure).toMatchObject({ value: '3', level: 'rouge' });
     expect(v.head.status[0]).toBe('seuil d’alerte : ozone, BOUCHES-DU-RHONE');
     const h = v.sections.find((s) => s.id === 'episodes')?.html ?? '';
-    expect(h).toContain(`<div class="lp-row"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span><span>Ozone · VAR</span><span class="lp-val fmk-num">04/10</span><small>information-recommandation · ${parisDayWord('2026-10-04', ENV_FIXTURE_NOW).replace(/'/g, '&#39;')}</small></div>`);
+    expect(h).toContain(`<div class="lp-row"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span><span>Ozone · VAR</span><span class="lp-val fmk-num">04/10</span><small>information-recommandation · ${parisDayWord('2026-10-04', ENV_FIXTURE_NOW).replace(/'/g, '&#39;')} · procédure publiée : PROCEDURE D’INFORMATION-RECOMMANDATION</small></div>`);
     expect(h).toContain('<span class="fmk-dot fmk-dot--rouge" aria-hidden="true"></span><span>Ozone · BOUCHES-DU-RHONE</span><span class="lp-val fmk-num">05/10</span>');
+    expect(h).toContain('procédure publiée : ALERTE SUR PERSISTANCE');
+    expect(v.head.lead).toContain(`3 épisodes de pollution en cours ou prévus, jours publiés : ${parisDayWord('2026-10-04', ENV_FIXTURE_NOW)}, ${parisDayWord('2026-10-05', ENV_FIXTURE_NOW)} et ${parisDayWord('2026-10-06', ENV_FIXTURE_NOW)}.`);
     expect(h).toMatch(/<span class="fmk-dot" aria-hidden="true"><\/span><span>Dioxyde d’azote · ALPES-MARITIMES<\/span>[^]*état non reconnu · [^<]* · état publié : VIGILANCE/);
     expect(h).toMatch(/<svg[^>]*aria-label="Épisodes par jour, ozone"/);
     expect(h).not.toMatch(/aria-label="Épisodes par jour, dioxyde d’azote"/);
@@ -112,18 +115,42 @@ describe('vue Qualité de l’air (spec 2026-10-04 environnement § 3.2)', () =>
   it('pannes : épisodes illisibles (indice servi), indice non publié, rien de lu, chargement', () => {
     const noEpisodes = view({ air: withAir((a) => { a.episodesUpdatedAt = null; a.zonesCovered = 0; a.perPollutant = []; a.errors = ['Atmo France, épisodes : HTTP 500']; }) });
     expect(noEpisodes.sections[0].html).toContain('Source indisponible : épisodes de pollution (Atmo France).');
-    expect(noEpisodes.head.level).toBe('vert');
+    expect(noEpisodes.head.level).toBe('nd');
+    expect(noEpisodes.head.status[0]).toBe('épisodes Atmo indisponibles');
+    expect(noEpisodes.head.figure).toMatchObject({ value: 'n.d.', level: null });
+    expect(noEpisodes.head.status.at(-1)).toBe('1 incident de lecture (voir Méthode et sources)');
     const noIndex = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; }) });
     expect(noIndex.sections.find((s) => s.id === 'indice')?.html).toContain('Indice ATMO du 4 octobre non encore publié.');
+    const wfs = view({ air: withAir((a) => { a.index = { date: null, updatedAt: null, communes: 0, departments: [] }; a.errors = ['réponse WFS non filtrée']; }) });
+    expect(wfs.sections.find((s) => s.id === 'indice')?.html).toContain('Source indisponible : indice ATMO (Atmo France).');
+    expect(wfs.sections.find((s) => s.id === 'indice')?.html).not.toContain('non encore publié');
+    expect(visibleText(wfs.sections.find((s) => s.id === 'methode')?.html ?? '')).toContain('réponse WFS non filtrée');
+    expect(wfs.head.status.at(-1)).toBe('1 incident de lecture (voir Méthode et sources)');
     const failed = view({ air: null, airError: 'HTTP 502' });
     expect(failed.head).toMatchObject({ level: 'nd', figure: { value: 'n.d.' }, status: ['Atmo France injoignable'] });
     expect(failed.bodyHtml).toContain('Source injoignable. Aucune donnée reçue.');
     expect(view({ air: null }).bodyHtml).toContain('Chargement des données…');
   });
+  it('épisodes en retard et vides : phrase datée avec « (en retard) », résumé en retard', () => {
+    const s = section('episodes', { now: Date.parse('2026-10-05T07:00:00Z') });
+    expect(s?.summary).toBe('aucun (en retard)');
+    const t = visibleText(s?.html ?? '');
+    expect(t).toContain('Aucun épisode au dernier relevé du 03/10 20:05 (en retard).');
+    expect(t).not.toContain('en cours ni prévu');
+  });
+  it('données avec incident de lecture : nommé dans l’en-tête', () => {
+    const v = view({ air: withAir((a) => { a.errors = ['Atmo France, épisodes : HTTP 500']; }) });
+    expect(v.head.status).toHaveLength(3);
+    expect(v.head.status[2]).toBe('1 incident de lecture (voir Méthode et sources)');
+    expect(visibleText(v.sections.find((s) => s.id === 'methode')?.html ?? '')).toContain('HTTP 500');
+  });
   it('textes hostiles échappés ; R1 ; aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute ; jamais « temps réel »', () => {
-    const air = withAir((a) => { a.episodes = [ep({ zone: '<img src=x onerror=1>', stateRaw: '<script>x</script>', state: 'inconnu' })]; a.index.departments[0].name = '<b>x</b>'; });
+    const air = withAir((a) => { a.episodes = [ep({ zone: '<img src=x onerror=1>', stateRaw: '<script>x</script>', state: 'inconnu' })]; a.index.departments[0] = { ...a.index.departments[0], dept: 'ZZ', name: '<b>x</b>', maxIndex: 6 }; a.perPollutant = [{ pollutantCode: 'X', pollutant: '<u>p</u>', days: [{ date: '2026-10-04', information: 1, alerte: 0 }] }]; });
     const h = html({ air });
-    expect(h).not.toMatch(/<img|<script|<b>x/);
+    expect(h).not.toMatch(/<img|<script|<b>x|<u>p/);
+    expect(h).toContain('&lt;b&gt;x&lt;/b&gt; (ZZ)');
+    expect(h).toContain('&lt;u&gt;p&lt;/u&gt;');
+    expect(h).toContain('&lt;img src=x onerror=1&gt;');
     for (const over of [{}, { air: EPISODES }, { now: Date.parse('2026-10-05T07:00:00Z') }, { air: null, airError: 'HTTP 502' }]) {
       const all = html(over);
       const text = visibleText(all);

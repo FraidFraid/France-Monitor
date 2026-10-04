@@ -58,13 +58,20 @@ function figureLevel(a: AirQualityResponse): VigilanceLevel {
 
 // ─── En-tête ───
 
-function leadOf(a: AirQualityResponse): string {
+function leadOf(a: AirQualityResponse, now: number): string {
   const parts: string[] = [];
-  const last = a.days[a.days.length - 1] ?? '';
   if (a.episodesUpdatedAt !== null) {
-    parts.push(a.episodes.length === 0
-      ? `Aucun épisode de pollution en cours ni prévu jusqu’au ${dayLong(last)} (${frNumber(a.zonesCovered, 0)} zones suivies).`
-      : `${capitalize(plural(a.episodes.length, 'épisode'))} de pollution en cours ou prévus jusqu’au ${dayLong(last)}.`);
+    const published = publishedDays(a);
+    const shown = a.days.filter((d) => published.has(d));
+    const missing = a.days.filter((d) => !published.has(d));
+    const words = (days: string[]): string => {
+      const w = days.map((d) => parisDayWord(d, now));
+      return w.length < 2 ? w.join('') : `${w.slice(0, -1).join(', ')} et ${w[w.length - 1]}`;
+    };
+    const pending = missing.length === 0 ? '' : `${shown.length === 0 ? '' : ' ; '}${words(missing)} pas encore ${missing.length > 1 ? 'publiés' : 'publié'}`;
+    if (shown.length === 0) parts.push(`Épisodes de pollution : ${words(missing)} pas encore ${missing.length > 1 ? 'publiés' : 'publié'}.`);
+    else if (a.episodes.length === 0) parts.push(`Aucun épisode de pollution ${words(shown)} (${frNumber(a.zonesCovered, 0)} zones suivies)${pending}.`);
+    else parts.push(`${capitalize(plural(a.episodes.length, 'épisode'))} de pollution en cours ou prévus, jours publiés : ${words(shown)}${pending}.`);
   }
   if (a.index.date !== null) {
     const deg = a.index.departments.reduce((n, d) => n + d.degrade, 0);
@@ -77,7 +84,8 @@ function leadOf(a: AirQualityResponse): string {
 
 function headOf(a: AirQualityResponse, now: number): LayerHeadModel {
   const late = a.episodesUpdatedAt !== null && episodesLate(a, now);
-  const verdict = airQualityLevel(a);
+  const episodesDown = a.episodesUpdatedAt === null && a.index.communes > 0;
+  const verdict = episodesDown ? { level: 'nd' as const, reason: 'épisodes Atmo indisponibles' } : airQualityLevel(a);
   const tail = late ? ' (en retard)' : '';
   return {
     theme: ENVIRONMENT_THEME, title: QUALITE_AIR_TITLE,
@@ -90,8 +98,9 @@ function headOf(a: AirQualityResponse, now: number): LayerHeadModel {
     status: [
       late ? 'niveau suspendu : épisodes Atmo France en retard' : glueEnvUnits(verdict.reason),
       `${stamp('Atmo', a.episodesUpdatedAt, late, now)} · ${stamp('indice', a.index.updatedAt, indexLate(a, now), now)}`,
+      ...(a.errors.length > 0 ? [`${plural(a.errors.length, 'incident')} de lecture (voir Méthode et sources)`] : []),
     ],
-    lead: late ? null : leadOf(a) || null,
+    lead: late ? null : leadOf(a, now) || null,
   };
 }
 
@@ -99,7 +108,7 @@ function headOf(a: AirQualityResponse, now: number): LayerHeadModel {
 
 function episodeRow(e: AirEpisode, late: boolean, now: number): string {
   const day = `${e.date.slice(8, 10)}/${e.date.slice(5, 7)}`;
-  const raw = e.state === 'inconnu' ? ` · état publié : ${e.stateRaw || 'vide'}` : '';
+  const raw = e.state === 'inconnu' ? ` · état publié : ${e.stateRaw || 'vide'}` : e.stateRaw ? ` · procédure publiée : ${e.stateRaw}` : '';
   return listRow({
     text: `${capitalize(e.pollutant)} · ${e.zone}`, value: day, level: late ? 'gris' : STATE_LEVEL[e.state],
     note: `${AIR_STATE_WORD[e.state]} · ${parisDayWord(e.date, now)}${raw}`,
@@ -135,6 +144,7 @@ function episodesSection(a: AirQualityResponse | null, now: number, open: OpenFn
     : note(`Prévision non encore publiée pour ${missing.map((d) => `le ${dayLong(d)}`).join(' et ')} (publication vers 14${NBSP}h, heure de Paris).`);
   if (a.episodes.length === 0) {
     const when = shown.length === 0 ? 'publié' : shown.length === 1 ? `le ${dayLong(shown[0])}` : `du ${dayLong(shown[0])} au ${dayLong(shown[shown.length - 1])}`;
+    if (late) return { ...base, summary: 'aucun (en retard)', html: emptyLine(`Aucun épisode au dernier relevé du ${clockOf(a.episodesUpdatedAt, now)} (en retard).`) + missingNote };
     return { ...base, summary: 'aucun', html: emptyLine(`Aucun épisode de pollution en cours ni prévu ${when} (${frNumber(a.zonesCovered, 0)} zones suivies).`) + missingNote };
   }
   const rows = a.episodes.map((e) => episodeRow(e, late, now)).join('');
@@ -152,7 +162,7 @@ function indexSection(a: AirQualityResponse | null, now: number, open: OpenFn): 
   if (!a) return { ...base, summary: 'n.d.', html: sourceDown('indice ATMO (Atmo France)') };
   const today = a.days[0] ?? '';
   if (a.index.date === null || a.index.departments.length === 0) {
-    return { ...base, summary: 'n.d.', html: a.errors.some((e) => e.includes('indice')) ? sourceDown('indice ATMO (Atmo France)') : emptyLine(`Indice ATMO du ${dayLong(today)} non encore publié.`) };
+    return { ...base, summary: 'n.d.', html: a.errors.length > 0 ? sourceDown('indice ATMO (Atmo France)') : emptyLine(`Indice ATMO du ${dayLong(today)} non encore publié.`) };
   }
   const late = indexLate(a, now);
   const ranked = [...a.index.departments].sort((x, y) => (y.maxIndex ?? 0) - (x.maxIndex ?? 0) || share(y) - share(x));
