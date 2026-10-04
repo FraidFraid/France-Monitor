@@ -59,6 +59,10 @@ describe('Vigipirate : fin des 12 jours de l’alerte attentat (O14)', () => {
     expect(vigipirateAlertEnd({ stade: 'alerte-attentat', depuis: '2026-10-04' })).toBe('2026-10-16');
     expect(vigipirateAlertEnd({ stade: 'alerte-attentat', depuis: '2026-09-25' })).toBe('2026-10-07');
   });
+  it('à cheval sur le passage à l’heure d’hiver du 25/10 : depuis le 20/10, jusqu’au 01/11 (jour de Paris, ni 31/10 ni 02/11)', () => {
+    expect(vigipirateAlertEnd({ stade: 'alerte-attentat', depuis: '2026-10-20' })).toBe('2026-11-01');
+    expect(vigipirateAlertEnd({ stade: 'alerte-attentat', depuis: '2026-10-25' })).toBe('2026-11-06');
+  });
   it('autre stade ou date illisible : aucune fin', () => {
     expect(vigipirateAlertEnd({ stade: 'vigilance-renforcee', depuis: '2026-06-22' })).toBeNull();
     expect(vigipirateAlertEnd({ stade: 'vigilance', depuis: '2026-06-22' })).toBeNull();
@@ -81,6 +85,14 @@ describe('Vigipirate : page officielle modifiée après la saisie (O14)', () => 
   });
   it('le jour est celui de Paris : 22:30Z le 04/10 est le 05/10 à Paris', () => {
     expect(vigipiratePageChangedOn({ saisiLe: '2026-10-04' }, check('2026-10-04T22:30:00.000Z'))).toBe('2026-10-05');
+  });
+  it('nuit du 25/10 (heure d’été jusqu’à 01:00Z, heure d’hiver ensuite) : le jour de Paris suit le décalage du moment', () => {
+    const saisie = { saisiLe: '2026-10-24' };
+    expect(vigipiratePageChangedOn(saisie, check('2026-10-24T21:59:00.000Z'))).toBeNull();          // 23:59 le 24/10 (UTC+2)
+    expect(vigipiratePageChangedOn(saisie, check('2026-10-24T22:00:00.000Z'))).toBe('2026-10-25');  // 00:00 le 25/10 (UTC+2)
+    expect(vigipiratePageChangedOn(saisie, check('2026-10-25T01:30:00.000Z'))).toBe('2026-10-25');  // 02:30 le 25/10 (UTC+1)
+    expect(vigipiratePageChangedOn(saisie, check('2026-10-25T22:59:00.000Z'))).toBe('2026-10-25');  // 23:59 le 25/10 (UTC+1)
+    expect(vigipiratePageChangedOn(saisie, check('2026-10-25T23:00:00.000Z'))).toBe('2026-10-26');  // 00:00 le 26/10 (UTC+1)
   });
   it('saisie illisible : toute modification lue demande la vérification ; date de modification illisible : rien', () => {
     expect(vigipiratePageChangedOn({ saisiLe: '04/10/2026' }, check('2026-10-01T05:10:00.000Z'))).toBe('2026-10-01');
@@ -217,10 +229,10 @@ describe('defenseLevel (pastille Défense, § 2.1)', () => {
   });
   it('phase B : 3 mailles à précision GNSS dégradée orange, 1 ou 2 jaune, « à vérifier » (O15) ; un 7500 sur deux relevés reste rouge', () => {
     expect(defenseLevel(military(), NOW, 3)).toEqual({
-      level: 'orange', reason: `3 mailles à précision GNSS dégradée (plus de 10${NBSP}% des aéronefs), à vérifier`,
+      level: 'orange', reason: `3${NBSP}mailles à précision GNSS dégradée (plus de 10${NBSP}% des aéronefs), à vérifier`,
     });
     expect(defenseLevel(military(), NOW, 1)).toEqual({
-      level: 'jaune', reason: `1 maille à précision GNSS dégradée (plus de 10${NBSP}% des aéronefs), à vérifier`,
+      level: 'jaune', reason: `1${NBSP}maille à précision GNSS dégradée (plus de 10${NBSP}% des aéronefs), à vérifier`,
     });
     expect(defenseLevel(military([GENEVE]), NOW, 2).reason).toBe(`7500${NBSP}(intervention${NBSP}illicite) vu une fois, à confirmer : SUI7500`);
     expect(defenseLevel(military([GENEVE_CONFIRMED]), NOW, 5).level).toBe('rouge');
@@ -277,9 +289,9 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
   });
   it('aucune alerte : vert ; confirmée : orange « à vérifier » ; vue une fois : jaune', () => {
     expect(cablesLevel(watch(), NOW)).toEqual({ level: 'vert', reason: `aucun navire lent à moins de 500${NBSP}m d’un câble` });
-    expect(cablesLevel(watch({ alerts: [alert()] }), NOW)).toEqual({ level: 'orange', reason: '1 navire lent confirmé sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)' });
+    expect(cablesLevel(watch({ alerts: [alert()] }), NOW)).toEqual({ level: 'orange', reason: `1${NBSP}navire lent confirmé sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)` });
     expect(cablesLevel(watch({ alerts: [alert({ confirmed: false, name: null })] }), NOW)).toEqual({
-      level: 'jaune', reason: '1 navire lent vu une fois sur un câble, à vérifier : MMSI 227000001 (AMITIE)',
+      level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : MMSI 227000001 (AMITIE)`,
     });
   });
   it('AIS muet depuis 6 min : n.d. « non évalué · AIS muet depuis 16:42 », alerte confirmée gardée mais sans couleur', () => {
@@ -365,6 +377,21 @@ describe('statut officiel et exploitation (O1, O3)', () => {
   });
 });
 
+describe('une valeur sur une ligne (R1)', () => {
+  it('aucune raison ne sépare un nombre du mot qui le suit par une espace simple', () => {
+    const reasons = [
+      defenseLevel(military(), NOW, 3), defenseLevel(military(), NOW, 1), defenseLevel(military([masked()]), NOW),
+      cablesLevel(watch({ alerts: [alert(), alert({ id: 'b' })] }), NOW), cablesLevel(watch({ alerts: [alert({ confirmed: false })] }), NOW),
+      cablesLevel(watch(), NOW),
+      cyberLevel(cyber([ALE_011, ALE_012]), NOW), cyberLevel(cyber([ALE_010, ALE_009]), NOW), cyberLevel(cyber([], [], 2.25), NOW),
+      cyberLevel(cyber([ALE_008]), NOW),
+    ].map((v) => v.reason);
+    expect(reasons.filter((r) => /\d [\p{L}%]/u.test(r))).toEqual([]);
+    expect(reasons).toContain(`2${NBSP}navires lents confirmés sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)`);
+    expect(reasons).toContain(`2${NBSP}alertes CERT-FR en cours, la plus récente publiée le 10/09 : CERTFR-2026-ALE-010, CERTFR-2026-ALE-009`);
+  });
+});
+
 describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)', () => {
   const ALL = [ALE_011, ALE_010, ALE_009, ALE_008];
   it('04/10 : ALE-011 en cours, publiée le 28/09 (moins de 7 jours) : orange, exploitation signalée par le CERT-FR', () => {
@@ -374,7 +401,7 @@ describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)
   });
   it('05/10 : ALE-011 publiée depuis 7 jours, trois alertes en cours : jaune, la plus récente nommée', () => {
     expect(cyberLevel(cyber(ALL, [AVI_1257], 1.29, '2026-10-04T22:00:00.000Z'), T('2026-10-05T00:30:00+02:00'))).toEqual({
-      level: 'jaune', reason: '3 alertes CERT-FR en cours, la plus récente publiée le 28/09 : CERTFR-2026-ALE-011, CERTFR-2026-ALE-010, CERTFR-2026-ALE-009',
+      level: 'jaune', reason: `3${NBSP}alertes CERT-FR en cours, la plus récente publiée le 28/09 : CERTFR-2026-ALE-011, CERTFR-2026-ALE-010, CERTFR-2026-ALE-009`,
     });
   });
   it('l’ordre de la liste ne change rien : la plus récente par sa publication', () => {
@@ -382,7 +409,7 @@ describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)
   });
   it('rouge : deux alertes en cours publiées depuis moins de 7 jours', () => {
     expect(cyberLevel(cyber([ALE_011, ALE_012]), NOW)).toEqual({
-      level: 'rouge', reason: `2 alertes CERT-FR en cours publiées depuis moins de 7${NBSP}jours : CERTFR-2026-ALE-012, CERTFR-2026-ALE-011`,
+      level: 'rouge', reason: `2${NBSP}alertes CERT-FR en cours publiées depuis moins de 7${NBSP}jours : CERTFR-2026-ALE-012, CERTFR-2026-ALE-011`,
     });
   });
   it('deux alertes récentes dont une close : orange, jamais rouge ; une alerte close récemment mise à jour ne colore rien', () => {
@@ -402,8 +429,8 @@ describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)
     });
   });
   it('revendications : jaune au plus (O4), même à 3,2 fois la moyenne ; 1,5 exactement : rien', () => {
-    expect(cyberLevel(cyber([], [], 3.2), NOW)).toEqual({ level: 'jaune', reason: 'hausse des revendications, non confirmées : 3,2 fois la moyenne' });
-    expect(cyberLevel(cyber([], [], 1.6), NOW)).toEqual({ level: 'jaune', reason: 'hausse des revendications, non confirmées : 1,6 fois la moyenne' });
+    expect(cyberLevel(cyber([], [], 3.2), NOW)).toEqual({ level: 'jaune', reason: `hausse des revendications, non confirmées : 3,2${NBSP}fois la moyenne` });
+    expect(cyberLevel(cyber([], [], 1.6), NOW)).toEqual({ level: 'jaune', reason: `hausse des revendications, non confirmées : 1,6${NBSP}fois la moyenne` });
     expect(cyberLevel(cyber([], [], 1.5), NOW).level).toBe('vert');
     expect(cyberLevel(cyber([ALE_011, ALE_012], [], 3.2), NOW).level).toBe('rouge');
   });
@@ -417,7 +444,29 @@ describe('cyberLevel (pastille Vigilance cyber, § 2.3 ; amendement 7, O2 et O4)
     const unread = { ...ALE_012, status: null };
     expect(cyberLevel(cyber([unread, ALE_010]), NOW)).toEqual({ level: 'nd', reason: 'non évalué · statut de CERTFR-2026-ALE-012 non lu' });
     expect(cyberLevel(cyber([unread, ALE_011]), NOW).level).toBe('orange');
-    expect(cyberLevel(cyber([{ ...ALE_010, status: null }]), NOW).level).toBe('vert');
+  });
+  it('alerte de moins de 30 jours au statut non lu et rien d’autre : n.d. nommant l’alerte, jamais un vert faux ; plus de 30 jours : ignorée', () => {
+    const tenDays = item({ ref: 'CERTFR-2026-ALE-012', firstVersion: '2026-09-24', status: null });
+    expect(certfrPublishedAgeDays(tenDays, NOW)).toBe(10);
+    expect(cyberLevel(cyber([tenDays]), NOW)).toEqual({ level: 'nd', reason: 'non évalué · statut de CERTFR-2026-ALE-012 non lu' });
+    expect(cyberLevel(cyber([{ ...ALE_010, status: null }, ALE_008]), NOW)).toEqual({ level: 'nd', reason: 'non évalué · statut de CERTFR-2026-ALE-010 non lu' });
+    expect(cyberLevel(cyber([{ ...ALE_009, status: null }]), NOW).level).toBe('vert');
+  });
+  it('alerte de 10 jours au statut non lu : une autre couleur lue l’emporte (alerte en cours, avis KEV, revendications)', () => {
+    const tenDays = item({ ref: 'CERTFR-2026-ALE-012', firstVersion: '2026-09-24', status: null });
+    expect(cyberLevel(cyber([tenDays, ALE_010]), NOW).reason).toBe('CERTFR-2026-ALE-010 en cours, publiée le 10/09');
+    expect(cyberLevel(cyber([tenDays], [AVI_1257]), NOW).level).toBe('jaune');
+    expect(cyberLevel(cyber([tenDays], [], 1.6), NOW).level).toBe('jaune');
+  });
+  it('publication future de plus d’1 h : jamais « récente » (ni orange, ni rouge, ni n.d. de statut non lu) ; à moins d’1 h : récente', () => {
+    const future = item({ ref: 'CERTFR-2026-ALE-012', firstVersion: '2026-10-06' });
+    expect(cyberLevel(cyber([future]), NOW)).toEqual({ level: 'jaune', reason: 'CERTFR-2026-ALE-012 en cours, publiée le 06/10' });
+    expect(cyberLevel(cyber([future, ALE_011]), NOW).level).toBe('orange');
+    expect(cyberLevel(cyber([{ ...future, status: null }]), NOW).level).toBe('vert');
+    expect(cyberLevel(cyber([], [{ ...AVI_1257, firstVersion: '2026-10-06', lastVersion: '2026-10-06' }]), NOW).level).toBe('vert');
+    const tomorrow = item({ ref: 'CERTFR-2026-ALE-012', firstVersion: '2026-10-05' });
+    expect(cyberLevel(cyber([tomorrow], [], 1.29, '2026-10-04T21:00:00.000Z'), T('2026-10-04T23:30:00+02:00')).level).toBe('orange');
+    expect(cyberLevel(cyber([tomorrow], [], 1.29, '2026-10-04T20:00:00.000Z'), T('2026-10-04T22:30:00+02:00')).level).toBe('jaune');
   });
   it('CERT-FR jamais lu ou relu il y a plus de 6 h : n.d., même avec des revendications fortes', () => {
     expect(cyberLevel(cyber([ALE_011], [], 3.5, null), NOW)).toEqual({ level: 'nd', reason: 'CERT-FR indisponible' });

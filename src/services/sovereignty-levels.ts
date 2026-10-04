@@ -32,6 +32,7 @@ export const SOVEREIGNTY_LATE_AFTER_MIN: Readonly<Record<SovereigntySource, numb
 };
 
 const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const PARIS_CLOCK = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -63,8 +64,9 @@ function dayMonthOf(day: string): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}`;
 }
 
+/** « 3 mailles » : nombre et nom collés par une espace insécable (R1, une valeur sur une ligne). */
 function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
-  return `${n} ${n > 1 ? pluralForm : singular}`;
+  return `${n}\u00a0${n > 1 ? pluralForm : singular}`;
 }
 
 // ─── Vigipirate (posture saisie, jamais « en retard ») ───
@@ -295,8 +297,24 @@ export function claimsRatio(r: RansomwareSummary | null): number | null {
 
 /** Âge de publication en deçà duquel une alerte en cours met la pastille à l'orange (O2). */
 export const CERTFR_RECENT_DAYS = 7;
+/** Âge de publication en deçà duquel une alerte au statut non lu interdit le vert (V1 : jamais un vert faux). */
+export const CERTFR_UNREAD_WATCH_DAYS = 30;
 /** Rapport des revendications au-delà duquel la pastille passe au jaune, jamais plus haut (O4). */
 export const CLAIMS_RATIO_JAUNE = 1.5;
+
+/**
+ * Vrai si le jour « AAAA-MM-JJ » date de moins de `days` jours de Paris à l'instant `now`. Un jour illisible, ou qui ne commence pas
+ * encore une heure après `now` (date future, horloge d'une source décalée), n'est jamais récent.
+ */
+function dayWithin(day: string, days: number, now: number): boolean {
+  if (!(parisDaysSince(day, now + HOUR_MS) >= 0)) return false;
+  return parisDaysSince(day, now) < days;
+}
+
+/** Alerte ou avis publié depuis moins de 7 jours de Paris (O2) ; une publication future de plus d'1 h n'est jamais récente. */
+export function isCertFrPublishedRecently(item: CertFrItem, now: number): boolean {
+  return dayWithin(item.firstVersion, CERTFR_RECENT_DAYS, now);
+}
 
 /** Publication la plus récente d'abord, puis référence décroissante (l'ordre de la réponse ne compte pas). */
 function byPublication(a: CertFrItem, b: CertFrItem): number {
@@ -307,37 +325,43 @@ function byPublication(a: CertFrItem, b: CertFrItem): number {
  * Pastille Vigilance cyber (§ 2.3 ; O2, O4) : rouge si deux alertes en cours ont été publiées depuis moins de 7 jours ; orange si une
  * seule ; jaune si une alerte en cours est publiée depuis 7 jours ou plus, si un avis de moins de 7 jours cite une vulnérabilité du
  * catalogue KEV, ou si les revendications dépassent 1,5 fois la moyenne (jaune au plus, même au-delà de 3 fois) ; vert sinon. n.d. si
- * le CERT-FR est en panne (readAt null ou en retard), ou si une alerte de moins de 7 jours a un statut non lu et que rien ne colore déjà
- * en orange. Le 04/10 : orange (ALE-011, publiée le 28/09).
+ * le CERT-FR est en panne (readAt null ou en retard) ; n.d. aussi quand une alerte au statut non lu pourrait colorer plus haut : moins
+ * de 7 jours et rien d'orange ni de rouge, ou moins de 30 jours et rien d'autre ne colore (jamais un vert faux). Une publication future
+ * de plus d'1 h n'est jamais récente. Le 04/10 : orange (ALE-011, publiée le 28/09).
  */
 export function cyberLevel(c: CyberResponse, now: number): LevelVerdict {
   if (c.certfr.readAt === null) return { level: 'nd', reason: 'CERT-FR indisponible' };
   if (isSovereigntyDataLate('certfr', c.certfr.readAt, now)) return { level: 'nd', reason: `non évalué · CERT-FR non relu depuis ${clockOf(c.certfr.readAt)}` };
-  const isRecent = (a: CertFrItem): boolean => certfrPublishedAgeDays(a, now) < CERTFR_RECENT_DAYS;
+  const isRecent = (a: CertFrItem): boolean => isCertFrPublishedRecently(a, now);
   const open = c.certfr.alerts.filter(isCertFrAlertOpen).sort(byPublication);
   const recent = open.filter(isRecent);
   if (recent.length >= 2) {
-    return { level: 'rouge', reason: `${recent.length} alertes CERT-FR en cours publiées depuis moins de 7\u00a0jours : ${recent.map((a) => a.ref).join(', ')}` };
+    return {
+      level: 'rouge',
+      reason: `${plural(recent.length, 'alerte CERT-FR en cours publiée', 'alertes CERT-FR en cours publiées')} depuis moins de 7\u00a0jours : ${recent.map((a) => a.ref).join(', ')}`,
+    };
   }
   if (recent.length === 1) {
     const a = recent[0];
     const exploitation = certfrExploitationText(a);
     return { level: 'orange', reason: `${a.ref} en cours, publiée le ${dayMonthOf(a.firstVersion)}${exploitation === null ? '' : ` : ${exploitation}`}` };
   }
-  const unread = c.certfr.alerts.filter((a) => a.status === null && isRecent(a)).sort(byPublication);
-  if (unread.length > 0) return { level: 'nd', reason: `non évalué · statut de ${unread[0].ref} non lu` };
+  const unread = c.certfr.alerts.filter((a) => a.status === null && dayWithin(a.firstVersion, CERTFR_UNREAD_WATCH_DAYS, now)).sort(byPublication);
+  const unreadVerdict: LevelVerdict | null = unread.length > 0 ? { level: 'nd', reason: `non évalué · statut de ${unread[0].ref} non lu` } : null;
+  if (unreadVerdict !== null && isRecent(unread[0])) return unreadVerdict;
   if (open.length === 1) return { level: 'jaune', reason: `${open[0].ref} en cours, publiée le ${dayMonthOf(open[0].firstVersion)}` };
   if (open.length > 1) {
     return {
       level: 'jaune',
-      reason: `${open.length} alertes CERT-FR en cours, la plus récente publiée le ${dayMonthOf(open[0].firstVersion)} : ${open.map((a) => a.ref).join(', ')}`,
+      reason: `${plural(open.length, 'alerte CERT-FR en cours', 'alertes CERT-FR en cours')}, la plus récente publiée le ${dayMonthOf(open[0].firstVersion)} : ${open.map((a) => a.ref).join(', ')}`,
     };
   }
-  const avis = c.certfr.avis.find((a) => certfrAgeDays(a, now) < CERTFR_RECENT_DAYS && a.kevCves.length > 0);
+  const avis = c.certfr.avis.find((a) => dayWithin(certfrDate(a), CERTFR_RECENT_DAYS, now) && a.kevCves.length > 0);
   if (avis) return { level: 'jaune', reason: `${avis.ref} : avis citant la vulnérabilité exploitée ${avis.kevCves[0]} (catalogue KEV de la CISA)` };
   const ratio = claimsRatio(c.ransomware);
   if (ratio !== null && ratio > CLAIMS_RATIO_JAUNE) {
-    return { level: 'jaune', reason: `hausse des revendications, non confirmées : ${ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} fois la moyenne` };
+    return { level: 'jaune', reason: `hausse des revendications, non confirmées : ${ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}\u00a0fois la moyenne` };
   }
+  if (unreadVerdict !== null) return unreadVerdict;
   return { level: 'vert', reason: 'aucune alerte CERT-FR en cours ni vulnérabilité exploitée citée par un avis de moins de 7\u00a0jours' };
 }
