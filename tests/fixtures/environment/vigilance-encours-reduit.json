@@ -1,0 +1,991 @@
+{
+ "meta": {
+  "snapshot_id": "deacd651-a1b1-44b7-bdcb-c7adf62d8558",
+  "product_datetime": "2026-10-04T08:00:00+00:00",
+  "generation_timestamp": "2026-10-04T08:00:12+00:00"
+ },
+ "product": {
+  "warning_type": "vigilance",
+  "type_cdp": "cdp_carte_externe",
+  "version_vigilance": "V6",
+  "version_cdp": "1.0.0",
+  "update_time": "2026-10-04T08:00:12Z",
+  "domain_id": "FRA",
+  "global_max_color_id": "3",
+  "periods": [
+   {
+    "echeance": "J",
+    "begin_validity_time": "2026-10-04T08:00:00Z",
+    "end_validity_time": "2026-10-04T22:00:00Z",
+    "text_items": {
+     "title": "Commentaire carte",
+     "text": [
+      "Un nouvel épisode pluvio-orageux actif est attendu sur les Pyrénées-orientales et l'Aude."
+     ]
+    },
+    "timelaps": {
+     "domain_ids": [
+      {
+       "domain_id": "3010",
+       "max_color_id": 1,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "9",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "FRA",
+       "max_color_id": 3,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 3,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T14:00:00Z",
+           "color_id": 3
+          },
+          {
+           "begin_time": "2026-10-04T14:00:00Z",
+           "end_time": "2026-10-04T18:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-04T18:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 2
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": []
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "9",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "66",
+       "max_color_id": 3,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 3,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T14:00:00Z",
+           "color_id": 3
+          },
+          {
+           "begin_time": "2026-10-04T14:00:00Z",
+           "end_time": "2026-10-04T16:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-04T16:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T16:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-04T16:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": []
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "75",
+       "max_color_id": 1,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "11",
+       "max_color_id": 3,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 3,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T14:00:00Z",
+           "color_id": 3
+          },
+          {
+           "begin_time": "2026-10-04T14:00:00Z",
+           "end_time": "2026-10-04T18:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-04T18:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T18:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-04T18:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "2A",
+       "max_color_id": 1,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "30",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T17:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-04T17:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 2
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T08:00:00Z",
+           "end_time": "2026-10-04T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      }
+     ]
+    },
+    "max_count_items": [
+     {
+      "color_id": 2,
+      "color_name": "Jaune",
+      "count": 5,
+      "text_count": "5 départements en Jaune"
+     },
+     {
+      "color_id": 3,
+      "color_name": "Orange",
+      "count": 2,
+      "text_count": "2 départements en Orange"
+     }
+    ],
+    "per_phenomenon_items": [
+     {
+      "phenomenon_id": "4",
+      "any_color_count": 1,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 1,
+        "text_count": "1 département en Jaune"
+       }
+      ]
+     },
+     {
+      "phenomenon_id": "3",
+      "any_color_count": 7,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 7,
+        "text_count": "7 départements en Jaune"
+       }
+      ]
+     },
+     {
+      "phenomenon_id": "2",
+      "any_color_count": 3,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 1,
+        "text_count": "1 département en Jaune"
+       },
+       {
+        "color_id": 3,
+        "color_name": "Orange",
+        "count": 2,
+        "text_count": "2 départements en Orange"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "echeance": "J1",
+    "begin_validity_time": "2026-10-04T22:00:00Z",
+    "end_validity_time": "2026-10-05T22:00:00Z",
+    "text_items": {
+     "title": "",
+     "text": []
+    },
+    "timelaps": {
+     "domain_ids": [
+      {
+       "domain_id": "3010",
+       "max_color_id": 1,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "9",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "FRA",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T14:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T14:00:00Z",
+           "end_time": "2026-10-05T19:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T19:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": []
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "9",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "66",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": []
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "domain_id": "75",
+       "max_color_id": 1,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "11",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T11:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T11:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "2A",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T14:00:00Z",
+           "color_id": 1
+          },
+          {
+           "begin_time": "2026-10-05T14:00:00Z",
+           "end_time": "2026-10-05T19:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T19:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      },
+      {
+       "domain_id": "30",
+       "max_color_id": 2,
+       "phenomenon_items": [
+        {
+         "phenomenon_id": "3",
+         "phenomenon_max_color_id": 2,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T02:00:00Z",
+           "color_id": 2
+          },
+          {
+           "begin_time": "2026-10-05T02:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "1",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "2",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "5",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": [
+          {
+           "begin_time": "2026-10-04T22:00:00Z",
+           "end_time": "2026-10-05T22:00:00Z",
+           "color_id": 1
+          }
+         ]
+        },
+        {
+         "phenomenon_id": "4",
+         "phenomenon_max_color_id": 1,
+         "timelaps_items": []
+        }
+       ]
+      }
+     ]
+    },
+    "max_count_items": [
+     {
+      "color_id": 2,
+      "color_name": "Jaune",
+      "count": 6,
+      "text_count": "6 départements en Jaune"
+     }
+    ],
+    "per_phenomenon_items": [
+     {
+      "phenomenon_id": "4",
+      "any_color_count": 1,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 1,
+        "text_count": "1 département en Jaune"
+       }
+      ]
+     },
+     {
+      "phenomenon_id": "3",
+      "any_color_count": 6,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 6,
+        "text_count": "6 départements en Jaune"
+       }
+      ]
+     },
+     {
+      "phenomenon_id": "2",
+      "any_color_count": 2,
+      "phenomenon_counts": [
+       {
+        "color_id": 2,
+        "color_name": "Jaune",
+        "count": 2,
+        "text_count": "2 départements en Jaune"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
