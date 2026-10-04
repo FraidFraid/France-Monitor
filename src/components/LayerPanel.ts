@@ -649,7 +649,7 @@ export class LayerPanel {
       this.helpSection(fmIcon('leaf'), 'Environnement', [
         this.helpItem(fmIcon('cloud-lightning'), 'Vigilance météo', 'Vigilance Météo-France par département et par phénomène, créneaux, bulletin officiel ; métropole et Corse.'),
         this.helpItem(fmIcon('waves'), 'Crues', 'Tronçons Vigicrues en vigilance et hauteurs des stations (Hub’Eau).'),
-        this.helpItem(fmIcon('cloud-rain'), 'Radar météo', 'Mosaïque de réflectivité Météo-France, 1 km, une image toutes les 5 min ; profil vertical en démonstration.'),
+        this.helpItem(fmIcon('cloud-rain'), 'Radar météo', 'Mosaïque de réflectivité Météo-France, 1\u00a0km, une image toutes les 5\u00a0min ; profil vertical en démonstration.'),
         this.helpItem(fmIcon('flame'), 'Feux de forêt', 'Météo des forêts par département et détections satellite en France regroupées en foyers, récurrentes à part.'),
         this.helpItem(fmIcon('sun'), 'Sécheresse', 'Arrêtés de restriction d’eau en vigueur par département (VigiEau), niveau le plus haut et par usage ; un stock, hors du score.'),
         this.helpItem(fmIcon('cloud'), 'Qualité de l’air', 'Épisodes de pollution prévus de J à J+2 et indice ATMO agrégé par département (Atmo France) ; communes couvertes par les AASQA.'),

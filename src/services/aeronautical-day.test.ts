@@ -60,7 +60,9 @@ describe('ligne du panneau', () => {
   });
   it('moins d\'une heure avant la fin du jour aéronautique : dit', () => {
     const at = (paris.aeroEnd ?? 0) - 59 * 60_000;
-    expect(aeronauticalLine(paris, at)).toEqual({ text: 'lever 07:54 · coucher 19:23 · fin du jour aéronautique 19:53 · moins d\'une heure de jour', lastHour: true, night: false });
+    // Apostrophe typographique (’), comme le reste des textes du lot (vague finale, point 11).
+    expect(aeronauticalLine(paris, at)).toEqual({ text: 'lever 07:54 · coucher 19:23 · fin du jour aéronautique 19:53 · moins d’une heure de jour', lastHour: true, night: false });
+    expect(aeronauticalLine(paris, at).text).not.toContain("'");
   });
   it('après la fin, ou avant le début : nuit aéronautique', () => {
     expect(aeronauticalLine(paris, (paris.aeroEnd ?? 0) + 1).night).toBe(true);

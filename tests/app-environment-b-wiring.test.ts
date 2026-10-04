@@ -74,6 +74,12 @@ describe('liste de câblage des couches (contrats § 4.4) pour drought, airQuali
     expect(layerPanel).toMatch(/this\.helpItem\(fmIcon\('cloud'\), 'Qualité de l’air', '[^']*'\)/);
     expect(layerPanel).toMatch(/this\.helpItem\(fmIcon\('activity'\), 'Séismes', '[^']*'\)/);
   });
+  it('R1 dans l’aide du tiroir : chaque nombre collé à son unité par une espace insécable (« 1 km », « 5 min » du radar compris)', () => {
+    const help = [...layerPanel.matchAll(/this\.helpItem\(fmIcon\('[^']+'\), '([^']*)', '([^']*)'\)/g)];
+    expect(help.length).toBeGreaterThan(0);
+    for (const [, label, text] of help) expect(text, label).not.toMatch(/\d (?:km|min|h|m|MW|GW|%)(?![\p{L}\p{N}])/u);
+    expect(layerPanel).toContain("'Radar météo', 'Mosaïque de réflectivité Météo-France, 1\\u00a0km, une image toutes les 5\\u00a0min ;");
+  });
   it('création paresseuse, instance, ouverture, lecture de la source ; croix qui éteint la couche', () => {
     for (const [id, , , field, ensure, , load, current] of PANELS) {
       expect(methodBody('ensureLazyPanelForLayer')).toContain(`case '${id}': return [this.${ensure}()];`);

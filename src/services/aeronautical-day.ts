@@ -78,7 +78,7 @@ function clock(ms: number): string {
 
 /**
  * Ligne du panneau, heures de Paris : « lever 07:54 · coucher 19:24 · fin du jour aéronautique 19:54 » ; `lastHour` vrai à moins
- * d'une heure de la fin du jour aéronautique (la ligne ajoute « moins d'une heure de jour ») ; `night` vrai après la fin du jour
+ * d'une heure de la fin du jour aéronautique (la ligne ajoute « moins d’une heure de jour ») ; `night` vrai après la fin du jour
  * aéronautique ou avant son début (la ligne ajoute « nuit aéronautique »).
  */
 export function aeronauticalLine(day: AeronauticalDay, now: number): { text: string; lastHour: boolean; night: boolean } {
@@ -88,7 +88,7 @@ export function aeronauticalLine(day: AeronauticalDay, now: number): { text: str
   const night = now >= day.aeroEnd || now < day.aeroStart;
   const lastHour = !night && day.aeroEnd - now <= HOUR_MS;
   const base = `lever ${clock(day.sunrise)} · coucher ${clock(day.sunset)} · fin du jour aéronautique ${clock(day.aeroEnd)}`;
-  return { text: `${base}${night ? ' · nuit aéronautique' : lastHour ? ' · moins d\'une heure de jour' : ''}`, lastHour, night };
+  return { text: `${base}${night ? ' · nuit aéronautique' : lastHour ? ' · moins d’une heure de jour' : ''}`, lastHour, night };
 }
 
 /** Raccourci au centroïde du département ; null pour un code inconnu. */
