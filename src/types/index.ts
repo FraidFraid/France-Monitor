@@ -2732,3 +2732,103 @@ export interface FireImpactsResponse {
   readAt: string;
   errors: string[];
 }
+
+// ═══ Environnement, phase B (spec 2026-10-04 panneaux environnement § 3 ; contrats § 1.2 ; amendement 2 : Quake.inFrance ; amendement 16 : nonSeismic) ═══
+
+// ─── Sécheresse : GET /api/environment/drought ───
+export type DroughtLevel = 'vigilance' | 'alerte' | 'alerte_renforcee' | 'crise';   // valeurs VigiEau telles quelles
+export interface DroughtDept {
+  dept: string; name: string; region: string;
+  /**
+   * Amendement 15 : false quand VigiEau publie le département « unavailable » (availability.AEP.status ; niveaux null, Guyane et
+   * Mayotte le 04/10) : « donnée indisponible », jamais « aucun arrêté », hors de la répartition par niveau.
+   */
+  available: boolean;
+  max: DroughtLevel | null;            // niveauGraviteMax ; null : aucun arrêté (département disponible seulement)
+  superficielle: DroughtLevel | null;  // niveauGraviteSupMax
+  souterraine: DroughtLevel | null;    // niveauGraviteSouMax
+  potable: DroughtLevel | null;        // niveauGraviteAepMax
+}
+export interface DroughtDayCount { date: string; vigilance: number; alerte: number; alerte_renforcee: number; crise: number }
+export interface DroughtResponse {
+  asOf: string | null;                 // availability.AEP.asOf le plus récent
+  departments: DroughtDept[];          // 101 (métropole et DROM) ; la carte dessine les 96 de métropole
+  counts: Record<DroughtLevel, number> & { aucun: number };     // départements disponibles seulement (amendement 15)
+  history: { days: DroughtDayCount[]; since: string | null };   // série serveur depuis la mise en service (référence en construction)
+  readAt: string | null;
+  errors: string[];
+}
+
+// ─── Qualité de l'air : GET /api/environment/air ───
+export type AirEpisodeState = 'information' | 'alerte' | 'inconnu';   // « PAS DE DEPASSEMENT » n'est pas un épisode
+export interface AirEpisode {
+  zoneCode: string; zone: string;      // code_zone, lib_zone (zone de l'AASQA, telle que publiée)
+  pollutantCode: string; pollutant: string;   // clé normalisée (PM2.5, PM10, O3, NO2, SO2) et nom français (arbitrage 6)
+  date: string;                        // date_ech (jour civil)
+  state: AirEpisodeState;
+  stateRaw: string;                    // etat tel que publié
+  updatedAt: string | null;            // date_maj
+}
+/** Jours publiés seulement (arbitrage 8) : un jour absent est « prévision non encore publiée ». */
+export interface AirPollutantDays { pollutantCode: string; pollutant: string; days: Array<{ date: string; information: number; alerte: number }> }
+export interface AirIndexDept {
+  dept: string; name: string;
+  communes: number;                    // communes couvertes ce jour (codes INSEE seulement, arbitrage 7)
+  degrade: number; mauvais: number; tresMauvaisEtPlus: number;   // code_qual 3, 4, 5 et plus
+  maxIndex: number | null;             // code_qual le plus haut ; null sans commune
+}
+export interface AirQualityResponse {
+  days: string[];                      // [J, J+1, J+2] (jours de Paris)
+  episodesUpdatedAt: string | null;    // date_maj la plus récente de la couche des épisodes
+  zonesCovered: number;                // zones distinctes publiées
+  episodes: AirEpisode[];              // états autres que « PAS DE DEPASSEMENT » seulement ; tri : jour, état, zone
+  perPollutant: AirPollutantDays[];    // barres J, J+1, J+2
+  index: { date: string | null; updatedAt: string | null; communes: number; departments: AirIndexDept[] };
+  readAt: string | null;
+  errors: string[];
+}
+
+// ─── Séismes : GET /api/environment/earthquakes ───
+export interface Quake {
+  id: string;
+  at: string;                          // heure d'origine (UTC)
+  lat: number; lon: number;
+  depthKm: number | null;
+  magnitude: number;                   // arrondie au dixième, comme la description publiée (arbitrage 4)
+  magType: string | null;              // « MLv », « ml »
+  type: string | null;                 // type d'événement publié (null : pas encore qualifié)
+  description: string;                 // description.fr (BCSF) ou flynn_region (EMSC)
+  status: 'automatique' | 'revu';
+  url: string | null;
+  dept: string | null;                 // département de l'épicentre ; null en mer ou à l'étranger
+  distanceKm: number;                  // distance au territoire : 0 dessus, sinon au dixième (bornée à 999)
+  inFrance: boolean;                   // amendement 2 : polygone métropolitain ou eaux françaises
+  source: 'BCSF-RéNaSS' | 'EMSC';
+}
+export interface EarthquakesResponse {
+  readAt: string | null;
+  source: 'BCSF-RéNaSS' | 'EMSC' | null;   // EMSC = repli
+  quakes: Quake[];                     // 7 jours, France et 20 km autour, plus récent d'abord
+  nonSeismic: number;                  // tirs de carrière, explosions, glissements écartés sur 7 jours (arbitrage 3, amendement 16)
+  errors: string[];
+}
+
+// ─── Submersion marine : GET /api/environment/sea-levels ───
+export interface TideGauge {
+  id: number;                          // identifiant REFMAR (shom_id)
+  name: string;                        // « Brest »
+  coastDomain: string;                 // domaine de vigilance « 2910 »
+  dept: string;
+  lat: number; lon: number;
+  lastAt: string | null;
+  heightM: number | null;              // hauteur d'eau observée (m, zéro hydrographique)
+  change1hM: number | null;
+  series: Array<{ at: string; value: number }>;   // 24 h, minutes rondes toutes les 10 min plus la dernière mesure (arbitrage 10)
+}
+export interface SeaLevelsResponse {
+  readAt: string | null;
+  gauges: TideGauge[];
+  predictionAvailable: false;          // le SHOM ne publie pas la marée prédite sans clé (contrats § 9)
+  errors: string[];
+}
+

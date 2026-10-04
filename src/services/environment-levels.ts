@@ -2,6 +2,7 @@
 // § 1 et § 2 ; contrats § 3.1). Fonctions pures, sans DOM ni réseau, partagées par les services clients, les vues et la carte.
 // « n.d. » quand la source manque, jamais une couleur inventée (S4) ; une alerte officielle est reprise telle quelle (E1).
 import type {
+  AirEpisode, AirQualityResponse, DroughtLevel, DroughtResponse, EarthquakesResponse, Quake,
   FireFoyer, FiresResponse, FloodStation, FloodsResponse, ForestDanger, ForestDangerLevel, OfficialColorId, VigilanceEcheance,
   VigilancePeriod, VigilancePhenomenonId, VigilanceResponse,
 } from '../types/index.ts';
@@ -265,3 +266,81 @@ export function firesLevel(f: FiresResponse, now: number): LevelVerdict {
   if (!fdCurrent) return { level: 'vert', reason: `${noFoyer} ; météo des forêts hors saison` };
   return { level: 'vert', reason: `${noFoyer}, danger faible` };
 }
+
+// ─── Phase B (tâche 20) : sécheresse, qualité de l'air, séismes ───
+
+/** Niveaux VigiEau qui colorent la pastille, du plus grave au moins grave ; la vigilance (sensibilisation) ne colore jamais. */
+const DROUGHT_PILL: ReadonlyArray<readonly [Exclude<DroughtLevel, 'vigilance'>, VigilanceLevel, string]> = [
+  ['crise', 'rouge', 'en crise'], ['alerte_renforcee', 'orange', 'en alerte renforcée'], ['alerte', 'jaune', 'en alerte'],
+];
+
+function countWord(n: number, word: string): string {
+  return `${n} ${word}${n > 1 ? 's' : ''}`;
+}
+
+/** Pastille Sécheresse (§ 3.1) : un stock (E2), affiché, jamais dans le score ; n.d. sans aucun département lu. */
+export function droughtLevel(d: DroughtResponse): LevelVerdict {
+  if (!d.departments.some((x) => x.available)) return { level: 'nd', reason: 'arrêtés VigiEau indisponibles' };
+  for (const [key, level, words] of DROUGHT_PILL) {
+    const n = d.counts[key];
+    if (n > 0) return { level, reason: `${countWord(n, 'département')} ${words}` };
+  }
+  return { level: 'vert', reason: 'aucune restriction au-delà de la vigilance' };
+}
+
+function episodeWords(list: readonly AirEpisode[]): string {
+  const first = list[0];
+  if (!first) return '';
+  const others = list.length - 1;
+  return `${first.pollutant}, ${first.zone}${others > 0 ? ` et ${countWord(others, 'autre')}` : ''}`;
+}
+
+/**
+ * Pastille Qualité de l'air (§ 3.2) : rouge si un épisode atteint le seuil d'alerte ; orange en information-recommandation ;
+ * jaune si au moins une commune est en indice mauvais (4) ou pire ; vert sinon ; n.d. si les deux couches manquent. Un état non
+ * reconnu ne colore pas (il est affiché gris, texte publié).
+ */
+export function airQualityLevel(a: AirQualityResponse): LevelVerdict {
+  if (a.episodesUpdatedAt === null && a.index.communes === 0) return { level: 'nd', reason: 'Atmo France indisponible' };
+  const alerte = a.episodes.filter((e) => e.state === 'alerte');
+  if (alerte.length > 0) return { level: 'rouge', reason: `seuil d’alerte : ${episodeWords(alerte)}` };
+  const information = a.episodes.filter((e) => e.state === 'information');
+  if (information.length > 0) return { level: 'orange', reason: `information-recommandation : ${episodeWords(information)}` };
+  const bad = a.index.departments.reduce((n, d) => n + d.mauvais + d.tresMauvaisEtPlus, 0);
+  if (bad > 0) return { level: 'jaune', reason: `${countWord(bad, 'commune')} en indice mauvais ou pire` };
+  return { level: 'vert', reason: a.episodesUpdatedAt === null ? 'épisodes indisponibles ; aucune commune en indice mauvais' : 'aucun épisode de pollution prévu' };
+}
+
+/** Fenêtre de la pastille et de la situation sismique (amendement 6). */
+export const QUAKE_WINDOW_MS = 72 * 3_600_000;
+
+/** « En France » au sens du lot (amendement 2) : polygone métropolitain ou eaux françaises, calculé par la route. */
+export function quakeInFrance(q: Quake): boolean {
+  return q.inFrance;
+}
+
+/** « proche de Gap » tiré de la description publiée ; la description entière quand elle ne nomme pas de lieu (EMSC : région). */
+export function quakePlace(q: Pick<Quake, 'description'>): string {
+  const m = /proche de\s+(.+?)\s*$/i.exec(q.description);
+  return m ? `proche de ${m[1]}` : q.description;
+}
+
+/** Magnitude au dixième avec la virgule (« 4,3 ») pour les phrases des raisons et des situations. */
+export function magnitudeText(m: number): string {
+  return m.toFixed(1).replace('.', ',');
+}
+
+/** Pastille Séismes (§ 3.3) : sur les 72 dernières heures, en France ; rouge dès 5, orange dès 4, jaune dès 3, vert sinon. */
+export function earthquakesLevel(q: EarthquakesResponse, now: number): LevelVerdict {
+  if (q.readAt === null) return { level: 'nd', reason: 'BCSF-RéNaSS et EMSC indisponibles' };
+  let top: Quake | null = null;
+  for (const x of q.quakes) {
+    const t = Date.parse(x.at);
+    if (!quakeInFrance(x) || !Number.isFinite(t) || t > now || now - t > QUAKE_WINDOW_MS) continue;
+    if (top === null || x.magnitude > top.magnitude) top = x;
+  }
+  if (top === null || top.magnitude < 3) return { level: 'vert', reason: 'aucun séisme de magnitude 3 ou plus en France sur 72 h' };
+  const level: VigilanceLevel = top.magnitude >= 5 ? 'rouge' : top.magnitude >= 4 ? 'orange' : 'jaune';
+  return { level, reason: `séisme de magnitude ${magnitudeText(top.magnitude)} ${quakePlace(top)}` };
+}
+

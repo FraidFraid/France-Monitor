@@ -2,7 +2,7 @@
 // (spec 2026-10-04 environnement § 1, § 2 ; contrats § 3.7). Pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) : espace
 // insécable entre le nombre et l'unité, « n.d. » pour une valeur absente, jamais 0. Les formats communs viennent des Trafics.
 import type {
-  FireSatellite, ForestDangerLevel, OfficialColorId, VigilancePhenomenonId, VigilanceSlot,
+  AirEpisodeState, DroughtLevel, FireSatellite, ForestDangerLevel, OfficialColorId, VigilancePhenomenonId, VigilanceSlot,
 } from '../../types/index.ts';
 import { FOREST_DANGER_COLOR, OFFICIAL_COLOR_LEVEL, PHENOMENON_WORD, nextDayOf, parisDayOf } from '../../services/environment-levels.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
@@ -121,3 +121,65 @@ export function envBreakable(text: string): string | null {
 export function glueEnvUnits(text: string): string {
   return text.replace(GLUE, `$1${NBSP}$2`);
 }
+
+// ─── Phase B (tâche 20) : sécheresse, qualité de l'air, séismes ───
+
+export { quakePlace } from '../../services/environment-levels.ts';
+
+/** Niveaux VigiEau en français. */
+export const DROUGHT_WORD: Readonly<Record<DroughtLevel, string>> = {
+  vigilance: 'vigilance', alerte: 'alerte', alerte_renforcee: 'alerte renforcée', crise: 'crise',
+};
+/** Couleur d'un niveau VigiEau : crise rouge, alerte renforcée orange, alerte jaune ; la vigilance prend une teinte de catégorie (§ 3.1). */
+export const DROUGHT_LEVEL: Readonly<Record<DroughtLevel, VigilanceLevel | 'categorie'>> = {
+  vigilance: 'categorie', alerte: 'jaune', alerte_renforcee: 'orange', crise: 'rouge',
+};
+/** Jeton de la vigilance sécheresse (R2) ; valeur reprise par la carte dans environment-legend.ts (vérifiée par test). */
+export const CAT_SECHERESSE_VIGILANCE = 'var(--cat-secheresse-vigilance)';
+
+/** Indice ATMO (arrêté du 10 juillet 2020) : 1 bon à 6 extrêmement mauvais ; 7 événement exceptionnel (incendie…). */
+export const AIR_INDEX_WORD: Readonly<Record<number, string>> = {
+  1: 'bon', 2: 'moyen', 3: 'dégradé', 4: 'mauvais', 5: 'très mauvais', 6: 'extrêmement mauvais', 7: 'événement',
+};
+/** Couleur d'un indice ATMO sur la palette L1 (amendement 5) : 1 et 2 vert, 3 jaune, 4 orange, 5 et plus rouge. */
+export function airIndexLevel(code: number): VigilanceLevel {
+  if (code >= 5) return 'rouge';
+  if (code === 4) return 'orange';
+  if (code === 3) return 'jaune';
+  return 'vert';
+}
+export const AIR_STATE_WORD: Readonly<Record<AirEpisodeState, string>> = {
+  information: 'information-recommandation', alerte: 'alerte', inconnu: 'état non reconnu',
+};
+
+/** « M 4,2 » (R1 : espace insécable) ; n.d. sans valeur. */
+export function formatMagnitude(m: number | null | undefined): string {
+  return typeof m === 'number' && Number.isFinite(m) ? `M${NBSP}${frNumber(m, 1)}` : 'n.d.';
+}
+/** Seuil d'affichage (§ 3.3) : les séismes plus faibles sont en gris. */
+export const QUAKE_DISPLAY_MIN = 2.5;
+/** Couleur d'un séisme en France (arbitrage 5, amendement 16) : 5 rouge, 4 orange, 3 jaune, 2,5 à 2,9 vert, plus faible gris. */
+export function quakeLevel(m: number): VigilanceLevel | 'gris' {
+  if (m >= 5) return 'rouge';
+  if (m >= 4) return 'orange';
+  if (m >= 3) return 'jaune';
+  return m >= QUAKE_DISPLAY_MIN ? 'vert' : 'gris';
+}
+
+/** Jour civil « AAAA-MM-JJ » en toutes lettres : « 6 octobre » ; n.d. si illisible. */
+export function dayLong(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return 'n.d.';
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+}
+
+/** Date et heure de Paris d'une donnée : « 4 octobre 02:43 » ; n.d. si absente ou illisible. */
+export function dayMonthClock(iso: string | null | undefined): string {
+  const ms = iso ? Date.parse(iso) : Number.NaN;
+  if (!Number.isFinite(ms)) return 'n.d.';
+  const d = new Date(ms);
+  const day = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });
+  const time = d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+  return `${day} ${time}`;
+}
+
