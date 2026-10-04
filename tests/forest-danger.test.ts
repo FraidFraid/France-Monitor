@@ -88,6 +88,23 @@ describe('loadForestDanger (lecture binaire stricte, cache partagé)', () => {
     expect(errors).toEqual([]);
     expect(forestDanger).toMatchObject({ publishedAt: '2025-10-15T14:50:05Z', j1Date: '2025-10-16', season: 'hors-saison' });
   });
+  it('lignes illisibles ou en double : nommées, jamais comptées deux fois, aucun champ de plus servi', async () => {
+    const header = 'date;num_dep;niveau_j1;niveau_j2;nom_dep';
+    const csv = [
+      header,
+      '2026-10-03T14:50:06Z;84;2;1;Vaucluse',
+      '2026-10-03T14:50:06Z;84;2;1;Vaucluse',
+      '2026-10-03T14:50:06Z;13;5;1;Bouches-du-Rhône',
+      'pas une date;83;2;2;Var',
+      '2026-10-03T14:50:06Z;83;2;2;Var',
+    ].join('\n');
+    stubFetch(() => binary(gzipSync(csv)));
+    const { forestDanger, errors } = await loadForestDanger(NOW);
+    expect(errors).toEqual(['Météo des forêts : 2 lignes illisibles', 'Météo des forêts : 1 ligne en double']);
+    expect(forestDanger?.departments.map((d) => d.dept)).toEqual(['83', '84']);
+    expect(forestDanger?.history).toEqual([{ date: '2026-10-04', n1: 0, n2: 2, n3: 0, n4: 0 }]);
+    expect(Object.keys(forestDanger ?? {}).sort()).toEqual(['departments', 'history', 'j1Date', 'j2Date', 'publishedAt', 'season']);
+  });
   it.each([
     ['page HTML', () => binary('<!DOCTYPE html><html><body>Maintenance</body></html>'), 'Météo des forêts : page HTML reçue au lieu de données'],
     ['CSV non compressé', () => binary(MDF), 'Météo des forêts : fichier compressé (gzip) attendu'],

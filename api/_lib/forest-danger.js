@@ -81,6 +81,8 @@ function addDays(day, n) {
 /**
  * Météo des forêts (contrat ForestDanger) : dernier jour publié, J1 et J2 (jours de Paris : publication + 1 et + 2), 96
  * départements, et l'historique de la saison (départements par niveau J1, un point par publication, daté de son jour J1).
+ * S'y ajoutent `unreadable` (lignes à la date, au code ou au niveau illisible, écartées) et `duplicates` (lignes en double
+ * pour une même publication et un même département, la première gardée), retirés par loadForestDanger avant d'être servis.
  * Lève sur un fichier illisible ou sans ligne lisible.
  * @param {string} text
  * @param {number} now
@@ -90,9 +92,20 @@ export function parseMdfCsv(text, now) {
   if (lines.length === 0 || lines[0].trim() !== HEADER) throw new Error('CSV météo des forêts illisible (en-tête inattendu)');
   /** @type {Map<string, Array<{ dept: string, name: string, j1: number, j2: number }>>} */
   const byDate = new Map();
+  const seen = new Set();
+  let unreadable = 0;
+  let duplicates = 0;
   for (const line of lines.slice(1)) {
     const [date, dept, j1, j2, name] = line.split(';').map((v) => v.trim());
-    if (!Number.isFinite(Date.parse(date)) || !/^(\d{2}|2A|2B)$/.test(dept ?? '') || !LEVELS.has(j1) || !LEVELS.has(j2)) continue;
+    if (!Number.isFinite(Date.parse(date)) || !/^(\d{2}|2A|2B)$/.test(dept ?? '') || !LEVELS.has(j1) || !LEVELS.has(j2)) {
+      unreadable += 1;
+      continue;
+    }
+    if (seen.has(`${date}|${dept}`)) {
+      duplicates += 1;
+      continue;
+    }
+    seen.add(`${date}|${dept}`);
     byDate.set(date, [...(byDate.get(date) ?? []), { dept, name: DEPT_NAMES[dept] ?? name ?? dept, j1: Number(j1), j2: Number(j2) }]);
   }
   const dates = [...byDate.keys()].sort((a, b) => Date.parse(a) - Date.parse(b));
@@ -112,7 +125,18 @@ export function parseMdfCsv(text, now) {
     season: forestDangerSeason(publishedAt, now),
     departments: [...(byDate.get(publishedAt) ?? [])].sort((a, b) => a.dept.localeCompare(b.dept, 'fr')),
     history,
+    unreadable,
+    duplicates,
   };
+}
+
+/** « Météo des forêts : 2 lignes illisibles », « Météo des forêts : 1 ligne en double » ; rien si le fichier est propre. */
+function rowWarnings(unreadable, duplicates) {
+  const named = (n, one, many) => `Météo des forêts : ${n} ${n > 1 ? many : one}`;
+  return [
+    ...(unreadable > 0 ? [named(unreadable, 'ligne illisible', 'lignes illisibles')] : []),
+    ...(duplicates > 0 ? [named(duplicates, 'ligne en double', 'lignes en double')] : []),
+  ];
 }
 
 let lastPublishedAt = null;
@@ -129,10 +153,11 @@ export async function loadForestDanger(now = Date.now()) {
     try {
       const ttlSec = forestDangerTtlSec(now, lastPublishedAt);
       const read = await cachedSource(`env:mdf:${y}`, { ttlSec, staleSec: 7 * 86_400, shared: true }, async () => parseMdfCsv(await fetchStrictGzipText(mdfUrl(y)), now));
-      // La saison suit l'heure de la lecture, pas celle de la mise en cache.
-      const forestDanger = { ...read, season: forestDangerSeason(read.publishedAt, now) };
+      // La saison suit l'heure de la lecture, pas celle de la mise en cache ; les comptes de lignes ne sont pas servis.
+      const { unreadable = 0, duplicates = 0, ...published } = read;
+      const forestDanger = { ...published, season: forestDangerSeason(published.publishedAt, now) };
       lastPublishedAt = forestDanger.publishedAt;
-      return { forestDanger, errors: [] };
+      return { forestDanger, errors: rowWarnings(Number(unreadable) || 0, Number(duplicates) || 0) };
     } catch (err) {
       if (y === year && err instanceof SourceFetchError && err.status === 404) continue;
       return { forestDanger: null, errors: [sourceError('Météo des forêts', err)] };

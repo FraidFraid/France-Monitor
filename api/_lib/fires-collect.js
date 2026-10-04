@@ -5,10 +5,13 @@
 // hors de France, elle est comptée à part. L'historique d'empreintes (11 jours, grille d'environ 1 km) donne la récurrence ;
 // il est amorcé une fois par jour au plus quand il a moins de 10 jours (8 appels de 5 jours). La clé FIRMS est dans le chemin
 // de l'URL : une erreur ne porte qu'un libellé, jamais l'URL. Sans clé : CSV public Europe 24 h, Suomi NPP seul.
+// Panne : la dernière collecte reste servie, avec sa date, 2 jours au plus après sa lecture (contrat § 2.3) ; au-delà elle
+// est retirée et la panne est nommée. Chaque essai, réussi, en panne ou interrompu par une exception, est mémorisé 15 min.
 import { departementAt } from './geo-fr.js';
 import { filterRecentDetections } from './firms-window.js';
 import {
-  FIRMS_PUBLIC_CSV_URL, FIRMS_PUBLIC_SOURCE, FIRMS_SOURCES, FIRMS_SOURCE_LABEL, firmsAreaUrl, normalizeRows, parseFirmsCsv,
+  FIRMS_PUBLIC_CSV_URL, FIRMS_PUBLIC_SOURCE, FIRMS_SOURCES, FIRMS_SOURCE_LABEL, firmsAreaUrl, normalizeDetection, normalizeRows,
+  parseFirmsCsv,
 } from './firms.js';
 import { clusterFoyers, lastDays, mergeDayCells, pruneDays, splitByDepartement, utcDay } from './fire-foyers.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
@@ -20,6 +23,11 @@ export const LAST_KEY = 'env:fires:last';
 export const DAYS_KEY = 'env:fires:days';
 export const BOOTSTRAP_KEY = 'env:fires:bootstrap';
 export const MISSING_KEY_ERROR = 'clé FIRMS absente : Suomi NPP seul (CSV public)';
+/** Dernière collecte réussie de plus de 2 jours : plus servie. */
+export const TOO_OLD_ERROR = 'FIRMS : dernière collecte de plus de 2 jours';
+/** Échéance de la route atteinte pendant un cycle : collecte précédente servie, ou rien. */
+export const FIRMS_PENDING_ERROR = 'FIRMS : collecte en cours';
+/** Durée de service de la dernière collecte réussie, comptée depuis sa lecture. */
 const LAST_TTL_SEC = 2 * 86_400;
 const DAYS_TTL_SEC = 12 * 86_400;
 const BOOTSTRAP_TTL_SEC = 86_400;
@@ -44,20 +52,64 @@ export function emptyFiresBody(errors = []) {
   };
 }
 
-/** Corps servi à partir de la dernière collecte gardée (date d'origine, S1) et des erreurs du dernier essai. */
-function bodyOf(stored, errors) {
-  if (!stored || typeof stored !== 'object') return emptyFiresBody(errors);
-  const { attemptedAt: _attempt, errors: _old, ...rest } = stored;
-  return { ...emptyFiresBody(), ...rest, errors };
+/** Âge (ms) d'une date ISO à l'instant `now` ; Infinity si absente ou illisible. */
+function ageMs(iso, now) {
+  const t = typeof iso === 'string' ? Date.parse(iso) : Number.NaN;
+  return Number.isFinite(t) ? now - t : Number.POSITIVE_INFINITY;
+}
+
+/** Vrai si l'enregistrement porte une collecte encore servie (lue il y a moins de 2 jours). */
+function hasServableCollection(record, now) {
+  return Boolean(record) && typeof record === 'object' && ageMs(record.readAt, now) < LAST_TTL_SEC * 1000;
+}
+
+/**
+ * Corps servi à partir de l'enregistrement `env:fires:last` (dernière collecte, `attemptedAt` du dernier essai, `lastReadAt`
+ * de la dernière collecte réussie, gardée même quand la collecte est retirée) et des erreurs du dernier essai. Collecte de moins
+ * de 2 jours : servie avec sa date d'origine (S1), passages encore à venir seulement. Au-delà : corps vide, panne nommée.
+ */
+function servedBody(record, errors, now) {
+  if (!record || typeof record !== 'object') return emptyFiresBody(errors);
+  if (!hasServableCollection(record, now)) {
+    const lastReadAt = record.lastReadAt ?? record.readAt ?? null;
+    return emptyFiresBody(lastReadAt !== null && ageMs(lastReadAt, now) >= LAST_TTL_SEC * 1000 ? [...errors, TOO_OLD_ERROR] : errors);
+  }
+  const { attemptedAt: _attempt, lastReadAt: _last, errors: _old, ...rest } = record;
+  const body = { ...emptyFiresBody(), ...rest, errors };
+  return { ...body, nextPasses: body.nextPasses.filter((p) => Date.parse(p.expectedAt) > now) };
+}
+
+/**
+ * Essai sans nouvelle collecte (aucune source lue, ou exception pendant le cycle) : la collecte gardée l'est encore si elle a
+ * moins de 2 jours, ses sources en panne marquées `ok: false` (leur dernière acquisition reste celle des données) ; l'essai est
+ * mémorisé pour la cadence, ou jusqu'aux 2 jours de la collecte s'ils sont plus loin. Rend le corps servi.
+ * @param {unknown} stored enregistrement lu avant l'essai
+ * @param {string[]} errors erreurs de l'essai
+ * @param {Set<string>} failedSources sources en panne pendant l'essai
+ * @param {number} now
+ */
+async function recordFailedAttempt(stored, errors, failedSources, now) {
+  const kept = hasServableCollection(stored, now) ? stored : null;
+  const lastReadAt = stored && typeof stored === 'object' ? stored.lastReadAt ?? stored.readAt ?? null : null;
+  const base = kept
+    ? { ...kept, sources: (Array.isArray(kept.sources) ? kept.sources : []).map((s) => (failedSources.has(s.id) ? { ...s, ok: false } : s)) }
+    : emptyFiresBody();
+  const record = { ...base, errors, attemptedAt: new Date(now).toISOString(), lastReadAt };
+  const ttlSec = Math.max(FIRES_CADENCE_MS / 1000, kept ? LAST_TTL_SEC - ageMs(kept.readAt, now) / 1000 : 0);
+  await kvSetJson(LAST_KEY, record, ttlSec, now);
+  return servedBody(record, errors, now);
 }
 
 function redact(text, key) {
   return key ? text.split(key).join('***') : text;
 }
 
-/** « FIRMS, NOAA-20 : 2 lignes illisibles » : lignes écartées par parseFirmsCsv (nombre de champs différent de l'en-tête). */
-function rejectedWarning(label, rows) {
-  const n = Number(rows.rejected) || 0;
+/**
+ * « FIRMS, NOAA-20 : 2 lignes illisibles » : lignes écartées par parseFirmsCsv (nombre de champs différent de l'en-tête) et par
+ * normalizeDetection (coordonnées, heure, confiance, FRP ou jour/nuit illisibles) ; null si aucune.
+ */
+function unreadableWarning(label, rows, sourceId) {
+  const n = (Number(rows.rejected) || 0) + rows.filter((row) => normalizeDetection(row, sourceId) === null).length;
   if (n === 0) return null;
   return `${label} : ${n} ${n > 1 ? 'lignes illisibles' : 'ligne illisible'}`;
 }
@@ -69,7 +121,7 @@ function rejectedWarning(label, rows) {
 async function readCsv(url, sourceId, label, key) {
   try {
     const rows = parseFirmsCsv(await fetchStrictText(url, { expect: 'text', timeoutMs: 20_000 }));
-    return { ok: true, sourceId, rows, warning: rejectedWarning(label, rows) };
+    return { ok: true, sourceId, rows, warning: unreadableWarning(label, rows, sourceId) };
   } catch (err) {
     return { ok: false, sourceId, error: redact(sourceError(label, err), key) };
   }
@@ -139,7 +191,8 @@ async function bootstrapIfDue(key, storedDays, now) {
 
 /**
  * Un cycle de collecte. Au moins une source lue : nouvelle collecte (sources en panne nommées dans `errors`) ; aucune : la
- * dernière collecte réussie reste servie avec sa propre date, et l'essai est mémorisé (pas de nouvel appel avant 15 min).
+ * dernière collecte réussie reste servie avec sa propre date si elle a moins de 2 jours, et l'essai est mémorisé (pas de nouvel
+ * appel avant 15 min).
  * @param {number} [now]
  */
 export async function collectFires(now = Date.now()) {
@@ -160,10 +213,7 @@ export async function collectFires(now = Date.now()) {
   // Pannes et lignes écartées, dans l'ordre des sources.
   errors.push(...reads.map((r) => (r.ok ? r.warning : r.error)).filter(Boolean));
   const okReads = reads.filter((r) => r.ok);
-  if (okReads.length === 0) {
-    await kvSetJson(LAST_KEY, { ...bodyOf(stored, errors), attemptedAt, errors }, LAST_TTL_SEC, now);
-    return bodyOf(stored, errors);
-  }
+  if (okReads.length === 0) return recordFailedAttempt(stored, errors, new Set(reads.map((r) => r.sourceId)), now);
   const boot = key ? await bootstrapIfDue(key, storedDays, now) : { reads: [], coveredDays: [], errors: [] };
   errors.push(...boot.errors);
 
@@ -216,7 +266,7 @@ export async function collectFires(now = Date.now()) {
     errors,
   };
   await kvSetJson(DAYS_KEY, days, DAYS_TTL_SEC, now);
-  await kvSetJson(LAST_KEY, { ...body, attemptedAt }, LAST_TTL_SEC, now);
+  await kvSetJson(LAST_KEY, { ...body, attemptedAt, lastReadAt: attemptedAt }, LAST_TTL_SEC, now);
   return body;
 }
 
@@ -228,17 +278,39 @@ export function isFiresDue(lastAttemptAt, now) {
 
 let queue = Promise.resolve();
 
+/** Erreurs du dernier essai gardées dans l'enregistrement. */
+function errorsOf(record) {
+  return record && typeof record === 'object' && Array.isArray(record.errors) ? record.errors : [];
+}
+
 /**
  * Dernière collecte, après un nouveau cycle s'il est dû (route et relève serveur toutes les minutes). Les appels sont mis en
- * file : deux déclenchements simultanés ne lancent jamais deux cycles.
+ * file : deux déclenchements simultanés ne lancent jamais deux cycles. Une exception pendant le cycle est nommée et mémorisée
+ * comme un essai en panne : la relève ne relance pas un cycle chaque minute.
  * @param {number} [now]
  */
 export function ensureFiresFresh(now = Date.now()) {
   const turn = queue.then(async () => {
     const last = await kvGetJson(LAST_KEY, now);
-    if (last && !isFiresDue(last.attemptedAt ?? null, now)) return bodyOf(last, Array.isArray(last.errors) ? last.errors : []);
-    return collectFires(now);
+    if (last && !isFiresDue(last.attemptedAt ?? null, now)) return servedBody(last, errorsOf(last), now);
+    try {
+      return await collectFires(now);
+    } catch (err) {
+      const error = redact(sourceError('FIRMS, erreur inattendue', err), firmsKey());
+      console.error(`[collecte firms] ${error}`);
+      return recordFailedAttempt(last, [error], new Set(), now);
+    }
   });
   queue = turn.then(() => undefined, () => undefined);
   return turn;
+}
+
+/**
+ * Dernière collecte gardée, sans attendre le cycle en cours (échéance de la route) : servie avec ses erreurs et `note`.
+ * @param {number} now
+ * @param {string} note
+ */
+export async function storedFires(now, note) {
+  const record = await kvGetJson(LAST_KEY, now);
+  return servedBody(record, [...errorsOf(record), note], now);
 }

@@ -6,12 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import { __resetForestDangerForTests, mdfUrl } from '../api/_lib/forest-danger.js';
-import handler, { CACHE_CONTROL } from '../api/_handlers/environment/fires.js';
+import { FIRMS_PENDING_ERROR, TOO_OLD_ERROR, ensureFiresFresh } from '../api/_lib/fires-collect.js';
+import { PARTIAL_CACHE_CONTROL } from '../api/_lib/source-http.js';
+import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL, ROUTE_BUDGET_MS, firesCacheControl, loadFires } from '../api/_handlers/environment/fires.js';
 import type { FiresResponse } from '../src/types/index.ts';
 import { type FakeResponse, callHandler, fakeRes, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
 const NOW = Date.parse('2026-10-04T10:10:00+02:00');
+const MIN = 60_000;
+const DAY = 86_400_000;
 const FRANCE = fx('firms-france-extrait.csv');
 const MODIS = fx('firms-modis-nrt-extrait.csv');
 
@@ -62,10 +66,11 @@ describe('/api/environment/fires', () => {
     expect(body.forestDanger?.departments).toHaveLength(96);
     expect(body.forestDanger?.departments.filter((d) => d.j1 === 2)).toHaveLength(10);
   });
-  it('météo des forêts en panne : 200 partiel, panne nommée ; cache CDN de 5 min gardé (déjà le plus court, jamais allongé)', async () => {
+  it('météo des forêts en panne : 200 partiel, panne nommée ; cache CDN des réponses partielles (5 min, relecture en 10 min)', async () => {
     sources({ mdfDown: true });
     const { status, body, cache } = await callHandler<FiresResponse>(handler);
-    expect([status, cache, body.forestDanger, body.errors]).toEqual([200, CACHE_CONTROL, null, ['Météo des forêts : HTTP 503']]);
+    expect([status, cache, body.forestDanger, body.errors]).toEqual([200, PARTIAL_CACHE_CONTROL, null, ['Météo des forêts : HTTP 503']]);
+    expect(PARTIAL_CACHE_CONTROL).toBe('s-maxage=300, stale-while-revalidate=600');
     expect(body.detections).toHaveLength(13);
   });
   it('FIRMS en panne, météo des forêts lue : 200, aucune collecte (readAt null), quatre pannes nommées', async () => {
@@ -92,6 +97,52 @@ describe('/api/environment/fires', () => {
     const { status, body, cache } = await callHandler<FiresResponse>(handler);
     expect([status, cache, body.readAt, body.forestDanger, body.detections.length]).toEqual([200, 'no-store', '2026-10-04T08:10:00.000Z', null, 13]);
     expect(body.errors).toHaveLength(5);
+  });
+  it('panne prolongée : collecte d’un jour servie avec sa date, jamais mise en cache ; au-delà de 2 jours, 502 nommé', async () => {
+    sources();
+    await callHandler<FiresResponse>(handler);
+    sources({ firmsDown: true, mdfDown: true });
+    const at = async (ms: number) => {
+      __resetSwrCacheForTests();
+      vi.setSystemTime(ms);
+      return callHandler<FiresResponse>(handler);
+    };
+    const day = await at(NOW + DAY);
+    expect([day.status, day.cache, day.body.readAt, day.body.detections.length]).toEqual([200, 'no-store', '2026-10-04T08:10:00.000Z', 13]);
+    expect(day.body.sources.every((s) => !s.ok)).toBe(true);
+    await at(NOW + 2 * DAY - 10 * MIN);
+    const expired = await at(NOW + 2 * DAY + MIN);
+    expect([expired.status, expired.cache, expired.body.readAt, expired.body.detections, expired.body.foyers]).toEqual([502, 'no-store', null, [], []]);
+    expect(expired.body.errors).toContain(TOO_OLD_ERROR);
+  });
+  it('cycle FIRMS plus long que l’échéance de 15 s : collecte précédente servie, « collecte en cours » nommée, cache CDN de 30 s', async () => {
+    expect(ROUTE_BUDGET_MS).toBe(15_000);
+    sources();
+    await callHandler<FiresResponse>(handler);
+    let release: (r: FakeResponse) => void = () => {};
+    const held = new Promise<FakeResponse>((resolve) => { release = resolve; });
+    const log = stubFetch((url) => (url.includes('/api/area/') ? held : respond('introuvable', 404)));
+    const later = NOW + 16 * MIN;
+    vi.setSystemTime(later);
+    const body = await loadFires(later, { budgetMs: 20 });
+    expect([body.readAt, body.detections.length, body.forestDanger?.publishedAt]).toEqual(['2026-10-04T08:10:00.000Z', 13, '2026-10-03T14:50:06Z']);
+    expect(body.errors).toEqual([FIRMS_PENDING_ERROR]);
+    expect(FIRMS_PENDING_ERROR).toBe('FIRMS : collecte en cours');
+    expect([firesCacheControl(body, later), PENDING_CACHE_CONTROL]).toEqual([PENDING_CACHE_CONTROL, 's-maxage=30, stale-while-revalidate=60']);
+    release(respond('erreur', 503));
+    await ensureFiresFresh(later);
+    expect(log.urls).toHaveLength(4);
+  });
+  it('rien de gardé, FIRMS et météo des forêts plus lents que l’échéance : réponse vide nommée, jamais mise en cache', async () => {
+    let release: (r: FakeResponse) => void = () => {};
+    const held = new Promise<FakeResponse>((resolve) => { release = resolve; });
+    stubFetch(() => held);
+    const body = await loadFires(NOW, { budgetMs: 20 });
+    expect([body.readAt, body.forestDanger, body.errors]).toEqual([null, null, [FIRMS_PENDING_ERROR, 'Météo des forêts : délai dépassé (échéance de la route)']]);
+    expect(firesCacheControl(body, NOW)).toBe('no-store');
+    release(binary('indisponible', 503));
+    await ensureFiresFresh(NOW);
+    await new Promise((resolve) => { setTimeout(resolve, 10); });
   });
   it('OPTIONS : 204 ; POST : 405', async () => {
     const options = fakeRes();
