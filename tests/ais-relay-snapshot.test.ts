@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAisTracker } from '../api/_lib/ais-snapshot.js';
+import { createAisTracker, slowVesselsResponse } from '../api/_lib/ais-snapshot.js';
 import { __setKvClientForTests } from '../api/_lib/kv-history.js';
 import { BOX_COVERAGE, getRelayHttpBaseUrl, startRelayServer, subscriptionChunks } from '../ais-relay.js';
 import { fixtureText } from './helpers/traffic-fixtures.ts';
@@ -113,5 +113,45 @@ describe('zones couvertes par chaque lot, panne amont nommée, mémoire MMSI', (
     vi.stubEnv('RELAY_PORT', '8090');
     expect(getRelayHttpBaseUrl()).toBe('http://127.0.0.1:8090');
     vi.unstubAllEnvs();
+  });
+});
+
+describe('navires lents pour la veille des câbles (souveraineté § 2.2, arbitrage 8)', () => {
+  const NOW = Date.parse('2026-10-03T13:20:00Z');
+  const loaded = () => {
+    const tracker = createAisTracker();
+    for (const l of fixtureText('ais-messages.jsonl').split('\n').filter(Boolean)) tracker.ingest(l);
+    return tracker;
+  };
+  it('eaux françaises, vus depuis moins de 10 min, vitesse connue sous 2 nœuds', () => {
+    const slow = loaded().slowVessels(NOW);
+    expect(slow).toHaveLength(20);
+    expect(slow.every((v) => typeof v.sog === 'number' && v.sog < 2)).toBe(true);
+    expect(slow[0]).toMatchObject({ mmsi: '224016730', type: null, typeCode: null, status: 3, sog: 1.7, lastAt: '2026-10-03T13:19:44.977Z' });
+    expect(loaded().slowVessels(NOW + 11 * 60_000)).toEqual([]);
+  });
+  it('position sans vitesse : jamais retenue (une absence n’est pas un arrêt)', () => {
+    const tracker = createAisTracker();
+    tracker.ingest(JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 229000009, ShipName: 'SANS VITESSE', latitude: 42.85, longitude: 4.8558, time_utc: '2026-10-03 13:19:00.000 +0000 UTC' },
+      Message: { PositionReport: { Latitude: 42.85, Longitude: 4.8558, NavigationalStatus: 1 } },
+    }));
+    expect(tracker.slowVessels(NOW)).toEqual([]);
+  });
+  it('corps de /slow-vessels : date, dernier message en eaux françaises, pannes nommées comme /snapshot', () => {
+    const body = slowVesselsResponse(loaded(), NOW, { hasKey: false, upstreamOpen: false });
+    expect([body.at, body.lastMessageAt, body.vessels.length, body.errors]).toEqual([
+      '2026-10-03T13:20:00.000Z', '2026-10-03T13:19:48.822Z', 20, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)'],
+    ]);
+  });
+  it('GET /slow-vessels : JSON, cache de 30 s, ouvert aux autres origines ; /snapshot inchangé à côté (cache distinct)', async () => {
+    const port = await started(loaded());
+    const r = await fetch(`http://127.0.0.1:${port}/slow-vessels`);
+    expect([r.status, r.headers.get('cache-control'), r.headers.get('access-control-allow-origin')]).toEqual([200, 'public, max-age=30', '*']);
+    const body = await r.json() as { lastMessageAt: string; vessels: unknown[]; errors: string[] };
+    expect([body.lastMessageAt, Array.isArray(body.vessels), body.errors]).toEqual(['2026-10-03T13:19:48.822Z', true, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)']]);
+    const snap = await (await fetch(`http://127.0.0.1:${port}/snapshot`)).json() as { vessels: unknown; zones: unknown[]; errors: string[] };
+    expect([typeof snap.vessels, snap.zones.length, snap.errors]).toEqual(['number', 4, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)']]);
   });
 });

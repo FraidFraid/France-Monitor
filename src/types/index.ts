@@ -2963,16 +2963,52 @@ export interface NavyMmsiVerification {
   mmsiSource: string;               // lien de la source officielle consultée
 }
 
-// ─── Fichiers OpenStreetMap (scripts, public/data/) ───
+// ─── Fichier des câbles sous-marins : Shom en référence, compléments OpenStreetMap (amendement 7, O18 ; public/data/subsea-cables.json) ───
+export type CableSourceName = 'Shom' | 'OpenStreetMap';
+/** Source du fichier des câbles, datée par son édition ; ordre : câbles du Shom, zones de câbles, zones de mouillage, OpenStreetMap. */
+export interface CableDataSource {
+  source: CableSourceName;
+  dataset: string;                  // fiche data.gouv.fr du Shom, ou « OpenStreetMap »
+  layer: string;                    // couche WFS du Shom (« CABLES_BDD_WFS:cblsub_lv »…), ou « Overpass »
+  licence: 'CC BY-SA' | 'Licence ouverte 2.0' | 'ODbL 1.0';
+  attribution: string;              // « Shom » ou « © les contributeurs d'OpenStreetMap »
+  edition: string | null;           // « 2019-01-07 » (câbles du Shom), « 2021-07 » (réglementation), base OSM ; null si non publiée
+  url: string;                      // fiche de la donnée et de sa licence
+  count: number;                    // objets gardés de cette source
+}
 export interface CableLanding { commune: string; dept: string; lat: number; lon: number }
 export interface SubseaCable {
-  id: string;                       // « way/761201757 »
-  name: string | null;              // tag name ; null si absent
-  operator: string | null;
-  path: Array<Array<[number, number]>>;   // [lng, lat], tel que publié par OSM
-  landings: CableLanding[];         // extrémités dans un département ou à moins de 2 km de sa côte
+  id: string;                       // « shom/FR000015019700001 » (identifiant INSPIRE du Shom) ou « way/761201757 » (OSM)
+  name: string | null;              // toujours null pour le Shom (il ne publie pas de nom) ; tag name d'OSM, null si absent
+  operator: string | null;          // toujours null pour le Shom
+  path: Array<Array<[number, number]>>;   // [lng, lat] ; un câble du Shom peut avoir plusieurs lignes
+  landings: CableLanding[];         // extrémités dans un département ou à moins de 2 km de sa côte ; vide pour un tronçon du Shom au large
+  source: CableSourceName;
+  licence: 'CC BY-SA' | 'ODbL 1.0'; // Shom : CC BY-SA (citer « Shom ») ; OpenStreetMap : ODbL 1.0
 }
-export interface SubseaCablesFile extends OsmFileMeta { cables: SubseaCable[] }           // public/data/subsea-cables-osm.json
+/** Zone réglementaire du Shom (« Réglementation - Navigation ») : polygones [lng, lat] simplifiés à 10 m, trous gardés. */
+export interface ShomZone {
+  id: string;                       // « shom/FR… »
+  name: string | null;              // nom publié (« Sainte-Marie ») ; souvent absent
+  info: string | null;              // information en français
+  source: 'Shom';
+  licence: 'Licence ouverte 2.0';
+  polygons: Array<Array<Array<[number, number]>>>;   // polygones : anneau extérieur puis trous
+}
+export interface CableZone extends ShomZone { cableCategory: 'telecom' | 'power' | null }
+/** Zone de mouillage : un navire lent dans une zone permise qui ne recoupe aucune zone de câbles n'est pas signalé (S9). */
+export interface AnchorageZone extends ShomZone { anchoringProhibited: boolean; crossesCableZone: boolean }
+/** Fichier des câbles : licences mêlées, donc ni licence ni source au niveau du fichier ; source et licence par objet. */
+export interface SubseaCablesFile {
+  generatedAt: string;              // ISO, date de génération par le script
+  osmBase: string;                  // osm3s.timestamp_osm_base de la réponse Overpass
+  sources: CableDataSource[];
+  cables: SubseaCable[];            // câbles du Shom d'abord, compléments OpenStreetMap (absents du Shom) ensuite
+  cableZones: CableZone[];
+  anchorageZones: AnchorageZone[];
+}
+
+// ─── Fichiers OpenStreetMap (scripts, public/data/) ───
 export interface DefenseOsmWork {
   id: string; name: string | null; kind: string;        // kind : tag OSM brut (bunker, barracks, airfield…)
   type: MilitaryBase['type']; lat: number; lon: number; dept: string;
@@ -2985,21 +3021,21 @@ export interface CableAlert {
   mmsi: string;
   name: string | null;
   vesselType: string | null;        // typeLabel AIS du relais
-  cableId: string;
-  cableName: string | null;
+  cableId: string;                  // « shom/FR… » (câble du Shom) ou « way/… » (complément OpenStreetMap)
+  cableName: string | null;         // null pour un câble du Shom (le Shom ne publie pas de nom) ou un tracé OSM sans nom
   lat: number; lon: number;
-  distanceM: number;                // au segment le plus proche du tracé OSM, arrondi au mètre
+  distanceM: number;                // au segment le plus proche du tracé (Shom ou OSM), arrondi au mètre
   speedKn: number;                  // vitesse connue (jamais une absence prise pour 0)
   navStatus: number | null;
   firstSeen: string; lastSeen: string;
-  confirmed: boolean;               // vu sur deux relevés espacés d'au moins 5 min
+  confirmed: boolean;               // revu sur un message AIS postérieur d'au moins 5 min à sa première vue (jamais le même message relu)
 }
 export interface CablesWatchResponse {
   readAt: string | null;            // dernier relevé du relais lu par le serveur ; null : jamais lu
   aisLastMessageAt: string | null;  // dernier message AIS en eaux françaises, selon le relais
-  evaluated: boolean;               // false : flux AIS muet depuis plus de 5 min (T3) ; alertes gardées, « non évaluées »
-  cablesFile: { generatedAt: string; osmBase: string; cables: number; landings: number } | null;   // null : fichier illisible
-  slowVessels: number;              // navires de moins de 2 nœuds du relevé (dénominateur de la méthode)
+  evaluated: boolean;               // false : flux AIS muet depuis plus de 5 min (T3), relais injoignable ou fichier des câbles illisible ; alertes gardées, « non évaluées »
+  cablesFile: { generatedAt: string; osmBase: string; cables: number; landings: number } | null;   // câbles Shom et OSM, atterrages (aucun pour un tronçon au large) ; null : fichier illisible
+  slowVessels: number;              // navires de moins de 2 nœuds du relevé, avant les exclusions (dénominateur de la méthode)
   alerts: CableAlert[];             // confirmées d'abord, puis vues une fois ; distance croissante
   errors: string[];
 }

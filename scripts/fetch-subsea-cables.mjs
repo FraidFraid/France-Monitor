@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/fetch-subsea-cables.mjs : fichier daté des câbles télécom sous-marins des approches de la métropole
-// (public/data/subsea-cables-osm.json ; spec 2026-10-04 souveraineté § 2.2, V5 ; contrats § 2.3, arbitrage 9 ; amendement 7,
+// (public/data/subsea-cables.json ; spec 2026-10-04 souveraineté § 2.2, V5 ; contrats § 2.3, arbitrage 9 ; amendement 7,
 // règle O18). Référence : le Shom (câbles télécom, zones de câbles, zones de mouillage, WFS sans clé) ; complément : les câbles
 // télécom d'OpenStreetMap absents du Shom. Chaque objet porte sa source et sa licence ; le fichier porte sa date de génération,
 // la base OSM et l'édition de chaque source. Lancé à la main, User-Agent FranceMonitor (api/_lib/source-http.js), une seconde au
@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
 import { communesUrl, parseCommunes, rankCommunes } from '../api/_lib/fire-impacts.js';
 import {
-  SHOM_LAYERS, assertWfsComplete, osmComplement, shomCapabilitiesUrl, shomEditionOf, shomFeatureUrl, shomToAnchorageZones,
-  shomToCableZones, shomToCables,
+  SHOM_LAYERS, assertWfsComplete, osmComplement, shomCableCounts, shomCapabilitiesUrl, shomEditionOf, shomExclusionsText, shomFeatureUrl,
+  shomToAnchorageZones, shomToCableZones, shomToCables,
 } from '../api/_lib/shom-cables.js';
 import { fetchStrictJson, fetchStrictXml } from '../api/_lib/source-http.js';
 import {
@@ -87,7 +87,8 @@ async function main() {
   const editions = {};
   for (const key of ['cables', 'cableZones', 'anchorageZones']) editions[key] = shomEditionOf(capabilities, SHOM_LAYERS[key].layer) ?? updates[key];
 
-  const shomCables = shomToCables(await shomLayer('cables'), geo);
+  const shomCablesJson = await shomLayer('cables');
+  const shomCables = shomToCables(shomCablesJson, geo);
   const cableZones = shomToCableZones(await shomLayer('cableZones'));
   const anchorageZones = shomToAnchorageZones(await shomLayer('anchorageZones'), cableZones);
 
@@ -110,10 +111,11 @@ async function main() {
   const text = `${JSON.stringify(file)}\n`;
   writeFileSync(CABLES_FILE_PATH, text);
   const landings = file.cables.reduce((n, c) => n + c.landings.length, 0);
-  console.log(`public/data/subsea-cables-osm.json : ${shomCables.length} câbles du Shom (édition ${editions.cables}), `
+  console.log(`public/data/subsea-cables.json : ${shomCables.length} câbles du Shom (édition ${editions.cables}), `
     + `${osmCables.length} compléments OpenStreetMap sur ${osmAll.length} (base OSM ${osmBase}), ${landings} atterrages, `
     + `${cableZones.length} zones de câbles et ${anchorageZones.length} zones de mouillage (édition ${editions.cableZones}), `
     + `${Math.round(Buffer.byteLength(text) / 1024)} Ko`);
+  console.log(shomExclusionsText(shomCableCounts(shomCablesJson)));
   console.log(`compléments OpenStreetMap : ${osmCables.map((c) => c.name ?? c.id).join(', ')}`);
 }
 

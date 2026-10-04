@@ -208,7 +208,8 @@ export function parseAisMessage(raw) {
 
 /**
  * Suivi en mémoire des messages AIS reçus par le relais.
- * `ingest(raw)` à chaque message ; `snapshot(now)` pour GET /snapshot ; `exportStatics(now)` et
+ * `ingest(raw)` à chaque message ; `snapshot(now)` pour GET /snapshot ; `slowVessels(now)` et `lastMessageIso()` pour
+ * GET /slow-vessels (veille des câbles) ; `exportStatics(now)` et
  * `importStatics(list, now)` pour garder la mémoire MMSI au-delà d'un redémarrage.
  */
 export function createAisTracker() {
@@ -361,7 +362,37 @@ export function createAisTracker() {
     }
   }
 
-  return { ingest, snapshot, prune, exportStatics, importStatics, get size() { return { vessels: vessels.size, statics: statics.size }; } };
+  /**
+   * Navires lents des eaux françaises (veille des câbles, spec 2026-10-04 souveraineté § 2.2) : vus depuis moins de 10 min, vitesse
+   * connue et inférieure à `maxKnots` ; une vitesse absente n'est jamais prise pour un arrêt. Données statiques jointes (nom, type).
+   * `lastAt` : heure du dernier message du navire (base de la confirmation sur deux messages AIS).
+   * @param {number} now
+   * @param {{ maxKnots?: number }} [options]
+   */
+  function slowVessels(now, { maxKnots = 2 } = {}) {
+    prune(now);
+    const out = [];
+    for (const v of vessels.values()) {
+      if (now - v.lastAt > SEEN_WINDOW_MS || !inFrenchWaters(v.lat, v.lon)) continue;
+      if (typeof v.sog !== 'number' || !Number.isFinite(v.sog) || v.sog >= maxKnots) continue;
+      const st = statics.get(v.mmsi) ?? null;
+      out.push({
+        mmsi: v.mmsi, name: st?.name ?? v.name ?? null, type: typeLabel(st?.type), typeCode: st?.type ?? null,
+        status: Number.isInteger(v.status) ? v.status : null, lat: v.lat, lon: v.lon, sog: v.sog, lastAt: new Date(v.lastAt).toISOString(),
+      });
+    }
+    return out.sort((a, b) => a.mmsi.localeCompare(b.mmsi));
+  }
+
+  /** Dernier message reçu dans les eaux françaises (ISO), ou null. */
+  function lastMessageIso() {
+    return lastMessageAt === null ? null : new Date(lastMessageAt).toISOString();
+  }
+
+  return {
+    ingest, snapshot, prune, exportStatics, importStatics, slowVessels, lastMessageIso,
+    get size() { return { vessels: vessels.size, statics: statics.size }; },
+  };
 }
 
 /**
@@ -414,11 +445,34 @@ export function boundStatics(list, maxBytes = STATICS_MAX_BYTES) {
  * @param {number} now
  * @param {{ hasKey: boolean, upstreamOpen: boolean, upstreams?: Parameters<typeof upstreamErrors>[0] }} state
  */
-export function snapshotResponse(tracker, now, { hasKey, upstreamOpen, upstreams }) {
-  const body = tracker.snapshot(now);
-  const errors = [];
-  if (!hasKey) errors.push('AIS : clé aisstream absente (AISSTREAM_API_KEY)');
-  else if (upstreams) errors.push(...upstreamErrors(upstreams, now));
-  else if (!upstreamOpen) errors.push('AIS : flux aisstream déconnecté');
-  return { ...body, errors };
+export function snapshotResponse(tracker, now, state) {
+  return { ...tracker.snapshot(now), errors: relayErrors(now, state) };
+}
+
+/**
+ * Pannes nommées du relais (clé absente, connexions amont coupées ou muettes), communes à /snapshot et /slow-vessels.
+ * @param {number} now
+ * @param {{ hasKey: boolean, upstreamOpen: boolean, upstreams?: Parameters<typeof upstreamErrors>[0] }} state
+ * @returns {string[]}
+ */
+function relayErrors(now, { hasKey, upstreamOpen, upstreams }) {
+  if (!hasKey) return ['AIS : clé aisstream absente (AISSTREAM_API_KEY)'];
+  if (upstreams) return upstreamErrors(upstreams, now);
+  return upstreamOpen ? [] : ['AIS : flux aisstream déconnecté'];
+}
+
+/**
+ * Corps de GET /slow-vessels (veille des câbles, spec 2026-10-04 souveraineté § 2.2 ; contrats, arbitrage 8) : navires lents des eaux
+ * françaises (moins de 2 nœuds, vitesse connue), dernier message en eaux françaises et pannes nommées, comme /snapshot.
+ * @param {{ slowVessels(now: number, options?: { maxKnots?: number }): object[], lastMessageIso(): string | null }} tracker
+ * @param {number} now
+ * @param {{ hasKey: boolean, upstreamOpen: boolean, upstreams?: Parameters<typeof upstreamErrors>[0] }} state
+ */
+export function slowVesselsResponse(tracker, now, state) {
+  return {
+    at: new Date(now).toISOString(),
+    lastMessageAt: tracker.lastMessageIso(),
+    vessels: tracker.slowVessels(now, { maxKnots: 2 }),
+    errors: relayErrors(now, state),
+  };
 }

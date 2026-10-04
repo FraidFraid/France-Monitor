@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
 import {
-  APPROACHES_BBOX, COVER_M, SHOM_LAYERS, ZONE_SIMPLIFY_M, assertWfsComplete, osmComplement, shomCapabilitiesUrl, shomEditionOf, shomFeatureUrl,
-  shomToAnchorageZones, shomToCableZones, shomToCables, simplifyRing, zonesOverlap,
+  APPROACHES_BBOX, COVER_M, SHOM_LAYERS, ZONE_SIMPLIFY_M, assertWfsComplete, osmComplement, shomCableCounts, shomCapabilitiesUrl, shomEditionOf,
+  shomExclusionsText, shomFeatureUrl, shomToAnchorageZones, shomToCableZones, shomToCables, simplifyRing, zonesOverlap,
 } from '../api/_lib/shom-cables.js';
 import { overpassToCables } from '../api/_lib/subsea-cables.js';
 
@@ -76,6 +76,26 @@ describe('shomToCables', () => {
     expect(rest).toEqual([]);
     expect([c.id, c.path]).toEqual(['shom/FR000015019700001', [[[7.04683, 43.54567], [7.2, 43.4]], [[7.67029, 43.1851], [7.77, 43.14]]]]);
     expect(c.landings).toEqual([{ commune: '', dept: '06', lat: 43.54567, lon: 7.04683 }]);
+  });
+});
+
+describe('shomCableCounts : objets du Shom écartés, imprimés par le script (revue d’A4)', () => {
+  it('relevé réel : 19 objets télécom gardés sur 25, dont 1 hors service ; 6 écartés, tous de catégorie non renseignée et hors service', () => {
+    const counts = shomCableCounts(CABLES());
+    expect(counts).toEqual({ objects: 25, telecom: 19, telecomOutOfService: 1, excluded: 6, excludedOutOfService: 6, excludedByCategory: { 0: 6 } });
+    expect(shomExclusionsText(counts)).toBe('objets du Shom écartés : 6 sur 25 (catcbl autre que 4 · non renseignée : 6), dont 6 hors service ; '
+      + 'objets télécom gardés : 19, dont 1 hors service');
+  });
+  it('catégories S-57 nommées (électrique, ligne de transport, chaîne de corps-mort) ; une liste « 1,6 » comptée sous sa liste', () => {
+    const json = { type: 'FeatureCollection', features: [
+      { properties: { catcbl: 1, status: null } }, { properties: { catcbl: 1, status: '4' } }, { properties: { catcbl: 6 } },
+      { properties: { catcbl: 3 } }, { properties: { catcbl: '1,6' } }, { properties: { catcbl: 4, status: '1,4' } },
+    ] };
+    const counts = shomCableCounts(json);
+    expect(counts).toEqual({ objects: 6, telecom: 1, telecomOutOfService: 1, excluded: 5, excludedOutOfService: 1, excludedByCategory: { 1: 2, 3: 1, 6: 1, '1,6': 1 } });
+    expect(shomExclusionsText(counts)).toBe('objets du Shom écartés : 5 sur 6 (catcbl autre que 4 · électrique : 2, ligne de transport : 1, '
+      + 'chaîne de corps-mort : 1, catégorie 1,6 : 1), dont 1 hors service ; objets télécom gardés : 1, dont 1 hors service');
+    expect(() => shomCableCounts({})).toThrow('réponse WFS du Shom sans « features »');
   });
 });
 

@@ -67,6 +67,7 @@ export const ROUTES = {
   '/api/rss': () => import('./_handlers/rss.js'),
   '/api/rte-iip': () => import('./_handlers/rte-iip.js'),
   '/api/situation-history': () => import('./_handlers/situation-history.js'),
+  '/api/sovereignty/cables-watch': () => import('./_handlers/sovereignty/cables-watch.js'),
   '/api/sovereignty/military': () => import('./_handlers/sovereignty/military.js'),
   '/api/threats': () => import('./_handlers/threats.js'),
   '/api/traffic/air-overview': () => import('./_handlers/traffic/air-overview.js'),

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { parseEnv } from 'util';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import { boundStatics, createAisTracker, snapshotResponse } from './api/_lib/ais-snapshot.js';
+import { boundStatics, createAisTracker, slowVesselsResponse, snapshotResponse } from './api/_lib/ais-snapshot.js';
 import { kvReadJson, kvWriteJson } from './api/_lib/kv-history.js';
 
 // Relais AIS (VM : fm-relay.service, 127.0.0.1:8090 ; Caddy sert /relay* en retirant le préfixe).
@@ -13,6 +13,8 @@ import { kvReadJson, kvWriteJson } from './api/_lib/kv-history.js';
 // - GET /snapshot : instantané maritime du panneau (spec 2026-10-03 panneaux trafic § 2.5) calculé sur les
 //   messages reçus ; en production le flux amont reste ouvert même sans navigateur connecté (`keepUpstream`),
 //   sinon l'instantané serait vide la plupart du temps.
+// - GET /slow-vessels : navires lents des eaux françaises (moins de 2 nœuds, vitesse connue) pour la veille des câbles du
+//   serveur (spec 2026-10-04 souveraineté § 2.2) ; mêmes positions que le WebSocket déjà rediffusé, cache de 30 s.
 // - GET /health : santé du processus (script de déploiement).
 
 const DEFAULT_RELAY_PORT = 8090;
@@ -132,6 +134,7 @@ export function startRelayServer(options = {}) {
   const tracker = options.tracker ?? createAisTracker();
   const chunks = subscriptionChunks(aisApiKey);
   let snapshotCache = null;
+  let slowCache = null;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -152,6 +155,16 @@ export function startRelayServer(options = {}) {
         snapshotCache = { at: now, body: snapshotResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen, upstreams: upstreamLots(now) }) };
       }
       sendJson(res, 200, snapshotCache.body, { 'Cache-Control': 'public, max-age=30', 'Access-Control-Allow-Origin': '*' });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/slow-vessels') {
+      const now = Date.now();
+      if (!slowCache || now - slowCache.at > SNAPSHOT_CACHE_MS) {
+        const upstreamOpen = upstreamStates.some((s) => s.upstream?.readyState === WebSocket.OPEN);
+        slowCache = { at: now, body: slowVesselsResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen, upstreams: upstreamLots(now) }) };
+      }
+      sendJson(res, 200, slowCache.body, { 'Cache-Control': 'public, max-age=30', 'Access-Control-Allow-Origin': '*' });
       return;
     }
 

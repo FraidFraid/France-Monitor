@@ -141,6 +141,48 @@ export function shomToCables(json, geo) {
   }));
 }
 
+/** Valeur S-57 STATUS « hors service » (not in use). */
+const OUT_OF_SERVICE = 4;
+/** Libellés des catégories S-57 de câble écartées (« 0 » : catégorie non renseignée). */
+const CATCBL_LABELS = { 0: 'non renseignée', 1: 'électrique', 3: 'ligne de transport', 5: 'télégraphe', 6: 'chaîne de corps-mort' };
+
+/**
+ * Comptes d'une réponse GetFeature de `cblsub_lv` pour la sortie du script (revue d'A4) : objets télécom gardés (`catcbl` 4) et
+ * objets écartés par catégorie S-57 (clé « 0 » : non renseignée ; une liste « 1,6 » garde sa liste), dont hors service
+ * (`status` 4). Lève si la réponse n'a pas de liste « features ».
+ * @param {unknown} json
+ */
+export function shomCableCounts(json) {
+  const counts = { objects: 0, telecom: 0, telecomOutOfService: 0, excluded: 0, excludedOutOfService: 0, excludedByCategory: {} };
+  for (const f of features(json, SHOM_LAYERS.cables.layer)) {
+    const cat = codes(f?.properties?.catcbl);
+    const outOfService = codes(f?.properties?.status).includes(OUT_OF_SERVICE);
+    counts.objects += 1;
+    if (cat.includes(SHOM_TELECOM_CATCBL)) {
+      counts.telecom += 1;
+      if (outOfService) counts.telecomOutOfService += 1;
+      continue;
+    }
+    const key = cat.length > 0 ? cat.join(',') : '0';
+    counts.excluded += 1;
+    if (outOfService) counts.excludedOutOfService += 1;
+    counts.excludedByCategory[key] = (counts.excludedByCategory[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
+ * Ligne imprimée par le script : objets écartés par catégorie, dont hors service, et objets télécom gardés, dont hors service.
+ * @param {ReturnType<typeof shomCableCounts>} counts
+ */
+export function shomExclusionsText(counts) {
+  const byCategory = Object.entries(counts.excludedByCategory)
+    .map(([key, n]) => `${CATCBL_LABELS[key] ?? `catégorie ${key}`} : ${n}`)
+    .join(', ');
+  return `objets du Shom écartés : ${counts.excluded} sur ${counts.objects} (catcbl autre que ${SHOM_TELECOM_CATCBL} · ${byCategory || 'aucun'}), `
+    + `dont ${counts.excludedOutOfService} hors service ; objets télécom gardés : ${counts.telecom}, dont ${counts.telecomOutOfService} hors service`;
+}
+
 /** Distance (m) d'un point à la droite [a, b] bornée au segment, en mètres locaux. */
 function offsetM(p, a, b, kx, ky) {
   const ax = a[0] * kx; const ay = a[1] * ky;

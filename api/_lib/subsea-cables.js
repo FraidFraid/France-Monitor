@@ -7,7 +7,7 @@
 // `seamark:type=cable_submarine`) ; écartés : câbles électriques seuls et câbles sans nature. Les fichiers de TeleGeography sont
 // exclus (données réservées aux abonnés payants, faits § 5.5).
 //
-// Forme du fichier (SubseaCablesFile, amendement 7) :
+// Forme du fichier public/data/subsea-cables.json (SubseaCablesFile, amendement 7) :
 // { generatedAt: ISO de génération ; osmBase: base Overpass ;
 //   sources: [{ source: 'Shom' | 'OpenStreetMap', dataset, layer, licence, attribution, edition: date publiée ou null, url, count }]
 //     dans l'ordre câbles du Shom, zones de câbles, zones de mouillage, OpenStreetMap ;
@@ -31,8 +31,8 @@ export const CABLES_OVERPASS_QUERY = '[out:json][timeout:180];('
   + 'way["telecom"="line"]["submarine"="yes"](41,-6,51.5,10);'
   + 'way["communication"="line"]["seamark:type"="cable_submarine"](41,-6,51.5,10);'
   + ');out geom;';
-/** Nom gardé pour les tâches qui le lisent (veille, livraison sur la VM, carte) ; le contenu est Shom et OpenStreetMap. */
-export const CABLES_FILE_PATH = new URL('../../public/data/subsea-cables-osm.json', import.meta.url);
+/** Fichier des câbles (Shom en référence, compléments OpenStreetMap), lu par la veille et livré avec l'API sur la VM. */
+export const CABLES_FILE_PATH = new URL('../../public/data/subsea-cables.json', import.meta.url);
 /** Atterrage : extrémité dans un département ou à moins de 2 km de sa côte. */
 export const LANDING_KM = 2;
 export const OSM_SOURCE = "© les contributeurs d'OpenStreetMap";

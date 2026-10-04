@@ -138,7 +138,7 @@ describe('loadCablesFile', () => {
   });
 });
 
-describe('fichier public généré (public/data/subsea-cables-osm.json)', () => {
+describe('fichier public généré (public/data/subsea-cables.json)', () => {
   const file = JSON.parse(readFileSync(CABLES_FILE_PATH, 'utf8')) as CablesFile;
   const codes = new Set(metropoleDepartements().map((d) => d.code));
   const shom = file.cables.filter((c) => c.source === SHOM_SOURCE);
