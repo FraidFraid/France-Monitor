@@ -18,6 +18,11 @@ const HUBEAU_TTL_SEC = 600;
 export const HUBEAU_WAIT_MS = 12_000;
 /** Une valeur plus vieille que son TTL plus une minute a été servie parce que la relecture a échoué. */
 const STALE_MARGIN_MS = 60_000;
+/** Échéance totale de la route : le client abandonne à 20 s (health-surveillance.ts), la route répond avant. */
+export const ROUTE_BUDGET_MS = 15_000;
+/** Territoires et référentiels des tronçons : lectures annexes, bornées pour laisser sa place à Hub'Eau. */
+const TERRITORIES_WAIT_MS = 4_000;
+const SECTIONS_WAIT_MS = 6_000;
 
 /** Stations d'un tronçon (la 302 vers /services/… est suivie par fetch). */
 export function sectionStationsUrl(id) {
@@ -106,17 +111,80 @@ function chunks(list, size) {
   return out;
 }
 
-/** Hub'Eau, une grandeur : lectures par paquets de 20 codes ; erreurs nommées par grandeur, jamais un zéro. */
+/** Lectures en cours (clé de cache) : une valeur périmée servie pendant qu'une lecture court n'est pas un échec. */
+const refreshing = new Set();
+
+async function tracked(key, run) {
+  refreshing.add(key);
+  try {
+    return await run();
+  } finally {
+    refreshing.delete(key);
+  }
+}
+
+/** Mention d'un relevé périmé : « lecture en cours » si la relecture court encore, « lecture en échec » sinon. */
+function staleNote(label, key) {
+  return `${label} : relevé précédent servi (${refreshing.has(key) ? 'lecture en cours' : 'lecture en échec'})`;
+}
+
+/**
+ * Lance `run` et rend son résultat, ou rejette à l'échéance (la lecture continue en arrière-plan et remplit le cache).
+ * Échéance déjà passée : `run` n'est pas lancé.
+ */
+function withDeadline(run, ms) {
+  if (ms <= 0) return Promise.reject(new Error("délai dépassé (échéance de la route)"));
+  const work = run();
+  work.catch(() => {});
+  let timer;
+  const late = new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error('délai dépassé (échéance de la route)')), ms); });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Hub'Eau, une grandeur : un cache par station (le changement de l'ensemble des tronçons en vigilance ne relance pas
+ * la lecture des stations déjà lues) ; les stations à lire sont regroupées par paquets de 20 codes, une requête par
+ * paquet. Erreurs nommées par grandeur, jamais un zéro.
+ */
 async function readGrandeur(codes, grandeur, label, now) {
-  const results = await mapLimit(chunks(codes, CODES_PER_REQUEST), 2, (chunk) => cachedSource(
-    `env:hubeau:${grandeur}:${codesFingerprint(chunk)}`, { ttlSec: HUBEAU_TTL_SEC, staleSec: 3_600, shared: false },
-    async () => ({ readAt: new Date(now).toISOString(), ...(await fetchObservations(chunk, grandeur, now)) }),
-  ));
+  /** @type {Map<string, { resolve: (v: unknown) => void, reject: (e: unknown) => void }>} */
+  const waiters = new Map();
+  /** @type {string[]} */
+  const queue = [];
+  let scheduled = false;
+  const flush = async () => {
+    scheduled = false;
+    const batch = queue.splice(0);
+    await mapLimit(chunks(batch, CODES_PER_REQUEST), 2, async (chunk) => {
+      try {
+        const read = await fetchObservations(chunk, grandeur, now);
+        const readAt = new Date(now).toISOString();
+        for (const code of chunk) {
+          waiters.get(code)?.resolve({ readAt, truncated: read.truncated, observations: read.observations.filter((o) => o.code_station === code) });
+        }
+      } catch (err) {
+        for (const code of chunk) waiters.get(code)?.reject(err);
+      }
+    });
+  };
+  const request = (code) => new Promise((resolve, reject) => {
+    waiters.set(code, { resolve, reject });
+    queue.push(code);
+    if (!scheduled) {
+      scheduled = true;
+      setTimeout(flush, 0);
+    }
+  });
+  const results = await Promise.all(codes.map((code) => {
+    const key = `env:hubeau:${grandeur}:${code}`;
+    return cachedSource(key, { ttlSec: HUBEAU_TTL_SEC, staleSec: 3_600, shared: false }, () => tracked(key, () => request(code)))
+      .then((value) => ({ ok: true, value, key }), (error) => ({ ok: false, error, key }));
+  }));
   const observations = [];
   const readAts = [];
   const failures = new Set();
   let truncated = false;
-  let stale = false;
+  let staleKey = null;
   for (const r of results) {
     if (!r.ok) {
       failures.add(sourceError(label, r.error));
@@ -125,13 +193,16 @@ async function readGrandeur(codes, grandeur, label, now) {
     observations.push(...r.value.observations);
     readAts.push(r.value.readAt);
     truncated ||= r.value.truncated;
-    stale ||= isStale(r.value.readAt, HUBEAU_TTL_SEC, now);
+    if (staleKey === null && isStale(r.value.readAt, HUBEAU_TTL_SEC, now)) staleKey = r.key;
   }
   const errors = [...failures];
   if (truncated) errors.push(`${label} : réponse coupée à 5 pages`);
-  if (stale) errors.push(`${label} : relevé précédent servi (lecture en échec)`);
+  if (staleKey !== null) errors.push(staleNote(label, staleKey));
   return { observations, readAt: readAts.length > 0 ? readAts.sort()[0] : null, errors };
 }
+
+/** Erreur de la réponse partielle « Hub'Eau lent » : la route la met en cache 30 s seulement (voir le gestionnaire). */
+export const HUBEAU_PENDING_ERROR = "Hub'Eau : lecture en cours, hauteurs à la prochaine relève";
 
 /**
  * Hauteurs (H) et débits (Q) des stations, en parallèle. Hub'Eau répond en 10 à 40 s (mesuré le 04/10/2026 : 30 à 38 s
@@ -142,10 +213,10 @@ async function readStations(codes, now, waitMs) {
   const pending = Promise.all([readGrandeur(codes, 'H', "Hub'Eau", now), readGrandeur(codes, 'Q', "Hub'Eau, débits", now)]);
   pending.catch(() => {});
   let timer;
-  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(null), waitMs); });
+  const late = new Promise((resolve) => { timer = setTimeout(() => resolve(null), Math.max(0, waitMs)); });
   const done = await Promise.race([pending, late]);
   clearTimeout(timer);
-  if (!done) return { h: { observations: [], readAt: null }, q: { observations: [] }, errors: ["Hub'Eau : lecture en cours, hauteurs à la prochaine relève"] };
+  if (!done) return { h: { observations: [], readAt: null }, q: { observations: [] }, errors: [HUBEAU_PENDING_ERROR] };
   const [h, q] = done;
   return { h, q, errors: [...h.errors, ...q.errors] };
 }
@@ -154,17 +225,19 @@ async function readStations(codes, now, waitMs) {
  * Réponse complète (FloodsResponse) à l'instant `now`. 200 si InfoVigiCru est lu ou en cache (sa date reste celle du
  * relevé) ; territoires, stations et Hub'Eau en panne : erreurs partielles nommées, tronçons gardés.
  * @param {number} now
- * @param {{ hubeauWaitMs?: number }} [options]
+ * @param {{ hubeauWaitMs?: number, budgetMs?: number }} [options] `budgetMs` : échéance totale de la route (le client abandonne à 20 s)
  */
-export async function loadFloods(now = Date.now(), { hubeauWaitMs = HUBEAU_WAIT_MS } = {}) {
+export async function loadFloods(now = Date.now(), { hubeauWaitMs = HUBEAU_WAIT_MS, budgetMs = ROUTE_BUDGET_MS } = {}) {
+  const startedAt = Date.now();
+  const remaining = () => budgetMs - (Date.now() - startedAt);
   /** @type {string[]} */
   const errors = [];
   let info = null;
   try {
-    info = await cachedSource('env:vigicrues:info', { ttlSec: INFO_TTL_SEC, staleSec: 172_800, shared: false }, async () => ({
+    info = await withDeadline(() => cachedSource('env:vigicrues:info', { ttlSec: INFO_TTL_SEC, staleSec: 172_800, shared: false }, () => tracked('env:vigicrues:info', async () => ({
       readAt: new Date(now).toISOString(),
       ...parseInfoVigiCru(await fetchStrictJson(INFOVIGICRU_URL, { timeoutMs: 20_000 })),
-    }));
+    }))), remaining());
   } catch (err) {
     errors.push(sourceError('Vigicrues', err));
   }
@@ -174,23 +247,24 @@ export async function loadFloods(now = Date.now(), { hubeauWaitMs = HUBEAU_WAIT_
       stationsReadAt: null, stationsOmitted: 0, errors,
     };
   }
-  if (isStale(info.readAt, INFO_TTL_SEC, now)) errors.push('Vigicrues : relevé précédent servi (lecture en échec)');
+  if (isStale(info.readAt, INFO_TTL_SEC, now)) errors.push(staleNote('Vigicrues', 'env:vigicrues:info'));
   if (info.unreadable > 0) errors.push(`Vigicrues : ${info.unreadable} tronçon${info.unreadable > 1 ? 's' : ''} au niveau illisible`);
 
   let territories = {};
   if (info.sections.length > 0) {
     try {
-      territories = await cachedSource('env:vigicrues:territoires', { ttlSec: REFERENTIAL_TTL_SEC, staleSec: 7 * 86_400, shared: true },
-        async () => parseTerritories(await fetchStrictJson(TERRITORIES_URL, { timeoutMs: 15_000 })));
+      territories = await withDeadline(() => cachedSource('env:vigicrues:territoires', { ttlSec: REFERENTIAL_TTL_SEC, staleSec: 7 * 86_400, shared: true },
+        async () => parseTerritories(await fetchStrictJson(TERRITORIES_URL, { timeoutMs: 15_000 }))), Math.min(remaining(), TERRITORIES_WAIT_MS));
     } catch (err) {
       errors.push(sourceError('Vigicrues, territoires', err));
     }
   }
 
-  const refsBySection = await mapLimit(info.sections, 4, (s) => cachedSource(
+  const refsEnd = Date.now() + Math.min(remaining(), SECTIONS_WAIT_MS);
+  const refsBySection = await mapLimit(info.sections, 4, (s) => withDeadline(() => cachedSource(
     `env:vigicrues:troncon:${s.id}`, { ttlSec: REFERENTIAL_TTL_SEC, staleSec: 7 * 86_400, shared: true },
     async () => parseSectionStations(await fetchStrictJson(sectionStationsUrl(s.id), { timeoutMs: 15_000 })),
-  ));
+  ), refsEnd - Date.now()));
 
   // Plafond de 60 stations distinctes, dans l'ordre des tronçons (rouges, orange, jaunes) puis du référentiel.
   const kept = new Set();
@@ -217,7 +291,7 @@ export async function loadFloods(now = Date.now(), { hubeauWaitMs = HUBEAU_WAIT_
   let hObs = [];
   let qObs = [];
   if (codes.length > 0) {
-    const read = await readStations(codes, now, hubeauWaitMs);
+    const read = await readStations(codes, now, Math.min(hubeauWaitMs, remaining()));
     errors.push(...read.errors);
     hObs = read.h.observations;
     qObs = read.q.observations;

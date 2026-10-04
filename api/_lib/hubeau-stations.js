@@ -20,6 +20,12 @@ const QUARTER_MS = 15 * 60_000;
 const HOUR_MS = 3_600_000;
 const CHANGE_TOLERANCE_MS = 10 * 60_000;
 const STATION_CODE = /^[A-Z0-9]{10}$/;
+const HUBEAU_HOST = 'hubeau.eaufrance.fr';
+
+/** Code de station Hub'Eau lisible (10 caractères) ; tout autre code n'entre jamais dans une adresse. */
+function isStationCode(code) {
+  return typeof code === 'string' && STATION_CODE.test(code);
+}
 
 /** Début de fenêtre au format Hub'Eau (« 2026-10-02T08:10:00Z », sans millisecondes). */
 export function sinceIso(now) {
@@ -33,9 +39,9 @@ export function sinceIso(now) {
  * @param {string} since ISO UTC
  */
 export function observationsUrl(codes, grandeur, since) {
-  const safe = codes.filter((c) => STATION_CODE.test(c));
+  const safe = codes.filter(isStationCode);
   return `${HUBEAU_OBSERVATIONS_URL}?code_entite=${safe.join(',')}&grandeur_hydro=${grandeur}&date_debut_obs=${since}`
-    + `&size=${PAGE_SIZE}&sort=asc&fields=${FIELDS}`;
+    + `&size=${PAGE_SIZE}&sort=desc&fields=${FIELDS}`;
 }
 
 /**
@@ -73,13 +79,27 @@ export async function fetchObservations(codes, grandeur, now) {
   const wanted = new Set(codes);
   /** @type {HubeauObservation[]} */
   const observations = [];
+  // Aucun code lisible : un `code_entite` vide ferait lire toute la base Hub'Eau. Aucune lecture.
+  if (!codes.some(isStationCode)) return { observations, truncated: false };
   let url = observationsUrl(codes, grandeur, sinceIso(now));
   for (let page = 0; page < MAX_PAGES && url; page += 1) {
     const { observations: rows, next } = parseObservationsPage(await fetchStrictJson(url, { timeoutMs: FETCH_TIMEOUT_MS }));
     for (const o of rows) if (wanted.has(o.code_station)) observations.push(o);
-    url = next;
+    url = next === null ? null : trustedNext(next);
   }
   return { observations, truncated: url !== null };
+}
+
+/** `next` n'est suivi que s'il reste sur hubeau.eaufrance.fr en https ; sinon la lecture échoue, nommée. */
+function trustedNext(next) {
+  let parsed;
+  try {
+    parsed = new URL(next);
+  } catch {
+    throw new Error("réponse Hub'Eau avec une page suivante illisible");
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== HUBEAU_HOST) throw new Error(`réponse Hub'Eau avec une page suivante hors de ${HUBEAU_HOST}`);
+  return next;
 }
 
 function round3(v) {
@@ -156,6 +176,7 @@ export function buildStations(refs, hObs, qObs, now) {
       lat: located?.latitude ?? null,
       lon: located?.longitude ?? null,
       lastAt: last ? last.date_obs : null,
+      flowAt: lastQ ? lastQ.date_obs : null,
       heightM: last ? round3(last.resultat_obs / 1000) : null,
       flowM3s: lastQ ? round3(lastQ.resultat_obs / 1000) : null,
       change1hM,

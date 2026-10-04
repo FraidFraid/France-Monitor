@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { HUBEAU_OBSERVATIONS_URL } from '../api/_lib/hubeau-stations.js';
 import { HUBEAU_WAIT_MS, INFOVIGICRU_URL, MAX_STATIONS, TERRITORIES_URL, loadFloods, sectionStationsUrl } from '../api/_lib/vigicrues.js';
-import handler, { CACHE_CONTROL } from '../api/_handlers/environment/floods.js';
+import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL } from '../api/_handlers/environment/floods.js';
 import type { FloodsResponse } from '../src/types/index.ts';
 import { type FakeResponse, callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -147,5 +147,108 @@ describe('/api/environment/floods', () => {
     const { status, body } = await callHandler<FloodsResponse>(handler);
     expect([status, body.readAt, body.sections.length]).toEqual([200, '2026-10-04T08:10:00.000Z', 2]);
     expect(body.errors).toEqual(['Vigicrues : relevé précédent servi (lecture en échec)']);
+  });
+  it('page HTML à la place des mesures Hub’Eau : pannes nommées par grandeur, tronçons gardés', async () => {
+    sources((url) => (url.startsWith(HUBEAU_OBSERVATIONS_URL) ? respond('<!DOCTYPE html><html><body>Maintenance</body></html>') : null));
+    const { status, body } = await callHandler<FloodsResponse>(handler);
+    expect([status, body.sections.length]).toEqual([200, 2]);
+    expect(body.errors).toEqual(["Hub'Eau : page HTML reçue au lieu de données", "Hub'Eau, débits : page HTML reçue au lieu de données"]);
+  });
+
+  it('réponse « lecture en cours » : cache CDN de 30 s seulement', async () => {
+    stubFetch(async (url) => {
+      if (url.startsWith(HUBEAU_OBSERVATIONS_URL)) return new Promise<FakeResponse>(() => {});
+      if (url === INFOVIGICRU_URL) return respond(fx('vigicrues-infovigicru-reduit.geojson'));
+      if (url === TERRITORIES_URL) return respond(fx('vigicrues-terent.json'));
+      return respond(fx(url === sectionStationsUrl('MO12') ? 'vigicrues-tronent-MO12.json' : 'vigicrues-tronent-MO11.json'));
+    });
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const call = callHandler<FloodsResponse>(handler);
+    await vi.advanceTimersByTimeAsync(12_000);
+    const { status, body, cache } = await call;
+    expect([status, cache, body.errors]).toEqual([200, PENDING_CACHE_CONTROL, ["Hub'Eau : lecture en cours, hauteurs à la prochaine relève"]]);
+  });
+
+  it('deux requêtes simultanées pendant la lecture lente : une seule lecture Hub’Eau par grandeur', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const log = stubFetch(async (url) => {
+      if (url.startsWith(HUBEAU_OBSERVATIONS_URL)) {
+        await gate;
+        return respond(url.includes('grandeur_hydro=Q') ? HUBEAU.Q : HUBEAU.H);
+      }
+      if (url === INFOVIGICRU_URL) return respond(fx('vigicrues-infovigicru-reduit.geojson'));
+      if (url === TERRITORIES_URL) return respond(fx('vigicrues-terent.json'));
+      return respond(fx(url === sectionStationsUrl('MO12') ? 'vigicrues-tronent-MO12.json' : 'vigicrues-tronent-MO11.json'));
+    });
+    const both = Promise.all([loadFloods(NOW, { hubeauWaitMs: 30 }), loadFloods(NOW, { hubeauWaitMs: 30 })]);
+    const [a, b] = await both;
+    expect([a.errors.length, b.errors.length]).toEqual([1, 1]);
+    release();
+    for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(log.urls.filter((u) => u.startsWith(HUBEAU_OBSERVATIONS_URL))).toHaveLength(2);
+    expect(log.urls.filter((u) => u === INFOVIGICRU_URL)).toHaveLength(1);
+  });
+
+  it('Hub’Eau simplement lent avec un relevé périmé en cache : « lecture en cours », jamais « lecture en échec »', async () => {
+    sources();
+    await callHandler<FloodsResponse>(handler);
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW + 15 * 60_000);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    stubFetch(async (url) => {
+      if (url.startsWith(HUBEAU_OBSERVATIONS_URL)) {
+        await gate;
+        return respond(url.includes('grandeur_hydro=Q') ? HUBEAU.Q : HUBEAU.H);
+      }
+      if (url === INFOVIGICRU_URL) return respond(fx('vigicrues-infovigicru-reduit.geojson'));
+      return respond('introuvable', 404);
+    });
+    const pending = loadFloods(NOW + 15 * 60_000, { hubeauWaitMs: 20_000, budgetMs: 30_000 });
+    await vi.advanceTimersByTimeAsync(9_000);
+    const body = await pending;
+    expect(body.errors).toContain("Hub'Eau : relevé précédent servi (lecture en cours)");
+    expect(body.errors.join('|')).not.toContain('lecture en échec');
+    release();
+    await vi.runAllTimersAsync();
+  });
+});
+
+describe('échéance totale de la route', () => {
+  it('référentiels lents et Hub’Eau lent : la réponse arrive à 15 s, bien avant les 20 s du client', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+    stubFetch(async (url) => {
+      if (url === INFOVIGICRU_URL) return respond(fx('vigicrues-infovigicru-reduit.geojson'));
+      if (url === TERRITORIES_URL) { await sleep(30_000); return respond(fx('vigicrues-terent.json')); }
+      if (url.startsWith(HUBEAU_OBSERVATIONS_URL)) { await sleep(40_000); return respond(HUBEAU.H); }
+      await sleep(5_000);
+      return respond(fx(url === sectionStationsUrl('MO12') ? 'vigicrues-tronent-MO12.json' : 'vigicrues-tronent-MO11.json'));
+    });
+    const started = Date.now();
+    const pending = loadFloods(NOW);
+    await vi.advanceTimersByTimeAsync(15_000);
+    const body = await pending;
+    expect(Date.now() - started).toBeLessThanOrEqual(15_000);
+    expect(body.errors).toEqual(['Vigicrues, territoires : délai dépassé (échéance de la route)', "Hub'Eau : lecture en cours, hauteurs à la prochaine relève"]);
+    expect(body.sections.map((s) => s.stations.length)).toEqual([3, 1]);
+    await vi.runAllTimersAsync();
+  });
+
+  it('InfoVigiCru trop lent : erreur nommée, 502, avant l’échéance', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    stubFetch(() => new Promise<FakeResponse>(() => {}));
+    const pending = loadFloods(NOW);
+    await vi.advanceTimersByTimeAsync(15_000);
+    const body = await pending;
+    expect([body.readAt, body.errors]).toEqual([null, ['Vigicrues : délai dépassé (échéance de la route)']]);
   });
 });

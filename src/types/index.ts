@@ -2620,6 +2620,7 @@ export interface FloodStation {
   lastAt: string | null;               // dernière mesure de hauteur (UTC)
   heightM: number | null;              // hauteur au repère de la station (Hub'Eau H en mm / 1000)
   flowM3s: number | null;              // débit (Hub'Eau Q en L/s / 1000) ; null si la station ne publie pas Q
+  flowAt?: string | null;              // date propre de la dernière mesure de débit (UTC) ; la hauteur et le débit peuvent différer
   change1hM: number | null;            // dernière hauteur moins celle d'une heure avant (à 10 min près) ; null si absente
   heightSeries: FloodSeriesPoint[];    // 48 h, un point par quart d'heure au plus
   flowSeries: FloodSeriesPoint[];      // [] sans débit

@@ -22,11 +22,11 @@ const REFS = [{ code: VINCA, name: 'Vinca' }, { code: PERPIGNAN, name: 'Perpigna
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('adresse Hub’Eau : toujours par code_entite, jamais par département', () => {
-  it('fenêtre de 48 h, 20 000 résultats, ordre croissant, champs utiles seulement', () => {
+  it('fenêtre de 48 h, 20 000 résultats, ordre décroissant (le plus récent d’abord), champs utiles seulement', () => {
     expect(sinceIso(NOW)).toBe('2026-10-02T08:10:00Z');
     expect(observationsUrl([VINCA, PERPIGNAN], 'H', sinceIso(NOW))).toBe(
       `${HUBEAU_OBSERVATIONS_URL}?code_entite=Y046401001,Y047403001&grandeur_hydro=H&date_debut_obs=2026-10-02T08:10:00Z`
-      + '&size=20000&sort=asc&fields=code_station,date_obs,resultat_obs,longitude,latitude',
+      + '&size=20000&sort=desc&fields=code_station,date_obs,resultat_obs,longitude,latitude',
     );
     expect(observationsUrl([VINCA], 'Q', sinceIso(NOW))).not.toContain('code_departement');
   });
@@ -57,6 +57,16 @@ describe('pages Hub’Eau', () => {
     const read = await fetchObservations([VINCA, PERPIGNAN], 'H', NOW);
     expect([log.urls.length, read.truncated, read.observations.length]).toEqual([5, true, 10]);
   });
+  it('aucun code lisible : Hub’Eau n’est pas appelé (un code_entite vide lirait toute la base)', async () => {
+    const log = stubFetch(() => respond(HUBEAU.H));
+    const read = await fetchObservations(['66&x=1', 'bad'], 'H', NOW);
+    expect([log.urls.length, read.observations, read.truncated]).toEqual([0, [], false]);
+  });
+  it('`next` hors de hubeau.eaufrance.fr : jamais suivi, lecture en échec nommée', async () => {
+    const log = stubFetch(() => respond({ ...HUBEAU.H, next: 'https://example.org/api?cursor=1' }, 206));
+    await expect(fetchObservations([VINCA], 'H', NOW)).rejects.toThrow('page suivante hors de hubeau.eaufrance.fr');
+    expect(log.urls).toHaveLength(1);
+  });
   it('forme inattendue : erreur, jamais une liste vide silencieuse', () => {
     expect(() => parseObservationsPage({ count: 0 })).toThrow("réponse Hub'Eau sans liste « data »");
   });
@@ -76,8 +86,18 @@ describe('stations : dernière mesure, variation sur 1 h, séries au quart d’h
   });
   it('station sans mesure : n.d. partout, aucune valeur inventée', () => {
     expect(ille).toEqual({
-      code: ILLE, name: 'Ille-sur-Têt', lat: null, lon: null, lastAt: null, heightM: null, flowM3s: null, change1hM: null, heightSeries: [], flowSeries: [],
+      code: ILLE, name: 'Ille-sur-Têt', lat: null, lon: null, lastAt: null, flowAt: null, heightM: null, flowM3s: null, change1hM: null, heightSeries: [], flowSeries: [],
     });
+  });
+  it('mesures reçues du plus récent au plus ancien (sort=desc) : mêmes stations, mêmes séries', () => {
+    const [v, p] = buildStations(REFS, [...HUBEAU.H.data].reverse(), [...HUBEAU.Q.data].reverse(), NOW);
+    expect(v).toEqual(vinca);
+    expect(p).toEqual(perpignan);
+  });
+  it('station avec débit seul : le débit a sa propre date, la hauteur reste absente', () => {
+    const [only] = buildStations(REFS.slice(1, 2), [], HUBEAU.Q.data, NOW);
+    expect(only).toMatchObject({ lastAt: null, heightM: null, flowM3s: 9.04, flowAt: '2026-10-04T08:10:00Z', lat: 42.703618825 });
+    expect(perpignan.flowAt).toBe('2026-10-04T08:10:00Z');
   });
   it('un point par quart d’heure, la première mesure du quart ; le trou de 20:45 à 21:25 reste un trou', () => {
     expect(perpignan.heightSeries.map((p) => p.at)).toEqual([

@@ -1,7 +1,10 @@
 // tests/vigicrues.test.ts : lecture du flux InfoVigiCru et des référentiels Vigicrues (spec 2026-10-04 environnement § 2.2),
 // sur des réponses réelles du 04/10/2026 (4 tronçons dont la Têt et l'Agly en jaune, territoire 21).
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
+import { fetchStrictJson } from '../api/_lib/source-http.js';
 import { parseInfoVigiCru, parseSectionStations, parseTerritories, sectionStationsUrl, territoryUrl } from '../api/_lib/vigicrues.js';
 
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
@@ -52,5 +55,27 @@ describe('référentiels Vigicrues', () => {
     json.ListEntVigiCru[0].aNMoinsUn.push({ CdEntVigiCruInferieur: 'MO11b', TypEntVigiCruInferieur: '8', LbEntVigiCruInferieur: 'Tronçon fils' });
     expect(parseSectionStations(json)).toEqual([{ code: 'Y067406001', name: 'Rivesaltes' }]);
     expect(() => parseSectionStations({ ListEntVigiCru: [] })).toThrow('référentiel du tronçon illisible');
+  });
+});
+
+describe('redirection de Vigicrues', () => {
+  it('une 302 (TronEntVigiCru vers /services/…) est suivie et le référentiel lu', async () => {
+    const server = createServer((req, res) => {
+      if (req.url === '/TronEntVigiCru.json') {
+        res.writeHead(302, { Location: '/services/TronEntVigiCru.json' });
+        res.end();
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(fx('vigicrues-tronent-MO12.json'));
+      }
+    });
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+    try {
+      const { port } = server.address() as AddressInfo;
+      const json = await fetchStrictJson(`http://127.0.0.1:${port}/TronEntVigiCru.json`);
+      expect(parseSectionStations(json)).toHaveLength(3);
+    } finally {
+      server.close();
+    }
   });
 });
