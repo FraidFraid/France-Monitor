@@ -5,7 +5,7 @@
 import type { ActiveFire, FireConfidence, FireDetection, FireImpactsResponse, FireSatellite, FiresResponse, FirmsSourceId } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  environmentSlotStatus, isBool, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
+  MDF_ERROR_PREFIX, environmentSlotStatus, isBool, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
   type EnvironmentStatus, type SourceSlot,
 } from './environment-source.ts';
 
@@ -58,7 +58,7 @@ export function mergeFires(current: FiresState | null, incoming: FiresState): Fi
 }
 
 /** Erreurs de la météo des forêts dans `errors[]` (le serveur les nomme « Météo des forêts : … »). */
-const isMdfError = (e: string): boolean => /^météo des forêts/i.test(e);
+const isMdfError = (e: string): boolean => e.startsWith(MDF_ERROR_PREFIX);
 
 /**
  * Deux lignes du panneau des sources : « NASA FIRMS » datée par la dernière acquisition sur la zone (E3), avec les seules erreurs

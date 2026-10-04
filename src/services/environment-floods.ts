@@ -2,9 +2,10 @@
 // Vigicrues en vigilance et stations Hub'Eau, collectés par le serveur. Garde stricte par élément, jamais de rejet, fusion à
 // l'écriture, statut daté par le relevé du serveur (le flux n'a pas d'heure de bulletin), références des tronçons pour le score.
 import type { FloodSectionRef, FloodsResponse } from '../types/index.ts';
+import { isEnvironmentDataLate } from './environment-levels.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  environmentSlotStatus, isColorId, isMultiPath, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
+  dataMs, environmentSlotStatus, isColorId, isMultiPath, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
   type EnvironmentStatus, type SourceSlot,
 } from './environment-source.ts';
 
@@ -38,7 +39,14 @@ export function mergeFloods(current: FloodsState | null, incoming: FloodsState):
 
 /** Panneau des sources : « Vigicrues », daté par le relevé du serveur (S1 ; InfoVigiCru ne publie pas d'heure de bulletin). */
 export function floodsStatus(state: FloodsState, now: number): EnvironmentStatus {
-  return environmentSlotStatus(state.floods, 'vigicrues', state.floods.data?.readAt ?? null, now);
+  const base = environmentSlotStatus(state.floods, 'vigicrues', state.floods.data?.readAt ?? null, now);
+  const data = state.floods.data;
+  if (data === null) return base;
+  // Hauteurs Hub'Eau : la plus récente mesure de toutes les stations ; au-delà du seuil (1 h), la ligne le dit.
+  const newest = data.sections.flatMap((s) => s.stations).map((st) => dataMs(st.lastAt)).filter((m): m is number => m !== null).reduce<number | null>((a, m) => (a === null || m > a ? m : a), null);
+  if (newest === null || !isEnvironmentDataLate('hubeau', new Date(newest).toISOString(), now)) return base;
+  const note = "hauteurs Hub'Eau en retard";
+  return { ...base, status: 'stale', error: base.error ? `${base.error} ; ${note}` : note };
 }
 
 const REF_LEVEL: Readonly<Record<2 | 3 | 4, FloodSectionRef['level']>> = { 2: 'yellow', 3: 'orange', 4: 'red' };

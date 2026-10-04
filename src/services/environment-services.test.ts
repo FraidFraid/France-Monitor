@@ -6,7 +6,7 @@ import {
   ENV_FIXTURE_NOW, FIRES_FIXTURE, FIRE_IMPACTS_FIXTURE, FLOODS_FIXTURE, RADAR_MANIFEST_FIXTURE, VIGILANCE_FIXTURE,
 } from '../components/layer-panel/environment.fixture.ts';
 import { resetTrafficSourceCache } from './traffic-source.ts';
-import { environmentSlotStatus, isColorId, isMultiPath, isOneOf } from './environment-source.ts';
+import { PROGRESS_NOTES, environmentSlotStatus, isColorId, isMultiPath, isOneOf, isProgressNote } from './environment-source.ts';
 import {
   VIGILANCE_TTL_MS, VIGILANCE_URL, bulletinOf, fetchVigilance, isVigilanceResponse, mergeVigilance, vigilanceStatus, vigilanceToMeteoAlerts,
 } from './environment-vigilance.ts';
@@ -56,6 +56,34 @@ describe('socle : prédicats et statut daté', () => {
     expect(environmentSlotStatus({ data: null, error: 'HTTP 502', fetchedAt: null }, 'firms', null, NOW)).toEqual({ status: 'error', lastUpdate: null, error: 'HTTP 502', period: undefined });
     expect(environmentSlotStatus(slot, 'mdf', '2026-09-30T14:50:00Z', Date.parse('2026-10-15T10:00:00+02:00')))
       .toEqual({ status: 'ok', lastUpdate: new Date('2026-09-30T14:50:00Z'), error: undefined, period: 'hors saison, dernière publication le 30/09' });
+  });
+});
+
+describe('notes d’avancement du serveur', () => {
+  const slotWith = (errors: string[]) => ({ data: { errors }, error: null, fetchedAt: NOW });
+  const hubeauSlow = "Hub'Eau : lecture en cours, hauteurs à la prochaine relève";
+  const previous = 'Vigicrues, tronçon MO12 : relevé précédent servi (lecture en cours)';
+  const failed = 'Vigicrues, tronçon MO12 : relevé précédent servi (lecture en échec)';
+  it('chaque note seule : statut ok, note gardée comme simple mention de la période', () => {
+    for (const note of [...PROGRESS_NOTES, previous]) {
+      expect(isProgressNote(note)).toBe(true);
+      const st = environmentSlotStatus(slotWith([note]), 'vigicrues', '2026-10-04T08:05:00Z', NOW);
+      expect([st.status, st.error]).toEqual(['ok', undefined]);
+      expect(st.period).toBe(`10:05 · ${note}`);
+    }
+  });
+  it('« lecture en échec » et toute autre erreur restent dégradées', () => {
+    for (const e of [failed, 'Hub’Eau : HTTP 503', 'lecture en cours']) expect(isProgressNote(e)).toBe(false);
+    expect(environmentSlotStatus(slotWith([failed]), 'vigicrues', '2026-10-04T08:05:00Z', NOW)).toMatchObject({ status: 'stale', error: failed });
+  });
+  it('mélange : dégradé, la panne est nommée, la note n’y figure pas', () => {
+    const st = environmentSlotStatus(slotWith([hubeauSlow, failed]), 'vigicrues', '2026-10-04T08:05:00Z', NOW);
+    expect(st).toMatchObject({ status: 'stale', error: failed });
+    expect(st.period).toContain(hubeauSlow);
+  });
+  it('vigilance en constitution : la ligne Météo-France reste ok', () => {
+    const v = { ...VIGILANCE_FIXTURE(), errors: ['historique de la vigilance en cours de constitution'] };
+    expect(vigilanceStatus({ vigilance: { data: v, error: null, fetchedAt: NOW } }, NOW).status).toBe('ok');
   });
 });
 
@@ -150,6 +178,18 @@ describe('crues', () => {
     expect(refs.map((r) => [r.id, r.name, r.level])).toEqual([['MO12', 'Têt', 'yellow'], ['MO11', 'Agly', 'yellow'], ['MO16', 'Réart', 'yellow'], ['MO17', 'Tech', 'yellow']]);
     expect(refs[0].geometry).toEqual({ type: 'MultiLineString', coordinates: FLOODS_FIXTURE().sections[0].path });
     expect(floodsToSectionRefs(null)).toEqual([]);
+  });
+});
+
+describe('crues : retard des hauteurs Hub’Eau', () => {
+  it('mesure la plus récente plus vieille que 1 h : la ligne le dit, même si le relevé du serveur est frais', () => {
+    const f = FLOODS_FIXTURE();
+    f.readAt = new Date(NOW).toISOString();
+    for (const st of f.sections.flatMap((x) => x.stations)) st.lastAt = new Date(NOW - 2 * H).toISOString();
+    const late = floodsStatus({ floods: { data: f, error: null, fetchedAt: NOW } }, NOW);
+    expect(late).toMatchObject({ status: 'stale', error: 'hauteurs Hub\'Eau en retard' });
+    f.sections[0].stations[0].lastAt = new Date(NOW - 10 * 60_000).toISOString();
+    expect(floodsStatus({ floods: { data: f, error: null, fetchedAt: NOW } }, NOW).status).toBe('ok');
   });
 });
 

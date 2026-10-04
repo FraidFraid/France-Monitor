@@ -15,6 +15,25 @@ export type EnvironmentStatus = Pick<DataSourceStatus, 'status' | 'lastUpdate' |
 const PARIS = 'Europe/Paris';
 
 /**
+ * Notes d'avancement du serveur : ce ne sont pas des pannes (la source se remplit), elles ne dégradent pas le statut.
+ * Phrases exactes : api/_lib/vigicrues.js (HUBEAU_PENDING_ERROR) et api/_lib/vigilance-archive.js (CONSTITUTION_ERROR).
+ */
+export const PROGRESS_NOTES: readonly string[] = [
+  "Hub'Eau : lecture en cours, hauteurs à la prochaine relève",
+  'historique de la vigilance en cours de constitution',
+];
+/** Fin de « <libellé> : relevé précédent servi (lecture en cours) » (api/_lib/vigicrues.js) ; « (lecture en échec) » reste une panne. */
+const PROGRESS_SUFFIX = ' : relevé précédent servi (lecture en cours)';
+
+/** Vrai pour une note d'avancement du serveur (jamais pour « lecture en échec » ni une autre erreur). */
+export function isProgressNote(text: string): boolean {
+  return PROGRESS_NOTES.includes(text) || text.endsWith(PROGRESS_SUFFIX) || text === PROGRESS_SUFFIX.slice(3);
+}
+
+/** Début des erreurs de la météo des forêts nommées par le serveur (api/_lib/forest-danger.js : « Météo des forêts : … »). */
+export const MDF_ERROR_PREFIX = 'Météo des forêts';
+
+/**
  * Panneau des sources (S1, S2) : comme trafficSlotStatus, avec isEnvironmentDataLate ; date de la donnée, jamais l'heure de lecture ;
  * « stale » en retard ou quand une partie a échoué (messages réunis) ; « error » sans donnée ; « loading » avant la première lecture.
  * 'mdf' hors saison : statut 'ok', période « hors saison, dernière publication le 03/10 », jamais « (en retard) ».
@@ -26,17 +45,20 @@ export function environmentSlotStatus<T extends { errors: string[] }>(
     return { status: slot.error !== null ? 'error' : 'loading', lastUpdate: null, error: slot.error ?? undefined, period: undefined };
   }
   const ms = dataMs(dataDate);
-  const errors = [...(slot.error !== null ? [slot.error] : []), ...slot.data.errors];
+  const all = [...(slot.error !== null ? [slot.error] : []), ...slot.data.errors];
+  const errors = all.filter((e) => !isProgressNote(e));
+  const notes = all.filter(isProgressNote);
+  const withNotes = (period: string): string => (notes.length > 0 ? `${period} · ${notes.join(' ; ')}` : period);
   const error = errors.length > 0 ? errors.join(' ; ') : undefined;
   const lastUpdate = ms === null ? null : new Date(ms);
   if (source === 'mdf' && forestDangerSeason(dataDate, now) === 'hors-saison') {
     const day = ms === null ? 'n.d.' : new Date(ms).toLocaleDateString('fr-FR', { timeZone: PARIS, day: '2-digit', month: '2-digit' });
-    return { status: errors.length > 0 ? 'stale' : 'ok', lastUpdate, error, period: `hors saison, dernière publication le ${day}` };
+    return { status: errors.length > 0 ? 'stale' : 'ok', lastUpdate, error, period: withNotes(`hors saison, dernière publication le ${day}`) };
   }
   const late = isEnvironmentDataLate(source, dataDate, now);
   return {
     status: errors.length > 0 || late ? 'stale' : 'ok', lastUpdate, error,
-    period: ms === null ? 'n.d.' : `${absoluteTime(ms, now, 'fr')}${late ? ' (en retard)' : ''}`,
+    period: withNotes(ms === null ? 'n.d.' : `${absoluteTime(ms, now, 'fr')}${late ? ' (en retard)' : ''}`),
   };
 }
 

@@ -8,18 +8,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests, kvSetJson } from '../api/_lib/kv-history.js';
 import { CARTE_URL, TEXTES_URL, __resetVigilanceStateForTests } from '../api/_lib/meteo-vigilance.js';
-import { DAILY_KEY, __resetVigilanceArchiveForTests } from '../api/_lib/vigilance-archive.js';
+import { CONSTITUTION_ERROR, DAILY_KEY, __resetVigilanceArchiveForTests } from '../api/_lib/vigilance-archive.js';
 import { HUBEAU_OBSERVATIONS_URL } from '../api/_lib/hubeau-stations.js';
-import { INFOVIGICRU_URL, TERRITORIES_URL, sectionStationsUrl } from '../api/_lib/vigicrues.js';
+import { INFOVIGICRU_URL, TERRITORIES_URL, loadFloods, sectionStationsUrl } from '../api/_lib/vigicrues.js';
 import { __resetForestDangerForTests, mdfUrl } from '../api/_lib/forest-danger.js';
 import vigilanceHandler from '../api/_handlers/environment/vigilance.js';
 import floodsHandler from '../api/_handlers/environment/floods.js';
 import firesHandler from '../api/_handlers/environment/fires.js';
 import impactsHandler from '../api/_handlers/fires/impacts.js';
 import type { FireImpactsResponse, FiresResponse, FloodsResponse, VigilanceResponse } from '../src/types/index.ts';
-import { isVigilanceResponse, vigilanceToMeteoAlerts } from '../src/services/environment-vigilance.ts';
-import { floodsToSectionRefs, isFloodsResponse } from '../src/services/environment-floods.ts';
-import { isFireImpactsResponse, isFiresResponse, scoreFireDetections, toActiveFire } from '../src/services/environment-fires.ts';
+import { isVigilanceResponse, vigilanceStatus, vigilanceToMeteoAlerts } from '../src/services/environment-vigilance.ts';
+import { floodsStatus, floodsToSectionRefs, isFloodsResponse } from '../src/services/environment-floods.ts';
+import { firesStatus, isFireImpactsResponse, isFiresResponse, scoreFireDetections, toActiveFire } from '../src/services/environment-fires.ts';
 import { type FakeResponse, callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
@@ -75,6 +75,17 @@ describe('contrat vigilance', () => {
     expect(body.errors).toContain('Météo-France, textes : HTTP 401');
     expect(isVigilanceResponse(wire(body))).toBe(true);
   });
+  it('jour courant partiel et note « en cours de constitution » : réponse acceptée, statut ok', async () => {
+    sources();
+    const { status, body } = await callHandler<VigilanceResponse>(vigilanceHandler);
+    expect(status).toBe(200);
+    expect(body.history.days.some((d) => d.partial === true)).toBe(true);
+    expect(isVigilanceResponse(wire(body))).toBe(true);
+    // L'amorçage de l'archive (note nommée par api/_lib/vigilance-archive.js, CONSTITUTION_ERROR) ajoute cette seule chaîne.
+    const booting = wire({ ...body, errors: [...body.errors.filter((e) => !e.startsWith('archive vigilance')), CONSTITUTION_ERROR] }) as VigilanceResponse;
+    expect(isVigilanceResponse(booting)).toBe(true);
+    expect(vigilanceStatus({ vigilance: { data: booting, error: null, fetchedAt: NOW } }, NOW).status).toBe('ok');
+  });
   it('clé absente : 502 de même forme, acceptée par la garde (la vue nomme la panne)', async () => {
     vi.stubEnv('METEO_FRANCE_API_KEY', '');
     vi.stubEnv('VITE_METEOFRANCE_API_KEY', '');
@@ -115,6 +126,13 @@ describe('contrat crues', () => {
     expect(status).toBe(200);
     expect(body.errors.length).toBeGreaterThan(0);
     expect(isFloodsResponse(wire(body))).toBe(true);
+  });
+  it('Hub’Eau lent : réponse « lecture en cours » acceptée, ligne Vigicrues non dégradée', async () => {
+    sources((url) => (url.startsWith(HUBEAU_OBSERVATIONS_URL) ? ({ ...respond('{}'), json: () => new Promise(() => undefined), text: () => new Promise(() => undefined) } as FakeResponse) : null));
+    const body = await loadFloods(NOW, { hubeauWaitMs: 5 });
+    expect(body.errors).toContain("Hub'Eau : lecture en cours, hauteurs à la prochaine relève");
+    expect(isFloodsResponse(wire(body))).toBe(true);
+    expect(floodsStatus({ floods: { data: wire(body) as FloodsResponse, error: null, fetchedAt: NOW } }, NOW).status).toBe('ok');
   });
   it('InfoVigiCru jamais lu : 502 de même forme, accepté', async () => {
     sources((url) => (url === INFOVIGICRU_URL ? respond('<!DOCTYPE html><html><body>Maintenance</body></html>') : null));
@@ -161,6 +179,23 @@ describe('contrat feux', () => {
     expect(scored.length).toBe(body.detections.filter((d) => !d.recurrent).length);
     const active = scored.map(toActiveFire);
     expect(active.every((a) => /^\d{4}$/.test(a.acq_time) && ['low', 'nominal', 'high'].includes(a.confidence))).toBe(true);
+  });
+  it('lignes FIRMS illisibles : nommées dans errors, réponse acceptée, ligne FIRMS dégradée', async () => {
+    const bad = (sat: string): string => `${viirs(sat)}2026-10-04,ligne,tronquée\n`;
+    stubFetch((url) => {
+      if (url === mdfUrl(2026)) return binary(gzipSync(fx('meteo-des-forets-2026-extrait.csv')));
+      if (/\/5\/\d{4}-\d{2}-\d{2}$/.test(url)) return respond(`${(url.includes('/MODIS_NRT/') ? MODIS : FRANCE).split('\n')[0]}\n`);
+      if (url.endsWith('/VIIRS_SNPP_NRT/-6,41,10,52/2')) return respond(bad('N'));
+      if (url.endsWith('/VIIRS_NOAA20_NRT/-6,41,10,52/2')) return respond(viirs('N20'));
+      if (url.endsWith('/VIIRS_NOAA21_NRT/-6,41,10,52/2')) return respond(viirs('N21'));
+      if (url.endsWith('/MODIS_NRT/-6,41,10,52/2')) return respond(MODIS);
+      return respond('introuvable', 404);
+    });
+    const { status, body } = await callHandler<FiresResponse>(firesHandler);
+    expect(status).toBe(200);
+    expect(body.errors.some((e) => /^FIRMS, .* : 1 ligne illisible$/.test(e))).toBe(true);
+    expect(isFiresResponse(wire(body))).toBe(true);
+    expect(firesStatus({ fires: { data: wire(body) as FiresResponse, error: null, fetchedAt: NOW } }, 'firms', NOW).status).toBe('stale');
   });
   it('météo des forêts en panne : 200 partiel accepté ; FIRMS en panne mais météo des forêts lue : 200 accepté', async () => {
     sources({ mdfDown: true });
