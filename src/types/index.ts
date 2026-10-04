@@ -2838,3 +2838,253 @@ export interface SeaLevelsResponse {
   errors: string[];
 }
 
+// ═══ Souveraineté, phase A (spec 2026-10-04 panneaux souveraineté § 2 ; contrats § 1.1 ; amendement 7 : conformité aux autorités) ═══
+
+// ─── Commun ───
+/** Famille d'un aéronef par son bloc d'adresse OACI (V2, faits § 5.3) : bloc France 380000 à 3BFFFF ; tout le reste, « autres ». */
+export type AircraftFamily = 'francais' | 'autres';
+/**
+ * Précision GNSS dégradée retenue par le score et la situation « Signal défense » (amendement 7, O7 et O17) : des comptes de mailles,
+ * jamais un lieu (les mailles localisées ne sont publiées que pour le jour UTC précédent). Phase A : aucune grille, aucun compte.
+ */
+export interface GnssDegradedCounts {
+  rolling24h: number;                               // mailles à précision dégradée sur les 24 dernières heures (pastille, score)
+  previousUtcDays: readonly [number | null, number | null];   // deux derniers jours UTC complets, veille d'abord ; null : jour non couvert
+}
+/** Sources Souveraineté lues pour le score et les tuiles (S3) : false si indisponible ; jamais lu par la formule. */
+export interface SovereigntyAvailability { military: boolean; cables: boolean; cyber: boolean }
+/** En-tête commun des fichiers statiques datés tirés d'OpenStreetMap (V5). */
+export interface OsmFileMeta {
+  generatedAt: string;              // ISO, date de génération par le script
+  osmBase: string;                  // osm3s.timestamp_osm_base de la réponse Overpass
+  licence: 'ODbL 1.0';
+  source: string;                   // « © les contributeurs d'OpenStreetMap »
+}
+
+// ─── Défense : GET /api/sovereignty/military ───
+/**
+ * Appareil montré un par un au-dessus de la France (amendement 7, O10) : jamais un appareil français (compté par département
+ * seulement), jamais un appareil marqué PIA ou LADD (`dbFlags`), d'aucune nation ; aucune immatriculation pour personne.
+ * Famille « autres » par construction.
+ */
+export interface MilitaryAircraft {
+  hex: string;                      // adresse 24 bits en minuscules (« 43c700 ») ; « ~… » : adresse non OACI, pays inconnu
+  callsign: string | null;          // `flight` sans espaces de remplissage ; null si vide
+  type: string | null;              // `t` (« A400 », « A332 »)
+  country: string | null;           // pays du bloc OACI (« Royaume-Uni ») ; null hors table
+  lat: number; lon: number;
+  dept: string | null;              // departementAt ; null au-dessus de la mer territoriale (eaux françaises à moins de 22 km)
+  altitudeFt: number | null;        // alt_baro (pieds) ; « ground » écarté avant : un aéronef au sol n'est jamais compté
+  speedKt: number | null;           // gs
+  track: number | null;
+  seenAt: string;                   // instant de la position : `now` d'adsb.lol moins `seen_pos` (ISO UTC)
+}
+/**
+ * Position de /v2/mil dans la zone d'affichage (41 à 51,8 N ; −5,8 à 10,2 E) hors de France : dessinée en gris, jamais comptée ;
+ * mêmes exclusions que MilitaryAircraft (ni français, ni PIA, ni LADD).
+ */
+export interface MilitaryAbroad {
+  hex: string; callsign: string | null; type: string | null; country: string | null; lat: number; lon: number;
+}
+/** Appareils français au-dessus de la France, comptés par département (O10) ; dept null : au-dessus de la mer territoriale. */
+export interface MilitaryDeptCount { dept: string | null; count: number }
+/**
+ * Champs communs d'une urgence militaire (règle T3 du Trafic aérien réutilisée, arbitrage 6). `overFrance` garde le sens
+ * d'AirEmergency : territoire ou moins de 40 km (APPROACH_KM), pour qu'emergencyColoursPill s'applique tel quel ; `inFrance` est le
+ * périmètre V2.
+ */
+interface MilitaryEmergencyBase extends Pick<AirEmergency, 'squawk' | 'firstSeen' | 'lastSeen' | 'overFrance'> {
+  family: AircraftFamily;
+  emergency: string | null;         // champ `emergency` publié (« general », « nordo », « unlawful »…) ; null si seul le transpondeur
+  inFrance: boolean;
+  dept: string | null;              // null au-dessus de la mer territoriale ou hors de France
+}
+/** Urgence d'un appareil montré (ni français, ni PIA, ni LADD) : adresse, indicatif, type, pays et position. */
+export interface ShownMilitaryEmergency extends AirEmergency, MilitaryEmergencyBase {
+  masked: false;
+  family: 'autres';
+  type: string | null;
+  country: string | null;
+}
+/**
+ * Urgence d'un appareil masqué (O10) : appareil français (« appareil d'État français »), ou appareil d'une autre nation marqué PIA ou
+ * LADD. Ni adresse, ni indicatif, ni type, ni pays, ni position : le département (ou la mer territoriale, ou les approches) seul.
+ */
+export interface MaskedMilitaryEmergency extends MilitaryEmergencyBase { masked: true }
+/** Urgence militaire servie au client ; `masked` dit si l'appareil peut être nommé et dessiné. */
+export type MilitaryEmergency = ShownMilitaryEmergency | MaskedMilitaryEmergency;
+/** Aéronefs distincts (par hex) vus au-dessus de la France pendant une heure UTC, par famille, masqués compris. */
+export interface MilitaryHourCount { hour: string; francais: number; autres: number }   // hour : « 2026-10-04T14 »
+export interface MilitaryResponse {
+  readAt: string | null;            // dernière collecte réussie (horloge du serveur) ; null : jamais lue
+  sourceNow: string | null;         // `now` d'adsb.lol de cette collecte (ms, converti en ISO)
+  frenchByDept: MilitaryDeptCount[];   // appareils du bloc OACI France au-dessus de la France (V2), PIA et LADD compris ; par département, mer en dernier
+  others: MilitaryAircraft[];       // autres appareils au-dessus de la France (V2), hors PIA et LADD ; tri par indicatif
+  maskedOthers: number;             // autres appareils au-dessus de la France marqués PIA ou LADD : comptés, jamais montrés
+  abroadCount: number;              // aéronefs de la zone d'affichage hors de France, toutes familles : jamais comptés au-dessus de la France
+  abroad: MilitaryAbroad[];         // parmi eux, ceux qui sont dessinés (ni français, ni PIA, ni LADD)
+  emergencies: MilitaryEmergency[]; // épisodes vus à la dernière lecture, partout dans la zone d'affichage
+  emergencyLog: MilitaryEmergency[];// 7 jours, plus récent d'abord
+  hourly: { hours: MilitaryHourCount[]; since: string | null };   // 7 jours au plus, plus ancien d'abord ; since : première heure gardée
+  errors: string[];
+}
+
+// ─── Vigipirate : saisie datée (src/config/vigipirate.ts, tâche A9) et relecture de la page officielle (O14, tâche A8) ───
+/** Stades du plan Vigipirate 2026, libellés du SGDSN (arbitrage 18) : une posture, jamais une couleur de niveau. */
+export type VigipirateStade = 'vigilance' | 'vigilance-renforcee' | 'alerte-attentat';
+export interface VigipirateEntry {
+  stade: VigipirateStade;
+  depuis: string;                   // « 2026-06-22 » : début du stade (alerte attentat : début des 12 jours)
+  posture: string;                  // « été-automne 2026 »
+  accents: readonly string[];       // « menace drones », « sites touristiques », « bâtiments publics »
+  saisiLe: string;                  // « 2026-10-04 »
+  lien: string;                     // « https://www.sgdsn.gouv.fr/vigipirate »
+}
+/**
+ * Relecture quotidienne de https://www.sgdsn.gouv.fr/vigipirate par le serveur (O14) : GET, empreinte du contenu utile, jamais le
+ * texte lui-même. Une modification lue après le jour de la saisie affiche « niveau à revérifier sur sgdsn.gouv.fr (page modifiée le
+ * JJ/MM) ».
+ */
+export interface VigipiratePageCheck {
+  readAt: string | null;            // dernière lecture réussie (horloge du serveur) ; null : jamais lue
+  fingerprint: string | null;       // empreinte (SHA-256 hexadécimal) du contenu utile à cette lecture ; null : jamais lue
+  pageChangedAt: string | null;     // lecture où l'empreinte a changé pour la dernière fois (ISO) ; null : aucun changement vu
+  errors: string[];
+}
+
+// ─── Marine nationale : MMSI vérifiés (O12, tâches A10 et A18) ───
+/**
+ * MMSI d'un bâtiment de la Marine nationale vérifié sur une source officielle publique (base MARS de l'UIT, page du bâtiment sur
+ * defense.gouv.fr) : seul un MMSI vérifié reconnaît un bâtiment en AIS ; sans vérification, aucune ligne « vu en AIS ».
+ */
+export interface NavyMmsiVerification {
+  mmsi: string;
+  mmsiVerifiedAt: string;           // « AAAA-MM-JJ » : jour de la vérification
+  mmsiSource: string;               // lien de la source officielle consultée
+}
+
+// ─── Fichiers OpenStreetMap (scripts, public/data/) ───
+export interface CableLanding { commune: string; dept: string; lat: number; lon: number }
+export interface SubseaCable {
+  id: string;                       // « way/761201757 »
+  name: string | null;              // tag name ; null si absent
+  operator: string | null;
+  path: Array<Array<[number, number]>>;   // [lng, lat], tel que publié par OSM
+  landings: CableLanding[];         // extrémités dans un département ou à moins de 2 km de sa côte
+}
+export interface SubseaCablesFile extends OsmFileMeta { cables: SubseaCable[] }           // public/data/subsea-cables-osm.json
+export interface DefenseOsmWork {
+  id: string; name: string | null; kind: string;        // kind : tag OSM brut (bunker, barracks, airfield…)
+  type: MilitaryBase['type']; lat: number; lon: number; dept: string;
+}
+export interface DefenseOsmWorksFile extends OsmFileMeta { items: DefenseOsmWork[] }    // public/data/defense-osm-works.json
+
+// ─── Connectivité : GET /api/sovereignty/cables-watch ───
+export interface CableAlert {
+  id: string;                       // `${mmsi}:${cableId}` : stable, jamais l'horloge (audit 31)
+  mmsi: string;
+  name: string | null;
+  vesselType: string | null;        // typeLabel AIS du relais
+  cableId: string;
+  cableName: string | null;
+  lat: number; lon: number;
+  distanceM: number;                // au segment le plus proche du tracé OSM, arrondi au mètre
+  speedKn: number;                  // vitesse connue (jamais une absence prise pour 0)
+  navStatus: number | null;
+  firstSeen: string; lastSeen: string;
+  confirmed: boolean;               // vu sur deux relevés espacés d'au moins 5 min
+}
+export interface CablesWatchResponse {
+  readAt: string | null;            // dernier relevé du relais lu par le serveur ; null : jamais lu
+  aisLastMessageAt: string | null;  // dernier message AIS en eaux françaises, selon le relais
+  evaluated: boolean;               // false : flux AIS muet depuis plus de 5 min (T3) ; alertes gardées, « non évaluées »
+  cablesFile: { generatedAt: string; osmBase: string; cables: number; landings: number } | null;   // null : fichier illisible
+  slowVessels: number;              // navires de moins de 2 nœuds du relevé (dénominateur de la méthode)
+  alerts: CableAlert[];             // confirmées d'abord, puis vues une fois ; distance croissante
+  errors: string[];
+}
+
+// ─── Vigilance cyber : GET /api/sovereignty/cyber ───
+export type CertFrKind = 'alerte' | 'avis';
+/** Statut officiel d'une alerte (O1) : « Alerte en cours » ou « Clôturée le … » de la page liste, sinon « Clôture de l'alerte » de sa page. */
+export type CertFrStatus = 'en-cours' | 'cloturee';
+export interface CertFrItem {
+  ref: string;                      // « CERTFR-2026-ALE-011 », « CERTFR-2026-AVI-1257 »
+  kind: CertFrKind;
+  title: string;                    // sans le préfixe « [MàJ] » ni la date entre parenthèses
+  product: string | null;           // titre sans « Multiples vulnérabilités dans » ni « Vulnérabilité dans » ; null si illisible
+  updatedMark: boolean;             // préfixe « [MàJ] » ou « [Màj] » présent dans le flux
+  url: string;
+  firstVersion: string;             // date de publication en « AAAA-MM-JJ » (pubDate du flux, première version de la page)
+  lastVersion: string | null;       // « Date de la dernière version » de la page ; null : page non lue
+  cves: string[];                   // section « Référence CVE » de la page, sinon CVE du résumé du flux ; triés
+  kevCves: string[];                // parmi eux, ceux du catalogue KEV
+  pageReadAt: string | null;
+  status: CertFrStatus | null;      // alerte : statut repris du CERT-FR ; null : avis (pas de statut) ou statut non lu, jamais « en cours » supposé
+  closedAt: string | null;          // « AAAA-MM-JJ » : date de clôture d'une alerte close ; null sinon
+  exploited: boolean | null;        // le texte de la page dit l'exploitation (« activement exploitées », O3) ; null : page non lue
+  exploitedQuote: string | null;    // la phrase citée telle quelle (elle peut attribuer l'exploitation à un éditeur) ; null sinon
+}
+/** Rapport « Menaces et incidents » de l'ANSSI (flux CTI du CERT-FR, S12) : plus récent d'abord. */
+export interface CertFrReport {
+  ref: string;                      // « CERTFR-2026-CTI-006 »
+  title: string;                    // sans la date finale ni le drapeau de langue
+  lang: 'fr' | 'en';
+  date: string;                     // « AAAA-MM-JJ »
+  url: string;
+}
+export interface KevItem {
+  cve: string; vendor: string; product: string; name: string;
+  dateAdded: string;                // « AAAA-MM-JJ »
+  dueDate: string | null;
+  ransomware: boolean;              // knownRansomwareCampaignUse === 'Known'
+  certfrRefs: string[];             // alertes et avis qui citent ce CVE ; non vide : « citée par le CERT-FR »
+}
+/** Semaine glissante de 7 × 24 h, plus ancienne d'abord ; weekStart : début ISO. */
+export interface KevWeek { weekStart: string; added: number; cited: number }
+export interface RansomWeek { weekStart: string; count: number }
+/** Secteur ou groupe tel que publié par ransomware.live (traduit par la vue), compte sur 30 jours. */
+export interface RansomShare { label: string; count: number }
+export interface RansomwareSummary {
+  lastModified: string | null;      // en-tête last-modified de victims.json
+  checkedAt: string | null;         // dernière lecture réussie, 304 compris
+  weeks: RansomWeek[];              // 12 semaines, France seulement
+  weekCount: number;                // dernière semaine
+  baselineWeekly: number | null;    // moyenne hebdomadaire des 90 jours précédant la dernière semaine ; null sans historique
+  ratio: number | null;             // weekCount / baselineWeekly ; null si baselineWeekly est null ou nul
+  last30: number;
+  baseline30: number | null;        // moyenne sur 30 jours des 90 jours précédant les 30 derniers jours
+  sectors30: RansomShare[];         // décroissant
+  groups30: RansomShare[];
+}
+/**
+ * Fuites publiées en « .fr » ajoutées depuis moins de 30 jours (O5, opération REACTIV de l'ANSSI) : un compte et un lien seulement,
+ * jamais un titre, un domaine, un nom ni une description.
+ */
+export interface HibpSummary {
+  readAt: string;                   // lecture de la liste publique (horloge du serveur)
+  count: number;
+  newestAddedDate: string | null;   // AddedDate telle que publiée de la fuite la plus récente ; null sans fuite
+  url: string;                      // https://haveibeenpwned.com/PwnedWebsites
+}
+export interface CybermalveillanceEntry {
+  feed: 'alertes' | 'actualites'; title: string; url: string; published: string | null; updated: string | null;
+}
+export interface CyberResponse {
+  readAt: string | null;            // dernière collecte où au moins une source a répondu
+  certfr: {
+    readAt: string | null;
+    alerts: CertFrItem[];           // plus récent d'abord (lastVersion ?? firstVersion) ; 90 jours
+    avis: CertFrItem[];             // plus récent d'abord ; 30 jours
+    reports: CertFrReport[];        // flux CTI, plus récent d'abord (S12)
+  };
+  kev: {
+    readAt: string | null; catalogVersion: string | null; dateReleased: string | null; count: number | null;
+    recent: KevItem[];              // ajoutées depuis 30 jours ; citées par le CERT-FR d'abord, puis date décroissante
+    weeks: KevWeek[];               // 12 semaines
+  };
+  ransomware: RansomwareSummary | null;   // null : jamais lu
+  hibp: HibpSummary | null;               // null : jamais lu
+  cybermalveillance: { readAt: string | null; entries: CybermalveillanceEntry[] } | null;
+  errors: string[];                 // préfixées par la source : « CERT-FR, avis : HTTP 503 », « CISA KEV : délai dépassé (15000 ms) »
+}
