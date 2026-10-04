@@ -4,7 +4,8 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
-import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
+import { __resetKvForTests, __setKvClientForTests, kvSetJson } from '../api/_lib/kv-history.js';
+import { DAILY_KEY, __resetVigilanceArchiveForTests } from '../api/_lib/vigilance-archive.js';
 import {
   CARTE_URL, TEXTES_URL, __resetVigilanceStateForTests, meteoFranceKey, parseVigilanceCarte, parseVigilanceTextes,
 } from '../api/_lib/meteo-vigilance.js';
@@ -45,15 +46,18 @@ function sources(override: (url: string) => FakeResponse | null = () => null): R
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   __resetSwrCacheForTests();
   __resetVigilanceStateForTests();
+  __resetVigilanceArchiveForTests();
   __resetKvForTests();
   __setKvClientForTests({ get: async () => null, set: async () => undefined });
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   vi.stubEnv('METEO_FRANCE_API_KEY', KEY);
   vi.stubEnv('VITE_METEOFRANCE_API_KEY', '');
+  // Archive déjà relue aujourd'hui (tâche 5) : ces tests ne lisent que la carte et les textes.
+  await kvSetJson(DAILY_KEY, { days: [], checkedDay: '2026-10-04', error: null }, 3_600, NOW);
 });
 afterEach(() => {
   __setKvClientForTests(null);

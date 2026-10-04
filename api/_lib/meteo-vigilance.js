@@ -6,6 +6,7 @@
 // flux). Les niveaux sont repris tels quels (E1) : aucun calcul refait ici.
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { cachedSource, cleanText, fetchStrictJson, sourceError } from './source-http.js';
+import { overlayCurrentDay, readVigilanceHistory } from './vigilance-archive.js';
 
 export const CARTE_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
 export const TEXTES_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/textesvigilance/encours';
@@ -268,24 +269,27 @@ function emptyVigilance(errors) {
 }
 
 /**
- * Réponse complète (VigilanceResponse). `now` : instant de la requête, lu par l'historique de l'archive (tâche 5).
- * Carte et textes sont lus en parallèle ; chacun peut manquer sans empêcher l'autre (réponse partielle nommée).
+ * Réponse complète (VigilanceResponse) à l'instant `now`. Carte et textes sont lus en parallèle ; chacun peut manquer sans
+ * empêcher l'autre (réponse partielle nommée). Historique : 30 jours de l'archive, jour de l'échéance J superposé ; une
+ * panne de l'archive est nommée sans retirer le reste.
  */
 export async function loadVigilance(now = Date.now()) {
   const key = meteoFranceKey();
   if (!key) return emptyVigilance(['Météo-France : clé absente']);
   const headers = { apikey: key };
-  const [carte, textes] = await Promise.all([
+  const [carte, textes, archive] = await Promise.all([
     readPart(CARTE_KEY, 'Météo-France, carte', async () => parseVigilanceCarte(await fetchStrictJson(CARTE_URL, { headers }))),
     readPart(TEXTES_KEY, 'Météo-France, textes', async () => parseVigilanceTextes(await fetchStrictJson(TEXTES_URL, { headers }))),
+    readVigilanceHistory(now),
   ]);
-  const errors = [carte.error, ...(carte.value?.errors ?? []), textes.error].filter((e) => typeof e === 'string');
+  const days = overlayCurrentDay(archive.days, carte.value?.periods.find((p) => p.echeance === 'J') ?? null);
+  const errors = [carte.error, ...(carte.value?.errors ?? []), textes.error, archive.error].filter((e) => typeof e === 'string');
   return {
     updateTime: carte.value?.updateTime ?? null,
     textsUpdateTime: textes.value?.updateTime ?? null,
     periods: carte.value?.periods ?? [],
     bulletins: textes.value?.bulletins ?? [],
-    history: { days: [], since: null },
+    history: { days, since: days[0]?.date ?? null },
     readAt: carte.value?.readAt ?? null,
     errors,
   };
