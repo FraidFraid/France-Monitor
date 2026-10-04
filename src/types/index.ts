@@ -3132,3 +3132,99 @@ export interface CyberResponse {
   cybermalveillance: { readAt: string | null; entries: CybermalveillanceEntry[] } | null;
   errors: string[];                 // préfixées par la source : « CERT-FR, avis : HTTP 503 », « CISA KEV : délai dépassé (15000 ms) »
 }
+
+// ═══ Souveraineté, phase B (spec § 3 ; contrats § 1.2 ; amendement 7 : O15 à O17, S6 à S8) ═══
+
+// ─── GNSS et météo spatiale : GET /api/sovereignty/gnss ───
+/** peu : moins de 5 aéronefs distincts sur la fenêtre (« trop peu d'avions », jamais dessinée). */
+export type GnssCellLevel = 'vert' | 'jaune' | 'orange' | 'peu';
+export interface GnssCell {
+  lat: number; lon: number;         // coin sud-ouest de la maille de 0,5° × 0,5°
+  good: number;                     // aéronefs distincts à nac_p ≥ 8
+  degraded: number;                 // aéronefs distincts à nac_p de 1 à 7, ou à nac_p 0 après une bonne précision (O16, limite dite en méthode)
+  unknown: number;                  // nac_p 0 (précision non déclarée) sans bonne précision antérieure, hors calcul
+  pct: number | null;               // 100 × (degraded − 1) / (good + degraded) ; null sous 5 aéronefs
+  level: GnssCellLevel;             // jaune de 2 à 10 %, orange au-delà de 10 % : précision de position dégradée, jamais « brouillage » (O15)
+  inFrance: boolean;                // centre de la maille au-dessus de la France (V2)
+}
+export interface GnssDay { date: string; jaune: number; orange: number; general: boolean }   // jour UTC ; mailles françaises
+export interface NoaaScaleDay {
+  date: string;                     // DateStamp
+  observed: boolean;                // clé "0" : observé ; "1" à "3" : prévu
+  r: number | null; s: number | null; g: number | null;   // échelles (null : non publiées, prévisions R et S)
+  rMinorProb: number | null; rMajorProb: number | null; sProb: number | null;   // probabilités publiées (%)
+}
+export interface KpPoint { at: string; kp: number }               // tranche de 3 h (time_tag), Kp au tiers
+export interface NoaaAlert { productId: string; issuedAt: string; title: string; gScale: number | null }
+export interface SpaceWeather {
+  readAt: string | null;
+  scalesAt: string | null;          // DateStamp + TimeStamp de la clé "0" (UTC)
+  today: NoaaScaleDay | null;
+  forecast: NoaaScaleDay[];         // J+1 à J+3
+  kp: KpPoint[];                    // 7 jours (60 tranches au plus), plus ancien d'abord
+  lastAlert: NoaaAlert | null;
+}
+export interface GnssResponse {
+  readAt: string | null;            // dernière collecte complète (5 lectures)
+  windowStart: string | null;       // début du cumul ; moins de 24 h après un redémarrage : « référence en construction »
+  reads: number;                    // lectures réussies dans la fenêtre
+  aircraft: number;                 // aéronefs distincts de la fenêtre
+  /**
+   * Mailles localisées du jour UTC précédent seulement (O17, choix de l'utilisateur : jamais le glissant en direct, un lieu en direct
+   * peut signaler une protection en cours), « peu » comprises ; [] tant que la veille n'est pas couverte.
+   */
+  cells: GnssCell[];
+  cellsDay: string | null;          // jour UTC « AAAA-MM-JJ » des mailles localisées ; null : veille non couverte
+  frenchCells: number;              // mailles françaises d'au moins 5 aéronefs (jour des mailles localisées)
+  generalDegradation: boolean;      // plus de 30 % des mailles françaises dégradées (jaune ou orange) et Kp ≥ 4,67 dans la fenêtre
+  /** Comptes sans lieu (O17) : glissant de 24 h pour la pastille et le score, deux derniers jours UTC complets (veille d'abord) ; hors dégradation générale. */
+  degraded: GnssDegradedCounts;
+  days: { days: GnssDay[]; since: string | null };   // 14 jours
+  spaceWeather: SpaceWeather;
+  errors: string[];
+}
+
+// ─── Connectivité, grands réseaux : GET /api/sovereignty/connectivity ───
+export type MajorNetworkAsn = 3215 | 15557 | 5410 | 12322 | 2200 | 16276;
+export interface NetworkVisibility {
+  asn: MajorNetworkAsn;
+  name: string;                     // « Orange », « SFR », « Bouygues Telecom », « Free », « RENATER », « OVHcloud »
+  v4Seeing: number; v4Total: number; v6Seeing: number; v6Total: number;   // routeurs témoins RIPE (RIS) qui voient l'AS
+  v4Prefixes: number; v6Prefixes: number;   // préfixes annoncés (base de la règle de baisse, S8)
+  visibilityPct: number;            // min(v4Seeing / v4Total, v6Seeing / v6Total) × 100
+}
+export interface VisibilitySample { at: string; minPct: number }          // query_time, minimum des six réseaux
+export interface ExchangePoint { id: number; name: string; city: string | null; updated: string | null; url: string }
+export interface ConnectivityResponse {
+  readAt: string | null;
+  snapshotAt: string | null;        // query_time RIPEstat (00 h, 08 h ou 16 h UTC)
+  networks: NetworkVisibility[];    // ordre de MajorNetworkAsn
+  history: { samples: VisibilitySample[]; since: string | null };       // 30 jours
+  exchanges: { readAt: string | null; items: ExchangePoint[] } | null;  // PeeringDB, points d'échange en France
+  errors: string[];
+}
+
+// ─── Registre national des gels : GET /api/sovereignty/sanctions ───
+export interface SanctionsPublication {
+  publishedAt: string;              // DatePublication (ISO avec décalage de Paris)
+  total: number; physiques: number; morales: number; navires: number;
+  added: number | null;             // différence des IdRegistre ; null au premier passage (jamais « tout est nouveau »)
+  removed: number | null;
+}
+export interface SanctionsResponse {
+  readAt: string | null;            // dernière lecture réussie du fichier complet
+  dateCheckedAt: string | null;     // dernière lecture réussie de la date (base du retard)
+  current: SanctionsPublication | null;
+  history: { publications: SanctionsPublication[]; since: string | null };   // plus ancienne d'abord
+  errors: string[];
+}
+
+// ─── Zones drones DGAC (public/data/drone-restrictions.json) ───
+export interface DroneZone { id: string; remarque: string | null; polygons: Array<Array<Array<[number, number]>>> }  // [lng, lat]
+export interface DroneZonesFile {
+  generatedAt: string; edition: string;   // « 2025-07-01 » (GetCapabilities)
+  source: string;                         // « DGAC / IGN, Géoplateforme »
+  licence: string;                        // « CGU cartes.gouv.fr »
+  counts: { volInterdit: number; agglomerations: number; kept: number };
+  zones: DroneZone[];
+}

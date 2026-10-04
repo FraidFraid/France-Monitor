@@ -3,6 +3,7 @@
 // sur une ligne (R1) : espace insécable entre le nombre et l'unité, « n.d. » pour une valeur absente, jamais 0. Les formats communs
 // viennent des Trafics et de l'Environnement ; aucun texte anglais brut d'une source n'est affiché (audit 32).
 import type { AircraftFamily, CablesWatchResponse, CertFrItem, MilitaryBase } from '../../types/index.ts';
+import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { NBSP, frNumber } from './format.ts';
 import { clockOf } from './traffic-format.ts';
 
@@ -112,9 +113,9 @@ export function cablesAisDown(w: Pick<CablesWatchResponse, 'evaluated' | 'errors
 // ─── R1 : unités et mots comptés de la souveraineté ───
 
 /** Unités ; l'unité s'arrête là où finit un mot (« 9 militaires » n'est pas « 9 m »). */
-const UNITS = String.raw`(?:nœuds|km|ft|minutes?|min|m|h|j|%)(?![\p{L}\p{N}])`;
+const UNITS = String.raw`(?:nœuds|milles|km|ft|minutes?|min|Mo|m|h|j|%)(?![\p{L}\p{N}])`;
 /** Mots comptés des raisons de pastille et des résumés : collés à leur nombre par glueSovUnits seulement. */
-const COUNTED = String.raw`(?:aéronefs?|urgences?|navires?|câbles?|atterrages?|alertes?|avis|vulnérabilités?|revendications?|fuites?|mailles?|réseaux?|semaines?|jours?)(?![\p{L}\p{N}])`;
+const COUNTED = String.raw`(?:aéronefs?|urgences?|navires?|câbles?|atterrages?|alertes?|avis|vulnérabilités?|revendications?|fuites?|mailles?|réseaux?|semaines?|jours?|entrées?|zones?|publications?|routeurs?|lectures?|heures?)(?![\p{L}\p{N}])`;
 const SOV_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}|Kp \d`, 'u');
 const GLUE = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS}|${COUNTED})`, 'gu');
 const GLUE_KP = /Kp (\d)/gu;
@@ -128,3 +129,53 @@ export function sovBreakable(text: string): string | null {
 export function glueSovUnits(text: string): string {
   return text.replace(GLUE, `$1${NBSP}$2`).replace(GLUE_KP, `Kp${NBSP}$1`);
 }
+
+// ─── Phase B (tâche B19) : météo spatiale, visibilité des réseaux, jetons de catégorie ───
+
+const MINUS_B = '\u2212';
+const SCALE_TERMS: readonly string[] = ['aucun', 'mineur', 'modéré', 'fort', 'sévère', 'extrême'];
+
+/** Indice Kp au tiers (NOAA) : « Kp 5− » pour 4,67, « Kp 5 », « Kp 5+ » pour 5,33 ; n.d. sans valeur. */
+export function formatKp(kp: number | null | undefined): string {
+  if (typeof kp !== 'number' || !Number.isFinite(kp)) return ND;
+  const thirds = Math.round(kp * 3);
+  const base = Math.round(thirds / 3);
+  const rest = thirds - base * 3;
+  return `Kp${NBSP}${base}${rest < 0 ? MINUS_B : rest > 0 ? '+' : ''}`;
+}
+
+/** Échelle G de la NOAA pour un Kp : 5− à 5+ G1, 6− à 6+ G2, 7− à 7+ G3, 8− à 9− G4, 9 G5 ; G0 en dessous de 5−. */
+export function kpGScale(kp: number): number {
+  const thirds = Math.round(kp * 3);
+  if (thirds >= 27) return 5;
+  if (thirds >= 23) return 4;
+  return Math.max(0, Math.min(3, Math.round(thirds / 3) - 4));
+}
+
+/** Couleur d'une échelle G (contrats § 3.8) : G1 jaune, G2 et G3 orange, G4 et G5 rouge ; null pour G0 (calme, jeton CAT_KP_CALME). */
+export function gScaleLevel(g: number): VigilanceLevel | null {
+  if (g >= 4) return 'rouge';
+  if (g >= 2) return 'orange';
+  return g >= 1 ? 'jaune' : null;
+}
+
+function scaleWords(letter: 'R' | 'S' | 'G'): Readonly<Record<number, string>> {
+  return Object.fromEntries(SCALE_TERMS.map((w, i) => [i, `${letter}${i}${NBSP}${w}`]));
+}
+
+/** Échelles NOAA en français, valeur insécable : de « R0 aucun » à « G5 extrême ». */
+export const SCALE_WORD: Readonly<Record<'R' | 'S' | 'G', Readonly<Record<number, string>>>> = {
+  R: scaleWords('R'), S: scaleWords('S'), G: scaleWords('G'),
+};
+
+/** Visibilité d'un réseau : « 99,4 % », « 100 % » ; n.d. sans valeur. */
+export function formatPctVisibility(v: number | null | undefined): string {
+  if (!ok(v)) return ND;
+  const rounded = Math.round(v * 10) / 10;
+  return `${frNumber(rounded, Number.isInteger(rounded) ? 0 : 1)}${NBSP}%`;
+}
+
+/** Jetons de catégorie de la phase B (R2), valeurs reprises dans sovereignty-legend.ts pour MapLibre. */
+export const CAT_KP_CALME = 'var(--cat-kp-calme)';
+export const CAT_GELS = 'var(--cat-gels)';
+export const CAT_ZONE_DRONE = 'var(--cat-zone-drone)';

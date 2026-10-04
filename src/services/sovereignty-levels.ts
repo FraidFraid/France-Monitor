@@ -3,8 +3,8 @@
 // partagées par les services clients, les vues, la carte et le score. « n.d. » quand la source manque ou se tait, jamais une couleur
 // inventée (V1, S3) ; un niveau ou un statut officiel est repris tel quel (V4, O1).
 import type {
-  CableAlert, CablesWatchResponse, CertFrItem, CyberResponse, GnssDegradedCounts, MilitaryEmergency, MilitaryResponse,
-  RansomwareSummary, SituationSeverity, VigipirateEntry, VigipiratePageCheck,
+  CableAlert, CablesWatchResponse, CertFrItem, ConnectivityResponse, CyberResponse, GnssDegradedCounts, GnssResponse, MilitaryEmergency,
+  MilitaryResponse, NetworkVisibility, RansomwareSummary, SituationSeverity, VigipirateEntry, VigipiratePageCheck,
 } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { emergencyColoursPill, isEmergencyConfirmed, type LayerLevel, type LevelVerdict } from './traffic-levels.ts';
@@ -374,4 +374,78 @@ export function cyberLevel(c: CyberResponse, now: number): LevelVerdict {
   if (unreadVerdict !== null) return unreadVerdict;
   const calm = 'aucune alerte CERT-FR en cours ni vulnérabilité exploitée citée par un avis de moins de 7\u00a0jours';
   return { level: 'vert', reason: claimsHigh ? `${calm} ; hausse des revendications non retenue : fichier de ransomware.live en retard` : calm };
+}
+
+// ─── Phase B (tâche B19) : visibilité des grands réseaux, pastille Connectivité, mailles GNSS dégradées du score ───
+
+/** « Vu par au moins 99 % des routeurs témoins RIPE » en IPv4 et en IPv6 (arbitrage 31, S8). */
+export const FULL_VISIBILITY_PCT = 99;
+const VISIBILITY_ORANGE_PCT = 90;
+const VISIBILITY_RED_PCT = 50;
+const MAJOR_NETWORK_COUNT = 6;
+const NBSP = '\u00a0';
+/** Rang d'un niveau de couche, « nd » au-dessous du vert (la part qui manque ne l'emporte jamais sur une part lue). */
+const LAYER_RANK: Readonly<Record<LayerLevel, number>> = { nd: -1, vert: 0, jaune: 1, orange: 2, rouge: 3 };
+
+/** Couleur d'une visibilité (%) : rouge sous 50 %, orange sous 90 %, vert sinon (barre d'un réseau, courbe de la visibilité minimale). */
+export function visibilityPctLevel(pct: number): VigilanceLevel {
+  if (pct < VISIBILITY_RED_PCT) return 'rouge';
+  return pct < VISIBILITY_ORANGE_PCT ? 'orange' : 'vert';
+}
+
+/** Couleur d'un grand réseau : rouge sous 50 %, orange sous 90 %, vert sinon. */
+export function networkVisibilityLevel(n: NetworkVisibility): VigilanceLevel {
+  return visibilityPctLevel(n.visibilityPct);
+}
+
+/** « 84,9 % » (une décimale au plus, insécable). */
+function visibilityText(v: number): string {
+  return `${(Math.round(v * 10) / 10).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}${NBSP}%`;
+}
+
+/** Part « grands réseaux » : n.d. si RIPEstat n'a jamais été lu ou si l'instantané est en retard (S2, 10 h après query_time). */
+function networksVerdict(n: ConnectivityResponse | null, now: number): LevelVerdict {
+  if (n === null || n.snapshotAt === null || n.networks.length === 0) return { level: 'nd', reason: 'RIPEstat indisponible' };
+  if (isSovereigntyDataLate('ripestat', n.snapshotAt, now)) return { level: 'nd', reason: 'instantané RIPEstat en retard' };
+  const worst = [...n.networks].sort((a, b) => a.visibilityPct - b.visibilityPct)[0];
+  const level = networkVisibilityLevel(worst);
+  if (level !== 'vert') {
+    const limit = level === 'rouge' ? VISIBILITY_RED_PCT : VISIBILITY_ORANGE_PCT;
+    return { level, reason: `${worst.name} sous ${limit}${NBSP}% de visibilité (${visibilityText(worst.visibilityPct)})` };
+  }
+  const full = n.networks.filter((x) => x.visibilityPct >= FULL_VISIBILITY_PCT).length;
+  const missing = MAJOR_NETWORK_COUNT - n.networks.length;
+  const unread = missing > 0 ? ` (${missing}${NBSP}non lu${missing > 1 ? 's' : ''})` : '';
+  return {
+    level: 'vert',
+    reason: `${full}${NBSP}/${NBSP}${MAJOR_NETWORK_COUNT} grands réseaux vus par au moins ${FULL_VISIBILITY_PCT}${NBSP}% des routeurs témoins RIPE${unread}`,
+  };
+}
+
+/**
+ * Pastille Connectivité, phase B (spec § 3.3) : le plus haut niveau des câbles (cablesLevel) et des grands réseaux ; n.d. seulement si
+ * les deux manquent. La raison de la part la plus haute vient d'abord, puis celle de l'autre (« · ») : une veille muette se dit.
+ */
+export function connectivityLevel(c: CablesWatchResponse | null, n: ConnectivityResponse | null, now: number): LevelVerdict {
+  const cables: LevelVerdict = c === null ? { level: 'nd', reason: 'veille des câbles indisponible' } : cablesLevel(c, now);
+  const networks = networksVerdict(n, now);
+  if (cables.level === 'nd' && networks.level === 'nd') return { level: 'nd', reason: `${networks.reason} · ${cables.reason}` };
+  const top = LAYER_RANK[networks.level] >= LAYER_RANK[cables.level] ? networks : cables;
+  const other = top === networks ? cables : networks;
+  return { level: top.level, reason: `${top.reason} · ${other.reason}` };
+}
+
+/**
+ * Comptes de mailles GNSS à précision dégradée du score et de la pastille Défense (O15 à O17), lus dans la réponse du serveur (jamais un
+ * seuil recopié) et sans lieu : null si la grille n'a jamais été complète, si elle est en retard (40 min) ou en dégradation générale
+ * (météo spatiale, pas une dégradation locale).
+ */
+export function gnssDegradedCounts(g: GnssResponse | null, now: number): GnssDegradedCounts | null {
+  if (g === null || g.readAt === null || g.generalDegradation || isSovereigntyDataLate('adsb-gnss', g.readAt, now)) return null;
+  return g.degraded;
+}
+
+/** Compte glissant de 24 h de mailles dégradées (troisième argument de defenseLevel) ; 0 si la grille n'est pas exploitable. */
+export function gnssDegradedCount(g: GnssResponse | null, now: number): number {
+  return gnssDegradedCounts(g, now)?.rolling24h ?? 0;
 }

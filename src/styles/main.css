@@ -27,6 +27,8 @@
   --cat-cable: #22c7ff; --cat-landing: #7dd3fc; --cat-kev: #8e8ef0; --cat-kev-cite: #5e5ce6; --cat-revendication: #bf5af2;
   /* Environnement, phase B (spec 2026-10-04 § 3.1) : vigilance sécheresse, teinte de catégorie (jamais une couleur de niveau) */
   --cat-secheresse-vigilance: #7fb3d5;
+  /* Souveraineté, phase B (spec 2026-10-04 souveraineté § 3) : zones drones DGAC, indice Kp calme (G0), registre des gels */
+  --cat-zone-drone: #5e5ce6; --cat-kp-calme: #64d2ff; --cat-gels: #ac8e68;
   /* Background */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;

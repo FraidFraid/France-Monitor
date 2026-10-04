@@ -158,3 +158,11 @@ export function cyberLegend(c: CyberResponse | null, now: number): LegendCategor
   const late = isSovereigntyDataLate('certfr', c.certfr.readAt, now);
   return copy(CYBER_LEGEND, CYBER_LEGEND.items, `CERT-FR lu à ${clock(at)}${late ? ' (en retard)' : ''}`, CYBER_LEGEND.notes ?? []);
 }
+
+// ─── Phase B (tâche B19) : jetons des zones drones, de l'indice Kp calme (G0) et du registre des gels ───
+/** Zone drones DGAC « vol interdit » (jeton --cat-zone-drone). */
+export const DRONE_ZONE_HEX = '#5e5ce6';
+/** Indice Kp calme, G0 (jeton --cat-kp-calme). */
+export const KP_CALM_HEX = '#64d2ff';
+/** Registre des gels : barres et courbe (jeton --cat-gels). */
+export const GELS_HEX = '#ac8e68';
