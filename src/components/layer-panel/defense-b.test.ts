@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GnssResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
-import { defenseLevel, gnssDegradedCount } from '../../services/sovereignty-levels.ts';
+import { GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount } from '../../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
 import {
   DRONE_ZONES_META_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SANCTIONS_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_FIXTURE,
@@ -199,7 +199,8 @@ describe('pastille : fraîcheur croisée adsb.lol et GNSS (revue de B25, I1)', (
 describe('seuils et teintes (revue de B25, m1 et m2)', () => {
   it('le seuil « au-delà de 10 % » est celui de la grille serveur', async () => {
     const server = await import('../../../api/_lib/gnss-grid.js');
-    expect(GNSS_ORANGE_PCT).toBe((server as { GNSS_ORANGE_PCT: number }).GNSS_ORANGE_PCT);
+    const s = server as { GNSS_ORANGE_PCT: number; GNSS_YELLOW_PCT: number };
+    expect([GNSS_YELLOW_PCT, GNSS_ORANGE_PCT]).toEqual([s.GNSS_YELLOW_PCT, s.GNSS_ORANGE_PCT]);
   });
   it('le titre des mailles du jour dit ce qu’il compte et combien dépassent le seuil', () => {
     const t = gnssText(input());

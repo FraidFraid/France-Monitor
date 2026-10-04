@@ -8,7 +8,7 @@ import { levelHex } from '../../services/vigilance.ts';
 import { DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import { DRONE_ZONES_META_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW } from '../layer-panel/sovereignty.fixture.ts';
 import { DRONE_ZONE_HEX, SOV_ABROAD_HEX, defenseLegend, withDefensePhaseB } from '../layer-panel/sovereignty-legend.ts';
-import { GNSS_ORANGE_PCT } from '../layer-panel/defense-b.ts';
+import { GNSS_ORANGE_PCT, GNSS_YELLOW_PCT } from '../../services/sovereignty-levels.ts';
 import { sovBreakable } from '../layer-panel/sovereignty-format.ts';
 import {
   LYR_MILITARY_BASES_LABEL, LYR_SOV_AIRCRAFT, LYR_SOV_DRONES_FILL, LYR_SOV_DRONES_LINE, LYR_SOV_GNSS_FILL, LYR_SOV_GNSS_LINE,
@@ -130,6 +130,8 @@ describe('légende Défense de la phase B', () => {
     expect(JSON.stringify(legend)).not.toContain('Zone interdite');
     expect(legend.items.slice(-5).map((i) => i.id)).toEqual(['sov-gnss-header', 'sov-gnss-orange', 'sov-gnss-jaune', 'sov-gnss-abroad', 'sov-drones']);
     expect(legend.items.find((i) => i.id === 'sov-gnss-orange')?.color).toBe(levelHex('orange'));
+    expect(legend.items.find((i) => i.id === 'sov-gnss-jaune')?.label).toBe(`De ${GNSS_YELLOW_PCT}${NBSP}% à ${GNSS_ORANGE_PCT}${NBSP}%`);
+    expect(legend.notes?.some((n) => n.includes('la carte officielle fait foi'))).toBe(true);
     expect(legend.items.find((i) => i.id === 'sov-gnss-orange')?.label).toBe(`Au-delà de ${GNSS_ORANGE_PCT}${NBSP}% des aéronefs à précision dégradée`);
     expect(legend.items.find((i) => i.id === 'sov-drones')?.color).toBe(DRONE_ZONE_HEX);
     expect(legend.notes).toContain('Mailles du 03/10, jour UTC complet ; « trop peu d’avions » et mailles vertes non dessinées.');

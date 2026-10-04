@@ -6,11 +6,10 @@ import type {
   CablesWatchResponse, CyberResponse, DroneZonesFile, GnssResponse, MilitaryBase, MilitaryResponse, SubseaCablesFile,
 } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
-import { MILITARY_FIGURE_LABEL, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
+import { GNSS_ORANGE_PCT, GNSS_YELLOW_PCT, MILITARY_FIGURE_LABEL, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
 import { NBSP } from './format.ts';
-import { GNSS_ORANGE_PCT } from './defense-b.ts';
 import { cablesUnevaluatedWhy, capitalize } from './sovereignty-format.ts';
 
 const PARIS = 'Europe/Paris';
@@ -205,7 +204,7 @@ export function withDefensePhaseB(base: LegendCategory, input: DefenseLegendB, n
     const general = g.days.days.find((d) => d.date === g.cellsDay)?.general === true;
     items.push(
       { id: 'sov-gnss-orange', label: `Au-delà de ${GNSS_ORANGE_PCT}${NBSP}% des aéronefs à précision dégradée`, color: late ? SOV_ABROAD_HEX : levelHex('orange'), shape: 'square' },
-      { id: 'sov-gnss-jaune', label: `De 2 à ${GNSS_ORANGE_PCT}${NBSP}%`, color: late ? SOV_ABROAD_HEX : levelHex('jaune'), shape: 'square' },
+      { id: 'sov-gnss-jaune', label: `De ${GNSS_YELLOW_PCT}${NBSP}% à ${GNSS_ORANGE_PCT}${NBSP}%`, color: late ? SOV_ABROAD_HEX : levelHex('jaune'), shape: 'square' },
       { id: 'sov-gnss-abroad', label: 'Hors de France : jamais comptée', color: SOV_ABROAD_HEX, shape: 'square' },
     );
     notes.push(`Mailles du ${day}, jour UTC complet${late ? ' (en retard) : couleurs retirées' : ''} ; « trop peu d’avions » et mailles vertes non dessinées.`);
@@ -221,6 +220,7 @@ export function withDefensePhaseB(base: LegendCategory, input: DefenseLegendB, n
     notes.push(`Couche officielle « ${DRONES_TITLE} » : ${DRONES_LEGEND}`);
     notes.push('Zones permanentes hors agglomérations seulement ; les interdictions temporaires (NOTAM) ne sont pas couvertes.');
     notes.push(DRONES_POINTER);
+    notes.push('Tracé simplifié pour la carte : la carte officielle fait foi.');
   }
   return { ...base, items, notes };
 }

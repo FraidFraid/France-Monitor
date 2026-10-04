@@ -158,6 +158,9 @@ export function militaryEmergencyLevel(e: MilitaryEmergency): VigilanceLevel | '
 
 /** Mailles à précision GNSS dégradée à partir desquelles la pastille passe à l'orange et « Signal défense » s'ouvre (O7). */
 export const GNSS_SITUATION_CELLS = 3;
+/** Seuils d'une maille, en % des aéronefs : ceux de la grille serveur (api/_lib/gnss-grid.js ; identité testée). Jaune de 2 % à 10 %, orange au-delà. */
+export const GNSS_YELLOW_PCT = 2;
+export const GNSS_ORANGE_PCT = 10;
 
 /**
  * Pastille Défense (§ 2.1) : rouge pour un 7500 affiché sur deux relevés au-dessus de la France ou à moins de 40 km ; orange pour un

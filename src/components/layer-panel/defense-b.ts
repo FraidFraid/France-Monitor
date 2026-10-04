@@ -10,7 +10,7 @@
 import type { GnssResponse, KpPoint, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import {
-  GNSS_SITUATION_CELLS, defenseLevel, gnssDegradedCount, isSovereigntyDataLate,
+  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, isSovereigntyDataLate,
 } from '../../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -37,8 +37,7 @@ const BUILDING_MARGIN_MS = 10 * 60_000;
 const GNSS_DAYS_SPAN = 14;
 const KP_SLOT_MS = 3 * HOUR_MS;
 const CELL_HALF = 0.25;
-/** Seuil d'une maille orange, en % des aéronefs : celui de la grille serveur (GNSS_ORANGE_PCT, api/_lib/gnss-grid.js ; identité testée). */
-export const GNSS_ORANGE_PCT = 10;
+export { GNSS_ORANGE_PCT, GNSS_YELLOW_PCT };
 const ORANGE_AT = `au-delà de ${GNSS_ORANGE_PCT}${NBSP}%`;
 /** Gris des données en retard et des jours de dégradation générale (jeton de la légende Défense). */
 const MUTED_GREY = 'var(--cat-mil-etranger)';
