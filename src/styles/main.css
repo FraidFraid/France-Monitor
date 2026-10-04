@@ -8064,6 +8064,10 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
 #app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 #app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+/* Libellé et valeur en phrase (accents de la posture Vigipirate, jours UTC de la grille GNSS) se partagent la largeur et passent à la
+   ligne chacun dans sa colonne, sans jamais se recouvrir ; une valeur courte reste calée à droite (captures du 05/10 : « Accents »
+   recouvert par sa valeur). */
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-kv { grid-template-columns: auto auto; justify-content: space-between; }
 
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
