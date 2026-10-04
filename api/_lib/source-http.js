@@ -17,6 +17,7 @@ export {
   fetchStrictHtml,
   sourceError,
   cachedSource,
+  cachedSourceReport,
   decodeEntities,
   cleanText,
   handlePreflight,

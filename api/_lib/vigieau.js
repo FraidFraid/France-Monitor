@@ -4,7 +4,7 @@
 // depuis la mise en service (kv-history.js), un échantillon par date d'arrêtés (« référence en construction » dans le panneau).
 import { appendSample, readSeries } from './kv-history.js';
 import { parisDay } from './paris-time.js';
-import { cachedSource, fetchStrictJson, sourceError } from './source-http.js';
+import { cachedSourceReport, fetchStrictJson, sourceError } from './source-http.js';
 
 export const VIGIEAU_URL = 'https://api.vigieau.gouv.fr/api/departements';
 /** Relève de 6 h (limite annoncée : 300 requêtes, en-tête x-ratelimit-reset de 1 s le 04/10). */
@@ -61,8 +61,9 @@ export function emptyDrought(errors) {
   };
 }
 
+/** Lecture VigiEau du cache partagé : `{ value, error }`, l'échec d'une relecture nommé quand l'ancienne valeur est servie (S3). */
 async function readVigieau(now) {
-  return cachedSource('env:vigieau', { ttlSec: DROUGHT_TTL_SEC, staleSec: 7 * 86_400, shared: true }, async () => {
+  return cachedSourceReport('env:vigieau', { ttlSec: DROUGHT_TTL_SEC, staleSec: 7 * 86_400, shared: true }, 'VigiEau', async () => {
     const json = await fetchStrictJson(VIGIEAU_URL);
     return { departments: parseVigieauDepartements(json), asOf: latestAsOf(json), readAt: new Date(now).toISOString() };
   });
@@ -89,14 +90,20 @@ export async function readDroughtHistory(now = Date.now()) {
  * sans valeur connue.
  */
 export async function ensureDroughtFresh(now = Date.now()) {
-  const v = await readVigieau(now);
+  return (await readDrought(now)).value;
+}
+
+/** Lecture et échantillon du jour : `{ value, error }` (error : relecture en échec, ancienne valeur servie). */
+async function readDrought(now) {
+  const read = await readVigieau(now);
+  const v = read.value;
   if (v.asOf !== null) {
     const c = droughtCounts(v.departments);
     await appendSample(DROUGHT_SERIES_KEY, {
       at: v.asOf, date: parisDay(Date.parse(v.asOf)), vigilance: c.vigilance, alerte: c.alerte, alerte_renforcee: c.alerte_renforcee, crise: c.crise,
     }, { maxAgeMs: SERIES_MAX_AGE_MS, minIntervalMs: SERIES_MIN_INTERVAL_MS, now });
   }
-  return v;
+  return read;
 }
 
 /** Réponse de la route : 200 si VigiEau a été lu (ou servi du cache avec sa date), sinon 502 avec l'erreur nommée. */
@@ -104,7 +111,9 @@ export async function loadDrought(now = Date.now()) {
   let v = null;
   const errors = [];
   try {
-    v = await ensureDroughtFresh(now);
+    const read = await readDrought(now);
+    v = read.value;
+    if (read.error) errors.push(read.error);
   } catch (err) {
     errors.push(sourceError('VigiEau', err));
   }

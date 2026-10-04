@@ -137,6 +137,13 @@ describe('/api/environment/drought', () => {
     at(NOW + 7 * 3_600_000);
     const { status, body } = await callHandler<DroughtResponse>(handler);
     expect([status, body.asOf, body.readAt]).toEqual([200, '2026-10-04T00:43:59.771Z', '2026-10-04T08:10:00.000Z']);
+    // Vague finale, point 6 : la relecture en échec est nommée (S3), jamais un « ok » silencieux jusqu'au délai S2.
+    expect(body.errors).toEqual(['VigiEau : HTTP 503']);
+    // Relecture réussie ensuite : plus de panne nommée.
+    stubFetch(() => respond(VIGIEAU));
+    at(NOW + 14 * 3_600_000);
+    const back = await callHandler<DroughtResponse>(handler);
+    expect([back.body.errors, back.body.readAt]).toEqual([[], new Date(NOW + 14 * 3_600_000).toISOString()]);
   });
   it('OPTIONS 204, POST 405', async () => {
     const options = fakeRes();

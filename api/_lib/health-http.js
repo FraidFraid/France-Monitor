@@ -180,6 +180,29 @@ export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400, shared 
   return value;
 }
 
+/** Dernier échec de relecture par clé (mémoire du processus), effacé par une relecture réussie. */
+const refreshFailures = new Map();
+
+/**
+ * cachedSource qui nomme la panne (S3) : `{ value, error }`. Une valeur servie du cache alors que sa relecture a échoué, sans
+ * relecture réussie depuis, porte l'échec nommé (« VigiEau : HTTP 503 »), comme readPart de la vigilance : la source n'est
+ * plus dite « ok » jusqu'à son délai S2. Pendant la mémoire de panne (relecture non relancée), l'échec reste nommé. Lève comme
+ * cachedSource si la source échoue sans valeur connue.
+ */
+export async function cachedSourceReport(key, options, label, producer) {
+  const value = await cachedSource(key, options, async () => {
+    try {
+      const read = await producer();
+      refreshFailures.delete(key);
+      return read;
+    } catch (err) {
+      refreshFailures.set(key, sourceError(label, err));
+      throw err;
+    }
+  });
+  return { value, error: refreshFailures.get(key) ?? null };
+}
+
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”',
   laquo: '«', raquo: '»', hellip: '…', ndash: '–', mdash: ' : ', deg: '°', reg: '®', copy: '©', euro: '€',

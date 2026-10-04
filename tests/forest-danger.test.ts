@@ -21,7 +21,7 @@ function binary(body: Buffer | string, status = 200): FakeResponse {
 }
 
 beforeEach(() => { __resetSwrCacheForTests(); __resetForestDangerForTests(); });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('parseMdfCsv', () => {
   it('dernier jour publié (03/10 16 h 50) : J1 le 04/10, J2 le 05/10, 96 départements, 10 au niveau 2 en J1', () => {
@@ -79,6 +79,19 @@ describe('loadForestDanger (lecture binaire stricte, cache partagé)', () => {
     expect(sentHeader(log.inits[0], 'User-Agent')).toBe(SOURCE_USER_AGENT);
     await loadForestDanger(NOW + 60_000);
     expect(log.urls).toHaveLength(1);
+  });
+  it('relecture en échec, publication précédente servie du cache : panne nommée, publication datée gardée (S1, S3)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    stubFetch(() => binary(gzipSync(MDF)));
+    expect((await loadForestDanger(NOW)).errors).toEqual([]);
+    const later = NOW + 7 * 3_600_000;
+    vi.setSystemTime(later);
+    stubFetch(() => binary('Service Unavailable', 503));
+    const { forestDanger, errors } = await loadForestDanger(later);
+    expect(forestDanger?.publishedAt).toBe('2026-10-03T14:50:06Z');
+    expect(errors).toEqual(['Météo des forêts : HTTP 503']);
+    expect(Object.keys(forestDanger ?? {}).sort()).toEqual(['departments', 'history', 'j1Date', 'j2Date', 'publishedAt', 'season']);
   });
   it('début d’année : fichier de l’année absent (404), celui de l’année précédente lu, hors saison', async () => {
     const old = 'date;num_dep;niveau_j1;niveau_j2;nom_dep\n2025-10-15T14:50:05Z;13;1;1;Bouches-du-Rhône\n';

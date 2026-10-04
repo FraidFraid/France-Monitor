@@ -4,7 +4,7 @@
 // est une erreur. Épisodes de J à J+2 (alrt:alrt3j) ; indice ATMO de J par commune (ind:ind_atmo_2021), agrégé par département.
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { parisDay, parisHour } from './paris-time.js';
-import { cachedSource, fetchStrictText, sourceError } from './source-http.js';
+import { cachedSourceReport, fetchStrictText, sourceError } from './source-http.js';
 
 export const ATMO_EPISODES_BASE = 'https://data.atmo-france.org/geoserver/alrt/ows';
 export const ATMO_INDEX_BASE = 'https://data.atmo-france.org/geoserver/ind/ows';
@@ -196,19 +196,22 @@ export async function loadAirQuality(now = Date.now()) {
   const days = [j, addDays(j, 1), addDays(j, 2)];
   const ttlSec = airQualityTtlSec(now);
   const readAt = new Date(now).toISOString();
+  // Chaque couche : `{ value, error }` ; une relecture en échec servie du cache est nommée (S3), avec la date de l'ancienne lecture.
   const [episodes, index] = await Promise.allSettled([
-    cachedSource(`env:atmo:episodes:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, async () => ({
+    cachedSourceReport(`env:atmo:episodes:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, 'Atmo France, épisodes', async () => ({
       ...parseEpisodes(await fetchWfs(episodesUrl(days[0], days[2]), EPISODES_MAX_MATCHED, new Set(days)), days), readAt,
     })),
-    cachedSource(`env:atmo:indice:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, async () => ({
+    cachedSourceReport(`env:atmo:indice:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, 'Atmo France, indice', async () => ({
       ...aggregateIndex(await fetchWfs(indexUrl(j), INDEX_MAX_MATCHED, new Set([j])), j), readAt,
     })),
   ]);
   const errors = [];
   if (episodes.status === 'rejected') errors.push(sourceError('Atmo France, épisodes', episodes.reason));
+  else if (episodes.value.error) errors.push(episodes.value.error);
   if (index.status === 'rejected') errors.push(sourceError('Atmo France, indice', index.reason));
-  const ep = episodes.status === 'fulfilled' ? episodes.value : null;
-  const ix = index.status === 'fulfilled' ? index.value : null;
+  else if (index.value.error) errors.push(index.value.error);
+  const ep = episodes.status === 'fulfilled' ? episodes.value.value : null;
+  const ix = index.status === 'fulfilled' ? index.value.value : null;
   if (!ep && !ix) return emptyAir(days, errors);
   const reads = [ep?.readAt, ix?.readAt].filter((x) => typeof x === 'string').sort();
   return {

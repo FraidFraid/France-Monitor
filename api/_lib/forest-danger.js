@@ -6,7 +6,7 @@
 import { gunzipSync } from 'node:zlib';
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { parisDay, parisParts } from './paris-time.js';
-import { DEFAULT_TIMEOUT_MS, SOURCE_USER_AGENT, SourceFetchError, cachedSource, isChallengePage, looksLikeHtml, sourceError } from './source-http.js';
+import { DEFAULT_TIMEOUT_MS, SOURCE_USER_AGENT, SourceFetchError, cachedSourceReport, isChallengePage, looksLikeHtml, sourceError } from './source-http.js';
 
 export const MDF_BASE = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/BULLETIN/MDF';
 /** Saison : juin à septembre (Paris), ou dernière publication de moins de 72 h (même règle que le client, tâche 1). */
@@ -152,12 +152,14 @@ export async function loadForestDanger(now = Date.now()) {
   for (const y of [year, year - 1]) {
     try {
       const ttlSec = forestDangerTtlSec(now, lastPublishedAt);
-      const read = await cachedSource(`env:mdf:${y}`, { ttlSec, staleSec: 7 * 86_400, shared: true }, async () => parseMdfCsv(await fetchStrictGzipText(mdfUrl(y)), now));
+      const { value: read, error } = await cachedSourceReport(`env:mdf:${y}`, { ttlSec, staleSec: 7 * 86_400, shared: true }, 'Météo des forêts',
+        async () => parseMdfCsv(await fetchStrictGzipText(mdfUrl(y)), now));
       // La saison suit l'heure de la lecture, pas celle de la mise en cache ; les comptes de lignes ne sont pas servis.
       const { unreadable = 0, duplicates = 0, ...published } = read;
       const forestDanger = { ...published, season: forestDangerSeason(published.publishedAt, now) };
       lastPublishedAt = forestDanger.publishedAt;
-      return { forestDanger, errors: rowWarnings(Number(unreadable) || 0, Number(duplicates) || 0) };
+      // Relecture en échec, publication précédente servie (avec sa date) : la panne est nommée (S3).
+      return { forestDanger, errors: [...(error ? [error] : []), ...rowWarnings(Number(unreadable) || 0, Number(duplicates) || 0)] };
     } catch (err) {
       if (y === year && err instanceof SourceFetchError && err.status === 404) continue;
       return { forestDanger: null, errors: [sourceError('Météo des forêts', err)] };

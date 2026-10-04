@@ -176,6 +176,15 @@ describe('/api/environment/air', () => {
     expect([status, body.errors, body.episodesUpdatedAt, body.index.communes]).toEqual([200, ['Atmo France, épisodes : HTTP 500'], null, 5]);
     expect(cache).toBe('s-maxage=300, stale-while-revalidate=600');
   });
+  it('relecture des épisodes en échec, ancienne lecture servie du cache : panne nommée, date de l’ancienne lecture gardée (S1, S3)', async () => {
+    sources();
+    await callHandler<AirQualityResponse>(handler);
+    vi.setSystemTime(NOW + 7 * 3_600_000);
+    sources({ episodes: respond('erreur', 503) });
+    const { status, body } = await callHandler<AirQualityResponse>(handler);
+    expect([status, body.errors, body.episodesUpdatedAt]).toEqual([200, ['Atmo France, épisodes : HTTP 503'], '2026-10-03T13:29:04.796Z']);
+    expect(body.index.communes).toBe(5);
+  });
   it('rien de lu : 502 non mis en cache, deux erreurs nommées ; page HTML nommée', async () => {
     sources({ episodes: respond('erreur', 500), index: respond('<!DOCTYPE html><html><body>GeoServer</body></html>') });
     const { status, body, cache } = await callHandler<AirQualityResponse>(handler);
