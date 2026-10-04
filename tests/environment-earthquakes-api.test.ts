@@ -117,6 +117,16 @@ describe('repli EMSC', () => {
   });
 });
 
+describe('repli EMSC : événements non sismiques', () => {
+  it('types autres que ke et se comptés à part, séismes gardés', () => {
+    const fc = JSON.parse(EMSC) as { features: Array<{ properties: Record<string, unknown> }> };
+    const blast = structuredClone(fc.features[1]);
+    blast.properties = { ...blast.properties, evtype: 'qb', unid: 'qb1' };
+    const parsed = parseEmsc({ ...fc, features: [...fc.features, blast] }, NOW);
+    expect([parsed.nonSeismic, parsed.quakes.length]).toEqual([1, 2]);
+  });
+});
+
 describe('/api/environment/earthquakes', () => {
   it('200, cache 5 min ; BCSF-RéNaSS ; tirs de carrière comptés à part ; relevé du serveur', async () => {
     const log = sources();
@@ -144,5 +154,25 @@ describe('/api/environment/earthquakes', () => {
     const { status, body, cache } = await callHandler<EarthquakesResponse>(handler);
     expect([status, cache]).toEqual([502, 'no-store']);
     expect(body).toEqual({ readAt: null, source: null, quakes: [], nonSeismic: 0, errors: ['BCSF-RéNaSS : HTTP 500', 'EMSC (repli) : HTTP 503'] });
+  });
+  it('BCSF en panne avec valeur périmée en cache : EMSC servi, panne nommée (jamais silencieuse)', async () => {
+    sources();
+    await callHandler<EarthquakesResponse>(handler);
+    vi.setSystemTime(NOW + 20 * 60_000);
+    sources({ bcsf: respond('Internal Server Error', 500) });
+    const { status, body } = await callHandler<EarthquakesResponse>(handler);
+    expect([status, body.source]).toEqual([200, 'EMSC']);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]).toContain('BCSF-RéNaSS');
+  });
+  it('BCSF et EMSC en panne avec valeur périmée : valeur BCSF servie avec sa date d’origine et deux pannes nommées', async () => {
+    sources();
+    await callHandler<EarthquakesResponse>(handler);
+    vi.setSystemTime(NOW + 20 * 60_000);
+    sources({ bcsf: respond('Internal Server Error', 500), emsc: respond('Service Unavailable', 503) });
+    const { status, body } = await callHandler<EarthquakesResponse>(handler);
+    expect([status, body.source, body.readAt, body.quakes.length]).toEqual([200, 'BCSF-RéNaSS', '2026-10-04T08:10:00.000Z', 8]);
+    expect(body.errors).toHaveLength(2);
+    expect(body.errors[1]).toBe('EMSC (repli) : HTTP 503');
   });
 });

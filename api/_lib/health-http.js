@@ -174,8 +174,8 @@ const MEMORY_ONLY = { get: async () => null, set: async () => {} };
  * `shared: false` garde la valeur dans la mémoire du processus seulement (sources à cadence courte : pas
  * d'écriture Redis toutes les 2 à 5 minutes).
  */
-export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400, shared = true }, producer) {
-  const options = { ttlSec, staleSec, timeoutMs: 8_000, negativeTtlSec: FAILURE_MEMO_SEC };
+export async function cachedSource(key, { ttlSec, staleSec = 7 * 86_400, shared = true, waitMs = 8_000 }, producer) {
+  const options = { ttlSec, staleSec, timeoutMs: waitMs, negativeTtlSec: FAILURE_MEMO_SEC };
   const { value } = await getOrRefresh(`health:${key}`, shared ? options : { ...options, redis: MEMORY_ONLY }, producer);
   return value;
 }

@@ -112,28 +112,38 @@ function served(v, now, errors) {
   return { readAt: v.readAt, source: v.source, quakes: v.quakes.filter((q) => now - Date.parse(q.at) <= QUAKE_WINDOW_MS), nonSeismic: v.nonSeismic, errors };
 }
 
-/** BCSF-RéNaSS d'abord (cache de 10 min), EMSC en repli ; 200 si l'un répond, sinon 502 avec les deux pannes nommées. */
+const FETCH_TIMEOUT_MS = 20_000;
+const FRESH_SEC = 600;
+
+/**
+ * BCSF-RéNaSS d'abord (cache de 10 min, attente alignée sur le délai de lecture), EMSC en repli. Une valeur BCSF périmée
+ * (servie par le cache après un échec) compte comme une panne nommée : EMSC est essayé ; si lui aussi échoue, la valeur
+ * périmée est servie avec sa date de lecture d'origine et les deux pannes nommées. Jamais de panne silencieuse.
+ */
 export async function loadEarthquakes(now = Date.now()) {
   const errors = [];
   const readAt = new Date(now).toISOString();
+  let stale = null;
   try {
-    const v = await cachedSource('env:seismes', { ttlSec: 600, staleSec: 86_400, shared: false }, async () => {
-      const parsed = parseBcsf(await fetchStrictJson(BCSF_URL, { timeoutMs: 20_000 }), now);
+    const v = await cachedSource('env:seismes', { ttlSec: FRESH_SEC, staleSec: 86_400, shared: false, waitMs: FETCH_TIMEOUT_MS }, async () => {
+      const parsed = parseBcsf(await fetchStrictJson(BCSF_URL, { timeoutMs: FETCH_TIMEOUT_MS }), now);
       if (!parsed.complete) throw new Error('fenêtre de 7 jours incomplète');
       return { quakes: parsed.quakes, nonSeismic: parsed.nonSeismic, source: 'BCSF-RéNaSS', readAt };
     });
-    return served(v, now, errors);
+    if (now - Date.parse(v.readAt) <= FRESH_SEC * 1000) return served(v, now, errors);
+    stale = v;
+    errors.push(`BCSF-RéNaSS : source indisponible, valeur en cache du ${v.readAt}`);
   } catch (err) {
     errors.push(sourceError('BCSF-RéNaSS', err));
   }
   try {
-    const v = await cachedSource('env:seismes:emsc', { ttlSec: 600, staleSec: 86_400, shared: false }, async () => {
-      const parsed = parseEmsc(await fetchStrictJson(emscUrl(new Date(now - QUAKE_WINDOW_MS).toISOString()), { timeoutMs: 20_000 }), now);
+    const v = await cachedSource('env:seismes:emsc', { ttlSec: FRESH_SEC, staleSec: 86_400, shared: false, waitMs: FETCH_TIMEOUT_MS }, async () => {
+      const parsed = parseEmsc(await fetchStrictJson(emscUrl(new Date(now - QUAKE_WINDOW_MS).toISOString()), { timeoutMs: FETCH_TIMEOUT_MS }), now);
       return { quakes: parsed.quakes, nonSeismic: parsed.nonSeismic, source: 'EMSC', readAt };
     });
     return served(v, now, errors);
   } catch (err) {
     errors.push(sourceError('EMSC (repli)', err));
   }
-  return emptyQuakes(errors);
+  return stale ? served(stale, now, errors) : emptyQuakes(errors);
 }
