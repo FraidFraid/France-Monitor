@@ -132,6 +132,10 @@ describe('retraits Environnement (spec 2026-10-04 environnement § 2.6, contrats
     expect(read('src/App.ts')).toContain('private syncEnvironmentPolling(');
   });
 
+  it('styles de l’ancien bloc multi-capteurs du panneau Feux retirés : aucun code ne les emploie plus (vague finale, point 8)', () => {
+    expect(read('src/styles/main.css')).not.toContain('fires-multisensor');
+  });
+
   it('niveau violet : jamais publié, absent du code', () => {
     for (const f of APP) expect(read(f), f).not.toMatch(/['"]violet['"]|violet: /);
     expect(read('src/styles/main.css')).not.toContain('--meteo-violet');
