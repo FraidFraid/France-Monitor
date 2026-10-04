@@ -1,0 +1,65 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "fr2026utlsew",
+   "type": "Feature",
+   "properties": {
+    "type": null,
+    "time": "2026-10-04T06:16:31.713567Z",
+    "description": {
+     "fr": "Évènement de magnitude 1.0, proche de Gap",
+     "en": "Event of magnitude 1.0, near Gap"
+    },
+    "depth": 5,
+    "url": {
+     "fr": "https://renass.unistra.fr/fr/evenements/fr2026utlsew",
+     "en": "https://renass.unistra.fr/en/events/fr2026utlsew"
+    },
+    "automatic": true,
+    "latitude": 44.61400223,
+    "longitude": 6.642660141,
+    "mag": 0.9769107346,
+    "magType": "MLv"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     6.642660141,
+     44.61400223,
+     -5
+    ]
+   }
+  },
+  {
+   "id": "fr2026utlizx",
+   "type": "Feature",
+   "properties": {
+    "type": null,
+    "time": "2026-10-04T04:32:40.984216Z",
+    "description": {
+     "fr": "Évènement de magnitude 1.2, proche de Turin",
+     "en": "Event of magnitude 1.2, near Turin"
+    },
+    "depth": 4.921336174,
+    "url": {
+     "fr": "https://renass.unistra.fr/fr/evenements/fr2026utlizx",
+     "en": "https://renass.unistra.fr/en/events/fr2026utlizx"
+    },
+    "automatic": true,
+    "latitude": 44.54732895,
+    "longitude": 6.81775713,
+    "mag": 1.188346146,
+    "magType": "MLv"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     6.81775713,
+     44.54732895,
+     -4.921336174
+    ]
+   }
+  }
+ ]
+}
