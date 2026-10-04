@@ -13,7 +13,7 @@ import {
   barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView,
 } from './frame.ts';
 import {
-  CAT_AIRPORT, SQUAWK_LEVEL, SQUAWK_WORD, TRAFFIC_THEME, anomalyLabel, clockOf, coordText, dataMs, emptyOrDown, formatMeters, glueUnits, note,
+  CAT_AIRPORT, SQUAWK_LEVEL, SQUAWK_WORD, TRAFFIC_THEME, squawkPair, anomalyLabel, clockOf, coordText, dataMs, emptyOrDown, formatMeters, glueUnits, note,
   plural, readErrors, sourceDown, stamp,
 } from './traffic-format.ts';
 
@@ -30,7 +30,7 @@ const OPENSKY_URL = 'https://opensky-network.org';
 const OPENSKY_API_URL = 'https://openskynetwork.github.io/opensky-api/rest.html';
 const ZONE_WORDS = 'zone suivie de 41° N à 51,8° N et de 5,8° O à 10,2° E, qui déborde sur les pays voisins';
 /** Codes en urgence avec leur sens : chaque paire insécable ; la liste complète tient sur une ligne. */
-const SQUAWK_PAIRS = [`7500${NBSP}détournement`, `7600${NBSP}panne${NBSP}radio`, `7700${NBSP}urgence`];
+const SQUAWK_PAIRS = [squawkPair('7500'), squawkPair('7600'), squawkPair('7700')];
 const SQUAWK_ONE_LINE = SQUAWK_PAIRS.join(`${NBSP}·${NBSP}`);
 const SQUAWK_ORDER: Readonly<Record<Squawk, number>> = { '7500': 0, '7700': 1, '7600': 2 };
 const MAX_LOG = 10;

@@ -83,3 +83,15 @@ export function splitNavy(ships: readonly MilitaryShip[]): { observed: MilitaryS
   const reference = shown.filter((s) => s.isLive !== true).sort(byName);
   return { observed, reference };
 }
+
+/**
+ * Navire d'une clé de marqueur ou de ligne (`mmsi ?? id`, comme `data-mar-ship`) dans les listes données, par ordre. Un navire sans MMSI
+ * reconnu (O12) n'est trouvé que par son identifiant : jamais `undefined === undefined`.
+ */
+export function findShipByKey<T extends { id: string; mmsi?: string }>(key: string, ...pools: readonly (readonly T[])[]): T | undefined {
+  for (const pool of pools) {
+    const hit = pool.find((s) => s.id === key || (s.mmsi !== undefined && s.mmsi === key));
+    if (hit) return hit;
+  }
+  return undefined;
+}

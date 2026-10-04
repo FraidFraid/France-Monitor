@@ -58,7 +58,6 @@ function copy(base: LegendCategory, items: readonly LegendItem[], refresh: strin
 
 const DEFENSE_ITEMS: readonly LegendItem[] = [
   { id: 'mil-header', label: capitalize(MILITARY_FIGURE_LABEL), color: HEADER_HEX, isHeader: true },
-  { id: 'mil-francais', label: 'Français (bloc d’adresse OACI France)', color: MIL_FRANCAIS_HEX, shape: 'circle' },
   { id: 'mil-autres', label: 'Autres pays', color: MIL_AUTRES_HEX, shape: 'circle' },
   { id: 'mil-abroad', label: 'Hors de France, jamais compté', color: SOV_ABROAD_HEX, shape: 'circle' },
   { id: 'mil-emergency-confirmed', label: 'Urgence confirmée (deux lectures)', color: levelHex('orange'), shape: 'ring' },
@@ -84,7 +83,7 @@ export const DEFENSE_LEGEND: LegendCategory = {
   id: 'military',
   title: 'Défense',
   columns: 2,
-  splitIndex: 6,
+  splitIndex: 5,
   items: [...DEFENSE_ITEMS],
   source: { label: 'Données adsb.lol, ODbL 1.0 · AIS : aisstream.io via le relais · sites : liste interne', url: 'https://www.adsb.lol' },
   refresh: { label: `Collecte du serveur toutes les 2${NBSP}min` },

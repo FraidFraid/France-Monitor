@@ -46,6 +46,7 @@ import {
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { interpolateFlightPosition } from '../services/military-flights.ts';
 import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
+import { findShipByKey } from './layer-panel/navy.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
@@ -4758,7 +4759,7 @@ export class DeckGLMap {
       const pt = this.map.project(e.lngLat);
       if (this.onMilitaryShipClick) this.onMilitaryShipClick(ship, pt.x, pt.y);
       if (this._onMaritimeShipClick) {
-        const full: MilitaryShip | undefined = getAllLiveTraffic().find(s => s.mmsi === ship.mmsi) ?? getMilitaryShips().find(s => s.mmsi === ship.mmsi);
+        const full: MilitaryShip | undefined = findShipByKey(ship.id, getAllLiveTraffic(), getMilitaryShips());
         if (full) this._onMaritimeShipClick(full, pt.x, pt.y);
       }
     });
@@ -10270,9 +10271,7 @@ export class DeckGLMap {
       src.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
-    const ship = Array.from(this.militaryShipsById.values()).find((s) => s.mmsi === mmsi)
-      ?? this.globalTrafficData.find((s) => s.mmsi === mmsi)
-      ?? getAllLiveTraffic().find((s) => s.mmsi === mmsi);
+    const ship = findShipByKey<{ id: string; mmsi?: string; lat: number; lon: number }>(mmsi, Array.from(this.militaryShipsById.values()), this.globalTrafficData, getAllLiveTraffic());
     if (!ship) {
       src.setData({ type: 'FeatureCollection', features: [] });
       return;

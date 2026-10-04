@@ -24,7 +24,7 @@ const MIL: MilitaryResponse = {
   hourly: { hours: [], since: null }, errors: [],
 };
 const FILE: SubseaCablesFile = {
-  generatedAt: '2026-10-04T13:02:00Z', osmBase: '2026-10-04T12:47:16Z', licence: 'ODbL 1.0', source: '© les contributeurs d’OpenStreetMap', cables: [],
+  generatedAt: '2026-10-04T13:02:00Z', osmBase: '2026-10-04T12:47:16Z', sources: [], cables: [], cableZones: [], anchorageZones: [],
 };
 const WATCH: CablesWatchResponse = {
   readAt: '2026-10-04T14:47:40Z', aisLastMessageAt: '2026-10-04T14:47:31Z', evaluated: true,
@@ -60,14 +60,15 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
       for (const n of c.notes ?? []) expect(sovBreakable(n), n).toBeNull();
     }
   });
-  it('Défense : familles, hors de France en gris, urgences par niveau, ports d’attache de référence, sites, zones « ZIT » datées comme non datées', () => {
+  it('Défense : hors de France en gris, urgences par niveau, ports d’attache de référence, sites, zones « ZIT » datées comme non datées', () => {
     const t = text(DEFENSE_LEGEND);
-    for (const label of ['Français (bloc d’adresse OACI France)', 'Autres pays', 'Hors de France, jamais compté', 'Urgence confirmée (deux lectures)',
+    for (const label of ['Autres pays', 'Hors de France, jamais compté', 'Urgence confirmée (deux lectures)',
       'Urgence vue une fois', 'Bâtiment vu en AIS (heure en étiquette)', 'Port base : position de référence, pas une observation',
       'Zone interdite, tracé approché saisi à la main, non daté']) expect(t).toContain(label);
     const color = (id: string): string | undefined => DEFENSE_LEGEND.items.find((i) => i.id === id)?.color;
-    expect([color('mil-francais'), color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])
-      .toEqual([MIL_FRANCAIS_HEX, MIL_AUTRES_HEX, SOV_ABROAD_HEX, levelHex('orange'), levelHex('jaune')]);
+    expect(color('mil-francais')).toBeUndefined();
+    expect([color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])
+      .toEqual([MIL_AUTRES_HEX, SOV_ABROAD_HEX, levelHex('orange'), levelHex('jaune')]);
     expect(DEFENSE_LEGEND.items[0]?.label).toBe('Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole');
     expect(t).toContain('Un appareil absent du flux n’est pas absent du ciel.');
   });
@@ -94,7 +95,7 @@ describe('légendes datées par la donnée (S1, S2)', () => {
     const mute = connectivityLegend(FILE, { ...WATCH, evaluated: false, aisLastMessageAt: '2026-10-04T14:41:00Z' }, NOW);
     expect(mute.refresh?.label).toBe('AIS muet depuis 16:41 : alertes non évaluées');
     expect(mute.notes).toContain('Veille non évaluée : navires signalés en gris, ni confirmés ni retirés.');
-    const noFile = connectivityLegend(FILE, { ...WATCH, evaluated: false, errors: ['Câbles OpenStreetMap : fichier illisible'] }, NOW);
+    const noFile = connectivityLegend(FILE, { ...WATCH, evaluated: false, errors: ['Câbles (Shom, OpenStreetMap) : fichier illisible'] }, NOW);
     expect(noFile.refresh?.label).toBe('Fichier des câbles illisible : alertes non évaluées');
     expect(connectivityLegend(null, null, NOW).refresh?.label).toBe('Veille des câbles indisponible');
     expect(connectivityLegend(null, WATCH, NOW).notes).toContain('Fichier des câbles illisible : tracés absents.');
@@ -103,6 +104,19 @@ describe('légendes datées par la donnée (S1, S2)', () => {
     expect(cyberLegend(CYBER, NOW).refresh?.label).toBe('CERT-FR lu à 16:47');
     expect(cyberLegend(CYBER, NOW + 6 * 60 * MIN + MIN).refresh?.label).toBe('CERT-FR lu à 16:47 (en retard)');
     expect(cyberLegend(null, NOW).refresh?.label).toBe('CERT-FR indisponible');
+  });
+  it('R1 : tous les textes de légende, de base et datés, sans nombre et unité séparables', () => {
+    const all = [DEFENSE_LEGEND, CONNECTIVITY_LEGEND, CYBER_LEGEND,
+      defenseLegend(MIL, { osmWorks: true, droneZones: false }, NOW), defenseLegend(MIL, { osmWorks: true, droneZones: false }, NOW + 11 * MIN),
+      defenseLegend(null, { osmWorks: false, droneZones: false }, NOW),
+      connectivityLegend(FILE, WATCH, NOW), connectivityLegend(FILE, { ...WATCH, evaluated: false }, NOW), connectivityLegend(null, null, NOW),
+      connectivityLegend(FILE, { ...WATCH, aisLastMessageAt: '2026-10-04T14:00:00Z' }, NOW),
+      cyberLegend(CYBER, NOW), cyberLegend(CYBER, NOW + 6 * 60 * MIN + MIN), cyberLegend(null, NOW)];
+    for (const c of all) {
+      for (const t of [c.title, ...c.items.map((i) => i.label), c.source?.label ?? '', c.refresh?.label ?? '', ...(c.notes ?? [])]) {
+        expect(sovBreakable(t), t).toBeNull();
+      }
+    }
   });
   it('copies : la légende de base n’est jamais modifiée', () => {
     const before = JSON.stringify(DEFENSE_LEGEND);

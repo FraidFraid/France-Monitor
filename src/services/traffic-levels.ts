@@ -122,7 +122,7 @@ export function airLevel(a: AirOverviewResponse): LevelVerdict {
   if (a.at === null) return { level: 'nd', reason: 'OpenSky indisponible' };
   const counted = a.emergencies.filter(emergencyColoursPill);
   const hijack = counted.find((e) => e.squawk === '7500');
-  if (hijack) return { level: 'rouge', reason: `7500\u00a0détournement : ${hijack.callsign ?? hijack.icao24}` };
+  if (hijack) return { level: 'rouge', reason: `7500\u00a0intervention\u00a0illicite : ${hijack.callsign ?? hijack.icao24}` };
   const general = counted.find((e) => e.squawk === '7700');
   if (general) return { level: 'orange', reason: `7700\u00a0urgence au-dessus du territoire : ${general.callsign ?? general.icao24}` };
   const radio = counted.find((e) => e.squawk === '7600');

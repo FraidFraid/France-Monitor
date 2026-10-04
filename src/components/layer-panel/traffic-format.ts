@@ -173,6 +173,10 @@ export function jamLevel(magnitude: 1 | 2 | 3): VigilanceLevel {
 export const JAM_MAGNITUDE_WORD: Readonly<Record<1 | 2 | 3, string>> = { 1: 'ralenti', 2: 'à-coups', 3: 'bouchon' };
 export const SQUAWK_WORD: Readonly<Record<Squawk, string>> = { '7500': 'intervention illicite', '7600': 'panne radio', '7700': 'urgence' };
 /** Précision à côté d'un code d'urgence (S3) : le transpondeur affiche un code, seules les autorités qualifient l'événement. */
+/** Code et sens, insécables (une paire tient sur une ligne) : « 7500 intervention illicite ». */
+export function squawkPair(code: Squawk): string {
+  return `${code}${NBSP}${SQUAWK_WORD[code].replace(/ /g, NBSP)}`;
+}
 export const SQUAWK_CAVEAT = 'code affiché par le transpondeur, non confirmé par les autorités';
 /** Puce d'une urgence, comme la pastille (spec § 3.2) : 7500 rouge, 7700 orange, 7600 jaune. */
 export const SQUAWK_LEVEL: Readonly<Record<Squawk, VigilanceLevel>> = { '7500': 'rouge', '7700': 'orange', '7600': 'jaune' };

@@ -84,7 +84,7 @@ describe('formats Souveraineté (R1)', () => {
     expect(cablesUnevaluatedWhy({ aisLastMessageAt: at, errors: [CABLES_FILE_ERROR_TEXT] }, NOW)).toBe('fichier des câbles illisible');
     expect(cablesUnevaluatedWhy({ aisLastMessageAt: at, errors: ['Relais AIS : HTTP 503'] }, NOW)).toBe('relais AIS injoignable');
     expect(cablesUnevaluatedWhy({ aisLastMessageAt: at, errors: ['Veille des câbles interrompue : délai dépassé'] }, NOW)).toBe('veille des câbles interrompue');
-    expect(CABLES_FILE_ERROR_TEXT).toBe('Câbles OpenStreetMap : fichier illisible');
+    expect(CABLES_FILE_ERROR_TEXT).toBe('Câbles (Shom, OpenStreetMap) : fichier illisible');
     expect(cablesAisDown({ evaluated: false, errors: ['Relais AIS : HTTP 503'] })).toBe(true);
     expect(cablesAisDown({ evaluated: false, errors: [CABLES_FILE_ERROR_TEXT] })).toBe(false);
     expect(cablesAisDown({ evaluated: true, errors: [] })).toBe(false);

@@ -91,7 +91,7 @@ export function formatAsn(asn: number): string {
 // ─── Veille des câbles non évaluée (tâche A5 : `evaluated: false` a quatre causes) ───
 
 /** Erreur de la veille quand le fichier des câbles est illisible (api/_lib/cable-watch.js, CABLES_FILE_ERROR). */
-export const CABLES_FILE_ERROR_TEXT = 'Câbles OpenStreetMap : fichier illisible';
+export const CABLES_FILE_ERROR_TEXT = 'Câbles (Shom, OpenStreetMap) : fichier illisible';
 
 /**
  * Cause d'une veille des câbles non évaluée : fichier des câbles illisible, relais AIS injoignable, relevé interrompu, sinon flux AIS

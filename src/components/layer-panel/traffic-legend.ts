@@ -10,6 +10,7 @@ import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
 import { fmIcon } from '../shared/icons.ts';
 import { NBSP, frNumber } from './format.ts';
+import { squawkPair } from './traffic-format.ts';
 
 const PARIS = 'Europe/Paris';
 const ND = 'n.d.';
@@ -155,9 +156,9 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
     ...AIR_ALTITUDE_BANDS.map(({ id, hex }, i): LegendItem => ({ id, label: altitudeBandLabel(i), color: hex, icon: fmIcon('plane') })),
     { id: 'air-alt-unknown', label: 'Altitude non transmise', color: TRAFFIC_NEUTRAL_HEX, icon: fmIcon('plane') },
     { id: 'air-emergency-header', label: 'Urgences et aéroports', color: HEADER_HEX, isHeader: true },
-    { id: 'air-emergency-7500', label: `7500${NBSP}détournement`, color: levelHex('rouge'), shape: 'circle' },
-    { id: 'air-emergency-7700', label: `7700${NBSP}urgence`, color: levelHex('orange'), shape: 'circle' },
-    { id: 'air-emergency-7600', label: `7600${NBSP}panne${NBSP}radio`, color: levelHex('jaune'), shape: 'circle' },
+    { id: 'air-emergency-7500', label: squawkPair('7500'), color: levelHex('rouge'), shape: 'circle' },
+    { id: 'air-emergency-7700', label: squawkPair('7700'), color: levelHex('orange'), shape: 'circle' },
+    { id: 'air-emergency-7600', label: squawkPair('7600'), color: levelHex('jaune'), shape: 'circle' },
     { id: 'air-emergency-away', label: 'Urgence hors territoire et approches, ou vue une fois', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
     { id: 'air-airport', label: 'Aéroport : surface selon les départs détectés', color: CAT_AIRPORT_HEX, shape: 'circle' },
   ],
@@ -165,7 +166,7 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   refresh: { label: `Positions toutes les 12${NBSP}s, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Zone suivie : France métropolitaine et ses approches ; vols militaires dans la couche Défense.',
-    `Urgences en vol (7500${NBSP}détournement, 7600${NBSP}panne${NBSP}radio, 7700${NBSP}urgence) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) et vues sur au moins deux relevés ; sinon gris (hors territoire, ou « vu une fois, à confirmer »).`,
+    `Urgences en vol (${squawkPair('7500')}, ${squawkPair('7600')}, ${squawkPair('7700')}) et leur indicatif : couleur du panneau, au-dessus du territoire ou de ses approches (moins de 40${NBSP}km) et vues sur au moins deux relevés ; sinon gris (hors territoire, ou « vu une fois, à confirmer »).`,
     `Départs : 8 aéroports, fenêtre de 2${NBSP}h relevée toutes les 4${NBSP}h ; Beauvais et Bordeaux : annuaires officiels ; arrivées publiées par la source seulement en différé.`,
   ],
 };

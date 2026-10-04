@@ -72,7 +72,7 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
       [`25\u202F000 à 35\u202F000${NBSP}ft`, '#32c8ff'], [`35\u202F000${NBSP}ft ou plus`, '#8264ff'], ['Altitude non transmise', TRAFFIC_NEUTRAL_HEX],
     ]);
     expect(bands.every((i) => typeof i.icon === 'string' && i.icon.includes('svg'))).toBe(true);
-    for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0détournement, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
+    for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0intervention\u00a0illicite, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
     expect([color(l, 'air-emergency-7500'), color(l, 'air-emergency-7700'), color(l, 'air-emergency-7600'), color(l, 'air-emergency-away')])
       .toEqual([levelHex(SQUAWK_LEVEL['7500']), levelHex(SQUAWK_LEVEL['7700']), levelHex(SQUAWK_LEVEL['7600']), TRAFFIC_NEUTRAL_HEX]);

@@ -1,12 +1,12 @@
 // src/components/layer-panel/navy.test.ts
 // Lignes de la Marine nationale partagées par les panneaux Trafic maritime et Défense (contrats § 3.7, arbitrage 7) : flux figé
 // (T3), bâtiments vus en AIS d'abord, sous-marins retirés de la liste (O11), MMSI reconnus seulement vérifiés (O12).
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { INSTALLATIONS_BY_ID } from '../../config/military-bases-db.ts';
-import { NAVY_MMSI_SET, getMilitaryShips, type MilitaryShip } from '../../services/military-ships.ts';
+import { AIS_SELF_SOURCE, NAVY_MMSI_SET, getMilitaryShips, recognizeNavyByAis, registerAisNavyIdentity, resetAisNavyIdentities, type MilitaryShip } from '../../services/military-ships.ts';
 import { NBSP } from './format.ts';
 import { RISK_LEVEL as MARITIME_RISK_LEVEL } from './maritime-tabs.ts';
-import { RISK_LEVEL, flagName, frozenWord, homonymKeys, isSubmarine, navyLiveState, shipRow, splitNavy } from './navy.ts';
+import { RISK_LEVEL, findShipByKey, flagName, frozenWord, homonymKeys, isSubmarine, navyLiveState, shipRow, splitNavy } from './navy.ts';
 
 const NOW = Date.parse('2026-10-04T16:48:30+02:00');
 const MIN = 60_000;
@@ -80,5 +80,41 @@ describe('base de la Marine nationale (military-ships.ts)', () => {
     expect(ships.length).toBeGreaterThan(0);
     expect(ships.every((s) => s.mmsi === undefined && s.isLive === false)).toBe(true);
     expect(NAVY_MMSI_SET.size).toBe(0);
+  });
+});
+
+describe('marqueurs : recherche par clé (I1)', () => {
+  it('deux marqueurs sans MMSI ouvrent chacun leur fiche, jamais la première', () => {
+    const a = ship({ id: 'r91', name: 'Charles de Gaulle' });
+    const b = ship({ id: 'd651', name: 'Provence' });
+    expect(findShipByKey('d651', [a, b])?.name).toBe('Provence');
+    expect(findShipByKey('r91', [], [a, b])?.name).toBe('Charles de Gaulle');
+    expect(findShipByKey('inconnu', [a, b])).toBeUndefined();
+    expect(findShipByKey('227802000', [a, LIVE])?.name).toBe('Provence');
+  });
+});
+
+describe('reconnaissance par le message AIS du bâtiment (ITU en 403)', () => {
+  beforeEach(() => resetAisNavyIdentities());
+  it('type 35, MID français, nom de la liste (préfixe FS ou F toléré) : reconnu ; sinon non', () => {
+    expect(recognizeNavyByAis({ mmsi: '227123456', shipType: 35, name: 'FS PROVENCE' })).toBe('d651');
+    expect(recognizeNavyByAis({ mmsi: '226000001', shipType: 35, name: 'F Charles de Gaulle' })).toBe('r91');
+    expect(recognizeNavyByAis({ mmsi: '228000001', shipType: 35, name: 'Émeraude' })).toBeNull();
+    expect(recognizeNavyByAis({ mmsi: '227123456', shipType: 70, name: 'PROVENCE' })).toBeNull();
+    expect(recognizeNavyByAis({ mmsi: '227123456', shipType: undefined, name: 'PROVENCE' })).toBeNull();
+    expect(recognizeNavyByAis({ mmsi: '244123456', shipType: 35, name: 'PROVENCE' })).toBeNull();
+    expect(recognizeNavyByAis({ mmsi: '227123456', shipType: 35, name: 'NAVIRE INCONNU' })).toBeNull();
+    expect(recognizeNavyByAis({ mmsi: '227123456', shipType: 35, name: undefined })).toBeNull();
+  });
+  it('un navire reconnu entre dans NAVY_MMSI_SET et la liste, avec sa source « message AIS du bâtiment » ; jamais une vérification de registre', () => {
+    expect(registerAisNavyIdentity('244123456', 35, 'PROVENCE', NOW)).toBe(false);
+    expect(NAVY_MMSI_SET.has('244123456')).toBe(false);
+    expect(registerAisNavyIdentity('227123456', 35, 'FS PROVENCE', NOW)).toBe(true);
+    expect(NAVY_MMSI_SET.has('227123456')).toBe(true);
+    registerAisNavyIdentity('227123456', 35, 'FS PROVENCE', NOW + MIN);
+    const prov = getMilitaryShips().find((s) => s.id === 'd651');
+    expect(prov).toMatchObject({ mmsi: '227123456', mmsiSource: AIS_SELF_SOURCE, identifiedAt: NOW });
+    expect(AIS_SELF_SOURCE).toBe('message AIS du bâtiment');
+    expect(getMilitaryShips().find((s) => s.id === 'r91')?.mmsi).toBeUndefined();
   });
 });

@@ -68,6 +68,10 @@ export interface MilitaryShip {
     nearestPort?: { name: string; locode: string; distanceKm: number };
     maritimeTerritory?: { code: FrenchMaritimeTerritoryCode; name: string };
     flagRisk?: FlagRisk;
+    /** Identification d'un bâtiment par son propre message AIS (type 35, MID français, nom de la liste) : jamais un contrôle de registre. */
+    mmsiSource?: string;
+    /** Première réception du message qui a permis l'identification (ms). */
+    identifiedAt?: number;
 }
 
 // ─── Base statique de la Marine Nationale ───
@@ -75,7 +79,7 @@ export interface MilitaryShip {
 // publique (O12 : base MARS de l'UIT, defense.gouv.fr), jour et lien dans mmsiVerifiedAt et mmsiSource. La recherche publique de l'UIT
 // (stations de navire) a répondu 403 à un GET honnête le 04/10/2026 : aucune entrée n'est vérifiée, la tâche A18 recontrôle en direct.
 // Les sous-marins (SNLE, SNA) n'y figurent plus (O11) ; l'Île Longue reste un site de défense (config/military-bases-db.ts).
-interface NavyEntry extends Omit<MilitaryShip, 'lat' | 'lon'> {
+interface NavyEntry extends Omit<MilitaryShip, 'lat' | 'lon' | 'mmsiSource' | 'identifiedAt'> {
     homeLat: number;
     homeLon: number;
     /** « AAAA-MM-JJ » du contrôle sur la source officielle ; null : MMSI non vérifié, donc non reconnu. */
@@ -173,8 +177,68 @@ const staticByMmsi = new Map<string, StaticAisData>();
 let lastStaticSample: { mmsi: string; staticReport: unknown } | null = null;
 // Set de MMSI de la Marine Nationale pour marquage rapide
 // Exported for sovereign whitelist filtering in App.ts
-/** Seuls les MMSI vérifiés sur une source officielle publique sont reconnus (O12). */
-export const NAVY_MMSI_SET = new Set(
+/** Source déclarée d'un bâtiment identifié par son propre message AIS (aucun registre n'a répondu : l'UIT a refusé l'accès, 403). */
+export const AIS_SELF_SOURCE = 'message AIS du bâtiment';
+/** MMSI français : MID 226, 227 ou 228. */
+const FRENCH_MID = /^22[678]\d{6}$/;
+const NAVY_AIS_SHIP_TYPE = 35; // type AIS « militaire »
+
+/** Nom comparable : sans accents, majuscules, sans espaces ni ponctuation, préfixe « FS » ou « F » toléré. */
+function navyNameKey(name: string): string {
+    const k = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return k;
+}
+const NAVY_BY_NAME_KEY = new Map(FRENCH_NAVY_SHIPS.map(e => [navyNameKey(e.name), e]));
+
+/** Entrée de la liste dont le nom (préfixe « FS » ou « F » toléré) est celui du message AIS ; sinon undefined. */
+function matchNavyEntry(name: string): NavyEntry | undefined {
+    const raw = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+    const stripped = raw.replace(/^(FS|F)[\s.\-_]+/, '');
+    return NAVY_BY_NAME_KEY.get(navyNameKey(stripped)) ?? NAVY_BY_NAME_KEY.get(navyNameKey(raw));
+}
+
+/**
+ * Reconnaissance d'un bâtiment de la Marine nationale par son propre message AIS : type 35 (militaire), MMSI français (MID 226 à 228)
+ * et nom d'une entrée de la liste. Pur : rend l'identifiant de l'entrée, sinon null.
+ */
+export function recognizeNavyByAis(input: { mmsi: string; shipType: number | undefined; name: string | undefined }): string | null {
+    if (input.shipType !== NAVY_AIS_SHIP_TYPE || !FRENCH_MID.test(input.mmsi) || !input.name) return null;
+    return matchNavyEntry(input.name)?.id ?? null;
+}
+
+/** MMSI identifiés en direct : MMSI → entrée, source et première réception. */
+const aisIdentified = new Map<string, { entryId: string; firstSeen: number }>();
+
+/**
+ * Enregistre un bâtiment reconnu par son message AIS (type, MID, nom) dans NAVY_MMSI_SET ; rend vrai s'il est reconnu. La première
+ * réception est gardée. Les MMSI vérifiés sur un registre public (mmsiVerifiedAt) y entrent d'emblée.
+ */
+export function registerAisNavyIdentity(mmsi: string, shipType: number | undefined, name: string | undefined, now: number = Date.now()): boolean {
+    const entryId = recognizeNavyByAis({ mmsi, shipType, name });
+    if (entryId === null) return false;
+    if (!aisIdentified.has(mmsi)) aisIdentified.set(mmsi, { entryId, firstSeen: now });
+    NAVY_MMSI_SET.add(mmsi);
+    return true;
+}
+
+/** Remise à zéro des identifications en direct (tests). */
+export function resetAisNavyIdentities(): void {
+    aisIdentified.clear();
+    NAVY_MMSI_SET.clear();
+    for (const s of FRENCH_NAVY_SHIPS) if (s.mmsi && s.mmsiVerifiedAt !== null) NAVY_MMSI_SET.add(s.mmsi);
+}
+
+/** Entrée de la liste pour un MMSI reconnu : par registre vérifié, sinon par message AIS. */
+function navyEntryForMmsi(mmsi: string): { entry: NavyEntry; source: string; at: number | undefined } | undefined {
+    const verified = FRENCH_NAVY_SHIPS.find(e => e.mmsiVerifiedAt !== null && e.mmsi === mmsi);
+    if (verified) return { entry: verified, source: verified.mmsiSource ?? 'registre public', at: undefined };
+    const id = aisIdentified.get(mmsi);
+    const entry = id ? FRENCH_NAVY_SHIPS.find(e => e.id === id.entryId) : undefined;
+    return entry && id ? { entry, source: AIS_SELF_SOURCE, at: id.firstSeen } : undefined;
+}
+
+/** Seuls les MMSI vérifiés sur une source officielle publique (O12) ou identifiés par leur propre message AIS sont reconnus. */
+export const NAVY_MMSI_SET = new Set<string>(
     FRENCH_NAVY_SHIPS.filter(s => s.mmsi && s.mmsiVerifiedAt !== null).map(s => s.mmsi!)
 );
 
@@ -299,7 +363,7 @@ function _handleAisMessage(raw: string): void {
 
         if (!mmsi) return;
 
-        const isMilitary = NAVY_MMSI_SET.has(mmsi);
+        let isMilitary = NAVY_MMSI_SET.has(mmsi);
         const existing = livePositions.get(mmsi);
         const cachedStatic = staticByMmsi.get(mmsi);
 
@@ -315,6 +379,7 @@ function _handleAisMessage(raw: string): void {
         const shipTypeText = shipTypeRaw == null ? '' : String(shipTypeRaw).trim();
         const shipTypeParsed = shipTypeText ? Number.parseInt(shipTypeText.match(/\d+/)?.[0] ?? '', 10) : NaN;
         const shipType = Number.isFinite(shipTypeParsed) ? shipTypeParsed : undefined;
+        if (!isMilitary && registerAisNavyIdentity(mmsi, shipType, shipName)) isMilitary = true;
         const rawDest = (metaData as Record<string, unknown> | undefined)?.Destination ?? (staticReport as Record<string, unknown> | undefined)?.Destination ?? cachedStatic?.destination ?? existing?.destination;
         const destination = rawDest != null ? String(rawDest).replace(/@/g, '').trim() || undefined : undefined;
         const callSign = (staticReport as Record<string, unknown> | undefined)?.CallSign ?? cachedStatic?.callSign;
@@ -572,7 +637,9 @@ export function getMilitaryShips(): MilitaryShip[] {
     const AIS_MAX_AGE = 10 * 60 * 1000; // 10 minutes - repli vers port d'attache si pas de données
 
     return FRENCH_NAVY_SHIPS.map(ship => {
-        const verifiedMmsi = ship.mmsiVerifiedAt !== null ? ship.mmsi : undefined;
+        const aisMmsi = [...aisIdentified].find(([, v]) => v.entryId === ship.id)?.[0];
+        const verifiedMmsi = ship.mmsiVerifiedAt !== null ? ship.mmsi : aisMmsi;
+        const identity = verifiedMmsi ? navyEntryForMmsi(verifiedMmsi) : undefined;
         const live = verifiedMmsi ? livePositions.get(verifiedMmsi) : undefined;
         const isLive = live != null && (now - live.ts) < AIS_MAX_AGE;
 
@@ -582,6 +649,8 @@ export function getMilitaryShips(): MilitaryShip[] {
             type: ship.type,
             role: ship.role,
             mmsi: verifiedMmsi,
+            mmsiSource: identity?.source,
+            identifiedAt: identity?.at,
             lat: isLive ? live!.lat : ship.homeLat,
             lon: isLive ? live!.lon : ship.homeLon,
             speed: isLive ? live!.speed : 0,
@@ -613,7 +682,8 @@ export function getAllLiveTraffic(
         if (filterFrance && !isInFranceZone(pos.lat, pos.lon, territoryCode)) continue;
 
         const staticData = staticByMmsi.get(mmsi);
-        const navyShip = FRENCH_NAVY_SHIPS.find(s => s.mmsiVerifiedAt !== null && s.mmsi === mmsi);
+        const navyIdentity = navyEntryForMmsi(mmsi);
+        const navyShip = navyIdentity?.entry;
         const resolvedShipType = pos.shipType ?? staticData?.shipType;
         const resolvedName = normalizeShipName(pos.name) ?? normalizeShipName(staticData?.name);
         const resolvedDestination = pos.destination ?? staticData?.destination;
@@ -649,6 +719,8 @@ export function getAllLiveTraffic(
             dimensions: resolvedDimensions,
             eta: resolvedEta,
             port: navyShip?.port,
+            mmsiSource: navyIdentity?.source,
+            identifiedAt: navyIdentity?.at,
             lastSeen: pos.ts,
             isLive: true,
             shipType: resolvedShipType,

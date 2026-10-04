@@ -128,7 +128,7 @@ describe('roadLevel (§ 3.1)', () => {
 
 describe('airLevel (§ 3.2)', () => {
   it('au-dessus du territoire ou de ses approches et confirmé : rouge 7500, orange 7700, jaune 7600, vert sinon', () => {
-    expect(airLevel(air([emergency('7500', true)]))).toEqual({ level: 'rouge', reason: '7500\u00a0détournement : TVF89FS' });
+    expect(airLevel(air([emergency('7500', true)]))).toEqual({ level: 'rouge', reason: '7500\u00a0intervention\u00a0illicite : TVF89FS' });
     expect(airLevel(air([emergency('7700', true)]))).toEqual({ level: 'orange', reason: '7700\u00a0urgence au-dessus du territoire : TVF89FS' });
     expect(airLevel(air([emergency('7600', true)]))).toEqual({ level: 'jaune', reason: '7600\u00a0panne\u00a0radio : TVF89FS' });
     expect(airLevel(air([]))).toEqual({ level: 'vert', reason: 'aucun aéronef en urgence' });
