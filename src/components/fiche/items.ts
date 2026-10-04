@@ -61,6 +61,7 @@ import {
 } from './parts.ts';
 import { renderNdPill } from '../layer-panel/frame.ts';
 import type { NationalHealthSummary } from '../layer-panel/veille.ts';
+import { MILITARY_FIGURE_LABEL } from '../../services/sovereignty-levels.ts';
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -106,6 +107,9 @@ interface ThemeFigure {
   value: string;
 }
 
+/** Gros chiffre Défense (O9), même libellé que la légende et la tuile. */
+const MILITARY_FIGURE_TITLE = `${MILITARY_FIGURE_LABEL.charAt(0).toUpperCase()}${MILITARY_FIGURE_LABEL.slice(1)}`;
+
 function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapshot'], lang: Lang): ThemeFigure[] {
   const s = snapshot.signals;
   switch (theme) {
@@ -113,10 +117,20 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
       // Production, éolien et stocks sont portés par les sections énergie et carburants.
       return [];
     case 'security':
+      // Souveraineté (spec 2026-10-04 souveraineté § 2.4 ; O1, O9) : source indisponible, « n.d. » (S3), jamais un « 0 ».
       return [
-        { label: t(lang, 'Alertes cyber (30 j)', 'Cyber alerts (30 d)'), value: String(s.cyberAlerts) },
-        { label: t(lang, 'Vols militaires suivis', 'Military flights tracked'), value: String(s.militaryFlights) },
-        { label: t(lang, 'Alertes câbles et brouillage', 'Cable and jamming alerts'), value: String(s.defenseAlerts + s.jammingSignals) },
+        {
+          label: t(lang, 'Alertes CERT-FR en cours', 'CERT-FR alerts in progress'),
+          value: s.cyberUnavailable === true ? 'n.d.' : String(s.cyberOpenAlerts ?? s.cyberAlerts),
+        },
+        {
+          label: t(lang, MILITARY_FIGURE_TITLE, 'Military or state aircraft visible on ADS-B over metropolitan France'),
+          value: s.militaryUnavailable === true ? 'n.d.' : String(s.militaryFlights),
+        },
+        {
+          label: t(lang, 'Alertes câbles confirmées et mailles GNSS dégradées', 'Confirmed cable alerts and degraded GNSS cells'),
+          value: s.cablesUnavailable === true ? 'n.d.' : String(s.defenseAlerts + s.jammingSignals),
+        },
       ];
     case 'environment':
       return [

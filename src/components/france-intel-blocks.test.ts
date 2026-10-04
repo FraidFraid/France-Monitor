@@ -7,6 +7,11 @@ import type { FranceCountrySignals, FranceIntelEnergySummary } from '../types/in
 import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FLOODS_FIXTURE, VIGILANCE_FIXTURE } from './layer-panel/environment.fixture.ts';
 import { buildEnvironmentInputs } from '../services/environment-inputs.ts';
 import { buildFranceSignals, type FranceRawData } from '../services/france-country-intel.ts';
+import { buildSovereigntyInputs } from '../services/sovereignty-inputs.ts';
+import { MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
+import {
+  CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CYBER_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
+} from './layer-panel/sovereignty.fixture.ts';
 
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
   return {
@@ -20,8 +25,8 @@ function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals
 /** Tuile « Météo » calculée de bout en bout : entrées Environnement, signaux du score, tuiles. */
 function meteoTileFrom(env: ReturnType<typeof buildEnvironmentInputs>) {
   const raw = {
-    newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
-    defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+    newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+    cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
     nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
     fuelTensionDashboard: null, ...env,
   } satisfies FranceRawData;
@@ -110,16 +115,36 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
   it('tuiles de domaines : 8, dans l’ordre, avec niveau', () => {
     const tiles = domainTiles(signals({ cyberAlerts: 24, cyberCritical: 20, militaryFlights: 36 }), 'fr');
     expect(tiles.map((t) => t.label)).toEqual(['Cyber', 'Rail', 'Militaire', 'Maritime', 'Pannes', 'Défense', 'Météo', 'Finance']);
-    expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes 30j · 20 CVE', level: 'high' });
+    expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes CERT-FR en cours · 20 vulnérabilités exploitées citées', level: 'high' });
     expect(tiles[2]?.level).toBe('medium');
     expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange', critical: 'rouge' });
+  });
+
+  it('tuiles Souveraineté du 04/10 : Cyber 3 alertes en cours (pastille orange), Militaire 9 dont 4 français (O9, verte), Défense 0 ; indisponibles : n.d.', () => {
+    const base = {
+      newsItems: [], isnrData: null, meteoAlerts: [], floodSegments: [], activeFires: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
+      powerOutages: [], telecomOutages: [], maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null, nuclearState: null,
+      eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr' as const, oilDashboard: null, fuelTensionDashboard: null,
+    };
+    const tile = (label: string, sov: ReturnType<typeof buildSovereigntyInputs>, lang: 'fr' | 'en' = 'fr') => {
+      const raw = { ...base, ...sov } satisfies FranceRawData;
+      return domainTiles(buildFranceSignals(raw, SOV_FIXTURE_NOW), lang).find((x) => x.label === label);
+    };
+    const day = buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW);
+    expect(tile('Cyber', day)).toEqual({ label: 'Cyber', value: 3, meta: 'alertes CERT-FR en cours · 7 vulnérabilités exploitées citées', level: 'high' });
+    expect(tile('Militaire', day)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4 français`, level: 'low' });
+    expect(tile('Military', day, 'en')).toMatchObject({ meta: 'military or state aircraft visible on ADS-B over metropolitan France · 4 French' });
+    expect(tile('Défense', day)).toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS 0', level: 'low' });
+    expect(JSON.stringify(domainTiles(buildFranceSignals({ ...base, ...day }, SOV_FIXTURE_NOW), 'fr'))).not.toMatch(/au-dessus de la France|[Ff]aille|GPS/);
+    const down = buildSovereigntyInputs(null, CABLES_WATCH_FROZEN_FIXTURE(), null, SOV_FIXTURE_NOW);
+    for (const label of ['Cyber', 'Militaire', 'Défense']) expect(tile(label, down)).toMatchObject({ value: null, level: null });
   });
 
   it('tuile « Météo » du 04/10 (jeux d’essai réels) : vigilance, crues et feux distincts, jamais additionnés ; niveau le plus haut', () => {
     const env = buildEnvironmentInputs(VIGILANCE_FIXTURE(), FLOODS_FIXTURE(), FIRES_FIXTURE(), [], ENV_FIXTURE_NOW);
     const raw = {
-      newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
-      defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
       nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
       fuelTensionDashboard: null, ...env,
     } satisfies FranceRawData;
@@ -160,8 +185,8 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     const now = Date.parse(FIRES_FIXTURE().readAt ?? '') + 2 * 86_400_000 + 60_000;
     const env = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [], now);
     const raw = {
-      newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
-      defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
       nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
       fuelTensionDashboard: null, ...env,
     } satisfies FranceRawData;

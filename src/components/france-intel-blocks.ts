@@ -20,6 +20,7 @@ import {
 } from '../utils/fuelPriceChart.ts';
 import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
+import { MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -156,13 +157,29 @@ function meteoTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   };
 }
 
+/** Libellé anglais du gros chiffre Défense (O9). */
+const MILITARY_FIGURE_LABEL_EN = 'military or state aircraft visible on ADS-B over metropolitan France';
+
+/**
+ * Niveau d'une tuile Souveraineté : la pastille de son panneau (mêmes fonctions, arbitrage 14 de l'Environnement) ; n.d. ou source
+ * indisponible : sans niveau (point gris) ; pastille absente (anciennes entrées) : l'ancien seuil.
+ */
+function pillTileLevel(pill: FranceCountrySignals['cyberPillLevel'], unavailable: boolean | undefined, legacy: DomainLevel): DomainLevel | null {
+  if (unavailable === true) return null;
+  if (pill === undefined) return legacy;
+  return pill === 'nd' ? null : PILL_DOMAIN_LEVEL[pill];
+}
+
 export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
   const outages = s.powerOutages + s.telecomOutages;
   return [
     {
-      label: 'Cyber', value: s.cyberAlerts,
-      meta: `${t(lang, 'alertes 30j', '30d alerts')} · ${s.cyberCritical} CVE`,
-      level: s.cyberCritical > 0 ? 'high' : s.cyberAlerts > 5 ? 'medium' : 'low',
+      // Gros chiffre du panneau Vigilance cyber (O1 : alertes en cours) ; niveau = sa pastille ; source indisponible : « n.d. », gris (S3).
+      label: 'Cyber', value: s.cyberUnavailable === true ? null : s.cyberOpenAlerts ?? s.cyberAlerts,
+      meta: `${t(lang, 'alertes CERT-FR en cours', 'CERT-FR alerts in progress')} · ${s.cyberCritical} ${s.cyberCritical > 1
+        ? t(lang, 'vulnérabilités exploitées citées', 'exploited vulnerabilities cited')
+        : t(lang, 'vulnérabilité exploitée citée', 'exploited vulnerability cited')}`,
+      level: pillTileLevel(s.cyberPillLevel, s.cyberUnavailable, s.cyberCritical > 0 ? 'high' : s.cyberAlerts > 5 ? 'medium' : 'low'),
     },
     {
       label: 'Rail', value: s.railDisruptions,
@@ -170,9 +187,10 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
       level: s.railSevere > 0 ? 'high' : s.railDisruptions > 10 ? 'medium' : 'low',
     },
     {
-      label: t(lang, 'Militaire', 'Military'), value: s.militaryFlights,
-      meta: t(lang, 'vols actifs', 'active flights'),
-      level: s.militaryFlights > 10 ? 'medium' : 'low',
+      // Gros chiffre Défense (O9) ; niveau = pastille Défense (urgences affichées sur deux relevés), jamais le nombre d'aéronefs.
+      label: t(lang, 'Militaire', 'Military'), value: s.militaryUnavailable === true ? null : s.militaryFlights,
+      meta: `${t(lang, MILITARY_FIGURE_LABEL, MILITARY_FIGURE_LABEL_EN)} · ${s.militaryFrench ?? 0} ${t(lang, 'français', 'French')}`,
+      level: pillTileLevel(s.defensePillLevel, s.militaryUnavailable, s.militaryFlights > 10 ? 'medium' : 'low'),
     },
     {
       label: 'Maritime', value: s.maritimeTrafficFrance,
@@ -185,9 +203,10 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
       level: outages > 5 ? 'high' : outages > 0 ? 'medium' : 'low',
     },
     {
-      label: t(lang, 'Défense', 'Defense'), value: s.defenseAlerts + s.jammingSignals,
-      meta: `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts} · GPS ${s.jammingSignals}`,
-      level: s.defenseHigh > 0 || s.jammingSignals > 0 ? 'high' : s.defenseAlerts > 0 ? 'medium' : 'low',
+      // Formule inchangée sur les entrées nettoyées : navires lents confirmés sur un câble (AIS frais), mailles GNSS (phase B).
+      label: t(lang, 'Défense', 'Defense'), value: s.cablesUnavailable === true ? null : s.defenseAlerts + s.jammingSignals,
+      meta: `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts} · GNSS ${s.jammingSignals}`,
+      level: s.cablesUnavailable === true ? null : s.defenseHigh > 0 || s.jammingSignals > 0 ? 'high' : s.defenseAlerts > 0 ? 'medium' : 'low',
     },
     meteoTile(s, lang),
     {

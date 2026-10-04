@@ -3,8 +3,8 @@
 // partagées par les services clients, les vues, la carte et le score. « n.d. » quand la source manque ou se tait, jamais une couleur
 // inventée (V1, S3) ; un niveau ou un statut officiel est repris tel quel (V4, O1).
 import type {
-  CableAlert, CablesWatchResponse, CertFrItem, ConnectivityResponse, CyberResponse, GnssDegradedCounts, GnssResponse, MilitaryEmergency,
-  MilitaryResponse, NetworkVisibility, RansomwareSummary, SituationSeverity, VigipirateEntry, VigipiratePageCheck,
+  CableAlert, CablesWatchResponse, CertFrItem, ConnectivityResponse, CyberResponse, GnssDegradedCounts, GnssResponse, KevItem,
+  MilitaryEmergency, MilitaryResponse, NetworkVisibility, RansomwareSummary, SituationSeverity, VigipirateEntry, VigipiratePageCheck,
 } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { emergencyColoursPill, isEmergencyConfirmed, type LayerLevel, type LevelVerdict } from './traffic-levels.ts';
@@ -320,6 +320,20 @@ function dayWithin(day: string, days: number, now: number): boolean {
 /** Alerte ou avis publié depuis moins de 7 jours de Paris (O2) ; une publication future de plus d'1 h n'est jamais récente. */
 export function isCertFrPublishedRecently(item: CertFrItem, now: number): boolean {
   return dayWithin(item.firstVersion, CERTFR_RECENT_DAYS, now);
+}
+
+/** Vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours de Paris (O6) ; un ajout futur de plus d'1 h n'est jamais récent. */
+export function isKevAddedRecently(k: Pick<KevItem, 'dateAdded'>, now: number): boolean {
+  return dayWithin(k.dateAdded, CERTFR_RECENT_DAYS, now);
+}
+
+/**
+ * Avis du CERT-FR comptés par le score (O6) : ceux qui citent une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours ; les
+ * autres avis n'entrent pas (environ 140 sur 30 jours : un stock, pas un événement).
+ */
+export function certfrKevAdvisories(c: Pick<CyberResponse, 'certfr' | 'kev'>, now: number): CertFrItem[] {
+  const recent = new Set(c.kev.recent.filter((k) => isKevAddedRecently(k, now)).map((k) => k.cve));
+  return c.certfr.avis.filter((a) => a.kevCves.some((cve) => recent.has(cve)));
 }
 
 /** Publication la plus récente d'abord, puis référence décroissante (l'ordre de la réponse ne compte pas). */

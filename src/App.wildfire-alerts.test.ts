@@ -76,10 +76,10 @@ function appForAlerts(currentFireIncidents: LocatedFireIncident[]): App & Record
   const app = Object.create(App.prototype) as App & Record<string, unknown>;
   Object.assign(app, {
     newsItems: [],
-    currentMilitarySurges: [],
     currentVigilance: null,
-    currentDefenseAlerts: [],
-    currentJammingSignals: [],
+    currentMilitary: null,
+    currentCables: null,
+    currentSovCyber: null,
     currentAisAnomalies: [],
     currentFireIncidents,
     alertMonitorCache: new Map(),

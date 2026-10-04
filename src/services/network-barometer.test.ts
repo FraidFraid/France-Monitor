@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeElec } from './network-barometer.ts';
+import { normalizeCyber, normalizeElec } from './network-barometer.ts';
 import { parisDate } from './ecowatt-official.ts';
 import type { EcowattResponse, EcowattSignal } from '../types/index.ts';
+import { CYBER_FIXTURE, SOV_FIXTURE_NOW } from '../components/layer-panel/sovereignty.fixture.ts';
+
+describe('normalizeCyber : réponse de /api/sovereignty/cyber (arbitrage 11), plus d’ancien tableau ni d’événements de menace', () => {
+  it('04/10 : 100 moins la pression consolidée (28) ; deux pannes télécom renforcent les corrélations (33)', () => {
+    expect(normalizeCyber(CYBER_FIXTURE(), { telecomOutageCount: 0, cloudIncidentCount: 0 }, SOV_FIXTURE_NOW)).toBe(72);
+    expect(normalizeCyber(CYBER_FIXTURE(), { telecomOutageCount: 2, cloudIncidentCount: 0 }, SOV_FIXTURE_NOW)).toBe(67);
+  });
+});
 
 const NOW = Date.parse('2026-09-25T08:00:00Z');
 

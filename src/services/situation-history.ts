@@ -27,7 +27,7 @@ function currentSlotKey(now = new Date()): string {
 }
 
 function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string): SituationSnapshot {
-  const cyberScore  = snapshot.cyber?.meta?.globalScore   ?? null;
+  const cyberScore  = snapshot.cyberScore ?? null;
   const socialScore = snapshot.stability?.nationalScore    ?? null;
 
   const sevOrder: Record<SituationSeverity, number> = { critical: 4, high: 3, medium: 2, watch: 1 };

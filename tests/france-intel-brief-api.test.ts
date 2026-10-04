@@ -42,6 +42,31 @@ describe('buildPrompt v14', () => {
     expect(prompt).toContain('NON citables');
     expect(prompt).toContain('"evidence": ["E123", "S1"]');
   });
+  it('souveraineté (arbitrage 25 ; amendement 7, O6, O8, O9, O15) : compte d’aéronefs jamais sans « compte habituel, pas un événement »', () => {
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 6, militaryFlights: 9, maritimeTrafficFrance: 0, defenseAlerts: 1, jammingSignals: 0, marketStress: 0 };
+    const fr = buildPrompt(72, { continuity: 30, defense: 5, security: 20, signal: 10 }, { social: 0, security: 0, infra: 0 }, 28, 0, [], signals, null, [], [], 'fr');
+    expect(fr).toContain('9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol) : compte habituel, pas un événement');
+    expect(fr).toContain('9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
+    expect(fr).toContain('1 navire lent confirmé sur un câble, 0 maille à précision GNSS dégradée');
+    expect(fr).toContain('6 alertes CERT-FR en cours (avis citant une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours compris)');
+    // Chaque compte d'aéronefs cité est suivi de la mention (O8).
+    for (const m of fr.matchAll(/\d+ aéronefs? militaires?[^\n]*/g)) expect(m[0]).toContain('compte habituel, pas un événement');
+    expect(fr).not.toMatch(/vols militaires|alertes défense|brouillages? GPS|au-dessus de la France|[Ff]aille|\u2014/);
+    const en = buildPrompt(72, { continuity: 30, defense: 5, security: 20, signal: 10 }, { social: 0, security: 0, infra: 0 }, 28, 0, [], signals, null, [], [], 'en');
+    expect(en).toContain('9 military or state aircraft visible on ADS-B over metropolitan France (adsb.lol): usual count, not an event');
+    expect(en).toContain('1 slow vessel(s) confirmed on a cable, 0 cell(s) with degraded GNSS accuracy');
+    expect(en).toContain('6 CERT-FR alerts in progress (advisories citing a vulnerability added to the KEV catalogue in the last 7 days included)');
+    for (const m of en.matchAll(/\d+ military[^\n]*/g)) expect(m[0]).toContain('usual count, not an event');
+    expect(en).not.toMatch(/military flights|GPS jamming|defense alerts|over France\b/);
+  });
+  it('CERT-FR indisponible ou en retard : pression cyber « non évaluée », jamais « faible » (une absence n’est pas un calme)', () => {
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    expect(buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr')).toContain('Pression cyber : non évaluée (CERT-FR indisponible ou en retard)');
+    expect(buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'en')).toContain('Cyber pressure: not assessed (CERT-FR unavailable or late)');
+    expect(buildPrompt(95, axes, isnr, 0, 0, [], signals, null, [], [], 'fr')).toContain('Pression cyber : faible');
+  });
 });
 
 describe('handler v14 (Groq simulé)', () => {

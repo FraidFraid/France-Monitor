@@ -142,9 +142,8 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
       expect(call).not.toMatch(/\bLIVE\b|DEGRADE|'CACHE'|'VIDE'|adsb\.fi|airplanes\.live|Shodan|Censys|\bNVD\b/);
     }
     expect(app).not.toMatch(/updateSource\('Cyber'|updateSource\('Vols militaires', \{|adsb\.fi|airplanes\.live|Shodan|Censys|\bNVD\b/);
-    for (const name of ['refreshLegacyMilitaryScore', 'loadLegacyCyberScore']) {
-      expect(methodBody(name)).not.toMatch(/statusPanel|mapContainer|defensePanel|cyberPanel|new Date\(\)/);
-    }
+    // Fin de la transition (tâche A16) : plus d'ancien chargeur des vols ni d'ancien tableau cyber.
+    expect(app).not.toMatch(/refreshLegacyMilitaryScore|loadLegacyCyberScore|fetchMilitaryFlights|fetchCyberDashboard|fetchThreatMapEvents/);
     const status = read('src/components/StatusPanel.ts');
     expect(status).not.toMatch(/adsb\.fi|airplanes\.live|Shodan|Censys|NVD|status\.details\.militaryFlights/);
     for (const name of ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr']) {
@@ -213,5 +212,23 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     const popup = read('src/components/MapPopup.ts');
     expect(popup).toContain('position de référence, pas une observation');
     expect(popup).not.toMatch(/AIS LIVE|PORT D'ATTACHE/);
+  });
+  it('score, frise, moniteur d’alertes et ISNR sur les entrées Souveraineté (tâche A16, contrats § 6 ; amendement 7, O7, O10)', () => {
+    expect(methodBody('sovereigntyInputs')).toContain('buildSovereigntyInputs(');
+    const snap = methodBody('buildFranceSnapshot');
+    expect(snap).toContain('...sov,');
+    expect(snap).not.toMatch(/cyberData|threatEvents|defenseAlerts|jammingSignals|currentMilitaryFlightsCount/);
+    const monitor = methodBody('buildAlertMonitorSituations');
+    expect(monitor).toContain('militaryEmergencyAlerts(monitoredMilitaryEmergencies(this.currentMilitary?.military.data ?? null, nowMs))');
+    expect(monitor).toContain('cableAlertSituations(sov.cableAlerts)');
+    expect(monitor).not.toMatch(/currentMilitarySurges|currentDefenseAlerts|currentJammingSignals/);
+    expect(methodBody('buildFranceTimeline')).toContain('sov.cableAlerts.length + (sov.gnssDegraded?.rolling24h ?? 0)');
+    expect(methodBody('updateISNR')).not.toContain('currentThreatEvents');
+    for (const name of ['loadMilitary', 'loadCables', 'loadCyber']) expect(methodBody(name)).toContain('this.refreshFranceIntelPanel();');
+    expect(app).not.toMatch(/currentCyberData|currentThreatEvents|currentDefenseAlerts|currentJammingSignals|currentMilitarySurges|currentMilitaryFlights|submarineCablesData|loadDefenseAlerts|defenseSeverityToSituationSeverity/);
+    // Une urgence ouverte depuis une alerte recentre la carte sur sa position, seulement pour une urgence montrée (O10 : une urgence masquée n'en a pas).
+    const dossier = methodBody('openAlertDossier');
+    expect(dossier).toContain("if (situation.type === 'MILITARY_SURGE_ALERT') {");
+    expect(dossier).not.toMatch(/showMilitaryFlight/);
   });
 });

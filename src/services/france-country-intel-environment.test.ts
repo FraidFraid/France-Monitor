@@ -18,8 +18,8 @@ import { MAJOR_FIRE_GATE } from './wildfire-dossier.ts';
 
 function raw(over: Partial<FranceRawData> = {}): FranceRawData {
   return {
-    newsItems: [], isnrData: null, cyberData: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
-    powerOutages: [], telecomOutages: [], defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, activeFires: [],
+    newsItems: [], isnrData: null, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
+    powerOutages: [], telecomOutages: [], cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [],
     marketData: [], ecowattResponse: null, gasState: null, nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] },
     briefLang: 'fr', oilDashboard: null, fuelTensionDashboard: null, ...over,
   };

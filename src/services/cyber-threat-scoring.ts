@@ -1,6 +1,15 @@
-import type { CyberState, ThreatEvent } from '../types/index.ts';
+// src/services/cyber-threat-scoring.ts : pression cyber consolidée (pilier Sécurité du score France, baromètre des infrastructures).
+// Familles et plafonds inchangés, entrées nouvelles (spec 2026-10-04 souveraineté § 2.3 ; contrats § 6, arbitrage 12 ; amendement 7,
+// O1, O5, O6, S10) : fuites publiées en .fr (Have I Been Pwned, un compte et une date), revendications rapportées à leur moyenne
+// (Ransomware.live), vulnérabilités exploitées citées par le CERT-FR (catalogue KEV de la CISA), exposition retirée (aucune mesure
+// gratuite et sourcée), corrélations sans lieu (aucun lieu de victime publié). Une partie en retard ne compte pas (« (en retard) » retire
+// les couleurs) ; plus aucun seuil sur un stock ni repli sur l'ancien tableau. Pur, sans réseau.
+import type { CyberResponse } from '../types/index.ts';
+import { certfrKevAdvisories, isCertFrAlertOpen, isSovereigntyDataLate } from './sovereignty-levels.ts';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 86_400_000;
+const RECENT_DAYS = 30;
+const NBSP = '\u00a0';
 
 const FAMILY_CAPS = {
   leaks: 20,
@@ -10,57 +19,16 @@ const FAMILY_CAPS = {
   correlation: 15,
 } as const;
 
-const FAMILY_BASE_WEIGHTS = {
-  leaks: 7,
-  ransomware: 9,
-  vulnerabilities: 8,
-  exposure: 6,
-} as const;
+const FAMILY_BASE_WEIGHTS = { leaks: 7, vulnerabilities: 8 } as const;
+/** Fenêtres de fraîcheur (jours) : la contribution décroît au-delà. */
+const FAMILY_WINDOWS_DAYS = { leaks: 45, vulnerabilities: 21 } as const;
+/** Une vulnérabilité du catalogue de la CISA est exploitée : facteur de l'ancienne sévérité « critique ». */
+const EXPLOITED_FACTOR = 1.35;
 
-const FAMILY_WINDOWS_DAYS = {
-  leaks: 45,
-  ransomware: 30,
-  vulnerabilities: 21,
-  exposure: 14,
-} as const;
-
-const SEVERITY_FACTORS: Record<ThreatEvent['severity'], number> = {
-  critical: 1.35,
-  high: 1,
-  medium: 0.72,
-  low: 0.45,
-};
-
-const CRITICAL_SECTOR_KEYWORDS = [
-  'sante',
-  'health',
-  'hopital',
-  'chu',
-  'transport',
-  'sncf',
-  'ratp',
-  'energie',
-  'energy',
-  'edf',
-  'enedis',
-  'rte',
-  'collectivite',
-  'mairie',
-  'prefecture',
-  'gouvernement',
-  'government',
-];
-
-export interface CyberThreatSummary {
-  total30d: number;
-  france30d: number;
-  leaks30d: number;
-  ransomware30d: number;
-  exposure30d: number;
-  vulnerability30d: number;
-  critical30d: number;
-  high30d: number;
-}
+/** Secteurs critiques tels que ransomware.live les publie (santé, énergie, administration, secteur public, télécoms, transport). */
+const CRITICAL_SECTORS: ReadonlySet<string> = new Set([
+  'Healthcare', 'Energy & Utilities', 'Government & Defense', 'Public Sector', 'Telecommunication', 'Transportation', 'Transportation/Logistics',
+]);
 
 export type CyberSignalFamily = 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation';
 
@@ -81,24 +49,22 @@ export interface CyberPressureContext {
 
 export interface CyberPressureAssessment {
   score: number;
-  summary: CyberThreatSummary;
-  certCritical: number;
-  criticalCVEs: number;
+  inputs: {
+    /** Fuites publiées en .fr ajoutées depuis moins de 30 jours (Have I Been Pwned à l'heure) ; 0 sinon. */
+    leaks30d: number;
+    /** Revendications de la semaine rapportées à la moyenne des 90 jours précédents ; null sans moyenne ou fichier en retard. */
+    claimsRatio: number | null;
+    /** Vulnérabilités du catalogue de la CISA citées par le CERT-FR, ajoutées depuis moins de 30 jours (catalogue à l'heure). */
+    kevCited30d: number;
+    /** Alertes CERT-FR au statut « en cours » repris du CERT-FR (O1, gros chiffre du panneau Vigilance cyber). */
+    openAlerts: number;
+    /** Avis du CERT-FR qui citent une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours (O6, catalogue à l'heure). */
+    kevAdvisories7d: number;
+    /** Revendications des 30 derniers jours dans un secteur critique (fichier de ransomware.live à l'heure). */
+    criticalSectorClaims30d: number;
+  };
   dominantFamily: CyberSignalFamily | null;
   breakdown: CyberPressureBreakdownItem[];
-}
-
-type ScoredThreatFamily = Exclude<CyberSignalFamily, 'correlation'>;
-
-interface FamilyAccumulator {
-  raw: number;
-  count: number;
-}
-
-interface ThreatFamilyEvent {
-  event: ThreatEvent;
-  family: ScoredThreatFamily;
-  daysOld: number;
 }
 
 function clamp(value: number): number {
@@ -108,289 +74,106 @@ function clamp(value: number): number {
 function scaleCount(count: number, cap: number, maxContribution: number): number {
   if (count <= 0 || cap <= 0 || maxContribution <= 0) return 0;
   const bounded = Math.min(count, cap);
-  const ratio = Math.log1p(bounded) / Math.log1p(cap);
-  return ratio * maxContribution;
+  return (Math.log1p(bounded) / Math.log1p(cap)) * maxContribution;
 }
 
-function normalizeText(value: string | undefined): string {
-  return (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
+/** Âge en jours d'une date « AAAA-MM-JJ » ou ISO ; null si illisible ou dans le futur au-delà d'un jour. */
+function daysOld(date: string, now: number): number | null {
+  const t = Date.parse(date);
+  if (!Number.isFinite(t)) return null;
+  const days = (now - t) / DAY_MS;
+  return days < -1 ? null : Math.max(0, days);
 }
 
-function labelForFamily(family: CyberSignalFamily): string {
-  switch (family) {
-    case 'leaks': return 'Leaks';
-    case 'ransomware': return 'Ransomware';
-    case 'vulnerabilities': return 'CERT/NVD';
-    case 'exposure': return 'Shodan/Censys';
-    case 'correlation': return 'Corrélations';
-  }
-}
-
-function familyFromType(type: ThreatEvent['type']): ScoredThreatFamily {
-  switch (type) {
-    case 'leak': return 'leaks';
-    case 'ransomware': return 'ransomware';
-    case 'vulnerability': return 'vulnerabilities';
-    case 'exposure': return 'exposure';
-  }
-}
-
-function getDaysOld(date: string): number | null {
-  const ts = new Date(date).getTime();
-  if (!Number.isFinite(ts)) return null;
-  return Math.max(0, (Date.now() - ts) / DAY_MS);
-}
-
-function freshnessWeight(daysOld: number, family: ScoredThreatFamily): number {
+/** Fraîcheur reprise de l'ancien calcul : pleine 2 jours, décroissante sur la fenêtre de la famille, nulle au-delà de 4 fenêtres. */
+function freshnessWeight(age: number, family: keyof typeof FAMILY_WINDOWS_DAYS): number {
   const windowDays = FAMILY_WINDOWS_DAYS[family];
-  if (daysOld <= 2) return 1;
-  if (daysOld >= windowDays * 4) return 0;
-
-  const progress = Math.min(daysOld / windowDays, 4);
+  if (age <= 2) return 1;
+  if (age >= windowDays * 4) return 0;
+  const progress = Math.min(age / windowDays, 4);
   if (progress <= 1) return 1 - progress * 0.45;
   if (progress <= 2) return 0.55 - (progress - 1) * 0.22;
   return Math.max(0.08, 0.33 - (progress - 2) * 0.12);
 }
 
-function assetWeight(event: ThreatEvent, family: ScoredThreatFamily): number {
-  const assets = event.metrics?.affectedAssets ?? event.metrics?.records ?? 0;
-  if (family === 'exposure') {
-    return 1 + scaleCount(assets, 500, 0.55);
-  }
-  if (family === 'leaks') {
-    return 1 + scaleCount(assets, 100_000, 0.4);
-  }
-  return 1;
+/** « 3 vulnérabilités exploitées citées » : nombre et nom collés par une espace insécable (R1). */
+function plural(n: number, one: string, many: string): string {
+  return `${n}${NBSP}${n > 1 ? many : one}`;
 }
 
-function sourceWeight(event: ThreatEvent, family: ScoredThreatFamily): number {
-  const source = normalizeText(event.sourceLabel || event.sources[0]?.name);
-  if (family === 'ransomware' && source.includes('frenchbreaches')) return 1.15;
-  if (family === 'vulnerabilities' && source.includes('cert')) return 1.1;
-  if (family === 'exposure' && (source.includes('censys') || source.includes('shodan'))) return 1.08;
-  return 1;
-}
+/**
+ * Pression cyber 0 à 100 sur la réponse de /api/sovereignty/cyber à l'instant `now` ; réponse absente : 0, aucune famille.
+ * Fuites : 7 points par fuite pondérés par la fraîcheur de la plus récente (plafond 20 ; O5 : un compte et une date, plus de taille).
+ * Revendications : 25 × (rapport − 1) / 2, nul à la moyenne, plein à 3 fois la moyenne (plafond 25). Vulnérabilités : 8 × 1,35 par
+ * vulnérabilité citée, pondérés par fraîcheur (plafond 20). Exposition : 0. Corrélations : revendications dans un secteur critique,
+ * renforcées par des pannes réseau concomitantes (plafond 15). Fuites, catalogue et revendications en retard (tableau S2) : 0.
+ */
+export function computeCyberPressureAssessment(
+  cyber: CyberResponse | null,
+  context: CyberPressureContext = {},
+  now: number = Date.now(),
+): CyberPressureAssessment {
+  const hibp = cyber?.hibp ?? null;
+  const hibpFresh = hibp !== null && !isSovereigntyDataLate('hibp', hibp.readAt, now);
+  const kevFresh = cyber !== null && !isSovereigntyDataLate('kev', cyber.kev.readAt, now);
+  const ransomware = cyber?.ransomware ?? null;
+  const claimsLate = ransomware !== null && isSovereigntyDataLate('ransomware', ransomware.lastModified, now);
+  const claimsFresh = ransomware !== null && !claimsLate;
 
-function isCriticalSector(sector: string | undefined): boolean {
-  const normalized = normalizeText(sector);
-  return CRITICAL_SECTOR_KEYWORDS.some((keyword) => normalized.includes(keyword));
-}
+  const leaks30d = hibpFresh ? hibp.count : 0;
+  const newestLeakAge = hibpFresh && hibp.newestAddedDate !== null ? daysOld(hibp.newestAddedDate, now) : null;
+  const kevCited = kevFresh ? cyber.kev.recent.filter((k) => k.certfrRefs.length > 0).flatMap((k) => {
+    const age = daysOld(k.dateAdded, now);
+    return age !== null && age < RECENT_DAYS ? [age] : [];
+  }) : [];
+  const openAlerts = cyber === null ? 0 : cyber.certfr.alerts.filter(isCertFrAlertOpen).length;
+  const kevAdvisories7d = kevFresh ? certfrKevAdvisories(cyber, now).length : 0;
+  const claimsRatio = claimsFresh ? ransomware.ratio : null;
+  const criticalSectorClaims30d = claimsFresh
+    ? ransomware.sectors30.filter((s) => CRITICAL_SECTORS.has(s.label.trim())).reduce((n, s) => n + s.count, 0)
+    : 0;
 
-function zoneKey(event: ThreatEvent): string {
-  const label = normalizeText(event.location?.label);
-  if (label) return label;
-  const [lon, lat] = event.location.coordinates;
-  return `${lon.toFixed(1)},${lat.toFixed(1)}`;
-}
+  const leaksRaw = FAMILY_BASE_WEIGHTS.leaks * leaks30d * (newestLeakAge === null ? 1 : freshnessWeight(newestLeakAge, 'leaks'));
+  const claimsRaw = claimsRatio === null ? 0 : (FAMILY_CAPS.ransomware * Math.max(0, claimsRatio - 1)) / 2;
+  const kevRaw = kevCited.reduce((sum, age) => sum + FAMILY_BASE_WEIGHTS.vulnerabilities * EXPLOITED_FACTOR * freshnessWeight(age, 'vulnerabilities'), 0);
+  const outages = (context.powerOutageCount ?? 0) + (context.telecomOutageCount ?? 0) + (context.cloudIncidentCount ?? 0);
+  const correlationRaw = scaleCount(criticalSectorClaims30d, 8, 5)
+    + (outages > 0 && criticalSectorClaims30d > 0 ? Math.min(3 + outages, 6) : 0);
 
-function computeThreatContribution(event: ThreatEvent, family: ScoredThreatFamily, daysOld: number): number {
-  const base = FAMILY_BASE_WEIGHTS[family];
-  const severity = SEVERITY_FACTORS[event.severity];
-  const freshness = freshnessWeight(daysOld, family);
-  const criticalSectorBoost = isCriticalSector(event.sector) ? 1.1 : 1;
-  return base
-    * severity
-    * freshness
-    * assetWeight(event, family)
-    * sourceWeight(event, family)
-    * criticalSectorBoost;
-}
-
-function computeLegacyFallbackScore(cyber: CyberState | null | undefined): number {
-  if (!cyber) return 0;
-
-  const certCritical = cyber.alerts.latest.filter((alert) => alert.severity === 'critical').length;
-  const criticalCVEs = cyber.vulnerabilities.criticalCount;
-  const ransomware30d = cyber.ransomware.total30d;
-  const alertCount = cyber.alerts.count30d;
-
-  return clamp(
-    Math.min(certCritical * 8, 22)
-      + Math.min(criticalCVEs * 2.2, 22)
-      + Math.min(ransomware30d * 2.4, 24)
-      + Math.min(alertCount * 1.4, 12),
-  );
-}
-
-export function isRecentThreatEvent(event: ThreatEvent, days = 30): boolean {
-  const ts = new Date(event.date).getTime();
-  return Number.isFinite(ts) && Date.now() - ts <= days * DAY_MS;
-}
-
-export function isFranceThreatEvent(event: ThreatEvent): boolean {
-  const countryCode = (event.countryCode || '').toUpperCase();
-  const countryName = normalizeText(event.countryName);
-  const domain = normalizeText(event.domain);
-  const label = normalizeText(event.location?.label);
-
-  return countryCode === 'FR'
-    || countryName === 'france'
-    || domain.endsWith('.fr')
-    || label.includes('france')
-    || label.includes('paris');
-}
-
-export function summarizeCyberThreatEvents(events: ThreatEvent[] = []): CyberThreatSummary {
-  const recent = events.filter((event) => isRecentThreatEvent(event));
-  const france = recent.filter(isFranceThreatEvent);
-
-  return {
-    total30d: recent.length,
-    france30d: france.length,
-    leaks30d: france.filter((event) => event.type === 'leak').length,
-    ransomware30d: france.filter((event) => event.type === 'ransomware').length,
-    exposure30d: france.filter((event) => event.type === 'exposure').length,
-    vulnerability30d: france.filter((event) => event.type === 'vulnerability').length,
-    critical30d: france.filter((event) => event.severity === 'critical').length,
-    high30d: france.filter((event) => event.severity === 'high').length,
-  };
-}
-
-function buildBreakdown(
-  cyber: CyberState | null | undefined,
-  threatEvents: ThreatEvent[],
-  context: CyberPressureContext,
-): {
-  breakdown: CyberPressureBreakdownItem[];
-  certCritical: number;
-  criticalCVEs: number;
-  dominantFamily: CyberSignalFamily | null;
-} {
-  const certCritical = cyber?.alerts.latest.filter((alert) => alert.severity === 'critical').length ?? 0;
-  const criticalCVEs = cyber?.vulnerabilities.criticalCount ?? 0;
-
-  const recentFranceEvents: ThreatFamilyEvent[] = threatEvents
-    .filter(isFranceThreatEvent)
-    .map((event) => {
-      const daysOld = getDaysOld(event.date);
-      return daysOld == null ? null : {
-        event,
-        family: familyFromType(event.type),
-        daysOld,
-      };
-    })
-    .filter((item): item is ThreatFamilyEvent => item !== null)
-    .filter((item) => item.daysOld <= 180);
-
-  const families: Record<ScoredThreatFamily, FamilyAccumulator> = {
-    leaks: { raw: 0, count: 0 },
-    ransomware: { raw: 0, count: 0 },
-    vulnerabilities: { raw: 0, count: 0 },
-    exposure: { raw: 0, count: 0 },
-  };
-
-  const zoneFamilies = new Map<string, Set<ScoredThreatFamily>>();
-  let criticalSectorEvents = 0;
-  let vulnerabilityCriticalEvents = 0;
-  let ransomwareEvents30d = 0;
-
-  for (const item of recentFranceEvents) {
-    const contribution = computeThreatContribution(item.event, item.family, item.daysOld);
-    families[item.family].raw += contribution;
-    families[item.family].count += 1;
-
-    const zone = zoneKey(item.event);
-    const zoneFamilySet = zoneFamilies.get(zone) ?? new Set<ScoredThreatFamily>();
-    zoneFamilySet.add(item.family);
-    zoneFamilies.set(zone, zoneFamilySet);
-
-    if (isCriticalSector(item.event.sector)) criticalSectorEvents += 1;
-    if (item.family === 'vulnerabilities' && item.event.severity === 'critical') vulnerabilityCriticalEvents += 1;
-    if (item.family === 'ransomware' && item.daysOld <= 30) ransomwareEvents30d += 1;
-  }
-
-  const legacyRansomwareGap = Math.max(0, (cyber?.ransomware.total30d ?? 0) - ransomwareEvents30d);
-  const legacyCriticalCveGap = Math.max(0, criticalCVEs - vulnerabilityCriticalEvents);
-  const legacyCertGap = Math.max(0, certCritical - vulnerabilityCriticalEvents);
-
-  families.ransomware.raw += scaleCount(legacyRansomwareGap, 10, 6);
-  families.vulnerabilities.raw += scaleCount(legacyCriticalCveGap, 8, 10);
-  families.vulnerabilities.raw += scaleCount(legacyCertGap, 6, 6);
-
-  const outagesObserved = (context.powerOutageCount ?? 0) + (context.telecomOutageCount ?? 0) + (context.cloudIncidentCount ?? 0);
-  const stackedZones = Array.from(zoneFamilies.values()).filter((set) => set.size >= 2).length;
-
-  const correlationRaw =
-    scaleCount(stackedZones, 4, 7)
-    + scaleCount(criticalSectorEvents, 8, 5)
-    + (outagesObserved > 0 && criticalSectorEvents > 0 ? Math.min(3 + outagesObserved, 6) : 0);
-
+  const claimsText = claimsLate ? 'fichier de ransomware.live en retard, non retenues'
+    : claimsRatio === null ? 'sans moyenne'
+    : `${claimsRatio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${NBSP}fois la moyenne, non confirmées`;
   const breakdown: CyberPressureBreakdownItem[] = [
     {
-      family: 'leaks',
-      label: labelForFamily('leaks'),
-      score: clamp(Math.min(FAMILY_CAPS.leaks, families.leaks.raw)),
-      cap: FAMILY_CAPS.leaks,
-      eventCount: families.leaks.count,
-      explanation: `${families.leaks.count} fuite(s) récentes FrenchBreaches/HIBP, impact borné à ${FAMILY_CAPS.leaks} points.`,
+      family: 'leaks', label: 'Fuites publiées', score: clamp(Math.min(FAMILY_CAPS.leaks, leaksRaw)), cap: FAMILY_CAPS.leaks, eventCount: leaks30d,
+      explanation: `${plural(leaks30d, 'fuite en .fr ajoutée', 'fuites en .fr ajoutées')} à Have I Been Pwned depuis 30${NBSP}jours.`,
     },
     {
-      family: 'ransomware',
-      label: labelForFamily('ransomware'),
-      score: clamp(Math.min(FAMILY_CAPS.ransomware, families.ransomware.raw)),
-      cap: FAMILY_CAPS.ransomware,
-      eventCount: families.ransomware.count + legacyRansomwareGap,
-      explanation: `${families.ransomware.count} événement(s) ransomware observés, complétés si besoin par le compteur 30j legacy, cap ${FAMILY_CAPS.ransomware}.`,
+      family: 'ransomware', label: 'Revendications', score: clamp(Math.min(FAMILY_CAPS.ransomware, claimsRaw)), cap: FAMILY_CAPS.ransomware,
+      eventCount: claimsFresh ? ransomware.weekCount : 0,
+      explanation: `Revendications de la semaine : ${claimsText} (nul à la moyenne, plein à 3${NBSP}fois).`,
     },
     {
-      family: 'vulnerabilities',
-      label: labelForFamily('vulnerabilities'),
-      score: clamp(Math.min(FAMILY_CAPS.vulnerabilities, families.vulnerabilities.raw)),
-      cap: FAMILY_CAPS.vulnerabilities,
-      eventCount: families.vulnerabilities.count + legacyCriticalCveGap + legacyCertGap,
-      explanation: `${families.vulnerabilities.count} signal(aux) CERT/NVD pondérés par sévérité et fraîcheur, cap ${FAMILY_CAPS.vulnerabilities}.`,
+      family: 'vulnerabilities', label: 'Vulnérabilités exploitées citées', score: clamp(Math.min(FAMILY_CAPS.vulnerabilities, kevRaw)),
+      cap: FAMILY_CAPS.vulnerabilities, eventCount: kevCited.length,
+      explanation: `${plural(kevCited.length, 'vulnérabilité exploitée citée', 'vulnérabilités exploitées citées')} par le CERT-FR, ajoutées au catalogue KEV de la CISA depuis 30${NBSP}jours.`,
     },
     {
-      family: 'exposure',
-      label: labelForFamily('exposure'),
-      score: clamp(Math.min(FAMILY_CAPS.exposure, families.exposure.raw)),
-      cap: FAMILY_CAPS.exposure,
-      eventCount: families.exposure.count,
-      explanation: `${families.exposure.count} exposition(s) Shodan/Censys, pondérées par actifs/CVE puis plafonnées à ${FAMILY_CAPS.exposure}.`,
+      family: 'exposure', label: 'Exposition (retirée)', score: 0, cap: FAMILY_CAPS.exposure, eventCount: 0,
+      explanation: 'Retirée : aucune mesure gratuite et sourcée.',
     },
     {
-      family: 'correlation',
-      label: labelForFamily('correlation'),
-      score: clamp(Math.min(FAMILY_CAPS.correlation, correlationRaw)),
-      cap: FAMILY_CAPS.correlation,
-      eventCount: stackedZones + criticalSectorEvents,
-      explanation: `Bonus borné pour multi-signaux sur une même zone, secteurs critiques et corrélations avec pannes réseau/cloud.`,
+      family: 'correlation', label: 'Corrélations', score: clamp(Math.min(FAMILY_CAPS.correlation, correlationRaw)), cap: FAMILY_CAPS.correlation,
+      eventCount: criticalSectorClaims30d,
+      explanation: `Revendications dans un secteur critique sur 30${NBSP}jours, renforcées par des pannes réseau concomitantes.`,
     },
   ];
 
-  const dominantFamily = [...breakdown]
-    .sort((a, b) => b.score - a.score)[0]?.score
-    ? [...breakdown].sort((a, b) => b.score - a.score)[0].family
-    : null;
-
-  return { breakdown, certCritical, criticalCVEs, dominantFamily };
-}
-
-export function computeCyberPressureAssessment(
-  cyber: CyberState | null | undefined,
-  threatEvents: ThreatEvent[] = [],
-  context: CyberPressureContext = {},
-): CyberPressureAssessment {
-  const summary = summarizeCyberThreatEvents(threatEvents);
-  const eventBackedSignals = summary.france30d > 0;
-  const fallbackScore = computeLegacyFallbackScore(cyber);
-  const { breakdown, certCritical, criticalCVEs, dominantFamily } = buildBreakdown(cyber, threatEvents, context);
-
-  const eventScore = clamp(breakdown.reduce((sum, item) => sum + item.score, 0));
-  const score = eventBackedSignals
-    ? eventScore
-    : clamp(Math.max(eventScore, fallbackScore));
-
+  const top = [...breakdown].sort((a, b) => b.score - a.score)[0];
   return {
-    score,
-    summary,
-    certCritical,
-    criticalCVEs,
-    dominantFamily,
+    score: clamp(breakdown.reduce((sum, item) => sum + item.score, 0)),
+    inputs: { leaks30d, claimsRatio, kevCited30d: kevCited.length, openAlerts, kevAdvisories7d, criticalSectorClaims30d },
+    dominantFamily: top !== undefined && top.score > 0 ? top.family : null,
     breakdown,
   };
 }

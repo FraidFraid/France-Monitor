@@ -14,7 +14,6 @@ import type {
   ISNRData,
   ISNRScore,
   ISNRDimensionScores,
-  CyberState,
   MeteoAlert,
   FloodSectionRef,
   RailTrain,
@@ -33,10 +32,8 @@ import type {
   FranceIntelEnergySummary,
   FranceIntelTimelineLane,
   EcowattSignal,
-  GpsJammingSignal,
   OilDashboard,
   FuelTensionDashboard,
-  ThreatEvent,
   StructuredBrief,
   SituationSeverity,
   DetectedSituation,
@@ -45,13 +42,18 @@ import type {
   LocatedFireIncident,
   FireFoyer,
   EnvironmentAvailability,
+  CableAlert,
+  CyberResponse,
+  GnssDegradedCounts,
+  MilitaryEmergency,
+  SovereigntyAvailability,
   AirEpisode,
   Quake,
 } from '@/types/index.ts';
-import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
 import { detectSituations } from './situation-engine.ts';
-import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { computeCyberPressureAssessment, type CyberPressureAssessment } from './cyber-threat-scoring.ts';
+import { MILITARY_FIGURE_LABEL } from './sovereignty-levels.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 
@@ -62,8 +64,8 @@ import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 export interface FranceRawData {
   newsItems: NewsItem[];
   isnrData: ISNRData | null;
-  cyberData: CyberState | null;
-  threatEvents?: ThreatEvent[];
+  /** Vigilance cyber (spec 2026-10-04 souveraineté § 2.3) : réponse de /api/sovereignty/cyber, CERT-FR lu et à l'heure ; null sinon. */
+  cyber: CyberResponse | null;
   meteoAlerts: MeteoAlert[];
   floodSegments: FloodSectionRef[];
   /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
@@ -74,9 +76,21 @@ export interface FranceRawData {
   urbanJamCount: number;
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
-  defenseAlerts: DefenseAlert[];
-  jammingSignals: GpsJammingSignal[];
+  /** Navires lents confirmés sur un câble, veille évaluée et AIS frais (§ 2.2) ; AIS muet : aucun. */
+  cableAlerts: CableAlert[];
+  /** Mailles à précision GNSS dégradée, comptes sans lieu (O17) : phase A, null ; phase B (B28), grille mesurée sur le NACp. */
+  gnssDegraded: GnssDegradedCounts | null;
+  /** Aéronefs militaires ou d'État visibles en ADS-B au-dessus de la métropole (adsb.lol, O9) ; 0 si indisponible. */
   militaryFlightsCount: number;
+  /** Parmi eux, ceux du bloc OACI France (tuile « Militaire ») ; absent : 0. */
+  militaryFrenchCount?: number;
+  /** Urgences militaires qui colorent (affichées sur deux relevés, au-dessus du territoire ou à moins de 40 km) : un 7500 ouvre « Signal défense » (O7). */
+  militaryEmergencies?: MilitaryEmergency[];
+  /** Sources Souveraineté lues (affichage « n.d. », S3 ; jamais lu par la formule) ; absent : toutes lues. */
+  sovereigntyAvailable?: SovereigntyAvailability;
+  /** Pastilles Défense et Vigilance cyber (tuiles ; jamais lues par la formule) ; absentes : anciens niveaux des tuiles. */
+  defensePillLevel?: FranceCountrySignals['defensePillLevel'];
+  cyberPillLevel?: FranceCountrySignals['cyberPillLevel'];
   maritimeCount: number;
   /** Détections en France non récurrentes (spec 2026-10-04 environnement § 2.7) : seule l'entrée change, la formule reste. */
   activeFires: ActiveFire[];
@@ -258,6 +272,14 @@ function signalPressure(signals: FranceCountrySignals): number {
   );
 }
 
+/** Pression cyber du pilier Sécurité (arbitrage 12) : réponse cyber à l'heure et pannes du moment. */
+function cyberPressureOf(raw: FranceRawData, nowMs: number): CyberPressureAssessment {
+  return computeCyberPressureAssessment(raw.cyber, {
+    powerOutageCount: raw.powerOutages.length,
+    telecomOutageCount: raw.telecomOutages.length,
+  }, nowMs);
+}
+
 function computeFranceRiskPillars(
   raw: FranceRawData,
   signals: FranceCountrySignals,
@@ -267,10 +289,7 @@ function computeFranceRiskPillars(
   const scores = isnr?.scores ?? [];
   const isnrSocial = avgDim(scores, 'social');
   const isnrInfra = avgDim(scores, 'infra');
-  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
-  }).score;
+  const cyberScore = cyberPressureOf(raw, nowMs).score;
 
   // Continuité : énergie + transport + télécom + pannes + météo
   // (transport n'apparaît PLUS dans social pour éviter le double-comptage)
@@ -282,7 +301,7 @@ function computeFranceRiskPillars(
     { value: Math.max(weatherPressure(signals), isnrInfra), weight: 15 },
   ]);
 
-  // Défense : militaire, câbles sous-marins, brouillage GPS
+  // Défense : aéronefs visibles en ADS-B, navires lents sur un câble, précision GNSS dégradée
   const defense = defensePressure(signals);
 
   // Sécurité : cyber + headlines critiques + bleed défense
@@ -315,6 +334,8 @@ function computeFranceRiskPillars(
 // ─── Score v3 : baseline − déductions progressives (spec §4) ─────────────────
 
 const SCORE_BASELINE = 95;
+/** Composante « aéronefs » du pilier Défense (O9) : le libellé du gros chiffre Défense, jamais « au-dessus de la France ». */
+const MILITARY_COMPONENT_LABEL = `${MILITARY_FIGURE_LABEL.charAt(0).toUpperCase()}${MILITARY_FIGURE_LABEL.slice(1)}`;
 const SCORE_WEIGHTS = { continuity: 0.35, security: 0.30, signal: 0.20, defense: 0.15 } as const;
 const NOISE_CEILING = 15;        // sous ce niveau : bruit ambiant (×0,25)
 const ESCALATION_FLOOR = 40;     // au-delà : aggravation sur-linéaire (×1,2)
@@ -455,11 +476,8 @@ function buildEnergySnapshot(raw: FranceRawData, nowMs: number = Date.now()): Fr
  * Build the flat FranceCountrySignals from raw data arrays.
  * Each field counts relevant items at the appropriate severity threshold.
  */
-export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
-  const cyberPressure = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
-  });
+export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now()): FranceCountrySignals {
+  const cyberPressure = cyberPressureOf(raw, nowMs);
 
   return {
     // News
@@ -491,15 +509,25 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     // Infrastructure
     powerOutages: raw.powerOutages.length,
     telecomOutages: raw.telecomOutages.length,
-    // Cyber
-    cyberAlerts: Math.max(raw.cyberData?.alerts.count30d ?? 0, cyberPressure.summary.france30d),
-    cyberCritical: Math.max(raw.cyberData?.vulnerabilities.criticalCount ?? 0, cyberPressure.summary.critical30d),
-    // Defense / intelligence
+    // Cyber (souveraineté § 2.3 ; O1, O6) : alertes CERT-FR en cours, plus les avis qui citent une vulnérabilité ajoutée au catalogue KEV
+    // depuis moins de 7 jours ; vulnérabilités exploitées citées par le CERT-FR depuis 30 jours.
+    cyberAlerts: cyberPressure.inputs.openAlerts + cyberPressure.inputs.kevAdvisories7d,
+    cyberCritical: cyberPressure.inputs.kevCited30d,
+    // Défense (§ 2.1, § 2.2) : aéronefs visibles en ADS-B au-dessus de la métropole ; navires lents confirmés sur un câble, AIS frais
+    // (une alerte vue une fois reste au panneau, en jaune) ; mailles à précision GNSS dégradée sur 24 h (phase B). Formules inchangées.
     militaryFlights: raw.militaryFlightsCount,
     maritimeTrafficFrance: raw.maritimeCount,
-    defenseAlerts: raw.defenseAlerts.length,
-    defenseHigh: raw.defenseAlerts.filter((a) => a.severity === 'high').length,
-    jammingSignals: raw.jammingSignals.length,
+    defenseAlerts: raw.cableAlerts.length,
+    defenseHigh: raw.cableAlerts.length,
+    jammingSignals: raw.gnssDegraded?.rolling24h ?? 0,
+    // Affichage seulement (S3) : tuiles et fiche ; la formule ne lit pas ces champs.
+    militaryFrench: raw.militaryFrenchCount ?? 0,
+    militaryUnavailable: raw.sovereigntyAvailable?.military === false,
+    cablesUnavailable: raw.sovereigntyAvailable?.cables === false,
+    cyberUnavailable: raw.sovereigntyAvailable?.cyber === false,
+    cyberOpenAlerts: cyberPressure.inputs.openAlerts,
+    defensePillLevel: raw.defensePillLevel,
+    cyberPillLevel: raw.cyberPillLevel,
     // Finance (weak signal)
     marketStress: raw.marketData.filter((m) => m.changePercent <= -1).length,
   };
@@ -546,10 +574,7 @@ export function buildFranceBriefContext(
     infra: avgDim(scores, 'infra'),
   };
 
-  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
-  }).score;
+  const cyberScore = cyberPressureOf(raw, nowMs).score;
 
   // Niveau maximal parmi les alertes météo (rouge > orange > jaune > vert > aucun)
   const meteoMaxLevel: string | null = (['red', 'orange', 'yellow', 'green'] as const)
@@ -572,7 +597,8 @@ export function buildFranceBriefContext(
     topHeadlines,
     ecowattSignal,
     meteoMaxLevel,
-    cyberScore,
+    // CERT-FR indisponible ou en retard : null, dit « non évaluée » au modèle (une absence n'est pas un calme).
+    cyberScore: raw.cyber === null ? null : cyberScore,
     isnrComponents,
     energySummary,
   };
@@ -612,10 +638,7 @@ export function computeFranceScoreBreakdown(
   const scores = isnr?.scores ?? [];
   const isnrSocial = avgDim(scores, 'social');
   const isnrInfra = avgDim(scores, 'infra');
-  const cyberScore = computeCyberPressureAssessment(raw.cyberData, raw.threatEvents ?? [], {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
-  }).score;
+  const cyberScore = cyberPressureOf(raw, nowMs).score;
 
   const componentsByPillar: Record<FranceScorePillarBreakdown['key'], Array<{ label: string; value: number }>> = {
     continuity: [
@@ -642,8 +665,8 @@ export function computeFranceScoreBreakdown(
         value: clamp(scaleCount(signals.defenseHigh, 4, 35)
           + scaleCount(Math.max(0, signals.defenseAlerts - signals.defenseHigh), 6, 15)),
       },
-      { label: 'Brouillage GPS', value: clamp(scaleCount(signals.jammingSignals, 4, 30)) },
-      { label: 'Vols militaires', value: clamp(scaleCount(Math.max(0, signals.militaryFlights - 10), 30, 20)) },
+      { label: 'Précision GNSS dégradée (mailles)', value: clamp(scaleCount(signals.jammingSignals, 4, 30)) },
+      { label: MILITARY_COMPONENT_LABEL, value: clamp(scaleCount(Math.max(0, signals.militaryFlights - 10), 30, 20)) },
     ],
   };
 
@@ -691,7 +714,7 @@ export function buildFranceCountrySnapshot(
   },
 ): FranceCountrySnapshot {
   const nowMs = options?.now ?? Date.now();
-  const signals = buildFranceSignals(raw);
+  const signals = buildFranceSignals(raw, nowMs);
   const axes = computeFranceAxes(signals, raw.isnrData, raw, nowMs);
   const situations: DetectedSituation[] = detectSituations(raw, nowMs);
   const scoreBreakdown = computeFranceScoreBreakdown(
@@ -708,13 +731,6 @@ export function buildFranceCountrySnapshot(
     timestamp: new Date(),
   };
 
-  const cyber: CyberState = raw.cyberData ?? {
-    meta: { globalScore: 0, trend: 'stable' as const, sources: [], lastUpdate: new Date() },
-    alerts: { count30d: 0, latest: [] },
-    ransomware: { total30d: 0, topSectors: [] },
-    vulnerabilities: { criticalCount: 0, topCVEs: [] },
-  };
-
   return {
     signals,
     axes,
@@ -723,7 +739,8 @@ export function buildFranceCountrySnapshot(
     briefContext,
     situations,
     stability,
-    cyber,
+    // CERT-FR indisponible ou en retard : null (« n.d. » de l'historique), jamais une pression nulle (une absence n'est pas un calme).
+    cyberScore: partialCtx.cyberScore,
     meteo: raw.meteoAlerts,
     topNews: selectDiverseNews(raw.newsItems, 20, 2),
     energy: buildEnergySnapshot(raw, nowMs),

@@ -1227,6 +1227,21 @@ export interface FranceCountrySignals {
   defenseAlerts: number;
   defenseHigh: number;
   jammingSignals: number;
+  /*
+   * Souveraineté (spec 2026-10-04 souveraineté § 2.4, tâche A16), affichage seulement (tuiles, fiche ; S3) : la formule ne lit aucun de
+   * ces champs. Absents : comportement d'avant (niveaux des tuiles par leurs anciens seuils).
+   */
+  /** Aéronefs du bloc d'adresse OACI France parmi ceux visibles en ADS-B au-dessus de la métropole (O10). */
+  militaryFrench?: number;
+  /** Source indisponible (jamais lue ou en retard) : « n.d. » et point gris, jamais un « 0 » vert. */
+  militaryUnavailable?: boolean;
+  cablesUnavailable?: boolean;
+  cyberUnavailable?: boolean;
+  /** Alertes CERT-FR au statut « en cours » repris du CERT-FR (O1 ; gros chiffre du panneau Vigilance cyber, tuile « Cyber », fiche). */
+  cyberOpenAlerts?: number;
+  /** Pastilles des panneaux Défense et Vigilance cyber, mêmes fonctions (defenseLevel, cyberLevel). */
+  defensePillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
+  cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   // Finance (weak signal)
   marketStress: number;
 }
@@ -1245,7 +1260,8 @@ export interface FranceBriefContext {
   topHeadlines: string[];              // max 6 normalized titles
   ecowattSignal: string | null;
   meteoMaxLevel: string | null;
-  cyberScore: number;
+  /** Pression cyber consolidée (0 à 100) ; null : CERT-FR indisponible ou en retard, dit « non évaluée » au modèle (jamais « faible »). */
+  cyberScore: number | null;
   isnrComponents: { social: number; security: number; infra: number };
   energySummary: FranceIntelEnergySummary | null;
 }
@@ -1402,7 +1418,11 @@ export interface FranceCountrySnapshot {
   situations: DetectedSituation[];     // Situation engine output
   // Raw data for the renderer (mirrors old FranceIntelData fields)
   stability: ISNRData;
-  cyber: CyberState;
+  /**
+   * Pression cyber consolidée (0 à 100), même fonction que le pilier Sécurité (contrats § 6) ; historique de situation. null : CERT-FR
+   * indisponible ou en retard (jamais un 0 calme).
+   */
+  cyberScore: number | null;
   meteo: MeteoAlert[];
   topNews: NewsItem[];
   energy: FranceIntelEnergySummary | null;
@@ -2233,7 +2253,7 @@ export interface SituationSnapshotAxes {
   defense:    number | null;  // FranceCountryAxes.defense — military posture
   security:   number | null;  // FranceCountryAxes.security — security severity
   signal:     number | null;  // FranceCountryAxes.signal — multi-source pressure
-  cyber:      number | null;  // CyberState.meta.globalScore
+  cyber:      number | null;  // FranceCountrySnapshot.cyberScore (pression cyber consolidée)
   social:     number | null;  // ISNRData.nationalScore
 }
 

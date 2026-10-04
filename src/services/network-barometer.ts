@@ -10,9 +10,8 @@
  *  - Tension cyber            5%
  */
 
-import type { EcowattResponse, TelecomOutage, ThreatEvent } from '../types/index.ts';
+import type { CyberResponse, EcowattResponse, TelecomOutage } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
-import type { CyberState } from '../types/index.ts';
 import type { InfraNetworkState } from '../types/index.ts';
 import type { EolienLive } from './eolien/types.ts';
 import { fetchEcowatt } from './ecowatt.ts';
@@ -20,9 +19,9 @@ import { ecowattToday } from './ecowatt-official.ts';
 import { fetchNetworkOutages } from './internet-outages.ts';
 import { fetchTelecomOutages } from './outages.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
-import { fetchCyberDashboard } from './cyber.ts';
+import { fetchCyber } from './sovereignty-cyber.ts';
+import { servedCyber } from './sovereignty-inputs.ts';
 import { fetchInfraNetwork } from './infra-network.ts';
-import { fetchThreatMapEvents } from './threat-map.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 
 // ── Types exportés ────────────────────────────────────────────────────────────
@@ -104,20 +103,21 @@ function normalizeCloud(state: InfraNetworkState): number {
   return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
 
-function normalizeCyber(
-  state: CyberState,
-  threatEvents: ThreatEvent[],
+/** Santé cyber (5 %) : 100 moins la pression cyber consolidée, même fonction que le pilier Sécurité (arbitrage 11). */
+export function normalizeCyber(
+  cyber: CyberResponse,
   context: { telecomOutageCount: number; cloudIncidentCount: number },
+  now: number = Date.now(),
 ): number {
-  // Consolidated pressure: 0=calme, 100=crise → inverser pour obtenir un score de santé.
-  return 100 - computeCyberPressureAssessment(state, threatEvents, {
+  // Pression consolidée : 0 = calme, 100 = crise ; inversée pour obtenir un score de santé.
+  return 100 - computeCyberPressureAssessment(cyber, {
     telecomOutageCount: context.telecomOutageCount,
     cloudIncidentCount: context.cloudIncidentCount,
-  }).score;
+  }, now).score;
 }
 
-function computeNationalCyberPressure(state: CyberState, threatEvents: ThreatEvent[]): number {
-  return computeCyberPressureAssessment(state, threatEvents).score;
+function computeNationalCyberPressure(cyber: CyberResponse, now: number = Date.now()): number {
+  return computeCyberPressureAssessment(cyber, {}, now).score;
 }
 
 function normalizeWind(live: EolienLive): number {
@@ -164,17 +164,18 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
   // Fetch toutes les sources en parallèle — échec partiel → null pour cette source
-  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes, threatRes] = await Promise.allSettled([
+  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes] = await Promise.allSettled([
     fetchEcowatt(),
     fetchNetworkOutages(),
     fetchTelecomOutages(),
     fetchSpaceWeather(),
-    fetchCyberDashboard(),
+    fetchCyber(null),
     fetchInfraNetwork(),
-    fetchThreatMapEvents(),
   ]);
 
-  const threatEvents = threatRes.status === 'fulfilled' ? threatRes.value.events : [];
+  // Vigilance cyber : réponse de /api/sovereignty/cyber, CERT-FR lu et à l'heure (fetchCyber ne rejette jamais) ; sinon composante
+  // indisponible, jamais une santé de 100 par défaut.
+  const cyber = cyberRes.status === 'fulfilled' ? servedCyber(cyberRes.value.cyber.data, Date.now()) : null;
   const telecomOutageCount = telecomRes.status === 'fulfilled' ? telecomRes.value.length : 0;
   const cloudIncidentCount = infraRes.status === 'fulfilled' && infraRes.value !== null
     ? infraRes.value.datacenters.filter((dc) => dc.status !== 'operational' && dc.status !== 'unknown').length
@@ -186,15 +187,11 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
     telecom: telecomRes.status  === 'fulfilled' ? normalizeTelecom(telecomRes.value)    : null,
     cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
-    cyber:   cyberRes.status    === 'fulfilled'
-      ? normalizeCyber(cyberRes.value, threatEvents, { telecomOutageCount, cloudIncidentCount })
-      : null,
+    cyber:   cyber !== null ? normalizeCyber(cyber, { telecomOutageCount, cloudIncidentCount }) : null,
     wind:    _eolienLive !== null ? normalizeWind(_eolienLive) : null,
   };
 
-  const nationalCyberPressure = cyberRes.status === 'fulfilled'
-    ? computeNationalCyberPressure(cyberRes.value, threatEvents)
-    : null;
+  const nationalCyberPressure = cyber !== null ? computeNationalCyberPressure(cyber) : null;
 
   const activeWeights = (Object.entries(WEIGHTS) as [WeightKey, number][])
     .filter(([k]) => scores[k] !== null && scores[k] !== undefined)

@@ -37,6 +37,8 @@ export function describeStability(score, lang) {
 }
 
 function describeCyber(score, lang) {
+  // CERT-FR indisponible ou en retard : jamais « faible » (une absence n'est pas un calme).
+  if (score === null) return lang === 'fr' ? 'non évaluée (CERT-FR indisponible ou en retard)' : 'not assessed (CERT-FR unavailable or late)';
   if (score >= 75) return lang === 'fr' ? 'forte' : 'high';
   if (score >= 50) return lang === 'fr' ? 'soutenue' : 'elevated';
   if (score >= 25) return lang === 'fr' ? 'modérée' : 'moderate';
@@ -67,6 +69,19 @@ function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, met
     events,
   });
   return `france-intel:brief:${lang}:${BRIEF_PROMPT_VERSION}:${hashCacheSeed(seed)}`;
+}
+
+/**
+ * Gros chiffre Défense (amendement 7, O9) : « aéronefs militaires ou d'État visibles en ADS-B au-dessus de la métropole », jamais « au-dessus
+ * de la France » ; O8 : toujours suivi de MILITARY_COUNT_NOTE (un aéronef observé n'est pas un événement).
+ */
+const MILITARY_COUNT_NOTE = { fr: 'compte habituel, pas un événement', en: 'usual count, not an event' };
+
+function militaryFigure(count, lang) {
+  if (lang === 'en') return `${count} military or state aircraft visible on ADS-B over metropolitan France`;
+  return count > 1
+    ? `${count} aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole`
+    : `${count} aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole`;
 }
 
 function hasLowImmediateSignals(signalCounts) {
@@ -211,7 +226,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom`);
     }
     if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
-      lines.push(`${signalCounts.defenseAlerts} alertes défense (câbles sous-marins), ${signalCounts.jammingSignals} signaux brouillage GPS`);
+      lines.push(`${signalCounts.defenseAlerts} ${signalCounts.defenseAlerts > 1 ? 'navires lents confirmés' : 'navire lent confirmé'} sur un câble, ${signalCounts.jammingSignals} ${signalCounts.jammingSignals > 1 ? 'mailles' : 'maille'} à précision GNSS dégradée`);
     }
     if (energy && hasOperationalEnergyStress(energy)) {
       const parts = [];
@@ -224,8 +239,9 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push('Énergie sous tension de fond sans rupture opérationnelle immédiate');
     }
     if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} détections de feux actifs`);
-    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} alertes cyber CERT-FR (30j)`);
-    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} vols militaires actifs`);
+    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} ${signalCounts.cyberAlerts > 1 ? 'alertes CERT-FR' : 'alerte CERT-FR'} en cours (avis citant une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours compris)`);
+    // Amendement 7, O8 : un compte d'aéronefs n'est jamais transmis sans « compte habituel, pas un événement ».
+    if (signalCounts.militaryFlights > 0) lines.push(`${militaryFigure(signalCounts.militaryFlights, 'fr')} (adsb.lol) : ${MILITARY_COUNT_NOTE.fr}`);
   } else {
     if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
       lines.push(`${signalCounts.weatherAlerts} severe weather alerts + ${signalCounts.floodAlerts} active flood alerts`);
@@ -239,7 +255,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom incidents`);
     }
     if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
-      lines.push(`${signalCounts.defenseAlerts} defense alerts (subsea cables), ${signalCounts.jammingSignals} GPS jamming signals`);
+      lines.push(`${signalCounts.defenseAlerts} slow vessel(s) confirmed on a cable, ${signalCounts.jammingSignals} cell(s) with degraded GNSS accuracy`);
     }
     if (energy && hasOperationalEnergyStress(energy)) {
       const parts = [];
@@ -252,8 +268,8 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push('Energy remains under background strain without immediate operational rupture.');
     }
     if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} active fire detections`);
-    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} CERT-FR cyber alerts (30d)`);
-    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} active military flights`);
+    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} CERT-FR alerts in progress (advisories citing a vulnerability added to the KEV catalogue in the last 7 days included)`);
+    if (signalCounts.militaryFlights > 0) lines.push(`${militaryFigure(signalCounts.militaryFlights, 'en')} (adsb.lol): ${MILITARY_COUNT_NOTE.en}`);
   }
   return lines.length > 0 ? lines.join('\n') : (lang === 'fr' ? 'Aucune pression opérationnelle significative détectée.' : 'No significant operational pressure detected.');
 }
@@ -301,7 +317,7 @@ ${eventsBlock}
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
 Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
-Signals: ${signalCounts.criticalNews} critical / ${signalCounts.highNews} high headlines, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom, ${signalCounts.defenseAlerts} cable alerts, ${signalCounts.jammingSignals} GPS jamming, ${signalCounts.militaryFlights} military flights, ${signalCounts.fireDetections} fires, ${signalCounts.marketStress} stressed market lines
+Signals: ${signalCounts.criticalNews} critical / ${signalCounts.highNews} high headlines, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom, ${signalCounts.defenseAlerts} confirmed cable alerts, ${signalCounts.jammingSignals} cells with degraded GNSS accuracy, ${militaryFigure(signalCounts.militaryFlights, 'en')} (${MILITARY_COUNT_NOTE.en}), ${signalCounts.fireDetections} fires, ${signalCounts.marketStress} stressed market lines
 Situation summary:
 ${situationSummary}
 Recent headlines (context only, NOT citable):
@@ -332,7 +348,7 @@ ${eventsBlock}
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
 Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
-Signaux : ${signalCounts.criticalNews} titres critiques / ${signalCounts.highNews} élevés, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.powerOutages} coupures élec, ${signalCounts.telecomOutages} télécom, ${signalCounts.defenseAlerts} alertes câbles, ${signalCounts.jammingSignals} brouillages GPS, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.fireDetections} feux, ${signalCounts.marketStress} lignes marché sous tension
+Signaux : ${signalCounts.criticalNews} titres critiques / ${signalCounts.highNews} élevés, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.powerOutages} coupures élec, ${signalCounts.telecomOutages} télécom, ${signalCounts.defenseAlerts} alertes câbles confirmées, ${signalCounts.jammingSignals} mailles à précision GNSS dégradée, ${militaryFigure(signalCounts.militaryFlights, 'fr')} (${MILITARY_COUNT_NOTE.fr}), ${signalCounts.fireDetections} feux, ${signalCounts.marketStress} lignes marché sous tension
 Résumé situationnel :
 ${situationSummary}
 Actualités récentes (contexte seulement, NON citables) :
@@ -381,7 +397,7 @@ export default async function handler(request) {
     security: typeof body.axes?.security === 'number' ? Math.round(body.axes.security) : 0,
     signal: typeof body.axes?.signal === 'number' ? Math.round(body.axes.signal) : 0,
   };
-  const cyberScore = typeof body.cyberScore === 'number' ? Math.round(body.cyberScore) : 0;
+  const cyberScore = typeof body.cyberScore === 'number' ? Math.round(body.cyberScore) : null;
   const meteoAlertCount = typeof body.meteoAlertCount === 'number' ? body.meteoAlertCount : 0;
   const isnrComponents = {
     social:   typeof body.isnrComponents?.social   === 'number' ? Math.round(body.isnrComponents.social)   : 0,
