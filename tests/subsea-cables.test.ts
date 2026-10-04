@@ -17,7 +17,7 @@ import {
 // Forme du fichier (amendement 7) : à reporter dans src/types/index.ts (SubseaCablesFile), le dossier tests/ n'est pas typé par tsc.
 type Ring = Array<[number, number]>;
 interface Landing { commune: string; dept: string; lat: number; lon: number }
-interface Cable { id: string; name: string | null; operator: string | null; path: Ring[]; landings: Landing[]; source: string; licence: string }
+interface Cable { id: string; name: string | null; operator: string | null; path: Ring[]; landings: Landing[]; source: string; licence: string; outOfService: boolean }
 interface Zone { id: string; name: string | null; info: string | null; source: string; licence: string; polygons: Ring[][] }
 interface CableZone extends Zone { cableCategory: 'telecom' | 'power' | null }
 interface AnchorageZone extends Zone { anchoringProhibited: boolean; crossesCableZone: boolean }
@@ -57,8 +57,8 @@ describe('overpassToCables', () => {
     expect([cables[0].id, cables.at(-1)?.id]).toEqual(['way/78424042', 'way/761201757']);
     expect(cables.some((c) => c.name === 'IFA 2000')).toBe(false);
   });
-  it('chaque câble porte sa source et sa licence (O18)', () => {
-    expect(new Set(cables.map((c) => `${c.source} · ${c.licence}`))).toEqual(new Set(['OpenStreetMap · ODbL 1.0']));
+  it('chaque câble porte sa source et sa licence (O18) ; jamais hors service (seules les lignes actives sont lues)', () => {
+    expect(new Set(cables.map((c) => `${c.source} · ${c.licence} · ${c.outOfService}`))).toEqual(new Set(['OpenStreetMap · ODbL 1.0 · false']));
   });
   it('AMITIE : atterrage dans les Bouches-du-Rhône, tracé [lng, lat] à 5 décimales, commune à nommer', () => {
     const amitie = cables.find((c) => c.name === 'AMITIE');
@@ -165,8 +165,9 @@ describe('fichier public généré (public/data/subsea-cables.json)', () => {
     expect(osm.length).toBeGreaterThanOrEqual(5);
     expect(file.cables.findIndex((c) => c.source === 'OpenStreetMap')).toBe(shom.length);
     expect(new Set(file.cables.map((c) => c.id)).size).toBe(file.cables.length);
-    for (const c of shom) expect([c.id.startsWith('shom/'), c.name, c.licence]).toEqual([true, null, SHOM_CABLES_LICENCE]);
-    for (const c of osm) expect([/^way\/\d+$/.test(c.id), c.licence]).toEqual([true, OSM_LICENCE]);
+    for (const c of shom) expect([c.id.startsWith('shom/'), c.name, c.licence, typeof c.outOfService]).toEqual([true, null, SHOM_CABLES_LICENCE, 'boolean']);
+    for (const c of osm) expect([/^way\/\d+$/.test(c.id), c.licence, c.outOfService]).toEqual([true, OSM_LICENCE, false]);
+    expect(shom.some((c) => c.outOfService)).toBe(true);           // câbles hors service gardés (dessinés en gris, A14)
   });
   it('compléments OpenStreetMap : absents du Shom, chacun avec un atterrage en France', () => {
     expect(osmComplement(osm, shom)).toHaveLength(osm.length);

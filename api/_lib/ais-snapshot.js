@@ -21,15 +21,20 @@ const PORT_ANCHOR_KM = 40;
 const UNDER_WAY_KNOTS = 0.5;
 
 /**
- * Eaux françaises (lon, lat) : Manche, mer du Nord et Atlantique ; Méditerranée et Corse. Côté italien (correctif signalé par A3) :
- * le tracé suit la limite maritime de Menton (vers le sud-sud-est depuis la frontière du pont Saint-Louis, approchée), puis passe
- * par l'intérieur français (Castellar, Sospel, haute Tinée) : aucune terre italienne (Grimaldi, Olivetta, vallée de la Gesso).
+ * Eaux françaises (lon, lat) : Manche, mer du Nord et Atlantique ; Méditerranée et Corse. Aux deux frontières terrestres, le tracé
+ * passe par l'intérieur français (vérifié point par point dans un département), jamais par une terre voisine :
+ * - Italie (correctif signalé par A3) : de la frontière du pont Saint-Louis à Menton vers Castellar, Sospel et la haute Tinée ; ni
+ *   Grimaldi, ni Olivetta, ni la vallée de la Gesso.
+ * - Espagne (revue d'A5) : le long de la Bidassoa, Hondarribia et le cap du Figuier exclus, baie et port d'Hendaye gardés.
+ * Limites maritimes APPROCHÉES le 04/10/2026, aucune coordonnée officielle utilisée : à Menton, une ligne à peu près
+ * perpendiculaire à la côte (vers le sud-sud-est depuis la frontière) ; à Hendaye, une ligne vers le nord depuis l'embouchure de la
+ * Bidassoa, au milieu du chenal, puis vers le large au nord-ouest.
  */
 export const FRENCH_WATERS = {
   atlanticChannel: [[
     [2.55, 51.09], [2.55, 51.32], [2.10, 51.26], [1.58, 51.03], [1.20, 50.80], [0.40, 50.40], [-0.60, 50.15], [-1.80, 50.05],
     [-3.00, 49.85], [-4.20, 49.55], [-5.30, 49.20], [-6.20, 48.95], [-10.50, 48.90], [-10.50, 44.00], [-4.00, 44.00], [-2.60, 43.75],
-    [-1.95, 43.50], [-1.79, 43.36], [0.00, 43.00], [1.50, 46.00], [1.60, 49.00], [2.00, 50.00], [2.55, 51.09],
+    [-1.95, 43.50], [-1.784, 43.40], [-1.784, 43.377], [-1.783, 43.362], [-1.74, 43.366], [0.00, 43.00], [1.50, 46.00], [1.60, 49.00], [2.00, 50.00], [2.55, 51.09],
   ]],
   mediterranean: [[
     [3.05, 42.43], [3.60, 42.43], [4.60, 41.80], [6.50, 41.40], [8.40, 41.10], [9.20, 41.30], [9.62, 41.35], [9.70, 42.40],
@@ -412,12 +417,33 @@ export function createAisTracker() {
 export function upstreamErrors(lots, now) {
   const watched = lots.filter((lot) => lot.metro);
   const bad = watched.map((lot) => {
-    if (!lot.open) return { lot, what: 'coupé' };
-    if (lot.lastAt !== null && now - lot.lastAt > UPSTREAM_SILENT_MS) return { lot, what: `muet depuis ${Math.floor((now - lot.lastAt) / 60_000)} min` };
-    return null;
+    const what = lotFault(lot, now);
+    return what === null ? null : { lot, what };
   }).filter(Boolean);
   const prefix = bad.length === watched.length ? 'flux AIS interrompu' : 'flux AIS partiel';
   return bad.map(({ lot, what }) => `${prefix} : lot ${lot.index + 1} sur ${lots.length} ${what} (${lot.labels.join(', ')})`);
+}
+
+/** Panne d'un lot amont : « coupé », « muet depuis N min » (aucun message depuis plus de 5 min), sinon null. */
+function lotFault(lot, now) {
+  if (!lot.open) return 'coupé';
+  if (lot.lastAt !== null && now - lot.lastAt > UPSTREAM_SILENT_MS) return `muet depuis ${Math.floor((now - lot.lastAt) / 60_000)} min`;
+  return null;
+}
+
+/**
+ * Boîtes métropolitaines des lots amont, chacune dite muette si son lot est coupé ou muet (même règle que `upstreamErrors`) : la
+ * veille des câbles garde les alertes d'une zone dont le flux est muet au lieu de les retirer comme « absentes » (une absence n'est
+ * pas un calme). Boîtes au format de l'abonnement aisstream : [[sud, ouest], [nord, est]].
+ * @param {Array<{ open: boolean, lastAt: number | null, boxes?: Array<{ label: string, metro: boolean, box: [[number, number], [number, number]] }> }>} lots
+ * @param {number} now
+ * @returns {Array<{ label: string, box: [[number, number], [number, number]], muted: boolean }>}
+ */
+export function relayZones(lots, now) {
+  return lots.flatMap((lot) => {
+    const muted = lotFault(lot, now) !== null;
+    return (lot.boxes ?? []).filter((b) => b.metro).map((b) => ({ label: b.label, box: b.box, muted }));
+  });
 }
 
 /**
@@ -467,7 +493,8 @@ function relayErrors(now, { hasKey, upstreamOpen, upstreams }) {
 
 /**
  * Corps de GET /slow-vessels (veille des câbles, spec 2026-10-04 souveraineté § 2.2 ; contrats, arbitrage 8) : navires lents des eaux
- * françaises (moins de 2 nœuds, vitesse connue), dernier message en eaux françaises et pannes nommées, comme /snapshot.
+ * françaises (moins de 2 nœuds, vitesse connue), dernier message en eaux françaises, pannes nommées comme /snapshot, et boîtes des
+ * lots amont avec leur état (`zones`, vide si le relais ne décrit pas ses lots).
  * @param {{ slowVessels(now: number, options?: { maxKnots?: number }): object[], lastMessageIso(): string | null }} tracker
  * @param {number} now
  * @param {{ hasKey: boolean, upstreamOpen: boolean, upstreams?: Parameters<typeof upstreamErrors>[0] }} state
@@ -478,5 +505,6 @@ export function slowVesselsResponse(tracker, now, state) {
     lastMessageAt: tracker.lastMessageIso(),
     vessels: tracker.slowVessels(now, { maxKnots: 2 }),
     errors: relayErrors(now, state),
+    zones: state.upstreams ? relayZones(state.upstreams, now) : [],
   };
 }

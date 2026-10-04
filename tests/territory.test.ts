@@ -27,6 +27,12 @@ describe('inFranceV2', () => {
     expect(inFranceV2(44.17, 7.40)).toBe(false);     // vallée de la Gesso, au nord du Mercantour
     expect(inFranceV2(43.76, 7.50)).toBe(true);      // en mer au large de Menton
   });
+  it('frontière franco-espagnole de la Bidassoa : Hondarribia hors de France ; baie et port d’Hendaye en France', () => {
+    expect(inFranceV2(43.368, -1.793)).toBe(false);   // Hondarribia
+    expect(inFranceV2(43.393, -1.792)).toBe(false);   // cap du Figuier
+    expect(inFranceV2(43.380, -1.770)).toBe(true);    // baie du Figuier, côté Hendaye
+    expect(inFranceV2(43.371, -1.7775)).toBe(true);   // port d'Hendaye
+  });
   it('coordonnées illisibles : hors de France', () => {
     expect(inFranceV2(Number.NaN, 2)).toBe(false);
   });

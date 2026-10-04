@@ -12,8 +12,8 @@
 //   sources: [{ source: 'Shom' | 'OpenStreetMap', dataset, layer, licence, attribution, edition: date publiée ou null, url, count }]
 //     dans l'ordre câbles du Shom, zones de câbles, zones de mouillage, OpenStreetMap ;
 //   cables: [{ id: « shom/FR… » ou « way/… », name, operator, path: [[[lng, lat]]], landings: [{ commune, dept, lat, lon }],
-//     source: 'Shom' | 'OpenStreetMap', licence: 'CC BY-SA' | 'ODbL 1.0' }] (Shom d'abord ; un tronçon du Shom en mer n'a pas
-//     d'atterrage, un complément OpenStreetMap en a au moins un) ;
+//     source: 'Shom' | 'OpenStreetMap', licence: 'CC BY-SA' | 'ODbL 1.0', outOfService: hors service selon le Shom }] (Shom
+//     d'abord ; un tronçon du Shom en mer n'a pas d'atterrage, un complément OpenStreetMap en a au moins un) ;
 //   cableZones: [{ id, name, info, cableCategory: 'telecom' | 'power' | null, source: 'Shom', licence: 'Licence ouverte 2.0',
 //     polygons: [[[[lng, lat]]]] }] ;
 //   anchorageZones: [{ id, name, info, anchoringProhibited, crossesCableZone, source: 'Shom', licence: 'Licence ouverte 2.0',
@@ -86,7 +86,8 @@ export function landingsOf(path, geo) {
 /**
  * Câbles télécom d'une réponse Overpass (`out geom`) : tracé [lng, lat] arrondi à 5 décimales (environ 1 m), atterrages aux extrémités
  * situées dans un département ou à moins de 2 km de sa côte (`commune: ''` tant que le script ne l'a pas nommée). Un tracé sans
- * atterrage en France n'est pas gardé. Source « OpenStreetMap », licence ODbL 1.0. Lève si la réponse n'a pas de liste « elements ».
+ * atterrage en France n'est pas gardé. Source « OpenStreetMap », licence ODbL 1.0 ; jamais hors service (`outOfService: false` :
+ * la requête ne lit que les lignes actives, sans préfixe `disused:`). Lève si la réponse n'a pas de liste « elements ».
  * @param {unknown} json
  * @param {{ departementAt(lat: number, lon: number): string | null, departementsNear(lat: number, lon: number, km: number): string[] }} geo
  */
@@ -103,7 +104,7 @@ export function overpassToCables(json, geo) {
     if (landings.length === 0) continue;
     out.push({
       id: `way/${el.id}`, name: tagText(el.tags.name), operator: tagText(el.tags.operator), path: [line], landings,
-      source: 'OpenStreetMap', licence: OSM_LICENCE,
+      source: 'OpenStreetMap', licence: OSM_LICENCE, outOfService: false,
     });
   }
   return out;

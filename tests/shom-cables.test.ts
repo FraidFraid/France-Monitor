@@ -64,6 +64,18 @@ describe('shomToCables', () => {
     expect(cables[1].landings).toEqual([{ commune: '', dept: '13', lat: 43.26064, lon: 5.37057 }]);
     expect(cables.filter((c) => c.landings.length > 0).every((c) => c.landings.every((l) => l.dept === '13'))).toBe(true);
   });
+  it('hors service (STATUS S-57 4) : gardé dans le fichier, marqué ; relevé réel : 1 câble sur 19 (shom/FR000008435100001)', () => {
+    expect(cables.filter((c) => c.outOfService).map((c) => c.id)).toEqual(['shom/FR000008435100001']);
+    expect(cables.every((c) => typeof c.outOfService === 'boolean')).toBe(true);
+  });
+  it('câble en plusieurs objets : hors service seulement si tous ses objets le sont (jamais une alerte perdue)', () => {
+    const seg = (n: number, status: string | null) => ({
+      id: `cblsub_lv.${n}`, properties: { catcbl: 4, status, inspireid: n < 3 ? 'FR 1' : 'FR 2' },
+      geometry: { type: 'LineString', coordinates: [[5 + n / 10, 43], [5.05 + n / 10, 43]] },
+    });
+    const out = shomToCables({ type: 'FeatureCollection', features: [seg(1, '4'), seg(2, null), seg(3, '4'), seg(4, '1,4')] }, GEO);
+    expect(out.map((c) => [c.id, c.outOfService])).toEqual([['shom/FR1', false], ['shom/FR2', true]]);
+  });
   it('objets de même identifiant INSPIRE regroupés en un tracé ; autres catégories écartées', () => {
     const json = { type: 'FeatureCollection', features: [
       { id: 'cblsub_lv.1', properties: { catcbl: 4, inspireid: 'FR 0000150197 00001' }, geometry: { type: 'MultiLineString', coordinates: [[[7.0468333, 43.5456667], [7.2, 43.4]]] } },

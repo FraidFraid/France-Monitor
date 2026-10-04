@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAisTracker, slowVesselsResponse } from '../api/_lib/ais-snapshot.js';
+import { UPSTREAM_SILENT_MS, createAisTracker, relayZones, slowVesselsResponse } from '../api/_lib/ais-snapshot.js';
 import { __setKvClientForTests } from '../api/_lib/kv-history.js';
 import { BOX_COVERAGE, getRelayHttpBaseUrl, startRelayServer, subscriptionChunks } from '../ais-relay.js';
 import { fixtureText } from './helpers/traffic-fixtures.ts';
@@ -63,6 +63,12 @@ describe('zones couvertes par chaque lot, panne amont nommée, mémoire MMSI', (
       'flux AIS interrompu : lot 1 sur 3 coupé (Manche, Atlantique, golfe du Lion, Corse, Dunkerque-Calais)',
       'flux AIS interrompu : lot 2 sur 3 coupé (Gironde, Antilles, Guyane, La Réunion, Mayotte)',
     ]);
+    const slow = await (await fetch(`http://127.0.0.1:${address.port}/slow-vessels`)).json() as { errors: string[]; zones: Array<{ label: string; box: unknown; muted: boolean }> };
+    expect(slow.errors).toEqual(body.errors);
+    expect(slow.zones.map((z) => [z.label, z.muted])).toEqual([
+      ['Manche', true], ['Atlantique', true], ['golfe du Lion', true], ['Corse', true], ['Dunkerque-Calais', true], ['Gironde', true],
+    ]);
+    expect(slow.zones[2].box).toEqual([[41.0, 1.8], [44.8, 8.2]]);
   });
   it('sauvegarde de la mémoire MMSI : succès journalisé ; échec Redis journalisé, jamais avalé', async () => {
     const tracker = createAisTracker();
@@ -141,8 +147,23 @@ describe('navires lents pour la veille des câbles (souveraineté § 2.2, arbitr
   });
   it('corps de /slow-vessels : date, dernier message en eaux françaises, pannes nommées comme /snapshot', () => {
     const body = slowVesselsResponse(loaded(), NOW, { hasKey: false, upstreamOpen: false });
-    expect([body.at, body.lastMessageAt, body.vessels.length, body.errors]).toEqual([
-      '2026-10-03T13:20:00.000Z', '2026-10-03T13:19:48.822Z', 20, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)'],
+    expect([body.at, body.lastMessageAt, body.vessels.length, body.errors, body.zones]).toEqual([
+      '2026-10-03T13:20:00.000Z', '2026-10-03T13:19:48.822Z', 20, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)'], [],
+    ]);
+  });
+  it('zones des lots amont (veille des câbles) : boîtes métropolitaines seulement, muettes si le lot est coupé ou muet depuis plus de 5 min', () => {
+    const box = (s: number, w: number, n: number, e: number): [[number, number], [number, number]] => [[s, w], [n, e]];
+    const lots = [
+      { index: 0, open: true, lastAt: NOW - 60_000, labels: ['golfe du Lion'], metro: true, boxes: [{ label: 'golfe du Lion', metro: true, box: box(41, 1.8, 44.8, 8.2) }] },
+      { index: 1, open: true, lastAt: NOW - UPSTREAM_SILENT_MS - 1, labels: ['Gironde', 'Antilles'], metro: true, boxes: [
+        { label: 'Gironde', metro: true, box: box(44.5, -1.3, 45.4, -0.4) }, { label: 'Antilles', metro: false, box: box(14, -62.5, 19.5, -58) },
+      ] },
+      { index: 2, open: false, lastAt: null, labels: ['Manche'], metro: true, boxes: [{ label: 'Manche', metro: true, box: box(48.2, -6, 50.9, 2.4) }] },
+    ];
+    expect(relayZones(lots, NOW)).toEqual([
+      { label: 'golfe du Lion', box: box(41, 1.8, 44.8, 8.2), muted: false },
+      { label: 'Gironde', box: box(44.5, -1.3, 45.4, -0.4), muted: true },
+      { label: 'Manche', box: box(48.2, -6, 50.9, 2.4), muted: true },
     ]);
   });
   it('GET /slow-vessels : JSON, cache de 30 s, ouvert aux autres origines ; /snapshot inchangé à côté (cache distinct)', async () => {

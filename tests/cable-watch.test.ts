@@ -4,7 +4,9 @@
 // compléments OpenStreetMap ; relevés du relais construits : navire à 304 m d'AMITIE et à 1 nœud revu 6 min plus tard (confirmé)
 // ou 3 min plus tard (non), même message relu (jamais confirmé), vitesse absente, amarré et bâtiment militaire français (écartés),
 // navire dans une zone de mouillage du Shom qui ne recoupe aucune zone de câbles (écarté, S9), tronçon du Shom au large sans
-// atterrage (retenu, sans nom), relais muet depuis 6 min (non évalué, rien n'est confirmé ni retiré).
+// atterrage (retenu, sans nom), câble du Shom hors service (jamais une alerte), relais muet depuis 6 min (non évalué, rien n'est
+// confirmé ni retiré, aucun compte de navires publié), lot amont d'une zone muet pendant que les autres parlent (alertes de la
+// zone gardées « non évalué (flux de la zone muet) », retirées quand le lot reparle).
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
@@ -54,8 +56,15 @@ const anchoredOnCables: Vessel = { mmsi: '229000008', name: 'SAINTE MARIE ESSAI'
 /** À 115 m du tronçon du Shom au large shom/FR000013709500001 (aucun atterrage), 0,6 nœud. */
 const offshore: Vessel = { mmsi: '229000009', name: 'LARGE ESSAI', type: 'Cargo', typeCode: 70, status: 0, lat: 42.115, lon: 6.893, sog: 0.6, lastAt: iso(T0 - 10_000) };
 
-function relayBody(at: number, vessels: Vessel[], lastMessageAt: number | null = at - 2_000, errors: string[] = []) {
-  return { at: iso(at), lastMessageAt: lastMessageAt === null ? null : iso(lastMessageAt), vessels, errors };
+interface Zone { label: string; box: [[number, number], [number, number]]; muted: boolean }
+/** Boîtes réelles de l'abonnement du relais (ais-relay.js) : golfe du Lion (lot 1) et Gironde (lot 2). */
+const LION: [[number, number], [number, number]] = [[41.0, 1.8], [44.8, 8.2]];
+const GIRONDE: [[number, number], [number, number]] = [[44.5, -1.3], [45.4, -0.4]];
+const zones = (lionMuted: boolean): Zone[] => [{ label: 'golfe du Lion', box: LION, muted: lionMuted }, { label: 'Gironde', box: GIRONDE, muted: false }];
+const LOT1_MUTED = 'flux AIS partiel : lot 1 sur 3 muet depuis 6 min (Manche, Atlantique, golfe du Lion, Corse, Dunkerque-Calais)';
+
+function relayBody(at: number, vessels: Vessel[], lastMessageAt: number | null = at - 2_000, errors: string[] = [], relayZones: Zone[] = []) {
+  return { at: iso(at), lastMessageAt: lastMessageAt === null ? null : iso(lastMessageAt), vessels, errors, zones: relayZones };
 }
 function stubRelay(...bodies: Array<ReturnType<typeof relayBody> | ReturnType<typeof respond>>) {
   let i = 0;
@@ -97,8 +106,15 @@ describe('cableHits (exclusions de l’arbitrage 8 et S9)', () => {
     expect(anchorageClearOfCablesAt(anchoredClear.lat, anchoredClear.lon, FILE)?.id).toBe('shom/FR000051219500003');
     expect(cableHits([anchoredClear], FILE)).toEqual([]);
     expect(cableHits([anchoredClear], { ...FILE, anchorageZones: [] }).map((h) => [h.cableId, h.distanceM])).toEqual([
-      ['shom/FR000019846200003', 194], ['shom/FR000008435100001', 359],
+      ['shom/FR000019846200003', 194],                         // shom/FR000008435100001 à 359 m : hors service, jamais compté
     ]);
+  });
+  it('câble du Shom hors service (STATUS S-57 4) : jamais une alerte ; il reste dans le fichier (dessiné en gris)', () => {
+    const onDeadCable: Vessel = { mmsi: '229000010', name: 'CABLE MORT ESSAI', type: 'Cargo', typeCode: 70, status: 1, lat: 43.0048, lon: 5.4081, sog: 0.4, lastAt: iso(T0 - 10_000) };
+    expect(FILE.cables.find((c) => c.id === 'shom/FR000008435100001')?.outOfService).toBe(true);
+    expect(cableHits([onDeadCable], FILE)).toEqual([]);
+    const inService = { ...FILE, cables: FILE.cables.map((c) => (c.id === 'shom/FR000008435100001' ? { ...c, outOfService: false } : c)) };
+    expect(cableHits([onDeadCable], inService).map((h) => [h.cableId, h.distanceM])).toEqual([['shom/FR000008435100001', 2]]);
   });
   it('S9 : zone de mouillage qui recoupe une zone de câbles (Sainte-Marie) : signalé ; câble du Shom sans nom', () => {
     expect(anchorageClearOfCablesAt(anchoredOnCables.lat, anchoredOnCables.lon, FILE)).toBeNull();
@@ -133,6 +149,12 @@ describe('confirmAlerts', () => {
     const first = confirmAlerts([], hit(T0 - 10_000), iso(T0));
     expect(confirmAlerts(first, [], iso(T0 + 6 * 60_000))).toEqual([]);
     expect(first[0].id).toBe('229000001:way/761201757');
+  });
+  it('absent du relevé, mais dans une zone dont le flux est muet : gardé tel quel, « non évalué (flux de la zone muet) »', () => {
+    const first = confirmAlerts([], hit(T0 - 10_000), iso(T0));
+    expect(first[0].zoneMuted).toBe(false);
+    expect(confirmAlerts(first, [], iso(T0 + 6 * 60_000), () => true)).toEqual([{ ...first[0], zoneMuted: true }]);
+    expect(confirmAlerts(first, [], iso(T0 + 6 * 60_000), () => false)).toEqual([]);
   });
 });
 
@@ -173,26 +195,53 @@ describe('/api/sovereignty/cables-watch', () => {
     const confirmed = await ensureCablesWatchFresh(T0 + 6 * 60_000);
     vi.setSystemTime(T0 + 12 * 60_000);
     const frozen = await ensureCablesWatchFresh(T0 + 12 * 60_000);
-    expect([frozen.evaluated, frozen.readAt, frozen.aisLastMessageAt]).toEqual([false, iso(T0 + 12 * 60_000), iso(T0 + 6 * 60_000)]);
+    expect([frozen.evaluated, frozen.readAt, frozen.aisLastMessageAt, frozen.slowVessels]).toEqual([false, iso(T0 + 12 * 60_000), iso(T0 + 6 * 60_000), null]);
+    expect(confirmed.slowVessels).toBe(1);
     expect(frozen.alerts).toEqual(confirmed.alerts);
     expect(frozen.errors).toEqual(['flux AIS interrompu : lot 1 sur 3 muet depuis 6 min (Manche, Atlantique, golfe du Lion, Corse, Dunkerque-Calais)']);
   });
-  it('relais muet depuis toujours (aucun message) : 200, non évalué, aucune alerte', async () => {
+  it('relais muet depuis toujours (aucun message) : 200, non évalué, aucune alerte, aucun compte de navires', async () => {
     stubRelay(relayBody(T0, [], null, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)']));
     const { status, body } = await callHandler<CablesWatchResponse>(handler);
-    expect([status, body.evaluated, body.alerts, body.errors]).toEqual([200, false, [], ['AIS : clé aisstream absente (AISSTREAM_API_KEY)']]);
+    expect([status, body.evaluated, body.alerts, body.slowVessels, body.errors]).toEqual([200, false, [], null, ['AIS : clé aisstream absente (AISSTREAM_API_KEY)']]);
   });
-  it('relais jamais joint : 502 non mis en cache, panne nommée', async () => {
+  it('relais jamais joint : 502 non mis en cache, panne nommée, aucun compte de navires', async () => {
     stubRelay(respond('erreur', 502));
     const { status, body, cache } = await callHandler<CablesWatchResponse>(handler);
-    expect([status, cache, body.readAt, body.evaluated, body.errors]).toEqual([502, 'no-store', null, false, ['Relais AIS : HTTP 502']]);
+    expect([status, cache, body.readAt, body.evaluated, body.slowVessels, body.errors]).toEqual([502, 'no-store', null, false, null, ['Relais AIS : HTTP 502']]);
   });
-  it('relais injoignable après un relevé : alertes gardées avec leur date, non évaluées, panne nommée', async () => {
+  it('relais injoignable après un relevé : alertes gardées avec leur date, non évaluées, compte périmé jamais publié', async () => {
     stubRelay(relayBody(T0, [cargo(T0 - 10_000)]), respond('erreur', 502));
-    await ensureCablesWatchFresh(T0);
+    expect((await ensureCablesWatchFresh(T0)).slowVessels).toBe(1);
     vi.setSystemTime(T0 + 6 * 60_000);
     const { status, body } = await callHandler<CablesWatchResponse>(handler);
-    expect([status, body.readAt, body.evaluated, body.alerts.length, body.errors]).toEqual([200, iso(T0), false, 1, ['Relais AIS : HTTP 502']]);
+    expect([status, body.readAt, body.evaluated, body.alerts.length, body.slowVessels, body.errors]).toEqual([200, iso(T0), false, 1, null, ['Relais AIS : HTTP 502']]);
+  });
+  it('lot du golfe du Lion muet, Gironde parle : alerte de la zone gardée « flux de la zone muet », retirée quand le lot reparle sans le navire', async () => {
+    stubRelay(
+      relayBody(T0, [cargo(T0 - 10_000)], T0 - 2_000, [], zones(false)),
+      relayBody(T0 + 6 * 60_000, [], T0 + 6 * 60_000 - 2_000, [LOT1_MUTED], zones(true)),
+      relayBody(T0 + 12 * 60_000, [], T0 + 12 * 60_000 - 2_000, [], zones(false)),
+    );
+    const first = await ensureCablesWatchFresh(T0);
+    expect(first.alerts.map((a) => [a.id, a.zoneMuted])).toEqual([['229000001:way/761201757', false]]);
+    vi.setSystemTime(T0 + 6 * 60_000);
+    const muted = await ensureCablesWatchFresh(T0 + 6 * 60_000);
+    expect([muted.evaluated, muted.slowVessels, muted.errors]).toEqual([true, 0, [LOT1_MUTED]]);
+    expect(muted.alerts).toEqual([{ ...first.alerts[0], zoneMuted: true }]);
+    vi.setSystemTime(T0 + 12 * 60_000);
+    const back = await ensureCablesWatchFresh(T0 + 12 * 60_000);
+    expect([back.evaluated, back.alerts]).toEqual([true, []]);
+  });
+  it('zone muette recouverte par une boîte d’un lot qui parle : l’absence est vue, alerte retirée', async () => {
+    const talking: Zone = { label: 'boîte d’essai d’un autre lot', box: [[42.0, 4.0], [43.5, 6.0]], muted: false };
+    stubRelay(
+      relayBody(T0, [cargo(T0 - 10_000)], T0 - 2_000, [], [...zones(false), talking]),
+      relayBody(T0 + 6 * 60_000, [], T0 + 6 * 60_000 - 2_000, [LOT1_MUTED], [...zones(true), talking]),
+    );
+    await ensureCablesWatchFresh(T0);
+    vi.setSystemTime(T0 + 6 * 60_000);
+    expect((await ensureCablesWatchFresh(T0 + 6 * 60_000)).alerts).toEqual([]);
   });
   it('fichier des câbles illisible : non évalué, panne nommée « Câbles (Shom, OpenStreetMap) », jamais « aucun navire »', async () => {
     __resetCablesFileForTests(null);
@@ -200,7 +249,7 @@ describe('/api/sovereignty/cables-watch', () => {
     stubRelay(relayBody(T0, [cargo(T0 - 10_000)]));
     const body = await ensureCablesWatchFresh(T0);
     spy.mockRestore();
-    expect([body.evaluated, body.cablesFile, body.alerts, body.errors]).toEqual([false, null, [], [CABLES_FILE_ERROR]]);
+    expect([body.evaluated, body.cablesFile, body.alerts, body.slowVessels, body.errors]).toEqual([false, null, [], null, [CABLES_FILE_ERROR]]);
     expect(CABLES_FILE_ERROR).toBe('Câbles (Shom, OpenStreetMap) : fichier illisible');
   });
   it('libellé de panne du fichier identique côté serveur et côté panneau (cablesUnevaluatedWhy le reconnaît)', () => {

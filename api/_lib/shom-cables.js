@@ -120,10 +120,15 @@ function linesOf(geometry) {
   return [];
 }
 
+/** Valeur S-57 STATUS « hors service » (not in use). */
+const OUT_OF_SERVICE = 4;
+
 /**
  * Câbles télécom du Shom (`catcbl` 4) d'une réponse GetFeature de `cblsub_lv` : objets de même identifiant INSPIRE regroupés en un
  * tracé à plusieurs lignes [lng, lat] arrondies à 5 décimales ; atterrages comme pour OpenStreetMap (un tronçon en mer n'en a
- * aucun) ; sans nom (le Shom n'en publie pas). Source « Shom », licence CC BY-SA. Lève si la réponse n'a pas de liste « features ».
+ * aucun) ; sans nom (le Shom n'en publie pas). Source « Shom », licence CC BY-SA. Hors service (`outOfService`, STATUS S-57 4) :
+ * gardé dans le fichier (dessiné en gris, jamais une alerte de la veille) ; un câble en plusieurs objets n'est hors service que si
+ * tous ses objets le sont (aucune alerte perdue sur un tronçon en service). Lève si la réponse n'a pas de liste « features ».
  * @param {unknown} json
  * @param {{ departementAt(lat: number, lon: number): string | null, departementsNear(lat: number, lon: number, km: number): string[] }} geo
  */
@@ -134,15 +139,15 @@ export function shomToCables(json, geo) {
     const lines = linesOf(f.geometry).filter((l) => l.length >= 2);
     if (lines.length === 0) continue;
     const id = shomId(f);
-    byId.set(id, [...(byId.get(id) ?? []), ...lines]);
+    const out = codes(f?.properties?.status).includes(OUT_OF_SERVICE);
+    const known = byId.get(id);
+    byId.set(id, { path: [...(known?.path ?? []), ...lines], outOfService: (known?.outOfService ?? true) && out });
   }
-  return [...byId].map(([id, path]) => ({
-    id, name: null, operator: null, path, landings: landingsOf(path, geo), source: SHOM_SOURCE, licence: SHOM_CABLES_LICENCE,
+  return [...byId].map(([id, { path, outOfService }]) => ({
+    id, name: null, operator: null, path, landings: landingsOf(path, geo), source: SHOM_SOURCE, licence: SHOM_CABLES_LICENCE, outOfService,
   }));
 }
 
-/** Valeur S-57 STATUS « hors service » (not in use). */
-const OUT_OF_SERVICE = 4;
 /** Libellés des catégories S-57 de câble écartées (« 0 » : catégorie non renseignée). */
 const CATCBL_LABELS = { 0: 'non renseignée', 1: 'électrique', 3: 'ligne de transport', 5: 'télégraphe', 6: 'chaîne de corps-mort' };
 

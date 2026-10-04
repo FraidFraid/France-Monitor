@@ -34,6 +34,9 @@ describe('eaux françaises, zones et ports (tracé simplifié)', () => {
     ['baie de Menton (en mer)', 43.76, 7.50, true], ['port de Menton-Garavan', 43.782, 7.52, true],
     ['Grimaldi (terre italienne, 1 km de la frontière)', 43.79, 7.542, false], ['eaux italiennes au large de Grimaldi', 43.77, 7.56, false],
     ['Olivetta San Michele (Italie, vallée de la Roya)', 43.879, 7.515, false], ['vallée de la Gesso (Italie)', 44.17, 7.40, false],
+    ['Hondarribia (Espagne, rive gauche de la Bidassoa)', 43.368, -1.793, false], ['port de Hondarribia', 43.372, -1.790, false],
+    ['cap du Figuier (Espagne)', 43.393, -1.792, false], ['Irun (Espagne)', 43.338, -1.789, false],
+    ['port d’Hendaye (Sokoburu)', 43.371, -1.7775, true], ['baie du Figuier, côté Hendaye', 43.380, -1.770, true], ['au large d’Hendaye', 43.40, -1.76, true],
   ])('%s : %s', (_name, lat, lon, expected) => {
     expect(inFrenchWaters(lat, lon)).toBe(expected);
   });

@@ -171,7 +171,7 @@ export function startRelayServer(options = {}) {
     sendJson(res, 404, { error: 'Not found' }, { 'Cache-Control': 'no-store' });
   });
 
-  /** État de chaque connexion amont pour `snapshotResponse` : ouverte, dernier message (ou ouverture), zones couvertes. */
+  /** État de chaque connexion amont pour `snapshotResponse` et `slowVesselsResponse` : ouverte, dernier message (ou ouverture), zones et boîtes couvertes. */
   const upstreamLots = () => upstreamStates.map((state) => {
     const boxes = chunkStart(state.index);
     const covered = BOX_COVERAGE.slice(boxes, boxes + state.subscription.BoundingBoxes.length);
@@ -181,6 +181,7 @@ export function startRelayServer(options = {}) {
       lastAt: state.lastMessageAt ?? state.openedAt,
       labels: covered.map((c) => c.label),
       metro: covered.some((c) => c.metro),
+      boxes: covered.map((c, i) => ({ label: c.label, metro: c.metro, box: state.subscription.BoundingBoxes[i] })),
     };
   });
   const chunkStart = (index) => index * MAX_BOUNDING_BOXES_PER_SUBSCRIPTION;

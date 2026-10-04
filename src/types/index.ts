@@ -2986,6 +2986,7 @@ export interface SubseaCable {
   landings: CableLanding[];         // extrémités dans un département ou à moins de 2 km de sa côte ; vide pour un tronçon du Shom au large
   source: CableSourceName;
   licence: 'CC BY-SA' | 'ODbL 1.0'; // Shom : CC BY-SA (citer « Shom ») ; OpenStreetMap : ODbL 1.0
+  outOfService: boolean;            // Shom : STATUS S-57 4 sur tous ses objets (gardé, dessiné en gris, jamais une alerte) ; OSM : false
 }
 /** Zone réglementaire du Shom (« Réglementation - Navigation ») : polygones [lng, lat] simplifiés à 10 m, trous gardés. */
 export interface ShomZone {
@@ -3030,13 +3031,19 @@ export interface CableAlert {
   navStatus: number | null;
   firstSeen: string; lastSeen: string;
   confirmed: boolean;               // revu sur un message AIS postérieur d'au moins 5 min à sa première vue (jamais le même message relu)
+  /**
+   * Vrai : « non évaluée (flux de la zone muet) » : absente du dernier relevé alors que sa position n'est couverte que par des lots
+   * amont muets ; gardée telle quelle (dates, confirmation) jusqu'à ce que le lot reparle. Faux : évaluée par le dernier relevé. Le
+   * serveur l'écrit toujours ; facultatif dans le type pour les alertes construites avant ce champ.
+   */
+  zoneMuted?: boolean;
 }
 export interface CablesWatchResponse {
   readAt: string | null;            // dernier relevé du relais lu par le serveur ; null : jamais lu
   aisLastMessageAt: string | null;  // dernier message AIS en eaux françaises, selon le relais
   evaluated: boolean;               // false : flux AIS muet depuis plus de 5 min (T3), relais injoignable ou fichier des câbles illisible ; alertes gardées, « non évaluées »
   cablesFile: { generatedAt: string; osmBase: string; cables: number; landings: number } | null;   // câbles Shom et OSM, atterrages (aucun pour un tronçon au large) ; null : fichier illisible
-  slowVessels: number;              // navires de moins de 2 nœuds du relevé, avant les exclusions (dénominateur de la méthode)
+  slowVessels: number | null;       // navires de moins de 2 nœuds du relevé, avant les exclusions (dénominateur de la méthode) ; null quand evaluated est faux (« non évalué », jamais un compte périmé)
   alerts: CableAlert[];             // confirmées d'abord, puis vues une fois ; distance croissante
   errors: string[];
 }
