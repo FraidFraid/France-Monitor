@@ -11,7 +11,7 @@ import { VIGILANCE_TABS, VIGILANCE_TITLE, buildVigilanceView, type VigilanceView
 const NOW = ENV_FIXTURE_NOW;
 const open = (_: string, d: boolean): boolean => d;
 const input = (over: Partial<VigilanceViewInput> = {}): VigilanceViewInput => ({
-  vigilance: VIGILANCE_FIXTURE(), vigilanceError: null, echeance: 'J', selectedDept: null, canFocus: true, now: NOW, open, ...over,
+  vigilance: VIGILANCE_FIXTURE(), vigilanceError: null, seaLevels: null, seaLevelsError: null, echeance: 'J', selectedDept: null, canFocus: true, now: NOW, open, ...over,
 });
 const view = (over: Partial<VigilanceViewInput> = {}) => buildVigilanceView(input(over));
 const html = (over: Partial<VigilanceViewInput> = {}): string => renderLayerView('environmental', view(over));
@@ -40,7 +40,7 @@ describe('vue Vigilance météo (spec 2026-10-04 environnement § 2.1)', () => {
     const v = view();
     expect(VIGILANCE_TABS).toEqual(['J', 'J1']);
     expect([v.tabs, v.activeTab]).toEqual([[{ id: 'J', label: 'Aujourd’hui', count: 7 }, { id: 'J1', label: 'Demain', count: 6 }], 'J']);
-    expect(v.sections.map((s) => [s.id, s.open ?? false])).toEqual([['departements', true], ['phenomenes', true], ['bulletin', false], ['methode', false]]);
+    expect(v.sections.map((s) => [s.id, s.open ?? false])).toEqual([['departements', true], ['phenomenes', true], ['bulletin', false], ['submersion', false], ['methode', false]]);
     expect(v.sections.at(-1)?.tone).toBe('reference');
   });
   it('départements : un par ligne, couleur officielle, phénomènes et créneaux en heure de Paris, frise, jour aéronautique, clic', () => {
@@ -160,7 +160,9 @@ describe('vue Vigilance météo (spec 2026-10-04 environnement § 2.1)', () => {
     const v = view({ vigilance });
     expect(v.head.figure).toEqual({ value: '1', caption: 'domaine littoral en orange aujourd’hui · 5 en jaune · produit Météo-France de 10:00', level: 'orange' });
     expect(v.head.status[0]).toBe('vagues-submersion : Pyrénées-Orientales, littoral');
-    expect(visibleText(v.sections[0].html)).toContain('Pyrénées-Orientales, littoralOrangevagues-submersion orange de 14:00 à 20:00');
+    // Tâche 29 : le domaine littoral quitte la section Départements pour la section Submersion marine (gros chiffre et pastille inchangés).
+    expect(visibleText(v.sections[0].html)).not.toContain('Pyrénées-Orientales, littoral');
+    expect(visibleText(v.sections.find((s) => s.id === 'submersion')?.html ?? '')).toContain('Pyrénées-Orientales, littoralorangeorange de 14:00 à 20:00');
   });
   it('erreur sans donnée, erreur avec données, carte non lue, chargement : jamais « aucune vigilance »', () => {
     const failed = view({ vigilance: null, vigilanceError: 'HTTP 502' });

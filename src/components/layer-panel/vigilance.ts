@@ -4,7 +4,7 @@
 // E1 : couleurs officielles reprises telles quelles ; S1 : heure du produit (update_time), jamais l'heure du navigateur ;
 // S2 : carte en retard au-delà de 15 h, couleurs retirées ; S3 : une panne est nommée, jamais « aucune vigilance ».
 import type {
-  OfficialColorId, VigilanceBulletin, VigilanceBulletinItem, VigilanceCoastDomain, VigilanceDepartment, VigilanceEcheance, VigilancePeriod,
+  OfficialColorId, SeaLevelsResponse, VigilanceBulletin, VigilanceBulletinItem, VigilanceDepartment, VigilanceEcheance, VigilancePeriod,
   VigilancePhenomenon, VigilancePhenomenonId, VigilanceResponse,
 } from '../../types/index.ts';
 import { aeronauticalLine, departementAeronauticalDay } from '../../services/aeronautical-day.ts';
@@ -25,6 +25,7 @@ import {
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerHeadModel, type LayerTab, type LayerView } from './frame.ts';
 import { departementName } from './health-format.ts';
+import { submersionSection } from './submersion.ts';
 
 export const VIGILANCE_TITLE = 'Vigilance météo';
 /** Onglets « Aujourd’hui » et « Demain » (échéances J et J1 de la carte). */
@@ -34,6 +35,11 @@ const TAB_LABEL: Readonly<Record<VigilanceEcheance, string>> = { J: 'Aujourd’h
 export interface VigilanceViewInput {
   vigilance: VigilanceResponse | null;
   vigilanceError: string | null;
+  /** Marégraphes du SHOM (section Submersion marine, phase B) ; null : pas encore lus (couche éteinte, panneau fermé). */
+  seaLevels: SeaLevelsResponse | null;
+  seaLevelsError: string | null;
+  /** Lignes de marégraphes cliquables (carte WebGL, arbitrage 12) ; absent : comme `canFocus` (qui, lui, sert aussi au bulletin sans carte). */
+  canFocusGauge?: boolean;
   echeance: VigilanceEcheance;
   /** Département choisi (bulletin départemental, surbrillance de la carte). */
   selectedDept: string | null;
@@ -190,12 +196,6 @@ function deptRow(d: VigilanceDepartment, period: VigilancePeriod, late: boolean,
   });
 }
 
-function coastRow(c: VigilanceCoastDomain, late: boolean, now: number): string {
-  const slots = c.slots.filter((s) => s.color >= 2);
-  const text = slots.length > 0 ? `vagues-submersion ${slots.map((s) => slotText(s, now)).join(', ')}` : `vagues-submersion ${COLOR_WORD[c.color]}`;
-  return listRow({ text: c.name, value: capitalize(COLOR_WORD[c.color]), level: levelOf(c.color, late), note: glueText(text) });
-}
-
 function departementsSection(input: VigilanceViewInput, v: VigilanceResponse, period: VigilancePeriod | null): FicheSection {
   const { canFocus, now, open } = input;
   const base = { id: 'departements', title: 'Départements en vigilance', collapsible: true, open: open('departements', true) };
@@ -203,13 +203,16 @@ function departementsSection(input: VigilanceViewInput, v: VigilanceResponse, pe
   const late = lateOf(v, now);
   const coast = period.coast.filter((c) => c.color >= 2);
   const day = dayWordOf(period, now);
-  if (period.departments.length === 0 && coast.length === 0) {
-    return { ...base, summary: 'aucune', html: emptyLine(`Aucune vigilance jaune ou plus ${day} (carte Météo-France de ${clockOf(v.updateTime, now)}).`) + note(PERIMETER) };
+  if (period.departments.length === 0) {
+    // Domaines littoraux en vigilance : section « Submersion marine » (tâche 29), plus dans cette liste.
+    const text = coast.length === 0
+      ? `Aucune vigilance jaune ou plus ${day} (carte Météo-France de ${clockOf(v.updateTime, now)}).`
+      : `Aucun département en vigilance jaune ou plus ${day} ; littoral en vigilance : section « Submersion marine ».`;
+    return { ...base, summary: 'aucune', html: emptyLine(text) + note(PERIMETER) };
   }
-  const levels = [...period.departments, ...coast].map((x) => OFFICIAL_COLOR_LEVEL[x.color]);
+  const levels = period.departments.map((x) => OFFICIAL_COLOR_LEVEL[x.color]);
   const count = plural(period.departments.length, 'département');
   const html = period.departments.map((d) => deptRow(d, period, late, canFocus, now)).join('')
-    + coast.map((c) => coastRow(c, late, now)).join('')
     + note(`${PERIMETER} Phénomènes et créneaux publiés par Météo-France, en heure de Paris ; jour aéronautique au centre du département (règle française : coucher du soleil plus 30${NBSP}min).`)
     + (canFocus ? note('Clic sur une ligne : le département sur la carte et son bulletin.') : '');
   return { ...base, summary: late ? escapeHtml(`${count} (en retard)`) : levelCounts(levels, 'fr'), html };
@@ -365,7 +368,11 @@ export function buildVigilanceView(input: VigilanceViewInput): LayerView {
     };
   }
   const period = vigilancePeriodOf(v, echeance);
-  const sections = [departementsSection(input, v, period), phenomenesSection(input, v, period), bulletinSection(input, v), methodSection(input, v)];
+  // Section Submersion marine (spec § 3.4) entre le bulletin et « Méthode et sources », sur l'échéance affichée.
+  const submersion = submersionSection(
+    { period, seaLevels: input.seaLevels, seaLevelsError: input.seaLevelsError, canFocus: input.canFocusGauge ?? input.canFocus, now }, input.open,
+  );
+  const sections = [departementsSection(input, v, period), phenomenesSection(input, v, period), bulletinSection(input, v), submersion, methodSection(input, v)];
   const callout = vigilanceError !== null ? sourceErrorCallout(dataMs(v.updateTime), now) : undefined;
   if (mapDown(v) || !period) {
     return {

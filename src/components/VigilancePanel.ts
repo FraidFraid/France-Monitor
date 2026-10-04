@@ -91,7 +91,8 @@ export class VigilancePanel {
     const slot = this.state?.vigilance?.vigilance ?? null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildVigilanceView({
-      vigilance: slot?.data ?? null, vigilanceError: slot?.error ?? null, echeance: this.echeance, selectedDept: this.selectedDept,
+      vigilance: slot?.data ?? null, vigilanceError: slot?.error ?? null, seaLevels: null, seaLevelsError: null,
+      echeance: this.echeance, selectedDept: this.selectedDept,
       canFocus: this.onSelectDepartment !== undefined, now: Date.now(), open,
     }));
   }
