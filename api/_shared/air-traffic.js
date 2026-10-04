@@ -514,17 +514,18 @@ export function sameEmergencyEpisode(entry, e) {
 /**
  * Journal des urgences (7 jours), une écriture par lecture des états : l'épisode en cours garde sa première vue, sa dernière vue
  * et sa position sont mises à jour ; un code revu après plus de 15 min ouvre un nouvel épisode, l'ancien reste au journal.
+ * `key` : journal écrit (celui du Trafic aérien par défaut ; « sov:mil:emergencies » pour les aéronefs militaires, même règle T3).
  */
-export async function recordEmergencies(emergencies, now) {
+export async function recordEmergencies(emergencies, now, key = EMERGENCY_LOG_KEY) {
   if (emergencies.length === 0) return;
-  const log = await readLog(EMERGENCY_LOG_KEY, { dateOf: (x) => x.lastSeen, maxAgeMs: EMERGENCY_KEEP_MS, now });
+  const log = await readLog(key, { dateOf: (x) => x.lastSeen, maxAgeMs: EMERGENCY_KEEP_MS, now });
   for (const e of emergencies) {
     const i = log.findIndex((x) => sameEmergencyEpisode(x, e));
     if (i >= 0) log[i] = { ...e, firstSeen: log[i].firstSeen };
     else log.push(e);
   }
   log.sort((a, b) => Date.parse(b.lastSeen) - Date.parse(a.lastSeen));
-  await kvSetJson(EMERGENCY_LOG_KEY, log, Math.ceil(EMERGENCY_KEEP_MS / 1000), now);
+  await kvSetJson(key, log, Math.ceil(EMERGENCY_KEEP_MS / 1000), now);
 }
 
 // ── Tâches de fond : annuaires et départs (jamais attendues par la carte ni le panneau) ──

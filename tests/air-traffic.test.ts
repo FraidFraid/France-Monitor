@@ -3,7 +3,7 @@ import { __resetKvForTests, __setKvClientForTests, readLog, readSeries } from '.
 import {
   CREDIT_FLOOR, DEPARTURES_KEY, DEPARTURE_AIRPORTS, DEV_STATES_INTERVAL_MS, EMERGENCY_EPISODE_GAP_MS, EMERGENCY_LOG_KEY, VOLUME_KEY, __airJobsForTests, __resetAirStateForTests,
   boardCounts, departuresUrl, emergenciesFrom, ensureAirFresh, fetchAirTrafficSnapshot, normalizeOpenSkyState, parseBeauvaisDirectory, parseBordeauxDirectory,
-  statesUrl, toMapFlight, volumeSample,
+  recordEmergencies, statesUrl, toMapFlight, volumeSample,
 } from '../api/_shared/air-traffic.js';
 import { type FakeResponse, fixtureJson, fixtureText, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -390,5 +390,20 @@ describe('collecte serveur unique (2 min)', () => {
     expect(snap.flights).toHaveLength(166);
     expect(snap.flights.every((f) => f.onGround === false)).toBe(true);
     expect(snap).not.toHaveProperty('topAirports');
+  });
+});
+
+describe('journal des urgences : clé choisie par l’appelant (souveraineté, arbitrage 6)', () => {
+  it('même règle T3, écrit dans la clé demandée ; le journal du Trafic aérien n’est pas touché', async () => {
+    const e = {
+      icao24: 'ae0805', callsign: 'RCH161', squawk: '7700', lat: 48.2, lon: -4.1, altitudeM: 11887,
+      firstSeen: '2026-10-04T14:48:24.501Z', lastSeen: '2026-10-04T14:48:24.501Z', overFrance: true,
+    };
+    const now = Date.parse('2026-10-04T14:48:30Z');
+    await recordEmergencies([e], now, 'sov:mil:emergencies');
+    await recordEmergencies([{ ...e, lastSeen: '2026-10-04T14:50:24.501Z' }], now + 120_000, 'sov:mil:emergencies');
+    const read = (key: string) => readLog<typeof e>(key, { dateOf: (x) => x.lastSeen, maxAgeMs: 7 * 86_400_000, now: now + 120_000 });
+    expect((await read('sov:mil:emergencies')).map((x) => [x.firstSeen, x.lastSeen])).toEqual([['2026-10-04T14:48:24.501Z', '2026-10-04T14:50:24.501Z']]);
+    expect(await read(EMERGENCY_LOG_KEY)).toEqual([]);
   });
 });
