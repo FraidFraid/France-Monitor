@@ -99,6 +99,15 @@ const APOS = "(?:'|&#39;|&#x27;|&rsquo;|\u2019)";
 const EXPLOITED_RE = /activement\s+exploit[ée]e?s?|exploit[ée]e?s?\s+activement|exploitations?\s+actives?/i;
 /** Négation liée à la proposition d'exploitation : « pas d'exploitation », « aucune exploitation », « non exploitée », « sans exploitation », « n'est pas (activement) exploitée », « n'a pas été exploitée » (au plus deux mots entre les deux). Une négation ailleurs dans la phrase (« ne nécessite pas d'authentification et est activement exploitée ») ne compte pas. */
 const NEGATED_EXPLOITATION_RE = /\b(?:pas|aucune?|non|sans|jamais)\s+(?:[^\s.]+\s+){0,2}?(?:d['\u2019]\s*)?(?:activement\s+)?exploit/i;
+/** Compromissions signalées comme connues ou observées : « a connaissance de nombreuses compromissions », « compromissions ont été observées/constatées/signalées ». Ni « indicateurs/marqueurs de compromission », ni « recherche de compromission », ni « en cas de compromission » ne correspondent. */
+const COMPROMISED_RE = /\ba\s+connaissance\s+(?:de|d['\u2019])\s*(?:[^\s.]+\s+){0,2}?compromissions?\b|\bcompromissions?\s+(?:(?:ont|a)\s+(?:[ée]t[ée]\s+)?|(?:sont|est)\s+)(?:observ[ée]e?s?|constat[ée]e?s?|signal[ée]e?s?|av[ée]r[ée]e?s?)/i;
+/** Négation liée à la compromission : « aucune compromission », « pas de compromission connue », « n'a pas connaissance de compromissions », « sans compromission ». */
+const NEGATED_COMPROMISE_RE = /\b(?:pas|aucune?|non|sans|jamais)\s+(?:[^\s.]+\s+){0,2}?(?:d['\u2019]\s*|de\s+)?compromission/i;
+/** Phrase qui dit l'exploitation, directement ou par des compromissions connues, hors phrase négative. */
+function saysExploitation(sentence) {
+  if (EXPLOITED_RE.test(sentence) && !NEGATED_EXPLOITATION_RE.test(sentence)) return true;
+  return COMPROMISED_RE.test(sentence) && !NEGATED_COMPROMISE_RE.test(sentence);
+}
 
 /** Date de clôture inscrite dans la « Gestion détaillée du document » : « le 22 septembre 2026 » avant « Clôture de l'alerte ». */
 function closureDate(html) {
@@ -110,7 +119,7 @@ function closureDate(html) {
 function exploitedQuote(html) {
   const body = String(html).replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<\/(?:p|li|dd|dt|h\d|tr|td)>/gi, '. ');
   for (const sentence of cleanText(body).split(/(?<=[.!?])\s+/)) {
-    if (EXPLOITED_RE.test(sentence) && !NEGATED_EXPLOITATION_RE.test(sentence)) return sentence.replace(/[.\s]+$/, '').trim() + '.';
+    if (saysExploitation(sentence)) return sentence.replace(/[.\s]+$/, '').trim() + '.';
   }
   return null;
 }

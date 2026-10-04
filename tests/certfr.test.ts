@@ -79,6 +79,36 @@ describe('parseCertFrPage', () => {
       'La vulnérabilité est non exploitée.', 'Sans exploitation signalée à ce jour.', 'La vulnérabilité n’a pas été exploitée.', 'Le CERT-FR n’a pas connaissance d’exploitations actives.',
     ]) expect([negated, page(negated).exploited]).toEqual([negated, false]);
   });
+  describe('compromissions signalées (ALE-010)', () => {
+    const page = (sentence: string): ReturnType<typeof parseCertFrPage> => parseCertFrPage(`<td>Date de la dernière version</td><td>1 octobre 2026</td><p>${sentence}</p>`);
+    const ale010 = 'Le CERT-FR a connaissance de nombreuses compromissions de Metabase vulnérables.';
+    const notReports = [
+      'Indicateurs de compromission',
+      'Recherche de compromission Les tentatives d’exploitations sont observables dans les journaux applicatifs et les journaux Metabase.',
+      'En cas de compromission, signaler l’événement auprès du CERT-FR.',
+      'L’obtention des marqueurs de compromission se fait en contactant le support technique de SonicWall.',
+    ];
+    it('phrase d’ALE-010 : exploitation signalée, citée telle quelle', () => {
+      expect(page(ale010)).toMatchObject({ exploited: true, exploitedQuote: ale010 });
+      expect(page('Le CERT-FR a connaissance de plusieurs compromissions.').exploited).toBe(true);
+      expect(page('Des compromissions ont été observées chez des clients.').exploited).toBe(true);
+      expect(page('Des compromissions ont été constatées.').exploitedQuote).toBe('Des compromissions ont été constatées.');
+    });
+    it('indicateurs, recherche, « en cas de compromission », marqueurs : seuls ou dans une page, pas d’exploitation', () => {
+      for (const s of notReports) expect([s, page(s).exploited]).toEqual([s, false]);
+      const all = notReports.map((s) => `<p>${s}</p>`).join('');
+      expect(parseCertFrPage(`<td>Date de la dernière version</td><td>1 octobre 2026</td><nav>Indicateurs de compromission</nav>${all}`)).toMatchObject({ exploited: false, exploitedQuote: null });
+      expect(parseCertFrPage(`<td>Date de la dernière version</td><td>1 octobre 2026</td>${all}<p>${ale010}</p>`)).toMatchObject({ exploited: true, exploitedQuote: ale010 });
+    });
+    it('compromission niée : pas d’exploitation', () => {
+      for (const s of ['Aucune compromission n’est connue.', 'Il n’y a pas de compromission connue.', 'Le CERT-FR n’a pas connaissance de compromissions.', 'Sans compromission observée à ce jour.'])
+        expect([s, page(s).exploited]).toEqual([s, false]);
+    });
+    it('ALE-009 : phrase de l’éditeur toujours reconnue, marqueurs de compromission écartés', () => {
+      const s = 'L’éditeur indique que ces deux vulnérabilités sont activement exploitées, sans préciser s’il est possible pour un attaquant non authentifié de chaîner l’exploitation de ces deux vulnérabilités pour prendre la main sur l’équipement.';
+      expect(page(s)).toMatchObject({ exploited: true, exploitedQuote: s });
+    });
+  });
   it('phrase négative : pas d’exploitation signalée', () => {
     const html = '<td>Date de la dernière version</td><td>1 octobre 2026</td><p>Le CERT-FR n’a pas connaissance d’exploitations actives.</p><p>Seule la mise à jour protège contre l’exploitation.</p>';
     expect(parseCertFrPage(html)).toMatchObject({ exploited: false, exploitedQuote: null, closed: false });
