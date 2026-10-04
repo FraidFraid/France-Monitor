@@ -370,7 +370,7 @@ export function buildVigilanceView(input: VigilanceViewInput): LayerView {
   const period = vigilancePeriodOf(v, echeance);
   // Section Submersion marine (spec § 3.4) entre le bulletin et « Méthode et sources », sur l'échéance affichée.
   const submersion = submersionSection(
-    { period, seaLevels: input.seaLevels, seaLevelsError: input.seaLevelsError, canFocus: input.canFocusGauge ?? input.canFocus, now }, input.open,
+    { period, seaLevels: input.seaLevels, seaLevelsError: input.seaLevelsError, canFocus: input.canFocusGauge ?? input.canFocus, now, late: lateOf(v, now) }, input.open,
   );
   const sections = [departementsSection(input, v, period), phenomenesSection(input, v, period), bulletinSection(input, v), submersion, methodSection(input, v)];
   const callout = vigilanceError !== null ? sourceErrorCallout(dataMs(v.updateTime), now) : undefined;

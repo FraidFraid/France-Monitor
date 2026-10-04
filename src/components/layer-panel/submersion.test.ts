@@ -82,6 +82,24 @@ describe('section Submersion marine (spec 2026-10-04 environnement § 3.4)', () 
     expect(h).toMatch(/data-gauge="524"><span class="fmk-dot fmk-dot--vert" aria-hidden="true"><\/span>/);
     expect(h).not.toMatch(/mesure 10:40 \(en retard\)/);
   });
+  it('carte de vigilance en retard : domaines et pastilles de domaine sans couleur, « (en retard) » dit', () => {
+    const s = section({ period: FINISTERE_JAUNE, late: true });
+    expect(s.summary).toBe('1 domaine (en retard) · 2 marégraphes');
+    expect(s.html).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>Finistère, littoral</span>');
+    expect(s.html).toMatch(/data-gauge="3"><span class="fmk-dot" aria-hidden="true">/);
+    expect(visibleText(s.html)).toContain('Carte de vigilance en retard');
+  });
+  it('lecture en échec avec anciennes données : échec nommé ; aucune mesure dite au résumé', () => {
+    const h = section({ seaLevelsError: 'HTTP 502' }).html;
+    expect(visibleText(h)).toContain('Dernière lecture des marégraphes en échec (HTTP 502)');
+    const none = withSea((x) => { x.gauges = x.gauges.map((g) => ({ ...g, lastAt: null, heightM: null, change1hM: null, series: [] })); });
+    expect(section({ seaLevels: none }).summary).toBe('25 domaines en vert · aucune mesure');
+  });
+  it('créneaux verts du domaine non listés ; courbe datée quand l’axe franchit minuit', () => {
+    const p = period((coast) => { coast[0] = domain('5910', { color: 2, slots: [SLOT, { ...SLOT, from: '2026-10-04T14:00:00Z', to: '2026-10-04T20:00:00Z', color: 1 }] }); });
+    expect(visibleText(section({ period: p }).html)).not.toContain('20:00');
+    expect(visibleText(section().html)).toMatch(/0[34]\/10 \d\d:\d\d/);
+  });
   it('pannes nommées : marégraphe sans mesure, tous en panne, chargement, carte de vigilance absente', () => {
     const one = section({ seaLevels: withSea((s) => { s.gauges[1] = { ...s.gauges[1], lastAt: null, heightM: null, change1hM: null, series: [] }; s.errors = ['Marégraphe Marseille : HTTP 503']; }) });
     expect(one.html).toMatch(/data-gauge="524"><span class="fmk-dot" aria-hidden="true"><\/span><span>Marseille<\/span><span class="lp-val fmk-num">n\.d\.<\/span><small>aucune mesure lue/);
@@ -115,5 +133,13 @@ describe('panneau Vigilance météo : section Submersion entre le bulletin et «
   it('marégraphes non encore lus (couche éteinte) : chargement dit, jamais « aucun »', () => {
     const s = buildVigilanceView(base({ seaLevels: null })).sections.find((x) => x.id === 'submersion');
     expect(s?.html).toContain('Chargement des marégraphes…');
+  });
+  it('carte en retard (15 h après le produit) : la section reçoit le retard', () => {
+    const v = VIGILANCE_FIXTURE();
+    const j = v.periods.find((p) => p.echeance === 'J');
+    if (j) j.coast[0] = { ...j.coast[0], color: 2, slots: [] };
+    const late = Date.parse(v.updateTime) + 16 * 3_600_000;
+    const s = buildVigilanceView(base({ vigilance: v, now: late })).sections.find((x) => x.id === 'submersion');
+    expect(s?.summary).toContain('en retard');
   });
 });
