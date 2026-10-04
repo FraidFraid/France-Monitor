@@ -51,13 +51,16 @@ export function parseFirmsCsv(text) {
   const header = lines[0].split(',').map((h) => h.trim());
   if (!REQUIRED_COLUMNS.every((c) => header.includes(c))) throw new Error('CSV FIRMS illisible (en-tête inattendu)');
   const rows = [];
+  let rejected = 0;
   for (const line of lines.slice(1)) {
     const values = line.split(',');
-    if (values.length !== header.length) continue;
+    if (values.length !== header.length) { rejected += 1; continue; }
     const row = {};
     header.forEach((h, i) => { row[h] = values[i].trim(); });
     rows.push(row);
   }
+  // Nombre de lignes écartées (nombre de champs différent de l'en-tête), lisible par la collecte sans changer le type de retour.
+  Object.defineProperty(rows, 'rejected', { value: rejected, enumerable: false });
   return rows;
 }
 
@@ -87,9 +90,9 @@ function roundTo(v, digits) {
 export function normalizeDetection(row, sourceId) {
   const lat = Number.parseFloat(row?.latitude ?? '');
   const lon = Number.parseFloat(row?.longitude ?? '');
-  const frp = Number.parseFloat(row?.frp ?? '');
+  const frp = Number(row?.frp ?? '');
   const ts = detectionTimestamp(row);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(frp) || frp < 0 || ts === null) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || String(row?.frp ?? '').trim() === '' || !Number.isFinite(frp) || frp < 0 || ts === null) return null;
   const sensor = sourceId === 'MODIS_NRT' || String(row.instrument ?? '').toUpperCase() === 'MODIS' ? 'MODIS' : 'VIIRS';
   const satellite = SATELLITE_OF_ROW[String(row.satellite ?? '').trim()] ?? SATELLITE_OF_SOURCE[sourceId] ?? null;
   const confidenceRaw = String(row.confidence ?? '').trim();

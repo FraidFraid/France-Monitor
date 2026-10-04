@@ -20,6 +20,14 @@ describe('parseFirmsCsv', () => {
   it('un CSV réduit à son en-tête : aucune détection (vraie absence, pas une panne)', () => {
     expect(parseFirmsCsv('latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight\n')).toEqual([]);
   });
+  it('lignes au nombre de champs inattendu : écartées et comptées (rejected)', () => {
+    const head = 'latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight';
+    const ok = '43.4,4.8,317.35,0.43,0.46,2026-10-04,120,N,VIIRS,n,2.0NRT,285.92,1.83,N';
+    const rows = parseFirmsCsv(`${head}\n${ok}\n43.4,4.8,truncated\n${ok},extra\n`);
+    expect(rows).toHaveLength(1);
+    expect((rows as unknown as { rejected: number }).rejected).toBe(2);
+    expect((parseFirmsCsv(`${head}\n${ok}\n`) as unknown as { rejected: number }).rejected).toBe(0);
+  });
   it('message ou page à la place du CSV, corps vide : erreur', () => {
     expect(() => parseFirmsCsv('Invalid MAP_KEY.')).toThrow('CSV FIRMS illisible (en-tête inattendu)');
     expect(() => parseFirmsCsv('<!DOCTYPE html><html><body>Maintenance</body></html>')).toThrow('CSV FIRMS illisible');
@@ -58,6 +66,7 @@ describe('normalizeDetection', () => {
     expect(normalizeDetection({ ...snpp, latitude: 'abc' }, 'VIIRS_SNPP_NRT')).toBeNull();
     expect(normalizeDetection({ ...snpp, acq_time: '2599' }, 'VIIRS_SNPP_NRT')).toBeNull();
     expect(normalizeDetection({ ...snpp, confidence: '?' }, 'VIIRS_SNPP_NRT')).toBeNull();
+    expect(normalizeDetection({ ...snpp, frp: '1.2abc' }, 'VIIRS_SNPP_NRT')).toBeNull();
     expect(normalizeDetection({ ...snpp, frp: '' }, 'VIIRS_SNPP_NRT')).toBeNull();
     expect(normalizeDetection({ ...snpp, daynight: '' }, 'VIIRS_SNPP_NRT')).toBeNull();
   });

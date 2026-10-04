@@ -170,3 +170,51 @@ describe('foyers (24 h)', () => {
     expect(late.foyers).toHaveLength(2);
   });
 });
+
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); }
+  return o;
+}
+
+describe('pureté, bordures de case, chaînes, ordre', () => {
+  it('mergeDayCells ne modifie pas son entrée (détection hors des jours couverts comprise)', () => {
+    const input = deepFreeze({ '2026-10-04': { cells: ['1:1'], france: 2, recurrent: 1 } });
+    const snapshot = JSON.parse(JSON.stringify(input));
+    const out = mergeDayCells(input, [det({ lat: 44.5, lon: -0.9 }), det({ lat: 44.5, lon: -0.9, acquiredAt: '2026-10-02T02:00:00.000Z' })], []);
+    expect(input).toEqual(snapshot);
+    expect(out['2026-10-04'].cells).toHaveLength(2);
+    expect(out['2026-10-04'].france).toBe(2);
+    expect(out['2026-10-02'].cells).toHaveLength(1);
+  });
+  it('feu sur une bordure de case (latitude et longitude, longitude négative) : la récurrence tient de part et d’autre', () => {
+        const edgeLat = Math.round(44.5 / CELL_LAT_DEG) * CELL_LAT_DEG;
+    const edgeLon = Math.round(-0.9 / CELL_LON_DEG) * CELL_LON_DEG;
+    const eps = 1e-6;
+    const base = cellOf(edgeLat + eps, edgeLon + eps);
+    const days = history(base, 5);
+    for (const [dLat, dLon] of [[eps, eps], [-eps, eps], [eps, -eps], [-eps, -eps]]) {
+      expect(isRecurrent(edgeLat + dLat, edgeLon + dLon, days, TODAY)).toBe(true);
+    }
+    expect(cellOf(edgeLat - eps, edgeLon - eps)).not.toBe(base);
+  });
+  it('chaîne A-B-C (A et C à plus de 1 km) : un seul foyer', () => {
+    const chain = [det({ id: 'A', lat: 44.5 }), det({ id: 'B', lat: 44.5065 }), det({ id: 'C', lat: 44.513 })];
+    const { foyers } = clusterFoyers(chain, {}, NOW);
+    expect(foyers).toHaveLength(1);
+    expect(foyers[0].detections).toBe(3);
+  });
+  it('le résultat ne dépend pas de l’ordre des détections', () => {
+    const list = detections().france;
+    const a = clusterFoyers(list, history(FOS, 5), NOW);
+    const b = clusterFoyers([...list].reverse(), history(FOS, 5), NOW);
+    expect(b).toEqual(a);
+  });
+  it('un même passage coupé en deux granules (moins de 10 min) compte pour 1 ; deux satellites ou deux heures éloignées, 2', () => {
+    const one = clusterFoyers([det({ id: 'p', acquiredAt: '2026-10-04T01:37:00.000Z' }), det({ id: 'q', lat: 44.502, acquiredAt: '2026-10-04T01:41:00.000Z' })], {}, NOW);
+    expect(one.foyers[0]).toMatchObject({ passes: 1, confirmed: false });
+    const two = clusterFoyers([det({ id: 'p', acquiredAt: '2026-10-04T01:37:00.000Z' }), det({ id: 'q', lat: 44.502, satellite: 'NOAA-21', acquiredAt: '2026-10-04T02:24:00.000Z' })], {}, NOW);
+    expect(two.foyers[0]).toMatchObject({ passes: 2, confirmed: true });
+    const later = clusterFoyers([det({ id: 'p', acquiredAt: '2026-10-04T01:37:00.000Z' }), det({ id: 'q', lat: 44.502, acquiredAt: '2026-10-04T03:17:00.000Z' })], {}, NOW);
+    expect(later.foyers[0].passes).toBe(2);
+  });
+});

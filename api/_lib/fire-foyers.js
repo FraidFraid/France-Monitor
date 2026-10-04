@@ -119,7 +119,7 @@ export function mergeDayCells(days, detections, coveredDays) {
   for (const day of coveredDays) next[day] = { cells: [...(next[day]?.cells ?? [])], france: next[day]?.france ?? 0, recurrent: next[day]?.recurrent ?? 0 };
   for (const d of detections) {
     const day = d.acquiredAt.slice(0, 10);
-    const entry = next[day] ?? { cells: [], france: 0, recurrent: 0 };
+    const entry = { ...(next[day] ?? { cells: [], france: 0, recurrent: 0 }) };
     const cell = cellOf(d.lat, d.lon);
     if (!entry.cells.includes(cell)) entry.cells = [...entry.cells, cell];
     next[day] = entry;
@@ -131,6 +131,21 @@ export function mergeDayCells(days, detections, coveredDays) {
 export function pruneDays(days, today, keep) {
   const kept = new Set(lastDays(today, keep));
   return Object.fromEntries(Object.entries(days).filter(([day]) => kept.has(day)));
+}
+
+/** Écart sous lequel deux détections d'un même satellite sont un seul passage (une trace coupée en deux granules). */
+const PASS_GAP_MS = 10 * 60_000;
+
+/** Passages d'un foyer : par satellite, détections à moins de 10 min l'une de l'autre (de proche en proche) = un passage. */
+function countPasses(members) {
+  const bySatellite = new Map();
+  for (const d of members) bySatellite.set(d.satellite, [...(bySatellite.get(d.satellite) ?? []), Date.parse(d.acquiredAt)]);
+  let passes = 0;
+  for (const times of bySatellite.values()) {
+    times.sort((a, b) => a - b);
+    passes += 1 + times.slice(1).filter((t, i) => t - times[i] >= PASS_GAP_MS).length;
+  }
+  return passes;
 }
 
 function rankOf(f) {
@@ -202,7 +217,7 @@ export function clusterFoyers(detections, days, now) {
     const wSum = weights.reduce((s, w) => s + w, 0);
     const lat = members.reduce((s, d, i) => s + d.lat * weights[i], 0) / wSum;
     const lon = members.reduce((s, d, i) => s + d.lon * weights[i], 0) / wSum;
-    const passes = new Set(members.map((d) => `${d.satellite}|${d.acquiredAt}`)).size;
+    const passes = countPasses(members);
     const confidenceMax = members.reduce((best, d) => (CONFIDENCE_RANK[d.confidence] > CONFIDENCE_RANK[best] ? d.confidence : best), 'faible');
     const isNew = ![cellOf(lat, lon), ...members.map((d) => cellOf(d.lat, d.lon))].some((c) => old.has(c));
     const guarded = (frpTotal >= MAJOR_FOYER_MW || confidenceMax === 'haute') && isNew;
