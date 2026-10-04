@@ -99,3 +99,72 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return EARTH_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+// ─── Départements de métropole (public/data/departements.geojson, 96 départements, 2A et 2B compris) ───
+// Rattachement d'une détection de feu ou d'un séisme à un département, départements voisins d'un foyer
+// (communes à moins de 10 km). Même méthode que les régions : point dans polygone, distance au bord.
+
+export const DEPARTEMENTS_PATH = new URL('../../public/data/departements.geojson', import.meta.url);
+
+let departementsCache = null;
+
+/** Départements de métropole : code, nom, polygones (lon, lat) et boîte englobante. Lecture unique par processus. */
+export function metropoleDepartements() {
+  if (departementsCache) return departementsCache;
+  const geo = JSON.parse(readFileSync(DEPARTEMENTS_PATH, 'utf8'));
+  departementsCache = geo.features.map((f) => {
+    const polygons = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    let minLon = Infinity; let minLat = Infinity; let maxLon = -Infinity; let maxLat = -Infinity;
+    for (const poly of polygons) for (const ring of poly) for (const [lon, lat] of ring) {
+      minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon); minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
+    }
+    return { code: String(f.properties.code), name: String(f.properties.nom), polygons, bbox: [minLon, minLat, maxLon, maxLat] };
+  });
+  return departementsCache;
+}
+
+function insideDepartement(d, lat, lon) {
+  const [x0, y0, x1, y1] = d.bbox;
+  if (lon < x0 || lon > x1 || lat < y0 || lat > y1) return false;
+  return d.polygons.some((p) => inPolygon(lon, lat, p));
+}
+
+/** Code du département de métropole qui contient le point (« 13 », « 2A »), ou null (mer, étranger, coordonnées illisibles). */
+export function departementAt(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  for (const d of metropoleDepartements()) if (insideDepartement(d, lat, lon)) return d.code;
+  return null;
+}
+
+function borderKm(d, lat, lon) {
+  let best = Infinity;
+  for (const poly of d.polygons) for (const ring of poly) {
+    for (let i = 1; i < ring.length; i += 1) best = Math.min(best, segmentKm(lat, lon, ring[i - 1], ring[i]));
+  }
+  return best;
+}
+
+/** Distance (km) d'un point à un département : 0 dedans, sinon distance à son bord ; Infinity pour un code inconnu. */
+export function distanceToDepartementKm(code, lat, lon) {
+  const d = metropoleDepartements().find((x) => x.code === code);
+  if (!d || !Number.isFinite(lat) || !Number.isFinite(lon)) return Infinity;
+  return insideDepartement(d, lat, lon) ? 0 : borderKm(d, lat, lon);
+}
+
+/**
+ * Départements à moins de `km` du point : celui qui le contient d'abord, puis les autres du plus proche au plus lointain.
+ * Un point en mer près de la côte rend les départements côtiers voisins ; un point loin de tout : [].
+ */
+export function departementsNear(lat, lon, km) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !(km >= 0)) return [];
+  const padLat = km / 111;
+  const padLon = padLat / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const found = [];
+  for (const d of metropoleDepartements()) {
+    const [x0, y0, x1, y1] = d.bbox;
+    if (lon < x0 - padLon || lon > x1 + padLon || lat < y0 - padLat || lat > y1 + padLat) continue;
+    const dist = insideDepartement(d, lat, lon) ? 0 : borderKm(d, lat, lon);
+    if (dist <= km) found.push({ code: d.code, dist });
+  }
+  return found.sort((a, b) => a.dist - b.dist || a.code.localeCompare(b.code)).map((x) => x.code);
+}

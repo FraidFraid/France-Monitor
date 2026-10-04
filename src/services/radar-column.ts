@@ -1,7 +1,7 @@
 /**
- * Profil vertical radar (colonne PAM) — parseur strict partagé entre le
- * service client et le plugin de dev. Le proxy edge
- * api/fire-observations/radar-column.js est le MIROIR JS de cette
+ * Profil vertical radar (colonne PAM) : parseur strict du service client.
+ * Le gestionnaire api/_handlers/fire-observations/radar-column.js (servi
+ * aussi en dev par le routeur de secours) est le MIROIR JS de cette
  * validation : toute évolution se fait dans les deux fichiers.
  */
 import type { RadarColumnLevel, RadarColumnProfile, RadarColumnResult } from '../types/index.ts';

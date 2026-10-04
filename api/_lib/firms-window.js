@@ -1,9 +1,9 @@
 /**
  * api/_lib/firms-window.js — Fenêtre temporelle des détections FIRMS.
  *
- * Fonctions PURES, partagées entre la fonction Vercel (`api/fires.js`) et son
- * miroir de développement (`src/plugins/fires-proxy.ts`) — un seul code, donc
- * aucune dérive possible entre les deux.
+ * Fonctions PURES du gestionnaire `api/_handlers/fires.js`, servi en production
+ * comme en dev (routeur de secours `src/plugins/api-router-fallback.ts`) : un
+ * seul code, aucune dérive possible.
  *
  * Pourquoi ce module existe : l'API FIRMS `area/csv` prend une plage en JOURS,
  * et `/1` signifie « depuis minuit UTC », pas « les 24 dernières heures ». À

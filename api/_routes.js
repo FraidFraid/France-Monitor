@@ -23,6 +23,7 @@ export const ROUTES = {
   '/api/fire-observations/mtg-frp': () => import('./_handlers/fire-observations/mtg-frp.js'),
   '/api/fire-observations/radar-2d': () => import('./_handlers/fire-observations/radar-2d.js'),
   '/api/fire-observations/radar-column': () => import('./_handlers/fire-observations/radar-column.js'),
+  '/api/fires/impacts': () => import('./_handlers/fires/impacts.js'),
   '/api/fires': () => import('./_handlers/fires.js'),
   '/api/fuel-price-series': () => import('./_handlers/fuel-price-series.js'),
   '/api/fuel-prices-proxy': () => import('./_handlers/fuel-prices-proxy.js'),

@@ -21,7 +21,6 @@ import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy
 import { infraNetworkProxyPlugin } from './src/plugins/infra-network-proxy';
 import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
 import { rteIipProxyPlugin } from './src/plugins/rte-iip-proxy';
-import { firesProxyPlugin } from './src/plugins/fires-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
@@ -34,8 +33,6 @@ import { threatsProxyPlugin } from './src/plugins/threats-proxy';
 import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { newsProxyPlugin } from './src/plugins/news-proxy';
 import { mtgFrpProxyPlugin } from './src/plugins/mtg-frp-proxy';
-import { radar2dProxyPlugin } from './src/plugins/radar-2d-proxy';
-import { radarColumnProxyPlugin } from './src/plugins/radar-column-proxy';
 import { apiRouterFallbackPlugin } from './src/plugins/api-router-fallback';
 import { startRelayServer } from './ais-relay.js';
 
@@ -135,7 +132,6 @@ export default defineConfig(({ mode }) => {
       infraNetworkProxyPlugin(),
       citizenOutagesProxyPlugin(),
       rteIipProxyPlugin(),
-      firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
       ministersProxyPlugin(),
@@ -152,8 +148,6 @@ export default defineConfig(({ mode }) => {
         databaseUrl: env.DATABASE_URL ?? '',
       }),
       mtgFrpProxyPlugin(),
-      radar2dProxyPlugin(env.METEO_FRANCE_RADAR_MANIFEST_URL ?? ''),
-      radarColumnProxyPlugin(env.METEO_FRANCE_RADAR_MANIFEST_URL ?? ''),
       // Doit rester APRÈS tous les plugins proxy : sert en dev toute route /api/* sans plugin dédié
       // via le routeur de production (api/_utils/dispatch.js).
       apiRouterFallbackPlugin(),

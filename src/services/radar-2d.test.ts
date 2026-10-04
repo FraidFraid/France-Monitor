@@ -5,7 +5,6 @@ import {
   parseRadar2dManifest,
   type Radar2dManifest,
 } from './radar-2d.ts';
-import { handleRadar2dProxyRequest } from '../plugins/radar-2d-proxy.ts';
 import radar2dHandler from '../../api/_handlers/fire-observations/radar-2d.js';
 import {
   RADAR_2D_LAYER_ID,
@@ -135,69 +134,42 @@ describe('radar 2D client', () => {
   });
 });
 
-describe('radar 2D development proxy', () => {
-  it('returns configured:false without contacting an upstream', async () => {
-    const upstreamFetch = vi.fn();
-    const response = await handleRadar2dProxyRequest('', upstreamFetch);
+describe('radar 2D : gestionnaire de production, servi aussi en dev par api-router-fallback (miroir de dev retiré)', () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ configured: false });
-    expect(upstreamFetch).not.toHaveBeenCalled();
-  });
-
-  it('contacts only the configured manifest URL and validates the response', async () => {
+  it('ne lit que l’URL configurée du manifeste, sans suivre de redirection', async () => {
     const upstreamFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(VALID), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }));
-    const configuredUrl = 'https://worker.example.test/manifest.json';
-    const response = await handleRadar2dProxyRequest(configuredUrl, upstreamFetch);
+    vi.stubGlobal('fetch', upstreamFetch);
+    const response = await invokeVercelHandler('https://worker.example.test/manifest.json');
 
-    expect(response.status).toBe(200);
-    expect(upstreamFetch).toHaveBeenCalledWith(configuredUrl, expect.objectContaining({
+    expect(response.statusCode).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledWith('https://worker.example.test/manifest.json', expect.objectContaining({
       headers: { Accept: 'application/json' },
       redirect: 'error',
     }));
-    await expect(response.json()).resolves.toEqual(VALID);
   });
 
-  it('rejects insecure non-local configured origins', async () => {
-    const upstreamFetch = vi.fn();
-    const response = await handleRadar2dProxyRequest(
-      'http://worker.example.test/manifest.json',
-      upstreamFetch,
-    );
-
-    expect(response.status).toBe(503);
-    expect(upstreamFetch).not.toHaveBeenCalled();
-  });
-
-  it('caps streamed bodies even when Content-Length is absent', async () => {
-    const upstreamFetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(64 * 1024 + 1), {
+  it('borne le corps lu même sans Content-Length', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Uint8Array(64 * 1024 + 1), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    }));
+    })));
+    const response = await invokeVercelHandler('https://worker.example.test/manifest.json');
 
-    const response = await handleRadar2dProxyRequest(
-      'https://worker.example.test/manifest.json',
-      upstreamFetch,
-    );
-
-    expect(response.status).toBe(502);
+    expect(response.statusCode).toBe(502);
   });
 
-  it('rejects upstream redirect responses', async () => {
-    const upstreamFetch = vi.fn().mockResolvedValue(new Response(null, {
+  it('refuse une réponse de redirection de l’amont', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, {
       status: 302,
       headers: { Location: 'https://other.example.test/manifest.json' },
-    }));
+    })));
+    const response = await invokeVercelHandler('https://worker.example.test/manifest.json');
 
-    const response = await handleRadar2dProxyRequest(
-      'https://worker.example.test/manifest.json',
-      upstreamFetch,
-    );
-
-    expect(response.status).toBe(502);
+    expect(response.statusCode).toBe(502);
   });
 });
 
