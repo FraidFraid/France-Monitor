@@ -37,6 +37,9 @@ const BUILDING_MARGIN_MS = 10 * 60_000;
 const GNSS_DAYS_SPAN = 14;
 const KP_SLOT_MS = 3 * HOUR_MS;
 const CELL_HALF = 0.25;
+/** Seuil d'une maille orange, en % des aéronefs : celui de la grille serveur (GNSS_ORANGE_PCT, api/_lib/gnss-grid.js ; identité testée). */
+export const GNSS_ORANGE_PCT = 10;
+const ORANGE_AT = `au-delà de ${GNSS_ORANGE_PCT}${NBSP}%`;
 /** Gris des données en retard et des jours de dégradation générale (jeton de la légende Défense). */
 const MUTED_GREY = 'var(--cat-mil-etranger)';
 const PARIS_HOUR = new Intl.DateTimeFormat('fr-FR', { timeZone: PARIS, hour: '2-digit', hourCycle: 'h23' });
@@ -110,7 +113,8 @@ function cellsPart(gn: GnssResponse, lateGrid: boolean, canFocus: boolean): stri
   const degraded = gn.cells
     .filter((c) => c.inFrance && (c.level === 'jaune' || c.level === 'orange'))
     .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
-  const title = subhead(glue(`Mailles du ${dayLabel(gn.cellsDay)} (jour UTC complet) : ${degraded.length} sur ${formatCount(gn.frenchCells)} mesurées`));
+  const orange = degraded.filter((c) => c.level === 'orange').length;
+  const title = subhead(glue(`Mailles du ${dayLabel(gn.cellsDay)} (jour UTC complet) : ${degraded.length} dégradées (jaune et orange) sur ${formatCount(gn.frenchCells)} mesurées, dont ${orange} ${ORANGE_AT}`));
   const rows = degraded.map((c) => {
     const level: VigilanceLevel = c.level === 'orange' ? 'orange' : 'jaune';
     return listRow({
@@ -142,8 +146,8 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
   const rolling = gn.degraded.rolling24h;
   // En dégradation générale le serveur sert 0 : un 0 aurait l'air d'un calme, la valeur est dite n.d.
   const rollingValue = general ? valueHtml('n.d.') : valueHtml(String(rolling), late ? null : rollingLevel(rolling));
-  const head = kvRow(glue('Mailles françaises à précision dégradée sur 24 h glissantes'), rollingValue)
-    + kvRow('Jours UTC complets', valueHtml(`veille ${previousDayText(gn, 1)}, avant-veille ${previousDayText(gn, 2)}`))
+  const head = kvRow(glue(`Mailles françaises à précision dégradée ${ORANGE_AT} sur 24 h glissantes`), rollingValue)
+    + kvRow(`Jours UTC complets (${ORANGE_AT})`, valueHtml(`veille ${previousDayText(gn, 1)}, avant-veille ${previousDayText(gn, 2)}`))
     + kvRow('Mesure', escapeHtml(glue(`adsb.lol ${clockOf(gn.readAt, now)}${late ? ' (en retard)' : ''} · ${plural(gn.aircraft, 'aéronef')} · ${plural(gn.reads, 'lecture')}`)));
   const kp = windowKp(gn);
   const generalBox = general
@@ -155,7 +159,7 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
     ? paragraph(`Référence en construction (${hours} h) : la mesure couvre ${hours} h sur les 24 h de la méthode (cumul repris au dernier redémarrage du serveur).`)
     : '';
   const summary = general ? 'dégradation générale (météo spatiale)'
-    : `${plural(rolling, 'maille à précision dégradée', 'mailles à précision dégradée')} sur 24 h${late ? ' (en retard)' : ''}`;
+    : `${plural(rolling, 'maille', 'mailles')} ${ORANGE_AT} sur 24 h${late ? ' (en retard)' : ''}`;
   return {
     summary,
     html: generalBox + head + paragraph('Un compte seulement, sans lieu : un lieu en direct pourrait signaler une protection en cours. Les mailles localisées sont celles du dernier jour UTC complet.')
@@ -199,7 +203,7 @@ function forecastRow(d: NoaaScaleDay, late: boolean): string {
   return listRow({
     text: `${dayLabel(d.date)} (prévision)`,
     value: scaleText('G', d.g),
-    level: late || d.g === null ? 'gris' : gScaleLevel(d.g) ?? 'vert',
+    ...(late || d.g === null ? { level: 'gris' as const } : gScaleLevel(d.g) !== null ? { level: gScaleLevel(d.g) } : { color: CAT_KP_CALME }),
     note: probs ? glue(probs) : null,
   });
 }
@@ -377,8 +381,16 @@ export function defenseMethodB(): string {
 function headWithGnss(head: LayerHeadModel, input: DefenseViewInput): LayerHeadModel {
   const m = input.military;
   if (m === null) return head;
+  const count = gnssDegradedCount(input.gnss ?? null, input.now);
   const before = defenseLevel(m, input.now);
-  const after = defenseLevel(m, input.now, gnssDegradedCount(input.gnss ?? null, input.now));
+  // Relevé adsb.lol en retard (niveau suspendu par defenseLevel) mais grille GNSS fraîche : la couleur du GNSS reste (source fraîche,
+  // signal propre, décision du contrôleur). Sa raison vient de defenseLevel sur un relevé frais sans urgence (un seul texte), elle
+  // passe en premier et le retard adsb.lol est dit ; l'estampille datée est gardée.
+  if (before.level === 'nd' && m.readAt !== null && count > 0) {
+    const gnssOnly = defenseLevel({ ...m, emergencies: [], readAt: new Date(input.now).toISOString() }, input.now, count);
+    return { ...head, level: gnssOnly.level, status: [`${glue(gnssOnly.reason)} · relevé adsb.lol en retard`, ...head.status.slice(1)] };
+  }
+  const after = defenseLevel(m, input.now, count);
   if (before.level === after.level && before.reason === after.reason) return head;
   const status = head.status.map((s) => (s === before.reason ? after.reason : s === glue(before.reason) ? glue(after.reason) : s));
   return { ...head, level: after.level, status };

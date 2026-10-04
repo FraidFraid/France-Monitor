@@ -11,6 +11,7 @@ import {
   DRONE_ZONES_META_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SANCTIONS_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_FIXTURE,
 } from './sovereignty.fixture.ts';
 import { buildDefenseView, type DefenseViewInput } from './defense.ts';
+import { GNSS_ORANGE_PCT } from './defense-b.ts';
 import { breakableValue, visibleText } from './format.ts';
 import { renderLayerView } from './frame.ts';
 import { formatCount, glueSovUnits, sovBreakable } from './sovereignty-format.ts';
@@ -71,11 +72,11 @@ describe('sections de la phase B', () => {
 describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () => {
   it('en direct : un compte sur 24 h glissantes, sans dénominateur ni lieu ; jours UTC complets, jour non couvert dit n.d.', () => {
     const text = gnssText(input());
-    expect(text).toContain(`Mailles françaises à précision dégradée sur 24${NBSP}h glissantes2`);
+    expect(text).toContain(`Mailles françaises à précision dégradée au-delà de 10${NBSP}% sur 24${NBSP}h glissantes2`);
     expect(text).not.toMatch(/2\s+sur\s+14\s+glissantes|à navigation dégradée/);
-    expect(text).toContain('Jours UTC complets');
+    expect(text).toContain(`Jours UTC complets (au-delà de 10${NBSP}%)veille 2`);
     expect(text).toContain('veille 2, avant-veille n.d. (jour non couvert)');
-    expect(section(input(), 'gnss')?.summary).toBe(`2${NBSP}mailles à précision dégradée sur 24${NBSP}h · Kp${NBSP}5 à 11:00`);
+    expect(section(input(), 'gnss')?.summary).toBe(`2${NBSP}mailles au-delà de 10${NBSP}% sur 24${NBSP}h · Kp${NBSP}5 à 11:00`);
   });
   it('compte glissant coloré par le niveau de la pastille (jaune pour 2, orange pour 3, vert pour 0)', () => {
     const val = (n: number): string => (section(input({ gnss: gnss({ degraded: { rolling24h: n, previousUtcDays: [null, null] } }) }), 'gnss')?.html ?? '')
@@ -89,7 +90,7 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     expect([...h.matchAll(/data-gnss-cell="([^"]+)"/g)].map((m) => m[1])).toEqual(['48:-3.5', '48:-4', '48:-3']);
     expect(h).not.toContain('data-gnss-cell="50.5:-1.5"');
     const text = visibleText(h);
-    expect(text).toContain(`Mailles du 03/10 (jour UTC complet) : 3 sur 14 mesurées`);
+    expect(text).toContain(`Mailles du 03/10 (jour UTC complet) : 3 dégradées (jaune et orange) sur 14 mesurées, dont 2 au-delà de 10${NBSP}%`);
     expect(text).toContain(`12,5${NBSP}%`);
     expect(text).toContain(`24${NBSP}aéronefs au calcul · 4 à précision dégradée · 1 sans précision déclarée`);
     expect(text).not.toMatch(/\bhier\b/i);
@@ -114,7 +115,7 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     const text = gnssText(storm);
     expect(text).toContain(`Dégradation générale, probablement météo spatiale : plus de 30${NBSP}% des mailles françaises mesurées à précision dégradée et Kp${NBSP}5+ sur la fenêtre. Ces mailles ne comptent ni dans la pastille ni au score.`);
     expect(text).toContain('Dégradation générale le 03/10 (météo spatiale) : mailles en gris, hors pastille et hors score.');
-    expect(text).toContain(`Mailles françaises à précision dégradée sur 24${NBSP}h glissantesn.d.`);
+    expect(text).toContain(`Mailles françaises à précision dégradée au-delà de 10${NBSP}% sur 24${NBSP}h glissantesn.d.`);
     expect(buildDefenseView(storm).head.level).toBe('vert');
     expect(gridHtml(storm)).not.toMatch(/fmk-dot--(?:jaune|orange)/);
     expect(section(storm, 'gnss')?.summary).toContain('dégradation générale');
@@ -171,6 +172,44 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
       expect(visibleText(section(i, 'gnss')?.html ?? '')).not.toMatch(/brouillage/i);
       expect(all).toContain('Seules la DGAC et l’ANFR qualifient un brouillage');
     }
+  });
+});
+
+describe('pastille : fraîcheur croisée adsb.lol et GNSS (revue de B25, I1)', () => {
+  it('relevé adsb.lol en retard, grille fraîche : la couleur GNSS reste, sa raison passe en premier, le retard adsb.lol est dit', () => {
+    const v = buildDefenseView(input({ now: NOW + 12 * 60_000 }));
+    expect(v.head.level).toBe('jaune');
+    expect(v.head.status[0]).toBe(`${glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW, 2).reason)} · relevé adsb.lol en retard`);
+    expect(v.head.status.join(' ')).not.toContain('niveau suspendu');
+    expect(v.head.status.some((s) => s.includes('(en retard)'))).toBe(true);
+    expect(v.head.figure?.level).toBeNull();
+  });
+  it('relevé adsb.lol en retard, sans compte GNSS : niveau suspendu, n.d.', () => {
+    const v = buildDefenseView(input({ now: NOW + 12 * 60_000, gnss: GNSS_STORM_FIXTURE() }));
+    expect(v.head.level).toBe('nd');
+    expect(v.head.status[0]).toBe('niveau suspendu : relevé adsb.lol en retard');
+  });
+  it('grille GNSS en retard, relevé militaire frais : la pastille vient du militaire seul', () => {
+    const v = buildDefenseView(input({ gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z', windowStart: '2026-10-03T13:50:00.000Z' }) }));
+    expect(v.head.level).toBe('vert');
+    expect(v.head.status[0]).toBe(glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason));
+  });
+});
+
+describe('seuils et teintes (revue de B25, m1 et m2)', () => {
+  it('le seuil « au-delà de 10 % » est celui de la grille serveur', async () => {
+    const server = await import('../../../api/_lib/gnss-grid.js');
+    expect(GNSS_ORANGE_PCT).toBe((server as { GNSS_ORANGE_PCT: number }).GNSS_ORANGE_PCT);
+  });
+  it('le titre des mailles du jour dit ce qu’il compte et combien dépassent le seuil', () => {
+    const t = gnssText(input());
+    expect(t).toContain(`3 dégradées (jaune et orange) sur 14 mesurées, dont 2 au-delà de 10${NBSP}%`);
+  });
+  it('prévision G0 : jeton calme, pas le vert de niveau', () => {
+    const h = section(input(), 'gnss')?.html ?? '';
+    const row = h.split('05/10 (prévision)')[0].split('<div class="lp-row').pop() ?? '';
+    expect(row).toContain('var(--cat-kp-calme)');
+    expect(row).not.toContain('fmk-dot--vert');
   });
 });
 
