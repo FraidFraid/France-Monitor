@@ -1,7 +1,8 @@
 // src/components/layer-panel/navy.ts : lignes de la Marine nationale partagées par les panneaux Trafic maritime et Défense (spec
 // 2026-10-04 souveraineté § 2.1 ; contrats § 3.7, arbitrage 7). Logique reprise de maritime-tabs.ts sans changement : flux figé
 // (isTrafficDataLate('ais'), même seuil que l'en-tête), homonymes, ligne d'un navire. Ajouts : un sous-marin (SNLE, SNA) n'est jamais
-// observé et retiré de la liste affichée (O11) ; les bâtiments vus en AIS passent d'abord. Panneau Défense : « port base » (S2). Pur, sans réseau ni DOM.
+// observé et retiré de la liste affichée (O11) ; les bâtiments vus en AIS passent d'abord. Panneau Défense : « port base » (S2) et « identifié par son
+// propre message AIS » daté (O12). Pur, sans réseau ni DOM.
 import type { AisConnectionStatus } from '../../services/ais-connection.ts';
 import { isTrafficDataLate } from '../../services/traffic-levels.ts';
 import type { MilitaryShip, RiskLevel } from '../../services/military-ships.ts';
@@ -60,8 +61,11 @@ export function shipRow(s: MilitaryShip, homonyms: ReadonlySet<string>, stale: b
   const seen = s.lastSeen !== undefined ? `vu à ${absoluteTime(s.lastSeen, now, 'fr')}`
     : s.isLive === false && s.port ? `position de référence : ${s.port}` : null;
   const role = s.role && s.role !== 'Civil/Inconnu' ? s.role : null;
+  // Défense : un bâtiment vu reconnu par son propre message AIS (identifiedAt, posé seulement dans ce cas) le dit, daté (O12).
+  const identified = dataKey === 'navy' && s.lastSeen !== undefined && s.identifiedAt !== undefined
+    ? `identifié par son propre message AIS depuis ${absoluteTime(s.identifiedAt, now, 'fr')}` : null;
   const noteText = [s.type, role, country ? `pavillon ${country}` : null, s.maritimeTerritory?.name ?? null,
-    s.nearestPort ? `${s.nearestPort.name} à ${formatKm(s.nearestPort.distanceKm, 0)}` : null, seen, ...(s.riskReasons ?? [])]
+    s.nearestPort ? `${s.nearestPort.name} à ${formatKm(s.nearestPort.distanceKm, 0)}` : null, seen, identified, ...(s.riskReasons ?? [])]
     .filter((x): x is string => x !== null && x !== '').join(' · ');
   return listRow({
     text: dup ? `${s.name} · MMSI …${s.mmsi?.slice(-4) ?? ''}` : s.name,
