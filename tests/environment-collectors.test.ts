@@ -7,7 +7,7 @@ import { ensureVigilanceArchiveFresh } from '../api/_lib/vigilance-archive.js';
 
 describe('collecteurs Environnement', () => {
   it('FIRMS et archive de la vigilance, mêmes fonctions que les routes', () => {
-    expect(ENVIRONMENT_COLLECTORS.map((c) => c.name)).toEqual(['firms', 'vigilance-archive']);
+    expect(ENVIRONMENT_COLLECTORS.map((c) => c.name)).toEqual(['firms', 'vigilance-archive', 'vigieau']);
     expect(ENVIRONMENT_COLLECTORS[0].run).toBe(ensureFiresFresh);
     expect(ENVIRONMENT_COLLECTORS[1].run).toBe(ensureVigilanceArchiveFresh);
   });
