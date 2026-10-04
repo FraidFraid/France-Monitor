@@ -5,7 +5,8 @@
 // France », dessiné en gris, jamais compté. Pays par bloc OACI (api/_lib/icao-country.js), jamais une hypothèse « France ».
 // Amendement 7, O10 (réponse ministérielle publiée au JO le 25/10/2016) : les appareils du bloc France sont servis en compte par
 // département seulement (ni adresse, ni indicatif, ni type, ni position) ; un appareil marqué PIA ou LADD (`dbFlags`) n'est jamais
-// montré, quelle que soit sa nation ; l'immatriculation (`r`) n'est jamais lue. L'adresse d'un appareil masqué n'est écrite que dans
+// montré, quelle que soit sa nation ; une adresse non OACI (« ~… ») n'a pas de nationalité connue et peut être française : masquée
+// par défaut (arbitrage du contrôleur, 04/10) ; l'immatriculation (`r`) n'est jamais lue. L'adresse d'un appareil masqué n'est écrite que dans
 // le journal des urgences du serveur, pour fusionner les lectures d'un épisode, jamais dans la réponse.
 // Urgences (7500, 7600, 7700 et champ `emergency`) : règle T3 du Trafic aérien (journal de 7 jours, confirmée sur deux lectures).
 // Historique horaire de 7 jours dans le stockage clé-valeur : des comptes seulement (aéronefs distincts par heure UTC et par
@@ -40,6 +41,8 @@ const FEET_TO_M = 0.3048;
 /** Bits de `dbFlags` (base adsb.lol) : 4 = PIA (adresse de confidentialité de la FAA), 8 = LADD (diffusion limitée). */
 const DB_FLAG_PIA = 4;
 const DB_FLAG_LADD = 8;
+/** Adresse OACI de 24 bits ; toute autre (« ~… » : TIS-B, MLAT sans adresse OACI) n'a pas de pays connu. */
+const ICAO_ADDRESS = /^[0-9a-f]{6}$/;
 
 /** Champ `emergency` d'adsb.lol ramené à un code transpondeur (arbitrage 6). */
 const EMERGENCY_TO_SQUAWK = { unlawful: '7500', nordo: '7600', general: '7700', minfuel: '7700', lifeguard: '7700', downed: '7700' };
@@ -92,6 +95,16 @@ function hasProtectedIdentity(ac) {
   return Number.isInteger(flags) && (flags & (DB_FLAG_PIA | DB_FLAG_LADD)) !== 0;
 }
 
+/** Vrai si l'adresse n'est pas une adresse OACI (« ~… ») : nationalité inconnue, peut-être française, donc masquée. */
+function hasUnknownNationality(hex) {
+  return !ICAO_ADDRESS.test(hex);
+}
+
+/** Vrai si l'appareil n'est jamais nommé ni dessiné (O10) : bloc France, PIA ou LADD, ou adresse non OACI. */
+function isMaskedAircraft(hex, ac) {
+  return aircraftFamily(hex) === 'francais' || hasProtectedIdentity(ac) || hasUnknownNationality(hex);
+}
+
 /** Position lisible, en vol, récente, dans la zone d'affichage ; null sinon. */
 function usablePosition(ac) {
   if (!ac || typeof ac !== 'object' || ac.alt_baro === 'ground') return null;
@@ -104,8 +117,8 @@ function usablePosition(ac) {
 
 /**
  * Aéronef de /v2/mil normalisé pour le serveur, ou null : sans position, au sol (« ground »), position de plus de 120 s, hors de la
- * zone d'affichage. Champs de MilitaryAircraft, plus `family` et `protectedIdentity` (PIA ou LADD) qui décident de ce qui est servi
- * (splitByTerritory) ; l'immatriculation n'est jamais lue. `nowMs` : `now` d'adsb.lol (instant de la position = now moins seen_pos).
+ * zone d'affichage. Champs de MilitaryAircraft, plus `family`, `protectedIdentity` (PIA ou LADD) et `unknownNationality` (adresse
+ * non OACI) qui décident de ce qui est servi (splitByTerritory) ; l'immatriculation n'est jamais lue. `nowMs` : `now` d'adsb.lol (instant de la position = now moins seen_pos).
  * @param {Record<string, unknown>} ac
  * @param {number} nowMs
  */
@@ -119,6 +132,7 @@ export function normalizeMilAircraft(ac, nowMs) {
     country: icaoCountry(pos.hex),
     family: aircraftFamily(pos.hex),
     protectedIdentity: hasProtectedIdentity(ac),
+    unknownNationality: hasUnknownNationality(pos.hex),
     lat: pos.lat,
     lon: pos.lon,
     dept: departementAt(pos.lat, pos.lon),
@@ -129,9 +143,9 @@ export function normalizeMilAircraft(ac, nowMs) {
   };
 }
 
-/** Vrai si l'appareil peut être nommé et dessiné (O10) : ni bloc France, ni PIA, ni LADD. */
+/** Vrai si l'appareil normalisé peut être nommé et dessiné (O10) : ni bloc France, ni PIA, ni LADD, ni adresse non OACI. */
 function isShown(a) {
-  return a.family !== 'francais' && !a.protectedIdentity;
+  return a.family !== 'francais' && !a.protectedIdentity && !a.unknownNationality;
 }
 
 function byCallsignThenHex(a, b) {
@@ -158,8 +172,8 @@ function byDeptSeaLast(a, b) {
 /**
  * Partage V2 et règle O10, à partir des aéronefs normalisés :
  * - au-dessus de la France, les appareils du bloc France en compte par département (`frenchByDept`, PIA et LADD compris, mer en
- *   dernier), les autres montrés un par un (`others`, tri par indicatif puis adresse) ou comptés seulement (`maskedOthers`, PIA ou
- *   LADD) ;
+ *   dernier), les autres montrés un par un (`others`, tri par indicatif puis adresse) ou comptés seulement (`maskedOthers` : PIA ou
+ *   LADD, et adresses non OACI de nationalité inconnue) ;
  * - hors de France, toutes familles comptées (`abroadCount`), les appareils montrables seuls dessinés (`abroad`, ordre du flux) ;
  * - `seen` : adresses au-dessus de la France par famille, masqués compris, pour dédoublonner l'historique horaire en mémoire
  *   (jamais servies ni écrites).
@@ -181,7 +195,7 @@ export function splitByTerritory(list) {
     }
     seen[a.family].push(a.hex);
     if (a.family === 'francais') french.push(a.dept);
-    else if (a.protectedIdentity) maskedOthers += 1;
+    else if (!isShown(a)) maskedOthers += 1;
     else {
       others.push({
         hex: a.hex, callsign: a.callsign, type: a.type, country: a.country, lat: a.lat, lon: a.lon, dept: a.dept,
@@ -206,9 +220,9 @@ function emergencyCode(ac) {
 /**
  * Urgences de la lecture, au format du journal du serveur, partout dans la zone d'affichage, aéronefs en vol seulement. Première et
  * dernière vue : cette lecture (`atIso`, now d'adsb.lol) ; le journal donne l'épisode. `overFrance` : territoire V2 ou moins de 40 km
- * (approches). Appareil montrable : ShownMilitaryEmergency. Appareil du bloc France, ou PIA ou LADD (O10) : MaskedMilitaryEmergency
- * plus son adresse `icao24`, gardée pour fusionner les lectures d'un épisode et retirée de la réponse (publicEmergency) ; ni
- * indicatif, ni position, ni type, ni pays, même dans le journal.
+ * (approches). Appareil montrable : ShownMilitaryEmergency. Appareil du bloc France, PIA, LADD ou à adresse non OACI (O10) :
+ * MaskedMilitaryEmergency plus son adresse `icao24`, gardée pour fusionner les lectures d'un épisode et retirée de la réponse
+ * (publicEmergency) ; ni indicatif, ni position, ni type, ni pays, même dans le journal.
  * @param {Array<Record<string, unknown>>} acList
  * @param {string} atIso
  */
@@ -230,7 +244,7 @@ export function militaryEmergenciesFrom(acList, atIso) {
       inFrance,
       dept: departementAt(pos.lat, pos.lon),
     };
-    if (family === 'francais' || hasProtectedIdentity(ac)) {
+    if (isMaskedAircraft(pos.hex, ac)) {
       out.push({ icao24: pos.hex, masked: true, family, ...common });
       continue;
     }

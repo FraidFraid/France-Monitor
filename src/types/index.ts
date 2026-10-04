@@ -2864,8 +2864,8 @@ export interface OsmFileMeta {
 // ─── Défense : GET /api/sovereignty/military ───
 /**
  * Appareil montré un par un au-dessus de la France (amendement 7, O10) : jamais un appareil français (compté par département
- * seulement), jamais un appareil marqué PIA ou LADD (`dbFlags`), d'aucune nation ; aucune immatriculation pour personne.
- * Famille « autres » par construction.
+ * seulement), jamais un appareil marqué PIA ou LADD (`dbFlags`), d'aucune nation, ni une adresse non OACI (« ~… », nationalité
+ * inconnue, peut-être française) ; aucune immatriculation pour personne. Famille « autres » par construction.
  */
 export interface MilitaryAircraft {
   hex: string;                      // adresse 24 bits en minuscules (« 43c700 ») ; « ~… » : adresse non OACI, pays inconnu
@@ -2881,7 +2881,7 @@ export interface MilitaryAircraft {
 }
 /**
  * Position de /v2/mil dans la zone d'affichage (41 à 51,8 N ; −5,8 à 10,2 E) hors de France : dessinée en gris, jamais comptée ;
- * mêmes exclusions que MilitaryAircraft (ni français, ni PIA, ni LADD).
+ * mêmes exclusions que MilitaryAircraft (ni français, ni PIA, ni LADD, ni adresse non OACI).
  */
 export interface MilitaryAbroad {
   hex: string; callsign: string | null; type: string | null; country: string | null; lat: number; lon: number;
@@ -2899,7 +2899,7 @@ interface MilitaryEmergencyBase extends Pick<AirEmergency, 'squawk' | 'firstSeen
   inFrance: boolean;
   dept: string | null;              // null au-dessus de la mer territoriale ou hors de France
 }
-/** Urgence d'un appareil montré (ni français, ni PIA, ni LADD) : adresse, indicatif, type, pays et position. */
+/** Urgence d'un appareil montré (ni français, ni PIA, ni LADD, ni adresse non OACI) : adresse, indicatif, type, pays et position. */
 export interface ShownMilitaryEmergency extends AirEmergency, MilitaryEmergencyBase {
   masked: false;
   family: 'autres';
@@ -2907,8 +2907,9 @@ export interface ShownMilitaryEmergency extends AirEmergency, MilitaryEmergencyB
   country: string | null;
 }
 /**
- * Urgence d'un appareil masqué (O10) : appareil français (« appareil d'État français »), ou appareil d'une autre nation marqué PIA ou
- * LADD. Ni adresse, ni indicatif, ni type, ni pays, ni position : le département (ou la mer territoriale, ou les approches) seul.
+ * Urgence d'un appareil masqué (O10) : appareil français (« appareil d'État français »), appareil d'une autre nation marqué PIA ou
+ * LADD, ou adresse non OACI de nationalité inconnue (famille « autres »). Ni adresse, ni indicatif, ni type, ni pays, ni position :
+ * le département (ou la mer territoriale, ou les approches) seul.
  */
 export interface MaskedMilitaryEmergency extends MilitaryEmergencyBase { masked: true }
 /** Urgence militaire servie au client ; `masked` dit si l'appareil peut être nommé et dessiné. */
@@ -2919,10 +2920,10 @@ export interface MilitaryResponse {
   readAt: string | null;            // dernière collecte réussie (horloge du serveur) ; null : jamais lue
   sourceNow: string | null;         // `now` d'adsb.lol de cette collecte (ms, converti en ISO)
   frenchByDept: MilitaryDeptCount[];   // appareils du bloc OACI France au-dessus de la France (V2), PIA et LADD compris ; par département, mer en dernier
-  others: MilitaryAircraft[];       // autres appareils au-dessus de la France (V2), hors PIA et LADD ; tri par indicatif
-  maskedOthers: number;             // autres appareils au-dessus de la France marqués PIA ou LADD : comptés, jamais montrés
+  others: MilitaryAircraft[];       // autres appareils au-dessus de la France (V2), hors PIA, LADD et adresses non OACI ; tri par indicatif
+  maskedOthers: number;             // autres appareils au-dessus de la France marqués PIA ou LADD, ou à adresse non OACI (nationalité inconnue) : comptés, jamais montrés
   abroadCount: number;              // aéronefs de la zone d'affichage hors de France, toutes familles : jamais comptés au-dessus de la France
-  abroad: MilitaryAbroad[];         // parmi eux, ceux qui sont dessinés (ni français, ni PIA, ni LADD)
+  abroad: MilitaryAbroad[];         // parmi eux, ceux qui sont dessinés (ni français, ni PIA, ni LADD, ni adresse non OACI)
   emergencies: MilitaryEmergency[]; // épisodes vus à la dernière lecture, partout dans la zone d'affichage
   emergencyLog: MilitaryEmergency[];// 7 jours, plus récent d'abord
   hourly: { hours: MilitaryHourCount[]; since: string | null };   // 7 jours au plus, plus ancien d'abord ; since : première heure gardée

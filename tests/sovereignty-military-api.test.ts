@@ -60,10 +60,21 @@ function stubReads(...reads: Array<MilRead | ReturnType<typeof respond>>) {
   });
 }
 
-/** Appareil que la réponse ne doit jamais nommer (O10) : famille calculée par le code (bloc OACI France), ou bit PIA (4) ou LADD (8). */
+/**
+ * Appareil que la réponse ne doit jamais nommer (O10) : famille calculée par le code (bloc OACI France), bit PIA (4) ou LADD (8), ou
+ * adresse non OACI (« ~… », nationalité inconnue : peut-être française).
+ */
 function isMaskedAc(a: Ac): boolean {
-  return aircraftFamily(a.hex) === 'francais' || (Number(a.dbFlags) & 12) !== 0;
+  return aircraftFamily(a.hex) === 'francais' || (Number(a.dbFlags) & 12) !== 0 || !/^[0-9a-f]{6}$/.test(a.hex);
 }
+
+/** Adresse non OACI au-dessus de la Saône-et-Loire (indicatif d'allure française, jamais une preuve de nationalité). */
+const TILDE_FRANCE: Ac = {
+  hex: '~3b0abc', type: 'tisb_other', flight: 'FAF1234 ', dbFlags: 1, alt_baro: 12000, gs: 300, track: 90, squawk: '2000', emergency: 'none',
+  lat: 46.5, lon: 4.8, seen_pos: 0.5,
+};
+/** Adresse non OACI au-dessus de Bruxelles, dans la zone d'affichage, hors de France. */
+const TILDE_ABROAD: Ac = { ...TILDE_FRANCE, hex: '~4b0def', flight: 'BAF0002 ', lat: 50.85, lon: 4.35 };
 
 /** Lecture avec des appareils masqués de toutes sortes : autre nation PIA au-dessus de la France, LADD hors de France, français LADD. */
 const WITH_PROTECTED = (sec = 0): MilRead => reading(sec, [
@@ -91,7 +102,7 @@ describe('normalisation et territoire (V2)', () => {
   it('FICTIF04 : hélicoptère de la Sécurité civile, bloc France, au-dessus du Rhône, position datée par seen_pos ; immatriculation jamais lue', () => {
     const got = normalizeMilAircraft(fixtureAc('3bf004'), SOURCE_NOW);
     expect(got).toEqual({
-      hex: '3bf004', callsign: 'FICTIF04', type: 'EC45', country: 'France', family: 'francais', protectedIdentity: false,
+      hex: '3bf004', callsign: 'FICTIF04', type: 'EC45', country: 'France', family: 'francais', protectedIdentity: false, unknownNationality: false,
       lat: 45.718826, lon: 4.944384, dept: '69', altitudeFt: 525, speedKt: 51.5, track: 352.18, seenAt: '2026-10-04T14:48:24.290Z',
     });
     expect(got).not.toHaveProperty('registration');
@@ -105,7 +116,9 @@ describe('normalisation et territoire (V2)', () => {
     expect(normalizeMilAircraft({ ...ac, alt_baro: null }, SOURCE_NOW)?.altitudeFt).toBeNull();
   });
   it('adresse non OACI (« ~ ») : pays inconnu, famille « autres »', () => {
-    expect(normalizeMilAircraft({ ...fixtureAc('3bf004'), hex: '~3bf004' }, SOURCE_NOW)).toMatchObject({ hex: '~3bf004', country: null, family: 'autres' });
+    expect(normalizeMilAircraft({ ...fixtureAc('3bf004'), hex: '~3bf004' }, SOURCE_NOW))
+      .toMatchObject({ hex: '~3bf004', country: null, family: 'autres', unknownNationality: true });
+    expect(normalizeMilAircraft(fixtureAc('43c6f6'), SOURCE_NOW)?.unknownNationality).toBe(false);
   });
   it('identité protégée : bit PIA (4) ou LADD (8) de `dbFlags`, quelle que soit la nation ; militaire (1) et « intéressant » (2) seuls ne masquent pas', () => {
     const ac = fixtureAc('43c6f6');
@@ -138,14 +151,16 @@ describe('/api/sovereignty/military', () => {
     expect(log.urls).toEqual([MIL_URL]);
     expect(sentHeader(log.inits[0], 'User-Agent')).toBe(SOURCE_USER_AGENT);
   });
-  it('O10 : ni adresse ni indicatif d’un appareil masqué (famille calculée par le code, PIA, LADD), aucune immatriculation pour personne, dans toute la réponse', async () => {
-    const read = WITH_PROTECTED();
+  it('O10 : ni adresse ni indicatif d’un appareil masqué (famille calculée par le code, PIA, LADD, adresse « ~ »), aucune immatriculation pour personne, dans toute la réponse', async () => {
+    const protectedRead = WITH_PROTECTED();
+    const read: MilRead = { ...protectedRead, ac: [...protectedRead.ac, TILDE_FRANCE, TILDE_ABROAD] };
     stubReads(read);
     const { body } = await callHandler<MilitaryResponse>(handler);
     const text = JSON.stringify(body);
     const masked = read.ac.filter(isMaskedAc);
-    // Garde du test lui-même : les 4 français de la zone, l'appareil PIA et l'appareil LADD hors de France sont bien parmi les masqués.
-    expect(['3bf002', '3bf003', '3bf004', '3bf001', '43c6f6', 'ae1436'].every((hex) => masked.some((a) => a.hex === hex))).toBe(true);
+    // Garde du test lui-même : les 4 français de la zone, l'appareil PIA, l'appareil LADD hors de France et les deux adresses « ~ »
+    // sont bien parmi les masqués.
+    expect(['3bf002', '3bf003', '3bf004', '3bf001', '43c6f6', 'ae1436', '~3b0abc', '~4b0def'].every((hex) => masked.some((a) => a.hex === hex))).toBe(true);
     for (const a of masked) {
       expect(text).not.toContain(`"${a.hex}"`);
       if (typeof a.flight === 'string' && a.flight.trim()) expect(text).not.toContain(`"${a.flight.trim()}"`);
@@ -163,6 +178,32 @@ describe('/api/sovereignty/military', () => {
     expect(body.hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 5 }]);
     const text = JSON.stringify(body);
     for (const hidden of ['"43c6f6"', '"RRR2243"', '"ae1436"', '"FAZE37"']) expect(text).not.toContain(hidden);
+  });
+  it('adresse non OACI (« ~ ») : nationalité inconnue, masquée par défaut ; au-dessus de la France comptée dans maskedOthers, hors de France dans abroadCount seul', async () => {
+    stubReads(reading(0, [TILDE_FRANCE, TILDE_ABROAD]));
+    const body = await ensureMilitaryFresh(T0);
+    expect(body.others.map((a) => a.hex)).toEqual(['894081', 'c2b5b7', '44f684', '43c6f6', '43c700']);
+    expect(body.frenchByDept).toEqual([{ dept: '13', count: 3 }, { dept: '69', count: 1 }]);
+    expect([body.maskedOthers, counted(body)]).toEqual([1, { francais: 4, autres: 6 }]);
+    expect([body.abroadCount, body.abroad.map((a) => a.hex)]).toEqual([4, ['c05325', 'ae1436', 'ae5719']]);
+    expect(body.hourly.hours).toEqual([{ hour: '2026-10-04T14', francais: 4, autres: 6 }]);
+    const text = JSON.stringify(body);
+    for (const hidden of ['"~3b0abc"', '"FAF1234"', '"~4b0def"', '"BAF0002"']) expect(text).not.toContain(hidden);
+  });
+  it('urgence d’une adresse non OACI : masquée comme celle d’un appareil français (ni adresse, ni indicatif, ni position), épisode fusionné au journal', async () => {
+    const tilde7700: Ac = { ...TILDE_FRANCE, squawk: '7700', emergency: 'general' };
+    stubReads(reading(0, [tilde7700]), reading(120, [tilde7700]));
+    await ensureMilitaryFresh(T0);
+    vi.setSystemTime(T0 + MIL_INTERVAL_MS);
+    const body = await ensureMilitaryFresh(T0 + MIL_INTERVAL_MS);
+    expect(body.emergencies).toEqual([{
+      masked: true, family: 'autres', squawk: '7700', firstSeen: '2026-10-04T14:48:24.501Z', lastSeen: '2026-10-04T14:50:24.501Z',
+      overFrance: true, emergency: 'general', inFrance: true, dept: '71',
+    }]);
+    expect(Object.keys(body.emergencyLog[0]).sort()).toEqual(MASKED_EMERGENCY_KEYS);
+    expect(JSON.stringify(body)).not.toContain('~3b0abc');
+    const stored = await readLog<Record<string, unknown>>(MIL_EMERGENCY_KEY, { dateOf: (e) => String(e.lastSeen), maxAgeMs: 7 * 86_400_000, now: T0 + MIL_INTERVAL_MS });
+    expect(stored.map((e) => [e.icao24, e.masked, 'callsign' in e, 'lat' in e])).toEqual([['~3b0abc', true, false, false]]);
   });
   it('historique horaire : aéronefs distincts par famille (aucun compte d’une lecture répétée), clé « sov: », une seule écriture', async () => {
     const writes: Array<[string, string]> = [];
