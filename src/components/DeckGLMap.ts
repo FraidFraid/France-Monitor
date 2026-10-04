@@ -35,7 +35,7 @@ import {
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
 import {
-  ENV_HOVER_LAYERS, ENV_ICON_NAMES, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, envIconImage, envLayerOn,
+  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
   radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures,
 } from './deckgl/environment-map.ts';
@@ -9092,7 +9092,9 @@ export class DeckGLMap {
   /** Pictogrammes des phénomènes de la vigilance en images SDF (teintés par la couleur de l'objet). */
   private registerEnvironmentIcons(): void {
     if (!this.map) return;
-    const SIZE = 48;
+    const SIZE = ENV_ICON_SIZE;
+    const GLYPH = ENV_ICON_GLYPH;
+    const MARGIN = (SIZE - GLYPH) / 2;
     const canvas = document.createElement('canvas');
     canvas.width = SIZE;
     canvas.height = SIZE;
@@ -9101,14 +9103,23 @@ export class DeckGLMap {
     for (const name of ENV_ICON_NAMES) {
       const id = envIconImage(name);
       if (this.map.hasImage(id)) continue;
-      const svg = fmIcon(name, { size: SIZE }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('stroke="currentColor"', 'stroke="#ffffff"');
-      const img = new Image(SIZE, SIZE);
+      const svg = fmIcon(name, { size: GLYPH }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('stroke="currentColor"', 'stroke="#ffffff"');
+      const img = new Image(GLYPH, GLYPH);
       const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
       img.onload = () => {
         ctx.clearRect(0, 0, SIZE, SIZE);
-        ctx.drawImage(img, 0, 0, SIZE, SIZE);
+        ctx.drawImage(img, MARGIN, MARGIN, GLYPH, GLYPH);
         URL.revokeObjectURL(url);
-        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, ctx.getImageData(0, 0, SIZE, SIZE), { pixelRatio: 2, sdf: true });
+        // Vrai champ de distance (alphaToSdf) : l'alpha brut du dessin en SDF donnerait des bords crénelés.
+        const pixels = ctx.getImageData(0, 0, SIZE, SIZE);
+        const sdf = alphaToSdf(pixels.data, SIZE);
+        for (let i = 0; i < sdf.length; i += 1) {
+          pixels.data[i * 4] = 255;
+          pixels.data[i * 4 + 1] = 255;
+          pixels.data[i * 4 + 2] = 255;
+          pixels.data[i * 4 + 3] = sdf[i] ?? 0;
+        }
+        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, pixels, { pixelRatio: 2, sdf: true });
       };
       img.src = url;
     }

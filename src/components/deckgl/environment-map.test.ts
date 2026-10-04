@@ -12,7 +12,7 @@ import {
   LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS,
 } from './constants.ts';
 import {
-  ENV_HOVER_LAYERS, ENV_ICON_NAMES, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, envLayerOn, envTooltipHtml, fireAbroadFeatures,
+  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_NAMES, ENV_ICON_SIZE, alphaToSdf, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, envLayerOn, envTooltipHtml, fireAbroadFeatures,
   fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures, radarPickFeature, topEnvHit, vigilanceDeptFeatures,
   vigilanceIconFeatures,
 } from './environment-map.ts';
@@ -133,6 +133,13 @@ describe('feux : détections de France par foyer, étranger en gris clair', () =
     expect(row).toMatch(/\d\u00a0détections, \d+\u00a0passages, .*\u00a0MW/);
     expect(row).not.toMatch(/\d [a-zé]/i);
   });
+  it('ligne Foyer : singulier pour une détection et un passage (« 1 détection, 1 passage »)', () => {
+    const f = FIRES_FIXTURE();
+    const isolated = f.foyers.find((x) => x.detections === 1 && x.passes === 1 && !x.recurrent);
+    if (!isolated) throw new Error('foyer d’une détection et d’un passage absent de la fixture');
+    const body = String(ofDept(isolated.dept).find((p) => String(p['body']).includes('Foyer'))?.['body']);
+    expect(/<span>Foyer<\/span><span>([^<]*)<\/span>/.exec(body)?.[1]).toMatch(/^1\u00a0détection, 1\u00a0passage, /);
+  });
   it('confiance faible jamais en rouge : plafond orange dans un foyer majeur', () => {
     const f = FIRES_FIXTURE();
     const foyer = f.foyers.find((x) => x.dept === '55');
@@ -172,6 +179,8 @@ describe('sources, couches, survol', () => {
     expect(ENV_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
     expect(ENV_SOURCE_IDS).toHaveLength(4);
     expect(ENV_LAYER_BEFORE[LYR_FOREST_DANGER_FILL]).toBe(LYR_FIRES_GLOW);
+    // Un pictogramme de vigilance ne cache jamais un point de feu : il est inséré sous les feux de France.
+    expect(ENV_LAYER_BEFORE[LYR_WEATHER_ICONS]).toBe(LYR_FIRES_GLOW);
   });
   it('couches par clé ; crues avec leur seule clé (plus de repli sur la vigilance)', () => {
     expect(ENV_LAYER_KEYS.floods).toEqual([LYR_FLOODS, LYR_FLOOD_STATIONS]);
@@ -191,5 +200,24 @@ describe('sources, couches, survol', () => {
   });
   it('point du profil radar', () => {
     expect(radarPickFeature(43.6, 3.9).features[0].geometry.coordinates).toEqual([3.9, 43.6]);
+  });
+});
+
+describe('pictogrammes : champ de distance', () => {
+  it('un disque plein devient un dégradé : 192 au bord, plus fort dedans, nul loin dehors, sans palier 0 ou 255 collé au bord', () => {
+    const size = ENV_ICON_SIZE;
+    const rgba = new Uint8ClampedArray(size * size * 4);
+    const c = size / 2;
+    for (let y = 0; y < size; y += 1) for (let x = 0; x < size; x += 1) rgba[(y * size + x) * 4 + 3] = Math.hypot(x + 0.5 - c, y + 0.5 - c) <= ENV_ICON_GLYPH / 4 ? 255 : 0;
+    const sdf = alphaToSdf(rgba, size);
+    const at = (x: number, y: number): number => sdf[y * size + x] ?? -1;
+    const r = ENV_ICON_GLYPH / 4;
+    expect(at(c, c)).toBe(255);
+    expect(at(0, 0)).toBe(0);
+    expect(Math.abs(at(Math.round(c + r - 1), c) - 192)).toBeLessThan(40);
+    // dégradé progressif : au moins 4 valeurs intermédiaires sur les 8 pixels qui suivent le bord
+    const ramp = new Set(Array.from({ length: 8 }, (_, i) => at(Math.round(c + r) + i, c)));
+    expect(ramp.size).toBeGreaterThanOrEqual(4);
+    expect(at(Math.round(c + r) + 1, c)).toBeGreaterThan(at(Math.round(c + r) + 6, c));
   });
 });

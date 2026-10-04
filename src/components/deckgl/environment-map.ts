@@ -82,6 +82,70 @@ export function envIconImage(name: IconName): string {
   return `env-icon-${name}`;
 }
 
+/** Côté de l'image d'un pictogramme (pixels) : le tracé occupe `ENV_ICON_GLYPH`, le reste est la marge du champ de distance. */
+export const ENV_ICON_SIZE = 64;
+export const ENV_ICON_GLYPH = 48;
+
+/**
+ * Champ de distance signé (SDF, alpha d'une image MapLibre `sdf: true`) calculé depuis l'alpha d'un dessin : bord à 0,75 (192),
+ * dégradé sur `radius` pixels de part et d'autre. Un dessin enregistré tel quel en SDF a un alpha de 0 ou 255 : bords crénelés.
+ * Distance euclidienne exacte (Felzenszwalb), alpha fractionnaire des bords pris en compte (méthode de tiny-sdf).
+ */
+export function alphaToSdf(rgba: ArrayLike<number>, size: number, radius = 8, cutoff = 0.25): Uint8ClampedArray {
+  const n = size * size;
+  const INF = 1e20;
+  const outer = new Float64Array(n);
+  const inner = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const a = (rgba[i * 4 + 3] ?? 0) / 255;
+    outer[i] = a === 1 ? 0 : a === 0 ? INF : Math.max(0, 0.5 - a) ** 2;
+    inner[i] = a === 1 ? INF : a === 0 ? 0 : Math.max(0, a - 0.5) ** 2;
+  }
+  edt(outer, size);
+  edt(inner, size);
+  const out = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i += 1) {
+    const d = Math.sqrt(outer[i] ?? 0) - Math.sqrt(inner[i] ?? 0);
+    out[i] = Math.round(255 - 255 * (d / radius + cutoff));
+  }
+  return out;
+}
+
+/** Transformée de distance euclidienne au carré, en place, lignes puis colonnes. */
+function edt(grid: Float64Array, size: number): void {
+  const f = new Float64Array(size);
+  const z = new Float64Array(size + 1);
+  const v = new Int32Array(size);
+  const d = new Float64Array(size);
+  const pass = (at: (k: number) => number, put: (k: number, val: number) => void): void => {
+    for (let q = 0; q < size; q += 1) f[q] = at(q);
+    let k = 0;
+    v[0] = 0;
+    z[0] = -1e20;
+    z[1] = 1e20;
+    for (let q = 1; q < size; q += 1) {
+      let s = 0;
+      do {
+        const r = v[k] ?? 0;
+        s = ((f[q] ?? 0) - (f[r] ?? 0) + q * q - r * r) / (q - r) / 2;
+      } while (s <= (z[k] ?? 0) && (k -= 1) > -1);
+      k += 1;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = 1e20;
+    }
+    k = 0;
+    for (let q = 0; q < size; q += 1) {
+      while ((z[k + 1] ?? 0) < q) k += 1;
+      const p = v[k] ?? 0;
+      d[q] = (q - p) * (q - p) + (f[p] ?? 0);
+    }
+    for (let q = 0; q < size; q += 1) put(q, d[q] ?? 0);
+  };
+  for (let x = 0; x < size; x += 1) pass((y) => grid[y * size + x] ?? 0, (y, val) => { grid[y * size + x] = val; });
+  for (let y = 0; y < size; y += 1) pass((x) => grid[y * size + x] ?? 0, (x, val) => { grid[y * size + x] = val; });
+}
+
 /** Pictogrammes distincts des phénomènes, à enregistrer une fois. */
 export const ENV_ICON_NAMES: readonly IconName[] = [...new Set(Object.values(PHENOMENON_ICON))];
 
@@ -211,7 +275,7 @@ function detectionBody(d: FireDetection, foyer: FireFoyer | undefined, level: Vi
     + row('Puissance (FRP)', formatFrp(d.frpMw))
     + row('Acquisition', `${clockOf(d.acquiredAt, now)} (${formatAge(Date.parse(d.acquiredAt), now)})`)
     + row('Passage', d.daynight === 'N' ? 'de nuit' : 'de jour')
-    + (foyer ? row('Foyer', `${foyer.detections}${NBSP}détections, ${foyer.passes}${NBSP}passages, ${formatFrp(foyer.frpTotalMw)}`) : '')
+    + (foyer ? row('Foyer', `${foyer.detections}${NBSP}${foyer.detections > 1 ? 'détections' : 'détection'}, ${foyer.passes}${NBSP}${foyer.passes > 1 ? 'passages' : 'passage'}, ${formatFrp(foyer.frpTotalMw)}`) : '')
     + (level === 'gris' ? note('Chaleur vue au moins 5 des 10 derniers jours au même endroit : probablement industrielle, jamais un feu de forêt.') : '')
     + (late ? note('Dernière acquisition de plus de 14 h : couleur retirée.') : '')
     + note(`NASA FIRMS, ${SATELLITE_WORD[d.satellite]}.`);
@@ -334,9 +398,10 @@ export const ENV_LAYERS: readonly LayerSpecification[] = [
   },
 ];
 
-/** Couche sous laquelle insérer une couche nouvelle : météo des forêts et étranger sous les feux de France. */
+/** Couche sous laquelle insérer une couche nouvelle : météo des forêts, étranger et pictogrammes de la vigilance sous les feux de France. */
 export const ENV_LAYER_BEFORE: Readonly<Record<string, string>> = {
   [LYR_FOREST_DANGER_FILL]: LYR_FIRES_GLOW, [LYR_FOREST_DANGER_LINE]: LYR_FIRES_GLOW, [LYR_FIRES_ABROAD]: LYR_FIRES_GLOW,
+  [LYR_WEATHER_ICONS]: LYR_FIRES_GLOW,
 };
 
 /** Couches MapLibre de chaque couche Environnement (visibilité, survol de légende). */
