@@ -138,7 +138,7 @@ describe('panneau Vigilance météo : section Submersion entre le bulletin et «
     const v = VIGILANCE_FIXTURE();
     const j = v.periods.find((p) => p.echeance === 'J');
     if (j) j.coast[0] = { ...j.coast[0], color: 2, slots: [] };
-    const late = Date.parse(v.updateTime) + 16 * 3_600_000;
+    const late = Date.parse(v.updateTime ?? '') + 16 * 3_600_000;
     const s = buildVigilanceView(base({ vigilance: v, now: late })).sections.find((x) => x.id === 'submersion');
     expect(s?.summary).toContain('en retard');
   });
