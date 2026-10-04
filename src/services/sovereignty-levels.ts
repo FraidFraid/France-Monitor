@@ -144,7 +144,7 @@ function placeWord(e: MilitaryEmergency): string {
 /** Indicatif, sinon adresse, d'un appareil montré ; « appareil d’État français » ou identité protégée et lieu d'un appareil masqué (O10). */
 function aircraftWord(e: MilitaryEmergency): string {
   if (!e.masked) return e.callsign ?? `adresse ${e.icao24}`;
-  const who = e.family === 'francais' ? 'appareil d’État français' : 'appareil à identité protégée (PIA ou LADD)';
+  const who = e.family === 'francais' ? 'appareil d’État français' : 'appareil à identité protégée ou de nationalité inconnue';
   return `${who} · ${placeWord(e)}`;
 }
 

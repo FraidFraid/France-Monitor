@@ -219,7 +219,7 @@ describe('defenseLevel (pastille Défense, § 2.1)', () => {
   it('appareil d’une autre nation marqué PIA ou LADD (O10) : identité protégée, département seul', () => {
     expect(defenseLevel(military([masked({ family: 'autres', squawk: '7500', dept: '13' })]), NOW)).toEqual({
       level: 'rouge',
-      reason: `7500${NBSP}(intervention${NBSP}illicite) affiché sur deux relevés, non confirmé par les autorités : appareil à identité protégée (PIA ou LADD) · Dépt${NBSP}13`,
+      reason: `7500${NBSP}(intervention${NBSP}illicite) affiché sur deux relevés, non confirmé par les autorités : appareil à identité protégée ou de nationalité inconnue · Dépt${NBSP}13`,
     });
   });
   it('adsb.lol jamais lu : n.d. ; relevé de plus de 10 min : n.d. « muet depuis 16:37 », jamais vert ni « 0 aéronef »', () => {
