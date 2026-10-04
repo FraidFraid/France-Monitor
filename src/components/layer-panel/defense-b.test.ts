@@ -78,6 +78,10 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     expect(text).toContain('veille 2, avant-veille n.d. (jour non couvert)');
     expect(section(input(), 'gnss')?.summary).toBe(`2${NBSP}mailles au-delà de 10${NBSP}% sur 24${NBSP}h · Kp${NBSP}5 à 11:00`);
   });
+  it('jours UTC complets : une valeur insécable par jour, la ligne passe entre les deux (capture du 05/10 : valeur coupée au bord du panneau)', () => {
+    const h = section(input({ gnss: gnss({ degraded: { rolling24h: 0, previousUtcDays: [null, null] } }) }), 'gnss')?.html ?? '';
+    expect(h).toContain('<span class="lp-val fmk-num">veille n.d. (jour non couvert)</span>, <span class="lp-val fmk-num">avant-veille n.d. (jour non couvert)</span>');
+  });
   it('compte glissant coloré par le niveau de la pastille (jaune pour 2, orange pour 3, vert pour 0)', () => {
     const val = (n: number): string => (section(input({ gnss: gnss({ degraded: { rolling24h: n, previousUtcDays: [null, null] } }) }), 'gnss')?.html ?? '')
       .match(/glissantes<\/span>.*?<span class="lp-val fmk-num( lp-lvl lp-lvl--\w+)?">/s)?.[1]?.trim() ?? '';

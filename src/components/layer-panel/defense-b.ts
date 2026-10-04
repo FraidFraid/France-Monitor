@@ -146,7 +146,8 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
   // En dégradation générale le serveur sert 0 : un 0 aurait l'air d'un calme, la valeur est dite n.d.
   const rollingValue = general ? valueHtml('n.d.') : valueHtml(String(rolling), late ? null : rollingLevel(rolling));
   const head = kvRow(glue(`Mailles françaises à précision dégradée ${ORANGE_AT} sur 24 h glissantes`), rollingValue)
-    + kvRow(`Jours UTC complets (${ORANGE_AT})`, valueHtml(`veille ${previousDayText(gn, 1)}, avant-veille ${previousDayText(gn, 2)}`))
+    // Une valeur insécable par jour : la ligne passe entre les deux, jamais au bord du panneau.
+    + kvRow(`Jours UTC complets (${ORANGE_AT})`, `${valueHtml(`veille ${previousDayText(gn, 1)}`)}, ${valueHtml(`avant-veille ${previousDayText(gn, 2)}`)}`)
     + kvRow('Mesure', escapeHtml(glue(`adsb.lol ${clockOf(gn.readAt, now)}${late ? ' (en retard)' : ''} · ${plural(gn.aircraft, 'aéronef')} · ${plural(gn.reads, 'lecture')}`)));
   const kp = windowKp(gn);
   const generalBox = general
