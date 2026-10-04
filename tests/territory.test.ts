@@ -22,6 +22,11 @@ describe('inFranceV2', () => {
     expect(inFranceV2(45.718826, 4.944384)).toBe(true);   // FICTIF04 au-dessus du Rhône
     expect(inFranceV2(43.381472, -0.468554)).toBe(true);  // A400 belge au-dessus des Pyrénées-Atlantiques
   });
+  it('frontière franco-italienne de Menton : terre italienne hors de France ; baie de Menton en France (signalé par A3)', () => {
+    expect(inFranceV2(43.79, 7.542)).toBe(false);    // Grimaldi (Vintimille), à 1 km de la frontière
+    expect(inFranceV2(44.17, 7.40)).toBe(false);     // vallée de la Gesso, au nord du Mercantour
+    expect(inFranceV2(43.76, 7.50)).toBe(true);      // en mer au large de Menton
+  });
   it('coordonnées illisibles : hors de France', () => {
     expect(inFranceV2(Number.NaN, 2)).toBe(false);
   });

@@ -31,6 +31,9 @@ describe('eaux françaises, zones et ports (tracé simplifié)', () => {
     ['Solent (Royaume-Uni)', 50.79, -1.11, false], ['Jersey', 49.18, -2.11, false], ['Douvres', 51.12, 1.33, false], ['Barcelone', 41.38, 2.17, false],
     ['Galice', 42.9, -9.3, false], ['Monaco', 43.735, 7.425, false], ['Sanremo', 43.81, 7.78, false], ['Elbe', 42.78, 10.25, false],
     ['Paris (Seine)', 48.86, 2.35, false], ['Vernon (Seine)', 49.09, 1.49, false],
+    ['baie de Menton (en mer)', 43.76, 7.50, true], ['port de Menton-Garavan', 43.782, 7.52, true],
+    ['Grimaldi (terre italienne, 1 km de la frontière)', 43.79, 7.542, false], ['eaux italiennes au large de Grimaldi', 43.77, 7.56, false],
+    ['Olivetta San Michele (Italie, vallée de la Roya)', 43.879, 7.515, false], ['vallée de la Gesso (Italie)', 44.17, 7.40, false],
   ])('%s : %s', (_name, lat, lon, expected) => {
     expect(inFrenchWaters(lat, lon)).toBe(expected);
   });

@@ -20,7 +20,11 @@ const PORT_PRESENT_KM = 25;
 const PORT_ANCHOR_KM = 40;
 const UNDER_WAY_KNOTS = 0.5;
 
-/** Eaux françaises (lon, lat) : Manche, mer du Nord et Atlantique ; Méditerranée et Corse. */
+/**
+ * Eaux françaises (lon, lat) : Manche, mer du Nord et Atlantique ; Méditerranée et Corse. Côté italien (correctif signalé par A3) :
+ * le tracé suit la limite maritime de Menton (vers le sud-sud-est depuis la frontière du pont Saint-Louis, approchée), puis passe
+ * par l'intérieur français (Castellar, Sospel, haute Tinée) : aucune terre italienne (Grimaldi, Olivetta, vallée de la Gesso).
+ */
 export const FRENCH_WATERS = {
   atlanticChannel: [[
     [2.55, 51.09], [2.55, 51.32], [2.10, 51.26], [1.58, 51.03], [1.20, 50.80], [0.40, 50.40], [-0.60, 50.15], [-1.80, 50.05],
@@ -29,7 +33,7 @@ export const FRENCH_WATERS = {
   ]],
   mediterranean: [[
     [3.05, 42.43], [3.60, 42.43], [4.60, 41.80], [6.50, 41.40], [8.40, 41.10], [9.20, 41.30], [9.62, 41.35], [9.70, 42.40],
-    [9.66, 43.10], [7.55, 43.76], [7.53, 44.20], [3.00, 44.20], [2.90, 43.30], [3.05, 42.43],
+    [9.66, 43.10], [7.545, 43.755], [7.5297, 43.7835], [7.45, 43.85], [6.90, 44.20], [3.00, 44.20], [2.90, 43.30], [3.05, 42.43],
   ]],
 };
 /** Exclusions dans ces polygones : îles anglo-normandes, Monaco, Seine en amont de Rouen. */
