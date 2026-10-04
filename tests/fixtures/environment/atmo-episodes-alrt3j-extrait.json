@@ -1,0 +1,33 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "date_maj": "2026-10-03T13:29:04.796Z",
+    "etat": "PAS DE DEPASSEMENT",
+    "lib_zone": "ILE-DE-FRANCE",
+    "lib_pol": "Dioxyde d'azote",
+    "date_ech": "2026-10-04",
+    "date_dif": "2026-10-04T00:00:00Z",
+    "code_zone": "11",
+    "code_pol": "8"
+   },
+   "geometry": null
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "date_maj": "2026-10-03T13:29:04.796Z",
+    "etat": "PAS DE DEPASSEMENT",
+    "lib_zone": "ILE-DE-FRANCE",
+    "lib_pol": "Ozone",
+    "date_ech": "2026-10-04",
+    "date_dif": "2026-10-04T00:00:00Z",
+    "code_zone": "11",
+    "code_pol": "7"
+   },
+   "geometry": null
+  }
+ ]
+}
