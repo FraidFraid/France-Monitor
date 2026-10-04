@@ -99,6 +99,16 @@ import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } 
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
 import { buildEnvironmentInputs, type EnvironmentInputs } from './services/environment-inputs.ts';
+// Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
+// couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
+import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
+import { airQualityStatus, fetchAirQuality, mergeAirQuality, type AirQualityState } from './services/environment-air.ts';
+import { earthquakesStatus, fetchEarthquakes, mergeEarthquakes, type EarthquakesState } from './services/environment-earthquakes.ts';
+import { fetchSeaLevels, mergeSeaLevels, seaLevelsStatus, type SeaLevelsState } from './services/environment-sea-levels.ts';
+import type { DroughtPanel } from './components/DroughtPanel.ts';
+import type { AirQualityPanel } from './components/AirQualityPanel.ts';
+import type { EarthquakesPanel } from './components/EarthquakesPanel.ts';
+import { departementCentroid } from './config/departements.ts';
 import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
 import { clusterFireDetections } from './services/fire-clustering.ts';
 import { fetchRadarColumn } from './services/radar-column.ts';
@@ -107,10 +117,11 @@ import {
   environmentReportSources, hasActiveEnvironment, type EnvironmentLayerKey,
 } from './config/environment-sources.ts';
 import {
-  FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, firesLegend, floodsLegend, radarLegend, vigilanceLegend,
+  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend,
+  earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
 } from './components/layer-panel/environment-legend.ts';
 
-/** Clé d'une des quatre couches Environnement (un panneau, une relève, une légende chacune). */
+/** Clé d'une des couches Environnement (un panneau, une relève, une légende chacune). */
 const isEnvironmentLayerKey = (key: keyof MapLayers): key is EnvironmentLayerKey => (ENVIRONMENT_LAYER_KEYS as readonly string[]).includes(key);
 // buildHydraulicBackboneAssets (+ config hydraulic-backbone-official ~1200 l.) chargé
 // dynamiquement dans refreshHydraulicLayer() — sort la grosse config du chunk critique.
@@ -465,6 +476,9 @@ const DEFAULT_LAYERS: MapLayers = {
   floods: false,
   weatherRadar: false,
   fires: false,
+  drought: false,
+  airQuality: false,
+  earthquakes: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,
@@ -519,6 +533,9 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'floods', label: 'Crues', icon: 'waves', layerKeys: ['floods'] },
   { id: 'weatherRadar', label: 'Radar météo', icon: 'cloud-rain', layerKeys: ['weatherRadar'] },
   { id: 'fires', label: 'Feux de forêt', icon: 'flame', layerKeys: ['fires'] },
+  { id: 'drought', label: 'Sécheresse', icon: 'sun', layerKeys: ['drought'] },
+  { id: 'airQuality', label: 'Qualité de l’air', icon: 'cloud', layerKeys: ['airQuality'] },
+  { id: 'earthquakes', label: 'Séismes', icon: 'activity', layerKeys: ['earthquakes'] },
   { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
   { id: 'dromEnergy', label: 'Énergie DROM', icon: 'palmtree', layerKeys: ['dromEnergy'] },
   { id: 'nuclearFleet', label: 'Parc nucléaire', icon: 'atom', layerKeys: ['nuclearFleet'] },
@@ -560,6 +577,10 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Éolien France': 'windMonitor',
   'SNCF': 'trafficRail',
   'NASA FIRMS': 'fires',
+  'VigiEau': 'drought',
+  'Atmo France': 'airQuality',
+  'BCSF-RéNaSS': 'earthquakes',
+  'Marégraphes SHOM': 'environmental',
   'Trafic': 'trafficRoad',
   'TomTom agglomérations': 'trafficRoad',
   'Trafic aérien': 'trafficAir',
@@ -1345,6 +1366,30 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'Feux de forêt',
     legend: FIRES_LEGEND,
   },
+  {
+    id: 'drought',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'SÉCHERESSE',
+    legend: DROUGHT_LEGEND,
+  },
+  {
+    id: 'airQuality',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'QUALITÉ DE L’AIR',
+    legend: AIR_QUALITY_LEGEND,
+  },
+  {
+    id: 'earthquakes',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'SÉISMES',
+    legend: EARTHQUAKES_LEGEND,
+  },
 ];
 
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -1372,12 +1417,20 @@ export class App {
   private currentMetropoles: MetropoleConsumption[] | null = null;
   private transportPanel: TransportPanel | null = null;
   private firesPanel: FiresPanel | null = null;
+  private droughtPanel: DroughtPanel | null = null;
+  private airQualityPanel: AirQualityPanel | null = null;
+  private earthquakesPanel: EarthquakesPanel | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   /** Environnement (spec 2026-10-04 environnement) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
   private currentVigilance: VigilanceState | null = null;
   private currentFloods: FloodsState | null = null;
   private currentFires: FiresState | null = null;
+  /** Dernières lectures des services de la phase B (comme currentVigilance) ; la sécheresse n'entre jamais dans le score (E2). */
+  private currentDrought: DroughtState | null = null;
+  private currentAirQuality: AirQualityState | null = null;
+  private currentEarthquakes: EarthquakesState | null = null;
+  private currentSeaLevels: SeaLevelsState | null = null;
   /** Échéance de la vigilance affichée (bascule Aujourd’hui / Demain du panneau), suivie par la carte. */
   private vigilanceEcheance: VigilanceEcheance = 'J';
   /** Département choisi dans le panneau Vigilance (bulletin départemental, surbrillance de la carte). */
@@ -1545,6 +1598,9 @@ export class App {
   private vigilancePanelPromise: Promise<void> | null = null;
   private floodsPanelPromise: Promise<void> | null = null;
   private firesPanelPromise: Promise<void> | null = null;
+  private droughtPanelPromise: Promise<void> | null = null;
+  private airQualityPanelPromise: Promise<void> | null = null;
+  private earthquakesPanelPromise: Promise<void> | null = null;
   private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
   private maritimePanelPromise: Promise<void> | null = null;
@@ -3066,6 +3122,14 @@ export class App {
       void this.ensureWeatherRadarPanel().then(() => this.openEnvironmentPanel('weatherRadar'));
     } else if (name === 'NASA FIRMS' || name === 'Météo des forêts') {
       void this.ensureFiresPanel().then(() => this.openEnvironmentPanel('fires'));
+    } else if (name === 'VigiEau') {
+      void this.ensureDroughtPanel().then(() => this.openEnvironmentPanel('drought'));
+    } else if (name === 'Atmo France') {
+      void this.ensureAirQualityPanel().then(() => this.openEnvironmentPanel('airQuality'));
+    } else if (name === 'BCSF-RéNaSS') {
+      void this.ensureEarthquakesPanel().then(() => this.openEnvironmentPanel('earthquakes'));
+    } else if (name === 'Marégraphes SHOM') {
+      void this.ensureVigilancePanel().then(() => this.openEnvironmentPanel('environmental'));
     } else if (name === 'Éolien France') {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       this.layoutEnergyFloatingPanels();
@@ -3125,6 +3189,9 @@ export class App {
       'floods',
       'weatherRadar',
       'fires',
+      'drought',
+      'airQuality',
+      'earthquakes',
       'powerGrid',
       'dromEnergy',
       'nuclearFleet',
@@ -3357,7 +3424,7 @@ export class App {
    */
   private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
     // Panneaux Environnement (spec 2026-10-04 environnement § 2) : à l'ouverture, source lue et relève réglée ; à l'extinction,
-    // masquage silencieux et relève réglée (vigilance, crues et feux continuent pour le score).
+    // masquage silencieux et relève réglée (vigilance, crues et feux continuent pour le score, qualité de l'air et séismes pour les situations).
     if (isEnvironmentLayerKey(key)) {
       if (enabled) {
         this.openEnvironmentPanel(key);
@@ -3389,7 +3456,7 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'environmentGroup') {
-      // Maître éteint : les quatre panneaux Environnement masqués (silencieux : les couches gardent leur état), relèves réglées.
+      // Maître éteint : les panneaux Environnement masqués (silencieux : les couches gardent leur état), relèves réglées.
       if (!this.activeLayers.environmentGroup) {
         for (const envKey of ENVIRONMENT_LAYER_KEYS) {
           this.getFloatingPanelInstance(envKey)?.hide({ silent: true });
@@ -3925,7 +3992,7 @@ export class App {
     }
   }
 
-  // ─── Environnement (spec 2026-10-04 environnement § 2) : Vigilance météo, Crues, Radar météo, Feux de forêt ───
+  // ─── Environnement (spec 2026-10-04 environnement § 2, § 3) : Vigilance météo, Crues, Radar météo, Feux de forêt, Sécheresse, Qualité de l'air, Séismes ───
 
   private ensureVigilancePanel(): Promise<void> {
     const container = this.floatContainerEl;
@@ -3947,9 +4014,11 @@ export class App {
           .catch((err: unknown) => console.error('[App] Carte de vigilance non repeinte', err));
         this.refreshEnvironmentLegend();
       });
+      // Lignes de marégraphes cliquables avec la carte WebGL seulement (arbitrage 12).
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusGauge((id) => this.focusGauge(id));
       panel.mount();
       this.vigilancePanel = panel;
-      if (this.activeLayers.environmental) panel.show({ vigilance: this.currentVigilance });
+      if (this.activeLayers.environmental) panel.show({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
     });
     return this.vigilancePanelPromise;
   }
@@ -4028,6 +4097,72 @@ export class App {
     return this.firesPanelPromise;
   }
 
+  private ensureDroughtPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.droughtPanelPromise ??= import('./components/DroughtPanel.ts').then(({ DroughtPanel }) => {
+      const panel = new DroughtPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('drought'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusDepartment((code) => this.focusDepartment(code));
+      panel.mount();
+      this.droughtPanel = panel;
+      if (this.activeLayers.drought) panel.show(this.currentDrought);
+    });
+    return this.droughtPanelPromise;
+  }
+
+  private ensureAirQualityPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.airQualityPanelPromise ??= import('./components/AirQualityPanel.ts').then(({ AirQualityPanel }) => {
+      const panel = new AirQualityPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('airQuality'));
+      panel.mount();
+      this.airQualityPanel = panel;
+      if (this.activeLayers.airQuality) panel.show(this.currentAirQuality);
+    });
+    return this.airQualityPanelPromise;
+  }
+
+  private ensureEarthquakesPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.earthquakesPanelPromise ??= import('./components/EarthquakesPanel.ts').then(({ EarthquakesPanel }) => {
+      const panel = new EarthquakesPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('earthquakes'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusQuake((quake) => this.mapContainer?.flyTo(quake.lon, quake.lat, 9));
+      panel.mount();
+      this.earthquakesPanel = panel;
+      if (this.activeLayers.earthquakes) panel.show(this.currentEarthquakes);
+    });
+    return this.earthquakesPanelPromise;
+  }
+
+  /** Département cliqué dans un panneau Environnement : la carte se centre sur son centroïde. */
+  private focusDepartment(code: string): void {
+    const c = departementCentroid(code);
+    if (c) this.mapContainer?.flyTo(c[0], c[1], 8);
+  }
+
+  /** Marégraphe cliqué dans la section Submersion marine : la carte se centre sur le port. */
+  private focusGauge(id: number): void {
+    const g = this.currentSeaLevels?.seaLevels.data?.gauges.find((x) => x.id === id);
+    if (g) this.mapContainer?.flyTo(g.lon, g.lat, 10);
+  }
+
+  /** Marégraphes voulus : couche Vigilance active ou panneau ouvert (contrats § 0.7) ; jamais lus pour le score. */
+  private seaLevelsWanted(): boolean {
+    return this.activeLayers.environmental || (this.vigilancePanel?.isVisible() ?? false);
+  }
+
+  /** Couche Vigilance : carte et textes à chaque relève ; marégraphes en plus quand ils sont voulus (relève de 5 min, cache client de 8 min). */
+  private loadVigilanceAndSeaLevels(): Promise<void> {
+    const seaLevels = this.seaLevelsWanted()
+      ? this.loadSeaLevels().catch((err: unknown) => console.error('[App] Lecture des marégraphes en échec', err))
+      : Promise.resolve();
+    return Promise.all([this.loadVigilance(), seaLevels]).then(() => undefined);
+  }
+
   /** Croix d'un panneau Environnement : éteint sa couche comme une case décochée ; panneau ouvert couche éteinte : relève réglée. */
   private closeEnvironmentLayer(key: EnvironmentLayerKey): void {
     if (this.activeLayers[key]) {
@@ -4043,10 +4178,13 @@ export class App {
    */
   private openEnvironmentPanel(key: EnvironmentLayerKey): void {
     switch (key) {
-      case 'environmental': this.vigilancePanel?.show({ vigilance: this.currentVigilance }); break;
+      case 'environmental': this.vigilancePanel?.show({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels }); break;
       case 'floods': this.floodsPanel?.show(this.currentFloods); break;
       case 'weatherRadar': this.weatherRadarPanel?.show(this.radarPanelState()); break;
       case 'fires': this.firesPanel?.show(this.firesPanelState()); break;
+      case 'drought': this.droughtPanel?.show(this.currentDrought); break;
+      case 'airQuality': this.airQualityPanel?.show(this.currentAirQuality); break;
+      case 'earthquakes': this.earthquakesPanel?.show(this.currentEarthquakes); break;
     }
     this.loadEnvironmentSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
     this.syncEnvironmentPolling(key);
@@ -4057,16 +4195,19 @@ export class App {
   /** Source du panneau d'une couche Environnement. */
   private loadEnvironmentSource(key: EnvironmentLayerKey): Promise<void> {
     switch (key) {
-      case 'environmental': return this.loadVigilance();
+      case 'environmental': return this.loadVigilanceAndSeaLevels();
       case 'floods': return this.loadFloods();
       case 'weatherRadar': return this.loadRadarManifest();
       case 'fires': return this.loadFires();
+      case 'drought': return this.loadDrought();
+      case 'airQuality': return this.loadAirQuality();
+      case 'earthquakes': return this.loadEarthquakes();
     }
   }
 
   /**
-   * Relève voulue : vigilance, crues et feux toujours (score et situations, ENVIRONMENT_ALWAYS_POLLED) ; radar si sa couche est active,
-   * son panneau ouvert, ou la couche Feux active avec les sommets d'écho cochés.
+   * Relève voulue : vigilance, crues, feux, qualité de l'air et séismes toujours (score et situations, ENVIRONMENT_ALWAYS_POLLED) ; radar et
+   * sécheresse si leur couche est active ou leur panneau ouvert ; radar aussi avec la couche Feux active et les sommets d'écho cochés.
    */
   private environmentPollWanted(key: EnvironmentLayerKey): boolean {
     if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
@@ -4130,10 +4271,12 @@ export class App {
     const now = Date.now();
     const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
     const shown = (key: EnvironmentLayerKey): boolean => this.activeLayers.environmentGroup && this.activeLayers[key];
-    // Les quatre catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
+    const vigilance = this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND;
+    // Toutes les catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
     this.mapLegend.setCategories([
+      // Marégraphes (section Submersion marine) : élément et date de la dernière mesure, une fois lus (arbitrage 13).
       {
-        ...(this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND),
+        ...(this.currentSeaLevels ? withTideGauges(vigilance, this.currentSeaLevels.seaLevels.data, now) : vigilance),
         visible: shown('environmental'),
       },
       { ...(this.currentFloods ? floodsLegend(this.currentFloods.floods.data, now) : FLOODS_LEGEND), visible: shown('floods') },
@@ -4142,6 +4285,9 @@ export class App {
         visible: shown('weatherRadar'),
       },
       { ...(this.currentFires ? firesLegend(this.currentFires.fires.data, this.forestDangerFill, now) : FIRES_LEGEND), visible: shown('fires') },
+      { ...(this.currentDrought ? droughtLegend(this.currentDrought.drought.data, now) : DROUGHT_LEGEND), visible: shown('drought') },
+      { ...(this.currentAirQuality ? airQualityLegend(this.currentAirQuality.air.data, now) : AIR_QUALITY_LEGEND), visible: shown('airQuality') },
+      { ...(this.currentEarthquakes ? earthquakesLegend(this.currentEarthquakes.quakes.data, now) : EARTHQUAKES_LEGEND), visible: shown('earthquakes') },
     ]);
   }
 
@@ -4382,6 +4528,9 @@ export class App {
       case 'floods': return [this.ensureFloodsPanel()];
       case 'weatherRadar': return [this.ensureWeatherRadarPanel()];
       case 'fires': return [this.ensureFiresPanel()];
+      case 'drought': return [this.ensureDroughtPanel()];
+      case 'airQuality': return [this.ensureAirQualityPanel()];
+      case 'earthquakes': return [this.ensureEarthquakesPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
@@ -4425,6 +4574,9 @@ export class App {
       case 'floods': return this.floodsPanel;
       case 'weatherRadar': return this.weatherRadarPanel;
       case 'fires': return this.firesPanel;
+      case 'drought': return this.droughtPanel;
+      case 'airQuality': return this.airQualityPanel;
+      case 'earthquakes': return this.earthquakesPanel;
       case 'powerGrid': return this.energyPanel;
       case 'dromEnergy': return this.dromEnergyPanel;
       case 'nuclearFleet': return this.nuclearPanel;
@@ -4901,6 +5053,9 @@ export class App {
     this.mapLegend.addCategory(FLOODS_LEGEND);
     this.mapLegend.addCategory(RADAR_LEGEND);
     this.mapLegend.addCategory(FIRES_LEGEND);
+    this.mapLegend.addCategory(DROUGHT_LEGEND);
+    this.mapLegend.addCategory(AIR_QUALITY_LEGEND);
+    this.mapLegend.addCategory(EARTHQUAKES_LEGEND);
     this.mapLegend.addCategory(MILITARY_LEGEND);
     this.mapLegend.addCategory(SUBSEA_CABLES_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
@@ -5627,6 +5782,8 @@ export class App {
       await this.mapContainer?.updateVigilanceLayer(data, this.vigilanceEcheance, now);
       // Département choisi dans le panneau : gardé en surbrillance sur la carte repeinte.
       this.mapContainer?.selectWeatherDepartment(this.selectedVigilanceDept);
+      // Marégraphes : anneau de la couleur du domaine littoral du jour, repeint avec la carte relue.
+      if (this.currentSeaLevels) this.mapContainer?.updateSeaLevelsLayer(this.currentSeaLevels.seaLevels.data, data, now);
     });
   }
 
@@ -5674,6 +5831,82 @@ export class App {
           this.refreshFranceIntelPanel();
         })
         .catch(() => { /* départements et communes restent vides */ });
+    });
+  }
+
+  /**
+   * Sécheresse (spec environnement § 3.1) : arrêtés VigiEau ; même forme que loadFloods : panneau, carte, légendes, ligne « VigiEau »
+   * datée par les arrêtés (S1). Un stock (E2) : jamais dans le score ni dans une situation.
+   */
+  private loadDrought(): Promise<void> {
+    return this.readEnvironment('drought', async () => {
+      const incoming = await fetchDrought(this.currentDrought);
+      this.currentDrought = mergeDrought(this.currentDrought, incoming);
+      const now = Date.now();
+      const data = this.currentDrought.drought.data;
+      this.statusPanel?.updateSource('VigiEau', droughtStatus(this.currentDrought, now));
+      void this.mapContainer?.updateDroughtLayer(data, now);
+      this.droughtPanel?.update(this.currentDrought);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+    });
+  }
+
+  /** Qualité de l'air (§ 3.2) : épisodes et indice ATMO ; lue au démarrage et relevée sans arrêt (situation « épisode d'alerte », tâche 32). */
+  private loadAirQuality(): Promise<void> {
+    return this.readEnvironment('airQuality', async () => {
+      const incoming = await fetchAirQuality(this.currentAirQuality);
+      this.currentAirQuality = mergeAirQuality(this.currentAirQuality, incoming);
+      const now = Date.now();
+      const data = this.currentAirQuality.air.data;
+      this.statusPanel?.updateSource('Atmo France', airQualityStatus(this.currentAirQuality, now));
+      void this.mapContainer?.updateAirQualityLayer(data, now);
+      this.airQualityPanel?.update(this.currentAirQuality);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /** Séismes (§ 3.3) : 7 jours, France et 20 km autour ; lus au démarrage et relevés sans arrêt (situation sismique, tâche 32). */
+  private loadEarthquakes(): Promise<void> {
+    return this.readEnvironment('earthquakes', async () => {
+      const incoming = await fetchEarthquakes(this.currentEarthquakes);
+      this.currentEarthquakes = mergeEarthquakes(this.currentEarthquakes, incoming);
+      const now = Date.now();
+      const data = this.currentEarthquakes.quakes.data;
+      this.statusPanel?.updateSource('BCSF-RéNaSS', earthquakesStatus(this.currentEarthquakes, now));
+      this.mapContainer?.updateEarthquakesLayer(data, now);
+      this.earthquakesPanel?.update(this.currentEarthquakes);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /**
+   * Marégraphes du SHOM (§ 3.4) : section Submersion marine, points de la couche Vigilance, ligne « Marégraphes SHOM » datée par la
+   * dernière mesure (ok avec une note tant que le plus récent est frais : tâche 25). Pas une couche (pas de clé ENVIRONMENT_LAYER_KEYS) :
+   * une seule lecture à la fois par `dedupe`, et un échec ne met en erreur que sa ligne (même règle que markEnvironmentSourcesFailed).
+   */
+  private loadSeaLevels(): Promise<void> {
+    return dedupe('environment:seaLevels', async () => {
+      try {
+        const incoming = await fetchSeaLevels(this.currentSeaLevels);
+        this.currentSeaLevels = mergeSeaLevels(this.currentSeaLevels, incoming);
+        const now = Date.now();
+        const data = this.currentSeaLevels.seaLevels.data;
+        this.statusPanel?.updateSource('Marégraphes SHOM', seaLevelsStatus(this.currentSeaLevels, now));
+        this.vigilancePanel?.update({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
+        this.mapContainer?.updateSeaLevelsLayer(data, this.currentVigilance?.vigilance.data ?? null, now);
+        this.refreshEnvironmentLegend();
+        this.recordEnvironmentSamples(now);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : 'service de la source introuvable';
+        const dated = this.statusPanel?.getSources().find((s) => s.name === 'Marégraphes SHOM')?.lastUpdate ?? null;
+        this.statusPanel?.updateSource('Marégraphes SHOM', dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+        throw err;
+      }
     });
   }
 
@@ -6800,6 +7033,13 @@ export class App {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
         name: 'fires', task: this.loadFires().catch((err) => console.error('[App] Feux de forêt indisponibles', err))
+      },
+      // Qualité de l'air et séismes lus au démarrage (situations, tâche 32) ; la sécheresse seulement avec sa couche ou son panneau.
+      {
+        name: 'air-quality', task: this.loadAirQuality().catch((err) => console.error('[App] Qualité de l’air indisponible', err))
+      },
+      {
+        name: 'earthquakes', task: this.loadEarthquakes().catch((err) => console.error('[App] Séismes indisponibles', err))
       },
       {
         name: 'infrastructure', task: this.loadInfrastructure().catch(() => {

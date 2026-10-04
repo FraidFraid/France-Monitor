@@ -56,6 +56,9 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'floods',
   'weatherRadar',
   'fires',
+  'drought',
+  'airQuality',
+  'earthquakes',
   'military',
   'subseaCables',
   'cyber',
@@ -104,8 +107,8 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'environment',
     label: 'Environnement & transports',
     icon: 'leaf',
-    description: 'Tout le thème environnement & transports : vigilance météo, crues, radar, feux de forêt, trafics routier, ferroviaire, maritime et aérien.',
-    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
+    description: 'Tout le thème environnement & transports : vigilance météo, crues, radar, feux de forêt, sécheresse, qualité de l’air, séismes, trafics routier, ferroviaire, maritime et aérien.',
+    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
   },
 ];
 

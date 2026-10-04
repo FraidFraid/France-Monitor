@@ -5876,6 +5876,9 @@ button.header-quality-link {
   .floods-panel-modal,
   .radar-panel-modal,
   .fires-panel-modal,
+  .drought-panel-modal,
+  .air-panel-modal,
+  .quakes-panel-modal,
   .gas-panel-modal,
   .nuclear-panel-modal,
   .oil-panel-modal,
@@ -5917,6 +5920,9 @@ button.header-quality-link {
   .floods-panel-modal::before,
   .radar-panel-modal::before,
   .fires-panel-modal::before,
+  .drought-panel-modal::before,
+  .air-panel-modal::before,
+  .quakes-panel-modal::before,
   .gas-panel-modal::before,
   .nuclear-panel-modal::before,
   .oil-panel-modal::before,
@@ -8001,6 +8007,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .floods-panel-modal,
   #app.ui-v2 .radar-panel-modal,
   #app.ui-v2 .fires-panel-modal,
+  #app.ui-v2 .drought-panel-modal,
+  #app.ui-v2 .air-panel-modal,
+  #app.ui-v2 .quakes-panel-modal,
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
@@ -8185,7 +8194,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 }
 /* Trafics et Environnement : les parties de la ligne de niveau (raison de la pastille) peuvent dépasser la largeur d'un téléphone ; elle
    passe à la ligne (valeurs et unités restent insécables) au lieu d'être rognée. */
-:is(.traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
+:is(.traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
 .lp .lp-head .fmk-lead { margin: 12px 0 0; }
 .lp .lp-tabs { display: flex; flex-wrap: wrap; gap: 0 16px; margin-top: 14px; border-bottom: 1px solid var(--border-color); }
 .lp .lp-tab { padding: 8px 0 9px; margin-bottom: -1px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-secondary); font: inherit; font-size: 12.5px; cursor: pointer; }
@@ -8259,8 +8268,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 :is(#app.ui-v2, .lp) .fmk .lp-more .fmk-kv-v { overflow-wrap: anywhere; }
 /* Méthode et sources des panneaux Santé, Trafics et Environnement : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
-#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
-#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .lp .lp-tbl th, .lp .lp-tbl td { padding: 3px 0; text-align: right; font-weight: 400; vertical-align: baseline; }

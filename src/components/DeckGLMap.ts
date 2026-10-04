@@ -6794,6 +6794,8 @@ export class DeckGLMap {
       activeLayers = [...ENV_LAYER_KEYS.weatherRadar];
     } else if (categoryId === 'fires') {
       activeLayers = [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS];
+    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes') {
+      activeLayers = [...ENV_LAYER_KEYS[categoryId]];
     }
 
     const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
@@ -10605,6 +10607,9 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn));
     for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));
     for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, vis(envLayerOn(layers, 'weatherRadar') && this.radarPick !== null));
+    for (const id of ENV_LAYER_KEYS.drought) this.setVis(id, vis(envLayerOn(layers, 'drought')));
+    for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
+    for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
     this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
     this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
     this.hideEnvironmentHover();

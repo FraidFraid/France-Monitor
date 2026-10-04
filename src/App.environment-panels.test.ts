@@ -3,7 +3,8 @@
 // repeint pas, légendes datées reconstruites une seule fois par appel.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LegendCategory } from './components/MapLegend.ts';
-import { ENV_FIXTURE_NOW, FLOODS_FIXTURE, VIGILANCE_FIXTURE } from './components/layer-panel/environment.fixture.ts';
+import { ENV_FIXTURE_NOW, FLOODS_FIXTURE, VIGILANCE_FIXTURE, seaLevelsStateFixture } from './components/layer-panel/environment.fixture.ts';
+import type { MapLayers } from './types/index.ts';
 import { App } from './App.ts';
 
 afterEach(() => {
@@ -26,7 +27,7 @@ describe('App : bascule Aujourd’hui / Demain de la vigilance', () => {
     Object.assign(app, {
       floatContainerEl: container, vigilancePanel: null, vigilancePanelPromise: null, vigilanceEcheance: 'J', selectedVigilanceDept: null,
       currentVigilance: { vigilance: { data: VIGILANCE_FIXTURE(), error: null, fetchedAt: ENV_FIXTURE_NOW } },
-      activeLayers: { environmental: true }, mapContainer: { updateVigilanceLayer, selectWeatherDepartment }, mapLegend: null,
+      activeLayers: { environmental: true }, mapContainer: { updateVigilanceLayer, selectWeatherDepartment, canFocusMap: () => false }, mapLegend: null,
     });
 
     await (app as unknown as { ensureVigilancePanel: () => Promise<void> }).ensureVigilancePanel();
@@ -50,7 +51,10 @@ describe('App : légendes Environnement', () => {
       mapLegend: { setCategories, addCategory, setCategoryVisibility },
       currentVigilance: null, currentFloods: { floods: { data: FLOODS_FIXTURE(), error: null, fetchedAt: ENV_FIXTURE_NOW } },
       currentFires: null, radarManifest: null, radarError: null, vigilanceEcheance: 'J', echoTopsEnabled: false, forestDangerFill: false,
-      activeLayers: { environmentGroup: true, environmental: false, floods: true, weatherRadar: false, fires: false },
+      currentDrought: null, currentAirQuality: null, currentEarthquakes: null, currentSeaLevels: null,
+      activeLayers: {
+        environmentGroup: true, environmental: false, floods: true, weatherRadar: false, fires: false, drought: false, airQuality: false, earthquakes: false,
+      },
     });
 
     (app as unknown as { refreshEnvironmentLegend: () => void }).refreshEnvironmentLegend();
@@ -60,7 +64,79 @@ describe('App : légendes Environnement', () => {
     expect(setCategoryVisibility).not.toHaveBeenCalled();
     const categories = setCategories.mock.calls[0]?.[0] as LegendCategory[];
     expect(categories.map((c) => [c.id, c.visible])).toEqual([
-      ['environmental', false], ['floods', true], ['weatherRadar', false], ['fires', false],
+      ['environmental', false], ['floods', true], ['weatherRadar', false], ['fires', false], ['drought', false], ['airQuality', false], ['earthquakes', false],
     ]);
+  });
+});
+
+describe('App : marégraphes lus avec la couche Vigilance météo (phase B, contrats § 0.7)', () => {
+  type SeaLevelsApp = { loadVigilanceAndSeaLevels: () => Promise<void> };
+  function appWith(environmental: boolean, panelOpen: boolean | null, seaLevels: () => Promise<void> = () => Promise.resolve()) {
+    const app = Object.create(App.prototype) as App & Record<string, unknown>;
+    const loadVigilance = vi.fn(() => Promise.resolve());
+    const loadSeaLevels = vi.fn(seaLevels);
+    Object.assign(app, {
+      activeLayers: { environmental }, vigilancePanel: panelOpen === null ? null : { isVisible: () => panelOpen }, loadVigilance, loadSeaLevels,
+    });
+    return { read: (): Promise<void> => (app as unknown as SeaLevelsApp).loadVigilanceAndSeaLevels(), loadVigilance, loadSeaLevels };
+  }
+
+  it('jamais lus seuls : couche éteinte et panneau fermé, seule la vigilance est lue', async () => {
+    for (const app of [appWith(false, null), appWith(false, false)]) {
+      await app.read();
+      expect(app.loadVigilance).toHaveBeenCalledTimes(1);
+      expect(app.loadSeaLevels).not.toHaveBeenCalled();
+    }
+  });
+
+  it('couche active ou panneau ouvert : lus avec la vigilance ; leur échec ne fait pas échouer la lecture de la vigilance', async () => {
+    for (const app of [appWith(true, null), appWith(false, true)]) {
+      await app.read();
+      expect(app.loadVigilance).toHaveBeenCalledTimes(1);
+      expect(app.loadSeaLevels).toHaveBeenCalledTimes(1);
+    }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failing = appWith(true, null, () => Promise.reject(new Error('SHOM : réponse HTTP 503')));
+    await expect(failing.read()).resolves.toBeUndefined();
+    expect(failing.loadVigilance).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalled();
+  });
+
+  it('panneau créé après une lecture des marégraphes : la section Submersion marine les montre aussitôt', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(ENV_FIXTURE_NOW);
+    const app = Object.create(App.prototype) as App & Record<string, unknown>;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    Object.assign(app, {
+      floatContainerEl: container, vigilancePanel: null, vigilancePanelPromise: null, vigilanceEcheance: 'J', selectedVigilanceDept: null,
+      currentVigilance: { vigilance: { data: VIGILANCE_FIXTURE(), error: null, fetchedAt: ENV_FIXTURE_NOW } }, currentSeaLevels: seaLevelsStateFixture(),
+      activeLayers: { environmental: true }, mapContainer: { canFocusMap: () => true }, mapLegend: null,
+    });
+
+    await (app as unknown as { ensureVigilancePanel: () => Promise<void> }).ensureVigilancePanel();
+
+    expect(container.textContent).toContain('Brest');
+    expect(container.textContent).not.toContain('Chargement des marégraphes…');
+    // Carte WebGL : lignes des marégraphes cliquables.
+    expect(container.querySelector('[data-gauge="3"]')).not.toBeNull();
+  });
+});
+
+describe('App : couches de la phase B transmises à la carte', () => {
+  it('getEffectiveLayers donne drought, airQuality et earthquakes avec le maître dérivé : la carte les montre et les repeint au réaffichage', () => {
+    const app = Object.create(App.prototype) as App & Record<string, unknown>;
+    const effective = (active: Partial<MapLayers>): MapLayers => {
+      Object.assign(app, { activeLayers: { environmentGroup: false, environmental: false, floods: false, weatherRadar: false, fires: false, ...active } });
+      return (app as unknown as { getEffectiveLayers: () => MapLayers }).getEffectiveLayers();
+    };
+    for (const key of ['drought', 'airQuality', 'earthquakes'] as const) {
+      const on = effective({ drought: false, airQuality: false, earthquakes: false, [key]: true });
+      expect(on[key]).toBe(true);
+      expect(on.environmentGroup).toBe(true);
+      const off = effective({ drought: false, airQuality: false, earthquakes: false });
+      expect(off[key]).toBe(false);
+      expect(off.environmentGroup).toBe(false);
+    }
   });
 });

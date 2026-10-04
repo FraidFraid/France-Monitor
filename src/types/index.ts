@@ -151,6 +151,10 @@ export interface MapLayers {
   floods: boolean;
   weatherRadar: boolean;
   fires: boolean;
+  /** Environnement, phase B (spec 2026-10-04 § 3) : sécheresse (VigiEau), qualité de l'air (Atmo France), séismes (BCSF-RéNaSS). */
+  drought: boolean;
+  airQuality: boolean;
+  earthquakes: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;

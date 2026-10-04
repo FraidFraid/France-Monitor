@@ -24,14 +24,14 @@ import {
   LYR_FOREST_DANGER_LINE, LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS, LYR_WEATHER_LINE, LYR_WEATHER_LINE_ORANGE, LYR_WEATHER_LINE_RED,
   LYR_WEATHER_LINE_YELLOW, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_FOREST_DANGER, SRC_RADAR_PICK, SRC_WEATHER_ICONS,
 } from './constants.ts';
-import { ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_BEFORE, ENV_B_POINT_LAYERS, ENV_B_SOURCE_IDS } from './environment-map-b.ts';
+import { ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_BEFORE, ENV_B_LAYER_KEYS, ENV_B_POINT_LAYERS, ENV_B_SOURCE_IDS } from './environment-map-b.ts';
 import { deptCodeToId, escapeHtml } from './format-utils.ts';
 
 export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';
 export { envBReshowPaints, placeEnvBPoints, type EnvBData, type EnvBLayerState } from './environment-map-b.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
-export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires';
+export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires' | 'drought' | 'airQuality' | 'earthquakes';
 
 function fc<G extends GeoJSON.Geometry>(features: GeoJSON.Feature<G>[]): Fc<G> {
   return { type: 'FeatureCollection', features };
@@ -421,6 +421,7 @@ export const ENV_LAYER_KEYS: Readonly<Record<EnvironmentMapLayer, readonly strin
   floods: [LYR_FLOODS, LYR_FLOOD_STATIONS],
   weatherRadar: [LYR_RADAR_PICK],
   fires: [LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FIRES_HIGHLIGHT, LYR_FIRES_ABROAD],
+  ...ENV_B_LAYER_KEYS,
 };
 
 /** Météo des forêts : option de la couche Feux. */

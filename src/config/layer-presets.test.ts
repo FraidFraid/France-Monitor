@@ -79,7 +79,7 @@ describe('layer-presets', () => {
 
   it('layersForPreset("environment") active tout le thème environnement & transports', () => {
     const result = layersForPreset('environment');
-    for (const key of ['environmental', 'floods', 'weatherRadar', 'fires', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
+    for (const key of ['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
       assert.equal(result[key], true, `${key} devrait être actif`);
     }
     assert.equal(result.powerGrid, false);
