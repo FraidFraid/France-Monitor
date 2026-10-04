@@ -16,6 +16,7 @@ export function hasActiveEnvironment(layers: Partial<Record<EnvironmentLayerKey,
 /** Clé de la source et nom dans le panneau des sources (hors Watchdog, datés par la donnée). */
 export const ENVIRONMENT_STATUS_SOURCES: ReadonlyArray<readonly [string, string]> = [
   ['vigilance', 'Météo-France'], ['floods', 'Vigicrues'], ['radar', 'Radar Météo-France'], ['firms', 'NASA FIRMS'], ['mdf', 'Météo des forêts'],
+  ['vigieau', 'VigiEau'], ['atmo', 'Atmo France'], ['seismes', 'BCSF-RéNaSS'], ['refmar', 'Marégraphes SHOM'],
 ];
 
 export const ENVIRONMENT_SOURCE_NAMES: readonly string[] = ENVIRONMENT_STATUS_SOURCES.map(([, name]) => name);

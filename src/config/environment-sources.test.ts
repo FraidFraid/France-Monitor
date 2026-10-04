@@ -13,8 +13,11 @@ describe('couches et sources Environnement (contrats § 3.6)', () => {
     expect(hasActiveEnvironment({ environmental: false, weatherRadar: false, fires: false, floods: false })).toBe(false);
   });
   it('lignes du panneau des sources : noms gardés pour la continuité, chaque ligne rattachée à une couche', () => {
-    expect(ENVIRONMENT_SOURCE_NAMES).toEqual(['Météo-France', 'Vigicrues', 'Radar Météo-France', 'NASA FIRMS', 'Météo des forêts']);
-    expect(Object.values(ENVIRONMENT_LAYER_SOURCES).flat().sort()).toEqual([...ENVIRONMENT_SOURCE_NAMES].sort());
+    expect(ENVIRONMENT_SOURCE_NAMES).toEqual([
+      'Météo-France', 'Vigicrues', 'Radar Météo-France', 'NASA FIRMS', 'Météo des forêts', 'VigiEau', 'Atmo France', 'BCSF-RéNaSS', 'Marégraphes SHOM',
+    ]);
+    // Toute ligne rattachée à une couche est une ligne du panneau ; la réciproque revient à la tâche 31 (marégraphes exceptés).
+    for (const name of Object.values(ENVIRONMENT_LAYER_SOURCES).flat()) expect(ENVIRONMENT_SOURCE_NAMES).toContain(name);
   });
   it('relèves : vigilance 5 min, crues 10, radar 5, feux 15 ; radar seulement couche active ou panneau ouvert', () => {
     expect(Object.fromEntries(Object.entries(ENVIRONMENT_POLL_MS).map(([k, v]) => [k, v / 60_000]))).toEqual({ environmental: 5, floods: 10, weatherRadar: 5, fires: 15 });

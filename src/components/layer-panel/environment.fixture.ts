@@ -3,10 +3,17 @@
 // (tâches 3 à 8) à partir des réponses enregistrées : carte et textes Météo-France de 10 h 00 (heure de Paris) et archive des
 // 30 derniers jours ; tronçons Vigicrues et stations Hub'Eau (mesures postérieures à 10 h 10 retirées, séries de 48 h éclaircies
 // à une mesure par demi-heure pour trois stations, deux heures pour les autres) ; détections FIRMS et météo des forêts du 03/10 ;
-// manifeste et colonne radar de production ; communes autour du Porge (Gironde). Chaque export est une fonction qui rend une copie
-// neuve : un test peut la modifier sans toucher les autres.
-import type { FireImpactsResponse, FiresResponse, FloodsResponse, RadarColumnResult, VigilanceResponse } from '../../types/index.ts';
+// manifeste et colonne radar de production ; communes autour du Porge (Gironde). Chaque jeu de la phase A est une fonction qui rend une copie
+// neuve ; ceux de la phase B sont des constantes qu'un test copie (`structuredClone`) avant de les modifier.
+import type {
+  AirQualityResponse, DroughtDept, DroughtLevel, DroughtResponse, EarthquakesResponse, FireImpactsResponse, FiresResponse, FloodsResponse, Quake,
+  RadarColumnResult, SeaLevelsResponse, VigilanceResponse,
+} from '../../types/index.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
+import type { DroughtState } from '../../services/environment-drought.ts';
+import type { AirQualityState } from '../../services/environment-air.ts';
+import type { EarthquakesState } from '../../services/environment-earthquakes.ts';
+import type { SeaLevelsState } from '../../services/environment-sea-levels.ts';
 
 /** 4 octobre 2026, 10 h 10 à Paris (08:10Z) : heure des relevés de la spec. */
 export const ENV_FIXTURE_NOW = Date.parse('2026-10-04T10:10:00+02:00');
@@ -1154,3 +1161,168 @@ const IMPACTS: FireImpactsResponse = {
 
 /** Communes à moins de 10 km d’un point du Porge (Gironde, 44,88 N 1,12 O) et lien Géorisques de la plus proche. */
 export function FIRE_IMPACTS_FIXTURE(): FireImpactsResponse { return copy(IMPACTS); }
+
+// ─── Phase B (tâche 25) : valeurs réelles du 04/10/2026 ───
+// VigiEau : les 101 départements lus à 11 h 22 (asOf 00:43:59 UTC) ; Atmo France : indice ATMO de J agrégé par département à
+// 10 h 45 (26 663 communes INSEE, zones intercommunales écartées), date de mise à jour d'Airparif ; épisodes : J seul publié,
+// aucun dépassement ; BCSF-RéNaSS : extrait réel de 8 séismes gardés sur 100 (7 en France, 1 en Italie), 129 événements non
+// sismiques écartés sur 7 jours ; SHOM : Brest et Marseille, marques de 10 min de 07:00 à 08:10 UTC.
+
+const VIGIEAU_REGIONS: readonly string[] = [
+  'Auvergne-Rhône-Alpes', 'Hauts-de-France', 'Provence-Alpes-Côte d\'Azur', 'Grand-Est', 'Occitanie', 'Normandie', 'Nouvelle-Aquitaine',
+  'Centre-Val de Loire', 'Bourgogne-Franche-Comté', 'Bretagne', 'Corse', 'Pays de la Loire', 'Île-de-France', 'Guadeloupe', 'Martinique', 'Guyane',
+  'Réunion', 'Mayotte',
+];
+/** Lettre d'un niveau dans les lignes ci-dessous : c crise, r alerte renforcée, a alerte, v vigilance, - aucun arrêté (ou donnée absente). */
+const DROUGHT_CODE: Readonly<Record<string, DroughtLevel | null>> = { c: 'crise', r: 'alerte_renforcee', a: 'alerte', v: 'vigilance', '-': null };
+/** [code, nom VigiEau, région, niveaux max · eaux superficielles · eaux souterraines · eau potable], dans l'ordre de VigiEau. */
+const VIGIEAU_ROWS: ReadonlyArray<readonly [string, string, number, string]> = [
+  ['01', 'Ain', 0, 'cccc'], ['02', 'Aisne', 1, 'rrrr'], ['03', 'Allier', 0, 'cccc'], ['04', 'Alpes-de-Haute-Provence', 2, 'cccc'],
+  ['05', 'Hautes-Alpes', 2, 'aaaa'], ['06', 'Alpes-Maritimes', 2, 'cccc'], ['07', 'Ardèche', 0, 'cccc'], ['08', 'Ardennes', 3, 'cccc'],
+  ['09', 'Ariège', 4, 'ccrc'], ['10', 'Aube', 3, 'ccrc'], ['11', 'Aude', 4, 'cccc'], ['12', 'Aveyron', 4, 'cccc'],
+  ['13', 'Bouches-du-Rhône', 2, 'rrrr'], ['14', 'Calvados', 5, 'cccc'], ['15', 'Cantal', 0, 'cccc'], ['16', 'Charente', 6, 'cc-a'],
+  ['17', 'Charente-Maritime', 6, 'cccr'], ['18', 'Cher', 7, 'cccc'], ['19', 'Corrèze', 6, 'cccc'], ['21', 'Côte-d\'Or', 8, 'cccc'],
+  ['22', 'Côtes-d\'Armor', 9, 'cccc'], ['23', 'Creuse', 6, 'cccc'], ['24', 'Dordogne', 6, 'cc-r'], ['25', 'Doubs', 8, 'cccc'],
+  ['26', 'Drôme', 0, 'ccrc'], ['27', 'Eure', 5, 'cccc'], ['28', 'Eure-et-Loir', 7, 'cccc'], ['29', 'Finistère', 9, 'cccc'],
+  ['2A', 'Corse-du-Sud', 10, 'rrrr'], ['2B', 'Haute-Corse', 10, 'cc-c'], ['30', 'Gard', 4, 'cccc'], ['31', 'Haute-Garonne', 4, 'cc-c'],
+  ['32', 'Gers', 4, 'cc-c'], ['33', 'Gironde', 6, 'cc-v'], ['34', 'Hérault', 4, 'cccc'], ['35', 'Ille-et-Vilaine', 9, 'cccc'],
+  ['36', 'Indre', 7, 'cccc'], ['37', 'Indre-et-Loire', 7, 'cccc'], ['38', 'Isère', 0, 'cccc'], ['39', 'Jura', 8, 'cccc'],
+  ['40', 'Landes', 6, 'cccv'], ['41', 'Loir-et-Cher', 7, 'cccc'], ['42', 'Loire', 0, 'cccc'], ['43', 'Haute-Loire', 0, 'cc-c'],
+  ['44', 'Loire-Atlantique', 11, 'cccc'], ['45', 'Loiret', 7, 'cccc'], ['46', 'Lot', 4, 'cccr'], ['47', 'Lot-et-Garonne', 6, 'cc-c'],
+  ['48', 'Lozère', 4, 'cccc'], ['49', 'Maine-et-Loire', 11, 'cccc'], ['50', 'Manche', 5, 'cccc'], ['51', 'Marne', 3, 'rrrr'],
+  ['52', 'Haute-Marne', 3, 'ccrc'], ['53', 'Mayenne', 11, 'cccc'], ['54', 'Meurthe-et-Moselle', 3, 'cccc'], ['55', 'Meuse', 3, 'cccc'],
+  ['56', 'Morbihan', 9, 'cccc'], ['57', 'Moselle', 3, 'rrrr'], ['58', 'Nièvre', 8, 'cccc'], ['59', 'Nord', 1, 'cccc'],
+  ['60', 'Oise', 1, 'rrrr'], ['61', 'Orne', 5, 'cccc'], ['62', 'Pas-de-Calais', 1, 'rrrr'], ['63', 'Puy-de-Dôme', 0, 'cccc'],
+  ['64', 'Pyrénées-Atlantiques', 6, 'cccc'], ['65', 'Hautes-Pyrénées', 4, 'cccc'], ['66', 'Pyrénées-Orientales', 4, 'cccc'], ['67', 'Bas-Rhin', 3, 'cccc'],
+  ['68', 'Haut-Rhin', 3, 'cccc'], ['69', 'Rhône', 0, 'cccc'], ['70', 'Haute-Saône', 8, 'cccc'], ['71', 'Saône-et-Loire', 8, 'cccc'],
+  ['72', 'Sarthe', 11, 'cccc'], ['73', 'Savoie', 0, 'cccc'], ['74', 'Haute-Savoie', 0, 'cccc'], ['75', 'Paris', 12, 'vvvv'],
+  ['76', 'Seine-Maritime', 5, 'rrrr'], ['77', 'Seine-et-Marne', 12, 'ccca'], ['78', 'Yvelines', 12, 'rrrr'], ['79', 'Deux-Sèvres', 6, 'cccc'],
+  ['80', 'Somme', 1, 'rrrr'], ['81', 'Tarn', 4, 'cccc'], ['82', 'Tarn-et-Garonne', 4, 'ccca'], ['83', 'Var', 2, 'rrrr'],
+  ['84', 'Vaucluse', 2, 'rrrr'], ['85', 'Vendée', 11, 'ccar'], ['86', 'Vienne', 6, 'cccc'], ['87', 'Haute-Vienne', 6, 'cccc'],
+  ['88', 'Vosges', 3, 'cccc'], ['89', 'Yonne', 8, 'cccc'], ['90', 'Territoire de Belfort', 8, 'cccc'], ['91', 'Essonne', 12, 'rrra'],
+  ['92', 'Hauts-de-Seine', 12, 'vvvv'], ['93', 'Seine-Saint-Denis', 12, 'vvvv'], ['94', 'Val-de-Marne', 12, 'cccc'], ['95', 'Val-d\'Oise', 12, 'cc-c'],
+  ['971', 'Guadeloupe', 13, 'aaaa'], ['972', 'Martinique', 14, 'aa-a'], ['973', 'Guyane', 15, '----'], ['974', 'La Réunion', 16, 'rrrr'],
+  ['976', 'Mayotte', 17, '----'],
+];
+
+/** Départements que VigiEau publie « unavailable » le 04/10 (niveaux null) : donnée indisponible, amendement 15. */
+const VIGIEAU_UNAVAILABLE: ReadonlySet<string> = new Set(['973', '976']);
+
+function droughtDept([dept, name, region, levels]: readonly [string, string, number, string]): DroughtDept {
+  const at = (i: number): DroughtLevel | null => DROUGHT_CODE[levels.charAt(i)] ?? null;
+  return {
+    dept, name, region: VIGIEAU_REGIONS[region] ?? '', available: !VIGIEAU_UNAVAILABLE.has(dept),
+    max: at(0), superficielle: at(1), souterraine: at(2), potable: at(3),
+  };
+}
+
+/** Sécheresse du 04/10 : 79 départements en crise (70 pour l'eau potable), série amorcée ce jour (référence en construction, 1 jour). */
+export const DROUGHT_FIXTURE: DroughtResponse = {
+  asOf: '2026-10-04T00:43:59.771Z',
+  departments: VIGIEAU_ROWS.map(droughtDept),
+  counts: { vigilance: 3, alerte: 3, alerte_renforcee: 14, crise: 79, aucun: 0 },   // Guyane et Mayotte : donnée indisponible, hors des comptes
+  history: { days: [{ date: '2026-10-04', vigilance: 3, alerte: 3, alerte_renforcee: 14, crise: 79 }], since: '2026-10-04' },
+  readAt: '2026-10-04T08:05:00.000Z',
+  errors: [],
+};
+
+/** [département, nom (api/_shared/departments.js), communes couvertes, communes en indice 3, indice le plus haut] ; aucune commune en 4 ou plus. */
+const ATMO_ROWS: ReadonlyArray<readonly [string, string, number, number, number]> = [
+  ['01', 'Ain', 391, 5, 3], ['02', 'Aisne', 800, 591, 3], ['03', 'Allier', 317, 26, 3], ['04', 'Alpes-de-Haute-Provence', 198, 198, 3],
+  ['05', 'Hautes-Alpes', 163, 159, 3], ['06', 'Alpes-Maritimes', 163, 160, 3], ['07', 'Ardèche', 335, 0, 2], ['08', 'Ardennes', 447, 42, 3],
+  ['10', 'Aube', 431, 0, 2], ['13', 'Bouches-du-Rhône', 135, 135, 3], ['14', 'Calvados', 528, 28, 3], ['15', 'Cantal', 250, 0, 2],
+  ['16', 'Charente', 359, 196, 3], ['17', 'Charente-Maritime', 462, 4, 3], ['19', 'Corrèze', 277, 43, 3], ['2A', 'Corse-du-Sud', 124, 0, 2],
+  ['2B', 'Haute-Corse', 236, 0, 2], ['21', 'Côte-d\'Or', 698, 587, 3], ['23', 'Creuse', 255, 9, 3], ['24', 'Dordogne', 503, 274, 3],
+  ['25', 'Doubs', 571, 19, 3], ['26', 'Drôme', 362, 3, 3], ['27', 'Eure', 585, 62, 3], ['33', 'Gironde', 534, 0, 2],
+  ['38', 'Isère', 512, 2, 3], ['39', 'Jura', 494, 147, 3], ['40', 'Landes', 327, 18, 3], ['42', 'Loire', 320, 12, 3],
+  ['43', 'Haute-Loire', 257, 0, 2], ['44', 'Loire-Atlantique', 80, 0, 2], ['47', 'Lot-et-Garonne', 319, 95, 3], ['49', 'Maine-et-Loire', 56, 0, 2],
+  ['50', 'Manche', 446, 0, 2], ['51', 'Marne', 610, 71, 3], ['52', 'Haute-Marne', 426, 0, 2], ['53', 'Mayenne', 67, 0, 2],
+  ['54', 'Meurthe-et-Moselle', 591, 2, 3], ['55', 'Meuse', 499, 1, 3], ['57', 'Moselle', 725, 8, 3], ['58', 'Nièvre', 309, 178, 3],
+  ['59', 'Nord', 648, 217, 3], ['60', 'Oise', 679, 34, 3], ['61', 'Orne', 385, 22, 3], ['62', 'Pas-de-Calais', 890, 57, 3],
+  ['63', 'Puy-de-Dôme', 463, 44, 3], ['64', 'Pyrénées-Atlantiques', 545, 0, 2], ['67', 'Bas-Rhin', 514, 31, 3], ['68', 'Haut-Rhin', 366, 73, 3],
+  ['69', 'Rhône', 274, 16, 3], ['70', 'Haute-Saône', 539, 114, 3], ['71', 'Saône-et-Loire', 564, 466, 3], ['72', 'Sarthe', 68, 0, 2],
+  ['73', 'Savoie', 273, 4, 3], ['74', 'Haute-Savoie', 279, 0, 2], ['75', 'Paris', 21, 0, 2], ['76', 'Seine-Maritime', 708, 2, 3],
+  ['77', 'Seine-et-Marne', 507, 0, 2], ['78', 'Yvelines', 259, 56, 3], ['79', 'Deux-Sèvres', 252, 15, 3], ['80', 'Somme', 772, 167, 3],
+  ['83', 'Var', 153, 153, 3], ['84', 'Vaucluse', 151, 151, 3], ['85', 'Vendée', 92, 0, 2], ['86', 'Vienne', 265, 2, 3],
+  ['87', 'Haute-Vienne', 195, 125, 3], ['88', 'Vosges', 506, 0, 2], ['89', 'Yonne', 423, 14, 3], ['90', 'Territoire de Belfort', 101, 7, 3],
+  ['91', 'Essonne', 194, 47, 3], ['92', 'Hauts-de-Seine', 36, 3, 3], ['93', 'Seine-Saint-Denis', 40, 0, 2], ['94', 'Val-de-Marne', 47, 0, 2],
+  ['95', 'Val-d\'Oise', 184, 25, 3], ['971', 'Guadeloupe', 32, 0, 1], ['972', 'Martinique', 34, 0, 2], ['974', 'La Réunion', 24, 0, 2],
+  ['976', 'Mayotte', 17, 0, 2], ['978', 'Saint-Martin', 1, 0, 1],
+];
+
+const ZERO_DAY = (date: string): { date: string; information: number; alerte: number } => ({ date, information: 0, alerte: 0 });
+
+/** Qualité de l'air du 04/10 : aucun épisode (J seul publié), 26 663 communes dont 4 920 en indice dégradé (3), aucune en 4 ou plus. */
+export const AIR_FIXTURE: AirQualityResponse = {
+  days: ['2026-10-04', '2026-10-05', '2026-10-06'],
+  episodesUpdatedAt: '2026-10-03T18:05:06.763Z',
+  zonesCovered: 101,
+  episodes: [],
+  perPollutant: [
+    { pollutantCode: 'PM2.5', pollutant: 'particules fines PM2,5', days: [ZERO_DAY('2026-10-04')] },
+    { pollutantCode: 'PM10', pollutant: 'particules PM10', days: [ZERO_DAY('2026-10-04')] },
+    { pollutantCode: 'O3', pollutant: 'ozone', days: [ZERO_DAY('2026-10-04')] },
+    { pollutantCode: 'NO2', pollutant: 'dioxyde d’azote', days: [ZERO_DAY('2026-10-04')] },
+    { pollutantCode: 'SO2', pollutant: 'dioxyde de soufre', days: [ZERO_DAY('2026-10-04')] },
+  ],
+  index: {
+    date: '2026-10-04', updatedAt: '2026-10-03T13:36:32.507Z', communes: 26_663,
+    departments: ATMO_ROWS.map(([dept, name, communes, degrade, maxIndex]) => ({ dept, name, communes, degrade, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex })),
+  },
+  readAt: '2026-10-04T08:05:00.000Z',
+  errors: [],
+};
+
+function bcsf(over: Partial<Quake> & Pick<Quake, 'id' | 'at' | 'lat' | 'lon' | 'magnitude' | 'description'>): Quake {
+  return {
+    depthKm: 0, magType: 'MLv', type: null, status: 'automatique', url: `https://renass.unistra.fr/fr/evenements/${over.id}`, dept: null, distanceKm: 0, inFrance: true,
+    source: 'BCSF-RéNaSS', ...over,
+  };
+}
+
+/** Séismes du 04/10 à 10 h 05 (relevé du serveur) : extrait réel, plus récent d'abord ; aucun de magnitude 3 ou plus en France. */
+export const QUAKES_FIXTURE: EarthquakesResponse = {
+  readAt: '2026-10-04T08:05:00.000Z',
+  source: 'BCSF-RéNaSS',
+  quakes: [
+    bcsf({ id: 'fr2026utlsew', at: '2026-10-04T06:16:31.713Z', lat: 44.614, lon: 6.6427, depthKm: 5, magnitude: 1, dept: '05', description: 'Évènement de magnitude 1.0, proche de Gap' }),
+    bcsf({ id: 'fr2026utlizx', at: '2026-10-04T04:32:40.984Z', lat: 44.5473, lon: 6.8178, depthKm: 4.9, magnitude: 1.2, dept: '04', description: 'Évènement de magnitude 1.2, proche de Turin' }),
+    bcsf({ id: 'fr2026utlfhs', at: '2026-10-04T03:51:00.455Z', lat: 45.8385, lon: 6.9819, depthKm: 5, magnitude: 1.5, distanceKm: 3.2, inFrance: false, description: 'Évènement de magnitude 1.5, proche de Aosta' }),
+    bcsf({ id: 'fr2026utjaym', at: '2026-10-03T17:16:04.699Z', lat: 43.0167, lon: -0.2397, magnitude: 2, dept: '65', description: 'Évènement de magnitude 2.0, proche de Pau' }),
+    bcsf({ id: 'fr2026utfxwj', at: '2026-10-03T02:02:32.835Z', lat: 42.5699, lon: 2.2963, magnitude: 1.8, dept: '66', description: 'Évènement de magnitude 1.8, proche de Perpignan' }),
+    bcsf({ id: 'fr2026uszeuk', at: '2026-10-01T17:10:02.149Z', lat: 43.0255, lon: -0.2332, depthKm: 5.5, magnitude: 2.1, type: 'earthquake', status: 'revu', dept: '65', description: 'Tremblement de terre de magnitude 2.1, proche de Pau' }),
+    bcsf({ id: 'fr2026usugeu', at: '2026-09-30T17:01:08.994Z', lat: 45.3457, lon: 6.3004, depthKm: 8.8, magnitude: 2.5, type: 'earthquake', status: 'revu', dept: '73', description: 'Tremblement de terre de magnitude 2.5, proche de Albertville' }),
+    bcsf({ id: 'fr2026usdzpp', at: '2026-09-27T09:40:01.183Z', lat: 43.0602, lon: -0.219, magnitude: 2.2, type: 'earthquake', status: 'revu', dept: '64', description: 'Tremblement de terre de magnitude 2.2, proche de Pau' }),
+  ],
+  nonSeismic: 129,
+  errors: [],
+};
+
+const BREST_SERIES = [4.639, 4.7205, 4.8147, 4.8855, 4.9741, 5.0413, 5.1147, 5.1772];
+const MARSEILLE_SERIES = [0.4813, 0.4833, 0.499, 0.5019, 0.5034, 0.489, 0.493, 0.4949];
+const tenMinutes = (values: readonly number[]): Array<{ at: string; value: number }> =>
+  values.map((value, i) => ({ at: new Date(Date.parse('2026-10-04T07:00:00.000Z') + i * 600_000).toISOString(), value }));
+
+/** Marégraphes du 04/10 à 10 h 10 (Paris) : Brest et Marseille, dernière mesure 08:10 UTC, série réduite à la dernière heure. */
+export const SEA_LEVELS_FIXTURE: SeaLevelsResponse = {
+  readAt: '2026-10-04T08:10:00.000Z',
+  gauges: [
+    { id: 3, name: 'Brest', coastDomain: '2910', dept: '29', lat: 48.38290024, lon: -4.49503994, lastAt: '2026-10-04T08:10:00.000Z', heightM: 5.1772, change1hM: 0.4567, series: tenMinutes(BREST_SERIES) },
+    { id: 524, name: 'Marseille', coastDomain: '1310', dept: '13', lat: 43.278814, lon: 5.353758, lastAt: '2026-10-04T08:10:00.000Z', heightM: 0.4949, change1hM: 0.0116, series: tenMinutes(MARSEILLE_SERIES) },
+  ],
+  predictionAvailable: false,
+  errors: [],
+};
+
+export function droughtStateFixture(): DroughtState {
+  return { drought: { data: structuredClone(DROUGHT_FIXTURE), error: null, fetchedAt: ENV_FIXTURE_NOW } };
+}
+export function airQualityStateFixture(): AirQualityState {
+  return { air: { data: structuredClone(AIR_FIXTURE), error: null, fetchedAt: ENV_FIXTURE_NOW } };
+}
+export function quakesStateFixture(): EarthquakesState {
+  return { quakes: { data: structuredClone(QUAKES_FIXTURE), error: null, fetchedAt: ENV_FIXTURE_NOW } };
+}
+export function seaLevelsStateFixture(): SeaLevelsState {
+  return { seaLevels: { data: structuredClone(SEA_LEVELS_FIXTURE), error: null, fetchedAt: ENV_FIXTURE_NOW } };
+}
