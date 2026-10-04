@@ -17,6 +17,17 @@ function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals
   };
 }
 
+/** Tuile « Météo » calculée de bout en bout : entrées Environnement, signaux du score, tuiles. */
+function meteoTileFrom(env: ReturnType<typeof buildEnvironmentInputs>) {
+  const raw = {
+    newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+    defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+    nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
+    fuelTensionDashboard: null, ...env,
+  } satisfies FranceRawData;
+  return domainTiles(buildFranceSignals(raw), 'fr').find((x) => x.label === 'Météo');
+}
+
 function energy(over: Partial<FranceIntelEnergySummary> = {}): FranceIntelEnergySummary {
   return {
     ecowattSignal: 'red', totalMw: 53600, shares: { nuclear: 70, gas: 5, hydro: 10, wind: 8, solar: 4, other: 3 },
@@ -170,6 +181,25 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     }
     expect(html).toContain('<span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>\n      <span class="frintel-dom-label">Météo</span>');
     expect(html).not.toMatch(/(Vigilance|Crues|Feux) 0/);
+  });
+
+  it('part « Feux » : suit toute la pastille Feux (firesLevel), météo des forêts du jour comprise ; le chiffre reste celui des foyers confirmés', () => {
+    const fires = FIRES_FIXTURE();
+    const fd = fires.forestDanger;
+    if (fd === null) throw new Error('jeu d’essai sans météo des forêts');
+    const forest3 = { ...fd, departments: [{ ...fd.departments[0], j1: 3 as const }] };
+    const feux = (f: typeof fires) => meteoTileFrom(buildEnvironmentInputs(null, null, f, [], ENV_FIXTURE_NOW))?.parts?.[2];
+    // Danger élevé (niveau 3) en J1, aucun foyer : orange.
+    expect(feux({ ...fires, foyers: [], detections: [], forestDanger: forest3 })).toEqual({ label: 'Feux', value: 0, level: 'high' });
+    // Niveau 3 et trois petits foyers confirmés (jaune) : le plus haut, orange ; chiffre des foyers confirmés.
+    expect(feux({ ...fires, forestDanger: forest3 })).toEqual({ label: 'Feux', value: 3, level: 'high' });
+    // Météo des forêts indisponible, une détection isolée en France : jaune (niveau des foyers gardé).
+    const [isolated] = fires.foyers.filter((f) => !f.confirmed && !f.recurrent);
+    expect(feux({ ...fires, foyers: [isolated], forestDanger: null })).toEqual({ label: 'Feux', value: 0, level: 'medium' });
+    // FIRMS en panne, météo des forêts du jour (niveau 2) : couleur de la pastille, nombre de foyers « n.d. ».
+    expect(feux({ ...fires, readAt: null })).toEqual({ label: 'Feux', value: null, level: 'medium' });
+    // Les deux en panne : n.d.
+    expect(feux({ ...fires, readAt: null, forestDanger: null })).toEqual({ label: 'Feux', value: null, level: null });
   });
 
   it('tuile « Météo » (S3) : une part indisponible ne compte pas dans le niveau de la tuile, les autres gardent leur couleur', () => {

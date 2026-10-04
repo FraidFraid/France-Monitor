@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FLOODS_FIXTURE, VIGILANCE_FIXTURE } from '../components/layer-panel/environment.fixture.ts';
 import type { LocatedFireIncident } from '../types/index.ts';
 import { buildEnvironmentInputs } from './environment-inputs.ts';
+import { firesLevel } from './environment-levels.ts';
 import { clusterFireDetections } from './fire-clustering.ts';
 import { buildFranceCountrySnapshot, buildFranceSignals, type FranceRawData } from './france-country-intel.ts';
 import { detectWildfireIncidents } from './situation-engine.ts';
@@ -37,11 +38,14 @@ describe('entrées Environnement (adaptateurs purs)', () => {
     expect(e.activeFires).toHaveLength(fires.detections.filter((d) => !d.recurrent).length);
     expect(e.fireFoyers).toHaveLength(fires.foyers.length);
     expect(e.environmentAvailable).toEqual({ vigilance: true, floods: true, fires: true });
+    // Pastille Feux du panneau, même fonction (arbitrage 14) : 10 départements au niveau 2 et trois petits foyers confirmés, jaune.
+    expect(e.firesPillLevel).toBe(firesLevel(FIRES_FIXTURE(), ENV_FIXTURE_NOW).level);
+    expect(e.firesPillLevel).toBe('jaune');
   });
   it('sources jamais lues (ou en échec sans donnée) : listes vides et sources dites indisponibles, jamais une valeur inventée', () => {
     expect(buildEnvironmentInputs(null, null, null, [], ENV_FIXTURE_NOW)).toEqual({
       meteoAlerts: [], floodSegments: [], activeFires: [], fireIncidents: [], fireFoyers: [],
-      environmentAvailable: { vigilance: false, floods: false, fires: false },
+      environmentAvailable: { vigilance: false, floods: false, fires: false }, firesPillLevel: 'nd',
     });
   });
   it('carte de vigilance sans date ou sans échéance du jour, relevé Vigicrues absent : indisponibles, comme leurs pastilles', () => {
@@ -65,6 +69,8 @@ describe('entrées Environnement (adaptateurs purs)', () => {
     // Seuls les feux sont écartés (et dits indisponibles) : vigilance et crues restent lues.
     expect([old.meteoAlerts.length, old.floodSegments.length]).toEqual([7, 4]);
     expect(old.environmentAvailable).toEqual({ vigilance: true, floods: true, fires: false });
+    // Collecte écartée = FIRMS en panne pour la pastille ; la météo des forêts du 04/10 est échue le 06/10 : n.d.
+    expect(old.firesPillLevel).toBe('nd');
     const recent = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [incident], readAt + 2 * DAY_MS - MINUTE_MS);
     expect([recent.activeFires.length > 0, recent.fireFoyers.length > 0, recent.fireIncidents]).toEqual([true, true, [incident]]);
     expect(recent.environmentAvailable.fires).toBe(true);
@@ -93,8 +99,8 @@ describe('signaux du score France (formule inchangée)', () => {
     const now = readAt + 2 * DAY_MS + MINUTE_MS;
     const down = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [], now);
     const s = buildFranceSignals(raw({ ...down }));
-    expect([s.vigilanceUnavailable, s.floodsUnavailable, s.firesUnavailable]).toEqual([true, true, true]);
-    const strip = ({ vigilanceUnavailable: _v, floodsUnavailable: _f, firesUnavailable: _x, ...rest }: typeof s) => rest;
+    expect([s.vigilanceUnavailable, s.floodsUnavailable, s.firesUnavailable, s.firesPillLevel]).toEqual([true, true, true, 'nd']);
+    const strip = ({ vigilanceUnavailable: _v, floodsUnavailable: _f, firesUnavailable: _x, firesPillLevel: _p, ...rest }: typeof s) => rest;
     expect(strip(s)).toEqual(strip(buildFranceSignals(raw())));
     const opts = { previousScore: null, now };
     const unavailable = buildFranceCountrySnapshot(raw({ ...down }), opts);
@@ -111,6 +117,7 @@ describe('signaux du score France (formule inchangée)', () => {
     const s = buildFranceSignals(raw());
     expect([s.meteoRedAlerts, s.floodRedAlerts, s.fireFoyersConfirmed, s.fireFoyersOrange, s.fireFoyersMajor, s.fireFoyersIsolated]).toEqual([0, 0, 0, 0, 0, 0]);
     expect([s.vigilanceUnavailable, s.floodsUnavailable, s.firesUnavailable]).toEqual([false, false, false]);
+    expect(s.firesPillLevel).toBeUndefined();
   });
 });
 

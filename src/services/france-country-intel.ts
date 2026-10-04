@@ -84,6 +84,8 @@ export interface FranceRawData {
   fireFoyers?: FireFoyer[];
   /** Sources Environnement lues (affichage « n.d. », S3 ; jamais lu par la formule) ; absent : toutes lues. */
   environmentAvailable?: EnvironmentAvailability;
+  /** Niveau de la pastille Feux (part « Feux » de la tuile, arbitrage 14 ; jamais lu par la formule) ; absent : seuls les foyers. */
+  firesPillLevel?: FranceCountrySignals['firesPillLevel'];
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;
@@ -474,6 +476,7 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     vigilanceUnavailable: raw.environmentAvailable?.vigilance === false,
     floodsUnavailable: raw.environmentAvailable?.floods === false,
     firesUnavailable: raw.environmentAvailable?.fires === false,
+    firesPillLevel: raw.firesPillLevel,
     // Transport
     railDisruptions: raw.railTrains.length,
     // Ancien « critique ou élevé » : NO_SERVICE et SIGNIFICANT_DELAYS, soit les trains supprimés ou retardés.

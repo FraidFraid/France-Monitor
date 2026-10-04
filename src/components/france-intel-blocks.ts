@@ -109,9 +109,12 @@ function partLevel(red: number, any: number): DomainLevel {
   return red > 0 ? 'critical' : any > 0 ? 'high' : 'low';
 }
 
+/** Couleur de la pastille Feux vers le niveau de tuile (inverse de DOMAIN_LEVEL). */
+const PILL_DOMAIN_LEVEL: Record<VigilanceLevel, DomainLevel> = { vert: 'low', jaune: 'medium', orange: 'high', rouge: 'critical' };
+
 /**
- * Part « Feux », même règle que la pastille Feux : rouge si un foyer majeur, orange si un foyer confirmé d'au moins 10 MW ; jaune
- * pour des foyers confirmés seulement plus petits ou des détections isolées (arbitrage 14 du contrôleur) ; vert sinon.
+ * Niveau des seuls foyers, pour des signaux sans niveau de pastille (anciennes entrées) : rouge si un foyer majeur, orange si un
+ * foyer confirmé d'au moins 10 MW ; jaune pour des foyers confirmés plus petits ou des détections isolées (arbitrage 14) ; vert sinon.
  */
 function firePartLevel(s: FranceCountrySignals): DomainLevel {
   if ((s.fireFoyersMajor ?? 0) > 0) return 'critical';
@@ -125,6 +128,20 @@ function tilePart(label: string, unavailable: boolean | undefined, value: number
 }
 
 /**
+ * Part « Feux » (arbitrage 14) : couleur de la pastille Feux (firesLevel : foyers et météo des forêts du jour, le plus haut des deux),
+ * n.d. si FIRMS et météo des forêts sont indisponibles ; chiffre : foyers confirmés, « n.d. » si FIRMS est indisponible.
+ */
+function firePart(s: FranceCountrySignals, lang: Lang): DomainTilePart {
+  const label = t(lang, 'Feux', 'Fires');
+  if (s.firesPillLevel === undefined) return tilePart(label, s.firesUnavailable, s.fireFoyersConfirmed ?? 0, firePartLevel(s));
+  return {
+    label,
+    value: s.firesUnavailable === true ? null : s.fireFoyersConfirmed ?? 0,
+    level: s.firesPillLevel === 'nd' ? null : PILL_DOMAIN_LEVEL[s.firesPillLevel],
+  };
+}
+
+/**
  * Tuile « Météo » (spec 2026-10-04 environnement § 2.7) : départements en vigilance orange ou rouge, tronçons orange ou rouges et
  * foyers confirmés en France, trois chiffres distincts (jamais additionnés) ; niveau = le plus haut des parts lues ; une source
  * indisponible dit « n.d. » (S3) ; aucune part lue : tuile sans niveau.
@@ -133,7 +150,7 @@ function meteoTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const parts: DomainTilePart[] = [
     tilePart(t(lang, 'Vigilance', 'Weather'), s.vigilanceUnavailable, s.meteoAlerts, partLevel(s.meteoRedAlerts ?? 0, s.meteoAlerts)),
     tilePart(t(lang, 'Crues', 'Floods'), s.floodsUnavailable, s.floodAlerts, partLevel(s.floodRedAlerts ?? 0, s.floodAlerts)),
-    tilePart(t(lang, 'Feux', 'Fires'), s.firesUnavailable, s.fireFoyersConfirmed ?? 0, firePartLevel(s)),
+    firePart(s, lang),
   ];
   return {
     label: t(lang, 'Météo', 'Weather'),

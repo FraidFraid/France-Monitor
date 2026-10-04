@@ -1221,6 +1221,11 @@ export interface FranceCountrySignals {
   vigilanceUnavailable?: boolean;
   floodsUnavailable?: boolean;
   firesUnavailable?: boolean;
+  /**
+   * Niveau de la pastille Feux (firesLevel : foyers et météo des forêts du jour), repris par la part « Feux » de la tuile « Météo »
+   * (arbitrage 14) ; 'nd' : FIRMS et météo des forêts indisponibles. Affichage seulement. Absent : niveau des seuls foyers.
+   */
+  firesPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   // Transport
   railDisruptions: number;
   railSevere: number;

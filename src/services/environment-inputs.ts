@@ -7,7 +7,7 @@ import type {
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
 import { floodsToSectionRefs } from './environment-floods.ts';
-import { floodsLevel, vigilanceLevel } from './environment-levels.ts';
+import { firesLevel, floodsLevel, vigilanceLevel, type LayerLevel } from './environment-levels.ts';
 import { vigilanceToMeteoAlerts } from './environment-vigilance.ts';
 
 /**
@@ -33,6 +33,8 @@ export interface EnvironmentInputs {
    * sur la tuile « Météo » et la fiche Environnement, jamais un « 0 » vert.
    */
   environmentAvailable: EnvironmentAvailability;
+  /** Niveau de la pastille Feux, même fonction que le panneau (firesLevel) : part « Feux » de la tuile « Météo » (arbitrage 14). */
+  firesPillLevel: LayerLevel;
 }
 
 /** Collecte des feux encore comptée : lue il y a moins de 2 jours ; date absente ou illisible : aucune collecte. */
@@ -40,6 +42,15 @@ function servedFires(fires: FiresResponse | null, now: number): FiresResponse | 
   if (fires === null || fires.readAt === null) return null;
   const readAt = Date.parse(fires.readAt);
   return Number.isFinite(readAt) && now - readAt < FIRES_COLLECTION_MAX_AGE_MS ? fires : null;
+}
+
+/**
+ * Pastille Feux (firesLevel) : foyers et météo des forêts du jour, le plus haut des deux. Une collecte écartée (plus de 2 jours, ou
+ * jamais lue par le serveur) compte comme FIRMS en panne : seule la météo des forêts du jour colore encore ; jamais lue : n.d.
+ */
+function firesPillLevel(fires: FiresResponse | null, served: FiresResponse | null, now: number): LayerLevel {
+  if (fires === null) return 'nd';
+  return firesLevel(served ?? { ...fires, readAt: null, foyers: [], detections: [] }, now).level;
 }
 
 /**
@@ -63,5 +74,6 @@ export function buildEnvironmentInputs(
       floods: floods !== null && floodsLevel(floods).level !== 'nd',
       fires: served !== null,
     },
+    firesPillLevel: firesPillLevel(fires, served, now),
   };
 }
