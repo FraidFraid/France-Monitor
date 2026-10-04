@@ -5905,6 +5905,10 @@ export class App {
         const error = err instanceof Error ? err.message : 'service de la source introuvable';
         const dated = this.statusPanel?.getSources().find((s) => s.name === 'Marégraphes SHOM')?.lastUpdate ?? null;
         this.statusPanel?.updateSource('Marégraphes SHOM', dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+        // La section Submersion dit la panne (S3) au lieu de rester sur « Chargement des marégraphes… » : données gardées, échec nommé.
+        const previous = this.currentSeaLevels?.seaLevels;
+        this.currentSeaLevels = { seaLevels: { data: previous?.data ?? null, fetchedAt: previous?.fetchedAt ?? null, error } };
+        this.vigilancePanel?.update({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
         throw err;
       }
     });

@@ -144,6 +144,12 @@ describe('liste de câblage des couches (contrats § 4.4) pour drought, airQuali
     expect(methodBody('refreshEnvironmentLegend')).toContain('this.currentSeaLevels ? withTideGauges(vigilance, this.currentSeaLevels.seaLevels.data, now) : vigilance');
     expect(methodBody('loadVigilance')).toContain('if (this.currentSeaLevels) this.mapContainer?.updateSeaLevelsLayer(this.currentSeaLevels.seaLevels.data, data, now);');
   });
+  it('marégraphes : une lecture qui lève garde les données, nomme l’échec dans le panneau (jamais « Chargement… » sans fin)', () => {
+    const load = methodBody('loadSeaLevels');
+    const failure = load.slice(load.indexOf('} catch (err) {'));
+    expect(failure).toContain('seaLevels: { data: previous?.data ?? null, fetchedAt: previous?.fetchedAt ?? null, error }');
+    expect(failure).toContain('this.vigilancePanel?.update({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });');
+  });
   it('panneau des sources : clic sur les quatre lignes de la phase B ; panneau associé', () => {
     const click = methodBody('handleSourcePanelClick');
     expect(click).toContain("void this.ensureDroughtPanel().then(() => this.openEnvironmentPanel('drought'));");
