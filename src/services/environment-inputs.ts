@@ -2,12 +2,12 @@
 // de l'export, du poste v2, de l'ISNR et du stress hydro (spec 2026-10-04 environnement § 2.7 ; contrats § 6). Adaptateurs purs sur
 // les dernières lectures des services (tâche 9) : la formule du score et ses cibles ne changent pas, seules les entrées changent.
 import type {
-  ActiveFire, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef, FloodsResponse, LocatedFireIncident, MeteoAlert,
-  VigilanceResponse,
+  ActiveFire, AirEpisode, AirQualityResponse, EarthquakesResponse, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef,
+  FloodsResponse, LocatedFireIncident, MeteoAlert, Quake, VigilanceResponse,
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
 import { floodsToSectionRefs } from './environment-floods.ts';
-import { firesLevel, floodsLevel, vigilanceLevel, type LayerLevel } from './environment-levels.ts';
+import { firesLevel, floodsLevel, isEnvironmentDataLate, vigilanceLevel, type LayerLevel } from './environment-levels.ts';
 import { vigilanceToMeteoAlerts } from './environment-vigilance.ts';
 
 /**
@@ -28,6 +28,10 @@ export interface EnvironmentInputs {
   fireIncidents: LocatedFireIncident[];
   /** Foyers du serveur en France (confirmés, isolés, récurrents) : tuile « Météo » et fiche Environnement. */
   fireFoyers: FireFoyer[];
+  /** Séismes des 7 derniers jours (phase B, situations sismiques) ; absents : aucune situation. */
+  quakes?: Quake[];
+  /** Épisodes de pollution de J à J+2 (phase B, situation « épisode d'alerte »). */
+  airEpisodes?: AirEpisode[];
   /**
    * Sources lues (S3) : une source indisponible donne des listes vides au score (formule inchangée), mais « n.d. » et un point gris
    * sur la tuile « Météo » et la fiche Environnement, jamais un « 0 » vert.
@@ -76,4 +80,22 @@ export function buildEnvironmentInputs(
     },
     firesPillLevel: firesPillLevel(fires, served, now),
   };
+}
+
+/**
+ * Séismes servis aux situations (§ 3.3, S2) : relevé du serveur (BCSF-RéNaSS, EMSC en repli) de moins de 30 min. Relevé absent,
+ * illisible ou en retard (le client garde la réponse précédente après une erreur) : aucun séisme, donc aucune situation créée ni gardée.
+ */
+export function servedQuakes(quakes: EarthquakesResponse | null, now: number): Quake[] {
+  if (quakes === null || isEnvironmentDataLate('bcsf', quakes.readAt, now)) return [];
+  return [...quakes.quakes];
+}
+
+/**
+ * Épisodes servis aux situations (§ 3.2, S2, S3) : couche des épisodes lue (date_maj publiée) et à jour (date_maj + 36 h). Couche en
+ * panne (indice seul lu, episodesUpdatedAt absent) ou en retard : aucun épisode, jamais une alerte gardée d'une lecture périmée.
+ */
+export function servedAirEpisodes(air: AirQualityResponse | null, now: number): AirEpisode[] {
+  if (air === null || isEnvironmentDataLate('atmo', air.episodesUpdatedAt, now)) return [];
+  return [...air.episodes];
 }

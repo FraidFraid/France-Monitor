@@ -45,6 +45,8 @@ import type {
   LocatedFireIncident,
   FireFoyer,
   EnvironmentAvailability,
+  AirEpisode,
+  Quake,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -86,6 +88,10 @@ export interface FranceRawData {
   environmentAvailable?: EnvironmentAvailability;
   /** Niveau de la pastille Feux (part « Feux » de la tuile, arbitrage 14 ; jamais lu par la formule) ; absent : seuls les foyers. */
   firesPillLevel?: FranceCountrySignals['firesPillLevel'];
+  /** Séismes des 7 derniers jours, France et 20 km autour (BCSF-RéNaSS, EMSC en repli ; spec 2026-10-04 § 3.3). Situations seulement. */
+  quakes?: Quake[];
+  /** Épisodes de pollution de J à J+2 (Atmo France, § 3.2). Situations seulement ; aucune entrée du score. */
+  airEpisodes?: AirEpisode[];
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;

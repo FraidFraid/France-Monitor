@@ -176,3 +176,12 @@ describe('liste de câblage des couches (contrats § 4.4) pour drought, airQuali
     }
   });
 });
+
+describe('score et situations : entrées de la phase B (contrats § 6)', () => {
+  it('environmentInputs fournit séismes et épisodes lus à l’instant du repeint, servis seulement à jour, jamais la sécheresse (E2)', () => {
+    const inputs = methodBody('environmentInputs');
+    expect(inputs).toContain('quakes: servedQuakes(this.currentEarthquakes?.quakes.data ?? null, now),');
+    expect(inputs).toContain('airEpisodes: servedAirEpisodes(this.currentAirQuality?.air.data ?? null, now),');
+    expect(inputs).not.toMatch(/currentDrought|drought/i);
+  });
+});

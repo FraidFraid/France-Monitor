@@ -60,6 +60,8 @@ const TYPE_ICON: Record<string, string> = {
   AIS_ANOMALY_ALERT: fmIcon('anchor'),
   DEFENSE_ALERT: fmIcon('shield'),
   GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
+  SEISMIC_EVENT: fmIcon('activity'),
+  AIR_POLLUTION_EPISODE: fmIcon('cloud'),
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────

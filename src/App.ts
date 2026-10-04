@@ -98,7 +98,7 @@ import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
-import { buildEnvironmentInputs, type EnvironmentInputs } from './services/environment-inputs.ts';
+import { buildEnvironmentInputs, servedAirEpisodes, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
 // Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
 // couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
 import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
@@ -6585,15 +6585,21 @@ export class App {
   /**
    * Entrées Environnement du score France, de la frise, des situations, de la note, de l'export, du poste v2, de l'ISNR et du stress
    * hydro (spec 2026-10-04 environnement § 2.7) : vigilance du jour, tronçons en vigilance, détections en France non récurrentes,
-   * incidents DBSCAN géo-résolus, foyers du serveur, sources lues ; lues dans les dernières réponses des services, jamais copiées
-   * ailleurs. Une collecte des feux de plus de 2 jours, gardée après une erreur, ne compte plus. Un rafraîchissement les lit une fois
-   * et les passe à ses consommateurs : un seul instant pour la règle des 2 jours (revue m6).
+   * incidents DBSCAN géo-résolus, foyers du serveur, sources lues, séismes et épisodes de pollution (phase B, situations) ; lues dans
+   * les dernières réponses des services, jamais copiées ailleurs. Une collecte des feux de plus de 2 jours, gardée après une erreur, ne
+   * compte plus ; un relevé des séismes en retard ou une couche des épisodes en panne ou en retard non plus. Un rafraîchissement les lit
+   * une fois et les passe à ses consommateurs : un seul instant pour ces règles (revue m6).
    */
   private environmentInputs(now: number = Date.now()): EnvironmentInputs {
-    return buildEnvironmentInputs(
-      this.currentVigilance?.vigilance.data ?? null, this.currentFloods?.floods.data ?? null, this.currentFires?.fires.data ?? null,
-      this.currentFireIncidents, now,
-    );
+    return {
+      ...buildEnvironmentInputs(
+        this.currentVigilance?.vigilance.data ?? null, this.currentFloods?.floods.data ?? null, this.currentFires?.fires.data ?? null,
+        this.currentFireIncidents, now,
+      ),
+      // Phase B : séismes et épisodes de pollution (situations, contrats § 6) ; la sécheresse n'y entre jamais (E2).
+      quakes: servedQuakes(this.currentEarthquakes?.quakes.data ?? null, now),
+      airEpisodes: servedAirEpisodes(this.currentAirQuality?.air.data ?? null, now),
+    };
   }
 
   private async loadMetropoles(): Promise<void> {

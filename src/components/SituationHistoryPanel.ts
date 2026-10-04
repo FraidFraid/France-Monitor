@@ -43,6 +43,8 @@ const TYPE_ICON: Record<string, string> = {
   MARITIME_ANOMALY:        fmIcon('anchor'),
   DEFENSE_SIGNAL_ELEVATED: fmIcon('plane'),
   FUEL_SUPPLY_RISK:        fmIcon('fuel'),
+  SEISMIC_EVENT:           fmIcon('activity'),
+  AIR_POLLUTION_EPISODE:   fmIcon('cloud'),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

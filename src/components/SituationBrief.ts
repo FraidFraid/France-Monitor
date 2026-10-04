@@ -40,6 +40,8 @@ const TYPE_ICON: Record<SituationType, string> = {
   AIS_ANOMALY_ALERT: fmIcon('anchor'),
   DEFENSE_ALERT: fmIcon('shield'),
   GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
+  SEISMIC_EVENT: fmIcon('activity'),
+  AIR_POLLUTION_EPISODE: fmIcon('cloud'),
 };
 
 // L'astuce DOM (textContent → innerHTML) n'échappe pas les guillemets : une valeur

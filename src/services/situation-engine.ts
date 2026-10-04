@@ -24,6 +24,7 @@ import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { QUAKE_WINDOW_MS, magnitudeText, nextDayOf, parisDayOf, quakeInFrance, quakePlace } from './environment-levels.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
 
@@ -634,6 +635,73 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
   );
 }
 
+// ─── Règle : SEISMIC_EVENT (spec 2026-10-04 environnement § 3.3, amendements 2 et 6) ─────────
+
+const PARIS_PARTS = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/** « le 04/10 à 05:10 » (heure de Paris). */
+function parisWhen(iso: string): string {
+  const p = Object.fromEntries(PARIS_PARTS.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `le ${p['day']}/${p['month']} à ${p['hour']}:${p['minute']}`;
+}
+
+/**
+ * Une situation par séisme de magnitude 4 ou plus en France (territoire ou eaux françaises) dans les 72 dernières heures :
+ * sévérité moyenne, élevée dès 5 (qui plafonne le score à 78 par CAP_ONE_HIGH). Un séisme hors de France n'en crée jamais.
+ */
+export function detectSeismicEvents(raw: FranceRawData, nowMs: number): DetectedSituation[] {
+  return (raw.quakes ?? []).flatMap((q): DetectedSituation[] => {
+    const t = Date.parse(q.at);
+    if (!quakeInFrance(q) || q.magnitude < 4 || !Number.isFinite(t) || t > nowMs || nowMs - t > QUAKE_WINDOW_MS) return [];
+    const mag = magnitudeText(q.magnitude);
+    const place = quakePlace(q);
+    const zone = q.dept !== null ? `Dépt ${q.dept}` : `en mer, à ${Math.round(q.distanceKm)}${NBSP}km des côtes`;
+    const depth = q.depthKm !== null ? `profondeur ${Math.round(q.depthKm)}${NBSP}km` : 'profondeur non publiée';
+    const status = q.status === 'revu' ? 'revu par un sismologue' : 'automatique, à confirmer';
+    const base = situation(
+      `seismic-${q.id}`, 'SEISMIC_EVENT', q.magnitude >= 5 ? 'high' : 'medium', q.status === 'revu' ? 0.9 : 0.75,
+      `Séisme de magnitude ${mag} ${place}`,
+      `Magnitude ${mag}${q.magType ? ` (${q.magType})` : ''}, ${depth}, ${parisWhen(q.at)} (heure de Paris), ${status}.`,
+      [zone],
+      [`Magnitude ${mag} ${place}`, `${depth.charAt(0).toUpperCase()}${depth.slice(1)}`, `Relevé ${status}`],
+      [
+        action('Consulter la fiche du séisme (intensité ressentie, témoignages)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec les communiqués de la préfecture et des secours', 'Analyste territorial', 'cross-check'),
+      ],
+      [q.source],
+    );
+    return [{ ...base, lat: q.lat, lon: q.lon, activateLayers: ['earthquakes'], ...(q.url ? { linkUrl: q.url, linkLabel: 'Fiche du séisme' } : {}) }];
+  });
+}
+
+// ─── Règle : AIR_POLLUTION_EPISODE (spec 2026-10-04 environnement § 3.2, amendement 6) ───────
+
+/** Une situation quand un épisode atteint le seuil d'alerte en J ou J+1 (jours de Paris) : sévérité moyenne, sans plafond du score. */
+export function detectAirPollution(raw: FranceRawData, nowMs: number): DetectedSituation | null {
+  const today = parisDayOf(nowMs);
+  const wanted = new Set([today, nextDayOf(today)]);
+  const alerts = (raw.airEpisodes ?? []).filter((e) => e.state === 'alerte' && wanted.has(e.date));
+  if (alerts.length === 0) return null;
+  const zones = [...new Set(alerts.map((e) => e.zone))];
+  const pollutants = [...new Set(alerts.map((e) => e.pollutant))].join(', ');
+  const when = alerts.some((e) => e.date === today) ? 'aujourd’hui' : 'demain';
+  const base = situation(
+    'air-pollution', 'AIR_POLLUTION_EPISODE', 'medium', 0.8,
+    `Épisode de pollution au seuil d’alerte : ${pollutants}`,
+    `${alerts.length} procédure${alerts.length > 1 ? 's' : ''} d’alerte (${pollutants}) ${when} ; niveaux publiés par les AASQA (Atmo France).`,
+    zones.slice(0, 4),
+    alerts.slice(0, 4).map((e) => `${e.pollutant} : alerte, ${e.zone}, le ${e.date.slice(8, 10)}/${e.date.slice(5, 7)}`),
+    [
+      action('Consulter l’arrêté préfectoral de la zone (absent du flux Atmo France)', 'Analyste territorial', 'monitor'),
+      action(`Suivre la prévision du lendemain (publiée vers 14${NBSP}h)`, 'Analyste environnement', 'monitor', true),
+    ],
+    ['Atmo France'],
+  );
+  return { ...base, activateLayers: ['airQuality'] };
+}
+
 // ─── Orchestrateur principal ──────────────────────────────────────────────────
 
 const RULES: Array<(raw: FranceRawData, nowMs: number) => DetectedSituation | null> = [
@@ -646,6 +714,7 @@ const RULES: Array<(raw: FranceRawData, nowMs: number) => DetectedSituation | nu
   detectMaritimeAnomaly,
   detectDefenseSignalElevated,
   detectFuelSupplyRisk,
+  detectAirPollution,
 ];
 
 /**
@@ -672,6 +741,13 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
     results.push(...detectWildfireIncidents(raw));
   } catch (err) {
     console.warn('[SituationEngine] Wildfire rule error:', err);
+  }
+
+  // Une situation par séisme fort (§ 3.3) ; même isolation que les autres règles.
+  try {
+    results.push(...detectSeismicEvents(raw, nowMs));
+  } catch (err) {
+    console.warn('[SituationEngine] Seismic rule error:', err);
   }
 
   const ranked = results.sort((a, b) => {

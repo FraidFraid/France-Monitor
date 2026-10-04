@@ -2187,7 +2187,9 @@ export type SituationType =
   | 'WEATHER_ALERT'
   | 'AIS_ANOMALY_ALERT'
   | 'DEFENSE_ALERT'
-  | 'GPS_JAMMING_ALERT';
+  | 'GPS_JAMMING_ALERT'
+  | 'SEISMIC_EVENT'
+  | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
 

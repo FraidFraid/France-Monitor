@@ -82,6 +82,8 @@ const SITUATION_THEME: Record<SituationType, ThemeId> = {
   FLOOD_CRISIS: 'environment',
   WILDFIRE_ESCALATION: 'environment',
   WEATHER_ALERT: 'environment',
+  SEISMIC_EVENT: 'environment',
+  AIR_POLLUTION_EPISODE: 'environment',
   // Catégorie « infrastructure » du tableau §7.3 (arbitrage A9).
   TELECOM_DISRUPTION: 'environment',
   NEWS_ALERT: 'general',
